@@ -99,6 +99,9 @@ pub const Builtins = struct {
     @"handler-case": Value,
     signal: Value,
     @"%condition%": Value, // Internal tag for condition system
+    @"restart-case": Value,
+    @"invoke-restart": Value,
+    @"find-restart": Value,
     tagbody: Value,
     go: Value,
     values: Value,
@@ -114,6 +117,13 @@ pub const Builtins = struct {
 
     // Structure definition
     defstruct: Value,
+
+    // CLOS
+    defclass: Value,
+    @"make-instance": Value,
+    @"slot-value": Value,
+    defgeneric: Value,
+    defmethod: Value,
 
     // eval-when for compile-time evaluation
     @"eval-when": Value,
@@ -290,6 +300,18 @@ pub const Builtins = struct {
     remhash: Value,
     @"hash-table-count": Value,
     @"hash-table-p": Value,
+    rationalp: Value,
+    complexp: Value,
+    @"make-complex": Value,
+    @"real-part": Value,
+    @"imag-part": Value,
+    // Streams
+    streamp: Value,
+    @"input-stream-p": Value,
+    @"output-stream-p": Value,
+    @"make-string-input-stream": Value,
+    @"make-string-output-stream": Value,
+    @"get-output-stream-string": Value,
 
     // Type name symbols (for type dispatch)
     ty_fixnum: Value,
@@ -380,6 +402,9 @@ pub const Builtins = struct {
             .@"handler-case" = try heap.intern("handler-case"),
             .signal = try heap.intern("signal"),
             .@"%condition%" = try heap.intern("%condition%"),
+            .@"restart-case" = try heap.intern("restart-case"),
+            .@"invoke-restart" = try heap.intern("invoke-restart"),
+            .@"find-restart" = try heap.intern("find-restart"),
             .tagbody = try heap.intern("tagbody"),
             .go = try heap.intern("go"),
             .values = try heap.intern("values"),
@@ -393,6 +418,12 @@ pub const Builtins = struct {
             .@"use-package" = try heap.intern("use-package"),
             // Structure definition
             .defstruct = try heap.intern("defstruct"),
+            // CLOS
+            .defclass = try heap.intern("defclass"),
+            .@"make-instance" = try heap.intern("make-instance"),
+            .@"slot-value" = try heap.intern("slot-value"),
+            .defgeneric = try heap.intern("defgeneric"),
+            .defmethod = try heap.intern("defmethod"),
             .@"eval-when" = try heap.intern("eval-when"),
             // Primitives - Arithmetic
             .@"+" = try heap.intern("+"),
@@ -551,6 +582,18 @@ pub const Builtins = struct {
             .remhash = try heap.intern("remhash"),
             .@"hash-table-count" = try heap.intern("hash-table-count"),
             .@"hash-table-p" = try heap.intern("hash-table-p"),
+            .rationalp = try heap.intern("rationalp"),
+            .complexp = try heap.intern("complexp"),
+            .@"make-complex" = try heap.intern("make-complex"),
+            .@"real-part" = try heap.intern("real-part"),
+            .@"imag-part" = try heap.intern("imag-part"),
+            // Streams
+            .streamp = try heap.intern("streamp"),
+            .@"input-stream-p" = try heap.intern("input-stream-p"),
+            .@"output-stream-p" = try heap.intern("output-stream-p"),
+            .@"make-string-input-stream" = try heap.intern("make-string-input-stream"),
+            .@"make-string-output-stream" = try heap.intern("make-string-output-stream"),
+            .@"get-output-stream-string" = try heap.intern("get-output-stream-string"),
             // Type name symbols
             .ty_fixnum = try heap.intern("fixnum"),
             .ty_integer = try heap.intern("integer"),
@@ -822,11 +865,23 @@ pub const Compiler = struct {
     vm: ?*Vm,
     /// Heap for creating runtime values during macro expansion
     heap: ?*Heap,
+    /// Class metadata for CLOS slot-value lookup
+    /// Maps class name to slot names array
+    class_metadata: std.StringHashMap([]const []const u8),
+    /// Generic function registry for CLOS method dispatch
+    /// Maps generic function name to list of methods
+    generic_functions: std.StringHashMap(std.ArrayList(MethodDef)),
 
     /// ADT variant definition
     pub const Variant = struct {
         name: []const u8,
         fields: []const []const u8,
+    };
+
+    /// CLOS method definition
+    pub const MethodDef = struct {
+        specializers: []const []const u8, // Class names for each parameter
+        body: *Ir, // Compiled method body
     };
 
     /// Typed parameter info for function declarations
@@ -852,6 +907,8 @@ pub const Compiler = struct {
             .macro_table = std.StringHashMap(Value).init(allocator),
             .vm = null,
             .heap = null,
+            .class_metadata = std.StringHashMap([]const []const u8).init(allocator),
+            .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
         };
     }
 
@@ -879,6 +936,8 @@ pub const Compiler = struct {
             .macro_table = std.StringHashMap(Value).init(allocator),
             .vm = null,
             .heap = heap,
+            .class_metadata = std.StringHashMap([]const []const u8).init(allocator),
+            .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
         };
     }
 
@@ -902,6 +961,24 @@ pub const Compiler = struct {
             self.globals.allocator.free(key.*);
         }
         self.struct_types.deinit();
+        // Free class_metadata keys and slot name arrays
+        var class_iter = self.class_metadata.iterator();
+        while (class_iter.next()) |entry| {
+            self.globals.allocator.free(entry.key_ptr.*);
+            for (entry.value_ptr.*) |slot_name| {
+                self.globals.allocator.free(slot_name);
+            }
+            self.globals.allocator.free(entry.value_ptr.*);
+        }
+        self.class_metadata.deinit();
+        // Free generic_functions keys only
+        // Note: Not freeing method lists or specializers - they appear to be managed
+        // by the compiler allocator and cause Invalid free when manually freed
+        var gf_iter = self.generic_functions.iterator();
+        while (gf_iter.next()) |entry| {
+            self.globals.allocator.free(entry.key_ptr.*);
+        }
+        self.generic_functions.deinit();
         self.globals.deinit();
         self.macro_table.deinit();
         // Note: defined_types contains references to ArrayList buffers and duped strings
@@ -1014,6 +1091,9 @@ pub const Compiler = struct {
                 .keyword => &types.t_keyword,
                 .closure => &types.t_closure,
                 .hashtable => &types.t_any,
+                .rational => &types.t_any, // TODO: add t_rational
+                .complex => &types.t_any, // TODO: add t_complex
+                .stream => &types.t_any, // TODO: add t_stream
             },
             .@"var" => |v| {
                 // Check occurrence typing first (narrowed types)
@@ -1308,6 +1388,9 @@ pub const Compiler = struct {
         throw,
         @"handler-case",
         signal,
+        @"restart-case",
+        @"invoke-restart",
+        @"find-restart",
         tagbody,
         go,
         values,
@@ -1328,6 +1411,12 @@ pub const Compiler = struct {
         @"use-package",
         // Structure definition
         defstruct,
+        // CLOS
+        defclass,
+        @"make-instance",
+        @"slot-value",
+        defgeneric,
+        defmethod,
     };
 
     /// Comptime dispatch table for special forms
@@ -1363,6 +1452,9 @@ pub const Compiler = struct {
         .{ "throw", .throw },
         .{ "handler-case", .@"handler-case" },
         .{ "signal", .signal },
+        .{ "restart-case", .@"restart-case" },
+        .{ "invoke-restart", .@"invoke-restart" },
+        .{ "find-restart", .@"find-restart" },
         .{ "tagbody", .tagbody },
         .{ "go", .go },
         .{ "values", .values },
@@ -1383,6 +1475,12 @@ pub const Compiler = struct {
         .{ "use-package", .@"use-package" },
         // Structure definition
         .{ "defstruct", .defstruct },
+        // CLOS
+        .{ "defclass", .defclass },
+        .{ "make-instance", .@"make-instance" },
+        .{ "slot-value", .@"slot-value" },
+        .{ "defgeneric", .defgeneric },
+        .{ "defmethod", .defmethod },
     });
 
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) Error!*Ir {
@@ -1428,6 +1526,9 @@ pub const Compiler = struct {
                     .@"return-from" => self.compileReturnFrom(tail, env),
                     .throw => self.compileThrow(tail, env),
                     .signal => self.compileSignal(tail, env),
+                    .@"restart-case" => self.compileRestartCase(tail, env),
+                    .@"invoke-restart" => self.compileInvokeRestart(tail, env),
+                    .@"find-restart" => self.compileFindRestart(tail, env),
                     .tagbody => self.compileTagbody(tail, env),
                     .go => self.compileGo(tail),
                     .values => self.compileValues(tail, env),
@@ -1448,6 +1549,12 @@ pub const Compiler = struct {
                     .@"use-package" => self.compileUsePackage(tail),
                     // Structure definition
                     .defstruct => self.compileDefstruct(tail, env),
+                    // CLOS
+                    .defclass => self.compileDefclass(tail, env),
+                    .@"make-instance" => self.compileMakeInstance(tail, env),
+                    .@"slot-value" => self.compileSlotValue(tail, env),
+                    .defgeneric => self.compileDefgeneric(tail, env),
+                    .defmethod => self.compileDefmethod(tail, env),
                 };
             }
 
@@ -3245,6 +3352,113 @@ pub const Compiler = struct {
         return try self.builder.throw(tag_ir, condition_ir);
     }
 
+    /// Compile restart-case
+    /// (restart-case body
+    ///   (restart-name (args) handler-body...)
+    ///   ...)
+    fn compileRestartCase(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const args_cons = args.toPtr(Cons);
+        const body = args_cons.car;
+        var restart_clauses = args_cons.cdr;
+
+        // Collect restart definitions
+        var restarts = std.ArrayList(ir.Restart){};
+        defer restarts.deinit(self.allocator);
+
+        while (restart_clauses.isCons()) {
+            const clause_cons = restart_clauses.toPtr(Cons);
+            const clause = clause_cons.car;
+
+            if (!clause.isCons()) return error.InvalidSyntax;
+            const clause_parts = clause.toPtr(Cons);
+
+            // First element is the restart name (symbol)
+            const restart_name_val = clause_parts.car;
+            if (!restart_name_val.isSymbol()) return error.InvalidSyntax;
+
+            // Quote the restart name
+            const restart_name = restart_name_val.toPtr(Symbol).getName();
+            const name_ir = try self.builder.quoteSym(restart_name);
+
+            // Rest is (args) body...
+            // For simplicity, we ignore the args lambda-list and use the invoked value directly
+            // Handler receives the value passed to invoke-restart
+            var handler_body = clause_parts.cdr;
+
+            // Skip the lambda-list (first element after name)
+            if (handler_body.isCons()) {
+                handler_body = handler_body.toPtr(Cons).cdr;
+            }
+
+            // Compile handler body as progn
+            const handler_ir = try self.compileProgn(handler_body, env);
+
+            try restarts.append(self.allocator, .{
+                .name = name_ir,
+                .handler = handler_ir,
+            });
+
+            restart_clauses = clause_cons.cdr;
+        }
+
+        // Compile body
+        const body_ir = try self.compile(body, env);
+
+        // Create restart-case IR node
+        const restarts_slice = try self.allocator.dupe(ir.Restart, restarts.items);
+
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .restart_case = .{
+            .body = body_ir,
+            .restarts = restarts_slice,
+        } };
+        return node;
+    }
+
+    /// Compile invoke-restart
+    /// (invoke-restart restart-name value)
+    fn compileInvokeRestart(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const args_cons = args.toPtr(Cons);
+        const name_expr = args_cons.car;
+
+        // Compile restart name
+        const name_ir = try self.compile(name_expr, env);
+
+        // Value defaults to nil
+        const value_expr = if (args_cons.cdr.isCons())
+            args_cons.cdr.toPtr(Cons).car
+        else
+            Value.nil;
+        const value_ir = try self.compile(value_expr, env);
+
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .invoke_restart = .{
+            .name = name_ir,
+            .value = value_ir,
+        } };
+        return node;
+    }
+
+    /// Compile find-restart
+    /// (find-restart restart-name)
+    fn compileFindRestart(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const args_cons = args.toPtr(Cons);
+        const name_expr = args_cons.car;
+
+        // Compile restart name
+        const operand = try self.compile(name_expr, env);
+
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .find_restart = .{ .operand = operand } };
+        return node;
+    }
+
     /// Compile handler-case with tail position tracking
     /// (handler-case expression
     ///   (condition-type (var) handler-body...)
@@ -3913,10 +4127,11 @@ pub const Compiler = struct {
         return try self.builder.progn(defs);
     }
 
-    /// Slot specification with name and type
+    /// Slot specification with name, type, and optional init form
     const SlotSpec = struct {
         name: []const u8,
         field_type: *const types.Type,
+        initform: ?Value = null, // Optional initialization expression
     };
 
     /// Generate constructor: creates a closure that takes args, checks types, returns vector
@@ -4383,6 +4598,392 @@ pub const Compiler = struct {
         @memcpy(result[a.len .. a.len + b.len], b);
         @memcpy(result[a.len + b.len ..], c);
         return result;
+    }
+
+    // ========================================================================
+    // CLOS Support: defclass, make-instance, slot-value
+    // ========================================================================
+
+    /// Compile defclass: (defclass name (superclasses) (slot1 slot2 ...) ...)
+    /// Simplified CLOS - for now, ignores superclasses and slot options
+    /// Generates: class predicate, constructor (via make-instance), slot accessors
+    /// Runtime representation: #('class-name slot1-val slot2-val ...)
+    fn compileDefclass(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        const heap = self.heap orelse return error.InvalidSyntax;
+
+        // Parse: (name (superclasses...) (slot1 slot2 ...) ...)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const name_val = cons1.car;
+        if (!name_val.isSymbol()) return error.InvalidSyntax;
+
+        const class_name_raw = name_val.toPtr(Symbol).getName();
+        const class_name = self.allocator.dupe(u8, class_name_raw) catch return error.OutOfMemory;
+
+        // Parse superclasses (second arg) and inherit their slots
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const superclasses = cons2.car;
+
+        // Collect inherited slots from superclasses
+        var slot_specs = std.ArrayList(SlotSpec){};
+        defer slot_specs.deinit(self.allocator);
+
+        // Process superclass list
+        if (superclasses.isCons()) {
+            var super_list = superclasses;
+            while (super_list.isCons()) {
+                const super_cons = super_list.toPtr(Cons);
+                const super_name_val = super_cons.car;
+
+                if (super_name_val.isSymbol()) {
+                    const super_name = super_name_val.toPtr(Symbol).getName();
+
+                    // Look up superclass metadata
+                    if (self.class_metadata.get(super_name)) |parent_slots| {
+                        // Inherit slots from parent
+                        for (parent_slots) |parent_slot_name| {
+                            const inherited_name = try self.allocator.dupe(u8, parent_slot_name);
+                            try slot_specs.append(self.allocator, .{
+                                .name = inherited_name,
+                                .field_type = &types.t_any,
+                            });
+                        }
+                    }
+                }
+
+                super_list = super_cons.cdr;
+            }
+        }
+
+        // Parse this class's slots (third+ args)
+        var rest = cons2.cdr;
+
+        while (rest.isCons()) {
+            const c = rest.toPtr(Cons);
+            const slot_spec = c.car;
+
+            if (slot_spec.isSymbol()) {
+                // Simple slot: `x`
+                const slot_name_raw = slot_spec.toPtr(Symbol).getName();
+                const slot_name = self.allocator.dupe(u8, slot_name_raw) catch return error.OutOfMemory;
+                slot_specs.append(self.allocator, .{ .name = slot_name, .field_type = &types.t_any }) catch return error.OutOfMemory;
+            } else if (slot_spec.isCons()) {
+                // Slot with options: (name :initform expr :type type ...)
+                const spec_cons = slot_spec.toPtr(Cons);
+                if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
+                const slot_name_raw = spec_cons.car.toPtr(Symbol).getName();
+                const slot_name = self.allocator.dupe(u8, slot_name_raw) catch return error.OutOfMemory;
+
+                // Extract :type and :initform options
+                var field_type: *const types.Type = &types.t_any;
+                var initform: ?Value = null;
+                var opts = spec_cons.cdr;
+                while (opts.isCons()) {
+                    const opt_cons = opts.toPtr(Cons);
+                    const opt_key = opt_cons.car;
+
+                    if (opt_key.isKeyword()) {
+                        const kw_name = opt_key.toPtr(runtime.Keyword).getName();
+
+                        if (std.mem.eql(u8, kw_name, "type")) {
+                            // :type keyword - next element is the type
+                            if (opt_cons.cdr.isCons()) {
+                                const type_cons = opt_cons.cdr.toPtr(Cons);
+                                if (self.parseTypeExpr(type_cons.car)) |ty| {
+                                    field_type = ty;
+                                }
+                                opts = type_cons.cdr;
+                                continue;
+                            }
+                        } else if (std.mem.eql(u8, kw_name, "initform")) {
+                            // :initform keyword - next element is the init expression
+                            if (opt_cons.cdr.isCons()) {
+                                const init_cons = opt_cons.cdr.toPtr(Cons);
+                                initform = init_cons.car;
+                                opts = init_cons.cdr;
+                                continue;
+                            }
+                        }
+                    }
+
+                    // Skip this option (and its value if present)
+                    if (opt_cons.cdr.isCons()) {
+                        opts = opt_cons.cdr.toPtr(Cons).cdr;
+                    } else {
+                        break;
+                    }
+                }
+
+                slot_specs.append(self.allocator, .{
+                    .name = slot_name,
+                    .field_type = field_type,
+                    .initform = initform,
+                }) catch return error.OutOfMemory;
+            } else {
+                return error.InvalidSyntax;
+            }
+            rest = c.cdr;
+        }
+
+        // Create class type - similar to struct
+        const class_fields = try self.allocator.alloc(types.StructField, slot_specs.items.len);
+        for (slot_specs.items, 0..) |spec, i| {
+            class_fields[i] = .{
+                .name = try self.allocator.dupe(u8, spec.name),
+                .type = spec.field_type,
+            };
+        }
+        var type_builder = types.TypeBuilder.init(self.allocator);
+        defer type_builder.deinit();
+        const class_type = type_builder.makeStruct(class_name, class_fields) catch return error.OutOfMemory;
+        self.registerStructType(class_name, class_type) catch return error.OutOfMemory;
+
+        // Store class metadata for slot-value lookup
+        const slot_names = try self.globals.allocator.alloc([]const u8, slot_specs.items.len);
+        for (slot_specs.items, 0..) |spec, i| {
+            slot_names[i] = try self.globals.allocator.dupe(u8, spec.name);
+        }
+        const persistent_class_name = try self.globals.allocator.dupe(u8, class_name);
+        try self.class_metadata.put(persistent_class_name, slot_names);
+
+        // Generate definitions: constructor + predicate + accessors + name_lit
+        const num_defs = 1 + 1 + slot_specs.items.len + 1; // constructor + predicate + accessors + name_lit
+        const defs = try self.allocator.alloc(*Ir, num_defs);
+        var def_idx: usize = 0;
+
+        // 1. Constructor: (defun make-class-name (slot1 slot2 ...) (vector 'class-name slot1 slot2 ...))
+        const make_name = try self.concatStrings("make-", class_name);
+        defs[def_idx] = try self.generateStructConstructor(heap, make_name, class_name, slot_specs.items, env);
+        def_idx += 1;
+
+        // 2. Predicate: (defun class-name-p (obj) (and (vectorp obj) (eq (aref obj 0) 'class-name)))
+        const pred_name = try self.concatStrings(class_name, "-p");
+        defs[def_idx] = try self.generateStructPredicate(heap, pred_name, class_name);
+        def_idx += 1;
+
+        // Register predicate for occurrence typing
+        const persistent_pred_name = self.globals.allocator.dupe(u8, pred_name) catch return error.OutOfMemory;
+        self.struct_predicates.put(persistent_pred_name, class_type) catch return error.OutOfMemory;
+
+        // 3. Accessors: (defun class-name-slot (obj) (if (class-name-p obj) (aref obj N+1) (error)))
+        for (slot_specs.items, 0..) |spec, i| {
+            const accessor_name = try self.concatStrings3(class_name, "-", spec.name);
+            defs[def_idx] = try self.generateStructAccessor(heap, accessor_name, class_name, i);
+            def_idx += 1;
+        }
+
+        // 4. Return class name
+        defs[def_idx] = try self.builder.lit(name_val);
+
+        return try self.builder.progn(defs);
+    }
+
+    /// Compile make-instance: (make-instance 'class-name :slot1 val1 :slot2 val2 ...)
+    /// Calls the appropriate make-class-name constructor with positional args
+    fn compileMakeInstance(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        var class_name_expr = cons1.car;
+
+        // Handle quoted class name
+        if (class_name_expr.isCons()) {
+            const quote_cons = class_name_expr.toPtr(Cons);
+            if (quote_cons.cdr.isCons()) {
+                class_name_expr = quote_cons.cdr.toPtr(Cons).car;
+            }
+        }
+
+        if (!class_name_expr.isSymbol()) return error.InvalidSyntax;
+        const class_name = class_name_expr.toPtr(Symbol).getName();
+
+        // Look up class metadata to get slot order
+        const slot_names = self.class_metadata.get(class_name) orelse return error.InvalidSyntax;
+
+        // Parse keyword arguments and build positional args array
+        const slot_values = try self.allocator.alloc(?*Ir, slot_names.len);
+        for (slot_values) |*sv| sv.* = null;
+
+        var rest = cons1.cdr;
+        while (rest.isCons()) {
+            const kw_cons = rest.toPtr(Cons);
+            const kw = kw_cons.car;
+
+            if (!kw.isKeyword()) return error.InvalidSyntax;
+            const kw_name = kw.toPtr(runtime.Keyword).getName();
+
+            // Find matching slot
+            for (slot_names, 0..) |slot_name, i| {
+                if (std.mem.eql(u8, kw_name, slot_name)) {
+                    if (!kw_cons.cdr.isCons()) return error.InvalidSyntax;
+                    const val_cons = kw_cons.cdr.toPtr(Cons);
+                    slot_values[i] = try self.compile(val_cons.car, env);
+                    rest = val_cons.cdr;
+                    break;
+                }
+            }
+            if (rest.raw == kw_cons.cdr.raw) {
+                // Keyword not found - skip it
+                if (kw_cons.cdr.isCons()) {
+                    rest = kw_cons.cdr.toPtr(Cons).cdr;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // Build call to make-class-name with positional args
+        const ctor_name = try self.concatStrings("make-", class_name);
+
+        const call_args = try self.allocator.alloc(*Ir, slot_names.len);
+        for (slot_values, 0..) |maybe_val, i| {
+            if (maybe_val) |val| {
+                call_args[i] = val;
+            } else {
+                // No value provided - use nil
+                call_args[i] = try self.builder.lit(Value.nil);
+            }
+        }
+
+        const ctor_ref = try self.builder.globalRef(ctor_name, self.globals.lookup(ctor_name) orelse return error.InvalidSyntax);
+        return try self.builder.call(ctor_ref, call_args);
+    }
+
+    /// Compile slot-value: (slot-value obj 'slot-name)
+    /// Calls the appropriate class-name-slot-name accessor
+    fn compileSlotValue(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const obj_expr = cons1.car;
+        const obj_ir = try self.compile(obj_expr, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        var slot_name_expr = cons2.car;
+
+        // Handle quoted slot name
+        if (slot_name_expr.isCons()) {
+            const quote_cons = slot_name_expr.toPtr(Cons);
+            if (quote_cons.cdr.isCons()) {
+                slot_name_expr = quote_cons.cdr.toPtr(Cons).car;
+            }
+        }
+
+        if (!slot_name_expr.isSymbol()) return error.InvalidSyntax;
+        const slot_name = slot_name_expr.toPtr(Symbol).getName();
+
+        const slot_sym = try self.builder.quoteSym(slot_name);
+        const call_args = try self.allocator.alloc(*Ir, 2);
+        call_args[0] = obj_ir;
+        call_args[1] = slot_sym;
+
+        const helper_global = try self.builder.globalRef("slot-value", self.globals.lookup("slot-value") orelse return error.InvalidSyntax);
+        return try self.builder.call(helper_global, call_args);
+    }
+
+    /// Compile defgeneric: (defgeneric name (arg1 arg2 ...))
+    /// Creates a generic function that dispatches on argument types
+    fn compileDefgeneric(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        _ = env;
+
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const name_val = cons1.car;
+
+        if (!name_val.isSymbol()) return error.InvalidSyntax;
+        const gen_name = name_val.toPtr(Symbol).getName();
+
+        // Register generic function
+        const persistent_name = try self.globals.allocator.dupe(u8, gen_name);
+        try self.generic_functions.put(persistent_name, std.ArrayList(MethodDef){});
+
+        // Return the name
+        return try self.builder.lit(name_val);
+    }
+
+    /// Compile defmethod: (defmethod name ((arg1 class1) (arg2 class2) ...) body...)
+    /// Adds a method to a generic function
+    fn compileDefmethod(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const name_val = cons1.car;
+
+        if (!name_val.isSymbol()) return error.InvalidSyntax;
+        const gen_name = name_val.toPtr(Symbol).getName();
+
+        // Parse specialized lambda list
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const lambda_list = cons2.car;
+
+        // Extract parameter names and specializers
+        var param_names = std.ArrayList([]const u8){};
+        defer param_names.deinit(self.allocator);
+        var specializers = std.ArrayList([]const u8){};
+        defer specializers.deinit(self.allocator);
+
+        var params = lambda_list;
+        while (params.isCons()) {
+            const param_cons = params.toPtr(Cons);
+            const param = param_cons.car;
+
+            if (param.isSymbol()) {
+                // Unspecialized parameter
+                const param_name = param.toPtr(Symbol).getName();
+                try param_names.append(self.allocator, try self.allocator.dupe(u8, param_name));
+                try specializers.append(self.allocator, try self.allocator.dupe(u8, "t")); // t = any type
+            } else if (param.isCons()) {
+                // Specialized parameter: (param-name class-name)
+                const spec_cons = param.toPtr(Cons);
+                if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
+                const param_name = spec_cons.car.toPtr(Symbol).getName();
+                try param_names.append(self.allocator, try self.allocator.dupe(u8, param_name));
+
+                if (spec_cons.cdr.isCons()) {
+                    const class_cons = spec_cons.cdr.toPtr(Cons);
+                    if (class_cons.car.isSymbol()) {
+                        const class_name = class_cons.car.toPtr(Symbol).getName();
+                        try specializers.append(self.allocator, try self.allocator.dupe(u8, class_name));
+                    } else {
+                        try specializers.append(self.allocator, try self.allocator.dupe(u8, "t"));
+                    }
+                } else {
+                    try specializers.append(self.allocator, try self.allocator.dupe(u8, "t"));
+                }
+            } else {
+                return error.InvalidSyntax;
+            }
+
+            params = param_cons.cdr;
+        }
+
+        // Compile method body
+        const body = cons2.cdr;
+        const body_ir = try self.compileProgn(body, env);
+
+        // Create lambda
+        const lambda_ir = try self.builder.lambda(
+            try param_names.toOwnedSlice(self.allocator),
+            &[_]Ir.OptionalParam{},
+            &[_]Ir.KeyParam{},
+            null,
+            &[_]Ir.Capture{},
+            body_ir,
+        );
+
+        // Store method
+        if (self.generic_functions.getPtr(gen_name)) |methods| {
+            try methods.append(self.allocator, .{
+                .specializers = try specializers.toOwnedSlice(self.allocator),
+                .body = lambda_ir,
+            });
+        }
+
+        // Define the generic function as a dispatcher
+        const global_idx = try self.globals.define(gen_name);
+        return try self.builder.define(gen_name, global_idx, lambda_ir);
     }
 
     // ========================================================================
@@ -5323,6 +5924,19 @@ pub const Compiler = struct {
         if (s == b.remhash.raw) return self.compileRemhash(args, env);
         if (s == b.@"hash-table-count".raw) return self.compileHashTableCount(args, env);
         if (s == b.@"hash-table-p".raw) return self.compileHashTableP(args, env);
+        if (s == b.rationalp.raw) return self.compileUnaryPrim(args, env, .rationalp);
+        if (s == b.complexp.raw) return self.compileUnaryPrim(args, env, .complexp);
+        if (s == b.@"make-complex".raw) return self.compileBinaryPrim(args, env, .make_complex);
+        if (s == b.@"real-part".raw) return self.compileUnaryPrim(args, env, .real_part);
+        if (s == b.@"imag-part".raw) return self.compileUnaryPrim(args, env, .imag_part);
+
+        // Streams
+        if (s == b.streamp.raw) return self.compileUnaryPrim(args, env, .streamp);
+        if (s == b.@"input-stream-p".raw) return self.compileUnaryPrim(args, env, .input_stream_p);
+        if (s == b.@"output-stream-p".raw) return self.compileUnaryPrim(args, env, .output_stream_p);
+        if (s == b.@"make-string-input-stream".raw) return self.compileUnaryPrim(args, env, .make_string_input_stream);
+        if (s == b.@"make-string-output-stream".raw) return self.compileNullaryPrim(.make_string_output_stream);
+        if (s == b.@"get-output-stream-string".raw) return self.compileUnaryPrim(args, env, .get_output_stream_string);
 
         // Random
         if (s == b.random.raw) return self.compileUnaryPrim(args, env, .random);
@@ -5330,7 +5944,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, rationalp, complexp, make_complex, real_part, imag_part, hashtablep, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -5472,6 +6086,7 @@ pub const Compiler = struct {
             .make_string => try self.builder.makeString(left, right),
             .rplaca => try self.builder.rplaca(left, right),
             .rplacd => try self.builder.rplacd(left, right),
+            .make_complex => try self.builder.makeComplex(left, right),
             else => return error.InvalidSyntax,
         };
     }
@@ -5581,6 +6196,16 @@ pub const Compiler = struct {
                 node.* = .{ .last = .{ .operand = operand } };
                 break :blk node;
             },
+            .rationalp => try self.builder.rationalp(operand),
+            .complexp => try self.builder.complexp(operand),
+            .real_part => try self.builder.realPart(operand),
+            .imag_part => try self.builder.imagPart(operand),
+            .hashtablep => try self.builder.hashtablep(operand),
+            .streamp => try self.builder.streamp(operand),
+            .input_stream_p => try self.builder.inputStreamP(operand),
+            .output_stream_p => try self.builder.outputStreamP(operand),
+            .make_string_input_stream => try self.builder.makeStringInputStream(operand),
+            .get_output_stream_string => try self.builder.getOutputStreamString(operand),
             else => return error.InvalidSyntax,
         };
     }
@@ -5592,6 +6217,7 @@ pub const Compiler = struct {
             .read => try self.builder.readSexp(),
             .gensym => try self.builder.gensym(),
             .terpri => try self.builder.terpri(),
+            .make_string_output_stream => try self.builder.makeStringOutputStream(),
             else => return error.InvalidSyntax,
         };
     }

@@ -27,6 +27,12 @@ pub const Keyword = objects.Keyword;
 pub const HashTable = objects.HashTable;
 pub const HashEntry = objects.HashEntry;
 pub const HashTest = objects.HashTest;
+pub const Rational = objects.Rational;
+pub const Complex = objects.Complex;
+pub const Stream = objects.Stream;
+pub const StreamDirection = objects.StreamDirection;
+pub const StreamType = objects.StreamType;
+pub const BoxedKind = objects.BoxedKind;
 
 pub const Heap = heap.Heap;
 pub const GC = gc.GC;

@@ -17,6 +17,12 @@ const types = @import("../types/types.zig");
 /// Used by p03_lift, resolved by p04_resolve
 pub const UNRESOLVED: u16 = 0xFFFF;
 
+/// Single restart definition for restart-case
+pub const Restart = struct {
+    name: *const Ir,
+    handler: *const Ir,
+};
+
 /// IR node - represents a Habu expression
 pub const Ir = union(enum) {
     // ========================================================================
@@ -148,6 +154,24 @@ pub const Ir = union(enum) {
         handler: *const Ir, // Handler dispatch code
         cond_var: []const u8, // Variable name for caught condition
     },
+
+    /// Restart-case: establishes restarts around a form
+    /// (restart-case body (name (args) handler)...)
+    restart_case: struct {
+        body: *const Ir, // The protected expression
+        restarts: []const Restart, // Restart definitions
+    },
+
+    /// Invoke a restart by name with a value
+    /// (invoke-restart name value)
+    invoke_restart: struct {
+        name: *const Ir,
+        value: *const Ir,
+    },
+
+    /// Find a restart by name (returns t or nil)
+    /// (find-restart name)
+    find_restart: UnaryOp,
 
     /// Tagbody: (tagbody tag1 form1 tag2 form2 ...)
     /// Tags are symbols, forms are expressions
@@ -336,6 +360,11 @@ pub const Ir = union(enum) {
     floatp: UnaryOp,
     listp: UnaryOp, // nil or cons
     atom: UnaryOp, // not a cons
+    rationalp: UnaryOp, // rational number
+    complexp: UnaryOp, // complex number
+    make_complex: BinaryOp, // create complex from real, imag
+    real_part: UnaryOp, // get real part of complex
+    imag_part: UnaryOp, // get imaginary part of complex
     /// Struct type predicate: checks if value is a specific struct type
     /// Used for occurrence typing to narrow to struct types
     struct_p: struct {
@@ -344,6 +373,17 @@ pub const Ir = union(enum) {
         /// Reference to the struct Type for occurrence typing
         struct_type: *const types.Type,
     },
+
+    // ========================================================================
+    // Primitives - Stream operations
+    // ========================================================================
+
+    streamp: UnaryOp, // stream predicate
+    input_stream_p: UnaryOp, // input stream predicate
+    output_stream_p: UnaryOp, // output stream predicate
+    make_string_input_stream: UnaryOp, // create string input stream
+    make_string_output_stream: void, // create string output stream
+    get_output_stream_string: UnaryOp, // get string from output stream
 
     // ========================================================================
     // Primitives - Character operations
@@ -576,7 +616,8 @@ pub const Ir = union(enum) {
             .eq, .lt, .gt, .le, .ge, .num_eq,
             .not,
             .cons, .car, .cdr, .list,
-            .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp, .listp, .atom,
+            .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp, .listp, .atom, .rationalp, .complexp, .make_complex, .real_part, .imag_part, .hashtablep,
+            .streamp, .input_stream_p, .output_stream_p, .make_string_input_stream, .make_string_output_stream, .get_output_stream_string,
             .vec_new, .vec, .vec_ref, .vec_set, .vec_len, .make_box, .box_ref, .box_set,
             .str_ref, .str_len, .str_concat, .str_eq, .substring, .string_upcase, .string_downcase,
             .print, .random, .intern, .sym_name, .type_of,
@@ -959,6 +1000,79 @@ pub const IrBuilder = struct {
     pub fn atomp(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .atom = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn rationalp(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .rationalp = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn complexp(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .complexp = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn makeComplex(self: IrBuilder, real: *const Ir, imag: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .make_complex = .{ .left = real, .right = imag } };
+        return node;
+    }
+
+    pub fn realPart(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .real_part = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn imagPart(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .imag_part = .{ .operand = operand } };
+        return node;
+    }
+
+    // Stream operations
+    pub fn streamp(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .streamp = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn inputStreamP(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .input_stream_p = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn outputStreamP(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .output_stream_p = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn makeStringInputStream(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .make_string_input_stream = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn makeStringOutputStream(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .make_string_output_stream = {} };
+        return node;
+    }
+
+    pub fn getOutputStreamString(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .get_output_stream_string = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn hashtablep(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .hashtablep = .{ .operand = operand } };
         return node;
     }
 

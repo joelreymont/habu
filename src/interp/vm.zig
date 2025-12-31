@@ -35,6 +35,7 @@ pub const Error = error{
     UnhandledThrow,
     UnboundSymbol,
     UserError,
+    RestartNotFound,
 };
 
 /// Catch frame for exception handling
@@ -61,6 +62,24 @@ pub const UnwindFrame = struct {
     unwind_sp: usize,
     /// Frame pointer when push_unwind was executed
     unwind_fp: usize,
+};
+
+/// Restart frame for restart-case
+pub const RestartFrame = struct {
+    /// Restart name (interned symbol)
+    name: Value,
+    /// Chunk containing the restart handler
+    chunk: *const Chunk,
+    /// IP of restart handler code
+    handler_ip: usize,
+    /// Stack pointer to restore when restart is invoked
+    restart_sp: usize,
+    /// Frame pointer to restore when restart is invoked
+    restart_fp: usize,
+    /// Catch stack depth to restore
+    catch_depth: usize,
+    /// Unwind stack depth to restore
+    unwind_depth: usize,
 };
 
 /// Call frame for function calls
@@ -165,6 +184,11 @@ pub const Vm = struct {
     /// Unwind stack pointer
     unwind_sp: usize,
 
+    /// Restart stack for restart-case
+    restart_stack: [MAX_RESTARTS]RestartFrame,
+    /// Restart stack pointer
+    restart_sp: usize,
+
     /// Let scope stack for nested let bindings
     scope_stack: [MAX_SCOPES]Scope,
     /// Scope stack pointer (number of active scopes)
@@ -252,6 +276,7 @@ pub const Vm = struct {
     const MAX_GLOBALS = 2048;
     const MAX_CATCHES = 32;
     const MAX_UNWINDS = 32;
+    const MAX_RESTARTS = 64;
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap) !Vm {
         var vm = Vm{
@@ -271,6 +296,8 @@ pub const Vm = struct {
             .catch_sp = 0,
             .unwind_stack = undefined,
             .unwind_sp = 0,
+            .restart_stack = undefined,
+            .restart_sp = 0,
             .scope_stack = undefined,
             .scope_sp = 0,
             .pending_throw_tag = Value.nil,
@@ -1681,6 +1708,51 @@ pub const Vm = struct {
                     }
                 },
 
+                // Restart handling
+                .push_restart => {
+                    const offset = self.readI16();
+                    const name = try self.pop();
+                    const handler_ip = @as(usize, @intCast(@as(isize, @intCast(self.ip)) + offset));
+                    if (self.restart_sp >= MAX_RESTARTS) return error.StackOverflow;
+                    self.restart_stack[self.restart_sp] = .{
+                        .name = name,
+                        .chunk = self.chunk,
+                        .handler_ip = handler_ip,
+                        .restart_sp = self.sp,
+                        .restart_fp = self.fp,
+                        .catch_depth = self.catch_sp,
+                        .unwind_depth = self.unwind_sp,
+                    };
+                    self.restart_sp += 1;
+                },
+
+                .pop_restarts => {
+                    const count = self.readU8();
+                    if (self.restart_sp < count) return error.StackUnderflow;
+                    self.restart_sp -= count;
+                },
+
+                .invoke_restart => {
+                    const value = try self.pop();
+                    const name = try self.pop();
+                    try self.doInvokeRestart(name, value);
+                },
+
+                .find_restart => {
+                    const name = try self.pop();
+                    // Search for restart by name
+                    var found = false;
+                    var i = self.restart_sp;
+                    while (i > 0) {
+                        i -= 1;
+                        if (self.restart_stack[i].name.raw == name.raw) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    try self.push(if (found) Value.t else Value.nil);
+                },
+
                 // Multiple values
                 .values => {
                     const count = self.readU8();
@@ -1816,6 +1888,80 @@ pub const Vm = struct {
                 .hashtablep => {
                     const val = try self.pop();
                     try self.push(if (val.isHashTable()) Value.t else Value.nil);
+                },
+                .rationalp => {
+                    const val = try self.pop();
+                    try self.push(if (val.isRational()) Value.t else Value.nil);
+                },
+                .complexp => {
+                    const val = try self.pop();
+                    try self.push(if (val.isComplex()) Value.t else Value.nil);
+                },
+                .make_complex => {
+                    const imag = try self.pop();
+                    const real = try self.pop();
+                    const real_f = if (real.isFloat()) real.toFloat() else if (real.isFixnum()) @as(f64, @floatFromInt(real.toFixnum())) else return error.TypeMismatch;
+                    const imag_f = if (imag.isFloat()) imag.toFloat() else if (imag.isFixnum()) @as(f64, @floatFromInt(imag.toFixnum())) else return error.TypeMismatch;
+                    const cplx = try self.heap.allocComplex(real_f, imag_f);
+                    try self.push(cplx);
+                },
+                .real_part => {
+                    const val = try self.pop();
+                    if (!val.isComplex()) return error.TypeMismatch;
+                    const cplx = val.toPtr(runtime.Complex);
+                    try self.push(Value.makeFloat(cplx.real));
+                },
+                .imag_part => {
+                    const val = try self.pop();
+                    if (!val.isComplex()) return error.TypeMismatch;
+                    const cplx = val.toPtr(runtime.Complex);
+                    try self.push(Value.makeFloat(cplx.imag));
+                },
+
+                // Stream operations
+                .streamp => {
+                    const val = try self.pop();
+                    try self.push(if (val.isStream()) Value.t else Value.nil);
+                },
+                .input_stream_p => {
+                    const val = try self.pop();
+                    if (!val.isStream()) {
+                        try self.push(Value.nil);
+                    } else {
+                        const stream = val.toPtr(runtime.Stream);
+                        try self.push(if (stream.isInput()) Value.t else Value.nil);
+                    }
+                },
+                .output_stream_p => {
+                    const val = try self.pop();
+                    if (!val.isStream()) {
+                        try self.push(Value.nil);
+                    } else {
+                        const stream = val.toPtr(runtime.Stream);
+                        try self.push(if (stream.isOutput()) Value.t else Value.nil);
+                    }
+                },
+                .make_string_input_stream => {
+                    const str = try self.pop();
+                    if (!str.isString()) return error.TypeMismatch;
+                    const stream = try self.heap.allocStringInputStream(str);
+                    try self.push(stream);
+                },
+                .make_string_output_stream => {
+                    const stream = try self.heap.allocStringOutputStream();
+                    try self.push(stream);
+                },
+                .get_output_stream_string => {
+                    const stream_val = try self.pop();
+                    if (!stream_val.isStream()) return error.TypeMismatch;
+                    const stream = stream_val.toPtr(runtime.Stream);
+                    if (stream.stream_type != .string or stream.direction != .output) {
+                        return error.TypeMismatch;
+                    }
+                    // For string output streams, we need to get accumulated data
+                    // Currently returns empty string since we don't have write operations yet
+                    const result = try self.heap.allocString("");
+                    try self.push(result);
                 },
 
                 // Character operations
@@ -2442,6 +2588,37 @@ pub const Vm = struct {
         return error.UnhandledThrow;
     }
 
+    fn doInvokeRestart(self: *Vm, name: Value, value: Value) Error!void {
+        // Search for restart by name (most recent first)
+        var i = self.restart_sp;
+        while (i > 0) {
+            i -= 1;
+            const frame = self.restart_stack[i];
+            if (frame.name.raw == name.raw) {
+                // Found matching restart - restore state
+                // First, restore catch/unwind stack depths
+                self.catch_sp = frame.catch_depth;
+                self.unwind_sp = frame.unwind_depth;
+                // Pop this restart and all more recent ones
+                self.restart_sp = i;
+
+                // Restore execution state
+                if (frame.restart_sp > STACK_SIZE or frame.restart_fp > MAX_FRAMES) {
+                    return error.InvalidOpcode;
+                }
+                self.chunk = frame.chunk;
+                self.ip = frame.handler_ip;
+                self.sp = frame.restart_sp;
+                self.fp = frame.restart_fp;
+                // Push the value as result of restart handler
+                try self.push(value);
+                return;
+            }
+        }
+        // No matching restart found
+        return error.RestartNotFound;
+    }
+
     // ========================================================================
     // Format string support
     // ========================================================================
@@ -2833,6 +3010,19 @@ pub const Vm = struct {
             .closure => result.appendSlice(self.allocator, "#<closure>") catch return error.OutOfMemory,
             .vector => result.appendSlice(self.allocator, "#<vector>") catch return error.OutOfMemory,
             .hashtable => result.appendSlice(self.allocator, "#<hash-table>") catch return error.OutOfMemory,
+            .rational => {
+                const rat = val.toPtr(runtime.Rational);
+                var buf: [64]u8 = undefined;
+                const num_str = std.fmt.bufPrint(&buf, "{d}/{d}", .{ rat.numerator, rat.denominator }) catch return error.OutOfMemory;
+                result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
+            },
+            .complex => {
+                const cplx = val.toPtr(runtime.Complex);
+                var buf: [128]u8 = undefined;
+                const cplx_str = std.fmt.bufPrint(&buf, "#C({d} {d})", .{ cplx.real, cplx.imag }) catch return error.OutOfMemory;
+                result.appendSlice(self.allocator, cplx_str) catch return error.OutOfMemory;
+            },
+            .stream => result.appendSlice(self.allocator, "#<stream>") catch return error.OutOfMemory,
         }
     }
 
@@ -3466,7 +3656,7 @@ fn hashValueWithTest(val: Value, test_type: runtime.HashTest) u64 {
                 .keyword => fnvHash(val.toPtr(runtime.Keyword).getName()),
                 .string => fnvHash(val.toPtr(runtime.String).bytes()),
                 // Reference types: hash address (NOT stable across GC)
-                .cons, .vector, .closure, .hashtable => fnvHashU64(val.raw),
+                .cons, .vector, .closure, .hashtable, .rational, .complex, .stream => fnvHashU64(val.raw),
             };
         },
     }

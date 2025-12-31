@@ -285,6 +285,85 @@ pub const Heap = struct {
         return Value.makeCons(cons);
     }
 
+    /// Allocate a rational number
+    pub fn allocRational(self: *Heap, num: i64, den: i64) error{OutOfMemory}!Value {
+        const rat = try self.alloc(objects.Rational);
+        rat.* = objects.Rational.make(num, den);
+        return Value.makeRational(rat);
+    }
+
+    /// Allocate a complex number
+    pub fn allocComplex(self: *Heap, real: f64, imag: f64) error{OutOfMemory}!Value {
+        const cplx = try self.alloc(objects.Complex);
+        cplx.* = objects.Complex.make(real, imag);
+        return Value.makeComplex(cplx);
+    }
+
+    /// Allocate a string input stream
+    pub fn allocStringInputStream(self: *Heap, str: Value) error{OutOfMemory}!Value {
+        const stream = try self.alloc(objects.Stream);
+        const str_obj = str.toPtr(objects.String);
+        stream.* = .{
+            .kind = .stream,
+            .direction = .input,
+            .stream_type = .string,
+            .closed = false,
+            .position = 0,
+            .data_ptr = @intFromPtr(str_obj.data),
+            .length = str_obj.length,
+            .file_fd = -1,
+        };
+        return Value.makeStream(stream);
+    }
+
+    /// Allocate a string output stream
+    pub fn allocStringOutputStream(self: *Heap) error{OutOfMemory}!Value {
+        const stream = try self.alloc(objects.Stream);
+        stream.* = .{
+            .kind = .stream,
+            .direction = .output,
+            .stream_type = .string,
+            .closed = false,
+            .position = 0,
+            .data_ptr = 0, // Will be allocated lazily
+            .length = 0,
+            .file_fd = -1,
+        };
+        return Value.makeStream(stream);
+    }
+
+    /// Allocate a file input stream
+    pub fn allocFileInputStream(self: *Heap, fd: i32) error{OutOfMemory}!Value {
+        const stream = try self.alloc(objects.Stream);
+        stream.* = .{
+            .kind = .stream,
+            .direction = .input,
+            .stream_type = .file,
+            .closed = false,
+            .position = 0,
+            .data_ptr = 0,
+            .length = 0,
+            .file_fd = fd,
+        };
+        return Value.makeStream(stream);
+    }
+
+    /// Allocate a file output stream
+    pub fn allocFileOutputStream(self: *Heap, fd: i32) error{OutOfMemory}!Value {
+        const stream = try self.alloc(objects.Stream);
+        stream.* = .{
+            .kind = .stream,
+            .direction = .output,
+            .stream_type = .file,
+            .closed = false,
+            .position = 0,
+            .data_ptr = 0,
+            .length = 0,
+            .file_fd = fd,
+        };
+        return Value.makeStream(stream);
+    }
+
     /// Allocate a vector with given capacity
     pub fn allocVector(self: *Heap, length: usize, capacity: usize) error{OutOfMemory}!Value {
         // Allocate header + data array together

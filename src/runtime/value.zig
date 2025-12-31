@@ -18,6 +18,7 @@
 //! - Tag extraction: v & 0xE (bits 1-3, ignoring bit 0)
 
 const std = @import("std");
+const objects = @import("objects.zig");
 
 /// Runtime type tags (bits 1-3 of pointer, shifted left by 1)
 pub const Tag = enum(u4) {
@@ -27,7 +28,7 @@ pub const Tag = enum(u4) {
     string = 6,
     closure = 8,
     keyword = 10,
-    hashtable = 12,
+    boxed = 12, // Boxed objects (hashtable, rational, complex, bignum)
     forwarding = 14, // GC forwarding pointer
 };
 
@@ -45,6 +46,9 @@ pub const TypeKind = enum {
     closure,
     keyword,
     hashtable,
+    rational,
+    complex,
+    stream,
 };
 
 /// A tagged Habu value (64-bit)
@@ -129,9 +133,37 @@ pub const Value = packed struct {
         return self.isPointer() and self.getTag() == .keyword;
     }
 
+    /// Check if value is a boxed object (hashtable, rational, complex)
+    pub inline fn isBoxed(self: Value) bool {
+        return self.isPointer() and self.getTag() == .boxed;
+    }
+
     /// Check if value is a hash table
     pub inline fn isHashTable(self: Value) bool {
-        return self.isPointer() and self.getTag() == .hashtable;
+        if (!self.isBoxed()) return false;
+        const kind_ptr: *const objects.BoxedKind = @ptrFromInt(self.raw & PTR_MASK);
+        return kind_ptr.* == .hashtable;
+    }
+
+    /// Check if value is a rational number
+    pub inline fn isRational(self: Value) bool {
+        if (!self.isBoxed()) return false;
+        const kind_ptr: *const objects.BoxedKind = @ptrFromInt(self.raw & PTR_MASK);
+        return kind_ptr.* == .rational;
+    }
+
+    /// Check if value is a complex number
+    pub inline fn isComplex(self: Value) bool {
+        if (!self.isBoxed()) return false;
+        const kind_ptr: *const objects.BoxedKind = @ptrFromInt(self.raw & PTR_MASK);
+        return kind_ptr.* == .complex;
+    }
+
+    /// Check if value is a stream
+    pub inline fn isStream(self: Value) bool {
+        if (!self.isBoxed()) return false;
+        const kind_ptr: *const objects.BoxedKind = @ptrFromInt(self.raw & PTR_MASK);
+        return kind_ptr.* == .stream;
     }
 
     /// Check if value is a forwarding pointer (GC)
@@ -174,8 +206,17 @@ pub const Value = packed struct {
             .string => .string,
             .closure => .closure,
             .keyword => .keyword,
-            .hashtable => .hashtable,
-            .forwarding => .cons, // Shouldn't happen outside GC
+            .boxed => {
+                // Read discriminator from first word of object
+                const kind_ptr: *const objects.BoxedKind = @ptrFromInt(self.raw & PTR_MASK);
+                return switch (kind_ptr.*) {
+                    .hashtable => .hashtable,
+                    .rational => .rational,
+                    .complex => .complex,
+                    .stream => .stream,
+                };
+            },
+            .forwarding => .cons, // Shouldn't happen during normal execution
         };
     }
 
@@ -302,9 +343,24 @@ pub const Value = packed struct {
         return makePtr(ptr, .keyword);
     }
 
-    /// Create a hash table value
+    /// Create a rational value (boxed object)
+    pub inline fn makeRational(ptr: anytype) Value {
+        return makePtr(ptr, .boxed);
+    }
+
+    /// Create a complex value (boxed object)
+    pub inline fn makeComplex(ptr: anytype) Value {
+        return makePtr(ptr, .boxed);
+    }
+
+    /// Create a hash table value (boxed object)
     pub inline fn makeHashTable(ptr: anytype) Value {
-        return makePtr(ptr, .hashtable);
+        return makePtr(ptr, .boxed);
+    }
+
+    /// Create a stream value (boxed object)
+    pub inline fn makeStream(ptr: anytype) Value {
+        return makePtr(ptr, .boxed);
     }
 
     /// Create a forwarding pointer (GC)

@@ -12,6 +12,9 @@ pub const arith = @import("arith.zig");
 pub const string = @import("string.zig");
 pub const vector = @import("vector.zig");
 pub const io = @import("io.zig");
+pub const rational = @import("rational.zig");
+pub const complex = @import("complex.zig");
+pub const clos = @import("clos.zig");
 
 // Re-export commonly used functions
 pub const cons = list.cons;
@@ -24,10 +27,16 @@ pub const sub = arith.sub;
 pub const mul = arith.mul;
 pub const div = arith.div;
 
+pub const makeInstance = clos.makeInstance;
+pub const slotValue = clos.slotValue;
+
 test {
     _ = list;
     _ = arith;
     _ = string;
     _ = vector;
     _ = io;
+    _ = rational;
+    _ = complex;
+    _ = clos;
 }

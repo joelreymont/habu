@@ -280,6 +280,52 @@ pub const Eraser = struct {
                 return node;
             },
 
+            // rationalp
+            .rationalp => |op| {
+                const new_operand = try self.erase(op.operand, ctx);
+                if (new_operand == op.operand) {
+                    return node;
+                }
+                return try self.builder.rationalp(new_operand);
+            },
+
+            // complexp
+            .complexp => |op| {
+                const new_operand = try self.erase(op.operand, ctx);
+                if (new_operand == op.operand) {
+                    return node;
+                }
+                return try self.builder.complexp(new_operand);
+            },
+
+            // make_complex
+            .make_complex => |op| {
+                const new_left = try self.erase(op.left, ctx);
+                const new_right = try self.erase(op.right, ctx);
+                if (new_left == op.left and new_right == op.right) {
+                    return node;
+                }
+                return try self.builder.makeComplex(new_left, new_right);
+            },
+
+            // real_part
+            .real_part => |op| {
+                const new_operand = try self.erase(op.operand, ctx);
+                if (new_operand == op.operand) {
+                    return node;
+                }
+                return try self.builder.realPart(new_operand);
+            },
+
+            // imag_part
+            .imag_part => |op| {
+                const new_operand = try self.erase(op.operand, ctx);
+                if (new_operand == op.operand) {
+                    return node;
+                }
+                return try self.builder.imagPart(new_operand);
+            },
+
             // hash_count has its own struct type
             .hash_count => |op| {
                 const new_operand = try self.erase(op.operand, ctx);

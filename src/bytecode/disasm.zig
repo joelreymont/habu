@@ -48,7 +48,8 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .check_fixnum, .check_cons, .check_symbol, .check_string,
         .check_vector, .check_closure, .check_non_nil, .check_list, .check_refine,
         .apply, .pop_catch, .throw,
-        .hash_get, .hash_set, .hash_rem, .hash_count, .hashtablep,
+        .hash_get, .hash_set, .hash_rem, .hash_count, .hashtablep, .rationalp, .complexp,
+        .make_complex, .real_part, .imag_part,
         .characterp, .floatp, .char_code, .code_char, .char_eq, .char_lt, .char_gt,
         .read_char, .peek_char, .unread_char, .boundp, .fboundp,
         .symbol_value, .symbol_function, .typep,
@@ -65,13 +66,16 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .list_position, .list_position_eq, .list_position_equal,
         .list_count, .list_count_eq, .list_count_equal,
         .list_remove, .list_remove_eq, .list_remove_equal,
+        .invoke_restart, .find_restart,
+        .streamp, .input_stream_p, .output_stream_p,
+        .make_string_input_stream, .make_string_output_stream, .get_output_stream_string,
         => {
             try writer.print("{s}\n", .{op.name()});
             return offset + 1;
         },
 
         // 1 byte operand
-        .load_local, .store_local, .load_capture, .call, .tail_call, .make_list, .make_vec_n, .values, .mv_bind, .format, .enter_scope, .exit_scope => {
+        .load_local, .store_local, .load_capture, .call, .tail_call, .make_list, .make_vec_n, .values, .mv_bind, .format, .enter_scope, .exit_scope, .pop_restarts => {
             const operand = chunk.readU8(offset + 1);
             try writer.print("{s} {d}\n", .{ op.name(), operand });
             return offset + 2;
@@ -85,7 +89,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         },
 
         // 2 byte operand (i16 jump)
-        .jmp, .jmp_nil, .jmp_not_nil, .push_catch, .push_unwind, .pop_unwind => {
+        .jmp, .jmp_nil, .jmp_not_nil, .push_catch, .push_unwind, .pop_unwind, .push_restart => {
             const displacement = chunk.readI16(offset + 1);
             const target = @as(i32, @intCast(offset)) + 3 + displacement;
             try writer.print("{s} {d} (-> {d})\n", .{ op.name(), displacement, target });

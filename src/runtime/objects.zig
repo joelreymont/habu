@@ -131,10 +131,144 @@ pub const HashTest = enum(u8) {
     equal = 2, // Structural equality
 };
 
-/// Hash table: mutable key-value mapping
+/// Boxed object kind - first word of all boxed objects
+pub const BoxedKind = enum(u64) {
+    hashtable = 0,
+    rational = 1,
+    complex = 2,
+    stream = 3,
+};
+
+/// Stream direction
+pub const StreamDirection = enum(u8) {
+    input = 0,
+    output = 1,
+};
+
+/// Stream type
+pub const StreamType = enum(u8) {
+    string = 0,
+    file = 1,
+    stdin = 2,
+    stdout = 3,
+    stderr = 4,
+};
+
+/// Stream object for I/O operations
+pub const Stream = extern struct {
+    kind: BoxedKind, // Must be first - discriminator (= .stream)
+    direction: StreamDirection,
+    stream_type: StreamType,
+    closed: bool,
+    _padding: u8 = 0,
+    /// For string streams: current read/write position
+    position: u64,
+    /// For string streams: pointer to string data (input) or ArrayList buffer (output)
+    data_ptr: u64,
+    /// For string streams: length of data (input) or capacity (output)
+    length: u64,
+    /// For file streams: file descriptor
+    file_fd: i32,
+    _padding2: u32 = 0,
+
+    pub fn isInput(self: *const Stream) bool {
+        return self.direction == .input;
+    }
+
+    pub fn isOutput(self: *const Stream) bool {
+        return self.direction == .output;
+    }
+
+    pub fn isClosed(self: *const Stream) bool {
+        return self.closed;
+    }
+};
+
+/// Rational number (p/q where gcd(p,q)=1, q>0)
+pub const Rational = extern struct {
+    kind: BoxedKind, // Must be first - discriminator
+    numerator: i64,
+    denominator: i64,
+
+    pub fn make(num: i64, den: i64) Rational {
+        const normalized = normalize(num, den);
+        return .{ .kind = .rational, .numerator = normalized.num, .denominator = normalized.den };
+    }
+
+    fn normalize(num: i64, den: i64) struct { num: i64, den: i64 } {
+        if (den == 0) return .{ .num = 0, .den = 1 };
+        var n = num;
+        var d = den;
+        if (d < 0) {
+            n = -n;
+            d = -d;
+        }
+        const g = gcd(if (n < 0) -n else n, d);
+        return .{ .num = @divTrunc(n, g), .den = @divTrunc(d, g) };
+    }
+
+    fn gcd(a: i64, b: i64) i64 {
+        var x = a;
+        var y = b;
+        while (y != 0) {
+            const t = y;
+            y = @rem(x, y);
+            x = t;
+        }
+        return x;
+    }
+};
+
+/// Complex number (real + imag*i)
+pub const Complex = extern struct {
+    kind: BoxedKind, // Must be first - discriminator
+    real: f64,
+    imag: f64,
+
+    pub fn make(real: f64, imag: f64) Complex {
+        return .{ .kind = .complex, .real = real, .imag = imag };
+    }
+
+    pub fn add(a: Complex, b: Complex) Complex {
+        return make(a.real + b.real, a.imag + b.imag);
+    }
+
+    pub fn sub(a: Complex, b: Complex) Complex {
+        return make(a.real - b.real, a.imag - b.imag);
+    }
+
+    pub fn mul(a: Complex, b: Complex) Complex {
+        // (a + bi)(c + di) = (ac - bd) + (ad + bc)i
+        return make(
+            a.real * b.real - a.imag * b.imag,
+            a.real * b.imag + a.imag * b.real,
+        );
+    }
+
+    pub fn div(a: Complex, b: Complex) Complex {
+        // (a + bi)/(c + di) = ((ac + bd) + (bc - ad)i) / (c² + d²)
+        const denom = b.real * b.real + b.imag * b.imag;
+        if (denom == 0) return make(0, 0);
+        return make(
+            (a.real * b.real + a.imag * b.imag) / denom,
+            (a.imag * b.real - a.real * b.imag) / denom,
+        );
+    }
+
+    pub fn abs(self: Complex) f64 {
+        return @sqrt(self.real * self.real + self.imag * self.imag);
+    }
+
+    pub fn conjugate(self: Complex) Complex {
+        return make(self.real, -self.imag);
+    }
+};
+
 /// Uses open addressing with linear probing
-/// Size: 32 bytes header + entries array
+/// Size: 40 bytes header + entries array
 pub const HashTable = extern struct {
+    /// Boxed object discriminator (must be first)
+    kind: BoxedKind = .hashtable,
     /// Number of entries currently stored
     count: u64,
     /// Capacity (size of entries array)
@@ -208,10 +342,19 @@ pub fn objectSize(val: Value) usize {
             // Header + inline name bytes (aligned to 8)
             break :blk @sizeOf(Keyword) + std.mem.alignForward(usize, kw.name_len, 8);
         },
-        .hashtable => blk: {
-            const ht = val.toPtr(HashTable);
-            // Header + entries array
-            break :blk @sizeOf(HashTable) + ht.capacity * @sizeOf(HashEntry);
+        .boxed => blk: {
+            // Check discriminator to determine actual type
+            const kind_ptr: *const BoxedKind = @ptrFromInt(val.raw & ~@as(u64, 0xF));
+            break :blk switch (kind_ptr.*) {
+                .hashtable => {
+                    const ht = val.toPtr(HashTable);
+                    // Header + entries array
+                    break :blk @sizeOf(HashTable) + ht.capacity * @sizeOf(HashEntry);
+                },
+                .rational => @sizeOf(Rational),
+                .complex => @sizeOf(Complex),
+                .stream => @sizeOf(Stream),
+            };
         },
         .forwarding => @sizeOf(usize), // Just a pointer
     };
@@ -245,13 +388,22 @@ pub fn forEachValue(val: Value, callback: *const fn (Value) void) void {
                 callback(cap);
             }
         },
-        .hashtable => {
-            const ht = val.toPtr(HashTable);
-            for (ht.getEntries()) |entry| {
-                if (!HashTable.isAvailable(entry)) {
-                    callback(entry.key);
-                    callback(entry.value);
-                }
+        .boxed => {
+            // Check discriminator to determine actual type
+            const kind_ptr: *const BoxedKind = @ptrFromInt(val.raw & ~@as(u64, 0xF));
+            switch (kind_ptr.*) {
+                .hashtable => {
+                    const ht = val.toPtr(HashTable);
+                    for (ht.getEntries()) |entry| {
+                        if (!HashTable.isAvailable(entry)) {
+                            callback(entry.key);
+                            callback(entry.value);
+                        }
+                    }
+                },
+                .rational, .complex => {
+                    // No internal Values to scan
+                },
             }
         },
         .forwarding => {

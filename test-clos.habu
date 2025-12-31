@@ -1,0 +1,72 @@
+;; Test full CLOS functionality
+(print "=== Testing CLOS ===")
+
+;; Test 1: Basic class definition
+(print "\n1. Basic Classes:")
+(defclass person ()
+  name
+  age)
+(print "✓ Defined person class")
+
+(define alice (make-person "Alice" 30))
+(if (person-p alice)
+    (print "✓ alice is a person")
+    (print "✗ FAIL: alice should be a person"))
+(print (person-name alice))
+(print (person-age alice))
+
+;; Test 2: Typed slots
+(print "\n2. Typed Slots:")
+(defclass point ()
+  (x :type fixnum)
+  (y :type fixnum))
+(define pt (make-point 10 20))
+(if (and (= (point-x pt) 10) (= (point-y pt) 20))
+    (print "✓ Typed slots work")
+    (print "✗ FAIL: Typed slots broken"))
+
+;; Test 3: Inheritance
+(print "\n3. Inheritance:")
+(defclass employee (person)
+  employee-id
+  department)
+(define bob (make-employee "Bob" 25 "E001" "Engineering"))
+(if (employee-p bob)
+    (print "✓ Inheritance works")
+    (print "✗ FAIL: Inheritance broken"))
+(print (employee-name bob))
+(print (employee-employee-id bob))
+
+;; Test 4: make-instance with keywords
+(print "\n4. make-instance:")
+(define charlie (make-instance 'person :name "Charlie" :age 35))
+(if (and (person-p charlie) (= (person-age charlie) 35))
+    (print "✓ make-instance works")
+    (print "✗ FAIL: make-instance broken"))
+
+;; Test 5: Generic functions and methods
+(print "\n5. Generic Functions:")
+(defgeneric area (shape))
+
+(defclass circle ()
+  radius)
+
+(defclass rectangle ()
+  width
+  height)
+
+(defmethod area ((c circle))
+  (* 3.14 (circle-radius c) (circle-radius c)))
+
+(defmethod area ((r rectangle))
+  (* (rectangle-width r) (rectangle-height r)))
+
+(define c (make-circle 5))
+(define r (make-rectangle 10 20))
+
+(print "Circle area:")
+(print (area c))
+(print "Rectangle area:")
+(print (area r))
+
+(print "\n=== All CLOS tests completed! ===")

@@ -944,6 +944,26 @@ pub const Repl = struct {
             .closure => try writer.writeAll("#<closure>"),
             .vector => try self.printVector(val, writer),
             .hashtable => try writer.print("#<hash-table count={d}>", .{val.toPtr(runtime.HashTable).count}),
+            .rational => {
+                const rat = val.toPtr(runtime.Rational);
+                try writer.print("{d}/{d}", .{ rat.numerator, rat.denominator });
+            },
+            .complex => {
+                const cplx = val.toPtr(runtime.Complex);
+                try writer.print("#C({d} {d})", .{ cplx.real, cplx.imag });
+            },
+            .stream => {
+                const stream = val.toPtr(runtime.Stream);
+                const dir = if (stream.direction == .input) "input" else "output";
+                const kind = switch (stream.stream_type) {
+                    .string => "string",
+                    .file => "file",
+                    .stdin => "stdin",
+                    .stdout => "stdout",
+                    .stderr => "stderr",
+                };
+                try writer.print("#<{s}-{s}-stream>", .{ kind, dir });
+            },
         }
     }
 

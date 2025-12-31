@@ -208,6 +208,18 @@ pub const Emitter = struct {
                 max_idx = computeMaxLocalIndexImpl(hc.body, max_idx);
                 max_idx = computeMaxLocalIndexImpl(hc.handler, max_idx);
             },
+            .restart_case => |rc| {
+                max_idx = computeMaxLocalIndexImpl(rc.body, max_idx);
+                for (rc.restarts) |r| {
+                    max_idx = computeMaxLocalIndexImpl(r.name, max_idx);
+                    max_idx = computeMaxLocalIndexImpl(r.handler, max_idx);
+                }
+            },
+            .invoke_restart => |inv| {
+                max_idx = computeMaxLocalIndexImpl(inv.name, max_idx);
+                max_idx = computeMaxLocalIndexImpl(inv.value, max_idx);
+            },
+            .find_restart => |fr| max_idx = computeMaxLocalIndexImpl(fr.operand, max_idx),
             .tagbody => |tb| {
                 for (tb.segments) |seg| max_idx = computeMaxLocalIndexImpl(seg, max_idx);
             },
@@ -282,7 +294,21 @@ pub const Emitter = struct {
             // These have their own struct with operand field
             .hash_count => |h| max_idx = computeMaxLocalIndexImpl(h.operand, max_idx),
             .hashtablep => |h| max_idx = computeMaxLocalIndexImpl(h.operand, max_idx),
+            .rationalp => |r| max_idx = computeMaxLocalIndexImpl(r.operand, max_idx),
+            .complexp => |c| max_idx = computeMaxLocalIndexImpl(c.operand, max_idx),
+            .make_complex => |mc| {
+                max_idx = computeMaxLocalIndexImpl(mc.left, max_idx);
+                max_idx = computeMaxLocalIndexImpl(mc.right, max_idx);
+            },
+            .real_part => |rp| max_idx = computeMaxLocalIndexImpl(rp.operand, max_idx),
+            .imag_part => |ip| max_idx = computeMaxLocalIndexImpl(ip.operand, max_idx),
             .struct_p => |sp| max_idx = computeMaxLocalIndexImpl(sp.operand, max_idx),
+            .streamp => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
+            .input_stream_p => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
+            .output_stream_p => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
+            .make_string_input_stream => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
+            .make_string_output_stream => {}, // No operands
+            .get_output_stream_string => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
 
             // List/array nodes - recurse into all elements
             .list, .vec => |elements| {
@@ -354,6 +380,9 @@ pub const Emitter = struct {
             .@"catch" => |c| try self.emitCatch(c),
             .handler_case => |hc| try self.emitHandlerCase(hc),
             .throw => |t| try self.emitThrow(t),
+            .restart_case => |rc| try self.emitRestartCase(rc),
+            .invoke_restart => |inv| try self.emitInvokeRestart(inv),
+            .find_restart => |fr| try self.emitUnaryOp(fr.operand, .find_restart),
             .tagbody => |tb| try self.emitTagbody(tb),
             .go => |g| try self.emitGo(g),
             .values => |v| try self.emitValues(v),
@@ -367,6 +396,17 @@ pub const Emitter = struct {
             .hash_rem => |h| try self.emitHashRem(h),
             .hash_count => |h| try self.emitUnaryOp(h.operand, .hash_count),
             .hashtablep => |h| try self.emitUnaryOp(h.operand, .hashtablep),
+            .rationalp => |r| try self.emitUnaryOp(r.operand, .rationalp),
+            .complexp => |c| try self.emitUnaryOp(c.operand, .complexp),
+            .make_complex => |mc| try self.emitBinaryOp(mc, .make_complex),
+            .real_part => |rp| try self.emitUnaryOp(rp.operand, .real_part),
+            .imag_part => |ip| try self.emitUnaryOp(ip.operand, .imag_part),
+            .streamp => |s| try self.emitUnaryOp(s.operand, .streamp),
+            .input_stream_p => |s| try self.emitUnaryOp(s.operand, .input_stream_p),
+            .output_stream_p => |s| try self.emitUnaryOp(s.operand, .output_stream_p),
+            .make_string_input_stream => |s| try self.emitUnaryOp(s.operand, .make_string_input_stream),
+            .make_string_output_stream => try self.emitOp(.make_string_output_stream),
+            .get_output_stream_string => |s| try self.emitUnaryOp(s.operand, .get_output_stream_string),
             .call => |c| try self.emitCall(c, false),
             .tailcall => |c| try self.emitCall(c, true),
             .apply => |a| try self.emitApply(a),
@@ -1230,6 +1270,90 @@ pub const Emitter = struct {
 
         // Emit throw opcode - VM will unwind to matching catch
         try self.emitOp(.throw);
+    }
+
+    fn emitRestartCase(self: *Emitter, rc: anytype) Error!void {
+        // Layout:
+        // For each restart: push_restart name -> handler_addr
+        // <body code>
+        // pop_restarts N
+        // jmp -> end
+        // handler_1: <handler code>, jmp -> end
+        // handler_2: <handler code>, jmp -> end
+        // ...
+        // end:
+
+        const restart_count = rc.restarts.len;
+
+        // Track where each restart handler will be
+        const handler_jumps = self.allocator.alloc(usize, restart_count) catch return error.OutOfMemory;
+        defer self.allocator.free(handler_jumps);
+
+        // Emit push_restart for each restart (name on stack, then push_restart offset)
+        for (rc.restarts, 0..) |r, i| {
+            try self.emit(r.name); // Push restart name symbol
+            try self.emitOp(.push_restart);
+            handler_jumps[i] = self.code.items.len;
+            try self.emitI16(0); // Placeholder offset to handler
+        }
+
+        // Emit body
+        try self.emit(rc.body);
+
+        // Pop all restarts on normal exit
+        try self.emitOp(.pop_restarts);
+        try self.emitU8(@intCast(restart_count));
+
+        // Jump to end (skip handlers)
+        try self.emitOp(.jmp);
+        const end_jump = self.code.items.len;
+        try self.emitI16(0);
+
+        // Track jumps from handlers to end
+        const end_jumps = self.allocator.alloc(usize, restart_count) catch return error.OutOfMemory;
+        defer self.allocator.free(end_jumps);
+
+        // Emit each handler
+        for (rc.restarts, 0..) |r, i| {
+            // Patch the push_restart offset
+            const handler_addr = self.code.items.len;
+            const displacement = @as(i16, @intCast(@as(isize, @intCast(handler_addr)) - @as(isize, @intCast(handler_jumps[i])) - 2));
+            const disp_u16: u16 = @bitCast(displacement);
+            self.code.items[handler_jumps[i]] = @truncate(disp_u16);
+            self.code.items[handler_jumps[i] + 1] = @truncate(disp_u16 >> 8);
+
+            // Handler code - invoked value is already on stack
+            try self.emit(r.handler);
+
+            // Jump to end
+            try self.emitOp(.jmp);
+            end_jumps[i] = self.code.items.len;
+            try self.emitI16(0);
+        }
+
+        // Patch all end jumps
+        const end_addr = self.code.items.len;
+        // Patch the main end_jump
+        {
+            const displacement = @as(i16, @intCast(@as(isize, @intCast(end_addr)) - @as(isize, @intCast(end_jump)) - 2));
+            const disp_u16: u16 = @bitCast(displacement);
+            self.code.items[end_jump] = @truncate(disp_u16);
+            self.code.items[end_jump + 1] = @truncate(disp_u16 >> 8);
+        }
+        // Patch handler end jumps
+        for (end_jumps) |jump_addr| {
+            const displacement = @as(i16, @intCast(@as(isize, @intCast(end_addr)) - @as(isize, @intCast(jump_addr)) - 2));
+            const disp_u16: u16 = @bitCast(displacement);
+            self.code.items[jump_addr] = @truncate(disp_u16);
+            self.code.items[jump_addr + 1] = @truncate(disp_u16 >> 8);
+        }
+    }
+
+    fn emitInvokeRestart(self: *Emitter, inv: anytype) Error!void {
+        // Emit name and value, then invoke_restart opcode
+        try self.emit(inv.name);
+        try self.emit(inv.value);
+        try self.emitOp(.invoke_restart);
     }
 
     fn emitTagbody(self: *Emitter, tb: anytype) Error!void {

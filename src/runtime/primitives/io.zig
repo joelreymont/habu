@@ -267,6 +267,26 @@ fn princValueTo(val: Value, w: anytype) !void {
             try w.writeByte(')');
         },
         .hashtable => try w.print("#<hash-table count={d}>", .{val.toPtr(objects.HashTable).count}),
+        .rational => {
+            const rat = val.toPtr(objects.Rational);
+            try w.print("{d}/{d}", .{ rat.numerator, rat.denominator });
+        },
+        .complex => {
+            const cplx = val.toPtr(objects.Complex);
+            try w.print("#C({d} {d})", .{ cplx.real, cplx.imag });
+        },
+        .stream => {
+            const stream = val.toPtr(objects.Stream);
+            const dir = if (stream.direction == .input) "input" else "output";
+            const kind = switch (stream.stream_type) {
+                .string => "string",
+                .file => "file",
+                .stdin => "stdin",
+                .stdout => "stdout",
+                .stderr => "stderr",
+            };
+            try w.print("#<{s}-{s}-stream>", .{ kind, dir });
+        },
     }
 }
 
@@ -335,6 +355,26 @@ fn printValueTo(val: Value, w: anytype) !void {
             try w.writeByte(')');
         },
         .hashtable => try w.print("#<hash-table count={d}>", .{val.toPtr(objects.HashTable).count}),
+        .rational => {
+            const rat = val.toPtr(objects.Rational);
+            try w.print("{d}/{d}", .{ rat.numerator, rat.denominator });
+        },
+        .complex => {
+            const cplx = val.toPtr(objects.Complex);
+            try w.print("#C({d} {d})", .{ cplx.real, cplx.imag });
+        },
+        .stream => {
+            const stream = val.toPtr(objects.Stream);
+            const dir = if (stream.direction == .input) "input" else "output";
+            const kind = switch (stream.stream_type) {
+                .string => "string",
+                .file => "file",
+                .stdin => "stdin",
+                .stdout => "stdout",
+                .stderr => "stderr",
+            };
+            try w.print("#<{s}-{s}-stream>", .{ kind, dir });
+        },
     }
 }
 

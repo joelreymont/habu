@@ -268,6 +268,26 @@ pub const Op = enum(u8) {
     /// ( x -- t/nil )
     nilp = 0x57,
 
+    /// Check if rational number
+    /// ( x -- t/nil )
+    rationalp = 0x58,
+
+    /// Check if complex number
+    /// ( x -- t/nil )
+    complexp = 0x59,
+
+    /// Create complex number from real and imaginary parts
+    /// ( real imag -- complex )
+    make_complex = 0x5A,
+
+    /// Get real part of complex number
+    /// ( complex -- real )
+    real_part = 0x5B,
+
+    /// Get imaginary part of complex number
+    /// ( complex -- imag )
+    imag_part = 0x5C,
+
     // ========================================================================
     // Vector operations
     // ========================================================================
@@ -755,6 +775,55 @@ pub const Op = enum(u8) {
     floatp = 0xB5,
 
     // ========================================================================
+    // Restart handling
+    // ========================================================================
+
+    /// Push restart frame (operand: u16 handler offset)
+    /// Stack contains restart name
+    /// ( name -- )
+    push_restart = 0xB6,
+
+    /// Pop N restart frames on normal exit (operand: u8 count)
+    /// ( -- )
+    pop_restarts = 0xB7,
+
+    /// Invoke restart by name - unwinds to restart handler
+    /// ( name value -- ) value becomes result of restart-case
+    invoke_restart = 0xB8,
+
+    /// Find restart by name (for find-restart)
+    /// ( name -- t/nil )
+    find_restart = 0xB9,
+
+    // ========================================================================
+    // Streams
+    // ========================================================================
+
+    /// Check if value is a stream
+    /// ( val -- t/nil )
+    streamp = 0xBA,
+
+    /// Check if stream is an input stream
+    /// ( stream -- t/nil )
+    input_stream_p = 0xBB,
+
+    /// Check if stream is an output stream
+    /// ( stream -- t/nil )
+    output_stream_p = 0xBC,
+
+    /// Make a string input stream
+    /// ( string -- stream )
+    make_string_input_stream = 0xBD,
+
+    /// Make a string output stream
+    /// ( -- stream )
+    make_string_output_stream = 0xBE,
+
+    /// Get the accumulated string from an output stream
+    /// ( stream -- string )
+    get_output_stream_string = 0xBF,
+
+    // ========================================================================
     // Multiple values
     // ========================================================================
 
@@ -822,7 +891,8 @@ pub const Op = enum(u8) {
             .check_fixnum, .check_cons, .check_symbol, .check_string,
             .check_vector, .check_closure, .check_non_nil, .check_list, .check_refine,
             .apply, .pop_catch, .throw,
-            .hash_get, .hash_set, .hash_rem, .hash_count, .hashtablep,
+            .hash_get, .hash_set, .hash_rem, .hash_count, .hashtablep, .rationalp, .complexp,
+            .make_complex, .real_part, .imag_part,
             .characterp, .floatp, .char_code, .code_char, .char_eq, .char_lt, .char_gt,
             .read_char, .peek_char, .unread_char, .boundp, .fboundp,
             .symbol_value, .symbol_function, .typep,
@@ -839,12 +909,16 @@ pub const Op = enum(u8) {
         .list_position, .list_position_eq, .list_position_equal,
         .list_count, .list_count_eq, .list_count_equal,
         .list_remove, .list_remove_eq, .list_remove_equal,
+        .invoke_restart, .find_restart,
+        .streamp, .input_stream_p, .output_stream_p,
+        .make_string_input_stream, .make_string_output_stream, .get_output_stream_string,
             => 0,
 
             // 1 byte operand
             .load_local, .store_local, .load_capture,
             .call, .tail_call, .make_list, .make_vec_n, .values, .mv_bind, .format,
             .enter_scope, .exit_scope,
+            .pop_restarts,
             => 1,
 
             // 2 byte operand
@@ -852,6 +926,7 @@ pub const Op = enum(u8) {
             .make_vec, .jmp, .jmp_nil, .jmp_not_nil,
             .load_upvalue, .store_upvalue, .push_catch,
             .push_unwind, .pop_unwind, .find_key,
+            .push_restart,
             => 2,
 
             // 3 byte operand
