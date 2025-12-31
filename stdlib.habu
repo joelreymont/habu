@@ -22,16 +22,16 @@
 (defun or2 (a b) (if a a b))
 
 ; Arithmetic helpers
-(defun inc (n) (+ n 1))
-(defun dec (n) (- n 1))
-(defun zerop (n) (= n 0))
-(defun plusp (n) (> n 0))
-(defun minusp (n) (< n 0))
-(defun evenp (n) (= (mod n 2) 0))
-(defun oddp (n) (= (mod n 2) 1))
-(defun abs (n) (if (< n 0) (- 0 n) n))
-(defun max2 (a b) (if (> a b) a b))
-(defun min2 (a b) (if (< a b) a b))
+(defun inc ((n :type fixnum)) :type fixnum (+ n 1))
+(defun dec ((n :type fixnum)) :type fixnum (- n 1))
+(defun zerop ((n :type fixnum)) (= n 0))
+(defun plusp ((n :type fixnum)) (> n 0))
+(defun minusp ((n :type fixnum)) (< n 0))
+(defun evenp ((n :type fixnum)) (= (mod n 2) 0))
+(defun oddp ((n :type fixnum)) (= (mod n 2) 1))
+(defun abs ((n :type fixnum)) :type fixnum (if (< n 0) (- 0 n) n))
+(defun max2 ((a :type fixnum) (b :type fixnum)) :type fixnum (if (> a b) a b))
+(defun min2 ((a :type fixnum) (b :type fixnum)) :type fixnum (if (< a b) a b))
 
 ; Equality - eql is same as eq for now (no floats with identity)
 (defun eql (a b) (eq a b))
@@ -60,15 +60,15 @@
 (defun null (x) (eq x nil))
 (defun atom (x) (not (consp x)))
 
-(defun cadr (x) (car (cdr x)))
+(defun cadr ((x :type cons)) (car (cdr x)))
 (defun caddr (x) (car (cdr (cdr x))))
-(defun caar (x) (car (car x)))
-(defun cddr (x) (cdr (cdr x)))
+(defun caar ((x :type cons)) (car (car x)))
+(defun cddr ((x :type cons)) (cdr (cdr x)))
 (defun cadar (x) (car (cdr (car x))))
 
-(defun first (x) (car x))
-(defun second (x) (cadr x))
-(defun third (x) (caddr x))
+(defun first ((x :type cons)) (car x))
+(defun second ((x :type cons)) (cadr x))
+(defun third ((x :type cons)) (caddr x))
 (defun rest (x) (cdr x))
 
 ; List construction
@@ -103,11 +103,11 @@
       acc
       (reverse-aux (cdr lst) (cons (car lst) acc))))
 
-(defun reverse (lst)
+(defun reverse ((lst :type cons)) :type cons
   (reverse-aux lst nil))
 
 ; Map (applies f to each element)
-(defun map (f lst)
+(defun map (f (lst :type cons)) :type cons
   (if (null lst)
       nil
       (cons (funcall f (car lst)) (map f (cdr lst)))))
@@ -116,14 +116,14 @@
 (defun mapcar (f lst) (map f lst))
 
 ; Mapc - like map but for side effects, returns nil
-(defun mapc (f lst)
+(defun mapc (f (lst :type cons))
   (if (null lst)
       nil
       (progn (funcall f (car lst))
              (mapc f (cdr lst)))))
 
 ; Filter (keeps elements where pred is true)
-(defun filter (pred lst)
+(defun filter (pred (lst :type cons)) :type cons
   (if (null lst)
       nil
       (if (funcall pred (car lst))
@@ -131,13 +131,13 @@
           (filter pred (cdr lst)))))
 
 ; Fold left (reduce)
-(defun foldl (f acc lst)
+(defun foldl (f acc (lst :type cons))
   (if (null lst)
       acc
       (foldl f (funcall f acc (car lst)) (cdr lst))))
 
 ; Fold right
-(defun foldr (f acc lst)
+(defun foldr (f acc (lst :type cons))
   (if (null lst)
       acc
       (funcall f (car lst) (foldr f acc (cdr lst)))))
@@ -170,13 +170,13 @@
       (drop (dec n) (cdr lst))))
 
 ; Nth element (0-indexed)
-(defun nth (n lst)
+(defun nth ((n :type fixnum) (lst :type cons))
   (if (zerop n)
       (car lst)
       (nth (dec n) (cdr lst))))
 
 ; Last element
-(defun last (lst)
+(defun last ((lst :type cons))
   (if (null (cdr lst))
       (car lst)
       (last (cdr lst))))
@@ -197,7 +197,7 @@
           nil)))
 
 ; Member test
-(defun member (x lst)
+(defun member (x (lst :type cons))
   (if (null lst)
       nil
       (if (eq x (car lst))
@@ -205,7 +205,7 @@
           (member x (cdr lst)))))
 
 ; Assoc - find pair in alist by key
-(defun assoc (key alist)
+(defun assoc (key (alist :type cons))
   (if (null alist)
       nil
       (if (eq key (car (car alist)))
@@ -573,27 +573,27 @@
 ;; ============================================================
 
 ; string= - case-sensitive string equality
-(defun string= (s1 s2)
+(defun string= ((s1 :type string) (s2 :type string))
   (string-equal s1 s2))
 
 ; string/= - case-sensitive string inequality  
-(defun string/= (s1 s2)
+(defun string/= ((s1 :type string) (s2 :type string))
   (not (string= s1 s2)))
 
 ; string< - lexicographic less-than
-(defun string< (s1 s2)
+(defun string< ((s1 :type string) (s2 :type string))
   (string-lt s1 s2))
 
 ; string> - lexicographic greater-than
-(defun string> (s1 s2)
+(defun string> ((s1 :type string) (s2 :type string))
   (string< s2 s1))
 
 ; string<= - lexicographic less-than-or-equal
-(defun string<= (s1 s2)
+(defun string<= ((s1 :type string) (s2 :type string))
   (not (string> s1 s2)))
 
 ; string>= - lexicographic greater-than-or-equal
-(defun string>= (s1 s2)
+(defun string>= ((s1 :type string) (s2 :type string))
   (not (string< s1 s2)))
 
 ; char-whitespace-p - check if character is whitespace
