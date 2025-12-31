@@ -635,7 +635,7 @@ pub const Ir = union(enum) {
             .eq, .lt, .gt, .le, .ge, .num_eq,
             .not,
             .cons, .car, .cdr, .list,
-            .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp, .listp, .atom, .rationalp, .complexp, .make_complex, .real_part, .imag_part, .hashtablep,
+            .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp, .listp, .atom, .rationalp, .complexp, .make_complex, .real_part, .imag_part, .numerator, .denominator, .hashtablep,
             .streamp, .input_stream_p, .output_stream_p, .make_string_input_stream, .make_string_output_stream, .get_output_stream_string,
             .vec_new, .vec, .vec_ref, .vec_set, .vec_len, .slot_value, .make_box, .box_ref, .box_set,
             .str_ref, .str_len, .str_concat, .str_eq, .substring, .string_upcase, .string_downcase,

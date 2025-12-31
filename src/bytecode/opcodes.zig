@@ -287,6 +287,10 @@ pub const Op = enum(u8) {
     /// Get imaginary part of complex number
     /// ( complex -- imag )
     imag_part = 0x5C,
+    /// Get numerator of rational (0x5D)
+    numerator = 0x5D,
+    /// Get denominator of rational (0x5E)
+    denominator = 0x5E,
 
     // ========================================================================
     // Vector operations
@@ -909,7 +913,7 @@ pub const Op = enum(u8) {
             .check_vector, .check_closure, .check_non_nil, .check_list, .check_refine,
             .apply, .pop_catch, .throw,
             .hash_get, .hash_get_default, .hash_set, .hash_rem, .hash_count, .hash_clear, .hash_test, .hashtablep, .rationalp, .complexp,
-            .make_complex, .real_part, .imag_part,
+            .make_complex, .real_part, .imag_part, .numerator, .denominator,
             .characterp, .floatp, .char_code, .code_char, .char_eq, .char_lt, .char_gt,
             .read_char, .peek_char, .unread_char, .boundp, .fboundp,
             .symbol_value, .symbol_function, .typep,

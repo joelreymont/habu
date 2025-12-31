@@ -49,7 +49,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .check_vector, .check_closure, .check_non_nil, .check_list, .check_refine,
         .apply, .pop_catch, .throw,
         .hash_get, .hash_get_default, .hash_set, .hash_rem, .hash_count, .hash_clear, .hash_test, .hashtablep, .rationalp, .complexp,
-        .make_complex, .real_part, .imag_part,
+        .make_complex, .real_part, .imag_part, .numerator, .denominator,
         .characterp, .floatp, .char_code, .code_char, .char_eq, .char_lt, .char_gt,
         .read_char, .peek_char, .unread_char, .boundp, .fboundp,
         .symbol_value, .symbol_function, .typep,

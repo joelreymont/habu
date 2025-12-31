@@ -1956,6 +1956,18 @@ pub const Vm = struct {
                     try self.push(Value.makeFloat(cplx.imag));
                 },
 
+                .numerator => {
+                    const val = try self.pop();
+                    if (!val.isRational()) return error.TypeMismatch;
+                    const rat = val.toPtr(runtime.Rational);
+                    try self.push(Value.makeFixnum(rat.numerator));
+                },
+                .denominator => {
+                    const val = try self.pop();
+                    if (!val.isRational()) return error.TypeMismatch;
+                    const rat = val.toPtr(runtime.Rational);
+                    try self.push(Value.makeFixnum(rat.denominator));
+},
                 // Stream operations
                 .streamp => {
                     const val = try self.pop();
