@@ -6245,6 +6245,11 @@ pub const Compiler = struct {
                 node.* = .{ .random = .{ .operand = operand } };
                 break :blk node;
             },
+            .random_seed => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .random_seed = .{ .operand = operand } };
+                break :blk node;
+            },
             .intern => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .intern = .{ .operand = operand } };

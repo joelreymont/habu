@@ -505,6 +505,7 @@ pub const Ir = union(enum) {
 
     print: UnaryOp,
     random: UnaryOp,
+    random_seed: UnaryOp,
     intern: UnaryOp,
     sym_name: UnaryOp,
     get: BinaryOp,
