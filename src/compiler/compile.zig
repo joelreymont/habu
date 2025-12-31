@@ -1305,6 +1305,11 @@ pub const Compiler = struct {
             return try self.builder.lit(expr);
         }
 
+        // Rational
+        if (expr.isRational()) {
+            return try self.builder.lit(expr);
+        }
+
         // String
         if (expr.isString()) {
             return try self.builder.lit(expr);

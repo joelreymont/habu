@@ -25,6 +25,7 @@ pub const TokenKind = enum {
     // Literals
     number,
     float,
+    rational,
     string,
     symbol,
     keyword,
@@ -187,6 +188,15 @@ pub const Lexer = struct {
             _ = self.advance();
         }
 
+        // Check for rational (digits/digits)
+        if (self.peek() == '/' and isDigit(self.peekNext())) {
+            _ = self.advance(); // consume '/'
+            while (isDigit(self.peek())) {
+                _ = self.advance();
+            }
+            return self.makeToken(.rational);
+        }
+
         // Check for decimal point followed by digits
         if (self.peek() == '.' and isDigit(self.peekNext())) {
             _ = self.advance(); // consume '.'
@@ -220,6 +230,7 @@ pub const Lexer = struct {
 
         return self.makeToken(.number);
     }
+
 
     fn readSymbol(self: *Lexer) Token {
         while (isSymbolChar(self.peek())) {

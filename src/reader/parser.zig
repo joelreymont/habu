@@ -9,6 +9,7 @@ const TokenKind = @import("lexer.zig").TokenKind;
 const runtime = @import("../runtime/runtime.zig");
 const Value = runtime.Value;
 const Heap = runtime.Heap;
+const primitives = @import("../runtime/primitives/primitives.zig");
 
 pub const Error = error{
     UnexpectedToken,
@@ -16,6 +17,7 @@ pub const Error = error{
     InvalidNumber,
     VectorTooLarge,
     OutOfMemory,
+    TypeMismatch,
 };
 
 pub const Parser = struct {
@@ -71,6 +73,7 @@ pub const Parser = struct {
             .function_quote => return self.parseQuote("function"),
             .number => return self.parseNumber(),
             .float => return self.parseFloat(),
+            .rational => return self.parseRational(),
             .string => return self.parseString(),
             .symbol => return self.parseSymbol(),
             .keyword => return self.parseKeyword(),
@@ -205,6 +208,22 @@ pub const Parser = struct {
         const f = std.fmt.parseFloat(f64, text) catch return error.InvalidNumber;
         return Value.makeFloat(f);
     }
+
+    fn parseRational(self: *Parser) Error!Value {
+        const text = self.current.text;
+        self.advance();
+
+        // Split on '/'
+        const slash_pos = std.mem.indexOf(u8, text, "/") orelse return error.InvalidNumber;
+        const num_str = text[0..slash_pos];
+        const den_str = text[slash_pos + 1 ..];
+
+        const num = std.fmt.parseInt(i64, num_str, 10) catch return error.InvalidNumber;
+        const den = std.fmt.parseInt(i64, den_str, 10) catch return error.InvalidNumber;
+
+        return primitives.rational.makeRational(self.heap, num, den);
+    }
+
 
     fn parseString(self: *Parser) Error!Value {
         var text = self.current.text;
