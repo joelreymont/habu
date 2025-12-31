@@ -459,6 +459,12 @@ pub const Ir = union(enum) {
     vec_len: UnaryOp,
 
     // ========================================================================
+    // Primitives - CLOS operations
+    // ========================================================================
+
+    slot_value: BinaryOp, // (slot-value obj 'slot-name)
+
+    // ========================================================================
     // Primitives - Box operations (mutable cells)
     // ========================================================================
 
@@ -618,7 +624,7 @@ pub const Ir = union(enum) {
             .cons, .car, .cdr, .list,
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp, .listp, .atom, .rationalp, .complexp, .make_complex, .real_part, .imag_part, .hashtablep,
             .streamp, .input_stream_p, .output_stream_p, .make_string_input_stream, .make_string_output_stream, .get_output_stream_string,
-            .vec_new, .vec, .vec_ref, .vec_set, .vec_len, .make_box, .box_ref, .box_set,
+            .vec_new, .vec, .vec_ref, .vec_set, .vec_len, .slot_value, .make_box, .box_ref, .box_set,
             .str_ref, .str_len, .str_concat, .str_eq, .substring, .string_upcase, .string_downcase,
             .print, .random, .intern, .sym_name, .type_of,
             .assert_fixnum, .assert_cons, .assert_symbol, .assert_string,
@@ -1436,6 +1442,13 @@ pub const IrBuilder = struct {
     pub fn vecLen(self: IrBuilder, v: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .vec_len = .{ .operand = v } };
+        return node;
+    }
+
+    // CLOS operations
+    pub fn slotValue(self: IrBuilder, obj: *const Ir, slot_name: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .slot_value = .{ .left = obj, .right = slot_name } };
         return node;
     }
 

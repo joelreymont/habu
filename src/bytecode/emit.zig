@@ -535,6 +535,9 @@ pub const Emitter = struct {
             .vec_set => |v| try self.emitVecSet(v),
             .vec_len => |op| try self.emitUnaryOp(op.operand, .vec_len),
 
+            // CLOS operations
+            .slot_value => |op| try self.emitBinaryOp(op, .slot_value),
+
             // Box operations (mutable cells)
             .make_box => |op| try self.emitUnaryOp(op.operand, .make_box),
             .box_ref => |op| try self.emitUnaryOp(op.operand, .box_ref),

@@ -8,6 +8,7 @@ const bytecode = @import("../bytecode/bytecode.zig");
 const Op = bytecode.Op;
 const Chunk = bytecode.Chunk;
 const runtime = @import("../runtime/runtime.zig");
+const primitives = @import("../runtime/primitives/primitives.zig");
 const Value = runtime.Value;
 const Heap = runtime.Heap;
 const Cons = runtime.Cons;
@@ -1126,6 +1127,15 @@ pub const Vm = struct {
                     if (!vec_val.isVector()) return error.TypeMismatch;
                     const vec = vec_val.toPtr(runtime.Vector);
                     try self.push(Value.makeFixnum(@intCast(vec.length)));
+                },
+
+                // CLOS operations
+                .slot_value => {
+                    const slot_name_val = try self.pop();
+                    const obj = try self.pop();
+                    const args = try self.heap.allocCons(obj, try self.heap.allocCons(slot_name_val, Value.nil));
+                    const result = try primitives.slotValue(self.heap, args);
+                    try self.push(result);
                 },
 
                 // Box operations (mutable cells for closures)

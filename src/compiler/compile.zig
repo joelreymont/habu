@@ -4734,13 +4734,23 @@ pub const Compiler = struct {
         const class_type = type_builder.makeStruct(class_name, class_fields) catch return error.OutOfMemory;
         self.registerStructType(class_name, class_type) catch return error.OutOfMemory;
 
-        // Store class metadata for slot-value lookup
+        // Store class metadata for slot-value lookup (compiler-side)
         const slot_names = try self.globals.allocator.alloc([]const u8, slot_specs.items.len);
         for (slot_specs.items, 0..) |spec, i| {
             slot_names[i] = try self.globals.allocator.dupe(u8, spec.name);
         }
         const persistent_class_name = try self.globals.allocator.dupe(u8, class_name);
         try self.class_metadata.put(persistent_class_name, slot_names);
+
+        // Also store in heap for runtime slot-value lookup
+        {
+            const heap_slot_names = try heap.backing_allocator.alloc([]const u8, slot_specs.items.len);
+            for (slot_specs.items, 0..) |spec, i| {
+                heap_slot_names[i] = try heap.backing_allocator.dupe(u8, spec.name);
+            }
+            const heap_class_name = try heap.backing_allocator.dupe(u8, class_name);
+            try heap.class_metadata.put(heap.backing_allocator, heap_class_name, heap_slot_names);
+        }
 
         // Generate definitions: constructor + predicate + accessors + name_lit
         const num_defs = 1 + 1 + slot_specs.items.len + 1; // constructor + predicate + accessors + name_lit
@@ -4846,7 +4856,7 @@ pub const Compiler = struct {
     }
 
     /// Compile slot-value: (slot-value obj 'slot-name)
-    /// Calls the appropriate class-name-slot-name accessor
+    /// Generates a runtime slot lookup using class metadata
     fn compileSlotValue(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -4870,12 +4880,7 @@ pub const Compiler = struct {
         const slot_name = slot_name_expr.toPtr(Symbol).getName();
 
         const slot_sym = try self.builder.quoteSym(slot_name);
-        const call_args = try self.allocator.alloc(*Ir, 2);
-        call_args[0] = obj_ir;
-        call_args[1] = slot_sym;
-
-        const helper_global = try self.builder.globalRef("slot-value", self.globals.lookup("slot-value") orelse return error.InvalidSyntax);
-        return try self.builder.call(helper_global, call_args);
+        return try self.builder.slotValue(obj_ir, slot_sym);
     }
 
     /// Compile defgeneric: (defgeneric name (arg1 arg2 ...))

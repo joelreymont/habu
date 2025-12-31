@@ -308,21 +308,25 @@ pub const Op = enum(u8) {
     /// ( vec -- len )
     vec_len = 0x63,
 
+    /// CLOS slot access
+    /// ( obj slot-name-sym -- value )
+    slot_value = 0x64,
+
     /// Create box (mutable cell for closure capture)
     /// ( val -- box )
-    make_box = 0x64,
+    make_box = 0x65,
 
     /// Read from box
     /// ( box -- val )
-    box_ref = 0x65,
+    box_ref = 0x66,
 
     /// Write to box (returns the value written)
     /// ( box val -- val )
-    box_set = 0x66,
+    box_set = 0x67,
 
     /// Create vector from N stack elements (operand: u8 count)
     /// ( v0 v1 ... vN-1 -- vec )
-    make_vec_n = 0x67,
+    make_vec_n = 0x68,
 
     // ========================================================================
     // String operations
@@ -330,31 +334,31 @@ pub const Op = enum(u8) {
 
     /// String ref
     /// ( str idx -- char )
-    str_ref = 0x68,
+    str_ref = 0x69,
 
     /// String length
     /// ( str -- len )
-    str_len = 0x69,
+    str_len = 0x6A,
 
     /// String concat
     /// ( s1 s2 -- s3 )
-    str_concat = 0x6A,
+    str_concat = 0x6B,
 
     /// Intern - create symbol from string
     /// ( str -- sym )
-    intern = 0x6B,
+    intern = 0x6C,
 
     /// Substring - extract part of a string
     /// ( str start end -- substr )
-    substring = 0x6C,
+    substring = 0x6D,
 
     /// Symbol name - get name of symbol as string
     /// ( sym -- str )
-    sym_name = 0x6D,
+    sym_name = 0x6E,
 
     /// String equal
     /// ( s1 s2 -- bool )
-    str_eq = 0x6E,
+    str_eq = 0x6F,
 
     // ========================================================================
     // Control flow
@@ -885,7 +889,7 @@ pub const Op = enum(u8) {
             .eq, .lt, .gt, .le, .ge, .num_eq, .not,
             .cons, .car, .cdr, .append_lists, .list_length, .list_reverse, .list_nth, .list_last, .list_member, .list_nthcdr,
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
-            .vec_ref, .vec_set, .vec_len, .make_box, .box_ref, .box_set,
+            .vec_ref, .vec_set, .vec_len, .slot_value, .make_box, .box_ref, .box_set,
             .str_ref, .str_len, .str_concat,
             .ret, .print, .random, .type_of, .intern, .substring, .sym_name, .str_eq, .halt,
             .check_fixnum, .check_cons, .check_symbol, .check_string,

@@ -60,10 +60,7 @@ pub fn makeInstance(heap: *Heap, args: Value) !Value {
 
 /// slot-value: (slot-value obj 'slot-name)
 /// Generic slot accessor that looks up slot by name
-/// For now, this requires knowing the class definition (TODO: add class metadata)
 pub fn slotValue(heap: *Heap, args: Value) !Value {
-    _ = heap;
-
     // Parse: (obj 'slot-name)
     if (!args.isCons()) return error.InvalidArgument;
     const cons1 = args.toPtr(Cons);
@@ -84,11 +81,30 @@ pub fn slotValue(heap: *Heap, args: Value) !Value {
     }
 
     if (!slot_name_val.isSymbol()) return error.InvalidArgument;
+    const slot_name = slot_name_val.toPtr(Symbol).getName();
 
-    // For now, slot-value is not fully implemented - it needs class metadata
-    // to map slot names to indices. For the basic implementation, users should
-    // use the generated accessor functions (class-name-slot-name)
-    return error.NotImplemented;
+    // Instance format: #(class-name slot1-val slot2-val ...)
+    const vec = obj.toPtr(Vector);
+    if (vec.length == 0) return error.InvalidArgument;
+
+    const class_name_val = vec.data[0];
+    if (!class_name_val.isSymbol()) return error.InvalidArgument;
+    const class_name = class_name_val.toPtr(Symbol).getName();
+
+    // Look up class metadata to find slot index
+    const slot_names = heap.class_metadata.get(class_name) orelse return error.InvalidArgument;
+
+    for (slot_names, 0..) |name, idx| {
+        if (std.mem.eql(u8, name, slot_name)) {
+            // Slot index in vector is idx+1 (since data[0] is class name)
+            const vec_idx = idx + 1;
+            if (vec_idx >= vec.length) return error.InvalidArgument;
+            return vec.data[vec_idx];
+        }
+    }
+
+    // Slot not found
+    return error.InvalidArgument;
 }
 
 /// (setf (slot-value obj 'slot) value)

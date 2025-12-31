@@ -159,6 +159,9 @@ pub const Heap = struct {
     cl_user_package: ?*Package,
     /// The KEYWORD package
     keyword_package: ?*Package,
+    /// Class metadata for CLOS slot-value lookup
+    /// Maps class name to slot names array
+    class_metadata: std.StringHashMapUnmanaged([]const []const u8),
 
     pub const Stats = struct {
         allocations: usize = 0,
@@ -193,6 +196,7 @@ pub const Heap = struct {
             .cl_package = null,
             .cl_user_package = null,
             .keyword_package = null,
+            .class_metadata = .{},
         };
 
         // Create COMMON-LISP package (holds primitives, all symbols exported)
@@ -229,6 +233,16 @@ pub const Heap = struct {
             }
         }
         self.packages.deinit(self.backing_allocator);
+        // Free class_metadata keys and slot name arrays
+        var class_iter = self.class_metadata.iterator();
+        while (class_iter.next()) |entry| {
+            self.backing_allocator.free(entry.key_ptr.*);
+            for (entry.value_ptr.*) |slot_name| {
+                self.backing_allocator.free(slot_name);
+            }
+            self.backing_allocator.free(entry.value_ptr.*);
+        }
+        self.class_metadata.deinit(self.backing_allocator);
         self.backing_allocator.free(self.memory);
     }
 
