@@ -11,6 +11,7 @@
 const std = @import("std");
 const Value = @import("value.zig").Value;
 const objects = @import("objects.zig");
+const Symbol = objects.Symbol;
 const GC = @import("gc.zig").GC;
 
 pub const ALIGNMENT: usize = 16;
@@ -100,6 +101,9 @@ pub const Package = struct {
         }
         // Allocate new symbol in this package
         const sym = try heap.allocSymbol(name);
+        // Store package pointer in symbol's reserved field
+        const sym_ptr = sym.toPtr(Symbol);
+        sym_ptr.reserved = @intFromPtr(self);
         try self.symbols.put(name, sym);
         // Auto-export if flag is set (for CL package)
         if (self.auto_export) {

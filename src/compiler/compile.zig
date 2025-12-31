@@ -1354,10 +1354,12 @@ pub const Compiler = struct {
                 }
                 return var_ir;
             }
-            // Check globals - if not found, assume it will be defined later (late binding)
-            const idx = self.globals.lookup(name) orelse
-                (try self.globals.define(name));
-            return try self.builder.globalRef(name, idx);
+            // Check globals - use qualified name if symbol has package
+            var qual_buf: [256]u8 = undefined;
+            const qual_name = self.getQualifiedName(sym, &qual_buf) catch name;
+            const idx = self.globals.lookup(qual_name) orelse
+                (try self.globals.define(qual_name));
+            return try self.builder.globalRef(qual_name, idx);
         }
 
         // List (special form or function call)
@@ -4033,6 +4035,24 @@ pub const Compiler = struct {
             return val.toPtr(Symbol).getName();
         }
         return null;
+    }
+
+    /// Get qualified name for a symbol (PKG:NAME or just NAME if no package)
+    fn getQualifiedName(self: *Compiler, sym: *const Symbol, buf: []u8) ![]const u8 {
+        _ = self;
+        const pkg_ptr = sym.reserved;
+        if (pkg_ptr == 0) {
+            // No package - just return name
+            return sym.getName();
+        }
+        // Get package from pointer - Package is in heap module
+        const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
+        const pkg_name = pkg.name;
+        const sym_name = sym.getName();
+        
+        // Format as PKG:NAME
+        const result = try std.fmt.bufPrint(buf, "{s}:{s}", .{pkg_name, sym_name});
+        return result;
     }
 
     // ========================================================================

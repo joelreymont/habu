@@ -694,6 +694,16 @@ pub const Repl = struct {
             return self.handleDefmacro(expr, arena_alloc);
         }
 
+        // Check for defpackage/in-package - these need to execute immediately
+        if (self.isDefpackage(expr) or self.isInPackage(expr)) {
+            return self.evalPackageForm(expr, arena_alloc) catch |err| {
+                return switch (err) {
+                    error.OutOfMemory => error.OutOfMemory,
+                    else => error.CompileError,
+                };
+            };
+        }
+
         // Check for eval-when - compile-time evaluation
         if (self.isEvalWhen(expr)) {
             const result = self.handleEvalWhen(expr, arena_alloc) catch return error.CompileError;
@@ -811,6 +821,16 @@ pub const Repl = struct {
         // Check for defmacro
         if (self.isDefmacro(expr)) {
             return self.handleDefmacro(expr, arena_alloc);
+        }
+
+        // Check for defpackage/in-package - these need to execute immediately
+        if (self.isDefpackage(expr) or self.isInPackage(expr)) {
+            return self.evalPackageForm(expr, arena_alloc) catch |err| {
+                return switch (err) {
+                    error.OutOfMemory => error.OutOfMemory,
+                    else => error.CompileError,
+                };
+            };
         }
 
         // Check for eval-when - compile-time evaluation
@@ -1208,6 +1228,32 @@ pub const Repl = struct {
         return false;
     }
 
+    /// Check if expression is (in-package ...)
+    fn isInPackage(self: *Repl, expr: Value) bool {
+        if (!expr.isCons()) return false;
+        const cons = expr.toPtr(Cons);
+        if (!cons.car.isSymbol()) return false;
+
+        if (self.compiler.builtins) |b| {
+            return cons.car.raw == b.@"in-package".raw;
+        }
+        const sym = cons.car.toPtr(Symbol);
+        return std.mem.eql(u8, sym.getName(), "in-package");
+    }
+
+    /// Check if expression is (defpackage ...)
+    fn isDefpackage(self: *Repl, expr: Value) bool {
+        if (!expr.isCons()) return false;
+        const cons = expr.toPtr(Cons);
+        if (!cons.car.isSymbol()) return false;
+
+        if (self.compiler.builtins) |b| {
+            return cons.car.raw == b.defpackage.raw;
+        }
+        const sym = cons.car.toPtr(Symbol);
+        return std.mem.eql(u8, sym.getName(), "defpackage");
+    }
+
     /// Handle defmacro: compile the macro body and store the closure
     /// (defmacro name (args...) body...) -> stores (lambda (args...) body...) as macro
     fn handleDefmacro(self: *Repl, expr: Value, arena_alloc: std.mem.Allocator) !Value {
@@ -1398,6 +1444,16 @@ pub const Repl = struct {
         // Check for defmacro
         if (self.isDefmacro(expr)) {
             return self.handleDefmacro(expr, arena_alloc);
+        }
+
+        // Check for defpackage/in-package - these need to execute immediately
+        if (self.isDefpackage(expr) or self.isInPackage(expr)) {
+            return self.evalPackageForm(expr, arena_alloc) catch |err| {
+                return switch (err) {
+                    error.OutOfMemory => error.OutOfMemory,
+                    else => error.CompileError,
+                };
+            };
         }
 
         // Check for nested eval-when
@@ -1678,6 +1734,30 @@ pub const Repl = struct {
 
         macro_vm.setChunkPool(self.persistent_chunk_ptrs.items);
         return macro_vm.run(&chunk) catch return error.RuntimeError;
+    }
+
+
+    /// Handle package forms (defpackage/in-package) - execute them immediately
+    fn evalPackageForm(self: *Repl, expr: Value, arena_alloc: std.mem.Allocator) !Value {
+        // For package forms, just compile and execute inline
+        // The compiler will call heap.setCurrentPackage which affects future reads
+        var env = Env.init(arena_alloc, null);
+        defer env.deinit();
+        const ir_node = try self.compiler.compile(expr, &env);
+
+        // Emit bytecode
+        var emitter = Emitter.initWithHeap(self.allocator, self.heap);
+        defer emitter.deinit();
+        try emitter.emit(ir_node);
+        const chunk = try emitter.finalize();
+        defer self.allocator.free(chunk.code);
+
+        // Execute to set package at runtime (though it's already set at compile time)
+        const result = try self.vm.run(&chunk);
+
+        // The package is now set in self.heap.current_package for future reads
+        // Return the result (package name as symbol)
+        return result;
     }
 
     // ========================================================================
