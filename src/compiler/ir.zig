@@ -507,6 +507,9 @@ pub const Ir = union(enum) {
     random: UnaryOp,
     intern: UnaryOp,
     sym_name: UnaryOp,
+    get: BinaryOp,
+    put: TernaryOp,
+    remprop: BinaryOp,
     type_of: UnaryOp, // Get type of value as symbol
     error_user: UnaryOp, // Signal user error with message
 
@@ -586,6 +589,12 @@ pub const Ir = union(enum) {
         operand: *const Ir,
     };
 
+    pub const TernaryOp = struct {
+        first: *const Ir,
+        second: *const Ir,
+        third: *const Ir,
+    };
+
     pub const Binding = struct {
         name: []const u8,
         value: *const Ir,
@@ -639,7 +648,7 @@ pub const Ir = union(enum) {
             .streamp, .input_stream_p, .output_stream_p, .make_string_input_stream, .make_string_output_stream, .get_output_stream_string,
             .vec_new, .vec, .vec_ref, .vec_set, .vec_len, .slot_value, .make_box, .box_ref, .box_set,
             .str_ref, .str_len, .str_concat, .str_eq, .substring, .string_upcase, .string_downcase,
-            .print, .random, .intern, .sym_name, .type_of,
+            .print, .random, .intern, .sym_name, .get, .put, .remprop, .type_of,
             .assert_fixnum, .assert_cons, .assert_symbol, .assert_string,
             .assert_vector, .assert_closure, .assert_non_nil, .assert_list,
             => true,

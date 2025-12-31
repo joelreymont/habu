@@ -567,6 +567,9 @@ pub const Emitter = struct {
             .random => |op| try self.emitUnaryOp(op.operand, .random),
             .intern => |op| try self.emitUnaryOp(op.operand, .intern),
             .sym_name => |op| try self.emitUnaryOp(op.operand, .sym_name),
+            .get => |op| try self.emitBinaryOp(op, .get),
+            .put => |op| try self.emitTernaryOp(op, .put),
+            .remprop => |op| try self.emitBinaryOp(op, .remprop),
             .type_of => |op| try self.emitUnaryOp(op.operand, .type_of),
             .error_user => |op| try self.emitUnaryOp(op.operand, .error_user),
 

@@ -6,6 +6,8 @@ const std = @import("std");
 const Value = @import("../value.zig").Value;
 const Tag = @import("../value.zig").Tag;
 const objects = @import("../objects.zig");
+const Symbol = objects.Symbol;
+const Cons = objects.Cons;
 const Heap = @import("../heap.zig").Heap;
 
 /// Create a cons cell
@@ -305,4 +307,123 @@ test "last" {
     const lst_last = last(lst);
     try testing.expectEqual(@as(i64, 3), car(lst_last).toFixnum());
     try testing.expect(cdr(lst_last).isNil());
+}
+
+// ============================================================================
+// Property list operations
+// ============================================================================
+
+/// Get property from symbol's property list
+/// (get symbol indicator) -> value or nil
+pub fn get(sym: Value, indicator: Value) !Value {
+    if (!sym.isSymbolLike()) return error.TypeMismatch;
+    if (sym.isNil() or sym.isT()) return Value.nil; // Magic symbols have no plist
+    
+    const symbol = sym.toPtr(Symbol);
+    var plist = symbol.plist;
+    
+    // Search alist for indicator
+    while (plist.isCons()) {
+        const entry = plist.toPtr(Cons);
+        const pair = entry.car;
+        
+        if (pair.isCons()) {
+            const pair_cons = pair.toPtr(Cons);
+            if (pair_cons.car.eq(indicator)) {
+                // Found it - return cdr of pair (the value)
+                return pair_cons.cdr;
+            }
+        }
+        
+        plist = entry.cdr;
+    }
+    
+    return Value.nil;
+}
+
+/// Set property in symbol's property list
+/// (put symbol indicator value) -> value
+pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
+    if (!sym.isSymbolLike()) return error.TypeMismatch;
+    if (sym.isNil() or sym.isT()) return error.TypeMismatch; // Can't modify magic symbols
+    
+    const symbol = sym.toPtr(Symbol);
+    var plist = symbol.plist;
+    
+    // Search for existing entry
+    var current = plist;
+    
+    while (current.isCons()) {
+        const entry = current.toPtr(Cons);
+        const pair = entry.car;
+        
+        if (pair.isCons()) {
+            const pair_cons = pair.toPtr(Cons);
+            if (pair_cons.car.eq(indicator)) {
+                // Found - update value (modify cdr of pair)
+                const new_pair = try heap.allocCons(indicator, value);
+                entry.car = new_pair;
+                return value;
+            }
+        }
+        
+        current = entry.cdr;
+    }
+    
+    // Not found - add new entry at front
+    const new_pair = try heap.allocCons(indicator, value);
+    const new_entry = try heap.allocCons(new_pair, symbol.plist);
+    symbol.plist = new_entry;
+    
+    return value;
+}
+
+/// Remove property from symbol's property list
+/// (remprop symbol indicator) -> t if removed, nil otherwise
+pub fn remprop(sym: Value, indicator: Value) !Value {
+    if (!sym.isSymbolLike()) return error.TypeMismatch;
+    if (sym.isNil() or sym.isT()) return Value.nil; // Can't modify magic symbols
+    
+    const symbol = sym.toPtr(Symbol);
+    var plist = symbol.plist;
+    
+    // Handle first entry specially
+    if (plist.isCons()) {
+        const first = plist.toPtr(Cons);
+        const pair = first.car;
+        
+        if (pair.isCons()) {
+            const pair_cons = pair.toPtr(Cons);
+            if (pair_cons.car.eq(indicator)) {
+                // Remove first entry
+                symbol.plist = first.cdr;
+                return Value.t;
+            }
+        }
+    }
+    
+    // Search rest of list
+    var prev = plist;
+    while (prev.isCons()) {
+        const prev_cons = prev.toPtr(Cons);
+        const current = prev_cons.cdr;
+        
+        if (current.isCons()) {
+            const curr_cons = current.toPtr(Cons);
+            const pair = curr_cons.car;
+            
+            if (pair.isCons()) {
+                const pair_cons = pair.toPtr(Cons);
+                if (pair_cons.car.eq(indicator)) {
+                    // Remove by skipping over current
+                    prev_cons.cdr = curr_cons.cdr;
+                    return Value.t;
+                }
+            }
+        }
+        
+        prev = current;
+    }
+    
+    return Value.nil;
 }

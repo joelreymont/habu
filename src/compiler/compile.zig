@@ -225,6 +225,9 @@ pub const Builtins = struct {
     @"type-of": Value,
     intern: Value,
     @"symbol-name": Value,
+    get: Value,
+    put: Value,
+    remprop: Value,
     @"error": Value,
     // Type specifier symbols for concatenate/coerce
     string: Value,
@@ -521,6 +524,9 @@ pub const Builtins = struct {
             .@"type-of" = try heap.intern("type-of"),
             .intern = try heap.intern("intern"),
             .@"symbol-name" = try heap.intern("symbol-name"),
+            .get = try heap.intern("get"),
+            .put = try heap.intern("put"),
+            .remprop = try heap.intern("remprop"),
             .@"error" = try heap.intern("error"),
             // Type specifier symbols for concatenate/coerce
             .string = try heap.intern("string"),
@@ -5872,6 +5878,9 @@ pub const Compiler = struct {
         if (s == b.@"type-of".raw) return self.compileUnaryPrim(args, env, .type_of);
         if (s == b.intern.raw) return self.compileUnaryPrim(args, env, .intern);
         if (s == b.@"symbol-name".raw) return self.compileUnaryPrim(args, env, .sym_name);
+        if (s == b.get.raw) return self.compileBinaryPrim(args, env, .get);
+        if (s == b.put.raw) return self.compileTernaryPrim(args, env, .put);
+        if (s == b.remprop.raw) return self.compileBinaryPrim(args, env, .remprop);
         // Note: `error` is now defined in stdlib using signal/handler-case
 
         // Numeric predicates
@@ -5965,7 +5974,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, hashtablep, hash_clear, hash_test, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, get, put, remprop, hashtablep, hash_clear, hash_test, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -6109,6 +6118,30 @@ pub const Compiler = struct {
             .rplacd => try self.builder.rplacd(left, right),
             .make_complex => try self.builder.makeComplex(left, right),
             else => return error.InvalidSyntax,
+        };
+
+    }
+
+    fn compileTernaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) Error!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const first = try self.compile(cons1.car, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const second = try self.compile(cons2.car, env);
+
+        if (!cons2.cdr.isCons()) return error.InvalidSyntax;
+        const cons3 = cons2.cdr.toPtr(Cons);
+        const third = try self.compile(cons3.car, env);
+
+        return switch (prim) {
+            .put => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .put = .{ .first = first, .second = second, .third = third } };
+                break :blk node;
+            },
+            else => error.InvalidSyntax,
         };
     }
 

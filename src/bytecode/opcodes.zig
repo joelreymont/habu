@@ -359,6 +359,12 @@ pub const Op = enum(u8) {
     /// Symbol name - get name of symbol as string
     /// ( sym -- str )
     sym_name = 0x6E,
+    /// Get symbol property (0x6F)
+    get = 0x85,
+    /// Put symbol property (0x70)
+    put = 0x86,
+    /// Remove symbol property (0x71)
+    remprop = 0x87,
 
     /// String equal
     /// ( s1 s2 -- bool )
@@ -908,7 +914,7 @@ pub const Op = enum(u8) {
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
             .vec_ref, .vec_set, .vec_len, .slot_value, .make_box, .box_ref, .box_set,
             .str_ref, .str_len, .str_concat,
-            .ret, .print, .random, .type_of, .intern, .substring, .sym_name, .str_eq, .halt,
+            .ret, .print, .random, .type_of, .intern, .substring, .sym_name, .get, .put, .remprop, .str_eq, .halt,
             .check_fixnum, .check_cons, .check_symbol, .check_string,
             .check_vector, .check_closure, .check_non_nil, .check_list, .check_refine,
             .apply, .pop_catch, .throw,
