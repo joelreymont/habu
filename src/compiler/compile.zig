@@ -1361,7 +1361,7 @@ pub const Compiler = struct {
             var qual_buf: [256]u8 = undefined;
             const qual_name = self.getQualifiedName(sym, &qual_buf) catch name;
             const idx = self.globals.lookup(qual_name) orelse
-                (try self.globals.define(qual_name));
+                return error.UnboundVariable;
             return try self.builder.globalRef(qual_name, idx);
         }
 
@@ -3786,7 +3786,10 @@ pub const Compiler = struct {
         const cons1 = args.toPtr(Cons);
         if (!cons1.car.isSymbol()) return error.InvalidSyntax;
         const name_sym = cons1.car.toPtr(Symbol);
-        const name = name_sym.getName();
+        
+        // Use qualified name for globals (package-aware)
+        var qual_buf: [256]u8 = undefined;
+        const name = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
 
         if (!cons1.cdr.isCons()) return error.InvalidSyntax;
         const cons2 = cons1.cdr.toPtr(Cons);
@@ -3806,19 +3809,17 @@ pub const Compiler = struct {
         const cons1 = args.toPtr(Cons);
         const name_spec = cons1.car;
 
-        var name: []const u8 = undefined;
+        var name_sym_saved: *const Symbol = undefined;
         var return_type: ?Value = null;
 
         if (name_spec.isSymbol()) {
             // Simple: (defun name ...)
-            const name_sym = name_spec.toPtr(Symbol);
-            name = name_sym.getName();
+            name_sym_saved = name_spec.toPtr(Symbol);
         } else if (name_spec.isCons()) {
             // Typed: (defun (name -> type) ...)
             const spec_cons = name_spec.toPtr(Cons);
             if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
-            const name_sym = spec_cons.car.toPtr(Symbol);
-            name = name_sym.getName();
+            name_sym_saved = spec_cons.car.toPtr(Symbol);
 
             // Check for -> arrow (use symbol identity)
             if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
@@ -3836,6 +3837,9 @@ pub const Compiler = struct {
         }
 
         // Pre-register the global so recursive calls work
+        // Use qualified name for consistency
+        var qual_buf: [256]u8 = undefined;
+        const name = self.getQualifiedName(name_sym_saved, &qual_buf) catch name_sym_saved.getName();
         const idx = try self.globals.define(name);
 
         // Rest is (params...) body...
