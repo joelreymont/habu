@@ -110,8 +110,54 @@ pub fn slotValue(heap: *Heap, args: Value) !Value {
 /// (setf (slot-value obj 'slot) value)
 /// Set a slot value by name
 pub fn setSlotValue(heap: *Heap, args: Value) !Value {
-    _ = heap;
-    _ = args;
-    // TODO: Implement when we have setf infrastructure
-    return error.NotImplemented;
+    // Parse: (obj 'slot-name value)
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons1 = args.toPtr(Cons);
+    const obj = cons1.car;
+
+    if (!obj.isVector()) return error.InvalidArgument;
+
+    if (!cons1.cdr.isCons()) return error.InvalidArgument;
+    const cons2 = cons1.cdr.toPtr(Cons);
+    var slot_name_val = cons2.car;
+
+    // Handle quoted symbol: 'name -> name
+    if (slot_name_val.isCons()) {
+        const quote_cons = slot_name_val.toPtr(Cons);
+        if (!quote_cons.cdr.isCons()) return error.InvalidArgument;
+        const cdr_cons = quote_cons.cdr.toPtr(Cons);
+        slot_name_val = cdr_cons.car;
+    }
+
+    if (!slot_name_val.isSymbol()) return error.InvalidArgument;
+    const slot_name = slot_name_val.toPtr(Symbol).getName();
+
+    // Get the value to set
+    if (!cons2.cdr.isCons()) return error.InvalidArgument;
+    const cons3 = cons2.cdr.toPtr(Cons);
+    const new_value = cons3.car;
+
+    // Instance format: #(class-name slot1-val slot2-val ...)
+    const vec = obj.toPtr(Vector);
+    if (vec.length == 0) return error.InvalidArgument;
+
+    const class_name_val = vec.data[0];
+    if (!class_name_val.isSymbol()) return error.InvalidArgument;
+    const class_name = class_name_val.toPtr(Symbol).getName();
+
+    // Look up class metadata to find slot index
+    const slot_names = heap.class_metadata.get(class_name) orelse return error.InvalidArgument;
+
+    for (slot_names, 0..) |name, idx| {
+        if (std.mem.eql(u8, name, slot_name)) {
+            // Slot index in vector is idx+1 (since data[0] is class name)
+            const vec_idx = idx + 1;
+            if (vec_idx >= vec.length) return error.InvalidArgument;
+            vec.data[vec_idx] = new_value;
+            return new_value;
+        }
+    }
+
+    // Slot not found
+    return error.InvalidArgument;
 }
