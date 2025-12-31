@@ -184,3 +184,24 @@ test "multiple inheritance merges slots" {
     const result = try r.eval(code);
     try testing.expectEqual(@as(i64, 1), result.toFixnum());
 }
+
+test "slot-value can read and write slots" {
+    var heap = Heap.init(testing.allocator);
+    defer heap.deinit();
+
+    const config = repl_mod.Config{};
+    var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
+    defer r.deinit();
+    r.wireGlobalEnv();
+
+    const code =
+        \\(defclass person () name age)
+        \\(define p (make-person "Alice" 30))
+        \\(setf (slot-value p 'age) 31)
+        \\(slot-value p 'age)
+    ;
+
+    const result = try r.eval(code);
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 31), result.toFixnum());
+}
