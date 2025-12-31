@@ -865,9 +865,9 @@ pub const Compiler = struct {
     vm: ?*Vm,
     /// Heap for creating runtime values during macro expansion
     heap: ?*Heap,
-    /// Class metadata for CLOS slot-value lookup
-    /// Maps class name to slot names array
-    class_metadata: std.StringHashMap([]const []const u8),
+    /// Class metadata for CLOS compilation
+    /// Maps class name to slot specifications (names + initforms)
+    class_metadata: std.StringHashMap([]const SlotSpec),
     /// Generic function registry for CLOS method dispatch
     /// Maps generic function name to list of methods
     generic_functions: std.StringHashMap(std.ArrayList(MethodDef)),
@@ -936,7 +936,7 @@ pub const Compiler = struct {
             .macro_table = std.StringHashMap(Value).init(allocator),
             .vm = null,
             .heap = heap,
-            .class_metadata = std.StringHashMap([]const []const u8).init(allocator),
+            .class_metadata = std.StringHashMap([]const SlotSpec).init(allocator),
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
         };
     }
@@ -961,12 +961,12 @@ pub const Compiler = struct {
             self.globals.allocator.free(key.*);
         }
         self.struct_types.deinit();
-        // Free class_metadata keys and slot name arrays
+        // Free class_metadata keys and SlotSpec arrays
         var class_iter = self.class_metadata.iterator();
         while (class_iter.next()) |entry| {
             self.globals.allocator.free(entry.key_ptr.*);
-            for (entry.value_ptr.*) |slot_name| {
-                self.globals.allocator.free(slot_name);
+            for (entry.value_ptr.*) |spec| {
+                self.globals.allocator.free(spec.name);
             }
             self.globals.allocator.free(entry.value_ptr.*);
         }
@@ -4635,13 +4635,14 @@ pub const Compiler = struct {
                     const super_name = super_name_val.toPtr(Symbol).getName();
 
                     // Look up superclass metadata
-                    if (self.class_metadata.get(super_name)) |parent_slots| {
+                    if (self.class_metadata.get(super_name)) |parent_specs| {
                         // Inherit slots from parent
-                        for (parent_slots) |parent_slot_name| {
-                            const inherited_name = try self.allocator.dupe(u8, parent_slot_name);
+                        for (parent_specs) |parent_spec| {
+                            const inherited_name = try self.allocator.dupe(u8, parent_spec.name);
                             try slot_specs.append(self.allocator, .{
                                 .name = inherited_name,
-                                .field_type = &types.t_any,
+                                .field_type = parent_spec.field_type,
+                                .initform = parent_spec.initform,
                             });
                         }
                     }
@@ -4734,13 +4735,17 @@ pub const Compiler = struct {
         const class_type = type_builder.makeStruct(class_name, class_fields) catch return error.OutOfMemory;
         self.registerStructType(class_name, class_type) catch return error.OutOfMemory;
 
-        // Store class metadata for slot-value lookup (compiler-side)
-        const slot_names = try self.globals.allocator.alloc([]const u8, slot_specs.items.len);
+        // Store class metadata for compilation (compiler-side with initforms)
+        const persistent_specs = try self.globals.allocator.alloc(SlotSpec, slot_specs.items.len);
         for (slot_specs.items, 0..) |spec, i| {
-            slot_names[i] = try self.globals.allocator.dupe(u8, spec.name);
+            persistent_specs[i] = .{
+                .name = try self.globals.allocator.dupe(u8, spec.name),
+                .field_type = spec.field_type,
+                .initform = spec.initform,
+            };
         }
         const persistent_class_name = try self.globals.allocator.dupe(u8, class_name);
-        try self.class_metadata.put(persistent_class_name, slot_names);
+        try self.class_metadata.put(persistent_class_name, persistent_specs);
 
         // Also store in heap for runtime slot-value lookup
         {
@@ -4804,10 +4809,10 @@ pub const Compiler = struct {
         const class_name = class_name_expr.toPtr(Symbol).getName();
 
         // Look up class metadata to get slot order
-        const slot_names = self.class_metadata.get(class_name) orelse return error.InvalidSyntax;
+        const slot_specs = self.class_metadata.get(class_name) orelse return error.InvalidSyntax;
 
         // Parse keyword arguments and build positional args array
-        const slot_values = try self.allocator.alloc(?*Ir, slot_names.len);
+        const slot_values = try self.allocator.alloc(?*Ir, slot_specs.len);
         for (slot_values) |*sv| sv.* = null;
 
         var rest = cons1.cdr;
@@ -4819,8 +4824,8 @@ pub const Compiler = struct {
             const kw_name = kw.toPtr(runtime.Keyword).getName();
 
             // Find matching slot
-            for (slot_names, 0..) |slot_name, i| {
-                if (std.mem.eql(u8, kw_name, slot_name)) {
+            for (slot_specs, 0..) |spec, i| {
+                if (std.mem.eql(u8, kw_name, spec.name)) {
                     if (!kw_cons.cdr.isCons()) return error.InvalidSyntax;
                     const val_cons = kw_cons.cdr.toPtr(Cons);
                     slot_values[i] = try self.compile(val_cons.car, env);
@@ -4841,13 +4846,17 @@ pub const Compiler = struct {
         // Build call to make-class-name with positional args
         const ctor_name = try self.concatStrings("make-", class_name);
 
-        const call_args = try self.allocator.alloc(*Ir, slot_names.len);
+        const call_args = try self.allocator.alloc(*Ir, slot_specs.len);
         for (slot_values, 0..) |maybe_val, i| {
             if (maybe_val) |val| {
                 call_args[i] = val;
             } else {
-                // No value provided - use nil
-                call_args[i] = try self.builder.lit(Value.nil);
+                // No value provided - use initform or nil
+                if (slot_specs[i].initform) |initform_expr| {
+                    call_args[i] = try self.compile(initform_expr, env);
+                } else {
+                    call_args[i] = try self.builder.lit(Value.nil);
+                }
             }
         }
 

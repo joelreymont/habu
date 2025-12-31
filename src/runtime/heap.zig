@@ -163,6 +163,15 @@ pub const Heap = struct {
     /// Maps class name to slot names array
     class_metadata: std.StringHashMapUnmanaged([]const []const u8),
 
+    pub const SlotMeta = struct {
+        name: []const u8,
+        initform: ?Value, // Default value expression (evaluated lazily)
+    };
+
+    pub const ClassMeta = struct {
+        slots: []const SlotMeta,
+    };
+
     pub const Stats = struct {
         allocations: usize = 0,
         bytes_allocated: usize = 0,
