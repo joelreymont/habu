@@ -326,6 +326,13 @@ pub const Heap = struct {
         return Value.makeComplex(cplx);
     }
 
+    /// Allocate a bignum from an i64
+    pub fn allocBignum(self: *Heap, n: i64) error{OutOfMemory}!Value {
+        const bn = try self.alloc(objects.Bignum);
+        bn.* = objects.Bignum.make(n);
+        return Value.makeBignum(bn);
+    }
+
     /// Allocate a string input stream
     pub fn allocStringInputStream(self: *Heap, str: Value) error{OutOfMemory}!Value {
         const stream = try self.alloc(objects.Stream);

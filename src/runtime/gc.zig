@@ -194,7 +194,7 @@ pub const GC = struct {
                         const old_ptr = @intFromPtr(ht.entries);
                         ht.entries = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
                     },
-                    .rational, .complex, .stream => {
+                    .rational, .complex, .stream, .bignum => {
                         // No interior pointers to repair
                     },
                 }
@@ -263,7 +263,7 @@ pub const GC = struct {
                             }
                         }
                     },
-                    .rational, .complex, .stream => {
+                    .rational, .complex, .stream, .bignum => {
                         // No Value references to scan
                     },
                 }

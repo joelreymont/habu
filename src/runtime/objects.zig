@@ -137,6 +137,7 @@ pub const BoxedKind = enum(u64) {
     rational = 1,
     complex = 2,
     stream = 3,
+    bignum = 4,
 };
 
 /// Stream direction
@@ -264,6 +265,40 @@ pub const Complex = extern struct {
     }
 };
 
+/// Bignum: arbitrary-precision integer
+/// Uses inline limbs array with sign bit
+pub const Bignum = extern struct {
+    kind: BoxedKind, // Must be first - discriminator
+    /// Number of used limbs (negative = negative number)
+    size: i64,
+    /// Limbs array (least significant first)
+    limbs: [8]u64,
+
+    pub fn make(n: i64) Bignum {
+        var result = Bignum{
+            .kind = .bignum,
+            .size = 0,
+            .limbs = [_]u64{0} ** 8,
+        };
+        
+        if (n == 0) return result;
+        
+        const abs_n: u64 = if (n < 0) @as(u64, @intCast(-n)) else @as(u64, @intCast(n));
+        result.limbs[0] = abs_n;
+        result.size = if (n < 0) -1 else 1;
+        
+        return result;
+    }
+
+    pub fn isNegative(self: *const Bignum) bool {
+        return self.size < 0;
+    }
+
+    pub fn isZero(self: *const Bignum) bool {
+        return self.size == 0;
+    }
+};
+
 /// Uses open addressing with linear probing
 /// Size: 40 bytes header + entries array
 pub const HashTable = extern struct {
@@ -354,6 +389,7 @@ pub fn objectSize(val: Value) usize {
                 .rational => @sizeOf(Rational),
                 .complex => @sizeOf(Complex),
                 .stream => @sizeOf(Stream),
+                .bignum => @sizeOf(Bignum),
             };
         },
         .forwarding => @sizeOf(usize), // Just a pointer
@@ -401,7 +437,7 @@ pub fn forEachValue(val: Value, callback: *const fn (Value) void) void {
                         }
                     }
                 },
-                .rational, .complex => {
+                .rational, .complex, .stream, .bignum => {
                     // No internal Values to scan
                 },
             }

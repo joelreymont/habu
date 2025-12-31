@@ -32,6 +32,7 @@ pub const Complex = objects.Complex;
 pub const Stream = objects.Stream;
 pub const StreamDirection = objects.StreamDirection;
 pub const StreamType = objects.StreamType;
+pub const Bignum = objects.Bignum;
 pub const BoxedKind = objects.BoxedKind;
 
 pub const Heap = heap.Heap;

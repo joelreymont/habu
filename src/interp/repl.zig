@@ -984,6 +984,10 @@ pub const Repl = struct {
                 };
                 try writer.print("#<{s}-{s}-stream>", .{ kind, dir });
             },
+            .bignum => {
+                const bn = val.toPtr(runtime.Bignum);
+                try writer.print("#<bignum size={d}>", .{bn.size});
+            },
         }
     }
 

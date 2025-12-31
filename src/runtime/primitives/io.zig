@@ -287,6 +287,10 @@ fn princValueTo(val: Value, w: anytype) !void {
             };
             try w.print("#<{s}-{s}-stream>", .{ kind, dir });
         },
+        .bignum => {
+            const bn = val.toPtr(objects.Bignum);
+            try w.print("#<bignum size={d}>", .{bn.size});
+        },
     }
 }
 
@@ -374,6 +378,10 @@ fn printValueTo(val: Value, w: anytype) !void {
                 .stderr => "stderr",
             };
             try w.print("#<{s}-{s}-stream>", .{ kind, dir });
+        },
+        .bignum => {
+            const bn = val.toPtr(objects.Bignum);
+            try w.print("#<bignum size={d}>", .{bn.size});
         },
     }
 }

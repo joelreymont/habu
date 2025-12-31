@@ -3113,6 +3113,7 @@ pub const Vm = struct {
                 result.appendSlice(self.allocator, cplx_str) catch return error.OutOfMemory;
             },
             .stream => result.appendSlice(self.allocator, "#<stream>") catch return error.OutOfMemory,
+            .bignum => result.appendSlice(self.allocator, "#<bignum>") catch return error.OutOfMemory,
         }
     }
 
@@ -3746,7 +3747,7 @@ fn hashValueWithTest(val: Value, test_type: runtime.HashTest) u64 {
                 .keyword => fnvHash(val.toPtr(runtime.Keyword).getName()),
                 .string => fnvHash(val.toPtr(runtime.String).bytes()),
                 // Reference types: hash address (NOT stable across GC)
-                .cons, .vector, .closure, .hashtable, .rational, .complex, .stream => fnvHashU64(val.raw),
+                .cons, .vector, .closure, .hashtable, .rational, .complex, .stream, .bignum => fnvHashU64(val.raw),
             };
         },
     }

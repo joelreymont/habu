@@ -49,6 +49,7 @@ pub const TypeKind = enum {
     rational,
     complex,
     stream,
+    bignum,
 };
 
 /// A tagged Habu value (64-bit)
@@ -166,6 +167,13 @@ pub const Value = packed struct {
         return kind_ptr.* == .stream;
     }
 
+    /// Check if value is a bignum
+    pub inline fn isBignum(self: Value) bool {
+        if (!self.isBoxed()) return false;
+        const kind_ptr: *const objects.BoxedKind = @ptrFromInt(self.raw & PTR_MASK);
+        return kind_ptr.* == .bignum;
+    }
+
     /// Check if value is a forwarding pointer (GC)
     pub inline fn isForwarding(self: Value) bool {
         return self.isPointer() and self.getTag() == .forwarding;
@@ -214,6 +222,7 @@ pub const Value = packed struct {
                     .rational => .rational,
                     .complex => .complex,
                     .stream => .stream,
+                    .bignum => .bignum,
                 };
             },
             .forwarding => .cons, // Shouldn't happen during normal execution
@@ -360,6 +369,11 @@ pub const Value = packed struct {
 
     /// Create a stream value (boxed object)
     pub inline fn makeStream(ptr: anytype) Value {
+        return makePtr(ptr, .boxed);
+    }
+
+    /// Create a bignum value (boxed object)
+    pub inline fn makeBignum(ptr: anytype) Value {
         return makePtr(ptr, .boxed);
     }
 
