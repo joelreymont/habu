@@ -348,10 +348,9 @@ pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
     if (sym.isNil() or sym.isT()) return error.TypeMismatch; // Can't modify magic symbols
     
     const symbol = sym.toPtr(Symbol);
-    var plist = symbol.plist;
     
     // Search for existing entry
-    var current = plist;
+    var current = symbol.plist;
     
     while (current.isCons()) {
         const entry = current.toPtr(Cons);

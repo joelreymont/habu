@@ -1612,6 +1612,13 @@ pub const Emitter = struct {
         try self.emitOp(opcode);
     }
 
+    fn emitTernaryOp(self: *Emitter, op: Ir.TernaryOp, opcode: Op) Error!void {
+        try self.emit(op.first);
+        try self.emit(op.second);
+        try self.emit(op.third);
+        try self.emitOp(opcode);
+    }
+
     fn emitUnaryOp(self: *Emitter, operand: *const Ir, opcode: Op) Error!void {
         try self.emit(operand);
         try self.emitOp(opcode);

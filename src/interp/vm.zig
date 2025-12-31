@@ -1968,6 +1968,25 @@ pub const Vm = struct {
                     const rat = val.toPtr(runtime.Rational);
                     try self.push(Value.makeFixnum(rat.denominator));
 },
+                .get => {
+                    const indicator = try self.pop();
+                    const sym = try self.pop();
+                    const result = try primitives.list.get(sym, indicator);
+                    try self.push(result);
+                },
+                .put => {
+                    const value = try self.pop();
+                    const indicator = try self.pop();
+                    const sym = try self.pop();
+                    const result = try primitives.list.put(self.heap, sym, indicator, value);
+                    try self.push(result);
+                },
+                .remprop => {
+                    const indicator = try self.pop();
+                    const sym = try self.pop();
+                    const result = try primitives.list.remprop(sym, indicator);
+                    try self.push(result);
+                },
                 // Stream operations
                 .streamp => {
                     const val = try self.pop();

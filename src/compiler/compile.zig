@@ -6117,6 +6117,16 @@ pub const Compiler = struct {
             .rplaca => try self.builder.rplaca(left, right),
             .rplacd => try self.builder.rplacd(left, right),
             .make_complex => try self.builder.makeComplex(left, right),
+            .get => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .get = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .remprop => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .remprop = .{ .left = left, .right = right } };
+                break :blk node;
+            },
             else => return error.InvalidSyntax,
         };
 
