@@ -66,6 +66,7 @@ pub const Parser = struct {
         switch (self.current.kind) {
             .lparen => return self.parseList(),
             .vector_open => return self.parseVector(),
+            .complex_open => return self.parseComplex(),
             .quote => return self.parseQuote("quote"),
             .backquote => return self.parseQuote("quasiquote"),
             .comma => return self.parseQuote("unquote"),
@@ -166,6 +167,51 @@ pub const Parser = struct {
 
         return vec_val;
     }
+
+    fn parseComplex(self: *Parser) Error!Value {
+        self.advance(); // consume '#C('
+
+        // Parse real part
+        if (self.current.kind == .rparen or self.current.kind == .eof) {
+            return error.InvalidNumber;
+        }
+        const real_val = try self.parseExpr();
+
+        // Parse imaginary part
+        if (self.current.kind == .rparen or self.current.kind == .eof) {
+            return error.InvalidNumber;
+        }
+        const imag_val = try self.parseExpr();
+
+        // Expect closing paren
+        if (self.current.kind != .rparen) {
+            return error.UnexpectedToken;
+        }
+        self.advance(); // consume ')'
+
+        // Convert to floats
+        var real: f64 = 0.0;
+        var imag: f64 = 0.0;
+
+        if (real_val.isFixnum()) {
+            real = @floatFromInt(real_val.toFixnum());
+        } else if (real_val.isFloat()) {
+            real = real_val.toFloat();
+        } else {
+            return error.TypeMismatch;
+        }
+
+        if (imag_val.isFixnum()) {
+            imag = @floatFromInt(imag_val.toFixnum());
+        } else if (imag_val.isFloat()) {
+            imag = imag_val.toFloat();
+        } else {
+            return error.TypeMismatch;
+        }
+
+        return primitives.complex.makeComplex(self.heap, real, imag);
+    }
+
 
     fn parseQuote(self: *Parser, quote_name: []const u8) Error!Value {
         self.advance(); // consume quote token

@@ -1310,6 +1310,11 @@ pub const Compiler = struct {
             return try self.builder.lit(expr);
         }
 
+        // Complex
+        if (expr.isComplex()) {
+            return try self.builder.lit(expr);
+        }
+
         // String
         if (expr.isString()) {
             return try self.builder.lit(expr);

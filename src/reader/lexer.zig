@@ -14,6 +14,7 @@ pub const TokenKind = enum {
     rparen,
     dot,
     vector_open, // #(
+    complex_open, // #C(
 
     // Quotes
     quote,
@@ -292,6 +293,15 @@ pub const Lexer = struct {
             // Octal literal: #o777 or #O777
             _ = self.advance(); // consume 'o'
             return self.readOctalNumber();
+        }
+        if (c == 'C' or c == 'c') {
+            // Complex literal: #C(real imag)
+            _ = self.advance(); // consume 'C'
+            if (self.peek() == '(') {
+                _ = self.advance(); // consume '('
+                return self.makeToken(.complex_open);
+            }
+            return self.makeToken(.err);
         }
         if (c == '(') {
             // Vector literal: #(1 2 3)
