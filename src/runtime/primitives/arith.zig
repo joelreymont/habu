@@ -347,3 +347,80 @@ test "comparisons" {
     try testing.expect(numEq(a, c));
     try testing.expect(!numEq(a, b));
 }
+
+// ============================================================================
+// Float arithmetic (Common Lisp numeric tower with contagion)
+// ============================================================================
+
+/// Helper: convert Value to f64
+fn toNumber(v: Value) Error!f64 {
+    if (v.isFloat()) return v.toFloat();
+    if (v.isFixnum()) return @floatFromInt(v.toFixnum());
+    return error.TypeMismatch;
+}
+
+/// Float addition (supports fixnum→float contagion)
+pub fn addFloat(a: Value, b: Value) Error!Value {
+    const af = try toNumber(a);
+    const bf = try toNumber(b);
+    return Value.makeFloat(af + bf);
+}
+
+/// Float subtraction
+pub fn subFloat(a: Value, b: Value) Error!Value {
+    const af = try toNumber(a);
+    const bf = try toNumber(b);
+    return Value.makeFloat(af - bf);
+}
+
+/// Float multiplication
+pub fn mulFloat(a: Value, b: Value) Error!Value {
+    const af = try toNumber(a);
+    const bf = try toNumber(b);
+    return Value.makeFloat(af * bf);
+}
+
+/// Float division
+pub fn divFloat(a: Value, b: Value) Error!Value {
+    const af = try toNumber(a);
+    const bf = try toNumber(b);
+    if (bf == 0.0) return error.DivisionByZero;
+    return Value.makeFloat(af / bf);
+}
+
+/// Square root
+pub fn sqrt_val(a: Value) Error!Value {
+    const af = try toNumber(a);
+    return Value.makeFloat(@sqrt(af));
+}
+
+/// Sine
+pub fn sin_val(a: Value) Error!Value {
+    const af = try toNumber(a);
+    return Value.makeFloat(@sin(af));
+}
+
+/// Cosine
+pub fn cos_val(a: Value) Error!Value {
+    const af = try toNumber(a);
+    return Value.makeFloat(@cos(af));
+}
+
+/// Natural logarithm
+pub fn log_val(a: Value) Error!Value {
+    const af = try toNumber(a);
+    return Value.makeFloat(@log(af));
+}
+
+/// Exponential (e^x)
+pub fn exp_val(a: Value) Error!Value {
+    const af = try toNumber(a);
+    return Value.makeFloat(@exp(af));
+}
+
+/// Power (x^y)
+pub fn pow_val(x: Value, y: Value) Error!Value {
+    const xf = try toNumber(x);
+    const yf = try toNumber(y);
+    return Value.makeFloat(std.math.pow(f64, xf, yf));
+}
