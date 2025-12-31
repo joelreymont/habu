@@ -322,6 +322,7 @@ pub const Emitter = struct {
             .hash_get => |h| {
                 max_idx = computeMaxLocalIndexImpl(h.table, max_idx);
                 max_idx = computeMaxLocalIndexImpl(h.key, max_idx);
+                if (h.default) |def| max_idx = computeMaxLocalIndexImpl(def, max_idx);
             },
             .hash_set => |h| {
                 max_idx = computeMaxLocalIndexImpl(h.table, max_idx);
@@ -395,6 +396,8 @@ pub const Emitter = struct {
             .hash_set => |h| try self.emitHashSet(h),
             .hash_rem => |h| try self.emitHashRem(h),
             .hash_count => |h| try self.emitUnaryOp(h.operand, .hash_count),
+            .hash_clear => |h| try self.emitUnaryOp(h.operand, .hash_clear),
+            .hash_test => |h| try self.emitUnaryOp(h.operand, .hash_test),
             .hashtablep => |h| try self.emitUnaryOp(h.operand, .hashtablep),
             .rationalp => |r| try self.emitUnaryOp(r.operand, .rationalp),
             .complexp => |c| try self.emitUnaryOp(c.operand, .complexp),
@@ -1540,11 +1543,15 @@ pub const Emitter = struct {
         try self.emitU16(h.capacity);
         try self.emitU8(@intFromEnum(h.test_type));
     }
-
     fn emitHashGet(self: *Emitter, h: anytype) Error!void {
         try self.emit(h.table);
         try self.emit(h.key);
-        try self.emitOp(.hash_get);
+        if (h.default) |def| {
+            try self.emit(def);
+            try self.emitOp(.hash_get_default);
+        } else {
+            try self.emitOp(.hash_get);
+        }
     }
 
     fn emitHashSet(self: *Emitter, h: anytype) Error!void {

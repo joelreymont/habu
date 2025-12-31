@@ -1,0 +1,106 @@
+;; Test hash table functionality
+(print "=== Testing Hash Tables ===")
+
+;; Test 1: Basic hash table creation
+(print "\n1. Basic Creation:")
+(define ht (make-hash-table))
+(if ht
+    (print "✓ make-hash-table works")
+    (print "✗ FAIL: make-hash-table broken"))
+
+;; Test 2: gethash and puthash
+(print "\n2. Get and Put:")
+(puthash 'foo 42 ht)
+(define val (gethash 'foo ht))
+(if (= val 42)
+    (print "✓ gethash/puthash work")
+    (print "✗ FAIL: gethash/puthash broken"))
+
+;; Test 3: Default value
+(print "\n3. Default Values:")
+(define missing (gethash 'nonexistent ht 99))
+(if (= missing 99)
+    (print "✓ gethash default works")
+    (print "✗ FAIL: gethash default broken"))
+
+;; Test 4: Multiple entries
+(print "\n4. Multiple Entries:")
+(puthash 'a 1 ht)
+(puthash 'b 2 ht)
+(puthash 'c 3 ht)
+(if (and (= (gethash 'a ht) 1)
+         (= (gethash 'b ht) 2)
+         (= (gethash 'c ht) 3))
+    (print "✓ Multiple entries work")
+    (print "✗ FAIL: Multiple entries broken"))
+
+;; Test 5: hash-table-count
+(print "\n5. Table Count:")
+(define count (hash-table-count ht))
+(if (= count 4)  ; foo, a, b, c, and the original entry
+    (print "✓ hash-table-count works")
+    (print "✗ FAIL: hash-table-count broken"))
+
+;; Test 6: remhash
+(print "\n6. Remove Entry:")
+(define removed (remhash 'foo ht))
+(if (and removed (not (gethash 'foo ht)))
+    (print "✓ remhash works")
+    (print "✗ FAIL: remhash broken"))
+
+;; Test 7: clrhash
+(print "\n7. Clear Table:")
+(clrhash ht)
+(if (= (hash-table-count ht) 0)
+    (print "✓ clrhash works")
+    (print "✗ FAIL: clrhash broken"))
+
+;; Test 8: Test function parameter
+(print "\n8. Test Functions:")
+(define ht-eq (make-hash-table :test 'eq))
+(define ht-eql (make-hash-table :test 'eql))
+(define ht-equal (make-hash-table :test 'equal))
+(if (and ht-eq ht-eql ht-equal)
+    (print "✓ Test function parameter works")
+    (print "✗ FAIL: Test function parameter broken"))
+
+;; Test 9: hash-table-test
+(print "\n9. Test Function Query:")
+(if (eq (hash-table-test ht-eq) 'eq)
+    (print "✓ hash-table-test works")
+    (print "✗ FAIL: hash-table-test broken"))
+
+;; Test 10: Size parameter
+(print "\n10. Size Parameter:")
+(define ht-sized (make-hash-table :size 100))
+(if ht-sized
+    (print "✓ Size parameter works")
+    (print "✗ FAIL: Size parameter broken"))
+
+;; Test 11: String keys with equal test
+(print "\n11. String Keys:")
+(define ht-str (make-hash-table :test 'equal))
+(puthash "hello" "world" ht-str)
+(define str-val (gethash "hello" ht-str))
+(if (equal str-val "world")
+    (print "✓ String keys work")
+    (print "✗ FAIL: String keys broken"))
+
+;; Test 12: Overwriting values
+(print "\n12. Overwrite Values:")
+(define ht2 (make-hash-table))
+(puthash 'key 1 ht2)
+(puthash 'key 2 ht2)
+(if (= (gethash 'key ht2) 2)
+    (print "✓ Value overwriting works")
+    (print "✗ FAIL: Value overwriting broken"))
+
+;; Test 13: Nil as value
+(print "\n13. Nil as Value:")
+(puthash 'nil-key nil ht2)
+(define has-nil (gethash 'nil-key ht2 'not-found))
+(if (null has-nil)
+    (print "✓ Nil as value works")
+    (print "✗ FAIL: Nil as value broken"))
+
+(print "\n=== All hash table tests completed! ===")

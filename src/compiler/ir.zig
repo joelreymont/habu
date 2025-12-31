@@ -222,10 +222,11 @@ pub const Ir = union(enum) {
         test_type: HashTest,
     },
 
-    /// Hash table get: (gethash key hashtable)
+    /// Hash table get: (gethash key hashtable &optional default)
     hash_get: struct {
         table: *const Ir,
         key: *const Ir,
+        default: ?*const Ir,
     },
 
     /// Hash table set: (sethash key hashtable value)
@@ -248,6 +249,16 @@ pub const Ir = union(enum) {
 
     /// Hash table predicate: (hash-table-p x)
     hashtablep: struct {
+        operand: *const Ir,
+    },
+
+    /// Hash table clear: (clrhash hashtable)
+    hash_clear: struct {
+        operand: *const Ir,
+    },
+
+    /// Hash table test function query: (hash-table-test hashtable)
+    hash_test: struct {
         operand: *const Ir,
     },
 

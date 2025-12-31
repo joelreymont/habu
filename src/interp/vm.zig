@@ -1864,6 +1864,15 @@ pub const Vm = struct {
                     const result = hashTableGet(ht, key);
                     try self.push(result);
                 },
+                .hash_get_default => {
+                    const default = try self.pop();
+                    const key = try self.pop();
+                    const ht_val = try self.pop();
+                    if (!ht_val.isHashTable()) return error.TypeMismatch;
+                    const ht = ht_val.toPtr(HashTable);
+                    const result = hashTableGet(ht, key);
+                    try self.push(if (result.isNil()) default else result);
+                },
                 .hash_set => {
                     const value = try self.pop();
                     const key = try self.pop();
@@ -1898,6 +1907,25 @@ pub const Vm = struct {
                 .hashtablep => {
                     const val = try self.pop();
                     try self.push(if (val.isHashTable()) Value.t else Value.nil);
+                },
+                .hash_clear => {
+                    const ht_val = try self.pop();
+                    if (!ht_val.isHashTable()) return error.TypeMismatch;
+                    const ht = ht_val.toPtr(HashTable);
+                    hashTableClear(ht);
+                    try self.push(ht_val);
+                },
+                .hash_test => {
+                    const ht_val = try self.pop();
+                    if (!ht_val.isHashTable()) return error.TypeMismatch;
+                    const ht = ht_val.toPtr(HashTable);
+                    const test_name = switch (ht.test_type) {
+                        .eq => "eq",
+                        .eql => "eql",
+                        .equal => "equal",
+                    };
+                    const sym = try self.heap.intern(test_name);
+                    try self.push(sym);
                 },
                 .rationalp => {
                     const val = try self.pop();
@@ -3805,6 +3833,15 @@ fn hashTableRemove(ht: *HashTable, key: Value) bool {
         idx = (idx + 1) & mask;
     }
     return false;
+}
+
+fn hashTableClear(ht: *HashTable) void {
+    const entries = ht.getEntries();
+    for (entries[0..ht.capacity]) |*entry| {
+        entry.key = HashTable.EMPTY;
+        entry.value = Value.nil;
+    }
+    ht.count = 0;
 }
 
 // ============================================================================

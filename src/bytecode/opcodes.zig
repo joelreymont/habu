@@ -434,6 +434,11 @@ pub const Op = enum(u8) {
     /// Returns nil if key not found
     hash_get = 0x95,
 
+    /// Get value from hash table with default
+    /// ( hashtable key default -- value )
+    /// Returns default if key not found
+    hash_get_default = 0xC9,
+
     /// Set value in hash table
     /// ( hashtable key value -- )
     hash_set = 0x96,
@@ -444,6 +449,14 @@ pub const Op = enum(u8) {
 
     /// Get count of entries in hash table
     /// ( hashtable -- count )
+
+    /// Clear hash table
+    /// ( hashtable -- hashtable )
+    hash_clear = 0xCA,
+
+    /// Get hash table test function
+    /// ( hashtable -- test-symbol )
+    hash_test = 0xCB,
     hash_count = 0x98,
 
     /// Check if value is a hash table
@@ -895,7 +908,7 @@ pub const Op = enum(u8) {
             .check_fixnum, .check_cons, .check_symbol, .check_string,
             .check_vector, .check_closure, .check_non_nil, .check_list, .check_refine,
             .apply, .pop_catch, .throw,
-            .hash_get, .hash_set, .hash_rem, .hash_count, .hashtablep, .rationalp, .complexp,
+            .hash_get, .hash_get_default, .hash_set, .hash_rem, .hash_count, .hash_clear, .hash_test, .hashtablep, .rationalp, .complexp,
             .make_complex, .real_part, .imag_part,
             .characterp, .floatp, .char_code, .code_char, .char_eq, .char_lt, .char_gt,
             .read_char, .peek_char, .unread_char, .boundp, .fboundp,
