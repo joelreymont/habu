@@ -9,6 +9,9 @@ pub const Error = error{ TypeMismatch, DivisionByZero };
 
 /// Add two fixnums (with overflow check)
 pub fn add(a: Value, b: Value) Error!Value {
+    // Float contagion: if either operand is float, use float arithmetic
+    if (a.isFloat() or b.isFloat()) return addFloat(a, b);
+
     if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     const result = @addWithOverflow(a.toFixnum(), b.toFixnum());
     if (result[1] != 0) return error.TypeMismatch;
@@ -17,6 +20,9 @@ pub fn add(a: Value, b: Value) Error!Value {
 
 /// Subtract two fixnums (with overflow check)
 pub fn sub(a: Value, b: Value) Error!Value {
+    // Float contagion
+    if (a.isFloat() or b.isFloat()) return subFloat(a, b);
+
     if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     const result = @subWithOverflow(a.toFixnum(), b.toFixnum());
     if (result[1] != 0) return error.TypeMismatch;
@@ -25,6 +31,9 @@ pub fn sub(a: Value, b: Value) Error!Value {
 
 /// Multiply two fixnums (with overflow check)
 pub fn mul(a: Value, b: Value) Error!Value {
+    // Float contagion
+    if (a.isFloat() or b.isFloat()) return mulFloat(a, b);
+
     if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     const result = @mulWithOverflow(a.toFixnum(), b.toFixnum());
     if (result[1] != 0) return error.TypeMismatch;
@@ -33,6 +42,9 @@ pub fn mul(a: Value, b: Value) Error!Value {
 
 /// Divide two fixnums (integer division)
 pub fn div(a: Value, b: Value) Error!Value {
+    // Float contagion
+    if (a.isFloat() or b.isFloat()) return divFloat(a, b);
+
     if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     const dividend = a.toFixnum();
     const divisor = b.toFixnum();
