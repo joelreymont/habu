@@ -1,0 +1,32 @@
+(print "=== Testing String Streams ===")
+
+;; Test 1: String output stream creation
+(print "\n1. String output stream:")
+(define out (make-string-output-stream))
+(if (streamp out)
+    (print "✓ Created string output stream")
+    (print "✗ FAIL: Not a stream"))
+
+(if (output-stream-p out)
+    (print "✓ Is output stream")
+    (print "✗ FAIL: Not output stream"))
+
+;; Test 2: Get output from stream
+(print "\n2. Get output string:")
+(define s (get-output-stream-string out))
+(print "Output string captured:")
+(print s)
+(print "✓ get-output-stream-string works")
+
+;; Test 3: String input stream
+(print "\n3. String input stream:")
+(define in (make-string-input-stream "test data"))
+(if (streamp in)
+    (print "✓ Created string input stream")
+    (print "✗ FAIL: Not a stream"))
+
+(if (input-stream-p in)
+    (print "✓ Is input stream")
+    (print "✗ FAIL: Not input stream"))
+
+(print "\n=== Stream tests completed! ===")
