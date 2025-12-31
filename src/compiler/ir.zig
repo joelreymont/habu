@@ -376,6 +376,8 @@ pub const Ir = union(enum) {
     make_complex: BinaryOp, // create complex from real, imag
     real_part: UnaryOp, // get real part of complex
     imag_part: UnaryOp, // get imaginary part of complex
+    numerator: UnaryOp, // get numerator of rational
+    denominator: UnaryOp, // get denominator of rational
     /// Struct type predicate: checks if value is a specific struct type
     /// Used for occurrence typing to narrow to struct types
     struct_p: struct {
@@ -1047,6 +1049,18 @@ pub const IrBuilder = struct {
     pub fn imagPart(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .imag_part = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn numerator(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .numerator = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn denominator(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .denominator = .{ .operand = operand } };
         return node;
     }
 
