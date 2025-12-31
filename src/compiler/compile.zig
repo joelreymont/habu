@@ -907,7 +907,7 @@ pub const Compiler = struct {
             .macro_table = std.StringHashMap(Value).init(allocator),
             .vm = null,
             .heap = null,
-            .class_metadata = std.StringHashMap([]const []const u8).init(allocator),
+            .class_metadata = std.StringHashMap([]const SlotSpec).init(allocator),
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
         };
     }
