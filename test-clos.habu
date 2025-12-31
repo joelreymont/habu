@@ -70,3 +70,14 @@
 (print (area r))
 
 (print "\n=== All CLOS tests completed! ===")
+;; Test 6: Slot mutation with setf
+(print "\n6. Slot Mutation:")
+(define diana (make-person "Diana" 28))
+(print "Before mutation:")
+(print (person-age diana))
+(setf (slot-value diana 'age) 29)
+(print "After mutation:")
+(print (person-age diana))
+(if (= (slot-value diana 'age) 29)
+    (print "✓ slot-value mutation works")
+    (print "✗ FAIL: slot-value mutation broken"))

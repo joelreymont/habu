@@ -41,6 +41,5 @@ test {
     _ = rational;
     _ = complex;
     _ = clos;
-    _ = stream;
     _ = hash;
 }

@@ -1,0 +1,2236 @@
+; Habu Standard Library
+
+; Identity function
+(defun identity (x) x)
+
+; Constant combinator
+(defun constantly (x)
+  (lambda (y) x))
+
+; Function composition (f . g)(x) = f(g(x))
+(defun compose (f g)
+  (lambda (x) (funcall f (funcall g x))))
+
+; Flip argument order
+(defun flip (f)
+  (lambda (a b) (funcall f b a)))
+
+; Boolean operations
+(defun not (x) (if x nil t))
+
+(defun and2 (a b) (if a b nil))
+(defun or2 (a b) (if a a b))
+
+; Arithmetic helpers
+(defun inc ((n :type fixnum)) :type fixnum (+ n 1))
+(defun dec ((n :type fixnum)) :type fixnum (- n 1))
+(defun zerop ((n :type fixnum)) (= n 0))
+(defun plusp ((n :type fixnum)) (> n 0))
+(defun minusp ((n :type fixnum)) (< n 0))
+(defun evenp ((n :type fixnum)) (= (mod n 2) 0))
+(defun oddp ((n :type fixnum)) (= (mod n 2) 1))
+(defun abs ((n :type fixnum)) :type fixnum (if (< n 0) (- 0 n) n))
+(defun max2 ((a :type fixnum) (b :type fixnum)) :type fixnum (if (> a b) a b))
+(defun min2 ((a :type fixnum) (b :type fixnum)) :type fixnum (if (< a b) a b))
+
+; Equality - eql is same as eq for now (no floats with identity)
+(defun eql (a b) (eq a b))
+
+; Structural equality
+(defun equal (a b)
+  (cond
+    ((eq a b) t)
+    ((and (consp a) (consp b))
+     (and (equal (car a) (car b))
+          (equal (cdr a) (cdr b))))
+    ((and (stringp a) (stringp b))
+     (string= a b))
+    (t nil)))
+
+; Error signaling via condition system
+(defun error (msg) (signal (quote error) msg))
+(defun warn (msg) (signal (quote warning) msg))
+
+; ignore-errors - catch any error and return nil
+(defmacro ignore-errors (&rest forms)
+  `(handler-case (progn ,@forms)
+     (error (c) (values nil c))))
+
+; List operations
+(defun null (x) (eq x nil))
+(defun atom (x) (not (consp x)))
+
+(defun cadr (x) (car (cdr x)))
+(defun caddr (x) (car (cdr (cdr x))))
+(defun caar (x) (car (car x)))
+(defun cddr (x) (cdr (cdr x)))
+(defun cadar (x) (car (cdr (car x))))
+
+(defun first (x) (car x))
+(defun second (x) (cadr x))
+(defun third (x) (caddr x))
+(defun rest (x) (cdr x))
+
+; List construction
+(defun list1 (a) (cons a nil))
+(defun list2 (a b) (cons a (cons b nil)))
+(defun list3 (a b c) (cons a (cons b (cons c nil))))
+(defun list4 (a b c d) (cons a (cons b (cons c (cons d nil)))))
+
+; Length with TCO
+(defun length-aux (lst acc)
+  (if (null lst)
+      acc
+      (length-aux (cdr lst) (+ acc 1))))
+
+(defun length (lst)
+  (length-aux lst 0))
+
+; Append - the built-in append only takes 2 args
+; For multi-arg append, use append*
+(defun append* (&rest lists)
+  (labels ((helper (lsts)
+             (if (null lsts)
+                 nil
+               (if (null (cdr lsts))
+                   (car lsts)
+                 (append (car lsts) (helper (cdr lsts)))))))
+    (helper lists)))
+
+; Reverse with TCO
+(defun reverse-aux (lst acc)
+  (if (null lst)
+      acc
+      (reverse-aux (cdr lst) (cons (car lst) acc))))
+
+(defun reverse (lst)
+  (reverse-aux lst nil))
+
+; Map (applies f to each element)
+(defun map (f lst)
+  (if (null lst)
+      nil
+      (cons (funcall f (car lst)) (map f (cdr lst)))))
+
+; CL-compatible mapcar alias
+(defun mapcar (f lst) (map f lst))
+
+; Mapc - like map but for side effects, returns nil
+(defun mapc (f lst)
+  (if (null lst)
+      nil
+      (progn (funcall f (car lst))
+             (mapc f (cdr lst)))))
+
+; Filter (keeps elements where pred is true)
+(defun filter (pred lst)
+  (if (null lst)
+      nil
+      (if (funcall pred (car lst))
+          (cons (car lst) (filter pred (cdr lst)))
+          (filter pred (cdr lst)))))
+
+; Fold left (reduce)
+(defun foldl (f acc lst)
+  (if (null lst)
+      acc
+      (foldl f (funcall f acc (car lst)) (cdr lst))))
+
+; Fold right
+(defun foldr (f acc lst)
+  (if (null lst)
+      acc
+      (funcall f (car lst) (foldr f acc (cdr lst)))))
+
+;; CL-compatible reduce
+;; Type: (fn: A -> B -> A) -> (seq: List<B>) -> A  [with initial-value]
+;;       (fn: A -> A -> A) -> (seq: List<A>) -> A  [without initial-value]
+;; TYPING NOTE: CL reduce has complex polymorphism - the return type depends on
+;; whether initial-value is provided. With initial-value, fn:(A,B)->A returns A.
+;; Without initial-value, fn:(A,A)->A and seq must be non-empty, returns A.
+;; A fully typed version would need dependent types or overloading.
+(defun reduce (fn seq &key initial-value from-end)
+  (let ((lst (if from-end (reverse seq) seq)))
+    (if initial-value
+        (foldl fn initial-value lst)
+        (if (null lst)
+            (funcall fn)  ; CL spec: call fn with no args if seq empty and no init
+            (foldl fn (car lst) (cdr lst))))))
+
+; Take first n elements
+(defun take (n lst)
+  (if (or2 (zerop n) (null lst))
+      nil
+      (cons (car lst) (take (dec n) (cdr lst)))))
+
+; Drop first n elements
+(defun drop (n lst)
+  (if (or2 (zerop n) (null lst))
+      lst
+      (drop (dec n) (cdr lst))))
+
+; Nth element (0-indexed)
+(defun nth (n lst)
+  (if (zerop n)
+      (car lst)
+      (nth (dec n) (cdr lst))))
+
+; Last element
+(defun last (lst)
+  (if (null (cdr lst))
+      (car lst)
+      (last (cdr lst))))
+
+; Any/All predicates
+(defun any (pred lst)
+  (if (null lst)
+      nil
+      (if (funcall pred (car lst))
+          t
+          (any pred (cdr lst)))))
+
+(defun all (pred lst)
+  (if (null lst)
+      t
+      (if (funcall pred (car lst))
+          (all pred (cdr lst))
+          nil)))
+
+; Member test
+(defun member (x lst)
+  (if (null lst)
+      nil
+      (if (eq x (car lst))
+          lst
+          (member x (cdr lst)))))
+
+; Assoc - find pair in alist by key
+(defun assoc (key alist)
+  (if (null alist)
+      nil
+      (if (eq key (car (car alist)))
+          (car alist)
+          (assoc key (cdr alist)))))
+
+; list* - like list but last arg is tail
+(defun list* args
+  (if (null (cdr args))
+      (car args)
+      (cons (car args) (apply list* (cdr args)))))
+
+; Zip two lists
+(defun zip (xs ys)
+  (if (or2 (null xs) (null ys))
+      nil
+      (cons (list2 (car xs) (car ys))
+            (zip (cdr xs) (cdr ys)))))
+
+; Range [start, end)
+(defun range-aux (n end acc)
+  (if (= n end)
+      acc
+      (range-aux (inc n) end (cons n acc))))
+
+(defun range (start end)
+  (reverse (range-aux start end nil)))
+
+; Sum/Product
+(defun sum (lst)
+  (foldl (lambda (a b) (+ a b)) 0 lst))
+
+(defun product (lst)
+  (foldl (lambda (a b) (* a b)) 1 lst))
+
+; Factorial
+(defun factorial-aux (n acc)
+  (if (zerop n)
+      acc
+      (factorial-aux (dec n) (* n acc))))
+
+(defun factorial (n)
+  (factorial-aux n 1))
+
+; Fibonacci with TCO
+(defun fib-aux (n a b)
+  (if (zerop n)
+      a
+      (fib-aux (dec n) b (+ a b))))
+
+(defun fib (n)
+  (fib-aux n 0 1))
+
+; ============================================================================
+; Macros
+; ============================================================================
+
+; when - execute body if test is true
+(defmacro when (test &rest body)
+  (list 'if test (cons 'progn body)))
+
+; unless - execute body if test is false
+(defmacro unless (test &rest body)
+  (list 'if test nil (cons 'progn body)))
+
+; return - shorthand for (return-from nil value)
+; Used to exit from block with name nil (implicit in loop, dolist, dotimes)
+(defmacro return (&optional value)
+  (list 'return-from nil value))
+
+; dolist - iterate over list elements
+; (dolist (var list) body...) => nil
+(defmacro dolist (spec &rest body)
+  (let ((var (car spec))
+        (lst (cadr spec))
+        (loop-fn (gensym)))
+    (list 'let (list (list loop-fn
+                           (list 'lambda (list var)
+                                 (cons 'progn body))))
+          (list 'mapc loop-fn lst)
+          nil)))
+
+; dotimes - iterate n times
+; (dotimes (var n) body...) => nil
+(defmacro dotimes (spec &rest body)
+  (let ((var (car spec))
+        (count (cadr spec))
+        (loop-fn (gensym))
+        (i (gensym)))
+    (list 'let (list (list loop-fn
+                           (list 'lambda (list var)
+                                 (cons 'progn body))))
+          (list 'let (list (list i 0))
+                (list 'block nil
+                      (list 'loop
+                            (list 'when (list '>= i count)
+                                  (list 'return-from nil nil))
+                            (list loop-fn i)
+                            (list 'setq i (list '+ i 1))))))))
+
+; incf - increment place (simple version for variables only)
+(defmacro incf (place &optional (delta 1))
+  (list 'setq place (list '+ place delta)))
+
+; decf - decrement place
+(defmacro decf (place &optional (delta 1))
+  (list 'setq place (list '- place delta)))
+
+; push - push value onto list (destructive)
+; (push val place) => new-list
+(defmacro push (val place)
+  (list 'setq place (list 'cons val place)))
+
+; pop - pop value from list (destructive)
+; (pop place) => first-element
+(defmacro pop (place)
+  (let ((temp (gensym)))
+    (list 'let (list (list temp (list 'car place)))
+          (list 'setq place (list 'cdr place))
+          temp)))
+
+; cond - multi-way conditional
+; Already have this as a special form, but define macro version for completeness
+; (Note: cond is a special form in Habu, so this is just documentation)
+
+; case - dispatch on value (simple version)
+; Note: In Habu, 't' at read time becomes the value t (= fixnum 1), not a symbol.
+; So we check (eq keys t) not (eq keys 't)
+(defmacro case (keyform &rest clauses)
+  (let ((key (gensym)))
+    (list 'let (list (list key keyform))
+          (cons 'cond
+                (mapcar (lambda (clause)
+                          (let ((keys (car clause))
+                                (body (cdr clause)))
+                            (if (or (eq keys t) (eq keys 'otherwise))
+                                (cons t body)
+                                (list (list 'member key (list 'quote
+                                              (if (consp keys) keys (list keys))))
+                                      (cons 'progn body)))))
+                        clauses)))))
+
+; prog1 - evaluate forms, return first value
+(defmacro prog1 (first &rest rest)
+  (let ((result (gensym)))
+    (list 'let (list (list result first))
+          (cons 'progn rest)
+          result)))
+
+; prog2 - evaluate forms, return second value
+(defmacro prog2 (first second &rest rest)
+  (list 'progn first
+        (cons 'prog1 (cons second rest))))
+
+; and - short-circuit logical and (macro version)
+(defmacro and (&rest forms)
+  (if (null forms)
+      t
+      (if (null (cdr forms))
+          (car forms)
+          (list 'if (car forms)
+                (cons 'and (cdr forms))
+                nil))))
+
+; or - short-circuit logical or (macro version)
+(defmacro or (&rest forms)
+  (if (null forms)
+      nil
+      (if (null (cdr forms))
+          (car forms)
+          (let ((temp (gensym)))
+            (list 'let (list (list temp (car forms)))
+                  (list 'if temp temp
+                        (cons 'or (cdr forms))))))))
+
+; aif - anaphoric if (binds 'it' to test value)
+(defmacro aif (test then &optional else)
+  (list 'let (list (list 'it test))
+        (list 'if 'it then else)))
+
+; awhen - anaphoric when
+(defmacro awhen (test &rest body)
+  (list 'aif test (cons 'progn body)))
+
+; with-gensyms - bind multiple gensyms
+(defmacro with-gensyms (names &rest body)
+  (list 'let
+        (mapcar (lambda (name) (list name (list 'gensym))) names)
+        (cons 'progn body)))
+
+;; ============================================================
+;; Higher-order sequence functions
+;; ============================================================
+
+; remove-if - remove elements satisfying predicate
+(defun remove-if (pred lst)
+  (cond
+    ((null lst) nil)
+    ((funcall pred (car lst)) (remove-if pred (cdr lst)))
+    (t (cons (car lst) (remove-if pred (cdr lst))))))
+
+; remove-if-not - remove elements NOT satisfying predicate
+(defun remove-if-not (pred lst)
+  (remove-if (lambda (x) (not (funcall pred x))) lst))
+
+; find-if - find first element satisfying predicate
+(defun find-if (pred lst)
+  (cond
+    ((null lst) nil)
+    ((funcall pred (car lst)) (car lst))
+    (t (find-if pred (cdr lst)))))
+
+; find-if-not - find first element NOT satisfying predicate
+(defun find-if-not (pred lst)
+  (find-if (lambda (x) (not (funcall pred x))) lst))
+
+; position-if - find position of first element satisfying predicate
+(defun position-if-aux (pred lst n)
+  (cond
+    ((null lst) nil)
+    ((funcall pred (car lst)) n)
+    (t (position-if-aux pred (cdr lst) (+ n 1)))))
+
+(defun position-if (pred lst)
+  (position-if-aux pred lst 0))
+
+; position-if-not - find position of first element NOT satisfying predicate
+(defun position-if-not (pred lst)
+  (position-if (lambda (x) (not (funcall pred x))) lst))
+
+; count-if - count elements satisfying predicate
+(defun count-if-aux (pred lst n)
+  (cond
+    ((null lst) n)
+    ((funcall pred (car lst)) (count-if-aux pred (cdr lst) (+ n 1)))
+    (t (count-if-aux pred (cdr lst) n))))
+
+(defun count-if (pred lst)
+  (count-if-aux pred lst 0))
+
+; count-if-not - count elements NOT satisfying predicate
+(defun count-if-not (pred lst)
+  (count-if (lambda (x) (not (funcall pred x))) lst))
+
+; every - true if predicate holds for all elements
+(defun every (pred lst)
+  (cond
+    ((null lst) t)
+    ((not (funcall pred (car lst))) nil)
+    (t (every pred (cdr lst)))))
+
+; some - true if predicate holds for some element, returns that element
+(defun some (pred lst)
+  (cond
+    ((null lst) nil)
+    ((funcall pred (car lst)) (car lst))
+    (t (some pred (cdr lst)))))
+
+; notevery - true if predicate fails for some element
+(defun notevery (pred lst)
+  (not (every pred lst)))
+
+; notany - true if predicate fails for all elements
+(defun notany (pred lst)
+  (not (some pred lst)))
+
+; subseq - extract subsequence (start is inclusive, end is exclusive)
+(defun subseq (seq start &optional end)
+  (let ((lst (drop start seq)))
+    (if end
+        (take (- end start) lst)
+        lst)))
+
+; substitute - replace old with new in sequence
+(defun substitute (new old seq &key (test 'eql))
+  (mapcar (lambda (x) (if (funcall test x old) new x)) seq))
+
+; substitute-if - replace elements satisfying pred with new
+(defun substitute-if (new pred seq)
+  (mapcar (lambda (x) (if (funcall pred x) new x)) seq))
+
+; substitute-if-not - replace elements NOT satisfying pred with new
+(defun substitute-if-not (new pred seq)
+  (substitute-if new (lambda (x) (not (funcall pred x))) seq))
+
+; nsubstitute - destructive substitute (for now, same as substitute)
+(defun nsubstitute (new old seq &key (test 'eql))
+  (substitute new old seq :test test))
+
+;; ============================================================
+;; Destructuring
+;; ============================================================
+
+; destructuring-bind - bind pattern to value and evaluate body
+; Supports: symbols, (a b c), (a . rest), (a b &rest rest), (a &optional b)
+(defmacro destructuring-bind (pattern expr &rest body)
+  (let ((temp (gensym "EXPR")))
+    (list 'let (list (list temp expr))
+          (cons 'let
+                (cons (destructuring-bind-bindings pattern temp)
+                      body)))))
+
+; Helper: generate binding list for destructuring-bind
+(defun destructuring-bind-bindings (pattern expr)
+  (cond
+    ; Simple variable
+    ((symbolp pattern)
+     (if (eq pattern '_)
+         nil  ; Ignore underscore
+         (list (list pattern expr))))
+
+    ; Null pattern - no bindings
+    ((null pattern) nil)
+
+    ; Cons pattern (a . b) or list pattern (a b c)
+    ((consp pattern)
+     (let ((first (car pattern))
+           (rest (cdr pattern)))
+       (cond
+         ; &rest binding
+         ((eq first '&rest)
+          (if (and (consp rest) (symbolp (car rest)))
+              (list (list (car rest) expr))
+              (error "Invalid &rest pattern")))
+
+         ; &optional binding
+         ((eq first '&optional)
+          (destructuring-bind-optional rest expr))
+
+         ; Dotted pair (a . b)
+         ((and (symbolp first) (symbolp rest) rest)
+          (append (destructuring-bind-bindings first (list 'car expr))
+                  (destructuring-bind-bindings rest (list 'cdr expr))))
+
+         ; List pattern
+         (t
+          (append (destructuring-bind-bindings first (list 'car expr))
+                  (destructuring-bind-bindings rest (list 'cdr expr)))))))
+
+    ; Unknown pattern
+    (t (error "Invalid destructuring pattern"))))
+
+; Helper for &optional parameters
+(defun destructuring-bind-optional (params expr)
+  (if (null params)
+      nil
+      (let ((param (car params))
+            (rest (cdr params)))
+        (cond
+          ((eq param '&rest)
+           (destructuring-bind-bindings (cons '&rest rest) expr))
+          ((symbolp param)
+           (cons (list param (list 'car expr))
+                 (destructuring-bind-optional rest (list 'cdr expr))))
+          ((consp param)
+           ; (var default) form
+           (let ((var (car param))
+                 (default (cadr param)))
+             (cons (list var (list 'if expr (list 'car expr) default))
+                   (destructuring-bind-optional rest (list 'cdr expr)))))
+          (t (error "Invalid &optional parameter"))))))
+
+;; ============================================================
+;; String Functions
+;; ============================================================
+
+; string= - case-sensitive string equality
+(defun string= (s1 s2)
+  (string-equal s1 s2))
+
+; string/= - case-sensitive string inequality  
+(defun string/= (s1 s2)
+  (not (string= s1 s2)))
+
+; string< - lexicographic less-than
+(defun string< (s1 s2)
+  (string-lt s1 s2))
+
+; string> - lexicographic greater-than
+(defun string> (s1 s2)
+  (string< s2 s1))
+
+; string<= - lexicographic less-than-or-equal
+(defun string<= (s1 s2)
+  (not (string> s1 s2)))
+
+; string>= - lexicographic greater-than-or-equal
+(defun string>= (s1 s2)
+  (not (string< s1 s2)))
+
+; char-whitespace-p - check if character is whitespace
+(defun char-whitespace-p (c)
+  (or (char= c #\Space)
+      (char= c #\Tab)
+      (char= c #\Newline)
+      (char= c #\Return)))
+
+; string-trim-left-aux - helper for left trim
+(defun string-trim-left-aux (chars s i)
+  (if (>= i (length s))
+      ""
+      (if (member (char s i) chars :test #'char=)
+          (string-trim-left-aux chars s (+ i 1))
+          (subseq s i))))
+
+; string-left-trim - remove leading characters
+(defun string-left-trim (chars s)
+  (let ((char-list (if (stringp chars)
+                       (string-to-list chars)
+                       chars)))
+    (string-trim-left-aux char-list s 0)))
+
+; string-trim-right-aux - helper for right trim  
+(defun string-trim-right-aux (chars s i)
+  (if (< i 0)
+      ""
+      (if (member (char s i) chars :test #'char=)
+          (string-trim-right-aux chars s (- i 1))
+          (subseq s 0 (+ i 1)))))
+
+; string-right-trim - remove trailing characters
+(defun string-right-trim (chars s)
+  (let ((char-list (if (stringp chars)
+                       (string-to-list chars)
+                       chars))
+        (len (length s)))
+    (if (= len 0)
+        ""
+        (string-trim-right-aux char-list s (- len 1)))))
+
+; string-trim - remove leading and trailing characters
+(defun string-trim (chars s)
+  (string-right-trim chars (string-left-trim chars s)))
+
+;; ============================================================
+;; Copy Functions
+;; ============================================================
+
+; copy-list - shallow copy of list structure
+(defun copy-list (lst)
+  (if (null lst)
+      nil
+      (cons (car lst) (copy-list (cdr lst)))))
+
+; copy-tree - deep copy of tree structure
+(defun copy-tree (tree)
+  (if (consp tree)
+      (cons (copy-tree (car tree))
+            (copy-tree (cdr tree)))
+      tree))
+
+; copy-seq - copy sequence (for lists, same as copy-list)
+(defun copy-seq (seq)
+  (if (vectorp seq)
+      (let* ((len (length seq))
+             (new (make-vector len nil)))
+        (dotimes (i len new)
+          (setf (svref new i) (svref seq i))))
+      (copy-list seq)))
+
+;; ============================================================
+;; Type Dispatch Macros
+;; ============================================================
+
+; typecase - dispatch on type of expression
+(defmacro typecase (keyform &rest clauses)
+  (let ((key (gensym "KEY")))
+    (list 'let (list (list key keyform))
+          (cons 'cond
+                (mapcar (lambda (clause)
+                          (let ((type-spec (car clause))
+                                (body (cdr clause)))
+                            (if (or (eq type-spec 't)
+                                    (eq type-spec 'otherwise))
+                                (cons t body)
+                                (cons (list 'typep key (list 'quote type-spec))
+                                      body))))
+                        clauses)))))
+
+; etypecase - error-signaling typecase
+(defmacro etypecase (keyform &rest clauses)
+  (let ((key (gensym "KEY")))
+    (list 'let (list (list key keyform))
+          (cons 'cond
+                (append
+                 (mapcar (lambda (clause)
+                           (let ((type-spec (car clause))
+                                 (body (cdr clause)))
+                             (cons (list 'typep key (list 'quote type-spec))
+                                   body)))
+                         clauses)
+                 (list (list t (list 'error "No matching type in etypecase"))))))))
+
+; ecase - error-signaling case
+(defmacro ecase (keyform &rest clauses)
+  (let ((key (gensym "KEY")))
+    (list 'let (list (list key keyform))
+          (cons 'cond
+                (append
+                 (mapcar (lambda (clause)
+                           (let ((keys (car clause))
+                                 (body (cdr clause)))
+                             (if (listp keys)
+                                 (cons (cons 'member (list key (list 'quote keys)))
+                                       body)
+                                 (cons (list 'eql key (list 'quote keys))
+                                       body))))
+                         clauses)
+                 (list (list t (list 'error "No matching key in ecase"))))))))
+
+; ccase - correctable ecase (for now, same as ecase)
+(defmacro ccase (keyform &rest clauses)
+  (cons 'ecase (cons keyform clauses)))
+
+; ctypecase - correctable etypecase (for now, same as etypecase)
+(defmacro ctypecase (keyform &rest clauses)
+  (cons 'etypecase (cons keyform clauses)))
+
+;; ============================================================
+;; Sorting Functions
+;; ============================================================
+
+; merge - merge two sorted lists
+(defun merge-lists (l1 l2 pred)
+  (cond
+    ((null l1) l2)
+    ((null l2) l1)
+    ((funcall pred (car l1) (car l2))
+     (cons (car l1) (merge-lists (cdr l1) l2 pred)))
+    (t
+     (cons (car l2) (merge-lists l1 (cdr l2) pred)))))
+
+; split-list - split list into two halves
+(defun split-list (lst)
+  (let ((slow lst)
+        (fast (cdr lst)))
+    (loop while (and fast (cdr fast))
+          do (setq slow (cdr slow))
+             (setq fast (cddr fast)))
+    (let ((second (cdr slow)))
+      (rplacd slow nil)
+      (values lst second))))
+
+; sort - merge sort (stable)
+(defun sort (seq pred)
+  (if (or (null seq) (null (cdr seq)))
+      seq
+      (multiple-value-bind (left right) (split-list (copy-list seq))
+        (merge-lists (sort left pred)
+                     (sort right pred)
+                     pred))))
+
+; stable-sort - same as sort (merge sort is stable)
+(defun stable-sort (seq pred)
+  (sort seq pred))
+
+;; ============================================================
+;; Sequence Concatenation
+;; ============================================================
+
+; concatenate - concatenate sequences into result type
+(defun concatenate (result-type &rest seqs)
+  (let ((combined (apply #'append (mapcar (lambda (s)
+                                            (if (vectorp s)
+                                                (coerce s 'list)
+                                                s))
+                                          seqs))))
+    (cond
+      ((eq result-type 'list) combined)
+      ((eq result-type 'string)
+       (list-to-string combined))
+      ((eq result-type 'vector)
+       (coerce combined 'vector))
+      (t combined))))
+
+; coerce - convert between sequence types
+(defun coerce (object result-type)
+  (cond
+    ; Same type - return as-is
+    ((and (eq result-type 'list) (listp object)) object)
+    ((and (eq result-type 'vector) (vectorp object)) object)
+    ((and (eq result-type 'string) (stringp object)) object)
+    ; List to vector
+    ((and (eq result-type 'vector) (listp object))
+     (let* ((len (length object))
+            (vec (make-vector len nil)))
+       (let ((i 0))
+         (dolist (x object vec)
+           (setf (svref vec i) x)
+           (setq i (+ i 1))))))
+    ; Vector to list
+    ((and (eq result-type 'list) (vectorp object))
+     (let ((lst nil)
+           (len (length object)))
+       (dotimes (i len (nreverse lst))
+         (push (svref object (- len i 1)) lst))))
+    ; String to list
+    ((and (eq result-type 'list) (stringp object))
+     (string-to-list object))
+    ; List to string
+    ((and (eq result-type 'string) (listp object))
+     (list-to-string object))
+    ; Character to string
+    ((and (eq result-type 'string) (characterp object))
+     (make-string 1 object))
+    (t (error "Cannot coerce to type"))))
+
+;; ============================================================
+;; Multiple Value Utilities
+;; ============================================================
+
+; multiple-value-setq - set variables from multiple values
+(defmacro multiple-value-setq (vars form)
+  (let ((vals (gensym "VALS")))
+    (list 'let (list (list vals (list 'multiple-value-list form)))
+          (cons 'progn
+                (let ((i 0))
+                  (mapcar (lambda (var)
+                            (prog1
+                                (list 'setq var (list 'nth i vals))
+                              (setq i (+ i 1))))
+                          vars))))))
+
+; nth-value - get nth value from multiple-value form
+(defmacro nth-value (n form)
+  (list 'nth n (list 'multiple-value-list form)))
+
+;; ============================================================
+;; Search and Fill Functions
+;; ============================================================
+
+; search - find subsequence in sequence
+(defun search (seq1 seq2 &key (test 'eql) (start1 0) (start2 0))
+  (let ((len1 (- (length seq1) start1))
+        (len2 (- (length seq2) start2)))
+    (if (> len1 len2)
+        nil
+        (search-aux seq1 seq2 start1 start2 len1 test))))
+
+(defun search-aux (seq1 seq2 s1 s2 len1 test)
+  (cond
+    ((> (+ s2 len1) (length seq2)) nil)
+    ((search-match seq1 seq2 s1 s2 len1 test) s2)
+    (t (search-aux seq1 seq2 s1 (+ s2 1) len1 test))))
+
+(defun search-match (seq1 seq2 s1 s2 len test)
+  (if (= len 0)
+      t
+      (and (funcall test (elt seq1 s1) (elt seq2 s2))
+           (search-match seq1 seq2 (+ s1 1) (+ s2 1) (- len 1) test))))
+
+; mismatch - find first position where sequences differ
+(defun mismatch (seq1 seq2 &key (test 'eql) (start1 0) (start2 0))
+  (mismatch-aux seq1 seq2 start1 start2 test))
+
+(defun mismatch-aux (seq1 seq2 i1 i2 test)
+  (cond
+    ((>= i1 (length seq1))
+     (if (>= i2 (length seq2)) nil i1))
+    ((>= i2 (length seq2)) i1)
+    ((not (funcall test (elt seq1 i1) (elt seq2 i2))) i1)
+    (t (mismatch-aux seq1 seq2 (+ i1 1) (+ i2 1) test))))
+
+; fill - fill sequence with value
+(defun fill (seq item &key (start 0) end)
+  (let ((real-end (or end (length seq))))
+    (if (vectorp seq)
+        (dotimes (i (- real-end start) seq)
+          (setf (svref seq (+ start i)) item))
+        (fill-list seq item start real-end 0))))
+
+(defun fill-list (lst item start end i)
+  (cond
+    ((null lst) nil)
+    ((>= i end) lst)
+    ((< i start) (cons (car lst) (fill-list (cdr lst) item start end (+ i 1))))
+    (t (cons item (fill-list (cdr lst) item start end (+ i 1))))))
+
+; replace - copy elements from one sequence to another
+(defun replace (seq1 seq2 &key (start1 0) end1 (start2 0) end2)
+  (let ((real-end1 (or end1 (length seq1)))
+        (real-end2 (or end2 (length seq2))))
+    (let ((count (min (- real-end1 start1) (- real-end2 start2))))
+      (dotimes (i count seq1)
+        (setf (elt seq1 (+ start1 i)) (elt seq2 (+ start2 i)))))))
+
+;; ============================================================
+;; Prog Special Forms
+;; ============================================================
+
+; prog - sequential execution with local bindings and tags
+(defmacro prog (bindings &rest body)
+  (list 'block nil
+        (cons 'let bindings
+              (list (cons 'tagbody body)))))
+
+; prog* - like prog but bindings are sequential
+(defmacro prog* (bindings &rest body)
+  (list 'block nil
+        (cons 'let* bindings
+              (list (cons 'tagbody body)))))
+
+; prog1 - evaluate forms, return first value
+(defmacro prog1 (first &rest rest)
+  (let ((result (gensym "RESULT")))
+    (list 'let (list (list result first))
+          (cons 'progn rest)
+          result)))
+
+; prog2 - evaluate forms, return second value  
+(defmacro prog2 (first second &rest rest)
+  (list 'progn
+        first
+        (cons 'prog1 (cons second rest))))
+
+;; ============================================================
+;; Hash Table Functions
+;; ============================================================
+
+; clrhash - clear all entries from hash table
+(defun clrhash (table)
+  (maphash (lambda (k v)
+             (declare (ignore v))
+             (remhash k table))
+           table)
+  table)
+
+; hash-table-keys - get list of all keys
+(defun hash-table-keys (table)
+  (let ((keys nil))
+    (maphash (lambda (k v)
+               (declare (ignore v))
+               (push k keys))
+             table)
+    keys))
+
+; hash-table-values - get list of all values
+(defun hash-table-values (table)
+  (let ((vals nil))
+    (maphash (lambda (k v)
+               (declare (ignore k))
+               (push v vals))
+             table)
+    vals))
+
+; hash-table-alist - convert hash table to alist
+(defun hash-table-alist (table)
+  (let ((alist nil))
+    (maphash (lambda (k v)
+               (push (cons k v) alist))
+             table)
+    alist))
+
+; alist-hash-table - convert alist to hash table
+(defun alist-hash-table (alist &key (test 'eql))
+  (let ((table (make-hash-table :test test)))
+    (dolist (pair alist table)
+      (setf (gethash (car pair) table) (cdr pair)))))
+
+; copy-hash-table - shallow copy of hash table
+(defun copy-hash-table (table)
+  (let ((new (make-hash-table :test (hash-table-test table))))
+    (maphash (lambda (k v)
+               (setf (gethash k new) v))
+             table)
+    new))
+
+; hash-table-test - get test function of hash table
+; (placeholder - returns 'eql for now)
+(defun hash-table-test (table)
+  (declare (ignore table))
+  'eql)
+
+; hash-table-size - get allocated size
+; (placeholder - returns count for now)
+(defun hash-table-size (table)
+  (hash-table-count table))
+
+;; ============================================================
+;; Condition System
+;; ============================================================
+
+; Simple condition representation as a cons: (type . data)
+
+; define-condition - define a condition type
+; For now, just creates a constructor function
+(defmacro define-condition (name parent-types slots &rest options)
+  (declare (ignore parent-types options))
+  (let ((slot-names (mapcar (lambda (s) (if (consp s) (car s) s)) slots)))
+    (list 'defun name slot-names
+          (list 'list (list 'quote name)
+                (cons 'list
+                      (mapcar (lambda (s) (list 'cons (list 'quote s) s))
+                              slot-names))))))
+
+; make-condition - create a condition instance
+(defun make-condition (type &rest args)
+  (cons type (plist-alist args)))
+
+; Convert plist to alist
+(defun plist-alist (plist)
+  (if (null plist)
+      nil
+      (cons (cons (car plist) (cadr plist))
+            (plist-alist (cddr plist)))))
+
+; condition-type - get type of condition
+(defun condition-type (condition)
+  (car condition))
+
+; condition-slot - get slot value from condition
+(defun condition-slot (condition slot-name)
+  (cdr (assoc slot-name (cdr condition))))
+
+; handler-bind - establish condition handlers
+(defmacro handler-bind (bindings &rest body)
+  (if (null bindings)
+      (cons 'progn body)
+      (let ((binding (car bindings)))
+        (list 'catch '%condition%
+              (list 'handler-bind (cdr bindings)
+                    (cons 'progn body))))))
+
+; signal - signal a condition (can be handled)
+(defun signal (condition)
+  (throw '%condition% condition))
+
+; error-condition - signal an error condition
+(defun error-condition (condition)
+  (throw '%condition% condition))
+
+; cerror - continuable error
+(defun cerror (format-string condition)
+  (declare (ignore format-string))
+  (signal condition))
+
+; warn - issue a warning
+(defun warn (format-string &rest args)
+  (apply #'format t format-string args)
+  (terpri)
+  nil)
+
+; simple-condition - basic condition with format control
+(defun simple-condition (format-control &rest format-arguments)
+  (cons 'simple-condition
+        (list (cons 'format-control format-control)
+              (cons 'format-arguments format-arguments))))
+
+; simple-error - basic error condition
+(defun simple-error (format-control &rest format-arguments)
+  (cons 'simple-error
+        (list (cons 'format-control format-control)
+              (cons 'format-arguments format-arguments))))
+
+;; ============================================================
+;; Generalized Reference (SETF)
+;; ============================================================
+
+; psetf - parallel setf (evaluate all values before assigning)
+(defmacro psetf (&rest pairs)
+  (if (null pairs)
+      nil
+      (let ((places nil)
+            (values nil)
+            (temps nil))
+        ; Collect places, values, and generate temps
+        (let ((rest pairs))
+          (loop while rest do
+                (let ((place (car rest))
+                      (value (cadr rest))
+                      (temp (gensym "TEMP")))
+                  (push place places)
+                  (push (list temp value) temps)
+                  (push temp values)
+                  (setq rest (cddr rest)))))
+        ; Generate let with all temps, then setf all places
+        (list 'let (nreverse temps)
+              (cons 'progn
+                    (mapcar (lambda (p v) (list 'setf p v))
+                            (nreverse places)
+                            (nreverse values)))))))
+
+; rotatef - rotate values through places
+(defmacro rotatef (&rest places)
+  (if (null places)
+      nil
+      (if (null (cdr places))
+          nil
+          (let ((temps (mapcar (lambda (p) 
+                                 (declare (ignore p))
+                                 (gensym "TEMP"))
+                               places)))
+            (list 'let (mapcar #'list temps places)
+                  (cons 'psetf
+                        (apply #'append
+                               (mapcar #'list 
+                                       places
+                                       (append (cdr temps) (list (car temps)))))))))))
+
+; shiftf - shift values through places, return first
+(defmacro shiftf (&rest places-and-value)
+  (let ((places (butlast places-and-value))
+        (value (car (last places-and-value))))
+    (if (null places)
+        value
+        (let ((result (gensym "RESULT"))
+              (temps (mapcar (lambda (p)
+                               (declare (ignore p))
+                               (gensym "TEMP"))
+                             (cdr places))))
+          (list 'let (cons (list result (car places))
+                           (mapcar #'list temps (cdr places)))
+                (cons 'psetf
+                      (apply #'append
+                             (mapcar #'list
+                                     places
+                                     (append temps (list value)))))
+                result)))))
+
+; incf - increment place
+(defmacro incf (place &optional (delta 1))
+  (list 'setf place (list '+ place delta)))
+
+; decf - decrement place
+(defmacro decf (place &optional (delta 1))
+  (list 'setf place (list '- place delta)))
+
+;; ============================================================
+;; Additional Utilities
+;; ============================================================
+
+; constantly - return a function that always returns value
+(defun constantly (value)
+  (lambda (&rest args)
+    (declare (ignore args))
+    value))
+
+; complement - return negation of predicate
+(defun complement (fn)
+  (lambda (&rest args)
+    (not (apply fn args))))
+
+; compose - compose two functions
+(defun compose (f g)
+  (lambda (&rest args)
+    (funcall f (apply g args))))
+
+; identity - return argument unchanged
+(defun identity (x) x)
+
+; conjoin - combine predicates with AND
+(defun conjoin (&rest predicates)
+  (lambda (&rest args)
+    (every (lambda (p) (apply p args)) predicates)))
+
+; disjoin - combine predicates with OR
+(defun disjoin (&rest predicates)
+  (lambda (&rest args)
+    (some (lambda (p) (apply p args)) predicates)))
+
+; curry - partial application (first arg)
+(defun curry (fn arg)
+  (lambda (&rest args)
+    (apply fn arg args)))
+
+; rcurry - partial application (last arg)
+(defun rcurry (fn arg)
+  (lambda (&rest args)
+    (apply fn (append args (list arg)))))
+
+; flip - swap first two arguments
+(defun flip (fn)
+  (lambda (a b &rest args)
+    (apply fn b a args)))
+
+; juxt - apply multiple functions, return list of results
+(defun juxt (&rest fns)
+  (lambda (&rest args)
+    (mapcar (lambda (f) (apply f args)) fns)))
+
+;; ============================================================
+;; List Utilities
+;; ============================================================
+
+; iota - generate list of integers
+(defun iota (count &optional (start 0) (step 1))
+  (if (<= count 0)
+      nil
+      (cons start (iota (- count 1) (+ start step) step))))
+
+; partition - split list by predicate
+(defun partition (pred lst)
+  (let ((yes nil)
+        (no nil))
+    (dolist (x lst (values (nreverse yes) (nreverse no)))
+      (if (funcall pred x)
+          (push x yes)
+          (push x no)))))
+
+; partition-if - same as partition
+(defun partition-if (pred lst)
+  (partition pred lst))
+
+; group-by - group elements by key function
+(defun group-by (key-fn lst)
+  (let ((groups (make-hash-table :test 'equal)))
+    (dolist (x lst)
+      (let ((k (funcall key-fn x)))
+        (sethash k groups (cons x (gethash k groups nil)))))
+    ; Convert to alist with reversed lists
+    (let ((result nil))
+      (maphash (lambda (k v)
+                 (push (cons k (nreverse v)) result))
+               groups)
+      result)))
+
+; frequencies - count occurrences
+(defun frequencies (lst)
+  (let ((counts (make-hash-table :test 'equal)))
+    (dolist (x lst)
+      (sethash x counts (+ 1 (gethash x counts 0))))
+    (hash-table-alist counts)))
+
+; interpose - insert separator between elements
+(defun interpose (sep lst)
+  (if (or (null lst) (null (cdr lst)))
+      lst
+      (cons (car lst)
+            (cons sep
+                  (interpose sep (cdr lst))))))
+
+; intersperse - same as interpose
+(defun intersperse (sep lst)
+  (interpose sep lst))
+
+;; ============================================================
+;; Tree and Association List Operations
+;; ============================================================
+
+; tree-equal - compare trees for structural equality
+(defun tree-equal (a b &key (test 'eql))
+  (cond
+    ((and (consp a) (consp b))
+     (and (tree-equal (car a) (car b) :test test)
+          (tree-equal (cdr a) (cdr b) :test test)))
+    ((or (consp a) (consp b)) nil)
+    (t (funcall test a b))))
+
+; subst - substitute new for old in tree
+(defun subst (new old tree &key (test 'eql))
+  (cond
+    ((funcall test tree old) new)
+    ((consp tree)
+     (let ((new-car (subst new old (car tree) :test test))
+           (new-cdr (subst new old (cdr tree) :test test)))
+       (if (and (eq new-car (car tree))
+                (eq new-cdr (cdr tree)))
+           tree
+           (cons new-car new-cdr))))
+    (t tree)))
+
+; subst-if - substitute new for elements satisfying pred
+(defun subst-if (new pred tree)
+  (cond
+    ((funcall pred tree) new)
+    ((consp tree)
+     (cons (subst-if new pred (car tree))
+           (subst-if new pred (cdr tree))))
+    (t tree)))
+
+; acons - add entry to front of alist
+(defun acons (key value alist)
+  (cons (cons key value) alist))
+
+; pairlis - construct alist from parallel lists
+(defun pairlis (keys values &optional alist)
+  (if (or (null keys) (null values))
+      alist
+      (acons (car keys) (car values)
+             (pairlis (cdr keys) (cdr values) alist))))
+
+; rassoc - reverse assoc (search by value)
+(defun rassoc (item alist &key (test 'eql))
+  (if (null alist)
+      nil
+      (if (funcall test item (cdar alist))
+          (car alist)
+          (rassoc item (cdr alist) :test test))))
+
+; rassoc-if - reverse assoc with predicate
+(defun rassoc-if (pred alist)
+  (if (null alist)
+      nil
+      (if (funcall pred (cdar alist))
+          (car alist)
+          (rassoc-if pred (cdr alist)))))
+
+;; ============================================================
+;; Set Operations
+;; ============================================================
+
+; union - set union
+(defun union (list1 list2 &key (test 'eql))
+  (let ((result (copy-list list2)))
+    (dolist (x list1 result)
+      (unless (member x result :test test)
+        (push x result)))))
+
+; intersection - set intersection
+(defun intersection (list1 list2 &key (test 'eql))
+  (let ((result nil))
+    (dolist (x list1 (nreverse result))
+      (when (member x list2 :test test)
+        (push x result)))))
+
+; set-difference - elements in list1 not in list2
+(defun set-difference (list1 list2 &key (test 'eql))
+  (let ((result nil))
+    (dolist (x list1 (nreverse result))
+      (unless (member x list2 :test test)
+        (push x result)))))
+
+; set-exclusive-or - symmetric difference
+(defun set-exclusive-or (list1 list2 &key (test 'eql))
+  (append (set-difference list1 list2 :test test)
+          (set-difference list2 list1 :test test)))
+
+; subsetp - check if list1 is subset of list2
+(defun subsetp (list1 list2 &key (test 'eql))
+  (every (lambda (x) (member x list2 :test test)) list1))
+
+; adjoin - add item to set if not present
+(defun adjoin (item list &key (test 'eql))
+  (if (member item list :test test)
+      list
+      (cons item list)))
+
+;; ============================================================
+;; Numeric Utilities
+;; ============================================================
+
+; max - maximum of numbers
+(defun max (first &rest rest)
+  (reduce (lambda (a b) (if (> a b) a b)) rest :initial-value first))
+
+; min - minimum of numbers
+(defun min (first &rest rest)
+  (reduce (lambda (a b) (if (< a b) a b)) rest :initial-value first))
+
+; gcd - greatest common divisor
+(defun gcd (&rest integers)
+  (reduce #'gcd2 integers :initial-value 0))
+
+(defun gcd2 (a b)
+  (if (= b 0)
+      (abs a)
+      (gcd2 b (mod a b))))
+
+; lcm - least common multiple
+(defun lcm (&rest integers)
+  (reduce #'lcm2 integers :initial-value 1))
+
+(defun lcm2 (a b)
+  (if (or (= a 0) (= b 0))
+      0
+      (abs (* (truncate a (gcd2 a b)) b))))
+
+; expt - exponentiation
+(defun expt (base power)
+  (cond
+    ((= power 0) 1)
+    ((< power 0) (/ 1 (expt base (- power))))
+    ((evenp power)
+     (let ((half (expt base (truncate power 2))))
+       (* half half)))
+    (t (* base (expt base (- power 1))))))
+
+; isqrt - integer square root
+(defun isqrt (n)
+  (if (< n 2)
+      n
+      (let ((small (isqrt (ash n -2))))
+        (let ((large (ash (+ small 1) 1)))
+          (if (> (* large large) n)
+              (- large 1)
+              large)))))
+
+; signum - sign of number
+(defun signum (n)
+  (cond ((< n 0) -1)
+        ((> n 0) 1)
+        (t 0)))
+
+; floor - floor division
+(defun floor (number &optional (divisor 1))
+  (let ((q (truncate number divisor)))
+    (if (and (not (zerop (mod number divisor)))
+             (if (< divisor 0) (> number 0) (< number 0)))
+        (- q 1)
+        q)))
+
+; ceiling - ceiling division
+(defun ceiling (number &optional (divisor 1))
+  (let ((q (truncate number divisor)))
+    (if (and (not (zerop (mod number divisor)))
+             (if (< divisor 0) (< number 0) (> number 0)))
+        (+ q 1)
+        q)))
+
+; round - round to nearest
+(defun round (number &optional (divisor 1))
+  (let* ((q (truncate number divisor))
+         (r (mod number divisor))
+         (half (/ (abs divisor) 2)))
+    (cond
+      ((< (abs r) half) q)
+      ((> (abs r) half) (if (< (* number divisor) 0) (- q 1) (+ q 1)))
+      ((evenp q) q)  ; Round to even
+      (t (if (< (* number divisor) 0) (- q 1) (+ q 1))))))
+
+;; ============================================================
+;; Character Utilities
+;; ============================================================
+
+; char-equal - case-insensitive char comparison
+(defun char-equal (c1 c2)
+  (char= (char-upcase c1) (char-upcase c2)))
+
+; char-not-equal - case-insensitive inequality
+(defun char-not-equal (c1 c2)
+  (not (char-equal c1 c2)))
+
+; char-lessp - case-insensitive less-than
+(defun char-lessp (c1 c2)
+  (char< (char-upcase c1) (char-upcase c2)))
+
+; char-greaterp - case-insensitive greater-than
+(defun char-greaterp (c1 c2)
+  (char> (char-upcase c1) (char-upcase c2)))
+
+; char-not-lessp - case-insensitive >=
+(defun char-not-lessp (c1 c2)
+  (not (char-lessp c1 c2)))
+
+; char-not-greaterp - case-insensitive <=
+(defun char-not-greaterp (c1 c2)
+  (not (char-greaterp c1 c2)))
+
+; upper-case-p - check if char is uppercase
+(defun upper-case-p (c)
+  (and (alpha-char-p c)
+       (char= c (char-upcase c))))
+
+; lower-case-p - check if char is lowercase
+(defun lower-case-p (c)
+  (and (alpha-char-p c)
+       (char= c (char-downcase c))))
+
+; both-case-p - check if char has case variants
+(defun both-case-p (c)
+  (and (alpha-char-p c)
+       (char/= (char-upcase c) (char-downcase c))))
+
+; alphanumericp - check if char is alphanumeric
+(defun alphanumericp (c)
+  (or (alpha-char-p c) (digit-char-p c)))
+
+; graphic-char-p - check if char is graphic (printable)
+(defun graphic-char-p (c)
+  (let ((code (char-code c)))
+    (and (>= code 32) (<= code 126))))
+
+; standard-char-p - check if char is standard
+(defun standard-char-p (c)
+  (graphic-char-p c))
+
+;; ============================================================
+;; String Case Functions
+;; ============================================================
+
+; string-equal - case-insensitive string equality
+(defun string-equal (s1 s2)
+  (string= (string-upcase s1) (string-upcase s2)))
+
+; string-not-equal - case-insensitive string inequality
+(defun string-not-equal (s1 s2)
+  (not (string-equal s1 s2)))
+
+; string-lessp - case-insensitive string <
+(defun string-lessp (s1 s2)
+  (string< (string-upcase s1) (string-upcase s2)))
+
+; string-greaterp - case-insensitive string >
+(defun string-greaterp (s1 s2)
+  (string> (string-upcase s1) (string-upcase s2)))
+
+; string-not-lessp - case-insensitive string >=
+(defun string-not-lessp (s1 s2)
+  (not (string-lessp s1 s2)))
+
+; string-not-greaterp - case-insensitive string <=
+(defun string-not-greaterp (s1 s2)
+  (not (string-greaterp s1 s2)))
+
+; string-capitalize - capitalize first letter of each word
+(defun string-capitalize (s)
+  (let ((result (make-string (length s) #\Space))
+        (capitalize-next t))
+    (dotimes (i (length s) result)
+      (let ((c (char s i)))
+        (setf (char result i)
+              (cond
+                ((not (alpha-char-p c))
+                 (setq capitalize-next t)
+                 c)
+                (capitalize-next
+                 (setq capitalize-next nil)
+                 (char-upcase c))
+                (t (char-downcase c))))))))
+
+; nstring-upcase - destructive uppercase (same as string-upcase for now)
+(defun nstring-upcase (s)
+  (string-upcase s))
+
+; nstring-downcase - destructive lowercase
+(defun nstring-downcase (s)
+  (string-downcase s))
+
+; nstring-capitalize - destructive capitalize
+(defun nstring-capitalize (s)
+  (string-capitalize s))
+
+;; ============================================================
+;; Additional Sequence Functions
+;; ============================================================
+
+; elt - generic sequence element access
+(defun elt (sequence index)
+  (if (vectorp sequence)
+      (svref sequence index)
+      (nth index sequence)))
+
+; (setf elt) is handled by setf expansion
+
+; make-sequence - create sequence of given type
+(defun make-sequence (type size &key initial-element)
+  (cond
+    ((eq type 'list)
+     (make-list size :initial-element initial-element))
+    ((eq type 'vector)
+     (make-vector size initial-element))
+    ((eq type 'string)
+     (make-string size (or initial-element #\Space)))
+    (t (error "Unknown sequence type"))))
+
+; make-list - create list of given size
+(defun make-list (size &key initial-element)
+  (if (<= size 0)
+      nil
+      (cons initial-element (make-list (- size 1) :initial-element initial-element))))
+
+; delete - destructive remove (for now, same as remove)
+(defun delete (item sequence &key (test 'eql))
+  (remove item sequence :test test))
+
+; delete-if - destructive remove-if
+(defun delete-if (pred sequence)
+  (remove-if pred sequence))
+
+; delete-if-not - destructive remove-if-not
+(defun delete-if-not (pred sequence)
+  (remove-if-not pred sequence))
+
+; delete-duplicates - remove duplicate elements
+(defun delete-duplicates (sequence &key (test 'eql))
+  (remove-duplicates sequence :test test))
+
+; remove-duplicates - non-destructive duplicate removal
+(defun remove-duplicates (sequence &key (test 'eql))
+  (if (null sequence)
+      nil
+      (let ((first (car sequence))
+            (rest (remove-duplicates (cdr sequence) :test test)))
+        (if (member first rest :test test)
+            rest
+            (cons first rest)))))
+
+; nreverse - destructive reverse (for now, same as reverse)
+(defun nreverse (sequence)
+  (reverse sequence))
+
+; nconc - destructive append (for now, use non-destructive approach)
+; Helper to fold binary append over a list of lists
+(defun nconc-helper (lists)
+  (if (null lists)
+      nil
+    (if (null (cdr lists))
+        (car lists)
+      (append (car lists) (nconc-helper (cdr lists))))))
+
+(defun nconc (&rest lists)
+  (nconc-helper lists))
+
+; revappend - reverse first list and append second
+(defun revappend (list tail)
+  (append (reverse list) tail))
+
+; nreconc - destructive revappend
+(defun nreconc (list tail)
+  (revappend list tail))
+
+;; ============================================================
+;; Control Flow Utilities
+;; ============================================================
+
+; case - key-based dispatch (already exists as special form, but add as macro backup)
+; Note: The compiler handles case specially
+
+; when-let - bind and conditionally execute
+; Usage: (when-let (var expr) body...)
+(defmacro when-let (binding &rest body)
+  (let ((var (car binding))
+        (expr (cadr binding)))
+    (list 'let (list (list var expr))
+          (cons 'when (cons var body)))))
+
+; if-let - bind and branch
+; Usage: (if-let (var expr) then else)
+(defmacro if-let (binding then &optional else)
+  (let ((var (car binding))
+        (expr (cadr binding)))
+    (list 'let (list (list var expr))
+          (list 'if var then else))))
+
+; unless - execute unless condition is true
+; (already a special form, adding for completeness)
+
+; with-gensyms - create gensyms for hygiene
+(defmacro with-gensyms (names &rest body)
+  (list 'let
+        (mapcar (lambda (n) 
+                  (list n (list 'gensym (symbol-name n))))
+                names)
+        (cons 'progn body)))
+
+; once-only - evaluate expressions once
+(defmacro once-only (names &rest body)
+  (let ((gensyms (mapcar (lambda (n) 
+                           (declare (ignore n))
+                           (gensym))
+                         names)))
+    (list 'let (mapcar #'list gensyms names)
+          (cons 'progn body))))
+
+;; ============================================================
+;; Assertions and Debugging
+;; ============================================================
+
+; assert - check condition, signal error if false
+(defmacro assert (test-form &optional places datum &rest arguments)
+  (declare (ignore places))
+  (if datum
+      (list 'unless test-form
+            (cons 'error (cons datum arguments)))
+      (list 'unless test-form
+            (list 'error "Assertion failed"))))
+
+; check-type - verify type of place
+(defmacro check-type (place typespec &optional string)
+  (declare (ignore string))
+  (list 'unless (list 'typep place (list 'quote typespec))
+        (list 'error "Type check failed")))
+
+; ecase - exhaustive case (already defined above)
+
+; etypecase - exhaustive typecase (already defined above)
+
+;; ============================================================
+;; I/O Utilities
+;; ============================================================
+
+; fresh-line - output newline if not at beginning of line
+(defun fresh-line (&optional stream)
+  (declare (ignore stream))
+  (terpri)
+  t)
+
+; write-string - write string to output
+(defun write-string (string &optional stream)
+  (declare (ignore stream))
+  (princ string)
+  string)
+
+; write-line - write string followed by newline
+(defun write-line (string &optional stream)
+  (declare (ignore stream))
+  (princ string)
+  (terpri)
+  string)
+
+; read-line - read line from input (placeholder)
+(defun read-line (&optional stream eof-error-p eof-value)
+  (declare (ignore stream eof-error-p eof-value))
+  (let ((chars nil)
+        (c (read-char)))
+    (loop while (and c (char/= c #\Newline))
+          do (push c chars)
+             (setq c (read-char nil nil nil)))
+    (if chars
+        (coerce (nreverse chars) 'string)
+        "")))
+
+; prin1-to-string - convert to string with escaping
+(defun prin1-to-string (object)
+  (write-to-string object))
+
+; princ-to-string - convert to string without escaping
+(defun princ-to-string (object)
+  (write-to-string object))
+
+; with-output-to-string - capture output to string
+; (simplified - returns result of body, not captured output)
+; Usage: (with-output-to-string (var) body...)
+(defmacro with-output-to-string (var-binding &rest body)
+  (declare (ignore var-binding))
+  (cons 'progn body))
+
+;; ============================================================
+;; Symbol Utilities
+;; ============================================================
+
+; symbol-plist - get symbol's property list
+(defun symbol-plist (symbol)
+  (declare (ignore symbol))
+  nil)  ; Placeholder - property lists not yet implemented
+
+; get - get property from symbol
+(defun get (symbol indicator &optional default)
+  (declare (ignore symbol indicator))
+  default)  ; Placeholder
+
+; getf - get property from plist
+(defun getf (plist indicator &optional default)
+  (if (null plist)
+      default
+      (if (eq (car plist) indicator)
+          (cadr plist)
+          (getf (cddr plist) indicator default))))
+
+; putf - helper to set property in plist (returns new plist)
+(defun putf (plist indicator value)
+  (cons indicator (cons value plist)))
+
+; remf - remove property from plist (returns new plist)
+(defun remf (plist indicator)
+  (cond
+    ((null plist) nil)
+    ((eq (car plist) indicator) (cddr plist))
+    (t (cons (car plist)
+             (cons (cadr plist)
+                   (remf (cddr plist) indicator))))))
+
+; keywordp - check if symbol is keyword (already primitive)
+
+; make-symbol - create uninterned symbol
+(defun make-symbol (name)
+  (gensym name))
+
+;; ============================================================
+;; Mapping Variations
+;; ============================================================
+
+; mapcan - map and nconc results
+(defun mapcan (fn list &rest more-lists)
+  (apply #'nconc (apply #'mapcar fn list more-lists)))
+
+; mapcon - maplist and nconc results
+(defun mapcon (fn list &rest more-lists)
+  (apply #'nconc (apply #'maplist fn list more-lists)))
+
+; maplist - map over successive cdrs
+(defun maplist (fn list &rest more-lists)
+  (if (or (null list) (some #'null more-lists))
+      nil
+      (cons (apply fn list more-lists)
+            (apply #'maplist fn (cdr list) (mapcar #'cdr more-lists)))))
+
+; mapl - like maplist but for side effects
+(defun mapl (fn list &rest more-lists)
+  (let ((lists (cons list more-lists)))
+    (loop while (notany #'null lists)
+          do (apply fn lists)
+             (setq lists (mapcar #'cdr lists))))
+  list)
+
+;; ============================================================
+;; Loop Extensions
+;; ============================================================
+
+; dotimes* - dotimes with explicit step
+; Usage: (dotimes* (var count [result [step]]) body...)
+(defmacro dotimes* (spec &rest body)
+  (let ((var (car spec))
+        (count (cadr spec))
+        (result (caddr spec))
+        (step (cadddr spec)))
+    (let ((max (gensym "MAX"))
+          (s (or step 1)))
+      (list 'let (list (list max count))
+            (list 'do (list (list var 0 (list '+ var s)))
+                      (list (list '>= var max) result)
+                  (cons 'progn body))))))
+
+; doseq - iterate over any sequence
+; Usage: (doseq (var sequence [result]) body...)
+(defmacro doseq (spec &rest body)
+  (let ((var (car spec))
+        (sequence (cadr spec))
+        (result (caddr spec)))
+    (let ((seq (gensym "SEQ"))
+          (i (gensym "I"))
+          (len (gensym "LEN")))
+      (list 'let* (list (list seq sequence)
+                        (list len (list 'length seq)))
+            (list 'if (list 'vectorp seq)
+                  (list 'dotimes (list i len result)
+                        (list 'let (list (list var (list 'svref seq i)))
+                              (cons 'progn body)))
+                  (list 'dolist (list var seq result)
+                        (cons 'progn body)))))))
+
+;; ============================================================
+;; Predicates
+;; ============================================================
+
+; endp - check for end of proper list
+(defun endp (x)
+  (if (null x)
+      t
+      (if (consp x)
+          nil
+          (error "Not a list"))))
+
+; functionp - check if callable
+(defun functionp (x)
+  (or (closurep x) (symbolp x)))
+
+; compiled-function-p - check if compiled
+(defun compiled-function-p (x)
+  (closurep x))
+
+; arrayp - check if array (vectors are arrays)
+(defun arrayp (x)
+  (vectorp x))
+
+; simple-vector-p - check if simple vector
+(defun simple-vector-p (x)
+  (vectorp x))
+
+; simple-string-p - check if simple string
+(defun simple-string-p (x)
+  (stringp x))
+
+; bit-vector-p - no bit vectors yet
+(defun bit-vector-p (x)
+  (declare (ignore x))
+  nil)
+
+; packagep - no packages yet
+(defun packagep (x)
+  (declare (ignore x))
+  nil)
+
+; pathnamep - no pathnames yet
+(defun pathnamep (x)
+  (declare (ignore x))
+  nil)
+
+; streamp - no stream objects yet
+(defun streamp (x)
+  (declare (ignore x))
+  nil)
+
+; readtablep - no readtable objects
+(defun readtablep (x)
+  (declare (ignore x))
+  nil)
+
+;;; ============================================================================
+;;; CL LOOP Macro
+;;; ============================================================================
+
+; Helper: Check if symbol is a loop keyword
+(defun loop-keyword-p (x)
+  (and (symbolp x)
+       (member x '(for as with repeat while until do doing collect collecting
+                   append appending nconc nconcing sum summing count counting
+                   maximize maximizing minimize minimizing into finally initially
+                   return from downfrom to upto below downto above by in on across
+                   = then if when unless else end and named always never thereis))))
+
+; cadddr/cddddr helpers for loop parsing
+(defun cadddr (x) (car (cdddr x)))
+(defun cddddr (x) (cdr (cdddr x)))
+
+; Helper: Parse FOR clause - returns (var init step-form end-test remaining-clauses)
+; Supports: FROM/TO/BELOW/ABOVE/DOWNFROM/DOWNTO/BY
+(defun parse-loop-for-arithmetic (var clauses)
+  (let ((from-val 0)
+        (to-val nil)
+        (by-val 1)
+        (to-op nil)  ; '< '<= '> '>=
+        (downp nil)
+        (rest clauses))
+    ; Parse modifiers using while loop
+    (while (and rest (member (car rest) '(from downfrom to upto below downto above by)))
+      (case (car rest)
+        (from
+         (setq from-val (cadr rest))
+         (setq rest (cddr rest)))
+        (downfrom
+         (setq from-val (cadr rest))
+         (setq downp t)
+         (setq rest (cddr rest)))
+        (to
+         (setq to-val (cadr rest))
+         (setq to-op (if downp '>= '<=))
+         (setq rest (cddr rest)))
+        (upto
+         (setq to-val (cadr rest))
+         (setq to-op '<=)
+         (setq rest (cddr rest)))
+        (below
+         (setq to-val (cadr rest))
+         (setq to-op '<)
+         (setq rest (cddr rest)))
+        (downto
+         (setq to-val (cadr rest))
+         (setq to-op '>=)
+         (setq downp t)
+         (setq rest (cddr rest)))
+        (above
+         (setq to-val (cadr rest))
+         (setq to-op '>)
+         (setq downp t)
+         (setq rest (cddr rest)))
+        (by
+         (setq by-val (cadr rest))
+         (setq rest (cddr rest)))))
+    ; Generate: (var init step-form end-test remaining-clauses)
+    (let* ((step-expr (if downp
+                          (list '- var by-val)
+                          (list '+ var by-val)))
+           (end-test (if to-val
+                         (list 'not (list to-op var to-val))
+                         nil)))
+      (list var from-val step-expr end-test rest))))
+
+; Main LOOP macro
+(defmacro loop (&rest clauses)
+  (if (null clauses)
+      ; Simple infinite loop - use block with while t
+      '(block nil (while t))
+    (if (not (loop-keyword-p (car clauses)))
+        ; Simple loop - body forms, wrap in block with while t
+        (list 'block nil (cons 'while (cons t clauses)))
+      ; Extended loop with clauses
+      (loop-expand clauses))))
+
+; Expand loop clauses into code
+(defun loop-expand (clauses)
+  (let ((vars nil)           ; ((var init) ...)
+        (step-forms nil)     ; (setq var step-expr) ...
+        (end-tests nil)      ; test expressions for termination
+        (body-forms nil)     ; do/doing body
+        (collect-var nil)    ; variable for collect
+        (collect-forms nil)  ; collected expressions
+        (sum-var nil)        ; variable for sum
+        (sum-forms nil)      ; summed expressions
+        (count-var nil)      ; variable for count
+        (count-forms nil)    ; counted expressions
+        (finally-forms nil)  ; finally body
+        (initially-forms nil) ; initially body
+        (rest clauses))
+
+    ; Parse all clauses using while loop
+    (while rest
+      (let ((kw (car rest)))
+        (case kw
+          ; FOR/AS with various iteration types
+          ((for as)
+           (let* ((var (cadr rest))
+                  (next-kw (caddr rest)))
+             (case next-kw
+               ; FOR var FROM/DOWNFROM ... TO/BELOW/ABOVE ...
+               ((from downfrom to upto below downto above)
+                (let ((parsed (parse-loop-for-arithmetic var (cddr rest))))
+                  (push (list (car parsed) (cadr parsed)) vars)
+                  (push (list 'setq (car parsed) (caddr parsed)) step-forms)
+                  (when (cadddr parsed)
+                    (push (cadddr parsed) end-tests))
+                  (setq rest (car (cddddr parsed)))))
+
+               ; FOR var IN list
+               (in
+                (let ((list-var (gensym "list")))
+                  (push (list list-var (cadddr rest)) vars)
+                  (push (list var nil) vars)
+                  (push (list 'setq var (list 'car list-var)) body-forms)
+                  (push (list 'setq list-var (list 'cdr list-var)) step-forms)
+                  (push (list 'null list-var) end-tests)
+                  (setq rest (cddddr rest))))
+
+               ; FOR var ON list
+               (on
+                (push (list var (cadddr rest)) vars)
+                (push (list 'setq var (list 'cdr var)) step-forms)
+                (push (list 'null var) end-tests)
+                (setq rest (cddddr rest)))
+
+               ; FOR var = expr [THEN step-expr]
+               (=
+                (let ((init-expr (cadddr rest))
+                      (then-rest (cddddr rest)))
+                  (if (and (consp then-rest) (eq (car then-rest) 'then))
+                      (progn
+                        (push (list var init-expr) vars)
+                        (push (list 'setq var (cadr then-rest)) step-forms)
+                        (setq rest (cddr then-rest)))
+                    (progn
+                      (push (list var init-expr) vars)
+                      (push (list 'setq var init-expr) step-forms)
+                      (setq rest then-rest)))))
+
+               ; FOR var ACROSS vector
+               (across
+                (let ((vec-var (gensym "vec"))
+                      (idx-var (gensym "idx"))
+                      (len-var (gensym "len")))
+                  (push (list vec-var (cadddr rest)) vars)
+                  (push (list len-var (list 'length vec-var)) vars)
+                  (push (list idx-var 0) vars)
+                  (push (list var nil) vars)
+                  (push (list 'setq var (list 'aref vec-var idx-var)) body-forms)
+                  (push (list 'setq idx-var (list '+ idx-var 1)) step-forms)
+                  (push (list '>= idx-var len-var) end-tests)
+                  (setq rest (cddddr rest))))
+
+               (t (error "Unknown FOR clause")))))
+
+          ; WITH var = expr
+          (with
+           (let ((var (cadr rest)))
+             (if (and (cdddr rest) (eq (caddr rest) '=))
+                 (progn
+                   (push (list var (cadddr rest)) vars)
+                   (setq rest (cddddr rest)))
+               (progn
+                 (push (list var nil) vars)
+                 (setq rest (cddr rest))))))
+
+          ; REPEAT n
+          (repeat
+           (let ((cnt-var (gensym "count")))
+             (push (list cnt-var (cadr rest)) vars)
+             (push (list 'setq cnt-var (list '- cnt-var 1)) step-forms)
+             (push (list '<= cnt-var 0) end-tests)
+             (setq rest (cddr rest))))
+
+          ; WHILE test
+          (while
+           (push (list 'not (cadr rest)) end-tests)
+           (setq rest (cddr rest)))
+
+          ; UNTIL test
+          (until
+           (push (cadr rest) end-tests)
+           (setq rest (cddr rest)))
+
+          ; DO/DOING body...
+          ((do doing)
+           (let ((forms nil))
+             (setq rest (cdr rest))
+             (while (and rest (not (loop-keyword-p (car rest))))
+               (push (car rest) forms)
+               (setq rest (cdr rest)))
+             (setq body-forms (append body-forms (nreverse forms)))))
+
+          ; COLLECT/COLLECTING expr [INTO var]
+          ((collect collecting)
+           (let ((expr (cadr rest))
+                 (into-rest (cddr rest)))
+             (when (and (consp into-rest) (eq (car into-rest) 'into))
+               (setq collect-var (cadr into-rest))
+               (setq into-rest (cddr into-rest)))
+             (unless collect-var
+               (setq collect-var (gensym "collect")))
+             (push expr collect-forms)
+             (setq rest into-rest)))
+
+          ; SUM/SUMMING expr [INTO var]
+          ((sum summing)
+           (let ((expr (cadr rest))
+                 (into-rest (cddr rest)))
+             (when (and (consp into-rest) (eq (car into-rest) 'into))
+               (setq sum-var (cadr into-rest))
+               (setq into-rest (cddr into-rest)))
+             (unless sum-var
+               (setq sum-var (gensym "sum")))
+             (push expr sum-forms)
+             (setq rest into-rest)))
+
+          ; COUNT/COUNTING expr [INTO var]
+          ((count counting)
+           (let ((expr (cadr rest))
+                 (into-rest (cddr rest)))
+             (when (and (consp into-rest) (eq (car into-rest) 'into))
+               (setq count-var (cadr into-rest))
+               (setq into-rest (cddr into-rest)))
+             (unless count-var
+               (setq count-var (gensym "count")))
+             (push expr count-forms)
+             (setq rest into-rest)))
+
+          ; FINALLY body...
+          (finally
+           (setq rest (cdr rest))
+           (while (and rest (not (loop-keyword-p (car rest))))
+             (push (car rest) finally-forms)
+             (setq rest (cdr rest)))
+           (setq finally-forms (nreverse finally-forms)))
+
+          ; INITIALLY body...
+          (initially
+           (setq rest (cdr rest))
+           (while (and rest (not (loop-keyword-p (car rest))))
+             (push (car rest) initially-forms)
+             (setq rest (cdr rest)))
+           (setq initially-forms (nreverse initially-forms)))
+
+          ; RETURN expr
+          (return
+           (push (list 'return-from nil (cadr rest)) body-forms)
+           (setq rest (cddr rest)))
+
+          (t (error (format nil "Unknown loop keyword: ~a" kw))))))
+
+    ; Generate the loop code
+    (loop-generate-code vars step-forms end-tests body-forms
+                        collect-var collect-forms
+                        sum-var sum-forms
+                        count-var count-forms
+                        finally-forms initially-forms)))
+
+; Generate loop code from parsed components
+(defun loop-generate-code (vars step-forms end-tests body-forms
+                           collect-var collect-forms
+                           sum-var sum-forms
+                           count-var count-forms
+                           finally-forms initially-forms)
+  (let* ((all-vars (nreverse vars))
+         (has-collect (not (null collect-forms)))
+         (has-sum (not (null sum-forms)))
+         (has-count (not (null count-forms)))
+         (loop-body nil)
+         (result-expr nil))
+
+    ; Add accumulator variables
+    (when has-collect
+      (push (list collect-var nil) all-vars))
+    (when has-sum
+      (push (list sum-var 0) all-vars))
+    (when has-count
+      (push (list count-var 0) all-vars))
+
+    ; Build end test
+    (let ((end-test (if (null end-tests)
+                        nil
+                      (if (= (length end-tests) 1)
+                          (car end-tests)
+                        (cons 'or (nreverse end-tests))))))
+
+      ; Determine result expression first (needed for end-test)
+      (setq result-expr
+            (cond
+              (has-collect collect-var)
+              (has-sum sum-var)
+              (has-count count-var)
+              (t nil)))
+
+      ; Build loop body using nested binary appends
+      (let ((end-test-forms (when end-test
+                              (list (list 'when end-test (list 'return-from nil result-expr)))))
+            (main-body (nreverse body-forms))
+            (collect-body (mapcar (lambda (expr)
+                                    (list 'setq collect-var
+                                          (list 'nconc collect-var (list 'list expr))))
+                                  (nreverse collect-forms)))
+            (sum-body (mapcar (lambda (expr)
+                                (list 'setq sum-var (list '+ sum-var expr)))
+                              (nreverse sum-forms)))
+            (count-body (mapcar (lambda (expr)
+                                  (list 'when expr
+                                        (list 'setq count-var (list '+ count-var 1))))
+                                (nreverse count-forms)))
+            (step-body (nreverse step-forms)))
+        (setq loop-body
+              (append end-test-forms
+                      (append main-body
+                              (append collect-body
+                                      (append sum-body
+                                              (append count-body step-body)))))))
+
+      ; Build final code using (while t ...) instead of (loop ...) to avoid a bug
+      (let ((loop-code (cons 'while (cons t loop-body))))
+        ; Wrap with initially if present
+        (when initially-forms
+          (setq loop-code (cons 'progn (append initially-forms (list loop-code)))))
+
+        ; Build the block with let bindings
+        (list 'block nil
+              (list 'let all-vars
+                    (if finally-forms
+                        (list 'unwind-protect
+                              loop-code
+                              (cons 'progn (append finally-forms
+                                                   (list (list 'return-from nil result-expr)))))
+                      (list 'progn loop-code result-expr))))))))
