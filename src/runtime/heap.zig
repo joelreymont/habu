@@ -598,6 +598,16 @@ pub const Heap = struct {
     }
 
     /// Allocate a keyword in the heap
+
+    /// FNV-1a hash for bytes
+    fn fnvHash(bytes: []const u8) u64 {
+        var hash: u64 = 0xcbf29ce484222325; // FNV offset basis
+        for (bytes) |b| {
+            hash ^= b;
+            hash *%= 0x100000001b3; // FNV prime
+        }
+        return hash;
+    }
     pub fn allocKeyword(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
         const aligned_name_len = std.mem.alignForward(usize, name.len, 8);
         const total_size = @sizeOf(objects.Keyword) + aligned_name_len;
@@ -611,7 +621,7 @@ pub const Heap = struct {
         kw.* = .{
             .name_len = name.len,
             .name_ptr = name_ptr,
-            .hash = 0, // TODO: compute hash
+            .hash = fnvHash(name),
         };
 
         return Value.makeKeyword(kw);
