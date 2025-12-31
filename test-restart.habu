@@ -1,0 +1,78 @@
+;; Test restart-case and invoke-restart
+(print "=== Testing restart-case ===")
+
+;; Test 1: Basic restart
+(print "\n1. Basic restart:")
+(define result
+  (restart-case
+    (begin
+      (print "In body, invoking restart")
+      (invoke-restart 'use-value 42))
+    (use-value (v)
+      (print "In restart handler")
+      (* v 2))))
+(print "Result:")
+(print result)
+(if (= result 84)
+    (print "✓ Basic restart works")
+    (print "✗ FAIL: Expected 84"))
+
+;; Test 2: Multiple restarts
+(print "\n2. Multiple restarts:")
+(define result2
+  (restart-case
+    (invoke-restart 'return-zero 0)
+    (use-value (v) v)
+    (return-zero (v) 0)
+    (return-one (v) 1)))
+(print "Result:")
+(print result2)
+(if (= result2 0)
+    (print "✓ Multiple restarts work")
+    (print "✗ FAIL: Expected 0"))
+
+;; Test 3: find-restart
+(print "\n3. find-restart:")
+(define found
+  (restart-case
+    (if (find-restart 'my-restart)
+        (begin
+          (print "Found restart")
+          (invoke-restart 'my-restart 100))
+        (print "Restart not found"))
+    (my-restart (v) v)))
+(print "Result:")
+(print found)
+(if (= found 100)
+    (print "✓ find-restart works")
+    (print "✗ FAIL: Expected 100"))
+
+;; Test 4: Nested restart-case
+(print "\n4. Nested restart-case:")
+(define nested
+  (restart-case
+    (restart-case
+      (invoke-restart 'inner 1)
+      (inner (v) (* v 10)))
+    (outer (v) (* v 100))))
+(print "Result:")
+(print nested)
+(if (= nested 10)
+    (print "✓ Nested restarts work")
+    (print "✗ FAIL: Expected 10"))
+
+;; Test 5: Normal exit (no restart invoked)
+(print "\n5. Normal exit:")
+(define normal
+  (restart-case
+    (begin
+      (print "Normal execution")
+      123)
+    (use-value (v) 999)))
+(print "Result:")
+(print normal)
+(if (= normal 123)
+    (print "✓ Normal exit works")
+    (print "✗ FAIL: Expected 123"))
+
+(print "\n=== All restart tests completed! ===")

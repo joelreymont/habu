@@ -3383,17 +3383,12 @@ pub const Compiler = struct {
             const name_ir = try self.builder.quoteSym(restart_name);
 
             // Rest is (args) body...
-            // For simplicity, we ignore the args lambda-list and use the invoked value directly
-            // Handler receives the value passed to invoke-restart
-            var handler_body = clause_parts.cdr;
+            // Handler is like a lambda: (name (param) body...)
+            const lambda_args = clause_parts.cdr;
 
-            // Skip the lambda-list (first element after name)
-            if (handler_body.isCons()) {
-                handler_body = handler_body.toPtr(Cons).cdr;
-            }
-
-            // Compile handler body as progn
-            const handler_ir = try self.compileProgn(handler_body, env);
+            // Compile handler as a lambda with the parameter list
+            // compileLambda expects ((params) body...)
+            const handler_ir = try self.compileLambda(lambda_args, env);
 
             try restarts.append(self.allocator, .{
                 .name = name_ir,

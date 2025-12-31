@@ -1322,8 +1322,14 @@ pub const Emitter = struct {
             self.code.items[handler_jumps[i]] = @truncate(disp_u16);
             self.code.items[handler_jumps[i] + 1] = @truncate(disp_u16 >> 8);
 
-            // Handler code - invoked value is already on stack
-            try self.emit(r.handler);
+            // Handler is a lambda - call it with the invoked value (already on stack)
+            // Stack: [value]
+            try self.emit(r.handler); // Push lambda
+            // Stack: [value, lambda]
+            try self.emitOp(.swap); // Swap so lambda is TOS-1, value is TOS
+            // Stack: [lambda, value]
+            try self.emitOp(.call);
+            try self.emitU8(1); // 1 argument
 
             // Jump to end
             try self.emitOp(.jmp);
