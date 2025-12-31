@@ -1562,6 +1562,11 @@ pub const Vm = struct {
                     const result = arith.random(n) catch return error.InvalidArgument;
                     try self.push(result);
                 },
+                .random_seed => {
+                    const seed = try self.pop();
+                    const result = arith.randomSeed(seed) catch return error.TypeMismatch;
+                    try self.push(result);
+                },
                 .intern => {
                     const str_val = try self.pop();
                     if (!str_val.isString()) return error.TypeMismatch;

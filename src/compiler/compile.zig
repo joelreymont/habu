@@ -264,6 +264,7 @@ pub const Builtins = struct {
     terpri: Value,
     @"write-char": Value,
     random: Value,
+    @"random-seed": Value,
     format: Value,
 
     // Primitives - Character functions
@@ -559,6 +560,7 @@ pub const Builtins = struct {
             .terpri = try heap.intern("terpri"),
             .@"write-char" = try heap.intern("write-char"),
             .random = try heap.intern("random"),
+            .@"random-seed" = try heap.intern("random-seed"),
             .format = try heap.intern("format"),
             // Primitives - Character functions
             .@"char-upcase" = try heap.intern("char-upcase"),
@@ -6000,11 +6002,12 @@ pub const Compiler = struct {
 
         // Random
         if (s == b.random.raw) return self.compileUnaryPrim(args, env, .random);
+        if (s == b.@"random-seed".raw) return self.compileUnaryPrim(args, env, .random_seed);
 
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, get, put, remprop, hashtablep, hash_clear, hash_test, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, get, put, remprop, hashtablep, hash_clear, hash_test, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
