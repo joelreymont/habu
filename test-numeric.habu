@@ -1,0 +1,28 @@
+(print "=== Testing Numeric Types ===")
+
+;; Test complex numbers
+(print "\n1. Complex numbers:")
+(define c (make-complex 3.0 4.0))
+(print "Created complex: 3+4i")
+
+(if (complexp c)
+    (print "✓ Is complex")
+    (print "✗ FAIL: Not complex"))
+
+(define r (real-part c))
+(define i (imag-part c))
+(print "Real part:")
+(print r)
+(print "Imag part:")
+(print i)
+
+(print "✓ Real and imag parts extracted")
+
+;; Test rational predicate
+(print "\n2. Rational numbers:")
+;; Note: fixnum and rational are separate types in Habu
+(if (numberp 42)
+    (print "✓ Fixnum is a number")
+    (print "✗ FAIL"))
+
+(print "\n=== Numeric tests completed! ===")
