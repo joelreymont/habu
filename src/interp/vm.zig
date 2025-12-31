@@ -787,11 +787,27 @@ pub const Vm = struct {
                     }
                 },
 
-                // Arithmetic
-                .add => try self.binaryOp(binaryAdd),
-                .sub => try self.binaryOp(binarySub),
-                .mul => try self.binaryOp(binaryMul),
-                .div => try self.binaryOp(binaryDiv),
+                // Arithmetic (with float contagion)
+                .add => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    try self.push(try primitives.arith.add(a, b));
+                },
+                .sub => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    try self.push(try primitives.arith.sub(a, b));
+                },
+                .mul => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    try self.push(try primitives.arith.mul(a, b));
+                },
+                .div => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    try self.push(try primitives.arith.div(a, b));
+                },
                 .mod => try self.binaryOp(binaryMod),
                 .neg => {
                     const a = try self.pop();
