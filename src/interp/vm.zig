@@ -3,6 +3,10 @@
 //! Stack-based interpreter that executes bytecode.
 //! Designed for portability (WASM target).
 
+comptime {
+    @setEvalBranchQuota(5000);
+}
+
 const std = @import("std");
 const bytecode = @import("../bytecode/bytecode.zig");
 const Op = bytecode.Op;
@@ -2305,6 +2309,298 @@ pub const Vm = struct {
                     try self.push(result);
                 },
 
+                // Pathname operations
+                .make_pathname => {
+                    // Operand flags: bit 0=host, 1=device, 2=directory, 3=name, 4=type, 5=version
+                    const flags = self.readU8();
+
+                    // Pop components from stack (in reverse order of bits)
+                    const version = if ((flags & 0x20) != 0) try self.pop() else Value.nil;
+                    const type_comp = if ((flags & 0x10) != 0) try self.pop() else Value.nil;
+                    const name = if ((flags & 0x08) != 0) try self.pop() else Value.nil;
+                    const directory = if ((flags & 0x04) != 0) try self.pop() else Value.nil;
+                    const device = if ((flags & 0x02) != 0) try self.pop() else Value.nil;
+                    const host = if ((flags & 0x01) != 0) try self.pop() else Value.nil;
+
+                    // Allocate pathname object
+                    const bytes = try self.heap.allocRaw(@sizeOf(runtime.Pathname));
+                    const pn: *runtime.Pathname = @ptrCast(@alignCast(bytes));
+
+                    pn.* = .{
+                        .kind = .pathname,
+                        .host = host,
+                        .device = device,
+                        .directory = directory,
+                        .name = name,
+                        .type = type_comp,
+                        .version = version,
+                    };
+
+                    try self.push(Value.makePathname(pn));
+                },
+
+                .pathname => {
+                    const pathspec = try self.pop();
+
+                    // If already a pathname, return it
+                    if (pathspec.isPathname()) {
+                        try self.push(pathspec);
+                    } else if (pathspec.isString()) {
+                        // Parse string as pathname
+                        // For now, just use the string as the name component
+                        const bytes = try self.heap.allocRaw(@sizeOf(runtime.Pathname));
+                        const pn: *runtime.Pathname = @ptrCast(@alignCast(bytes));
+
+                        pn.* = .{
+                            .kind = .pathname,
+                            .host = Value.nil,
+                            .device = Value.nil,
+                            .directory = Value.nil,
+                            .name = pathspec,
+                            .type = Value.nil,
+                            .version = Value.nil,
+                        };
+
+                        try self.push(Value.makePathname(pn));
+                    } else if (pathspec.isStream()) {
+                        // Return stream's pathname (not implemented yet)
+                        // For now, return nil
+                        try self.push(Value.nil);
+                    } else {
+                        return error.TypeMismatch;
+                    }
+                },
+
+                .parse_namestring => {
+                    const str_val = try self.pop();
+                    if (!str_val.isString()) return error.TypeMismatch;
+
+                    const str = str_val.toPtr(runtime.String);
+                    const path = str.bytes();
+
+                    // Parse the path into components
+                    const host = Value.nil;
+                    const device = Value.nil;
+                    var directory = Value.nil;
+                    var name = Value.nil;
+                    var type_comp = Value.nil;
+                    const version = Value.nil;
+
+                    if (path.len == 0) {
+                        // Empty path - all components nil
+                    } else {
+                        // Check if absolute (starts with /)
+                        const is_absolute = path[0] == '/';
+                        const start_idx: usize = if (is_absolute) 1 else 0;
+
+                        // Split path by '/'
+                        var components = std.ArrayList(Value){};
+                        defer components.deinit(self.allocator);
+
+                        var i: usize = start_idx;
+                        while (i < path.len) {
+                            var j = i;
+                            while (j < path.len and path[j] != '/') : (j += 1) {}
+
+                            if (j > i) {
+                                const component = path[i..j];
+                                const comp_str = try self.heap.allocString(component);
+                                try components.append(self.allocator, comp_str);
+                            }
+
+                            i = j + 1;
+                        }
+
+                        // Last component is the filename
+                        if (components.items.len > 0) {
+                            const filename_val = components.pop().?;
+                            const filename = filename_val.toPtr(runtime.String);
+                            const fname = filename.bytes();
+
+                            // Split filename into name and type (extension)
+                            if (std.mem.lastIndexOf(u8, fname, ".")) |dot_pos| {
+                                if (dot_pos > 0) {
+                                    // Has extension
+                                    name = try self.heap.allocString(fname[0..dot_pos]);
+                                    type_comp = try self.heap.allocString(fname[dot_pos + 1 ..]);
+                                } else {
+                                    // Starts with dot (hidden file on Unix)
+                                    name = filename_val;
+                                }
+                            } else {
+                                // No extension
+                                name = filename_val;
+                            }
+                        }
+
+                        // Build directory list
+                        if (components.items.len > 0 or is_absolute) {
+                            // Start with :absolute or :relative keyword
+                            const dir_type = if (is_absolute)
+                                try self.heap.intern("absolute")
+                            else
+                                try self.heap.intern("relative");
+
+                            var dir_list = Value.nil;
+                            // Add components in reverse order to build list
+                            var k: usize = components.items.len;
+                            while (k > 0) {
+                                k -= 1;
+                                dir_list = try self.allocCons(components.items[k], dir_list);
+                            }
+                            // Add directory type at front
+                            directory = try self.allocCons(dir_type, dir_list);
+                        }
+                    }
+
+                    // Allocate pathname object
+                    const bytes = try self.heap.allocRaw(@sizeOf(runtime.Pathname));
+                    const pn: *runtime.Pathname = @ptrCast(@alignCast(bytes));
+
+                    pn.* = .{
+                        .kind = .pathname,
+                        .host = host,
+                        .device = device,
+                        .directory = directory,
+                        .name = name,
+                        .type = type_comp,
+                        .version = version,
+                    };
+
+                    try self.push(Value.makePathname(pn));
+                },
+
+                .namestring => {
+                    const pn_val = try self.pop();
+                    if (!pn_val.isPathname()) return error.TypeMismatch;
+
+                    const pn = pn_val.toPtr(runtime.Pathname);
+
+                    // Build namestring from components
+                    var result = std.ArrayList(u8){};
+                    defer result.deinit(self.allocator);
+
+                    // Process directory
+                    if (pn.directory != Value.nil) {
+                        var dir_list = pn.directory;
+
+                        // Skip first element if it's :absolute or :relative keyword
+                        if (dir_list.isCons()) {
+                            const first = dir_list.toPtr(runtime.Cons).car;
+                            if (first.isKeyword()) {
+                                const kw = first.toPtr(runtime.Keyword);
+                                const kw_name = kw.getName();
+                                if (std.mem.eql(u8, kw_name, "absolute")) {
+                                    try result.append(self.allocator, '/');
+                                }
+                                dir_list = dir_list.toPtr(runtime.Cons).cdr;
+                            }
+                        }
+
+                        // Add directory components
+                        while (dir_list != Value.nil) {
+                            if (!dir_list.isCons()) break;
+                            const cons = dir_list.toPtr(runtime.Cons);
+                            const component = cons.car;
+
+                            if (component.isString()) {
+                                const comp_str = component.toPtr(runtime.String);
+                                try result.appendSlice(self.allocator, comp_str.bytes());
+                                try result.append(self.allocator, '/');
+                            }
+
+                            dir_list = cons.cdr;
+                        }
+                    }
+
+                    // Add name component
+                    if (pn.name != Value.nil and pn.name.isString()) {
+                        const name_str = pn.name.toPtr(runtime.String);
+                        try result.appendSlice(self.allocator, name_str.bytes());
+                    }
+
+                    // Add type component (extension)
+                    if (pn.type != Value.nil and pn.type.isString()) {
+                        try result.append(self.allocator, '.');
+                        const type_str = pn.type.toPtr(runtime.String);
+                        try result.appendSlice(self.allocator, type_str.bytes());
+                    }
+
+                    // Create string from result
+                    const result_str = try self.heap.allocString(result.items);
+                    try self.push(result_str);
+                },
+
+                .merge_pathnames => {
+                    const default_val = try self.pop();
+                    const pn_val = try self.pop();
+
+                    if (!pn_val.isPathname()) return error.TypeMismatch;
+                    if (!default_val.isPathname()) return error.TypeMismatch;
+
+                    const pn = pn_val.toPtr(runtime.Pathname);
+                    const default_pn = default_val.toPtr(runtime.Pathname);
+
+                    // Create new pathname with merged components
+                    const bytes = try self.heap.allocRaw(@sizeOf(runtime.Pathname));
+                    const result: *runtime.Pathname = @ptrCast(@alignCast(bytes));
+
+                    // Fill nil components from defaults
+                    result.* = .{
+                        .kind = .pathname,
+                        .host = if (pn.host != Value.nil) pn.host else default_pn.host,
+                        .device = if (pn.device != Value.nil) pn.device else default_pn.device,
+                        .directory = if (pn.directory != Value.nil) pn.directory else default_pn.directory,
+                        .name = if (pn.name != Value.nil) pn.name else default_pn.name,
+                        .type = if (pn.type != Value.nil) pn.type else default_pn.type,
+                        .version = if (pn.version != Value.nil) pn.version else default_pn.version,
+                    };
+
+                    try self.push(Value.makePathname(result));
+                },
+
+                .pathname_host => {
+                    const pn_val = try self.pop();
+                    if (!pn_val.isPathname()) return error.TypeMismatch;
+                    const pn = pn_val.toPtr(runtime.Pathname);
+                    try self.push(pn.host);
+                },
+
+                .pathname_device => {
+                    const pn_val = try self.pop();
+                    if (!pn_val.isPathname()) return error.TypeMismatch;
+                    const pn = pn_val.toPtr(runtime.Pathname);
+                    try self.push(pn.device);
+                },
+
+                .pathname_directory => {
+                    const pn_val = try self.pop();
+                    if (!pn_val.isPathname()) return error.TypeMismatch;
+                    const pn = pn_val.toPtr(runtime.Pathname);
+                    try self.push(pn.directory);
+                },
+
+                .pathname_name => {
+                    const pn_val = try self.pop();
+                    if (!pn_val.isPathname()) return error.TypeMismatch;
+                    const pn = pn_val.toPtr(runtime.Pathname);
+                    try self.push(pn.name);
+                },
+
+                .pathname_type => {
+                    const pn_val = try self.pop();
+                    if (!pn_val.isPathname()) return error.TypeMismatch;
+                    const pn = pn_val.toPtr(runtime.Pathname);
+                    try self.push(pn.type);
+                },
+
+                .pathname_version => {
+                    const pn_val = try self.pop();
+                    if (!pn_val.isPathname()) return error.TypeMismatch;
+                    const pn = pn_val.toPtr(runtime.Pathname);
+                    try self.push(pn.version);
+                },
+
                 // Character operations
                 .characterp => {
                     const val = try self.pop();
@@ -3122,9 +3418,167 @@ pub const Vm = struct {
                         }
                         i += 2;
                     },
+                    'T', 't' => {
+                        // Tabulate - insert spaces to reach column
+                        // Parse optional parameters: ~mincolT or ~mincol,colincT
+                        var mincol: usize = 1; // Default: tab to next column
+                        var colinc: usize = 1; // Default: increment by 1
+
+                        const j = i + 2;
+                        // Check for numeric parameters before T
+                        var param_start = i + 1;
+                        while (param_start > 0 and fmt[param_start - 1] >= '0' and fmt[param_start - 1] <= '9') {
+                            param_start -= 1;
+                        }
+
+                        if (param_start < i + 1) {
+                            // Parse mincol
+                            const param_str = fmt[param_start .. i + 1];
+                            if (std.mem.indexOf(u8, param_str, ",")) |comma_pos| {
+                                // Both mincol and colinc
+                                mincol = std.fmt.parseInt(usize, param_str[0..comma_pos], 10) catch 1;
+                                colinc = std.fmt.parseInt(usize, param_str[comma_pos + 1 ..], 10) catch 1;
+                            } else {
+                                // Just mincol
+                                mincol = std.fmt.parseInt(usize, param_str, 10) catch 1;
+                            }
+                        }
+
+                        // Calculate current column position (chars since last newline)
+                        var col: usize = 0;
+                        var k = result.items.len;
+                        while (k > 0) {
+                            k -= 1;
+                            if (result.items[k] == '\n') break;
+                            col += 1;
+                        }
+
+                        // Insert spaces to reach target column
+                        var target_col = mincol;
+                        if (col < mincol) {
+                            target_col = mincol;
+                        } else {
+                            // Round up to next multiple of colinc
+                            target_col = col + colinc - ((col - mincol) % colinc);
+                        }
+
+                        const spaces_needed = if (target_col > col) target_col - col else 0;
+                        var space_idx: usize = 0;
+                        while (space_idx < spaces_needed) : (space_idx += 1) {
+                            result.append(self.allocator, ' ') catch return error.OutOfMemory;
+                        }
+
+                        i = j;
+                    },
                     '~' => {
                         // Literal tilde
                         result.append(self.allocator, '~') catch return error.OutOfMemory;
+                        i += 2;
+                    },
+                    '*' => {
+                        // Argument navigation
+                        // Parse optional count parameter: ~n*
+                        var skip_count: usize = 1; // Default: skip 1 arg
+
+                        // Look backwards for numeric parameter
+                        var param_start = i + 1;
+                        while (param_start > 0 and fmt[param_start - 1] >= '0' and fmt[param_start - 1] <= '9') {
+                            param_start -= 1;
+                        }
+
+                        if (param_start < i + 1) {
+                            const param_str = fmt[param_start .. i + 1];
+                            skip_count = std.fmt.parseInt(usize, param_str, 10) catch 1;
+                        }
+
+                        // Skip forward
+                        arg_idx += skip_count;
+                        // Bounds check not needed - just clamps at end
+                        if (arg_idx > args.len) {
+                            arg_idx = args.len;
+                        }
+
+                        i += 2;
+                    },
+                    'P', 'p' => {
+                        // Plural - print 's' if arg != 1, else nothing
+                        if (arg_idx < args.len) {
+                            const val = args[arg_idx];
+                            var should_plural = false;
+
+                            if (val.isFixnum()) {
+                                const n = val.toFixnum();
+                                should_plural = (n != 1);
+                            } else {
+                                // Non-numbers are considered plural
+                                should_plural = true;
+                            }
+
+                            if (should_plural) {
+                                result.append(self.allocator, 's') catch return error.OutOfMemory;
+                            }
+
+                            arg_idx += 1;
+                        }
+                        i += 2;
+                    },
+                    '(' => {
+                        // Case conversion: ~(...~)
+                        // Find matching ~)
+                        const start = i + 2;
+                        var depth: usize = 1;
+                        var end = start;
+                        while (end < fmt.len and depth > 0) {
+                            if (end + 1 < fmt.len and fmt[end] == '~') {
+                                if (fmt[end + 1] == '(') {
+                                    depth += 1;
+                                    end += 2;
+                                } else if (fmt[end + 1] == ')') {
+                                    depth -= 1;
+                                    if (depth == 0) break;
+                                    end += 2;
+                                } else {
+                                    end += 1;
+                                }
+                            } else {
+                                end += 1;
+                            }
+                        }
+                        if (depth != 0) {
+                            // Unmatched ~(, skip it
+                            i += 2;
+                            continue;
+                        }
+
+                        // Process the body and apply downcase
+                        const body = fmt[start..end];
+                        const body_start = result.items.len;
+
+                        // Recursively format the body
+                        var j: usize = 0;
+                        while (j < body.len) {
+                            if (body[j] == '~' and j + 1 < body.len) {
+                                // Handle nested directives (simplified - just copy for now)
+                                result.append(self.allocator, body[j]) catch return error.OutOfMemory;
+                                j += 1;
+                            } else {
+                                result.append(self.allocator, body[j]) catch return error.OutOfMemory;
+                                j += 1;
+                            }
+                        }
+
+                        // Apply downcase to the added segment
+                        const segment = result.items[body_start..];
+                        for (segment) |*c| {
+                            if (c.* >= 'A' and c.* <= 'Z') {
+                                c.* = c.* + ('a' - 'A');
+                            }
+                        }
+
+                        i = end + 2; // Skip past ~)
+                    },
+                    ')' => {
+                        // End of case conversion - should not be reached at top level
                         i += 2;
                     },
                     '{' => {

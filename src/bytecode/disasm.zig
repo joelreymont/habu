@@ -208,13 +208,23 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .close,
         .array_dimension,
         .array_dimensions,
+        .pathname,
+        .parse_namestring,
+        .namestring,
+        .merge_pathnames,
+        .pathname_host,
+        .pathname_device,
+        .pathname_directory,
+        .pathname_name,
+        .pathname_type,
+        .pathname_version,
         => {
             try writer.print("{s}\n", .{op.name()});
             return offset + 1;
         },
 
         // 1 byte operand
-        .load_local, .store_local, .load_capture, .call, .tail_call, .make_list, .make_vec_n, .values, .mv_bind, .format, .enter_scope, .exit_scope, .pop_restarts, .open, .make_array, .aref, .aset => {
+        .load_local, .store_local, .load_capture, .call, .tail_call, .make_list, .make_vec_n, .values, .mv_bind, .format, .enter_scope, .exit_scope, .pop_restarts, .open, .make_array, .aref, .aset, .make_pathname => {
             const operand = chunk.readU8(offset + 1);
             try writer.print("{s} {d}\n", .{ op.name(), operand });
             return offset + 2;

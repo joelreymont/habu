@@ -455,6 +455,40 @@ pub const Op = enum(u8) {
     /// ( array -- dimensions-list )
     array_dimensions = 0x1E,
 
+    /// Make pathname from components (operand: u8 flags)
+    /// ( [components...] -- pathname )
+    /// Flags indicate which components are on stack
+    make_pathname = 0x1F,
+
+    /// Coerce to pathname
+    /// ( pathspec -- pathname )
+    /// pathspec can be pathname (identity), string (parse), or stream (get pathname)
+    pathname = 0x26,
+
+    /// Parse namestring into pathname
+    /// ( string -- pathname )
+    /// Parse string into pathname components using platform rules
+    parse_namestring = 0x27,
+
+    /// Convert pathname to namestring
+    /// ( pathname -- string )
+    /// Reconstruct platform-appropriate string from pathname components
+    namestring = 0x28,
+
+    /// Merge pathnames
+    /// ( pathname default-pathname -- pathname )
+    /// Fill nil components from defaults
+    merge_pathnames = 0x29,
+
+    /// Pathname component accessors
+    /// ( pathname -- component )
+    pathname_host = 0x07,
+    pathname_device = 0x08,
+    pathname_directory = 0x09,
+    pathname_name = 0x0A,
+    pathname_type = 0x0B,
+    pathname_version = 0x0C,
+
     /// Get type of value as symbol
     /// ( x -- type-sym )
     type_of = 0x92,
@@ -1110,6 +1144,16 @@ pub const Op = enum(u8) {
             .get_output_stream_string,
             .array_dimension,
             .array_dimensions,
+            .pathname,
+            .parse_namestring,
+            .namestring,
+            .merge_pathnames,
+            .pathname_host,
+            .pathname_device,
+            .pathname_directory,
+            .pathname_name,
+            .pathname_type,
+            .pathname_version,
             => 0,
 
             // 1 byte operand
@@ -1130,6 +1174,7 @@ pub const Op = enum(u8) {
             .make_array,
             .aref,
             .aset,
+            .make_pathname,
             => 1,
 
             // 2 byte operand

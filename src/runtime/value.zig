@@ -17,6 +17,10 @@
 //! - Pointer extraction: v & ~0xF (mask off low 4 bits)
 //! - Tag extraction: v & 0xE (bits 1-3, ignoring bit 0)
 
+comptime {
+    @setEvalBranchQuota(10000);
+}
+
 const std = @import("std");
 const objects = @import("objects.zig");
 
@@ -282,6 +286,7 @@ pub const Value = packed struct {
 
     /// Extract fixnum value
     pub inline fn toFixnum(self: Value) i64 {
+        @setEvalBranchQuota(10000);
         std.debug.assert(self.isFixnum());
         // Arithmetic right shift to preserve sign
         const signed: i64 = @bitCast(self.raw);
