@@ -159,3 +159,5 @@ zig-out/
 *.debugbak*
 *.orig
 *.rej
+*.bak
+*.backup
