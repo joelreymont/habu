@@ -318,7 +318,6 @@ test "eval define simple" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // Define a variable
@@ -340,7 +339,6 @@ test "eval define with expression" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // Define with computed value
@@ -360,7 +358,6 @@ test "eval multiple defines" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     _ = try repl.eval("(define a 10)");
@@ -379,7 +376,6 @@ test "eval defun simple" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     _ = try repl.eval("(defun double (x) (* x 2))");
@@ -395,7 +391,6 @@ test "eval defun two params" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -413,7 +408,6 @@ test "eval defun recursive" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     _ = try repl.eval("(defun fact (n) (if (= n 0) 1 (* n (fact (- n 1)))))");
@@ -430,7 +424,6 @@ test "eval letrec simple" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     const result = try repl.eval("(letrec ((x 5)) x)");
@@ -445,7 +438,6 @@ test "eval letrec recursive" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -465,7 +457,6 @@ test "eval defmacro simple" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -487,7 +478,6 @@ test "eval defmacro with cons" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // Define macro that builds (+ x 1) using cons
@@ -506,7 +496,6 @@ test "eval defmacro with quasiquote" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -530,7 +519,6 @@ test "eval defmacro unless" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -712,7 +700,6 @@ test "the in function" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // Define a function that asserts its argument is a fixnum
@@ -731,7 +718,6 @@ test "the in function failure" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -752,7 +738,6 @@ test "occurrence typing skips redundant check" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -776,7 +761,6 @@ test "occurrence typing with numberp" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -802,7 +786,6 @@ test "else-branch occurrence typing with null" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -832,7 +815,6 @@ test "type-of returns correct type symbols" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -870,7 +852,6 @@ test "typed defun parameter" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // Define function with typed parameter
@@ -890,7 +871,6 @@ test "typed defun parameter failure" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // Define function with typed parameter
@@ -908,7 +888,6 @@ test "typed defun multiple params" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -928,7 +907,6 @@ test "typed defun mixed params" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // Mix of typed and untyped parameters
@@ -947,7 +925,6 @@ test "typed lambda" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // Lambda with typed parameter
@@ -963,7 +940,6 @@ test "closure captures value" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -986,7 +962,6 @@ test "closure captures multiple values" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1014,7 +989,6 @@ test "defun with return type" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // Function with return type
@@ -1032,7 +1006,6 @@ test "defun with return type and params" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1052,7 +1025,6 @@ test "defun return type failure" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // Function claims to return fixnum but returns string
@@ -1070,7 +1042,6 @@ test "defun return type cons" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1093,7 +1064,6 @@ test "flet basic" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // flet binds local functions
@@ -1113,7 +1083,6 @@ test "flet shadowing" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1141,7 +1110,6 @@ test "labels recursive" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // labels allows recursion
@@ -1161,7 +1129,6 @@ test "labels mutual recursion" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1189,7 +1156,6 @@ test "block basic" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // block without return-from returns body value
@@ -1205,7 +1171,6 @@ test "return-from early exit" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1227,7 +1192,6 @@ test "return-from in conditional" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // return-from in conditional branch
@@ -1248,7 +1212,6 @@ test "nested blocks" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1276,7 +1239,6 @@ test "unwind-protect normal exit" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // unwind-protect returns the protected value (cleanup result discarded)
@@ -1296,7 +1258,6 @@ test "unwind-protect with return-from" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1319,7 +1280,6 @@ test "nested unwind-protect" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1349,7 +1309,6 @@ test "catch basic" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // catch without throw returns body value
@@ -1365,7 +1324,6 @@ test "throw to catch" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1388,7 +1346,6 @@ test "nested catch" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // throw targets inner catch, not outer
@@ -1408,7 +1365,6 @@ test "throw across function call" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1438,7 +1394,6 @@ test "tagbody basic" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // tagbody without go returns nil
@@ -1453,7 +1408,6 @@ test "tagbody with go forward" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1477,7 +1431,6 @@ test "tagbody loop" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1507,7 +1460,6 @@ test "values single" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // (values 42) returns 42
@@ -1524,7 +1476,6 @@ test "values empty" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // (values) returns nil
@@ -1539,7 +1490,6 @@ test "multiple-value-bind basic" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1561,7 +1511,6 @@ test "multiple-value-bind fewer values" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     // When fewer values than variables, extras are nil
@@ -1582,7 +1531,6 @@ test "multiple-value-bind single var" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1608,7 +1556,6 @@ test "format nil returns string" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     const result = try repl.eval(
@@ -1624,7 +1571,6 @@ test "format ~D decimal" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1642,7 +1588,6 @@ test "format ~% newline" {
 
     var repl = try Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
-    repl.wireGlobalEnv();
     defer repl.deinit();
 
     const result = try repl.eval(
@@ -1658,7 +1603,6 @@ test "format ~S standard" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 
@@ -1680,7 +1624,6 @@ test "stdlib compiles" {
     defer heap.deinit();
 
     var repl = try Repl.init(allocator, &heap, .{});
-    repl.wireGlobalEnv();
     repl.wireGlobalEnv();
     defer repl.deinit();
 

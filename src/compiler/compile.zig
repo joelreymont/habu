@@ -1359,7 +1359,7 @@ pub const Compiler = struct {
             }
             // Check globals - use qualified name if symbol has package
             var qual_buf: [256]u8 = undefined;
-            const qual_name = self.getQualifiedName(sym, &qual_buf) catch name;
+            const qual_name = self.getQualifiedName(sym, &qual_buf) catch sym.getName();
             const idx = self.globals.lookup(qual_name) orelse
                 return error.UnboundVariable;
             return try self.builder.globalRef(qual_name, idx);
