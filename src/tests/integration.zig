@@ -1297,6 +1297,38 @@ test "nested unwind-protect" {
     try testing.expectEqual(@as(i64, 100), result.toFixnum());
 }
 
+// NOTE: Error handling in unwind-protect is not yet fully implemented
+// The VM needs to be enhanced to run cleanup forms when errors occur
+// See: src/interp/vm.zig - doError function needs to check unwind stack
+//
+// test "unwind-protect with error - SKIP until VM error handling is implemented" {
+//     const allocator = testing.allocator;
+//
+//     var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+//     defer heap.deinit();
+//
+//     var repl = try Repl.init(allocator, &heap, .{});
+//     repl.wireGlobalEnv();
+//     defer repl.deinit();
+//
+//     // Load stdlib for setq
+//     const stdlib = @embedFile("../../lib/stdlib.habu");
+//     const null_writer = std.io.null_writer;
+//     try repl.evalFileContent(stdlib, null_writer);
+//
+//     // Cleanup should run even when protected form errors
+//     // Currently this test would fail - cleanup doesn't run on errors
+//     const result = try repl.eval(
+//         \\(let ((cleanup-ran nil))
+//         \\  (unwind-protect
+//         \\      (/ 1 0)
+//         \\    (setq cleanup-ran t))
+//         \\  cleanup-ran)
+//     );
+//     // Should return t after cleanup runs
+//     try testing.expect(result.eq(Value.t));
+// }
+
 // ============================================================================
 // catch/throw tests
 // ============================================================================
