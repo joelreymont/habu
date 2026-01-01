@@ -167,8 +167,13 @@ pub const Heap = struct {
     /// Maps class name to slot names array
     class_metadata: std.StringHashMapUnmanaged([]const []const u8),
     /// Readtable for reader macros
-    /// Maps character (u8) to macro function (Value - closure or nil)
-    readtable: std.AutoHashMapUnmanaged(u8, Value),
+    /// Maps character (u8) to macro function and flags
+    readtable: std.AutoHashMapUnmanaged(u8, ReadtableEntry),
+
+    pub const ReadtableEntry = struct {
+        function: Value,
+        non_terminating: bool,
+    };
 
     pub const SlotMeta = struct {
         name: []const u8,

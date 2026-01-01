@@ -2602,6 +2602,7 @@ pub const Vm = struct {
                 },
 
                 .set_macro_character => {
+                    const non_term = try self.pop(); // &optional non-terminating-p
                     const function = try self.pop();
                     const char_val = try self.pop();
 
@@ -2610,7 +2611,11 @@ pub const Vm = struct {
                     if (char_code > 255) return error.TypeMismatch; // Only ASCII supported for now
 
                     const byte: u8 = @intCast(char_code);
-                    try self.heap.readtable.put(self.allocator, byte, function);
+                    const entry = runtime.Heap.ReadtableEntry{
+                        .function = function,
+                        .non_terminating = !non_term.isNil(),
+                    };
+                    try self.heap.readtable.put(self.allocator, byte, entry);
                     try self.push(Value.nil);
                 },
 
@@ -2621,10 +2626,17 @@ pub const Vm = struct {
                     const char_code = char_val.toCharacter();
                     if (char_code > 255) {
                         try self.push(Value.nil);
+                        try self.push(Value.nil);
                     } else {
                         const byte: u8 = @intCast(char_code);
-                        const function = self.heap.readtable.get(byte) orelse Value.nil;
-                        try self.push(function);
+                        const entry = self.heap.readtable.get(byte);
+                        if (entry) |e| {
+                            try self.push(e.function);
+                            try self.push(if (e.non_terminating) Value.t else Value.nil);
+                        } else {
+                            try self.push(Value.nil);
+                            try self.push(Value.nil);
+                        }
                     }
                 },
 
