@@ -1318,6 +1318,11 @@ pub const Compiler = struct {
             return try self.builder.lit(expr);
         }
 
+        // Bignum
+        if (expr.isBignum()) {
+            return try self.builder.lit(expr);
+        }
+
         // String
         if (expr.isString()) {
             return try self.builder.lit(expr);
@@ -2024,7 +2029,7 @@ pub const Compiler = struct {
 
     /// Collect free variables in an expression
     fn collectFreeVars(self: *Compiler, expr: Value, env: *const Env, captures: *CaptureSet) error{OutOfMemory}!void {
-        if (expr.isNil() or expr.isFixnum() or expr.isString() or expr.isKeyword() or expr.isCharacter() or expr.isMagicSymbol() or expr.isVector()) {
+        if (expr.isNil() or expr.isFixnum() or expr.isBignum() or expr.isString() or expr.isKeyword() or expr.isCharacter() or expr.isMagicSymbol() or expr.isVector()) {
             return; // Literals have no free variables
         }
 
@@ -2172,7 +2177,7 @@ pub const Compiler = struct {
         mutated: *std.StringHashMap(void),
         captured: *std.StringHashMap(void),
     ) error{OutOfMemory}!void {
-        if (expr.isNil() or expr.isFixnum() or expr.isString() or expr.isKeyword() or expr.isCharacter() or expr.isVector()) {
+        if (expr.isNil() or expr.isFixnum() or expr.isBignum() or expr.isString() or expr.isKeyword() or expr.isCharacter() or expr.isVector()) {
             return;
         }
 
@@ -2283,7 +2288,7 @@ pub const Compiler = struct {
         params: *std.StringHashMap(void),
         captured: *std.StringHashMap(void),
     ) error{OutOfMemory}!void {
-        if (expr.isNil() or expr.isFixnum() or expr.isString() or expr.isKeyword() or expr.isCharacter() or expr.isVector()) {
+        if (expr.isNil() or expr.isFixnum() or expr.isBignum() or expr.isString() or expr.isKeyword() or expr.isCharacter() or expr.isVector()) {
             return;
         }
 

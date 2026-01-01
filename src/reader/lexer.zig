@@ -25,6 +25,7 @@ pub const TokenKind = enum {
 
     // Literals
     number,
+    bignum,
     float,
     rational,
     string,
@@ -184,6 +185,8 @@ pub const Lexer = struct {
     }
 
     fn readNumber(self: *Lexer) Token {
+        const start_pos = self.token_start;
+
         // Consume integer part
         while (isDigit(self.peek())) {
             _ = self.advance();
@@ -229,9 +232,24 @@ pub const Lexer = struct {
             return self.makeToken(.float);
         }
 
+        // Integer: check if it fits in fixnum range
+        // Fixnums are 63-bit signed (bit 0 is tag), so range is -(2^62) to 2^62-1
+        const text = self.source[start_pos..self.pos];
+        const max_fixnum: i64 = (1 << 62) - 1; // 4611686018427387903
+
+        // Try parsing as i64 first
+        const parsed = std.fmt.parseInt(i64, text, 10) catch {
+            // Overflow - it's a bignum
+            return self.makeToken(.bignum);
+        };
+
+        // Check if it fits in fixnum range
+        if (parsed > max_fixnum or parsed < -(1 << 62)) {
+            return self.makeToken(.bignum);
+        }
+
         return self.makeToken(.number);
     }
-
 
     fn readSymbol(self: *Lexer) Token {
         while (isSymbolChar(self.peek())) {

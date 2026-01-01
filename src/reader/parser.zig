@@ -9,6 +9,7 @@ const TokenKind = @import("lexer.zig").TokenKind;
 const runtime = @import("../runtime/runtime.zig");
 const Value = runtime.Value;
 const Heap = runtime.Heap;
+const objects = @import("../runtime/objects.zig");
 const primitives = @import("../runtime/primitives/primitives.zig");
 
 pub const Error = error{
@@ -73,6 +74,7 @@ pub const Parser = struct {
             .comma_at => return self.parseQuote("unquote-splicing"),
             .function_quote => return self.parseQuote("function"),
             .number => return self.parseNumber(),
+            .bignum => return self.parseBignum(),
             .float => return self.parseFloat(),
             .rational => return self.parseRational(),
             .string => return self.parseString(),
@@ -212,7 +214,6 @@ pub const Parser = struct {
         return primitives.complex.makeComplex(self.heap, real, imag);
     }
 
-
     fn parseQuote(self: *Parser, quote_name: []const u8) Error!Value {
         self.advance(); // consume quote token
         const quoted = try self.parseExpr();
@@ -247,6 +248,49 @@ pub const Parser = struct {
         return Value.makeFixnum(n);
     }
 
+    fn parseBignum(self: *Parser) Error!Value {
+        const text = self.current.text;
+        self.advance();
+
+        // Parse digits into limbs (64-bit each, little-endian)
+        // For now, use simple approach: try parsing as u128, split into two u64 limbs
+        // Future: implement full arbitrary-precision parsing
+
+        const is_negative = text.len > 0 and text[0] == '-';
+        const digits = if (is_negative) text[1..] else text;
+
+        // Try u128 first (covers up to ~38 decimal digits)
+        if (digits.len <= 38) {
+            const n = std.fmt.parseUnsigned(u128, digits, 10) catch return error.InvalidNumber;
+
+            // Allocate bignum
+            const bn = try self.heap.alloc(objects.Bignum);
+            bn.* = .{
+                .kind = .bignum,
+                .size = 0,
+                .limbs = [_]u64{0} ** 8,
+            };
+
+            // Split into limbs (little-endian: least significant first)
+            const limb0: u64 = @truncate(n);
+            const limb1: u64 = @truncate(n >> 64);
+
+            bn.limbs[0] = limb0;
+            if (limb1 != 0) {
+                bn.limbs[1] = limb1;
+                bn.size = if (is_negative) -2 else 2;
+            } else {
+                bn.size = if (is_negative) -1 else 1;
+            }
+
+            return Value.makeBignum(bn);
+        }
+
+        // For numbers > 38 digits, we need proper multi-precision parsing
+        // For now, return error (will implement later)
+        return error.InvalidNumber;
+    }
+
     fn parseFloat(self: *Parser) Error!Value {
         const text = self.current.text;
         self.advance();
@@ -269,7 +313,6 @@ pub const Parser = struct {
 
         return primitives.rational.makeRational(self.heap, num, den);
     }
-
 
     fn parseString(self: *Parser) Error!Value {
         var text = self.current.text;
