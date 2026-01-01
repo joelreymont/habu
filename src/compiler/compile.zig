@@ -5050,6 +5050,9 @@ pub const Compiler = struct {
         try self.collectFreeVars(body, &lambda_env, &capture_set);
         const captures = try self.allocator.dupe(Ir.Capture, capture_set.captures.items);
 
+        // Save param names for dispatcher before toOwnedSlice consumes them
+        const param_names_copy = try self.allocator.dupe([]const u8, param_names.items);
+
         // Create lambda
         const lambda_ir = try self.builder.lambda(
             try param_names.toOwnedSlice(self.allocator),
@@ -5070,9 +5073,99 @@ pub const Compiler = struct {
             .body = lambda_ir,
         });
 
-        // Define the generic function as a dispatcher
+        // Generate dispatcher function
+        const dispatcher = try self.generateMethodDispatcher(gen_name, gop.value_ptr.*, param_names_copy);
+
+        // Define the generic function as the dispatcher
         const global_idx = try self.globals.define(gen_name);
-        return try self.builder.define(gen_name, global_idx, lambda_ir);
+        return try self.builder.define(gen_name, global_idx, dispatcher);
+    }
+
+    /// Generate a dispatcher lambda that checks argument types and calls the matching method
+    fn generateMethodDispatcher(
+        self: *Compiler,
+        _: []const u8,
+        methods: std.ArrayList(MethodDef),
+        param_names: []const []const u8,
+    ) Error!*Ir {
+        // Build dispatcher body: nested if-then-else checking types
+        var dispatch_body: *Ir = undefined;
+
+        // Start from the end: error case
+        const error_msg = try self.heap.?.allocString("No applicable method");
+        const error_msg_ir = try self.builder.lit(error_msg);
+        const error_ir = try self.builder.errorUser(error_msg_ir);
+        dispatch_body = error_ir;
+
+        // Work backwards through methods, wrapping in if statements
+        var i = methods.items.len;
+        while (i > 0) {
+            i -= 1;
+            const method = methods.items[i];
+
+            // For now, only handle single-dispatch (first parameter specializer)
+            // TODO: Handle multi-parameter dispatch
+            if (method.specializers.len == 0) continue;
+
+            const spec_name = method.specializers[0];
+
+            // Skip unspecialized methods (specializer = "t")
+            if (std.mem.eql(u8, spec_name, "t")) {
+                // Unspecialized - always matches, make it the else branch
+                dispatch_body = try self.generateMethodCall(method.body, param_names);
+                continue;
+            }
+
+            // Build condition: (typep arg1 'class-name)
+            if (param_names.len == 0) return error.InvalidSyntax;
+
+            // Reference to first parameter
+            const arg_ir = try self.builder.variable(param_names[0], 0, 0); // depth 0, index 0 - first param
+
+            // Class name symbol
+            const class_sym = try self.heap.?.intern(spec_name);
+            const class_ir = try self.builder.lit(class_sym);
+
+            // typep check
+            const cond_ir = try self.builder.typep(arg_ir, class_ir);
+
+            // Method call
+            const then_ir = try self.generateMethodCall(method.body, param_names);
+
+            // Wrap in if
+            dispatch_body = try self.builder.ifExpr(cond_ir, then_ir, dispatch_body);
+        }
+
+        // Wrap dispatch body in lambda
+        const dispatcher = try self.builder.lambda(
+            param_names,
+            &[_]Ir.OptionalParam{},
+            &[_]Ir.KeyParam{},
+            null,
+            &[_]Ir.Capture{}, // No captures - methods are stored as IR
+            dispatch_body,
+        );
+
+        return dispatcher;
+    }
+
+    /// Generate a call to a method body with given parameters
+    fn generateMethodCall(
+        self: *Compiler,
+        method_body: *Ir,
+        param_names: []const []const u8,
+    ) Error!*Ir {
+        // Build argument list: pass all parameters
+        var args = std.ArrayList(*const Ir){};
+        defer args.deinit(self.allocator);
+
+        for (param_names, 0..) |param, idx| {
+            const arg_ir = try self.builder.variable(param, 0, @intCast(idx));
+            try args.append(self.allocator, arg_ir);
+        }
+
+        // Call the method body (which is already a lambda)
+        return try self.builder.call(method_body, try args.toOwnedSlice(self.allocator));
     }
 
     // ========================================================================
