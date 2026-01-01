@@ -324,12 +324,15 @@ pub fn random(n: Value) (Error || RangeError)!Value {
 test "basic arithmetic" {
     const testing = std.testing;
 
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
     const a = Value.makeFixnum(10);
     const b = Value.makeFixnum(3);
 
-    try testing.expectEqual(@as(i64, 13), (try add(a, b)).toFixnum());
+    try testing.expectEqual(@as(i64, 13), (try add(&heap, a, b)).toFixnum());
     try testing.expectEqual(@as(i64, 7), (try sub(a, b)).toFixnum());
-    try testing.expectEqual(@as(i64, 30), (try mul(a, b)).toFixnum());
+    try testing.expectEqual(@as(i64, 30), (try mul(&heap, a, b)).toFixnum());
     try testing.expectEqual(@as(i64, 3), (try div(a, b)).toFixnum());
     try testing.expectEqual(@as(i64, 1), (try mod(a, b)).toFixnum());
 }

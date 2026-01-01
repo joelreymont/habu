@@ -198,6 +198,7 @@ pub const Vm = struct {
     /// Saved throw state for unwinding through unwind-protect
     pending_throw_tag: Value,
     pending_throw_value: Value,
+    pending_error: ?Error,
     is_unwinding: bool,
 
     /// Secondary values buffer for multiple-value-bind
@@ -303,6 +304,7 @@ pub const Vm = struct {
             .scope_sp = 0,
             .pending_throw_tag = Value.nil,
             .pending_throw_value = Value.nil,
+            .pending_error = null,
             .is_unwinding = false,
             .secondary_values = undefined,
             .secondary_values_count = 0,
@@ -1744,13 +1746,21 @@ pub const Vm = struct {
 
                 .pop_unwind => {
                     _ = self.readI16(); // Skip unused operand
-                    // For normal exit, pop the unwind frame (doThrow already popped for throw case)
+                    // For normal exit, pop the unwind frame (doThrow/doError already popped for unwind case)
                     if (!self.is_unwinding and self.unwind_sp > 0) {
                         self.unwind_sp -= 1;
                     }
-                    // If we're unwinding (cleanup ran due to throw), re-throw
+                    // If we're unwinding (cleanup ran due to throw or error), re-throw/re-error
                     if (self.is_unwinding) {
                         self.is_unwinding = false;
+
+                        // Check if unwinding due to error
+                        if (self.pending_error) |err| {
+                            self.pending_error = null;
+                            return err;
+                        }
+
+                        // Otherwise unwinding due to throw
                         const tag = self.pending_throw_tag;
                         const value = self.pending_throw_value;
                         self.pending_throw_tag = Value.nil;
@@ -2738,6 +2748,38 @@ pub const Vm = struct {
         }
         // No matching catch found
         return error.UnhandledThrow;
+    }
+
+    /// Handle an error by running unwind-protect cleanup if needed
+    fn doError(self: *Vm, err: Error) Error {
+        // Check if there's an unwind-protect that needs cleanup
+        if (self.unwind_sp > 0) {
+            // Pop the unwind frame
+            self.unwind_sp -= 1;
+            const unwind_frame = self.unwind_stack[self.unwind_sp];
+
+            // Save error for after cleanup
+            self.pending_error = err;
+            self.is_unwinding = true;
+
+            // Jump to cleanup code with saved stack/frame state
+            self.chunk = unwind_frame.chunk;
+            self.ip = unwind_frame.cleanup_ip;
+
+            // Validate before restore to guard against corruption
+            if (unwind_frame.unwind_sp > STACK_SIZE or unwind_frame.unwind_fp > MAX_FRAMES) {
+                return error.InvalidOpcode;
+            }
+            self.sp = unwind_frame.unwind_sp;
+            self.fp = unwind_frame.unwind_fp;
+
+            // Return RuntimeError to signal cleanup is running
+            // pop_unwind will re-throw the original error after cleanup
+            return error.RuntimeError;
+        }
+
+        // No unwind frames - propagate error normally
+        return err;
     }
 
     fn doInvokeRestart(self: *Vm, name: Value, value: Value) Error!void {
