@@ -824,11 +824,31 @@ pub const Vm = struct {
                     const a = try self.pop();
                     try self.push(if (a.eq(b)) Value.t else Value.nil);
                 },
-                .lt => try self.binaryOp(binaryLt),
-                .gt => try self.binaryOp(binaryGt),
-                .le => try self.binaryOp(binaryLe),
-                .ge => try self.binaryOp(binaryGe),
-                .num_eq => try self.binaryOp(binaryNumEq),
+                .lt => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    try self.push(if (primitives.arith.lt(a, b)) Value.t else Value.nil);
+                },
+                .gt => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    try self.push(if (primitives.arith.gt(a, b)) Value.t else Value.nil);
+                },
+                .le => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    try self.push(if (primitives.arith.le(a, b)) Value.t else Value.nil);
+                },
+                .ge => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    try self.push(if (primitives.arith.ge(a, b)) Value.t else Value.nil);
+                },
+                .num_eq => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    try self.push(if (primitives.arith.numEq(a, b)) Value.t else Value.nil);
+                },
                 .not => {
                     const a = try self.pop();
                     try self.push(if (a.isNil()) Value.t else Value.nil);

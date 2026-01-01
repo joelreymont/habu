@@ -212,30 +212,70 @@ pub fn min_val(a: Value, b: Value) Error!Value {
 
 /// Numeric equality
 pub fn numEq(a: Value, b: Value) bool {
+    // Handle bignum comparisons
+    if (a.isBignum() or b.isBignum()) {
+        if (!a.isFixnum() and !a.isBignum()) return false;
+        if (!b.isFixnum() and !b.isBignum()) return false;
+        return compareBignum(a, b) == 0;
+    }
+
+    // Fixnum comparison
     if (!a.isFixnum() or !b.isFixnum()) return false;
     return a.toFixnum() == b.toFixnum();
 }
 
 /// Less than
 pub fn lt(a: Value, b: Value) bool {
+    // Handle bignum comparisons
+    if (a.isBignum() or b.isBignum()) {
+        if (!a.isFixnum() and !a.isBignum()) return false;
+        if (!b.isFixnum() and !b.isBignum()) return false;
+        return compareBignum(a, b) < 0;
+    }
+
+    // Fixnum comparison
     if (!a.isFixnum() or !b.isFixnum()) return false;
     return a.toFixnum() < b.toFixnum();
 }
 
 /// Greater than
 pub fn gt(a: Value, b: Value) bool {
+    // Handle bignum comparisons
+    if (a.isBignum() or b.isBignum()) {
+        if (!a.isFixnum() and !a.isBignum()) return false;
+        if (!b.isFixnum() and !b.isBignum()) return false;
+        return compareBignum(a, b) > 0;
+    }
+
+    // Fixnum comparison
     if (!a.isFixnum() or !b.isFixnum()) return false;
     return a.toFixnum() > b.toFixnum();
 }
 
 /// Less than or equal
 pub fn le(a: Value, b: Value) bool {
+    // Handle bignum comparisons
+    if (a.isBignum() or b.isBignum()) {
+        if (!a.isFixnum() and !a.isBignum()) return false;
+        if (!b.isFixnum() and !b.isBignum()) return false;
+        return compareBignum(a, b) <= 0;
+    }
+
+    // Fixnum comparison
     if (!a.isFixnum() or !b.isFixnum()) return false;
     return a.toFixnum() <= b.toFixnum();
 }
 
 /// Greater than or equal
 pub fn ge(a: Value, b: Value) bool {
+    // Handle bignum comparisons
+    if (a.isBignum() or b.isBignum()) {
+        if (!a.isFixnum() and !a.isBignum()) return false;
+        if (!b.isFixnum() and !b.isBignum()) return false;
+        return compareBignum(a, b) >= 0;
+    }
+
+    // Fixnum comparison
     if (!a.isFixnum() or !b.isFixnum()) return false;
     return a.toFixnum() >= b.toFixnum();
 }
@@ -577,4 +617,52 @@ fn mulBignum(heap: *Heap, a: Value, b: Value) Error!Value {
     }
 
     return heap.allocBignumFromLimbs(&result_limbs, result_neg);
+}
+
+/// Compare two bignums: returns -1 if a < b, 0 if a == b, 1 if a > b
+fn compareBignum(a: Value, b: Value) i8 {
+    // Convert fixnums to temporary bignums
+    var a_tmp: objects.Bignum = undefined;
+    var b_tmp: objects.Bignum = undefined;
+
+    const a_bn = if (a.isBignum()) a.toPtr(objects.Bignum) else blk: {
+        a_tmp = objects.Bignum.make(a.toFixnum());
+        break :blk &a_tmp;
+    };
+    const b_bn = if (b.isBignum()) b.toPtr(objects.Bignum) else blk: {
+        b_tmp = objects.Bignum.make(b.toFixnum());
+        break :blk &b_tmp;
+    };
+
+    const a_neg = a_bn.isNegative();
+    const b_neg = b_bn.isNegative();
+
+    // Compare signs first
+    if (a_neg and !b_neg) return -1; // negative < positive
+    if (!a_neg and b_neg) return 1; // positive > negative
+
+    // Same sign - compare magnitudes
+    const a_size: usize = @intCast(@abs(a_bn.size));
+    const b_size: usize = @intCast(@abs(b_bn.size));
+
+    // Compare sizes
+    if (a_size != b_size) {
+        const size_cmp: i8 = if (a_size < b_size) -1 else 1;
+        // If negative, invert the comparison (larger magnitude = smaller number)
+        return if (a_neg) -size_cmp else size_cmp;
+    }
+
+    // Same size - compare limbs from most significant to least
+    var i: usize = a_size;
+    while (i > 0) {
+        i -= 1;
+        if (a_bn.limbs[i] != b_bn.limbs[i]) {
+            const limb_cmp: i8 = if (a_bn.limbs[i] < b_bn.limbs[i]) -1 else 1;
+            // If negative, invert the comparison
+            return if (a_neg) -limb_cmp else limb_cmp;
+        }
+    }
+
+    // All limbs equal
+    return 0;
 }
