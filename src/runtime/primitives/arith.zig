@@ -42,14 +42,25 @@ pub fn sub(a: Value, b: Value) Error!Value {
     return Value.makeFixnum(result[0]);
 }
 
-/// Multiply two fixnums (with overflow check)
-pub fn mul(a: Value, b: Value) Error!Value {
+/// Multiply two numbers (fixnum, bignum, or float)
+pub fn mul(heap: *Heap, a: Value, b: Value) Error!Value {
     // Float contagion
     if (a.isFloat() or b.isFloat()) return mulFloat(a, b);
 
+    // Bignum arithmetic
+    if (a.isBignum() or b.isBignum()) return mulBignum(heap, a, b);
+
+    // Fixnum arithmetic with overflow check
     if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     const result = @mulWithOverflow(a.toFixnum(), b.toFixnum());
-    if (result[1] != 0) return error.TypeMismatch;
+
+    // Check for i64 overflow OR fixnum range overflow (62-bit signed)
+    const max_fixnum: i64 = (1 << 62) - 1;
+    const min_fixnum: i64 = -(1 << 62);
+    if (result[1] != 0 or result[0] > max_fixnum or result[0] < min_fixnum) {
+        // Overflow - promote to bignum
+        return mulBignum(heap, a, b);
+    }
     return Value.makeFixnum(result[0]);
 }
 
@@ -504,4 +515,66 @@ fn addBignum(heap: *Heap, a: Value, b: Value) Error!Value {
         // For now, return type mismatch (implement subtraction separately)
         return error.TypeMismatch;
     }
+}
+
+/// Multiply two bignums (or mixed bignum/fixnum)
+fn mulBignum(heap: *Heap, a: Value, b: Value) Error!Value {
+    // Convert fixnums to temporary bignums
+    var a_tmp: objects.Bignum = undefined;
+    var b_tmp: objects.Bignum = undefined;
+
+    const a_bn = if (a.isBignum()) a.toPtr(objects.Bignum) else blk: {
+        a_tmp = objects.Bignum.make(a.toFixnum());
+        break :blk &a_tmp;
+    };
+    const b_bn = if (b.isBignum()) b.toPtr(objects.Bignum) else blk: {
+        b_tmp = objects.Bignum.make(b.toFixnum());
+        break :blk &b_tmp;
+    };
+
+    const a_neg = a_bn.isNegative();
+    const b_neg = b_bn.isNegative();
+
+    // Get absolute values
+    const a_size: usize = @intCast(@abs(a_bn.size));
+    const b_size: usize = @intCast(@abs(b_bn.size));
+
+    // Result is negative if signs differ
+    const result_neg = a_neg != b_neg;
+
+    // Schoolbook multiplication: result size is at most size1 + size2
+    var result_limbs: [8]u64 = [_]u64{0} ** 8;
+
+    for (0..a_size) |i| {
+        var carry: u64 = 0;
+        for (0..b_size) |j| {
+            if (i + j >= 8) break; // Result overflow (too large for our 8-limb representation)
+
+            // Multiply limbs and add to existing result
+            const prod = @as(u128, a_bn.limbs[i]) * @as(u128, b_bn.limbs[j]);
+            const low: u64 = @truncate(prod);
+            const high: u64 = @truncate(prod >> 64);
+
+            // Add low part + carry to current position
+            const sum1 = @addWithOverflow(result_limbs[i + j], low);
+            const sum2 = @addWithOverflow(sum1[0], carry);
+            result_limbs[i + j] = sum2[0];
+
+            // New carry is high part + overflow bits
+            carry = high + sum1[1] + sum2[1];
+        }
+
+        // Propagate final carry
+        if (carry > 0) {
+            var k = b_size;
+            while (carry > 0 and i + k < 8) {
+                const sum = @addWithOverflow(result_limbs[i + k], carry);
+                result_limbs[i + k] = sum[0];
+                carry = sum[1];
+                k += 1;
+            }
+        }
+    }
+
+    return heap.allocBignumFromLimbs(&result_limbs, result_neg);
 }

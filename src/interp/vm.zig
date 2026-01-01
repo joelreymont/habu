@@ -801,7 +801,7 @@ pub const Vm = struct {
                 .mul => {
                     const b = try self.pop();
                     const a = try self.pop();
-                    try self.push(try primitives.arith.mul(a, b));
+                    try self.push(try primitives.arith.mul(self.heap, a, b));
                 },
                 .div => {
                     const b = try self.pop();
