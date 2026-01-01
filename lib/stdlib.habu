@@ -129,16 +129,22 @@
 ;;;   (loop for x in '(1 2 3) collect (* x x))  => (1 4 9)
 ;;;   (loop repeat 3 collect "hi")              => ("hi" "hi" "hi")
 
-;;; for VAR from START to END collect EXPR
-(defmacro loop-for-from-collect (var start end expr)
+;;; for VAR from START to END collect EXPR [finally FORMS*]
+(defmacro loop-for-from-collect (var start end expr &rest maybe-finally)
   (let ((end-var (gensym "end"))
-        (result (gensym "result")))
+        (result (gensym "result"))
+        (finally-forms nil))
+    ;; Check if maybe-finally starts with 'finally keyword
+    (if (and maybe-finally (eq (car maybe-finally) 'finally))
+        (setq finally-forms (cdr maybe-finally))
+        (setq finally-forms maybe-finally))
     `(let ((,var ,start)
            (,end-var ,end)
            (,result nil))
        (while (<= ,var ,end-var)
          (push ,expr ,result)
          (setq ,var (+ ,var 1)))
+       ,@finally-forms
        (reverse ,result))))
 
 ;;; for VAR in LIST collect EXPR
@@ -166,12 +172,182 @@
          (setq ,i (+ ,i 1)))
        (reverse ,result))))
 
-;;; Simple loop - only supports: (loop for VAR from START to END collect EXPR)
-;;; For other patterns, use the specialized macros directly:
-;;;   (loop-for-in-collect VAR LIST EXPR)
-;;;   (loop-repeat-collect N EXPR)
-(defmacro loop (for-kw var from-kw start to-kw end collect-kw expr)
-  `(loop-for-from-collect ,var ,start ,end ,expr))
+;;; for VAR from START to END sum EXPR - sum numeric values
+(defmacro loop-for-from-sum (var start end expr &rest maybe-finally)
+  (let ((end-var (gensym "end"))
+        (sum (gensym "sum"))
+        (finally-forms nil))
+    ;; Check if maybe-finally starts with 'finally keyword
+    (if (and maybe-finally (eq (car maybe-finally) 'finally))
+        (setq finally-forms (cdr maybe-finally))
+        (setq finally-forms maybe-finally))
+    `(let ((,var ,start)
+           (,end-var ,end)
+           (,sum 0))
+       (while (<= ,var ,end-var)
+         (setq ,sum (+ ,sum ,expr))
+         (setq ,var (+ ,var 1)))
+       ,@finally-forms
+       ,sum)))
+
+;;; for VAR from START to END count EXPR - count truthy values
+(defmacro loop-for-from-count (var start end expr &rest maybe-finally)
+  (let ((end-var (gensym "end"))
+        (count (gensym "count"))
+        (finally-forms nil))
+    ;; Check if maybe-finally starts with 'finally keyword
+    (if (and maybe-finally (eq (car maybe-finally) 'finally))
+        (setq finally-forms (cdr maybe-finally))
+        (setq finally-forms maybe-finally))
+    `(let ((,var ,start)
+           (,end-var ,end)
+           (,count 0))
+       (while (<= ,var ,end-var)
+         (if ,expr
+             (setq ,count (+ ,count 1)))
+         (setq ,var (+ ,var 1)))
+       ,@finally-forms
+       ,count)))
+
+;;; for VAR from START to END append EXPR - concatenate result lists
+(defmacro loop-for-from-append (var start end expr &rest maybe-finally)
+  (let ((end-var (gensym "end"))
+        (result (gensym "result"))
+        (finally-forms nil))
+    ;; Check if maybe-finally starts with 'finally keyword
+    (if (and maybe-finally (eq (car maybe-finally) 'finally))
+        (setq finally-forms (cdr maybe-finally))
+        (setq finally-forms maybe-finally))
+    `(let ((,var ,start)
+           (,end-var ,end)
+           (,result nil))
+       (while (<= ,var ,end-var)
+         (setq ,result (append ,result ,expr))
+         (setq ,var (+ ,var 1)))
+       ,@finally-forms
+       ,result)))
+
+;;; for VAR from START to END do BODY - execute body for side effects
+(defmacro loop-for-from-do (var start end body finally-forms)
+  (let ((end-var (gensym "end")))
+    `(let ((,var ,start)
+           (,end-var ,end))
+       (while (<= ,var ,end-var)
+         ,@body
+         (setq ,var (+ ,var 1)))
+       ,@finally-forms
+       nil)))
+
+;;; while CONDITION do BODY - loop while condition is true
+(defmacro loop-while-do (condition &rest body)
+  `(progn
+     (while ,condition
+       ,@body)
+     nil))
+
+;;; until CONDITION do BODY - loop until condition becomes true
+(defmacro loop-until-do (condition &rest body)
+  `(progn
+     (while (not ,condition)
+       ,@body)
+     nil))
+
+;;; Extended loop macro - supports:
+;;;   (loop with VAR = EXPR for ...)
+;;;   (loop for VAR from START to END collect EXPR [finally FORMS*])
+;;;   (loop for VAR from START to END do BODY* [finally FORMS*])
+;;;   (loop while CONDITION do BODY* [finally FORMS*])
+;;;   (loop until CONDITION do BODY* [finally FORMS*])
+;;; For other patterns, use the specialized macros directly
+(defmacro loop (&rest clauses)
+  (if (null clauses)
+      nil
+      (let ((first (car clauses)))
+        (cond
+          ;; (loop with var = expr ...rest...)
+          ((eq first 'with)
+           (let ((rest1 (cdr clauses)))  ;; (var = expr ...rest...)
+             (if (null rest1) nil)
+             (let ((var (car rest1))
+                   (rest2 (cdr rest1)))  ;; (= expr ...rest...)
+               (if (null rest2) nil)
+               (if (not (eq (car rest2) '=)) nil)
+               (let ((rest3 (cdr rest2)))  ;; (expr ...rest...)
+                 (if (null rest3) nil)
+                 (let ((init-expr (car rest3))
+                       (rest4 (cdr rest3)))  ;; (...rest...)
+                   ;; Recursively process the rest of the loop
+                   (let ((inner-loop (cons 'loop rest4)))
+                     `(let ((,var ,init-expr))
+                        ,inner-loop)))))))
+
+          ;; (loop while condition do forms*)
+          ((eq first 'while)
+           (if (and (cdr clauses) (cdr (cdr clauses)) (eq (car (cdr (cdr clauses))) 'do))
+               (cons 'loop-while-do (cons (car (cdr clauses)) (cdr (cdr (cdr clauses)))))
+               nil))
+
+          ;; (loop until condition do forms*)
+          ((eq first 'until)
+           (if (and (cdr clauses) (cdr (cdr clauses)) (eq (car (cdr (cdr clauses))) 'do))
+               (cons 'loop-until-do (cons (car (cdr clauses)) (cdr (cdr (cdr clauses)))))
+               nil))
+
+          ;; (loop for var from start to end collect expr)
+          ;; (loop for var from start to end do body*)
+          ;; clauses = (for var from start to end collect/do ...)
+          ((eq first 'for)
+           (let ((rest1 (cdr clauses)))  ;; (var from start to end collect/do ...)
+             (if (null rest1) nil)
+             (let ((var (car rest1))
+                   (rest2 (cdr rest1)))  ;; (from start to end collect/do ...)
+               (if (null rest2) nil)
+               (if (not (eq (car rest2) 'from)) nil)
+               (let ((rest3 (cdr rest2)))  ;; (start to end collect/do ...)
+                 (if (null rest3) nil)
+                 (let ((start (car rest3))
+                       (rest4 (cdr rest3)))  ;; (to end collect/do ...)
+                   (if (null rest4) nil)
+                   (if (not (eq (car rest4) 'to)) nil)
+                   (let ((rest5 (cdr rest4)))  ;; (end collect/do ...)
+                     (if (null rest5) nil)
+                     (let ((end (car rest5))
+                           (rest6 (cdr rest5)))  ;; (collect/do ...)
+                       (if (null rest6) nil)
+                       (let ((action (car rest6)))
+                         (cond
+                           ((eq action 'collect)
+                            (let ((rest7 (cdr rest6)))  ;; (expr [finally forms*])
+                              (if (null rest7) nil)
+                              (let ((expr (car rest7))
+                                    (rest8 (cdr rest7)))  ;; ([finally forms*])
+                                ;; rest8 may be (finally form1 form2 ...) or just ()
+                                ;; Pass expr and all of rest8 to the macro
+                                (cons 'loop-for-from-collect (cons var (cons start (cons end (cons expr rest8))))))))
+                           ((eq action 'sum)
+                            (let ((rest7 (cdr rest6)))  ;; (expr [finally forms*])
+                              (if (null rest7) nil)
+                              (let ((expr (car rest7))
+                                    (rest8 (cdr rest7)))  ;; ([finally forms*])
+                                (cons 'loop-for-from-sum (cons var (cons start (cons end (cons expr rest8))))))))
+                           ((eq action 'count)
+                            (let ((rest7 (cdr rest6)))  ;; (expr [finally forms*])
+                              (if (null rest7) nil)
+                              (let ((expr (car rest7))
+                                    (rest8 (cdr rest7)))  ;; ([finally forms*])
+                                (cons 'loop-for-from-count (cons var (cons start (cons end (cons expr rest8))))))))
+                           ((eq action 'do)
+                            (let ((body (cdr rest6)))  ;; (body*)
+                              (cons 'loop-for-from-do (cons var (cons start (cons end body))))))
+                           ((eq action 'append)
+                            (let ((rest7 (cdr rest6)))
+                              (if (null rest7) nil)
+                              (let ((expr (car rest7))
+                                    (rest8 (cdr rest7)))
+                                (cons 'loop-for-from-append (cons var (cons start (cons end (cons expr rest8))))))))
+                           (t nil))))))))))
+
+          (t nil)))))
 
 ;;; Mutation macros (fixed arity)
 (defmacro incf (place)
