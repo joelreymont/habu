@@ -4887,24 +4887,21 @@ pub const Compiler = struct {
             if (!kw.isKeyword()) return error.InvalidSyntax;
             const kw_name = kw.toPtr(runtime.Keyword).getName();
 
-            // Find matching slot
+            // Get value (next element after keyword)
+            if (!kw_cons.cdr.isCons()) return error.InvalidSyntax;
+            const val_cons = kw_cons.cdr.toPtr(Cons);
+            const value_ir = try self.compile(val_cons.car, env);
+
+            // Find matching slot and store value
             for (slot_specs, 0..) |spec, i| {
                 if (std.mem.eql(u8, kw_name, spec.name)) {
-                    if (!kw_cons.cdr.isCons()) return error.InvalidSyntax;
-                    const val_cons = kw_cons.cdr.toPtr(Cons);
-                    slot_values[i] = try self.compile(val_cons.car, env);
-                    rest = val_cons.cdr;
+                    slot_values[i] = value_ir;
                     break;
                 }
             }
-            if (rest.raw == kw_cons.cdr.raw) {
-                // Keyword not found - skip it
-                if (kw_cons.cdr.isCons()) {
-                    rest = kw_cons.cdr.toPtr(Cons).cdr;
-                } else {
-                    break;
-                }
-            }
+
+            // Move to next keyword-value pair
+            rest = val_cons.cdr;
         }
 
         // Build call to make-class-name with positional args
