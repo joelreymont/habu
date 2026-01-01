@@ -791,7 +791,7 @@ pub const Vm = struct {
                 .add => {
                     const b = try self.pop();
                     const a = try self.pop();
-                    try self.push(try primitives.arith.add(a, b));
+                    try self.push(try primitives.arith.add(self.heap, a, b));
                 },
                 .sub => {
                     const b = try self.pop();
@@ -1988,7 +1988,7 @@ pub const Vm = struct {
                     if (!val.isRational()) return error.TypeMismatch;
                     const rat = val.toPtr(runtime.Rational);
                     try self.push(Value.makeFixnum(rat.denominator));
-},
+                },
                 .get => {
                     const indicator = try self.pop();
                     const sym = try self.pop();
@@ -3954,7 +3954,10 @@ test "vm push and return" {
 
     const code = [_]u8{
         @intFromEnum(Op.push_i32),
-        42, 0, 0, 0,
+        42,
+        0,
+        0,
+        0,
         @intFromEnum(Op.ret),
     };
 
@@ -3984,10 +3987,9 @@ test "vm arithmetic" {
 
     // (+ 10 20) = 30
     const code = [_]u8{
-        @intFromEnum(Op.push_i32), 10, 0, 0, 0,
-        @intFromEnum(Op.push_i32), 20, 0, 0, 0,
-        @intFromEnum(Op.add),
-        @intFromEnum(Op.ret),
+        @intFromEnum(Op.push_i32), 10,                   0, 0, 0,
+        @intFromEnum(Op.push_i32), 20,                   0, 0, 0,
+        @intFromEnum(Op.add),      @intFromEnum(Op.ret),
     };
 
     const chunk = Chunk{
@@ -4016,11 +4018,9 @@ test "vm cons car cdr" {
 
     // (car (cons 1 2)) = 1
     const code = [_]u8{
-        @intFromEnum(Op.push_i32), 1, 0, 0, 0,
-        @intFromEnum(Op.push_i32), 2, 0, 0, 0,
-        @intFromEnum(Op.cons),
-        @intFromEnum(Op.car),
-        @intFromEnum(Op.ret),
+        @intFromEnum(Op.push_i32), 1,                    0,                    0, 0,
+        @intFromEnum(Op.push_i32), 2,                    0,                    0, 0,
+        @intFromEnum(Op.cons),     @intFromEnum(Op.car), @intFromEnum(Op.ret),
     };
 
     const chunk = Chunk{
@@ -4050,11 +4050,12 @@ test "vm conditional" {
     // (if nil 1 2) = 2
     const code = [_]u8{
         @intFromEnum(Op.push_nil),
-        @intFromEnum(Op.jmp_nil), 8, 0, // Jump 8 bytes if nil
-        @intFromEnum(Op.push_i32), 1, 0, 0, 0,
-        @intFromEnum(Op.jmp), 5, 0, // Jump 5 bytes over else
-        @intFromEnum(Op.push_i32), 2, 0, 0, 0,
-        @intFromEnum(Op.ret),
+        @intFromEnum(Op.jmp_nil),  8, 0, // Jump 8 bytes if nil
+        @intFromEnum(Op.push_i32), 1, 0,
+        0,                         0,
+        @intFromEnum(Op.jmp),      5, 0, // Jump 5 bytes over else
+        @intFromEnum(Op.push_i32), 2, 0,
+        0,                         0, @intFromEnum(Op.ret),
     };
 
     const chunk = Chunk{
@@ -4083,10 +4084,8 @@ test "vm locals" {
 
     // Store 42 in local 0, load it back
     const code = [_]u8{
-        @intFromEnum(Op.push_i32), 42, 0, 0, 0,
-        @intFromEnum(Op.store_local), 0,
-        @intFromEnum(Op.load_local), 0,
-        @intFromEnum(Op.ret),
+        @intFromEnum(Op.push_i32),    42, 0,                           0, 0,
+        @intFromEnum(Op.store_local), 0,  @intFromEnum(Op.load_local), 0, @intFromEnum(Op.ret),
     };
 
     const chunk = Chunk{
@@ -4117,17 +4116,23 @@ test "vm hash table" {
     // Use local 0 to store ht
     const code = [_]u8{
         // make_hash with capacity 16, test_type eql (1), store in local 0
-        @intFromEnum(Op.make_hash), 16, 0, 1,
+        @intFromEnum(Op.make_hash),   16,                        0,                           1,
         @intFromEnum(Op.store_local), 0,
         // load ht, push key (42), push value (100), hash_set
-        @intFromEnum(Op.load_local), 0,
-        @intFromEnum(Op.push_i32), 42, 0, 0, 0,
-        @intFromEnum(Op.push_i32), 100, 0, 0, 0,
+                                @intFromEnum(Op.load_local), 0,
+        @intFromEnum(Op.push_i32),    42,                        0,                           0,
+        0,                            @intFromEnum(Op.push_i32), 100,                         0,
+        0,                            0,
         @intFromEnum(Op.hash_set), // pushes value back
         @intFromEnum(Op.pop), // discard returned value
         // load ht, push key, hash_get
-        @intFromEnum(Op.load_local), 0,
-        @intFromEnum(Op.push_i32), 42, 0, 0, 0,
+        @intFromEnum(Op.load_local),
+        0,
+        @intFromEnum(Op.push_i32),
+        42,
+        0,
+        0,
+        0,
         @intFromEnum(Op.hash_get),
         @intFromEnum(Op.ret),
     };
@@ -4159,23 +4164,33 @@ test "vm hash table count and remove" {
     // Create hash table, set 2 keys, get count
     const code = [_]u8{
         // make_hash with capacity 16, test_type eql (1)
-        @intFromEnum(Op.make_hash), 16, 0, 1,
+        @intFromEnum(Op.make_hash),   16,                        0,                           1,
         // store in local 0
         @intFromEnum(Op.store_local), 0,
         // Set key 1 -> 10
-        @intFromEnum(Op.load_local), 0,
-        @intFromEnum(Op.push_i32), 1, 0, 0, 0,
-        @intFromEnum(Op.push_i32), 10, 0, 0, 0,
-        @intFromEnum(Op.hash_set),
+                                @intFromEnum(Op.load_local), 0,
+        @intFromEnum(Op.push_i32),    1,                         0,                           0,
+        0,                            @intFromEnum(Op.push_i32), 10,                          0,
+        0,                            0,                         @intFromEnum(Op.hash_set),
         @intFromEnum(Op.pop), // discard returned value
         // Set key 2 -> 20
-        @intFromEnum(Op.load_local), 0,
-        @intFromEnum(Op.push_i32), 2, 0, 0, 0,
-        @intFromEnum(Op.push_i32), 20, 0, 0, 0,
+        @intFromEnum(Op.load_local),
+        0,
+        @intFromEnum(Op.push_i32),
+        2,
+        0,
+        0,
+        0,
+        @intFromEnum(Op.push_i32),
+        20,
+        0,
+        0,
+        0,
         @intFromEnum(Op.hash_set),
         @intFromEnum(Op.pop), // discard returned value
         // Get count (should be 2)
-        @intFromEnum(Op.load_local), 0,
+        @intFromEnum(Op.load_local),
+        0,
         @intFromEnum(Op.hash_count),
         @intFromEnum(Op.ret),
     };

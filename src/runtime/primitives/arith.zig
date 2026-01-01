@@ -4,17 +4,30 @@
 
 const std = @import("std");
 const Value = @import("../value.zig").Value;
+const Heap = @import("../heap.zig").Heap;
+const objects = @import("../objects.zig");
 
-pub const Error = error{ TypeMismatch, DivisionByZero };
+pub const Error = error{ TypeMismatch, DivisionByZero, OutOfMemory };
 
-/// Add two fixnums (with overflow check)
-pub fn add(a: Value, b: Value) Error!Value {
+/// Add two numbers (fixnum, bignum, or float)
+pub fn add(heap: *Heap, a: Value, b: Value) Error!Value {
     // Float contagion: if either operand is float, use float arithmetic
     if (a.isFloat() or b.isFloat()) return addFloat(a, b);
 
+    // Bignum arithmetic
+    if (a.isBignum() or b.isBignum()) return addBignum(heap, a, b);
+
+    // Fixnum arithmetic with overflow check
     if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     const result = @addWithOverflow(a.toFixnum(), b.toFixnum());
-    if (result[1] != 0) return error.TypeMismatch;
+
+    // Check for i64 overflow OR fixnum range overflow (62-bit signed)
+    const max_fixnum: i64 = (1 << 62) - 1;
+    const min_fixnum: i64 = -(1 << 62);
+    if (result[1] != 0 or result[0] > max_fixnum or result[0] < min_fixnum) {
+        // Overflow - promote to bignum
+        return addBignum(heap, a, b);
+    }
     return Value.makeFixnum(result[0]);
 }
 
@@ -435,4 +448,60 @@ pub fn pow_val(x: Value, y: Value) Error!Value {
     const xf = try toNumber(x);
     const yf = try toNumber(y);
     return Value.makeFloat(std.math.pow(f64, xf, yf));
+}
+
+// ============================================================================
+// Bignum arithmetic
+// ============================================================================
+
+/// Add two bignums (or mixed bignum/fixnum)
+fn addBignum(heap: *Heap, a: Value, b: Value) Error!Value {
+    // Convert fixnums to temporary bignums
+    var a_tmp: objects.Bignum = undefined;
+    var b_tmp: objects.Bignum = undefined;
+
+    const a_bn = if (a.isBignum()) a.toPtr(objects.Bignum) else blk: {
+        a_tmp = objects.Bignum.make(a.toFixnum());
+        break :blk &a_tmp;
+    };
+    const b_bn = if (b.isBignum()) b.toPtr(objects.Bignum) else blk: {
+        b_tmp = objects.Bignum.make(b.toFixnum());
+        break :blk &b_tmp;
+    };
+
+    const a_neg = a_bn.isNegative();
+    const b_neg = b_bn.isNegative();
+
+    // Get absolute values
+    const a_size: usize = @intCast(@abs(a_bn.size));
+    const b_size: usize = @intCast(@abs(b_bn.size));
+
+    // If signs are the same, add magnitudes
+    if (a_neg == b_neg) {
+        var result_limbs: [8]u64 = [_]u64{0} ** 8;
+        var carry: u64 = 0;
+        const max_size = @max(a_size, b_size);
+
+        for (0..max_size) |i| {
+            const a_limb = if (i < a_size) a_bn.limbs[i] else 0;
+            const b_limb = if (i < b_size) b_bn.limbs[i] else 0;
+
+            const sum = @addWithOverflow(a_limb, b_limb);
+            const sum_with_carry = @addWithOverflow(sum[0], carry);
+
+            result_limbs[i] = sum_with_carry[0];
+            carry = sum[1] + sum_with_carry[1];
+        }
+
+        // Handle final carry
+        if (carry > 0 and max_size < 8) {
+            result_limbs[max_size] = carry;
+        }
+
+        return heap.allocBignumFromLimbs(&result_limbs, a_neg);
+    } else {
+        // Signs differ - subtract magnitudes
+        // For now, return type mismatch (implement subtraction separately)
+        return error.TypeMismatch;
+    }
 }
