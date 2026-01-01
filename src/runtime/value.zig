@@ -51,6 +51,7 @@ pub const TypeKind = enum {
     stream,
     bignum,
     array,
+    pathname,
 };
 
 /// A tagged Habu value (64-bit)
@@ -182,6 +183,13 @@ pub const Value = packed struct {
         return kind_ptr.* == .array;
     }
 
+    /// Check if value is a pathname
+    pub inline fn isPathname(self: Value) bool {
+        if (!self.isBoxed()) return false;
+        const kind_ptr: *const objects.BoxedKind = @ptrFromInt(self.raw & PTR_MASK);
+        return kind_ptr.* == .pathname;
+    }
+
     /// Check if value is a forwarding pointer (GC)
     pub inline fn isForwarding(self: Value) bool {
         return self.isPointer() and self.getTag() == .forwarding;
@@ -232,6 +240,7 @@ pub const Value = packed struct {
                     .stream => .stream,
                     .bignum => .bignum,
                     .array => .array,
+                    .pathname => .pathname,
                 };
             },
             .forwarding => .cons, // Shouldn't happen during normal execution
@@ -388,6 +397,11 @@ pub const Value = packed struct {
 
     /// Create an array value (boxed object)
     pub inline fn makeArray(ptr: anytype) Value {
+        return makePtr(ptr, .boxed);
+    }
+
+    /// Create a pathname value (boxed object)
+    pub inline fn makePathname(ptr: anytype) Value {
         return makePtr(ptr, .boxed);
     }
 

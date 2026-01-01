@@ -200,7 +200,7 @@ pub const GC = struct {
                         const old_ptr: usize = arr.data_ptr;
                         arr.data_ptr = @intCast(@as(isize, @intCast(old_ptr)) + addr_delta);
                     },
-                    .rational, .complex, .stream, .bignum => {
+                    .rational, .complex, .stream, .bignum, .pathname => {
                         // No interior pointers to repair
                     },
                 }
@@ -277,6 +277,28 @@ pub const GC = struct {
                             if (data[i].isPointer() and !data[i].isNil()) {
                                 data[i] = try self.copyValue(data[i], alloc_ptr);
                             }
+                        }
+                    },
+                    .pathname => {
+                        // Scan all pathname component values
+                        const pn: *objects.Pathname = @ptrFromInt(addr);
+                        if (pn.host.isPointer() and !pn.host.isNil()) {
+                            pn.host = try self.copyValue(pn.host, alloc_ptr);
+                        }
+                        if (pn.device.isPointer() and !pn.device.isNil()) {
+                            pn.device = try self.copyValue(pn.device, alloc_ptr);
+                        }
+                        if (pn.directory.isPointer() and !pn.directory.isNil()) {
+                            pn.directory = try self.copyValue(pn.directory, alloc_ptr);
+                        }
+                        if (pn.name.isPointer() and !pn.name.isNil()) {
+                            pn.name = try self.copyValue(pn.name, alloc_ptr);
+                        }
+                        if (pn.type.isPointer() and !pn.type.isNil()) {
+                            pn.type = try self.copyValue(pn.type, alloc_ptr);
+                        }
+                        if (pn.version.isPointer() and !pn.version.isNil()) {
+                            pn.version = try self.copyValue(pn.version, alloc_ptr);
                         }
                     },
                     .rational, .complex, .stream, .bignum => {

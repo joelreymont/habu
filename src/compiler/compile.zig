@@ -1112,6 +1112,7 @@ pub const Compiler = struct {
                 .stream => &types.t_any, // TODO: add t_stream
                 .bignum => &types.t_any, // TODO: add t_bignum
                 .array => &types.t_any, // TODO: add t_array
+                .pathname => &types.t_any, // TODO: add t_pathname
             },
             .@"var" => |v| {
                 // Check occurrence typing first (narrowed types)

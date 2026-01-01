@@ -295,6 +295,7 @@ fn princValueTo(val: Value, w: anytype) !void {
             const arr = val.toPtr(objects.Array);
             try w.print("#<array rank={d}>", .{arr.rank});
         },
+        .pathname => try w.writeAll("#<pathname>"),
     }
 }
 
@@ -391,6 +392,7 @@ fn printValueTo(val: Value, w: anytype) !void {
             const arr = val.toPtr(objects.Array);
             try w.print("#<array rank={d}>", .{arr.rank});
         },
+        .pathname => try w.writeAll("#<pathname>"),
     }
 }
 

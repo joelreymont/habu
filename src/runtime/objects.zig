@@ -139,6 +139,7 @@ pub const BoxedKind = enum(u64) {
     stream = 3,
     bignum = 4,
     array = 5,
+    pathname = 6,
 };
 
 /// Stream direction
@@ -358,6 +359,25 @@ pub const HashTable = extern struct {
     }
 };
 
+/// Pathname object for file path manipulation
+/// Follows Common Lisp pathname component model
+pub const Pathname = extern struct {
+    /// Boxed object discriminator (must be first)
+    kind: BoxedKind = .pathname,
+    /// Host component (string or nil)
+    host: Value,
+    /// Device component (string or nil)
+    device: Value,
+    /// Directory component (list of strings, or :absolute/:relative as first element)
+    directory: Value,
+    /// Name component (string or nil)
+    name: Value,
+    /// Type/extension component (string or nil)
+    type: Value,
+    /// Version component (fixnum, :newest, :unspecific, or nil)
+    version: Value,
+};
+
 // ============================================================================
 // Object size calculations (for GC)
 // ============================================================================
@@ -411,6 +431,7 @@ pub fn objectSize(val: Value) usize {
                 .complex => @sizeOf(Complex),
                 .stream => @sizeOf(Stream),
                 .bignum => @sizeOf(Bignum),
+                .pathname => @sizeOf(Pathname),
             };
         },
         .forwarding => @sizeOf(usize), // Just a pointer

@@ -993,6 +993,7 @@ pub const Repl = struct {
                 const arr = val.toPtr(runtime.Array);
                 try writer.print("#<array rank={d}>", .{arr.rank});
             },
+            .pathname => try writer.writeAll("#<pathname>"),
         }
     }
 
