@@ -5025,9 +5025,23 @@ pub const Compiler = struct {
             params = param_cons.cdr;
         }
 
-        // Compile method body
+        // Create lambda environment with method parameters
+        var lambda_env = Env.init(self.allocator, env);
+        defer lambda_env.deinit();
+
+        for (param_names.items) |param| {
+            _ = try lambda_env.bind(param);
+        }
+
+        // Compile method body in lambda environment
         const body = cons2.cdr;
-        const body_ir = try self.compileProgn(body, env);
+        const body_ir = try self.compileBodyWithTail(body, &lambda_env, true);
+
+        // Collect free variables for captures
+        var capture_set = CaptureSet.init(self.allocator);
+        defer capture_set.deinit();
+        try self.collectFreeVars(body, &lambda_env, &capture_set);
+        const captures = try self.allocator.dupe(Ir.Capture, capture_set.captures.items);
 
         // Create lambda
         const lambda_ir = try self.builder.lambda(
@@ -5035,17 +5049,19 @@ pub const Compiler = struct {
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
             null,
-            &[_]Ir.Capture{},
+            captures,
             body_ir,
         );
 
-        // Store method
-        if (self.generic_functions.getPtr(gen_name)) |methods| {
-            try methods.append(self.allocator, .{
-                .specializers = try specializers.toOwnedSlice(self.allocator),
-                .body = lambda_ir,
-            });
+        // Store method - auto-create generic function if it doesn't exist
+        const gop = try self.generic_functions.getOrPut(try self.globals.allocator.dupe(u8, gen_name));
+        if (!gop.found_existing) {
+            gop.value_ptr.* = std.ArrayList(MethodDef){};
         }
+        try gop.value_ptr.append(self.allocator, .{
+            .specializers = try specializers.toOwnedSlice(self.allocator),
+            .body = lambda_ir,
+        });
 
         // Define the generic function as a dispatcher
         const global_idx = try self.globals.define(gen_name);
