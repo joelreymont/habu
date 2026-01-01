@@ -489,6 +489,14 @@ pub const Op = enum(u8) {
     pathname_type = 0x0B,
     pathname_version = 0x0C,
 
+    /// Reader macro operations
+    /// ( char function -- nil )
+    /// Set reader macro function for character
+    set_macro_character = 0x0D,
+    /// ( char -- function-or-nil )
+    /// Get reader macro function for character
+    get_macro_character = 0x0E,
+
     /// Get type of value as symbol
     /// ( x -- type-sym )
     type_of = 0x92,
@@ -1154,6 +1162,8 @@ pub const Op = enum(u8) {
             .pathname_name,
             .pathname_type,
             .pathname_version,
+            .set_macro_character,
+            .get_macro_character,
             => 0,
 
             // 1 byte operand

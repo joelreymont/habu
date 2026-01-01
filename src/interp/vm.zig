@@ -2601,6 +2601,33 @@ pub const Vm = struct {
                     try self.push(pn.version);
                 },
 
+                .set_macro_character => {
+                    const function = try self.pop();
+                    const char_val = try self.pop();
+
+                    if (!char_val.isCharacter()) return error.TypeMismatch;
+                    const char_code = char_val.toCharacter();
+                    if (char_code > 255) return error.TypeMismatch; // Only ASCII supported for now
+
+                    const byte: u8 = @intCast(char_code);
+                    try self.heap.readtable.put(self.allocator, byte, function);
+                    try self.push(Value.nil);
+                },
+
+                .get_macro_character => {
+                    const char_val = try self.pop();
+
+                    if (!char_val.isCharacter()) return error.TypeMismatch;
+                    const char_code = char_val.toCharacter();
+                    if (char_code > 255) {
+                        try self.push(Value.nil);
+                    } else {
+                        const byte: u8 = @intCast(char_code);
+                        const function = self.heap.readtable.get(byte) orelse Value.nil;
+                        try self.push(function);
+                    }
+                },
+
                 // Character operations
                 .characterp => {
                     const val = try self.pop();

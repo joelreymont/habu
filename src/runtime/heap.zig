@@ -166,6 +166,9 @@ pub const Heap = struct {
     /// Class metadata for CLOS slot-value lookup
     /// Maps class name to slot names array
     class_metadata: std.StringHashMapUnmanaged([]const []const u8),
+    /// Readtable for reader macros
+    /// Maps character (u8) to macro function (Value - closure or nil)
+    readtable: std.AutoHashMapUnmanaged(u8, Value),
 
     pub const SlotMeta = struct {
         name: []const u8,
@@ -210,6 +213,7 @@ pub const Heap = struct {
             .cl_user_package = null,
             .keyword_package = null,
             .class_metadata = .{},
+            .readtable = .{},
         };
 
         // Create COMMON-LISP package (holds primitives, all symbols exported)
@@ -256,6 +260,7 @@ pub const Heap = struct {
             self.backing_allocator.free(entry.value_ptr.*);
         }
         self.class_metadata.deinit(self.backing_allocator);
+        self.readtable.deinit(self.backing_allocator);
         self.backing_allocator.free(self.memory);
     }
 
