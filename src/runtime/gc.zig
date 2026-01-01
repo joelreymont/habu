@@ -69,7 +69,7 @@ pub const GC = struct {
 
         // Phase 3: Swap spaces
         self.heap.swapSpaces();
-        self.heap.resetAllocPtr(@alignCast(@ptrCast(self.heap.from_start + bytes_copied)));
+        self.heap.resetAllocPtr(@ptrCast(@alignCast(self.heap.from_start + bytes_copied)));
 
         // Update stats
         self.heap.stats.gc_count += 1;
@@ -194,6 +194,12 @@ pub const GC = struct {
                         const old_ptr = @intFromPtr(ht.entries);
                         ht.entries = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
                     },
+                    .array => {
+                        // Array.data_ptr points to data array
+                        const arr: *objects.Array = @ptrFromInt(new_addr);
+                        const old_ptr: usize = arr.data_ptr;
+                        arr.data_ptr = @intCast(@as(isize, @intCast(old_ptr)) + addr_delta);
+                    },
                     .rational, .complex, .stream, .bignum => {
                         // No interior pointers to repair
                     },
@@ -260,6 +266,16 @@ pub const GC = struct {
                                 if (entry.value.isPointer() and !entry.value.isNil()) {
                                     entry.value = try self.copyValue(entry.value, alloc_ptr);
                                 }
+                            }
+                        }
+                    },
+                    .array => {
+                        // Scan all array elements
+                        const arr: *objects.Array = @ptrFromInt(addr);
+                        const data: [*]Value = @ptrFromInt(arr.data_ptr);
+                        for (0..arr.total_size) |i| {
+                            if (data[i].isPointer() and !data[i].isNil()) {
+                                data[i] = try self.copyValue(data[i], alloc_ptr);
                             }
                         }
                     },

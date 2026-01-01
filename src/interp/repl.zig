@@ -989,6 +989,10 @@ pub const Repl = struct {
                 const bn = val.toPtr(runtime.Bignum);
                 try writer.print("#<bignum size={d}>", .{bn.size});
             },
+            .array => {
+                const arr = val.toPtr(runtime.Array);
+                try writer.print("#<array rank={d}>", .{arr.rank});
+            },
         }
     }
 

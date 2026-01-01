@@ -1111,6 +1111,7 @@ pub const Compiler = struct {
                 .complex => &types.t_any, // TODO: add t_complex
                 .stream => &types.t_any, // TODO: add t_stream
                 .bignum => &types.t_any, // TODO: add t_bignum
+                .array => &types.t_any, // TODO: add t_array
             },
             .@"var" => |v| {
                 // Check occurrence typing first (narrowed types)

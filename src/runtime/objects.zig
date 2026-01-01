@@ -138,6 +138,7 @@ pub const BoxedKind = enum(u64) {
     complex = 2,
     stream = 3,
     bignum = 4,
+    array = 5,
 };
 
 /// Stream direction
@@ -280,13 +281,13 @@ pub const Bignum = extern struct {
             .size = 0,
             .limbs = [_]u64{0} ** 8,
         };
-        
+
         if (n == 0) return result;
-        
+
         const abs_n: u64 = if (n < 0) @as(u64, @intCast(-n)) else @as(u64, @intCast(n));
         result.limbs[0] = abs_n;
         result.size = if (n < 0) -1 else 1;
-        
+
         return result;
     }
 
@@ -297,6 +298,21 @@ pub const Bignum = extern struct {
     pub fn isZero(self: *const Bignum) bool {
         return self.size == 0;
     }
+};
+
+/// Multi-dimensional array
+/// Supports up to 8 dimensions
+pub const Array = extern struct {
+    /// Boxed object discriminator (must be first)
+    kind: BoxedKind = .array,
+    /// Number of dimensions (1-8)
+    rank: u8,
+    /// Size of each dimension
+    dimensions: [8]u64,
+    /// Total number of elements (product of all dimensions)
+    total_size: u64,
+    /// Pointer to data array (Value elements)
+    data_ptr: u64,
 };
 
 /// Uses open addressing with linear probing
@@ -385,6 +401,11 @@ pub fn objectSize(val: Value) usize {
                     const ht = val.toPtr(HashTable);
                     // Header + entries array
                     break :blk @sizeOf(HashTable) + ht.capacity * @sizeOf(HashEntry);
+                },
+                .array => {
+                    const arr = val.toPtr(Array);
+                    // Header + data array
+                    break :blk @sizeOf(Array) + arr.total_size * @sizeOf(Value);
                 },
                 .rational => @sizeOf(Rational),
                 .complex => @sizeOf(Complex),

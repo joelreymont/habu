@@ -291,6 +291,10 @@ fn princValueTo(val: Value, w: anytype) !void {
             const bn = val.toPtr(objects.Bignum);
             try w.print("#<bignum size={d}>", .{bn.size});
         },
+        .array => {
+            const arr = val.toPtr(objects.Array);
+            try w.print("#<array rank={d}>", .{arr.rank});
+        },
     }
 }
 
@@ -382,6 +386,10 @@ fn printValueTo(val: Value, w: anytype) !void {
         .bignum => {
             const bn = val.toPtr(objects.Bignum);
             try w.print("#<bignum size={d}>", .{bn.size});
+        },
+        .array => {
+            const arr = val.toPtr(objects.Array);
+            try w.print("#<array rank={d}>", .{arr.rank});
         },
     }
 }
