@@ -4966,7 +4966,9 @@ pub const Compiler = struct {
         const name_val = cons1.car;
 
         if (!name_val.isSymbol()) return error.InvalidSyntax;
-        const gen_name = name_val.toPtr(Symbol).getName();
+        const name_sym = name_val.toPtr(Symbol);
+        var qual_buf: [256]u8 = undefined;
+        const gen_name = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
 
         // Register generic function
         const persistent_name = try self.globals.allocator.dupe(u8, gen_name);
@@ -4984,7 +4986,9 @@ pub const Compiler = struct {
         const name_val = cons1.car;
 
         if (!name_val.isSymbol()) return error.InvalidSyntax;
-        const gen_name = name_val.toPtr(Symbol).getName();
+        const name_sym = name_val.toPtr(Symbol);
+        var qual_buf: [256]u8 = undefined;
+        const gen_name = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
 
         // Parse specialized lambda list
         if (!cons1.cdr.isCons()) return error.InvalidSyntax;
