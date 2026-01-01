@@ -2640,6 +2640,59 @@ pub const Vm = struct {
                     }
                 },
 
+                .set_dispatch_macro_character => {
+                    const function = try self.pop();
+                    const sub_char_val = try self.pop();
+                    const disp_char_val = try self.pop();
+
+                    if (!disp_char_val.isCharacter()) return error.TypeMismatch;
+                    if (!sub_char_val.isCharacter()) return error.TypeMismatch;
+
+                    const disp_code = disp_char_val.toCharacter();
+                    const sub_code = sub_char_val.toCharacter();
+
+                    if (disp_code > 255 or sub_code > 255) return error.TypeMismatch;
+
+                    const disp_byte: u8 = @intCast(disp_code);
+                    const sub_byte: u8 = @intCast(sub_code);
+
+                    // Get or create sub-table for dispatch character
+                    const gop = try self.heap.dispatch_readtable.getOrPut(self.allocator, disp_byte);
+                    if (!gop.found_existing) {
+                        gop.value_ptr.* = .{};
+                    }
+
+                    // Store function in sub-table
+                    try gop.value_ptr.put(self.allocator, sub_byte, function);
+                    try self.push(Value.nil);
+                },
+
+                .get_dispatch_macro_character => {
+                    const sub_char_val = try self.pop();
+                    const disp_char_val = try self.pop();
+
+                    if (!disp_char_val.isCharacter()) return error.TypeMismatch;
+                    if (!sub_char_val.isCharacter()) return error.TypeMismatch;
+
+                    const disp_code = disp_char_val.toCharacter();
+                    const sub_code = sub_char_val.toCharacter();
+
+                    if (disp_code > 255 or sub_code > 255) {
+                        try self.push(Value.nil);
+                    } else {
+                        const disp_byte: u8 = @intCast(disp_code);
+                        const sub_byte: u8 = @intCast(sub_code);
+
+                        const sub_table = self.heap.dispatch_readtable.get(disp_byte);
+                        if (sub_table) |table| {
+                            const func = table.get(sub_byte);
+                            try self.push(func orelse Value.nil);
+                        } else {
+                            try self.push(Value.nil);
+                        }
+                    }
+                },
+
                 // Character operations
                 .characterp => {
                     const val = try self.pop();

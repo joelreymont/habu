@@ -169,6 +169,9 @@ pub const Heap = struct {
     /// Readtable for reader macros
     /// Maps character (u8) to macro function and flags
     readtable: std.AutoHashMapUnmanaged(u8, ReadtableEntry),
+    /// Dispatch macro readtable for #X dispatch
+    /// Maps dispatch char (u8) to sub-char table (HashMap(u8, Value))
+    dispatch_readtable: std.AutoHashMapUnmanaged(u8, std.AutoHashMapUnmanaged(u8, Value)),
 
     pub const ReadtableEntry = struct {
         function: Value,
@@ -219,6 +222,7 @@ pub const Heap = struct {
             .keyword_package = null,
             .class_metadata = .{},
             .readtable = .{},
+            .dispatch_readtable = .{},
         };
 
         // Create COMMON-LISP package (holds primitives, all symbols exported)
@@ -266,6 +270,12 @@ pub const Heap = struct {
         }
         self.class_metadata.deinit(self.backing_allocator);
         self.readtable.deinit(self.backing_allocator);
+        // Free dispatch_readtable nested hashmaps
+        var disp_iter = self.dispatch_readtable.valueIterator();
+        while (disp_iter.next()) |sub_table| {
+            sub_table.deinit(self.backing_allocator);
+        }
+        self.dispatch_readtable.deinit(self.backing_allocator);
         self.backing_allocator.free(self.memory);
     }
 

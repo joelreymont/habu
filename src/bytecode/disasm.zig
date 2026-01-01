@@ -95,6 +95,10 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .get,
         .put,
         .remprop,
+        .set_macro_character,
+        .get_macro_character,
+        .set_dispatch_macro_character,
+        .get_dispatch_macro_character,
         .str_eq,
         .halt,
         .check_fixnum,
@@ -218,8 +222,6 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .pathname_name,
         .pathname_type,
         .pathname_version,
-        .set_macro_character,
-        .get_macro_character,
         => {
             try writer.print("{s}\n", .{op.name()});
             return offset + 1;

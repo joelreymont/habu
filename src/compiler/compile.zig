@@ -273,6 +273,12 @@ pub const Builtins = struct {
     @"digit-char-p": Value,
     @"alpha-char-p": Value,
 
+    // Primitives - Reader macros
+    @"set-macro-character": Value,
+    @"get-macro-character": Value,
+    @"set-dispatch-macro-character": Value,
+    @"get-dispatch-macro-character": Value,
+
     // Primitives - String/number conversion
     @"parse-integer": Value,
     @"write-to-string": Value,
@@ -567,6 +573,11 @@ pub const Builtins = struct {
             .@"char-downcase" = try heap.intern("char-downcase"),
             .@"digit-char-p" = try heap.intern("digit-char-p"),
             .@"alpha-char-p" = try heap.intern("alpha-char-p"),
+            // Primitives - Reader macros
+            .@"set-macro-character" = try heap.intern("set-macro-character"),
+            .@"get-macro-character" = try heap.intern("get-macro-character"),
+            .@"set-dispatch-macro-character" = try heap.intern("set-dispatch-macro-character"),
+            .@"get-dispatch-macro-character" = try heap.intern("get-dispatch-macro-character"),
             // Primitives - String/number conversion
             .@"parse-integer" = try heap.intern("parse-integer"),
             .@"write-to-string" = try heap.intern("write-to-string"),
@@ -6106,6 +6117,12 @@ pub const Compiler = struct {
         if (s == b.@"digit-char-p".raw) return self.compileUnaryPrim(args, env, .digit_char_p);
         if (s == b.@"alpha-char-p".raw) return self.compileUnaryPrim(args, env, .alpha_char_p);
 
+        // Reader macros
+        if (s == b.@"set-macro-character".raw) return self.compileSetMacroCharacter(args, env);
+        if (s == b.@"get-macro-character".raw) return self.compileUnaryPrim(args, env, .get_macro_character);
+        if (s == b.@"set-dispatch-macro-character".raw) return self.compileTernaryPrim(args, env, .set_dispatch_macro_character);
+        if (s == b.@"get-dispatch-macro-character".raw) return self.compileBinaryPrim(args, env, .get_dispatch_macro_character);
+
         // String/number conversion
         if (s == b.@"parse-integer".raw) return self.compileUnaryPrim(args, env, .parse_integer);
         if (s == b.@"write-to-string".raw) return self.compileUnaryPrim(args, env, .write_to_string);
@@ -6162,7 +6179,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, get, put, remprop, hashtablep, hash_clear, hash_test, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -6340,6 +6357,27 @@ pub const Compiler = struct {
             },
             else => error.InvalidSyntax,
         };
+    }
+
+    /// Compile (set-macro-character char function &optional non-terminating-p)
+    fn compileSetMacroCharacter(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const char_ir = try self.compile(cons1.car, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const func_ir = try self.compile(cons2.car, env);
+
+        // Optional third argument: non-terminating-p (defaults to nil)
+        const non_term_ir = if (cons2.cdr.isCons()) blk: {
+            const cons3 = cons2.cdr.toPtr(Cons);
+            break :blk try self.compile(cons3.car, env);
+        } else try self.builder.lit(Value.nil);
+
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .set_macro_character = .{ .first = char_ir, .second = func_ir, .third = non_term_ir } };
+        return node;
     }
 
     fn compileUnaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) Error!*Ir {

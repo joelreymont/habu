@@ -493,9 +493,15 @@ pub const Op = enum(u8) {
     /// ( char function -- nil )
     /// Set reader macro function for character
     set_macro_character = 0x0D,
-    /// ( char -- function-or-nil )
+    /// ( char -- function-or-nil non-terminating-p )
     /// Get reader macro function for character
     get_macro_character = 0x0E,
+    /// ( disp-char sub-char function -- nil )
+    /// Set dispatch macro character for #X syntax
+    set_dispatch_macro_character = 0x2A,
+    /// ( disp-char sub-char -- function-or-nil )
+    /// Get dispatch macro function for #X syntax
+    get_dispatch_macro_character = 0x2B,
 
     /// Get type of value as symbol
     /// ( x -- type-sym )
@@ -1039,6 +1045,10 @@ pub const Op = enum(u8) {
             .get,
             .put,
             .remprop,
+            .set_macro_character,
+            .get_macro_character,
+            .set_dispatch_macro_character,
+            .get_dispatch_macro_character,
             .str_eq,
             .halt,
             .close,
@@ -1162,8 +1172,6 @@ pub const Op = enum(u8) {
             .pathname_name,
             .pathname_type,
             .pathname_version,
-            .set_macro_character,
-            .get_macro_character,
             => 0,
 
             // 1 byte operand
