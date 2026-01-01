@@ -4968,7 +4968,8 @@ pub const Compiler = struct {
         if (!name_val.isSymbol()) return error.InvalidSyntax;
         const name_sym = name_val.toPtr(Symbol);
         var qual_buf: [256]u8 = undefined;
-        const gen_name = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
+        const gen_name_tmp = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
+        const gen_name = try self.allocator.dupe(u8, gen_name_tmp);
 
         // Register generic function
         const persistent_name = try self.globals.allocator.dupe(u8, gen_name);
@@ -4988,7 +4989,8 @@ pub const Compiler = struct {
         if (!name_val.isSymbol()) return error.InvalidSyntax;
         const name_sym = name_val.toPtr(Symbol);
         var qual_buf: [256]u8 = undefined;
-        const gen_name = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
+        const gen_name_tmp = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
+        const gen_name = try self.allocator.dupe(u8, gen_name_tmp);
 
         // Parse specialized lambda list
         if (!cons1.cdr.isCons()) return error.InvalidSyntax;
@@ -5068,9 +5070,10 @@ pub const Compiler = struct {
         );
 
         // Store method - auto-create generic function if it doesn't exist
-        const gop = try self.generic_functions.getOrPut(try self.globals.allocator.dupe(u8, gen_name));
+        const gop = try self.generic_functions.getOrPut(gen_name);
         if (!gop.found_existing) {
-            gop.value_ptr.* = std.ArrayList(MethodDef){};
+            const empty_slice = try self.allocator.alloc(MethodDef, 0);
+            gop.value_ptr.* = .{ .items = empty_slice, .capacity = 0 };
         }
         try gop.value_ptr.append(self.allocator, .{
             .specializers = try specializers.toOwnedSlice(self.allocator),
