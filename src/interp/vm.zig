@@ -3885,6 +3885,41 @@ pub const Vm = struct {
                         // Clause separator - should not be reached at top level
                         i += 2;
                     },
+                    '<' => {
+                        // Justification: ~<...~>
+                        // Basic implementation: just output content (no justification yet)
+                        const start = i + 2;
+                        var depth: usize = 1;
+                        var end = start;
+
+                        while (end < fmt.len and depth > 0) {
+                            if (end + 1 < fmt.len and fmt[end] == '~') {
+                                if (fmt[end + 1] == '<') {
+                                    depth += 1;
+                                    end += 2;
+                                } else if (fmt[end + 1] == '>') {
+                                    depth -= 1;
+                                    if (depth == 0) break;
+                                    end += 2;
+                                } else {
+                                    end += 1;
+                                }
+                            } else {
+                                end += 1;
+                            }
+                        }
+
+                        if (depth != 0) {
+                            // Unmatched ~<, skip it
+                            i += 2;
+                            continue;
+                        }
+
+                        // For now, just output the content without justification
+                        const content = fmt[start..end];
+                        result.appendSlice(self.allocator, content) catch return error.OutOfMemory;
+                        i = end + 2; // Skip past ~>
+                    },
                     else => {
                         // Unknown directive, output as-is
                         result.append(self.allocator, fmt[i]) catch return error.OutOfMemory;
