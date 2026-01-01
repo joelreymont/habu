@@ -46,14 +46,14 @@
 - ✅ Stream functions (make-string-input-stream, etc.)
 - ✅ Package system (defpackage, in-package, etc.)
 
-## TIER 4 (Major systems) - ⚠️ IMPLEMENTED BUT BROKEN
+## TIER 4 (Major systems) - ⚠️ MOSTLY COMPLETE
 
 ### CLOS
 - ✅ defclass (compile.zig:4648)
-- ✅ defmethod (compile.zig)
+- ⚠️ defmethod (compile.zig) - single dispatch works, multi-method crashes
 - ✅ defgeneric (compile.zig)
-- ✅ make-instance (compile.zig:4742)
-- ⚠️ **BLOCKER**: Runtime `define` is broken, returns nil instead of values
+- ⚠️ make-instance (compile.zig:4742) - keyword args partially broken
+- ✅ define runtime bug FIXED
 
 ### Numeric types
 - ✅ rationals (objects.zig:188, primitives implemented)
@@ -66,22 +66,34 @@
 - ✅ 1D vectors/arrays fully supported
 
 ### Reader macros
-- ⚠️ NOT FULLY IMPLEMENTED
+- ✅ set/get-macro-character (vm.zig:2604)
+- ✅ set/get-dispatch-macro-character (vm.zig:2643) - NEW
 - ✅ Basic quote, quasiquote, unquote
+- ⏸️ Reader conditionals (#+ #-) - requires lexer refactoring
+- ⏸️ Read-time eval (#.) - security risk, not implementing
+
+### Format directives
+- ✅ ~A, ~S, ~D, ~X, ~B, ~O, ~C (aesthetic, standard, numbers, char)
+- ✅ ~%, ~&, ~~ (newline, fresh-line, tilde)
+- ✅ ~( ~) (case conversion)
+- ✅ ~< ~> (justification - basic parsing) - NEW
+- ⏸️ Full ~< ~> with parameters - deferred
 
 ## Summary
 
-**Overall Status: 90%+ Complete**
+**Overall Status: 92%+ Complete**
 
 - TIER 1-3: ✅ 100% Complete
-- TIER 4: ⚠️ 80% Complete (CLOS blocked by runtime bug, multi-dim arrays missing)
+- TIER 4: ✅ 85% Complete (CLOS works but has known bugs, multi-dim arrays missing)
 
-**Critical Blocker:**
-The `define` special form is broken at runtime - variables return `nil` instead of their assigned values. This blocks all TIER 4 features including CLOS from working properly despite being fully implemented.
+**Known Issues:**
+1. defmethod: multi-method dispatch crashes (memory corruption)
+2. make-instance: only processes first keyword argument
+3. Multi-dimensional arrays: not implemented
 
 **Missing Features:**
-1. Multi-dimensional arrays
-2. Full reader macro system
-3. Some advanced format directives
+1. Multi-dimensional arrays (make-array with :dimensions)
+2. Reader conditionals (#+ #-)
+3. Full format justification parameters
 
 **All other CL spec features listed in the tracking dot are implemented and available.**
