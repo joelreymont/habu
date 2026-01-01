@@ -488,8 +488,9 @@ pub const Repl = struct {
             // Empty line on fresh input: skip
             if (trimmed.len == 0 and input_buf.items.len == 0) continue;
 
-            // Handle commands only on fresh input
-            if (input_buf.items.len == 0 and trimmed.len > 0 and trimmed[0] == ':') {
+            // Handle commands only on fresh input that doesn't contain S-expressions
+            // If the line contains '(', it's likely code with keywords, not a REPL command
+            if (input_buf.items.len == 0 and trimmed.len > 0 and trimmed[0] == ':' and std.mem.indexOf(u8, trimmed, "(") == null) {
                 try self.handleCommand(trimmed, writer);
                 try writer.flush();
                 continue;
@@ -1739,7 +1740,6 @@ pub const Repl = struct {
         macro_vm.setChunkPool(self.persistent_chunk_ptrs.items);
         return macro_vm.run(&chunk) catch return error.RuntimeError;
     }
-
 
     /// Handle package forms (defpackage/in-package) - execute them immediately
     fn evalPackageForm(self: *Repl, expr: Value, arena_alloc: std.mem.Allocator) !Value {

@@ -355,7 +355,7 @@ pub const Builtins = struct {
     @"&key": Value,
 
     // Special dispatch symbols
-    @"_": Value,
+    _: Value,
     @"else": Value,
     @"->": Value,
 
@@ -641,7 +641,7 @@ pub const Builtins = struct {
             .@"&optional" = try heap.intern("&optional"),
             .@"&key" = try heap.intern("&key"),
             // Special dispatch symbols
-            .@"_" = try heap.intern("_"),
+            ._ = try heap.intern("_"),
             .@"else" = try heap.intern("else"),
             .@"->" = try heap.intern("->"),
             // eval-when keywords (interned as keywords, not symbols)
@@ -3792,7 +3792,7 @@ pub const Compiler = struct {
         const cons1 = args.toPtr(Cons);
         if (!cons1.car.isSymbol()) return error.InvalidSyntax;
         const name_sym = cons1.car.toPtr(Symbol);
-        
+
         // Use qualified name for globals (package-aware)
         var qual_buf: [256]u8 = undefined;
         const name = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
@@ -3966,7 +3966,7 @@ pub const Compiler = struct {
                         while (use_list.isCons()) {
                             const use_cons = use_list.toPtr(Cons);
                             const use_pkg_name = self.getStringOrSymbolName(use_cons.car) orelse return error.InvalidSyntax;
-                            const use_pkg = heap.findPackage(use_pkg_name) orelse return error.InvalidSyntax;
+                            const use_pkg = try heap.findOrCreatePackage(use_pkg_name);
                             pkg.usePackage(use_pkg) catch return error.OutOfMemory;
                             use_list = use_cons.cdr;
                         }
@@ -4062,9 +4062,9 @@ pub const Compiler = struct {
         const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
         const pkg_name = pkg.name;
         const sym_name = sym.getName();
-        
+
         // Format as PKG:NAME
-        const result = try std.fmt.bufPrint(buf, "{s}:{s}", .{pkg_name, sym_name});
+        const result = try std.fmt.bufPrint(buf, "{s}:{s}", .{ pkg_name, sym_name });
         return result;
     }
 
@@ -5394,7 +5394,7 @@ pub const Compiler = struct {
             // Check for wildcard (use symbol identity)
             if (pattern.isSymbol()) {
                 const b = self.builtins orelse unreachable;
-                if (pattern.raw == b.@"_".raw) {
+                if (pattern.raw == b._.raw) {
                     has_wildcard = true;
                     break;
                 }
@@ -5459,7 +5459,7 @@ pub const Compiler = struct {
         // Check for wildcard pattern: _ (use symbol identity)
         if (pattern.isSymbol()) {
             const b = self.builtins orelse unreachable;
-            if (pattern.raw == b.@"_".raw) {
+            if (pattern.raw == b._.raw) {
                 // Wildcard - compile body as progn
                 return self.compileProgn(body_list, env);
             }
@@ -6189,7 +6189,6 @@ pub const Compiler = struct {
             },
             else => return error.InvalidSyntax,
         };
-
     }
 
     fn compileTernaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) Error!*Ir {
