@@ -156,3 +156,6 @@ habu-stage1-src.lisp
 # Zig
 .zig-cache/
 zig-out/
+*.debugbak*
+*.orig
+*.rej
