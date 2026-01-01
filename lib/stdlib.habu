@@ -610,3 +610,53 @@
   (foldl (lambda (groups elem) (group-by-helper key-fn groups elem))
          nil
          lst))
+;;; defstruct - define structure type with constructor, predicate, and accessors
+;;; Example: (defstruct point x y) creates:
+;;;   - Constructor: (make-point x y)
+;;;   - Predicate: (point-p obj)
+;;;   - Accessors: (point-x obj) (point-y obj)
+;;; Implementation: Uses vectors with type tag at index 0
+(defmacro defstruct (name-and-options &rest slots)
+  (let* ((name (if (consp name-and-options)
+                   (car name-and-options)
+                   name-and-options))
+         (options (if (consp name-and-options)
+                      (cdr name-and-options)
+                      nil))
+         (constructor-name (intern (concatenate 'string "make-" (string-downcase (string-downcase (symbol-name name))))))
+         (predicate-name (intern (concatenate 'string (string-downcase (string-downcase (symbol-name name))) "-p")))
+         (slot-names (mapcar (lambda (s) (if (consp s) (car s) s)) slots))
+         (slot-count (length slot-names)))
+
+    ; Parse slot defaults
+    (let ((slot-defaults (mapcar (lambda (s)
+                                   (if (consp s)
+                                       (if (cdr s) (cadr s) nil)
+                                       nil))
+                                 slots)))
+
+      ; Generate forms
+      (list 'progn
+            ; Constructor: (defun make-NAME (arg1 arg2 ...) (vector 'NAME arg1 arg2 ...))
+            (list 'defun constructor-name slot-names
+                  (cons 'vector (cons (list 'quote name) slot-names)))
+
+            ; Predicate: (defun NAME-p (obj) (and (vectorp obj) (> (length obj) 0) (eq (svref obj 0) 'NAME)))
+            (list 'defun predicate-name '(obj)
+                  (list 'and '(vectorp obj)
+                        (list '> '(length obj) 0)
+                        (list 'eq '(svref obj 0) (list 'quote name))))
+
+            ; Accessors: (defun NAME-SLOT (obj) (svref obj N))
+            (cons 'progn
+                  (let ((i 1))
+                    (mapcar (lambda (slot)
+                              (let ((accessor-name (intern (concatenate 'string
+                                                                        (string-downcase (symbol-name name))
+                                                                        "-"
+                                                                        (symbol-name slot))))
+                                    (index i))
+                                (setq i (+ i 1))
+                                (list 'defun accessor-name '(obj)
+                                      (list 'svref 'obj index))))
+                            slot-names)))))))
