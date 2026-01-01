@@ -601,2662 +601,2676 @@ pub const Vm = struct {
             if (self.ip >= self.chunk.code.len) return error.InvalidOpcode;
             const op = self.readOp();
 
-            switch (op) {
-                // Stack manipulation
-                .push_nil => try self.push(Value.nil),
-                .push_t => try self.push(Value.t),
-                .push_i32 => {
-                    const n = self.readI32();
-                    try self.push(Value.makeFixnum(n));
-                },
-                .push_const => {
-                    const idx = self.readU16();
-                    if (idx >= self.chunk.constants.len) return error.InvalidConstant;
-                    try self.push(.{ .raw = self.chunk.constants[idx] });
-                },
-                .dup => {
-                    const val = try self.peek(0);
-                    try self.push(val);
-                },
-                .pop => _ = try self.pop(),
-                .swap => {
-                    const a = try self.pop();
-                    const b = try self.pop();
-                    try self.push(a);
-                    try self.push(b);
-                },
+            // Execute opcode with error handling
+            self.executeOp(op) catch |err| {
+                if (err == error.Halt) {
+                    // Program terminated - return result from stack
+                    return self.pop() catch Value.nil;
+                }
+                return self.doError(err);
+            };
+        }
+    }
 
-                // Variable access - always use frame's bp (not scope's bp)
-                // Indices are frame-relative, assigned by compiler
-                .load_local => {
-                    const idx = self.readU8();
-                    const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
-                    const stack_idx = bp + idx;
-                    if (stack_idx >= STACK_SIZE or stack_idx >= self.sp) return error.InvalidOpcode;
-                    try self.push(self.stack[stack_idx]);
-                },
-                .store_local => {
-                    const idx = self.readU8();
-                    const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
-                    const stack_idx = bp + idx;
-                    if (stack_idx >= STACK_SIZE or stack_idx >= self.sp) return error.InvalidOpcode;
-                    self.stack[stack_idx] = try self.pop();
-                },
-                .enter_scope => {
-                    const num_locals = self.readU8();
-                    if (self.scope_sp >= MAX_SCOPES) return error.StackOverflow;
-                    // Record current sp as base for this scope
-                    self.scope_stack[self.scope_sp] = .{
-                        .bp = self.sp,
-                        .num_locals = num_locals,
-                    };
-                    self.scope_sp += 1;
-                    // Reserve slots by pushing nil placeholders
+    /// Execute a single opcode
+    fn executeOp(self: *Vm, op: Op) Error!void {
+        switch (op) {
+            // Stack manipulation
+            .push_nil => try self.push(Value.nil),
+            .push_t => try self.push(Value.t),
+            .push_i32 => {
+                const n = self.readI32();
+                try self.push(Value.makeFixnum(n));
+            },
+            .push_const => {
+                const idx = self.readU16();
+                if (idx >= self.chunk.constants.len) return error.InvalidConstant;
+                try self.push(.{ .raw = self.chunk.constants[idx] });
+            },
+            .dup => {
+                const val = try self.peek(0);
+                try self.push(val);
+            },
+            .pop => _ = try self.pop(),
+            .swap => {
+                const a = try self.pop();
+                const b = try self.pop();
+                try self.push(a);
+                try self.push(b);
+            },
+
+            // Variable access - always use frame's bp (not scope's bp)
+            // Indices are frame-relative, assigned by compiler
+            .load_local => {
+                const idx = self.readU8();
+                const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
+                const stack_idx = bp + idx;
+                if (stack_idx >= STACK_SIZE or stack_idx >= self.sp) return error.InvalidOpcode;
+                try self.push(self.stack[stack_idx]);
+            },
+            .store_local => {
+                const idx = self.readU8();
+                const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
+                const stack_idx = bp + idx;
+                if (stack_idx >= STACK_SIZE or stack_idx >= self.sp) return error.InvalidOpcode;
+                self.stack[stack_idx] = try self.pop();
+            },
+            .enter_scope => {
+                const num_locals = self.readU8();
+                if (self.scope_sp >= MAX_SCOPES) return error.StackOverflow;
+                // Record current sp as base for this scope
+                self.scope_stack[self.scope_sp] = .{
+                    .bp = self.sp,
+                    .num_locals = num_locals,
+                };
+                self.scope_sp += 1;
+                // Reserve slots by pushing nil placeholders
+                for (0..num_locals) |_| {
+                    try self.push(Value.nil);
+                }
+            },
+            .exit_scope => {
+                const num_locals = self.readU8();
+                if (self.scope_sp == 0) return error.InvalidOpcode;
+                self.scope_sp -= 1;
+                // Result is on top of stack, locals are below
+                // Stack: [locals...] result
+                // We need: result
+                if (num_locals > 0) {
+                    const result = try self.pop();
+                    // Pop the locals
                     for (0..num_locals) |_| {
-                        try self.push(Value.nil);
+                        _ = try self.pop();
                     }
-                },
-                .exit_scope => {
-                    const num_locals = self.readU8();
-                    if (self.scope_sp == 0) return error.InvalidOpcode;
-                    self.scope_sp -= 1;
-                    // Result is on top of stack, locals are below
-                    // Stack: [locals...] result
-                    // We need: result
-                    if (num_locals > 0) {
-                        const result = try self.pop();
-                        // Pop the locals
-                        for (0..num_locals) |_| {
-                            _ = try self.pop();
-                        }
-                        try self.push(result);
-                    }
-                },
-                .load_capture => {
-                    const idx = self.readU8();
-                    // Get current closure from frame, or from current_closure if fp=0
-                    const closure = if (self.fp > 0)
-                        self.frames[self.fp - 1].closure
-                    else
-                        self.current_closure;
+                    try self.push(result);
+                }
+            },
+            .load_capture => {
+                const idx = self.readU8();
+                // Get current closure from frame, or from current_closure if fp=0
+                const closure = if (self.fp > 0)
+                    self.frames[self.fp - 1].closure
+                else
+                    self.current_closure;
 
-                    if (closure) |c| {
-                        if (idx < c.num_captures) {
-                            try self.push(c.getCapture(idx));
-                        } else {
-                            return error.InvalidConstant;
-                        }
+                if (closure) |c| {
+                    if (idx < c.num_captures) {
+                        try self.push(c.getCapture(idx));
                     } else {
                         return error.InvalidConstant;
                     }
-                },
-                .load_upvalue => {
-                    _ = self.readU8(); // depth (unused with flat closures)
-                    const index = self.readU8();
-                    // Get current closure from frame, or from current_closure if fp=0
-                    const closure = if (self.fp > 0)
-                        self.frames[self.fp - 1].closure
-                    else
-                        self.current_closure;
+                } else {
+                    return error.InvalidConstant;
+                }
+            },
+            .load_upvalue => {
+                _ = self.readU8(); // depth (unused with flat closures)
+                const index = self.readU8();
+                // Get current closure from frame, or from current_closure if fp=0
+                const closure = if (self.fp > 0)
+                    self.frames[self.fp - 1].closure
+                else
+                    self.current_closure;
 
-                    if (closure) |c| {
-                        if (index < c.num_captures) {
-                            try self.push(c.getCapture(index));
-                        } else {
-                            return error.InvalidConstant;
-                        }
+                if (closure) |c| {
+                    if (index < c.num_captures) {
+                        try self.push(c.getCapture(index));
                     } else {
-                        return error.TypeMismatch; // No closure
+                        return error.InvalidConstant;
                     }
-                },
-                .store_upvalue => {
-                    _ = self.readU8(); // depth (unused with flat closures)
-                    const index = self.readU8();
-                    const val = try self.pop();
-                    // Get current closure from frame, or from current_closure if fp=0
-                    const closure = if (self.fp > 0)
-                        self.frames[self.fp - 1].closure
-                    else
-                        self.current_closure;
+                } else {
+                    return error.TypeMismatch; // No closure
+                }
+            },
+            .store_upvalue => {
+                _ = self.readU8(); // depth (unused with flat closures)
+                const index = self.readU8();
+                const val = try self.pop();
+                // Get current closure from frame, or from current_closure if fp=0
+                const closure = if (self.fp > 0)
+                    self.frames[self.fp - 1].closure
+                else
+                    self.current_closure;
 
-                    if (closure) |c| {
-                        if (index < c.num_captures) {
-                            // Note: captures array is mutable
-                            const captures: [*]Value = @constCast(c.captures);
-                            captures[index] = val;
-                        } else {
-                            return error.InvalidConstant;
-                        }
+                if (closure) |c| {
+                    if (index < c.num_captures) {
+                        // Note: captures array is mutable
+                        const captures: [*]Value = @constCast(c.captures);
+                        captures[index] = val;
                     } else {
-                        return error.TypeMismatch;
+                        return error.InvalidConstant;
                     }
-                },
-                .load_global => {
-                    const idx = self.readU16();
-                    if (idx >= MAX_GLOBALS) return error.InvalidConstant;
-                    try self.push(self.globals[idx]);
-                },
-                .store_global => {
-                    const idx = self.readU16();
-                    if (idx >= MAX_GLOBALS) return error.InvalidConstant;
-                    self.globals[idx] = try self.pop();
-                    if (idx >= self.num_globals) {
-                        self.num_globals = idx + 1;
-                    }
-                },
-                .load_argc => {
-                    // Get argc from current frame, or from current_argc if fp=0 (callClosure)
-                    const frame_argc = if (self.fp > 0) self.frames[self.fp - 1].argc else self.current_argc;
-                    try self.push(Value.makeFixnum(frame_argc));
-                },
-                .find_key => {
-                    // Get keyword to search for from constant pool
-                    const kw_idx = self.readU16();
-                    if (kw_idx >= self.chunk.constants.len) return error.InvalidConstant;
-                    const keyword = Value{ .raw = self.chunk.constants[kw_idx] };
+                } else {
+                    return error.TypeMismatch;
+                }
+            },
+            .load_global => {
+                const idx = self.readU16();
+                if (idx >= MAX_GLOBALS) return error.InvalidConstant;
+                try self.push(self.globals[idx]);
+            },
+            .store_global => {
+                const idx = self.readU16();
+                if (idx >= MAX_GLOBALS) return error.InvalidConstant;
+                self.globals[idx] = try self.pop();
+                if (idx >= self.num_globals) {
+                    self.num_globals = idx + 1;
+                }
+            },
+            .load_argc => {
+                // Get argc from current frame, or from current_argc if fp=0 (callClosure)
+                const frame_argc = if (self.fp > 0) self.frames[self.fp - 1].argc else self.current_argc;
+                try self.push(Value.makeFixnum(frame_argc));
+            },
+            .find_key => {
+                // Get keyword to search for from constant pool
+                const kw_idx = self.readU16();
+                if (kw_idx >= self.chunk.constants.len) return error.InvalidConstant;
+                const keyword = Value{ .raw = self.chunk.constants[kw_idx] };
 
-                    // Get current frame info
-                    const frame = if (self.fp > 0) &self.frames[self.fp - 1] else null;
-                    if (frame) |f| {
-                        const chunk: *const Chunk = @ptrCast(@alignCast(f.closure.?.code));
-                        // Layout: [positional] [key params] [keyword pairs]
-                        // Keyword pairs start after positional + key param slots
-                        const max_positional = chunk.arity + chunk.optional_count;
-                        const kw_pair_start: usize = max_positional + chunk.key_count;
-                        const frame_argc = f.argc;
-                        const positional_count = @min(frame_argc, max_positional);
-                        const kw_pair_count = frame_argc - positional_count;
+                // Get current frame info
+                const frame = if (self.fp > 0) &self.frames[self.fp - 1] else null;
+                if (frame) |f| {
+                    const chunk: *const Chunk = @ptrCast(@alignCast(f.closure.?.code));
+                    // Layout: [positional] [key params] [keyword pairs]
+                    // Keyword pairs start after positional + key param slots
+                    const max_positional = chunk.arity + chunk.optional_count;
+                    const kw_pair_start: usize = max_positional + chunk.key_count;
+                    const frame_argc = f.argc;
+                    const positional_count = @min(frame_argc, max_positional);
+                    const kw_pair_count = frame_argc - positional_count;
 
-                        // Scan keyword-value pairs
-                        var found = false;
-                        var found_value = Value.nil;
-                        var idx: usize = 0;
-                        while (idx + 1 < kw_pair_count) : (idx += 2) {
-                            const stack_idx = f.bp + kw_pair_start + idx;
-                            // Bounds check before accessing stack
-                            if (stack_idx + 1 >= self.sp) break;
-                            const kw = self.stack[stack_idx];
-                            if (kw.raw == keyword.raw) {
-                                found = true;
-                                found_value = self.stack[stack_idx + 1];
-                                break;
-                            }
+                    // Scan keyword-value pairs
+                    var found = false;
+                    var found_value = Value.nil;
+                    var idx: usize = 0;
+                    while (idx + 1 < kw_pair_count) : (idx += 2) {
+                        const stack_idx = f.bp + kw_pair_start + idx;
+                        // Bounds check before accessing stack
+                        if (stack_idx + 1 >= self.sp) break;
+                        const kw = self.stack[stack_idx];
+                        if (kw.raw == keyword.raw) {
+                            found = true;
+                            found_value = self.stack[stack_idx + 1];
+                            break;
                         }
-
-                        // Push (found_flag, value)
-                        try self.push(if (found) Value.t else Value.nil);
-                        try self.push(found_value);
-                    } else {
-                        // No frame - push (nil, nil)
-                        try self.push(Value.nil);
-                        try self.push(Value.nil);
                     }
-                },
 
-                // Arithmetic (with float contagion)
-                .add => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    try self.push(try primitives.arith.add(self.heap, a, b));
-                },
-                .sub => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    try self.push(try primitives.arith.sub(a, b));
-                },
-                .mul => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    try self.push(try primitives.arith.mul(self.heap, a, b));
-                },
-                .div => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    try self.push(try primitives.arith.div(a, b));
-                },
-                .mod => try self.binaryOp(binaryMod),
-                .neg => {
-                    const a = try self.pop();
-                    if (!a.isFixnum()) return error.TypeMismatch;
-                    const n = a.toFixnum();
-                    // -minInt(i64) overflows
-                    if (n == std.math.minInt(i64)) return error.TypeMismatch;
-                    try self.push(Value.makeFixnum(-n));
-                },
+                    // Push (found_flag, value)
+                    try self.push(if (found) Value.t else Value.nil);
+                    try self.push(found_value);
+                } else {
+                    // No frame - push (nil, nil)
+                    try self.push(Value.nil);
+                    try self.push(Value.nil);
+                }
+            },
 
-                // Comparison
-                .eq => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    try self.push(if (a.eq(b)) Value.t else Value.nil);
-                },
-                .lt => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    try self.push(if (primitives.arith.lt(a, b)) Value.t else Value.nil);
-                },
-                .gt => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    try self.push(if (primitives.arith.gt(a, b)) Value.t else Value.nil);
-                },
-                .le => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    try self.push(if (primitives.arith.le(a, b)) Value.t else Value.nil);
-                },
-                .ge => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    try self.push(if (primitives.arith.ge(a, b)) Value.t else Value.nil);
-                },
-                .num_eq => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    try self.push(if (primitives.arith.numEq(a, b)) Value.t else Value.nil);
-                },
-                .not => {
-                    const a = try self.pop();
-                    try self.push(if (a.isNil()) Value.t else Value.nil);
-                },
+            // Arithmetic (with float contagion)
+            .add => {
+                const b = try self.pop();
+                const a = try self.pop();
+                try self.push(try primitives.arith.add(self.heap, a, b));
+            },
+            .sub => {
+                const b = try self.pop();
+                const a = try self.pop();
+                try self.push(try primitives.arith.sub(a, b));
+            },
+            .mul => {
+                const b = try self.pop();
+                const a = try self.pop();
+                try self.push(try primitives.arith.mul(self.heap, a, b));
+            },
+            .div => {
+                const b = try self.pop();
+                const a = try self.pop();
+                try self.push(try primitives.arith.div(a, b));
+            },
+            .mod => try self.binaryOp(binaryMod),
+            .neg => {
+                const a = try self.pop();
+                if (!a.isFixnum()) return error.TypeMismatch;
+                const n = a.toFixnum();
+                // -minInt(i64) overflows
+                if (n == std.math.minInt(i64)) return error.TypeMismatch;
+                try self.push(Value.makeFixnum(-n));
+            },
 
-                // List operations
-                .cons => {
-                    const cdr = try self.pop();
-                    const car = try self.pop();
-                    const cell = try self.allocCons(car, cdr);
-                    try self.push(cell);
-                },
-                .car => {
-                    const pair = try self.pop();
-                    if (!pair.isCons()) return error.TypeMismatch;
-                    try self.push(pair.toPtr(Cons).car);
-                },
-                .cdr => {
-                    const pair = try self.pop();
-                    if (!pair.isCons()) return error.TypeMismatch;
-                    try self.push(pair.toPtr(Cons).cdr);
-                },
-                .make_list => {
-                    const count = self.readU8();
-                    // Bounds check: need at least count items on stack
-                    if (count > self.sp) return error.StackUnderflow;
-                    // Build list by popping elements from top of stack (reverse order)
-                    // This avoids the double-reverse pattern
-                    var list = Value.nil;
-                    var i: usize = 0;
-                    while (i < count) : (i += 1) {
-                        const elem = self.stack[self.sp - 1 - i];
-                        list = try self.allocCons(elem, list);
-                    }
-                    self.sp -= count;
-                    try self.push(list);
-                },
-                .append_lists => {
-                    const list2 = try self.pop();
-                    const list1 = try self.pop();
-                    // Append list1 to list2: (append '(a b) '(c d)) -> (a b c d)
-                    if (list1.isNil()) {
-                        try self.push(list2);
-                    } else if (!list1.isCons()) {
-                        return error.TypeMismatch;
-                    } else {
-                        // Single-pass copy: build copy of list1, link tail to list2
-                        var head: ?Value = null;
-                        var tail: ?*Cons = null;
-                        var curr = list1;
-                        while (curr.isCons()) {
-                            const c = curr.toPtr(Cons);
-                            const new_cell = try self.allocCons(c.car, Value.nil);
-                            if (tail) |t| {
-                                t.cdr = new_cell;
-                            } else {
-                                head = new_cell;
-                            }
-                            tail = new_cell.toPtr(Cons);
-                            curr = c.cdr;
-                        }
-                        // Link tail to list2
+            // Comparison
+            .eq => {
+                const b = try self.pop();
+                const a = try self.pop();
+                try self.push(if (a.eq(b)) Value.t else Value.nil);
+            },
+            .lt => {
+                const b = try self.pop();
+                const a = try self.pop();
+                try self.push(if (primitives.arith.lt(a, b)) Value.t else Value.nil);
+            },
+            .gt => {
+                const b = try self.pop();
+                const a = try self.pop();
+                try self.push(if (primitives.arith.gt(a, b)) Value.t else Value.nil);
+            },
+            .le => {
+                const b = try self.pop();
+                const a = try self.pop();
+                try self.push(if (primitives.arith.le(a, b)) Value.t else Value.nil);
+            },
+            .ge => {
+                const b = try self.pop();
+                const a = try self.pop();
+                try self.push(if (primitives.arith.ge(a, b)) Value.t else Value.nil);
+            },
+            .num_eq => {
+                const b = try self.pop();
+                const a = try self.pop();
+                try self.push(if (primitives.arith.numEq(a, b)) Value.t else Value.nil);
+            },
+            .not => {
+                const a = try self.pop();
+                try self.push(if (a.isNil()) Value.t else Value.nil);
+            },
+
+            // List operations
+            .cons => {
+                const cdr = try self.pop();
+                const car = try self.pop();
+                const cell = try self.allocCons(car, cdr);
+                try self.push(cell);
+            },
+            .car => {
+                const pair = try self.pop();
+                if (!pair.isCons()) return error.TypeMismatch;
+                try self.push(pair.toPtr(Cons).car);
+            },
+            .cdr => {
+                const pair = try self.pop();
+                if (!pair.isCons()) return error.TypeMismatch;
+                try self.push(pair.toPtr(Cons).cdr);
+            },
+            .make_list => {
+                const count = self.readU8();
+                // Bounds check: need at least count items on stack
+                if (count > self.sp) return error.StackUnderflow;
+                // Build list by popping elements from top of stack (reverse order)
+                // This avoids the double-reverse pattern
+                var list = Value.nil;
+                var i: usize = 0;
+                while (i < count) : (i += 1) {
+                    const elem = self.stack[self.sp - 1 - i];
+                    list = try self.allocCons(elem, list);
+                }
+                self.sp -= count;
+                try self.push(list);
+            },
+            .append_lists => {
+                const list2 = try self.pop();
+                const list1 = try self.pop();
+                // Append list1 to list2: (append '(a b) '(c d)) -> (a b c d)
+                if (list1.isNil()) {
+                    try self.push(list2);
+                } else if (!list1.isCons()) {
+                    return error.TypeMismatch;
+                } else {
+                    // Single-pass copy: build copy of list1, link tail to list2
+                    var head: ?Value = null;
+                    var tail: ?*Cons = null;
+                    var curr = list1;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        const new_cell = try self.allocCons(c.car, Value.nil);
                         if (tail) |t| {
-                            t.cdr = list2;
+                            t.cdr = new_cell;
+                        } else {
+                            head = new_cell;
                         }
-                        try self.push(head orelse list2);
-                    }
-                },
-
-                .list_length => {
-                    const list = try self.pop();
-                    var len: i64 = 0;
-                    var curr = list;
-                    while (curr.isCons()) {
-                        len += 1;
-                        curr = curr.toPtr(Cons).cdr;
-                    }
-                    try self.push(Value.makeFixnum(len));
-                },
-
-                .list_reverse => {
-                    const list = try self.pop();
-                    var reversed = Value.nil;
-                    var curr = list;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        reversed = try self.allocCons(c.car, reversed);
+                        tail = new_cell.toPtr(Cons);
                         curr = c.cdr;
                     }
-                    try self.push(reversed);
-                },
-
-                .list_nth => {
-                    const list = try self.pop();
-                    const n_val = try self.pop();
-                    if (!n_val.isFixnum()) return error.TypeMismatch;
-                    const n = n_val.toFixnum();
-                    if (n < 0) return error.TypeMismatch;
-                    var idx: i64 = 0;
-                    var curr = list;
-                    while (curr.isCons()) {
-                        if (idx == n) {
-                            try self.push(curr.toPtr(Cons).car);
-                            break;
-                        }
-                        idx += 1;
-                        curr = curr.toPtr(Cons).cdr;
-                    } else {
-                        try self.push(Value.nil);
+                    // Link tail to list2
+                    if (tail) |t| {
+                        t.cdr = list2;
                     }
-                },
+                    try self.push(head orelse list2);
+                }
+            },
 
-                .list_nthcdr => {
-                    const list = try self.pop();
-                    const n_val = try self.pop();
-                    if (!n_val.isFixnum()) return error.TypeMismatch;
-                    const n = n_val.toFixnum();
-                    if (n < 0) return error.TypeMismatch;
-                    var idx: i64 = 0;
-                    var curr = list;
-                    while (idx < n and curr.isCons()) {
-                        idx += 1;
-                        curr = curr.toPtr(Cons).cdr;
+            .list_length => {
+                const list = try self.pop();
+                var len: i64 = 0;
+                var curr = list;
+                while (curr.isCons()) {
+                    len += 1;
+                    curr = curr.toPtr(Cons).cdr;
+                }
+                try self.push(Value.makeFixnum(len));
+            },
+
+            .list_reverse => {
+                const list = try self.pop();
+                var reversed = Value.nil;
+                var curr = list;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    reversed = try self.allocCons(c.car, reversed);
+                    curr = c.cdr;
+                }
+                try self.push(reversed);
+            },
+
+            .list_nth => {
+                const list = try self.pop();
+                const n_val = try self.pop();
+                if (!n_val.isFixnum()) return error.TypeMismatch;
+                const n = n_val.toFixnum();
+                if (n < 0) return error.TypeMismatch;
+                var idx: i64 = 0;
+                var curr = list;
+                while (curr.isCons()) {
+                    if (idx == n) {
+                        try self.push(curr.toPtr(Cons).car);
+                        break;
                     }
-                    try self.push(curr);
-                },
+                    idx += 1;
+                    curr = curr.toPtr(Cons).cdr;
+                } else {
+                    try self.push(Value.nil);
+                }
+            },
 
-                .rplaca => {
-                    const new_car = try self.pop();
-                    const cons_val = try self.pop();
-                    if (!cons_val.isCons()) return error.TypeMismatch;
-                    const c = cons_val.toPtr(Cons);
-                    c.car = new_car;
-                    try self.push(new_car);
-                },
+            .list_nthcdr => {
+                const list = try self.pop();
+                const n_val = try self.pop();
+                if (!n_val.isFixnum()) return error.TypeMismatch;
+                const n = n_val.toFixnum();
+                if (n < 0) return error.TypeMismatch;
+                var idx: i64 = 0;
+                var curr = list;
+                while (idx < n and curr.isCons()) {
+                    idx += 1;
+                    curr = curr.toPtr(Cons).cdr;
+                }
+                try self.push(curr);
+            },
 
-                .rplacd => {
-                    const new_cdr = try self.pop();
-                    const cons_val = try self.pop();
-                    if (!cons_val.isCons()) return error.TypeMismatch;
-                    const c = cons_val.toPtr(Cons);
-                    c.cdr = new_cdr;
-                    try self.push(new_cdr);
-                },
+            .rplaca => {
+                const new_car = try self.pop();
+                const cons_val = try self.pop();
+                if (!cons_val.isCons()) return error.TypeMismatch;
+                const c = cons_val.toPtr(Cons);
+                c.car = new_car;
+                try self.push(new_car);
+            },
 
-                .error_user => {
-                    const msg_val = try self.pop();
-                    // Accept any value (not just strings) for flexibility
-                    _ = msg_val;
-                    return error.UserError;
-                },
+            .rplacd => {
+                const new_cdr = try self.pop();
+                const cons_val = try self.pop();
+                if (!cons_val.isCons()) return error.TypeMismatch;
+                const c = cons_val.toPtr(Cons);
+                c.cdr = new_cdr;
+                try self.push(new_cdr);
+            },
 
-                .list_last => {
-                    const list = try self.pop();
-                    if (list.isNil()) {
-                        try self.push(Value.nil);
-                    } else if (!list.isCons()) {
-                        return error.TypeMismatch;
-                    } else {
-                        var curr = list;
-                        while (curr.isCons()) {
-                            const c = curr.toPtr(Cons);
-                            if (!c.cdr.isCons()) {
-                                try self.push(curr);
-                                break;
-                            }
-                            curr = c.cdr;
-                        }
-                    }
-                },
+            .error_user => {
+                const msg_val = try self.pop();
+                // Accept any value (not just strings) for flexibility
+                _ = msg_val;
+                return error.UserError;
+            },
 
-                .list_member => {
-                    const list = try self.pop();
-                    const item = try self.pop();
+            .list_last => {
+                const list = try self.pop();
+                if (list.isNil()) {
+                    try self.push(Value.nil);
+                } else if (!list.isCons()) {
+                    return error.TypeMismatch;
+                } else {
                     var curr = list;
                     while (curr.isCons()) {
                         const c = curr.toPtr(Cons);
-                        if (c.car.raw == item.raw) {
+                        if (!c.cdr.isCons()) {
                             try self.push(curr);
                             break;
                         }
                         curr = c.cdr;
-                    } else {
-                        try self.push(Value.nil);
                     }
-                },
+                }
+            },
 
-                .list_member_eql => {
-                    // member with eql test (compares numbers by value)
-                    const list = try self.pop();
-                    const item = try self.pop();
-                    var curr = list;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (hashKeyEqualWithTest(c.car, item, .eql)) {
-                            try self.push(curr);
-                            break;
-                        }
-                        curr = c.cdr;
-                    } else {
-                        try self.push(Value.nil);
+            .list_member => {
+                const list = try self.pop();
+                const item = try self.pop();
+                var curr = list;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (c.car.raw == item.raw) {
+                        try self.push(curr);
+                        break;
                     }
-                },
+                    curr = c.cdr;
+                } else {
+                    try self.push(Value.nil);
+                }
+            },
 
-                .list_member_equal => {
-                    // member with equal test (deep equality)
-                    const list = try self.pop();
-                    const item = try self.pop();
-                    var curr = list;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (hashKeyEqualWithTest(c.car, item, .equal)) {
-                            try self.push(curr);
-                            break;
-                        }
-                        curr = c.cdr;
-                    } else {
-                        try self.push(Value.nil);
+            .list_member_eql => {
+                // member with eql test (compares numbers by value)
+                const list = try self.pop();
+                const item = try self.pop();
+                var curr = list;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (hashKeyEqualWithTest(c.car, item, .eql)) {
+                        try self.push(curr);
+                        break;
                     }
-                },
+                    curr = c.cdr;
+                } else {
+                    try self.push(Value.nil);
+                }
+            },
 
-                // Type predicates
-                .consp => {
-                    const a = try self.pop();
-                    try self.push(if (a.isCons()) Value.t else Value.nil);
-                },
-                .symbolp => {
-                    const a = try self.pop();
-                    // nil and t are also symbols in CL
-                    try self.push(if (a.isSymbolLike()) Value.t else Value.nil);
-                },
-                .numberp => {
-                    const a = try self.pop();
-                    try self.push(if (a.isFixnum()) Value.t else Value.nil);
-                },
-                .stringp => {
-                    const a = try self.pop();
-                    try self.push(if (a.isString()) Value.t else Value.nil);
-                },
-                .vectorp => {
-                    const a = try self.pop();
-                    try self.push(if (a.isVector()) Value.t else Value.nil);
-                },
-                .closurep => {
-                    const a = try self.pop();
-                    try self.push(if (a.isClosure()) Value.t else Value.nil);
-                },
-                .keywordp => {
-                    const a = try self.pop();
-                    try self.push(if (a.isKeyword()) Value.t else Value.nil);
-                },
-                .nilp => {
-                    const a = try self.pop();
-                    try self.push(if (a.isNil()) Value.t else Value.nil);
-                },
-
-                // Vector operations
-                .make_vec => {
-                    _ = self.readU16(); // Size operand (unused, size from stack)
-                    const init_val = try self.pop();
-                    const size_val = try self.pop();
-                    if (!size_val.isFixnum()) return error.TypeMismatch;
-                    const size_signed = size_val.toFixnum();
-                    if (size_signed < 0) return error.TypeMismatch;
-                    const size: usize = @intCast(size_signed);
-                    const vec = try self.allocVector(size, size);
-                    // Fill with init value (nil or specified)
-                    const vec_obj = vec.toPtr(Vector);
-                    for (0..size) |i| {
-                        vec_obj.data[i] = init_val;
+            .list_member_equal => {
+                // member with equal test (deep equality)
+                const list = try self.pop();
+                const item = try self.pop();
+                var curr = list;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (hashKeyEqualWithTest(c.car, item, .equal)) {
+                        try self.push(curr);
+                        break;
                     }
-                    try self.push(vec);
-                },
-                .make_vec_n => {
-                    const count = self.readU8();
-                    const vec = try self.allocVector(count, count);
-                    const vec_obj = vec.toPtr(Vector);
-                    // Pop elements in reverse order (last element pushed first)
-                    var i: usize = count;
-                    while (i > 0) {
-                        i -= 1;
-                        vec_obj.data[i] = try self.pop();
-                    }
-                    try self.push(vec);
-                },
-                .vec_ref => {
-                    const idx_val = try self.pop();
-                    const vec_val = try self.pop();
-                    if (!vec_val.isVector() or !idx_val.isFixnum()) return error.TypeMismatch;
-                    const vec = vec_val.toPtr(runtime.Vector);
-                    const idx_signed = idx_val.toFixnum();
-                    if (idx_signed < 0) return error.TypeMismatch;
-                    const idx: usize = @intCast(idx_signed);
-                    if (idx >= vec.length) return error.TypeMismatch;
-                    try self.push(vec.get(idx));
-                },
-                .vec_set => {
-                    const val = try self.pop();
-                    const idx_val = try self.pop();
-                    const vec_val = try self.pop();
-                    if (!vec_val.isVector() or !idx_val.isFixnum()) return error.TypeMismatch;
-                    const vec = vec_val.toPtr(runtime.Vector);
-                    const idx_signed = idx_val.toFixnum();
-                    if (idx_signed < 0) return error.TypeMismatch;
-                    const idx: usize = @intCast(idx_signed);
-                    if (idx >= vec.length) return error.TypeMismatch;
-                    vec.set(idx, val);
-                    try self.push(val); // Return the value that was set
-                },
-                .vec_len => {
-                    const vec_val = try self.pop();
-                    if (!vec_val.isVector()) return error.TypeMismatch;
-                    const vec = vec_val.toPtr(runtime.Vector);
-                    try self.push(Value.makeFixnum(@intCast(vec.length)));
-                },
+                    curr = c.cdr;
+                } else {
+                    try self.push(Value.nil);
+                }
+            },
 
-                // CLOS operations
-                .slot_value => {
-                    const slot_name_val = try self.pop();
-                    const obj = try self.pop();
-                    const args = try self.heap.allocCons(obj, try self.heap.allocCons(slot_name_val, Value.nil));
-                    const result = try primitives.slotValue(self.heap, args);
-                    try self.push(result);
-                },
+            // Type predicates
+            .consp => {
+                const a = try self.pop();
+                try self.push(if (a.isCons()) Value.t else Value.nil);
+            },
+            .symbolp => {
+                const a = try self.pop();
+                // nil and t are also symbols in CL
+                try self.push(if (a.isSymbolLike()) Value.t else Value.nil);
+            },
+            .numberp => {
+                const a = try self.pop();
+                try self.push(if (a.isFixnum()) Value.t else Value.nil);
+            },
+            .stringp => {
+                const a = try self.pop();
+                try self.push(if (a.isString()) Value.t else Value.nil);
+            },
+            .vectorp => {
+                const a = try self.pop();
+                try self.push(if (a.isVector()) Value.t else Value.nil);
+            },
+            .closurep => {
+                const a = try self.pop();
+                try self.push(if (a.isClosure()) Value.t else Value.nil);
+            },
+            .keywordp => {
+                const a = try self.pop();
+                try self.push(if (a.isKeyword()) Value.t else Value.nil);
+            },
+            .nilp => {
+                const a = try self.pop();
+                try self.push(if (a.isNil()) Value.t else Value.nil);
+            },
 
-                // Box operations (mutable cells for closures)
-                .make_box => {
-                    const val = try self.pop();
-                    // Allocate a 1-element vector as a box
-                    const box = try self.allocVector(1, 1);
-                    const vec = box.toPtr(runtime.Vector);
-                    vec.set(0, val);
-                    try self.push(box);
-                },
-                .box_ref => {
-                    const box = try self.pop();
-                    if (!box.isVector()) return error.TypeMismatch;
-                    const vec = box.toPtr(runtime.Vector);
-                    if (vec.length < 1) return error.TypeMismatch;
-                    try self.push(vec.get(0));
-                },
-                .box_set => {
-                    const val = try self.pop();
-                    const box = try self.pop();
-                    if (!box.isVector()) return error.TypeMismatch;
-                    const vec = box.toPtr(runtime.Vector);
-                    if (vec.length < 1) return error.TypeMismatch;
-                    vec.set(0, val);
-                    try self.push(val); // Return the value written
-                },
+            // Vector operations
+            .make_vec => {
+                _ = self.readU16(); // Size operand (unused, size from stack)
+                const init_val = try self.pop();
+                const size_val = try self.pop();
+                if (!size_val.isFixnum()) return error.TypeMismatch;
+                const size_signed = size_val.toFixnum();
+                if (size_signed < 0) return error.TypeMismatch;
+                const size: usize = @intCast(size_signed);
+                const vec = try self.allocVector(size, size);
+                // Fill with init value (nil or specified)
+                const vec_obj = vec.toPtr(Vector);
+                for (0..size) |i| {
+                    vec_obj.data[i] = init_val;
+                }
+                try self.push(vec);
+            },
+            .make_vec_n => {
+                const count = self.readU8();
+                const vec = try self.allocVector(count, count);
+                const vec_obj = vec.toPtr(Vector);
+                // Pop elements in reverse order (last element pushed first)
+                var i: usize = count;
+                while (i > 0) {
+                    i -= 1;
+                    vec_obj.data[i] = try self.pop();
+                }
+                try self.push(vec);
+            },
+            .vec_ref => {
+                const idx_val = try self.pop();
+                const vec_val = try self.pop();
+                if (!vec_val.isVector() or !idx_val.isFixnum()) return error.TypeMismatch;
+                const vec = vec_val.toPtr(runtime.Vector);
+                const idx_signed = idx_val.toFixnum();
+                if (idx_signed < 0) return error.TypeMismatch;
+                const idx: usize = @intCast(idx_signed);
+                if (idx >= vec.length) return error.TypeMismatch;
+                try self.push(vec.get(idx));
+            },
+            .vec_set => {
+                const val = try self.pop();
+                const idx_val = try self.pop();
+                const vec_val = try self.pop();
+                if (!vec_val.isVector() or !idx_val.isFixnum()) return error.TypeMismatch;
+                const vec = vec_val.toPtr(runtime.Vector);
+                const idx_signed = idx_val.toFixnum();
+                if (idx_signed < 0) return error.TypeMismatch;
+                const idx: usize = @intCast(idx_signed);
+                if (idx >= vec.length) return error.TypeMismatch;
+                vec.set(idx, val);
+                try self.push(val); // Return the value that was set
+            },
+            .vec_len => {
+                const vec_val = try self.pop();
+                if (!vec_val.isVector()) return error.TypeMismatch;
+                const vec = vec_val.toPtr(runtime.Vector);
+                try self.push(Value.makeFixnum(@intCast(vec.length)));
+            },
 
-                // String operations
-                .str_ref => {
-                    const idx_val = try self.pop();
-                    const str_val = try self.pop();
-                    if (!str_val.isString() or !idx_val.isFixnum()) return error.TypeMismatch;
-                    const str = str_val.toPtr(runtime.String);
-                    const idx_signed = idx_val.toFixnum();
-                    if (idx_signed < 0) return error.TypeMismatch;
-                    const idx: usize = @intCast(idx_signed);
-                    if (idx >= str.length) return error.TypeMismatch;
-                    try self.push(Value.makeFixnum(str.bytes()[idx]));
-                },
-                .str_len => {
-                    const str_val = try self.pop();
-                    if (!str_val.isString()) return error.TypeMismatch;
-                    const str = str_val.toPtr(runtime.String);
-                    try self.push(Value.makeFixnum(@intCast(str.length)));
-                },
-                .str_concat => {
-                    const s2 = try self.pop();
-                    const s1 = try self.pop();
-                    if (!s1.isString() or !s2.isString()) return error.TypeMismatch;
-                    const str1 = s1.toPtr(runtime.String);
-                    const str2 = s2.toPtr(runtime.String);
-                    // Allocate new string with combined length
-                    const new_len = str1.length + str2.length;
-                    const result = try self.allocStringUninitialized(new_len);
-                    const result_str = result.toPtr(runtime.String);
-                    const dest = result_str.mutableBytes();
-                    @memcpy(dest[0..str1.length], str1.bytes());
-                    @memcpy(dest[str1.length..new_len], str2.bytes());
-                    try self.push(result);
-                },
+            // CLOS operations
+            .slot_value => {
+                const slot_name_val = try self.pop();
+                const obj = try self.pop();
+                const args = try self.heap.allocCons(obj, try self.heap.allocCons(slot_name_val, Value.nil));
+                const result = try primitives.slotValue(self.heap, args);
+                try self.push(result);
+            },
 
-                // Control flow
-                .jmp => {
-                    const offset = self.readI16();
-                    // Use isize to handle the full range of usize safely
+            // Box operations (mutable cells for closures)
+            .make_box => {
+                const val = try self.pop();
+                // Allocate a 1-element vector as a box
+                const box = try self.allocVector(1, 1);
+                const vec = box.toPtr(runtime.Vector);
+                vec.set(0, val);
+                try self.push(box);
+            },
+            .box_ref => {
+                const box = try self.pop();
+                if (!box.isVector()) return error.TypeMismatch;
+                const vec = box.toPtr(runtime.Vector);
+                if (vec.length < 1) return error.TypeMismatch;
+                try self.push(vec.get(0));
+            },
+            .box_set => {
+                const val = try self.pop();
+                const box = try self.pop();
+                if (!box.isVector()) return error.TypeMismatch;
+                const vec = box.toPtr(runtime.Vector);
+                if (vec.length < 1) return error.TypeMismatch;
+                vec.set(0, val);
+                try self.push(val); // Return the value written
+            },
+
+            // String operations
+            .str_ref => {
+                const idx_val = try self.pop();
+                const str_val = try self.pop();
+                if (!str_val.isString() or !idx_val.isFixnum()) return error.TypeMismatch;
+                const str = str_val.toPtr(runtime.String);
+                const idx_signed = idx_val.toFixnum();
+                if (idx_signed < 0) return error.TypeMismatch;
+                const idx: usize = @intCast(idx_signed);
+                if (idx >= str.length) return error.TypeMismatch;
+                try self.push(Value.makeFixnum(str.bytes()[idx]));
+            },
+            .str_len => {
+                const str_val = try self.pop();
+                if (!str_val.isString()) return error.TypeMismatch;
+                const str = str_val.toPtr(runtime.String);
+                try self.push(Value.makeFixnum(@intCast(str.length)));
+            },
+            .str_concat => {
+                const s2 = try self.pop();
+                const s1 = try self.pop();
+                if (!s1.isString() or !s2.isString()) return error.TypeMismatch;
+                const str1 = s1.toPtr(runtime.String);
+                const str2 = s2.toPtr(runtime.String);
+                // Allocate new string with combined length
+                const new_len = str1.length + str2.length;
+                const result = try self.allocStringUninitialized(new_len);
+                const result_str = result.toPtr(runtime.String);
+                const dest = result_str.mutableBytes();
+                @memcpy(dest[0..str1.length], str1.bytes());
+                @memcpy(dest[str1.length..new_len], str2.bytes());
+                try self.push(result);
+            },
+
+            // Control flow
+            .jmp => {
+                const offset = self.readI16();
+                // Use isize to handle the full range of usize safely
+                const new_ip = @as(isize, @intCast(self.ip)) + offset;
+                if (new_ip < 0) return error.InvalidOpcode;
+                self.ip = @intCast(new_ip);
+            },
+            .jmp_nil => {
+                const offset = self.readI16();
+                const val = try self.pop();
+                if (val.isNil()) {
                     const new_ip = @as(isize, @intCast(self.ip)) + offset;
                     if (new_ip < 0) return error.InvalidOpcode;
                     self.ip = @intCast(new_ip);
-                },
-                .jmp_nil => {
-                    const offset = self.readI16();
-                    const val = try self.pop();
-                    if (val.isNil()) {
-                        const new_ip = @as(isize, @intCast(self.ip)) + offset;
-                        if (new_ip < 0) return error.InvalidOpcode;
-                        self.ip = @intCast(new_ip);
-                    }
-                },
-                .jmp_not_nil => {
-                    const offset = self.readI16();
-                    const val = try self.pop();
-                    if (!val.isNil()) {
-                        const new_ip = @as(isize, @intCast(self.ip)) + offset;
-                        if (new_ip < 0) return error.InvalidOpcode;
-                        self.ip = @intCast(new_ip);
-                    }
-                },
+                }
+            },
+            .jmp_not_nil => {
+                const offset = self.readI16();
+                const val = try self.pop();
+                if (!val.isNil()) {
+                    const new_ip = @as(isize, @intCast(self.ip)) + offset;
+                    if (new_ip < 0) return error.InvalidOpcode;
+                    self.ip = @intCast(new_ip);
+                }
+            },
 
-                // Function calls
-                .call => {
-                    const argc = self.readU8();
-                    try self.doCall(argc, false);
-                },
-                .tail_call => {
-                    const argc = self.readU8();
-                    try self.doCall(argc, true);
-                },
-                .apply => {
-                    try self.doApply();
-                },
-                .ret => {
-                    const result = try self.pop();
-                    if (self.fp == 0) {
-                        return result;
-                    }
-                    // Restore caller state
-                    self.fp -= 1;
-                    const frame = self.frames[self.fp];
-                    self.sp = frame.bp;
-                    self.chunk = frame.chunk;
-                    self.ip = frame.return_ip;
+            // Function calls
+            .call => {
+                const argc = self.readU8();
+                try self.doCall(argc, false);
+            },
+            .tail_call => {
+                const argc = self.readU8();
+                try self.doCall(argc, true);
+            },
+            .apply => {
+                try self.doApply();
+            },
+            .ret => {
+                const result = try self.pop();
+                if (self.fp == 0) {
+                    // Top level return - push result and halt
                     try self.push(result);
-                },
-                .make_closure => {
-                    const chunk_idx = self.readU16();
-                    const num_captures = self.readU8();
+                    return error.Halt;
+                }
+                // Restore caller state
+                self.fp -= 1;
+                const frame = self.frames[self.fp];
+                self.sp = frame.bp;
+                self.chunk = frame.chunk;
+                self.ip = frame.return_ip;
+                try self.push(result);
+            },
+            .make_closure => {
+                const chunk_idx = self.readU16();
+                const num_captures = self.readU8();
 
-                    // Get the chunk from the pool (offset by base for this eval)
-                    const abs_idx = self.chunk_base + chunk_idx;
-                    if (abs_idx >= self.chunk_pool.len) return error.InvalidConstant;
-                    const closure_chunk = self.chunk_pool[abs_idx];
+                // Get the chunk from the pool (offset by base for this eval)
+                const abs_idx = self.chunk_base + chunk_idx;
+                if (abs_idx >= self.chunk_pool.len) return error.InvalidConstant;
+                const closure_chunk = self.chunk_pool[abs_idx];
 
-                    // Collect captures from stack
-                    var captures: [64]Value = undefined;
-                    if (num_captures > 64) return error.StackOverflow;
-                    var i: usize = num_captures;
-                    while (i > 0) {
-                        i -= 1;
-                        captures[i] = try self.pop();
-                    }
+                // Collect captures from stack
+                var captures: [64]Value = undefined;
+                if (num_captures > 64) return error.StackOverflow;
+                var i: usize = num_captures;
+                while (i > 0) {
+                    i -= 1;
+                    captures[i] = try self.pop();
+                }
 
-                    // Create closure
-                    const closure = try self.allocClosureWithGC(
-                        @ptrCast(closure_chunk),
-                        closure_chunk.arity,
-                        captures[0..num_captures],
-                    );
+                // Create closure
+                const closure = try self.allocClosureWithGC(
+                    @ptrCast(closure_chunk),
+                    closure_chunk.arity,
+                    captures[0..num_captures],
+                );
 
-                    try self.push(closure);
-                },
+                try self.push(closure);
+            },
 
-                // I/O
-                .print => {
-                    const val = try self.pop();
-                    io.printValue(val) catch return error.Halt;
-                    io.sysNewline() catch return error.Halt;
-                    try self.push(val); // Return the printed value
-                },
-                .princ => {
-                    const val = try self.pop();
-                    io.princValue(val) catch return error.Halt;
-                    // Note: no newline for princ
-                    try self.push(val); // Return the printed value
-                },
-                .terpri => {
-                    io.sysNewline() catch return error.Halt;
-                    try self.push(Value.nil);
-                },
-                .write_char => {
-                    const val = try self.pop();
-                    if (!val.isCharacter()) return error.TypeMismatch;
-                    const cp = val.toCharacter();
-                    if (cp < 128) {
-                        io.sysWriteChar(@intCast(cp)) catch return error.Halt;
-                    } else {
-                        // UTF-8 encode for non-ASCII
-                        var buf: [4]u8 = undefined;
-                        const len = std.unicode.utf8Encode(@intCast(cp), &buf) catch 0;
-                        io.sysWriteBytes(buf[0..len]) catch return error.Halt;
-                    }
-                    try self.push(val);
-                },
-                .char_upcase => {
-                    const val = try self.pop();
-                    if (!val.isCharacter()) return error.TypeMismatch;
-                    const cp = val.toCharacter();
-                    const upper = if (cp >= 'a' and cp <= 'z') cp - 32 else cp;
-                    try self.push(Value.makeCharacter(upper));
-                },
-                .char_downcase => {
-                    const val = try self.pop();
-                    if (!val.isCharacter()) return error.TypeMismatch;
-                    const cp = val.toCharacter();
-                    const lower = if (cp >= 'A' and cp <= 'Z') cp + 32 else cp;
-                    try self.push(Value.makeCharacter(lower));
-                },
-                .digit_char_p => {
-                    const val = try self.pop();
-                    if (!val.isCharacter()) return error.TypeMismatch;
-                    const cp = val.toCharacter();
-                    const is_digit = cp >= '0' and cp <= '9';
-                    try self.push(if (is_digit) Value.t else Value.nil);
-                },
-                .alpha_char_p => {
-                    const val = try self.pop();
-                    if (!val.isCharacter()) return error.TypeMismatch;
-                    const cp = val.toCharacter();
-                    const is_alpha = (cp >= 'A' and cp <= 'Z') or (cp >= 'a' and cp <= 'z');
-                    try self.push(if (is_alpha) Value.t else Value.nil);
-                },
-                .parse_integer => {
-                    const val = try self.pop();
-                    if (!val.isString()) return error.TypeMismatch;
-                    const str = val.toPtr(String);
-                    const bytes = str.bytes();
-                    // Parse integer from string
-                    var result: i64 = 0;
-                    var negative = false;
-                    var i: usize = 0;
-                    var overflow = false;
-                    if (bytes.len > 0 and bytes[0] == '-') {
-                        negative = true;
-                        i = 1;
-                    }
-                    while (i < bytes.len) : (i += 1) {
-                        const c = bytes[i];
-                        if (c >= '0' and c <= '9') {
-                            // Use checked arithmetic to detect overflow
-                            const mul_result = @mulWithOverflow(result, 10);
-                            if (mul_result[1] != 0) {
-                                overflow = true;
-                                break;
-                            }
-                            const add_result = @addWithOverflow(mul_result[0], c - '0');
-                            if (add_result[1] != 0) {
-                                overflow = true;
-                                break;
-                            }
-                            result = add_result[0];
-                        } else {
+            // I/O
+            .print => {
+                const val = try self.pop();
+                io.printValue(val) catch return error.Halt;
+                io.sysNewline() catch return error.Halt;
+                try self.push(val); // Return the printed value
+            },
+            .princ => {
+                const val = try self.pop();
+                io.princValue(val) catch return error.Halt;
+                // Note: no newline for princ
+                try self.push(val); // Return the printed value
+            },
+            .terpri => {
+                io.sysNewline() catch return error.Halt;
+                try self.push(Value.nil);
+            },
+            .write_char => {
+                const val = try self.pop();
+                if (!val.isCharacter()) return error.TypeMismatch;
+                const cp = val.toCharacter();
+                if (cp < 128) {
+                    io.sysWriteChar(@intCast(cp)) catch return error.Halt;
+                } else {
+                    // UTF-8 encode for non-ASCII
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(cp), &buf) catch 0;
+                    io.sysWriteBytes(buf[0..len]) catch return error.Halt;
+                }
+                try self.push(val);
+            },
+            .char_upcase => {
+                const val = try self.pop();
+                if (!val.isCharacter()) return error.TypeMismatch;
+                const cp = val.toCharacter();
+                const upper = if (cp >= 'a' and cp <= 'z') cp - 32 else cp;
+                try self.push(Value.makeCharacter(upper));
+            },
+            .char_downcase => {
+                const val = try self.pop();
+                if (!val.isCharacter()) return error.TypeMismatch;
+                const cp = val.toCharacter();
+                const lower = if (cp >= 'A' and cp <= 'Z') cp + 32 else cp;
+                try self.push(Value.makeCharacter(lower));
+            },
+            .digit_char_p => {
+                const val = try self.pop();
+                if (!val.isCharacter()) return error.TypeMismatch;
+                const cp = val.toCharacter();
+                const is_digit = cp >= '0' and cp <= '9';
+                try self.push(if (is_digit) Value.t else Value.nil);
+            },
+            .alpha_char_p => {
+                const val = try self.pop();
+                if (!val.isCharacter()) return error.TypeMismatch;
+                const cp = val.toCharacter();
+                const is_alpha = (cp >= 'A' and cp <= 'Z') or (cp >= 'a' and cp <= 'z');
+                try self.push(if (is_alpha) Value.t else Value.nil);
+            },
+            .parse_integer => {
+                const val = try self.pop();
+                if (!val.isString()) return error.TypeMismatch;
+                const str = val.toPtr(String);
+                const bytes = str.bytes();
+                // Parse integer from string
+                var result: i64 = 0;
+                var negative = false;
+                var i: usize = 0;
+                var overflow = false;
+                if (bytes.len > 0 and bytes[0] == '-') {
+                    negative = true;
+                    i = 1;
+                }
+                while (i < bytes.len) : (i += 1) {
+                    const c = bytes[i];
+                    if (c >= '0' and c <= '9') {
+                        // Use checked arithmetic to detect overflow
+                        const mul_result = @mulWithOverflow(result, 10);
+                        if (mul_result[1] != 0) {
+                            overflow = true;
                             break;
                         }
-                    }
-                    if (overflow) {
-                        try self.push(Value.nil);
+                        const add_result = @addWithOverflow(mul_result[0], c - '0');
+                        if (add_result[1] != 0) {
+                            overflow = true;
+                            break;
+                        }
+                        result = add_result[0];
                     } else {
-                        if (negative) result = -result;
-                        try self.push(Value.makeFixnum(result));
+                        break;
                     }
-                },
-                .write_to_string => {
-                    const val = try self.pop();
-                    // Convert value to string representation
-                    var buf: [256]u8 = undefined;
-                    var fbs = std.io.fixedBufferStream(&buf);
-                    io.writeValueToBuffer(val, fbs.writer().any()) catch {
-                        try self.push(Value.nil);
-                        continue;
-                    };
-                    const written = fbs.getWritten();
-                    const result = try self.allocString(written);
-                    try self.push(result);
-                },
-                .logand => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-                    const result = a.toFixnum() & b.toFixnum();
-                    try self.push(Value.makeFixnum(result));
-                },
-                .logior => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-                    const result = a.toFixnum() | b.toFixnum();
-                    try self.push(Value.makeFixnum(result));
-                },
-                .logxor => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-                    const result = a.toFixnum() ^ b.toFixnum();
-                    try self.push(Value.makeFixnum(result));
-                },
-                .lognot => {
-                    const a = try self.pop();
-                    if (!a.isFixnum()) return error.TypeMismatch;
-                    const result = ~a.toFixnum();
-                    try self.push(Value.makeFixnum(result));
-                },
-                .ash => {
-                    const count_val = try self.pop();
-                    const n_val = try self.pop();
-                    if (!n_val.isFixnum() or !count_val.isFixnum()) return error.TypeMismatch;
-                    const n = n_val.toFixnum();
-                    const count = count_val.toFixnum();
-                    const result = if (count >= 0)
-                        n << @intCast(@min(count, 63))
-                    else if (count == std.math.minInt(i64))
-                        // -minInt overflows; shift by 63+ zeros everything
-                        if (n >= 0) @as(i64, 0) else @as(i64, -1)
-                    else
-                        n >> @intCast(@min(-count, 63));
-                    try self.push(Value.makeFixnum(result));
-                },
-                .read_file => {
-                    const path_val = try self.pop();
-                    if (!path_val.isString()) return error.TypeMismatch;
-                    const path_str = path_val.toPtr(String);
-                    const result = io.readFile(self.heap, path_str.bytes()) catch {
-                        try self.push(Value.nil);
-                        continue;
-                    };
-                    try self.push(result);
-                },
-                .write_file => {
-                    const content_val = try self.pop();
-                    const path_val = try self.pop();
-                    if (!path_val.isString()) return error.TypeMismatch;
-                    const path_str = path_val.toPtr(String);
-                    io.writeFile(path_str.bytes(), content_val) catch {
-                        try self.push(Value.nil);
-                        continue;
-                    };
+                }
+                if (overflow) {
                     try self.push(Value.nil);
-                },
-                .make_string => {
-                    const char_val = try self.pop();
-                    const len_val = try self.pop();
-                    if (!len_val.isFixnum()) return error.TypeMismatch;
-                    const len_signed = len_val.toFixnum();
-                    if (len_signed < 0) return error.TypeMismatch;
-                    const len: usize = @intCast(len_signed);
-                    // If char provided, use it; otherwise use space
-                    const fill_char: u8 = if (char_val.isCharacter()) blk: {
-                        const cp = char_val.toCharacter();
-                        if (cp > 255) return error.TypeMismatch;
-                        break :blk @intCast(cp);
-                    } else if (char_val == Value.nil)
-                        ' '
-                    else
-                        return error.TypeMismatch;
-                    const str = try self.allocStringUninitialized(len);
-                    const str_obj = str.toPtr(String);
-                    @memset(str_obj.data[0..len], fill_char);
-                    try self.push(str);
-                },
-                .string_to_list => {
-                    const str_val = try self.pop();
-                    if (!str_val.isString()) return error.TypeMismatch;
-                    const str = str_val.toPtr(String);
-                    const bytes = str.bytes();
-                    // Build list in reverse, then result is in correct order
-                    var result = Value.nil;
-                    var i: usize = bytes.len;
-                    while (i > 0) {
-                        i -= 1;
-                        const char = Value.makeCharacter(bytes[i]);
-                        result = try self.allocCons(char, result);
-                    }
-                    try self.push(result);
-                },
-                .list_to_string => {
-                    const list_val = try self.pop();
-                    // Count length first
-                    var len: usize = 0;
-                    var p = list_val;
-                    while (p != Value.nil) {
-                        if (!p.isCons()) return error.TypeMismatch;
-                        const c = p.toPtr(Cons);
-                        if (!c.car.isCharacter()) return error.TypeMismatch;
-                        len += 1;
-                        p = c.cdr;
-                    }
-                    // Allocate and fill
-                    const str = try self.allocStringUninitialized(len);
-                    const str_obj = str.toPtr(String);
-                    var i: usize = 0;
-                    p = list_val;
-                    while (p != Value.nil) {
-                        const c = p.toPtr(Cons);
-                        const cp = c.car.toCharacter();
-                        // Only ASCII/Latin-1 characters fit in a byte
-                        if (cp > 255) return error.TypeMismatch;
-                        str_obj.data[i] = @intCast(cp);
-                        i += 1;
-                        p = c.cdr;
-                    }
-                    try self.push(str);
-                },
-                .string_upcase => {
-                    const str_val = try self.pop();
-                    if (!str_val.isString()) return error.TypeMismatch;
-                    const src = str_val.toPtr(String);
-                    const src_bytes = src.bytes();
-                    const result = try self.allocStringUninitialized(src_bytes.len);
-                    const dst = result.toPtr(String);
-                    for (src_bytes, 0..) |c, i| {
-                        dst.data[i] = std.ascii.toUpper(c);
-                    }
-                    try self.push(result);
-                },
-                .string_downcase => {
-                    const str_val = try self.pop();
-                    if (!str_val.isString()) return error.TypeMismatch;
-                    const src = str_val.toPtr(String);
-                    const src_bytes = src.bytes();
-                    const result = try self.allocStringUninitialized(src_bytes.len);
-                    const dst = result.toPtr(String);
-                    for (src_bytes, 0..) |c, i| {
-                        dst.data[i] = std.ascii.toLower(c);
-                    }
-                    try self.push(result);
-                },
-                .random => {
-                    const n = try self.pop();
-                    const result = arith.random(n) catch return error.InvalidArgument;
-                    try self.push(result);
-                },
-                .random_seed => {
-                    const seed = try self.pop();
-                    const result = arith.randomSeed(seed) catch return error.TypeMismatch;
-                    try self.push(result);
-                },
-                .intern => {
-                    const str_val = try self.pop();
-                    if (!str_val.isString()) return error.TypeMismatch;
-                    const str = str_val.toPtr(String);
-                    const sym = try self.intern(str.bytes());
-                    try self.push(sym);
-                },
-                .substring => {
-                    const end_val = try self.pop();
-                    const start_val = try self.pop();
-                    const str_val = try self.pop();
-                    if (!end_val.isFixnum() or !start_val.isFixnum()) return error.TypeMismatch;
-                    const start_signed = start_val.toFixnum();
-                    const end_signed = end_val.toFixnum();
-                    if (start_signed < 0 or end_signed < 0) return error.TypeMismatch;
-                    const start: usize = @intCast(start_signed);
-                    const end: usize = @intCast(end_signed);
-                    const result = stringPrims.substring(self.heap, str_val, start, end) catch return error.OutOfMemory;
-                    try self.push(result);
-                },
-                .sym_name => {
-                    const sym_val = try self.pop();
-                    // Handle magic symbols nil and t
-                    if (sym_val.isNil()) {
-                        const name_str = try self.allocString("nil");
-                        try self.push(name_str);
-                    } else if (sym_val.isT()) {
-                        const name_str = try self.allocString("t");
-                        try self.push(name_str);
-                    } else if (sym_val.isSymbol()) {
-                        const sym = sym_val.toPtr(Symbol);
-                        const name_str = try self.allocString(sym.getName());
-                        try self.push(name_str);
-                    } else {
-                        return error.TypeMismatch;
-                    }
-                },
-                .type_of => {
-                    const val = try self.pop();
-                    // Return symbol naming the type
-                    const type_name: []const u8 = if (val.isNil())
-                        "nil"
-                    else if (val.isFixnum())
-                        "fixnum"
-                    else if (val.isCharacter())
-                        "character"
-                    else if (val.isCons())
-                        "cons"
-                    else if (val.isSymbol())
-                        "symbol"
-                    else if (val.isVector())
-                        "vector"
-                    else if (val.isString())
-                        "string"
-                    else if (val.isClosure())
-                        "closure"
-                    else if (val.isKeyword())
-                        "keyword"
-                    else if (val.isHashTable())
-                        "hash-table"
-                    else
-                        "unknown";
-                    const type_sym = try self.heap.intern(type_name);
-                    try self.push(type_sym);
-                },
-                .str_eq => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    const result = if (stringPrims.stringEqual(a, b)) Value.t else Value.nil;
-                    try self.push(result);
-                },
+                } else {
+                    if (negative) result = -result;
+                    try self.push(Value.makeFixnum(result));
+                }
+            },
+            .write_to_string => {
+                const val = try self.pop();
+                // Convert value to string representation
+                var buf: [256]u8 = undefined;
+                var fbs = std.io.fixedBufferStream(&buf);
+                io.writeValueToBuffer(val, fbs.writer().any()) catch {
+                    try self.push(Value.nil);
+                    return;
+                };
+                const written = fbs.getWritten();
+                const result = try self.allocString(written);
+                try self.push(result);
+            },
+            .logand => {
+                const b = try self.pop();
+                const a = try self.pop();
+                if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+                const result = a.toFixnum() & b.toFixnum();
+                try self.push(Value.makeFixnum(result));
+            },
+            .logior => {
+                const b = try self.pop();
+                const a = try self.pop();
+                if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+                const result = a.toFixnum() | b.toFixnum();
+                try self.push(Value.makeFixnum(result));
+            },
+            .logxor => {
+                const b = try self.pop();
+                const a = try self.pop();
+                if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+                const result = a.toFixnum() ^ b.toFixnum();
+                try self.push(Value.makeFixnum(result));
+            },
+            .lognot => {
+                const a = try self.pop();
+                if (!a.isFixnum()) return error.TypeMismatch;
+                const result = ~a.toFixnum();
+                try self.push(Value.makeFixnum(result));
+            },
+            .ash => {
+                const count_val = try self.pop();
+                const n_val = try self.pop();
+                if (!n_val.isFixnum() or !count_val.isFixnum()) return error.TypeMismatch;
+                const n = n_val.toFixnum();
+                const count = count_val.toFixnum();
+                const result = if (count >= 0)
+                    n << @intCast(@min(count, 63))
+                else if (count == std.math.minInt(i64))
+                    // -minInt overflows; shift by 63+ zeros everything
+                    if (n >= 0) @as(i64, 0) else @as(i64, -1)
+                else
+                    n >> @intCast(@min(-count, 63));
+                try self.push(Value.makeFixnum(result));
+            },
+            .read_file => {
+                const path_val = try self.pop();
+                if (!path_val.isString()) return error.TypeMismatch;
+                const path_str = path_val.toPtr(String);
+                const result = io.readFile(self.heap, path_str.bytes()) catch {
+                    try self.push(Value.nil);
+                    return;
+                };
+                try self.push(result);
+            },
+            .write_file => {
+                const content_val = try self.pop();
+                const path_val = try self.pop();
+                if (!path_val.isString()) return error.TypeMismatch;
+                const path_str = path_val.toPtr(String);
+                io.writeFile(path_str.bytes(), content_val) catch {
+                    try self.push(Value.nil);
+                    return;
+                };
+                try self.push(Value.nil);
+            },
+            .make_string => {
+                const char_val = try self.pop();
+                const len_val = try self.pop();
+                if (!len_val.isFixnum()) return error.TypeMismatch;
+                const len_signed = len_val.toFixnum();
+                if (len_signed < 0) return error.TypeMismatch;
+                const len: usize = @intCast(len_signed);
+                // If char provided, use it; otherwise use space
+                const fill_char: u8 = if (char_val.isCharacter()) blk: {
+                    const cp = char_val.toCharacter();
+                    if (cp > 255) return error.TypeMismatch;
+                    break :blk @intCast(cp);
+                } else if (char_val == Value.nil)
+                    ' '
+                else
+                    return error.TypeMismatch;
+                const str = try self.allocStringUninitialized(len);
+                const str_obj = str.toPtr(String);
+                @memset(str_obj.data[0..len], fill_char);
+                try self.push(str);
+            },
+            .string_to_list => {
+                const str_val = try self.pop();
+                if (!str_val.isString()) return error.TypeMismatch;
+                const str = str_val.toPtr(String);
+                const bytes = str.bytes();
+                // Build list in reverse, then result is in correct order
+                var result = Value.nil;
+                var i: usize = bytes.len;
+                while (i > 0) {
+                    i -= 1;
+                    const char = Value.makeCharacter(bytes[i]);
+                    result = try self.allocCons(char, result);
+                }
+                try self.push(result);
+            },
+            .list_to_string => {
+                const list_val = try self.pop();
+                // Count length first
+                var len: usize = 0;
+                var p = list_val;
+                while (p != Value.nil) {
+                    if (!p.isCons()) return error.TypeMismatch;
+                    const c = p.toPtr(Cons);
+                    if (!c.car.isCharacter()) return error.TypeMismatch;
+                    len += 1;
+                    p = c.cdr;
+                }
+                // Allocate and fill
+                const str = try self.allocStringUninitialized(len);
+                const str_obj = str.toPtr(String);
+                var i: usize = 0;
+                p = list_val;
+                while (p != Value.nil) {
+                    const c = p.toPtr(Cons);
+                    const cp = c.car.toCharacter();
+                    // Only ASCII/Latin-1 characters fit in a byte
+                    if (cp > 255) return error.TypeMismatch;
+                    str_obj.data[i] = @intCast(cp);
+                    i += 1;
+                    p = c.cdr;
+                }
+                try self.push(str);
+            },
+            .string_upcase => {
+                const str_val = try self.pop();
+                if (!str_val.isString()) return error.TypeMismatch;
+                const src = str_val.toPtr(String);
+                const src_bytes = src.bytes();
+                const result = try self.allocStringUninitialized(src_bytes.len);
+                const dst = result.toPtr(String);
+                for (src_bytes, 0..) |c, i| {
+                    dst.data[i] = std.ascii.toUpper(c);
+                }
+                try self.push(result);
+            },
+            .string_downcase => {
+                const str_val = try self.pop();
+                if (!str_val.isString()) return error.TypeMismatch;
+                const src = str_val.toPtr(String);
+                const src_bytes = src.bytes();
+                const result = try self.allocStringUninitialized(src_bytes.len);
+                const dst = result.toPtr(String);
+                for (src_bytes, 0..) |c, i| {
+                    dst.data[i] = std.ascii.toLower(c);
+                }
+                try self.push(result);
+            },
+            .random => {
+                const n = try self.pop();
+                const result = arith.random(n) catch return error.InvalidArgument;
+                try self.push(result);
+            },
+            .random_seed => {
+                const seed = try self.pop();
+                const result = arith.randomSeed(seed) catch return error.TypeMismatch;
+                try self.push(result);
+            },
+            .intern => {
+                const str_val = try self.pop();
+                if (!str_val.isString()) return error.TypeMismatch;
+                const str = str_val.toPtr(String);
+                const sym = try self.intern(str.bytes());
+                try self.push(sym);
+            },
+            .substring => {
+                const end_val = try self.pop();
+                const start_val = try self.pop();
+                const str_val = try self.pop();
+                if (!end_val.isFixnum() or !start_val.isFixnum()) return error.TypeMismatch;
+                const start_signed = start_val.toFixnum();
+                const end_signed = end_val.toFixnum();
+                if (start_signed < 0 or end_signed < 0) return error.TypeMismatch;
+                const start: usize = @intCast(start_signed);
+                const end: usize = @intCast(end_signed);
+                const result = stringPrims.substring(self.heap, str_val, start, end) catch return error.OutOfMemory;
+                try self.push(result);
+            },
+            .sym_name => {
+                const sym_val = try self.pop();
+                // Handle magic symbols nil and t
+                if (sym_val.isNil()) {
+                    const name_str = try self.allocString("nil");
+                    try self.push(name_str);
+                } else if (sym_val.isT()) {
+                    const name_str = try self.allocString("t");
+                    try self.push(name_str);
+                } else if (sym_val.isSymbol()) {
+                    const sym = sym_val.toPtr(Symbol);
+                    const name_str = try self.allocString(sym.getName());
+                    try self.push(name_str);
+                } else {
+                    return error.TypeMismatch;
+                }
+            },
+            .type_of => {
+                const val = try self.pop();
+                // Return symbol naming the type
+                const type_name: []const u8 = if (val.isNil())
+                    "nil"
+                else if (val.isFixnum())
+                    "fixnum"
+                else if (val.isCharacter())
+                    "character"
+                else if (val.isCons())
+                    "cons"
+                else if (val.isSymbol())
+                    "symbol"
+                else if (val.isVector())
+                    "vector"
+                else if (val.isString())
+                    "string"
+                else if (val.isClosure())
+                    "closure"
+                else if (val.isKeyword())
+                    "keyword"
+                else if (val.isHashTable())
+                    "hash-table"
+                else
+                    "unknown";
+                const type_sym = try self.heap.intern(type_name);
+                try self.push(type_sym);
+            },
+            .str_eq => {
+                const b = try self.pop();
+                const a = try self.pop();
+                const result = if (stringPrims.stringEqual(a, b)) Value.t else Value.nil;
+                try self.push(result);
+            },
 
-                // Type assertions (gradual typing)
-                .check_fixnum => {
-                    const val = try self.peek(0);
-                    if (!val.isFixnum()) return error.TypeMismatch;
-                },
-                .check_cons => {
-                    const val = try self.peek(0);
-                    if (!val.isCons()) return error.TypeMismatch;
-                },
-                .check_symbol => {
-                    const val = try self.peek(0);
-                    if (!val.isSymbol()) return error.TypeMismatch;
-                },
-                .check_string => {
-                    const val = try self.peek(0);
-                    if (!val.isString()) return error.TypeMismatch;
-                },
-                .check_vector => {
-                    const val = try self.peek(0);
-                    if (!val.isVector()) return error.TypeMismatch;
-                },
-                .check_closure => {
-                    const val = try self.peek(0);
-                    if (!val.isClosure()) return error.TypeMismatch;
-                },
-                .check_non_nil => {
-                    const val = try self.peek(0);
-                    if (val.isNil()) return error.TypeMismatch;
-                },
-                .check_list => {
-                    const val = try self.peek(0);
-                    if (!val.isNil() and !val.isCons()) return error.TypeMismatch;
-                },
-                .check_refine => {
-                    // Stack: [value, predicate-result] -> [value]
-                    // Pop predicate result, check it's truthy, leave value
-                    const pred_result = try self.pop();
-                    if (pred_result.isNil()) return error.TypeMismatch;
-                    // Value is already on stack
-                },
+            // Type assertions (gradual typing)
+            .check_fixnum => {
+                const val = try self.peek(0);
+                if (!val.isFixnum()) return error.TypeMismatch;
+            },
+            .check_cons => {
+                const val = try self.peek(0);
+                if (!val.isCons()) return error.TypeMismatch;
+            },
+            .check_symbol => {
+                const val = try self.peek(0);
+                if (!val.isSymbol()) return error.TypeMismatch;
+            },
+            .check_string => {
+                const val = try self.peek(0);
+                if (!val.isString()) return error.TypeMismatch;
+            },
+            .check_vector => {
+                const val = try self.peek(0);
+                if (!val.isVector()) return error.TypeMismatch;
+            },
+            .check_closure => {
+                const val = try self.peek(0);
+                if (!val.isClosure()) return error.TypeMismatch;
+            },
+            .check_non_nil => {
+                const val = try self.peek(0);
+                if (val.isNil()) return error.TypeMismatch;
+            },
+            .check_list => {
+                const val = try self.peek(0);
+                if (!val.isNil() and !val.isCons()) return error.TypeMismatch;
+            },
+            .check_refine => {
+                // Stack: [value, predicate-result] -> [value]
+                // Pop predicate result, check it's truthy, leave value
+                const pred_result = try self.pop();
+                if (pred_result.isNil()) return error.TypeMismatch;
+                // Value is already on stack
+            },
 
-                // Catch/throw exception handling
-                .push_catch => {
-                    const offset = self.readI16();
-                    const tag = try self.pop();
-                    // Calculate absolute jump target
-                    const catch_ip = @as(usize, @intCast(@as(isize, @intCast(self.ip)) + offset));
-                    // Push catch frame
-                    if (self.catch_sp >= MAX_CATCHES) return error.StackOverflow;
-                    self.catch_stack[self.catch_sp] = .{
-                        .tag = tag,
-                        .chunk = self.chunk,
-                        .catch_ip = catch_ip,
-                        .catch_sp = self.sp,
-                        .catch_fp = self.fp,
-                    };
-                    self.catch_sp += 1;
-                },
+            // Catch/throw exception handling
+            .push_catch => {
+                const offset = self.readI16();
+                const tag = try self.pop();
+                // Calculate absolute jump target
+                const catch_ip = @as(usize, @intCast(@as(isize, @intCast(self.ip)) + offset));
+                // Push catch frame
+                if (self.catch_sp >= MAX_CATCHES) return error.StackOverflow;
+                self.catch_stack[self.catch_sp] = .{
+                    .tag = tag,
+                    .chunk = self.chunk,
+                    .catch_ip = catch_ip,
+                    .catch_sp = self.sp,
+                    .catch_fp = self.fp,
+                };
+                self.catch_sp += 1;
+            },
 
-                .pop_catch => {
-                    if (self.catch_sp == 0) return error.StackUnderflow;
-                    self.catch_sp -= 1;
-                },
+            .pop_catch => {
+                if (self.catch_sp == 0) return error.StackUnderflow;
+                self.catch_sp -= 1;
+            },
 
-                .throw => {
-                    const value = try self.pop();
-                    const tag = try self.pop();
+            .throw => {
+                const value = try self.pop();
+                const tag = try self.pop();
+                try self.doThrow(tag, value);
+            },
+
+            .push_unwind => {
+                const offset = self.readI16();
+                const cleanup_ip = @as(usize, @intCast(@as(isize, @intCast(self.ip)) + offset));
+                if (self.unwind_sp >= MAX_UNWINDS) return error.StackOverflow;
+                self.unwind_stack[self.unwind_sp] = .{
+                    .chunk = self.chunk,
+                    .cleanup_ip = cleanup_ip,
+                    .unwind_sp = self.sp,
+                    .unwind_fp = self.fp,
+                };
+                self.unwind_sp += 1;
+            },
+
+            .pop_unwind => {
+                _ = self.readI16(); // Skip unused operand
+                // For normal exit, pop the unwind frame (doThrow/doError already popped for unwind case)
+                if (!self.is_unwinding and self.unwind_sp > 0) {
+                    self.unwind_sp -= 1;
+                }
+                // If we're unwinding (cleanup ran due to throw or error), re-throw/re-error
+                if (self.is_unwinding) {
+                    self.is_unwinding = false;
+
+                    // Check if unwinding due to error
+                    if (self.pending_error) |err| {
+                        self.pending_error = null;
+                        return err;
+                    }
+
+                    // Otherwise unwinding due to throw
+                    const tag = self.pending_throw_tag;
+                    const value = self.pending_throw_value;
+                    self.pending_throw_tag = Value.nil;
+                    self.pending_throw_value = Value.nil;
                     try self.doThrow(tag, value);
-                },
+                }
+            },
 
-                .push_unwind => {
-                    const offset = self.readI16();
-                    const cleanup_ip = @as(usize, @intCast(@as(isize, @intCast(self.ip)) + offset));
-                    if (self.unwind_sp >= MAX_UNWINDS) return error.StackOverflow;
-                    self.unwind_stack[self.unwind_sp] = .{
-                        .chunk = self.chunk,
-                        .cleanup_ip = cleanup_ip,
-                        .unwind_sp = self.sp,
-                        .unwind_fp = self.fp,
-                    };
-                    self.unwind_sp += 1;
-                },
+            // Restart handling
+            .push_restart => {
+                const offset = self.readI16();
+                const name = try self.pop();
+                const handler_ip = @as(usize, @intCast(@as(isize, @intCast(self.ip)) + offset));
+                if (self.restart_sp >= MAX_RESTARTS) return error.StackOverflow;
+                self.restart_stack[self.restart_sp] = .{
+                    .name = name,
+                    .chunk = self.chunk,
+                    .handler_ip = handler_ip,
+                    .restart_sp = self.sp,
+                    .restart_fp = self.fp,
+                    .catch_depth = self.catch_sp,
+                    .unwind_depth = self.unwind_sp,
+                };
+                self.restart_sp += 1;
+            },
 
-                .pop_unwind => {
-                    _ = self.readI16(); // Skip unused operand
-                    // For normal exit, pop the unwind frame (doThrow/doError already popped for unwind case)
-                    if (!self.is_unwinding and self.unwind_sp > 0) {
-                        self.unwind_sp -= 1;
+            .pop_restarts => {
+                const count = self.readU8();
+                if (self.restart_sp < count) return error.StackUnderflow;
+                self.restart_sp -= count;
+            },
+
+            .invoke_restart => {
+                const value = try self.pop();
+                const name = try self.pop();
+                try self.doInvokeRestart(name, value);
+            },
+
+            .find_restart => {
+                const name = try self.pop();
+                // Search for restart by name
+                var found = false;
+                var i = self.restart_sp;
+                while (i > 0) {
+                    i -= 1;
+                    if (self.restart_stack[i].name.raw == name.raw) {
+                        found = true;
+                        break;
                     }
-                    // If we're unwinding (cleanup ran due to throw or error), re-throw/re-error
-                    if (self.is_unwinding) {
-                        self.is_unwinding = false;
+                }
+                try self.push(if (found) Value.t else Value.nil);
+            },
 
-                        // Check if unwinding due to error
-                        if (self.pending_error) |err| {
-                            self.pending_error = null;
-                            return err;
-                        }
-
-                        // Otherwise unwinding due to throw
-                        const tag = self.pending_throw_tag;
-                        const value = self.pending_throw_value;
-                        self.pending_throw_tag = Value.nil;
-                        self.pending_throw_value = Value.nil;
-                        try self.doThrow(tag, value);
-                    }
-                },
-
-                // Restart handling
-                .push_restart => {
-                    const offset = self.readI16();
-                    const name = try self.pop();
-                    const handler_ip = @as(usize, @intCast(@as(isize, @intCast(self.ip)) + offset));
-                    if (self.restart_sp >= MAX_RESTARTS) return error.StackOverflow;
-                    self.restart_stack[self.restart_sp] = .{
-                        .name = name,
-                        .chunk = self.chunk,
-                        .handler_ip = handler_ip,
-                        .restart_sp = self.sp,
-                        .restart_fp = self.fp,
-                        .catch_depth = self.catch_sp,
-                        .unwind_depth = self.unwind_sp,
-                    };
-                    self.restart_sp += 1;
-                },
-
-                .pop_restarts => {
-                    const count = self.readU8();
-                    if (self.restart_sp < count) return error.StackUnderflow;
-                    self.restart_sp -= count;
-                },
-
-                .invoke_restart => {
-                    const value = try self.pop();
-                    const name = try self.pop();
-                    try self.doInvokeRestart(name, value);
-                },
-
-                .find_restart => {
-                    const name = try self.pop();
-                    // Search for restart by name
-                    var found = false;
-                    var i = self.restart_sp;
-                    while (i > 0) {
-                        i -= 1;
-                        if (self.restart_stack[i].name.raw == name.raw) {
-                            found = true;
-                            break;
-                        }
-                    }
-                    try self.push(if (found) Value.t else Value.nil);
-                },
-
-                // Multiple values
-                .values => {
-                    const count = self.readU8();
-                    if (count == 0) {
-                        // (values) returns nil
-                        try self.push(Value.nil);
-                        self.secondary_values_count = 0;
-                    } else {
-                        // Pop all values, store secondary values, push primary
-                        // Values are on stack in order: v1 v2 ... vN (vN on top)
-                        // We want: primary=v1, secondary=[v2, v3, ...]
-                        const secondary_count = count - 1;
-                        if (secondary_count > MAX_SECONDARY_VALUES) return error.StackOverflow;
-
-                        // Pop secondary values in reverse order
-                        var i: usize = 0;
-                        while (i < secondary_count) : (i += 1) {
-                            const idx = secondary_count - 1 - i;
-                            self.secondary_values[idx] = try self.pop();
-                        }
-                        self.secondary_values_count = secondary_count;
-                        // Primary value remains on stack
-                    }
-                },
-
-                .mv_bind => {
-                    const count = self.readU8();
-
-                    // Primary value is already on stack
-                    // Now push secondary values (or nil if not enough)
-                    var i: usize = 1;
-                    while (i < count) : (i += 1) {
-                        if (i - 1 < self.secondary_values_count) {
-                            try self.push(self.secondary_values[i - 1]);
-                        } else {
-                            try self.push(Value.nil);
-                        }
-                    }
-
-                    // Clear secondary values
+            // Multiple values
+            .values => {
+                const count = self.readU8();
+                if (count == 0) {
+                    // (values) returns nil
+                    try self.push(Value.nil);
                     self.secondary_values_count = 0;
-                },
+                } else {
+                    // Pop all values, store secondary values, push primary
+                    // Values are on stack in order: v1 v2 ... vN (vN on top)
+                    // We want: primary=v1, secondary=[v2, v3, ...]
+                    const secondary_count = count - 1;
+                    if (secondary_count > MAX_SECONDARY_VALUES) return error.StackOverflow;
 
-                .mv_list => {
-                    // Primary value is on stack, secondaries in buffer
-                    // Create a list of all values: (primary secondary1 secondary2 ...)
-                    const primary = try self.pop();
-
-                    // Build list in reverse: start with nil, cons secondaries, then cons primary
-                    var result = Value.nil;
-
-                    // Add secondary values in reverse order
-                    var i: usize = self.secondary_values_count;
-                    while (i > 0) : (i -= 1) {
-                        result = try self.allocCons(self.secondary_values[i - 1], result);
+                    // Pop secondary values in reverse order
+                    var i: usize = 0;
+                    while (i < secondary_count) : (i += 1) {
+                        const idx = secondary_count - 1 - i;
+                        self.secondary_values[idx] = try self.pop();
                     }
+                    self.secondary_values_count = secondary_count;
+                    // Primary value remains on stack
+                }
+            },
 
-                    // Add primary at front
-                    result = try self.allocCons(primary, result);
+            .mv_bind => {
+                const count = self.readU8();
 
-                    // Clear secondary values
-                    self.secondary_values_count = 0;
-
-                    try self.push(result);
-                },
-
-                .format => {
-                    const argc = self.readU8();
-                    if (argc > 32) return error.InvalidArgument;
-                    // Stack: dest, control-string, arg1, ..., argN (argN on top)
-                    // Pop args in reverse order
-                    var args: [32]Value = undefined;
-                    var arg_idx: usize = argc;
-                    while (arg_idx > 0) : (arg_idx -= 1) {
-                        args[arg_idx - 1] = try self.pop();
-                    }
-                    const control = try self.pop();
-                    const dest = try self.pop();
-
-                    if (!control.isString()) return error.TypeMismatch;
-
-                    const result = try self.doFormat(dest, control, args[0..argc]);
-                    try self.push(result);
-                },
-
-                // Hash table operations
-                .make_hash => {
-                    const capacity = self.readU16();
-                    const test_byte = self.readU8();
-                    const test_type: runtime.HashTest = @enumFromInt(test_byte);
-                    const ht = try self.allocHashTable(capacity, test_type);
-                    try self.push(ht);
-                },
-                .hash_get => {
-                    const key = try self.pop();
-                    const ht_val = try self.pop();
-                    if (!ht_val.isHashTable()) return error.TypeMismatch;
-                    const ht = ht_val.toPtr(HashTable);
-                    const result = hashTableGet(ht, key);
-                    try self.push(result);
-                },
-                .hash_get_default => {
-                    const default = try self.pop();
-                    const key = try self.pop();
-                    const ht_val = try self.pop();
-                    if (!ht_val.isHashTable()) return error.TypeMismatch;
-                    const ht = ht_val.toPtr(HashTable);
-                    const result = hashTableGet(ht, key);
-                    try self.push(if (result.isNil()) default else result);
-                },
-                .hash_set => {
-                    const value = try self.pop();
-                    const key = try self.pop();
-                    const ht_val = try self.pop();
-                    if (!ht_val.isHashTable()) return error.TypeMismatch;
-                    const ht = ht_val.toPtr(HashTable);
-
-                    // Try to insert, resize if needed
-                    if (!hashTableSet(ht, key, value)) {
-                        // Resize in place - updates ht's entries pointer
-                        if (!hashTableResizeInPlace(self, ht)) return error.OutOfMemory;
-                        // Now insert should succeed
-                        _ = hashTableSet(ht, key, value);
-                    }
-                    // Only push the value (CL setf gethash semantics)
-                    try self.push(value);
-                },
-                .hash_rem => {
-                    const key = try self.pop();
-                    const ht_val = try self.pop();
-                    if (!ht_val.isHashTable()) return error.TypeMismatch;
-                    const ht = ht_val.toPtr(HashTable);
-                    const removed = hashTableRemove(ht, key);
-                    try self.push(if (removed) Value.t else Value.nil);
-                },
-                .hash_count => {
-                    const ht_val = try self.pop();
-                    if (!ht_val.isHashTable()) return error.TypeMismatch;
-                    const ht = ht_val.toPtr(HashTable);
-                    try self.push(Value.makeFixnum(@intCast(ht.count)));
-                },
-                .hashtablep => {
-                    const val = try self.pop();
-                    try self.push(if (val.isHashTable()) Value.t else Value.nil);
-                },
-                .hash_clear => {
-                    const ht_val = try self.pop();
-                    if (!ht_val.isHashTable()) return error.TypeMismatch;
-                    const ht = ht_val.toPtr(HashTable);
-                    hashTableClear(ht);
-                    try self.push(ht_val);
-                },
-                .hash_test => {
-                    const ht_val = try self.pop();
-                    if (!ht_val.isHashTable()) return error.TypeMismatch;
-                    const ht = ht_val.toPtr(HashTable);
-                    const test_name = switch (ht.test_type) {
-                        .eq => "eq",
-                        .eql => "eql",
-                        .equal => "equal",
-                    };
-                    const sym = try self.heap.intern(test_name);
-                    try self.push(sym);
-                },
-                .rationalp => {
-                    const val = try self.pop();
-                    try self.push(if (val.isRational()) Value.t else Value.nil);
-                },
-                .complexp => {
-                    const val = try self.pop();
-                    try self.push(if (val.isComplex()) Value.t else Value.nil);
-                },
-                .make_complex => {
-                    const imag = try self.pop();
-                    const real = try self.pop();
-                    const real_f = if (real.isFloat()) real.toFloat() else if (real.isFixnum()) @as(f64, @floatFromInt(real.toFixnum())) else return error.TypeMismatch;
-                    const imag_f = if (imag.isFloat()) imag.toFloat() else if (imag.isFixnum()) @as(f64, @floatFromInt(imag.toFixnum())) else return error.TypeMismatch;
-                    const cplx = try self.heap.allocComplex(real_f, imag_f);
-                    try self.push(cplx);
-                },
-                .real_part => {
-                    const val = try self.pop();
-                    if (!val.isComplex()) return error.TypeMismatch;
-                    const cplx = val.toPtr(runtime.Complex);
-                    try self.push(Value.makeFloat(cplx.real));
-                },
-                .imag_part => {
-                    const val = try self.pop();
-                    if (!val.isComplex()) return error.TypeMismatch;
-                    const cplx = val.toPtr(runtime.Complex);
-                    try self.push(Value.makeFloat(cplx.imag));
-                },
-
-                .numerator => {
-                    const val = try self.pop();
-                    if (!val.isRational()) return error.TypeMismatch;
-                    const rat = val.toPtr(runtime.Rational);
-                    try self.push(Value.makeFixnum(rat.numerator));
-                },
-                .denominator => {
-                    const val = try self.pop();
-                    if (!val.isRational()) return error.TypeMismatch;
-                    const rat = val.toPtr(runtime.Rational);
-                    try self.push(Value.makeFixnum(rat.denominator));
-                },
-                .get => {
-                    const indicator = try self.pop();
-                    const sym = try self.pop();
-                    const result = try primitives.list.get(sym, indicator);
-                    try self.push(result);
-                },
-                .put => {
-                    const value = try self.pop();
-                    const indicator = try self.pop();
-                    const sym = try self.pop();
-                    const result = try primitives.list.put(self.heap, sym, indicator, value);
-                    try self.push(result);
-                },
-                .remprop => {
-                    const indicator = try self.pop();
-                    const sym = try self.pop();
-                    const result = try primitives.list.remprop(sym, indicator);
-                    try self.push(result);
-                },
-                // Stream operations
-                .streamp => {
-                    const val = try self.pop();
-                    try self.push(if (val.isStream()) Value.t else Value.nil);
-                },
-                .input_stream_p => {
-                    const val = try self.pop();
-                    if (!val.isStream()) {
-                        try self.push(Value.nil);
+                // Primary value is already on stack
+                // Now push secondary values (or nil if not enough)
+                var i: usize = 1;
+                while (i < count) : (i += 1) {
+                    if (i - 1 < self.secondary_values_count) {
+                        try self.push(self.secondary_values[i - 1]);
                     } else {
-                        const stream = val.toPtr(runtime.Stream);
-                        try self.push(if (stream.isInput()) Value.t else Value.nil);
-                    }
-                },
-                .output_stream_p => {
-                    const val = try self.pop();
-                    if (!val.isStream()) {
                         try self.push(Value.nil);
-                    } else {
-                        const stream = val.toPtr(runtime.Stream);
-                        try self.push(if (stream.isOutput()) Value.t else Value.nil);
                     }
-                },
-                .make_string_input_stream => {
-                    const str = try self.pop();
-                    if (!str.isString()) return error.TypeMismatch;
-                    const stream = try self.heap.allocStringInputStream(str);
-                    try self.push(stream);
-                },
-                .make_string_output_stream => {
-                    const stream = try self.heap.allocStringOutputStream();
-                    try self.push(stream);
-                },
-                .get_output_stream_string => {
-                    const stream_val = try self.pop();
-                    if (!stream_val.isStream()) return error.TypeMismatch;
-                    const stream = stream_val.toPtr(runtime.Stream);
-                    if (stream.stream_type != .string or stream.direction != .output) {
-                        return error.TypeMismatch;
+                }
+
+                // Clear secondary values
+                self.secondary_values_count = 0;
+            },
+
+            .mv_list => {
+                // Primary value is on stack, secondaries in buffer
+                // Create a list of all values: (primary secondary1 secondary2 ...)
+                const primary = try self.pop();
+
+                // Build list in reverse: start with nil, cons secondaries, then cons primary
+                var result = Value.nil;
+
+                // Add secondary values in reverse order
+                var i: usize = self.secondary_values_count;
+                while (i > 0) : (i -= 1) {
+                    result = try self.allocCons(self.secondary_values[i - 1], result);
+                }
+
+                // Add primary at front
+                result = try self.allocCons(primary, result);
+
+                // Clear secondary values
+                self.secondary_values_count = 0;
+
+                try self.push(result);
+            },
+
+            .format => {
+                const argc = self.readU8();
+                if (argc > 32) return error.InvalidArgument;
+                // Stack: dest, control-string, arg1, ..., argN (argN on top)
+                // Pop args in reverse order
+                var args: [32]Value = undefined;
+                var arg_idx: usize = argc;
+                while (arg_idx > 0) : (arg_idx -= 1) {
+                    args[arg_idx - 1] = try self.pop();
+                }
+                const control = try self.pop();
+                const dest = try self.pop();
+
+                if (!control.isString()) return error.TypeMismatch;
+
+                const result = try self.doFormat(dest, control, args[0..argc]);
+                try self.push(result);
+            },
+
+            // Hash table operations
+            .make_hash => {
+                const capacity = self.readU16();
+                const test_byte = self.readU8();
+                const test_type: runtime.HashTest = @enumFromInt(test_byte);
+                const ht = try self.allocHashTable(capacity, test_type);
+                try self.push(ht);
+            },
+            .hash_get => {
+                const key = try self.pop();
+                const ht_val = try self.pop();
+                if (!ht_val.isHashTable()) return error.TypeMismatch;
+                const ht = ht_val.toPtr(HashTable);
+                const result = hashTableGet(ht, key);
+                try self.push(result);
+            },
+            .hash_get_default => {
+                const default = try self.pop();
+                const key = try self.pop();
+                const ht_val = try self.pop();
+                if (!ht_val.isHashTable()) return error.TypeMismatch;
+                const ht = ht_val.toPtr(HashTable);
+                const result = hashTableGet(ht, key);
+                try self.push(if (result.isNil()) default else result);
+            },
+            .hash_set => {
+                const value = try self.pop();
+                const key = try self.pop();
+                const ht_val = try self.pop();
+                if (!ht_val.isHashTable()) return error.TypeMismatch;
+                const ht = ht_val.toPtr(HashTable);
+
+                // Try to insert, resize if needed
+                if (!hashTableSet(ht, key, value)) {
+                    // Resize in place - updates ht's entries pointer
+                    if (!hashTableResizeInPlace(self, ht)) return error.OutOfMemory;
+                    // Now insert should succeed
+                    _ = hashTableSet(ht, key, value);
+                }
+                // Only push the value (CL setf gethash semantics)
+                try self.push(value);
+            },
+            .hash_rem => {
+                const key = try self.pop();
+                const ht_val = try self.pop();
+                if (!ht_val.isHashTable()) return error.TypeMismatch;
+                const ht = ht_val.toPtr(HashTable);
+                const removed = hashTableRemove(ht, key);
+                try self.push(if (removed) Value.t else Value.nil);
+            },
+            .hash_count => {
+                const ht_val = try self.pop();
+                if (!ht_val.isHashTable()) return error.TypeMismatch;
+                const ht = ht_val.toPtr(HashTable);
+                try self.push(Value.makeFixnum(@intCast(ht.count)));
+            },
+            .hashtablep => {
+                const val = try self.pop();
+                try self.push(if (val.isHashTable()) Value.t else Value.nil);
+            },
+            .hash_clear => {
+                const ht_val = try self.pop();
+                if (!ht_val.isHashTable()) return error.TypeMismatch;
+                const ht = ht_val.toPtr(HashTable);
+                hashTableClear(ht);
+                try self.push(ht_val);
+            },
+            .hash_test => {
+                const ht_val = try self.pop();
+                if (!ht_val.isHashTable()) return error.TypeMismatch;
+                const ht = ht_val.toPtr(HashTable);
+                const test_name = switch (ht.test_type) {
+                    .eq => "eq",
+                    .eql => "eql",
+                    .equal => "equal",
+                };
+                const sym = try self.heap.intern(test_name);
+                try self.push(sym);
+            },
+            .rationalp => {
+                const val = try self.pop();
+                try self.push(if (val.isRational()) Value.t else Value.nil);
+            },
+            .complexp => {
+                const val = try self.pop();
+                try self.push(if (val.isComplex()) Value.t else Value.nil);
+            },
+            .make_complex => {
+                const imag = try self.pop();
+                const real = try self.pop();
+                const real_f = if (real.isFloat()) real.toFloat() else if (real.isFixnum()) @as(f64, @floatFromInt(real.toFixnum())) else return error.TypeMismatch;
+                const imag_f = if (imag.isFloat()) imag.toFloat() else if (imag.isFixnum()) @as(f64, @floatFromInt(imag.toFixnum())) else return error.TypeMismatch;
+                const cplx = try self.heap.allocComplex(real_f, imag_f);
+                try self.push(cplx);
+            },
+            .real_part => {
+                const val = try self.pop();
+                if (!val.isComplex()) return error.TypeMismatch;
+                const cplx = val.toPtr(runtime.Complex);
+                try self.push(Value.makeFloat(cplx.real));
+            },
+            .imag_part => {
+                const val = try self.pop();
+                if (!val.isComplex()) return error.TypeMismatch;
+                const cplx = val.toPtr(runtime.Complex);
+                try self.push(Value.makeFloat(cplx.imag));
+            },
+
+            .numerator => {
+                const val = try self.pop();
+                if (!val.isRational()) return error.TypeMismatch;
+                const rat = val.toPtr(runtime.Rational);
+                try self.push(Value.makeFixnum(rat.numerator));
+            },
+            .denominator => {
+                const val = try self.pop();
+                if (!val.isRational()) return error.TypeMismatch;
+                const rat = val.toPtr(runtime.Rational);
+                try self.push(Value.makeFixnum(rat.denominator));
+            },
+            .get => {
+                const indicator = try self.pop();
+                const sym = try self.pop();
+                const result = try primitives.list.get(sym, indicator);
+                try self.push(result);
+            },
+            .put => {
+                const value = try self.pop();
+                const indicator = try self.pop();
+                const sym = try self.pop();
+                const result = try primitives.list.put(self.heap, sym, indicator, value);
+                try self.push(result);
+            },
+            .remprop => {
+                const indicator = try self.pop();
+                const sym = try self.pop();
+                const result = try primitives.list.remprop(sym, indicator);
+                try self.push(result);
+            },
+            // Stream operations
+            .streamp => {
+                const val = try self.pop();
+                try self.push(if (val.isStream()) Value.t else Value.nil);
+            },
+            .input_stream_p => {
+                const val = try self.pop();
+                if (!val.isStream()) {
+                    try self.push(Value.nil);
+                } else {
+                    const stream = val.toPtr(runtime.Stream);
+                    try self.push(if (stream.isInput()) Value.t else Value.nil);
+                }
+            },
+            .output_stream_p => {
+                const val = try self.pop();
+                if (!val.isStream()) {
+                    try self.push(Value.nil);
+                } else {
+                    const stream = val.toPtr(runtime.Stream);
+                    try self.push(if (stream.isOutput()) Value.t else Value.nil);
+                }
+            },
+            .make_string_input_stream => {
+                const str = try self.pop();
+                if (!str.isString()) return error.TypeMismatch;
+                const stream = try self.heap.allocStringInputStream(str);
+                try self.push(stream);
+            },
+            .make_string_output_stream => {
+                const stream = try self.heap.allocStringOutputStream();
+                try self.push(stream);
+            },
+            .get_output_stream_string => {
+                const stream_val = try self.pop();
+                if (!stream_val.isStream()) return error.TypeMismatch;
+                const stream = stream_val.toPtr(runtime.Stream);
+                if (stream.stream_type != .string or stream.direction != .output) {
+                    return error.TypeMismatch;
+                }
+                // For string output streams, we need to get accumulated data
+                // Currently returns empty string since we don't have write operations yet
+                const result = try self.heap.allocString("");
+                try self.push(result);
+            },
+            .open => {
+                const direction_byte = self.readU8();
+                const pathname = try self.pop();
+
+                // Pathname can be a string
+                if (!pathname.isString()) return error.TypeMismatch;
+
+                const str = pathname.toPtr(runtime.String);
+                const path_str = str.bytes();
+
+                // Open the file - catch file system errors and convert to UserError
+                const file = if (direction_byte == 0)
+                    std.fs.cwd().openFile(path_str, .{}) catch return error.UserError
+                else
+                    std.fs.cwd().createFile(path_str, .{}) catch return error.UserError;
+
+                // Create a stream object
+                const stream = if (direction_byte == 0)
+                    try self.heap.allocFileInputStream(@intCast(file.handle))
+                else
+                    try self.heap.allocFileOutputStream(@intCast(file.handle));
+                try self.push(stream);
+            },
+            .close => {
+                const stream_val = try self.pop();
+                if (!stream_val.isStream()) return error.TypeMismatch;
+
+                const stream = stream_val.toPtr(runtime.Stream);
+                if (stream.stream_type != .file) return error.TypeMismatch;
+
+                if (!stream.closed) {
+                    // Close the file
+                    const file = std.fs.File{ .handle = stream.file_fd };
+                    file.close();
+
+                    // Mark stream as closed
+                    stream.closed = true;
+                }
+
+                // Return the stream (whether already closed or just closed)
+                try self.push(stream_val);
+            },
+
+            .make_array => {
+                const operand = self.readU8();
+                const rank: u8 = operand >> 1;
+                const has_initial: bool = (operand & 1) == 1;
+
+                if (rank == 0 or rank > 8) return error.TypeMismatch;
+
+                // Pop initial-element if present
+                const initial_element = if (has_initial) try self.pop() else Value.nil;
+
+                // Pop dimensions from stack (in reverse order)
+                var dimensions: [8]u64 = [_]u64{0} ** 8;
+                var total_size: u64 = 1;
+                var i: usize = rank;
+                while (i > 0) {
+                    i -= 1;
+                    const dim_val = try self.pop();
+                    if (!dim_val.isFixnum()) return error.TypeMismatch;
+                    const dim_signed = dim_val.toFixnum();
+                    if (dim_signed < 0) return error.TypeMismatch;
+                    const dim: u64 = @intCast(dim_signed);
+                    dimensions[i] = dim;
+                    total_size *= dim;
+                }
+
+                // Allocate array object + data storage together
+                const total_bytes = @sizeOf(runtime.Array) + total_size * @sizeOf(Value);
+                const ptr = try self.heap.allocRaw(total_bytes);
+                const arr: *runtime.Array = @ptrCast(@alignCast(ptr));
+
+                // Data follows immediately after header
+                const data_ptr: [*]Value = @ptrCast(@alignCast(ptr + @sizeOf(runtime.Array)));
+
+                arr.* = .{
+                    .kind = .array,
+                    .rank = rank,
+                    .dimensions = dimensions,
+                    .total_size = total_size,
+                    .data_ptr = @intFromPtr(data_ptr),
+                };
+
+                // Initialize with initial-element
+                for (0..total_size) |idx| {
+                    data_ptr[idx] = initial_element;
+                }
+
+                try self.push(Value.makeArray(arr));
+            },
+
+            .aref => {
+                const sub_count = self.readU8();
+                if (sub_count == 0 or sub_count > 8) return error.TypeMismatch;
+
+                // Pop subscripts from stack (in reverse order)
+                var subscripts: [8]u64 = [_]u64{0} ** 8;
+                var j: usize = sub_count;
+                while (j > 0) {
+                    j -= 1;
+                    const sub_val = try self.pop();
+                    if (!sub_val.isFixnum()) return error.TypeMismatch;
+                    const sub_signed = sub_val.toFixnum();
+                    if (sub_signed < 0) return error.TypeMismatch;
+                    subscripts[j] = @intCast(sub_signed);
+                }
+
+                // Pop array
+                const arr_val = try self.pop();
+                if (!arr_val.isArray()) return error.TypeMismatch;
+                const arr = arr_val.toPtr(runtime.Array);
+
+                // Verify rank matches
+                if (arr.rank != sub_count) return error.TypeMismatch;
+
+                // Calculate linear index using row-major order
+                // index = s0*d1*d2*... + s1*d2*d3*... + ... + sN
+                var index: u64 = 0;
+                for (0..sub_count) |k| {
+                    // Bounds check
+                    if (subscripts[k] >= arr.dimensions[k]) return error.TypeMismatch;
+
+                    // Calculate stride (product of remaining dimensions)
+                    var stride: u64 = 1;
+                    for (k + 1..sub_count) |m| {
+                        stride *= arr.dimensions[m];
                     }
-                    // For string output streams, we need to get accumulated data
-                    // Currently returns empty string since we don't have write operations yet
-                    const result = try self.heap.allocString("");
-                    try self.push(result);
-                },
-                .open => {
-                    const direction_byte = self.readU8();
-                    const pathname = try self.pop();
+                    index += subscripts[k] * stride;
+                }
 
-                    // Pathname can be a string
-                    if (!pathname.isString()) return error.TypeMismatch;
+                // Access element
+                const data: [*]Value = @ptrFromInt(arr.data_ptr);
+                try self.push(data[index]);
+            },
 
-                    const str = pathname.toPtr(runtime.String);
-                    const path_str = str.bytes();
+            .aset => {
+                const sub_count = self.readU8();
+                if (sub_count == 0 or sub_count > 8) return error.TypeMismatch;
 
-                    // Open the file - catch file system errors and convert to UserError
-                    const file = if (direction_byte == 0)
-                        std.fs.cwd().openFile(path_str, .{}) catch return error.UserError
-                    else
-                        std.fs.cwd().createFile(path_str, .{}) catch return error.UserError;
+                // Pop new value
+                const new_val = try self.pop();
 
-                    // Create a stream object
-                    const stream = if (direction_byte == 0)
-                        try self.heap.allocFileInputStream(@intCast(file.handle))
-                    else
-                        try self.heap.allocFileOutputStream(@intCast(file.handle));
-                    try self.push(stream);
-                },
-                .close => {
-                    const stream_val = try self.pop();
-                    if (!stream_val.isStream()) return error.TypeMismatch;
+                // Pop subscripts from stack (in reverse order)
+                var subscripts: [8]u64 = [_]u64{0} ** 8;
+                var j: usize = sub_count;
+                while (j > 0) {
+                    j -= 1;
+                    const sub_val = try self.pop();
+                    if (!sub_val.isFixnum()) return error.TypeMismatch;
+                    const sub_signed = sub_val.toFixnum();
+                    if (sub_signed < 0) return error.TypeMismatch;
+                    subscripts[j] = @intCast(sub_signed);
+                }
 
-                    const stream = stream_val.toPtr(runtime.Stream);
-                    if (stream.stream_type != .file) return error.TypeMismatch;
+                // Pop array
+                const arr_val = try self.pop();
+                if (!arr_val.isArray()) return error.TypeMismatch;
+                const arr = arr_val.toPtr(runtime.Array);
 
-                    if (!stream.closed) {
-                        // Close the file
-                        const file = std.fs.File{ .handle = stream.file_fd };
-                        file.close();
+                // Verify rank matches
+                if (arr.rank != sub_count) return error.TypeMismatch;
 
-                        // Mark stream as closed
-                        stream.closed = true;
+                // Calculate linear index using row-major order
+                var index: u64 = 0;
+                for (0..sub_count) |k| {
+                    // Bounds check
+                    if (subscripts[k] >= arr.dimensions[k]) return error.TypeMismatch;
+
+                    // Calculate stride (product of remaining dimensions)
+                    var stride: u64 = 1;
+                    for (k + 1..sub_count) |m| {
+                        stride *= arr.dimensions[m];
                     }
+                    index += subscripts[k] * stride;
+                }
 
-                    // Return the stream (whether already closed or just closed)
-                    try self.push(stream_val);
-                },
+                // Set element
+                const data: [*]Value = @ptrFromInt(arr.data_ptr);
+                data[index] = new_val;
 
-                .make_array => {
-                    const operand = self.readU8();
-                    const rank: u8 = operand >> 1;
-                    const has_initial: bool = (operand & 1) == 1;
+                // Return the value (Common Lisp setf semantics)
+                try self.push(new_val);
+            },
 
-                    if (rank == 0 or rank > 8) return error.TypeMismatch;
+            .array_dimension => {
+                const axis_val = try self.pop();
+                const arr_val = try self.pop();
 
-                    // Pop initial-element if present
-                    const initial_element = if (has_initial) try self.pop() else Value.nil;
+                if (!arr_val.isArray()) return error.TypeMismatch;
+                if (!axis_val.isFixnum()) return error.TypeMismatch;
 
-                    // Pop dimensions from stack (in reverse order)
-                    var dimensions: [8]u64 = [_]u64{0} ** 8;
-                    var total_size: u64 = 1;
-                    var i: usize = rank;
-                    while (i > 0) {
-                        i -= 1;
-                        const dim_val = try self.pop();
-                        if (!dim_val.isFixnum()) return error.TypeMismatch;
-                        const dim_signed = dim_val.toFixnum();
-                        if (dim_signed < 0) return error.TypeMismatch;
-                        const dim: u64 = @intCast(dim_signed);
-                        dimensions[i] = dim;
-                        total_size *= dim;
-                    }
+                const arr = arr_val.toPtr(runtime.Array);
+                const axis_signed = axis_val.toFixnum();
+                if (axis_signed < 0) return error.TypeMismatch;
+                const axis: usize = @intCast(axis_signed);
 
-                    // Allocate array object + data storage together
-                    const total_bytes = @sizeOf(runtime.Array) + total_size * @sizeOf(Value);
-                    const ptr = try self.heap.allocRaw(total_bytes);
-                    const arr: *runtime.Array = @ptrCast(@alignCast(ptr));
+                if (axis >= arr.rank) return error.TypeMismatch;
 
-                    // Data follows immediately after header
-                    const data_ptr: [*]Value = @ptrCast(@alignCast(ptr + @sizeOf(runtime.Array)));
+                const dimension: i64 = @intCast(arr.dimensions[axis]);
+                try self.push(Value.makeFixnum(dimension));
+            },
 
-                    arr.* = .{
-                        .kind = .array,
-                        .rank = rank,
-                        .dimensions = dimensions,
-                        .total_size = total_size,
-                        .data_ptr = @intFromPtr(data_ptr),
-                    };
+            .array_dimensions => {
+                const arr_val = try self.pop();
 
-                    // Initialize with initial-element
-                    for (0..total_size) |idx| {
-                        data_ptr[idx] = initial_element;
-                    }
+                if (!arr_val.isArray()) return error.TypeMismatch;
 
-                    try self.push(Value.makeArray(arr));
-                },
+                const arr = arr_val.toPtr(runtime.Array);
 
-                .aref => {
-                    const sub_count = self.readU8();
-                    if (sub_count == 0 or sub_count > 8) return error.TypeMismatch;
+                // Build list of dimensions from right to left
+                var result = Value.nil;
+                var i: usize = arr.rank;
+                while (i > 0) {
+                    i -= 1;
+                    const dim: i64 = @intCast(arr.dimensions[i]);
+                    result = try self.allocCons(Value.makeFixnum(dim), result);
+                }
 
-                    // Pop subscripts from stack (in reverse order)
-                    var subscripts: [8]u64 = [_]u64{0} ** 8;
-                    var j: usize = sub_count;
-                    while (j > 0) {
-                        j -= 1;
-                        const sub_val = try self.pop();
-                        if (!sub_val.isFixnum()) return error.TypeMismatch;
-                        const sub_signed = sub_val.toFixnum();
-                        if (sub_signed < 0) return error.TypeMismatch;
-                        subscripts[j] = @intCast(sub_signed);
-                    }
+                try self.push(result);
+            },
 
-                    // Pop array
-                    const arr_val = try self.pop();
-                    if (!arr_val.isArray()) return error.TypeMismatch;
-                    const arr = arr_val.toPtr(runtime.Array);
+            // Pathname operations
+            .make_pathname => {
+                // Operand flags: bit 0=host, 1=device, 2=directory, 3=name, 4=type, 5=version
+                const flags = self.readU8();
 
-                    // Verify rank matches
-                    if (arr.rank != sub_count) return error.TypeMismatch;
+                // Pop components from stack (in reverse order of bits)
+                const version = if ((flags & 0x20) != 0) try self.pop() else Value.nil;
+                const type_comp = if ((flags & 0x10) != 0) try self.pop() else Value.nil;
+                const name = if ((flags & 0x08) != 0) try self.pop() else Value.nil;
+                const directory = if ((flags & 0x04) != 0) try self.pop() else Value.nil;
+                const device = if ((flags & 0x02) != 0) try self.pop() else Value.nil;
+                const host = if ((flags & 0x01) != 0) try self.pop() else Value.nil;
 
-                    // Calculate linear index using row-major order
-                    // index = s0*d1*d2*... + s1*d2*d3*... + ... + sN
-                    var index: u64 = 0;
-                    for (0..sub_count) |k| {
-                        // Bounds check
-                        if (subscripts[k] >= arr.dimensions[k]) return error.TypeMismatch;
+                // Allocate pathname object
+                const bytes = try self.heap.allocRaw(@sizeOf(runtime.Pathname));
+                const pn: *runtime.Pathname = @ptrCast(@alignCast(bytes));
 
-                        // Calculate stride (product of remaining dimensions)
-                        var stride: u64 = 1;
-                        for (k + 1..sub_count) |m| {
-                            stride *= arr.dimensions[m];
-                        }
-                        index += subscripts[k] * stride;
-                    }
+                pn.* = .{
+                    .kind = .pathname,
+                    .host = host,
+                    .device = device,
+                    .directory = directory,
+                    .name = name,
+                    .type = type_comp,
+                    .version = version,
+                };
 
-                    // Access element
-                    const data: [*]Value = @ptrFromInt(arr.data_ptr);
-                    try self.push(data[index]);
-                },
+                try self.push(Value.makePathname(pn));
+            },
 
-                .aset => {
-                    const sub_count = self.readU8();
-                    if (sub_count == 0 or sub_count > 8) return error.TypeMismatch;
+            .pathname => {
+                const pathspec = try self.pop();
 
-                    // Pop new value
-                    const new_val = try self.pop();
-
-                    // Pop subscripts from stack (in reverse order)
-                    var subscripts: [8]u64 = [_]u64{0} ** 8;
-                    var j: usize = sub_count;
-                    while (j > 0) {
-                        j -= 1;
-                        const sub_val = try self.pop();
-                        if (!sub_val.isFixnum()) return error.TypeMismatch;
-                        const sub_signed = sub_val.toFixnum();
-                        if (sub_signed < 0) return error.TypeMismatch;
-                        subscripts[j] = @intCast(sub_signed);
-                    }
-
-                    // Pop array
-                    const arr_val = try self.pop();
-                    if (!arr_val.isArray()) return error.TypeMismatch;
-                    const arr = arr_val.toPtr(runtime.Array);
-
-                    // Verify rank matches
-                    if (arr.rank != sub_count) return error.TypeMismatch;
-
-                    // Calculate linear index using row-major order
-                    var index: u64 = 0;
-                    for (0..sub_count) |k| {
-                        // Bounds check
-                        if (subscripts[k] >= arr.dimensions[k]) return error.TypeMismatch;
-
-                        // Calculate stride (product of remaining dimensions)
-                        var stride: u64 = 1;
-                        for (k + 1..sub_count) |m| {
-                            stride *= arr.dimensions[m];
-                        }
-                        index += subscripts[k] * stride;
-                    }
-
-                    // Set element
-                    const data: [*]Value = @ptrFromInt(arr.data_ptr);
-                    data[index] = new_val;
-
-                    // Return the value (Common Lisp setf semantics)
-                    try self.push(new_val);
-                },
-
-                .array_dimension => {
-                    const axis_val = try self.pop();
-                    const arr_val = try self.pop();
-
-                    if (!arr_val.isArray()) return error.TypeMismatch;
-                    if (!axis_val.isFixnum()) return error.TypeMismatch;
-
-                    const arr = arr_val.toPtr(runtime.Array);
-                    const axis_signed = axis_val.toFixnum();
-                    if (axis_signed < 0) return error.TypeMismatch;
-                    const axis: usize = @intCast(axis_signed);
-
-                    if (axis >= arr.rank) return error.TypeMismatch;
-
-                    const dimension: i64 = @intCast(arr.dimensions[axis]);
-                    try self.push(Value.makeFixnum(dimension));
-                },
-
-                .array_dimensions => {
-                    const arr_val = try self.pop();
-
-                    if (!arr_val.isArray()) return error.TypeMismatch;
-
-                    const arr = arr_val.toPtr(runtime.Array);
-
-                    // Build list of dimensions from right to left
-                    var result = Value.nil;
-                    var i: usize = arr.rank;
-                    while (i > 0) {
-                        i -= 1;
-                        const dim: i64 = @intCast(arr.dimensions[i]);
-                        result = try self.allocCons(Value.makeFixnum(dim), result);
-                    }
-
-                    try self.push(result);
-                },
-
-                // Pathname operations
-                .make_pathname => {
-                    // Operand flags: bit 0=host, 1=device, 2=directory, 3=name, 4=type, 5=version
-                    const flags = self.readU8();
-
-                    // Pop components from stack (in reverse order of bits)
-                    const version = if ((flags & 0x20) != 0) try self.pop() else Value.nil;
-                    const type_comp = if ((flags & 0x10) != 0) try self.pop() else Value.nil;
-                    const name = if ((flags & 0x08) != 0) try self.pop() else Value.nil;
-                    const directory = if ((flags & 0x04) != 0) try self.pop() else Value.nil;
-                    const device = if ((flags & 0x02) != 0) try self.pop() else Value.nil;
-                    const host = if ((flags & 0x01) != 0) try self.pop() else Value.nil;
-
-                    // Allocate pathname object
+                // If already a pathname, return it
+                if (pathspec.isPathname()) {
+                    try self.push(pathspec);
+                } else if (pathspec.isString()) {
+                    // Parse string as pathname
+                    // For now, just use the string as the name component
                     const bytes = try self.heap.allocRaw(@sizeOf(runtime.Pathname));
                     const pn: *runtime.Pathname = @ptrCast(@alignCast(bytes));
 
                     pn.* = .{
                         .kind = .pathname,
-                        .host = host,
-                        .device = device,
-                        .directory = directory,
-                        .name = name,
-                        .type = type_comp,
-                        .version = version,
+                        .host = Value.nil,
+                        .device = Value.nil,
+                        .directory = Value.nil,
+                        .name = pathspec,
+                        .type = Value.nil,
+                        .version = Value.nil,
                     };
 
                     try self.push(Value.makePathname(pn));
-                },
+                } else if (pathspec.isStream()) {
+                    // Return stream's pathname (not implemented yet)
+                    // For now, return nil
+                    try self.push(Value.nil);
+                } else {
+                    return error.TypeMismatch;
+                }
+            },
 
-                .pathname => {
-                    const pathspec = try self.pop();
+            .parse_namestring => {
+                const str_val = try self.pop();
+                if (!str_val.isString()) return error.TypeMismatch;
 
-                    // If already a pathname, return it
-                    if (pathspec.isPathname()) {
-                        try self.push(pathspec);
-                    } else if (pathspec.isString()) {
-                        // Parse string as pathname
-                        // For now, just use the string as the name component
-                        const bytes = try self.heap.allocRaw(@sizeOf(runtime.Pathname));
-                        const pn: *runtime.Pathname = @ptrCast(@alignCast(bytes));
+                const str = str_val.toPtr(runtime.String);
+                const path = str.bytes();
 
-                        pn.* = .{
-                            .kind = .pathname,
-                            .host = Value.nil,
-                            .device = Value.nil,
-                            .directory = Value.nil,
-                            .name = pathspec,
-                            .type = Value.nil,
-                            .version = Value.nil,
-                        };
+                // Parse the path into components
+                const host = Value.nil;
+                const device = Value.nil;
+                var directory = Value.nil;
+                var name = Value.nil;
+                var type_comp = Value.nil;
+                const version = Value.nil;
 
-                        try self.push(Value.makePathname(pn));
-                    } else if (pathspec.isStream()) {
-                        // Return stream's pathname (not implemented yet)
-                        // For now, return nil
-                        try self.push(Value.nil);
-                    } else {
-                        return error.TypeMismatch;
-                    }
-                },
+                if (path.len == 0) {
+                    // Empty path - all components nil
+                } else {
+                    // Check if absolute (starts with /)
+                    const is_absolute = path[0] == '/';
+                    const start_idx: usize = if (is_absolute) 1 else 0;
 
-                .parse_namestring => {
-                    const str_val = try self.pop();
-                    if (!str_val.isString()) return error.TypeMismatch;
+                    // Split path by '/'
+                    var components = std.ArrayList(Value){};
+                    defer components.deinit(self.allocator);
 
-                    const str = str_val.toPtr(runtime.String);
-                    const path = str.bytes();
+                    var i: usize = start_idx;
+                    while (i < path.len) {
+                        var j = i;
+                        while (j < path.len and path[j] != '/') : (j += 1) {}
 
-                    // Parse the path into components
-                    const host = Value.nil;
-                    const device = Value.nil;
-                    var directory = Value.nil;
-                    var name = Value.nil;
-                    var type_comp = Value.nil;
-                    const version = Value.nil;
-
-                    if (path.len == 0) {
-                        // Empty path - all components nil
-                    } else {
-                        // Check if absolute (starts with /)
-                        const is_absolute = path[0] == '/';
-                        const start_idx: usize = if (is_absolute) 1 else 0;
-
-                        // Split path by '/'
-                        var components = std.ArrayList(Value){};
-                        defer components.deinit(self.allocator);
-
-                        var i: usize = start_idx;
-                        while (i < path.len) {
-                            var j = i;
-                            while (j < path.len and path[j] != '/') : (j += 1) {}
-
-                            if (j > i) {
-                                const component = path[i..j];
-                                const comp_str = try self.heap.allocString(component);
-                                try components.append(self.allocator, comp_str);
-                            }
-
-                            i = j + 1;
+                        if (j > i) {
+                            const component = path[i..j];
+                            const comp_str = try self.heap.allocString(component);
+                            try components.append(self.allocator, comp_str);
                         }
 
-                        // Last component is the filename
-                        if (components.items.len > 0) {
-                            const filename_val = components.pop().?;
-                            const filename = filename_val.toPtr(runtime.String);
-                            const fname = filename.bytes();
+                        i = j + 1;
+                    }
 
-                            // Split filename into name and type (extension)
-                            if (std.mem.lastIndexOf(u8, fname, ".")) |dot_pos| {
-                                if (dot_pos > 0) {
-                                    // Has extension
-                                    name = try self.heap.allocString(fname[0..dot_pos]);
-                                    type_comp = try self.heap.allocString(fname[dot_pos + 1 ..]);
-                                } else {
-                                    // Starts with dot (hidden file on Unix)
-                                    name = filename_val;
-                                }
+                    // Last component is the filename
+                    if (components.items.len > 0) {
+                        const filename_val = components.pop().?;
+                        const filename = filename_val.toPtr(runtime.String);
+                        const fname = filename.bytes();
+
+                        // Split filename into name and type (extension)
+                        if (std.mem.lastIndexOf(u8, fname, ".")) |dot_pos| {
+                            if (dot_pos > 0) {
+                                // Has extension
+                                name = try self.heap.allocString(fname[0..dot_pos]);
+                                type_comp = try self.heap.allocString(fname[dot_pos + 1 ..]);
                             } else {
-                                // No extension
+                                // Starts with dot (hidden file on Unix)
                                 name = filename_val;
                             }
-                        }
-
-                        // Build directory list
-                        if (components.items.len > 0 or is_absolute) {
-                            // Start with :absolute or :relative keyword
-                            const dir_type = if (is_absolute)
-                                try self.heap.intern("absolute")
-                            else
-                                try self.heap.intern("relative");
-
-                            var dir_list = Value.nil;
-                            // Add components in reverse order to build list
-                            var k: usize = components.items.len;
-                            while (k > 0) {
-                                k -= 1;
-                                dir_list = try self.allocCons(components.items[k], dir_list);
-                            }
-                            // Add directory type at front
-                            directory = try self.allocCons(dir_type, dir_list);
+                        } else {
+                            // No extension
+                            name = filename_val;
                         }
                     }
 
-                    // Allocate pathname object
-                    const bytes = try self.heap.allocRaw(@sizeOf(runtime.Pathname));
-                    const pn: *runtime.Pathname = @ptrCast(@alignCast(bytes));
+                    // Build directory list
+                    if (components.items.len > 0 or is_absolute) {
+                        // Start with :absolute or :relative keyword
+                        const dir_type = if (is_absolute)
+                            try self.heap.intern("absolute")
+                        else
+                            try self.heap.intern("relative");
 
-                    pn.* = .{
-                        .kind = .pathname,
-                        .host = host,
-                        .device = device,
-                        .directory = directory,
-                        .name = name,
-                        .type = type_comp,
-                        .version = version,
-                    };
-
-                    try self.push(Value.makePathname(pn));
-                },
-
-                .namestring => {
-                    const pn_val = try self.pop();
-                    if (!pn_val.isPathname()) return error.TypeMismatch;
-
-                    const pn = pn_val.toPtr(runtime.Pathname);
-
-                    // Build namestring from components
-                    var result = std.ArrayList(u8){};
-                    defer result.deinit(self.allocator);
-
-                    // Process directory
-                    if (pn.directory != Value.nil) {
-                        var dir_list = pn.directory;
-
-                        // Skip first element if it's :absolute or :relative keyword
-                        if (dir_list.isCons()) {
-                            const first = dir_list.toPtr(runtime.Cons).car;
-                            if (first.isKeyword()) {
-                                const kw = first.toPtr(runtime.Keyword);
-                                const kw_name = kw.getName();
-                                if (std.mem.eql(u8, kw_name, "absolute")) {
-                                    try result.append(self.allocator, '/');
-                                }
-                                dir_list = dir_list.toPtr(runtime.Cons).cdr;
-                            }
+                        var dir_list = Value.nil;
+                        // Add components in reverse order to build list
+                        var k: usize = components.items.len;
+                        while (k > 0) {
+                            k -= 1;
+                            dir_list = try self.allocCons(components.items[k], dir_list);
                         }
+                        // Add directory type at front
+                        directory = try self.allocCons(dir_type, dir_list);
+                    }
+                }
 
-                        // Add directory components
-                        while (dir_list != Value.nil) {
-                            if (!dir_list.isCons()) break;
-                            const cons = dir_list.toPtr(runtime.Cons);
-                            const component = cons.car;
+                // Allocate pathname object
+                const bytes = try self.heap.allocRaw(@sizeOf(runtime.Pathname));
+                const pn: *runtime.Pathname = @ptrCast(@alignCast(bytes));
 
-                            if (component.isString()) {
-                                const comp_str = component.toPtr(runtime.String);
-                                try result.appendSlice(self.allocator, comp_str.bytes());
+                pn.* = .{
+                    .kind = .pathname,
+                    .host = host,
+                    .device = device,
+                    .directory = directory,
+                    .name = name,
+                    .type = type_comp,
+                    .version = version,
+                };
+
+                try self.push(Value.makePathname(pn));
+            },
+
+            .namestring => {
+                const pn_val = try self.pop();
+                if (!pn_val.isPathname()) return error.TypeMismatch;
+
+                const pn = pn_val.toPtr(runtime.Pathname);
+
+                // Build namestring from components
+                var result = std.ArrayList(u8){};
+                defer result.deinit(self.allocator);
+
+                // Process directory
+                if (pn.directory != Value.nil) {
+                    var dir_list = pn.directory;
+
+                    // Skip first element if it's :absolute or :relative keyword
+                    if (dir_list.isCons()) {
+                        const first = dir_list.toPtr(runtime.Cons).car;
+                        if (first.isKeyword()) {
+                            const kw = first.toPtr(runtime.Keyword);
+                            const kw_name = kw.getName();
+                            if (std.mem.eql(u8, kw_name, "absolute")) {
                                 try result.append(self.allocator, '/');
                             }
-
-                            dir_list = cons.cdr;
+                            dir_list = dir_list.toPtr(runtime.Cons).cdr;
                         }
                     }
 
-                    // Add name component
-                    if (pn.name != Value.nil and pn.name.isString()) {
-                        const name_str = pn.name.toPtr(runtime.String);
-                        try result.appendSlice(self.allocator, name_str.bytes());
+                    // Add directory components
+                    while (dir_list != Value.nil) {
+                        if (!dir_list.isCons()) break;
+                        const cons = dir_list.toPtr(runtime.Cons);
+                        const component = cons.car;
+
+                        if (component.isString()) {
+                            const comp_str = component.toPtr(runtime.String);
+                            try result.appendSlice(self.allocator, comp_str.bytes());
+                            try result.append(self.allocator, '/');
+                        }
+
+                        dir_list = cons.cdr;
                     }
+                }
 
-                    // Add type component (extension)
-                    if (pn.type != Value.nil and pn.type.isString()) {
-                        try result.append(self.allocator, '.');
-                        const type_str = pn.type.toPtr(runtime.String);
-                        try result.appendSlice(self.allocator, type_str.bytes());
-                    }
+                // Add name component
+                if (pn.name != Value.nil and pn.name.isString()) {
+                    const name_str = pn.name.toPtr(runtime.String);
+                    try result.appendSlice(self.allocator, name_str.bytes());
+                }
 
-                    // Create string from result
-                    const result_str = try self.heap.allocString(result.items);
-                    try self.push(result_str);
-                },
+                // Add type component (extension)
+                if (pn.type != Value.nil and pn.type.isString()) {
+                    try result.append(self.allocator, '.');
+                    const type_str = pn.type.toPtr(runtime.String);
+                    try result.appendSlice(self.allocator, type_str.bytes());
+                }
 
-                .merge_pathnames => {
-                    const default_val = try self.pop();
-                    const pn_val = try self.pop();
+                // Create string from result
+                const result_str = try self.heap.allocString(result.items);
+                try self.push(result_str);
+            },
 
-                    if (!pn_val.isPathname()) return error.TypeMismatch;
-                    if (!default_val.isPathname()) return error.TypeMismatch;
+            .merge_pathnames => {
+                const default_val = try self.pop();
+                const pn_val = try self.pop();
 
-                    const pn = pn_val.toPtr(runtime.Pathname);
-                    const default_pn = default_val.toPtr(runtime.Pathname);
+                if (!pn_val.isPathname()) return error.TypeMismatch;
+                if (!default_val.isPathname()) return error.TypeMismatch;
 
-                    // Create new pathname with merged components
-                    const bytes = try self.heap.allocRaw(@sizeOf(runtime.Pathname));
-                    const result: *runtime.Pathname = @ptrCast(@alignCast(bytes));
+                const pn = pn_val.toPtr(runtime.Pathname);
+                const default_pn = default_val.toPtr(runtime.Pathname);
 
-                    // Fill nil components from defaults
-                    result.* = .{
-                        .kind = .pathname,
-                        .host = if (pn.host != Value.nil) pn.host else default_pn.host,
-                        .device = if (pn.device != Value.nil) pn.device else default_pn.device,
-                        .directory = if (pn.directory != Value.nil) pn.directory else default_pn.directory,
-                        .name = if (pn.name != Value.nil) pn.name else default_pn.name,
-                        .type = if (pn.type != Value.nil) pn.type else default_pn.type,
-                        .version = if (pn.version != Value.nil) pn.version else default_pn.version,
-                    };
+                // Create new pathname with merged components
+                const bytes = try self.heap.allocRaw(@sizeOf(runtime.Pathname));
+                const result: *runtime.Pathname = @ptrCast(@alignCast(bytes));
 
-                    try self.push(Value.makePathname(result));
-                },
+                // Fill nil components from defaults
+                result.* = .{
+                    .kind = .pathname,
+                    .host = if (pn.host != Value.nil) pn.host else default_pn.host,
+                    .device = if (pn.device != Value.nil) pn.device else default_pn.device,
+                    .directory = if (pn.directory != Value.nil) pn.directory else default_pn.directory,
+                    .name = if (pn.name != Value.nil) pn.name else default_pn.name,
+                    .type = if (pn.type != Value.nil) pn.type else default_pn.type,
+                    .version = if (pn.version != Value.nil) pn.version else default_pn.version,
+                };
 
-                .pathname_host => {
-                    const pn_val = try self.pop();
-                    if (!pn_val.isPathname()) return error.TypeMismatch;
-                    const pn = pn_val.toPtr(runtime.Pathname);
-                    try self.push(pn.host);
-                },
+                try self.push(Value.makePathname(result));
+            },
 
-                .pathname_device => {
-                    const pn_val = try self.pop();
-                    if (!pn_val.isPathname()) return error.TypeMismatch;
-                    const pn = pn_val.toPtr(runtime.Pathname);
-                    try self.push(pn.device);
-                },
+            .pathname_host => {
+                const pn_val = try self.pop();
+                if (!pn_val.isPathname()) return error.TypeMismatch;
+                const pn = pn_val.toPtr(runtime.Pathname);
+                try self.push(pn.host);
+            },
 
-                .pathname_directory => {
-                    const pn_val = try self.pop();
-                    if (!pn_val.isPathname()) return error.TypeMismatch;
-                    const pn = pn_val.toPtr(runtime.Pathname);
-                    try self.push(pn.directory);
-                },
+            .pathname_device => {
+                const pn_val = try self.pop();
+                if (!pn_val.isPathname()) return error.TypeMismatch;
+                const pn = pn_val.toPtr(runtime.Pathname);
+                try self.push(pn.device);
+            },
 
-                .pathname_name => {
-                    const pn_val = try self.pop();
-                    if (!pn_val.isPathname()) return error.TypeMismatch;
-                    const pn = pn_val.toPtr(runtime.Pathname);
-                    try self.push(pn.name);
-                },
+            .pathname_directory => {
+                const pn_val = try self.pop();
+                if (!pn_val.isPathname()) return error.TypeMismatch;
+                const pn = pn_val.toPtr(runtime.Pathname);
+                try self.push(pn.directory);
+            },
 
-                .pathname_type => {
-                    const pn_val = try self.pop();
-                    if (!pn_val.isPathname()) return error.TypeMismatch;
-                    const pn = pn_val.toPtr(runtime.Pathname);
-                    try self.push(pn.type);
-                },
+            .pathname_name => {
+                const pn_val = try self.pop();
+                if (!pn_val.isPathname()) return error.TypeMismatch;
+                const pn = pn_val.toPtr(runtime.Pathname);
+                try self.push(pn.name);
+            },
 
-                .pathname_version => {
-                    const pn_val = try self.pop();
-                    if (!pn_val.isPathname()) return error.TypeMismatch;
-                    const pn = pn_val.toPtr(runtime.Pathname);
-                    try self.push(pn.version);
-                },
+            .pathname_type => {
+                const pn_val = try self.pop();
+                if (!pn_val.isPathname()) return error.TypeMismatch;
+                const pn = pn_val.toPtr(runtime.Pathname);
+                try self.push(pn.type);
+            },
 
-                .set_macro_character => {
-                    const non_term = try self.pop(); // &optional non-terminating-p
-                    const function = try self.pop();
-                    const char_val = try self.pop();
+            .pathname_version => {
+                const pn_val = try self.pop();
+                if (!pn_val.isPathname()) return error.TypeMismatch;
+                const pn = pn_val.toPtr(runtime.Pathname);
+                try self.push(pn.version);
+            },
 
-                    if (!char_val.isCharacter()) return error.TypeMismatch;
-                    const char_code = char_val.toCharacter();
-                    if (char_code > 255) return error.TypeMismatch; // Only ASCII supported for now
+            .set_macro_character => {
+                const non_term = try self.pop(); // &optional non-terminating-p
+                const function = try self.pop();
+                const char_val = try self.pop();
 
-                    const byte: u8 = @intCast(char_code);
-                    const entry = runtime.Heap.ReadtableEntry{
-                        .function = function,
-                        .non_terminating = !non_term.isNil(),
-                    };
-                    try self.heap.readtable.put(self.allocator, byte, entry);
+                if (!char_val.isCharacter()) return error.TypeMismatch;
+                const char_code = char_val.toCharacter();
+                if (char_code > 255) return error.TypeMismatch; // Only ASCII supported for now
+
+                const byte: u8 = @intCast(char_code);
+                const entry = runtime.Heap.ReadtableEntry{
+                    .function = function,
+                    .non_terminating = !non_term.isNil(),
+                };
+                try self.heap.readtable.put(self.allocator, byte, entry);
+                try self.push(Value.nil);
+            },
+
+            .get_macro_character => {
+                const char_val = try self.pop();
+
+                if (!char_val.isCharacter()) return error.TypeMismatch;
+                const char_code = char_val.toCharacter();
+                if (char_code > 255) {
                     try self.push(Value.nil);
-                },
-
-                .get_macro_character => {
-                    const char_val = try self.pop();
-
-                    if (!char_val.isCharacter()) return error.TypeMismatch;
-                    const char_code = char_val.toCharacter();
-                    if (char_code > 255) {
-                        try self.push(Value.nil);
-                        try self.push(Value.nil);
+                    try self.push(Value.nil);
+                } else {
+                    const byte: u8 = @intCast(char_code);
+                    const entry = self.heap.readtable.get(byte);
+                    if (entry) |e| {
+                        try self.push(e.function);
+                        try self.push(if (e.non_terminating) Value.t else Value.nil);
                     } else {
-                        const byte: u8 = @intCast(char_code);
-                        const entry = self.heap.readtable.get(byte);
-                        if (entry) |e| {
-                            try self.push(e.function);
-                            try self.push(if (e.non_terminating) Value.t else Value.nil);
-                        } else {
-                            try self.push(Value.nil);
-                            try self.push(Value.nil);
-                        }
+                        try self.push(Value.nil);
+                        try self.push(Value.nil);
                     }
-                },
+                }
+            },
 
-                .set_dispatch_macro_character => {
-                    const function = try self.pop();
-                    const sub_char_val = try self.pop();
-                    const disp_char_val = try self.pop();
+            .set_dispatch_macro_character => {
+                const function = try self.pop();
+                const sub_char_val = try self.pop();
+                const disp_char_val = try self.pop();
 
-                    if (!disp_char_val.isCharacter()) return error.TypeMismatch;
-                    if (!sub_char_val.isCharacter()) return error.TypeMismatch;
+                if (!disp_char_val.isCharacter()) return error.TypeMismatch;
+                if (!sub_char_val.isCharacter()) return error.TypeMismatch;
 
-                    const disp_code = disp_char_val.toCharacter();
-                    const sub_code = sub_char_val.toCharacter();
+                const disp_code = disp_char_val.toCharacter();
+                const sub_code = sub_char_val.toCharacter();
 
-                    if (disp_code > 255 or sub_code > 255) return error.TypeMismatch;
+                if (disp_code > 255 or sub_code > 255) return error.TypeMismatch;
 
+                const disp_byte: u8 = @intCast(disp_code);
+                const sub_byte: u8 = @intCast(sub_code);
+
+                // Get or create sub-table for dispatch character
+                const gop = try self.heap.dispatch_readtable.getOrPut(self.allocator, disp_byte);
+                if (!gop.found_existing) {
+                    gop.value_ptr.* = .{};
+                }
+
+                // Store function in sub-table
+                try gop.value_ptr.put(self.allocator, sub_byte, function);
+                try self.push(Value.nil);
+            },
+
+            .get_dispatch_macro_character => {
+                const sub_char_val = try self.pop();
+                const disp_char_val = try self.pop();
+
+                if (!disp_char_val.isCharacter()) return error.TypeMismatch;
+                if (!sub_char_val.isCharacter()) return error.TypeMismatch;
+
+                const disp_code = disp_char_val.toCharacter();
+                const sub_code = sub_char_val.toCharacter();
+
+                if (disp_code > 255 or sub_code > 255) {
+                    try self.push(Value.nil);
+                } else {
                     const disp_byte: u8 = @intCast(disp_code);
                     const sub_byte: u8 = @intCast(sub_code);
 
-                    // Get or create sub-table for dispatch character
-                    const gop = try self.heap.dispatch_readtable.getOrPut(self.allocator, disp_byte);
-                    if (!gop.found_existing) {
-                        gop.value_ptr.* = .{};
+                    const sub_table = self.heap.dispatch_readtable.get(disp_byte);
+                    if (sub_table) |table| {
+                        const func = table.get(sub_byte);
+                        try self.push(func orelse Value.nil);
+                    } else {
+                        try self.push(Value.nil);
                     }
+                }
+            },
 
-                    // Store function in sub-table
-                    try gop.value_ptr.put(self.allocator, sub_byte, function);
+            // Character operations
+            .characterp => {
+                const val = try self.pop();
+                try self.push(if (val.isCharacter()) Value.t else Value.nil);
+            },
+            .floatp => {
+                const val = try self.pop();
+                try self.push(if (val.isFloat()) Value.t else Value.nil);
+            },
+            .listp => {
+                const val = try self.pop();
+                // listp: nil or cons
+                try self.push(if (val == Value.nil or val.isCons()) Value.t else Value.nil);
+            },
+            .atom => {
+                const val = try self.pop();
+                // atom: not a cons (everything except cons)
+                try self.push(if (!val.isCons()) Value.t else Value.nil);
+            },
+            .assoc => {
+                const alist = try self.pop();
+                const key = try self.pop();
+                var curr = alist;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    // Each element should be a cons (key . value)
+                    if (c.car.isCons()) {
+                        const pair = c.car.toPtr(Cons);
+                        if (pair.car.raw == key.raw) {
+                            try self.push(c.car);
+                            break;
+                        }
+                    }
+                    curr = c.cdr;
+                } else {
                     try self.push(Value.nil);
-                },
-
-                .get_dispatch_macro_character => {
-                    const sub_char_val = try self.pop();
-                    const disp_char_val = try self.pop();
-
-                    if (!disp_char_val.isCharacter()) return error.TypeMismatch;
-                    if (!sub_char_val.isCharacter()) return error.TypeMismatch;
-
-                    const disp_code = disp_char_val.toCharacter();
-                    const sub_code = sub_char_val.toCharacter();
-
-                    if (disp_code > 255 or sub_code > 255) {
-                        try self.push(Value.nil);
-                    } else {
-                        const disp_byte: u8 = @intCast(disp_code);
-                        const sub_byte: u8 = @intCast(sub_code);
-
-                        const sub_table = self.heap.dispatch_readtable.get(disp_byte);
-                        if (sub_table) |table| {
-                            const func = table.get(sub_byte);
-                            try self.push(func orelse Value.nil);
-                        } else {
-                            try self.push(Value.nil);
-                        }
-                    }
-                },
-
-                // Character operations
-                .characterp => {
-                    const val = try self.pop();
-                    try self.push(if (val.isCharacter()) Value.t else Value.nil);
-                },
-                .floatp => {
-                    const val = try self.pop();
-                    try self.push(if (val.isFloat()) Value.t else Value.nil);
-                },
-                .listp => {
-                    const val = try self.pop();
-                    // listp: nil or cons
-                    try self.push(if (val == Value.nil or val.isCons()) Value.t else Value.nil);
-                },
-                .atom => {
-                    const val = try self.pop();
-                    // atom: not a cons (everything except cons)
-                    try self.push(if (!val.isCons()) Value.t else Value.nil);
-                },
-                .assoc => {
-                    const alist = try self.pop();
-                    const key = try self.pop();
-                    var curr = alist;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        // Each element should be a cons (key . value)
-                        if (c.car.isCons()) {
-                            const pair = c.car.toPtr(Cons);
-                            if (pair.car.raw == key.raw) {
-                                try self.push(c.car);
-                                break;
-                            }
-                        }
-                        curr = c.cdr;
-                    } else {
-                        try self.push(Value.nil);
-                    }
-                },
-                .assoc_eql => {
-                    // assoc with eql test (compares numbers by value)
-                    const alist = try self.pop();
-                    const key = try self.pop();
-                    var curr = alist;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (c.car.isCons()) {
-                            const pair = c.car.toPtr(Cons);
-                            if (hashKeyEqualWithTest(pair.car, key, .eql)) {
-                                try self.push(c.car);
-                                break;
-                            }
-                        }
-                        curr = c.cdr;
-                    } else {
-                        try self.push(Value.nil);
-                    }
-                },
-                .assoc_equal => {
-                    // assoc with equal test (deep equality)
-                    const alist = try self.pop();
-                    const key = try self.pop();
-                    var curr = alist;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (c.car.isCons()) {
-                            const pair = c.car.toPtr(Cons);
-                            if (hashKeyEqualWithTest(pair.car, key, .equal)) {
-                                try self.push(c.car);
-                                break;
-                            }
-                        }
-                        curr = c.cdr;
-                    } else {
-                        try self.push(Value.nil);
-                    }
-                },
-
-                .list_find => {
-                    // find with eql test (default)
-                    const seq = try self.pop();
-                    const item = try self.pop();
-                    var curr = seq;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (hashKeyEqualWithTest(c.car, item, .eql)) {
+                }
+            },
+            .assoc_eql => {
+                // assoc with eql test (compares numbers by value)
+                const alist = try self.pop();
+                const key = try self.pop();
+                var curr = alist;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (c.car.isCons()) {
+                        const pair = c.car.toPtr(Cons);
+                        if (hashKeyEqualWithTest(pair.car, key, .eql)) {
                             try self.push(c.car);
                             break;
                         }
-                        curr = c.cdr;
-                    } else {
-                        try self.push(Value.nil);
                     }
-                },
-                .list_find_eq => {
-                    // find with eq test (identity)
-                    const seq = try self.pop();
-                    const item = try self.pop();
-                    var curr = seq;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (c.car.raw == item.raw) {
-                            try self.push(c.car);
-                            break;
-                        }
-                        curr = c.cdr;
-                    } else {
-                        try self.push(Value.nil);
-                    }
-                },
-                .list_find_equal => {
-                    // find with equal test (structural)
-                    const seq = try self.pop();
-                    const item = try self.pop();
-                    var curr = seq;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (hashKeyEqualWithTest(c.car, item, .equal)) {
-                            try self.push(c.car);
-                            break;
-                        }
-                        curr = c.cdr;
-                    } else {
-                        try self.push(Value.nil);
-                    }
-                },
-
-                .list_position => {
-                    // position with eql test (default)
-                    const seq = try self.pop();
-                    const item = try self.pop();
-                    var curr = seq;
-                    var idx: i64 = 0;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (hashKeyEqualWithTest(c.car, item, .eql)) {
-                            try self.push(Value.makeFixnum(idx));
-                            break;
-                        }
-                        curr = c.cdr;
-                        idx += 1;
-                    } else {
-                        try self.push(Value.nil);
-                    }
-                },
-                .list_position_eq => {
-                    // position with eq test (identity)
-                    const seq = try self.pop();
-                    const item = try self.pop();
-                    var curr = seq;
-                    var idx: i64 = 0;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (c.car.raw == item.raw) {
-                            try self.push(Value.makeFixnum(idx));
-                            break;
-                        }
-                        curr = c.cdr;
-                        idx += 1;
-                    } else {
-                        try self.push(Value.nil);
-                    }
-                },
-                .list_position_equal => {
-                    // position with equal test (structural)
-                    const seq = try self.pop();
-                    const item = try self.pop();
-                    var curr = seq;
-                    var idx: i64 = 0;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (hashKeyEqualWithTest(c.car, item, .equal)) {
-                            try self.push(Value.makeFixnum(idx));
-                            break;
-                        }
-                        curr = c.cdr;
-                        idx += 1;
-                    } else {
-                        try self.push(Value.nil);
-                    }
-                },
-
-                .list_count => {
-                    // count with eql test (default)
-                    const seq = try self.pop();
-                    const item = try self.pop();
-                    var curr = seq;
-                    var n: i64 = 0;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (hashKeyEqualWithTest(c.car, item, .eql)) {
-                            n += 1;
-                        }
-                        curr = c.cdr;
-                    }
-                    try self.push(Value.makeFixnum(n));
-                },
-                .list_count_eq => {
-                    // count with eq test (identity)
-                    const seq = try self.pop();
-                    const item = try self.pop();
-                    var curr = seq;
-                    var n: i64 = 0;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (c.car.raw == item.raw) {
-                            n += 1;
-                        }
-                        curr = c.cdr;
-                    }
-                    try self.push(Value.makeFixnum(n));
-                },
-                .list_count_equal => {
-                    // count with equal test (structural)
-                    const seq = try self.pop();
-                    const item = try self.pop();
-                    var curr = seq;
-                    var n: i64 = 0;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (hashKeyEqualWithTest(c.car, item, .equal)) {
-                            n += 1;
-                        }
-                        curr = c.cdr;
-                    }
-                    try self.push(Value.makeFixnum(n));
-                },
-
-                .list_remove => {
-                    // remove with eql test (default) - builds new list
-                    const seq = try self.pop();
-                    const item = try self.pop();
-                    var result = Value.nil;
-                    var tail_val = Value.nil;
-                    var curr = seq;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (!hashKeyEqualWithTest(c.car, item, .eql)) {
-                            const new_cons = try self.allocCons(c.car, Value.nil);
-                            if (tail_val.isCons()) {
-                                tail_val.toPtr(Cons).cdr = new_cons;
-                            } else {
-                                result = new_cons;
-                            }
-                            tail_val = new_cons;
-                        }
-                        curr = c.cdr;
-                    }
-                    try self.push(result);
-                },
-                .list_remove_eq => {
-                    // remove with eq test (identity) - builds new list
-                    const seq = try self.pop();
-                    const item = try self.pop();
-                    var result = Value.nil;
-                    var tail_val = Value.nil;
-                    var curr = seq;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (c.car.raw != item.raw) {
-                            const new_cons = try self.allocCons(c.car, Value.nil);
-                            if (tail_val.isCons()) {
-                                tail_val.toPtr(Cons).cdr = new_cons;
-                            } else {
-                                result = new_cons;
-                            }
-                            tail_val = new_cons;
-                        }
-                        curr = c.cdr;
-                    }
-                    try self.push(result);
-                },
-                .list_remove_equal => {
-                    // remove with equal test (structural) - builds new list
-                    const seq = try self.pop();
-                    const item = try self.pop();
-                    var result = Value.nil;
-                    var tail_val = Value.nil;
-                    var curr = seq;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (!hashKeyEqualWithTest(c.car, item, .equal)) {
-                            const new_cons = try self.allocCons(c.car, Value.nil);
-                            if (tail_val.isCons()) {
-                                tail_val.toPtr(Cons).cdr = new_cons;
-                            } else {
-                                result = new_cons;
-                            }
-                            tail_val = new_cons;
-                        }
-                        curr = c.cdr;
-                    }
-                    try self.push(result);
-                },
-
-                .equal => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    try self.push(if (valueEqual(a, b)) Value.t else Value.nil);
-                },
-                .eql => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    // eql: eq for most types, but numeric equality for numbers
-                    // Floats need special handling: 0.0 == -0.0, NaN != NaN
-                    if (a.isFloat() and b.isFloat()) {
-                        try self.push(if (floatEql(a.toFloat(), b.toFloat())) Value.t else Value.nil);
-                    } else {
-                        try self.push(if (a.eq(b)) Value.t else Value.nil);
-                    }
-                },
-                .char_code => {
-                    const val = try self.pop();
-                    if (!val.isCharacter()) return error.TypeMismatch;
-                    const cp = val.toCharacter();
-                    try self.push(Value.makeFixnum(@intCast(cp)));
-                },
-                .code_char => {
-                    const val = try self.pop();
-                    if (!val.isFixnum()) return error.TypeMismatch;
-                    const n = val.toFixnum();
-                    if (n < 0 or n > 0x10FFFF) return error.InvalidArgument;
-                    try self.push(Value.makeCharacter(@intCast(@as(u64, @bitCast(n)))));
-                },
-                .char_eq => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    if (!a.isCharacter() or !b.isCharacter()) return error.TypeMismatch;
-                    try self.push(if (a.raw == b.raw) Value.t else Value.nil);
-                },
-                .char_lt => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    if (!a.isCharacter() or !b.isCharacter()) return error.TypeMismatch;
-                    try self.push(if (a.toCharacter() < b.toCharacter()) Value.t else Value.nil);
-                },
-                .char_gt => {
-                    const b = try self.pop();
-                    const a = try self.pop();
-                    if (!a.isCharacter() or !b.isCharacter()) return error.TypeMismatch;
-                    try self.push(if (a.toCharacter() > b.toCharacter()) Value.t else Value.nil);
-                },
-
-                .read_char => {
-                    const ch = io.sysReadChar() catch -1;
-                    if (ch < 0) {
-                        try self.push(Value.makeFixnum(-1));
-                    } else {
-                        try self.push(Value.makeCharacter(@intCast(ch)));
-                    }
-                },
-                .peek_char => {
-                    const ch = io.sysPeekChar() catch -1;
-                    if (ch < 0) {
-                        try self.push(Value.makeFixnum(-1));
-                    } else {
-                        try self.push(Value.makeCharacter(@intCast(ch)));
-                    }
-                },
-
-                .read => {
-                    // Read a complete S-expression from stdin
-                    var buffer: [4096]u8 = undefined;
-                    const len = io.sysReadSexp(&buffer) catch {
-                        // EOF or error - return nil
-                        try self.push(Value.nil);
-                        continue;
-                    };
-
-                    // Parse the S-expression
-                    var parser = Parser.init(self.allocator, self.heap, buffer[0..len]);
-                    const result = parser.parse() catch {
-                        try self.push(Value.nil);
-                        continue;
-                    };
-                    try self.push(result);
-                },
-
-                .load => {
-                    // Load and evaluate a file
-                    const filename_val = try self.pop();
-                    if (!filename_val.isString()) return error.TypeMismatch;
-
-                    const str = filename_val.toPtr(String);
-                    const filename = str.bytes();
-
-                    // Call the load callback if set
-                    if (self.load_callback) |callback| {
-                        const result = try callback(filename, self.load_context.?);
-                        try self.push(result);
-                    } else {
-                        // No callback set - return nil
-                        try self.push(Value.nil);
-                    }
-                },
-
-                .read_from_string => {
-                    // Parse a string into a Lisp value
-                    const str_val = try self.pop();
-                    if (!str_val.isString()) return error.TypeMismatch;
-
-                    const str = str_val.toPtr(String);
-                    var parser = Parser.init(self.allocator, self.heap, str.bytes());
-                    const result = parser.parse() catch {
-                        try self.push(Value.nil);
-                        continue;
-                    };
-                    try self.push(result);
-                },
-
-                .eval => {
-                    // Evaluate expression at runtime
-                    const expr = try self.pop();
-
-                    // Call the eval callback if set
-                    if (self.eval_callback) |callback| {
-                        const result = try callback(expr, self.eval_context.?);
-                        try self.push(result);
-                    } else {
-                        // No callback set - return nil
-                        try self.push(Value.nil);
-                    }
-                },
-
-                .gensym => {
-                    // Generate a unique symbol
-                    var buf: [32]u8 = undefined;
-                    const name = std.fmt.bufPrint(&buf, "G{d}", .{self.gensym_counter}) catch {
-                        try self.push(Value.nil);
-                        continue;
-                    };
-                    self.gensym_counter = std.math.add(u64, self.gensym_counter, 1) catch {
-                        return error.OutOfMemory; // Overflow after 2^64 gensyms
-                    };
-                    const sym = try self.allocSymbol(name);
-                    try self.push(sym);
-                },
-
-                .macroexpand => {
-                    // Expand macros in expression
-                    const expr = try self.pop();
-
-                    // Call the macroexpand callback if set
-                    if (self.macroexpand_callback) |callback| {
-                        const result = try callback(expr, self.macroexpand_context.?);
-                        try self.push(result);
-                    } else {
-                        // No callback set - return the expression unchanged
-                        try self.push(expr);
-                    }
-                },
-
-                .unread_char => {
-                    const val = try self.pop();
-                    if (!val.isCharacter()) return error.TypeMismatch;
-                    io.sysUnreadChar(@intCast(val.toCharacter()));
+                    curr = c.cdr;
+                } else {
                     try self.push(Value.nil);
-                },
-
-                .boundp, .fboundp => {
-                    const val = try self.pop();
-                    if (!val.isSymbol()) return error.TypeMismatch;
-                    const sym = val.toPtr(Symbol);
-                    const name = sym.getName();
-                    // Check if symbol exists in global environment
-                    const is_bound = if (self.global_env) |env|
-                        env.lookup(name) != null
-                    else
-                        false;
-                    try self.push(if (is_bound) Value.t else Value.nil);
-                },
-
-                .symbol_value, .symbol_function => {
-                    const val = try self.pop();
-                    if (!val.isSymbol()) return error.TypeMismatch;
-                    const sym = val.toPtr(Symbol);
-                    const name = sym.getName();
-                    // Look up symbol in global environment
-                    if (self.global_env) |env| {
-                        if (env.lookup(name)) |idx| {
-                            try self.push(self.globals[idx]);
-                        } else {
-                            return error.UnboundSymbol;
+                }
+            },
+            .assoc_equal => {
+                // assoc with equal test (deep equality)
+                const alist = try self.pop();
+                const key = try self.pop();
+                var curr = alist;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (c.car.isCons()) {
+                        const pair = c.car.toPtr(Cons);
+                        if (hashKeyEqualWithTest(pair.car, key, .equal)) {
+                            try self.push(c.car);
+                            break;
                         }
+                    }
+                    curr = c.cdr;
+                } else {
+                    try self.push(Value.nil);
+                }
+            },
+
+            .list_find => {
+                // find with eql test (default)
+                const seq = try self.pop();
+                const item = try self.pop();
+                var curr = seq;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (hashKeyEqualWithTest(c.car, item, .eql)) {
+                        try self.push(c.car);
+                        break;
+                    }
+                    curr = c.cdr;
+                } else {
+                    try self.push(Value.nil);
+                }
+            },
+            .list_find_eq => {
+                // find with eq test (identity)
+                const seq = try self.pop();
+                const item = try self.pop();
+                var curr = seq;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (c.car.raw == item.raw) {
+                        try self.push(c.car);
+                        break;
+                    }
+                    curr = c.cdr;
+                } else {
+                    try self.push(Value.nil);
+                }
+            },
+            .list_find_equal => {
+                // find with equal test (structural)
+                const seq = try self.pop();
+                const item = try self.pop();
+                var curr = seq;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (hashKeyEqualWithTest(c.car, item, .equal)) {
+                        try self.push(c.car);
+                        break;
+                    }
+                    curr = c.cdr;
+                } else {
+                    try self.push(Value.nil);
+                }
+            },
+
+            .list_position => {
+                // position with eql test (default)
+                const seq = try self.pop();
+                const item = try self.pop();
+                var curr = seq;
+                var idx: i64 = 0;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (hashKeyEqualWithTest(c.car, item, .eql)) {
+                        try self.push(Value.makeFixnum(idx));
+                        break;
+                    }
+                    curr = c.cdr;
+                    idx += 1;
+                } else {
+                    try self.push(Value.nil);
+                }
+            },
+            .list_position_eq => {
+                // position with eq test (identity)
+                const seq = try self.pop();
+                const item = try self.pop();
+                var curr = seq;
+                var idx: i64 = 0;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (c.car.raw == item.raw) {
+                        try self.push(Value.makeFixnum(idx));
+                        break;
+                    }
+                    curr = c.cdr;
+                    idx += 1;
+                } else {
+                    try self.push(Value.nil);
+                }
+            },
+            .list_position_equal => {
+                // position with equal test (structural)
+                const seq = try self.pop();
+                const item = try self.pop();
+                var curr = seq;
+                var idx: i64 = 0;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (hashKeyEqualWithTest(c.car, item, .equal)) {
+                        try self.push(Value.makeFixnum(idx));
+                        break;
+                    }
+                    curr = c.cdr;
+                    idx += 1;
+                } else {
+                    try self.push(Value.nil);
+                }
+            },
+
+            .list_count => {
+                // count with eql test (default)
+                const seq = try self.pop();
+                const item = try self.pop();
+                var curr = seq;
+                var n: i64 = 0;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (hashKeyEqualWithTest(c.car, item, .eql)) {
+                        n += 1;
+                    }
+                    curr = c.cdr;
+                }
+                try self.push(Value.makeFixnum(n));
+            },
+            .list_count_eq => {
+                // count with eq test (identity)
+                const seq = try self.pop();
+                const item = try self.pop();
+                var curr = seq;
+                var n: i64 = 0;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (c.car.raw == item.raw) {
+                        n += 1;
+                    }
+                    curr = c.cdr;
+                }
+                try self.push(Value.makeFixnum(n));
+            },
+            .list_count_equal => {
+                // count with equal test (structural)
+                const seq = try self.pop();
+                const item = try self.pop();
+                var curr = seq;
+                var n: i64 = 0;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (hashKeyEqualWithTest(c.car, item, .equal)) {
+                        n += 1;
+                    }
+                    curr = c.cdr;
+                }
+                try self.push(Value.makeFixnum(n));
+            },
+
+            .list_remove => {
+                // remove with eql test (default) - builds new list
+                const seq = try self.pop();
+                const item = try self.pop();
+                var result = Value.nil;
+                var tail_val = Value.nil;
+                var curr = seq;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (!hashKeyEqualWithTest(c.car, item, .eql)) {
+                        const new_cons = try self.allocCons(c.car, Value.nil);
+                        if (tail_val.isCons()) {
+                            tail_val.toPtr(Cons).cdr = new_cons;
+                        } else {
+                            result = new_cons;
+                        }
+                        tail_val = new_cons;
+                    }
+                    curr = c.cdr;
+                }
+                try self.push(result);
+            },
+            .list_remove_eq => {
+                // remove with eq test (identity) - builds new list
+                const seq = try self.pop();
+                const item = try self.pop();
+                var result = Value.nil;
+                var tail_val = Value.nil;
+                var curr = seq;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (c.car.raw != item.raw) {
+                        const new_cons = try self.allocCons(c.car, Value.nil);
+                        if (tail_val.isCons()) {
+                            tail_val.toPtr(Cons).cdr = new_cons;
+                        } else {
+                            result = new_cons;
+                        }
+                        tail_val = new_cons;
+                    }
+                    curr = c.cdr;
+                }
+                try self.push(result);
+            },
+            .list_remove_equal => {
+                // remove with equal test (structural) - builds new list
+                const seq = try self.pop();
+                const item = try self.pop();
+                var result = Value.nil;
+                var tail_val = Value.nil;
+                var curr = seq;
+                while (curr.isCons()) {
+                    const c = curr.toPtr(Cons);
+                    if (!hashKeyEqualWithTest(c.car, item, .equal)) {
+                        const new_cons = try self.allocCons(c.car, Value.nil);
+                        if (tail_val.isCons()) {
+                            tail_val.toPtr(Cons).cdr = new_cons;
+                        } else {
+                            result = new_cons;
+                        }
+                        tail_val = new_cons;
+                    }
+                    curr = c.cdr;
+                }
+                try self.push(result);
+            },
+
+            .equal => {
+                const b = try self.pop();
+                const a = try self.pop();
+                try self.push(if (valueEqual(a, b)) Value.t else Value.nil);
+            },
+            .eql => {
+                const b = try self.pop();
+                const a = try self.pop();
+                // eql: eq for most types, but numeric equality for numbers
+                // Floats need special handling: 0.0 == -0.0, NaN != NaN
+                if (a.isFloat() and b.isFloat()) {
+                    try self.push(if (floatEql(a.toFloat(), b.toFloat())) Value.t else Value.nil);
+                } else {
+                    try self.push(if (a.eq(b)) Value.t else Value.nil);
+                }
+            },
+            .char_code => {
+                const val = try self.pop();
+                if (!val.isCharacter()) return error.TypeMismatch;
+                const cp = val.toCharacter();
+                try self.push(Value.makeFixnum(@intCast(cp)));
+            },
+            .code_char => {
+                const val = try self.pop();
+                if (!val.isFixnum()) return error.TypeMismatch;
+                const n = val.toFixnum();
+                if (n < 0 or n > 0x10FFFF) return error.InvalidArgument;
+                try self.push(Value.makeCharacter(@intCast(@as(u64, @bitCast(n)))));
+            },
+            .char_eq => {
+                const b = try self.pop();
+                const a = try self.pop();
+                if (!a.isCharacter() or !b.isCharacter()) return error.TypeMismatch;
+                try self.push(if (a.raw == b.raw) Value.t else Value.nil);
+            },
+            .char_lt => {
+                const b = try self.pop();
+                const a = try self.pop();
+                if (!a.isCharacter() or !b.isCharacter()) return error.TypeMismatch;
+                try self.push(if (a.toCharacter() < b.toCharacter()) Value.t else Value.nil);
+            },
+            .char_gt => {
+                const b = try self.pop();
+                const a = try self.pop();
+                if (!a.isCharacter() or !b.isCharacter()) return error.TypeMismatch;
+                try self.push(if (a.toCharacter() > b.toCharacter()) Value.t else Value.nil);
+            },
+
+            .read_char => {
+                const ch = io.sysReadChar() catch -1;
+                if (ch < 0) {
+                    try self.push(Value.makeFixnum(-1));
+                } else {
+                    try self.push(Value.makeCharacter(@intCast(ch)));
+                }
+            },
+            .peek_char => {
+                const ch = io.sysPeekChar() catch -1;
+                if (ch < 0) {
+                    try self.push(Value.makeFixnum(-1));
+                } else {
+                    try self.push(Value.makeCharacter(@intCast(ch)));
+                }
+            },
+
+            .read => {
+                // Read a complete S-expression from stdin
+                var buffer: [4096]u8 = undefined;
+                const len = io.sysReadSexp(&buffer) catch {
+                    // EOF or error - return nil
+                    try self.push(Value.nil);
+                    return;
+                };
+
+                // Parse the S-expression
+                var parser = Parser.init(self.allocator, self.heap, buffer[0..len]);
+                const result = parser.parse() catch {
+                    try self.push(Value.nil);
+                    return;
+                };
+                try self.push(result);
+            },
+
+            .load => {
+                // Load and evaluate a file
+                const filename_val = try self.pop();
+                if (!filename_val.isString()) return error.TypeMismatch;
+
+                const str = filename_val.toPtr(String);
+                const filename = str.bytes();
+
+                // Call the load callback if set
+                if (self.load_callback) |callback| {
+                    const result = try callback(filename, self.load_context.?);
+                    try self.push(result);
+                } else {
+                    // No callback set - return nil
+                    try self.push(Value.nil);
+                }
+            },
+
+            .read_from_string => {
+                // Parse a string into a Lisp value
+                const str_val = try self.pop();
+                if (!str_val.isString()) return error.TypeMismatch;
+
+                const str = str_val.toPtr(String);
+                var parser = Parser.init(self.allocator, self.heap, str.bytes());
+                const result = parser.parse() catch {
+                    try self.push(Value.nil);
+                    return;
+                };
+                try self.push(result);
+            },
+
+            .eval => {
+                // Evaluate expression at runtime
+                const expr = try self.pop();
+
+                // Call the eval callback if set
+                if (self.eval_callback) |callback| {
+                    const result = try callback(expr, self.eval_context.?);
+                    try self.push(result);
+                } else {
+                    // No callback set - return nil
+                    try self.push(Value.nil);
+                }
+            },
+
+            .gensym => {
+                // Generate a unique symbol
+                var buf: [32]u8 = undefined;
+                const name = std.fmt.bufPrint(&buf, "G{d}", .{self.gensym_counter}) catch {
+                    try self.push(Value.nil);
+                    return;
+                };
+                self.gensym_counter = std.math.add(u64, self.gensym_counter, 1) catch {
+                    return error.OutOfMemory; // Overflow after 2^64 gensyms
+                };
+                const sym = try self.allocSymbol(name);
+                try self.push(sym);
+            },
+
+            .macroexpand => {
+                // Expand macros in expression
+                const expr = try self.pop();
+
+                // Call the macroexpand callback if set
+                if (self.macroexpand_callback) |callback| {
+                    const result = try callback(expr, self.macroexpand_context.?);
+                    try self.push(result);
+                } else {
+                    // No callback set - return the expression unchanged
+                    try self.push(expr);
+                }
+            },
+
+            .unread_char => {
+                const val = try self.pop();
+                if (!val.isCharacter()) return error.TypeMismatch;
+                io.sysUnreadChar(@intCast(val.toCharacter()));
+                try self.push(Value.nil);
+            },
+
+            .boundp, .fboundp => {
+                const val = try self.pop();
+                if (!val.isSymbol()) return error.TypeMismatch;
+                const sym = val.toPtr(Symbol);
+                const name = sym.getName();
+                // Check if symbol exists in global environment
+                const is_bound = if (self.global_env) |env|
+                    env.lookup(name) != null
+                else
+                    false;
+                try self.push(if (is_bound) Value.t else Value.nil);
+            },
+
+            .symbol_value, .symbol_function => {
+                const val = try self.pop();
+                if (!val.isSymbol()) return error.TypeMismatch;
+                const sym = val.toPtr(Symbol);
+                const name = sym.getName();
+                // Look up symbol in global environment
+                if (self.global_env) |env| {
+                    if (env.lookup(name)) |idx| {
+                        try self.push(self.globals[idx]);
                     } else {
                         return error.UnboundSymbol;
                     }
-                },
+                } else {
+                    return error.UnboundSymbol;
+                }
+            },
 
-                .typep => {
-                    const type_spec = try self.pop();
-                    const obj = try self.pop();
-                    if (!type_spec.isSymbol()) return error.TypeMismatch;
+            .typep => {
+                const type_spec = try self.pop();
+                const obj = try self.pop();
+                if (!type_spec.isSymbol()) return error.TypeMismatch;
 
-                    // Use symbol identity for type dispatch (no string comparison)
-                    const ts = self.type_syms;
-                    const matches = if (type_spec.raw == ts.fixnum.raw)
-                        obj.isFixnum()
-                    else if (type_spec.raw == ts.cons.raw)
-                        obj.isCons()
-                    else if (type_spec.raw == ts.symbol.raw)
-                        obj.isSymbol()
-                    else if (type_spec.raw == ts.string.raw)
-                        obj.isString()
-                    else if (type_spec.raw == ts.vector.raw)
-                        obj.isVector()
-                    else if (type_spec.raw == ts.closure.raw or type_spec.raw == ts.function.raw)
-                        obj.isClosure()
-                    else if (type_spec.raw == ts.keyword.raw)
-                        obj.isKeyword()
-                    else if (type_spec.raw == ts.character.raw)
-                        obj.isCharacter()
-                    else if (type_spec.raw == ts.@"hash-table".raw)
-                        obj.isHashTable()
-                    else if (type_spec.raw == ts.nil.raw or type_spec.raw == ts.null.raw)
-                        obj.isNil()
-                    else if (type_spec.raw == ts.list.raw)
-                        obj.isNil() or obj.isCons()
-                    else if (type_spec.raw == ts.atom.raw)
-                        !obj.isCons()
-                    else if (type_spec.raw == ts.t.raw)
-                        true // Everything is of type t
-                    else
-                        false; // Unknown type
+                // Use symbol identity for type dispatch (no string comparison)
+                const ts = self.type_syms;
+                const matches = if (type_spec.raw == ts.fixnum.raw)
+                    obj.isFixnum()
+                else if (type_spec.raw == ts.cons.raw)
+                    obj.isCons()
+                else if (type_spec.raw == ts.symbol.raw)
+                    obj.isSymbol()
+                else if (type_spec.raw == ts.string.raw)
+                    obj.isString()
+                else if (type_spec.raw == ts.vector.raw)
+                    obj.isVector()
+                else if (type_spec.raw == ts.closure.raw or type_spec.raw == ts.function.raw)
+                    obj.isClosure()
+                else if (type_spec.raw == ts.keyword.raw)
+                    obj.isKeyword()
+                else if (type_spec.raw == ts.character.raw)
+                    obj.isCharacter()
+                else if (type_spec.raw == ts.@"hash-table".raw)
+                    obj.isHashTable()
+                else if (type_spec.raw == ts.nil.raw or type_spec.raw == ts.null.raw)
+                    obj.isNil()
+                else if (type_spec.raw == ts.list.raw)
+                    obj.isNil() or obj.isCons()
+                else if (type_spec.raw == ts.atom.raw)
+                    !obj.isCons()
+                else if (type_spec.raw == ts.t.raw)
+                    true // Everything is of type t
+                else
+                    false; // Unknown type
 
-                    try self.push(if (matches) Value.t else Value.nil);
-                },
+                try self.push(if (matches) Value.t else Value.nil);
+            },
 
-                // Numeric predicates
-                .abs => {
-                    const val = try self.pop();
-                    if (!val.isFixnum()) return error.TypeMismatch;
-                    const n = val.toFixnum();
-                    // abs(minInt) overflows
-                    if (n == std.math.minInt(i64)) return error.TypeMismatch;
-                    try self.push(Value.makeFixnum(if (n < 0) -n else n));
-                },
-                .zerop => {
-                    const val = try self.pop();
-                    if (!val.isFixnum()) return error.TypeMismatch;
-                    try self.push(if (val.toFixnum() == 0) Value.t else Value.nil);
-                },
-                .plusp => {
-                    const val = try self.pop();
-                    if (!val.isFixnum()) return error.TypeMismatch;
-                    try self.push(if (val.toFixnum() > 0) Value.t else Value.nil);
-                },
-                .minusp => {
-                    const val = try self.pop();
-                    if (!val.isFixnum()) return error.TypeMismatch;
-                    try self.push(if (val.toFixnum() < 0) Value.t else Value.nil);
-                },
-                .evenp => {
-                    const val = try self.pop();
-                    if (!val.isFixnum()) return error.TypeMismatch;
-                    try self.push(if (@mod(val.toFixnum(), 2) == 0) Value.t else Value.nil);
-                },
-                .oddp => {
-                    const val = try self.pop();
-                    if (!val.isFixnum()) return error.TypeMismatch;
-                    try self.push(if (@mod(val.toFixnum(), 2) != 0) Value.t else Value.nil);
-                },
+            // Numeric predicates
+            .abs => {
+                const val = try self.pop();
+                if (!val.isFixnum()) return error.TypeMismatch;
+                const n = val.toFixnum();
+                // abs(minInt) overflows
+                if (n == std.math.minInt(i64)) return error.TypeMismatch;
+                try self.push(Value.makeFixnum(if (n < 0) -n else n));
+            },
+            .zerop => {
+                const val = try self.pop();
+                if (!val.isFixnum()) return error.TypeMismatch;
+                try self.push(if (val.toFixnum() == 0) Value.t else Value.nil);
+            },
+            .plusp => {
+                const val = try self.pop();
+                if (!val.isFixnum()) return error.TypeMismatch;
+                try self.push(if (val.toFixnum() > 0) Value.t else Value.nil);
+            },
+            .minusp => {
+                const val = try self.pop();
+                if (!val.isFixnum()) return error.TypeMismatch;
+                try self.push(if (val.toFixnum() < 0) Value.t else Value.nil);
+            },
+            .evenp => {
+                const val = try self.pop();
+                if (!val.isFixnum()) return error.TypeMismatch;
+                try self.push(if (@mod(val.toFixnum(), 2) == 0) Value.t else Value.nil);
+            },
+            .oddp => {
+                const val = try self.pop();
+                if (!val.isFixnum()) return error.TypeMismatch;
+                try self.push(if (@mod(val.toFixnum(), 2) != 0) Value.t else Value.nil);
+            },
 
-                .halt => return error.Halt,
-            }
+            .halt => return error.Halt,
         }
     }
 
@@ -3340,9 +3354,9 @@ pub const Vm = struct {
             self.sp = unwind_frame.unwind_sp;
             self.fp = unwind_frame.unwind_fp;
 
-            // Return RuntimeError to signal cleanup is running
-            // pop_unwind will re-throw the original error after cleanup
-            return error.RuntimeError;
+            // Return original error to signal cleanup is running
+            // pop_unwind will re-throw the error after cleanup
+            return err;
         }
 
         // No unwind frames - propagate error normally
