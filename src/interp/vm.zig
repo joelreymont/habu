@@ -2268,6 +2268,43 @@ pub const Vm = struct {
                     try self.push(new_val);
                 },
 
+                .array_dimension => {
+                    const axis_val = try self.pop();
+                    const arr_val = try self.pop();
+
+                    if (!arr_val.isArray()) return error.TypeMismatch;
+                    if (!axis_val.isFixnum()) return error.TypeMismatch;
+
+                    const arr = arr_val.toPtr(runtime.Array);
+                    const axis_signed = axis_val.toFixnum();
+                    if (axis_signed < 0) return error.TypeMismatch;
+                    const axis: usize = @intCast(axis_signed);
+
+                    if (axis >= arr.rank) return error.TypeMismatch;
+
+                    const dimension: i64 = @intCast(arr.dimensions[axis]);
+                    try self.push(Value.makeFixnum(dimension));
+                },
+
+                .array_dimensions => {
+                    const arr_val = try self.pop();
+
+                    if (!arr_val.isArray()) return error.TypeMismatch;
+
+                    const arr = arr_val.toPtr(runtime.Array);
+
+                    // Build list of dimensions from right to left
+                    var result = Value.nil;
+                    var i: usize = arr.rank;
+                    while (i > 0) {
+                        i -= 1;
+                        const dim: i64 = @intCast(arr.dimensions[i]);
+                        result = try self.allocCons(Value.makeFixnum(dim), result);
+                    }
+
+                    try self.push(result);
+                },
+
                 // Character operations
                 .characterp => {
                     const val = try self.pop();

@@ -447,6 +447,14 @@ pub const Op = enum(u8) {
     /// ( array sub1 sub2 ... subN value -- value )
     aset = 0x1C,
 
+    /// Get array dimension at axis
+    /// ( array axis -- dimension )
+    array_dimension = 0x1D,
+
+    /// Get all array dimensions as list
+    /// ( array -- dimensions-list )
+    array_dimensions = 0x1E,
+
     /// Get type of value as symbol
     /// ( x -- type-sym )
     type_of = 0x92,
@@ -1100,6 +1108,8 @@ pub const Op = enum(u8) {
             .make_string_input_stream,
             .make_string_output_stream,
             .get_output_stream_string,
+            .array_dimension,
+            .array_dimensions,
             => 0,
 
             // 1 byte operand

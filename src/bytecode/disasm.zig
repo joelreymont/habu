@@ -206,6 +206,8 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .make_string_output_stream,
         .get_output_stream_string,
         .close,
+        .array_dimension,
+        .array_dimensions,
         => {
             try writer.print("{s}\n", .{op.name()});
             return offset + 1;
