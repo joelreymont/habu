@@ -2126,6 +2126,55 @@ pub const Vm = struct {
                     try self.push(stream_val);
                 },
 
+                .make_array => {
+                    const operand = self.readU8();
+                    const rank: u8 = operand >> 1;
+                    const has_initial: bool = (operand & 1) == 1;
+
+                    if (rank == 0 or rank > 8) return error.TypeMismatch;
+
+                    // Pop initial-element if present
+                    const initial_element = if (has_initial) try self.pop() else Value.nil;
+
+                    // Pop dimensions from stack (in reverse order)
+                    var dimensions: [8]u64 = [_]u64{0} ** 8;
+                    var total_size: u64 = 1;
+                    var i: usize = rank;
+                    while (i > 0) {
+                        i -= 1;
+                        const dim_val = try self.pop();
+                        if (!dim_val.isFixnum()) return error.TypeMismatch;
+                        const dim_signed = dim_val.toFixnum();
+                        if (dim_signed < 0) return error.TypeMismatch;
+                        const dim: u64 = @intCast(dim_signed);
+                        dimensions[i] = dim;
+                        total_size *= dim;
+                    }
+
+                    // Allocate array object + data storage together
+                    const total_bytes = @sizeOf(runtime.Array) + total_size * @sizeOf(Value);
+                    const ptr = try self.heap.allocRaw(total_bytes);
+                    const arr: *runtime.Array = @ptrCast(@alignCast(ptr));
+
+                    // Data follows immediately after header
+                    const data_ptr: [*]Value = @ptrCast(@alignCast(ptr + @sizeOf(runtime.Array)));
+
+                    arr.* = .{
+                        .kind = .array,
+                        .rank = rank,
+                        .dimensions = dimensions,
+                        .total_size = total_size,
+                        .data_ptr = @intFromPtr(data_ptr),
+                    };
+
+                    // Initialize with initial-element
+                    for (0..total_size) |idx| {
+                        data_ptr[idx] = initial_element;
+                    }
+
+                    try self.push(Value.makeArray(arr));
+                },
+
                 // Character operations
                 .characterp => {
                     const val = try self.pop();
