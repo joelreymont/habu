@@ -2484,7 +2484,10 @@ pub const Compiler = struct {
 
             if (!b.car.isSymbol()) return error.InvalidLet;
             const name_sym = b.car.toPtr(Symbol);
-            const name = name_sym.getName();
+
+            // Use qualified name for globals (package-aware)
+            var qual_buf: [256]u8 = undefined;
+            const name = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
 
             if (!b.cdr.isCons()) return error.InvalidLet;
             const val_cons = b.cdr.toPtr(Cons);
@@ -2597,7 +2600,10 @@ pub const Compiler = struct {
 
             if (!f.car.isSymbol()) return error.InvalidLet;
             const name_sym = f.car.toPtr(Symbol);
-            const name = name_sym.getName();
+
+            // Use qualified name for globals (package-aware)
+            var qual_buf: [256]u8 = undefined;
+            const name = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
 
             // Pre-register global for recursive visibility
             const idx = try self.globals.define(name);
