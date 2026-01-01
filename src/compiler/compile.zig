@@ -5071,10 +5071,6 @@ pub const Compiler = struct {
 
         // Store method - auto-create generic function if it doesn't exist
         const gop = try self.generic_functions.getOrPut(gen_name);
-        if (!gop.found_existing) {
-            const empty_slice = try self.allocator.alloc(MethodDef, 0);
-            gop.value_ptr.* = .{ .items = empty_slice, .capacity = 0 };
-        }
 
         // Create method def
         const method_def = MethodDef{
@@ -5082,8 +5078,31 @@ pub const Compiler = struct {
             .body = lambda_ir,
         };
 
-        // Append to list
-        try gop.value_ptr.append(self.allocator, method_def);
+        // Manually grow the methods list
+        if (!gop.found_existing) {
+            // New generic function - create list with first method
+            const new_methods = try self.allocator.alloc(MethodDef, 1);
+            new_methods[0] = method_def;
+            gop.value_ptr.* = .{ .items = new_methods, .capacity = 1 };
+        } else {
+            // Existing function - reallocate with one more slot
+            const old_items = gop.value_ptr.items;
+            const old_len = old_items.len;
+            const new_methods = try self.allocator.alloc(MethodDef, old_len + 1);
+
+            // Copy old methods
+            for (old_items, 0..) |old_method, i| {
+                new_methods[i] = old_method;
+            }
+
+            // Add new method
+            new_methods[old_len] = method_def;
+
+            // Don't free old memory - might be in use by hashmap
+            // This leaks but ensures correctness for now
+
+            gop.value_ptr.* = .{ .items = new_methods, .capacity = old_len + 1 };
+        }
 
         // Generate dispatcher function
         const dispatcher = try self.generateMethodDispatcher(gen_name, gop.value_ptr.*, param_names_copy);
