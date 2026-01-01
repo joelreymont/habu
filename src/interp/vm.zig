@@ -2175,6 +2175,99 @@ pub const Vm = struct {
                     try self.push(Value.makeArray(arr));
                 },
 
+                .aref => {
+                    const sub_count = self.readU8();
+                    if (sub_count == 0 or sub_count > 8) return error.TypeMismatch;
+
+                    // Pop subscripts from stack (in reverse order)
+                    var subscripts: [8]u64 = [_]u64{0} ** 8;
+                    var j: usize = sub_count;
+                    while (j > 0) {
+                        j -= 1;
+                        const sub_val = try self.pop();
+                        if (!sub_val.isFixnum()) return error.TypeMismatch;
+                        const sub_signed = sub_val.toFixnum();
+                        if (sub_signed < 0) return error.TypeMismatch;
+                        subscripts[j] = @intCast(sub_signed);
+                    }
+
+                    // Pop array
+                    const arr_val = try self.pop();
+                    if (!arr_val.isArray()) return error.TypeMismatch;
+                    const arr = arr_val.toPtr(runtime.Array);
+
+                    // Verify rank matches
+                    if (arr.rank != sub_count) return error.TypeMismatch;
+
+                    // Calculate linear index using row-major order
+                    // index = s0*d1*d2*... + s1*d2*d3*... + ... + sN
+                    var index: u64 = 0;
+                    for (0..sub_count) |k| {
+                        // Bounds check
+                        if (subscripts[k] >= arr.dimensions[k]) return error.TypeMismatch;
+
+                        // Calculate stride (product of remaining dimensions)
+                        var stride: u64 = 1;
+                        for (k + 1..sub_count) |m| {
+                            stride *= arr.dimensions[m];
+                        }
+                        index += subscripts[k] * stride;
+                    }
+
+                    // Access element
+                    const data: [*]Value = @ptrFromInt(arr.data_ptr);
+                    try self.push(data[index]);
+                },
+
+                .aset => {
+                    const sub_count = self.readU8();
+                    if (sub_count == 0 or sub_count > 8) return error.TypeMismatch;
+
+                    // Pop new value
+                    const new_val = try self.pop();
+
+                    // Pop subscripts from stack (in reverse order)
+                    var subscripts: [8]u64 = [_]u64{0} ** 8;
+                    var j: usize = sub_count;
+                    while (j > 0) {
+                        j -= 1;
+                        const sub_val = try self.pop();
+                        if (!sub_val.isFixnum()) return error.TypeMismatch;
+                        const sub_signed = sub_val.toFixnum();
+                        if (sub_signed < 0) return error.TypeMismatch;
+                        subscripts[j] = @intCast(sub_signed);
+                    }
+
+                    // Pop array
+                    const arr_val = try self.pop();
+                    if (!arr_val.isArray()) return error.TypeMismatch;
+                    const arr = arr_val.toPtr(runtime.Array);
+
+                    // Verify rank matches
+                    if (arr.rank != sub_count) return error.TypeMismatch;
+
+                    // Calculate linear index using row-major order
+                    var index: u64 = 0;
+                    for (0..sub_count) |k| {
+                        // Bounds check
+                        if (subscripts[k] >= arr.dimensions[k]) return error.TypeMismatch;
+
+                        // Calculate stride (product of remaining dimensions)
+                        var stride: u64 = 1;
+                        for (k + 1..sub_count) |m| {
+                            stride *= arr.dimensions[m];
+                        }
+                        index += subscripts[k] * stride;
+                    }
+
+                    // Set element
+                    const data: [*]Value = @ptrFromInt(arr.data_ptr);
+                    data[index] = new_val;
+
+                    // Return the value (Common Lisp setf semantics)
+                    try self.push(new_val);
+                },
+
                 // Character operations
                 .characterp => {
                     const val = try self.pop();

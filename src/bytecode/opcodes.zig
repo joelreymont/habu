@@ -439,6 +439,14 @@ pub const Op = enum(u8) {
     /// Operand bits: [7:1] = dim count, [0] = has initial-element
     make_array = 0xCF,
 
+    /// Array reference - access array element (operand: u8 subscript count)
+    /// ( array sub1 sub2 ... subN -- value )
+    aref = 0x1B,
+
+    /// Array set - set array element (operand: u8 subscript count)
+    /// ( array sub1 sub2 ... subN value -- value )
+    aset = 0x1C,
+
     /// Get type of value as symbol
     /// ( x -- type-sym )
     type_of = 0x92,
@@ -1110,6 +1118,8 @@ pub const Op = enum(u8) {
             .open,
             .pop_restarts,
             .make_array,
+            .aref,
+            .aset,
             => 1,
 
             // 2 byte operand
