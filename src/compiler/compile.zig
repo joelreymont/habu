@@ -5075,10 +5075,15 @@ pub const Compiler = struct {
             const empty_slice = try self.allocator.alloc(MethodDef, 0);
             gop.value_ptr.* = .{ .items = empty_slice, .capacity = 0 };
         }
-        try gop.value_ptr.append(self.allocator, .{
+
+        // Create method def
+        const method_def = MethodDef{
             .specializers = try specializers.toOwnedSlice(self.allocator),
             .body = lambda_ir,
-        });
+        };
+
+        // Append to list
+        try gop.value_ptr.append(self.allocator, method_def);
 
         // Generate dispatcher function
         const dispatcher = try self.generateMethodDispatcher(gen_name, gop.value_ptr.*, param_names_copy);
