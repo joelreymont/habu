@@ -2053,6 +2053,48 @@ pub const Vm = struct {
                     const result = try self.heap.allocString("");
                     try self.push(result);
                 },
+                .open => {
+                    const direction_byte = self.readU8();
+                    const pathname = try self.pop();
+
+                    // Pathname can be a string
+                    if (!pathname.isString()) return error.TypeMismatch;
+
+                    const str = pathname.toPtr(runtime.String);
+                    const path_str = str.bytes();
+
+                    // Open the file - catch file system errors and convert to UserError
+                    const file = if (direction_byte == 0)
+                        std.fs.cwd().openFile(path_str, .{}) catch return error.UserError
+                    else
+                        std.fs.cwd().createFile(path_str, .{}) catch return error.UserError;
+
+                    // Create a stream object
+                    const stream = if (direction_byte == 0)
+                        try self.heap.allocFileInputStream(@intCast(file.handle))
+                    else
+                        try self.heap.allocFileOutputStream(@intCast(file.handle));
+                    try self.push(stream);
+                },
+                .close => {
+                    const stream_val = try self.pop();
+                    if (!stream_val.isStream()) return error.TypeMismatch;
+
+                    const stream = stream_val.toPtr(runtime.Stream);
+                    if (stream.stream_type != .file) return error.TypeMismatch;
+
+                    if (!stream.closed) {
+                        // Close the file
+                        const file = std.fs.File{ .handle = stream.file_fd };
+                        file.close();
+
+                        // Mark stream as closed
+                        stream.closed = true;
+                    }
+
+                    // Return the stream (whether already closed or just closed)
+                    try self.push(stream_val);
+                },
 
                 // Character operations
                 .characterp => {

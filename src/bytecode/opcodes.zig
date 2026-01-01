@@ -426,6 +426,14 @@ pub const Op = enum(u8) {
     /// ( seed -- seed )
     random_seed = 0xCC,
 
+    /// Open file stream (operand: u8 direction: 0=input, 1=output)
+    /// ( pathname -- stream )
+    open = 0xCD,
+
+    /// Close stream
+    /// ( stream -- stream )
+    close = 0xCE,
+
     /// Get type of value as symbol
     /// ( x -- type-sym )
     type_of = 0x92,
@@ -918,7 +926,7 @@ pub const Op = enum(u8) {
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
             .vec_ref, .vec_set, .vec_len, .slot_value, .make_box, .box_ref, .box_set,
             .str_ref, .str_len, .str_concat,
-            .ret, .print, .random, .random_seed, .type_of, .intern, .substring, .sym_name, .get, .put, .remprop, .str_eq, .halt,
+            .ret, .print, .random, .random_seed, .type_of, .intern, .substring, .sym_name, .get, .put, .remprop, .str_eq, .halt, .close,
             .check_fixnum, .check_cons, .check_symbol, .check_string,
             .check_vector, .check_closure, .check_non_nil, .check_list, .check_refine,
             .apply, .pop_catch, .throw,
@@ -948,7 +956,7 @@ pub const Op = enum(u8) {
             // 1 byte operand
             .load_local, .store_local, .load_capture,
             .call, .tail_call, .make_list, .make_vec_n, .values, .mv_bind, .format,
-            .enter_scope, .exit_scope,
+            .enter_scope, .exit_scope, .open,
             .pop_restarts,
             => 1,
 

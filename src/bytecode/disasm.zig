@@ -68,14 +68,14 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .list_remove, .list_remove_eq, .list_remove_equal,
         .invoke_restart, .find_restart,
         .streamp, .input_stream_p, .output_stream_p,
-        .make_string_input_stream, .make_string_output_stream, .get_output_stream_string,
+        .make_string_input_stream, .make_string_output_stream, .get_output_stream_string, .close,
         => {
             try writer.print("{s}\n", .{op.name()});
             return offset + 1;
         },
 
         // 1 byte operand
-        .load_local, .store_local, .load_capture, .call, .tail_call, .make_list, .make_vec_n, .values, .mv_bind, .format, .enter_scope, .exit_scope, .pop_restarts => {
+        .load_local, .store_local, .load_capture, .call, .tail_call, .make_list, .make_vec_n, .values, .mv_bind, .format, .enter_scope, .exit_scope, .pop_restarts, .open => {
             const operand = chunk.readU8(offset + 1);
             try writer.print("{s} {d}\n", .{ op.name(), operand });
             return offset + 2;
