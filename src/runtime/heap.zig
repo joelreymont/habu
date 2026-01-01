@@ -333,6 +333,33 @@ pub const Heap = struct {
         return Value.makeBignum(bn);
     }
 
+    /// Allocate a bignum from limbs array
+    pub fn allocBignumFromLimbs(self: *Heap, limbs: []const u64, negative: bool) error{OutOfMemory}!Value {
+        const bn = try self.alloc(objects.Bignum);
+        bn.* = .{
+            .kind = .bignum,
+            .size = 0,
+            .limbs = [_]u64{0} ** 8,
+        };
+
+        // Determine actual number of significant limbs (trim leading zeros)
+        var used_limbs: usize = limbs.len;
+        while (used_limbs > 0 and limbs[used_limbs - 1] == 0) {
+            used_limbs -= 1;
+        }
+
+        // Copy limbs (max 8 limbs)
+        const copy_count = @min(used_limbs, 8);
+        for (0..copy_count) |i| {
+            bn.limbs[i] = limbs[i];
+        }
+
+        // Set size (negative if negative flag is set)
+        bn.size = if (used_limbs == 0) 0 else if (negative) -@as(i64, @intCast(used_limbs)) else @as(i64, @intCast(used_limbs));
+
+        return Value.makeBignum(bn);
+    }
+
     /// Allocate a string input stream
     pub fn allocStringInputStream(self: *Heap, str: Value) error{OutOfMemory}!Value {
         const stream = try self.alloc(objects.Stream);
@@ -609,7 +636,6 @@ pub const Heap = struct {
     }
 
     /// Allocate a keyword in the heap
-
     /// FNV-1a hash for bytes
     fn fnvHash(bytes: []const u8) u64 {
         var hash: u64 = 0xcbf29ce484222325; // FNV offset basis
