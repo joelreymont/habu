@@ -1186,6 +1186,7 @@ pub const Vm = struct {
                 try self.push(Value.makeFixnum(@intCast(vec.length)));
             },
 
+
             // CLOS operations
             .slot_value => {
                 const slot_name_val = try self.pop();
