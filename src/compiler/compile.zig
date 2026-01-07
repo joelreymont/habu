@@ -4953,7 +4953,11 @@ pub const Compiler = struct {
         }
 
         // Build call to make-class-name with positional args
-        const ctor_name = try self.concatStrings("make-", class_name);
+        const ctor_name_plain = try self.concatStrings("make-", class_name);
+
+        // Qualify the constructor name with current package
+        var qual_buf: [512]u8 = undefined;
+        const ctor_name = try self.qualifyName(ctor_name_plain, &qual_buf);
 
         const call_args = try self.allocator.alloc(*Ir, slot_specs.len);
         for (slot_values, 0..) |maybe_val, i| {

@@ -62,7 +62,7 @@
 - ✅ floats (full support)
 
 ### Arrays
-- ⚠️ Multi-dimensional arrays - NOT IMPLEMENTED
+- ✅ Multi-dimensional arrays (make-array, aref with multiple subscripts)
 - ✅ 1D vectors/arrays fully supported
 
 ### Reader macros
@@ -81,19 +81,17 @@
 
 ## Summary
 
-**Overall Status: 92%+ Complete**
+**Overall Status: 95%+ Complete**
 
 - TIER 1-3: ✅ 100% Complete
-- TIER 4: ✅ 85% Complete (CLOS works but has known bugs, multi-dim arrays missing)
+- TIER 4: ✅ 92% Complete (CLOS has known bugs)
 
 **Known Issues:**
 1. defmethod: multi-method dispatch crashes (memory corruption)
 2. make-instance: only processes first keyword argument
-3. Multi-dimensional arrays: not implemented
 
 **Missing Features:**
-1. Multi-dimensional arrays (make-array with :dimensions)
-2. Reader conditionals (#+ #-)
-3. Full format justification parameters
+1. Reader conditionals (#+ #-)
+2. Full format justification parameters
 
 **All other CL spec features listed in the tracking dot are implemented and available.**
