@@ -1,0 +1,11 @@
+---
+title: "High: doApply integer underflow when count > sp"
+status: closed
+priority: 2
+issue-type: task
+created-at: "2025-12-29T11:30:40.054488+02:00"
+closed-at: "2025-12-29T11:34:35.843173+02:00"
+close-reason: Completed via TodoWrite
+---
+
+Adding bounds check

@@ -1,0 +1,10 @@
+---
+title: Fix string comparison violations in habu0.lisp
+status: closed
+priority: 2
+issue-type: task
+assignee: ""
+created-at: "2025-12-13T10:07:20.890088+02:00"
+closed-at: "2025-12-25 07:21:02"
+close-reason: "Obsolete: Zig rewrite supersedes Lisp bootstrap"
+---

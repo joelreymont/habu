@@ -240,6 +240,7 @@ pub const Vm = struct {
     /// Type symbols for runtime typep dispatch
     const TypeSymbols = struct {
         fixnum: Value,
+        number: Value, // CL alias for numeric types
         cons: Value,
         symbol: Value,
         string: Value,
@@ -258,6 +259,7 @@ pub const Vm = struct {
         fn init(heap: *Heap) !TypeSymbols {
             return .{
                 .fixnum = try heap.intern("fixnum"),
+                .number = try heap.intern("number"),
                 .cons = try heap.intern("cons"),
                 .symbol = try heap.intern("symbol"),
                 .string = try heap.intern("string"),
@@ -3203,7 +3205,7 @@ pub const Vm = struct {
 
                 // Use symbol identity for type dispatch (no string comparison)
                 const ts = self.type_syms;
-                const matches = if (type_spec.raw == ts.fixnum.raw)
+                const matches = if (type_spec.raw == ts.fixnum.raw or type_spec.raw == ts.number.raw)
                     obj.isFixnum()
                 else if (type_spec.raw == ts.cons.raw)
                     obj.isCons()

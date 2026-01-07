@@ -4998,7 +4998,6 @@ pub const Compiler = struct {
         const name_sym = name_val.toPtr(Symbol);
         var qual_buf: [256]u8 = undefined;
         const gen_name_tmp = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
-        const gen_name = try self.allocator.dupe(u8, gen_name_tmp);
 
         // Parse specialized lambda list
         if (!cons1.cdr.isCons()) return error.InvalidSyntax;
@@ -5078,6 +5077,14 @@ pub const Compiler = struct {
         );
 
         // Store method - auto-create generic function if it doesn't exist
+        // First check if entry exists to avoid allocating key unnecessarily
+        const gen_name = if (self.generic_functions.get(gen_name_tmp)) |_|
+            // Entry exists - use existing key from hashmap
+            gen_name_tmp // We'll use the existing key, this temp is just for getOrPut
+        else
+            // New entry - allocate persistent key with globals.allocator
+            try self.globals.allocator.dupe(u8, gen_name_tmp);
+
         const gop = try self.generic_functions.getOrPut(gen_name);
 
         // Create method def
@@ -5087,16 +5094,17 @@ pub const Compiler = struct {
         };
 
         // Manually grow the methods list
+        // Use globals.allocator for persistent storage across arena resets
         if (!gop.found_existing) {
             // New generic function - create list with first method
-            const new_methods = try self.allocator.alloc(MethodDef, 1);
+            const new_methods = try self.globals.allocator.alloc(MethodDef, 1);
             new_methods[0] = method_def;
             gop.value_ptr.* = .{ .items = new_methods, .capacity = 1 };
         } else {
             // Existing function - reallocate with one more slot
             const old_items = gop.value_ptr.items;
             const old_len = old_items.len;
-            const new_methods = try self.allocator.alloc(MethodDef, old_len + 1);
+            const new_methods = try self.globals.allocator.alloc(MethodDef, old_len + 1);
 
             // Copy old methods
             for (old_items, 0..) |old_method, i| {
@@ -5106,8 +5114,8 @@ pub const Compiler = struct {
             // Add new method
             new_methods[old_len] = method_def;
 
-            // Don't free old memory - might be in use by hashmap
-            // This leaks but ensures correctness for now
+            // Free old memory (safe because we allocated with globals.allocator)
+            self.globals.allocator.free(old_items);
 
             gop.value_ptr.* = .{ .items = new_methods, .capacity = old_len + 1 };
         }

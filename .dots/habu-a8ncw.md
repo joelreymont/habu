@@ -1,0 +1,10 @@
+---
+title: Add EQL builtin to h0-eval
+status: closed
+priority: 1
+issue-type: task
+assignee: ""
+created-at: "2025-12-08T17:32:45.434323+02:00"
+closed-at: "2025-12-08T20:04:41.371331+02:00"
+close-reason: ""
+---

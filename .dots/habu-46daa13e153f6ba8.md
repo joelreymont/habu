@@ -1,0 +1,11 @@
+---
+title: Add tagbody/go (labels and gotos)
+status: closed
+priority: 1
+issue-type: task
+created-at: "2025-12-26T15:11:22.278454+02:00"
+closed-at: "2025-12-26T15:16:55.588347+02:00"
+close-reason: Completed via TodoWrite
+---
+
+Adding tagbody/go
