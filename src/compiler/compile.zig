@@ -4586,7 +4586,10 @@ pub const Compiler = struct {
     ///       (vec-ref obj slot_idx+1)
     ///       (error "type error")))
     fn generateStructAccessor(self: *Compiler, heap: *Heap, accessor_name: []const u8, struct_name: []const u8, slot_idx: usize) Error!*Ir {
-        const global_idx = self.globals.define(accessor_name) catch return error.OutOfMemory;
+        // Qualify the accessor name with current package
+        var qual_buf: [512]u8 = undefined;
+        const qualified_name = self.qualifyName(accessor_name, &qual_buf) catch accessor_name;
+        const global_idx = self.globals.define(qualified_name) catch return error.OutOfMemory;
 
         // Variable reference for obj parameter
         const obj_ref = try self.builder.variable("obj", 0, 0);
@@ -4627,12 +4630,15 @@ pub const Compiler = struct {
             body_ir,
         ) catch return error.OutOfMemory;
 
-        return try self.builder.define(accessor_name, global_idx, lambda_ir);
+        return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
 
     /// Generate predicate: checks if obj is a vector with correct type tag
     fn generateStructPredicate(self: *Compiler, heap: *Heap, pred_name: []const u8, struct_name: []const u8) Error!*Ir {
-        const global_idx = self.globals.define(pred_name) catch return error.OutOfMemory;
+        // Qualify the predicate name with current package
+        var qual_buf: [512]u8 = undefined;
+        const qualified_name = self.qualifyName(pred_name, &qual_buf) catch pred_name;
+        const global_idx = self.globals.define(qualified_name) catch return error.OutOfMemory;
 
         // Body: (if (vectorp obj) (eq (vec-ref obj 0) 'name) nil)
         const obj_ref = try self.builder.variable("obj", 0, 0);
@@ -4654,13 +4660,16 @@ pub const Compiler = struct {
             body_ir,
         ) catch return error.OutOfMemory;
 
-        return try self.builder.define(pred_name, global_idx, lambda_ir);
+        return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
 
     /// Generate copier: (lambda (obj) obj)
     /// TODO: implement proper copy-seq when available
     fn generateStructCopier(self: *Compiler, copy_name: []const u8) Error!*Ir {
-        const global_idx = self.globals.define(copy_name) catch return error.OutOfMemory;
+        // Qualify the copier name with current package
+        var qual_buf: [512]u8 = undefined;
+        const qualified_name = self.qualifyName(copy_name, &qual_buf) catch copy_name;
+        const global_idx = self.globals.define(qualified_name) catch return error.OutOfMemory;
 
         // For now just return identity - proper copy-seq needs implementation
         const obj_ref = try self.builder.variable("obj", 0, 0);
@@ -4674,7 +4683,7 @@ pub const Compiler = struct {
             obj_ref,
         ) catch return error.OutOfMemory;
 
-        return try self.builder.define(copy_name, global_idx, lambda_ir);
+        return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
 
     /// Concatenate two strings
@@ -4871,8 +4880,10 @@ pub const Compiler = struct {
         defs[def_idx] = try self.generateStructPredicate(heap, pred_name, class_name);
         def_idx += 1;
 
-        // Register predicate for occurrence typing
-        const persistent_pred_name = self.globals.allocator.dupe(u8, pred_name) catch return error.OutOfMemory;
+        // Register predicate for occurrence typing (use qualified name to match globals table)
+        var pred_qual_buf: [512]u8 = undefined;
+        const qualified_pred_name = self.qualifyName(pred_name, &pred_qual_buf) catch pred_name;
+        const persistent_pred_name = self.globals.allocator.dupe(u8, qualified_pred_name) catch return error.OutOfMemory;
         self.struct_predicates.put(persistent_pred_name, class_type) catch return error.OutOfMemory;
 
         // 3. Accessors: (defun class-name-slot (obj) (if (class-name-p obj) (aref obj N+1) (error)))
