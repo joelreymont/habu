@@ -4239,6 +4239,8 @@ pub const Compiler = struct {
             slot_names[i] = spec.name;
         }
 
+
+
         // Build body: type assertions + vector creation
         // Count non-any type assertions needed
         var num_assertions: usize = 0;
