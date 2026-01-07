@@ -4097,6 +4097,16 @@ pub const Compiler = struct {
         return result;
     }
 
+    /// Build qualified name from plain name using current package
+    fn qualifyName(self: *Compiler, name: []const u8, buf: []u8) ![]const u8 {
+        const heap = self.heap orelse return name;
+        const pkg = heap.current_package orelse return name;
+        const pkg_name = pkg.name;
+        // Format as PKG:NAME
+        const result = try std.fmt.bufPrint(buf, "{s}:{s}", .{ pkg_name, name });
+        return result;
+    }
+
     // ========================================================================
     // Structure Definition (defstruct)
     // ========================================================================
@@ -4218,7 +4228,10 @@ pub const Compiler = struct {
     /// Generate constructor: creates a closure that takes args, checks types, returns vector
     fn generateStructConstructor(self: *Compiler, heap: *Heap, make_name: []const u8, struct_name: []const u8, slots: []const SlotSpec, env: *const Env) Error!*Ir {
         _ = env;
-        const global_idx = self.globals.define(make_name) catch return error.OutOfMemory;
+        // Qualify the constructor name with current package
+        var qual_buf: [512]u8 = undefined;
+        const qualified_name = self.qualifyName(make_name, &qual_buf) catch make_name;
+        const global_idx = self.globals.define(qualified_name) catch return error.OutOfMemory;
 
         // Extract just the names for lambda params
         const slot_names = try self.allocator.alloc([]const u8, slots.len);
@@ -4269,7 +4282,7 @@ pub const Compiler = struct {
             body_ir,
         ) catch return error.OutOfMemory;
 
-        return try self.builder.define(make_name, global_idx, lambda_ir);
+        return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
 
     /// Generate a type assertion IR node

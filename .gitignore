@@ -161,3 +161,4 @@ zig-out/
 *.rej
 *.bak
 *.backup
+archive/
