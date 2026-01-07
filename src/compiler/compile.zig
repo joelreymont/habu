@@ -908,7 +908,7 @@ pub const Compiler = struct {
     /// CLOS method definition
     pub const MethodDef = struct {
         specializers: []const []const u8, // Class names for each parameter
-        body: *Ir, // Compiled method body
+        function_name: []const u8, // Global function name to call
     };
 
     /// Typed parameter info for function declarations
@@ -998,12 +998,23 @@ pub const Compiler = struct {
             self.globals.allocator.free(entry.value_ptr.*);
         }
         self.class_metadata.deinit();
-        // Free generic_functions keys only
-        // Note: Not freeing method lists or specializers - they appear to be managed
-        // by the compiler allocator and cause Invalid free when manually freed
+        // Free generic_functions - keys, method lists, specializers, function names
         var gf_iter = self.generic_functions.iterator();
         while (gf_iter.next()) |entry| {
+            // Free the generic function name key
             self.globals.allocator.free(entry.key_ptr.*);
+            // Free each method's data
+            for (entry.value_ptr.items) |method| {
+                // Free specializers array and each specializer string
+                for (method.specializers) |spec| {
+                    self.globals.allocator.free(spec);
+                }
+                self.globals.allocator.free(method.specializers);
+                // Free function name
+                self.globals.allocator.free(method.function_name);
+            }
+            // Free methods list
+            self.globals.allocator.free(entry.value_ptr.items);
         }
         self.generic_functions.deinit();
         self.globals.deinit();
@@ -5087,10 +5098,28 @@ pub const Compiler = struct {
 
         const gop = try self.generic_functions.getOrPut(gen_name);
 
+        // Generate unique method function name: generic-name$specializer1$specializer2...
+        // Use first specializer as suffix (single-dispatch for now)
+        const method_name = if (specializers.items.len > 0)
+            try self.concatStrings3(gen_name, "$", specializers.items[0])
+        else
+            try self.concatStrings(gen_name, "$t");
+
+        // Define method as global function
+        const method_global_idx = try self.globals.define(method_name);
+        const method_define_ir = try self.builder.define(method_name, method_global_idx, lambda_ir);
+
+        // Store method function name (persistent, needs globals.allocator)
+        const persistent_method_name = try self.globals.allocator.dupe(u8, method_name);
+        const persistent_specializers = try self.globals.allocator.alloc([]const u8, specializers.items.len);
+        for (specializers.items, 0..) |spec, i| {
+            persistent_specializers[i] = try self.globals.allocator.dupe(u8, spec);
+        }
+
         // Create method def
         const method_def = MethodDef{
-            .specializers = try specializers.toOwnedSlice(self.allocator),
-            .body = lambda_ir,
+            .specializers = persistent_specializers,
+            .function_name = persistent_method_name,
         };
 
         // Manually grow the methods list
@@ -5125,7 +5154,13 @@ pub const Compiler = struct {
 
         // Define the generic function as the dispatcher
         const global_idx = try self.globals.define(gen_name);
-        return try self.builder.define(gen_name, global_idx, dispatcher);
+        const dispatcher_define_ir = try self.builder.define(gen_name, global_idx, dispatcher);
+
+        // Return progn that defines method then dispatcher
+        const defs = try self.allocator.alloc(*Ir, 2);
+        defs[0] = method_define_ir;
+        defs[1] = dispatcher_define_ir;
+        return try self.builder.progn(defs);
     }
 
     /// Generate a dispatcher lambda that checks argument types and calls the matching method
@@ -5159,7 +5194,7 @@ pub const Compiler = struct {
             // Skip unspecialized methods (specializer = "t")
             if (std.mem.eql(u8, spec_name, "t")) {
                 // Unspecialized - always matches, make it the else branch
-                dispatch_body = try self.generateMethodCall(method.body, param_names);
+                dispatch_body = try self.generateMethodCallByName(method.function_name, param_names);
                 continue;
             }
 
@@ -5177,7 +5212,7 @@ pub const Compiler = struct {
             const cond_ir = try self.builder.typep(arg_ir, class_ir);
 
             // Method call
-            const then_ir = try self.generateMethodCall(method.body, param_names);
+            const then_ir = try self.generateMethodCallByName(method.function_name, param_names);
 
             // Wrap in if
             dispatch_body = try self.builder.ifExpr(cond_ir, then_ir, dispatch_body);
@@ -5196,10 +5231,10 @@ pub const Compiler = struct {
         return dispatcher;
     }
 
-    /// Generate a call to a method body with given parameters
-    fn generateMethodCall(
+    /// Generate a call to a method by function name with given parameters
+    fn generateMethodCallByName(
         self: *Compiler,
-        method_body: *Ir,
+        function_name: []const u8,
         param_names: []const []const u8,
     ) Error!*Ir {
         // Build argument list: pass all parameters
@@ -5211,8 +5246,13 @@ pub const Compiler = struct {
             try args.append(self.allocator, arg_ir);
         }
 
-        // Call the method body (which is already a lambda)
-        return try self.builder.call(method_body, try args.toOwnedSlice(self.allocator));
+        // Look up the method function by name
+        const func_sym = try self.heap.?.intern(function_name);
+        const func_ir = try self.builder.lit(func_sym);
+        const func_val_ir = try self.builder.symbolFunction(func_ir);
+
+        // Call the method function
+        return try self.builder.call(func_val_ir, try args.toOwnedSlice(self.allocator));
     }
 
     // ========================================================================
