@@ -88,7 +88,6 @@
 
 **Known Issues:**
 1. defmethod: multi-method dispatch crashes (memory corruption)
-2. make-instance: only processes first keyword argument
 
 **Missing Features:**
 1. Reader conditionals (#+ #-)

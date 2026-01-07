@@ -1186,7 +1186,6 @@ pub const Vm = struct {
                 try self.push(Value.makeFixnum(@intCast(vec.length)));
             },
 
-
             // CLOS operations
             .slot_value => {
                 const slot_name_val = try self.pop();
@@ -3232,8 +3231,18 @@ pub const Vm = struct {
                     !obj.isCons()
                 else if (type_spec.raw == ts.t.raw)
                     true // Everything is of type t
-                else
-                    false; // Unknown type
+                else blk: {
+                    // Check for user-defined struct types
+                    // Structs are vectors with type name as first element
+                    if (obj.isVector()) {
+                        const vec = obj.toPtr(runtime.Vector);
+                        if (vec.length > 0) {
+                            const type_tag = vec.data[0];
+                            break :blk type_tag.raw == type_spec.raw;
+                        }
+                    }
+                    break :blk false;
+                };
 
                 try self.push(if (matches) Value.t else Value.nil);
             },
