@@ -30,6 +30,111 @@ pub fn makeVectorFill(heap: *Heap, length: usize, fill: Value) error{OutOfMemory
     return vec;
 }
 
+/// Create a multi-dimensional array
+/// For 1D: makeArray(heap, &[_]u64{10})
+/// For 2D: makeArray(heap, &[_]u64{3, 4})
+pub fn makeArray(heap: *Heap, dimensions: []const u64) error{OutOfMemory}!Value {
+    return try heap.allocArray(dimensions);
+}
+
+/// Create an array with initial fill value
+pub fn makeArrayFill(heap: *Heap, dimensions: []const u64, fill: Value) error{OutOfMemory}!Value {
+    const arr = try makeArray(heap, dimensions);
+    const arr_obj = arr.toPtr(objects.Array);
+    const data: [*]Value = @ptrFromInt(arr_obj.data_ptr);
+
+    for (0..arr_obj.total_size) |i| {
+        data[i] = fill;
+    }
+
+    return arr;
+}
+
+/// Get array rank (number of dimensions)
+pub fn arrayRank(val: Value) i64 {
+    if (!val.isArray()) return -1;
+    const arr = val.toPtr(objects.Array);
+    return arr.rank;
+}
+
+/// Get array dimensions as a list of fixnums
+pub fn arrayDimensions(heap: *Heap, val: Value) error{OutOfMemory}!Value {
+    if (!val.isArray()) return Value.nil;
+    const arr = val.toPtr(objects.Array);
+
+    // Build list in reverse
+    var result = Value.nil;
+    var i: usize = arr.rank;
+    while (i > 0) {
+        i -= 1;
+        const dim = Value.makeFixnum(@intCast(arr.dimensions[i]));
+        result = try heap.allocCons(dim, result);
+    }
+
+    return result;
+}
+
+/// Get total array size
+pub fn arrayTotalSize(val: Value) i64 {
+    if (!val.isArray()) return -1;
+    const arr = val.toPtr(objects.Array);
+    return @intCast(arr.total_size);
+}
+
+/// Calculate row-major index from subscripts
+/// For a 3x4 array: subscripts [i,j] -> index i*4 + j
+fn calculateRowMajorIndex(arr: *const objects.Array, subscripts: []const u64) ?usize {
+    if (subscripts.len != arr.rank) return null;
+
+    var index: usize = 0;
+    var multiplier: usize = 1;
+
+    // Process dimensions from right to left (row-major order)
+    var i: usize = arr.rank;
+    while (i > 0) {
+        i -= 1;
+        const sub = subscripts[i];
+        const dim = arr.dimensions[i];
+
+        // Bounds check
+        if (sub >= dim) return null;
+
+        index += @as(usize, @intCast(sub)) * multiplier;
+        multiplier *= @intCast(dim);
+    }
+
+    return index;
+}
+
+/// Get array element using row-major indexing
+/// subscripts must match array rank
+pub fn arrayRef(val: Value, subscripts: []const u64) ?Value {
+    if (!val.isArray()) return null;
+    const arr = val.toPtr(objects.Array);
+
+    const index = calculateRowMajorIndex(arr, subscripts) orelse return null;
+    const data: [*]Value = @ptrFromInt(arr.data_ptr);
+
+    return data[index];
+}
+
+/// Set array element using row-major indexing
+pub fn arraySet(val: Value, subscripts: []const u64, new_val: Value) bool {
+    if (!val.isArray()) return false;
+    const arr = val.toPtr(objects.Array);
+
+    const index = calculateRowMajorIndex(arr, subscripts) orelse return false;
+    const data: [*]Value = @ptrFromInt(arr.data_ptr);
+
+    data[index] = new_val;
+    return true;
+}
+
+/// Check if value is an array
+pub fn arrayp(val: Value) bool {
+    return val.isArray();
+}
+
 /// Get vector length
 pub fn vectorLength(val: Value) i64 {
     if (!val.isVector()) return -1;

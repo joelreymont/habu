@@ -471,6 +471,48 @@ pub const Heap = struct {
         return Value.makeVector(vec);
     }
 
+    /// Allocate a multi-dimensional array
+    pub fn allocArray(self: *Heap, dimensions: []const u64) error{OutOfMemory}!Value {
+        if (dimensions.len == 0 or dimensions.len > 8) return error.OutOfMemory;
+
+        // Calculate total size (product of all dimensions)
+        var total_size: u64 = 1;
+        for (dimensions) |dim| {
+            total_size *= dim;
+        }
+
+        // Allocate header + data array together
+        const data_size = total_size * @sizeOf(Value);
+        const header_size = @sizeOf(objects.Array);
+        const alloc_size = header_size + data_size;
+
+        const ptr = try self.allocRaw(alloc_size);
+        const arr: *objects.Array = @ptrCast(@alignCast(ptr));
+
+        // Data follows immediately after header
+        const data_ptr: [*]Value = @ptrCast(@alignCast(ptr + header_size));
+
+        // Initialize data to nil
+        for (0..total_size) |i| {
+            data_ptr[i] = Value.nil;
+        }
+
+        // Initialize array header
+        arr.* = .{
+            .rank = @intCast(dimensions.len),
+            .dimensions = [_]u64{0} ** 8,
+            .total_size = total_size,
+            .data_ptr = @intFromPtr(data_ptr),
+        };
+
+        // Copy dimensions
+        for (dimensions, 0..) |dim, i| {
+            arr.dimensions[i] = dim;
+        }
+
+        return Value.makeArray(arr);
+    }
+
     /// Allocate a string (copies the bytes)
     pub fn allocString(self: *Heap, bytes: []const u8) error{OutOfMemory}!Value {
         const aligned_len = std.mem.alignForward(usize, bytes.len, 8);
