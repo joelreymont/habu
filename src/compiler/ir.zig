@@ -471,6 +471,16 @@ pub const Ir = union(enum) {
     },
     vec_len: UnaryOp,
 
+    // Array operations (multi-dimensional)
+    arr_new: struct {
+        dimensions: []const *const Ir,
+        init: ?*const Ir,
+    },
+    arr_ref: struct {
+        array: *const Ir,
+        subscripts: []const *const Ir,
+    },
+
     // ========================================================================
     // Primitives - CLOS operations
     // ========================================================================
@@ -692,6 +702,8 @@ pub const Ir = union(enum) {
             .vec_ref,
             .vec_set,
             .vec_len,
+            .arr_new,
+            .arr_ref,
             .slot_value,
             .make_box,
             .box_ref,
@@ -1544,6 +1556,21 @@ pub const IrBuilder = struct {
     pub fn vecLen(self: IrBuilder, v: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .vec_len = .{ .operand = v } };
+        return node;
+    }
+
+    // Array operations
+    pub fn arrNew(self: IrBuilder, dimensions: []const *const Ir, init_val: ?*const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const dims_copy = try self.allocator.dupe(*const Ir, dimensions);
+        node.* = .{ .arr_new = .{ .dimensions = dims_copy, .init = init_val } };
+        return node;
+    }
+
+    pub fn arrRef(self: IrBuilder, array: *const Ir, subscripts: []const *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const subs_copy = try self.allocator.dupe(*const Ir, subscripts);
+        node.* = .{ .arr_ref = .{ .array = array, .subscripts = subs_copy } };
         return node;
     }
 

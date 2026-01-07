@@ -248,6 +248,7 @@ pub const Builtins = struct {
     @"vector-length": Value,
     @"make-vector": Value,
     vector: Value,
+    @"make-array": Value, // CL: multi-dimensional array creation
 
     // Primitives - String operations (CL names)
     char: Value, // CL: character at index
@@ -552,6 +553,7 @@ pub const Builtins = struct {
             .@"vector-length" = try heap.intern("vector-length"),
             .@"make-vector" = try heap.intern("make-vector"),
             .vector = try heap.intern("vector"),
+            .@"make-array" = try heap.intern("make-array"),
             // Primitives - String operations (CL names)
             .char = try heap.intern("char"),
             .schar = try heap.intern("schar"),
@@ -4239,8 +4241,6 @@ pub const Compiler = struct {
             slot_names[i] = spec.name;
         }
 
-
-
         // Build body: type assertions + vector creation
         // Count non-any type assertions needed
         var num_assertions: usize = 0;
@@ -6164,11 +6164,13 @@ pub const Compiler = struct {
         if (s == b.oddp.raw) return self.compileUnaryPrim(args, env, .oddp);
 
         // Vector operations (CL names: aref, svref, %svset)
-        if (s == b.aref.raw or s == b.svref.raw) return self.compileBinaryPrim(args, env, .vec_ref);
+        if (s == b.aref.raw) return self.compileAref(args, env);
+        if (s == b.svref.raw) return self.compileBinaryPrim(args, env, .vec_ref);
         if (s == b.@"vector-length".raw) return self.compileUnaryPrim(args, env, .vec_len);
         if (s == b.@"make-vector".raw) return self.compileMakeVector(args, env);
         if (s == b.@"%svset".raw) return self.compileSvset(args, env);
         if (s == b.vector.raw) return self.compileVectorPrim(args, env);
+        if (s == b.@"make-array".raw) return self.compileMakeArray(args, env);
 
         // String operations (CL names: char, schar)
         if (s == b.char.raw or s == b.schar.raw) return self.compileBinaryPrim(args, env, .str_ref);
@@ -7296,6 +7298,78 @@ pub const Compiler = struct {
         }
 
         return try self.builder.vec(elements.items);
+    }
+
+    fn compileMakeArray(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        // (make-array dimensions &optional initial-element)
+        // dimensions can be a single fixnum or a quoted list of fixnums
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+
+        var dimensions = std.ArrayList(*const Ir){};
+        defer dimensions.deinit(self.allocator);
+
+        var dims_val = cons1.car;
+
+        // If dims_val is (quote (2 3)), unwrap it
+        const b = self.builtins orelse return error.InvalidSyntax;
+        if (dims_val.isCons()) {
+            const quote_cons = dims_val.toPtr(Cons);
+            if (quote_cons.car.raw == b.quote.raw and quote_cons.cdr.isCons()) {
+                const inner_cons = quote_cons.cdr.toPtr(Cons);
+                dims_val = inner_cons.car;
+            }
+        }
+
+        // Now dims_val is either a fixnum or a list of fixnums
+        if (dims_val.isCons()) {
+            // List of dimensions - extract each one
+            var current = dims_val;
+            while (current.isCons()) {
+                const dim_cons = current.toPtr(Cons);
+                const dim_ir = try self.compile(dim_cons.car, env);
+                try dimensions.append(self.allocator, dim_ir);
+                current = dim_cons.cdr;
+            }
+        } else if (dims_val.isFixnum()) {
+            // Single dimension
+            const dim_ir = try self.compile(dims_val, env);
+            try dimensions.append(self.allocator, dim_ir);
+        } else {
+            return error.InvalidSyntax;
+        }
+
+        // Optional initial element
+        var init_ir: ?*const Ir = null;
+        if (cons1.cdr.isCons()) {
+            const cons2 = cons1.cdr.toPtr(Cons);
+            init_ir = try self.compile(cons2.car, env);
+        }
+
+        return try self.builder.arrNew(dimensions.items, init_ir);
+    }
+
+    fn compileAref(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        // (aref array subscript1 subscript2 ...)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const array_ir = try self.compile(cons1.car, env);
+
+        // Collect subscripts
+        var subscripts = std.ArrayList(*const Ir){};
+        defer subscripts.deinit(self.allocator);
+
+        var current = cons1.cdr;
+        while (current.isCons()) {
+            const sub_cons = current.toPtr(Cons);
+            const sub_ir = try self.compile(sub_cons.car, env);
+            try subscripts.append(self.allocator, sub_ir);
+            current = sub_cons.cdr;
+        }
+
+        if (subscripts.items.len == 0) return error.InvalidSyntax;
+
+        return try self.builder.arrRef(array_ir, subscripts.items);
     }
 
     fn compileSvset(self: *Compiler, args: Value, env: *const Env) Error!*Ir {

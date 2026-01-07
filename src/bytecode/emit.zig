@@ -438,6 +438,18 @@ pub const Emitter = struct {
                 max_idx = computeMaxLocalIndexImpl(v.size, max_idx);
                 if (v.init) |init_val| max_idx = computeMaxLocalIndexImpl(init_val, max_idx);
             },
+            .arr_new => |a| {
+                for (a.dimensions) |dim| {
+                    max_idx = computeMaxLocalIndexImpl(dim, max_idx);
+                }
+                if (a.init) |init_val| max_idx = computeMaxLocalIndexImpl(init_val, max_idx);
+            },
+            .arr_ref => |a| {
+                max_idx = computeMaxLocalIndexImpl(a.array, max_idx);
+                for (a.subscripts) |sub| {
+                    max_idx = computeMaxLocalIndexImpl(sub, max_idx);
+                }
+            },
             .vec_set => |v| {
                 max_idx = computeMaxLocalIndexImpl(v.vec, max_idx);
                 max_idx = computeMaxLocalIndexImpl(v.index, max_idx);
@@ -640,6 +652,10 @@ pub const Emitter = struct {
             .vec_ref => |op| try self.emitBinaryOp(op, .vec_ref),
             .vec_set => |v| try self.emitVecSet(v),
             .vec_len => |op| try self.emitUnaryOp(op.operand, .vec_len),
+
+            // Array operations
+            .arr_new => |a| try self.emitArrNew(a),
+            .arr_ref => |a| try self.emitArrRef(a),
 
             // CLOS operations
             .slot_value => |op| try self.emitBinaryOp(op, .slot_value),
@@ -1770,6 +1786,38 @@ pub const Emitter = struct {
         try self.emit(v.index);
         try self.emit(v.value);
         try self.emitOp(.vec_set);
+    }
+
+    fn emitArrNew(self: *Emitter, a: anytype) Error!void {
+        // Emit dimensions in order (stack: dim1 dim2 ... dimN)
+        for (a.dimensions) |dim| {
+            try self.emit(dim);
+        }
+
+        // Emit optional initial element
+        const has_init: u8 = if (a.init != null) 1 else 0;
+        if (a.init) |init_val| {
+            try self.emit(init_val);
+        }
+
+        // Encode: [7:1] = dim count, [0] = has initial-element
+        const dim_count: u8 = @intCast(a.dimensions.len);
+        const operand = (dim_count << 1) | has_init;
+        try self.emitOp(.make_array);
+        try self.emitU8(operand);
+    }
+
+    fn emitArrRef(self: *Emitter, a: anytype) Error!void {
+        // Emit array and subscripts (stack: array sub1 sub2 ... subN)
+        try self.emit(a.array);
+        for (a.subscripts) |sub| {
+            try self.emit(sub);
+        }
+
+        // Emit aref opcode with subscript count
+        const sub_count: u8 = @intCast(a.subscripts.len);
+        try self.emitOp(.aref);
+        try self.emitU8(sub_count);
     }
 
     // ========================================================================
