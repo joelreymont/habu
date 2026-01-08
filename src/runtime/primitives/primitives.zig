@@ -31,6 +31,7 @@ pub const div = arith.div;
 
 pub const makeInstance = clos.makeInstance;
 pub const slotValue = clos.slotValue;
+pub const setSlotValue = clos.setSlotValue;
 
 test {
     _ = list;

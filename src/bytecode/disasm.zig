@@ -78,6 +78,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .vec_set,
         .vec_len,
         .slot_value,
+        .set_slot_value,
         .make_box,
         .box_ref,
         .box_set,

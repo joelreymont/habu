@@ -491,6 +491,7 @@ pub const Ir = union(enum) {
     // ========================================================================
 
     slot_value: BinaryOp, // (slot-value obj 'slot-name)
+    set_slot_value: TernaryOp, // (%set-slot-value obj 'slot-name value)
 
     // ========================================================================
     // Primitives - Box operations (mutable cells)
@@ -1591,6 +1592,12 @@ pub const IrBuilder = struct {
     pub fn slotValue(self: IrBuilder, obj: *const Ir, slot_name: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .slot_value = .{ .left = obj, .right = slot_name } };
+        return node;
+    }
+
+    pub fn setSlotValue(self: IrBuilder, obj: *const Ir, slot_name: *const Ir, value: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .set_slot_value = .{ .first = obj, .second = slot_name, .third = value } };
         return node;
     }
 

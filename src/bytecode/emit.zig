@@ -667,6 +667,7 @@ pub const Emitter = struct {
 
             // CLOS operations
             .slot_value => |op| try self.emitBinaryOp(op, .slot_value),
+            .set_slot_value => |op| try self.emitTernaryOp(op, .set_slot_value),
 
             // Box operations (mutable cells)
             .make_box => |op| try self.emitUnaryOp(op.operand, .make_box),

@@ -316,21 +316,25 @@ pub const Op = enum(u8) {
     /// ( obj slot-name-sym -- value )
     slot_value = 0x64,
 
+    /// CLOS slot assignment
+    /// ( obj slot-name-sym value -- value )
+    set_slot_value = 0x65,
+
     /// Create box (mutable cell for closure capture)
     /// ( val -- box )
-    make_box = 0x65,
+    make_box = 0x66,
 
     /// Read from box
     /// ( box -- val )
-    box_ref = 0x66,
+    box_ref = 0x67,
 
     /// Write to box (returns the value written)
     /// ( box val -- val )
-    box_set = 0x67,
+    box_set = 0x68,
 
     /// Create vector from N stack elements (operand: u8 count)
     /// ( v0 v1 ... vN-1 -- vec )
-    make_vec_n = 0x68,
+    make_vec_n = 0x69,
 
     // ========================================================================
     // String operations
@@ -338,27 +342,27 @@ pub const Op = enum(u8) {
 
     /// String ref
     /// ( str idx -- char )
-    str_ref = 0x69,
+    str_ref = 0x6A,
 
     /// String length
     /// ( str -- len )
-    str_len = 0x6A,
+    str_len = 0x6B,
 
     /// String concat
     /// ( s1 s2 -- s3 )
-    str_concat = 0x6B,
+    str_concat = 0x6C,
 
     /// Intern - create symbol from string
     /// ( str -- sym )
-    intern = 0x6C,
+    intern = 0x6D,
 
     /// Substring - extract part of a string
     /// ( str start end -- substr )
-    substring = 0x6D,
+    substring = 0x6E,
 
     /// Symbol name - get name of symbol as string
     /// ( sym -- str )
-    sym_name = 0x6E,
+    sym_name = 0x6F,
     /// Get symbol property (0x6F)
     get = 0x85,
     /// Put symbol property (0x70)
@@ -368,7 +372,7 @@ pub const Op = enum(u8) {
 
     /// String equal
     /// ( s1 s2 -- bool )
-    str_eq = 0x6F,
+    str_eq = 0x70,
 
     // ========================================================================
     // Control flow
@@ -376,15 +380,15 @@ pub const Op = enum(u8) {
 
     /// Unconditional jump (operand: i16 offset)
     /// ( -- )
-    jmp = 0x70,
+    jmp = 0x71,
 
     /// Jump if nil (operand: i16 offset)
     /// ( val -- )
-    jmp_nil = 0x71,
+    jmp_nil = 0x72,
 
     /// Jump if not nil (operand: i16 offset)
     /// ( val -- )
-    jmp_not_nil = 0x72,
+    jmp_not_nil = 0x73,
 
     // ========================================================================
     // Function calls
@@ -1028,6 +1032,7 @@ pub const Op = enum(u8) {
             .vec_set,
             .vec_len,
             .slot_value,
+            .set_slot_value,
             .make_box,
             .box_ref,
             .box_set,

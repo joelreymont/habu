@@ -246,6 +246,7 @@ pub const Builtins = struct {
     svref: Value, // CL: simple-vector element access
     @"%svset": Value, // internal: (setf (svref ...)) expands to this
     @"%aset": Value, // internal: (setf (aref ...)) expands to this
+    @"%set-slot-value": Value, // internal: (setf (slot-value ...)) expands to this
     @"vector-length": Value,
     @"make-vector": Value,
     vector: Value,
@@ -552,6 +553,7 @@ pub const Builtins = struct {
             .svref = try heap.intern("svref"),
             .@"%svset" = try heap.intern("%svset"),
             .@"%aset" = try heap.intern("%aset"),
+            .@"%set-slot-value" = try heap.intern("%set-slot-value"),
             .@"vector-length" = try heap.intern("vector-length"),
             .@"make-vector" = try heap.intern("make-vector"),
             .vector = try heap.intern("vector"),
@@ -5007,6 +5009,39 @@ pub const Compiler = struct {
         return try self.builder.slotValue(obj_ir, slot_sym);
     }
 
+    /// Compile %set-slot-value: (%set-slot-value obj 'slot-name value)
+    /// Internal function used by (setf (slot-value obj 'slot) value)
+    fn compileSetSlotValue(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const obj_expr = cons1.car;
+        const obj_ir = try self.compile(obj_expr, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        var slot_name_expr = cons2.car;
+
+        // Handle quoted slot name
+        if (slot_name_expr.isCons()) {
+            const quote_cons = slot_name_expr.toPtr(Cons);
+            if (quote_cons.cdr.isCons()) {
+                slot_name_expr = quote_cons.cdr.toPtr(Cons).car;
+            }
+        }
+
+        if (!slot_name_expr.isSymbol()) return error.InvalidSyntax;
+        const slot_name = slot_name_expr.toPtr(Symbol).getName();
+
+        if (!cons2.cdr.isCons()) return error.InvalidSyntax;
+        const cons3 = cons2.cdr.toPtr(Cons);
+        const value_expr = cons3.car;
+        const value_ir = try self.compile(value_expr, env);
+
+        const slot_sym = try self.builder.quoteSym(slot_name);
+        return try self.builder.setSlotValue(obj_ir, slot_sym, value_ir);
+    }
+
     /// Compile defgeneric: (defgeneric name (arg1 arg2 ...))
     /// Creates a generic function that dispatches on argument types
     fn compileDefgeneric(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -6176,6 +6211,7 @@ pub const Compiler = struct {
         if (s == b.@"make-vector".raw) return self.compileMakeVector(args, env);
         if (s == b.@"%svset".raw) return self.compileSvset(args, env);
         if (s == b.@"%aset".raw) return self.compileAset(args, env);
+        if (s == b.@"%set-slot-value".raw) return self.compileSetSlotValue(args, env);
         if (s == b.vector.raw) return self.compileVectorPrim(args, env);
         if (s == b.@"make-array".raw) return self.compileMakeArray(args, env);
 

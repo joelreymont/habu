@@ -894,6 +894,7 @@
                             (if (listp seq-temp)
                                 (rplaca (nthcdr idx-temp seq-temp) ,value)
                                 (%aset seq-temp idx-temp ,value)))))
+          ((eq op 'slot-value) `(%set-slot-value ,(car args) ,(car (cdr args)) ,value))
           (t `(quote unsupported-setf-place))))
       `(setq ,place ,value)))
 

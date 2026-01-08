@@ -1195,6 +1195,15 @@ pub const Vm = struct {
                 try self.push(result);
             },
 
+            .set_slot_value => {
+                const value = try self.pop();
+                const slot_name_val = try self.pop();
+                const obj = try self.pop();
+                const args = try self.heap.allocCons(obj, try self.heap.allocCons(slot_name_val, try self.heap.allocCons(value, Value.nil)));
+                const result = try primitives.clos.setSlotValue(self.heap, args);
+                try self.push(result);
+            },
+
             // Box operations (mutable cells for closures)
             .make_box => {
                 const val = try self.pop();
