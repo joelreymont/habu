@@ -21,6 +21,7 @@
 - ✅ assoc - association list search
 
 ### Control flow
+- ✅ case (stdlib.habu:13) - symbol dispatch macro
 - ✅ typecase (stdlib.habu)
 - ✅ ecase (stdlib.habu)
 - ✅ prog (stdlib.habu)
