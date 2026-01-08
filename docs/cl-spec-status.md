@@ -30,6 +30,7 @@
 - ✅ multiple-value-setq (stdlib.habu)
 - ✅ nth-value (stdlib.habu)
 - ✅ when-let, if-let (stdlib.habu:11,18) - conditional binding macros
+- ✅ assert, psetq, rotatef (stdlib.habu:26,983,1013) - place-modifying macros
 
 ### Data structures
 - ✅ setf macro (stdlib.habu:878) - supports car/cdr/aref/nth/elt/gethash/slot-value/variables
