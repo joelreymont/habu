@@ -23,7 +23,7 @@
 - ✅ nth-value (stdlib.habu)
 
 ### Data structures
-- ✅ setf system (stdlib.habu)
+- ✅ setf macro (stdlib.habu:854) - supports car/cdr/aref/nth/elt/gethash/variables
 - ✅ copy-list (stdlib.habu)
 - ✅ copy-tree (stdlib.habu)
 - ✅ coerce (stdlib.habu)
