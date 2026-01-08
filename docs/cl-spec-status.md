@@ -22,13 +22,14 @@
 - ✅ assoc, acons, pairlis, copy-alist - association list functions
 
 ### Control flow
-- ✅ case (stdlib.habu:13) - symbol dispatch macro
+- ✅ case (stdlib.habu:26) - symbol dispatch macro
 - ✅ typecase (stdlib.habu)
 - ✅ ecase (stdlib.habu)
 - ✅ prog (stdlib.habu)
 - ✅ do/do* (stdlib.habu:61,113) - parallel/sequential iteration with stepping
 - ✅ multiple-value-setq (stdlib.habu)
 - ✅ nth-value (stdlib.habu)
+- ✅ when-let, if-let (stdlib.habu:11,18) - conditional binding macros
 
 ### Data structures
 - ✅ setf macro (stdlib.habu:878) - supports car/cdr/aref/nth/elt/gethash/slot-value/variables
