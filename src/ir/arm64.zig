@@ -374,11 +374,40 @@ pub fn generate(allocator: std.mem.Allocator, func: Function, reg_map: ?regalloc
 
 /// Emit a single IR instruction as ARM64
 /// Uses reg_map to translate virtual registers to physical registers
+/// Handles spilled registers by inserting load/store around operations
 fn emitInst(e: *Emitter, inst: Inst, reg_map: ?regalloc.RegisterMap) !void {
+    // Check if operands are spilled
+    const dest_spilled = if (reg_map) |map| map.isSpilled(inst.dest) else false;
+    const src1_spilled = if (reg_map) |map| map.isSpilled(inst.src1) else false;
+    const src2_spilled = if (inst.src2()) |s| (if (reg_map) |map| map.isSpilled(s) else false) else false;
+
     // Map virtual registers to physical registers
+    // Spilled registers use temp register x8
     const rd = mapReg(inst.dest, reg_map);
     const rs1 = mapReg(inst.src1, reg_map);
-    const rs2 = if (inst.src2()) |s| mapReg(s, reg_map) else undefined;
+    var rs2 = if (inst.src2()) |s| mapReg(s, reg_map) else undefined;
+
+    // Load spilled sources before operation
+    if (src1_spilled) {
+        if (reg_map) |map| {
+            if (map.getSpillSlot(inst.src1)) |slot| {
+                // Load from spill slot to temp register (rs1 = x8)
+                try e.emit(ARM64.ldr(rs1, PHYS.fp, @as(u12, @intCast(slot * 8))));
+            }
+        }
+    }
+    if (src2_spilled) {
+        if (inst.src2()) |s| {
+            if (reg_map) |map| {
+                if (map.getSpillSlot(s)) |slot| {
+                    // Load from spill slot to x9 (second temp for src2)
+                    // Use x9 to avoid conflict with src1 which might use x8
+                    rs2 = PHYS.x9;
+                    try e.emit(ARM64.ldr(rs2, PHYS.fp, @as(u12, @intCast(slot * 8))));
+                }
+            }
+        }
+    }
     switch (inst.op) {
         .mov => try e.emit(ARM64.mov(rd, rs1)),
 
@@ -494,6 +523,16 @@ fn emitInst(e: *Emitter, inst: Inst, reg_map: ?regalloc.RegisterMap) !void {
             // These will call runtime functions
             try e.emit(ARM64.nop());
         },
+    }
+
+    // Store spilled destination after operation
+    if (dest_spilled) {
+        if (reg_map) |map| {
+            if (map.getSpillSlot(inst.dest)) |slot| {
+                // Store from temp register to spill slot
+                try e.emit(ARM64.str(rd, PHYS.fp, @as(u12, @intCast(slot * 8))));
+            }
+        }
     }
 }
 
