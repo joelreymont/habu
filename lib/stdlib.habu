@@ -8,6 +8,29 @@
 (defmacro unless (test &rest body)
   `(if ,test nil (progn ,@body)))
 
+;; case - dispatch on symbol value
+;; Helper function must come BEFORE macro (like do*-bindings before do*)
+(defun case-to-cond (key clauses)
+  (if (null clauses)
+      nil
+      (let ((clause (car clauses)))
+        (let ((keys (car clause))
+              (body (cdr clause)))
+          (cons
+           (if (eq keys 't)
+               (cons 't body)
+               (if (eq keys 'otherwise)
+                   (cons 't body)
+                   (if (consp keys)
+                       (cons (list 'member key (list 'quote keys)) body)
+                       (cons (list 'eq key (list 'quote keys)) body))))
+           (case-to-cond key (cdr clauses)))))))
+
+(defmacro case (keyform &rest clauses)
+  (let ((key (gensym "key")))
+    `(let ((,key ,keyform))
+       (cond ,@(case-to-cond key clauses)))))
+
 ;;; Iteration macros
 (defmacro dolist (binding &rest body)
   ;; (dolist (var list) body...) or (dolist (var list result) body...)
