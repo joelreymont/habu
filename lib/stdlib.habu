@@ -23,6 +23,10 @@
            ,then
            ,else))))
 
+(defmacro assert (test &rest args)
+  `(unless ,test
+     (error "Assertion failed: ~S" ',test)))
+
 ;; case - dispatch on symbol value
 ;; Helper function must come BEFORE macro (like do*-bindings before do*)
 (defun case-to-cond (key clauses)
@@ -950,6 +954,71 @@
           ((eq op 'slot-value) `(%set-slot-value ,(car args) ,(car (cdr args)) ,value))
           (t `(quote unsupported-setf-place))))
       `(setq ,place ,value)))
+
+;; psetq helpers (must come before macro)
+(defun psetq-pairs (args)
+  (if (null args)
+      nil
+      (cons (cons (car args) (car (cdr args)))
+            (psetq-pairs (cdr (cdr args))))))
+
+(defun psetq-temps (n)
+  (if (<= n 0)
+      nil
+      (cons (gensym "TEMP") (psetq-temps (- n 2)))))
+
+(defun psetq-bindings (pairs temps)
+  (if (null pairs)
+      nil
+      (cons (list (car temps) (cdr (car pairs)))
+            (psetq-bindings (cdr pairs) (cdr temps)))))
+
+(defun psetq-assignments (pairs temps)
+  (if (null pairs)
+      nil
+      (cons `(setq ,(car (car pairs)) ,(car temps))
+            (psetq-assignments (cdr pairs) (cdr temps)))))
+
+;; psetq - parallel setq (evaluate all values before any assignment)
+(defmacro psetq (&rest args)
+  (if (null args)
+      nil
+      (let ((pairs (psetq-pairs args))
+            (temps (psetq-temps (length args))))
+        `(let ,(psetq-bindings pairs temps)
+           ,@(psetq-assignments pairs temps)
+           nil))))
+
+;; rotatef helpers (must come before macro)
+(defun rotatef-temps (n)
+  (if (<= n 0)
+      nil
+      (cons (gensym "ROTATE") (rotatef-temps (- n 1)))))
+
+(defun rotatef-bindings (places temps)
+  (if (null places)
+      nil
+      (cons (list (car temps) (car places))
+            (rotatef-bindings (cdr places) (cdr temps)))))
+
+(defun rotatef-assignments (places temps)
+  (if (null places)
+      nil
+      (cons `(setf ,(car places) ,(if (null (cdr temps))
+                                       (car temps)
+                                       (car (cdr temps))))
+            (rotatef-assignments (cdr places) (cdr temps)))))
+
+;; rotatef - rotate values through places
+(defmacro rotatef (&rest places)
+  (if (null places)
+      nil
+      (if (null (cdr places))
+          nil
+          (let ((temps (rotatef-temps (length places))))
+            `(let ,(rotatef-bindings places temps)
+               ,@(rotatef-assignments places temps)
+               nil)))))
 
 ;;; List search and membership functions
 
