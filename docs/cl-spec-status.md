@@ -19,7 +19,7 @@
 - ✅ elt (stdlib.habu:417) - generic sequence access
 - ✅ find/find-if, position/position-if, member - search functions
 - ✅ remove/remove-if/remove-if-not, count/count-if - filtering
-- ✅ assoc - association list search
+- ✅ assoc, acons, pairlis, copy-alist - association list functions
 
 ### Control flow
 - ✅ case (stdlib.habu:13) - symbol dispatch macro
