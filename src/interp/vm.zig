@@ -371,7 +371,7 @@ pub const Vm = struct {
     /// Allocate a cons cell, running GC if needed
     pub fn allocCons(self: *Vm, car: Value, cdr: Value) error{OutOfMemory}!Value {
         return self.heap.allocCons(car, cdr) catch {
-            _ = self.collectGarbage();
+            _ = try self.collectGarbage();
             return try self.heap.allocCons(car, cdr);
         };
     }
@@ -379,7 +379,7 @@ pub const Vm = struct {
     /// Allocate a vector, running GC if needed
     pub fn allocVector(self: *Vm, length: usize, capacity: usize) error{OutOfMemory}!Value {
         return self.heap.allocVector(length, capacity) catch {
-            _ = self.collectGarbage();
+            _ = try self.collectGarbage();
             return try self.heap.allocVector(length, capacity);
         };
     }
@@ -387,7 +387,7 @@ pub const Vm = struct {
     /// Allocate a string, running GC if needed
     pub fn allocString(self: *Vm, data: []const u8) error{OutOfMemory}!Value {
         return self.heap.allocString(data) catch {
-            _ = self.collectGarbage();
+            _ = try self.collectGarbage();
             return try self.heap.allocString(data);
         };
     }
@@ -395,7 +395,7 @@ pub const Vm = struct {
     /// Allocate an uninitialized string, running GC if needed
     pub fn allocStringUninitialized(self: *Vm, length: usize) error{OutOfMemory}!Value {
         return self.heap.allocStringUninitialized(length) catch {
-            _ = self.collectGarbage();
+            _ = try self.collectGarbage();
             return try self.heap.allocStringUninitialized(length);
         };
     }
@@ -403,7 +403,7 @@ pub const Vm = struct {
     /// Allocate a symbol (uninterned), running GC if needed
     pub fn allocSymbol(self: *Vm, name: []const u8) error{OutOfMemory}!Value {
         return self.heap.allocSymbol(name) catch {
-            _ = self.collectGarbage();
+            _ = try self.collectGarbage();
             return try self.heap.allocSymbol(name);
         };
     }
@@ -411,7 +411,7 @@ pub const Vm = struct {
     /// Allocate a closure, running GC if needed
     pub fn allocClosureWithGC(self: *Vm, code: *const anyopaque, arity: u32, captures: []const Value) error{OutOfMemory}!Value {
         return self.heap.allocClosure(code, arity, captures) catch {
-            _ = self.collectGarbage();
+            _ = try self.collectGarbage();
             return try self.heap.allocClosure(code, arity, captures);
         };
     }
@@ -419,7 +419,7 @@ pub const Vm = struct {
     /// Allocate a hash table, running GC if needed
     pub fn allocHashTable(self: *Vm, capacity: usize, test_type: runtime.HashTest) error{OutOfMemory}!Value {
         return self.heap.allocHashTable(capacity, test_type) catch {
-            _ = self.collectGarbage();
+            _ = try self.collectGarbage();
             return try self.heap.allocHashTable(capacity, test_type);
         };
     }
@@ -427,55 +427,55 @@ pub const Vm = struct {
     /// Intern a symbol, running GC if needed
     pub fn intern(self: *Vm, name: []const u8) error{OutOfMemory}!Value {
         return self.heap.intern(name) catch {
-            _ = self.collectGarbage();
+            _ = try self.collectGarbage();
             return try self.heap.intern(name);
         };
     }
 
     /// Run garbage collection, using VM state as roots
     /// Returns bytes reclaimed
-    pub fn collectGarbage(self: *Vm) usize {
+    pub fn collectGarbage(self: *Vm) !usize {
         // Gather roots from VM state
         var roots = std.ArrayList(Value){};
         defer roots.deinit(self.allocator);
 
         // Stack values
-        roots.appendSlice(self.allocator, self.stack[0..self.sp]) catch return 0;
+        try roots.appendSlice(self.allocator, self.stack[0..self.sp]);
 
         // Global values
-        roots.appendSlice(self.allocator, self.globals[0..self.num_globals]) catch return 0;
+        try roots.appendSlice(self.allocator, self.globals[0..self.num_globals]);
 
         // Catch frame return values
         for (self.catch_stack[0..self.catch_sp]) |frame| {
-            roots.append(self.allocator, frame.tag) catch return 0;
+            try roots.append(self.allocator, frame.tag);
         }
 
         // Frame closures - must trace closures in call frames
         for (self.frames[0..self.fp]) |frame| {
             if (frame.closure) |c| {
-                roots.append(self.allocator, Value.makeClosure(c)) catch return 0;
+                try roots.append(self.allocator, Value.makeClosure(c));
             }
         }
 
         // current_closure for callClosure's fp=0 case
         if (self.current_closure) |c| {
-            roots.append(self.allocator, Value.makeClosure(c)) catch return 0;
+            try roots.append(self.allocator, Value.makeClosure(c));
         }
 
         // Pending throw values
-        roots.append(self.allocator, self.pending_throw_tag) catch return 0;
-        roots.append(self.allocator, self.pending_throw_value) catch return 0;
+        try roots.append(self.allocator, self.pending_throw_tag);
+        try roots.append(self.allocator, self.pending_throw_value);
 
         // Secondary values
-        roots.appendSlice(self.allocator, self.secondary_values[0..self.secondary_values_count]) catch return 0;
+        try roots.appendSlice(self.allocator, self.secondary_values[0..self.secondary_values_count]);
 
         // Chunk constant pools - track start index for each chunk
         var chunk_const_starts = std.ArrayList(usize){};
         defer chunk_const_starts.deinit(self.allocator);
         for (self.chunk_pool) |chunk| {
-            chunk_const_starts.append(self.allocator, roots.items.len) catch return 0;
+            try chunk_const_starts.append(self.allocator, roots.items.len);
             for (chunk.constants) |c| {
-                roots.append(self.allocator, Value{ .raw = c }) catch return 0;
+                try roots.append(self.allocator, Value{ .raw = c });
             }
         }
 
