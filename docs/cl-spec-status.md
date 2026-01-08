@@ -36,9 +36,9 @@
 - ✅ copy-tree (stdlib.habu)
 - ✅ coerce (stdlib.habu)
 - ✅ concatenate (stdlib.habu)
-- ✅ List utilities: butlast, ldiff, tailp, nconc, nreverse, endp, revappend, nreconc
+- ✅ List utilities: butlast, ldiff, tailp, nconc, nreverse, endp, revappend, nreconc, make-list, list-length
 - ✅ Set operations: union, intersection, set-difference (treating lists as sets)
-- ✅ Tree operations: subst
+- ✅ Tree operations: subst, tree-equal
 - ✅ Property lists: getf, get, put, remprop
 
 ## TIER 3 (Advanced) - ✅ COMPLETE
