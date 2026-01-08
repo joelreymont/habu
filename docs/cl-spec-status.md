@@ -16,6 +16,9 @@
 - ✅ sort (stdlib.habu)
 - ✅ nth/nthcdr (stdlib.habu:407,412) - list access
 - ✅ elt (stdlib.habu:417) - generic sequence access
+- ✅ find/find-if, position/position-if, member - search functions
+- ✅ remove/remove-if/remove-if-not, count/count-if - filtering
+- ✅ assoc - association list search
 
 ### Control flow
 - ✅ typecase (stdlib.habu)
@@ -31,6 +34,10 @@
 - ✅ copy-tree (stdlib.habu)
 - ✅ coerce (stdlib.habu)
 - ✅ concatenate (stdlib.habu)
+- ✅ List utilities: butlast, ldiff, tailp, nconc, nreverse, endp
+- ✅ Set operations: union, intersection, set-difference (treating lists as sets)
+- ✅ Tree operations: subst
+- ✅ Property lists: getf, get, put, remprop
 
 ## TIER 3 (Advanced) - ✅ COMPLETE
 
