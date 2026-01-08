@@ -912,3 +912,22 @@
     ((null? lst) nil)
     ((eq (car lst) item) item)
     (t (find item (cdr lst)))))
+
+;;; Standard CL type predicates
+
+(defun listp (x)
+  (if (null? x) t (consp x)))
+
+;; Note: Habu's primitive numberp only checks fixnum
+;; We define integerp as an alias and leave numberp as the primitive
+(defun integerp (x)
+  (numberp x))  ; In Habu, only fixnums are integers
+
+(defun stringp (x)
+  (stringp x))  ; Use the primitive
+
+(defun functionp (x)
+  (closurep x))
+
+(defun characterp (x)
+  (numberp x))  ; In CL, characters are separate but Habu uses fixnums
