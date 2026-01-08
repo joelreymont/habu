@@ -155,7 +155,7 @@ pub fn primReadChar(heap: *Heap, args: []const Value) !Value {
     const bytes_read = file.read(&byte) catch return Value.nil;
     if (bytes_read == 0) return Value.nil;
 
-    return Value.fromChar(byte[0]);
+    return Value.makeCharacter(byte[0]);
 }
 
 pub fn primWriteChar(heap: *Heap, args: []const Value) !Value {
@@ -202,7 +202,7 @@ pub fn primReadByte(heap: *Heap, args: []const Value) !Value {
     const bytes_read = file.read(&byte) catch return Value.nil;
     if (bytes_read == 0) return Value.nil;
 
-    return Value.fromFixnum(byte[0]);
+    return Value.makeFixnum(byte[0]);
 }
 
 pub fn primWriteByte(heap: *Heap, args: []const Value) !Value {
@@ -247,7 +247,7 @@ pub fn primFilePosition(heap: *Heap, args: []const Value) !Value {
     const file = std.fs.File{ .handle = stream.file_fd };
     const pos = try file.getPos();
 
-    return Value.fromFixnum(@intCast(pos));
+    return Value.makeFixnum(@intCast(pos));
 }
 
 pub fn primFileLength(heap: *Heap, args: []const Value) !Value {
@@ -265,7 +265,7 @@ pub fn primFileLength(heap: *Heap, args: []const Value) !Value {
     const file = std.fs.File{ .handle = stream.file_fd };
     const stat = try file.stat();
 
-    return Value.fromFixnum(@intCast(stat.size));
+    return Value.makeFixnum(@intCast(stat.size));
 }
 
 pub fn primFinishOutput(heap: *Heap, args: []const Value) !Value {

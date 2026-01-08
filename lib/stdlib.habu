@@ -1111,13 +1111,13 @@
 (defun complement (pred)
   (lambda (x) (not (funcall pred x))))
 
-;; min - return minimum of two numbers
-(defun min (a b)
-  (if (< a b) a b))
+;; min - return minimum of numbers
+(defun min (&rest numbers)
+  (reduce (lambda (a b) (if (< a b) a b)) numbers))
 
-;; max - return maximum of two numbers
-(defun max (a b)
-  (if (> a b) a b))
+;; max - return maximum of numbers
+(defun max (&rest numbers)
+  (reduce (lambda (a b) (if (> a b) a b)) numbers))
 
 ;;; Tree operations
 
