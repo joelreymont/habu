@@ -121,8 +121,11 @@ test "eval division" {
     defer heap.deinit();
 
     const result = try evalExpr(allocator, &heap, "(/ 20 4)");
-    try testing.expect(result.isFixnum());
-    try testing.expectEqual(@as(i64, 5), result.toFixnum());
+    // Division now returns rational
+    try testing.expect(result.typeKind() == .rational);
+    const rat = result.toPtr(runtime.objects.Rational);
+    try testing.expectEqual(@as(i64, 5), rat.numerator);
+    try testing.expectEqual(@as(i64, 1), rat.denominator);
 }
 
 test "eval nested arithmetic" {

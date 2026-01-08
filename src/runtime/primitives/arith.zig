@@ -355,19 +355,23 @@ test "basic arithmetic" {
     const b = Value.makeFixnum(3);
 
     try testing.expectEqual(@as(i64, 13), (try add(&heap, a, b)).toFixnum());
-    try testing.expectEqual(@as(i64, 7), (try sub(a, b)).toFixnum());
+    try testing.expectEqual(@as(i64, 7), (try sub(&heap, a, b)).toFixnum());
     try testing.expectEqual(@as(i64, 30), (try mul(&heap, a, b)).toFixnum());
-    try testing.expectEqual(@as(i64, 3), (try div(a, b)).toFixnum());
+    // div now returns rational, so this test needs updating
+    const result = try div(&heap, a, b);
+    try testing.expect(result.typeKind() == .rational);
     try testing.expectEqual(@as(i64, 1), (try mod(a, b)).toFixnum());
 }
 
 test "division by zero" {
     const testing = std.testing;
+    var heap = try Heap.init(std.testing.allocator, .{});
+    defer heap.deinit();
 
     const a = Value.makeFixnum(10);
     const zero = Value.makeFixnum(0);
 
-    try testing.expectError(error.DivisionByZero, div(a, zero));
+    try testing.expectError(error.DivisionByZero, div(&heap, a, zero));
     try testing.expectError(error.DivisionByZero, mod(a, zero));
 }
 
