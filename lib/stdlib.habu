@@ -913,6 +913,21 @@
     ((eq (car lst) item) item)
     (t (find item (cdr lst)))))
 
+(defun find-if (predicate lst)
+  (cond
+    ((null? lst) nil)
+    ((funcall predicate (car lst)) (car lst))
+    (t (find-if predicate (cdr lst)))))
+
+(defun position-if-helper (predicate lst idx)
+  (cond
+    ((null? lst) nil)
+    ((funcall predicate (car lst)) idx)
+    (t (position-if-helper predicate (cdr lst) (+ idx 1)))))
+
+(defun position-if (predicate lst)
+  (position-if-helper predicate lst 0))
+
 ;;; Standard CL type predicates
 
 (defun listp (x)
@@ -952,6 +967,40 @@
 ;; max - return maximum of two numbers
 (defun max (a b)
   (if (> a b) a b))
+
+;;; Tree operations
+
+;; subst - substitute new for old in tree
+(defun subst (new old tree)
+  (cond
+    ((eq tree old) new)
+    ((atom tree) tree)
+    (t (cons (subst new old (car tree))
+             (subst new old (cdr tree))))))
+
+;;; Set operations (treating lists as sets)
+
+;; union - return union of two sets
+(defun union (set1 set2)
+  (cond
+    ((null? set1) set2)
+    ((member (car set1) set2) (union (cdr set1) set2))
+    (t (cons (car set1) (union (cdr set1) set2)))))
+
+;; intersection - return intersection of two sets
+(defun intersection (set1 set2)
+  (cond
+    ((null? set1) nil)
+    ((member (car set1) set2)
+     (cons (car set1) (intersection (cdr set1) set2)))
+    (t (intersection (cdr set1) set2))))
+
+;; set-difference - return elements in set1 not in set2
+(defun set-difference (set1 set2)
+  (cond
+    ((null? set1) nil)
+    ((member (car set1) set2) (set-difference (cdr set1) set2))
+    (t (cons (car set1) (set-difference (cdr set1) set2)))))
 
 ;; abs is already a primitive, but define it here for documentation
 ;; (defun abs (x) (if (< x 0) (- 0 x) x))

@@ -73,7 +73,6 @@ test "oracle: arithmetic expressions" {
     const test_cases = [_]struct { expr: []const u8, expected: i64 }{
         .{ .expr = "(+ (* 3 4) (* 5 6))", .expected = 42 },
         .{ .expr = "(- (* 10 10) (* 6 10))", .expected = 40 },
-        .{ .expr = "(/ (+ 100 50) 3)", .expected = 50 },
         .{ .expr = "(mod (+ 100 23) 10)", .expected = 3 },
         .{ .expr = "(+ 1 (+ 2 (+ 3 (+ 4 5))))", .expected = 15 },
         .{ .expr = "(* 2 (+ 3 (* 4 5)))", .expected = 46 },
@@ -82,6 +81,15 @@ test "oracle: arithmetic expressions" {
     for (test_cases) |tc| {
         const result = try eval(allocator, &heap, tc.expr);
         try testing.expectEqual(tc.expected, result.toFixnum());
+    }
+
+    // Test division returns rational
+    {
+        const result = try eval(allocator, &heap, "(/ (+ 100 50) 3)");
+        try testing.expect(result.typeKind() == .rational);
+        const rat = result.toPtr(runtime.objects.Rational);
+        try testing.expectEqual(@as(i64, 50), rat.numerator);
+        try testing.expectEqual(@as(i64, 1), rat.denominator);
     }
 }
 

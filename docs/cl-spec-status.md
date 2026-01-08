@@ -65,6 +65,7 @@
 - ✅ Rational (objects.zig:188, full arithmetic integration - created by division, automatic reduction)
 - ✅ Complex (objects.zig:223, full arithmetic integration - supports mixed-type operations)
 - ✅ Numeric tower complete: complex > float > rational > bignum > fixnum
+- ✅ Numeric predicates: zerop, plusp, minusp, evenp, oddp (primitives)
 
 ### Arrays
 - ✅ Multi-dimensional arrays (make-array, aref, %aset - full mutation support)
