@@ -817,7 +817,7 @@ pub const Vm = struct {
             .sub => {
                 const b = try self.pop();
                 const a = try self.pop();
-                try self.push(try primitives.arith.sub(a, b));
+                try self.push(try primitives.arith.sub(self.heap, a, b));
             },
             .mul => {
                 const b = try self.pop();
@@ -827,7 +827,7 @@ pub const Vm = struct {
             .div => {
                 const b = try self.pop();
                 const a = try self.pop();
-                try self.push(try primitives.arith.div(a, b));
+                try self.push(try primitives.arith.div(self.heap, a, b));
             },
             .mod => try self.binaryOp(binaryMod),
             .neg => {

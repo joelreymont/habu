@@ -9,10 +9,13 @@ const objects = @import("../objects.zig");
 
 pub const Error = error{ TypeMismatch, DivisionByZero, OutOfMemory };
 
-/// Add two numbers (fixnum, bignum, or float)
+/// Add two numbers (fixnum, bignum, float, or rational)
 pub fn add(heap: *Heap, a: Value, b: Value) Error!Value {
     // Float contagion: if either operand is float, use float arithmetic
     if (a.isFloat() or b.isFloat()) return addFloat(a, b);
+
+    // Rational arithmetic
+    if (a.typeKind() == .rational or b.typeKind() == .rational) return addRational(heap, a, b);
 
     // Bignum arithmetic
     if (a.isBignum() or b.isBignum()) return addBignum(heap, a, b);
@@ -31,10 +34,13 @@ pub fn add(heap: *Heap, a: Value, b: Value) Error!Value {
     return Value.makeFixnum(result[0]);
 }
 
-/// Subtract two fixnums (with overflow check)
-pub fn sub(a: Value, b: Value) Error!Value {
+/// Subtract two numbers (fixnum, float, or rational)
+pub fn sub(heap: *Heap, a: Value, b: Value) Error!Value {
     // Float contagion
     if (a.isFloat() or b.isFloat()) return subFloat(a, b);
+
+    // Rational arithmetic
+    if (a.typeKind() == .rational or b.typeKind() == .rational) return subRational(heap, a, b);
 
     if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     const result = @subWithOverflow(a.toFixnum(), b.toFixnum());
@@ -42,10 +48,13 @@ pub fn sub(a: Value, b: Value) Error!Value {
     return Value.makeFixnum(result[0]);
 }
 
-/// Multiply two numbers (fixnum, bignum, or float)
+/// Multiply two numbers (fixnum, bignum, float, or rational)
 pub fn mul(heap: *Heap, a: Value, b: Value) Error!Value {
     // Float contagion
     if (a.isFloat() or b.isFloat()) return mulFloat(a, b);
+
+    // Rational arithmetic
+    if (a.typeKind() == .rational or b.typeKind() == .rational) return mulRational(heap, a, b);
 
     // Bignum arithmetic
     if (a.isBignum() or b.isBignum()) return mulBignum(heap, a, b);
@@ -64,10 +73,13 @@ pub fn mul(heap: *Heap, a: Value, b: Value) Error!Value {
     return Value.makeFixnum(result[0]);
 }
 
-/// Divide two fixnums (integer division)
-pub fn div(a: Value, b: Value) Error!Value {
+/// Divide two numbers (returns rational for exact division, float for float args)
+pub fn div(heap: *Heap, a: Value, b: Value) Error!Value {
     // Float contagion
     if (a.isFloat() or b.isFloat()) return divFloat(a, b);
+
+    // Rational arithmetic - division of integers returns rational
+    if (a.typeKind() == .rational or b.typeKind() == .rational or a.isFixnum() and b.isFixnum()) return divRational(heap, a, b);
 
     if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     const dividend = a.toFixnum();
@@ -502,6 +514,80 @@ pub fn pow_val(x: Value, y: Value) Error!Value {
     const xf = try toNumber(x);
     const yf = try toNumber(y);
     return Value.makeFloat(std.math.pow(f64, xf, yf));
+}
+
+// ============================================================================
+// Rational arithmetic
+// ============================================================================
+
+/// Helper: convert Value to rational (numerator, denominator)
+fn toRational(v: Value) Error!struct { num: i64, den: i64 } {
+    switch (v.typeKind()) {
+        .rational => {
+            const rat = v.toPtr(objects.Rational);
+            return .{ .num = rat.numerator, .den = rat.denominator };
+        },
+        .fixnum => return .{ .num = v.toFixnum(), .den = 1 },
+        else => return error.TypeMismatch,
+    }
+}
+
+/// Rational addition: a/b + c/d = (ad + bc) / (bd)
+fn addRational(heap: *Heap, a: Value, b: Value) Error!Value {
+    const ra = try toRational(a);
+    const rb = try toRational(b);
+
+    const num = ra.num * rb.den + rb.num * ra.den;
+    const den = ra.den * rb.den;
+
+    const rat = objects.Rational.make(num, den);
+    const ptr = try heap.alloc(objects.Rational);
+    ptr.* = rat;
+    return Value.makeRational(ptr);
+}
+
+/// Rational subtraction: a/b - c/d = (ad - bc) / (bd)
+fn subRational(heap: *Heap, a: Value, b: Value) Error!Value {
+    const ra = try toRational(a);
+    const rb = try toRational(b);
+
+    const num = ra.num * rb.den - rb.num * ra.den;
+    const den = ra.den * rb.den;
+
+    const rat = objects.Rational.make(num, den);
+    const ptr = try heap.alloc(objects.Rational);
+    ptr.* = rat;
+    return Value.makeRational(ptr);
+}
+
+/// Rational multiplication: a/b * c/d = (ac) / (bd)
+fn mulRational(heap: *Heap, a: Value, b: Value) Error!Value {
+    const ra = try toRational(a);
+    const rb = try toRational(b);
+
+    const num = ra.num * rb.num;
+    const den = ra.den * rb.den;
+
+    const rat = objects.Rational.make(num, den);
+    const ptr = try heap.alloc(objects.Rational);
+    ptr.* = rat;
+    return Value.makeRational(ptr);
+}
+
+/// Rational division: (a/b) / (c/d) = (ad) / (bc)
+fn divRational(heap: *Heap, a: Value, b: Value) Error!Value {
+    const ra = try toRational(a);
+    const rb = try toRational(b);
+
+    if (rb.num == 0) return error.DivisionByZero;
+
+    const num = ra.num * rb.den;
+    const den = ra.den * rb.num;
+
+    const rat = objects.Rational.make(num, den);
+    const ptr = try heap.alloc(objects.Rational);
+    ptr.* = rat;
+    return Value.makeRational(ptr);
 }
 
 // ============================================================================
