@@ -3,7 +3,8 @@
 ## TIER 1 (Foundation) - ✅ COMPLETE
 - ✅ destructuring-bind (stdlib.habu:504)
 - ✅ reduce (stdlib.habu:152)
-- ✅ mapcar/mapc/mapcan/maplist (stdlib.habu:116+)
+- ✅ mapcar/mapc/maplist (stdlib.habu:456,459,467)
+- ✅ mapcan/mapcon (stdlib.habu:1092,1098)
 - ✅ ignore-errors (stdlib.habu:55)
 
 ## TIER 2 (Core features) - ✅ COMPLETE
@@ -35,7 +36,7 @@
 - ✅ copy-tree (stdlib.habu)
 - ✅ coerce (stdlib.habu)
 - ✅ concatenate (stdlib.habu)
-- ✅ List utilities: butlast, ldiff, tailp, nconc, nreverse, endp
+- ✅ List utilities: butlast, ldiff, tailp, nconc, nreverse, endp, revappend, nreconc
 - ✅ Set operations: union, intersection, set-difference (treating lists as sets)
 - ✅ Tree operations: subst
 - ✅ Property lists: getf, get, put, remprop
