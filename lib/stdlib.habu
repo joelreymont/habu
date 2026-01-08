@@ -1087,3 +1087,88 @@
 ;;; defvar is a primitive that creates global variables
 
 (defvar *setf-expanders* (make-hash-table))
+
+;;; get-setf-expansion - retrieve the 5-value expansion for a place
+;;; Returns: (values vars vals store-vars writer-form reader-form)
+;;; For now, simplified version that returns list of 5 values
+
+;; Helper functions must come first
+(defun get-builtin-setf-expansion (op args)
+  (case op
+    (car
+     (let ((obj (car args))
+           (obj-temp (gensym "OBJ"))
+           (store (gensym "STORE")))
+       (list (list obj-temp) (list obj) (list store)
+             (list 'rplaca obj-temp store)
+             (list 'car obj-temp))))
+    (cdr
+     (let ((obj (car args))
+           (obj-temp (gensym "OBJ"))
+           (store (gensym "STORE")))
+       (list (list obj-temp) (list obj) (list store)
+             (list 'rplacd obj-temp store)
+             (list 'cdr obj-temp))))
+    (aref
+     ;; Simplified: only handle single-index case for now
+     (let ((arr (car args))
+           (idx (car (cdr args)))
+           (arr-temp (gensym "ARR"))
+           (idx-temp (gensym "IDX"))
+           (store (gensym "STORE")))
+       (list (list arr-temp idx-temp)
+             (list arr idx)
+             (list store)
+             (list '%aset arr-temp idx-temp store)
+             (list 'aref arr-temp idx-temp))))
+    (nth
+     (let ((idx (car args))
+           (lst (car (cdr args)))
+           (idx-temp (gensym "IDX"))
+           (lst-temp (gensym "LST"))
+           (store (gensym "STORE")))
+       (list (list idx-temp lst-temp) (list idx lst) (list store)
+             (list 'rplaca (list 'nthcdr idx-temp lst-temp) store)
+             (list 'nth idx-temp lst-temp))))
+    (elt
+     (let ((seq (car args))
+           (idx (car (cdr args)))
+           (seq-temp (gensym "SEQ"))
+           (idx-temp (gensym "IDX"))
+           (store (gensym "STORE")))
+       (list (list seq-temp idx-temp) (list seq idx) (list store)
+             (list 'if (list 'listp seq-temp)
+                   (list 'rplaca (list 'nthcdr idx-temp seq-temp) store)
+                   (list '%aset seq-temp idx-temp store))
+             (list 'elt seq-temp idx-temp))))
+    (gethash
+     (let ((key (car args))
+           (table (car (cdr args)))
+           (key-temp (gensym "KEY"))
+           (table-temp (gensym "TABLE"))
+           (store (gensym "STORE")))
+       (list (list key-temp table-temp) (list key table) (list store)
+             (list 'puthash key-temp store table-temp)
+             (list 'gethash key-temp table-temp))))
+    (t
+     ;; Unknown place type
+     (list nil nil nil nil nil))))
+
+(defun get-variable-setf-expansion (place)
+  (let ((store (gensym "STORE")))
+    (list nil nil (list store)
+          (list 'setq place store)
+          place)))
+
+(defun get-compound-setf-expansion (place)
+  (let ((op (car place))
+        (args (cdr place)))
+    (let ((expander (gethash op *setf-expanders*)))
+      (if expander
+          (funcall expander args)
+          (get-builtin-setf-expansion op args)))))
+
+(defun get-setf-expansion (place)
+  (if (consp place)
+      (get-compound-setf-expansion place)
+      (get-variable-setf-expansion place)))
