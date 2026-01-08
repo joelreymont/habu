@@ -872,8 +872,9 @@
 
 ;;; Generalized Reference (SETF)
 
-;; Basic setf macro - handles simple built-in places
-;; Expands (setf place value) to appropriate setter form
+;; setf macro - simplified inline expansion for built-in places
+;; Extensibility via define-setf-expander would require runtime expansion
+;; For now, keep the direct expansion for performance
 (defmacro setf (place value)
   (if (consp place)
       (let ((op (car place))
@@ -882,8 +883,8 @@
           ((eq op 'car) `(rplaca ,(car args) ,value))
           ((eq op 'cdr) `(rplacd ,(car args) ,value))
           ((eq op 'aref) (let ((arr (car args))
-                              (subs (cdr args)))
-                          `(%aset ,arr ,@subs ,value)))
+                              (idx (car (cdr args))))
+                          `(%aset ,arr ,idx ,value)))
           ((eq op 'gethash) `(puthash ,(car args) ,value ,(car (cdr args))))
           ((eq op 'nth) `(rplaca (nthcdr ,(car args) ,(car (cdr args))) ,value))
           ((eq op 'elt) (let ((seq-expr (car args))
