@@ -409,6 +409,16 @@
       (car lst)
       (nth (- n 1) (cdr lst))))
 
+(defun nthcdr ((n fixnum) (lst list))
+  (if (= n 0)
+      lst
+      (nthcdr (- n 1) (cdr lst))))
+
+(defun elt (seq n)
+  (if (listp seq)
+      (nth n seq)
+      (aref seq n)))
+
 (defun last ((lst cons))
   (if (null? (cdr lst))
       (car lst)
@@ -852,5 +862,13 @@
                               (subs (cdr args)))
                           `(%aset ,arr ,@subs ,value)))
           ((eq op 'gethash) `(puthash ,(car args) ,value ,(car (cdr args))))
+          ((eq op 'nth) `(rplaca (nthcdr ,(car args) ,(car (cdr args))) ,value))
+          ((eq op 'elt) (let ((seq-expr (car args))
+                             (idx-expr (car (cdr args))))
+                         `(let ((seq-temp ,seq-expr)
+                                (idx-temp ,idx-expr))
+                            (if (listp seq-temp)
+                                (rplaca (nthcdr idx-temp seq-temp) ,value)
+                                (%aset seq-temp idx-temp ,value)))))
           (t `(quote unsupported-setf-place))))
       `(setq ,place ,value)))
