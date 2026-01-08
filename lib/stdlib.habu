@@ -1,6 +1,13 @@
 ;;; Habu Standard Library
 ;;; Core functions for self-hosting
 
+;;; Error signaling
+(defun error (message &rest args)
+  "Signal an error with formatted message"
+  (signal 'error (if args
+                     (apply format nil message args)
+                     message)))
+
 ;;; Control flow macros (now with &rest support)
 (defmacro when (test &rest body)
   `(if ,test (progn ,@body) nil))
@@ -1113,11 +1120,15 @@
 
 ;; min - return minimum of numbers
 (defun min (&rest numbers)
-  (reduce (lambda (a b) (if (< a b) a b)) numbers))
+  (if (null numbers)
+      (error "MIN called with no arguments")
+      (reduce (lambda (a b) (if (< a b) a b)) numbers)))
 
 ;; max - return maximum of numbers
 (defun max (&rest numbers)
-  (reduce (lambda (a b) (if (> a b) a b)) numbers))
+  (if (null numbers)
+      (error "MAX called with no arguments")
+      (reduce (lambda (a b) (if (> a b) a b)) numbers)))
 
 ;;; Tree operations
 
