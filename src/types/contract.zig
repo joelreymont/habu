@@ -223,6 +223,60 @@ pub const predicates = struct {
     pub fn isNonNil(value: u64) bool {
         return value != 0;
     }
+
+    /// Check if value is a boxed type (tag 12)
+    fn isBoxed(value: u64) bool {
+        return value != 0 and (value & 0b1111) == 12;
+    }
+
+    /// Check if value is a hashtable (boxed, kind 0)
+    pub fn isHashTable(value: u64) bool {
+        if (!isBoxed(value)) return false;
+        const ptr: [*]const u64 = @ptrFromInt(value & ~@as(u64, 0xF));
+        return ptr[0] == 0; // BoxedKind.hashtable
+    }
+
+    /// Check if value is a rational (boxed, kind 1)
+    pub fn isRational(value: u64) bool {
+        if (!isBoxed(value)) return false;
+        const ptr: [*]const u64 = @ptrFromInt(value & ~@as(u64, 0xF));
+        return ptr[0] == 1; // BoxedKind.rational
+    }
+
+    /// Check if value is a complex (boxed, kind 2)
+    pub fn isComplex(value: u64) bool {
+        if (!isBoxed(value)) return false;
+        const ptr: [*]const u64 = @ptrFromInt(value & ~@as(u64, 0xF));
+        return ptr[0] == 2; // BoxedKind.complex
+    }
+
+    /// Check if value is a stream (boxed, kind 3)
+    pub fn isStream(value: u64) bool {
+        if (!isBoxed(value)) return false;
+        const ptr: [*]const u64 = @ptrFromInt(value & ~@as(u64, 0xF));
+        return ptr[0] == 3; // BoxedKind.stream
+    }
+
+    /// Check if value is a bignum (boxed, kind 4)
+    pub fn isBignum(value: u64) bool {
+        if (!isBoxed(value)) return false;
+        const ptr: [*]const u64 = @ptrFromInt(value & ~@as(u64, 0xF));
+        return ptr[0] == 4; // BoxedKind.bignum
+    }
+
+    /// Check if value is an array (boxed, kind 5)
+    pub fn isArray(value: u64) bool {
+        if (!isBoxed(value)) return false;
+        const ptr: [*]const u64 = @ptrFromInt(value & ~@as(u64, 0xF));
+        return ptr[0] == 5; // BoxedKind.array
+    }
+
+    /// Check if value is a pathname (boxed, kind 6)
+    pub fn isPathname(value: u64) bool {
+        if (!isBoxed(value)) return false;
+        const ptr: [*]const u64 = @ptrFromInt(value & ~@as(u64, 0xF));
+        return ptr[0] == 6; // BoxedKind.pathname
+    }
 };
 
 /// Compile a type to a contract
@@ -412,6 +466,13 @@ pub const ContractCompiler = struct {
             .keyword => predicates.isKeyword,
             .nil => predicates.isNil,
             .char => predicates.isCharacter,
+            .hashtable => predicates.isHashTable,
+            .rational => predicates.isRational,
+            .complex => predicates.isComplex,
+            .stream => predicates.isStream,
+            .bignum => predicates.isBignum,
+            .array => predicates.isArray,
+            .pathname => predicates.isPathname,
         };
     }
 };
