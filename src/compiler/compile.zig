@@ -44,6 +44,7 @@ pub const Error = error{
     InvalidSet,
     OutOfMemory,
     NoSpaceLeft, // Buffer overflow in name generation
+    UninitializedBuiltins, // Builtins not set when required
 };
 
 /// Pre-interned special form symbols for identity comparison
@@ -1867,7 +1868,7 @@ pub const Compiler = struct {
             const param_item = param_cons.car;
 
             if (param_item.isSymbol()) {
-                const b = self.builtins orelse unreachable;
+                const b = self.builtins orelse return error.UninitializedBuiltins;
 
                 // Check for &rest/&body keyword (use symbol identity)
                 if (param_item.raw == b.@"&rest".raw or param_item.raw == b.@"&body".raw) {
@@ -2067,7 +2068,7 @@ pub const Compiler = struct {
 
     /// Create a type assertion IR node for a given type symbol
     fn makeTypeAssertionSym(self: *Compiler, expr_ir: *Ir, type_sym: Value) !?*Ir {
-        const b = self.builtins orelse unreachable;
+        const b = self.builtins orelse return error.UninitializedBuiltins;
         // Dispatch by symbol identity (no string comparison)
         if (type_sym.raw == b.ty_fixnum.raw) return self.builder.assertFixnum(expr_ir);
         if (type_sym.raw == b.cons.raw) return self.builder.assertCons(expr_ir);
@@ -2774,7 +2775,7 @@ pub const Compiler = struct {
         const is_default = blk: {
             // t is magic value, else is interned symbol
             if (test_expr.raw == Value.t.raw) break :blk true;
-            const b = self.builtins orelse unreachable;
+            const b = self.builtins orelse return error.UninitializedBuiltins;
             if (test_expr.raw == b.@"else".raw) break :blk true;
             break :blk false;
         };
@@ -3240,7 +3241,7 @@ pub const Compiler = struct {
 
         // Check for (unquote x) - evaluate x (use symbol identity)
         if (head.isSymbol()) {
-            const b = self.builtins orelse unreachable;
+            const b = self.builtins orelse return error.UninitializedBuiltins;
             if (head.raw == b.unquote.raw) {
                 // (unquote x) -> compile x
                 if (!cons.cdr.isCons()) return error.InvalidSyntax;
@@ -3280,7 +3281,7 @@ pub const Compiler = struct {
         if (head.isCons()) {
             const head_cons = head.toPtr(Cons);
             if (head_cons.car.isSymbol()) {
-                const b = self.builtins orelse unreachable;
+                const b = self.builtins orelse return error.UninitializedBuiltins;
                 if (head_cons.car.raw == b.@"unquote-splicing".raw) {
                     // (,@x ...) -> (append x (quasiquote-list ...))
                     if (!head_cons.cdr.isCons()) return error.InvalidSyntax;
@@ -3889,7 +3890,7 @@ pub const Compiler = struct {
             // Check for -> arrow (use symbol identity)
             if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
             const arrow_cons = spec_cons.cdr.toPtr(Cons);
-            const b = self.builtins orelse unreachable;
+            const b = self.builtins orelse return error.UninitializedBuiltins;
             if (arrow_cons.car.raw != b.@"->".raw) return error.InvalidSyntax;
 
             // Get return type symbol
@@ -5644,13 +5645,13 @@ pub const Compiler = struct {
         const clauses = cons1.cdr;
 
         // Exhaustiveness checking: collect variant names from clauses
-        self.checkMatchExhaustiveness(clauses);
+        try self.checkMatchExhaustiveness(clauses);
 
         return self.compileMatchClauses(scrutinee, clauses, env);
     }
 
     /// Check if match covers all variants of the ADT (warning only, doesn't fail)
-    fn checkMatchExhaustiveness(self: *Compiler, clauses: Value) void {
+    fn checkMatchExhaustiveness(self: *Compiler, clauses: Value) !void {
         var has_wildcard = false;
         var covered = std.StringHashMap(void).init(self.allocator);
         defer covered.deinit();
@@ -5671,7 +5672,7 @@ pub const Compiler = struct {
 
             // Check for wildcard (use symbol identity)
             if (pattern.isSymbol()) {
-                const b = self.builtins orelse unreachable;
+                const b = self.builtins orelse return error.UninitializedBuiltins;
                 if (pattern.raw == b._.raw) {
                     has_wildcard = true;
                     break;
@@ -5736,7 +5737,7 @@ pub const Compiler = struct {
 
         // Check for wildcard pattern: _ (use symbol identity)
         if (pattern.isSymbol()) {
-            const b = self.builtins orelse unreachable;
+            const b = self.builtins orelse return error.UninitializedBuiltins;
             if (pattern.raw == b._.raw) {
                 // Wildcard - compile body as progn
                 return self.compileProgn(body_list, env);
@@ -5880,7 +5881,7 @@ pub const Compiler = struct {
 
     /// Compile a simple type check for a single type symbol (uses symbol identity)
     fn compileSimpleTypeCheckSym(self: *Compiler, type_sym: Value, expr_ir: *const Ir) anyerror!*Ir {
-        const b = self.builtins orelse unreachable;
+        const b = self.builtins orelse return error.UninitializedBuiltins;
         // Dispatch by symbol identity (no string comparison)
         if (type_sym.raw == b.ty_fixnum.raw) return self.builder.assertFixnum(expr_ir);
         if (type_sym.raw == b.cons.raw) return self.builder.assertCons(expr_ir);
@@ -5899,7 +5900,7 @@ pub const Compiler = struct {
         const cons = type_spec.toPtr(Cons);
         if (!cons.car.isSymbol()) return error.InvalidSyntax;
 
-        const b = self.builtins orelse unreachable;
+        const b = self.builtins orelse return error.UninitializedBuiltins;
         const head = cons.car;
 
         // Dispatch by symbol identity
