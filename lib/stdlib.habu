@@ -931,3 +931,27 @@
 
 (defun characterp (x)
   (numberp x))  ; In CL, characters are separate but Habu uses fixnums
+
+;;; Utility functions
+
+;; identity - return the argument unchanged
+(defun identity (x) x)
+
+;; constantly - return a function that always returns the given value
+(defun constantly (value)
+  (lambda (x) value))
+
+;; complement - return logical negation of predicate
+(defun complement (pred)
+  (lambda (x) (not (funcall pred x))))
+
+;; min - return minimum of two numbers
+(defun min (a b)
+  (if (< a b) a b))
+
+;; max - return maximum of two numbers
+(defun max (a b)
+  (if (> a b) a b))
+
+;; abs is already a primitive, but define it here for documentation
+;; (defun abs (x) (if (< x 0) (- 0 x) x))
