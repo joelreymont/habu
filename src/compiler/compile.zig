@@ -245,6 +245,7 @@ pub const Builtins = struct {
     aref: Value, // CL: array element access
     svref: Value, // CL: simple-vector element access
     @"%svset": Value, // internal: (setf (svref ...)) expands to this
+    @"%aset": Value, // internal: (setf (aref ...)) expands to this
     @"vector-length": Value,
     @"make-vector": Value,
     vector: Value,
@@ -550,6 +551,7 @@ pub const Builtins = struct {
             .aref = try heap.intern("aref"),
             .svref = try heap.intern("svref"),
             .@"%svset" = try heap.intern("%svset"),
+            .@"%aset" = try heap.intern("%aset"),
             .@"vector-length" = try heap.intern("vector-length"),
             .@"make-vector" = try heap.intern("make-vector"),
             .vector = try heap.intern("vector"),
@@ -6167,12 +6169,13 @@ pub const Compiler = struct {
         if (s == b.evenp.raw) return self.compileUnaryPrim(args, env, .evenp);
         if (s == b.oddp.raw) return self.compileUnaryPrim(args, env, .oddp);
 
-        // Vector operations (CL names: aref, svref, %svset)
+        // Vector operations (CL names: aref, svref, %svset, %aset)
         if (s == b.aref.raw) return self.compileAref(args, env);
         if (s == b.svref.raw) return self.compileBinaryPrim(args, env, .vec_ref);
         if (s == b.@"vector-length".raw) return self.compileUnaryPrim(args, env, .vec_len);
         if (s == b.@"make-vector".raw) return self.compileMakeVector(args, env);
         if (s == b.@"%svset".raw) return self.compileSvset(args, env);
+        if (s == b.@"%aset".raw) return self.compileAset(args, env);
         if (s == b.vector.raw) return self.compileVectorPrim(args, env);
         if (s == b.@"make-array".raw) return self.compileMakeArray(args, env);
 
@@ -7391,6 +7394,39 @@ pub const Compiler = struct {
         const val_ir = try self.compile(cons3.car, env);
 
         return try self.builder.vecSet(vec_ir, idx_ir, val_ir);
+    }
+
+    fn compileAset(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        // (%aset array sub1 sub2 ... subN value) - internal setter for (setf (aref ...))
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const array_ir = try self.compile(cons1.car, env);
+
+        // Collect subscripts and value
+        var subscripts = std.ArrayList(*const Ir){};
+        defer subscripts.deinit(self.allocator);
+
+        var current = cons1.cdr;
+        var value_ir: ?*const Ir = null;
+
+        // Iterate to collect all arguments
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            const arg_ir = try self.compile(cons.car, env);
+
+            // Last element is the value, rest are subscripts
+            if (cons.cdr.isNil()) {
+                value_ir = arg_ir;
+            } else {
+                try subscripts.append(self.allocator, arg_ir);
+            }
+
+            current = cons.cdr;
+        }
+
+        if (value_ir == null or subscripts.items.len == 0) return error.InvalidSyntax;
+
+        return try self.builder.arrSet(array_ir, subscripts.items, value_ir.?);
     }
 
     fn compileGethash(self: *Compiler, args: Value, env: *const Env) Error!*Ir {

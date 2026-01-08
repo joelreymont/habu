@@ -480,6 +480,11 @@ pub const Ir = union(enum) {
         array: *const Ir,
         subscripts: []const *const Ir,
     },
+    arr_set: struct {
+        array: *const Ir,
+        subscripts: []const *const Ir,
+        value: *const Ir,
+    },
 
     // ========================================================================
     // Primitives - CLOS operations
@@ -704,6 +709,7 @@ pub const Ir = union(enum) {
             .vec_len,
             .arr_new,
             .arr_ref,
+            .arr_set,
             .slot_value,
             .make_box,
             .box_ref,
@@ -1571,6 +1577,13 @@ pub const IrBuilder = struct {
         const node = try self.allocator.create(Ir);
         const subs_copy = try self.allocator.dupe(*const Ir, subscripts);
         node.* = .{ .arr_ref = .{ .array = array, .subscripts = subs_copy } };
+        return node;
+    }
+
+    pub fn arrSet(self: IrBuilder, array: *const Ir, subscripts: []const *const Ir, value: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const subs_copy = try self.allocator.dupe(*const Ir, subscripts);
+        node.* = .{ .arr_set = .{ .array = array, .subscripts = subs_copy, .value = value } };
         return node;
     }
 

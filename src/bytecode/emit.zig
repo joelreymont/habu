@@ -450,6 +450,13 @@ pub const Emitter = struct {
                     max_idx = computeMaxLocalIndexImpl(sub, max_idx);
                 }
             },
+            .arr_set => |a| {
+                max_idx = computeMaxLocalIndexImpl(a.array, max_idx);
+                for (a.subscripts) |sub| {
+                    max_idx = computeMaxLocalIndexImpl(sub, max_idx);
+                }
+                max_idx = computeMaxLocalIndexImpl(a.value, max_idx);
+            },
             .vec_set => |v| {
                 max_idx = computeMaxLocalIndexImpl(v.vec, max_idx);
                 max_idx = computeMaxLocalIndexImpl(v.index, max_idx);
@@ -656,6 +663,7 @@ pub const Emitter = struct {
             // Array operations
             .arr_new => |a| try self.emitArrNew(a),
             .arr_ref => |a| try self.emitArrRef(a),
+            .arr_set => |a| try self.emitArrSet(a),
 
             // CLOS operations
             .slot_value => |op| try self.emitBinaryOp(op, .slot_value),
@@ -1817,6 +1825,20 @@ pub const Emitter = struct {
         // Emit aref opcode with subscript count
         const sub_count: u8 = @intCast(a.subscripts.len);
         try self.emitOp(.aref);
+        try self.emitU8(sub_count);
+    }
+
+    fn emitArrSet(self: *Emitter, a: anytype) Error!void {
+        // Emit array, subscripts, and value (stack: array sub1 sub2 ... subN value)
+        try self.emit(a.array);
+        for (a.subscripts) |sub| {
+            try self.emit(sub);
+        }
+        try self.emit(a.value);
+
+        // Emit aset opcode with subscript count
+        const sub_count: u8 = @intCast(a.subscripts.len);
+        try self.emitOp(.aset);
         try self.emitU8(sub_count);
     }
 
