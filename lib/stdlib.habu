@@ -872,3 +872,43 @@
                                 (%aset seq-temp idx-temp ,value)))))
           (t `(quote unsupported-setf-place))))
       `(setq ,place ,value)))
+
+;;; List search and membership functions
+
+;; member - find element in list, return tail from that element
+(defun member (item lst)
+  (cond
+    ((null? lst) nil)
+    ((eq (car lst) item) lst)
+    (t (member item (cdr lst)))))
+
+;; assoc - find key in association list
+(defun assoc (key alist)
+  (cond
+    ((null? alist) nil)
+    ((eq (car (car alist)) key) (car alist))
+    (t (assoc key (cdr alist)))))
+
+;; remove - remove all occurrences of item from list
+(defun remove (item lst)
+  (cond
+    ((null? lst) nil)
+    ((eq (car lst) item) (remove item (cdr lst)))
+    (t (cons (car lst) (remove item (cdr lst))))))
+
+;; position - find index of item in list (0-based)
+(defun position-helper (item lst idx)
+  (cond
+    ((null? lst) nil)
+    ((eq (car lst) item) idx)
+    (t (position-helper item (cdr lst) (+ idx 1)))))
+
+(defun position (item lst)
+  (position-helper item lst 0))
+
+;; find - find item in list, return the item (not the tail)
+(defun find (item lst)
+  (cond
+    ((null? lst) nil)
+    ((eq (car lst) item) item)
+    (t (find item (cdr lst)))))
