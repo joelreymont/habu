@@ -351,24 +351,24 @@
 
 ;;; Mutation macros (fixed arity)
 (defmacro incf (place)
-  `(setq ,place (+ ,place 1)))
+  `(setf ,place (+ ,place 1)))
 
 (defmacro decf (place)
-  `(setq ,place (- ,place 1)))
+  `(setf ,place (- ,place 1)))
 
 (defmacro incf-by (place delta)
-  `(setq ,place (+ ,place ,delta)))
+  `(setf ,place (+ ,place ,delta)))
 
 (defmacro decf-by (place delta)
-  `(setq ,place (- ,place ,delta)))
+  `(setf ,place (- ,place ,delta)))
 
 ;;; List mutation macros
 (defmacro push (item place)
-  `(setq ,place (cons ,item ,place)))
+  `(setf ,place (cons ,item ,place)))
 
 (defmacro pop (place)
   `(let ((result (car ,place)))
-     (setq ,place (cdr ,place))
+     (setf ,place (cdr ,place))
      result))
 
 
@@ -853,4 +853,4 @@
                           `(%aset ,arr ,@subs ,value)))
           ((eq op 'gethash) `(puthash ,(car args) ,value ,(car (cdr args))))
           (t `(quote unsupported-setf-place))))
-      `(quote invalid-setf-place)))
+      `(setq ,place ,value)))
