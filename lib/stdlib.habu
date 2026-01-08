@@ -1032,5 +1032,24 @@
     ((null? list) nil)
     (t (tailp sublist (cdr list)))))
 
+;; nconc - destructively concatenate lists
+(defun nconc (list1 list2)
+  (if (null? list1)
+      list2
+      (let ((tail (last list1)))
+        (rplacd tail list2)
+        list1)))
+
+;; nreverse - destructively reverse list
+(defun nreverse-helper (lst result)
+  (if (null? lst)
+      result
+      (let ((next (cdr lst)))
+        (rplacd lst result)
+        (nreverse-helper next lst))))
+
+(defun nreverse (lst)
+  (nreverse-helper lst nil))
+
 ;; abs is already a primitive, but define it here for documentation
 ;; (defun abs (x) (if (< x 0) (- 0 x) x))
