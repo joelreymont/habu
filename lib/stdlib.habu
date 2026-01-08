@@ -947,6 +947,10 @@
 (defun characterp (x)
   (numberp x))  ; In CL, characters are separate but Habu uses fixnums
 
+;; endp - test for end of list (nil or error if not list)
+(defun endp (x)
+  (null? x))
+
 ;;; Utility functions
 
 ;; identity - return the argument unchanged
