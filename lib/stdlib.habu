@@ -1235,6 +1235,38 @@
 ;; abs is already a primitive, but define it here for documentation
 ;; (defun abs (x) (if (< x 0) (- 0 x) x))
 
+;;; Stream I/O Operations
+
+(defun open (path mode)
+  (%open path mode))
+
+(defun close (stream)
+  (%close stream))
+
+(defun read-line (stream)
+  (%read-line stream))
+
+(defun write-line (stream text)
+  (%write-line stream text))
+
+(defun read-byte (stream)
+  (%read-byte stream))
+
+(defun write-byte (stream byte)
+  (%write-byte stream byte))
+
+(defun file-position (stream)
+  (%file-position stream))
+
+(defun file-length (stream)
+  (%file-length stream))
+
+(defun finish-output (stream)
+  (%finish-output stream))
+
+(defun force-output (stream)
+  (%force-output stream))
+
 ;;; SETF Expander Registry
 ;;; Global hash table mapping symbols to setf expander functions
 ;;; Used by define-setf-expander and get-setf-expansion

@@ -697,6 +697,18 @@ pub const Emitter = struct {
             .remprop => |op| try self.emitBinaryOp(op, .remprop),
             .type_of => |op| try self.emitUnaryOp(op.operand, .type_of),
 
+            // Stream I/O
+            .open => |op| try self.emitBinaryOp(op, .open),
+            .close => |op| try self.emitUnaryOp(op.operand, .close),
+            .read_line => |op| try self.emitUnaryOp(op.operand, .read_line),
+            .write_line => |op| try self.emitBinaryOp(op, .write_line),
+            .read_byte => |op| try self.emitUnaryOp(op.operand, .read_byte),
+            .write_byte => |op| try self.emitBinaryOp(op, .write_byte),
+            .file_position => |op| try self.emitUnaryOp(op.operand, .file_position),
+            .file_length => |op| try self.emitUnaryOp(op.operand, .file_length),
+            .finish_output => |op| try self.emitUnaryOp(op.operand, .finish_output),
+            .force_output => |op| try self.emitUnaryOp(op.operand, .force_output),
+
             // Reader macros
             .set_macro_character => |op| try self.emitTernaryOp(op, .set_macro_character),
             .get_macro_character => |op| try self.emitUnaryOp(op.operand, .get_macro_character),

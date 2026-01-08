@@ -185,6 +185,32 @@ pub const Stream = extern struct {
     pub fn isClosed(self: *const Stream) bool {
         return self.closed;
     }
+
+    pub fn make(direction: StreamDirection, stream_type: StreamType, file_fd: i32) Stream {
+        return .{
+            .kind = .stream,
+            .direction = direction,
+            .stream_type = stream_type,
+            .closed = false,
+            .position = 0,
+            .data_ptr = 0,
+            .length = 0,
+            .file_fd = file_fd,
+        };
+    }
+
+    pub fn makeString(direction: StreamDirection, data_ptr: u64, length: u64) Stream {
+        return .{
+            .kind = .stream,
+            .direction = direction,
+            .stream_type = .string,
+            .closed = false,
+            .position = 0,
+            .data_ptr = data_ptr,
+            .length = length,
+            .file_fd = -1,
+        };
+    }
 };
 
 /// Rational number (p/q where gcd(p,q)=1, q>0)

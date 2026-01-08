@@ -530,6 +530,18 @@ pub const Ir = union(enum) {
     type_of: UnaryOp, // Get type of value as symbol
     error_user: UnaryOp, // Signal user error with message
 
+    // Stream I/O operations
+    open: BinaryOp, // (open path mode)
+    close: UnaryOp, // (close stream)
+    read_line: UnaryOp, // (read-line stream)
+    write_line: BinaryOp, // (write-line stream text)
+    read_byte: UnaryOp, // (read-byte stream)
+    write_byte: BinaryOp, // (write-byte stream byte)
+    file_position: UnaryOp, // (file-position stream)
+    file_length: UnaryOp, // (file-length stream)
+    finish_output: UnaryOp, // (finish-output stream)
+    force_output: UnaryOp, // (force-output stream)
+
     // Reader macros
     set_macro_character: TernaryOp, // char, function, non-terminating-p
     get_macro_character: UnaryOp, // char -> (values function non-terminating-p)

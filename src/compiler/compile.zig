@@ -247,6 +247,19 @@ pub const Builtins = struct {
     @"%svset": Value, // internal: (setf (svref ...)) expands to this
     @"%aset": Value, // internal: (setf (aref ...)) expands to this
     @"%set-slot-value": Value, // internal: (setf (slot-value ...)) expands to this
+
+    // Stream I/O primitives
+    @"%open": Value,
+    @"%close": Value,
+    @"%read-line": Value,
+    @"%write-line": Value,
+    @"%read-byte": Value,
+    @"%write-byte": Value,
+    @"%file-position": Value,
+    @"%file-length": Value,
+    @"%finish-output": Value,
+    @"%force-output": Value,
+
     @"vector-length": Value,
     @"make-vector": Value,
     vector: Value,
@@ -554,6 +567,17 @@ pub const Builtins = struct {
             .@"%svset" = try heap.intern("%svset"),
             .@"%aset" = try heap.intern("%aset"),
             .@"%set-slot-value" = try heap.intern("%set-slot-value"),
+            // Stream I/O primitives
+            .@"%open" = try heap.intern("%open"),
+            .@"%close" = try heap.intern("%close"),
+            .@"%read-line" = try heap.intern("%read-line"),
+            .@"%write-line" = try heap.intern("%write-line"),
+            .@"%read-byte" = try heap.intern("%read-byte"),
+            .@"%write-byte" = try heap.intern("%write-byte"),
+            .@"%file-position" = try heap.intern("%file-position"),
+            .@"%file-length" = try heap.intern("%file-length"),
+            .@"%finish-output" = try heap.intern("%finish-output"),
+            .@"%force-output" = try heap.intern("%force-output"),
             .@"vector-length" = try heap.intern("vector-length"),
             .@"make-vector" = try heap.intern("make-vector"),
             .vector = try heap.intern("vector"),
@@ -6214,6 +6238,97 @@ pub const Compiler = struct {
         if (s == b.@"%set-slot-value".raw) return self.compileSetSlotValue(args, env);
         if (s == b.vector.raw) return self.compileVectorPrim(args, env);
         if (s == b.@"make-array".raw) return self.compileMakeArray(args, env);
+
+        // Stream I/O operations
+        if (s == b.@"%open".raw) {
+            if (!args.isCons()) return error.InvalidSyntax;
+            const cons1 = args.toPtr(Cons);
+            const path_ir = try self.compile(cons1.car, env);
+            if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+            const cons2 = cons1.cdr.toPtr(Cons);
+            const mode_ir = try self.compile(cons2.car, env);
+            const node = try self.allocator.create(Ir);
+            node.* = .{ .open = .{ .left = path_ir, .right = mode_ir } };
+            return node;
+        }
+        if (s == b.@"%close".raw) {
+            if (!args.isCons()) return error.InvalidSyntax;
+            const cons1 = args.toPtr(Cons);
+            const stream_ir = try self.compile(cons1.car, env);
+            const node = try self.allocator.create(Ir);
+            node.* = .{ .close = .{ .operand = stream_ir } };
+            return node;
+        }
+        if (s == b.@"%read-line".raw) {
+            if (!args.isCons()) return error.InvalidSyntax;
+            const cons1 = args.toPtr(Cons);
+            const stream_ir = try self.compile(cons1.car, env);
+            const node = try self.allocator.create(Ir);
+            node.* = .{ .read_line = .{ .operand = stream_ir } };
+            return node;
+        }
+        if (s == b.@"%write-line".raw) {
+            if (!args.isCons()) return error.InvalidSyntax;
+            const cons1 = args.toPtr(Cons);
+            const stream_ir = try self.compile(cons1.car, env);
+            if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+            const cons2 = cons1.cdr.toPtr(Cons);
+            const text_ir = try self.compile(cons2.car, env);
+            const node = try self.allocator.create(Ir);
+            node.* = .{ .write_line = .{ .left = stream_ir, .right = text_ir } };
+            return node;
+        }
+        if (s == b.@"%read-byte".raw) {
+            if (!args.isCons()) return error.InvalidSyntax;
+            const cons1 = args.toPtr(Cons);
+            const stream_ir = try self.compile(cons1.car, env);
+            const node = try self.allocator.create(Ir);
+            node.* = .{ .read_byte = .{ .operand = stream_ir } };
+            return node;
+        }
+        if (s == b.@"%write-byte".raw) {
+            if (!args.isCons()) return error.InvalidSyntax;
+            const cons1 = args.toPtr(Cons);
+            const stream_ir = try self.compile(cons1.car, env);
+            if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+            const cons2 = cons1.cdr.toPtr(Cons);
+            const byte_ir = try self.compile(cons2.car, env);
+            const node = try self.allocator.create(Ir);
+            node.* = .{ .write_byte = .{ .left = stream_ir, .right = byte_ir } };
+            return node;
+        }
+        if (s == b.@"%file-position".raw) {
+            if (!args.isCons()) return error.InvalidSyntax;
+            const cons1 = args.toPtr(Cons);
+            const stream_ir = try self.compile(cons1.car, env);
+            const node = try self.allocator.create(Ir);
+            node.* = .{ .file_position = .{ .operand = stream_ir } };
+            return node;
+        }
+        if (s == b.@"%file-length".raw) {
+            if (!args.isCons()) return error.InvalidSyntax;
+            const cons1 = args.toPtr(Cons);
+            const stream_ir = try self.compile(cons1.car, env);
+            const node = try self.allocator.create(Ir);
+            node.* = .{ .file_length = .{ .operand = stream_ir } };
+            return node;
+        }
+        if (s == b.@"%finish-output".raw) {
+            if (!args.isCons()) return error.InvalidSyntax;
+            const cons1 = args.toPtr(Cons);
+            const stream_ir = try self.compile(cons1.car, env);
+            const node = try self.allocator.create(Ir);
+            node.* = .{ .finish_output = .{ .operand = stream_ir } };
+            return node;
+        }
+        if (s == b.@"%force-output".raw) {
+            if (!args.isCons()) return error.InvalidSyntax;
+            const cons1 = args.toPtr(Cons);
+            const stream_ir = try self.compile(cons1.car, env);
+            const node = try self.allocator.create(Ir);
+            node.* = .{ .force_output = .{ .operand = stream_ir } };
+            return node;
+        }
 
         // String operations (CL names: char, schar)
         if (s == b.char.raw or s == b.schar.raw) return self.compileBinaryPrim(args, env, .str_ref);

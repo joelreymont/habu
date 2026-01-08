@@ -2114,46 +2114,65 @@ pub const Vm = struct {
                 try self.push(result);
             },
             .open => {
-                const direction_byte = self.readU8();
-                const pathname = try self.pop();
-
-                // Pathname can be a string
-                if (!pathname.isString()) return error.TypeMismatch;
-
-                const str = pathname.toPtr(runtime.String);
-                const path_str = str.bytes();
-
-                // Open the file - catch file system errors and convert to UserError
-                const file = if (direction_byte == 0)
-                    std.fs.cwd().openFile(path_str, .{}) catch return error.UserError
-                else
-                    std.fs.cwd().createFile(path_str, .{}) catch return error.UserError;
-
-                // Create a stream object
-                const stream = if (direction_byte == 0)
-                    try self.heap.allocFileInputStream(@intCast(file.handle))
-                else
-                    try self.heap.allocFileOutputStream(@intCast(file.handle));
-                try self.push(stream);
+                const mode_val = try self.pop();
+                const path_val = try self.pop();
+                const result = primitives.stream.primOpen(self.heap, &[_]Value{ path_val, mode_val }) catch return error.UserError;
+                try self.push(result);
             },
             .close => {
                 const stream_val = try self.pop();
-                if (!stream_val.isStream()) return error.TypeMismatch;
+                const result = try primitives.stream.primClose(self.heap, &[_]Value{stream_val});
+                try self.push(result);
+            },
 
-                const stream = stream_val.toPtr(runtime.Stream);
-                if (stream.stream_type != .file) return error.TypeMismatch;
+            .read_line => {
+                const stream_val = try self.pop();
+                const result = primitives.stream.primReadLine(self.heap, &[_]Value{stream_val}) catch return error.UserError;
+                try self.push(result);
+            },
 
-                if (!stream.closed) {
-                    // Close the file
-                    const file = std.fs.File{ .handle = stream.file_fd };
-                    file.close();
+            .write_line => {
+                const text_val = try self.pop();
+                const stream_val = try self.pop();
+                const result = primitives.stream.primWriteLine(self.heap, &[_]Value{ stream_val, text_val }) catch return error.UserError;
+                try self.push(result);
+            },
 
-                    // Mark stream as closed
-                    stream.closed = true;
-                }
+            .read_byte => {
+                const stream_val = try self.pop();
+                const result = primitives.stream.primReadByte(self.heap, &[_]Value{stream_val}) catch return error.UserError;
+                try self.push(result);
+            },
 
-                // Return the stream (whether already closed or just closed)
-                try self.push(stream_val);
+            .write_byte => {
+                const byte_val = try self.pop();
+                const stream_val = try self.pop();
+                const result = primitives.stream.primWriteByte(self.heap, &[_]Value{ stream_val, byte_val }) catch return error.UserError;
+                try self.push(result);
+            },
+
+            .file_position => {
+                const stream_val = try self.pop();
+                const result = primitives.stream.primFilePosition(self.heap, &[_]Value{stream_val}) catch return error.UserError;
+                try self.push(result);
+            },
+
+            .file_length => {
+                const stream_val = try self.pop();
+                const result = primitives.stream.primFileLength(self.heap, &[_]Value{stream_val}) catch return error.UserError;
+                try self.push(result);
+            },
+
+            .finish_output => {
+                const stream_val = try self.pop();
+                const result = primitives.stream.primFinishOutput(self.heap, &[_]Value{stream_val}) catch return error.UserError;
+                try self.push(result);
+            },
+
+            .force_output => {
+                const stream_val = try self.pop();
+                const result = primitives.stream.primForceOutput(self.heap, &[_]Value{stream_val}) catch return error.UserError;
+                try self.push(result);
             },
 
             .make_array => {

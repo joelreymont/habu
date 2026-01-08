@@ -67,7 +67,10 @@ pub const GC = struct {
         // Calculate bytes copied
         const bytes_copied = @intFromPtr(alloc_ptr) - @intFromPtr(self.heap.to_start);
 
-        // Phase 3: Swap spaces
+        // Phase 3: Finalize unreachable objects with resources
+        self.finalizeUnreachable();
+
+        // Phase 4: Swap spaces
         self.heap.swapSpaces();
         self.heap.resetAllocPtr(@ptrCast(@alignCast(self.heap.from_start + bytes_copied)));
 
@@ -76,6 +79,44 @@ pub const GC = struct {
         self.heap.stats.bytes_copied += bytes_copied;
 
         return bytes_copied;
+    }
+
+    /// Finalize unreachable objects that hold resources (e.g., file handles)
+    /// This walks the from-space and closes any open streams that weren't copied
+    fn finalizeUnreachable(self: *GC) void {
+        var addr = @intFromPtr(self.heap.from_start);
+        // Only walk the used portion of from-space (up to the old alloc_ptr)
+        const from_used_end = @intFromPtr(self.heap.alloc_ptr);
+
+        while (addr < from_used_end) {
+            const first_word: *Value = @ptrFromInt(addr);
+
+            // Skip if already copied (has forwarding pointer)
+            if (first_word.isForwarding()) {
+                const size = objects.objectSize(first_word.*);
+                const aligned_size = std.mem.alignForward(usize, size, ALIGNMENT);
+                addr += aligned_size;
+                continue;
+            }
+
+            // Check if this is a stream
+            if (first_word.isBoxed()) {
+                const kind_ptr: *const objects.BoxedKind = @ptrFromInt(addr);
+                if (kind_ptr.* == .stream) {
+                    const stream: *objects.Stream = @ptrFromInt(addr);
+                    // Close the file if it's still open
+                    if (!stream.closed and stream.stream_type == .file and stream.file_fd >= 0) {
+                        const file = std.fs.File{ .handle = stream.file_fd };
+                        file.close();
+                    }
+                }
+            }
+
+            // Move to next object
+            const size = objects.objectSize(first_word.*);
+            const aligned_size = std.mem.alignForward(usize, size, ALIGNMENT);
+            addr += aligned_size;
+        }
     }
 
     /// Copy a value to to-space if needed

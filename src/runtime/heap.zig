@@ -353,6 +353,13 @@ pub const Heap = struct {
         return Value.makeBignum(bn);
     }
 
+    /// Allocate a stream
+    pub fn allocStream(self: *Heap, direction: objects.StreamDirection, stream_type: objects.StreamType, file_fd: i32) error{OutOfMemory}!Value {
+        const stream = try self.alloc(objects.Stream);
+        stream.* = objects.Stream.make(direction, stream_type, file_fd);
+        return Value.makeStream(stream);
+    }
+
     /// Allocate a bignum from limbs array
     pub fn allocBignumFromLimbs(self: *Heap, limbs: []const u64, negative: bool) error{OutOfMemory}!Value {
         const bn = try self.alloc(objects.Bignum);

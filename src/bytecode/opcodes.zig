@@ -979,6 +979,39 @@ pub const Op = enum(u8) {
     /// ( item sequence -- new-sequence )
     list_remove_equal = 0xC8,
 
+    // Stream I/O operations
+    /// Read line from stream
+    /// ( stream -- string | nil )
+    read_line = 0x36,
+
+    /// Write line to stream
+    /// ( stream text -- t )
+    write_line = 0x37,
+
+    /// Read byte from stream
+    /// ( stream -- fixnum | nil )
+    read_byte = 0x39,
+
+    /// Write byte to stream
+    /// ( stream byte -- t )
+    write_byte = 0x3A,
+
+    /// Get file position
+    /// ( stream -- fixnum )
+    file_position = 0x3B,
+
+    /// Get file length
+    /// ( stream -- fixnum )
+    file_length = 0x3C,
+
+    /// Finish output (flush)
+    /// ( stream -- nil )
+    finish_output = 0x3D,
+
+    /// Force output (flush)
+    /// ( stream -- nil )
+    force_output = 0x3E,
+
     // ========================================================================
     // Special
     // ========================================================================
@@ -1055,6 +1088,14 @@ pub const Op = enum(u8) {
             .set_dispatch_macro_character,
             .get_dispatch_macro_character,
             .str_eq,
+            .read_line,
+            .write_line,
+            .read_byte,
+            .write_byte,
+            .file_position,
+            .file_length,
+            .finish_output,
+            .force_output,
             .halt,
             .close,
             .check_fixnum,
