@@ -431,15 +431,15 @@ fn emitInst(e: *Emitter, inst: Inst, reg_map: ?regalloc.RegisterMap) !void {
         },
         .le => {
             try e.emit(ARM64.cmp(rs1, rs2));
-            try e.emit(ARM64.cset(inst.dest, .le));
+            try e.emit(ARM64.cset(rd, .le));
         },
         .gt => {
-            try e.emit(ARM64.cmp(inst.src1, inst.src2()));
-            try e.emit(ARM64.cset(inst.dest, .gt));
+            try e.emit(ARM64.cmp(rs1, rs2));
+            try e.emit(ARM64.cset(rd, .gt));
         },
         .ge => {
-            try e.emit(ARM64.cmp(inst.src1, inst.src2()));
-            try e.emit(ARM64.cset(inst.dest, .ge));
+            try e.emit(ARM64.cmp(rs1, rs2));
+            try e.emit(ARM64.cset(rd, .ge));
         },
 
         .jmp => {
@@ -450,29 +450,29 @@ fn emitInst(e: *Emitter, inst: Inst, reg_map: ?regalloc.RegisterMap) !void {
         .jz => {
             // Branch if src1 == 0 (nil)
             const offset: i19 = @intCast(inst.imm());
-            try e.emit(ARM64.cbz(inst.dest, offset));
+            try e.emit(ARM64.cbz(rd, offset));
         },
 
         .jnz => {
             // Branch if src1 != 0 (not nil)
             const offset: i19 = @intCast(inst.imm());
-            try e.emit(ARM64.cbnz(inst.dest, offset));
+            try e.emit(ARM64.cbnz(rd, offset));
         },
 
         .call => {
             // Call convention: args in x0-x7, result in x0
             // func ptr in src1
-            try e.emit(ARM64.blr(inst.src1));
+            try e.emit(ARM64.blr(rs1));
             // Move result to dest if different from x0
-            if (inst.dest != PHYS.x0) {
-                try e.emit(ARM64.mov(inst.dest, PHYS.x0));
+            if (rd != PHYS.x0) {
+                try e.emit(ARM64.mov(rd, PHYS.x0));
             }
         },
 
         .ret => {
             // Move return value to x0 if not already there
-            if (inst.src1 != PHYS.x0) {
-                try e.emit(ARM64.mov(PHYS.x0, inst.src1));
+            if (rs1 != PHYS.x0) {
+                try e.emit(ARM64.mov(PHYS.x0, rs1));
             }
             // Epilogue and return handled by caller
         },
@@ -480,13 +480,13 @@ fn emitInst(e: *Emitter, inst: Inst, reg_map: ?regalloc.RegisterMap) !void {
         .load_local => {
             // Load from stack slot
             const slot: u12 = @intCast(inst.operand);
-            try e.emit(ARM64.ldr(inst.dest, PHYS.fp, slot));
+            try e.emit(ARM64.ldr(rd, PHYS.fp, slot));
         },
 
         .store_local => {
             // Store to stack slot
             const slot: u12 = @intCast(inst.operand);
-            try e.emit(ARM64.str(inst.src1, PHYS.fp, slot));
+            try e.emit(ARM64.str(rs1, PHYS.fp, slot));
         },
 
         else => {
