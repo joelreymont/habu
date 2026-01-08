@@ -1,9 +1,0 @@
----
-title: Add compile%aset function
-status: open
-priority: 2
-issue-type: task
-created-at: "\"2026-01-08T06:02:01.337591+02:00\""
----
-
-Adding compile%aset function

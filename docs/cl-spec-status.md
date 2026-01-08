@@ -62,7 +62,7 @@
 - ✅ floats (full support)
 
 ### Arrays
-- ✅ Multi-dimensional arrays (make-array, aref with multiple subscripts)
+- ✅ Multi-dimensional arrays (make-array, aref, %aset - full mutation support)
 - ✅ 1D vectors/arrays fully supported
 
 ### Reader macros
