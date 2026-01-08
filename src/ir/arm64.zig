@@ -331,10 +331,25 @@ pub const Emitter = struct {
     }
 };
 
+/// Map virtual register to physical register using register map
+/// Falls back to using virtual register number if no map provided
+fn mapReg(vreg: Reg, reg_map: ?regalloc.RegisterMap) PhysReg {
+    if (reg_map) |map| {
+        // If register has a physical assignment, use it
+        if (map.getPhysReg(vreg)) |phys| {
+            return phys;
+        }
+        // If spilled, we'll handle load/store separately
+        // For now, use a scratch register (caller should handle spill)
+        return PHYS.x8; // Temp register for spilled values
+    }
+    // No register map - use virtual register number as physical (for testing)
+    return @intCast(vreg % 32);
+}
+
 /// Generate ARM64 code from register IR function
 /// If reg_map is provided, uses physical registers; otherwise uses virtual registers
 pub fn generate(allocator: std.mem.Allocator, func: Function, reg_map: ?regalloc.RegisterMap) ![]const u8 {
-    _ = reg_map; // TODO: Use register map to emit physical registers
     var emitter = Emitter.init(allocator);
     defer emitter.deinit();
 
@@ -347,7 +362,7 @@ pub fn generate(allocator: std.mem.Allocator, func: Function, reg_map: ?regalloc
 
     // Emit each instruction
     for (func.code) |inst| {
-        try emitInst(&emitter, inst);
+        try emitInst(&emitter, inst, reg_map);
     }
 
     // Patch branches
@@ -358,59 +373,64 @@ pub fn generate(allocator: std.mem.Allocator, func: Function, reg_map: ?regalloc
 }
 
 /// Emit a single IR instruction as ARM64
-fn emitInst(e: *Emitter, inst: Inst) !void {
+/// Uses reg_map to translate virtual registers to physical registers
+fn emitInst(e: *Emitter, inst: Inst, reg_map: ?regalloc.RegisterMap) !void {
+    // Map virtual registers to physical registers
+    const rd = mapReg(inst.dest, reg_map);
+    const rs1 = mapReg(inst.src1, reg_map);
+    const rs2 = if (inst.src2()) |s| mapReg(s, reg_map) else undefined;
     switch (inst.op) {
-        .mov => try e.emit(ARM64.mov(inst.dest, inst.src1)),
+        .mov => try e.emit(ARM64.mov(rd, rs1)),
 
         .movi => {
             const imm = inst.imm();
             if (imm >= 0) {
-                try e.emit(ARM64.movz(inst.dest, @intCast(imm)));
+                try e.emit(ARM64.movz(rd, @intCast(imm)));
             } else {
                 // MOVN for negative: movn rd, #(~imm)
-                try e.emit(ARM64.movn(inst.dest, @intCast(~imm)));
+                try e.emit(ARM64.movn(rd, @intCast(~imm)));
             }
         },
 
-        .add => try e.emit(ARM64.add(inst.dest, inst.src1, inst.src2())),
-        .sub => try e.emit(ARM64.sub(inst.dest, inst.src1, inst.src2())),
-        .mul => try e.emit(ARM64.mul(inst.dest, inst.src1, inst.src2())),
-        .div => try e.emit(ARM64.sdiv(inst.dest, inst.src1, inst.src2())),
+        .add => try e.emit(ARM64.add(rd, rs1, rs2)),
+        .sub => try e.emit(ARM64.sub(rd, rs1, rs2)),
+        .mul => try e.emit(ARM64.mul(rd, rs1, rs2)),
+        .div => try e.emit(ARM64.sdiv(rd, rs1, rs2)),
 
         .addi => {
             const imm = inst.imm();
             if (imm >= 0 and imm <= 4095) {
-                try e.emit(ARM64.addImm(inst.dest, inst.src1, @intCast(imm)));
+                try e.emit(ARM64.addImm(rd, rs1, @intCast(imm)));
             } else if (imm < 0 and imm >= -4095) {
-                try e.emit(ARM64.subImm(inst.dest, inst.src1, @intCast(-imm)));
+                try e.emit(ARM64.subImm(rd, rs1, @intCast(-imm)));
             } else {
                 // Large immediate: load into temp, then add
                 try e.emit(ARM64.movz(PHYS.x8, @bitCast(inst.imm())));
-                try e.emit(ARM64.add(inst.dest, inst.src1, PHYS.x8));
+                try e.emit(ARM64.add(rd, rs1, PHYS.x8));
             }
         },
 
-        .@"and" => try e.emit(ARM64.andReg(inst.dest, inst.src1, inst.src2())),
-        .@"or" => try e.emit(ARM64.orr(inst.dest, inst.src1, inst.src2())),
-        .xor => try e.emit(ARM64.eor(inst.dest, inst.src1, inst.src2())),
-        .shl => try e.emit(ARM64.lsl(inst.dest, inst.src1, inst.src2())),
-        .shr => try e.emit(ARM64.asr(inst.dest, inst.src1, inst.src2())),
-        .lshr => try e.emit(ARM64.lsr(inst.dest, inst.src1, inst.src2())),
+        .@"and" => try e.emit(ARM64.andReg(rd, rs1, rs2)),
+        .@"or" => try e.emit(ARM64.orr(rd, rs1, rs2)),
+        .xor => try e.emit(ARM64.eor(rd, rs1, rs2)),
+        .shl => try e.emit(ARM64.lsl(rd, rs1, rs2)),
+        .shr => try e.emit(ARM64.asr(rd, rs1, rs2)),
+        .lshr => try e.emit(ARM64.lsr(rd, rs1, rs2)),
 
         .eq => {
-            try e.emit(ARM64.cmp(inst.src1, inst.src2()));
-            try e.emit(ARM64.cset(inst.dest, .eq));
+            try e.emit(ARM64.cmp(rs1, rs2));
+            try e.emit(ARM64.cset(rd, .eq));
         },
         .ne => {
-            try e.emit(ARM64.cmp(inst.src1, inst.src2()));
-            try e.emit(ARM64.cset(inst.dest, .ne));
+            try e.emit(ARM64.cmp(rs1, rs2));
+            try e.emit(ARM64.cset(rd, .ne));
         },
         .lt => {
-            try e.emit(ARM64.cmp(inst.src1, inst.src2()));
-            try e.emit(ARM64.cset(inst.dest, .lt));
+            try e.emit(ARM64.cmp(rs1, rs2));
+            try e.emit(ARM64.cset(rd, .lt));
         },
         .le => {
-            try e.emit(ARM64.cmp(inst.src1, inst.src2()));
+            try e.emit(ARM64.cmp(rs1, rs2));
             try e.emit(ARM64.cset(inst.dest, .le));
         },
         .gt => {
