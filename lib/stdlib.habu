@@ -1080,6 +1080,26 @@
 (defun nreverse (lst)
   (nreverse-helper lst nil))
 
+;; revappend - reverse list and append tail (non-destructive)
+(defun revappend (lst tail)
+  (append (reverse lst) tail))
+
+;; nreconc - destructively reverse list and append tail
+(defun nreconc (lst tail)
+  (nconc (nreverse lst) tail))
+
+;; mapcan - like mapcar but nconc results
+(defun (mapcan -> list) ((f closure) (lst list))
+  (if (null? lst)
+      nil
+      (nconc (f (car lst)) (mapcan f (cdr lst)))))
+
+;; mapcon - like maplist but nconc results
+(defun (mapcon -> list) ((f closure) (lst list))
+  (if (null? lst)
+      nil
+      (nconc (f lst) (mapcon f (cdr lst)))))
+
 ;; abs is already a primitive, but define it here for documentation
 ;; (defun abs (x) (if (< x 0) (- 0 x) x))
 
