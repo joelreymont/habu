@@ -8,6 +8,21 @@
 (defmacro unless (test &rest body)
   `(if ,test nil (progn ,@body)))
 
+(defmacro when-let (bindings &rest body)
+  (let ((var (car (car bindings)))
+        (expr (car (cdr (car bindings)))))
+    `(let ((,var ,expr))
+       (when ,var
+         ,@body))))
+
+(defmacro if-let (bindings then &optional else)
+  (let ((var (car (car bindings)))
+        (expr (car (cdr (car bindings)))))
+    `(let ((,var ,expr))
+       (if ,var
+           ,then
+           ,else))))
+
 ;; case - dispatch on symbol value
 ;; Helper function must come BEFORE macro (like do*-bindings before do*)
 (defun case-to-cond (key clauses)
@@ -1145,6 +1160,8 @@
   (if (null? lst)
       nil
       (nconc (f lst) (mapcon f (cdr lst)))))
+
+;; Numeric predicates (zerop, plusp, minusp, evenp, oddp) are built-in primitives
 
 ;; abs is already a primitive, but define it here for documentation
 ;; (defun abs (x) (if (< x 0) (- 0 x) x))
