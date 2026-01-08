@@ -836,3 +836,21 @@
                                 (list 'defun accessor-name '(obj)
                                       (list 'svref 'obj index))))
                             slot-names)))))))
+
+;;; Generalized Reference (SETF)
+
+;; Basic setf macro - handles simple built-in places
+;; Expands (setf place value) to appropriate setter form
+(defmacro setf (place value)
+  (if (consp place)
+      (let ((op (car place))
+            (args (cdr place)))
+        (cond
+          ((eq op 'car) `(rplaca ,(car args) ,value))
+          ((eq op 'cdr) `(rplacd ,(car args) ,value))
+          ((eq op 'aref) (let ((arr (car args))
+                              (subs (cdr args)))
+                          `(%aset ,arr ,@subs ,value)))
+          ((eq op 'gethash) `(puthash ,(car args) ,value ,(car (cdr args))))
+          (t `(quote unsupported-setf-place))))
+      `(quote invalid-setf-place)))
