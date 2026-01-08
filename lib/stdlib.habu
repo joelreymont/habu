@@ -1002,5 +1002,35 @@
     ((member (car set1) set2) (set-difference (cdr set1) set2))
     (t (cons (car set1) (set-difference (cdr set1) set2)))))
 
+;;; Property list functions
+
+;; getf - get property from plist
+(defun getf (plist key)
+  (cond
+    ((null? plist) nil)
+    ((eq (car plist) key) (car (cdr plist)))
+    (t (getf (cdr (cdr plist)) key))))
+
+;;; Additional list utilities
+
+;; butlast - return list without last element
+(defun butlast (lst)
+  (if (null? (cdr lst))
+      nil
+      (cons (car lst) (butlast (cdr lst)))))
+
+;; ldiff - return prefix of list1 before list2
+(defun ldiff (list1 list2)
+  (if (eq list1 list2)
+      nil
+      (cons (car list1) (ldiff (cdr list1) list2))))
+
+;; tailp - test if sublist is a tail of list
+(defun tailp (sublist list)
+  (cond
+    ((eq sublist list) t)
+    ((null? list) nil)
+    (t (tailp sublist (cdr list)))))
+
 ;; abs is already a primitive, but define it here for documentation
 ;; (defun abs (x) (if (< x 0) (- 0 x) x))
