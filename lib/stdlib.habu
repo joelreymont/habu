@@ -500,6 +500,25 @@
   (let ((pair (assoc key alist)))
     (if pair (cdr pair) nil)))
 
+;; acons - add key-value pair to association list
+(defun acons (key value alist)
+  (cons (cons key value) alist))
+
+;; pairlis - construct association list from two lists
+(defun pairlis (keys values &optional alist)
+  (if (or (null? keys) (null? values))
+      alist
+      (pairlis (cdr keys) (cdr values)
+               (acons (car keys) (car values) alist))))
+
+;; copy-alist - copy an association list
+(defun copy-alist (alist)
+  (if (null? alist)
+      nil
+      (acons (car (car alist))
+             (cdr (car alist))
+             (copy-alist (cdr alist)))))
+
 ;;; Membership
 ;; member is a built-in primitive
 
