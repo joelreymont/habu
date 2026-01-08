@@ -725,6 +725,7 @@ pub const Emitter = struct {
             .assert_closure => |op| try self.emitUnaryOp(op.operand, .check_closure),
             .assert_non_nil => |op| try self.emitUnaryOp(op.operand, .check_non_nil),
             .assert_list => |op| try self.emitUnaryOp(op.operand, .check_list),
+            .assert_or => |ao| try self.emitAssertOr(ao),
 
             // Dependent type operations
             .assert_refine => |ar| try self.emitAssertRefine(ar),
@@ -1884,6 +1885,26 @@ pub const Emitter = struct {
         // 7. Check result is truthy, error if not
         try self.emitOp(.check_refine);
         // Stack now has original value (from dup before predicate call)
+    }
+
+    /// Emit or-type assertion: check value matches one of multiple types
+    fn emitAssertOr(self: *Emitter, ao: anytype) Error!void {
+        // 1. Emit the operand (value to check)
+        try self.emit(ao.operand);
+
+        // 2. Build a list from the type_symbols and add to constant pool
+        const heap = self.heap orelse return error.NoHeap;
+        var type_list = Value.nil;
+        var i = ao.type_symbols.len;
+        while (i > 0) {
+            i -= 1;
+            type_list = try heap.allocCons(ao.type_symbols[i], type_list);
+        }
+
+        // 3. Add to constant pool and emit check_or with the index
+        const idx = try self.addConstant(type_list.raw);
+        try self.emitOp(.check_or);
+        try self.emitU16(idx);
     }
 
     /// Emit dependent pair creation

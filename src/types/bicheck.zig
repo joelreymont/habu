@@ -205,9 +205,7 @@ pub const BiChecker = struct {
             .rplaca, .rplacd => &type_mod.t_cons,
 
             // Type predicates: any -> bool (nil or t)
-            .consp, .symbolp, .stringp, .vectorp, .numberp, .closurep,
-            .keywordp, .nilp, .characterp, .floatp, .listp, .atom,
-            .hashtablep, .rationalp, .complexp => &type_mod.t_any,
+            .consp, .symbolp, .stringp, .vectorp, .numberp, .closurep, .keywordp, .nilp, .characterp, .floatp, .listp, .atom, .hashtablep, .rationalp, .complexp => &type_mod.t_any,
 
             // Complex number operations
             .make_complex => &type_mod.t_any, // returns complex
@@ -244,6 +242,7 @@ pub const BiChecker = struct {
             .assert_closure => &type_mod.t_closure,
             .assert_non_nil => &type_mod.t_non_nil,
             .assert_list => &type_mod.t_any, // Could be nil or cons
+            .assert_or => &type_mod.t_any, // Could be any of the union types
 
             // String operations
             .str_ref => &type_mod.t_char,

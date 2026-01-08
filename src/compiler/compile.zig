@@ -5970,10 +5970,10 @@ pub const Compiler = struct {
             }
         }
 
-        // For other or-types, we need runtime checks with predicates
-        // This is more complex - for now, return the expression without check
-        // TODO: Implement full or-type checking
-        return @constCast(expr_ir);
+        // For other or-types, generate assert_or IR node
+        // Duplicate the type_symbols slice to persistent allocation
+        const persistent_types = try self.allocator.dupe(Value, type_syms.items);
+        return try self.builder.assertOr(expr_ir, persistent_types);
     }
 
     /// Compile (refine T x P) type check

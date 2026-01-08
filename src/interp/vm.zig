@@ -1724,6 +1724,64 @@ pub const Vm = struct {
                 const val = try self.peek(0);
                 if (!val.isNil() and !val.isCons()) return error.TypeMismatch;
             },
+            .check_or => {
+                // Read constant pool index for type vector
+                const type_vec_idx = self.readU16();
+                if (type_vec_idx >= self.chunk.constants.len) return error.InvalidConstant;
+                const type_vec = Value{ .raw = self.chunk.constants[type_vec_idx] };
+
+                // Get value to check
+                const val = try self.peek(0);
+
+                // Check if value matches any type in the list
+                var matched = false;
+                var current = type_vec;
+                while (current.isCons()) {
+                    const cons = current.toPtr(Cons);
+                    const type_sym = cons.car;
+                    // Compare by symbol identity, then check value type
+                    if (type_sym.eq(self.type_syms.fixnum) and val.isFixnum()) {
+                        matched = true;
+                        break;
+                    } else if (type_sym.eq(self.type_syms.cons) and val.isCons()) {
+                        matched = true;
+                        break;
+                    } else if (type_sym.eq(self.type_syms.symbol) and val.isSymbol()) {
+                        matched = true;
+                        break;
+                    } else if (type_sym.eq(self.type_syms.string) and val.isString()) {
+                        matched = true;
+                        break;
+                    } else if (type_sym.eq(self.type_syms.vector) and val.isVector()) {
+                        matched = true;
+                        break;
+                    } else if (type_sym.eq(self.type_syms.closure) and val.isClosure()) {
+                        matched = true;
+                        break;
+                    } else if (type_sym.eq(self.type_syms.keyword) and val.isKeyword()) {
+                        matched = true;
+                        break;
+                    } else if (type_sym.eq(self.type_syms.nil) and val.isNil()) {
+                        matched = true;
+                        break;
+                    } else if (type_sym.eq(self.type_syms.list) and (val.isNil() or val.isCons())) {
+                        matched = true;
+                        break;
+                    } else if (type_sym.eq(self.type_syms.atom) and !val.isCons()) {
+                        matched = true;
+                        break;
+                    } else if (type_sym.eq(self.type_syms.t)) {
+                        // t matches everything except nil
+                        if (!val.isNil()) {
+                            matched = true;
+                            break;
+                        }
+                    }
+                    current = cons.cdr;
+                }
+
+                if (!matched) return error.TypeMismatch;
+            },
             .check_refine => {
                 // Stack: [value, predicate-result] -> [value]
                 // Pop predicate result, check it's truthy, leave value

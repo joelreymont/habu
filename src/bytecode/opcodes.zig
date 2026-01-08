@@ -627,6 +627,11 @@ pub const Op = enum(u8) {
     /// ( value predicate-result -- value )
     check_refine = 0xF6,
 
+    /// Assert value matches one of multiple types (union type)
+    /// Operand: u16 constant pool index of vector containing type symbols
+    /// ( x -- x )
+    check_or = 0x2C,
+
     // ========================================================================
     // Character I/O
     // ========================================================================
@@ -1256,6 +1261,7 @@ pub const Op = enum(u8) {
             .pop_unwind,
             .find_key,
             .push_restart,
+            .check_or,
             => 2,
 
             // 3 byte operand

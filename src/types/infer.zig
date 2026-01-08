@@ -669,9 +669,7 @@ pub const InferCtx = struct {
             },
 
             // Type predicates - return boolean
-            .consp, .symbolp, .numberp, .stringp, .vectorp,
-            .closurep, .keywordp, .nilp, .characterp, .floatp,
-            .listp, .atom => |op| {
+            .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp, .characterp, .floatp, .listp, .atom => |op| {
                 _ = try self.infer(op.operand, env);
                 return try self.concrete(&types.t_any);
             },
@@ -869,6 +867,10 @@ pub const InferCtx = struct {
             },
             .assert_non_nil, .assert_list => |op| {
                 _ = try self.infer(op.operand, env);
+                return try self.concrete(&types.t_any);
+            },
+            .assert_or => |ao| {
+                _ = try self.infer(ao.operand, env);
                 return try self.concrete(&types.t_any);
             },
 

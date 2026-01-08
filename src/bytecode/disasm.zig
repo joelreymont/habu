@@ -244,7 +244,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         },
 
         // 2 byte operand (u16)
-        .push_const, .load_global, .store_global, .make_vec, .make_hash, .find_key => {
+        .push_const, .load_global, .store_global, .make_vec, .make_hash, .find_key, .check_or => {
             const operand = chunk.readU16(offset + 1);
             try writer.print("{s} {d}\n", .{ op.name(), operand });
             return offset + 3;

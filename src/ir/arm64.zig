@@ -343,8 +343,8 @@ fn mapReg(vreg: Reg, reg_map: ?regalloc.RegisterMap) PhysReg {
         // For now, use a scratch register (caller should handle spill)
         return PHYS.x8; // Temp register for spilled values
     }
-    // No register map - use virtual register number as physical (for testing)
-    return @intCast(vreg % 32);
+    // No register map - use virtual register modulo available registers
+    return @intCast(vreg % 26); // 26 allocatable registers (x0-x15, x19-x28)
 }
 
 /// Generate ARM64 code from register IR function
@@ -379,13 +379,14 @@ fn emitInst(e: *Emitter, inst: Inst, reg_map: ?regalloc.RegisterMap) !void {
     // Check if operands are spilled
     const dest_spilled = if (reg_map) |map| map.isSpilled(inst.dest) else false;
     const src1_spilled = if (reg_map) |map| map.isSpilled(inst.src1) else false;
-    const src2_spilled = if (inst.src2()) |s| (if (reg_map) |map| map.isSpilled(s) else false) else false;
+    const s2 = inst.src2();
+    const src2_spilled = if (reg_map) |map| map.isSpilled(s2) else false;
 
     // Map virtual registers to physical registers
     // Spilled registers use temp register x8
     const rd = mapReg(inst.dest, reg_map);
     const rs1 = mapReg(inst.src1, reg_map);
-    var rs2 = if (inst.src2()) |s| mapReg(s, reg_map) else undefined;
+    var rs2 = mapReg(s2, reg_map);
 
     // Load spilled sources before operation
     if (src1_spilled) {
@@ -397,14 +398,12 @@ fn emitInst(e: *Emitter, inst: Inst, reg_map: ?regalloc.RegisterMap) !void {
         }
     }
     if (src2_spilled) {
-        if (inst.src2()) |s| {
-            if (reg_map) |map| {
-                if (map.getSpillSlot(s)) |slot| {
-                    // Load from spill slot to x9 (second temp for src2)
-                    // Use x9 to avoid conflict with src1 which might use x8
-                    rs2 = PHYS.x9;
-                    try e.emit(ARM64.ldr(rs2, PHYS.fp, @as(u12, @intCast(slot * 8))));
-                }
+        if (reg_map) |map| {
+            if (map.getSpillSlot(s2)) |slot| {
+                // Load from spill slot to x9 (second temp for src2)
+                // Use x9 to avoid conflict with src1 which might use x8
+                rs2 = PHYS.x9;
+                try e.emit(ARM64.ldr(rs2, PHYS.fp, @as(u12, @intCast(slot * 8))));
             }
         }
     }
@@ -574,7 +573,7 @@ test "simple function codegen" {
     defer testing.allocator.free(func.code);
     defer testing.allocator.free(func.constants);
 
-    const code = try generate(testing.allocator, func);
+    const code = try generate(testing.allocator, func, null);
     defer testing.allocator.free(code);
 
     // Should have: prologue (2) + addi (1) + ret setup (0, already in x0) + epilogue (2)

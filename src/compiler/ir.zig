@@ -9,7 +9,8 @@
 //! IR nodes use tagged unions for exhaustive matching.
 
 const std = @import("std");
-const Value = @import("../runtime/value.zig").Value;
+const runtime = @import("../runtime/runtime.zig");
+const Value = runtime.Value;
 pub const HashTest = @import("../runtime/objects.zig").HashTest;
 const types = @import("../types/types.zig");
 
@@ -576,6 +577,15 @@ pub const Ir = union(enum) {
 
     /// Assert value is list (nil or cons)
     assert_list: UnaryOp,
+
+    /// Assert value matches one of multiple types (union type)
+    /// (or T1 T2 ...) -> checks if value is T1 OR T2 OR ...
+    assert_or: struct {
+        /// The value to check
+        operand: *const Ir,
+        /// List of type symbols to check against
+        type_symbols: []const runtime.Value,
+    },
 
     /// Assert value satisfies a refinement predicate
     /// (the (refine T x P) expr) -> evaluates expr, applies predicate, errors if false
@@ -1697,6 +1707,16 @@ pub const IrBuilder = struct {
     pub fn assertList(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .assert_list = .{ .operand = operand } };
+        return node;
+    }
+
+    /// Assert value matches one of multiple types (union type)
+    pub fn assertOr(self: IrBuilder, operand: *const Ir, type_symbols: []const runtime.Value) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .assert_or = .{
+            .operand = operand,
+            .type_symbols = type_symbols,
+        } };
         return node;
     }
 
