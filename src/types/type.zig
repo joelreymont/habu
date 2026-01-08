@@ -90,6 +90,14 @@ pub const Primitive = enum {
     keyword, // tag 10
     nil, // value 0
     char, // bit63=1, bits 0-20 = codepoint
+    // Boxed types (tag 12=boxed, discriminated by BoxedKind)
+    hashtable, // boxed kind 0
+    rational, // boxed kind 1 - exact fraction (numerator/denominator)
+    complex, // boxed kind 2 - complex number (real+imag)
+    stream, // boxed kind 3 - file/string stream
+    bignum, // boxed kind 4 - arbitrary precision integer
+    array, // boxed kind 5 - multi-dimensional array
+    pathname, // boxed kind 6 - file path object
 
     /// Get the runtime tag value for pointer types
     /// Returns null for fixnum (bit0=1) and nil (special value 0)
@@ -101,6 +109,7 @@ pub const Primitive = enum {
             .string => 6,
             .closure => 8,
             .keyword => 10,
+            .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname => 12, // boxed tag
             .fixnum, .float, .nil, .char => null, // Not pointer-tagged
         };
     }
@@ -110,6 +119,14 @@ pub const Primitive = enum {
         return switch (self) {
             .fixnum, .float, .nil, .char => false,
             else => true,
+        };
+    }
+
+    /// Check if this is a boxed type (requires discriminator)
+    pub fn isBoxed(self: Primitive) bool {
+        return switch (self) {
+            .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname => true,
+            else => false,
         };
     }
 
@@ -462,6 +479,13 @@ pub const t_closure = Type{ .primitive = .closure };
 pub const t_keyword = Type{ .primitive = .keyword };
 pub const t_nil = Type{ .primitive = .nil };
 pub const t_char = Type{ .primitive = .char };
+pub const t_hashtable = Type{ .primitive = .hashtable };
+pub const t_rational = Type{ .primitive = .rational };
+pub const t_complex = Type{ .primitive = .complex };
+pub const t_stream = Type{ .primitive = .stream };
+pub const t_bignum = Type{ .primitive = .bignum };
+pub const t_array = Type{ .primitive = .array };
+pub const t_pathname = Type{ .primitive = .pathname };
 pub const t_any = Type{ .any = {} };
 
 // Common compound types

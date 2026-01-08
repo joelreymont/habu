@@ -1158,13 +1158,13 @@ pub const Compiler = struct {
                 .vector => &types.t_vector,
                 .keyword => &types.t_keyword,
                 .closure => &types.t_closure,
-                .hashtable => &types.t_any,
-                .rational => &types.t_any, // TODO: add t_rational
-                .complex => &types.t_any, // TODO: add t_complex
-                .stream => &types.t_any, // TODO: add t_stream
-                .bignum => &types.t_any, // TODO: add t_bignum
-                .array => &types.t_any, // TODO: add t_array
-                .pathname => &types.t_any, // TODO: add t_pathname
+                .hashtable => &types.t_hashtable,
+                .rational => &types.t_rational,
+                .complex => &types.t_complex,
+                .stream => &types.t_stream,
+                .bignum => &types.t_bignum,
+                .array => &types.t_array,
+                .pathname => &types.t_pathname,
             },
             .@"var" => |v| {
                 // Check occurrence typing first (narrowed types)
