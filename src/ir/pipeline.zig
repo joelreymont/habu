@@ -86,24 +86,27 @@ pub fn compile(
     var reg_alloc = GraphColorAlloc.init(allocator);
     defer reg_alloc.deinit();
 
-    reg_alloc.allocate(reg_func) catch {
+    var reg_map: ?regalloc.RegisterMap = null;
+    reg_alloc.allocate(reg_func) catch |err| {
         // Non-fatal: we can still generate code with virtual registers
         if (config.debug) {
-            std.debug.print("Register allocation failed, using virtual registers\n", .{});
+            std.debug.print("Register allocation failed: {}, using virtual registers\n", .{err});
         }
     };
 
-    if (config.debug) {
-        std.debug.print("=== Register Allocation ===\n", .{});
-        std.debug.print("Spills: {}\n", .{reg_alloc.spill_count});
+    // Extract register map if allocation succeeded
+    if (reg_alloc.node_count > 0) {
+        reg_map = reg_alloc.getRegisterMap();
+        if (config.debug) {
+            std.debug.print("=== Register Allocation ===\n", .{});
+            std.debug.print("Spills: {}\n", .{reg_alloc.spill_count});
+        }
     }
 
     // Step 3: Generate native code
     switch (config.target) {
         .arm64 => {
-            // Note: Currently generates code using virtual register numbers directly
-            // TODO: Apply register allocation mapping to use physical registers
-            const code = arm64.generate(allocator, reg_func) catch {
+            const code = arm64.generate(allocator, reg_func, reg_map) catch {
                 return PipelineError.CodegenFailed;
             };
 

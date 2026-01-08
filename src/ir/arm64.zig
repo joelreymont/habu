@@ -332,12 +332,15 @@ pub const Emitter = struct {
 };
 
 /// Generate ARM64 code from register IR function
-pub fn generate(allocator: std.mem.Allocator, func: Function) ![]const u8 {
+/// If reg_map is provided, uses physical registers; otherwise uses virtual registers
+pub fn generate(allocator: std.mem.Allocator, func: Function, reg_map: ?regalloc.RegisterMap) ![]const u8 {
+    _ = reg_map; // TODO: Use register map to emit physical registers
     var emitter = Emitter.init(allocator);
     defer emitter.deinit();
 
-    // Calculate frame size (spill slots + locals)
-    const frame_size: u12 = @intCast((func.local_count + 2) * 8); // +2 for fp, lr
+    // Calculate frame size (spill slots + locals + spills)
+    const spill_slots = if (reg_map) |map| map.spill_count else 0;
+    const frame_size: u12 = @intCast((func.local_count + spill_slots + 2) * 8); // +2 for fp, lr
 
     // Emit prologue
     try emitter.emitPrologue(frame_size);

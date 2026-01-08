@@ -65,6 +65,43 @@ pub const PHYS = struct {
     pub const callee_saved_mask: u32 = 0b11111111110000000000_0000_0000_0000;
 };
 
+/// Register allocation result
+/// Maps virtual registers to physical registers or spill slots
+pub const RegisterMap = struct {
+    /// Map from virtual register to physical register (null if spilled)
+    colors: [32]?PhysReg,
+    /// Map from virtual register to spill slot (null if not spilled)
+    spill_slots: [32]?u16,
+    /// Total number of spill slots used
+    spill_count: u16,
+
+    /// Create empty register map
+    pub fn init() RegisterMap {
+        return .{
+            .colors = [_]?PhysReg{null} ** 32,
+            .spill_slots = [_]?u16{null} ** 32,
+            .spill_count = 0,
+        };
+    }
+
+    /// Get physical register for virtual register (null if spilled)
+    pub fn getPhysReg(self: RegisterMap, vreg: Reg) ?PhysReg {
+        if (vreg >= 32) return null;
+        return self.colors[vreg];
+    }
+
+    /// Get spill slot for virtual register (null if not spilled)
+    pub fn getSpillSlot(self: RegisterMap, vreg: Reg) ?u16 {
+        if (vreg >= 32) return null;
+        return self.spill_slots[vreg];
+    }
+
+    /// Check if register is spilled
+    pub fn isSpilled(self: RegisterMap, vreg: Reg) bool {
+        return self.getSpillSlot(vreg) != null;
+    }
+};
+
 /// Interference graph node
 const Node = struct {
     vreg: Reg,
@@ -194,6 +231,21 @@ pub const GraphColorAlloc = struct {
 
         // Phase 6: Assign colors
         try self.assignColors();
+    }
+
+    /// Extract register allocation results as a RegisterMap
+    pub fn getRegisterMap(self: *const GraphColorAlloc) RegisterMap {
+        var map = RegisterMap.init();
+        map.spill_count = self.spill_count;
+
+        for (self.nodes, 0..) |maybe_node, vreg| {
+            if (maybe_node) |node| {
+                map.colors[vreg] = node.color;
+                map.spill_slots[vreg] = node.spill_slot;
+            }
+        }
+
+        return map;
     }
 
     /// Compute live-out sets using backward dataflow analysis
