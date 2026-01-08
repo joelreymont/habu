@@ -1165,10 +1165,21 @@
         (args (cdr place)))
     (let ((expander (gethash op *setf-expanders*)))
       (if expander
-          (funcall expander args)
+          (apply expander args)
           (get-builtin-setf-expansion op args)))))
 
 (defun get-setf-expansion (place)
   (if (consp place)
       (get-compound-setf-expansion place)
       (get-variable-setf-expansion place)))
+
+;;; define-setf-expander - define custom setf expander
+;;; Syntax: (define-setf-expander name lambda-list &body body)
+;;; The body should return 5 values: vars, vals, store-vars, writer, reader
+
+(defmacro define-setf-expander (name lambda-list &rest body)
+  `(progn
+     (puthash ',name
+              (lambda ,lambda-list ,@body)
+              *setf-expanders*)
+     ',name))
