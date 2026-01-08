@@ -1080,3 +1080,10 @@
 
 ;; abs is already a primitive, but define it here for documentation
 ;; (defun abs (x) (if (< x 0) (- 0 x) x))
+
+;;; SETF Expander Registry
+;;; Global hash table mapping symbols to setf expander functions
+;;; Used by define-setf-expander and get-setf-expansion
+;;; defvar is a primitive that creates global variables
+
+(defvar *setf-expanders* (make-hash-table))
