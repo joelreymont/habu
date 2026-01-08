@@ -14,11 +14,14 @@
 - ✅ subseq (stdlib.habu)
 - ✅ substitute (stdlib.habu)
 - ✅ sort (stdlib.habu)
+- ✅ nth/nthcdr (stdlib.habu:407,412) - list access
+- ✅ elt (stdlib.habu:417) - generic sequence access
 
 ### Control flow
 - ✅ typecase (stdlib.habu)
 - ✅ ecase (stdlib.habu)
 - ✅ prog (stdlib.habu)
+- ✅ do/do* (stdlib.habu:61,113) - parallel/sequential iteration with stepping
 - ✅ multiple-value-setq (stdlib.habu)
 - ✅ nth-value (stdlib.habu)
 
@@ -55,11 +58,13 @@
 - ✅ make-instance (compile.zig:4906) - all keyword args work correctly
 - ✅ slot-value (compile.zig:4976)
 
-### Numeric types
-- ✅ rationals (objects.zig:188, primitives implemented)
-- ✅ complex (objects.zig:223, primitives implemented)
-- ✅ bignum (objects.zig:270, basic structure)
-- ✅ floats (full support)
+### Numeric types (Full CL Numeric Tower)
+- ✅ Fixnum (basic integers with overflow detection)
+- ✅ Bignum (objects.zig:270, automatic promotion on overflow)
+- ✅ Float (full support with contagion)
+- ✅ Rational (objects.zig:188, full arithmetic integration - created by division, automatic reduction)
+- ✅ Complex (objects.zig:223, full arithmetic integration - supports mixed-type operations)
+- ✅ Numeric tower complete: complex > float > rational > bignum > fixnum
 
 ### Arrays
 - ✅ Multi-dimensional arrays (make-array, aref, %aset - full mutation support)
