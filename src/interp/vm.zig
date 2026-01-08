@@ -202,7 +202,7 @@ pub const Vm = struct {
     /// Saved throw state for unwinding through unwind-protect
     pending_throw_tag: Value,
     pending_throw_value: Value,
-    pending_error: ?Error,
+    pending_error: ?anyerror,
     is_unwinding: bool,
 
     /// Secondary values buffer for multiple-value-bind
@@ -544,7 +544,7 @@ pub const Vm = struct {
 
     /// Call a closure with arguments already on stack
     /// Expects args to be pushed already at positions [0..argc)
-    pub fn callClosure(self: *Vm, closure: *const runtime.Closure, argc: u8) Error!Value {
+    pub fn callClosure(self: *Vm, closure: *const runtime.Closure, argc: u8) anyerror!Value {
         // Save state - will be restored on both success and error
         const saved_state = State.save(self);
 
@@ -581,7 +581,7 @@ pub const Vm = struct {
     }
 
     /// Run a chunk to completion
-    pub fn run(self: *Vm, chunk: *const Chunk) Error!Value {
+    pub fn run(self: *Vm, chunk: *const Chunk) anyerror!Value {
         self.chunk = chunk;
         self.ip = 0;
         self.sp = 0;
@@ -597,7 +597,7 @@ pub const Vm = struct {
         return self.execute();
     }
 
-    fn execute(self: *Vm) Error!Value {
+    fn execute(self: *Vm) anyerror!Value {
         while (true) {
             // Bounds check before reading opcode to prevent read past end of chunk
             if (self.ip >= self.chunk.code.len) return error.InvalidOpcode;
@@ -615,7 +615,7 @@ pub const Vm = struct {
     }
 
     /// Execute a single opcode
-    fn executeOp(self: *Vm, op: Op) Error!void {
+    fn executeOp(self: *Vm, op: Op) anyerror!void {
         switch (op) {
             // Stack manipulation
             .push_nil => try self.push(Value.nil),
@@ -1349,18 +1349,18 @@ pub const Vm = struct {
             // I/O
             .print => {
                 const val = try self.pop();
-                io.printValue(val) catch return error.Halt;
-                io.sysNewline() catch return error.Halt;
+                try io.printValue(val);
+                try io.sysNewline();
                 try self.push(val); // Return the printed value
             },
             .princ => {
                 const val = try self.pop();
-                io.princValue(val) catch return error.Halt;
+                try io.princValue(val);
                 // Note: no newline for princ
                 try self.push(val); // Return the printed value
             },
             .terpri => {
-                io.sysNewline() catch return error.Halt;
+                try io.sysNewline();
                 try self.push(Value.nil);
             },
             .write_char => {
@@ -1368,12 +1368,12 @@ pub const Vm = struct {
                 if (!val.isCharacter()) return error.TypeMismatch;
                 const cp = val.toCharacter();
                 if (cp < 128) {
-                    io.sysWriteChar(@intCast(cp)) catch return error.Halt;
+                    try io.sysWriteChar(@intCast(cp));
                 } else {
                     // UTF-8 encode for non-ASCII
                     var buf: [4]u8 = undefined;
-                    const len = std.unicode.utf8Encode(@intCast(cp), &buf) catch 0;
-                    io.sysWriteBytes(buf[0..len]) catch return error.Halt;
+                    const len = try std.unicode.utf8Encode(@intCast(cp), &buf);
+                    try io.sysWriteBytes(buf[0..len]);
                 }
                 try self.push(val);
             },
@@ -3430,7 +3430,7 @@ pub const Vm = struct {
     }
 
     /// Handle an error by running unwind-protect cleanup if needed
-    fn doError(self: *Vm, err: Error) Error {
+    fn doError(self: *Vm, err: anyerror) anyerror {
         // Check if there's an unwind-protect that needs cleanup
         if (self.unwind_sp > 0) {
             // Pop the unwind frame
