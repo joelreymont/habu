@@ -819,25 +819,27 @@ pub const BoxingSet = struct {
 pub const CaptureSet = struct {
     /// Free variables that need to be captured
     captures: std.ArrayList(Ir.Capture),
+    /// Fast deduplication lookup
+    seen: std.StringHashMap(void),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) CaptureSet {
         return .{
             .captures = std.ArrayList(Ir.Capture){},
+            .seen = std.StringHashMap(void).init(allocator),
             .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *CaptureSet) void {
         self.captures.deinit(self.allocator);
+        self.seen.deinit();
     }
 
     /// Add a capture if not already present
     pub fn addCapture(self: *CaptureSet, name: []const u8, depth: u16, index: u16) !void {
-        // Check if already captured
-        for (self.captures.items) |cap| {
-            if (std.mem.eql(u8, cap.name, name)) return;
-        }
+        const gop = try self.seen.getOrPut(name);
+        if (gop.found_existing) return;
         try self.captures.append(self.allocator, .{
             .name = name,
             .depth = depth,
@@ -2168,7 +2170,7 @@ pub const Compiler = struct {
                                 const binding_pair = binding.toPtr(Cons);
                                 if (binding_pair.car.isSymbol()) {
                                     const bname_sym = binding_pair.car.toPtr(Symbol);
-                                    _ = let_env.bind(bname_sym.getName()) catch return;
+                                    _ = try let_env.bind(bname_sym.getName());
                                 }
                             }
                             binding_list = binding_cons.cdr;
@@ -4027,7 +4029,7 @@ pub const Compiler = struct {
                             const use_cons = use_list.toPtr(Cons);
                             const use_pkg_name = self.getStringOrSymbolName(use_cons.car) orelse return error.InvalidSyntax;
                             const use_pkg = try heap.findOrCreatePackage(use_pkg_name);
-                            pkg.usePackage(use_pkg) catch return error.OutOfMemory;
+                            pkg.usePackage(use_pkg) catch |e| return e;
                             use_list = use_cons.cdr;
                         }
                     } else if (kw.raw == b.kw_export.raw) {
@@ -4036,7 +4038,7 @@ pub const Compiler = struct {
                         while (export_list.isCons()) {
                             const export_cons = export_list.toPtr(Cons);
                             const export_name = self.getStringOrSymbolName(export_cons.car) orelse return error.InvalidSyntax;
-                            pkg.exportSymbol(export_name) catch return error.OutOfMemory;
+                            pkg.exportSymbol(export_name) catch |e| return e;
                             export_list = export_cons.cdr;
                         }
                     }
@@ -4076,7 +4078,7 @@ pub const Compiler = struct {
         while (syms.isCons()) {
             const cons = syms.toPtr(Cons);
             const sym_name = self.getStringOrSymbolName(cons.car) orelse return error.InvalidSyntax;
-            pkg.exportSymbol(sym_name) catch return error.OutOfMemory;
+            pkg.exportSymbol(sym_name) catch |e| return e;
             syms = cons.cdr;
         }
 
@@ -4094,7 +4096,7 @@ pub const Compiler = struct {
         const other_name = self.getStringOrSymbolName(cons1.car) orelse return error.InvalidSyntax;
 
         const other_pkg = heap.findPackage(other_name) orelse return error.InvalidSyntax;
-        pkg.usePackage(other_pkg) catch return error.OutOfMemory;
+        pkg.usePackage(other_pkg) catch |e| return e;
 
         return try self.builder.lit(Value.t);
     }
@@ -4156,7 +4158,7 @@ pub const Compiler = struct {
         if (!name_val.isSymbol()) return error.InvalidSyntax;
         // Dupe struct name to avoid dangling pointer if heap moves
         const struct_name_raw = name_val.toPtr(Symbol).getName();
-        const struct_name = self.allocator.dupe(u8, struct_name_raw) catch return error.OutOfMemory;
+        const struct_name = self.allocator.dupe(u8, struct_name_raw) catch |e| return e;
 
         // Collect slot specs: either `slot` or `(slot type)`
         var slot_specs = std.ArrayList(SlotSpec){};
@@ -4169,14 +4171,14 @@ pub const Compiler = struct {
             if (slot_spec.isSymbol()) {
                 // Simple slot: `x` -> type is any
                 const slot_name_raw = slot_spec.toPtr(Symbol).getName();
-                const slot_name = self.allocator.dupe(u8, slot_name_raw) catch return error.OutOfMemory;
-                slot_specs.append(self.allocator, .{ .name = slot_name, .field_type = &types.t_any }) catch return error.OutOfMemory;
+                const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
+                slot_specs.append(self.allocator, .{ .name = slot_name, .field_type = &types.t_any }) catch |e| return e;
             } else if (slot_spec.isCons()) {
                 // Typed slot: `(x fixnum)` -> parse name and type
                 const spec_cons = slot_spec.toPtr(Cons);
                 if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
                 const slot_name_raw = spec_cons.car.toPtr(Symbol).getName();
-                const slot_name = self.allocator.dupe(u8, slot_name_raw) catch return error.OutOfMemory;
+                const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
 
                 // Get type from second element (can be symbol or compound type expr)
                 if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
@@ -4185,7 +4187,7 @@ pub const Compiler = struct {
 
                 // Parse type expression (supports compound types like (list fixnum))
                 const field_type = self.parseTypeExpr(type_expr) orelse return error.InvalidSyntax;
-                slot_specs.append(self.allocator, .{ .name = slot_name, .field_type = field_type }) catch return error.OutOfMemory;
+                slot_specs.append(self.allocator, .{ .name = slot_name, .field_type = field_type }) catch |e| return e;
             } else {
                 return error.InvalidSyntax;
             }
@@ -4202,8 +4204,8 @@ pub const Compiler = struct {
         }
         var type_builder = types.TypeBuilder.init(self.allocator);
         defer type_builder.deinit();
-        const struct_type = type_builder.makeStruct(struct_name, struct_fields) catch return error.OutOfMemory;
-        self.registerStructType(struct_name, struct_type) catch return error.OutOfMemory;
+        const struct_type = type_builder.makeStruct(struct_name, struct_fields) catch |e| return e;
+        self.registerStructType(struct_name, struct_type) catch |e| return e;
 
         // Extract slot names for constructor params
         var slot_names = try self.allocator.alloc([]const u8, slot_specs.items.len);
@@ -4235,8 +4237,8 @@ pub const Compiler = struct {
 
         // Register predicate for occurrence typing
         // Use globals.allocator for persistence across expressions (arena gets freed)
-        const persistent_pred_name = self.globals.allocator.dupe(u8, pred_name) catch return error.OutOfMemory;
-        self.struct_predicates.put(persistent_pred_name, struct_type) catch return error.OutOfMemory;
+        const persistent_pred_name = self.globals.allocator.dupe(u8, pred_name) catch |e| return e;
+        self.struct_predicates.put(persistent_pred_name, struct_type) catch |e| return e;
 
         // 4. Copier: (defun copy-name (obj) (copy-seq obj))
         const copy_name = try self.concatStrings("copy-", struct_name);
@@ -4262,7 +4264,7 @@ pub const Compiler = struct {
         // Qualify the constructor name with current package
         var qual_buf: [512]u8 = undefined;
         const qualified_name = self.qualifyName(make_name, &qual_buf) catch make_name;
-        const global_idx = self.globals.define(qualified_name) catch return error.OutOfMemory;
+        const global_idx = self.globals.define(qualified_name) catch |e| return e;
 
         // Extract just the names for lambda params
         const slot_names = try self.allocator.alloc([]const u8, slots.len);
@@ -4311,7 +4313,7 @@ pub const Compiler = struct {
             null,
             &[_]Ir.Capture{},
             body_ir,
-        ) catch return error.OutOfMemory;
+        ) catch |e| return e;
 
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
@@ -4620,7 +4622,7 @@ pub const Compiler = struct {
         // Qualify the accessor name with current package
         var qual_buf: [512]u8 = undefined;
         const qualified_name = self.qualifyName(accessor_name, &qual_buf) catch accessor_name;
-        const global_idx = self.globals.define(qualified_name) catch return error.OutOfMemory;
+        const global_idx = self.globals.define(qualified_name) catch |e| return e;
 
         // Variable reference for obj parameter
         const obj_ref = try self.builder.variable("obj", 0, 0);
@@ -4659,7 +4661,7 @@ pub const Compiler = struct {
             null,
             &[_]Ir.Capture{},
             body_ir,
-        ) catch return error.OutOfMemory;
+        ) catch |e| return e;
 
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
@@ -4669,7 +4671,7 @@ pub const Compiler = struct {
         // Qualify the predicate name with current package
         var qual_buf: [512]u8 = undefined;
         const qualified_name = self.qualifyName(pred_name, &qual_buf) catch pred_name;
-        const global_idx = self.globals.define(qualified_name) catch return error.OutOfMemory;
+        const global_idx = self.globals.define(qualified_name) catch |e| return e;
 
         // Body: (if (vectorp obj) (eq (vec-ref obj 0) 'name) nil)
         const obj_ref = try self.builder.variable("obj", 0, 0);
@@ -4689,7 +4691,7 @@ pub const Compiler = struct {
             null,
             &[_]Ir.Capture{},
             body_ir,
-        ) catch return error.OutOfMemory;
+        ) catch |e| return e;
 
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
@@ -4700,7 +4702,7 @@ pub const Compiler = struct {
         // Qualify the copier name with current package
         var qual_buf: [512]u8 = undefined;
         const qualified_name = self.qualifyName(copy_name, &qual_buf) catch copy_name;
-        const global_idx = self.globals.define(qualified_name) catch return error.OutOfMemory;
+        const global_idx = self.globals.define(qualified_name) catch |e| return e;
 
         // For now just return identity - proper copy-seq needs implementation
         const obj_ref = try self.builder.variable("obj", 0, 0);
@@ -4712,7 +4714,7 @@ pub const Compiler = struct {
             null,
             &[_]Ir.Capture{},
             obj_ref,
-        ) catch return error.OutOfMemory;
+        ) catch |e| return e;
 
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
@@ -4752,7 +4754,7 @@ pub const Compiler = struct {
         if (!name_val.isSymbol()) return error.InvalidSyntax;
 
         const class_name_raw = name_val.toPtr(Symbol).getName();
-        const class_name = self.allocator.dupe(u8, class_name_raw) catch return error.OutOfMemory;
+        const class_name = self.allocator.dupe(u8, class_name_raw) catch |e| return e;
 
         // Parse superclasses (second arg) and inherit their slots
         if (!cons1.cdr.isCons()) return error.InvalidSyntax;
@@ -4801,14 +4803,14 @@ pub const Compiler = struct {
             if (slot_spec.isSymbol()) {
                 // Simple slot: `x`
                 const slot_name_raw = slot_spec.toPtr(Symbol).getName();
-                const slot_name = self.allocator.dupe(u8, slot_name_raw) catch return error.OutOfMemory;
-                slot_specs.append(self.allocator, .{ .name = slot_name, .field_type = &types.t_any }) catch return error.OutOfMemory;
+                const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
+                slot_specs.append(self.allocator, .{ .name = slot_name, .field_type = &types.t_any }) catch |e| return e;
             } else if (slot_spec.isCons()) {
                 // Slot with options: (name :initform expr :type type ...)
                 const spec_cons = slot_spec.toPtr(Cons);
                 if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
                 const slot_name_raw = spec_cons.car.toPtr(Symbol).getName();
-                const slot_name = self.allocator.dupe(u8, slot_name_raw) catch return error.OutOfMemory;
+                const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
 
                 // Extract :type and :initform options
                 var field_type: *const types.Type = &types.t_any;
@@ -4854,7 +4856,7 @@ pub const Compiler = struct {
                     .name = slot_name,
                     .field_type = field_type,
                     .initform = initform,
-                }) catch return error.OutOfMemory;
+                }) catch |e| return e;
             } else {
                 return error.InvalidSyntax;
             }
@@ -4871,8 +4873,8 @@ pub const Compiler = struct {
         }
         var type_builder = types.TypeBuilder.init(self.allocator);
         defer type_builder.deinit();
-        const class_type = type_builder.makeStruct(class_name, class_fields) catch return error.OutOfMemory;
-        self.registerStructType(class_name, class_type) catch return error.OutOfMemory;
+        const class_type = type_builder.makeStruct(class_name, class_fields) catch |e| return e;
+        self.registerStructType(class_name, class_type) catch |e| return e;
 
         // Store class metadata for compilation (compiler-side with initforms)
         const persistent_specs = try self.globals.allocator.alloc(SlotSpec, slot_specs.items.len);
@@ -4914,8 +4916,8 @@ pub const Compiler = struct {
         // Register predicate for occurrence typing (use qualified name to match globals table)
         var pred_qual_buf: [512]u8 = undefined;
         const qualified_pred_name = self.qualifyName(pred_name, &pred_qual_buf) catch pred_name;
-        const persistent_pred_name = self.globals.allocator.dupe(u8, qualified_pred_name) catch return error.OutOfMemory;
-        self.struct_predicates.put(persistent_pred_name, class_type) catch return error.OutOfMemory;
+        const persistent_pred_name = self.globals.allocator.dupe(u8, qualified_pred_name) catch |e| return e;
+        self.struct_predicates.put(persistent_pred_name, class_type) catch |e| return e;
 
         // 3. Accessors: (defun class-name-slot (obj) (if (class-name-p obj) (aref obj N+1) (error)))
         for (slot_specs.items, 0..) |spec, i| {
@@ -6005,7 +6007,7 @@ pub const Compiler = struct {
         // We need to compile the predicate in an environment where x is bound
         var pred_env = Env.init(self.allocator, null);
         defer pred_env.deinit();
-        _ = pred_env.bind(var_name) catch return error.OutOfMemory;
+        _ = pred_env.bind(var_name) catch |e| return e;
 
         const predicate_body = try self.compile(predicate_expr, &pred_env);
         const param_names = try self.allocator.alloc([]const u8, 1);
@@ -7668,7 +7670,7 @@ pub const Compiler = struct {
         if (func_expr.isSymbol() and self.struct_predicates.count() > 0) {
             // Copy name to avoid dangling pointer if heap moves
             const sym_name_raw = func_expr.toPtr(Symbol).getName();
-            const sym_name = self.allocator.dupe(u8, sym_name_raw) catch return error.OutOfMemory;
+            const sym_name = self.allocator.dupe(u8, sym_name_raw) catch |e| return e;
             defer self.allocator.free(sym_name);
             if (self.struct_predicates.get(sym_name)) |struct_type| {
                 // This is a struct predicate call - generate struct_p IR

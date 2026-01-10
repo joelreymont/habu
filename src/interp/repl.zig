@@ -1856,7 +1856,7 @@ test "eval fixnum" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     const result = try evalString(allocator, &heap, "42");
@@ -1867,7 +1867,7 @@ test "eval nil" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     const result = try evalString(allocator, &heap, "nil");
@@ -1878,7 +1878,7 @@ test "eval arithmetic" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     const result = try evalString(allocator, &heap, "(+ 10 20)");
@@ -1889,7 +1889,7 @@ test "eval nested arithmetic" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     const result = try evalString(allocator, &heap, "(+ (* 3 4) (- 10 5))");
@@ -1900,7 +1900,7 @@ test "eval cons" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     const result = try evalString(allocator, &heap, "(car (cons 1 2))");
@@ -1911,7 +1911,7 @@ test "eval if true" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     const result = try evalString(allocator, &heap, "(if t 1 2)");
@@ -1922,7 +1922,7 @@ test "eval if false" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     const result = try evalString(allocator, &heap, "(if nil 1 2)");
@@ -1933,7 +1933,7 @@ test "eval comparison" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     const result = try evalString(allocator, &heap, "(< 5 10)");
@@ -1947,7 +1947,7 @@ test "eval type predicate" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     const result = try evalString(allocator, &heap, "(consp (cons 1 2))");

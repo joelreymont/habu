@@ -189,15 +189,15 @@ pub const load_imm64 = Stencil{
 pub const add_fixnum = Stencil{
     .name = "add_fixnum",
     .code = &(
-    // Untag x0: x9 = x0 >> 1
+        // Untag x0: x9 = x0 >> 1
         inst_bytes(lsr_imm(X9, X0, 1)) ++
-        // Untag x1: x10 = x1 >> 1
-        inst_bytes(lsr_imm(X10, X1, 1)) ++
-        // Add: x0 = x9 + x10
-        inst_bytes(add_reg(X0, X9, X10)) ++
-        // Retag: x0 = (x0 << 1) | 1
-        inst_bytes(lsl_imm(X0, X0, 1)) ++
-        inst_bytes(orr_imm_bit0(X0, X0))),
+            // Untag x1: x10 = x1 >> 1
+            inst_bytes(lsr_imm(X10, X1, 1)) ++
+            // Add: x0 = x9 + x10
+            inst_bytes(add_reg(X0, X9, X10)) ++
+            // Retag: x0 = (x0 << 1) | 1
+            inst_bytes(lsl_imm(X0, X0, 1)) ++
+            inst_bytes(orr_imm_bit0(X0, X0))),
     .holes = &[_]Hole{},
 };
 
@@ -205,15 +205,15 @@ pub const add_fixnum = Stencil{
 pub const sub_fixnum = Stencil{
     .name = "sub_fixnum",
     .code = &(
-    // Untag x0: x9 = x0 >> 1
+        // Untag x0: x9 = x0 >> 1
         inst_bytes(lsr_imm(X9, X0, 1)) ++
-        // Untag x1: x10 = x1 >> 1
-        inst_bytes(lsr_imm(X10, X1, 1)) ++
-        // Sub: x0 = x9 - x10
-        inst_bytes(sub_reg(X0, X9, X10)) ++
-        // Retag: x0 = (x0 << 1) | 1
-        inst_bytes(lsl_imm(X0, X0, 1)) ++
-        inst_bytes(orr_imm_bit0(X0, X0))),
+            // Untag x1: x10 = x1 >> 1
+            inst_bytes(lsr_imm(X10, X1, 1)) ++
+            // Sub: x0 = x9 - x10
+            inst_bytes(sub_reg(X0, X9, X10)) ++
+            // Retag: x0 = (x0 << 1) | 1
+            inst_bytes(lsl_imm(X0, X0, 1)) ++
+            inst_bytes(orr_imm_bit0(X0, X0))),
     .holes = &[_]Hole{},
 };
 
@@ -281,11 +281,11 @@ pub const cons_stencil = Stencil{
 pub const car_stencil = Stencil{
     .name = "car",
     .code = &(
-    // Clear tag bits: x0 = x0 & ~0xF (pointer mask)
+        // Clear tag bits: x0 = x0 & ~0xF (pointer mask)
         inst_bytes(and_not_bit0(X0, X0)) ++ // clears bit0
-        inst_bytes(0xD27E0000 | @as(u32, X0)) ++ // AND x0, x0, #~0xE (clear bits 1-3)
-        // Load car: x0 = [x0]
-        inst_bytes(0xF9400000 | @as(u32, X0) | (@as(u32, X0) << 5)) // LDR x0, [x0]
+            inst_bytes(0xD27E0000 | @as(u32, X0)) ++ // AND x0, x0, #~0xE (clear bits 1-3)
+            // Load car: x0 = [x0]
+            inst_bytes(0xF9400000 | @as(u32, X0) | (@as(u32, X0) << 5)) // LDR x0, [x0]
     ),
     .holes = &[_]Hole{},
 };
@@ -295,11 +295,11 @@ pub const car_stencil = Stencil{
 pub const cdr_stencil = Stencil{
     .name = "cdr",
     .code = &(
-    // Clear tag bits
+        // Clear tag bits
         inst_bytes(and_not_bit0(X0, X0)) ++
-        inst_bytes(0xD27E0000 | @as(u32, X0)) ++
-        // Load cdr: x0 = [x0 + 8]
-        inst_bytes(0xF9400400 | @as(u32, X0) | (@as(u32, X0) << 5)) // LDR x0, [x0, #8]
+            inst_bytes(0xD27E0000 | @as(u32, X0)) ++
+            // Load cdr: x0 = [x0 + 8]
+            inst_bytes(0xF9400400 | @as(u32, X0) | (@as(u32, X0) << 5)) // LDR x0, [x0, #8]
     ),
     .holes = &[_]Hole{},
 };
@@ -308,15 +308,15 @@ pub const cdr_stencil = Stencil{
 pub const mul_fixnum = Stencil{
     .name = "mul_fixnum",
     .code = &(
-    // Untag x0: x9 = x0 >> 1
+        // Untag x0: x9 = x0 >> 1
         inst_bytes(lsr_imm(X9, X0, 1)) ++
-        // Untag x1: x10 = x1 >> 1
-        inst_bytes(lsr_imm(X10, X1, 1)) ++
-        // Multiply: x0 = x9 * x10 (using MUL)
-        inst_bytes(0x9B0A7D20) ++ // MUL x0, x9, x10
-        // Retag: x0 = (x0 << 1) | 1
-        inst_bytes(lsl_imm(X0, X0, 1)) ++
-        inst_bytes(orr_imm_bit0(X0, X0))),
+            // Untag x1: x10 = x1 >> 1
+            inst_bytes(lsr_imm(X10, X1, 1)) ++
+            // Multiply: x0 = x9 * x10 (using MUL)
+            inst_bytes(0x9B0A7D20) ++ // MUL x0, x9, x10
+            // Retag: x0 = (x0 << 1) | 1
+            inst_bytes(lsl_imm(X0, X0, 1)) ++
+            inst_bytes(orr_imm_bit0(X0, X0))),
     .holes = &[_]Hole{},
 };
 
@@ -324,13 +324,13 @@ pub const mul_fixnum = Stencil{
 pub const neg_fixnum = Stencil{
     .name = "neg_fixnum",
     .code = &(
-    // Untag: x9 = x0 >> 1
+        // Untag: x9 = x0 >> 1
         inst_bytes(lsr_imm(X9, X0, 1)) ++
-        // Negate: x0 = 0 - x9 (using SUB from XZR)
-        inst_bytes(0xCB0903E0) ++ // SUB x0, xzr, x9
-        // Retag: x0 = (x0 << 1) | 1
-        inst_bytes(lsl_imm(X0, X0, 1)) ++
-        inst_bytes(orr_imm_bit0(X0, X0))),
+            // Negate: x0 = 0 - x9 (using SUB from XZR)
+            inst_bytes(0xCB0903E0) ++ // SUB x0, xzr, x9
+            // Retag: x0 = (x0 << 1) | 1
+            inst_bytes(lsl_imm(X0, X0, 1)) ++
+            inst_bytes(orr_imm_bit0(X0, X0))),
     .holes = &[_]Hole{},
 };
 
@@ -352,13 +352,13 @@ pub const push_t_stencil = Stencil{
 pub const eq_stencil = Stencil{
     .name = "eq",
     .code = &(
-    // CMP x0, x1
+        // CMP x0, x1
         inst_bytes(0xEB01001F) ++
-        // CSET x0, EQ (set to 1 if equal, 0 otherwise)
-        inst_bytes(0x9A9F17E0) ++
-        // Convert to tagged: x0 = (x0 << 1) | x0 (gives 0 or 3)
-        inst_bytes(lsl_imm(X9, X0, 1)) ++
-        inst_bytes(orr_imm_bit0(X0, X9))),
+            // CSET x0, EQ (set to 1 if equal, 0 otherwise)
+            inst_bytes(0x9A9F17E0) ++
+            // Convert to tagged: x0 = (x0 << 1) | x0 (gives 0 or 3)
+            inst_bytes(lsl_imm(X9, X0, 1)) ++
+            inst_bytes(orr_imm_bit0(X0, X9))),
     .holes = &[_]Hole{},
 };
 
@@ -366,13 +366,13 @@ pub const eq_stencil = Stencil{
 pub const lt_stencil = Stencil{
     .name = "lt",
     .code = &(
-    // CMP x0, x1 (signed compare for tagged fixnums)
+        // CMP x0, x1 (signed compare for tagged fixnums)
         inst_bytes(0xEB01001F) ++
-        // CSET x0, LT
-        inst_bytes(0x9A9FB7E0) ++
-        // Convert to tagged
-        inst_bytes(lsl_imm(X9, X0, 1)) ++
-        inst_bytes(orr_imm_bit0(X0, X9))),
+            // CSET x0, LT
+            inst_bytes(0x9A9FB7E0) ++
+            // Convert to tagged
+            inst_bytes(lsl_imm(X9, X0, 1)) ++
+            inst_bytes(orr_imm_bit0(X0, X9))),
     .holes = &[_]Hole{},
 };
 
@@ -380,13 +380,13 @@ pub const lt_stencil = Stencil{
 pub const gt_stencil = Stencil{
     .name = "gt",
     .code = &(
-    // CMP x0, x1
+        // CMP x0, x1
         inst_bytes(0xEB01001F) ++
-        // CSET x0, GT
-        inst_bytes(0x9A9FC7E0) ++
-        // Convert to tagged
-        inst_bytes(lsl_imm(X9, X0, 1)) ++
-        inst_bytes(orr_imm_bit0(X0, X9))),
+            // CSET x0, GT
+            inst_bytes(0x9A9FC7E0) ++
+            // Convert to tagged
+            inst_bytes(lsl_imm(X9, X0, 1)) ++
+            inst_bytes(orr_imm_bit0(X0, X9))),
     .holes = &[_]Hole{},
 };
 
@@ -394,13 +394,13 @@ pub const gt_stencil = Stencil{
 pub const le_stencil = Stencil{
     .name = "le",
     .code = &(
-    // CMP x0, x1
+        // CMP x0, x1
         inst_bytes(0xEB01001F) ++
-        // CSET x0, LE
-        inst_bytes(0x9A9FD7E0) ++
-        // Convert to tagged
-        inst_bytes(lsl_imm(X9, X0, 1)) ++
-        inst_bytes(orr_imm_bit0(X0, X9))),
+            // CSET x0, LE
+            inst_bytes(0x9A9FD7E0) ++
+            // Convert to tagged
+            inst_bytes(lsl_imm(X9, X0, 1)) ++
+            inst_bytes(orr_imm_bit0(X0, X9))),
     .holes = &[_]Hole{},
 };
 
@@ -408,13 +408,13 @@ pub const le_stencil = Stencil{
 pub const ge_stencil = Stencil{
     .name = "ge",
     .code = &(
-    // CMP x0, x1
+        // CMP x0, x1
         inst_bytes(0xEB01001F) ++
-        // CSET x0, GE
-        inst_bytes(0x9A9FA7E0) ++
-        // Convert to tagged
-        inst_bytes(lsl_imm(X9, X0, 1)) ++
-        inst_bytes(orr_imm_bit0(X0, X9))),
+            // CSET x0, GE
+            inst_bytes(0x9A9FA7E0) ++
+            // Convert to tagged
+            inst_bytes(lsl_imm(X9, X0, 1)) ++
+            inst_bytes(orr_imm_bit0(X0, X9))),
     .holes = &[_]Hole{},
 };
 
@@ -425,7 +425,7 @@ const X19: u5 = 19;
 pub const stack_push = Stencil{
     .name = "stack_push",
     .code = &(
-    // STR x0, [x19], #8 (post-increment)
+        // STR x0, [x19], #8 (post-increment)
         inst_bytes(0xF8008660)),
     .holes = &[_]Hole{},
 };
@@ -434,7 +434,7 @@ pub const stack_push = Stencil{
 pub const stack_pop = Stencil{
     .name = "stack_pop",
     .code = &(
-    // LDR x0, [x19, #-8]! (pre-decrement)
+        // LDR x0, [x19, #-8]! (pre-decrement)
         inst_bytes(0xF85F8660)),
     .holes = &[_]Hole{},
 };
@@ -443,7 +443,7 @@ pub const stack_pop = Stencil{
 pub const stack_pop_x1 = Stencil{
     .name = "stack_pop_x1",
     .code = &(
-    // LDR x1, [x19, #-8]!
+        // LDR x1, [x19, #-8]!
         inst_bytes(0xF85F8661)),
     .holes = &[_]Hole{},
 };
@@ -452,7 +452,7 @@ pub const stack_pop_x1 = Stencil{
 pub const dup_stencil = Stencil{
     .name = "dup",
     .code = &(
-    // STR x0, [x19], #8
+        // STR x0, [x19], #8
         inst_bytes(0xF8008660)),
     .holes = &[_]Hole{},
 };
@@ -461,12 +461,12 @@ pub const dup_stencil = Stencil{
 pub const swap_stencil = Stencil{
     .name = "swap",
     .code = &(
-    // LDR x9, [x19, #-8] (peek second value)
+        // LDR x9, [x19, #-8] (peek second value)
         inst_bytes(0xF85F8269) ++
-        // STR x0, [x19, #-8] (store top to second position)
-        inst_bytes(0xF81F8260) ++
-        // MOV x0, x9
-        inst_bytes(0xAA0903E0)),
+            // STR x0, [x19, #-8] (store top to second position)
+            inst_bytes(0xF81F8260) ++
+            // MOV x0, x9
+            inst_bytes(0xAA0903E0)),
     .holes = &[_]Hole{},
 };
 
@@ -477,7 +477,7 @@ const X20: u5 = 20;
 pub const load_local = Stencil{
     .name = "load_local",
     .code = &(
-    // LDR x0, [x20, #offset] - offset patched
+        // LDR x0, [x20, #offset] - offset patched
         inst_bytes(0xF9400280)), // Base LDR with x20
     .holes = &[_]Hole{
         .{ .offset = 0, .hole_type = .imm32, .name = "offset" },
@@ -488,7 +488,7 @@ pub const load_local = Stencil{
 pub const store_local = Stencil{
     .name = "store_local",
     .code = &(
-    // STR x0, [x20, #offset]
+        // STR x0, [x20, #offset]
         inst_bytes(0xF9000280)),
     .holes = &[_]Hole{
         .{ .offset = 0, .hole_type = .imm32, .name = "offset" },
@@ -499,12 +499,12 @@ pub const store_local = Stencil{
 pub const not_stencil = Stencil{
     .name = "not",
     .code = &(
-    // CBZ x0, is_nil  (if nil, result is t)
-    // For now simplified: CMP x0, #0; CSET x0, EQ; convert to tagged
+        // CBZ x0, is_nil  (if nil, result is t)
+        // For now simplified: CMP x0, #0; CSET x0, EQ; convert to tagged
         inst_bytes(0xF100001F) ++ // CMP x0, #0
-        inst_bytes(0x9A9F17E0) ++ // CSET x0, EQ
-        inst_bytes(lsl_imm(X9, X0, 1)) ++
-        inst_bytes(orr_imm_bit0(X0, X9))),
+            inst_bytes(0x9A9F17E0) ++ // CSET x0, EQ
+            inst_bytes(lsl_imm(X9, X0, 1)) ++
+            inst_bytes(orr_imm_bit0(X0, X9))),
     .holes = &[_]Hole{},
 };
 
@@ -512,13 +512,13 @@ pub const not_stencil = Stencil{
 pub const fixnump_stencil = Stencil{
     .name = "fixnump",
     .code = &(
-    // TST x0, #1
+        // TST x0, #1
         inst_bytes(0xF240001F) ++
-        // CSET x0, NE (non-zero = has bit0 set = fixnum)
-        inst_bytes(0x9A9F07E0) ++
-        // Convert to tagged
-        inst_bytes(lsl_imm(X9, X0, 1)) ++
-        inst_bytes(orr_imm_bit0(X0, X9))),
+            // CSET x0, NE (non-zero = has bit0 set = fixnum)
+            inst_bytes(0x9A9F07E0) ++
+            // Convert to tagged
+            inst_bytes(lsl_imm(X9, X0, 1)) ++
+            inst_bytes(orr_imm_bit0(X0, X9))),
     .holes = &[_]Hole{},
 };
 
@@ -526,13 +526,13 @@ pub const fixnump_stencil = Stencil{
 pub const nilp_stencil = Stencil{
     .name = "nilp",
     .code = &(
-    // CMP x0, #0
+        // CMP x0, #0
         inst_bytes(0xF100001F) ++
-        // CSET x0, EQ
-        inst_bytes(0x9A9F17E0) ++
-        // Convert to tagged
-        inst_bytes(lsl_imm(X9, X0, 1)) ++
-        inst_bytes(orr_imm_bit0(X0, X9))),
+            // CSET x0, EQ
+            inst_bytes(0x9A9F17E0) ++
+            // Convert to tagged
+            inst_bytes(lsl_imm(X9, X0, 1)) ++
+            inst_bytes(orr_imm_bit0(X0, X9))),
     .holes = &[_]Hole{},
 };
 

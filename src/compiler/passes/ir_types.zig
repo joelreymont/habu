@@ -163,18 +163,18 @@ pub const TypedIrBuilder = struct {
 
 /// Pipeline stage markers for type safety
 pub const Stage = enum {
-    parsed,      // After parsing (SExpr)
-    expanded,    // After macro expansion
-    desugared,   // After desugaring
-    lifted,      // After lifting to IR
-    resolved,    // After name resolution
-    captured,    // After capture analysis
-    annotated,   // After type annotation
-    inferred,    // After type inference
-    checked,     // After type checking
-    linear,      // After linearity check
-    erased,      // After erasure
-    emitted,     // After bytecode emission
+    parsed, // After parsing (SExpr)
+    expanded, // After macro expansion
+    desugared, // After desugaring
+    lifted, // After lifting to IR
+    resolved, // After name resolution
+    captured, // After capture analysis
+    annotated, // After type annotation
+    inferred, // After type inference
+    checked, // After type checking
+    linear, // After linearity check
+    erased, // After erasure
+    emitted, // After bytecode emission
 };
 
 // ============================================================================

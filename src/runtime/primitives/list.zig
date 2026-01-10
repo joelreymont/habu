@@ -318,15 +318,15 @@ test "last" {
 pub fn get(sym: Value, indicator: Value) !Value {
     if (!sym.isSymbolLike()) return error.TypeMismatch;
     if (sym.isNil() or sym.isT()) return Value.nil; // Magic symbols have no plist
-    
+
     const symbol = sym.toPtr(Symbol);
     var plist = symbol.plist;
-    
+
     // Search alist for indicator
     while (plist.isCons()) {
         const entry = plist.toPtr(Cons);
         const pair = entry.car;
-        
+
         if (pair.isCons()) {
             const pair_cons = pair.toPtr(Cons);
             if (pair_cons.car.eq(indicator)) {
@@ -334,10 +334,10 @@ pub fn get(sym: Value, indicator: Value) !Value {
                 return pair_cons.cdr;
             }
         }
-        
+
         plist = entry.cdr;
     }
-    
+
     return Value.nil;
 }
 
@@ -346,16 +346,16 @@ pub fn get(sym: Value, indicator: Value) !Value {
 pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
     if (!sym.isSymbolLike()) return error.TypeMismatch;
     if (sym.isNil() or sym.isT()) return error.TypeMismatch; // Can't modify magic symbols
-    
+
     const symbol = sym.toPtr(Symbol);
-    
+
     // Search for existing entry
     var current = symbol.plist;
-    
+
     while (current.isCons()) {
         const entry = current.toPtr(Cons);
         const pair = entry.car;
-        
+
         if (pair.isCons()) {
             const pair_cons = pair.toPtr(Cons);
             if (pair_cons.car.eq(indicator)) {
@@ -365,15 +365,15 @@ pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
                 return value;
             }
         }
-        
+
         current = entry.cdr;
     }
-    
+
     // Not found - add new entry at front
     const new_pair = try heap.allocCons(indicator, value);
     const new_entry = try heap.allocCons(new_pair, symbol.plist);
     symbol.plist = new_entry;
-    
+
     return value;
 }
 
@@ -382,15 +382,15 @@ pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
 pub fn remprop(sym: Value, indicator: Value) !Value {
     if (!sym.isSymbolLike()) return error.TypeMismatch;
     if (sym.isNil() or sym.isT()) return Value.nil; // Can't modify magic symbols
-    
+
     const symbol = sym.toPtr(Symbol);
     var plist = symbol.plist;
-    
+
     // Handle first entry specially
     if (plist.isCons()) {
         const first = plist.toPtr(Cons);
         const pair = first.car;
-        
+
         if (pair.isCons()) {
             const pair_cons = pair.toPtr(Cons);
             if (pair_cons.car.eq(indicator)) {
@@ -400,17 +400,17 @@ pub fn remprop(sym: Value, indicator: Value) !Value {
             }
         }
     }
-    
+
     // Search rest of list
     var prev = plist;
     while (prev.isCons()) {
         const prev_cons = prev.toPtr(Cons);
         const current = prev_cons.cdr;
-        
+
         if (current.isCons()) {
             const curr_cons = current.toPtr(Cons);
             const pair = curr_cons.car;
-            
+
             if (pair.isCons()) {
                 const pair_cons = pair.toPtr(Cons);
                 if (pair_cons.car.eq(indicator)) {
@@ -420,9 +420,9 @@ pub fn remprop(sym: Value, indicator: Value) !Value {
                 }
             }
         }
-        
+
         prev = current;
     }
-    
+
     return Value.nil;
 }
