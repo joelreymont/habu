@@ -1,11 +1,22 @@
 ;;; Habu Standard Library
 ;;; Core functions for self-hosting
 
+;;; Helper: format with args list (since format isn't first-class)
+(defun format-args (msg args)
+  ;; Manually expand common cases since we can't apply format
+  (let ((n (length args)))
+    (cond
+      ((= n 0) (format nil msg))
+      ((= n 1) (format nil msg (car args)))
+      ((= n 2) (format nil msg (car args) (cadr args)))
+      ((= n 3) (format nil msg (car args) (cadr args) (caddr args)))
+      (t msg))))  ; fallback - just return message
+
 ;;; Error signaling
 (defun error (message &rest args)
   "Signal an error with formatted message"
   (signal 'error (if args
-                     (apply format nil message args)
+                     (format-args message args)
                      message)))
 
 ;;; Control flow macros (now with &rest support)
