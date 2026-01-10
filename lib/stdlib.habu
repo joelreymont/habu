@@ -45,6 +45,30 @@
   `(unless ,test
      (error "Assertion failed: ~S" ',test)))
 
+;; destructuring-bind - bind variables from a destructured list
+;; Simple version - supports flat and nested lists
+(defun db-gen-bindings (pattern expr)
+  "Generate let bindings for destructuring-bind"
+  (cond
+    ((null pattern) nil)
+    ((symbolp pattern)
+     ;; Single variable binds whole expression
+     (list (list pattern expr)))
+    ((consp pattern)
+     ;; List pattern - destructure
+     (let ((car-pat (car pattern))
+           (cdr-pat (cdr pattern)))
+       (append
+        (db-gen-bindings car-pat `(car ,expr))
+        (db-gen-bindings cdr-pat `(cdr ,expr)))))
+    (t nil)))
+
+(defmacro destructuring-bind (pattern expr &rest body)
+  (let ((tmp (gensym "val")))
+    `(let ((,tmp ,expr))
+       (let* ,(db-gen-bindings pattern tmp)
+         ,@body))))
+
 ;; case - dispatch on symbol value
 ;; Helper function must come BEFORE macro (like do*-bindings before do*)
 (defun case-to-cond (key clauses)
