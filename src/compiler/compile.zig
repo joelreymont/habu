@@ -4793,8 +4793,24 @@ pub const Compiler = struct {
             }
         }
 
-        // Parse this class's slots (third+ args)
+        // Parse this class's slots
+        // Support both CL standard: (defclass name () ((slot1 ...) (slot2 ...)))
+        // and Habu style: (defclass name () (slot1 ...) (slot2 ...))
         var rest = cons2.cdr;
+
+        // Check for CL standard syntax: single list of slot specs
+        if (rest.isCons()) {
+            const first = rest.toPtr(Cons);
+            // If first element is a list and next is nil, it's CL standard
+            if (first.car.isCons() and first.cdr.isNil()) {
+                // Check if first element looks like a slots list (list of symbols/lists)
+                const inner = first.car.toPtr(Cons);
+                if (inner.car.isSymbol() or inner.car.isCons()) {
+                    // CL standard: unwrap the outer list
+                    rest = first.car;
+                }
+            }
+        }
 
         while (rest.isCons()) {
             const c = rest.toPtr(Cons);
