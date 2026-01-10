@@ -1550,6 +1550,18 @@
 (defun oddp (x) (oddp x))
 (defun abs (x) (abs x))
 
+;;; Output Functions
+
+;; prin1 - print object with escaping (machine-readable)
+(defun prin1 (obj &optional stream)
+  (format (or stream t) "~S" obj)
+  obj)
+
+;; write - standard CL write function
+(defun write (obj &key stream)
+  (format (or stream t) "~S" obj)
+  obj)
+
 ;;; Stream I/O Operations
 
 (defun open (path mode)
