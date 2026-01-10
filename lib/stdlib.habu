@@ -68,6 +68,44 @@
     `(let ((,key ,keyform))
        (cond ,@(case-to-cond key clauses)))))
 
+;; ecase - exhaustive case (error if no match)
+(defun ecase-to-cond (key clauses)
+  (if (null clauses)
+      (list (list 't (list 'error "ecase: no matching clause")))
+      (let ((clause (car clauses)))
+        (let ((keys (car clause))
+              (body (cdr clause)))
+          (cons
+           (if (consp keys)
+               (cons (list 'member key (list 'quote keys)) body)
+               (cons (list 'eq key (list 'quote keys)) body))
+           (ecase-to-cond key (cdr clauses)))))))
+
+(defmacro ecase (keyform &rest clauses)
+  (let ((key (gensym "key")))
+    `(let ((,key ,keyform))
+       (cond ,@(ecase-to-cond key clauses)))))
+
+;; typecase - dispatch on type
+(defun typecase-to-cond (key clauses)
+  (if (null clauses)
+      nil
+      (let ((clause (car clauses)))
+        (let ((type-spec (car clause))
+              (body (cdr clause)))
+          (cons
+           (if (eq type-spec 't)
+               (cons 't body)
+               (if (eq type-spec 'otherwise)
+                   (cons 't body)
+                   (cons (list 'typep key (list 'quote type-spec)) body)))
+           (typecase-to-cond key (cdr clauses)))))))
+
+(defmacro typecase (keyform &rest clauses)
+  (let ((key (gensym "key")))
+    `(let ((,key ,keyform))
+       (cond ,@(typecase-to-cond key clauses)))))
+
 ;;; Iteration macros
 (defmacro dolist (binding &rest body)
   ;; (dolist (var list) body...) or (dolist (var list result) body...)
