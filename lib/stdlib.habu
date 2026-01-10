@@ -1019,13 +1019,14 @@
       (cons (list (car temps) (car places))
             (rotatef-bindings (cdr places) (cdr temps)))))
 
-(defun rotatef-assignments (places temps)
+(defun rotatef-assignments-helper (places temps first-temp)
+  ;; Rotate left: each place gets the next temp, last place gets first-temp
   (if (null places)
       nil
-      (cons `(setf ,(car places) ,(if (null (cdr temps))
-                                       (car temps)
-                                       (car (cdr temps))))
-            (rotatef-assignments (cdr places) (cdr temps)))))
+      (cons `(setf ,(car places) ,(if (null (cdr places))
+                                       first-temp           ; last gets first
+                                       (car (cdr temps))))  ; others get next
+            (rotatef-assignments-helper (cdr places) (cdr temps) first-temp))))
 
 ;; rotatef - rotate values through places
 (defmacro rotatef (&rest places)
@@ -1035,7 +1036,7 @@
           nil
           (let ((temps (rotatef-temps (length places))))
             `(let ,(rotatef-bindings places temps)
-               ,@(rotatef-assignments places temps)
+               ,@(rotatef-assignments-helper places temps (car temps))
                nil)))))
 
 ;;; List search and membership functions
