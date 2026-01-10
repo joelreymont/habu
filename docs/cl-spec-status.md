@@ -30,7 +30,7 @@
 - ✅ multiple-value-setq (stdlib.habu)
 - ✅ nth-value (stdlib.habu)
 - ✅ when-let, if-let (stdlib.habu:11,18) - conditional binding macros
-- ✅ assert, psetq, rotatef (stdlib.habu:26,983,1013) - place-modifying macros
+- ✅ assert, psetq, rotatef, incf, decf (stdlib.habu) - place-modifying macros
 
 ### Data structures
 - ✅ setf macro (stdlib.habu:878) - supports car/cdr/aref/nth/elt/gethash/slot-value/variables
@@ -38,7 +38,7 @@
 - ✅ copy-tree (stdlib.habu)
 - ✅ coerce (stdlib.habu)
 - ✅ concatenate (stdlib.habu)
-- ✅ List utilities: butlast, ldiff, tailp, nconc, nreverse, endp, revappend, nreconc, make-list, list-length
+- ✅ List utilities: butlast, ldiff, tailp, nconc, nreverse, endp, revappend, nreconc, make-list, list-length, list*
 - ✅ Set operations: union, intersection, set-difference (treating lists as sets)
 - ✅ Tree operations: subst, tree-equal
 - ✅ Property lists: getf, get, put, remprop
@@ -51,8 +51,8 @@
 - ✅ cerror (stdlib.habu:1041)
 
 ### Strings
-- ✅ string comparisons (string<, string>, stdlib.habu)
-- ✅ string-trim (stdlib.habu)
+- ✅ string comparisons (string<, string>, string=, string<=, string>=)
+- ✅ string-trim, string-left-trim, string-right-trim
 - ✅ format directives (stdlib.habu)
 
 ### Hash tables, streams, packages
