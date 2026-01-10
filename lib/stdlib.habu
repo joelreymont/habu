@@ -1517,10 +1517,13 @@
       nil
       (nconc (f lst) (mapcon f (cdr lst)))))
 
-;; Numeric predicates (zerop, plusp, minusp, evenp, oddp) are built-in primitives
-
-;; abs is already a primitive, but define it here for documentation
-;; (defun abs (x) (if (< x 0) (- 0 x) x))
+;; Numeric predicates - wrappers for #'function syntax support
+(defun zerop (x) (zerop x))
+(defun plusp (x) (plusp x))
+(defun minusp (x) (minusp x))
+(defun evenp (x) (evenp x))
+(defun oddp (x) (oddp x))
+(defun abs (x) (abs x))
 
 ;;; Stream I/O Operations
 
