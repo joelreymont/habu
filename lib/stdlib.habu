@@ -1224,7 +1224,7 @@
   (if (null seq)
       nil
       (cons (if (eql (car seq) old) new (car seq))
-            (substitute new old (cdr seq))))))
+            (substitute new old (cdr seq)))))
 
 ;; tree-equal - test if two trees are structurally equal
 (defun tree-equal (x y)
@@ -1266,6 +1266,28 @@
     ((null? plist) nil)
     ((eq (car plist) key) (car (cdr plist)))
     (t (getf (cdr (cdr plist)) key))))
+
+;;; Multiple value utilities
+
+;; nth-value - return nth value from a multiple-value form
+;; Uses multiple-value-list which captures all values as a list
+(defmacro nth-value (n form)
+  `(nth ,n (multiple-value-list ,form)))
+
+;; Helper for multiple-value-setq
+(defun mv-setq-gen (vars vals-sym idx)
+  (if (null vars)
+      nil
+      (cons `(setq ,(car vars) (nth ,idx ,vals-sym))
+            (mv-setq-gen (cdr vars) vals-sym (+ idx 1)))))
+
+;; multiple-value-setq - set variables from multiple values
+;; (multiple-value-setq (a b) form) sets a and b from values of form
+(defmacro multiple-value-setq (vars form)
+  (let ((vals (gensym "vals")))
+    `(let ((,vals (multiple-value-list ,form)))
+       ,@(mv-setq-gen vars vals 0)
+       ,(car vars))))
 
 ;;; Additional list utilities
 
