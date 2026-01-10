@@ -1211,13 +1211,20 @@
 
 ;;; Tree operations
 
-;; subst - substitute new for old in tree
+;; subst - substitute new for old in tree (recursive)
 (defun subst (new old tree)
   (cond
     ((eq tree old) new)
     ((atom tree) tree)
     (t (cons (subst new old (car tree))
              (subst new old (cdr tree))))))
+
+;; substitute - replace occurrences in sequence (flat, not recursive)
+(defun substitute (new old seq)
+  (if (null seq)
+      nil
+      (cons (if (eql (car seq) old) new (car seq))
+            (substitute new old (cdr seq))))))
 
 ;; tree-equal - test if two trees are structurally equal
 (defun tree-equal (x y)
