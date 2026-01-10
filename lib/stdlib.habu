@@ -301,6 +301,40 @@
          (setq ,list-var (cdr ,list-var)))
        (reverse ,result))))
 
+;;; for VAR in LIST sum EXPR
+(defmacro loop-for-in-sum (var lst expr)
+  (let ((list-var (gensym "list"))
+        (sum (gensym "sum")))
+    `(let ((,list-var ,lst)
+           (,sum 0))
+       (while ,list-var
+         (let ((,var (car ,list-var)))
+           (setq ,sum (+ ,sum ,expr)))
+         (setq ,list-var (cdr ,list-var)))
+       ,sum)))
+
+;;; for VAR in LIST count EXPR
+(defmacro loop-for-in-count (var lst expr)
+  (let ((list-var (gensym "list"))
+        (count (gensym "count")))
+    `(let ((,list-var ,lst)
+           (,count 0))
+       (while ,list-var
+         (let ((,var (car ,list-var)))
+           (if ,expr (setq ,count (+ ,count 1))))
+         (setq ,list-var (cdr ,list-var)))
+       ,count)))
+
+;;; for VAR in LIST do BODY*
+(defmacro loop-for-in-do (var lst &rest body)
+  (let ((list-var (gensym "list")))
+    `(let ((,list-var ,lst))
+       (while ,list-var
+         (let ((,var (car ,list-var)))
+           ,@body)
+         (setq ,list-var (cdr ,list-var)))
+       nil)))
+
 ;;; repeat N collect EXPR
 (defmacro loop-repeat-collect (n expr)
   (let ((count (gensym "count"))
@@ -447,8 +481,8 @@
                        (list 'loop-repeat-collect n expr))
                      nil)))))
 
-          ;; (loop for var in list collect expr)
-          ;; clauses = (for var in list collect expr)
+          ;; (loop for var in list collect/sum/count/do expr)
+          ;; clauses = (for var in list action expr...)
           ((and (eq first 'for)
                 (let ((rest1 (cdr clauses)))
                   (and rest1
@@ -460,9 +494,21 @@
                   (rest3 (cdr rest2))
                   (lst (car rest3))
                   (rest4 (cdr rest3)))
-             (if (and rest4 (eq (car rest4) 'collect))
-                 (let ((expr (car (cdr rest4))))
-                   (list 'loop-for-in-collect var lst expr))
+             (if rest4
+                 (let ((action (car rest4)))
+                   (cond
+                     ((eq action 'collect)
+                      (let ((expr (car (cdr rest4))))
+                        (list 'loop-for-in-collect var lst expr)))
+                     ((eq action 'sum)
+                      (let ((expr (car (cdr rest4))))
+                        (list 'loop-for-in-sum var lst expr)))
+                     ((eq action 'count)
+                      (let ((expr (car (cdr rest4))))
+                        (list 'loop-for-in-count var lst expr)))
+                     ((eq action 'do)
+                      (cons 'loop-for-in-do (cons var (cons lst (cdr rest4)))))
+                     (t nil)))
                  nil)))
 
           ;; (loop for var from start to end collect expr)
