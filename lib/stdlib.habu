@@ -999,7 +999,7 @@
   (if (= exp 0)
       1
       (if (even? exp)
-          (let ((half (expt base (/ exp 2))))
+          (let ((half (expt base (truncate exp 2))))
             (* half half))
           (* base (expt base (- exp 1))))))
 
