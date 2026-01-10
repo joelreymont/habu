@@ -245,6 +245,17 @@ pub const Builtins = struct {
     evenp: Value,
     oddp: Value,
 
+    // Primitives - Math functions
+    sqrt: Value,
+    sin: Value,
+    cos: Value,
+    tan: Value,
+    exp: Value,
+    log: Value,
+    floor: Value,
+    ceiling: Value,
+    round: Value,
+
     // Primitives - Vector operations (CL names)
     aref: Value, // CL: array element access
     svref: Value, // CL: simple-vector element access
@@ -568,6 +579,16 @@ pub const Builtins = struct {
             .minusp = try heap.intern("minusp"),
             .evenp = try heap.intern("evenp"),
             .oddp = try heap.intern("oddp"),
+            // Primitives - Math functions
+            .sqrt = try heap.intern("sqrt"),
+            .sin = try heap.intern("sin"),
+            .cos = try heap.intern("cos"),
+            .tan = try heap.intern("tan"),
+            .exp = try heap.intern("exp"),
+            .log = try heap.intern("log"),
+            .floor = try heap.intern("floor"),
+            .ceiling = try heap.intern("ceiling"),
+            .round = try heap.intern("round"),
             // Primitives - Vector operations (CL names)
             .aref = try heap.intern("aref"),
             .svref = try heap.intern("svref"),
@@ -6260,6 +6281,17 @@ pub const Compiler = struct {
         if (s == b.evenp.raw) return self.compileUnaryPrim(args, env, .evenp);
         if (s == b.oddp.raw) return self.compileUnaryPrim(args, env, .oddp);
 
+        // Math functions
+        if (s == b.sqrt.raw) return self.compileUnaryPrim(args, env, .sqrt);
+        if (s == b.sin.raw) return self.compileUnaryPrim(args, env, .sin);
+        if (s == b.cos.raw) return self.compileUnaryPrim(args, env, .cos);
+        if (s == b.tan.raw) return self.compileUnaryPrim(args, env, .tan);
+        if (s == b.exp.raw) return self.compileUnaryPrim(args, env, .exp);
+        if (s == b.log.raw) return self.compileUnaryPrim(args, env, .log);
+        if (s == b.floor.raw) return self.compileUnaryPrim(args, env, .floor);
+        if (s == b.ceiling.raw) return self.compileUnaryPrim(args, env, .ceiling);
+        if (s == b.round.raw) return self.compileUnaryPrim(args, env, .round);
+
         // Vector operations (CL names: aref, svref, %svset, %aset)
         if (s == b.aref.raw) return self.compileAref(args, env);
         if (s == b.svref.raw) return self.compileBinaryPrim(args, env, .vec_ref);
@@ -6445,7 +6477,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string };
+    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -6743,6 +6775,15 @@ pub const Compiler = struct {
             .minusp => try self.builder.minusp(operand),
             .evenp => try self.builder.evenp(operand),
             .oddp => try self.builder.oddp(operand),
+            .sqrt => try self.builder.sqrt(operand),
+            .sin => try self.builder.sin(operand),
+            .cos => try self.builder.cos(operand),
+            .tan => try self.builder.tan(operand),
+            .exp => try self.builder.exp_fn(operand),
+            .log => try self.builder.log_fn(operand),
+            .floor => try self.builder.floor_fn(operand),
+            .ceiling => try self.builder.ceiling(operand),
+            .round => try self.builder.round_fn(operand),
             .length => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .length = .{ .operand = operand } };

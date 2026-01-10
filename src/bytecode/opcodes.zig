@@ -704,6 +704,46 @@ pub const Op = enum(u8) {
     /// ( n -- t/nil )
     oddp = 0xD5,
 
+    // ========================================================================
+    // Math functions
+    // ========================================================================
+
+    /// Square root
+    /// ( n -- float )
+    sqrt = 0x74,
+
+    /// Sine
+    /// ( n -- float )
+    sin = 0x75,
+
+    /// Cosine
+    /// ( n -- float )
+    cos = 0x76,
+
+    /// Tangent
+    /// ( n -- float )
+    tan = 0x77,
+
+    /// Exponential (e^x)
+    /// ( n -- float )
+    exp = 0x78,
+
+    /// Natural logarithm
+    /// ( n -- float )
+    log = 0x79,
+
+    /// Floor (round toward negative infinity)
+    /// ( n -- fixnum )
+    floor = 0x7A,
+
+    /// Ceiling (round toward positive infinity)
+    /// ( n -- fixnum )
+    ceiling = 0x7B,
+
+    /// Round to nearest integer
+    /// ( n -- fixnum )
+    round = 0x7C,
+
     /// Read S-expression from stdin
     /// ( -- value )
     read = 0xD6,
@@ -1051,6 +1091,15 @@ pub const Op = enum(u8) {
             .quot,
             .rem,
             .neg,
+            .sqrt,
+            .sin,
+            .cos,
+            .tan,
+            .exp,
+            .log,
+            .floor,
+            .ceiling,
+            .round,
             .eq,
             .lt,
             .gt,

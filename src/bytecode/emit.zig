@@ -655,6 +655,17 @@ pub const Emitter = struct {
             .evenp => |op| try self.emitUnaryOp(op.operand, .evenp),
             .oddp => |op| try self.emitUnaryOp(op.operand, .oddp),
 
+            // Math functions
+            .sqrt => |op| try self.emitUnaryOp(op.operand, .sqrt),
+            .sin => |op| try self.emitUnaryOp(op.operand, .sin),
+            .cos => |op| try self.emitUnaryOp(op.operand, .cos),
+            .tan => |op| try self.emitUnaryOp(op.operand, .tan),
+            .exp => |op| try self.emitUnaryOp(op.operand, .exp),
+            .log => |op| try self.emitUnaryOp(op.operand, .log),
+            .floor => |op| try self.emitUnaryOp(op.operand, .floor),
+            .ceiling => |op| try self.emitUnaryOp(op.operand, .ceiling),
+            .round => |op| try self.emitUnaryOp(op.operand, .round),
+
             // Vector operations
             .vec_new => |v| try self.emitVecNew(v),
             .vec => |elements| try self.emitVec(elements),

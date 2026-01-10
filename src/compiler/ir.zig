@@ -458,6 +458,20 @@ pub const Ir = union(enum) {
     oddp: UnaryOp,
 
     // ========================================================================
+    // Primitives - Math functions
+    // ========================================================================
+
+    sqrt: UnaryOp,
+    sin: UnaryOp,
+    cos: UnaryOp,
+    tan: UnaryOp,
+    exp: UnaryOp,
+    log: UnaryOp,
+    floor: UnaryOp,
+    ceiling: UnaryOp,
+    round: UnaryOp,
+
+    // ========================================================================
     // Primitives - Vector operations
     // ========================================================================
 
@@ -1573,6 +1587,61 @@ pub const IrBuilder = struct {
     pub fn oddp(self: IrBuilder, n: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .oddp = .{ .operand = n } };
+        return node;
+    }
+
+    // Math functions
+    pub fn sqrt(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .sqrt = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn sin(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .sin = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn cos(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .cos = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn tan(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .tan = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn exp_fn(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .exp = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn log_fn(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .log = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn floor_fn(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .floor = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn ceiling(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .ceiling = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn round_fn(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .round = .{ .operand = n } };
         return node;
     }
 

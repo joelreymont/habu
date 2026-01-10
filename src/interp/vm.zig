@@ -3370,6 +3370,56 @@ pub const Vm = struct {
                 try self.push(if (@mod(val.toFixnum(), 2) != 0) Value.t else Value.nil);
             },
 
+            // Math functions
+            .sqrt => {
+                const val = try self.pop();
+                const f = try valToFloat(val);
+                try self.push(Value.makeFloat(@sqrt(f)));
+            },
+            .sin => {
+                const val = try self.pop();
+                const f = try valToFloat(val);
+                try self.push(Value.makeFloat(@sin(f)));
+            },
+            .cos => {
+                const val = try self.pop();
+                const f = try valToFloat(val);
+                try self.push(Value.makeFloat(@cos(f)));
+            },
+            .tan => {
+                const val = try self.pop();
+                const f = try valToFloat(val);
+                try self.push(Value.makeFloat(@tan(f)));
+            },
+            .exp => {
+                const val = try self.pop();
+                const f = try valToFloat(val);
+                try self.push(Value.makeFloat(@exp(f)));
+            },
+            .log => {
+                const val = try self.pop();
+                const f = try valToFloat(val);
+                try self.push(Value.makeFloat(@log(f)));
+            },
+            .floor => {
+                const val = try self.pop();
+                const f = try valToFloat(val);
+                const floored: i64 = @intFromFloat(@floor(f));
+                try self.push(Value.makeFixnum(floored));
+            },
+            .ceiling => {
+                const val = try self.pop();
+                const f = try valToFloat(val);
+                const ceiled: i64 = @intFromFloat(@ceil(f));
+                try self.push(Value.makeFixnum(ceiled));
+            },
+            .round => {
+                const val = try self.pop();
+                const f = try valToFloat(val);
+                const rounded: i64 = @intFromFloat(@round(f));
+                try self.push(Value.makeFixnum(rounded));
+            },
+
             .halt => return error.Halt,
         }
     }
@@ -4577,6 +4627,12 @@ pub const Vm = struct {
     fn binaryRem(a: i64, b: i64) Error!Value {
         if (b == 0) return error.DivisionByZero;
         return Value.makeFixnum(@rem(a, b));
+    }
+
+    fn valToFloat(val: Value) Error!f64 {
+        if (val.isFixnum()) return @floatFromInt(val.toFixnum());
+        if (val.isFloat()) return val.toFloat();
+        return error.TypeMismatch;
     }
 
     fn binaryLt(a: i64, b: i64) Error!Value {

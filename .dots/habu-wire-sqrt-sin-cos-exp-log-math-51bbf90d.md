@@ -1,9 +1,9 @@
 ---
 title: Wire sqrt/sin/cos/exp/log math functions
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-01-10T18:00:32.159170+02:00"
+created-at: "\"2026-01-10T18:00:32.159170+02:00\""
 ---
 
 Primitives exist in arith.zig but need to be wired:
