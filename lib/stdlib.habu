@@ -1060,7 +1060,7 @@
 ;;; split-half - split list into two halves
 (defun (split-half -> cons) ((lst list))
   (let ((len (length lst)))
-    (split-at (/ len 2) lst)))
+    (split-at (truncate len 2) lst)))
 
 ;;; merge-sort - stable O(n log n) sort
 (defun (merge-sort -> list) ((lst list) (pred closure))
