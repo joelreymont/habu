@@ -547,10 +547,28 @@
       (reverse-acc (cdr lst) (cons (car lst) acc))))
 
 ;; make-list - create a list of N copies of initial-element
-(defun make-list (size &optional (initial-element nil))
+;; Supports both positional and keyword argument forms
+(defun make-list-helper (size init)
   (if (<= size 0)
       nil
-      (cons initial-element (make-list (- size 1) initial-element))))
+      (cons init (make-list-helper (- size 1) init))))
+
+(defun make-list (size &rest args)
+  (let ((init (cond
+                ((null args) nil)
+                ((keywordp (car args))  ; keyword form: :initial-element val
+                 (if (eq (car args) :initial-element)
+                     (cadr args)
+                     nil))
+                (t (car args)))))       ; positional form
+    (make-list-helper size init)))
+
+;; list* - like list but last arg becomes tail of resulting list
+(defun list* (&rest args)
+  (cond
+    ((null args) nil)
+    ((null (cdr args)) (car args))
+    (t (cons (car args) (apply #'list* (cdr args))))))
 
 ;; list-length - return length of proper list, nil if circular
 (defun list-length-helper (slow fast len)
