@@ -318,7 +318,7 @@ pub const Builtins = struct {
     @"string-upcase": Value,
     @"string-downcase": Value,
     concatenate: Value,
-    coerce: Value,
+    // coerce removed - implemented in stdlib
 
     // Primitives - Hash tables
     @"make-hash-table": Value,
@@ -628,7 +628,7 @@ pub const Builtins = struct {
             .@"string-upcase" = try heap.intern("string-upcase"),
             .@"string-downcase" = try heap.intern("string-downcase"),
             .concatenate = try heap.intern("concatenate"),
-            .coerce = try heap.intern("coerce"),
+            // .coerce removed - implemented in stdlib
             // Primitives - Hash tables
             .@"make-hash-table" = try heap.intern("make-hash-table"),
             .gethash = try heap.intern("gethash"),
@@ -2893,33 +2893,36 @@ pub const Compiler = struct {
         const cons1 = args.toPtr(Cons);
         if (!cons1.car.isSymbol()) return error.InvalidSet;
         const var_sym = cons1.car.toPtr(Symbol);
-        const name = var_sym.getName();
+        const local_name = var_sym.getName();
 
         if (!cons1.cdr.isCons()) return error.InvalidSet;
         const cons2 = cons1.cdr.toPtr(Cons);
         const val_ir = try self.compile(cons2.car, env);
 
         // First check local environment
-        if (env.lookup(name)) |binding| {
+        if (env.lookup(local_name)) |binding| {
             // If this variable is boxed, use box-set! instead
             if (self.boxed_vars) |bv| {
-                if (bv.contains(name)) {
+                if (bv.contains(local_name)) {
                     // Compile (box-set! var val) instead of (set! var val)
-                    const var_ir = self.builder.variable(name, binding.depth, binding.index) catch
+                    const var_ir = self.builder.variable(local_name, binding.depth, binding.index) catch
                         return error.OutOfMemory;
                     const box_set = try self.allocator.create(Ir);
                     box_set.* = .{ .box_set = .{ .left = var_ir, .right = val_ir } };
                     return box_set;
                 }
             }
-            return self.builder.set(name, binding.depth, binding.index, val_ir) catch
+            return self.builder.set(local_name, binding.depth, binding.index, val_ir) catch
                 return error.OutOfMemory;
         }
 
-        // Check globals - if defined, use define to update
-        if (self.globals.lookup(name)) |_| {
+        // Check globals - use qualified name for package-aware lookup
+        var qual_buf: [256]u8 = undefined;
+        const global_name = self.getQualifiedName(var_sym, &qual_buf) catch local_name;
+
+        if (self.globals.lookup(global_name)) |idx| {
             // Re-define the global with the new value
-            return self.builder.define(name, self.globals.lookup(name).?, val_ir) catch
+            return self.builder.define(global_name, idx, val_ir) catch
                 return error.OutOfMemory;
         }
 
@@ -6398,7 +6401,7 @@ pub const Compiler = struct {
         if (s == b.@"string-upcase".raw) return self.compileUnaryPrim(args, env, .string_upcase);
         if (s == b.@"string-downcase".raw) return self.compileUnaryPrim(args, env, .string_downcase);
         if (s == b.concatenate.raw) return self.compileConcatenate(args, env);
-        if (s == b.coerce.raw) return self.compileCoerce(args, env);
+        // coerce is handled by stdlib function, not special form
 
         // Hash tables
         if (s == b.@"make-hash-table".raw) return self.compileMakeHash(args);
@@ -6900,45 +6903,7 @@ pub const Compiler = struct {
         return result_ir;
     }
 
-    fn compileCoerce(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        // (coerce obj 'type)
-        if (!args.isCons()) return error.InvalidSyntax;
-        const cons1 = args.toPtr(Cons);
-        const obj_ir = try self.compile(cons1.car, env);
-
-        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
-        const cons2 = cons1.cdr.toPtr(Cons);
-        const b = self.builtins orelse return error.InvalidSyntax;
-
-        // Second arg should be a quoted type - use symbol identity
-        var type_sym: Value = undefined;
-        if (cons2.car.isCons()) {
-            const quote_cons = cons2.car.toPtr(Cons);
-            if (quote_cons.car.raw == b.quote.raw and quote_cons.cdr.isCons()) {
-                type_sym = quote_cons.cdr.toPtr(Cons).car;
-            } else {
-                return error.InvalidSyntax;
-            }
-        } else {
-            return error.InvalidSyntax;
-        }
-
-        // Generate conversion based on target type
-        if (type_sym.raw == b.list.raw) {
-            // (coerce x 'list) - convert sequence to list
-            // For strings, use string-to-list
-            return try self.builder.stringToList(obj_ir);
-        } else if (type_sym.raw == b.string.raw) {
-            // (coerce x 'string) - convert sequence to string
-            // For lists, use list-to-string
-            return try self.builder.listToString(obj_ir);
-        } else if (type_sym.raw == b.character.raw) {
-            // (coerce x 'character) - convert to character
-            return try self.builder.codeChar(obj_ir);
-        } else {
-            return error.InvalidSyntax;
-        }
-    }
+    // coerce is implemented in stdlib, not as a compiler special form
 
     fn compileFormat(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (format dest control-string args...)
@@ -7498,22 +7463,28 @@ pub const Compiler = struct {
             }
         }
 
-        // Now dims_val is either a fixnum or a list of fixnums
+        // Now dims_val is either a fixnum, list of dimensions, or an expression
         if (dims_val.isCons()) {
-            // List of dimensions - extract each one
-            var current = dims_val;
-            while (current.isCons()) {
-                const dim_cons = current.toPtr(Cons);
-                const dim_ir = try self.compile(dim_cons.car, env);
+            // Check if it's a (quote list) form - actual list of dimensions
+            const cons_check = dims_val.toPtr(Cons);
+            // If car is a fixnum, it's a literal list of dimensions
+            if (cons_check.car.isFixnum()) {
+                var current = dims_val;
+                while (current.isCons()) {
+                    const dim_cons = current.toPtr(Cons);
+                    const dim_ir = try self.compile(dim_cons.car, env);
+                    try dimensions.append(self.allocator, dim_ir);
+                    current = dim_cons.cdr;
+                }
+            } else {
+                // It's an expression like (length lst) - compile it as single dim
+                const dim_ir = try self.compile(dims_val, env);
                 try dimensions.append(self.allocator, dim_ir);
-                current = dim_cons.cdr;
             }
-        } else if (dims_val.isFixnum()) {
-            // Single dimension
+        } else {
+            // Fixnum, symbol (variable), or other expression - compile as single dim
             const dim_ir = try self.compile(dims_val, env);
             try dimensions.append(self.allocator, dim_ir);
-        } else {
-            return error.InvalidSyntax;
         }
 
         // Optional initial element

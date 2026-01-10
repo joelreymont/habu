@@ -13,11 +13,10 @@
       (t msg))))  ; fallback - just return message
 
 ;;; Error signaling
+;; error - signal an error with formatted message (throws 'error for catch/ignore-errors)
 (defun error (message &rest args)
-  "Signal an error with formatted message"
-  (signal 'error (if args
-                     (format-args message args)
-                     message)))
+  (let ((msg (if args (format-args message args) message)))
+    (throw 'error msg)))
 
 ;;; Control flow macros (now with &rest support)
 (defmacro when (test &rest body)
@@ -44,6 +43,10 @@
 (defmacro assert (test &rest args)
   `(unless ,test
      (error "Assertion failed: ~S" ',test)))
+
+;; ignore-errors - evaluate form, return nil on error
+(defmacro ignore-errors (&rest forms)
+  `(catch 'error (progn ,@forms)))
 
 ;; destructuring-bind - bind variables from a destructured list
 ;; Simple version - supports flat and nested lists
@@ -694,6 +697,94 @@
 ;;; String utilities (assuming string primitives exist)
 ;; (defun string-empty? (s) (= (string-length s) 0))
 
+;; String comparison helper - returns <0, 0, or >0
+(defun string-compare-helper (s1 s2 i len1 len2)
+  (cond
+    ((and (>= i len1) (>= i len2)) 0)      ; both exhausted - equal
+    ((>= i len1) -1)                        ; s1 shorter
+    ((>= i len2) 1)                         ; s2 shorter
+    (t (let ((c1 (char s1 i))
+             (c2 (char s2 i)))
+         (cond
+           ((< c1 c2) -1)
+           ((> c1 c2) 1)
+           (t (string-compare-helper s1 s2 (+ i 1) len1 len2)))))))
+
+(defun string-compare (s1 s2)
+  (string-compare-helper s1 s2 0 (string-length s1) (string-length s2)))
+
+;; string< - lexicographic less than
+(defun string< (s1 s2)
+  (< (string-compare s1 s2) 0))
+
+;; string> - lexicographic greater than
+(defun string> (s1 s2)
+  (> (string-compare s1 s2) 0))
+
+;; string= - string equality
+(defun string= (s1 s2)
+  (= (string-compare s1 s2) 0))
+
+;; string<= - lexicographic less than or equal
+(defun string<= (s1 s2)
+  (<= (string-compare s1 s2) 0))
+
+;; string>= - lexicographic greater than or equal
+(defun string>= (s1 s2)
+  (>= (string-compare s1 s2) 0))
+
+;; Helper: check if character code is in character-bag (bag contains character objects)
+(defun char-in-bag (c bag)
+  (if (null bag)
+      nil
+      (if (= c (char-code (car bag)))
+          t
+          (char-in-bag c (cdr bag)))))
+
+;; Helper: find first non-whitespace from start
+(defun string-trim-left-idx (s bag i len)
+  (if (>= i len)
+      len
+      (if (char-in-bag (char s i) bag)
+          (string-trim-left-idx s bag (+ i 1) len)
+          i)))
+
+;; Helper: find last non-whitespace from end
+(defun string-trim-right-idx (s bag i)
+  (if (<= i 0)
+      0
+      (if (char-in-bag (char s (- i 1)) bag)
+          (string-trim-right-idx s bag (- i 1))
+          i)))
+
+;; string-trim - remove characters from both ends
+(defun string-trim (char-bag string)
+  (let* ((bag (if (stringp char-bag) (string-to-list char-bag) char-bag))
+         (len (string-length string))
+         (start (string-trim-left-idx string bag 0 len))
+         (end (string-trim-right-idx string bag len)))
+    (if (>= start end)
+        ""
+        (substring string start end))))
+
+;; string-left-trim - remove characters from left
+(defun string-left-trim (char-bag string)
+  (let* ((bag (if (stringp char-bag) (string-to-list char-bag) char-bag))
+         (len (string-length string))
+         (start (string-trim-left-idx string bag 0 len)))
+    (if (>= start len)
+        ""
+        (substring string start len))))
+
+;; string-right-trim - remove characters from right
+(defun string-right-trim (char-bag string)
+  (let* ((bag (if (stringp char-bag) (string-to-list char-bag) char-bag))
+         (len (string-length string))
+         (end (string-trim-right-idx string bag len)))
+    (if (<= end 0)
+        ""
+        (substring string 0 end))))
+
 ;;; Equality
 (defun equal? (a b)
   (if (and2 (consp a) (consp b))
@@ -1207,6 +1298,59 @@
 ;; endp - test for end of list (nil or error if not list)
 (defun endp (x)
   (null? x))
+
+;;; Type coercion
+
+;; Helper: convert vector to list (uses svref for simple vectors)
+(defun vector-to-list-helper (vec idx len)
+  (if (>= idx len)
+      nil
+      (cons (svref vec idx) (vector-to-list-helper vec (+ idx 1) len))))
+
+(defun vector-to-list (vec)
+  (vector-to-list-helper vec 0 (vector-length vec)))
+
+;; Helper: convert list to vector (fill helper must come first)
+(defun list-to-vector-fill (vec lst idx)
+  (if (null lst)
+      nil
+      (progn
+        (%aset vec idx (car lst))
+        (list-to-vector-fill vec (cdr lst) (+ idx 1)))))
+
+(defun list-to-vector (lst)
+  (let ((v (make-array (length lst))))
+    (list-to-vector-fill v lst 0)
+    v))
+
+;; coerce - convert obj to specified type
+(defun coerce (obj result-type)
+  (case result-type
+    (list
+     (cond
+       ((listp obj) obj)
+       ((stringp obj) (string-to-list obj))
+       ((vectorp obj) (vector-to-list obj))
+       (t (error "Cannot coerce to list"))))
+    (vector
+     (cond
+       ((vectorp obj) obj)
+       ((listp obj) (list-to-vector obj))
+       ((stringp obj) (list-to-vector (string-to-list obj)))
+       (t (error "Cannot coerce to vector"))))
+    (string
+     (cond
+       ((stringp obj) obj)
+       ((listp obj) (list-to-string obj))
+       ((symbolp obj) (symbol-name obj))
+       (t (error "Cannot coerce to string"))))
+    (character
+     (cond
+       ((numberp obj) obj)
+       ((and (stringp obj) (= (length obj) 1))
+        (char obj 0))
+       (t (error "Cannot coerce to character"))))
+    (t (error "Unknown result type for coerce"))))
 
 ;;; Utility functions
 
