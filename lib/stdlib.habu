@@ -1365,6 +1365,13 @@
 (defun complement (pred)
   (lambda (x) (not (funcall pred x))))
 
+;; incf/decf - increment/decrement place macros
+(defmacro incf (place &optional (delta 1))
+  `(setf ,place (+ ,place ,delta)))
+
+(defmacro decf (place &optional (delta 1))
+  `(setf ,place (- ,place ,delta)))
+
 ;; min - return minimum of numbers
 (defun min (&rest numbers)
   (if (null numbers)
