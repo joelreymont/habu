@@ -128,6 +128,14 @@ pub const Op = enum(u8) {
     /// ( a -- -a )
     neg = 0x25,
 
+    /// Integer quotient (truncate toward zero)
+    /// ( a b -- a/b )
+    quot = 0x2D,
+
+    /// Remainder (sign matches dividend)
+    /// ( a b -- a rem b )
+    rem = 0x2E,
+
     // ========================================================================
     // Comparison
     // ========================================================================
@@ -1040,6 +1048,8 @@ pub const Op = enum(u8) {
             .mul,
             .div,
             .mod,
+            .quot,
+            .rem,
             .neg,
             .eq,
             .lt,

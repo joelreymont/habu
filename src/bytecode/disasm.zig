@@ -48,6 +48,8 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .mul,
         .div,
         .mod,
+        .quot,
+        .rem,
         .neg,
         .eq,
         .lt,

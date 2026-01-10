@@ -992,7 +992,7 @@
 (defun (lcm -> fixnum) ((a fixnum) (b fixnum))
   (if (or2 (= a 0) (= b 0))
       0
-      (abs (* (/ a (gcd a b)) b))))
+      (abs (* (quot a (gcd a b)) b))))
 
 ;;; expt - exponentiation (positive integer exponents)
 (defun (expt -> fixnum) ((base fixnum) (exp fixnum))
@@ -1003,30 +1003,27 @@
             (* half half))
           (* base (expt base (- exp 1))))))
 
-;;; Integer division utilities (for fixnums only)
-(defun (truncate -> fixnum) ((n fixnum) (d fixnum))
-  (/ n d))
+;;; Integer division utilities
+;;; Note: truncate and rem are builtins for integer quotient and remainder.
+;;; floor-div rounds toward negative infinity, ceiling-div toward positive.
 
 (defun (floor-div -> fixnum) ((n fixnum) (d fixnum))
-  (let ((q (/ n d)))
-    (if (and2 (negative? (mod n d))
-              (or2 (positive? n) (positive? d)))
-        (if (and2 (negative? n) (positive? d))
-            (- q 1)
-            (if (and2 (positive? n) (negative? d))
-                (- q 1)
-                q))
+  (let ((q (truncate n d))
+        (r (rem n d)))
+    ;; Adjust if remainder and divisor have opposite signs
+    (if (and2 (not (= r 0))
+              (not (= (< r 0) (< d 0))))
+        (- q 1)
         q)))
 
 (defun (ceiling-div -> fixnum) ((n fixnum) (d fixnum))
-  (let ((q (/ n d))
-        (r (mod n d)))
-    (if (= r 0)
-        q
-        (if (or2 (and2 (positive? n) (positive? d))
-                (and2 (negative? n) (negative? d)))
-            (+ q 1)
-            q))))
+  (let ((q (truncate n d))
+        (r (rem n d)))
+    ;; Adjust if remainder and result have same sign
+    (if (and2 (not (= r 0))
+              (= (< r 0) (< d 0)))
+        (+ q 1)
+        q)))
 
 ;;; Sorting
 

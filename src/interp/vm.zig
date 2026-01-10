@@ -830,6 +830,8 @@ pub const Vm = struct {
                 try self.push(try primitives.arith.div(self.heap, a, b));
             },
             .mod => try self.binaryOp(binaryMod),
+            .quot => try self.binaryOp(binaryQuot),
+            .rem => try self.binaryOp(binaryRem),
             .neg => {
                 const a = try self.pop();
                 if (!a.isFixnum()) return error.TypeMismatch;
@@ -4564,6 +4566,17 @@ pub const Vm = struct {
     fn binaryMod(a: i64, b: i64) Error!Value {
         if (b == 0) return error.DivisionByZero;
         return Value.makeFixnum(@mod(a, b));
+    }
+
+    fn binaryQuot(a: i64, b: i64) Error!Value {
+        if (b == 0) return error.DivisionByZero;
+        if (a == std.math.minInt(i64) and b == -1) return error.TypeMismatch; // overflow
+        return Value.makeFixnum(@divTrunc(a, b));
+    }
+
+    fn binaryRem(a: i64, b: i64) Error!Value {
+        if (b == 0) return error.DivisionByZero;
+        return Value.makeFixnum(@rem(a, b));
     }
 
     fn binaryLt(a: i64, b: i64) Error!Value {

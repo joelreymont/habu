@@ -542,6 +542,8 @@ pub const Emitter = struct {
             .mul => |op| try self.emitBinaryOp(op, .mul),
             .div => |op| try self.emitBinaryOp(op, .div),
             .mod => |op| try self.emitBinaryOp(op, .mod),
+            .quot => |op| try self.emitBinaryOp(op, .quot),
+            .rem => |op| try self.emitBinaryOp(op, .rem),
 
             // Comparison
             .eq => |op| try self.emitBinaryOp(op, .eq),

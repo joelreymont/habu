@@ -136,6 +136,9 @@ pub const Builtins = struct {
     @"/": Value,
     mod: Value,
     @"%": Value,
+    quot: Value,
+    truncate: Value,
+    rem: Value,
 
     // Primitives - Comparison
     eq: Value,
@@ -463,6 +466,9 @@ pub const Builtins = struct {
             .@"/" = try heap.intern("/"),
             .mod = try heap.intern("mod"),
             .@"%" = try heap.intern("%"),
+            .quot = try heap.intern("quot"),
+            .truncate = try heap.intern("truncate"),
+            .rem = try heap.intern("rem"),
             // Primitives - Comparison
             .eq = try heap.intern("eq"),
             .equal = try heap.intern("equal"),
@@ -1180,7 +1186,7 @@ pub const Compiler = struct {
                 }
                 return &types.t_any;
             },
-            .add, .sub, .mul, .div, .mod => &types.t_fixnum,
+            .add, .sub, .mul, .div, .mod, .quot, .rem => &types.t_fixnum,
             .eq, .lt, .gt, .le, .ge, .num_eq => &types.t_any, // Returns t or nil
             .cons => &types.t_cons,
             .car, .cdr => &types.t_any, // Could be anything
@@ -6152,6 +6158,8 @@ pub const Compiler = struct {
         if (s == b.@"*".raw) return self.compileVariadicArith(args, env, .mul, 1);
         if (s == b.@"/".raw) return self.compileVariadicArith(args, env, .div, null);
         if (s == b.mod.raw or s == b.@"%".raw) return self.compileBinaryPrim(args, env, .mod);
+        if (s == b.quot.raw or s == b.truncate.raw) return self.compileBinaryPrim(args, env, .quot);
+        if (s == b.rem.raw) return self.compileBinaryPrim(args, env, .rem);
 
         // Comparison
         if (s == b.eq.raw) return self.compileBinaryPrim(args, env, .eq);
@@ -6437,7 +6445,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string };
+    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -6512,6 +6520,8 @@ pub const Compiler = struct {
                 node.* = .{ .mod = .{ .left = left, .right = right } };
                 break :blk node;
             },
+            .quot => try self.builder.quot(left, right),
+            .rem => try self.builder.rem(left, right),
             .eq => try self.builder.eq(left, right),
             .equal => try self.builder.equal(left, right),
             .eql => try self.builder.eql(left, right),

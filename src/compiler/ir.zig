@@ -301,6 +301,8 @@ pub const Ir = union(enum) {
     mul: BinaryOp,
     div: BinaryOp,
     mod: BinaryOp,
+    quot: BinaryOp, // integer quotient (truncate toward zero)
+    rem: BinaryOp, // remainder (sign matches dividend)
 
     // ========================================================================
     // Primitives - Comparison
@@ -1025,6 +1027,18 @@ pub const IrBuilder = struct {
     pub fn div(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .div = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn quot(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .quot = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn rem(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .rem = .{ .left = left, .right = right } };
         return node;
     }
 
