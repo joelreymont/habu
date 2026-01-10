@@ -686,9 +686,9 @@
       lst
       (nthcdr (- n 1) (cdr lst))))
 
-;;; subseq - subsequence (simple version)
-(defun (subseq -> list) ((lst list) (start fixnum) (end fixnum))
-  (if (= start end)
+;;; subseq - subsequence (simple version for lists)
+(defun subseq (lst start end)
+  (if (>= start end)
       nil
       (cons (nth start lst) (subseq lst (+ start 1) end))))
 

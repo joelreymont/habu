@@ -6355,7 +6355,7 @@ pub const Compiler = struct {
         if (s == b.@"string=".raw) return self.compileBinaryPrim(args, env, .str_eq);
         if (s == b.@"string-concat".raw) return self.compileBinaryPrim(args, env, .str_concat);
         if (s == b.substring.raw) return self.compileSubstring(args, env);
-        if (s == b.subseq.raw) return self.compileSubseq(args, env);
+        // subseq handled by stdlib for list support (builtin only did strings)
 
         // I/O
         if (s == b.print.raw) return self.compileUnaryPrim(args, env, .print);
