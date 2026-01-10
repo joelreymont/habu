@@ -567,6 +567,18 @@
       (pairlis (cdr keys) (cdr values)
                (acons (car keys) (car values) alist))))
 
+;; copy-list - shallow copy of a list
+(defun copy-list (lst)
+  (if (null lst)
+      nil
+      (cons (car lst) (copy-list (cdr lst)))))
+
+;; copy-tree - deep copy of a tree structure
+(defun copy-tree (tree)
+  (if (consp tree)
+      (cons (copy-tree (car tree)) (copy-tree (cdr tree)))
+      tree))
+
 ;; copy-alist - copy an association list
 (defun copy-alist (alist)
   (if (null? alist)
