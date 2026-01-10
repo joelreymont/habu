@@ -27,6 +27,7 @@
 - ✅ ecase (stdlib.habu)
 - ✅ prog (stdlib.habu)
 - ✅ do/do* (stdlib.habu:61,113) - parallel/sequential iteration with stepping
+- ✅ loop (stdlib.habu:438) - for/from/to, for/in, repeat, while, until with collect/sum/count/do
 - ✅ multiple-value-setq (stdlib.habu)
 - ✅ nth-value (stdlib.habu)
 - ✅ when-let, if-let (stdlib.habu:11,18) - conditional binding macros
