@@ -3331,10 +3331,12 @@ pub const Compiler = struct {
 
     fn compileLoop(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (loop body...) - infinite loop, exits via return-from
-        // Compiles to (while t body...)
+        // Compiles to (block nil (while t body...))
         const test_ir = try self.builder.lit(Value.t);
         const body_ir = try self.compileBody(args, env);
-        return try self.builder.loop(test_ir, body_ir);
+        const loop_ir = try self.builder.loop(test_ir, body_ir);
+        // Wrap in nil block for (return ...) support
+        return try self.builder.block("nil", loop_ir);
     }
 
     fn compileBlockWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) anyerror!*Ir {

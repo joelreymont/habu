@@ -489,7 +489,8 @@
                                 (cons 'loop-for-from-append (cons var (cons start (cons end (cons expr rest8))))))))
                            (t nil))))))))))
 
-          (t nil)))))
+          ;; Simple loop: (loop body...) - expands to (block nil (while t body...))
+          (t `(block nil (while t ,@clauses)))))))
 
 ;;; Mutation macros (fixed arity)
 (defmacro incf (place)
