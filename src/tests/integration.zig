@@ -670,28 +670,28 @@ test "the any" {
     try testing.expect(result3.isCons());
 }
 
-test "the or cons nil equals list" {
+test "the union cons nil equals list" {
     const allocator = testing.allocator;
 
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    // (or cons nil) is equivalent to list type
-    const result1 = try evalExpr(allocator, &heap, "(the (or cons nil) (cons 1 2))");
+    // (union cons nil) is equivalent to list type
+    const result1 = try evalExpr(allocator, &heap, "(the (union cons nil) (cons 1 2))");
     try testing.expect(result1.isCons());
 
-    const result2 = try evalExpr(allocator, &heap, "(the (or nil cons) nil)");
+    const result2 = try evalExpr(allocator, &heap, "(the (union nil cons) nil)");
     try testing.expect(result2.isNil());
 }
 
-test "the or cons nil failure" {
+test "the union cons nil failure" {
     const allocator = testing.allocator;
 
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    // fixnum is not (or cons nil)
-    const err = evalExpr(allocator, &heap, "(the (or cons nil) 42)");
+    // fixnum is not (union cons nil)
+    const err = evalExpr(allocator, &heap, "(the (union cons nil) 42)");
     try testing.expectError(error.TypeMismatch, err);
 }
 

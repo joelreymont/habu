@@ -377,6 +377,7 @@ pub const Builtins = struct {
     ty_char: Value,
     ty_character: Value, // alias for char
     ty_t: Value,
+    ty_union: Value, // (union T1 T2 ...) - union type
 
     // Dependent type form symbols (QTT)
     ty_pi: Value, // (pi (x : A) B) - dependent function type
@@ -699,6 +700,7 @@ pub const Builtins = struct {
             .ty_char = try heap.intern("char"),
             .ty_character = try heap.intern("character"),
             .ty_t = try heap.intern("t"),
+            .ty_union = try heap.intern("union"),
             // Dependent type form symbols (QTT)
             .ty_pi = try heap.intern("pi"),
             .ty_sigma = try heap.intern("sigma"),
@@ -2107,19 +2109,67 @@ pub const Compiler = struct {
             return error.OutOfMemory;
     }
 
-    /// Create a type assertion IR node for a given type symbol
+    /// Create a type assertion IR node for a given type symbol or complex type
     fn makeTypeAssertionSym(self: *Compiler, expr_ir: *Ir, type_sym: Value) !?*Ir {
         const b = self.builtins orelse return error.UninitializedBuiltins;
-        // Dispatch by symbol identity (no string comparison)
-        if (type_sym.raw == b.ty_fixnum.raw) return self.builder.assertFixnum(expr_ir);
-        if (type_sym.raw == b.cons.raw) return self.builder.assertCons(expr_ir);
-        if (type_sym.raw == b.ty_symbol.raw) return self.builder.assertSymbol(expr_ir);
-        if (type_sym.raw == b.string.raw) return self.builder.assertString(expr_ir);
-        if (type_sym.raw == b.ty_vector.raw) return self.builder.assertVector(expr_ir);
-        if (type_sym.raw == b.ty_closure.raw) return self.builder.assertClosure(expr_ir);
-        if (type_sym.raw == b.ty_list.raw) return self.builder.assertList(expr_ir);
-        if (type_sym.raw == b.@"ty_non-nil".raw) return self.builder.assertNonNil(expr_ir);
-        if (type_sym.raw == b.ty_any.raw) return null; // any = no check
+
+        // Handle simple type symbols by identity
+        if (type_sym.isSymbol()) {
+            if (type_sym.raw == b.ty_fixnum.raw) return self.builder.assertFixnum(expr_ir);
+            if (type_sym.raw == b.cons.raw) return self.builder.assertCons(expr_ir);
+            if (type_sym.raw == b.ty_symbol.raw) return self.builder.assertSymbol(expr_ir);
+            if (type_sym.raw == b.string.raw) return self.builder.assertString(expr_ir);
+            if (type_sym.raw == b.ty_vector.raw) return self.builder.assertVector(expr_ir);
+            if (type_sym.raw == b.ty_closure.raw) return self.builder.assertClosure(expr_ir);
+            if (type_sym.raw == b.ty_list.raw) return self.builder.assertList(expr_ir);
+            if (type_sym.raw == b.@"ty_non-nil".raw) return self.builder.assertNonNil(expr_ir);
+            if (type_sym.raw == b.ty_any.raw) return null; // any = no check
+            if (type_sym.raw == b.ty_nil.raw) {
+                // nil type - use assertOr with just nil
+                const syms = try self.allocator.alloc(Value, 1);
+                syms[0] = b.ty_nil;
+                return self.builder.assertOr(expr_ir, syms);
+            }
+            return error.InvalidSyntax;
+        }
+
+        // Handle complex types: (union T1 T2 ...), etc.
+        if (type_sym.isCons()) {
+            const cons = type_sym.toPtr(Cons);
+            if (!cons.car.isSymbol()) return error.InvalidSyntax;
+
+            // Check for (union T1 T2 ...)
+            if (cons.car.raw == b.ty_union.raw) {
+                // Collect type alternatives
+                var alts = std.ArrayList(Value){};
+                defer alts.deinit(self.allocator);
+
+                var current = cons.cdr;
+                while (current.isCons()) {
+                    const c = current.toPtr(Cons);
+                    // Each alternative is a type symbol or nil
+                    if (c.car.isSymbol()) {
+                        try alts.append(self.allocator, c.car);
+                    } else if (c.car.isNil()) {
+                        // nil in type position - use the interned nil symbol
+                        try alts.append(self.allocator, b.ty_nil);
+                    } else {
+                        // Nested complex type - not yet supported
+                        return error.InvalidSyntax;
+                    }
+                    current = c.cdr;
+                }
+
+                if (alts.items.len == 0) return error.InvalidSyntax;
+
+                const syms = try self.allocator.dupe(Value, alts.items);
+                return self.builder.assertOr(expr_ir, syms);
+            }
+
+            // Other complex types not yet supported
+            return error.InvalidSyntax;
+        }
+
         return error.InvalidSyntax;
     }
 
@@ -3945,10 +3995,11 @@ pub const Compiler = struct {
             const b = self.builtins orelse return error.UninitializedBuiltins;
             if (arrow_cons.car.raw != b.@"->".raw) return error.InvalidSyntax;
 
-            // Get return type symbol
+            // Get return type (symbol or complex type like (or T1 T2))
             if (!arrow_cons.cdr.isCons()) return error.InvalidSyntax;
             const type_cons = arrow_cons.cdr.toPtr(Cons);
-            if (!type_cons.car.isSymbol()) return error.InvalidSyntax;
+            // Accept symbol or cons (complex type expression)
+            if (!type_cons.car.isSymbol() and !type_cons.car.isCons()) return error.InvalidSyntax;
             return_type = type_cons.car;
         } else {
             return error.InvalidSyntax;
@@ -4441,8 +4492,8 @@ pub const Compiler = struct {
 
         const b = self.builtins orelse return null;
 
-        // (or T1 T2 ...) - union type
-        if (head.raw == b.@"or".raw) {
+        // (union T1 T2 ...) - union type
+        if (head.raw == b.ty_union.raw) {
             return self.parseOrType(cons.cdr);
         }
 
@@ -5972,7 +6023,7 @@ pub const Compiler = struct {
         const head = cons.car;
 
         // Dispatch by symbol identity
-        if (head.raw == b.@"or".raw) {
+        if (head.raw == b.ty_union.raw) {
             return self.compileOrTypeCheck(cons.cdr, expr_ir);
         }
         if (head.raw == b.ty_refine.raw) {
