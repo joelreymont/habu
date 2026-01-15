@@ -97,6 +97,12 @@
                  (append (car lsts) (helper (cdr lsts)))))))
     (helper lists)))
 
+; flatten1 - flatten one level of nesting (concat list of lists)
+(defun flatten1 (lists)
+  (if (null lists)
+      nil
+    (append (car lists) (flatten1 (cdr lists)))))
+
 ; Reverse with TCO
 (defun reverse-aux (lst acc)
   (if (null lst)
@@ -114,6 +120,13 @@
 
 ; CL-compatible mapcar alias
 (defun mapcar (f lst) (map f lst))
+
+; mapcar2 - mapcar over two lists in parallel
+(defun mapcar2 (f lst1 lst2)
+  (if (or (null lst1) (null lst2))
+      nil
+    (cons (funcall f (car lst1) (car lst2))
+          (mapcar2 f (cdr lst1) (cdr lst2)))))
 
 ; Mapc - like map but for side effects, returns nil
 (defun mapc (f (lst :type list))
@@ -306,13 +319,98 @@
                             (list loop-fn i)
                             (list 'setq i (list '+ i 1))))))))
 
-; incf - increment place (simple version for variables only)
-(defmacro incf (place &optional (delta 1))
-  (list 'setq place (list '+ place delta)))
+; psetq-collect - helper to collect vars/vals/tmps from pairs
+(defun psetq-collect (pairs vars vals tmps)
+  (if (null pairs)
+      (list (reverse vars) (reverse vals) (reverse tmps))
+    (let ((v (car pairs))
+          (e (cadr pairs))
+          (tmp (gensym)))
+      (psetq-collect (cddr pairs)
+                     (cons v vars)
+                     (cons e vals)
+                     (cons tmp tmps)))))
 
-; decf - decrement place
+; psetq - parallel setq (evaluates all values before assigning)
+; (psetq var1 val1 var2 val2 ...) => nil
+(defmacro psetq (&rest pairs)
+  (if (null pairs)
+      nil
+    (let* ((collected (psetq-collect pairs nil nil nil))
+           (vars (car collected))
+           (vals (cadr collected))
+           (tmps (caddr collected)))
+      ; generate: (let ((tmp1 val1) ...) (setq var1 tmp1) ... nil)
+      (list 'let (mapcar2 (lambda (tmp val) (list tmp val)) tmps vals)
+            (cons 'progn
+                  (append (mapcar2 (lambda (var tmp) (list 'setq var tmp)) vars tmps)
+                          (list nil)))))))
+
+; do - general iteration macro (parallel binding)
+; (do ((var init step) ...) (end-test result...) body...)
+; Uses while instead of loop to avoid forward reference
+(defmacro do (bindings end-clause &rest body)
+  (let ((vars (mapcar #'car bindings))
+        (inits (mapcar #'cadr bindings))
+        (steps (mapcar (lambda (b) (if (cddr b) (caddr b) (car b))) bindings))
+        (end-test (car end-clause))
+        (result (cdr end-clause)))
+    (list 'block nil
+          (list 'let (mapcar2 (lambda (v i) (list v i)) vars inits)
+                (list 'while (list 'not end-test)
+                      (cons 'progn body)
+                      (cons 'psetq (flatten1 (mapcar2 (lambda (v s) (list v s)) vars steps))))
+                (cons 'progn (if result result (list nil)))))))
+
+; do* - general iteration macro (sequential binding)
+; (do* ((var init step) ...) (end-test result...) body...)
+(defmacro do* (bindings end-clause &rest body)
+  (let ((vars (mapcar #'car bindings))
+        (inits (mapcar #'cadr bindings))
+        (steps (mapcar (lambda (b) (if (cddr b) (caddr b) (car b))) bindings))
+        (end-test (car end-clause))
+        (result (cdr end-clause)))
+    (list 'block nil
+          (list 'let* (mapcar2 (lambda (v i) (list v i)) vars inits)
+                (list 'while (list 'not end-test)
+                      (cons 'progn body)
+                      (cons 'progn (mapcar2 (lambda (v s) (list 'setq v s)) vars steps)))
+                (cons 'progn (if result result (list nil)))))))
+
+; setf - generalized assignment
+; Handles: symbols, (car x), (cdr x), (svref v i), (aref a i), (gethash k h)
+(defmacro setf (place value)
+  (if (symbolp place)
+      (list 'setq place value)
+    (if (consp place)
+        (let ((op (car place)))
+          (cond
+            ((eq op 'car) (list 'rplaca (cadr place) value))
+            ((eq op 'cdr) (list 'rplacd (cadr place) value))
+            ((eq op 'first) (list 'rplaca (cadr place) value))
+            ((eq op 'rest) (list 'rplacd (cadr place) value))
+            ((eq op 'svref) (list '%svset (cadr place) (caddr place) value))
+            ((eq op 'aref) (list '%aset (cadr place) (caddr place) value))
+            ((eq op 'gethash) (list 'puthash (cadr place) (caddr place) value))
+            ((eq op 'nth) (list 'rplaca (list 'nthcdr (cadr place) (caddr place)) value))
+            (t (error "setf: unsupported place" place))))
+      (error "setf: invalid place" place))))
+
+; incf - increment place (works with setf places)
+(defmacro incf (place &optional (delta 1))
+  (if (symbolp place)
+      (list 'setq place (list '+ place delta))
+    (let ((tmp (gensym "TMP")))
+      (list 'let (list (list tmp (list '+ place delta)))
+            (list 'setf place tmp)))))
+
+; decf - decrement place (works with setf places)
 (defmacro decf (place &optional (delta 1))
-  (list 'setq place (list '- place delta)))
+  (if (symbolp place)
+      (list 'setq place (list '- place delta))
+    (let ((tmp (gensym "TMP")))
+      (list 'let (list (list tmp (list '- place delta)))
+            (list 'setf place tmp)))))
 
 ; push - push value onto list (destructive)
 ; (push val place) => new-list

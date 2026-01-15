@@ -163,9 +163,6 @@ pub const Desugarer = struct {
                     body,
                 ),
             );
-            const inner_cons = try self.heap.allocCons(rest_bindings, body);
-            const desugared_inner = try self.desugarLetStar(inner_cons.toPtr(Cons).cdr);
-            _ = desugared_inner;
 
             // Build (let ((first)) inner)
             const let_sym = try self.heap.intern("let");
