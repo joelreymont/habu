@@ -663,9 +663,13 @@
            (take (- end start) lst)
            lst)))))
 
-; substitute - replace old with new in sequence
+; substitute - replace old with new in sequence (list or string)
 (defun substitute (new old seq &key (test #'eql))
-  (mapcar (lambda (x) (if (funcall test x old) new x)) seq))
+  (if (stringp seq)
+      (coerce (mapcar (lambda (x) (if (funcall test x old) new x))
+                      (coerce seq 'list))
+              'string)
+      (mapcar (lambda (x) (if (funcall test x old) new x)) seq)))
 
 ; substitute-if - replace elements satisfying pred with new
 (defun substitute-if (new pred seq)
