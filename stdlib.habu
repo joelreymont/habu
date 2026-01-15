@@ -2464,8 +2464,8 @@
       
       ; Generate forms
       (list 'progn
-            ; Constructor: (defun make-NAME (arg1 arg2 ...) (vector 'NAME arg1 arg2 ...))
-            (list 'defun constructor-name slot-names
+            ; Constructor: (defun make-NAME (&key slot1 slot2 ...) (vector 'NAME slot1 slot2 ...))
+            (list 'defun constructor-name (cons '&key slot-names)
                   (cons 'vector (cons (list 'quote name) slot-names)))
             
             ; Predicate: (defun NAME-p (obj) (and (vectorp obj) (> (length obj) 0) (eq (svref obj 0) 'NAME)))
