@@ -295,34 +295,35 @@
   (list 'return-from nil value))
 
 ; dolist - iterate over list elements
-; (dolist (var list) body...) => nil
+; (dolist (var list [result]) body...) => result (with var bound to nil)
 (defmacro dolist (spec &rest body)
   (let ((var (car spec))
         (lst (cadr spec))
+        (result (caddr spec))
         (loop-fn (gensym)))
     (list 'let (list (list loop-fn
                            (list 'lambda (list var)
                                  (cons 'progn body))))
           (list 'mapc loop-fn lst)
-          nil)))
+          (list 'let (list (list var nil))
+                result))))
 
 ; dotimes - iterate n times
-; (dotimes (var n) body...) => nil
+; (dotimes (var n [result]) body...) => result (with var bound to n)
 (defmacro dotimes (spec &rest body)
   (let ((var (car spec))
         (count (cadr spec))
-        (loop-fn (gensym))
-        (i (gensym)))
-    (list 'let (list (list loop-fn
-                           (list 'lambda (list var)
-                                 (cons 'progn body))))
-          (list 'let (list (list i 0))
+        (result (caddr spec))
+        (n (gensym)))
+    ; Bind count once to avoid multiple evaluation
+    (list 'let (list (list n count))
+          (list 'let (list (list var 0))
                 (list 'block nil
                       (list 'loop
-                            (list 'when (list '>= i count)
-                                  (list 'return-from nil nil))
-                            (list loop-fn i)
-                            (list 'setq i (list '+ i 1))))))))
+                            (list 'when (list '>= var n)
+                                  (list 'return-from nil result))
+                            (cons 'progn body)
+                            (list 'setq var (list '+ var 1))))))))
 
 ; psetq-collect - helper to collect vars/vals/tmps from pairs
 (defun psetq-collect (pairs vars vals tmps)
@@ -398,6 +399,20 @@
             ((eq op 'aref) (cons '%aset (append (cdr place) (list value))))
             ((eq op 'gethash) (list 'puthash (cadr place) (caddr place) value))
             ((eq op 'nth) (list 'rplaca (list 'nthcdr (cadr place) (caddr place)) value))
+            ((eq op 'getf)
+             ; (setf (getf plist key) val) - plist-var must be a symbol
+             (let ((plist-var (cadr place))
+                   (key (caddr place))
+                   (g (gensym "V")))
+               (if (symbolp plist-var)
+                   ; Expand to: (let ((g value)) (if (plist-update! plist key g) g (progn (setq plist (cons key (cons g plist))) g)))
+                   (list 'let (list (list g value))
+                         (list 'if (list '%plist-update! plist-var key g)
+                               g
+                               (list 'progn
+                                     (list 'setq plist-var (list 'cons key (list 'cons g plist-var)))
+                                     g)))
+                   (error "setf getf: plist must be a variable"))))
             (t (error "setf: unsupported place" place))))
       (error "setf: invalid place" place))))
 
@@ -893,7 +908,7 @@
      (let ((lst nil)
            (len (length object)))
        (dotimes (i len (nreverse lst))
-         (push (svref object (- len i 1)) lst))))
+         (push (svref object i) lst))))
     ; String to list
     ((and (eq result-type 'list) (stringp object))
      (string-to-list object))
@@ -1838,6 +1853,16 @@
       (if (eq (car plist) indicator)
           (cadr plist)
           (getf (cddr plist) indicator default))))
+
+; %plist-update! - internal: update value in plist if key exists
+; Returns t if updated, nil if key not found
+(defun %plist-update! (plist key value)
+  (cond
+    ((null plist) nil)
+    ((eq (car plist) key)
+     (rplacd plist (cons value (cddr plist)))
+     t)
+    (t (%plist-update! (cddr plist) key value))))
 
 ; putf - helper to set property in plist (returns new plist)
 (defun putf (plist indicator value)
