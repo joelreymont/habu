@@ -310,6 +310,45 @@ fn getPredicateOperand(node: *const Ir) ?*const Ir {
 - Prefer slices over ArrayList when size is known
 - Use comptime for constant data
 
+### Task Tracking - MANDATORY (BLOCKING REQUIREMENT)
+
+**ALWAYS create dots for new multi-step work. This is non-negotiable.**
+
+```bash
+# REQUIRED before starting any multi-step task:
+dot add "Task title" -d "Full context: file:line, what needs to be done, dependencies"
+
+# REQUIRED after completing work:
+dot off <id> -r "Brief completion note"
+```
+
+**When to create dots (MANDATORY):**
+- Before implementing any new feature (>30 min)
+- Before fixing complex bugs requiring investigation
+- Before refactoring across multiple files
+- Before adding test coverage for untested code
+- When user requests specific work items
+
+**Dot descriptions MUST include:**
+- File paths and line numbers where work happens
+- What needs to be implemented/fixed
+- Dependencies on other dots (reference by ID)
+- Estimated time if >2 hours
+
+**FORBIDDEN:**
+- Starting multi-step work without a dot
+- Leaving completed work without closing its dot
+- Vague descriptions like "fix bug" or "add feature"
+
+**Example:**
+```bash
+# RIGHT:
+dot add "Add sequence map function" -d "src/runtime/primitives/seq.zig: Implement generic map for lists/vectors. Depends on habu-implement-sequence-functions-fc6d3929. Add tests. Est: 2h"
+
+# WRONG:
+dot add "map function" -d "add map"
+```
+
 ### Build/Test
 ```bash
 zig build test  # Run all tests
