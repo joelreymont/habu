@@ -486,6 +486,13 @@
           (list 'setq place (list 'cdr place))
           temp)))
 
+; pushnew - push value if not already present
+(defmacro pushnew (val place &key (test '#'eql))
+  (let ((v (gensym)))
+    (list 'let (list (list v val))
+          (list 'unless (list 'member v place)
+                (list 'push v place)))))
+
 ; cond - multi-way conditional
 ; Already have this as a special form, but define macro version for completeness
 ; (Note: cond is a special form in Habu, so this is just documentation)
@@ -1823,8 +1830,10 @@
       (cons initial-element (make-list (- size 1) :initial-element initial-element))))
 
 ; delete - destructive remove (for now, same as remove)
+; delete - remove all occurrences of item from sequence
+; Note: uses remove-if to support variable test functions
 (defun delete (item sequence &key (test #'eql))
-  (remove item sequence :test test))
+  (remove-if (lambda (x) (let ((r (funcall test x item))) r)) sequence))
 
 ; delete-if - destructive remove-if
 (defun delete-if (pred sequence)
