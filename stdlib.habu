@@ -616,7 +616,7 @@
         lst)))
 
 ; substitute - replace old with new in sequence
-(defun substitute (new old seq &key (test 'eql))
+(defun substitute (new old seq &key (test #'eql))
   (mapcar (lambda (x) (if (funcall test x old) new x)) seq))
 
 ; substitute-if - replace elements satisfying pred with new
@@ -628,7 +628,7 @@
   (substitute-if new (lambda (x) (not (funcall pred x))) seq))
 
 ; nsubstitute - destructive substitute (for now, same as substitute)
-(defun nsubstitute (new old seq &key (test 'eql))
+(defun nsubstitute (new old seq &key (test #'eql))
   (substitute new old seq :test test))
 
 ;; ============================================================
@@ -963,7 +963,7 @@
 ;; ============================================================
 
 ; search - find subsequence in sequence
-(defun search (seq1 seq2 &key (test 'eql) (start1 0) (start2 0))
+(defun search (seq1 seq2 &key (test #'eql) (start1 0) (start2 0))
   (let ((len1 (- (length seq1) start1))
         (len2 (- (length seq2) start2)))
     (if (> len1 len2)
@@ -983,7 +983,7 @@
            (search-match seq1 seq2 (+ s1 1) (+ s2 1) (- len 1) test))))
 
 ; mismatch - find first position where sequences differ
-(defun mismatch (seq1 seq2 &key (test 'eql) (start1 0) (start2 0))
+(defun mismatch (seq1 seq2 &key (test #'eql) (start1 0) (start2 0))
   (mismatch-aux seq1 seq2 start1 start2 test))
 
 (defun mismatch-aux (seq1 seq2 i1 i2 test)
@@ -1085,7 +1085,7 @@
     alist))
 
 ; alist-hash-table - convert alist to hash table
-(defun alist-hash-table (alist &key (test 'eql))
+(defun alist-hash-table (alist &key (test #'eql))
   (let ((table (make-hash-table :test test)))
     (dolist (pair alist table)
       (setf (gethash (car pair) table) (cdr pair)))))
@@ -1392,7 +1392,7 @@
 ;; ============================================================
 
 ; tree-equal - compare trees for structural equality
-(defun tree-equal (a b &key (test 'eql))
+(defun tree-equal (a b &key (test #'eql))
   (cond
     ((and (consp a) (consp b))
      (and (tree-equal (car a) (car b) :test test)
@@ -1401,7 +1401,7 @@
     (t (funcall test a b))))
 
 ; subst - substitute new for old in tree
-(defun subst (new old tree &key (test 'eql))
+(defun subst (new old tree &key (test #'eql))
   (cond
     ((funcall test tree old) new)
     ((consp tree)
@@ -1434,7 +1434,7 @@
              (pairlis (cdr keys) (cdr values) alist))))
 
 ; rassoc - reverse assoc (search by value)
-(defun rassoc (item alist &key (test 'eql))
+(defun rassoc (item alist &key (test #'eql))
   (if (null alist)
       nil
       (if (funcall test item (cdar alist))
@@ -1454,37 +1454,37 @@
 ;; ============================================================
 
 ; union - set union
-(defun union (list1 list2 &key (test 'eql))
+(defun union (list1 list2 &key (test #'eql))
   (let ((result (copy-list list2)))
     (dolist (x list1 result)
       (unless (member x result :test test)
         (push x result)))))
 
 ; intersection - set intersection
-(defun intersection (list1 list2 &key (test 'eql))
+(defun intersection (list1 list2 &key (test #'eql))
   (let ((result nil))
     (dolist (x list1 (nreverse result))
       (when (member x list2 :test test)
         (push x result)))))
 
 ; set-difference - elements in list1 not in list2
-(defun set-difference (list1 list2 &key (test 'eql))
+(defun set-difference (list1 list2 &key (test #'eql))
   (let ((result nil))
     (dolist (x list1 (nreverse result))
       (unless (member x list2 :test test)
         (push x result)))))
 
 ; set-exclusive-or - symmetric difference
-(defun set-exclusive-or (list1 list2 &key (test 'eql))
+(defun set-exclusive-or (list1 list2 &key (test #'eql))
   (append (set-difference list1 list2 :test test)
           (set-difference list2 list1 :test test)))
 
 ; subsetp - check if list1 is subset of list2
-(defun subsetp (list1 list2 &key (test 'eql))
+(defun subsetp (list1 list2 &key (test #'eql))
   (every (lambda (x) (member x list2 :test test)) list1))
 
 ; adjoin - add item to set if not present
-(defun adjoin (item list &key (test 'eql))
+(defun adjoin (item list &key (test #'eql))
   (if (member item list :test test)
       list
       (cons item list)))
@@ -1694,9 +1694,10 @@
 
 ; elt - generic sequence element access
 (defun elt (sequence index)
-  (if (vectorp sequence)
-      (svref sequence index)
-      (nth index sequence)))
+  (cond
+    ((stringp sequence) (char sequence index))
+    ((vectorp sequence) (svref sequence index))
+    (t (nth index sequence))))
 
 ; (setf elt) is handled by setf expansion
 
@@ -1718,7 +1719,7 @@
       (cons initial-element (make-list (- size 1) :initial-element initial-element))))
 
 ; delete - destructive remove (for now, same as remove)
-(defun delete (item sequence &key (test 'eql))
+(defun delete (item sequence &key (test #'eql))
   (remove item sequence :test test))
 
 ; delete-if - destructive remove-if
@@ -1730,16 +1731,20 @@
   (remove-if-not pred sequence))
 
 ; delete-duplicates - remove duplicate elements
-(defun delete-duplicates (sequence &key (test 'eql))
+(defun delete-duplicates (sequence &key (test #'eql))
   (remove-duplicates sequence :test test))
 
 ; remove-duplicates - non-destructive duplicate removal
-(defun remove-duplicates (sequence &key (test 'eql))
+(defun remove-duplicates (sequence &key test)
   (if (null sequence)
       nil
       (let ((first (car sequence))
-            (rest (remove-duplicates (cdr sequence) :test test)))
-        (if (member first rest :test test)
+            (rest (if test
+                      (remove-duplicates (cdr sequence) :test test)
+                      (remove-duplicates (cdr sequence)))))
+        (if (if test
+                (member first rest :test test)
+                (member first rest))
             rest
             (cons first rest)))))
 
