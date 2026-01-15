@@ -397,7 +397,7 @@
             ((eq op 'rest) (list 'rplacd (cadr place) value))
             ((eq op 'svref) (list '%svset (cadr place) (caddr place) value))
             ((eq op 'aref) (cons '%aset (append (cdr place) (list value))))
-            ((eq op 'gethash) (list 'puthash (cadr place) (caddr place) value))
+            ((eq op 'gethash) (list 'puthash (cadr place) value (caddr place)))
             ((eq op 'nth) (list 'rplaca (list 'nthcdr (cadr place) (caddr place)) value))
             ((eq op 'getf)
              ; (setf (getf plist key) val) - plist-var must be a symbol
