@@ -6261,7 +6261,7 @@ pub const Compiler = struct {
         if (s == b.@"*".raw) return self.compileVariadicArith(args, env, .mul, 1);
         if (s == b.@"/".raw) return self.compileVariadicArith(args, env, .div, null);
         if (s == b.mod.raw or s == b.@"%".raw) return self.compileBinaryPrim(args, env, .mod);
-        if (s == b.quot.raw or s == b.truncate.raw) return self.compileBinaryPrim(args, env, .quot);
+        if (s == b.quot.raw) return self.compileBinaryPrim(args, env, .quot);
         if (s == b.rem.raw) return self.compileBinaryPrim(args, env, .rem);
 
         // Comparison

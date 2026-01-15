@@ -1590,6 +1590,12 @@
         ((> n 0) 1)
         (t 0)))
 
+; truncate - truncate toward zero, returns (values quotient remainder)
+(defun truncate (number &optional (divisor 1))
+  (let* ((q (quot number divisor))
+         (r (- number (* q divisor))))
+    (values q r)))
+
 ; floor - floor division, returns (values quotient remainder)
 (defun floor (number &optional (divisor 1))
   (let* ((q (truncate number divisor))
