@@ -19,3 +19,16 @@
       nil
       (cons (fn (car lst))
             (map fn (cdr lst)))))
+
+;; Logic operations
+(defun logorc1 (a b)
+  "Bitwise OR with NOT of first argument"
+  (logior (lognot a) b))
+
+(defun logorc2 (a b)
+  "Bitwise OR with NOT of second argument"
+  (logior a (lognot b)))
+
+(defun logtest (a b)
+  "Test if any bits set in both arguments"
+  (not (zerop (logand a b))))
