@@ -109,6 +109,11 @@ pub const GC = struct {
                         const file = std.fs.File{ .handle = stream.file_fd };
                         file.close();
                     }
+                    // Free string output stream buffer if allocated
+                    if (stream.stream_type == .string and stream.direction == .output and stream.data_ptr != 0) {
+                        const buf: [*]u8 = @ptrFromInt(stream.data_ptr);
+                        self.heap.backing_allocator.free(buf[0..stream.position]);
+                    }
                 }
             }
 
