@@ -161,6 +161,8 @@ pub const Heap = struct {
     cl_package: ?*Package,
     /// The CL-USER package (default user package)
     cl_user_package: ?*Package,
+    /// Gensym counter for unique symbol generation
+    gensym_counter: u64,
     /// The KEYWORD package
     keyword_package: ?*Package,
     /// Class metadata for CLOS slot-value lookup
@@ -219,6 +221,7 @@ pub const Heap = struct {
             .current_package = null,
             .cl_package = null,
             .cl_user_package = null,
+            .gensym_counter = 0,
             .keyword_package = null,
             .class_metadata = .{},
             .readtable = .{},

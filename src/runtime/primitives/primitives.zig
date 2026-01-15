@@ -19,6 +19,7 @@ pub const stream = @import("stream.zig");
 pub const hash = @import("hash.zig");
 pub const char = @import("char.zig");
 pub const package = @import("package.zig");
+pub const symbol = @import("symbol.zig");
 
 // Re-export commonly used functions
 pub const cons = list.cons;
@@ -48,4 +49,5 @@ test {
     _ = hash;
     _ = char;
     _ = package;
+    _ = symbol;
 }

@@ -6714,7 +6714,13 @@ pub const Compiler = struct {
         if (s == b.load.raw) return self.compileUnaryPrim(args, env, .load);
         if (s == b.@"unread-char".raw) return self.compileUnaryPrim(args, env, .unread_char);
         if (s == b.eval.raw) return self.compileUnaryPrim(args, env, .eval);
-        if (s == b.gensym.raw) return self.compileNullaryPrim(.gensym);
+        if (s == b.gensym.raw) {
+            if (args.isNil()) {
+                return self.compileNullaryPrim(.gensym);
+            } else {
+                return self.compileUnaryPrim(args, env, .gensym);
+            }
+        }
         if (s == b.macroexpand.raw) return self.compileUnaryPrim(args, env, .macroexpand);
         // Note: error is NOT handled here - stdlib provides (defun error (msg) (signal 'error msg))
         // This allows handler-case to catch errors
@@ -7306,6 +7312,11 @@ pub const Compiler = struct {
             .load => try self.builder.load(operand),
             .read_from_string => try self.builder.readFromString(operand),
             .eval => try self.builder.eval(operand),
+            .gensym => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .gensym = .{ .operand = operand } };
+                break :blk node;
+            },
             .macroexpand => try self.builder.macroexpand(operand),
             .boundp => try self.builder.boundp(operand),
             .fboundp => try self.builder.fboundp(operand),

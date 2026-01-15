@@ -633,7 +633,14 @@ pub const Emitter = struct {
             .load => |op| try self.emitUnaryOp(op.operand, .load),
             .unread_char => |op| try self.emitUnaryOp(op.operand, .unread_char),
             .eval => |op| try self.emitUnaryOp(op.operand, .eval),
-            .gensym => try self.emitOp(.gensym),
+            .gensym => |op| {
+                if (op.operand) |operand| {
+                    try self.emit(operand);
+                } else {
+                    try self.emitOp(.push_nil);
+                }
+                try self.emitOp(.gensym);
+            },
             .macroexpand => |op| try self.emitUnaryOp(op.operand, .macroexpand),
             .princ => |op| try self.emitUnaryOp(op.operand, .princ),
             .terpri => try self.emitOp(.terpri),

@@ -446,7 +446,7 @@ pub const Ir = union(enum) {
     load: UnaryOp, // Load and evaluate a file
     unread_char: UnaryOp, // Push character back
     eval: UnaryOp, // Evaluate expression at runtime
-    gensym: void, // Generate unique symbol
+    gensym: OptionalOp, // Generate unique symbol (nullary or with prefix)
     macroexpand: UnaryOp, // Expand macros in expression
     princ: UnaryOp, // Print without escaping
     terpri: void, // Print newline
@@ -698,6 +698,10 @@ pub const Ir = union(enum) {
 
     pub const UnaryOp = struct {
         operand: *const Ir,
+    };
+
+    pub const OptionalOp = struct {
+        operand: ?*const Ir,
     };
 
     pub const TernaryOp = struct {
@@ -1479,7 +1483,7 @@ pub const IrBuilder = struct {
 
     pub fn gensym(self: IrBuilder) !*Ir {
         const node = try self.allocator.create(Ir);
-        node.* = .{ .gensym = {} };
+        node.* = .{ .gensym = .{ .operand = null } };
         return node;
     }
 

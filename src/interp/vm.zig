@@ -3422,16 +3422,9 @@ pub const Vm = struct {
             },
 
             .gensym => {
-                // Generate a unique symbol
-                var buf: [32]u8 = undefined;
-                const name = std.fmt.bufPrint(&buf, "G{d}", .{self.gensym_counter}) catch {
-                    try self.push(Value.nil);
-                    return;
-                };
-                self.gensym_counter = std.math.add(u64, self.gensym_counter, 1) catch {
-                    return error.OutOfMemory; // Overflow after 2^64 gensyms
-                };
-                const sym = try self.allocSymbol(name);
+                // Pop prefix argument (nil if nullary)
+                const prefix_arg = try self.pop();
+                const sym = try primitives.symbol.gensym(self.heap, if (!prefix_arg.isNil()) prefix_arg else null);
                 try self.push(sym);
             },
 
