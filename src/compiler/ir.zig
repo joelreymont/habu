@@ -267,6 +267,16 @@ pub const Ir = union(enum) {
         operand: *const Ir,
     },
 
+    /// Hash table keys: (hash-table-keys hashtable)
+    hash_keys: struct {
+        operand: *const Ir,
+    },
+
+    /// Hash table alist: (hash-table-alist hashtable)
+    hash_alist: struct {
+        operand: *const Ir,
+    },
+
     // ========================================================================
     // Function calls
     // ========================================================================

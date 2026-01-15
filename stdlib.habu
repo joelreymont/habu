@@ -1129,13 +1129,11 @@
 ;; Hash Table Functions
 ;; ============================================================
 
-; clrhash - clear all entries from hash table
-(defun clrhash (table)
-  (maphash (lambda (k v)
-             (declare (ignore v))
-             (remhash k table))
-           table)
-  table)
+; maphash - call function on each key-value pair
+(defun maphash (fn table)
+  (dolist (pair (hash-table-alist table))
+    (funcall fn (car pair) (cdr pair)))
+  nil)
 
 ; hash-table-keys - get list of all keys
 (defun hash-table-keys (table)

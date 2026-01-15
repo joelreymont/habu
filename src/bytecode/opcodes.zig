@@ -561,6 +561,14 @@ pub const Op = enum(u8) {
     hash_test = 0xCB,
     hash_count = 0x98,
 
+    /// Get list of keys from hash table
+    /// ( hashtable -- keys-list )
+    hash_keys = 0x88,
+
+    /// Get alist from hash table
+    /// ( hashtable -- alist )
+    hash_alist = 0x89,
+
     /// Check if value is a hash table
     /// ( x -- t/nil )
     hashtablep = 0x99,
@@ -1186,6 +1194,8 @@ pub const Op = enum(u8) {
             .hash_count,
             .hash_clear,
             .hash_test,
+            .hash_keys,
+            .hash_alist,
             .hashtablep,
             .rationalp,
             .complexp,

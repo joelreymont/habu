@@ -2138,6 +2138,35 @@ pub const Vm = struct {
                 const sym = try self.heap.intern(test_name);
                 try self.push(sym);
             },
+            .hash_keys => {
+                const ht_val = try self.pop();
+                if (!ht_val.isHashTable()) return error.TypeMismatch;
+                const ht = ht_val.toPtr(HashTable);
+                // Build list of keys from hash table entries
+                var result = Value.nil;
+                const entries = ht.getEntries();
+                for (entries) |entry| {
+                    if (!HashTable.isAvailable(entry)) {
+                        result = try self.allocCons(entry.key, result);
+                    }
+                }
+                try self.push(result);
+            },
+            .hash_alist => {
+                const ht_val = try self.pop();
+                if (!ht_val.isHashTable()) return error.TypeMismatch;
+                const ht = ht_val.toPtr(HashTable);
+                // Build alist of (key . value) pairs from hash table entries
+                var result = Value.nil;
+                const entries = ht.getEntries();
+                for (entries) |entry| {
+                    if (!HashTable.isAvailable(entry)) {
+                        const pair = try self.allocCons(entry.key, entry.value);
+                        result = try self.allocCons(pair, result);
+                    }
+                }
+                try self.push(result);
+            },
             .rationalp => {
                 const val = try self.pop();
                 try self.push(if (val.isRational()) Value.t else Value.nil);
