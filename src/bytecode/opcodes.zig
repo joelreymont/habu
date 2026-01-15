@@ -587,6 +587,10 @@ pub const Op = enum(u8) {
     /// ( value -- )
     return_from = 0x8C,
 
+    /// Write string to output stream
+    /// ( string stream -- string )
+    write_to_stream = 0x8D,
+
     /// Check if value is a hash table
     /// ( x -- t/nil )
     hashtablep = 0x99,
@@ -1206,6 +1210,7 @@ pub const Op = enum(u8) {
             .pop_catch,
             .pop_block,
             .throw,
+            .write_to_stream,
             .hash_get,
             .hash_get_default,
             .hash_set,

@@ -305,3 +305,87 @@ pub fn primForceOutput(heap: *Heap, args: []const Value) !Value {
 
     return Value.nil;
 }
+
+/// Write a string to an output stream (file or string output stream)
+pub fn primWriteString(heap: *Heap, args: []const Value) !Value {
+    if (args.len < 2) return error.InvalidArgument;
+
+    const str_val = args[0];
+    const stream_val = args[1];
+
+    if (!str_val.isString()) return error.InvalidArgument;
+    if (!stream_val.isStream()) return error.InvalidArgument;
+
+    const str = str_val.toPtr(String);
+    const stream = stream_val.toPtr(Stream);
+
+    if (stream.closed) return error.StreamClosed;
+    if (stream.direction != .output) return error.NotOutputStreamError;
+
+    const data = str.data[0..str.length];
+
+    if (stream.stream_type == .file) {
+        // Write to file
+        const file = std.fs.File{ .handle = stream.file_fd };
+        try file.writeAll(data);
+    } else if (stream.stream_type == .string) {
+        // Write to string output stream buffer
+        try streamWriteBytes(heap, stream, data);
+    } else {
+        return error.InvalidArgument;
+    }
+
+    return str_val;
+}
+
+/// Write bytes to a string output stream, growing buffer if needed
+fn streamWriteBytes(heap: *Heap, stream: *Stream, data: []const u8) !void {
+    const new_len = stream.length + data.len;
+
+    // Check if we need to grow the buffer
+    if (new_len > stream.position) {
+        // Grow buffer (position stores capacity for string output streams)
+        const new_capacity = @max(new_len * 2, 256);
+        const old_buf: ?[*]u8 = if (stream.data_ptr != 0)
+            @ptrFromInt(stream.data_ptr)
+        else
+            null;
+
+        const new_buf = try heap.backing_allocator.alloc(u8, new_capacity);
+
+        // Copy old data if any
+        if (old_buf) |old| {
+            @memcpy(new_buf[0..stream.length], old[0..stream.length]);
+            heap.backing_allocator.free(old[0..stream.position]);
+        }
+
+        stream.data_ptr = @intFromPtr(new_buf.ptr);
+        stream.position = new_capacity;
+    }
+
+    // Append new data
+    const buf: [*]u8 = @ptrFromInt(stream.data_ptr);
+    @memcpy(buf[stream.length..][0..data.len], data);
+    stream.length += data.len;
+}
+
+/// Get the accumulated string from a string output stream
+pub fn primGetOutputStreamString(heap: *Heap, args: []const Value) !Value {
+    if (args.len < 1) return error.InvalidArgument;
+
+    const stream_val = args[0];
+    if (!stream_val.isStream()) return error.InvalidArgument;
+
+    const stream = stream_val.toPtr(Stream);
+
+    if (stream.stream_type != .string or stream.direction != .output) {
+        return error.InvalidArgument;
+    }
+
+    if (stream.data_ptr == 0 or stream.length == 0) {
+        return try heap.allocString("");
+    }
+
+    const buf: [*]u8 = @ptrFromInt(stream.data_ptr);
+    return try heap.allocString(buf[0..stream.length]);
+}

@@ -2332,14 +2332,13 @@ pub const Vm = struct {
             },
             .get_output_stream_string => {
                 const stream_val = try self.pop();
-                if (!stream_val.isStream()) return error.TypeMismatch;
-                const stream = stream_val.toPtr(runtime.Stream);
-                if (stream.stream_type != .string or stream.direction != .output) {
-                    return error.TypeMismatch;
-                }
-                // For string output streams, we need to get accumulated data
-                // Currently returns empty string since we don't have write operations yet
-                const result = try self.heap.allocString("");
+                const result = primitives.stream.primGetOutputStreamString(self.heap, &[_]Value{stream_val}) catch return error.TypeMismatch;
+                try self.push(result);
+            },
+            .write_to_stream => {
+                const stream_val = try self.pop();
+                const str_val = try self.pop();
+                const result = primitives.stream.primWriteString(self.heap, &[_]Value{ str_val, stream_val }) catch return error.TypeMismatch;
                 try self.push(result);
             },
             .open => {

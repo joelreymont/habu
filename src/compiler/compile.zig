@@ -363,6 +363,7 @@ pub const Builtins = struct {
     @"make-string-input-stream": Value,
     @"make-string-output-stream": Value,
     @"get-output-stream-string": Value,
+    @"write-to-stream": Value,
 
     // Type name symbols (for type dispatch)
     ty_fixnum: Value,
@@ -691,6 +692,7 @@ pub const Builtins = struct {
             .@"make-string-input-stream" = try heap.intern("make-string-input-stream"),
             .@"make-string-output-stream" = try heap.intern("make-string-output-stream"),
             .@"get-output-stream-string" = try heap.intern("get-output-stream-string"),
+            .@"write-to-stream" = try heap.intern("write-to-stream"),
             // Type name symbols
             .ty_fixnum = try heap.intern("fixnum"),
             .ty_integer = try heap.intern("integer"),
@@ -930,6 +932,7 @@ pub const Builtins = struct {
         if (s == self.@"make-string-input-stream".raw) return true;
         if (s == self.@"make-string-output-stream".raw) return true;
         if (s == self.@"get-output-stream-string".raw) return true;
+        if (s == self.@"write-to-stream".raw) return true;
         // Also funcall and apply are callable
         if (s == self.funcall.raw) return true;
         if (s == self.apply.raw) return true;
@@ -6797,6 +6800,7 @@ pub const Compiler = struct {
         if (s == b.@"make-string-input-stream".raw) return self.compileUnaryPrim(args, env, .make_string_input_stream);
         if (s == b.@"make-string-output-stream".raw) return self.compileNullaryPrim(.make_string_output_stream);
         if (s == b.@"get-output-stream-string".raw) return self.compileUnaryPrim(args, env, .get_output_stream_string);
+        if (s == b.@"write-to-stream".raw) return self.compileBinaryPrim(args, env, .write_to_stream);
 
         // Random
         if (s == b.random.raw) return self.compileUnaryPrim(args, env, .random);
@@ -6805,7 +6809,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string };
+    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -6960,6 +6964,7 @@ pub const Compiler = struct {
                 node.* = .{ .remprop = .{ .left = left, .right = right } };
                 break :blk node;
             },
+            .write_to_stream => try self.builder.writeToStream(left, right),
             else => return error.InvalidSyntax,
         };
     }

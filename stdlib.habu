@@ -2029,12 +2029,28 @@
       object
       (write-to-string object)))
 
+; stream-princ - write object to stream without escaping
+(defun stream-princ (object stream)
+  (write-to-stream (if (stringp object)
+                       object
+                       (write-to-string object))
+                   stream)
+  object)
+
+; stream-print - write object to stream with newline
+(defun stream-print (object stream)
+  (stream-princ object stream)
+  (write-to-stream (string #\Newline) stream)
+  object)
+
 ; with-output-to-string - capture output to string
-; (simplified - returns result of body, not captured output)
-; Usage: (with-output-to-string (var) body...)
+; Usage: (with-output-to-string (var) body...) -> string
+; Use (stream-princ obj var) or (write-to-stream str var) inside body
 (defmacro with-output-to-string (var-binding &rest body)
-  (declare (ignore var-binding))
-  (cons 'progn body))
+  (let ((stream-var (car var-binding)))
+    `(let ((,stream-var (make-string-output-stream)))
+       ,@body
+       (get-output-stream-string ,stream-var))))
 
 ;; ============================================================
 ;; Symbol Utilities

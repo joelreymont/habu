@@ -125,6 +125,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .pop_catch,
         .pop_block,
         .throw,
+        .write_to_stream,
         .hash_get,
         .hash_get_default,
         .hash_set,

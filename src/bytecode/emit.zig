@@ -413,6 +413,10 @@ pub const Emitter = struct {
             .make_string_input_stream => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
             .make_string_output_stream => {}, // No operands
             .get_output_stream_string => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
+            .write_to_stream => |w| {
+                max_idx = computeMaxLocalIndexImpl(w.left, max_idx);
+                max_idx = computeMaxLocalIndexImpl(w.right, max_idx);
+            },
 
             // List/array nodes - recurse into all elements
             .list, .vec => |elements| {
@@ -538,6 +542,7 @@ pub const Emitter = struct {
             .make_string_input_stream => |s| try self.emitUnaryOp(s.operand, .make_string_input_stream),
             .make_string_output_stream => try self.emitOp(.make_string_output_stream),
             .get_output_stream_string => |s| try self.emitUnaryOp(s.operand, .get_output_stream_string),
+            .write_to_stream => |w| try self.emitBinaryOp(w, .write_to_stream),
             .call => |c| try self.emitCall(c, false),
             .tailcall => |c| try self.emitCall(c, true),
             .apply => |a| try self.emitApply(a),

@@ -415,6 +415,7 @@ pub const Ir = union(enum) {
     make_string_input_stream: UnaryOp, // create string input stream
     make_string_output_stream: void, // create string output stream
     get_output_stream_string: UnaryOp, // get string from output stream
+    write_to_stream: BinaryOp, // write string to stream
 
     // ========================================================================
     // Primitives - Character operations
@@ -1291,6 +1292,12 @@ pub const IrBuilder = struct {
     pub fn getOutputStreamString(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .get_output_stream_string = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn writeToStream(self: IrBuilder, str: *const Ir, stream: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .write_to_stream = .{ .left = str, .right = stream } };
         return node;
     }
 
