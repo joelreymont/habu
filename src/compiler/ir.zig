@@ -460,7 +460,6 @@ pub const Ir = union(enum) {
     read_file: UnaryOp, // Read file to string
     write_file: BinaryOp, // Write string to file
     make_string: BinaryOp, // Create string (length, char)
-    string_to_list: UnaryOp, // String to list of chars
     list_to_string: UnaryOp, // List of chars to string
     string_upcase: UnaryOp, // Convert string to uppercase
     string_downcase: UnaryOp, // Convert string to lowercase
@@ -489,6 +488,16 @@ pub const Ir = union(enum) {
     sin: UnaryOp,
     cos: UnaryOp,
     tan: UnaryOp,
+    asin: UnaryOp,
+    acos: UnaryOp,
+    atan: UnaryOp,
+    atan2: BinaryOp,
+    sinh: UnaryOp,
+    cosh: UnaryOp,
+    tanh: UnaryOp,
+    asinh: UnaryOp,
+    acosh: UnaryOp,
+    atanh: UnaryOp,
     exp: UnaryOp,
     log: UnaryOp,
     floor: UnaryOp,
@@ -1722,6 +1731,66 @@ pub const IrBuilder = struct {
     pub fn tan(self: IrBuilder, n: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .tan = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn asin(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .asin = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn acos(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .acos = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn atan(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .atan = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn atan2(self: IrBuilder, y: *const Ir, x: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .atan2 = .{ .left = y, .right = x } };
+        return node;
+    }
+
+    pub fn sinh(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .sinh = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn cosh(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .cosh = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn tanh(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .tanh = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn asinh(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .asinh = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn acosh(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .acosh = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn atanh(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .atanh = .{ .operand = n } };
         return node;
     }
 

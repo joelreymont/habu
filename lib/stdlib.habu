@@ -66,16 +66,4 @@
       (error "isqrt of negative number")
       (floor (sqrt n))))
 
-;; Trigonometric functions (require native support)
-(defun asin (x) "Arc sine" (error "asin requires native support"))
-(defun acos (x) "Arc cosine" (error "acos requires native support"))
-(defun atan (y &optional x) "Arc tangent"
-  (if x
-      (error "atan2 requires native support")
-      (error "atan requires native support")))
-(defun sinh (x) "Hyperbolic sine" (error "sinh requires native support"))
-(defun cosh (x) "Hyperbolic cosine" (error "cosh requires native support"))
-(defun tanh (x) "Hyperbolic tangent" (error "tanh requires native support"))
-(defun asinh (x) "Inverse hyperbolic sine" (error "asinh requires native support"))
-(defun acosh (x) "Inverse hyperbolic cosine" (error "acosh requires native support"))
-(defun atanh (x) "Inverse hyperbolic tangent" (error "atanh requires native support"))
+;; Trigonometric functions are now primitives: asin, acos, atan, sinh, cosh, tanh, asinh, acosh, atanh

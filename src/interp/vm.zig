@@ -9,6 +9,7 @@ comptime {
 
 const std = @import("std");
 const bytecode = @import("../bytecode/bytecode.zig");
+const opcodes = @import("../bytecode/opcodes.zig");
 const Op = bytecode.Op;
 const Chunk = bytecode.Chunk;
 const runtime = @import("../runtime/runtime.zig");
@@ -1660,20 +1661,62 @@ pub const Vm = struct {
                 @memset(str_obj.data[0..len], fill_char);
                 try self.push(str);
             },
-            .string_to_list => {
-                const str_val = try self.pop();
-                if (!str_val.isString()) return error.TypeMismatch;
-                const str = str_val.toPtr(String);
-                const bytes = str.bytes();
-                // Build list in reverse, then result is in correct order
-                var result = Value.nil;
-                var i: usize = bytes.len;
-                while (i > 0) {
-                    i -= 1;
-                    const char = Value.makeCharacter(bytes[i]);
-                    result = try self.allocCons(char, result);
+            .math_ext => {
+                const sub_op_byte = self.readU8();
+                const sub_op: opcodes.MathExtOp = @enumFromInt(sub_op_byte);
+                switch (sub_op) {
+                    .asin => {
+                        const val = try self.pop();
+                        const result = try arith.asin_val(val);
+                        try self.push(result);
+                    },
+                    .acos => {
+                        const val = try self.pop();
+                        const result = try arith.acos_val(val);
+                        try self.push(result);
+                    },
+                    .atan => {
+                        const val = try self.pop();
+                        const result = try arith.atan_val(val);
+                        try self.push(result);
+                    },
+                    .atan2 => {
+                        const x = try self.pop();
+                        const y = try self.pop();
+                        const result = try arith.atan2_val(y, x);
+                        try self.push(result);
+                    },
+                    .sinh => {
+                        const val = try self.pop();
+                        const result = try arith.sinh_val(val);
+                        try self.push(result);
+                    },
+                    .cosh => {
+                        const val = try self.pop();
+                        const result = try arith.cosh_val(val);
+                        try self.push(result);
+                    },
+                    .tanh => {
+                        const val = try self.pop();
+                        const result = try arith.tanh_val(val);
+                        try self.push(result);
+                    },
+                    .asinh => {
+                        const val = try self.pop();
+                        const result = try arith.asinh_val(val);
+                        try self.push(result);
+                    },
+                    .acosh => {
+                        const val = try self.pop();
+                        const result = try arith.acosh_val(val);
+                        try self.push(result);
+                    },
+                    .atanh => {
+                        const val = try self.pop();
+                        const result = try arith.atanh_val(val);
+                        try self.push(result);
+                    },
                 }
-                try self.push(result);
             },
             .list_to_string => {
                 const list_val = try self.pop();

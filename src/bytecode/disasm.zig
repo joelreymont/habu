@@ -206,7 +206,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .read_file,
         .write_file,
         .make_string,
-        .string_to_list,
+        .math_ext,
         .list_to_string,
         .string_upcase,
         .string_downcase,

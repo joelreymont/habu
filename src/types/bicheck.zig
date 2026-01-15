@@ -249,7 +249,6 @@ pub const BiChecker = struct {
             .str_len => &type_mod.t_fixnum,
             .str_concat, .str_eq => &type_mod.t_any,
             .string_upcase, .string_downcase => &type_mod.t_string,
-            .string_to_list => &type_mod.t_any,
             .list_to_string => &type_mod.t_string,
             .make_string => &type_mod.t_string,
 

@@ -318,7 +318,6 @@ pub const Eraser = struct {
             .type_of,
             .string_upcase,
             .string_downcase,
-            .string_to_list,
             .list_to_string,
             .assert_fixnum,
             .assert_cons,

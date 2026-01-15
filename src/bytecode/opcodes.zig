@@ -13,6 +13,20 @@
 
 const std = @import("std");
 
+/// Extended math sub-opcodes (used with math_ext opcode 0xED)
+pub const MathExtOp = enum(u8) {
+    asin = 0x00,
+    acos = 0x01,
+    atan = 0x02,
+    atan2 = 0x03,
+    sinh = 0x04,
+    cosh = 0x05,
+    tanh = 0x06,
+    asinh = 0x07,
+    acosh = 0x08,
+    atanh = 0x09,
+};
+
 /// Bytecode opcodes
 pub const Op = enum(u8) {
     // ========================================================================
@@ -902,9 +916,9 @@ pub const Op = enum(u8) {
     /// ( length char -- string )
     make_string = 0xEC,
 
-    /// Convert string to list of character codes
-    /// ( string -- list )
-    string_to_list = 0xED,
+    /// Extended math operations (sub-opcode in next byte)
+    /// ( ... -- ... )
+    math_ext = 0xED,
 
     /// Convert list of character codes to string
     /// ( list -- string )
@@ -1314,10 +1328,10 @@ pub const Op = enum(u8) {
             .read_file,
             .write_file,
             .make_string,
-            .string_to_list,
             .list_to_string,
             .string_upcase,
             .string_downcase,
+            .math_ext,
             .listp,
             .atom,
             .assoc,

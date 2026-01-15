@@ -371,7 +371,6 @@ pub const Emitter = struct {
             .write_to_string,
             .lognot,
             .read_file,
-            .string_to_list,
             .list_to_string,
             .string_upcase,
             .string_downcase,
@@ -657,7 +656,6 @@ pub const Emitter = struct {
             .read_file => |op| try self.emitUnaryOp(op.operand, .read_file),
             .write_file => |op| try self.emitBinaryOp(op, .write_file),
             .make_string => |op| try self.emitBinaryOp(op, .make_string),
-            .string_to_list => |op| try self.emitUnaryOp(op.operand, .string_to_list),
             .list_to_string => |op| try self.emitUnaryOp(op.operand, .list_to_string),
             .string_upcase => |op| try self.emitUnaryOp(op.operand, .string_upcase),
             .string_downcase => |op| try self.emitUnaryOp(op.operand, .string_downcase),
@@ -680,6 +678,16 @@ pub const Emitter = struct {
             .sin => |op| try self.emitUnaryOp(op.operand, .sin),
             .cos => |op| try self.emitUnaryOp(op.operand, .cos),
             .tan => |op| try self.emitUnaryOp(op.operand, .tan),
+            .asin => |op| try self.emitMathExt(op.operand, .asin),
+            .acos => |op| try self.emitMathExt(op.operand, .acos),
+            .atan => |op| try self.emitMathExt(op.operand, .atan),
+            .atan2 => |op| try self.emitMathExt2(op, .atan2),
+            .sinh => |op| try self.emitMathExt(op.operand, .sinh),
+            .cosh => |op| try self.emitMathExt(op.operand, .cosh),
+            .tanh => |op| try self.emitMathExt(op.operand, .tanh),
+            .asinh => |op| try self.emitMathExt(op.operand, .asinh),
+            .acosh => |op| try self.emitMathExt(op.operand, .acosh),
+            .atanh => |op| try self.emitMathExt(op.operand, .atanh),
             .exp => |op| try self.emitUnaryOp(op.operand, .exp),
             .log => |op| try self.emitUnaryOp(op.operand, .log),
             .floor => |op| try self.emitUnaryOp(op.operand, .floor),
@@ -1826,6 +1834,19 @@ pub const Emitter = struct {
     fn emitUnaryOp(self: *Emitter, operand: *const Ir, opcode: Op) Error!void {
         try self.emit(operand);
         try self.emitOp(opcode);
+    }
+
+    fn emitMathExt(self: *Emitter, operand: *const Ir, sub_op: opcodes.MathExtOp) Error!void {
+        try self.emit(operand);
+        try self.emitOp(.math_ext);
+        try self.emitU8(@intFromEnum(sub_op));
+    }
+
+    fn emitMathExt2(self: *Emitter, op: Ir.BinaryOp, sub_op: opcodes.MathExtOp) Error!void {
+        try self.emit(op.left);
+        try self.emit(op.right);
+        try self.emitOp(.math_ext);
+        try self.emitU8(@intFromEnum(sub_op));
     }
 
     fn emitList(self: *Emitter, elements: []const *const Ir) Error!void {

@@ -254,6 +254,15 @@ pub const Builtins = struct {
     sin: Value,
     cos: Value,
     tan: Value,
+    asin: Value,
+    acos: Value,
+    atan: Value,
+    sinh: Value,
+    cosh: Value,
+    tanh: Value,
+    asinh: Value,
+    acosh: Value,
+    atanh: Value,
     exp: Value,
     log: Value,
     floor: Value,
@@ -610,6 +619,15 @@ pub const Builtins = struct {
             .sin = try heap.intern("sin"),
             .cos = try heap.intern("cos"),
             .tan = try heap.intern("tan"),
+            .asin = try heap.intern("asin"),
+            .acos = try heap.intern("acos"),
+            .atan = try heap.intern("atan"),
+            .sinh = try heap.intern("sinh"),
+            .cosh = try heap.intern("cosh"),
+            .tanh = try heap.intern("tanh"),
+            .asinh = try heap.intern("asinh"),
+            .acosh = try heap.intern("acosh"),
+            .atanh = try heap.intern("atanh"),
             .exp = try heap.intern("exp"),
             .log = try heap.intern("log"),
             .floor = try heap.intern("floor"),
@@ -6655,6 +6673,26 @@ pub const Compiler = struct {
         if (s == b.sin.raw) return self.compileUnaryPrim(args, env, .sin);
         if (s == b.cos.raw) return self.compileUnaryPrim(args, env, .cos);
         if (s == b.tan.raw) return self.compileUnaryPrim(args, env, .tan);
+        if (s == b.asin.raw) return self.compileUnaryPrim(args, env, .asin);
+        if (s == b.acos.raw) return self.compileUnaryPrim(args, env, .acos);
+        if (s == b.atan.raw) {
+            // atan can be 1 or 2 arg
+            if (args.isNil()) return error.InvalidSyntax;
+            const rest = args.toPtr(Cons).cdr;
+            if (rest.isNil()) {
+                // 1 arg: atan(y)
+                return self.compileUnaryPrim(args, env, .atan);
+            } else {
+                // 2 arg: atan2(y, x)
+                return self.compileBinaryPrim(args, env, .atan2);
+            }
+        }
+        if (s == b.sinh.raw) return self.compileUnaryPrim(args, env, .sinh);
+        if (s == b.cosh.raw) return self.compileUnaryPrim(args, env, .cosh);
+        if (s == b.tanh.raw) return self.compileUnaryPrim(args, env, .tanh);
+        if (s == b.asinh.raw) return self.compileUnaryPrim(args, env, .asinh);
+        if (s == b.acosh.raw) return self.compileUnaryPrim(args, env, .acosh);
+        if (s == b.atanh.raw) return self.compileUnaryPrim(args, env, .atanh);
         if (s == b.exp.raw) return self.compileUnaryPrim(args, env, .exp);
         if (s == b.log.raw) return self.compileUnaryPrim(args, env, .log);
         // floor/ceiling/round - primitives return just the quotient, stdlib versions return multiple values
@@ -6816,7 +6854,6 @@ pub const Compiler = struct {
 
         // String construction
         if (s == b.@"make-string".raw) return self.compileBinaryPrim(args, env, .make_string);
-        if (s == b.@"string-to-list".raw) return self.compileUnaryPrim(args, env, .string_to_list);
         if (s == b.@"list-to-string".raw) return self.compileUnaryPrim(args, env, .list_to_string);
         if (s == b.@"string-upcase".raw) return self.compileUnaryPrim(args, env, .string_upcase);
         if (s == b.@"string-downcase".raw) return self.compileUnaryPrim(args, env, .string_downcase);
@@ -6858,7 +6895,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream };
+    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -7004,6 +7041,7 @@ pub const Compiler = struct {
             .logior => try self.builder.logior(left, right),
             .logxor => try self.builder.logxor(left, right),
             .ash => try self.builder.ash(left, right),
+            .atan2 => try self.builder.atan2(left, right),
             .write_file => try self.builder.writeFile(left, right),
             .make_string => try self.builder.makeString(left, right),
             .rplaca => try self.builder.rplaca(left, right),
@@ -7144,7 +7182,6 @@ pub const Compiler = struct {
             .logcount => try self.builder.logcount(operand),
             .integer_length => try self.builder.integerLength(operand),
             .read_file => try self.builder.readFile(operand),
-            .string_to_list => try self.builder.stringToList(operand),
             .list_to_string => try self.builder.listToString(operand),
             .string_upcase => try self.builder.stringUpcase(operand),
             .string_downcase => try self.builder.stringDowncase(operand),
@@ -7207,6 +7244,15 @@ pub const Compiler = struct {
             .sin => try self.builder.sin(operand),
             .cos => try self.builder.cos(operand),
             .tan => try self.builder.tan(operand),
+            .asin => try self.builder.asin(operand),
+            .acos => try self.builder.acos(operand),
+            .atan => try self.builder.atan(operand),
+            .sinh => try self.builder.sinh(operand),
+            .cosh => try self.builder.cosh(operand),
+            .tanh => try self.builder.tanh(operand),
+            .asinh => try self.builder.asinh(operand),
+            .acosh => try self.builder.acosh(operand),
+            .atanh => try self.builder.atanh(operand),
             .exp => try self.builder.exp_fn(operand),
             .log => try self.builder.log_fn(operand),
             .floor => try self.builder.floor_fn(operand),
