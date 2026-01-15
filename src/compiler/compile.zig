@@ -88,6 +88,9 @@ pub const Builtins = struct {
     defmacro: Value,
     macroexpand: Value,
 
+    // Declarations (no-op, for CL compatibility)
+    declare: Value,
+
     // Type assertions
     the: Value,
 
@@ -439,6 +442,7 @@ pub const Builtins = struct {
             .apply = try heap.intern("apply"),
             .defmacro = try heap.intern("defmacro"),
             .macroexpand = try heap.intern("macroexpand"),
+            .declare = try heap.intern("declare"),
             .the = try heap.intern("the"),
             .flet = try heap.intern("flet"),
             .labels = try heap.intern("labels"),
@@ -1508,6 +1512,7 @@ pub const Compiler = struct {
         defvar,
         defun,
         the,
+        declare,
         @"return-from",
         @"unwind-protect",
         @"catch",
@@ -1571,6 +1576,7 @@ pub const Compiler = struct {
         .{ "defvar", .defvar },
         .{ "defun", .defun },
         .{ "the", .the },
+        .{ "declare", .declare },
         .{ "block", .block },
         .{ "return-from", .@"return-from" },
         .{ "unwind-protect", .@"unwind-protect" },
@@ -1649,6 +1655,7 @@ pub const Compiler = struct {
                     .define, .defvar => self.compileDefine(tail, env),
                     .defun => self.compileDefun(tail, env),
                     .the => self.compileThe(tail, env),
+                    .declare => self.builder.lit(Value.nil), // no-op, returns nil
                     .@"return-from" => self.compileReturnFrom(tail, env),
                     .throw => self.compileThrow(tail, env),
                     .signal => self.compileSignal(tail, env),

@@ -193,11 +193,19 @@
       (car lst)
       (nth (dec n) (cdr lst))))
 
-; Last element
-(defun last ((lst :type list))
-  (if (null (cdr lst))
-      (car lst)
-      (last (cdr lst))))
+; last is a primitive that returns the last cons cell
+
+; butlast - return copy of list without last n elements (default 1)
+(defun butlast (lst &optional (n 1))
+  (let ((len (length lst)))
+    (if (<= len n)
+        nil
+        (butlast-aux lst (- len n)))))
+
+(defun butlast-aux (lst n)
+  (if (<= n 0)
+      nil
+      (cons (car lst) (butlast-aux (cdr lst) (- n 1)))))
 
 ; Any/All predicates
 (defun any (pred lst)
@@ -1236,24 +1244,40 @@
 
 
 ; shiftf - shift values through places, return first
+; (shiftf a b c val) => returns old-a, sets a=old-b, b=old-c, c=val
 (defmacro shiftf (&rest places-and-value)
   (let ((places (butlast places-and-value))
         (value (car (last places-and-value))))
-    (if (null places)
-        value
-        (let ((result (gensym "RESULT"))
-              (temps (mapcar (lambda (p)
-                               (declare (ignore p))
-                               (gensym "TEMP"))
-                             (cdr places))))
-          (list 'let (cons (list result (car places))
-                           (mapcar #'list temps (cdr places)))
-                (cons 'psetf
-                      (apply #'append
-                             (mapcar #'list
-                                     places
-                                     (append temps (list value)))))
-                result)))))
+    (cond
+      ((null places) value)
+      ((null (cdr places))
+       ; One place: (shiftf a val) => (prog1 a (setf a val))
+       (let ((result (gensym)))
+         (list 'let (list (list result (car places)))
+               (list 'setf (car places) value)
+               result)))
+      ((null (cddr places))
+       ; Two places: (shiftf a b val)
+       (let ((result (gensym))
+             (t1 (gensym)))
+         (list 'let (list (list result (car places))
+                          (list t1 (cadr places)))
+               (list 'setf (car places) t1)
+               (list 'setf (cadr places) value)
+               result)))
+      ((null (cdddr places))
+       ; Three places: (shiftf a b c val)
+       (let ((result (gensym))
+             (t1 (gensym))
+             (t2 (gensym)))
+         (list 'let (list (list result (car places))
+                          (list t1 (cadr places))
+                          (list t2 (caddr places)))
+               (list 'setf (car places) t1)
+               (list 'setf (cadr places) t2)
+               (list 'setf (caddr places) value)
+               result)))
+      (t (error "shiftf: more than 3 places not yet supported")))))
 
 ;; ============================================================
 ;; Additional Utilities
