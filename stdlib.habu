@@ -1828,6 +1828,18 @@
 (defun nreconc (list tail)
   (revappend list tail))
 
+; tailp - check if sublist is a tail of list
+(defun tailp (sublist list)
+  (cond ((eq sublist list) t)
+        ((null list) nil)
+        (t (tailp sublist (cdr list)))))
+
+; ldiff - return list elements before sublist
+(defun ldiff (list sublist)
+  (if (or (null list) (eq list sublist))
+      nil
+      (cons (car list) (ldiff (cdr list) sublist))))
+
 ;; ============================================================
 ;; Control Flow Utilities
 ;; ============================================================
