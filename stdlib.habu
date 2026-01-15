@@ -1059,8 +1059,15 @@
     (if (vectorp seq)
         (dotimes (i (- real-end start) seq)
           (setf (svref seq (+ start i)) item))
-        (fill-list seq item start real-end 0))))
+        ; For lists, destructively modify in place
+        (let ((tail (nthcdr start seq))
+              (count (- real-end start)))
+          (dotimes (i count seq)
+            (when tail
+              (setf (car tail) item)
+              (setq tail (cdr tail))))))))
 
+; fill-list - kept for compatibility but not used
 (defun fill-list (lst item start end i)
   (cond
     ((null lst) nil)
