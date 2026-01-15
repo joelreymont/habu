@@ -724,6 +724,10 @@ pub const Emitter = struct {
             .str_len => |op| try self.emitUnaryOp(op.operand, .str_len),
             .str_concat => |op| try self.emitBinaryOp(op, .str_concat),
             .str_eq => |op| try self.emitBinaryOp(op, .str_eq),
+            .str_lt => |op| try self.emitBinaryOp(op, .str_lt),
+            .str_gt => |op| try self.emitBinaryOp(op, .str_gt),
+            .str_le => |op| try self.emitBinaryOp(op, .str_le),
+            .str_ge => |op| try self.emitBinaryOp(op, .str_ge),
             .substring => |op| {
                 try self.emit(op.str);
                 try self.emit(op.start);

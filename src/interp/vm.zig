@@ -1877,6 +1877,30 @@ pub const Vm = struct {
                 const result = if (stringPrims.stringEqual(a, b)) Value.t else Value.nil;
                 try self.push(result);
             },
+            .str_lt => {
+                const b = try self.pop();
+                const a = try self.pop();
+                const result = if (stringPrims.stringLt(a, b)) Value.t else Value.nil;
+                try self.push(result);
+            },
+            .str_gt => {
+                const b = try self.pop();
+                const a = try self.pop();
+                const result = if (stringPrims.stringGt(a, b)) Value.t else Value.nil;
+                try self.push(result);
+            },
+            .str_le => {
+                const b = try self.pop();
+                const a = try self.pop();
+                const result = if (stringPrims.stringLe(a, b)) Value.t else Value.nil;
+                try self.push(result);
+            },
+            .str_ge => {
+                const b = try self.pop();
+                const a = try self.pop();
+                const result = if (stringPrims.stringGe(a, b)) Value.t else Value.nil;
+                try self.push(result);
+            },
 
             // Type assertions (gradual typing)
             .check_fixnum => {

@@ -396,6 +396,22 @@ pub const Op = enum(u8) {
     /// ( s1 s2 -- bool )
     str_eq = 0x70,
 
+    /// String less than
+    /// ( s1 s2 -- bool )
+    str_lt = 0x08,
+
+    /// String greater than
+    /// ( s1 s2 -- bool )
+    str_gt = 0x09,
+
+    /// String less than or equal
+    /// ( s1 s2 -- bool )
+    str_le = 0x0A,
+
+    /// String greater than or equal
+    /// ( s1 s2 -- bool )
+    str_ge = 0x0B,
+
     // ========================================================================
     // Control flow
     // ========================================================================
@@ -509,10 +525,10 @@ pub const Op = enum(u8) {
     /// Reader macro operations
     /// ( char function -- nil )
     /// Set reader macro function for character
-    set_macro_character = 0x0D,
+    set_macro_character = 0x0C,
     /// ( char -- function-or-nil non-terminating-p )
     /// Get reader macro function for character
-    get_macro_character = 0x0E,
+    get_macro_character = 0x0D,
     /// ( disp-char sub-char function -- nil )
     /// Set dispatch macro character for #X syntax
     set_dispatch_macro_character = 0x2A,
@@ -1214,6 +1230,11 @@ pub const Op = enum(u8) {
             .str_ref,
             .str_len,
             .str_concat,
+            .str_eq,
+            .str_lt,
+            .str_gt,
+            .str_le,
+            .str_ge,
             .ret,
             .print,
             .random,
@@ -1229,7 +1250,6 @@ pub const Op = enum(u8) {
             .get_macro_character,
             .set_dispatch_macro_character,
             .get_dispatch_macro_character,
-            .str_eq,
             .read_line,
             .write_line,
             .read_byte,

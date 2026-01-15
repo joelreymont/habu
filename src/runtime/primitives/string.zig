@@ -97,6 +97,38 @@ pub fn stringLt(a: Value, b: Value) bool {
     return std.mem.order(u8, str_a.bytes(), str_b.bytes()) == .lt;
 }
 
+/// String greater than (lexicographic)
+pub fn stringGt(a: Value, b: Value) bool {
+    if (!a.isString() or !b.isString()) return false;
+
+    const str_a = a.toPtr(objects.String);
+    const str_b = b.toPtr(objects.String);
+
+    return std.mem.order(u8, str_a.bytes(), str_b.bytes()) == .gt;
+}
+
+/// String less than or equal (lexicographic)
+pub fn stringLe(a: Value, b: Value) bool {
+    if (!a.isString() or !b.isString()) return false;
+
+    const str_a = a.toPtr(objects.String);
+    const str_b = b.toPtr(objects.String);
+
+    const ord = std.mem.order(u8, str_a.bytes(), str_b.bytes());
+    return ord == .lt or ord == .eq;
+}
+
+/// String greater than or equal (lexicographic)
+pub fn stringGe(a: Value, b: Value) bool {
+    if (!a.isString() or !b.isString()) return false;
+
+    const str_a = a.toPtr(objects.String);
+    const str_b = b.toPtr(objects.String);
+
+    const ord = std.mem.order(u8, str_a.bytes(), str_b.bytes());
+    return ord == .gt or ord == .eq;
+}
+
 /// Concatenate two strings
 pub fn stringConcat(heap: *Heap, a: Value, b: Value) error{OutOfMemory}!Value {
     if (!a.isString() or !b.isString()) return Value.nil;
