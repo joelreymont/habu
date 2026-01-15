@@ -2975,52 +2975,22 @@ pub const Vm = struct {
             },
 
             .list_find => {
-                // find with eql test (default)
+                // find with eql test (default) - works on lists, strings, vectors
                 const seq = try self.pop();
                 const item = try self.pop();
-                var curr = seq;
-                while (curr.isCons()) {
-                    const c = curr.toPtr(Cons);
-                    if (hashKeyEqualWithTest(c.car, item, .eql)) {
-                        try self.push(c.car);
-                        break;
-                    }
-                    curr = c.cdr;
-                } else {
-                    try self.push(Value.nil);
-                }
+                try self.push(try self.findInSeq(item, seq, .eql));
             },
             .list_find_eq => {
-                // find with eq test (identity)
+                // find with eq test (identity) - works on lists, strings, vectors
                 const seq = try self.pop();
                 const item = try self.pop();
-                var curr = seq;
-                while (curr.isCons()) {
-                    const c = curr.toPtr(Cons);
-                    if (c.car.raw == item.raw) {
-                        try self.push(c.car);
-                        break;
-                    }
-                    curr = c.cdr;
-                } else {
-                    try self.push(Value.nil);
-                }
+                try self.push(try self.findInSeq(item, seq, .eq));
             },
             .list_find_equal => {
-                // find with equal test (structural)
+                // find with equal test (structural) - works on lists, strings, vectors
                 const seq = try self.pop();
                 const item = try self.pop();
-                var curr = seq;
-                while (curr.isCons()) {
-                    const c = curr.toPtr(Cons);
-                    if (hashKeyEqualWithTest(c.car, item, .equal)) {
-                        try self.push(c.car);
-                        break;
-                    }
-                    curr = c.cdr;
-                } else {
-                    try self.push(Value.nil);
-                }
+                try self.push(try self.findInSeq(item, seq, .equal));
             },
 
             .list_position => {
@@ -3043,49 +3013,19 @@ pub const Vm = struct {
             },
 
             .list_count => {
-                // count with eql test (default)
                 const seq = try self.pop();
                 const item = try self.pop();
-                var curr = seq;
-                var n: i64 = 0;
-                while (curr.isCons()) {
-                    const c = curr.toPtr(Cons);
-                    if (hashKeyEqualWithTest(c.car, item, .eql)) {
-                        n += 1;
-                    }
-                    curr = c.cdr;
-                }
-                try self.push(Value.makeFixnum(n));
+                try self.push(try self.countInSeq(item, seq, .eql));
             },
             .list_count_eq => {
-                // count with eq test (identity)
                 const seq = try self.pop();
                 const item = try self.pop();
-                var curr = seq;
-                var n: i64 = 0;
-                while (curr.isCons()) {
-                    const c = curr.toPtr(Cons);
-                    if (c.car.raw == item.raw) {
-                        n += 1;
-                    }
-                    curr = c.cdr;
-                }
-                try self.push(Value.makeFixnum(n));
+                try self.push(try self.countInSeq(item, seq, .eq));
             },
             .list_count_equal => {
-                // count with equal test (structural)
                 const seq = try self.pop();
                 const item = try self.pop();
-                var curr = seq;
-                var n: i64 = 0;
-                while (curr.isCons()) {
-                    const c = curr.toPtr(Cons);
-                    if (hashKeyEqualWithTest(c.car, item, .equal)) {
-                        n += 1;
-                    }
-                    curr = c.cdr;
-                }
-                try self.push(Value.makeFixnum(n));
+                try self.push(try self.countInSeq(item, seq, .equal));
             },
 
             .list_remove => {
@@ -4636,12 +4576,22 @@ pub const Vm = struct {
     /// Position search for lists, strings, and vectors
     fn positionInSeq(self: *Vm, item: Value, seq: Value, cmp: runtime.HashTest) Error!Value {
         _ = self;
-        // String: item should be a fixnum (char code)
+        // String: item should be a character or fixnum (char code)
         if (seq.isString()) {
             const str_obj = seq.toPtr(runtime.String);
             const str_bytes = str_obj.bytes();
-            if (!item.isFixnum()) return Value.nil;
-            const char_code: u8 = @intCast(item.toFixnum());
+            var char_code: u8 = undefined;
+            if (item.isCharacter()) {
+                const cp = item.toCharacter();
+                if (cp > 255) return Value.nil; // Non-ASCII char not in string
+                char_code = @intCast(cp);
+            } else if (item.isFixnum()) {
+                const n = item.toFixnum();
+                if (n < 0 or n > 255) return Value.nil;
+                char_code = @intCast(n);
+            } else {
+                return Value.nil;
+            }
             for (str_bytes, 0..) |c, i| {
                 if (c == char_code) {
                     return Value.makeFixnum(@intCast(i));
@@ -4672,6 +4622,107 @@ pub const Vm = struct {
             idx += 1;
         }
         return Value.nil;
+    }
+
+    /// Find search for lists, strings, and vectors
+    fn findInSeq(self: *Vm, item: Value, seq: Value, cmp: runtime.HashTest) Error!Value {
+        _ = self;
+        // String: item should be a character or fixnum (char code)
+        if (seq.isString()) {
+            const str_obj = seq.toPtr(runtime.String);
+            const str_bytes = str_obj.bytes();
+            var char_code: u8 = undefined;
+            if (item.isCharacter()) {
+                const cp = item.toCharacter();
+                if (cp > 255) return Value.nil;
+                char_code = @intCast(cp);
+            } else if (item.isFixnum()) {
+                const n = item.toFixnum();
+                if (n < 0 or n > 255) return Value.nil;
+                char_code = @intCast(n);
+            } else {
+                return Value.nil;
+            }
+            for (str_bytes) |c| {
+                if (c == char_code) {
+                    return item; // Return the item found
+                }
+            }
+            return Value.nil;
+        }
+        // Vector: search elements
+        if (seq.isVector()) {
+            const vec = seq.toPtr(runtime.Vector);
+            for (0..vec.length) |i| {
+                const elem = vec.get(i);
+                if (hashKeyEqualWithTest(item, elem, cmp)) {
+                    return elem;
+                }
+            }
+            return Value.nil;
+        }
+        // List: iterate through cons cells
+        var curr = seq;
+        while (curr.isCons()) {
+            const c = curr.toPtr(Cons);
+            if (hashKeyEqualWithTest(item, c.car, cmp)) {
+                return c.car;
+            }
+            curr = c.cdr;
+        }
+        return Value.nil;
+    }
+
+    /// Count occurrences for lists, strings, and vectors
+    fn countInSeq(self: *Vm, item: Value, seq: Value, cmp: runtime.HashTest) Error!Value {
+        _ = self;
+        // String: item should be a character or fixnum (char code)
+        if (seq.isString()) {
+            const str_obj = seq.toPtr(runtime.String);
+            const str_bytes = str_obj.bytes();
+            var char_code: u8 = undefined;
+            if (item.isCharacter()) {
+                const cp = item.toCharacter();
+                if (cp > 255) return Value.makeFixnum(0);
+                char_code = @intCast(cp);
+            } else if (item.isFixnum()) {
+                const n = item.toFixnum();
+                if (n < 0 or n > 255) return Value.makeFixnum(0);
+                char_code = @intCast(n);
+            } else {
+                return Value.makeFixnum(0);
+            }
+            var n: i64 = 0;
+            for (str_bytes) |c| {
+                if (c == char_code) {
+                    n += 1;
+                }
+            }
+            return Value.makeFixnum(n);
+        }
+        // Vector: search elements
+        if (seq.isVector()) {
+            const vec = seq.toPtr(runtime.Vector);
+            var n: i64 = 0;
+            for (0..vec.length) |i| {
+                const elem = vec.get(i);
+                if (hashKeyEqualWithTest(item, elem, cmp)) {
+                    n += 1;
+                }
+            }
+            return Value.makeFixnum(n);
+        }
+        // List: iterate through cons cells
+        var curr = seq;
+        var n: i64 = 0;
+        while (curr.isCons()) {
+            const c = curr.toPtr(Cons);
+            if (hashKeyEqualWithTest(item, c.car, cmp)) {
+                n += 1;
+            }
+            curr = c.cdr;
+        }
+        return Value.makeFixnum(n);
     }
 
     // ========================================================================
