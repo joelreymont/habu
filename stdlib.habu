@@ -1906,7 +1906,9 @@
 
 ; princ-to-string - convert to string without escaping
 (defun princ-to-string (object)
-  (write-to-string object))
+  (if (stringp object)
+      object
+      (write-to-string object)))
 
 ; with-output-to-string - capture output to string
 ; (simplified - returns result of body, not captured output)
