@@ -2959,22 +2959,44 @@ pub const Compiler = struct {
     }
 
     fn compileApply(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        // (apply fn args-list)
+        // (apply fn arg1 arg2 ... args-list)
+        // CL semantics: spread args are prepended to final list
         if (!args.isCons()) return error.InvalidSyntax;
 
         const cons1 = args.toPtr(Cons);
         const fn_expr = cons1.car;
-        const rest = cons1.cdr;
+        var rest = cons1.cdr;
 
         if (!rest.isCons()) return error.InvalidSyntax;
-        const cons2 = rest.toPtr(Cons);
-        const args_list_expr = cons2.car;
+
+        // Collect all remaining args (spread args + final list)
+        var spread_args = std.ArrayList(*const Ir){};
+        defer spread_args.deinit(self.allocator);
+
+        while (rest.isCons()) {
+            const cons = rest.toPtr(Cons);
+            const arg_ir = try self.compile(cons.car, env);
+            try spread_args.append(self.allocator, arg_ir);
+            rest = cons.cdr;
+        }
+
+        if (spread_args.items.len == 0) return error.InvalidSyntax;
 
         const fn_ir = try self.compile(fn_expr, env);
-        const args_ir = try self.compile(args_list_expr, env);
 
+        // If only one arg, it's just (apply fn args-list)
+        if (spread_args.items.len == 1) {
+            const node = try self.allocator.create(ir.Ir);
+            node.* = .{ .apply = .{ .func = fn_ir, .args = spread_args.items[0] } };
+            return node;
+        }
+
+        // Multiple args: need to build combined args list
+        // (apply fn a b c final-list) => call fn with (a b c . final-list)
+        // Build: (list* a b c final-list) which creates (a b c . final-list)
+        const combined = try self.builder.listStar(spread_args.items);
         const node = try self.allocator.create(ir.Ir);
-        node.* = .{ .apply = .{ .func = fn_ir, .args = args_ir } };
+        node.* = .{ .apply = .{ .func = fn_ir, .args = combined } };
         return node;
     }
 

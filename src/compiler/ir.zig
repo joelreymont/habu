@@ -332,6 +332,7 @@ pub const Ir = union(enum) {
     car: UnaryOp,
     cdr: UnaryOp,
     list: []const *const Ir, // (list a b c)
+    list_star: []const *const Ir, // (list* a b c) - last elem is tail
     append: BinaryOp, // (append list1 list2)
     length: UnaryOp, // (length list)
     reverse: UnaryOp, // (reverse list)
@@ -1112,6 +1113,13 @@ pub const IrBuilder = struct {
         const node = try self.allocator.create(Ir);
         const elems_copy = try self.allocator.dupe(*const Ir, elements);
         node.* = .{ .list = elems_copy };
+        return node;
+    }
+
+    pub fn listStar(self: IrBuilder, elements: []const *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const elems_copy = try self.allocator.dupe(*const Ir, elements);
+        node.* = .{ .list_star = elems_copy };
         return node;
     }
 

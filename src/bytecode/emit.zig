@@ -563,6 +563,7 @@ pub const Emitter = struct {
             .car => |op| try self.emitUnaryOp(op.operand, .car),
             .cdr => |op| try self.emitUnaryOp(op.operand, .cdr),
             .list => |elements| try self.emitList(elements),
+            .list_star => |elements| try self.emitListStar(elements),
             .append => |op| try self.emitBinaryOp(op, .append_lists),
             .length => |op| try self.emitUnaryOp(op.operand, .list_length),
             .reverse => |op| try self.emitUnaryOp(op.operand, .list_reverse),
@@ -1792,6 +1793,24 @@ pub const Emitter = struct {
         if (elements.len > 255) return error.TooManyLocals;
         try self.emitOp(.make_list);
         try self.emitU8(@intCast(elements.len));
+    }
+
+    fn emitListStar(self: *Emitter, elements: []const *const Ir) Error!void {
+        // (list* a b c tail) => (cons a (cons b (cons c tail)))
+        // Build from back to front: emit tail, then cons each element
+        if (elements.len == 0) return;
+
+        // Emit last element (the tail)
+        try self.emit(elements[elements.len - 1]);
+
+        // Cons each preceding element from right to left
+        var i: usize = elements.len - 1;
+        while (i > 0) {
+            i -= 1;
+            try self.emit(elements[i]);
+            try self.emitOp(.swap); // swap so we have (elem tail)
+            try self.emitOp(.cons);
+        }
     }
 
     fn emitVecNew(self: *Emitter, v: anytype) Error!void {
