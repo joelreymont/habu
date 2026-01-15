@@ -1695,9 +1695,16 @@
 
 ; truncate - truncate toward zero, returns (values quotient remainder)
 (defun truncate (number &optional (divisor 1))
-  (let* ((q (quot number divisor))
-         (r (- number (* q divisor))))
-    (values q r)))
+  (if (or (floatp number) (floatp divisor))
+      (let* ((q-float (/ number divisor))
+             (q (if (< q-float 0)
+                    (ceiling q-float)
+                    (floor q-float)))
+             (r (- number (* q divisor))))
+        (values q r))
+      (let* ((q (quot number divisor))
+             (r (- number (* q divisor))))
+        (values q r))))
 
 ; floor - floor division, returns (values quotient remainder)
 (defun floor (number &optional (divisor 1))
@@ -1729,6 +1736,30 @@
                 ((evenp q) q)  ; Round to even
                 (t (if (< (* number divisor) 0) (- q 1) (+ q 1))))))
       (values rq (- number (* rq divisor))))))
+
+; gcd - greatest common divisor
+(defun gcd (&rest args)
+  (labels ((gcd2 (a b)
+             (let ((x (abs a))
+                   (y (abs b)))
+               (if (zerop y)
+                   x
+                   (gcd2 y (mod x y))))))
+    (if (null args)
+        0
+        (reduce #'gcd2 args))))
+
+; lcm - least common multiple
+(defun lcm (&rest args)
+  (if (null args)
+      1
+      (reduce (lambda (a b)
+                (let ((x (abs a))
+                      (y (abs b)))
+                  (if (or (zerop x) (zerop y))
+                      0
+                      (quot (* x y) (gcd x y)))))
+              args)))
 
 ;; ============================================================
 ;; Character Utilities

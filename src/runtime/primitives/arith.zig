@@ -250,6 +250,13 @@ pub fn numEq(a: Value, b: Value) bool {
 
 /// Less than
 pub fn lt(a: Value, b: Value) bool {
+    // Float comparison
+    if (a.isFloat() or b.isFloat()) {
+        const af = toNumber(a) catch return false;
+        const bf = toNumber(b) catch return false;
+        return af < bf;
+    }
+
     // Handle bignum comparisons
     if (a.isBignum() or b.isBignum()) {
         if (!a.isFixnum() and !a.isBignum()) return false;
@@ -264,6 +271,21 @@ pub fn lt(a: Value, b: Value) bool {
 
 /// Greater than
 pub fn gt(a: Value, b: Value) bool {
+    // Float comparison
+    if (a.isFloat() or b.isFloat()) {
+        const af = toNumber(a) catch return false;
+        const bf = toNumber(b) catch return false;
+        return af > bf;
+    }
+
+
+    // Float comparison
+    if (a.isFloat() or b.isFloat()) {
+        const af = toNumber(a) catch return false;
+        const bf = toNumber(b) catch return false;
+        return af > bf;
+    }
+
     // Handle bignum comparisons
     if (a.isBignum() or b.isBignum()) {
         if (!a.isFixnum() and !a.isBignum()) return false;
@@ -278,6 +300,14 @@ pub fn gt(a: Value, b: Value) bool {
 
 /// Less than or equal
 pub fn le(a: Value, b: Value) bool {
+    // Float comparison
+    if (a.isFloat() or b.isFloat()) {
+        const af = toNumber(a) catch return false;
+        const bf = toNumber(b) catch return false;
+        return af <= bf;
+    }
+
+
     // Handle bignum comparisons
     if (a.isBignum() or b.isBignum()) {
         if (!a.isFixnum() and !a.isBignum()) return false;
@@ -292,6 +322,14 @@ pub fn le(a: Value, b: Value) bool {
 
 /// Greater than or equal
 pub fn ge(a: Value, b: Value) bool {
+    // Float comparison
+    if (a.isFloat() or b.isFloat()) {
+        const af = toNumber(a) catch return false;
+        const bf = toNumber(b) catch return false;
+        return af >= bf;
+    }
+
+
     // Handle bignum comparisons
     if (a.isBignum() or b.isBignum()) {
         if (!a.isFixnum() and !a.isBignum()) return false;
@@ -535,6 +573,131 @@ pub fn pow_val(x: Value, y: Value) Error!Value {
     const xf = try toNumber(x);
     const yf = try toNumber(y);
     return Value.makeFloat(std.math.pow(f64, xf, yf));
+}
+
+/// Floor: largest integer not greater than x/y
+pub fn floor_val(_: *Heap, x: Value, y: Value) Error!Value {
+    if (x.isFloat() or y.isFloat()) {
+        const xf = try toNumber(x);
+        const yf = try toNumber(y);
+        const q = @floor(xf / yf);
+        return Value.makeFloat(q);
+    }
+
+    if (!x.isFixnum() or !y.isFixnum()) return error.TypeMismatch;
+    const dividend = x.toFixnum();
+    const divisor = y.toFixnum();
+    if (divisor == 0) return error.DivisionByZero;
+
+    const q = @divFloor(dividend, divisor);
+    return Value.makeFixnum(q);
+}
+
+/// Ceiling: smallest integer not less than x/y
+pub fn ceil_val(_: *Heap, x: Value, y: Value) Error!Value {
+    if (x.isFloat() or y.isFloat()) {
+        const xf = try toNumber(x);
+        const yf = try toNumber(y);
+        const q = @ceil(xf / yf);
+        return Value.makeFloat(q);
+    }
+
+    if (!x.isFixnum() or !y.isFixnum()) return error.TypeMismatch;
+    const dividend = x.toFixnum();
+    const divisor = y.toFixnum();
+    if (divisor == 0) return error.DivisionByZero;
+
+    // divCeil: smallest integer not less than dividend/divisor
+    const q = std.math.divCeil(i64, dividend, divisor) catch return error.TypeMismatch;
+    return Value.makeFixnum(q);
+}
+
+/// Truncate: integer part of x/y toward zero
+pub fn trunc_val(_: *Heap, x: Value, y: Value) Error!Value {
+    if (x.isFloat() or y.isFloat()) {
+        const xf = try toNumber(x);
+        const yf = try toNumber(y);
+        const q = @trunc(xf / yf);
+        return Value.makeFloat(q);
+    }
+
+    if (!x.isFixnum() or !y.isFixnum()) return error.TypeMismatch;
+    const dividend = x.toFixnum();
+    const divisor = y.toFixnum();
+    if (divisor == 0) return error.DivisionByZero;
+
+    const q = @divTrunc(dividend, divisor);
+    return Value.makeFixnum(q);
+}
+
+/// Round: nearest integer to x/y, ties to even
+pub fn round_val(_: *Heap, x: Value, y: Value) Error!Value {
+    if (x.isFloat() or y.isFloat()) {
+        const xf = try toNumber(x);
+        const yf = try toNumber(y);
+        const q = @round(xf / yf);
+        return Value.makeFloat(q);
+    }
+
+    if (!x.isFixnum() or !y.isFixnum()) return error.TypeMismatch;
+    const dividend = x.toFixnum();
+    const divisor = y.toFixnum();
+    if (divisor == 0) return error.DivisionByZero;
+
+    // Round to nearest integer, ties to even
+    const q = @divFloor(dividend, divisor);
+    const r = @mod(dividend, divisor);
+    const half = @divFloor(@abs(divisor), 2);
+
+    if (@abs(r) > half) {
+        // Strictly greater than halfway: round away from zero
+        return Value.makeFixnum(if (dividend * divisor >= 0) q + 1 else q - 1);
+    } else if (@abs(r) < half) {
+        // Strictly less than halfway: round toward zero (truncate)
+        return Value.makeFixnum(q);
+    } else {
+        // Exactly halfway: round to even
+        if (@mod(q, 2) == 0) {
+            return Value.makeFixnum(q);
+        } else {
+            return Value.makeFixnum(if (dividend * divisor >= 0) q + 1 else q - 1);
+        }
+    }
+}
+
+/// GCD: greatest common divisor
+pub fn gcd_val(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+
+    var x = @abs(a.toFixnum());
+    var y = @abs(b.toFixnum());
+
+    // Euclidean algorithm
+    while (y != 0) {
+        const tmp = @mod(x, y);
+        x = y;
+        y = tmp;
+    }
+
+    return Value.makeFixnum(x);
+}
+
+/// LCM: least common multiple
+pub fn lcm_val(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+
+    const x = @abs(a.toFixnum());
+    const y = @abs(b.toFixnum());
+
+    if (x == 0 or y == 0) return Value.makeFixnum(0);
+
+    // LCM(a,b) = |a*b| / GCD(a,b)
+    const g = try gcd_val(a, b);
+    const gcd_result = g.toFixnum();
+
+    // Compute (x / gcd) * y to avoid overflow
+    const result = @divExact(x, gcd_result) * y;
+    return Value.makeFixnum(result);
 }
 
 // ============================================================================
