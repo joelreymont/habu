@@ -3261,18 +3261,31 @@ pub const Vm = struct {
 
             .symbol_value, .symbol_function => {
                 const val = try self.pop();
-                if (!val.isSymbol()) return error.TypeMismatch;
-                const sym = val.toPtr(Symbol);
-                const name = sym.getName();
-                // Look up symbol in global environment
-                if (self.global_env) |env| {
-                    if (env.lookup(name)) |idx| {
-                        try self.push(self.globals[idx]);
+                // Handle magic symbols nil and t
+                if (val.isNil()) {
+                    try self.push(Value.nil);
+                } else if (val.isT()) {
+                    try self.push(Value.t);
+                } else if (val.isSymbol()) {
+                    const sym = val.toPtr(Symbol);
+                    const local_name = sym.getName();
+                    // Build qualified name: "CL-USER:name"
+                    var qual_buf: [512]u8 = undefined;
+                    const qual_name = std.fmt.bufPrint(&qual_buf, "CL-USER:{s}", .{local_name}) catch local_name;
+                    // Look up symbol in global environment
+                    if (self.global_env) |env| {
+                        // Try qualified name first, then local name
+                        const idx = env.lookup(qual_name) orelse env.lookup(local_name);
+                        if (idx) |i| {
+                            try self.push(self.globals[i]);
+                        } else {
+                            return error.UnboundSymbol;
+                        }
                     } else {
                         return error.UnboundSymbol;
                     }
                 } else {
-                    return error.UnboundSymbol;
+                    return error.TypeMismatch;
                 }
             },
 
