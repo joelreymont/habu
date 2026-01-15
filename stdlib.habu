@@ -1546,12 +1546,20 @@
       (when (member x list2 :test test)
         (push x result)))))
 
+; nintersection - destructive intersection (same as intersection for now)
+(defun nintersection (list1 list2 &key (test #'eql))
+  (intersection list1 list2 :test test))
+
 ; set-difference - elements in list1 not in list2
 (defun set-difference (list1 list2 &key (test #'eql))
   (let ((result nil))
     (dolist (x list1 (nreverse result))
       (unless (member x list2 :test test)
         (push x result)))))
+
+; nset-difference - destructive set-difference (same for now)
+(defun nset-difference (list1 list2 &key (test #'eql))
+  (set-difference list1 list2 :test test))
 
 ; set-exclusive-or - symmetric difference
 (defun set-exclusive-or (list1 list2 &key (test #'eql))
