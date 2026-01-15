@@ -878,14 +878,14 @@
 ; prog - sequential execution with local bindings and tags
 (defmacro prog (bindings &rest body)
   (list 'block nil
-        (cons 'let bindings
-              (list (cons 'tagbody body)))))
+        (list 'let bindings
+              (cons 'tagbody body))))
 
 ; prog* - like prog but bindings are sequential
 (defmacro prog* (bindings &rest body)
   (list 'block nil
-        (cons 'let* bindings
-              (list (cons 'tagbody body)))))
+        (list 'let* bindings
+              (cons 'tagbody body))))
 
 ; prog1 - evaluate forms, return first value
 (defmacro prog1 (first &rest rest)
@@ -1935,16 +1935,81 @@
                          nil)))
       (list var from-val step-expr end-test rest))))
 
-; Main LOOP macro
-(defmacro loop (&rest clauses)
-  (if (null clauses)
-      ; Simple infinite loop - use block with while t
-      '(block nil (while t))
-    (if (not (loop-keyword-p (car clauses)))
-        ; Simple loop - body forms, wrap in block with while t
-        (list 'block nil (cons 'while (cons t clauses)))
-      ; Extended loop with clauses
-      (loop-expand clauses))))
+; Generate loop code from parsed components
+(defun loop-generate-code (vars step-forms end-tests body-forms
+                           collect-var collect-forms
+                           sum-var sum-forms
+                           count-var count-forms
+                           finally-forms initially-forms)
+  (let* ((all-vars (nreverse vars))
+         (has-collect (not (null collect-forms)))
+         (has-sum (not (null sum-forms)))
+         (has-count (not (null count-forms)))
+         (loop-body nil)
+         (result-expr nil))
+
+    ; Add accumulator variables
+    (when has-collect
+      (push (list collect-var nil) all-vars))
+    (when has-sum
+      (push (list sum-var 0) all-vars))
+    (when has-count
+      (push (list count-var 0) all-vars))
+
+    ; Build end test
+    (let ((end-test (if (null end-tests)
+                        nil
+                      (if (= (length end-tests) 1)
+                          (car end-tests)
+                        (cons 'or (nreverse end-tests))))))
+
+      ; Determine result expression first (needed for end-test)
+      (setq result-expr
+            (cond
+              (has-collect collect-var)
+              (has-sum sum-var)
+              (has-count count-var)
+              (t nil)))
+
+      ; Build loop body using nested binary appends
+      (let ((end-test-forms (when end-test
+                              (list (list 'when end-test (list 'return-from nil result-expr)))))
+            (main-body (nreverse body-forms))
+            (collect-body (mapcar (lambda (expr)
+                                    (list 'setq collect-var
+                                          (list 'nconc collect-var (list 'list expr))))
+                                  (nreverse collect-forms)))
+            (sum-body (mapcar (lambda (expr)
+                                (list 'setq sum-var (list '+ sum-var expr)))
+                              (nreverse sum-forms)))
+            (count-body (mapcar (lambda (expr)
+                                  (list 'when expr
+                                        (list 'setq count-var (list '+ count-var 1))))
+                                (nreverse count-forms)))
+            (step-body (nreverse step-forms)))
+        (setq loop-body
+              (append end-test-forms
+                      (append main-body
+                              (append collect-body
+                                      (append sum-body
+                                              (append count-body step-body)))))))
+
+      ; Build final code using (while t ...) instead of (loop ...) to avoid a bug
+      (let ((loop-code (cons 'while (cons t loop-body))))
+        ; Wrap with initially if present
+        (when initially-forms
+          (setq loop-code (cons 'progn (append initially-forms (list loop-code)))))
+
+        ; Build the block with let bindings
+        (list 'block nil
+              (list 'let all-vars
+                    (if finally-forms
+                        (list 'unwind-protect
+                              loop-code
+                              (cons 'progn (append finally-forms
+                                                   (list (list 'return-from nil result-expr)))))
+                      (list 'progn loop-code result-expr))))))))
+
 
 ; Expand loop clauses into code
 (defun loop-expand (clauses)
@@ -2131,80 +2196,16 @@
                         count-var count-forms
                         finally-forms initially-forms)))
 
-; Generate loop code from parsed components
-(defun loop-generate-code (vars step-forms end-tests body-forms
-                           collect-var collect-forms
-                           sum-var sum-forms
-                           count-var count-forms
-                           finally-forms initially-forms)
-  (let* ((all-vars (nreverse vars))
-         (has-collect (not (null collect-forms)))
-         (has-sum (not (null sum-forms)))
-         (has-count (not (null count-forms)))
-         (loop-body nil)
-         (result-expr nil))
-
-    ; Add accumulator variables
-    (when has-collect
-      (push (list collect-var nil) all-vars))
-    (when has-sum
-      (push (list sum-var 0) all-vars))
-    (when has-count
-      (push (list count-var 0) all-vars))
-
-    ; Build end test
-    (let ((end-test (if (null end-tests)
-                        nil
-                      (if (= (length end-tests) 1)
-                          (car end-tests)
-                        (cons 'or (nreverse end-tests))))))
-
-      ; Determine result expression first (needed for end-test)
-      (setq result-expr
-            (cond
-              (has-collect collect-var)
-              (has-sum sum-var)
-              (has-count count-var)
-              (t nil)))
-
-      ; Build loop body using nested binary appends
-      (let ((end-test-forms (when end-test
-                              (list (list 'when end-test (list 'return-from nil result-expr)))))
-            (main-body (nreverse body-forms))
-            (collect-body (mapcar (lambda (expr)
-                                    (list 'setq collect-var
-                                          (list 'nconc collect-var (list 'list expr))))
-                                  (nreverse collect-forms)))
-            (sum-body (mapcar (lambda (expr)
-                                (list 'setq sum-var (list '+ sum-var expr)))
-                              (nreverse sum-forms)))
-            (count-body (mapcar (lambda (expr)
-                                  (list 'when expr
-                                        (list 'setq count-var (list '+ count-var 1))))
-                                (nreverse count-forms)))
-            (step-body (nreverse step-forms)))
-        (setq loop-body
-              (append end-test-forms
-                      (append main-body
-                              (append collect-body
-                                      (append sum-body
-                                              (append count-body step-body)))))))
-
-      ; Build final code using (while t ...) instead of (loop ...) to avoid a bug
-      (let ((loop-code (cons 'while (cons t loop-body))))
-        ; Wrap with initially if present
-        (when initially-forms
-          (setq loop-code (cons 'progn (append initially-forms (list loop-code)))))
-
-        ; Build the block with let bindings
-        (list 'block nil
-              (list 'let all-vars
-                    (if finally-forms
-                        (list 'unwind-protect
-                              loop-code
-                              (cons 'progn (append finally-forms
-                                                   (list (list 'return-from nil result-expr)))))
-                      (list 'progn loop-code result-expr))))))))
+; Main LOOP macro
+(defmacro loop (&rest clauses)
+  (if (null clauses)
+      ; Simple infinite loop - use block with while t
+      '(block nil (while t))
+    (if (not (loop-keyword-p (car clauses)))
+        ; Simple loop - body forms, wrap in block with while t
+        (list 'block nil (cons 'while (cons t clauses)))
+      ; Extended loop with clauses
+      (loop-expand clauses))))
 
 ;; ============================================================
 ;; Structure Definition (DEFSTRUCT)
