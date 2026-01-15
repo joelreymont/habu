@@ -399,6 +399,16 @@
             ((eq op 'aref) (cons '%aset (append (cdr place) (list value))))
             ((eq op 'gethash) (list 'puthash (cadr place) value (caddr place)))
             ((eq op 'nth) (list 'rplaca (list 'nthcdr (cadr place) (caddr place)) value))
+            ((eq op 'elt)
+             ; (setf (elt seq index) val) - works for lists and vectors
+             (let ((seq (cadr place))
+                   (idx (caddr place))
+                   (g (gensym "V"))
+                   (s (gensym "S")))
+               (list 'let (list (list g value) (list s seq))
+                     (list 'if (list 'vectorp s)
+                           (list 'progn (list '%svset s idx g) g)
+                           (list 'progn (list 'rplaca (list 'nthcdr idx s) g) g)))))
             ((eq op 'getf)
              ; (setf (getf plist key) val) - plist-var must be a symbol
              (let ((plist-var (cadr place))
@@ -2364,8 +2374,9 @@
          (options (if (consp name-and-options)
                       (cdr name-and-options)
                       nil))
-         (constructor-name (intern (concatenate 'string "MAKE-" (symbol-name name))))
-         (predicate-name (intern (concatenate 'string (symbol-name name) "-P")))
+         (name-str (string-upcase (symbol-name name)))
+         (constructor-name (intern (concatenate 'string "MAKE-" name-str)))
+         (predicate-name (intern (concatenate 'string name-str "-P")))
          (slot-names (mapcar (lambda (s) (if (consp s) (car s) s)) slots))
          (slot-count (length slot-names)))
     
@@ -2393,11 +2404,11 @@
                   (let ((i 1))
                     (mapcar (lambda (slot)
                               (let ((accessor-name (intern (concatenate 'string
-                                                                        (symbol-name name)
+                                                                        name-str
                                                                         "-"
-                                                                        (symbol-name slot))))
+                                                                        (string-upcase (symbol-name slot)))))
                                     (index i))
                                 (setq i (+ i 1))
-                                (list 'defun accessor-name '(obj)
+                                (list 'defun accessor-name (list 'obj)
                                       (list 'svref 'obj index))))
                             slot-names)))))))
