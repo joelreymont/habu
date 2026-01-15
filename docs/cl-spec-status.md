@@ -78,6 +78,14 @@
 - ✅ Complex (objects.zig:223, full arithmetic integration - supports mixed-type operations)
 - ✅ Numeric tower complete: complex > float > rational > bignum > fixnum
 - ✅ Numeric predicates: zerop, plusp, minusp, evenp, oddp (primitives)
+- ✅ Math functions: floor, ceiling, round, truncate, ffloor, fceiling, fround, ftruncate (stdlib.habu:47-61)
+- ✅ Math functions: 1+, 1-, signum (stdlib.habu:37-45)
+- ✅ Math functions: isqrt (stdlib.habu:63-67)
+- ✅ Trigonometric: sin, cos, tan, asin, acos, atan, atan2 (arith.zig:637-676)
+- ✅ Hyperbolic: sinh, cosh, tanh, asinh, acosh, atanh (arith.zig:679+)
+- ✅ Complex functions: phase, cis (stdlib.habu:1765-1772)
+- ✅ Rational functions: rational, rationalize (stdlib.habu:1775-1778, stubs)
+- ✅ String conversion: parse-integer (compile.zig:6836)
 - ✅ Logic operations: logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logeqv, logbitp, logcount, integer-length, logorc1, logorc2, logtest
 
 ### Arrays
