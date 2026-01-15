@@ -8,16 +8,16 @@
 (defun reverse (lst)
   "Reverse a list"
   (let ((acc nil))
-    (while (not (null? lst))
+    (while (not (null lst))
       (set! acc (cons (car lst) acc))
       (set! lst (cdr lst)))
     acc))
 
 (defun map (fn lst)
   "Apply function to each element of list"
-  (if (null? lst)
+  (if (null lst)
       nil
-      (cons (fn (car lst))
+      (cons (funcall fn (car lst))
             (map fn (cdr lst)))))
 
 ;; Logic operations
