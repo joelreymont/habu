@@ -473,6 +473,12 @@
       (list 'let (list (list tmp (list '- place delta)))
             (list 'setf place tmp)))))
 
+; add1 - add one to number (CL 1+ can't be defined due to parser)
+(defun add1 (n) (+ n 1))
+
+; sub1 - subtract one from number (CL 1- can't be defined due to parser)
+(defun sub1 (n) (- n 1))
+
 ; push - push value onto list (destructive)
 ; (push val place) => new-list
 (defmacro push (val place)
@@ -623,12 +629,12 @@
     ((not (funcall pred (car lst))) nil)
     (t (every pred (cdr lst)))))
 
-; some - true if predicate holds for some element, returns that element
+; some - returns first non-nil predicate result
 (defun some (pred lst)
   (cond
     ((null lst) nil)
-    ((funcall pred (car lst)) (car lst))
-    (t (some pred (cdr lst)))))
+    (t (let ((result (funcall pred (car lst))))
+         (if result result (some pred (cdr lst)))))))
 
 ; notevery - true if predicate fails for some element
 (defun notevery (pred lst)
