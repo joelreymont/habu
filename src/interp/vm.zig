@@ -2954,55 +2954,19 @@ pub const Vm = struct {
                 // position with eql test (default)
                 const seq = try self.pop();
                 const item = try self.pop();
-                var curr = seq;
-                var idx: i64 = 0;
-                while (curr.isCons()) {
-                    const c = curr.toPtr(Cons);
-                    if (hashKeyEqualWithTest(c.car, item, .eql)) {
-                        try self.push(Value.makeFixnum(idx));
-                        break;
-                    }
-                    curr = c.cdr;
-                    idx += 1;
-                } else {
-                    try self.push(Value.nil);
-                }
+                try self.push(try self.positionInSeq(item, seq, .eql));
             },
             .list_position_eq => {
                 // position with eq test (identity)
                 const seq = try self.pop();
                 const item = try self.pop();
-                var curr = seq;
-                var idx: i64 = 0;
-                while (curr.isCons()) {
-                    const c = curr.toPtr(Cons);
-                    if (c.car.raw == item.raw) {
-                        try self.push(Value.makeFixnum(idx));
-                        break;
-                    }
-                    curr = c.cdr;
-                    idx += 1;
-                } else {
-                    try self.push(Value.nil);
-                }
+                try self.push(try self.positionInSeq(item, seq, .eq));
             },
             .list_position_equal => {
                 // position with equal test (structural)
                 const seq = try self.pop();
                 const item = try self.pop();
-                var curr = seq;
-                var idx: i64 = 0;
-                while (curr.isCons()) {
-                    const c = curr.toPtr(Cons);
-                    if (hashKeyEqualWithTest(c.car, item, .equal)) {
-                        try self.push(Value.makeFixnum(idx));
-                        break;
-                    }
-                    curr = c.cdr;
-                    idx += 1;
-                } else {
-                    try self.push(Value.nil);
-                }
+                try self.push(try self.positionInSeq(item, seq, .equal));
             },
 
             .list_count => {
@@ -4567,6 +4531,47 @@ pub const Vm = struct {
     fn peek(self: *Vm, distance: usize) Error!Value {
         if (distance >= self.sp) return error.StackUnderflow;
         return self.stack[self.sp - 1 - distance];
+    }
+
+    /// Position search for lists, strings, and vectors
+    fn positionInSeq(self: *Vm, item: Value, seq: Value, cmp: runtime.HashTest) Error!Value {
+        _ = self;
+        // String: item should be a fixnum (char code)
+        if (seq.isString()) {
+            const str_obj = seq.toPtr(runtime.String);
+            const str_bytes = str_obj.bytes();
+            if (!item.isFixnum()) return Value.nil;
+            const char_code: u8 = @intCast(item.toFixnum());
+            for (str_bytes, 0..) |c, i| {
+                if (c == char_code) {
+                    return Value.makeFixnum(@intCast(i));
+                }
+            }
+            return Value.nil;
+        }
+        // Vector: search elements
+        if (seq.isVector()) {
+            const vec = seq.toPtr(runtime.Vector);
+            for (0..vec.length) |i| {
+                const elem = vec.get(i);
+                if (hashKeyEqualWithTest(item, elem, cmp)) {
+                    return Value.makeFixnum(@intCast(i));
+                }
+            }
+            return Value.nil;
+        }
+        // List: iterate through cons cells
+        var curr = seq;
+        var idx: i64 = 0;
+        while (curr.isCons()) {
+            const c = curr.toPtr(Cons);
+            if (hashKeyEqualWithTest(item, c.car, cmp)) {
+                return Value.makeFixnum(idx);
+            }
+            curr = c.cdr;
+            idx += 1;
+        }
+        return Value.nil;
     }
 
     // ========================================================================

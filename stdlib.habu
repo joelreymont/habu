@@ -631,10 +631,22 @@
 
 ; subseq - extract subsequence (start is inclusive, end is exclusive)
 (defun subseq (seq start &optional end)
-  (let ((lst (drop start seq)))
-    (if end
-        (take (- end start) lst)
-        lst)))
+  (cond
+    ((stringp seq)
+     (if end
+         (substring seq start end)
+         (substring seq start (string-length seq))))
+    ((vectorp seq)
+     (let ((e (if end end (vector-length seq))))
+       (let ((result (make-vector (- e start) nil)))
+         (do ((i start (+ i 1)))
+             ((>= i e) result)
+           (setf (svref result (- i start)) (svref seq i))))))
+    (t
+     (let ((lst (drop start seq)))
+       (if end
+           (take (- end start) lst)
+           lst)))))
 
 ; substitute - replace old with new in sequence
 (defun substitute (new old seq &key (test #'eql))
