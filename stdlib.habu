@@ -453,6 +453,7 @@
                                      (list 'setq plist-var (list 'cons key (list 'cons g plist-var)))
                                      g)))
                    (error "setf getf: plist must be a variable"))))
+            ((eq op 'char) (list '%string-set (cadr place) (caddr place) value))
             (t (error "setf: unsupported place" place))))
       (error "setf: invalid place" place))))
 
@@ -730,11 +731,21 @@
   (not (string= s1 s2)))
 
 ; string< - lexicographic less-than
-(defun string< ((s1 string) (s2 string))
-  (string-lt s1 s2))
+(defun string< (s1 s2)
+  (let ((len1 (string-length s1))
+        (len2 (string-length s2)))
+    (string<-aux s1 s2 0 len1 len2)))
+
+(defun string<-aux (s1 s2 i len1 len2)
+  (cond
+    ((>= i len1) (< len1 len2))  ; s1 exhausted, true if s2 longer
+    ((>= i len2) nil)             ; s2 exhausted first, false
+    ((< (char s1 i) (char s2 i)) t)
+    ((> (char s1 i) (char s2 i)) nil)
+    (t (string<-aux s1 s2 (+ i 1) len1 len2))))
 
 ; string> - lexicographic greater-than
-(defun string> ((s1 string) (s2 string))
+(defun string> (s1 s2)
   (string< s2 s1))
 
 ; string<= - lexicographic less-than-or-equal
@@ -1696,19 +1707,16 @@
 
 ; string-capitalize - capitalize first letter of each word
 (defun string-capitalize (s)
-  (let ((result (make-string (length s) #\Space))
-        (capitalize-next t))
-    (dotimes (i (length s) result)
-      (let ((c (char s i)))
-        (setf (char result i)
-              (cond
-                ((not (alpha-char-p c))
-                 (setq capitalize-next t)
-                 c)
-                (capitalize-next
-                 (setq capitalize-next nil)
-                 (char-upcase c))
-                (t (char-downcase c))))))))
+  (string-capitalize-aux s 0 (length s) t nil))
+
+(defun string-capitalize-aux (s i len cap-next acc)
+  (if (>= i len)
+      (coerce (nreverse acc) 'string)
+      (let ((c (code-char (char s i))))
+        (if (alpha-char-p c)
+            (string-capitalize-aux s (+ i 1) len nil
+                                   (cons (if cap-next (char-upcase c) (char-downcase c)) acc))
+            (string-capitalize-aux s (+ i 1) len t (cons c acc))))))
 
 ; nstring-upcase - destructive uppercase (same as string-upcase for now)
 (defun nstring-upcase (s)
