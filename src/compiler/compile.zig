@@ -1453,8 +1453,10 @@ pub const Compiler = struct {
             // Check globals - use qualified name if symbol has package
             var qual_buf: [256]u8 = undefined;
             const qual_name = self.getQualifiedName(sym, &qual_buf) catch sym.getName();
+            // Allow forward references: allocate slot if not found
+            // Runtime will check if still undefined when accessed
             const idx = self.globals.lookup(qual_name) orelse
-                return error.UnboundVariable;
+                try self.globals.define(qual_name);
             return try self.builder.globalRef(qual_name, idx);
         }
 
@@ -3714,7 +3716,7 @@ pub const Compiler = struct {
         const tag_ir = try self.builder.lit(b.@"%condition%");
 
         // Create a handler-case IR node (which is like catch but binds the caught value)
-        return try self.builder.handlerCase(tag_ir, protected_ir, handler_ir, cond_name);
+        return try self.builder.handlerCase(tag_ir, protected_ir, handler_ir, cond_name, cond_idx);
     }
 
     /// Build re-throw for unhandled conditions
@@ -6213,6 +6215,9 @@ pub const Compiler = struct {
             tmp = tmp.toPtr(Cons).cdr;
         }
 
+        // DEBUG: assert count > 0
+        std.debug.assert(count > 0);
+
         var expr_list = std.ArrayList(*Ir){};
         defer expr_list.deinit(self.allocator);
 
@@ -6228,6 +6233,9 @@ pub const Compiler = struct {
             idx += 1;
         }
 
+        // DEBUG: assert we compiled all expressions
+        std.debug.assert(expr_list.items.len == count);
+
         if (expr_list.items.len == 1) {
             return expr_list.items[0];
         }
@@ -6235,7 +6243,11 @@ pub const Compiler = struct {
         // Convert to const slice for progn
         const items = self.allocator.dupe(*const Ir, expr_list.items) catch
             return error.OutOfMemory;
-        return try self.builder.progn(items);
+        const result = try self.builder.progn(items);
+        // DEBUG: verify progn was created with all items
+        std.debug.assert(std.meta.activeTag(result.*) == .progn);
+        std.debug.assert(result.progn.len == count);
+        return result;
     }
 
     fn compilePrimitive(self: *Compiler, sym: Value, args: Value, env: *const Env) anyerror!*Ir {
