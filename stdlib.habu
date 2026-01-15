@@ -77,14 +77,19 @@
 (defun list3 (a b c) (cons a (cons b (cons c nil))))
 (defun list4 (a b c d) (cons a (cons b (cons c (cons d nil)))))
 
-; Length with TCO
+; Length with TCO (for lists)
 (defun length-aux (lst acc)
   (if (null lst)
       acc
       (length-aux (cdr lst) (+ acc 1))))
 
-(defun length (lst)
-  (length-aux lst 0))
+; length - works on lists, strings, and vectors
+(defun length (seq)
+  (cond
+    ((null seq) 0)
+    ((stringp seq) (string-length seq))
+    ((vectorp seq) (vector-length seq))
+    (t (length-aux seq 0))))
 
 ; Append - the built-in append only takes 2 args
 ; For multi-arg append, use append*
@@ -680,38 +685,48 @@
       (char= c #\Newline)
       (char= c #\Return)))
 
+; member-num - test if number is in list (using =)
+(defun member-num (n lst)
+  (if (null lst)
+      nil
+    (if (= n (car lst))
+        lst
+      (member-num n (cdr lst)))))
+
 ; string-trim-left-aux - helper for left trim
-(defun string-trim-left-aux (chars s i)
-  (if (>= i (length s))
+(defun string-trim-left-aux (chars s i len)
+  (if (>= i len)
       ""
-      (if (member (char s i) chars :test #'char=)
-          (string-trim-left-aux chars s (+ i 1))
-          (subseq s i))))
+    (if (member-num (char s i) chars)
+        (string-trim-left-aux chars s (+ i 1) len)
+      (substring s i len))))
 
-; string-left-trim - remove leading characters
+; string-left-trim - remove leading characters from character bag
 (defun string-left-trim (chars s)
-  (let ((char-list (if (stringp chars)
-                       (string-to-list chars)
-                       chars)))
-    (string-trim-left-aux char-list s 0)))
+  (let ((char-codes (if (stringp chars)
+                        (map (lambda (i) (char chars i))
+                             (range 0 (string-length chars)))
+                        chars)))
+    (string-trim-left-aux char-codes s 0 (string-length s))))
 
-; string-trim-right-aux - helper for right trim  
+; string-trim-right-aux - helper for right trim
 (defun string-trim-right-aux (chars s i)
   (if (< i 0)
       ""
-      (if (member (char s i) chars :test #'char=)
-          (string-trim-right-aux chars s (- i 1))
-          (subseq s 0 (+ i 1)))))
+    (if (member-num (char s i) chars)
+        (string-trim-right-aux chars s (- i 1))
+      (substring s 0 (+ i 1)))))
 
 ; string-right-trim - remove trailing characters
 (defun string-right-trim (chars s)
-  (let ((char-list (if (stringp chars)
-                       (string-to-list chars)
-                       chars))
-        (len (length s)))
+  (let ((char-codes (if (stringp chars)
+                        (map (lambda (i) (char chars i))
+                             (range 0 (string-length chars)))
+                        chars))
+        (len (string-length s)))
     (if (= len 0)
         ""
-        (string-trim-right-aux char-list s (- len 1)))))
+      (string-trim-right-aux char-codes s (- len 1)))))
 
 ; string-trim - remove leading and trailing characters
 (defun string-trim (chars s)
@@ -815,24 +830,24 @@
     (t
      (cons (car l2) (merge-lists l1 (cdr l2) pred)))))
 
-; split-list - split list into two halves
+; split-list - split list into two halves, returns (left . right)
 (defun split-list (lst)
   (let ((slow lst)
         (fast (cdr lst)))
-    (loop while (and fast (cdr fast))
-          do (setq slow (cdr slow))
-             (setq fast (cddr fast)))
+    (while (and fast (cdr fast))
+      (setq slow (cdr slow))
+      (setq fast (cddr fast)))
     (let ((second (cdr slow)))
       (rplacd slow nil)
-      (values lst second))))
+      (cons lst second))))
 
 ; sort - merge sort (stable)
 (defun sort (seq pred)
   (if (or (null seq) (null (cdr seq)))
       seq
-      (multiple-value-bind (left right) (split-list (copy-list seq))
-        (merge-lists (sort left pred)
-                     (sort right pred)
+      (let ((halves (split-list (copy-list seq))))
+        (merge-lists (sort (car halves) pred)
+                     (sort (cdr halves) pred)
                      pred))))
 
 ; stable-sort - same as sort (merge sort is stable)
