@@ -1003,6 +1003,13 @@
 (defmacro nth-value (n form)
   (list 'nth n (list 'multiple-value-list form)))
 
+; multiple-value-prog1 - evaluate forms, return multiple values of first
+(defmacro multiple-value-prog1 (first &rest rest)
+  (let ((vals (gensym "VALS")))
+    (list 'let (list (list vals (list 'multiple-value-list first)))
+          (cons 'progn rest)
+          (list 'values-list vals))))
+
 ; values-list is a primitive - no stdlib definition needed
 
 ;; ============================================================
