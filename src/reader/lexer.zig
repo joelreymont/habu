@@ -198,6 +198,13 @@ pub const Lexer = struct {
             while (isDigit(self.peek())) {
                 _ = self.advance();
             }
+            // Check for trailing symbol chars (e.g., would make it a symbol)
+            if (isSymbolChar(self.peek()) and !isDelimiter(self.peek())) {
+                while (isSymbolChar(self.peek())) {
+                    _ = self.advance();
+                }
+                return self.makeToken(.symbol);
+            }
             return self.makeToken(.rational);
         }
 
@@ -217,6 +224,13 @@ pub const Lexer = struct {
                     _ = self.advance();
                 }
             }
+            // Check for trailing symbol chars (e.g., 1.0+ would be a symbol)
+            if (isSymbolChar(self.peek()) and !isDelimiter(self.peek())) {
+                while (isSymbolChar(self.peek())) {
+                    _ = self.advance();
+                }
+                return self.makeToken(.symbol);
+            }
             return self.makeToken(.float);
         }
 
@@ -229,7 +243,23 @@ pub const Lexer = struct {
             while (isDigit(self.peek())) {
                 _ = self.advance();
             }
+            // Check for trailing symbol chars
+            if (isSymbolChar(self.peek()) and !isDelimiter(self.peek())) {
+                while (isSymbolChar(self.peek())) {
+                    _ = self.advance();
+                }
+                return self.makeToken(.symbol);
+            }
             return self.makeToken(.float);
+        }
+
+        // Check for trailing symbol chars like + or - (e.g., 1+ or 1-)
+        // This makes tokens like 1+ into symbols per CL spec
+        if (isSymbolChar(self.peek()) and !isDelimiter(self.peek())) {
+            while (isSymbolChar(self.peek())) {
+                _ = self.advance();
+            }
+            return self.makeToken(.symbol);
         }
 
         // Integer: check if it fits in fixnum range

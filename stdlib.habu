@@ -473,10 +473,14 @@
       (list 'let (list (list tmp (list '- place delta)))
             (list 'setf place tmp)))))
 
-; add1 - add one to number (CL 1+ can't be defined due to parser)
-(defun add1 (n) (+ n 1))
+; 1+ - add one to number
+(defun 1+ (n) (+ n 1))
 
-; sub1 - subtract one from number (CL 1- can't be defined due to parser)
+; 1- - subtract one from number
+(defun 1- (n) (- n 1))
+
+; add1/sub1 - aliases for compatibility
+(defun add1 (n) (+ n 1))
 (defun sub1 (n) (- n 1))
 
 ; push - push value onto list (destructive)
