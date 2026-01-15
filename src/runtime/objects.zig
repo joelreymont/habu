@@ -385,6 +385,23 @@ pub const HashTable = extern struct {
     }
 };
 
+/// Package object for symbol namespace management
+pub const Package = extern struct {
+    kind: BoxedKind = .package,
+    /// Package name (symbol)
+    name: Value,
+    /// List of nickname symbols
+    nicknames: Value,
+    /// List of packages this package uses
+    use_list: Value,
+    /// Hash table of exported symbols
+    exports: Value,
+    /// Hash table of internal symbols
+    symbols: Value,
+    /// List of shadowed symbol names
+    shadowing: Value,
+};
+
 /// Pathname object for file path manipulation
 /// Follows Common Lisp pathname component model
 pub const Pathname = extern struct {
