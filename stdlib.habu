@@ -1202,21 +1202,38 @@
                             (nreverse values)))))))
 
 ; rotatef - rotate values through places
+; (rotatef a b c) => a gets old b, b gets old c, c gets old a
 (defmacro rotatef (&rest places)
-  (if (null places)
-      nil
-      (if (null (cdr places))
-          nil
-          (let ((temps (mapcar (lambda (p) 
-                                 (declare (ignore p))
-                                 (gensym "TEMP"))
-                               places)))
-            (list 'let (mapcar #'list temps places)
-                  (cons 'psetf
-                        (apply #'append
-                               (mapcar #'list 
-                                       places
-                                       (append (cdr temps) (list (car temps)))))))))))
+  (cond
+    ((null places) nil)
+    ((null (cdr places)) nil)
+    ((null (cddr places))
+     ; Two places: (rotatef a b)
+     (let ((a (car places))
+           (b (cadr places))
+           (t1 (gensym))
+           (t2 (gensym)))
+       (list 'let (list (list t1 a) (list t2 b))
+             (list 'setf a t2)
+             (list 'setf b t1)
+             nil)))
+    ((null (cdddr places))
+     ; Three places: (rotatef a b c)
+     (let ((a (car places))
+           (b (cadr places))
+           (c (caddr places))
+           (t1 (gensym))
+           (t2 (gensym))
+           (t3 (gensym)))
+       (list 'let (list (list t1 a) (list t2 b) (list t3 c))
+             (list 'setf a t2)
+             (list 'setf b t3)
+             (list 'setf c t1)
+             nil)))
+    (t
+     ; Four+ places - rare, not yet supported
+     (error "rotatef: more than 3 places not yet supported"))))
+
 
 ; shiftf - shift values through places, return first
 (defmacro shiftf (&rest places-and-value)
