@@ -1498,32 +1498,36 @@
         ((> n 0) 1)
         (t 0)))
 
-; floor - floor division
+; floor - floor division, returns (values quotient remainder)
 (defun floor (number &optional (divisor 1))
-  (let ((q (truncate number divisor)))
-    (if (and (not (zerop (mod number divisor)))
+  (let* ((q (truncate number divisor))
+         (r (- number (* q divisor))))
+    (if (and (not (zerop r))
              (if (< divisor 0) (> number 0) (< number 0)))
-        (- q 1)
-        q)))
+        (values (- q 1) (+ r divisor))
+        (values q r))))
 
-; ceiling - ceiling division
+; ceiling - ceiling division, returns (values quotient remainder)
 (defun ceiling (number &optional (divisor 1))
-  (let ((q (truncate number divisor)))
-    (if (and (not (zerop (mod number divisor)))
+  (let* ((q (truncate number divisor))
+         (r (- number (* q divisor))))
+    (if (and (not (zerop r))
              (if (< divisor 0) (< number 0) (> number 0)))
-        (+ q 1)
-        q)))
+        (values (+ q 1) (- r divisor))
+        (values q r))))
 
-; round - round to nearest
+; round - round to nearest, returns (values quotient remainder)
 (defun round (number &optional (divisor 1))
   (let* ((q (truncate number divisor))
-         (r (mod number divisor))
+         (r (- number (* q divisor)))
+         (abs-r (abs r))
          (half (/ (abs divisor) 2)))
-    (cond
-      ((< (abs r) half) q)
-      ((> (abs r) half) (if (< (* number divisor) 0) (- q 1) (+ q 1)))
-      ((evenp q) q)  ; Round to even
-      (t (if (< (* number divisor) 0) (- q 1) (+ q 1))))))
+    (let ((rq (cond
+                ((< abs-r half) q)
+                ((> abs-r half) (if (< (* number divisor) 0) (- q 1) (+ q 1)))
+                ((evenp q) q)  ; Round to even
+                (t (if (< (* number divisor) 0) (- q 1) (+ q 1))))))
+      (values rq (- number (* rq divisor))))))
 
 ;; ============================================================
 ;; Character Utilities
