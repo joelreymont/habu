@@ -2094,20 +2094,8 @@
   (declare (ignore symbol))
   nil)  ; Placeholder - property lists not yet implemented
 
-; get - get property from symbol
-(defun get (symbol indicator &optional default)
-  (declare (ignore symbol indicator))
-  default)  ; Placeholder - symbol property lists not implemented
-
-; put - set property on symbol
-(defun put (symbol indicator value)
-  (declare (ignore symbol indicator value))
-  value)  ; Placeholder - symbol property lists not implemented
-
-; remprop - remove property from symbol
-(defun remprop (symbol indicator)
-  (declare (ignore symbol indicator))
-  nil)  ; Placeholder - symbol property lists not implemented
+; get, put, remprop - implemented as VM primitives (opcodes.zig)
+; No stdlib wrapper needed - compiler generates direct opcode calls
 
 ; getf - get property from plist
 (defun getf (plist indicator &optional default)
