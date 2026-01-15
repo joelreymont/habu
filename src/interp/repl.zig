@@ -1284,6 +1284,9 @@ pub const Repl = struct {
         const lambda_sym = try self.heap.intern("lambda");
         const lambda_expr = try self.heap.allocCons(lambda_sym, rest2);
 
+        // Expand nested macros in the lambda body before compilation
+        const expanded_lambda = self.expandMacros(lambda_expr) catch return error.CompileError;
+
         // Compile and evaluate the lambda to get a closure
         const saved_builder = self.compiler.builder;
         const saved_allocator = self.compiler.allocator;
@@ -1293,7 +1296,7 @@ pub const Repl = struct {
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
-        const ir_node = self.compiler.compile(lambda_expr, &env) catch |err| {
+        const ir_node = self.compiler.compile(expanded_lambda, &env) catch |err| {
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
             return if (err == error.UnboundVariable) error.CompileError else error.CompileError;

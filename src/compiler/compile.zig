@@ -1744,6 +1744,12 @@ pub const Compiler = struct {
         defer macro_compiler.deinit();
         macro_compiler.vm = vm;
 
+        // Share macro table so nested macros (like prog1) work in macro bodies
+        var iter = self.macro_table.iterator();
+        while (iter.next()) |entry| {
+            try macro_compiler.macro_table.put(entry.key_ptr.*, entry.value_ptr.*);
+        }
+
         var empty_env = Env.init(self.allocator, null);
         const lambda_ir = macro_compiler.compile(lambda_list, &empty_env) catch
             return error.InvalidSyntax;
