@@ -2468,32 +2468,41 @@ pub const Vm = struct {
                     subscripts[j] = @intCast(sub_signed);
                 }
 
-                // Pop array
+                // Pop array or vector
                 const arr_val = try self.pop();
-                if (!arr_val.isArray()) return error.TypeMismatch;
-                const arr = arr_val.toPtr(runtime.Array);
 
-                // Verify rank matches
-                if (arr.rank != sub_count) return error.TypeMismatch;
+                // Handle vectors (1D case)
+                if (arr_val.isVector() and sub_count == 1) {
+                    const vec = arr_val.toPtr(Vector);
+                    const idx: usize = @intCast(subscripts[0]);
+                    if (idx >= vec.length) return error.TypeMismatch;
+                    try self.push(vec.get(idx));
+                } else if (arr_val.isArray()) {
+                    const arr = arr_val.toPtr(runtime.Array);
 
-                // Calculate linear index using row-major order
-                // index = s0*d1*d2*... + s1*d2*d3*... + ... + sN
-                var index: u64 = 0;
-                for (0..sub_count) |k| {
-                    // Bounds check
-                    if (subscripts[k] >= arr.dimensions[k]) return error.TypeMismatch;
+                    // Verify rank matches
+                    if (arr.rank != sub_count) return error.TypeMismatch;
 
-                    // Calculate stride (product of remaining dimensions)
-                    var stride: u64 = 1;
-                    for (k + 1..sub_count) |m| {
-                        stride *= arr.dimensions[m];
+                    // Calculate linear index using row-major order
+                    var index: u64 = 0;
+                    for (0..sub_count) |k| {
+                        // Bounds check
+                        if (subscripts[k] >= arr.dimensions[k]) return error.TypeMismatch;
+
+                        // Calculate stride (product of remaining dimensions)
+                        var stride: u64 = 1;
+                        for (k + 1..sub_count) |m| {
+                            stride *= arr.dimensions[m];
+                        }
+                        index += subscripts[k] * stride;
                     }
-                    index += subscripts[k] * stride;
-                }
 
-                // Access element
-                const data: [*]Value = @ptrFromInt(arr.data_ptr);
-                try self.push(data[index]);
+                    // Access element
+                    const data: [*]Value = @ptrFromInt(arr.data_ptr);
+                    try self.push(data[index]);
+                } else {
+                    return error.TypeMismatch;
+                }
             },
 
             .aset => {
@@ -2515,34 +2524,45 @@ pub const Vm = struct {
                     subscripts[j] = @intCast(sub_signed);
                 }
 
-                // Pop array
+                // Pop array or vector
                 const arr_val = try self.pop();
-                if (!arr_val.isArray()) return error.TypeMismatch;
-                const arr = arr_val.toPtr(runtime.Array);
 
-                // Verify rank matches
-                if (arr.rank != sub_count) return error.TypeMismatch;
+                // Handle vectors (1D case)
+                if (arr_val.isVector() and sub_count == 1) {
+                    const vec = arr_val.toPtr(Vector);
+                    const idx: usize = @intCast(subscripts[0]);
+                    if (idx >= vec.length) return error.TypeMismatch;
+                    vec.set(idx, new_val);
+                    try self.push(new_val);
+                } else if (arr_val.isArray()) {
+                    const arr = arr_val.toPtr(runtime.Array);
 
-                // Calculate linear index using row-major order
-                var index: u64 = 0;
-                for (0..sub_count) |k| {
-                    // Bounds check
-                    if (subscripts[k] >= arr.dimensions[k]) return error.TypeMismatch;
+                    // Verify rank matches
+                    if (arr.rank != sub_count) return error.TypeMismatch;
 
-                    // Calculate stride (product of remaining dimensions)
-                    var stride: u64 = 1;
-                    for (k + 1..sub_count) |m| {
-                        stride *= arr.dimensions[m];
+                    // Calculate linear index using row-major order
+                    var index: u64 = 0;
+                    for (0..sub_count) |k| {
+                        // Bounds check
+                        if (subscripts[k] >= arr.dimensions[k]) return error.TypeMismatch;
+
+                        // Calculate stride (product of remaining dimensions)
+                        var stride: u64 = 1;
+                        for (k + 1..sub_count) |m| {
+                            stride *= arr.dimensions[m];
+                        }
+                        index += subscripts[k] * stride;
                     }
-                    index += subscripts[k] * stride;
+
+                    // Set element
+                    const data: [*]Value = @ptrFromInt(arr.data_ptr);
+                    data[index] = new_val;
+
+                    // Return the value (Common Lisp setf semantics)
+                    try self.push(new_val);
+                } else {
+                    return error.TypeMismatch;
                 }
-
-                // Set element
-                const data: [*]Value = @ptrFromInt(arr.data_ptr);
-                data[index] = new_val;
-
-                // Return the value (Common Lisp setf semantics)
-                try self.push(new_val);
             },
 
             .array_dimension => {
