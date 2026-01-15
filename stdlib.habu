@@ -98,6 +98,11 @@
     ((vectorp seq) (vector-length seq))
     (t (length-aux seq 0))))
 
+; list-length - CL-compatible list length (returns nil for circular lists)
+; For now, just calls length (no circular detection)
+(defun list-length (lst)
+  (if (null lst) 0 (length-aux lst 0)))
+
 ; Append - the built-in append only takes 2 args
 ; For multi-arg append, use append*
 (defun append* (&rest lists)
@@ -1576,6 +1581,13 @@
           (car alist)
           (rassoc-if pred (cdr alist)))))
 
+; copy-alist - copy association list (shallow copy of pairs)
+(defun copy-alist (alist)
+  (if (null alist)
+      nil
+      (cons (cons (caar alist) (cdar alist))
+            (copy-alist (cdr alist)))))
+
 ;; ============================================================
 ;; Set Operations
 ;; ============================================================
@@ -2085,7 +2097,17 @@
 ; get - get property from symbol
 (defun get (symbol indicator &optional default)
   (declare (ignore symbol indicator))
-  default)  ; Placeholder
+  default)  ; Placeholder - symbol property lists not implemented
+
+; put - set property on symbol
+(defun put (symbol indicator value)
+  (declare (ignore symbol indicator value))
+  value)  ; Placeholder - symbol property lists not implemented
+
+; remprop - remove property from symbol
+(defun remprop (symbol indicator)
+  (declare (ignore symbol indicator))
+  nil)  ; Placeholder - symbol property lists not implemented
 
 ; getf - get property from plist
 (defun getf (plist indicator &optional default)

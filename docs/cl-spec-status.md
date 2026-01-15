@@ -99,10 +99,10 @@
 
 ## Summary
 
-**Overall Status: 96%+ Complete**
+**Overall Status: ~90% Complete**
 
 - TIER 1-3: ✅ 100% Complete
-- TIER 4: ✅ 96% Complete (all major features working)
+- TIER 4: ⚠️ ~68% Complete (5.4/8 major subsystems)
 
 **Known Issues:**
 None - all previously reported bugs have been fixed!
@@ -116,5 +116,32 @@ None - all previously reported bugs have been fixed!
 2. Full format justification parameters
 3. Stream functions (make-string-input-stream, etc.)
 4. Package system (defpackage, in-package, etc.)
+5. Symbol property lists (get/put/remprop are placeholders)
+
+## Deferred Features (Large Scope)
+
+These features require substantial implementation effort and are deferred:
+
+1. **Stream System** (~2-3 weeks)
+   - File streams, string streams, byte streams
+   - with-open-file, with-input/output-from-string
+   - Stream position, peek, unread operations
+   - Estimated: 15-20 functions + state management
+
+2. **Package System** (~2-3 weeks)
+   - defpackage, in-package, export, import, shadow
+   - Package namespace isolation
+   - Symbol visibility and conflicts
+   - Estimated: 20+ functions + runtime infrastructure
+
+3. **Reader Conditionals** (~3-5 days)
+   - #+ #- feature expressions
+   - Requires lexer refactoring for conditional compilation
+   - *features* list management
+
+4. **Symbol Property Lists** (~1-2 days)
+   - Runtime symbol-plist storage
+   - get, put, remprop implementation
+   - Integration with symbol objects
 
 **All other CL spec features are implemented and working correctly.**

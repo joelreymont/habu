@@ -1178,7 +1178,10 @@ pub const Repl = struct {
             if (end > start) {
                 const expr = content[start..end];
                 _ = self.eval(expr) catch |err| {
-                    try writer.print("Error evaluating: {s}\n  {s}\n", .{ expr[0..@min(50, expr.len)], @errorName(err) });
+                    const max_display = 200;
+                    const display_expr = if (expr.len <= max_display) expr else expr[0..max_display];
+                    const suffix = if (expr.len > max_display) "..." else "";
+                    try writer.print("Error evaluating: {s}{s}\n  {s}\n", .{ display_expr, suffix, @errorName(err) });
                     return err;
                 };
                 pos = end;
