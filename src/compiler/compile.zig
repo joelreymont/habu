@@ -1701,7 +1701,9 @@ pub const Compiler = struct {
             const sym = expr.toPtr(Symbol);
             const name = sym.getName();
 
+            std.debug.print("[COMPILE] Looking up symbol: {s}\n", .{name});
             if (env.lookup(name)) |binding| {
+                std.debug.print("[COMPILE]   Found in env: depth={d}, index={d}\n", .{ binding.depth, binding.index });
                 const var_ir = self.builder.variable(name, binding.depth, binding.index) catch
                     return error.OutOfMemory;
 
@@ -1715,14 +1717,23 @@ pub const Compiler = struct {
                 }
                 return var_ir;
             }
+            std.debug.print("[COMPILE]   Not found in env, checking globals\n", .{});
             // Check globals - use qualified name if symbol has package
             var qual_buf: [256]u8 = undefined;
             const qual_name = self.getQualifiedName(sym, &qual_buf) catch sym.getName();
+            std.debug.print("[COMPILE]   Qualified name: {s}\n", .{qual_name});
             // Allow forward references: allocate slot if not found
             // Runtime will check if still undefined when accessed
-            const idx = self.globals.lookup(qual_name) orelse
-                try self.globals.define(qual_name);
-            return try self.builder.globalRef(qual_name, idx);
+            const maybe_idx = self.globals.lookup(qual_name);
+            std.debug.print("[COMPILE]   Lookup result: {?}\n", .{maybe_idx});
+            const idx = maybe_idx orelse blk: {
+                std.debug.print("[COMPILE]   Defining new global\n", .{});
+                break :blk try self.globals.define(qual_name);
+            };
+            std.debug.print("[COMPILE]   Global {s} at index {d}\n", .{ qual_name, idx });
+            const ref = try self.builder.globalRef(qual_name, idx);
+            std.debug.print("[COMPILE]   Created global_ref @{*} with index {d}\n", .{ ref, ref.global_ref.index });
+            return ref;
         }
 
         // List (special form or function call)

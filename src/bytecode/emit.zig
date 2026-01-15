@@ -494,7 +494,12 @@ pub const Emitter = struct {
             .quote => |inner| try self.emitQuote(inner),
             .@"var" => |v| try self.emitVar(v.depth, v.index),
             .set => |s| try self.emitSet(s),
-            .global_ref => |g| try self.emitGlobalRef(g.index),
+            .global_ref => |g| {
+                std.debug.print("[EMIT] global_ref node @{*} with g.index={d}\n", .{ node, g.index });
+                const idx = g.index;
+                std.debug.print("[EMIT] copied idx={d}, about to call emitGlobalRef\n", .{idx});
+                try self.emitGlobalRef(idx);
+            },
             .define => |d| try self.emitDefine(d),
             .let => |l| try self.emitLet(l),
             .lambda => |lam| try self.emitLambda(lam),
@@ -940,9 +945,11 @@ pub const Emitter = struct {
     }
 
     fn emitVar(self: *Emitter, depth: u16, index: u16) Error!void {
+        std.debug.print("[EMIT] emitVar depth={d}, index={d}\n", .{ depth, index });
         if (depth == 0) {
             // Local variable
             if (index > 255) return error.TooManyLocals;
+            std.debug.print("[EMIT]   -> emit load_local {d}\n", .{index});
             try self.emitOp(.load_local);
             try self.emitU8(@intCast(index));
         } else {
@@ -966,8 +973,14 @@ pub const Emitter = struct {
     }
 
     fn emitGlobalRef(self: *Emitter, index: u16) Error!void {
+        std.debug.print("[EMIT] emitGlobalRef index={d}\n", .{index});
         try self.emitOp(.load_global);
         try self.emitU16(index);
+    }
+
+    fn emitGlobalRefNode(self: *Emitter, node: anytype) Error!void {
+        std.debug.print("[EMIT] emitGlobalRefNode @{*} with index {d}\n", .{ node, node.index });
+        try self.emitGlobalRef(node.index);
     }
 
     fn emitDefine(self: *Emitter, d: anytype) Error!void {

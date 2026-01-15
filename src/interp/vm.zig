@@ -691,8 +691,11 @@ pub const Vm = struct {
                 const idx = self.readU8();
                 const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
                 const stack_idx = bp + idx;
+                //std.debug.print("[VM] load_local idx={d}, bp={d}, stack_idx={d}, fp={d}\n", .{ idx, bp, stack_idx, self.fp });
                 if (stack_idx >= STACK_SIZE or stack_idx >= self.sp) return error.InvalidOpcode;
-                try self.push(self.stack[stack_idx]);
+                const val = self.stack[stack_idx];
+                //std.debug.print("[VM]   loaded value: {} (0x{x})\n", .{ val.typeKind(), val.raw });
+                try self.push(val);
             },
             .store_local => {
                 const idx = self.readU8();
@@ -792,13 +795,19 @@ pub const Vm = struct {
             },
             .load_global => {
                 const idx = self.readU16();
+                std.debug.print("[VM] load_global idx={d}\n", .{idx});
                 if (idx >= MAX_GLOBALS) return error.InvalidConstant;
-                try self.push(self.globals[idx]);
+                const val = self.globals[idx];
+                std.debug.print("[VM]   global value: {} (0x{x})\n", .{ val.typeKind(), val.raw });
+                try self.push(val);
             },
             .store_global => {
                 const idx = self.readU16();
+                //std.debug.print("[VM] store_global idx={d}\n", .{idx});
                 if (idx >= MAX_GLOBALS) return error.InvalidConstant;
-                self.globals[idx] = try self.pop();
+                const val = try self.pop();
+                //std.debug.print("[VM]   storing value: {} (0x{x})\n", .{ val.typeKind(), val.raw });
+                self.globals[idx] = val;
                 if (idx >= self.num_globals) {
                     self.num_globals = idx + 1;
                 }
@@ -1362,6 +1371,12 @@ pub const Vm = struct {
             // Function calls
             .call => {
                 const argc = self.readU8();
+                //std.debug.print("[VM] call argc={d}, sp={d}, fp={d}\n", .{ argc, self.sp, self.fp });
+                //std.debug.print("[VM]   Stack before call:\n", .{});
+                //const start_idx = if (self.sp > argc + 3) self.sp - argc - 3 else 0;
+                //for (start_idx..self.sp) |i| {
+                //    std.debug.print("[VM]     [{d}] = {} (0x{x})\n", .{ i, self.stack[i].typeKind(), self.stack[i].raw });
+                //}
                 try self.doCall(argc, false);
             },
             .tail_call => {
@@ -4533,6 +4548,30 @@ pub const Vm = struct {
         const fn_val = self.stack[self.sp - argc - 1];
 
         if (!fn_val.isClosure()) {
+            std.debug.print("\n=== doCall ERROR ===\n", .{});
+            std.debug.print("fn_val is not a closure, it's: {}\n", .{fn_val.typeKind()});
+            std.debug.print("fn_val.raw = 0x{x}\n", .{fn_val.raw});
+            std.debug.print("argc = {d}\n", .{argc});
+            std.debug.print("sp = {d}\n", .{self.sp});
+            std.debug.print("fp = {d}\n", .{self.fp});
+            std.debug.print("Stack around fn_val position:\n", .{});
+            const fn_idx = self.sp - argc - 1;
+            if (fn_idx >= 3) {
+                std.debug.print("  [{d}] = {} (0x{x})\n", .{ fn_idx - 3, self.stack[fn_idx - 3].typeKind(), self.stack[fn_idx - 3].raw });
+            }
+            if (fn_idx >= 2) {
+                std.debug.print("  [{d}] = {} (0x{x})\n", .{ fn_idx - 2, self.stack[fn_idx - 2].typeKind(), self.stack[fn_idx - 2].raw });
+            }
+            if (fn_idx >= 1) {
+                std.debug.print("  [{d}] = {} (0x{x})\n", .{ fn_idx - 1, self.stack[fn_idx - 1].typeKind(), self.stack[fn_idx - 1].raw });
+            }
+            std.debug.print("  [{d}] = {} (0x{x}) <- fn_val\n", .{ fn_idx, fn_val.typeKind(), fn_val.raw });
+            if (fn_idx + 1 < self.sp) {
+                std.debug.print("  [{d}] = {} (0x{x})\n", .{ fn_idx + 1, self.stack[fn_idx + 1].typeKind(), self.stack[fn_idx + 1].raw });
+            }
+            if (fn_idx + 2 < self.sp) {
+                std.debug.print("  [{d}] = {} (0x{x})\n", .{ fn_idx + 2, self.stack[fn_idx + 2].typeKind(), self.stack[fn_idx + 2].raw });
+            }
             return error.TypeMismatch;
         }
 
