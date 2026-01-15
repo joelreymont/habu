@@ -1281,7 +1281,18 @@ pub const Emitter = struct {
     }
 
     fn emitBlock(self: *Emitter, b: anytype) Error!void {
-        // Push a new block onto the control stack
+        // Intern block name and add to constant pool
+        const heap = self.heap orelse return error.OutOfMemory;
+        const name_sym = try heap.intern(b.name);
+        const name_idx = try self.addConstant(name_sym.raw);
+
+        // Emit push_block with placeholder offset and name index
+        try self.emitOp(.push_block);
+        const exit_offset_loc = self.code.items.len;
+        try self.code.appendSlice(self.allocator, &[_]u8{ 0, 0 }); // i16 exit offset placeholder
+        try self.emitU16(name_idx);
+
+        // Still track on control stack for unwind-protect handling
         const entry = ControlEntry{
             .block = .{
                 .name = b.name,
@@ -1293,7 +1304,17 @@ pub const Emitter = struct {
         // Emit body
         try self.emit(b.body);
 
-        // Pop block and patch all pending exit jumps to here
+        // Emit pop_block for normal exit
+        try self.emitOp(.pop_block);
+
+        // Patch the exit offset to point here (after pop_block)
+        const current_ip = self.code.items.len;
+        const exit_offset_ip = exit_offset_loc + 2; // After the offset bytes
+        const offset: i16 = @intCast(@as(isize, @intCast(current_ip)) - @as(isize, @intCast(exit_offset_ip)));
+        self.code.items[exit_offset_loc] = @truncate(@as(u16, @bitCast(offset)));
+        self.code.items[exit_offset_loc + 1] = @truncate(@as(u16, @bitCast(offset)) >> 8);
+
+        // Pop block from control stack and patch any compile-time exits (for same-chunk return-from)
         var popped = self.control_stack.pop().?;
         switch (popped) {
             .block => |*blk| {
@@ -1310,14 +1331,14 @@ pub const Emitter = struct {
         // Emit the return value
         try self.emit(r.value);
 
-        // Find the block by name, emitting cleanup for any unwind-protects crossed
+        // First check if block is in current chunk - if so, use compile-time jump
         var i = self.control_stack.items.len;
         while (i > 0) {
             i -= 1;
             switch (self.control_stack.items[i]) {
                 .block => |*blk| {
                     if (std.mem.eql(u8, blk.name, r.name)) {
-                        // Found target block - record jump for patching
+                        // Found target block in same chunk - use compile-time jump
                         const jump_loc = try self.emitJump(.jmp);
                         blk.pending_exits.append(self.allocator, jump_loc) catch
                             return error.OutOfMemory;
@@ -1327,7 +1348,6 @@ pub const Emitter = struct {
                 },
                 .unwind_protect => |up| {
                     // Crossing an unwind-protect - emit cleanup
-                    // Note: cleanup result is discarded, value is already on stack
                     try self.emit(up.cleanup);
                     try self.emitOp(.pop);
                 },
@@ -1336,8 +1356,14 @@ pub const Emitter = struct {
                 },
             }
         }
-        // Block not found - this is a compile error
-        return error.InvalidIr;
+
+        // Block not in current chunk - emit runtime return_from opcode
+        // This handles cross-closure return-from
+        const heap = self.heap orelse return error.OutOfMemory;
+        const name_sym = try heap.intern(r.name);
+        const name_idx = try self.addConstant(name_sym.raw);
+        try self.emitOp(.return_from);
+        try self.emitU16(name_idx);
     }
 
     fn emitUnwindProtect(self: *Emitter, u: anytype) Error!void {

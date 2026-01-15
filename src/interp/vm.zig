@@ -41,6 +41,7 @@ pub const Error = error{
     UnboundSymbol,
     UserError,
     RestartNotFound,
+    NoMatchingBlock,
 };
 
 /// Catch frame for exception handling
@@ -67,6 +68,20 @@ pub const UnwindFrame = struct {
     unwind_sp: usize,
     /// Frame pointer when push_unwind was executed
     unwind_fp: usize,
+};
+
+/// Block frame for block/return-from (lexical non-local exit)
+pub const BlockFrame = struct {
+    /// Block name (interned symbol raw value for identity comparison)
+    name_raw: u64,
+    /// Chunk to return to
+    chunk: *const Chunk,
+    /// IP to jump to after block exits (past the block body)
+    exit_ip: usize,
+    /// Stack pointer to restore
+    block_sp: usize,
+    /// Frame pointer to restore
+    block_fp: usize,
 };
 
 /// Restart frame for restart-case
@@ -194,6 +209,11 @@ pub const Vm = struct {
     /// Restart stack pointer
     restart_sp: usize,
 
+    /// Block stack for block/return-from
+    block_stack: [MAX_BLOCKS]BlockFrame,
+    /// Block stack pointer
+    block_sp: usize,
+
     /// Let scope stack for nested let bindings
     scope_stack: [MAX_SCOPES]Scope,
     /// Scope stack pointer (number of active scopes)
@@ -204,6 +224,11 @@ pub const Vm = struct {
     pending_throw_value: Value,
     pending_error: ?anyerror,
     is_unwinding: bool,
+
+    /// Saved return-from state for unwinding through unwind-protect
+    pending_block_name: u64,
+    pending_block_value: Value,
+    is_returning_from_block: bool,
 
     /// Secondary values buffer for multiple-value-bind
     secondary_values: [MAX_SECONDARY_VALUES]Value,
@@ -289,6 +314,7 @@ pub const Vm = struct {
     const MAX_CATCHES = 32;
     const MAX_UNWINDS = 32;
     const MAX_RESTARTS = 64;
+    const MAX_BLOCKS = 64;
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap) !Vm {
         var vm = Vm{
@@ -310,12 +336,17 @@ pub const Vm = struct {
             .unwind_sp = 0,
             .restart_stack = undefined,
             .restart_sp = 0,
+            .block_stack = undefined,
+            .block_sp = 0,
             .scope_stack = undefined,
             .scope_sp = 0,
             .pending_throw_tag = Value.nil,
             .pending_throw_value = Value.nil,
             .pending_error = null,
             .is_unwinding = false,
+            .pending_block_name = 0,
+            .pending_block_value = Value.nil,
+            .is_returning_from_block = false,
             .secondary_values = undefined,
             .secondary_values_count = 0,
             .global_env = null,
@@ -1859,6 +1890,36 @@ pub const Vm = struct {
                 try self.doThrow(tag, value);
             },
 
+            // Block/return-from (lexical non-local exit)
+            .push_block => {
+                const offset = self.readI16();
+                // Calculate exit_ip relative to current IP (after offset bytes, before name_idx)
+                const exit_ip = @as(usize, @intCast(@as(isize, @intCast(self.ip)) + offset));
+                const name_idx = self.readU16();
+                const name_raw = self.chunk.constants[name_idx];
+                if (self.block_sp >= MAX_BLOCKS) return error.StackOverflow;
+                self.block_stack[self.block_sp] = .{
+                    .name_raw = name_raw,
+                    .chunk = self.chunk,
+                    .exit_ip = exit_ip,
+                    .block_sp = self.sp,
+                    .block_fp = self.fp,
+                };
+                self.block_sp += 1;
+            },
+
+            .pop_block => {
+                if (self.block_sp == 0) return error.StackUnderflow;
+                self.block_sp -= 1;
+            },
+
+            .return_from => {
+                const name_idx = self.readU16();
+                const name_raw = self.chunk.constants[name_idx];
+                const value = try self.pop();
+                try self.doReturnFrom(name_raw, value);
+            },
+
             .push_unwind => {
                 const offset = self.readI16();
                 const cleanup_ip = @as(usize, @intCast(@as(isize, @intCast(self.ip)) + offset));
@@ -1874,11 +1935,11 @@ pub const Vm = struct {
 
             .pop_unwind => {
                 _ = self.readI16(); // Skip unused operand
-                // For normal exit, pop the unwind frame (doThrow/doError already popped for unwind case)
-                if (!self.is_unwinding and self.unwind_sp > 0) {
+                // For normal exit, pop the unwind frame (doThrow/doError/doReturnFrom already popped for unwind case)
+                if (!self.is_unwinding and !self.is_returning_from_block and self.unwind_sp > 0) {
                     self.unwind_sp -= 1;
                 }
-                // If we're unwinding (cleanup ran due to throw or error), re-throw/re-error
+                // If we're unwinding (cleanup ran due to throw, error, or return-from), re-invoke
                 if (self.is_unwinding) {
                     self.is_unwinding = false;
 
@@ -1894,6 +1955,15 @@ pub const Vm = struct {
                     self.pending_throw_tag = Value.nil;
                     self.pending_throw_value = Value.nil;
                     try self.doThrow(tag, value);
+                } else if (self.is_returning_from_block) {
+                    self.is_returning_from_block = false;
+
+                    // Continue return-from
+                    const name_raw = self.pending_block_name;
+                    const value = self.pending_block_value;
+                    self.pending_block_name = 0;
+                    self.pending_block_value = Value.nil;
+                    try self.doReturnFrom(name_raw, value);
                 }
             },
 
@@ -3509,6 +3579,56 @@ pub const Vm = struct {
         }
         // No matching catch found
         return error.UnhandledThrow;
+    }
+
+    /// Handle return-from by searching for matching block frame and jumping to it
+    fn doReturnFrom(self: *Vm, name_raw: u64, value: Value) Error!void {
+        // First, check if there's an unwind-protect that needs cleanup
+        // Unwind frames take precedence - we must run cleanup before continuing
+        if (self.unwind_sp > 0) {
+            // Pop the unwind frame
+            self.unwind_sp -= 1;
+            const unwind_frame = self.unwind_stack[self.unwind_sp];
+
+            // Save return-from state for after cleanup
+            self.pending_block_name = name_raw;
+            self.pending_block_value = value;
+            self.is_returning_from_block = true;
+
+            // Jump to cleanup code with saved stack/frame state
+            self.chunk = unwind_frame.chunk;
+            self.ip = unwind_frame.cleanup_ip;
+            if (unwind_frame.unwind_sp > STACK_SIZE or unwind_frame.unwind_fp > MAX_FRAMES) {
+                return error.InvalidOpcode;
+            }
+            self.sp = unwind_frame.unwind_sp;
+            self.fp = unwind_frame.unwind_fp;
+            // pop_unwind will re-invoke return-from after cleanup completes
+            return;
+        }
+
+        // No unwind frames - search for matching block frame
+        while (self.block_sp > 0) {
+            self.block_sp -= 1;
+            const frame = self.block_stack[self.block_sp];
+
+            // Check if name matches (using raw value identity)
+            if (name_raw == frame.name_raw) {
+                // Found matching block - restore state and jump
+                if (frame.block_sp > STACK_SIZE or frame.block_fp > MAX_FRAMES) {
+                    return error.InvalidOpcode;
+                }
+                self.chunk = frame.chunk;
+                self.ip = frame.exit_ip;
+                self.sp = frame.block_sp;
+                self.fp = frame.block_fp;
+                // Push the return value as result
+                try self.push(value);
+                return;
+            }
+        }
+        // No matching block found
+        return error.NoMatchingBlock;
     }
 
     /// Handle an error by running unwind-protect cleanup if needed

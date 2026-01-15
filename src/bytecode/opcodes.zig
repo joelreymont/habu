@@ -569,6 +569,24 @@ pub const Op = enum(u8) {
     /// ( hashtable -- alist )
     hash_alist = 0x89,
 
+    // ========================================================================
+    // Block/return-from (lexical non-local exit)
+    // ========================================================================
+
+    /// Push block frame (operand: i16 exit offset, u16 name constant index)
+    /// Saves state for return-from to jump back to
+    /// ( -- )
+    push_block = 0x8A,
+
+    /// Pop block frame on normal exit
+    /// ( -- )
+    pop_block = 0x8B,
+
+    /// Return from block (operand: u16 name constant index)
+    /// Searches for matching block and does non-local exit
+    /// ( value -- )
+    return_from = 0x8C,
+
     /// Check if value is a hash table
     /// ( x -- t/nil )
     hashtablep = 0x99,
@@ -1186,6 +1204,7 @@ pub const Op = enum(u8) {
             .check_refine,
             .apply,
             .pop_catch,
+            .pop_block,
             .throw,
             .hash_get,
             .hash_get_default,
@@ -1337,6 +1356,7 @@ pub const Op = enum(u8) {
             .find_key,
             .push_restart,
             .check_or,
+            .return_from,
             => 2,
 
             // 3 byte operand
@@ -1346,6 +1366,7 @@ pub const Op = enum(u8) {
 
             // 4 byte operand
             .push_i32,
+            .push_block, // i16 exit offset + u16 name constant index
             => 4,
         };
     }

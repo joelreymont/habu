@@ -123,6 +123,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .check_refine,
         .apply,
         .pop_catch,
+        .pop_block,
         .throw,
         .hash_get,
         .hash_get_default,
@@ -258,7 +259,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         },
 
         // 2 byte operand (u16)
-        .push_const, .load_global, .store_global, .make_vec, .make_hash, .find_key, .check_or => {
+        .push_const, .load_global, .store_global, .make_vec, .make_hash, .find_key, .check_or, .return_from => {
             const operand = chunk.readU16(offset + 1);
             try writer.print("{s} {d}\n", .{ op.name(), operand });
             return offset + 3;
@@ -292,6 +293,15 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .push_i32 => {
             const val = chunk.readI32(offset + 1);
             try writer.print("{s} {d}\n", .{ op.name(), val });
+            return offset + 5;
+        },
+
+        // 4 byte operand (i16 exit offset + u16 name index)
+        .push_block => {
+            const displacement = chunk.readI16(offset + 1);
+            const name_idx = chunk.readU16(offset + 3);
+            const target = @as(i32, @intCast(offset)) + 5 + displacement;
+            try writer.print("{s} name={d} exit={d} (-> {d})\n", .{ op.name(), name_idx, displacement, target });
             return offset + 5;
         },
     };
