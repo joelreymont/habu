@@ -1477,14 +1477,17 @@ pub const Vm = struct {
                 if (!val.isString()) return error.TypeMismatch;
                 const str = val.toPtr(String);
                 const bytes = str.bytes();
+                // Skip leading whitespace
+                var start: usize = 0;
+                while (start < bytes.len and (bytes[start] == ' ' or bytes[start] == '\t' or bytes[start] == '\n' or bytes[start] == '\r')) : (start += 1) {}
                 // Parse integer from string
                 var result: i64 = 0;
                 var negative = false;
-                var i: usize = 0;
+                var i: usize = start;
                 var overflow = false;
-                if (bytes.len > 0 and bytes[0] == '-') {
+                if (i < bytes.len and bytes[i] == '-') {
                     negative = true;
-                    i = 1;
+                    i += 1;
                 }
                 while (i < bytes.len) : (i += 1) {
                     const c = bytes[i];
@@ -1501,6 +1504,8 @@ pub const Vm = struct {
                             break;
                         }
                         result = add_result[0];
+                    } else if (c == ' ' or c == '\t' or c == '\n' or c == '\r') {
+                        break; // Stop at trailing whitespace
                     } else {
                         break;
                     }
