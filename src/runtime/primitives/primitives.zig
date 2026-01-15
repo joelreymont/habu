@@ -17,6 +17,7 @@ pub const complex = @import("complex.zig");
 pub const clos = @import("clos.zig");
 pub const stream = @import("stream.zig");
 pub const hash = @import("hash.zig");
+pub const char = @import("char.zig");
 
 // Re-export commonly used functions
 pub const cons = list.cons;
@@ -44,4 +45,5 @@ test {
     _ = clos;
     _ = stream;
     _ = hash;
+    _ = char;
 }
