@@ -454,6 +454,7 @@
                                      g)))
                    (error "setf getf: plist must be a variable"))))
             ((eq op 'char) (list '%string-set (cadr place) (caddr place) value))
+            ((eq op 'slot-value) (list '%set-slot-value (cadr place) (caddr place) value))
             (t (error "setf: unsupported place" place))))
       (error "setf: invalid place" place))))
 
@@ -756,7 +757,7 @@
 (defun string= ((s1 string) (s2 string))
   (string-equal s1 s2))
 
-; string/= - case-sensitive string inequality  
+; string/= - case-sensitive string inequality
 (defun string/= ((s1 string) (s2 string))
   (not (string= s1 s2)))
 
@@ -1148,7 +1149,7 @@
           (cons 'progn rest)
           result)))
 
-; prog2 - evaluate forms, return second value  
+; prog2 - evaluate forms, return second value
 (defmacro prog2 (first second &rest rest)
   (list 'progn
         first
@@ -1967,14 +1968,14 @@
 ; with-gensyms - create gensyms for hygiene
 (defmacro with-gensyms (names &rest body)
   (list 'let
-        (mapcar (lambda (n) 
+        (mapcar (lambda (n)
                   (list n (list 'gensym (symbol-name n))))
                 names)
         (cons 'progn body)))
 
 ; once-only - evaluate expressions once
 (defmacro once-only (names &rest body)
-  (let ((gensyms (mapcar (lambda (n) 
+  (let ((gensyms (mapcar (lambda (n)
                            (declare (ignore n))
                            (gensym))
                          names)))
@@ -2632,26 +2633,26 @@
          (predicate-name (intern (concatenate 'string name-str "-P")))
          (slot-names (mapcar (lambda (s) (if (consp s) (car s) s)) slots))
          (slot-count (length slot-names)))
-    
+
     ; Parse slot defaults
     (let ((slot-defaults (mapcar (lambda (s)
                                    (if (consp s)
                                        (if (cdr s) (cadr s) nil)
                                        nil))
                                  slots)))
-      
+
       ; Generate forms
       (list 'progn
             ; Constructor: (defun make-NAME (&key slot1 slot2 ...) (vector 'NAME slot1 slot2 ...))
             (list 'defun constructor-name (cons '&key slot-names)
                   (cons 'vector (cons (list 'quote name) slot-names)))
-            
+
             ; Predicate: (defun NAME-p (obj) (and (vectorp obj) (> (length obj) 0) (eq (svref obj 0) 'NAME)))
             (list 'defun predicate-name '(obj)
                   (list 'and '(vectorp obj)
                         (list '> '(length obj) 0)
                         (list 'eq '(svref obj 0) (list 'quote name))))
-            
+
             ; Accessors: (defun NAME-SLOT (obj) (svref obj N))
             (cons 'progn
                   (let ((i 1))
