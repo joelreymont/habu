@@ -1736,6 +1736,12 @@
 (defun nstring-capitalize (s)
   (string-capitalize s))
 
+; string-append - concatenate strings
+(defun string-append (&rest strings)
+  (if (null strings)
+      ""
+      (foldl (lambda (a b) (string-concat a b)) (car strings) (cdr strings))))
+
 ;; ============================================================
 ;; Additional Sequence Functions
 ;; ============================================================
