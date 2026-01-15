@@ -407,6 +407,7 @@ pub const Builtins = struct {
     kw_eq: Value,
     kw_eql: Value,
     kw_equal: Value,
+    kw_type: Value,
 
     /// Initialize all builtin symbols from heap
     pub fn init(heap: *Heap) !Builtins {
@@ -724,6 +725,7 @@ pub const Builtins = struct {
             .kw_eq = try heap.internKeyword("eq"),
             .kw_eql = try heap.internKeyword("eql"),
             .kw_equal = try heap.internKeyword("equal"),
+            .kw_type = try heap.internKeyword("type"),
         };
     }
 };
@@ -1979,13 +1981,23 @@ pub const Compiler = struct {
                         .default = default_ir,
                     });
                 } else {
-                    // Typed parameter: (name type)
+                    // Typed parameter: (name type) or (name :type type)
                     if (!typed.cdr.isCons()) return error.InvalidLambda;
                     const type_cons = typed.cdr.toPtr(Cons);
-                    if (!type_cons.car.isSymbol()) return error.InvalidLambda;
+                    const b = self.builtins orelse return error.UninitializedBuiltins;
+
+                    var type_val: Value = undefined;
+                    if (type_cons.car.isKeyword() and type_cons.car.raw == b.kw_type.raw) {
+                        // New syntax: (name :type type-expr)
+                        if (!type_cons.cdr.isCons()) return error.InvalidLambda;
+                        type_val = type_cons.cdr.toPtr(Cons).car;
+                    } else {
+                        // Old syntax: (name type-expr)
+                        type_val = type_cons.car;
+                    }
 
                     try params.append(self.allocator, name);
-                    try typed_params.append(self.allocator, .{ .name = name, .type_sym = type_cons.car });
+                    try typed_params.append(self.allocator, .{ .name = name, .type_sym = type_val });
                 }
             } else {
                 return error.InvalidLambda;
@@ -2232,7 +2244,7 @@ pub const Compiler = struct {
 
     /// Find variables that need boxing: both mutated via set! AND captured by a lambda
     /// This pre-scans a let body to determine which bindings need automatic boxing
-    fn findBoxedVars(self: *Compiler, body: Value, binding_names: []const []const u8) error{OutOfMemory}!BoxingSet {
+    fn findBoxedVars(self: *Compiler, body: Value, binding_names: []const []const u8, result: *BoxingSet) error{OutOfMemory}!void {
         var mutated = std.StringHashMap(void).init(self.allocator);
         defer mutated.deinit();
 
@@ -2243,14 +2255,12 @@ pub const Compiler = struct {
         try self.collectMutationsAndCaptures(body, binding_names, &mutated, &captured);
 
         // Intersection: names that are both mutated AND captured need boxing
-        var result = BoxingSet.init(self.allocator);
         var iter = mutated.keyIterator();
         while (iter.next()) |name| {
             if (captured.contains(name.*)) {
                 try result.add(name.*);
             }
         }
-        return result;
     }
 
     /// Recursively collect mutations (set!) and lambda captures in an expression
@@ -2487,8 +2497,14 @@ pub const Compiler = struct {
         }
 
         // Find variables that need boxing (mutable + captured by lambda)
-        var boxed = try self.findBoxedVars(body_exprs, binding_names.items);
-        defer boxed.deinit();
+        // Allocate on heap to avoid dangling pointer during recursive compilation
+        const boxed = try self.allocator.create(BoxingSet);
+        boxed.* = BoxingSet.init(self.allocator);
+        defer {
+            boxed.deinit();
+            self.allocator.destroy(boxed);
+        }
+        try self.findBoxedVars(body_exprs, binding_names.items, boxed);
 
         // Create let_env first so we can get indices for each binding
         var let_env = Env.initLet(self.allocator, env);
@@ -2531,8 +2547,10 @@ pub const Compiler = struct {
         // Set boxed_vars so that variable refs and set! use box operations
         const saved_boxed = self.boxed_vars;
         if (boxed.names.count() > 0) {
-            self.boxed_vars = &boxed;
+            self.boxed_vars = boxed;
         }
+        // Restore on error before defer frees boxed
+        errdefer self.boxed_vars = saved_boxed;
 
         // Compile body - body is in tail position if let is
         const body_ir = try self.compileBodyWithTail(body_exprs, &let_env, in_tail);
