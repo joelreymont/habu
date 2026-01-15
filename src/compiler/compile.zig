@@ -103,6 +103,7 @@ pub const Builtins = struct {
     @"handler-case": Value,
     signal: Value,
     @"%condition%": Value, // Internal tag for condition system
+    @"handler-bind": Value,
     @"restart-case": Value,
     @"invoke-restart": Value,
     @"find-restart": Value,
@@ -481,6 +482,7 @@ pub const Builtins = struct {
             .@"handler-case" = try heap.intern("handler-case"),
             .signal = try heap.intern("signal"),
             .@"%condition%" = try heap.intern("%condition%"),
+            .@"handler-bind" = try heap.intern("handler-bind"),
             .@"restart-case" = try heap.intern("restart-case"),
             .@"invoke-restart" = try heap.intern("invoke-restart"),
             .@"find-restart" = try heap.intern("find-restart"),
@@ -1781,6 +1783,7 @@ pub const Compiler = struct {
         throw,
         @"handler-case",
         signal,
+        @"handler-bind",
         @"restart-case",
         @"invoke-restart",
         @"find-restart",
@@ -1847,6 +1850,7 @@ pub const Compiler = struct {
         .{ "throw", .throw },
         .{ "handler-case", .@"handler-case" },
         .{ "signal", .signal },
+        .{ "handler-bind", .@"handler-bind" },
         .{ "restart-case", .@"restart-case" },
         .{ "invoke-restart", .@"invoke-restart" },
         .{ "find-restart", .@"find-restart" },
@@ -1923,6 +1927,7 @@ pub const Compiler = struct {
                     .@"return-from" => self.compileReturnFrom(tail, env),
                     .throw => self.compileThrow(tail, env),
                     .signal => self.compileSignal(tail, env),
+                    .@"handler-bind" => self.compileHandlerBind(tail, env),
                     .@"restart-case" => self.compileRestartCase(tail, env),
                     .@"invoke-restart" => self.compileInvokeRestart(tail, env),
                     .@"find-restart" => self.compileFindRestart(tail, env),
@@ -3943,6 +3948,58 @@ pub const Compiler = struct {
 
         const node = try self.allocator.create(Ir);
         node.* = .{ .find_restart = .{ .operand = operand } };
+        return node;
+    }
+
+    /// Compile handler-bind
+    /// (handler-bind ((condition-type handler-fn) ...) body)
+    fn compileHandlerBind(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const args_cons = args.toPtr(Cons);
+        const handler_specs = args_cons.car;
+        const body_forms = args_cons.cdr;
+
+        // Collect handler bindings
+        var handlers = std.ArrayList(ir.Handler){};
+        defer handlers.deinit(self.allocator);
+
+        var current = handler_specs;
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            const spec = cons.car;
+
+            if (!spec.isCons()) return error.InvalidSyntax;
+            const spec_cons = spec.toPtr(Cons);
+
+            // First element: condition type (evaluate at runtime)
+            const condition_type_expr = spec_cons.car;
+            const condition_type_ir = try self.compile(condition_type_expr, env);
+
+            // Second element: handler function (evaluate at runtime)
+            const rest = spec_cons.cdr;
+            if (!rest.isCons()) return error.InvalidSyntax;
+            const handler_fn_expr = rest.toPtr(Cons).car;
+            const handler_fn_ir = try self.compile(handler_fn_expr, env);
+
+            try handlers.append(self.allocator, .{
+                .condition_type = condition_type_ir,
+                .handler_fn = handler_fn_ir,
+            });
+
+            current = cons.cdr;
+        }
+
+        // Compile body as progn
+        const body_ir = try self.compileProgn(body_forms, env);
+
+        const handlers_slice = try self.allocator.dupe(ir.Handler, handlers.items);
+
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .handler_bind = .{
+            .body = body_ir,
+            .handlers = handlers_slice,
+        } };
         return node;
     }
 

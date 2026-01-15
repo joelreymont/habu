@@ -91,11 +91,11 @@ pub const Op = enum(u8) {
 
     /// Store to global (operand: u16 name index)
     /// ( val -- )
-    store_global = 0x16,
+    store_global = 0x2E,
 
     /// Load argument count for current function call
     /// ( -- argc )
-    load_argc = 0x17,
+    load_argc = 0x2F,
 
     /// Find keyword argument value (operand: u16 keyword constant index)
     /// Scans args from (arity + optional_count + key_count) to argc for keyword
@@ -148,7 +148,7 @@ pub const Op = enum(u8) {
 
     /// Remainder (sign matches dividend)
     /// ( a b -- a rem b )
-    rem = 0x2E,
+    rem = 0x16,
 
     // ========================================================================
     // Comparison
@@ -448,17 +448,17 @@ pub const Op = enum(u8) {
     /// ( n -- rand )
     random = 0x91,
 
-    /// Seed random number generator
-    /// ( seed -- seed )
-    random_seed = 0xCC,
-
     /// Open file stream (operand: u8 direction: 0=input, 1=output)
     /// ( pathname -- stream )
-    open = 0xCD,
+    open = 0xCC,
 
     /// Close stream
     /// ( stream -- stream )
-    close = 0xCE,
+    close = 0xCD,
+
+    /// Seed random number generator
+    /// ( seed -- seed )
+    random_seed = 0xCE,
 
     /// Make array (dimensions on stack, count in operand, optional initial-element)
     /// ( dim1 dim2 ... dimN [initial-element] -- array )
@@ -511,9 +511,9 @@ pub const Op = enum(u8) {
     pathname_host = 0x07,
     pathname_device = 0x08,
     pathname_directory = 0x09,
+    pathname_version = 0x0C,
     pathname_name = 0x0A,
     pathname_type = 0x0B,
-    pathname_version = 0x0C,
 
     /// Reader macro operations
     /// ( char function -- nil )
@@ -566,14 +566,15 @@ pub const Op = enum(u8) {
 
     /// Get count of entries in hash table
     /// ( hashtable -- count )
-    /// Clear hash table
-    /// ( hashtable -- hashtable )
-    hash_clear = 0xCA,
+    hash_count = 0x98,
 
     /// Get hash table test function
     /// ( hashtable -- test-symbol )
-    hash_test = 0xCB,
-    hash_count = 0x98,
+    hash_test = 0xCA,
+
+    /// Clear hash table
+    /// ( hashtable -- hashtable )
+    hash_clear = 0xCB,
 
     /// Get list of keys from hash table
     /// ( hashtable -- keys-list )
@@ -719,6 +720,15 @@ pub const Op = enum(u8) {
     /// Check if object is of given type
     /// ( obj type-sym -- t/nil )
     typep = 0xAF,
+
+    /// Push handler frame
+    /// Stack contains condition type and handler function
+    /// ( condition_type handler_fn -- )
+    push_handler = 0x2E,
+
+    /// Pop handler frame
+    /// ( -- )
+    pop_handler = 0x2F,
 
     // ========================================================================
     // Numeric predicates
@@ -878,7 +888,7 @@ pub const Op = enum(u8) {
 
     /// Count number of 1 bits
     /// ( n -- count )
-    logcount = 0x2F,
+    logcount = 0x17,
 
     /// Number of bits needed to represent integer
     /// ( n -- length )
@@ -916,17 +926,17 @@ pub const Op = enum(u8) {
     /// ( length char -- string )
     make_string = 0xEC,
 
-    /// Extended math operations (sub-opcode in next byte)
-    /// ( ... -- ... )
-    math_ext = 0xED,
-
     /// Convert list of character codes to string
     /// ( list -- string )
-    list_to_string = 0xEE,
+    list_to_string = 0xED,
 
     /// Convert string to uppercase
     /// ( string -- string )
-    string_upcase = 0xEF,
+    string_upcase = 0xEE,
+
+    /// Extended math operations (sub-opcode in next byte)
+    /// ( ... -- ... )
+    math_ext = 0xEF,
 
     /// Convert string to lowercase
     /// ( string -- string )
@@ -1039,29 +1049,29 @@ pub const Op = enum(u8) {
     // Streams
     // ========================================================================
 
-    /// Check if value is a stream
-    /// ( val -- t/nil )
-    streamp = 0xBA,
-
-    /// Check if stream is an input stream
-    /// ( stream -- t/nil )
-    input_stream_p = 0xBB,
-
-    /// Check if stream is an output stream
-    /// ( stream -- t/nil )
-    output_stream_p = 0xBC,
-
     /// Make a string input stream
     /// ( string -- stream )
-    make_string_input_stream = 0xBD,
+    make_string_input_stream = 0xBA,
 
     /// Make a string output stream
     /// ( -- stream )
-    make_string_output_stream = 0xBE,
+    make_string_output_stream = 0xBB,
 
     /// Get the accumulated string from an output stream
     /// ( stream -- string )
-    get_output_stream_string = 0xBF,
+    get_output_stream_string = 0xBC,
+
+    /// Check if value is a stream
+    /// ( val -- t/nil )
+    streamp = 0xBD,
+
+    /// Check if stream is an input stream
+    /// ( stream -- t/nil )
+    input_stream_p = 0xBE,
+
+    /// Check if stream is an output stream
+    /// ( stream -- t/nil )
+    output_stream_p = 0xBF,
 
     // ========================================================================
     // Multiple values
@@ -1376,6 +1386,8 @@ pub const Op = enum(u8) {
             .pathname_name,
             .pathname_type,
             .pathname_version,
+            .push_handler,
+            .pop_handler,
             => 0,
 
             // 1 byte operand

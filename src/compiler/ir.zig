@@ -24,6 +24,12 @@ pub const Restart = struct {
     handler: *const Ir,
 };
 
+/// Single handler binding for handler-bind
+pub const Handler = struct {
+    condition_type: *const Ir,
+    handler_fn: *const Ir,
+};
+
 /// IR node - represents a Habu expression
 pub const Ir = union(enum) {
     // ========================================================================
@@ -155,6 +161,13 @@ pub const Ir = union(enum) {
         handler: *const Ir, // Handler dispatch code
         cond_var: []const u8, // Variable name for caught condition
         cond_idx: u16, // Local slot index for caught condition
+    },
+
+    /// Handler-bind: establishes condition handlers around a form
+    /// (handler-bind ((condition-type handler-fn) ...) body)
+    handler_bind: struct {
+        body: *const Ir,
+        handlers: []const Handler,
     },
 
     /// Restart-case: establishes restarts around a form

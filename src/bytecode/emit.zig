@@ -510,6 +510,7 @@ pub const Emitter = struct {
             .@"catch" => |c| try self.emitCatch(c),
             .handler_case => |hc| try self.emitHandlerCase(hc),
             .throw => |t| try self.emitThrow(t),
+            .handler_bind => |hb| try self.emitHandlerBind(hb),
             .restart_case => |rc| try self.emitRestartCase(rc),
             .invoke_restart => |inv| try self.emitInvokeRestart(inv),
             .find_restart => |fr| try self.emitUnaryOp(fr.operand, .find_restart),
@@ -1502,6 +1503,31 @@ pub const Emitter = struct {
 
         // Emit throw opcode - VM will unwind to matching catch
         try self.emitOp(.throw);
+    }
+
+    fn emitHandlerBind(self: *Emitter, hb: anytype) Error!void {
+        // Layout:
+        // push_handler condition_type handler_fn  (for each handler)
+        // <body code>
+        // pop_handler  (for each handler, in reverse order)
+
+        // Push handlers in order
+        for (hb.handlers) |h| {
+            // Emit condition type (evaluated at compile time)
+            try self.emit(h.condition_type);
+            // Emit handler function (evaluated at compile time)
+            try self.emit(h.handler_fn);
+            // Push handler frame
+            try self.emitOp(.push_handler);
+        }
+
+        // Emit body
+        try self.emit(hb.body);
+
+        // Pop handlers in reverse order
+        for (0..hb.handlers.len) |_| {
+            try self.emitOp(.pop_handler);
+        }
     }
 
     fn emitRestartCase(self: *Emitter, rc: anytype) Error!void {
