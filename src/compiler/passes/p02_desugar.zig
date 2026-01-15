@@ -219,11 +219,8 @@ pub const Desugarer = struct {
             break :blk false;
         };
 
-        // Get the body expression
-        const then_body = if (then_exprs.isCons())
-            then_exprs.toPtr(Cons).car
-        else
-            Value.nil;
+        // Get the body expression - wrap in progn if multiple
+        const then_body = try self.makeProgn(then_exprs);
 
         if (is_default) {
             // Default clause - just return the body (desugared)
