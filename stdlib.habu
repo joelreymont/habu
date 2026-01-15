@@ -22,16 +22,16 @@
 (defun or2 (a b) (if a a b))
 
 ; Arithmetic helpers
-(defun inc ((n :type fixnum)) :type fixnum (+ n 1))
-(defun dec ((n :type fixnum)) :type fixnum (- n 1))
+(defun (inc -> fixnum) ((n :type fixnum)) (+ n 1))
+(defun (dec -> fixnum) ((n :type fixnum)) (- n 1))
 (defun zerop ((n :type fixnum)) (= n 0))
 (defun plusp ((n :type fixnum)) (> n 0))
 (defun minusp ((n :type fixnum)) (< n 0))
 (defun evenp ((n :type fixnum)) (= (mod n 2) 0))
 (defun oddp ((n :type fixnum)) (= (mod n 2) 1))
-(defun abs ((n :type fixnum)) :type fixnum (if (< n 0) (- 0 n) n))
-(defun max2 ((a :type fixnum) (b :type fixnum)) :type fixnum (if (> a b) a b))
-(defun min2 ((a :type fixnum) (b :type fixnum)) :type fixnum (if (< a b) a b))
+(defun (abs -> fixnum) ((n :type fixnum)) (if (< n 0) (- 0 n) n))
+(defun (max2 -> fixnum) ((a :type fixnum) (b :type fixnum)) (if (> a b) a b))
+(defun (min2 -> fixnum) ((a :type fixnum) (b :type fixnum)) (if (< a b) a b))
 
 ; Equality - eql is same as eq for now (no floats with identity)
 (defun eql (a b) (eq a b))
@@ -103,11 +103,11 @@
       acc
       (reverse-aux (cdr lst) (cons (car lst) acc))))
 
-(defun reverse ((lst :type cons)) :type cons
+(defun (reverse -> list) ((lst :type list))
   (reverse-aux lst nil))
 
 ; Map (applies f to each element)
-(defun map (f (lst :type cons)) :type cons
+(defun (map -> list) (f (lst :type list))
   (if (null lst)
       nil
       (cons (funcall f (car lst)) (map f (cdr lst)))))
@@ -116,14 +116,14 @@
 (defun mapcar (f lst) (map f lst))
 
 ; Mapc - like map but for side effects, returns nil
-(defun mapc (f (lst :type cons))
+(defun mapc (f (lst :type list))
   (if (null lst)
       nil
       (progn (funcall f (car lst))
              (mapc f (cdr lst)))))
 
 ; Filter (keeps elements where pred is true)
-(defun filter (pred (lst :type cons)) :type cons
+(defun (filter -> list) (pred (lst :type list))
   (if (null lst)
       nil
       (if (funcall pred (car lst))
@@ -131,13 +131,13 @@
           (filter pred (cdr lst)))))
 
 ; Fold left (reduce)
-(defun foldl (f acc (lst :type cons))
+(defun foldl (f acc (lst :type list))
   (if (null lst)
       acc
       (foldl f (funcall f acc (car lst)) (cdr lst))))
 
 ; Fold right
-(defun foldr (f acc (lst :type cons))
+(defun foldr (f acc (lst :type list))
   (if (null lst)
       acc
       (funcall f (car lst) (foldr f acc (cdr lst)))))
@@ -170,13 +170,13 @@
       (drop (dec n) (cdr lst))))
 
 ; Nth element (0-indexed)
-(defun nth ((n :type fixnum) (lst :type cons))
+(defun nth ((n :type fixnum) (lst :type list))
   (if (zerop n)
       (car lst)
       (nth (dec n) (cdr lst))))
 
 ; Last element
-(defun last ((lst :type cons))
+(defun last ((lst :type list))
   (if (null (cdr lst))
       (car lst)
       (last (cdr lst))))
@@ -197,7 +197,7 @@
           nil)))
 
 ; Member test
-(defun member (x (lst :type cons))
+(defun member (x (lst :type list))
   (if (null lst)
       nil
       (if (eq x (car lst))
@@ -205,7 +205,7 @@
           (member x (cdr lst)))))
 
 ; Assoc - find pair in alist by key
-(defun assoc (key (alist :type cons))
+(defun assoc (key (alist :type list))
   (if (null alist)
       nil
       (if (eq key (car (car alist)))
@@ -1124,14 +1124,6 @@
                                      places
                                      (append temps (list value)))))
                 result)))))
-
-; incf - increment place
-(defmacro incf (place &optional (delta 1))
-  (list 'setf place (list '+ place delta)))
-
-; decf - decrement place
-(defmacro decf (place &optional (delta 1))
-  (list 'setf place (list '- place delta)))
 
 ;; ============================================================
 ;; Additional Utilities
