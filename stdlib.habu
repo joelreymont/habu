@@ -69,6 +69,13 @@
 (defun first ((x cons)) (car x))
 (defun second ((x cons)) (cadr x))
 (defun third ((x cons)) (caddr x))
+(defun fourth (x) (nth 3 x))
+(defun fifth (x) (nth 4 x))
+(defun sixth (x) (nth 5 x))
+(defun seventh (x) (nth 6 x))
+(defun eighth (x) (nth 7 x))
+(defun ninth (x) (nth 8 x))
+(defun tenth (x) (nth 9 x))
 (defun rest (x) (cdr x))
 
 ; List construction
