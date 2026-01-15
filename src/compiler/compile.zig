@@ -378,6 +378,7 @@ pub const Builtins = struct {
     ty_character: Value, // alias for char
     ty_t: Value,
     ty_union: Value, // (union T1 T2 ...) - union type
+    ty_or: Value, // (or T1 T2 ...) - alias for union
 
     // Dependent type form symbols (QTT)
     ty_pi: Value, // (pi (x : A) B) - dependent function type
@@ -701,6 +702,7 @@ pub const Builtins = struct {
             .ty_character = try heap.intern("character"),
             .ty_t = try heap.intern("t"),
             .ty_union = try heap.intern("union"),
+            .ty_or = try heap.intern("or"),
             // Dependent type form symbols (QTT)
             .ty_pi = try heap.intern("pi"),
             .ty_sigma = try heap.intern("sigma"),
@@ -2140,8 +2142,8 @@ pub const Compiler = struct {
             const cons = type_sym.toPtr(Cons);
             if (!cons.car.isSymbol()) return error.InvalidSyntax;
 
-            // Check for (union T1 T2 ...)
-            if (cons.car.raw == b.ty_union.raw) {
+            // Check for (union T1 T2 ...) or (or T1 T2 ...)
+            if (cons.car.raw == b.ty_union.raw or cons.car.raw == b.ty_or.raw) {
                 // Collect type alternatives
                 var alts = std.ArrayList(Value){};
                 defer alts.deinit(self.allocator);
@@ -4494,8 +4496,8 @@ pub const Compiler = struct {
 
         const b = self.builtins orelse return null;
 
-        // (union T1 T2 ...) - union type
-        if (head.raw == b.ty_union.raw) {
+        // (union T1 T2 ...) or (or T1 T2 ...) - union type
+        if (head.raw == b.ty_union.raw or head.raw == b.ty_or.raw) {
             return self.parseOrType(cons.cdr);
         }
 
@@ -6025,7 +6027,7 @@ pub const Compiler = struct {
         const head = cons.car;
 
         // Dispatch by symbol identity
-        if (head.raw == b.ty_union.raw) {
+        if (head.raw == b.ty_union.raw or head.raw == b.ty_or.raw) {
             return self.compileOrTypeCheck(cons.cdr, expr_ir);
         }
         if (head.raw == b.ty_refine.raw) {
