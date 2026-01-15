@@ -6732,8 +6732,8 @@ pub const Compiler = struct {
         // subseq handled by stdlib for list support (builtin only did strings)
 
         // I/O
-        if (s == b.print.raw) return self.compileUnaryPrim(args, env, .print);
-        if (s == b.princ.raw) return self.compileUnaryPrim(args, env, .princ);
+        if (s == b.print.raw) return self.compilePrintOrPrinc(args, env, true);
+        if (s == b.princ.raw) return self.compilePrintOrPrinc(args, env, false);
         if (s == b.terpri.raw) return self.compileNullaryPrim(.terpri);
         if (s == b.@"write-char".raw) return self.compileUnaryPrim(args, env, .write_char);
         if (s == b.format.raw) return self.compileFormat(args, env);
@@ -7011,6 +7011,44 @@ pub const Compiler = struct {
         const node = try self.allocator.create(Ir);
         node.* = .{ .set_macro_character = .{ .first = char_ir, .second = func_ir, .third = non_term_ir } };
         return node;
+    }
+
+    /// Compile princ/print with optional stream argument
+    /// (princ obj) -> print to stdout
+    /// (princ obj stream) -> write obj to stream (strings directly, others via write-to-string)
+    fn compilePrintOrPrinc(self: *Compiler, args: Value, env: *const Env, is_print: bool) anyerror!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons = args.toPtr(Cons);
+        const obj_ir = try self.compile(cons.car, env);
+
+        // Check for second argument (stream)
+        if (cons.cdr.isCons()) {
+            const cons2 = cons.cdr.toPtr(Cons);
+            const stream_ir = try self.compile(cons2.car, env);
+
+            // For princ to stream: if string, use directly; otherwise write-to-string
+            // Generate: (if (stringp obj) obj (write-to-string obj))
+            const stringp_check = try self.builder.stringp(obj_ir);
+            const converted = try self.builder.writeToString(obj_ir);
+            const str_ir = try self.builder.ifExpr(stringp_check, obj_ir, converted);
+
+            if (is_print) {
+                // print also needs a newline - create concat with newline
+                const heap = self.heap orelse return error.UninitializedBuiltins;
+                const newline_ir = try self.builder.lit(try heap.allocString("\n"));
+                const with_newline = try self.builder.strConcat(str_ir, newline_ir);
+                return try self.builder.writeToStream(with_newline, stream_ir);
+            } else {
+                return try self.builder.writeToStream(str_ir, stream_ir);
+            }
+        } else {
+            // Single arg: print/princ to stdout
+            if (is_print) {
+                return try self.builder.print(obj_ir);
+            } else {
+                return try self.builder.princ(obj_ir);
+            }
+        }
     }
 
     fn compileUnaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) anyerror!*Ir {
