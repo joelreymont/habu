@@ -167,13 +167,30 @@
 ;; whether initial-value is provided. With initial-value, fn:(A,B)->A returns A.
 ;; Without initial-value, fn:(A,A)->A and seq must be non-empty, returns A.
 ;; A fully typed version would need dependent types or overloading.
-(defun reduce (fn seq &key initial-value from-end)
-  (let ((lst (if from-end (reverse seq) seq)))
-    (if initial-value
-        (foldl fn initial-value lst)
-        (if (null lst)
-            (funcall fn)  ; CL spec: call fn with no args if seq empty and no init
-            (foldl fn (car lst) (cdr lst))))))
+;; Sentinel for "no initial value provided"
+(defvar *reduce-no-init* (cons nil nil))
+
+(defun reduce (fn seq &key (initial-value *reduce-no-init*) from-end)
+  (let ((has-init (not (eq initial-value *reduce-no-init*))))
+    (if from-end
+        ;; Right fold: (fn elem (fn elem (fn elem init)))
+        (if has-init
+            (foldr fn initial-value seq)
+            (if (null seq)
+                (funcall fn)
+                (foldr fn (car (last seq)) (butlast seq))))
+        ;; Left fold: (fn (fn (fn init elem) elem) elem)
+        (if has-init
+            (foldl fn initial-value seq)
+            (if (null seq)
+                (funcall fn)
+                (foldl fn (car seq) (cdr seq)))))))
+
+;; foldr - right fold
+(defun foldr (fn init lst)
+  (if (null lst)
+      init
+      (funcall fn (car lst) (foldr fn init (cdr lst)))))
 
 ; Take first n elements
 (defun take (n lst)
