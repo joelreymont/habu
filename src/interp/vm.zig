@@ -1996,6 +1996,38 @@ pub const Vm = struct {
                 try self.push(result);
             },
 
+            .values_list => {
+                // Pop a list from stack, return its elements as multiple values
+                const list = try self.pop();
+
+                if (list.isNil()) {
+                    // Empty list -> return nil with no secondary values
+                    self.secondary_values_count = 0;
+                    try self.push(Value.nil);
+                } else if (list.isCons()) {
+                    // Walk the list, extract elements
+                    var first = Value.nil;
+                    var count: usize = 0;
+                    var current = list;
+
+                    while (current.isCons()) {
+                        const cons = current.toPtr(runtime.Cons);
+                        if (count == 0) {
+                            first = cons.car;
+                        } else if (count - 1 < self.secondary_values.len) {
+                            self.secondary_values[count - 1] = cons.car;
+                        }
+                        count += 1;
+                        current = cons.cdr;
+                    }
+
+                    self.secondary_values_count = if (count > 1) count - 1 else 0;
+                    try self.push(first);
+                } else {
+                    return error.TypeMismatch;
+                }
+            },
+
             .format => {
                 const argc = self.readU8();
                 if (argc > 32) return error.InvalidArgument;

@@ -194,6 +194,9 @@ pub const Ir = union(enum) {
     /// Multiple values: (values v1 v2 ...)
     values: []const *const Ir,
 
+    /// Values-list: (values-list list) - return list elements as multiple values
+    values_list: UnaryOp,
+
     /// Multiple-value-bind: (multiple-value-bind (vars...) expr body...)
     mv_bind: struct {
         vars: []const []const u8,
@@ -977,6 +980,12 @@ pub const IrBuilder = struct {
         const node = try self.allocator.create(Ir);
         const vals_copy = try self.allocator.dupe(*const Ir, vals);
         node.* = .{ .values = vals_copy };
+        return node;
+    }
+
+    pub fn valuesList(self: IrBuilder, lst: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .values_list = .{ .operand = lst } };
         return node;
     }
 

@@ -170,6 +170,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .ceiling,
         .round,
         .mv_list,
+        .values_list,
         .read,
         .load,
         .read_from_string,

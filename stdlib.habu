@@ -1003,6 +1003,8 @@
 (defmacro nth-value (n form)
   (list 'nth n (list 'multiple-value-list form)))
 
+; values-list is a primitive - no stdlib definition needed
+
 ;; ============================================================
 ;; Search and Fill Functions
 ;; ============================================================

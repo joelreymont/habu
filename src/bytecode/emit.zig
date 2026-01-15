@@ -231,6 +231,9 @@ pub const Emitter = struct {
             .values => |v| {
                 for (v) |e| max_idx = computeMaxLocalIndexImpl(e, max_idx);
             },
+            .values_list => |op| {
+                max_idx = computeMaxLocalIndexImpl(op.operand, max_idx);
+            },
             .mv_list => |m| {
                 max_idx = computeMaxLocalIndexImpl(m.expr, max_idx);
             },
@@ -507,6 +510,7 @@ pub const Emitter = struct {
             .tagbody => |tb| try self.emitTagbody(tb),
             .go => |g| try self.emitGo(g),
             .values => |v| try self.emitValues(v),
+            .values_list => |op| try self.emitUnaryOp(op.operand, .values_list),
             .mv_bind => |m| try self.emitMvBind(m),
             .mv_list => |m| try self.emitMvList(m),
             .mv_call => |m| try self.emitMvCall(m),

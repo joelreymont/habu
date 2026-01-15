@@ -109,6 +109,7 @@ pub const Builtins = struct {
     tagbody: Value,
     go: Value,
     values: Value,
+    @"values-list": Value,
     @"multiple-value-bind": Value,
     @"multiple-value-call": Value,
     @"multiple-value-list": Value,
@@ -459,6 +460,7 @@ pub const Builtins = struct {
             .tagbody = try heap.intern("tagbody"),
             .go = try heap.intern("go"),
             .values = try heap.intern("values"),
+            .@"values-list" = try heap.intern("values-list"),
             .@"multiple-value-bind" = try heap.intern("multiple-value-bind"),
             .@"multiple-value-call" = try heap.intern("multiple-value-call"),
             .@"multiple-value-list" = try heap.intern("multiple-value-list"),
@@ -1523,6 +1525,7 @@ pub const Compiler = struct {
         tagbody,
         go,
         values,
+        @"values-list",
         @"multiple-value-bind",
         @"multiple-value-call",
         @"multiple-value-list",
@@ -1588,6 +1591,7 @@ pub const Compiler = struct {
         .{ "tagbody", .tagbody },
         .{ "go", .go },
         .{ "values", .values },
+        .{ "values-list", .@"values-list" },
         .{ "multiple-value-bind", .@"multiple-value-bind" },
         .{ "multiple-value-call", .@"multiple-value-call" },
         .{ "multiple-value-list", .@"multiple-value-list" },
@@ -1663,6 +1667,7 @@ pub const Compiler = struct {
                     .tagbody => self.compileTagbody(tail, env),
                     .go => self.compileGo(tail),
                     .values => self.compileValues(tail, env),
+                    .@"values-list" => self.compileValuesList(tail, env),
                     .@"multiple-value-bind" => self.compileMvBind(tail, env),
                     .@"multiple-value-call" => self.compileMvCall(tail, env),
                     .@"multiple-value-list" => self.compileMvList(tail, env),
@@ -3900,6 +3905,14 @@ pub const Compiler = struct {
         }
 
         return try self.builder.values(vals.items);
+    }
+
+    fn compileValuesList(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        // (values-list list)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons = args.toPtr(Cons);
+        const list_ir = try self.compile(cons.car, env);
+        return try self.builder.valuesList(list_ir);
     }
 
     fn compileMvBind(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {

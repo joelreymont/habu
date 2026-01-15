@@ -1008,6 +1008,11 @@ pub const Op = enum(u8) {
     /// ( primary -- list )
     mv_list = 0xC2,
 
+    /// Return list elements as multiple values (values-list)
+    /// ( list -- first-element )
+    /// Secondary values buffer gets remaining elements
+    values_list = 0x8F,
+
     /// Count occurrences of item in sequence (using eql - default)
     /// ( item sequence -- count )
     list_count = 0xC3,
@@ -1211,6 +1216,7 @@ pub const Op = enum(u8) {
             .evenp,
             .oddp,
             .mv_list,
+            .values_list,
             .read,
             .load,
             .read_from_string,
