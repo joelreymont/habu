@@ -501,72 +501,51 @@
 
 ; destructuring-bind - bind pattern to value and evaluate body
 ; Supports: symbols, (a b c), (a . rest), (a b &rest rest), (a &optional b)
+; Uses labels for mutual recursion between bindings and optional helpers
+(defun destructuring-bind-impl (pattern expr)
+  (labels
+    ((bindings (pat ex)
+       (cond
+         ((null pat) nil)
+         ((symbolp pat)
+          (if (eq pat '_) nil (list (list pat ex))))
+         ((consp pat)
+          (let ((first (car pat)) (rest (cdr pat)))
+            (cond
+              ((eq first '&rest)
+               (if (and (consp rest) (symbolp (car rest)))
+                   (list (list (car rest) ex))
+                   (error "Invalid &rest pattern")))
+              ((eq first '&optional)
+               (optionals rest ex))
+              ((and (symbolp first) (symbolp rest) rest)
+               (append (bindings first (list 'car ex))
+                       (bindings rest (list 'cdr ex))))
+              (t (append (bindings first (list 'car ex))
+                         (bindings rest (list 'cdr ex)))))))
+         (t (error "Invalid destructuring pattern"))))
+     (optionals (params ex)
+       (if (null params) nil
+         (let ((param (car params)) (rest (cdr params)))
+           (cond
+             ((eq param '&rest)
+              (bindings (cons '&rest rest) ex))
+             ((symbolp param)
+              (cons (list param (list 'car ex))
+                    (optionals rest (list 'cdr ex))))
+             ((consp param)
+              (let ((var (car param)) (default (cadr param)))
+                (cons (list var (list 'if ex (list 'car ex) default))
+                      (optionals rest (list 'cdr ex)))))
+             (t (error "Invalid &optional parameter")))))))
+    (bindings pattern expr)))
+
 (defmacro destructuring-bind (pattern expr &rest body)
   (let ((temp (gensym "EXPR")))
     (list 'let (list (list temp expr))
           (cons 'let
-                (cons (destructuring-bind-bindings pattern temp)
+                (cons (destructuring-bind-impl pattern temp)
                       body)))))
-
-; Helper: generate binding list for destructuring-bind
-(defun destructuring-bind-bindings (pattern expr)
-  (cond
-    ; Simple variable
-    ((symbolp pattern)
-     (if (eq pattern '_)
-         nil  ; Ignore underscore
-         (list (list pattern expr))))
-
-    ; Null pattern - no bindings
-    ((null pattern) nil)
-
-    ; Cons pattern (a . b) or list pattern (a b c)
-    ((consp pattern)
-     (let ((first (car pattern))
-           (rest (cdr pattern)))
-       (cond
-         ; &rest binding
-         ((eq first '&rest)
-          (if (and (consp rest) (symbolp (car rest)))
-              (list (list (car rest) expr))
-              (error "Invalid &rest pattern")))
-
-         ; &optional binding
-         ((eq first '&optional)
-          (destructuring-bind-optional rest expr))
-
-         ; Dotted pair (a . b)
-         ((and (symbolp first) (symbolp rest) rest)
-          (append (destructuring-bind-bindings first (list 'car expr))
-                  (destructuring-bind-bindings rest (list 'cdr expr))))
-
-         ; List pattern
-         (t
-          (append (destructuring-bind-bindings first (list 'car expr))
-                  (destructuring-bind-bindings rest (list 'cdr expr)))))))
-
-    ; Unknown pattern
-    (t (error "Invalid destructuring pattern"))))
-
-; Helper for &optional parameters
-(defun destructuring-bind-optional (params expr)
-  (if (null params)
-      nil
-      (let ((param (car params))
-            (rest (cdr params)))
-        (cond
-          ((eq param '&rest)
-           (destructuring-bind-bindings (cons '&rest rest) expr))
-          ((symbolp param)
-           (cons (list param (list 'car expr))
-                 (destructuring-bind-optional rest (list 'cdr expr))))
-          ((consp param)
-           ; (var default) form
-           (let ((var (car param))
-                 (default (cadr param)))
-             (cons (list var (list 'if expr (list 'car expr) default))
-                   (destructuring-bind-optional rest (list 'cdr expr)))))
-          (t (error "Invalid &optional parameter"))))))
 
 ;; ============================================================
 ;; String Functions
