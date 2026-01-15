@@ -1478,6 +1478,7 @@ pub const Compiler = struct {
                 .bignum => &types.t_bignum,
                 .array => &types.t_array,
                 .pathname => &types.t_pathname,
+                .package => &types.t_any, // Packages are rare as literals
             },
             .@"var" => |v| {
                 // Check occurrence typing first (narrowed types)

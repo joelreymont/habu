@@ -1033,6 +1033,11 @@ pub const Repl = struct {
                 try writer.print("#<array rank={d}>", .{arr.rank});
             },
             .pathname => try writer.writeAll("#<pathname>"),
+            .package => {
+                const pkg = val.toPtr(runtime.Package);
+                const name_sym = pkg.name.toPtr(Symbol);
+                try writer.print("#<package {s}>", .{name_sym.getName()});
+            },
         }
     }
 

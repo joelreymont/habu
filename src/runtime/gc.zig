@@ -246,7 +246,7 @@ pub const GC = struct {
                         const old_ptr: usize = arr.data_ptr;
                         arr.data_ptr = @intCast(@as(isize, @intCast(old_ptr)) + addr_delta);
                     },
-                    .rational, .complex, .stream, .bignum, .pathname => {
+                    .rational, .complex, .stream, .bignum, .pathname, .package => {
                         // No interior pointers to repair
                     },
                 }
@@ -345,6 +345,28 @@ pub const GC = struct {
                         }
                         if (pn.version.isPointer() and !pn.version.isNil()) {
                             pn.version = try self.copyValue(pn.version, alloc_ptr);
+                        }
+                    },
+                    .package => {
+                        // Scan all package fields
+                        const pkg: *objects.Package = @ptrFromInt(addr);
+                        if (pkg.name.isPointer() and !pkg.name.isNil()) {
+                            pkg.name = try self.copyValue(pkg.name, alloc_ptr);
+                        }
+                        if (pkg.nicknames.isPointer() and !pkg.nicknames.isNil()) {
+                            pkg.nicknames = try self.copyValue(pkg.nicknames, alloc_ptr);
+                        }
+                        if (pkg.use_list.isPointer() and !pkg.use_list.isNil()) {
+                            pkg.use_list = try self.copyValue(pkg.use_list, alloc_ptr);
+                        }
+                        if (pkg.exports.isPointer() and !pkg.exports.isNil()) {
+                            pkg.exports = try self.copyValue(pkg.exports, alloc_ptr);
+                        }
+                        if (pkg.symbols.isPointer() and !pkg.symbols.isNil()) {
+                            pkg.symbols = try self.copyValue(pkg.symbols, alloc_ptr);
+                        }
+                        if (pkg.shadowing.isPointer() and !pkg.shadowing.isNil()) {
+                            pkg.shadowing = try self.copyValue(pkg.shadowing, alloc_ptr);
                         }
                     },
                     .rational, .complex, .stream, .bignum => {

@@ -296,6 +296,11 @@ fn princValueTo(val: Value, w: anytype) !void {
             try w.print("#<array rank={d}>", .{arr.rank});
         },
         .pathname => try w.writeAll("#<pathname>"),
+        .package => {
+            const pkg = val.toPtr(objects.Package);
+            const name_sym = pkg.name.toPtr(objects.Symbol);
+            try w.print("#<package {s}>", .{name_sym.getName()});
+        },
     }
 }
 
@@ -393,6 +398,11 @@ fn printValueTo(val: Value, w: anytype) !void {
             try w.print("#<array rank={d}>", .{arr.rank});
         },
         .pathname => try w.writeAll("#<pathname>"),
+        .package => {
+            const pkg = val.toPtr(objects.Package);
+            const name_sym = pkg.name.toPtr(objects.Symbol);
+            try w.print("#<package {s}>", .{name_sym.getName()});
+        },
     }
 }
 

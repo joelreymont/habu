@@ -140,6 +140,7 @@ pub const BoxedKind = enum(u64) {
     bignum = 4,
     array = 5,
     pathname = 6,
+    package = 7,
 };
 
 /// Stream direction
@@ -475,6 +476,7 @@ pub fn objectSize(val: Value) usize {
                 .stream => @sizeOf(Stream),
                 .bignum => @sizeOf(Bignum),
                 .pathname => @sizeOf(Pathname),
+                .package => @sizeOf(Package),
             };
         },
         .forwarding => @sizeOf(usize), // Just a pointer
@@ -522,7 +524,16 @@ pub fn forEachValue(val: Value, callback: *const fn (Value) void) void {
                         }
                     }
                 },
-                .rational, .complex, .stream, .bignum => {
+                .package => {
+                    const pkg = val.toPtr(Package);
+                    callback(pkg.name);
+                    callback(pkg.nicknames);
+                    callback(pkg.use_list);
+                    callback(pkg.exports);
+                    callback(pkg.symbols);
+                    callback(pkg.shadowing);
+                },
+                .rational, .complex, .stream, .bignum, .pathname, .array => {
                     // No internal Values to scan
                 },
             }

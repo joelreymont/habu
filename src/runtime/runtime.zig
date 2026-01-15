@@ -35,6 +35,7 @@ pub const StreamType = objects.StreamType;
 pub const Bignum = objects.Bignum;
 pub const Array = objects.Array;
 pub const Pathname = objects.Pathname;
+pub const Package = objects.Package;
 pub const BoxedKind = objects.BoxedKind;
 
 pub const Heap = heap.Heap;

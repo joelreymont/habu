@@ -56,6 +56,7 @@ pub const TypeKind = enum {
     bignum,
     array,
     pathname,
+    package,
 };
 
 /// A tagged Habu value (64-bit)
@@ -252,6 +253,7 @@ pub const Value = packed struct {
                     .bignum => .bignum,
                     .array => .array,
                     .pathname => .pathname,
+                    .package => .package,
                 };
             },
             .forwarding => .cons, // Shouldn't happen during normal execution
