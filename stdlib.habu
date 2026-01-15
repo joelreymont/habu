@@ -222,13 +222,17 @@
           (all pred (cdr lst))
           nil)))
 
-; Member test
-(defun member (x (lst :type list))
+; Member test - find item in list
+(defun member (x lst &key test)
   (if (null lst)
       nil
-      (if (eq x (car lst))
+      (if (if test
+              (funcall test x (car lst))
+              (eql x (car lst)))
           lst
-          (member x (cdr lst)))))
+          (if test
+              (member x (cdr lst) :test test)
+              (member x (cdr lst))))))
 
 ; Assoc - find pair in alist by key
 (defun assoc (key (alist :type list))
