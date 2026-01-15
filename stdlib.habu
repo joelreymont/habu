@@ -584,11 +584,16 @@
   (remove-if (lambda (x) (not (funcall pred x))) lst))
 
 ; find-if - find first element satisfying predicate
-(defun find-if (pred lst)
+(defun find-if-aux (pred lst)
   (cond
     ((null lst) nil)
     ((funcall pred (car lst)) (car lst))
-    (t (find-if pred (cdr lst)))))
+    (t (find-if-aux pred (cdr lst)))))
+
+(defun find-if (pred seq)
+  (if (stringp seq)
+      (find-if-aux pred (coerce seq 'list))
+      (find-if-aux pred seq)))
 
 ; find-if-not - find first element NOT satisfying predicate
 (defun find-if-not (pred lst)
@@ -601,8 +606,10 @@
     ((funcall pred (car lst)) n)
     (t (position-if-aux pred (cdr lst) (+ n 1)))))
 
-(defun position-if (pred lst)
-  (position-if-aux pred lst 0))
+(defun position-if (pred seq)
+  (if (stringp seq)
+      (position-if-aux pred (coerce seq 'list) 0)
+      (position-if-aux pred seq 0)))
 
 ; position-if-not - find position of first element NOT satisfying predicate
 (defun position-if-not (pred lst)
@@ -615,12 +622,14 @@
     ((funcall pred (car lst)) (count-if-aux pred (cdr lst) (+ n 1)))
     (t (count-if-aux pred (cdr lst) n))))
 
-(defun count-if (pred lst)
-  (count-if-aux pred lst 0))
+(defun count-if (pred seq)
+  (if (stringp seq)
+      (count-if-aux pred (coerce seq 'list) 0)
+      (count-if-aux pred seq 0)))
 
 ; count-if-not - count elements NOT satisfying predicate
-(defun count-if-not (pred lst)
-  (count-if (lambda (x) (not (funcall pred x))) lst))
+(defun count-if-not (pred seq)
+  (count-if (lambda (x) (not (funcall pred x))) seq))
 
 ; every - true if predicate holds for all elements
 (defun every (pred lst)
