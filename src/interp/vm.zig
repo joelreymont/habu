@@ -3498,7 +3498,12 @@ pub const Vm = struct {
             .sqrt => {
                 const val = try self.pop();
                 const f = try valToFloat(val);
-                try self.push(Value.makeFloat(@sqrt(f)));
+                if (f < 0) {
+                    const cplx = try self.heap.allocComplex(0.0, @sqrt(-f));
+                    try self.push(cplx);
+                } else {
+                    try self.push(Value.makeFloat(@sqrt(f)));
+                }
             },
             .sin => {
                 const val = try self.pop();

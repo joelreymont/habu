@@ -37,6 +37,12 @@ pub fn main() !void {
     defer repl.deinit();
     repl.wireGlobalEnv();
 
+    // Auto-load stdlib.habu
+    repl.loadFilePublic("stdlib.habu", writer) catch |err| {
+        try writer.print("; Warning: Could not load stdlib.habu: {s}\n", .{@errorName(err)});
+    };
+    try writer.flush();
+
     // Load files from command line arguments
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
