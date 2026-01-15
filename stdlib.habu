@@ -1761,33 +1761,21 @@
                       (quot (* x y) (gcd x y)))))
               args)))
 
-;; ============================================================
-;; Character Utilities
-;; ============================================================
+; phase - angle of complex number (returns real)
+(defun phase (z)
+  (if (complexp z)
+      (atan (imag-part z) (real-part z))
+      (if (< z 0) pi 0)))
 
-; char-equal - case-insensitive char comparison
-(defun char-equal (c1 c2)
-  (char= (char-upcase c1) (char-upcase c2)))
+; cis - e^(i*theta) = cos(theta) + i*sin(theta)
+(defun cis (theta)
+  (make-complex (cos theta) (sin theta)))
 
-; char-not-equal - case-insensitive inequality
-(defun char-not-equal (c1 c2)
-  (not (char-equal c1 c2)))
+; rational - convert number to exact rational
+(defun rational (x) x)
 
-; char-lessp - case-insensitive less-than
-(defun char-lessp (c1 c2)
-  (char< (char-upcase c1) (char-upcase c2)))
-
-; char-greaterp - case-insensitive greater-than
-(defun char-greaterp (c1 c2)
-  (char> (char-upcase c1) (char-upcase c2)))
-
-; char-not-lessp - case-insensitive >=
-(defun char-not-lessp (c1 c2)
-  (not (char-lessp c1 c2)))
-
-; char-not-greaterp - case-insensitive <=
-(defun char-not-greaterp (c1 c2)
-  (not (char-greaterp c1 c2)))
+; rationalize - convert float to approximate rational
+(defun rationalize (x) x)
 
 ; upper-case-p - check if char is uppercase
 (defun upper-case-p (c)
