@@ -67,3 +67,47 @@
       (floor (sqrt n))))
 
 ;; Trigonometric functions are now primitives: asin, acos, atan, sinh, cosh, tanh, asinh, acosh, atanh
+
+;; Sequence functions
+
+(defun fill (seq item &key start end)
+  "Fill sequence with item"
+  (let ((s (or start 0))
+        (e (or end (length seq))))
+    (if (vectorp seq)
+        (let ((i s))
+          (while (< i e)
+            (setf (aref seq i) item)
+            (set! i (1+ i)))
+          seq)
+        (error "fill: unsupported sequence type"))))
+
+(defun replace (seq1 seq2 &key start1 end1 start2 end2)
+  "Replace elements of seq1 with elements of seq2"
+  (let ((s1 (or start1 0))
+        (e1 (or end1 (length seq1)))
+        (s2 (or start2 0))
+        (e2 (or end2 (length seq2))))
+    (if (and (vectorp seq1) (vectorp seq2))
+        (let ((i s1)
+              (j s2))
+          (while (and (< i e1) (< j e2))
+            (setf (aref seq1 i) (aref seq2 j))
+            (set! i (1+ i))
+            (set! j (1+ j)))
+          seq1)
+        (error "replace: unsupported sequence types"))))
+
+(defun map-into (result-seq fn &rest seqs)
+  "Destructively modify result-seq by applying fn to corresponding elements"
+  (if (vectorp result-seq)
+      (let ((i 0)
+            (len (length result-seq)))
+        (if (null seqs)
+            result-seq
+            (let ((seq1 (car seqs)))
+              (while (and (< i len) (< i (length seq1)))
+                (setf (aref result-seq i) (funcall fn (elt seq1 i)))
+                (set! i (1+ i)))
+              result-seq)))
+      (error "map-into: unsupported result sequence type")))
