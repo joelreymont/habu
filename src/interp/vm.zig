@@ -886,13 +886,23 @@ pub const Vm = struct {
             },
             .car => {
                 const pair = try self.pop();
-                if (!pair.isCons()) return error.TypeMismatch;
-                try self.push(pair.toPtr(Cons).car);
+                if (pair.isNil()) {
+                    try self.push(Value.nil); // CL: (car nil) => nil
+                } else if (pair.isCons()) {
+                    try self.push(pair.toPtr(Cons).car);
+                } else {
+                    return error.TypeMismatch;
+                }
             },
             .cdr => {
                 const pair = try self.pop();
-                if (!pair.isCons()) return error.TypeMismatch;
-                try self.push(pair.toPtr(Cons).cdr);
+                if (pair.isNil()) {
+                    try self.push(Value.nil); // CL: (cdr nil) => nil
+                } else if (pair.isCons()) {
+                    try self.push(pair.toPtr(Cons).cdr);
+                } else {
+                    return error.TypeMismatch;
+                }
             },
             .make_list => {
                 const count = self.readU8();
@@ -942,14 +952,26 @@ pub const Vm = struct {
             },
 
             .list_length => {
-                const list = try self.pop();
-                var len: i64 = 0;
-                var curr = list;
-                while (curr.isCons()) {
-                    len += 1;
-                    curr = curr.toPtr(Cons).cdr;
+                const seq = try self.pop();
+                if (seq.isNil()) {
+                    try self.push(Value.makeFixnum(0));
+                } else if (seq.isCons()) {
+                    var len: i64 = 0;
+                    var curr = seq;
+                    while (curr.isCons()) {
+                        len += 1;
+                        curr = curr.toPtr(Cons).cdr;
+                    }
+                    try self.push(Value.makeFixnum(len));
+                } else if (seq.isVector()) {
+                    const vec = seq.toPtr(runtime.Vector);
+                    try self.push(Value.makeFixnum(@intCast(vec.length)));
+                } else if (seq.isString()) {
+                    const str = seq.toPtr(runtime.String);
+                    try self.push(Value.makeFixnum(@intCast(str.length)));
+                } else {
+                    return error.TypeMismatch;
                 }
-                try self.push(Value.makeFixnum(len));
             },
 
             .list_reverse => {
@@ -1567,7 +1589,8 @@ pub const Vm = struct {
                 while (p != Value.nil) {
                     if (!p.isCons()) return error.TypeMismatch;
                     const c = p.toPtr(Cons);
-                    if (!c.car.isCharacter()) return error.TypeMismatch;
+                    // Accept either characters or fixnums (char codes)
+                    if (!c.car.isCharacter() and !c.car.isFixnum()) return error.TypeMismatch;
                     len += 1;
                     p = c.cdr;
                 }
@@ -1578,9 +1601,12 @@ pub const Vm = struct {
                 p = list_val;
                 while (p != Value.nil) {
                     const c = p.toPtr(Cons);
-                    const cp = c.car.toCharacter();
+                    const cp: i64 = if (c.car.isCharacter())
+                        @intCast(c.car.toCharacter())
+                    else
+                        c.car.toFixnum();
                     // Only ASCII/Latin-1 characters fit in a byte
-                    if (cp > 255) return error.TypeMismatch;
+                    if (cp < 0 or cp > 255) return error.TypeMismatch;
                     str_obj.data[i] = @intCast(cp);
                     i += 1;
                     p = c.cdr;
