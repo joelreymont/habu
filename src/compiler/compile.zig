@@ -7638,11 +7638,23 @@ pub const Compiler = struct {
             try dimensions.append(self.allocator, dim_ir);
         }
 
-        // Optional initial element
+        // Optional initial element - handle keyword args (:initial-element value)
         var init_ir: ?*const Ir = null;
-        if (cons1.cdr.isCons()) {
-            const cons2 = cons1.cdr.toPtr(Cons);
-            init_ir = try self.compile(cons2.car, env);
+        var rest = cons1.cdr;
+        while (rest.isCons()) {
+            const kv_cons = rest.toPtr(Cons);
+            // Check if it's a keyword
+            if (kv_cons.car.isKeyword()) {
+                // Skip the keyword, get the value
+                if (!kv_cons.cdr.isCons()) break;
+                const val_cons = kv_cons.cdr.toPtr(Cons);
+                init_ir = try self.compile(val_cons.car, env);
+                rest = val_cons.cdr;
+            } else {
+                // Non-keyword arg is the initial element (legacy support)
+                init_ir = try self.compile(kv_cons.car, env);
+                rest = kv_cons.cdr;
+            }
         }
 
         return try self.builder.arrNew(dimensions.items, init_ir);
