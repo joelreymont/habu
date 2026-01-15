@@ -2051,14 +2051,27 @@
 (defun putf (plist indicator value)
   (cons indicator (cons value plist)))
 
-; remf - remove property from plist (returns new plist)
-(defun remf (plist indicator)
+; remf-helper - helper for remf, removes property and returns new plist
+(defun remf-helper (plist indicator)
   (cond
     ((null plist) nil)
     ((eq (car plist) indicator) (cddr plist))
     (t (cons (car plist)
              (cons (cadr plist)
-                   (remf (cddr plist) indicator))))))
+                   (remf-helper (cddr plist) indicator))))))
+
+; remf - destructively remove property from plist
+(defmacro remf (place indicator)
+  (list 'setf place (list 'remf-helper place indicator)))
+
+; get-properties - search plist for any of the indicators
+; Returns three values: indicator, value, tail
+(defun get-properties (plist indicator-list)
+  (cond
+    ((null plist) (values nil nil nil))
+    ((member (car plist) indicator-list)
+     (values (car plist) (cadr plist) plist))
+    (t (get-properties (cddr plist) indicator-list))))
 
 ; keywordp - check if symbol is keyword (already primitive)
 
