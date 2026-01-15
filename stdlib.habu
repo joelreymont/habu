@@ -186,12 +186,6 @@
                 (funcall fn)
                 (foldl fn (car seq) (cdr seq)))))))
 
-;; foldr - right fold
-(defun foldr (fn init lst)
-  (if (null lst)
-      init
-      (funcall fn (car lst) (foldr fn init (cdr lst)))))
-
 ; Take first n elements
 (defun take (n lst)
   (if (or2 (zerop n) (null lst))
@@ -1528,11 +1522,11 @@
 
 ; max - maximum of numbers
 (defun max (first &rest rest)
-  (reduce (lambda (a b) (if (> a b) a b)) rest :initial-value first))
+  (foldl (lambda (a b) (if (> a b) a b)) first rest))
 
 ; min - minimum of numbers
 (defun min (first &rest rest)
-  (reduce (lambda (a b) (if (< a b) a b)) rest :initial-value first))
+  (foldl (lambda (a b) (if (< a b) a b)) first rest))
 
 ; gcd - greatest common divisor
 (defun gcd (&rest integers)
