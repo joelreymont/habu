@@ -25,20 +25,30 @@ pub const Parser = struct {
     lexer: Lexer,
     heap: *Heap,
     current: Token,
+    /// List of active feature keywords (e.g., :habu)
+    features: std.ArrayList(Value),
+    alloc: std.mem.Allocator,
 
-    pub fn init(_: std.mem.Allocator, heap: *Heap, source: []const u8) Parser {
+    pub fn init(alloc: std.mem.Allocator, heap: *Heap, source: []const u8) Parser {
         var lexer = Lexer.init(source);
         const first_token = lexer.next();
+
+        var feats = std.ArrayList(Value){};
+        // Add :habu by default
+        const habu_kw = heap.internKeyword("habu") catch Value.nil;
+        feats.append(alloc, habu_kw) catch {};
 
         return .{
             .lexer = lexer,
             .heap = heap,
             .current = first_token,
+            .features = feats,
+            .alloc = alloc,
         };
     }
 
-    pub fn deinit(_: *Parser) void {
-        // Symbol table is now owned by Heap - nothing to clean up here
+    pub fn deinit(self: *Parser) void {
+        self.features.deinit(self.alloc);
     }
 
     /// Get the current token's location for error reporting
@@ -73,6 +83,8 @@ pub const Parser = struct {
             .comma => return self.parseQuote("unquote"),
             .comma_at => return self.parseQuote("unquote-splicing"),
             .function_quote => return self.parseQuote("function"),
+            .feature_present => return self.parseFeatureConditional(true),
+            .feature_absent => return self.parseFeatureConditional(false),
             .number => return self.parseNumber(),
             .bignum => return self.parseBignum(),
             .float => return self.parseFloat(),
@@ -482,6 +494,81 @@ pub const Parser = struct {
         }
 
         return error.UnexpectedToken;
+    }
+
+    fn parseFeatureConditional(self: *Parser, present: bool) Error!Value {
+        self.advance(); // consume #+ or #-
+        const feat = try self.parseExpr(); // feature expression
+
+        // Evaluate feature expression
+        const feat_present = try self.evalFeature(feat);
+
+        // If feature matches conditional, parse and return form
+        if (feat_present == present) {
+            return try self.parseExpr();
+        } else {
+            // Skip form, then recurse to get the actual next form
+            _ = try self.parseExpr(); // discard skipped form
+            return try self.parseExpr(); // recurse - handles nested conditionals
+        }
+    }
+
+    fn evalFeature(self: *Parser, expr: Value) Error!bool {
+        if (expr.isSymbol()) {
+            // Convert symbol to keyword for comparison
+            const sym = expr.toPtr(objects.Symbol);
+            const name = sym.getName();
+            const kw = try self.heap.internKeyword(name);
+            for (self.features.items) |feat| {
+                if (feat.eq(kw)) return true;
+            }
+            return false;
+        }
+
+        if (expr.isKeyword()) {
+            for (self.features.items) |feat| {
+                if (feat.eq(expr)) return true;
+            }
+            return false;
+        }
+
+        if (expr.isCons()) {
+            const cons = expr.toPtr(objects.Cons);
+            const head = cons.car;
+            if (!head.isSymbol()) return false;
+
+            const sym = head.toPtr(objects.Symbol);
+            const name = sym.getName();
+
+            if (std.mem.eql(u8, name, "and")) {
+                var rest = cons.cdr;
+                while (rest.isCons()) {
+                    const arg_cons = rest.toPtr(objects.Cons);
+                    if (!try self.evalFeature(arg_cons.car)) return false;
+                    rest = arg_cons.cdr;
+                }
+                return true;
+            }
+
+            if (std.mem.eql(u8, name, "or")) {
+                var rest = cons.cdr;
+                while (rest.isCons()) {
+                    const arg_cons = rest.toPtr(objects.Cons);
+                    if (try self.evalFeature(arg_cons.car)) return true;
+                    rest = arg_cons.cdr;
+                }
+                return false;
+            }
+
+            if (std.mem.eql(u8, name, "not")) {
+                const arg_cons = cons.cdr.toPtr(objects.Cons);
+                return !try self.evalFeature(arg_cons.car);
+            }
+
+            return false;
+        }
+
+        return false;
     }
 
     fn advance(self: *Parser) void {

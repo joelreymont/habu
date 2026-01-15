@@ -97,6 +97,24 @@ pub const Repl = struct {
         self.vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
         // Set VM on compiler for macro expansion
         self.compiler.setVm(&self.vm);
+        // Create *features* list
+        self.createFeaturesGlobal() catch {};
+    }
+
+    fn createFeaturesGlobal(self: *Repl) !void {
+        const b = self.compiler.builtins.?;
+        var features = Value.nil;
+        features = try self.heap.allocCons(b.kw_habu, features);
+        features = try self.heap.allocCons(b.kw_zig, features);
+        const info = @import("builtin").os.tag;
+        const os_kw = switch (info) {
+            .windows => b.kw_windows,
+            .macos => b.kw_darwin,
+            else => b.kw_unix,
+        };
+        features = try self.heap.allocCons(os_kw, features);
+        const gidx = try self.compiler.globals.define("*features*");
+        self.vm.globals[gidx] = features;
     }
 
     /// Callback for (load "filename") from VM

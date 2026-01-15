@@ -417,6 +417,13 @@ pub const Builtins = struct {
     kw_eql: Value,
     kw_equal: Value,
 
+    // *features* keywords
+    kw_habu: Value,
+    kw_zig: Value,
+    kw_unix: Value,
+    kw_darwin: Value,
+    kw_windows: Value,
+
     /// Initialize all builtin symbols from heap
     pub fn init(heap: *Heap) !Builtins {
         return .{
@@ -740,6 +747,12 @@ pub const Builtins = struct {
             .kw_eq = try heap.internKeyword("eq"),
             .kw_eql = try heap.internKeyword("eql"),
             .kw_equal = try heap.internKeyword("equal"),
+            // *features* keywords
+            .kw_habu = try heap.internKeyword("habu"),
+            .kw_zig = try heap.internKeyword("zig"),
+            .kw_unix = try heap.internKeyword("unix"),
+            .kw_darwin = try heap.internKeyword("darwin"),
+            .kw_windows = try heap.internKeyword("windows"),
         };
     }
 

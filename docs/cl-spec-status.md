@@ -116,7 +116,6 @@ None - all previously reported bugs have been fixed!
 2. Full format justification parameters
 3. Stream functions (make-string-input-stream, etc.)
 4. Package system (defpackage, in-package, etc.)
-5. Symbol property lists (get/put/remprop are placeholders)
 
 ## Deferred Features (Large Scope)
 
@@ -138,10 +137,5 @@ These features require substantial implementation effort and are deferred:
    - #+ #- feature expressions
    - Requires lexer refactoring for conditional compilation
    - *features* list management
-
-4. **Symbol Property Lists** (~1-2 days)
-   - Runtime symbol-plist storage
-   - get, put, remprop implementation
-   - Integration with symbol objects
 
 **All other CL spec features are implemented and working correctly.**

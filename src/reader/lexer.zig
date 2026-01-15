@@ -33,6 +33,10 @@ pub const TokenKind = enum {
     keyword,
     character,
 
+    // Reader conditionals
+    feature_present, // #+
+    feature_absent, // #-
+
     // Special
     eof,
     err,
@@ -360,6 +364,16 @@ pub const Lexer = struct {
             // Block comment: #| ... |#
             _ = self.advance(); // consume '|'
             return self.readBlockComment();
+        }
+        if (c == '+') {
+            // Reader conditional: #+feature
+            _ = self.advance(); // consume '+'
+            return self.makeToken(.feature_present);
+        }
+        if (c == '-') {
+            // Reader conditional: #-feature
+            _ = self.advance(); // consume '-'
+            return self.makeToken(.feature_absent);
         }
         // Unknown # dispatch
         return self.makeToken(.err);
@@ -703,5 +717,29 @@ test "lex nested block comment" {
 
     try testing.expectEqualStrings("foo", lexer.next().text);
     try testing.expectEqualStrings("bar", lexer.next().text);
+    try testing.expectEqual(TokenKind.eof, lexer.next().kind);
+}
+
+test "lex reader conditionals" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#+habu #-cl");
+
+    const t1 = lexer.next();
+    try testing.expectEqual(TokenKind.feature_present, t1.kind);
+    try testing.expectEqualStrings("#+", t1.text);
+
+    const t2 = lexer.next();
+    try testing.expectEqual(TokenKind.symbol, t2.kind);
+    try testing.expectEqualStrings("habu", t2.text);
+
+    const t3 = lexer.next();
+    try testing.expectEqual(TokenKind.feature_absent, t3.kind);
+    try testing.expectEqualStrings("#-", t3.text);
+
+    const t4 = lexer.next();
+    try testing.expectEqual(TokenKind.symbol, t4.kind);
+    try testing.expectEqualStrings("cl", t4.text);
+
     try testing.expectEqual(TokenKind.eof, lexer.next().kind);
 }
