@@ -6618,8 +6618,10 @@ pub const Compiler = struct {
         if (s == b.tan.raw) return self.compileUnaryPrim(args, env, .tan);
         if (s == b.exp.raw) return self.compileUnaryPrim(args, env, .exp);
         if (s == b.log.raw) return self.compileUnaryPrim(args, env, .log);
-        // floor/ceiling/round are implemented in stdlib to return multiple values
-        // (the primitive versions only return the quotient)
+        // floor/ceiling/round - primitives return just the quotient, stdlib versions return multiple values
+        if (s == b.floor.raw) return self.compileFloorCeilRound(args, env, .floor);
+        if (s == b.ceiling.raw) return self.compileFloorCeilRound(args, env, .ceiling);
+        if (s == b.round.raw) return self.compileFloorCeilRound(args, env, .round);
 
         // Vector operations (CL names: aref, svref, %svset, %aset)
         if (s == b.aref.raw) return self.compileAref(args, env);
