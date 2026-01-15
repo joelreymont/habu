@@ -78,6 +78,7 @@
 - ✅ Complex (objects.zig:223, full arithmetic integration - supports mixed-type operations)
 - ✅ Numeric tower complete: complex > float > rational > bignum > fixnum
 - ✅ Numeric predicates: zerop, plusp, minusp, evenp, oddp (primitives)
+- ✅ Logic operations: logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logeqv, logbitp, logcount, integer-length, logorc1, logorc2, logtest
 
 ### Arrays
 - ✅ Multi-dimensional arrays (make-array, aref, %aset - full mutation support)
