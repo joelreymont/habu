@@ -190,6 +190,14 @@ pub fn keywordp(val: Value) bool {
     return val.isKeyword();
 }
 
+/// Create string of given size filled with character
+pub fn makeString(heap: *Heap, size: usize, char: u8) error{OutOfMemory}!Value {
+    const str_val = try heap.allocStringUninitialized(size);
+    const str = str_val.toPtr(objects.String);
+    @memset(str.data[0..size], char);
+    return str_val;
+}
+
 // ============================================================================
 // Tests
 // ============================================================================

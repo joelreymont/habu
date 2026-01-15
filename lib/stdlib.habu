@@ -852,6 +852,14 @@
           (string-trim-right-idx s bag (- i 1))
           i)))
 
+;; char - get character from string at index
+(defun char (string index)
+  (string-ref string index))
+
+;; schar - simple-string character access (same as char in Habu)
+(defun schar (string index)
+  (string-ref string index))
+
 ;; string-trim - remove characters from both ends
 (defun string-trim (char-bag string)
   (let* ((bag (if (stringp char-bag) (string-to-list char-bag) char-bag))
