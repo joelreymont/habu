@@ -928,20 +928,28 @@
 ;; Sorting Functions
 ;; ============================================================
 
-; merge - merge two sorted lists
-(defun merge-lists (l1 l2 pred)
+; merge-lists-with-key - merge two sorted lists with optional key (stable)
+; Takes from l1 when elements are equal to maintain stability
+(defun merge-lists-with-key (l1 l2 pred key)
   (cond
     ((null l1) l2)
     ((null l2) l1)
-    ((funcall pred (car l1) (car l2))
-     (cons (car l1) (merge-lists (cdr l1) l2 pred)))
     (t
-     (cons (car l2) (merge-lists l1 (cdr l2) pred)))))
+     (let ((k1 (if key (funcall key (car l1)) (car l1)))
+           (k2 (if key (funcall key (car l2)) (car l2))))
+       ; Take from l1 unless l2 is strictly less (for stability)
+       (if (funcall pred k2 k1)
+           (cons (car l2) (merge-lists-with-key l1 (cdr l2) pred key))
+           (cons (car l1) (merge-lists-with-key (cdr l1) l2 pred key)))))))
+
+; merge-lists - merge two sorted lists (for backward compat)
+(defun merge-lists (l1 l2 pred)
+  (merge-lists-with-key l1 l2 pred nil))
 
 ; merge - merge two sequences
-(defun merge (result-type seq1 seq2 pred)
+(defun merge (result-type seq1 seq2 pred &key key)
   (declare (ignore result-type))
-  (merge-lists (coerce seq1 'list) (coerce seq2 'list) pred))
+  (merge-lists-with-key (coerce seq1 'list) (coerce seq2 'list) pred key))
 
 ; split-list - split list into two halves, returns (left . right)
 (defun split-list (lst)
@@ -954,18 +962,22 @@
       (rplacd slow nil)
       (cons lst second))))
 
-; sort - merge sort (stable)
-(defun sort (seq pred)
+; sort-with-key - merge sort with key function
+(defun sort-with-key (seq pred key)
   (if (or (null seq) (null (cdr seq)))
       seq
       (let ((halves (split-list (copy-list seq))))
-        (merge-lists (sort (car halves) pred)
-                     (sort (cdr halves) pred)
-                     pred))))
+        (merge-lists-with-key (sort-with-key (car halves) pred key)
+                              (sort-with-key (cdr halves) pred key)
+                              pred key))))
+
+; sort - merge sort (stable), with optional :key
+(defun sort (seq pred &key key)
+  (sort-with-key seq pred key))
 
 ; stable-sort - same as sort (merge sort is stable)
-(defun stable-sort (seq pred)
-  (sort seq pred))
+(defun stable-sort (seq pred &key key)
+  (sort seq pred :key key))
 
 ;; ============================================================
 ;; Sequence Concatenation
@@ -1865,22 +1877,30 @@
   (remove-if-not pred sequence))
 
 ; delete-duplicates - remove duplicate elements
-(defun delete-duplicates (sequence &key (test #'eql))
-  (remove-duplicates sequence :test test))
-
-; remove-duplicates - non-destructive duplicate removal
-(defun remove-duplicates (sequence &key test)
+; remove-duplicates-with-key - helper with key support
+(defun remove-duplicates-with-key (sequence test key)
   (if (null sequence)
       nil
-      (let ((first (car sequence))
-            (rest (if test
-                      (remove-duplicates (cdr sequence) :test test)
-                      (remove-duplicates (cdr sequence)))))
-        (if (if test
-                (member first rest :test test)
-                (member first rest))
+      (let* ((first (car sequence))
+             (first-key (if key (funcall key first) first))
+             (rest (remove-duplicates-with-key (cdr sequence) test key)))
+        ; Check if first-key appears in rest (comparing by key)
+        (if (some (lambda (x)
+                    (let ((x-key (if key (funcall key x) x)))
+                      (if test
+                          (funcall test first-key x-key)
+                          (eql first-key x-key))))
+                  rest)
             rest
             (cons first rest)))))
+
+; remove-duplicates - non-destructive duplicate removal
+(defun remove-duplicates (sequence &key test key)
+  (remove-duplicates-with-key sequence test key))
+
+; delete-duplicates - destructive remove-duplicates (for now, same impl)
+(defun delete-duplicates (sequence &key (test #'eql) key)
+  (remove-duplicates sequence :test test :key key))
 
 ; nreverse - destructive reverse (for now, same as reverse)
 (defun nreverse (sequence)
