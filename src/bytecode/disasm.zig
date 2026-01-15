@@ -236,6 +236,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .list_remove_equal,
         .invoke_restart,
         .find_restart,
+        .handler_bind,
         .streamp,
         .input_stream_p,
         .output_stream_p,
@@ -249,12 +250,6 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .parse_namestring,
         .namestring,
         .merge_pathnames,
-        .pathname_host,
-        .pathname_device,
-        .pathname_directory,
-        .pathname_name,
-        .pathname_type,
-        .pathname_version,
         => {
             try writer.print("{s}\n", .{op.name()});
             return offset + 1;

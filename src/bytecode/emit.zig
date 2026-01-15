@@ -1506,28 +1506,34 @@ pub const Emitter = struct {
     }
 
     fn emitHandlerBind(self: *Emitter, hb: anytype) Error!void {
-        // Layout:
-        // push_handler condition_type handler_fn  (for each handler)
-        // <body code>
-        // pop_handler  (for each handler, in reverse order)
+        // Build handlers alist at compile time and push as literal
+        // Start with nil
+        try self.emitOp(.push_nil);
 
-        // Push handlers in order
-        for (hb.handlers) |h| {
-            // Emit condition type (evaluated at compile time)
-            try self.emit(h.condition_type);
-            // Emit handler function (evaluated at compile time)
+        // Cons each handler pair onto list (reverse order for proper list)
+        var i = hb.handlers.len;
+        while (i > 0) {
+            i -= 1;
+            const h = hb.handlers[i];
+
+            // Push handler function (should be lambda/closure)
             try self.emit(h.handler_fn);
-            // Push handler frame
-            try self.emitOp(.push_handler);
+            // Push condition type
+            try self.emit(h.condition_type);
+            // Cons them: (condition_type . handler_fn)
+            try self.emitOp(.cons);
+            // Cons onto list
+            try self.emitOp(.cons);
         }
 
-        // Emit body
+        // Emit body (should be lambda/closure)
         try self.emit(hb.body);
 
-        // Pop handlers in reverse order
-        for (0..hb.handlers.len) |_| {
-            try self.emitOp(.pop_handler);
-        }
+        // Swap so stack is: body-fn handlers-alist
+        try self.emitOp(.swap);
+
+        // Call handler_bind opcode
+        try self.emitOp(.handler_bind);
     }
 
     fn emitRestartCase(self: *Emitter, rc: anytype) Error!void {

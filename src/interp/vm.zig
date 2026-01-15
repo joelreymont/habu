@@ -103,6 +103,14 @@ pub const RestartFrame = struct {
     unwind_depth: usize,
 };
 
+/// Handler frame for handler-bind
+pub const HandlerFrame = struct {
+    /// Condition type (symbol or list of types)
+    condition_type: Value,
+    /// Handler function (closure)
+    handler_fn: Value,
+};
+
 /// Call frame for function calls
 pub const Frame = struct {
     /// Return address (chunk + ip)
@@ -215,6 +223,11 @@ pub const Vm = struct {
     /// Block stack pointer
     block_sp: usize,
 
+    /// Handler stack for handler-bind
+    handler_stack: [MAX_HANDLERS]HandlerFrame,
+    /// Handler stack pointer
+    handler_sp: usize,
+
     /// Let scope stack for nested let bindings
     scope_stack: [MAX_SCOPES]Scope,
     /// Scope stack pointer (number of active scopes)
@@ -316,6 +329,7 @@ pub const Vm = struct {
     const MAX_UNWINDS = 32;
     const MAX_RESTARTS = 64;
     const MAX_BLOCKS = 64;
+    const MAX_HANDLERS = 64;
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap) !Vm {
         var vm = Vm{
@@ -339,6 +353,8 @@ pub const Vm = struct {
             .restart_sp = 0,
             .block_stack = undefined,
             .block_sp = 0,
+            .handler_stack = undefined,
+            .handler_sp = 0,
             .scope_stack = undefined,
             .scope_sp = 0,
             .pending_throw_tag = Value.nil,
@@ -2112,6 +2128,12 @@ pub const Vm = struct {
                 try self.push(if (found) Value.t else Value.nil);
             },
 
+            .handler_bind => {
+                const handlers_alist = try self.pop();
+                const body_fn = try self.pop();
+                try self.doHandlerBind(body_fn, handlers_alist);
+            },
+
             // Multiple values
             .values => {
                 const count = self.readU8();
@@ -2952,48 +2974,6 @@ pub const Vm = struct {
                 try self.push(Value.makePathname(result));
             },
 
-            .pathname_host => {
-                const pn_val = try self.pop();
-                if (!pn_val.isPathname()) return error.TypeMismatch;
-                const pn = pn_val.toPtr(runtime.Pathname);
-                try self.push(pn.host);
-            },
-
-            .pathname_device => {
-                const pn_val = try self.pop();
-                if (!pn_val.isPathname()) return error.TypeMismatch;
-                const pn = pn_val.toPtr(runtime.Pathname);
-                try self.push(pn.device);
-            },
-
-            .pathname_directory => {
-                const pn_val = try self.pop();
-                if (!pn_val.isPathname()) return error.TypeMismatch;
-                const pn = pn_val.toPtr(runtime.Pathname);
-                try self.push(pn.directory);
-            },
-
-            .pathname_name => {
-                const pn_val = try self.pop();
-                if (!pn_val.isPathname()) return error.TypeMismatch;
-                const pn = pn_val.toPtr(runtime.Pathname);
-                try self.push(pn.name);
-            },
-
-            .pathname_type => {
-                const pn_val = try self.pop();
-                if (!pn_val.isPathname()) return error.TypeMismatch;
-                const pn = pn_val.toPtr(runtime.Pathname);
-                try self.push(pn.type);
-            },
-
-            .pathname_version => {
-                const pn_val = try self.pop();
-                if (!pn_val.isPathname()) return error.TypeMismatch;
-                const pn = pn_val.toPtr(runtime.Pathname);
-                try self.push(pn.version);
-            },
-
             .set_macro_character => {
                 const non_term = try self.pop(); // &optional non-terminating-p
                 const function = try self.pop();
@@ -3816,6 +3796,48 @@ pub const Vm = struct {
         }
         // No matching restart found
         return error.RestartNotFound;
+    }
+
+    // ========================================================================
+    // Handler-bind support
+    // ========================================================================
+
+    fn doHandlerBind(self: *Vm, body_fn: Value, handlers_alist: Value) Error!void {
+        // Push handlers onto handler stack
+        const depth_before = self.handler_sp;
+
+        // Walk alist of (condition-type . handler-fn) pairs
+        var curr = handlers_alist;
+        while (!curr.isNil()) {
+            if (!curr.isCons()) return error.TypeMismatch;
+            const pair = curr.toPtr(runtime.Cons);
+            const car = pair.car;
+
+            if (!car.isCons()) return error.TypeMismatch;
+            const binding = car.toPtr(runtime.Cons);
+            const condition_type = binding.car;
+            const handler_fn = binding.cdr;
+
+            if (self.handler_sp >= MAX_HANDLERS) {
+                return error.StackOverflow;
+            }
+
+            self.handler_stack[self.handler_sp] = HandlerFrame{
+                .condition_type = condition_type,
+                .handler_fn = handler_fn,
+            };
+            self.handler_sp += 1;
+
+            curr = pair.cdr;
+        }
+
+        // Call body function
+        if (!body_fn.isClosure()) return error.TypeMismatch;
+        const closure = body_fn.toPtr(runtime.Closure);
+        _ = self.callClosure(closure, 0) catch |e| return @errorCast(e);
+
+        // Pop handlers
+        self.handler_sp = depth_before;
     }
 
     // ========================================================================

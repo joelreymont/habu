@@ -506,15 +506,6 @@ pub const Op = enum(u8) {
     /// Fill nil components from defaults
     merge_pathnames = 0x29,
 
-    /// Pathname component accessors
-    /// ( pathname -- component )
-    pathname_host = 0x07,
-    pathname_device = 0x08,
-    pathname_directory = 0x09,
-    pathname_version = 0x0C,
-    pathname_name = 0x0A,
-    pathname_type = 0x0B,
-
     /// Reader macro operations
     /// ( char function -- nil )
     /// Set reader macro function for character
@@ -720,15 +711,6 @@ pub const Op = enum(u8) {
     /// Check if object is of given type
     /// ( obj type-sym -- t/nil )
     typep = 0xAF,
-
-    /// Push handler frame
-    /// Stack contains condition type and handler function
-    /// ( condition_type handler_fn -- )
-    push_handler = 0x2E,
-
-    /// Pop handler frame
-    /// ( -- )
-    pop_handler = 0x2F,
 
     // ========================================================================
     // Numeric predicates
@@ -1123,6 +1105,11 @@ pub const Op = enum(u8) {
     /// ( item sequence -- new-sequence )
     list_remove_equal = 0xC8,
 
+    /// Establish condition handler bindings
+    /// ( body-fn handlers-alist -- result )
+    /// handlers-alist: list of (condition-type . handler-fn)
+    handler_bind = 0x07,
+
     // Stream I/O operations
     /// Read line from stream
     /// ( stream -- string | nil )
@@ -1368,6 +1355,7 @@ pub const Op = enum(u8) {
             .list_remove_equal,
             .invoke_restart,
             .find_restart,
+            .handler_bind,
             .streamp,
             .input_stream_p,
             .output_stream_p,
@@ -1380,14 +1368,6 @@ pub const Op = enum(u8) {
             .parse_namestring,
             .namestring,
             .merge_pathnames,
-            .pathname_host,
-            .pathname_device,
-            .pathname_directory,
-            .pathname_name,
-            .pathname_type,
-            .pathname_version,
-            .push_handler,
-            .pop_handler,
             => 0,
 
             // 1 byte operand
