@@ -2699,3 +2699,28 @@
                                 (list 'defun accessor-name (list 'obj)
                                       (list 'svref 'obj index))))
                             slot-names)))))))
+
+;;; ============================================================================
+;;; Stream macros
+;;; ============================================================================
+
+(defmacro with-open-file ((var filespec) &body body)
+  (let ((stream (gensym "STREAM"))
+        (abort (gensym "ABORT")))
+    `(let ((,stream ,filespec)
+           (,abort t))
+       (unwind-protect
+           (progn
+             (let ((,var ,stream))
+               (setq ,abort nil)
+               ,@body))
+         (close ,stream ,abort)))))
+
+(defmacro with-input-from-string ((var string) &body body)
+  `(let ((,var (make-string-input-stream ,string)))
+     ,@body))
+
+(defmacro with-output-to-string ((var) &body body)
+  `(let ((,var (make-string-output-stream)))
+     ,@body
+     (get-output-stream-string ,var)))

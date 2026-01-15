@@ -488,6 +488,198 @@ test "write bytes" {
     _ = sysWriteBytes;
 }
 
+/// Check if value is a stream
+pub fn streamp(val: Value) bool {
+    return val.isStream();
+}
+
+/// Create a string input stream
+pub fn makeStringInputStream(heap: *Heap, str: Value, start: ?Value, end: ?Value) !Value {
+    _ = start;
+    _ = end;
+    if (!str.isString()) return error.TypeError;
+    return try heap.allocStringInputStream(str);
+}
+
+/// Create a string output stream
+pub fn makeStringOutputStream(heap: *Heap) !Value {
+    return try heap.allocStringOutputStream();
+}
+
+/// Get the accumulated string from an output stream
+pub fn getOutputStreamString(stream: Value) !Value {
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    if (s.direction != .output or s.stream_type != .string) return error.TypeError;
+    return s.buffer;
+}
+
+/// Read one character from stream
+pub fn readChar(stream: Value, eof_error: ?Value, eof_value: ?Value) !Value {
+    _ = eof_error;
+    _ = eof_value;
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    if (s.direction != .input) return error.TypeError;
+
+    switch (s.stream_type) {
+        .string => {
+            const str = s.buffer.toPtr(objects.String);
+            if (s.position >= str.len) return Value.nil();
+            const ch = str.bytes()[s.position];
+            s.position += 1;
+            return Value.makeFixnum(@intCast(ch));
+        },
+        .file => {
+            var buf: [1]u8 = undefined;
+            const fd: std.posix.fd_t = @intCast(s.file_fd);
+            const n = try std.posix.read(fd, &buf);
+            if (n == 0) return Value.nil();
+            return Value.makeFixnum(@intCast(buf[0]));
+        },
+        .byte => return error.NotImplemented,
+    }
+}
+
+/// Push a character back to stream
+pub fn unreadChar(char: Value, stream: Value) !void {
+    if (!char.isFixnum()) return error.TypeError;
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    if (s.direction != .input) return error.TypeError;
+    if (s.position > 0) s.position -= 1;
+}
+
+/// Peek at next character without consuming
+pub fn peekChar(peek_type: ?Value, stream: Value) !Value {
+    _ = peek_type;
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    if (s.direction != .input) return error.TypeError;
+
+    switch (s.stream_type) {
+        .string => {
+            const str = s.buffer.toPtr(objects.String);
+            if (s.position >= str.len) return Value.nil();
+            return Value.makeFixnum(@intCast(str.bytes()[s.position]));
+        },
+        .file => {
+            var buf: [1]u8 = undefined;
+            const fd: std.posix.fd_t = @intCast(s.file_fd);
+            const n = try std.posix.read(fd, &buf);
+            if (n == 0) return Value.nil();
+            _ = try std.posix.lseek(fd, -1, .CUR);
+            return Value.makeFixnum(@intCast(buf[0]));
+        },
+        .byte => return error.NotImplemented,
+    }
+}
+
+/// Write one character to stream
+pub fn writeChar(char: Value, stream: Value) !void {
+    if (!char.isFixnum()) return error.TypeError;
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    if (s.direction != .output) return error.TypeError;
+
+    const ch: u8 = @intCast(char.toFixnum());
+    switch (s.stream_type) {
+        .string => {
+            // TODO: grow string buffer
+            return error.NotImplemented;
+        },
+        .file => {
+            const fd: std.posix.fd_t = @intCast(s.file_fd);
+            _ = try std.posix.write(fd, &[_]u8{ch});
+        },
+        .byte => return error.NotImplemented,
+    }
+}
+
+/// Read a line from stream
+pub fn readLine(stream: Value) !Value {
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    if (s.direction != .input) return error.TypeError;
+
+    switch (s.stream_type) {
+        .string => {
+            const str = s.buffer.toPtr(objects.String);
+            const start = s.position;
+            var i = start;
+            while (i < str.len and str.bytes()[i] != '\n') : (i += 1) {}
+            const line_end = i;
+            if (i < str.len) i += 1; // skip newline
+            s.position = i;
+            // TODO: return substring
+            _ = line_end;
+            return Value.nil();
+        },
+        .file => {
+            // TODO: implement file line reading
+            return error.NotImplemented;
+        },
+        .byte => return error.NotImplemented,
+    }
+}
+
+/// Write a string to stream
+pub fn writeString(str: Value, stream: Value, start: ?Value, end: ?Value) !void {
+    _ = start;
+    _ = end;
+    if (!str.isString()) return error.TypeError;
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    if (s.direction != .output) return error.TypeError;
+
+    const string = str.toPtr(objects.String);
+    switch (s.stream_type) {
+        .string => {
+            // TODO: append to string buffer
+            return error.NotImplemented;
+        },
+        .file => {
+            const fd: std.posix.fd_t = @intCast(s.file_fd);
+            _ = try std.posix.write(fd, string.bytes());
+        },
+        .byte => return error.NotImplemented,
+    }
+}
+
+/// Write a string followed by newline
+pub fn writeLine(str: Value, stream: Value) !void {
+    try writeString(str, stream, null, null);
+    try writeChar(Value.makeFixnum('\n'), stream);
+}
+
+/// Open a file stream
+pub fn openFile(heap: *Heap, filename: Value, direction: ?Value, if_exists: ?Value, if_does_not_exist: ?Value) !Value {
+    _ = if_exists;
+    _ = if_does_not_exist;
+    if (!filename.isString()) return error.TypeError;
+
+    const fname = filename.toPtr(objects.String);
+    const dir = if (direction) |d| d else Value.intern(heap, "input");
+    _ = dir;
+
+    // TODO: parse direction keyword
+    const fd = try std.posix.open(fname.bytes(), .{ .ACCMODE = .RDONLY }, 0);
+    return try heap.allocFileInputStream(fd);
+}
+
+/// Close a stream
+pub fn closeStream(stream: Value, abort: ?Value) !void {
+    _ = abort;
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+
+    if (s.stream_type == .file and s.file_fd >= 0) {
+        const fd: std.posix.fd_t = @intCast(s.file_fd);
+        std.posix.close(fd);
+        s.file_fd = -1;
+    }
+}
+
 test "time functions" {
     const testing = std.testing;
 
