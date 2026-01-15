@@ -3761,18 +3761,6 @@ pub const Compiler = struct {
             }
         }
 
-        // Build: (if (eq (car cond) 'type) (let ((var (cdr cond))) body...) else)
-
-        // (car cond)
-        const cond_var_ir = try self.builder.variable(cond_name, 0, cond_idx);
-        const car_cond = try self.builder.car(cond_var_ir);
-
-        // 'type - the condition type symbol
-        const type_ir = try self.builder.lit(condition_type);
-
-        // (eq (car cond) 'type)
-        const test_ir = try self.builder.eq(car_cond, type_ir);
-
         // Build handler body with variable binding
         // (let ((var (cdr cond))) body...)
         const cond_var_ir2 = try self.builder.variable(cond_name, 0, cond_idx);
@@ -3788,6 +3776,24 @@ pub const Compiler = struct {
 
         // Build let node
         const let_ir = try self.builder.let1(var_name, var_idx, cdr_cond, body_ir);
+
+        // Check if condition_type is 't' (catch-all handler)
+        if (condition_type.raw == Value.t.raw) {
+            // t is catch-all, no test needed
+            return let_ir;
+        }
+
+        // Build: (if (eq (car cond) 'type) (let ((var (cdr cond))) body...) else)
+
+        // (car cond)
+        const cond_var_ir = try self.builder.variable(cond_name, 0, cond_idx);
+        const car_cond = try self.builder.car(cond_var_ir);
+
+        // 'type - the condition type symbol
+        const type_ir = try self.builder.lit(condition_type);
+
+        // (eq (car cond) 'type)
+        const test_ir = try self.builder.eq(car_cond, type_ir);
 
         // Build if node
         return try self.builder.ifExpr(test_ir, let_ir, else_ir);

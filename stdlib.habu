@@ -1147,8 +1147,8 @@
                     (cons 'progn body))))))
 
 ; signal - signal a condition (can be handled)
-(defun signal (condition)
-  (throw '%condition% condition))
+(defun signal (condition-type &rest datum)
+  (throw '%condition% (cons condition-type datum)))
 
 ; error-condition - signal an error condition
 (defun error-condition (condition)
@@ -1159,11 +1159,7 @@
   (declare (ignore format-string))
   (signal condition))
 
-; warn - issue a warning
-(defun warn (format-string &rest args)
-  (apply #'format t format-string args)
-  (terpri)
-  nil)
+; NOTE: warn is defined at top of file using signal/condition system
 
 ; simple-condition - basic condition with format control
 (defun simple-condition (format-control &rest format-arguments)
