@@ -908,6 +908,11 @@
     (t
      (cons (car l2) (merge-lists l1 (cdr l2) pred)))))
 
+; merge - merge two sequences
+(defun merge (result-type seq1 seq2 pred)
+  (declare (ignore result-type))
+  (merge-lists (coerce seq1 'list) (coerce seq2 'list) pred))
+
 ; split-list - split list into two halves, returns (left . right)
 (defun split-list (lst)
   (let ((slow lst)
