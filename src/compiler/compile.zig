@@ -6357,9 +6357,9 @@ pub const Compiler = struct {
         if (s == b.tan.raw) return self.compileUnaryPrim(args, env, .tan);
         if (s == b.exp.raw) return self.compileUnaryPrim(args, env, .exp);
         if (s == b.log.raw) return self.compileUnaryPrim(args, env, .log);
-        if (s == b.floor.raw) return self.compileUnaryPrim(args, env, .floor);
-        if (s == b.ceiling.raw) return self.compileUnaryPrim(args, env, .ceiling);
-        if (s == b.round.raw) return self.compileUnaryPrim(args, env, .round);
+        if (s == b.floor.raw) return self.compileFloorCeilRound(args, env, .floor);
+        if (s == b.ceiling.raw) return self.compileFloorCeilRound(args, env, .ceiling);
+        if (s == b.round.raw) return self.compileFloorCeilRound(args, env, .round);
 
         // Vector operations (CL names: aref, svref, %svset, %aset)
         if (s == b.aref.raw) return self.compileAref(args, env);
@@ -6890,6 +6890,35 @@ pub const Compiler = struct {
             .output_stream_p => try self.builder.outputStreamP(operand),
             .make_string_input_stream => try self.builder.makeStringInputStream(operand),
             .get_output_stream_string => try self.builder.getOutputStreamString(operand),
+            else => return error.InvalidSyntax,
+        };
+    }
+
+    /// Compile floor/ceiling/round with optional divisor: (floor x) or (floor x y)
+    fn compileFloorCeilRound(self: *Compiler, args: Value, env: *const Env, op: PrimTag) anyerror!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons = args.toPtr(Cons);
+        const dividend = try self.compile(cons.car, env);
+
+        // Check for optional second argument (divisor)
+        if (cons.cdr.isCons()) {
+            const cdr_cons = cons.cdr.toPtr(Cons);
+            const divisor = try self.compile(cdr_cons.car, env);
+            // (floor x y) = (floor (/ x y))
+            const div_ir = try self.builder.div(dividend, divisor);
+            return switch (op) {
+                .floor => try self.builder.floor_fn(div_ir),
+                .ceiling => try self.builder.ceiling(div_ir),
+                .round => try self.builder.round_fn(div_ir),
+                else => return error.InvalidSyntax,
+            };
+        }
+
+        // Single argument case
+        return switch (op) {
+            .floor => try self.builder.floor_fn(dividend),
+            .ceiling => try self.builder.ceiling(dividend),
+            .round => try self.builder.round_fn(dividend),
             else => return error.InvalidSyntax,
         };
     }

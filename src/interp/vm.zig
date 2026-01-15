@@ -4632,6 +4632,12 @@ pub const Vm = struct {
     fn valToFloat(val: Value) Error!f64 {
         if (val.isFixnum()) return @floatFromInt(val.toFixnum());
         if (val.isFloat()) return val.toFloat();
+        if (val.isRational()) {
+            const rat = val.toPtr(runtime.Rational);
+            const num: f64 = @floatFromInt(rat.numerator);
+            const den: f64 = @floatFromInt(rat.denominator);
+            return num / den;
+        }
         return error.TypeMismatch;
     }
 
