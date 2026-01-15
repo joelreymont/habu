@@ -449,6 +449,14 @@ pub const Ir = union(enum) {
     logxor: BinaryOp, // Bitwise XOR
     lognot: UnaryOp, // Bitwise NOT
     ash: BinaryOp, // Arithmetic shift
+    lognand: BinaryOp, // Bitwise NAND
+    lognor: BinaryOp, // Bitwise NOR
+    logandc1: BinaryOp, // AND with NOT of first
+    logandc2: BinaryOp, // AND with NOT of second
+    logeqv: BinaryOp, // Bitwise equivalence
+    logbitp: BinaryOp, // Test if bit is set
+    logcount: UnaryOp, // Count 1 bits
+    integer_length: UnaryOp, // Bits needed to represent
     read_file: UnaryOp, // Read file to string
     write_file: BinaryOp, // Write string to file
     make_string: BinaryOp, // Create string (length, char)
@@ -1532,6 +1540,54 @@ pub const IrBuilder = struct {
     pub fn ash(self: IrBuilder, n: *const Ir, count: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .ash = .{ .left = n, .right = count } };
+        return node;
+    }
+
+    pub fn lognand(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .lognand = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn lognor(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .lognor = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn logandc1(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .logandc1 = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn logandc2(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .logandc2 = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn logeqv(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .logeqv = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn logbitp(self: IrBuilder, index: *const Ir, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .logbitp = .{ .left = index, .right = n } };
+        return node;
+    }
+
+    pub fn logcount(self: IrBuilder, val: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .logcount = .{ .operand = val } };
+        return node;
+    }
+
+    pub fn integerLength(self: IrBuilder, val: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .integer_length = .{ .operand = val } };
         return node;
     }
 

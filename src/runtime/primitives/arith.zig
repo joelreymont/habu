@@ -158,6 +158,98 @@ pub fn lognot(a: Value) Error!Value {
     return Value.makeFixnum(@bitCast(~ua));
 }
 
+/// Bitwise NAND
+pub fn lognand(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+    const ua: u64 = @bitCast(a.toFixnum());
+    const ub: u64 = @bitCast(b.toFixnum());
+    return Value.makeFixnum(@bitCast(~(ua & ub)));
+}
+
+/// Bitwise NOR
+pub fn lognor(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+    const ua: u64 = @bitCast(a.toFixnum());
+    const ub: u64 = @bitCast(b.toFixnum());
+    return Value.makeFixnum(@bitCast(~(ua | ub)));
+}
+
+/// Bitwise AND with NOT of first arg
+pub fn logandc1(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+    const ua: u64 = @bitCast(a.toFixnum());
+    const ub: u64 = @bitCast(b.toFixnum());
+    return Value.makeFixnum(@bitCast((~ua) & ub));
+}
+
+/// Bitwise AND with NOT of second arg
+pub fn logandc2(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+    const ua: u64 = @bitCast(a.toFixnum());
+    const ub: u64 = @bitCast(b.toFixnum());
+    return Value.makeFixnum(@bitCast(ua & (~ub)));
+}
+
+/// Bitwise OR with NOT of first arg
+pub fn logorc1(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+    const ua: u64 = @bitCast(a.toFixnum());
+    const ub: u64 = @bitCast(b.toFixnum());
+    return Value.makeFixnum(@bitCast((~ua) | ub));
+}
+
+/// Bitwise OR with NOT of second arg
+pub fn logorc2(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+    const ua: u64 = @bitCast(a.toFixnum());
+    const ub: u64 = @bitCast(b.toFixnum());
+    return Value.makeFixnum(@bitCast(ua | (~ub)));
+}
+
+/// Bitwise equivalence (NOT XOR)
+pub fn logeqv(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+    const ua: u64 = @bitCast(a.toFixnum());
+    const ub: u64 = @bitCast(b.toFixnum());
+    return Value.makeFixnum(@bitCast(~(ua ^ ub)));
+}
+
+/// Test if any bits set in both args
+pub fn logtest(a: Value, b: Value) bool {
+    if (!a.isFixnum() or !b.isFixnum()) return false;
+    const ua: u64 = @bitCast(a.toFixnum());
+    const ub: u64 = @bitCast(b.toFixnum());
+    return (ua & ub) != 0;
+}
+
+/// Test if bit at index is set
+pub fn logbitp(index: Value, n: Value) bool {
+    if (!index.isFixnum() or !n.isFixnum()) return false;
+    const idx = index.toFixnum();
+    if (idx < 0 or idx >= 64) return false;
+    const un: u64 = @bitCast(n.toFixnum());
+    const bit: u6 = @intCast(idx);
+    return ((un >> bit) & 1) == 1;
+}
+
+/// Count number of 1 bits
+pub fn logcount(n: Value) Error!Value {
+    if (!n.isFixnum()) return error.TypeMismatch;
+    const val = n.toFixnum();
+    const un: u64 = @bitCast(if (val < 0) ~val else val);
+    return Value.makeFixnum(@popCount(un));
+}
+
+/// Number of bits needed to represent integer
+pub fn integer_length(n: Value) Error!Value {
+    if (!n.isFixnum()) return error.TypeMismatch;
+    const val = n.toFixnum();
+    if (val == 0) return Value.makeFixnum(0);
+    const un: u64 = @bitCast(if (val < 0) ~val else val);
+    const bits = 64 - @clz(un);
+    return Value.makeFixnum(@intCast(bits));
+}
+
 /// Arithmetic shift (positive = left, negative = right)
 pub fn ash(val: Value, count: Value) Error!Value {
     if (!val.isFixnum() or !count.isFixnum()) return error.TypeMismatch;
@@ -278,7 +370,6 @@ pub fn gt(a: Value, b: Value) bool {
         return af > bf;
     }
 
-
     // Float comparison
     if (a.isFloat() or b.isFloat()) {
         const af = toNumber(a) catch return false;
@@ -307,7 +398,6 @@ pub fn le(a: Value, b: Value) bool {
         return af <= bf;
     }
 
-
     // Handle bignum comparisons
     if (a.isBignum() or b.isBignum()) {
         if (!a.isFixnum() and !a.isBignum()) return false;
@@ -328,7 +418,6 @@ pub fn ge(a: Value, b: Value) bool {
         const bf = toNumber(b) catch return false;
         return af >= bf;
     }
-
 
     // Handle bignum comparisons
     if (a.isBignum() or b.isBignum()) {

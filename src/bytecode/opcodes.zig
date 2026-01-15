@@ -858,6 +858,38 @@ pub const Op = enum(u8) {
     /// ( n count -- shifted )
     ash = 0xE9,
 
+    /// Test if bit at index is set
+    /// ( index n -- bool )
+    logbitp = 0x0F,
+
+    /// Count number of 1 bits
+    /// ( n -- count )
+    logcount = 0x2F,
+
+    /// Number of bits needed to represent integer
+    /// ( n -- length )
+    integer_length = 0x3F,
+
+    /// Bitwise NAND
+    /// ( a b -- ~(a&b) )
+    lognand = 0x5F,
+
+    /// Bitwise NOR
+    /// ( a b -- ~(a|b) )
+    lognor = 0x7D,
+
+    /// Bitwise AND with NOT of first arg
+    /// ( a b -- (~a)&b )
+    logandc1 = 0x7E,
+
+    /// Bitwise AND with NOT of second arg
+    /// ( a b -- a&(~b) )
+    logandc2 = 0x7F,
+
+    /// Bitwise equivalence (NOT XOR)
+    /// ( a b -- ~(a^b) )
+    logeqv = 0x8E,
+
     /// Read entire file contents to string
     /// ( path-string -- string )
     read_file = 0xEA,
@@ -1271,6 +1303,14 @@ pub const Op = enum(u8) {
             .logxor,
             .lognot,
             .ash,
+            .lognand,
+            .lognor,
+            .logandc1,
+            .logandc2,
+            .logeqv,
+            .logbitp,
+            .logcount,
+            .integer_length,
             .read_file,
             .write_file,
             .make_string,

@@ -324,6 +324,14 @@ pub const Builtins = struct {
     logxor: Value,
     lognot: Value,
     ash: Value,
+    lognand: Value,
+    lognor: Value,
+    logandc1: Value,
+    logandc2: Value,
+    logeqv: Value,
+    logbitp: Value,
+    logcount: Value,
+    @"integer-length": Value,
 
     // Primitives - File I/O
     @"read-file": Value,
@@ -663,6 +671,14 @@ pub const Builtins = struct {
             .logxor = try heap.intern("logxor"),
             .lognot = try heap.intern("lognot"),
             .ash = try heap.intern("ash"),
+            .lognand = try heap.intern("lognand"),
+            .lognor = try heap.intern("lognor"),
+            .logandc1 = try heap.intern("logandc1"),
+            .logandc2 = try heap.intern("logandc2"),
+            .logeqv = try heap.intern("logeqv"),
+            .logbitp = try heap.intern("logbitp"),
+            .logcount = try heap.intern("logcount"),
+            .@"integer-length" = try heap.intern("integer-length"),
             // Primitives - File I/O
             .@"read-file" = try heap.intern("read-file"),
             .@"write-file" = try heap.intern("write-file"),
@@ -909,6 +925,14 @@ pub const Builtins = struct {
         if (s == self.logxor.raw) return true;
         if (s == self.lognot.raw) return true;
         if (s == self.ash.raw) return true;
+        if (s == self.lognand.raw) return true;
+        if (s == self.lognor.raw) return true;
+        if (s == self.logandc1.raw) return true;
+        if (s == self.logandc2.raw) return true;
+        if (s == self.logeqv.raw) return true;
+        if (s == self.logbitp.raw) return true;
+        if (s == self.logcount.raw) return true;
+        if (s == self.@"integer-length".raw) return true;
         // Primitives - File I/O
         if (s == self.@"read-file".raw) return true;
         if (s == self.@"write-file".raw) return true;
@@ -6777,6 +6801,14 @@ pub const Compiler = struct {
         if (s == b.logxor.raw) return self.compileBinaryPrim(args, env, .logxor);
         if (s == b.lognot.raw) return self.compileUnaryPrim(args, env, .lognot);
         if (s == b.ash.raw) return self.compileBinaryPrim(args, env, .ash);
+        if (s == b.lognand.raw) return self.compileBinaryPrim(args, env, .lognand);
+        if (s == b.lognor.raw) return self.compileBinaryPrim(args, env, .lognor);
+        if (s == b.logandc1.raw) return self.compileBinaryPrim(args, env, .logandc1);
+        if (s == b.logandc2.raw) return self.compileBinaryPrim(args, env, .logandc2);
+        if (s == b.logeqv.raw) return self.compileBinaryPrim(args, env, .logeqv);
+        if (s == b.logbitp.raw) return self.compileBinaryPrim(args, env, .logbitp);
+        if (s == b.logcount.raw) return self.compileUnaryPrim(args, env, .logcount);
+        if (s == b.@"integer-length".raw) return self.compileUnaryPrim(args, env, .integer_length);
 
         // File I/O
         if (s == b.@"read-file".raw) return self.compileUnaryPrim(args, env, .read_file);
@@ -6826,7 +6858,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream };
+    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -6963,6 +6995,12 @@ pub const Compiler = struct {
             },
             .assoc => try self.builder.assoc(left, right),
             .logand => try self.builder.logand(left, right),
+            .lognand => try self.builder.lognand(left, right),
+            .lognor => try self.builder.lognor(left, right),
+            .logandc1 => try self.builder.logandc1(left, right),
+            .logandc2 => try self.builder.logandc2(left, right),
+            .logeqv => try self.builder.logeqv(left, right),
+            .logbitp => try self.builder.logbitp(left, right),
             .logior => try self.builder.logior(left, right),
             .logxor => try self.builder.logxor(left, right),
             .ash => try self.builder.ash(left, right),
@@ -7103,6 +7141,8 @@ pub const Compiler = struct {
             .parse_integer => try self.builder.parseInteger(operand),
             .write_to_string => try self.builder.writeToString(operand),
             .lognot => try self.builder.lognot(operand),
+            .logcount => try self.builder.logcount(operand),
+            .integer_length => try self.builder.integerLength(operand),
             .read_file => try self.builder.readFile(operand),
             .string_to_list => try self.builder.stringToList(operand),
             .list_to_string => try self.builder.listToString(operand),

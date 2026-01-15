@@ -1572,6 +1572,52 @@ pub const Vm = struct {
                     n >> @intCast(@min(-count, 63));
                 try self.push(Value.makeFixnum(result));
             },
+            .lognand => {
+                const b = try self.pop();
+                const a = try self.pop();
+                const result = try arith.lognand(a, b);
+                try self.push(result);
+            },
+            .lognor => {
+                const b = try self.pop();
+                const a = try self.pop();
+                const result = try arith.lognor(a, b);
+                try self.push(result);
+            },
+            .logandc1 => {
+                const b = try self.pop();
+                const a = try self.pop();
+                const result = try arith.logandc1(a, b);
+                try self.push(result);
+            },
+            .logandc2 => {
+                const b = try self.pop();
+                const a = try self.pop();
+                const result = try arith.logandc2(a, b);
+                try self.push(result);
+            },
+            .logeqv => {
+                const b = try self.pop();
+                const a = try self.pop();
+                const result = try arith.logeqv(a, b);
+                try self.push(result);
+            },
+            .logbitp => {
+                const n = try self.pop();
+                const index = try self.pop();
+                const result = arith.logbitp(index, n);
+                try self.push(if (result) Value.t else Value.nil);
+            },
+            .logcount => {
+                const n = try self.pop();
+                const result = try arith.logcount(n);
+                try self.push(result);
+            },
+            .integer_length => {
+                const n = try self.pop();
+                const result = try arith.integer_length(n);
+                try self.push(result);
+            },
             .read_file => {
                 const path_val = try self.pop();
                 if (!path_val.isString()) return error.TypeMismatch;
