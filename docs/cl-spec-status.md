@@ -85,9 +85,9 @@
 
 ### Reader macros
 - ✅ set/get-macro-character (vm.zig:2604)
-- ✅ set/get-dispatch-macro-character (vm.zig:2643) - NEW
+- ✅ set/get-dispatch-macro-character (vm.zig:2643)
 - ✅ Basic quote, quasiquote, unquote
-- ⏸️ Reader conditionals (#+ #-) - requires lexer refactoring
+- ✅ Reader conditionals (#+ #-) - NEW (lexer.zig:37-38, parser.zig:499-559)
 - ⏸️ Read-time eval (#.) - security risk, not implementing
 
 ### Format directives
@@ -99,10 +99,10 @@
 
 ## Summary
 
-**Overall Status: ~90% Complete**
+**Overall Status: ~92% Complete**
 
 - TIER 1-3: ✅ 100% Complete
-- TIER 4: ⚠️ ~68% Complete (5.4/8 major subsystems)
+- TIER 4: ⚠️ ~75% Complete (6/8 major subsystems)
 
 **Known Issues:**
 None - all previously reported bugs have been fixed!
@@ -110,12 +110,12 @@ None - all previously reported bugs have been fixed!
 **Recently Fixed:**
 - Complex number support: sqrt(-1) now returns #C(0 1) instead of NaN
 - REPL now auto-loads stdlib.habu on startup (loop, case, setf now work immediately)
+- Reader conditionals (#+ #-) fully implemented with (and/or/not) support
 
 **Missing Features:**
-1. Reader conditionals (#+ #-)
-2. Full format justification parameters
-3. Stream functions (make-string-input-stream, etc.)
-4. Package system (defpackage, in-package, etc.)
+1. Full format justification parameters
+2. Stream functions (make-string-input-stream, etc.)
+3. Package system (defpackage, in-package, etc.)
 
 ## Deferred Features (Large Scope)
 
@@ -132,10 +132,5 @@ These features require substantial implementation effort and are deferred:
    - Package namespace isolation
    - Symbol visibility and conflicts
    - Estimated: 20+ functions + runtime infrastructure
-
-3. **Reader Conditionals** (~3-5 days)
-   - #+ #- feature expressions
-   - Requires lexer refactoring for conditional compilation
-   - *features* list management
 
 **All other CL spec features are implemented and working correctly.**
