@@ -93,6 +93,8 @@ pub const Repl = struct {
         self.vm.setEvalCallback(&evalCallback, @ptrCast(self));
         // Set up macroexpand callback
         self.vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
+        // Set up fboundp callback
+        self.vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
         // Set VM on compiler for macro expansion
         self.compiler.setVm(&self.vm);
     }
@@ -119,6 +121,23 @@ pub const Repl = struct {
         return self.expandMacros(expr) catch {
             return vm_mod.Error.InvalidArgument;
         };
+    }
+
+    /// Callback for (fboundp sym) from VM - checks if symbol has a function binding
+    fn fboundpCallback(sym: Value, context: *anyopaque) bool {
+        const self: *Repl = @ptrCast(@alignCast(context));
+        if (!sym.isSymbol()) return false;
+        const s = sym.toPtr(Symbol);
+        const name = s.getName();
+        // Check if it's a macro
+        if (self.macros.contains(name)) return true;
+        // Check if it's a user-defined function
+        if (self.compiler.globals.lookup(name) != null) return true;
+        // Check if it's a builtin primitive
+        if (self.compiler.builtins) |b| {
+            if (b.isBuiltinFunction(sym)) return true;
+        }
+        return false;
     }
 
     /// Evaluate an expression using a separate VM
@@ -192,6 +211,7 @@ pub const Repl = struct {
         nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
         nested_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
+        nested_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
 
         // Copy globals from main VM
         for (self.vm.globals, 0..) |g, i| {
@@ -246,6 +266,7 @@ pub const Repl = struct {
         nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
         nested_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
+        nested_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
 
         // Copy globals from current VM context (for nested loads)
         const source_vm = self.current_vm orelse &self.vm;
@@ -1552,6 +1573,7 @@ pub const Repl = struct {
         eval_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         eval_vm.setEvalCallback(&evalCallback, @ptrCast(self));
         eval_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
+        eval_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
 
         // Copy globals from current context
         const source_vm = self.current_vm orelse &self.vm;
@@ -1737,6 +1759,7 @@ pub const Repl = struct {
         macro_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         macro_vm.setEvalCallback(&evalCallback, @ptrCast(self));
         macro_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
+        macro_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
 
         // Copy globals from current context (nested VM if loading, main VM otherwise)
         const source_vm = self.current_vm orelse &self.vm;

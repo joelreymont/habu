@@ -2162,6 +2162,20 @@
 (defun compiled-function-p (x)
   (closurep x))
 
+; constantp - check if form is constant (self-evaluating)
+(defun constantp (form)
+  (cond
+    ((null form) t)
+    ((eq form t) t)
+    ((numberp form) t)
+    ((stringp form) t)
+    ((characterp form) t)
+    ((keywordp form) t)
+    ((vectorp form) t)  ; vectors are self-evaluating
+    ; (quote x) forms are constant
+    ((and (consp form) (eq (car form) 'quote)) t)
+    (t nil)))
+
 ; arrayp - check if array (vectors are arrays)
 (defun arrayp (x)
   (vectorp x))

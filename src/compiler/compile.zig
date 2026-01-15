@@ -736,6 +736,201 @@ pub const Builtins = struct {
             .kw_equal = try heap.internKeyword("equal"),
         };
     }
+
+    /// Check if a symbol is a builtin function (not special form)
+    pub fn isBuiltinFunction(self: *const Builtins, sym: Value) bool {
+        const s = sym.raw;
+        // Primitives - Arithmetic
+        if (s == self.@"+".raw) return true;
+        if (s == self.@"-".raw) return true;
+        if (s == self.@"*".raw) return true;
+        if (s == self.@"/".raw) return true;
+        if (s == self.mod.raw) return true;
+        if (s == self.@"%".raw) return true;
+        if (s == self.quot.raw) return true;
+        if (s == self.truncate.raw) return true;
+        if (s == self.rem.raw) return true;
+        // Primitives - Comparison
+        if (s == self.eq.raw) return true;
+        if (s == self.equal.raw) return true;
+        if (s == self.eql.raw) return true;
+        if (s == self.@"<".raw) return true;
+        if (s == self.@">".raw) return true;
+        if (s == self.@"<=".raw) return true;
+        if (s == self.@">=".raw) return true;
+        if (s == self.@"=".raw) return true;
+        // Primitives - List operations
+        if (s == self.cons.raw) return true;
+        if (s == self.car.raw) return true;
+        if (s == self.cdr.raw) return true;
+        if (s == self.first.raw) return true;
+        if (s == self.rest.raw) return true;
+        if (s == self.caar.raw) return true;
+        if (s == self.cadr.raw) return true;
+        if (s == self.cdar.raw) return true;
+        if (s == self.cddr.raw) return true;
+        if (s == self.caaar.raw) return true;
+        if (s == self.caadr.raw) return true;
+        if (s == self.cadar.raw) return true;
+        if (s == self.caddr.raw) return true;
+        if (s == self.cdaar.raw) return true;
+        if (s == self.cdadr.raw) return true;
+        if (s == self.cddar.raw) return true;
+        if (s == self.cdddr.raw) return true;
+        if (s == self.second.raw) return true;
+        if (s == self.third.raw) return true;
+        if (s == self.fourth.raw) return true;
+        if (s == self.append.raw) return true;
+        if (s == self.length.raw) return true;
+        if (s == self.reverse.raw) return true;
+        if (s == self.nth.raw) return true;
+        if (s == self.nthcdr.raw) return true;
+        if (s == self.last.raw) return true;
+        if (s == self.member.raw) return true;
+        if (s == self.assoc.raw) return true;
+        if (s == self.find.raw) return true;
+        if (s == self.position.raw) return true;
+        if (s == self.count.raw) return true;
+        if (s == self.remove.raw) return true;
+        if (s == self.list.raw) return true;
+        if (s == self.rplaca.raw) return true;
+        if (s == self.rplacd.raw) return true;
+        // Primitives - Type predicates
+        if (s == self.consp.raw) return true;
+        if (s == self.symbolp.raw) return true;
+        if (s == self.numberp.raw) return true;
+        if (s == self.stringp.raw) return true;
+        if (s == self.vectorp.raw) return true;
+        if (s == self.closurep.raw) return true;
+        if (s == self.keywordp.raw) return true;
+        if (s == self.null.raw) return true;
+        if (s == self.not.raw) return true;
+        if (s == self.characterp.raw) return true;
+        if (s == self.floatp.raw) return true;
+        if (s == self.listp.raw) return true;
+        if (s == self.atom.raw) return true;
+        // Primitives - Character operations
+        if (s == self.@"char-code".raw) return true;
+        if (s == self.@"code-char".raw) return true;
+        if (s == self.@"char=".raw) return true;
+        if (s == self.@"char<".raw) return true;
+        if (s == self.@"char>".raw) return true;
+        if (s == self.@"read-char".raw) return true;
+        if (s == self.@"peek-char".raw) return true;
+        if (s == self.read.raw) return true;
+        if (s == self.@"read-from-string".raw) return true;
+        if (s == self.load.raw) return true;
+        if (s == self.@"unread-char".raw) return true;
+        if (s == self.eval.raw) return true;
+        if (s == self.gensym.raw) return true;
+        // Primitives - Symbol operations
+        if (s == self.boundp.raw) return true;
+        if (s == self.fboundp.raw) return true;
+        if (s == self.@"symbol-value".raw) return true;
+        if (s == self.@"symbol-function".raw) return true;
+        if (s == self.typep.raw) return true;
+        if (s == self.@"type-of".raw) return true;
+        if (s == self.intern.raw) return true;
+        if (s == self.@"symbol-name".raw) return true;
+        if (s == self.get.raw) return true;
+        if (s == self.put.raw) return true;
+        if (s == self.remprop.raw) return true;
+        if (s == self.@"error".raw) return true;
+        // Primitives - Numeric
+        if (s == self.abs.raw) return true;
+        if (s == self.zerop.raw) return true;
+        if (s == self.plusp.raw) return true;
+        if (s == self.minusp.raw) return true;
+        if (s == self.evenp.raw) return true;
+        if (s == self.oddp.raw) return true;
+        // Primitives - Math functions
+        if (s == self.sqrt.raw) return true;
+        if (s == self.sin.raw) return true;
+        if (s == self.cos.raw) return true;
+        if (s == self.tan.raw) return true;
+        if (s == self.exp.raw) return true;
+        if (s == self.log.raw) return true;
+        if (s == self.floor.raw) return true;
+        if (s == self.ceiling.raw) return true;
+        if (s == self.round.raw) return true;
+        // Primitives - Vector operations
+        if (s == self.aref.raw) return true;
+        if (s == self.svref.raw) return true;
+        if (s == self.@"vector-length".raw) return true;
+        if (s == self.@"make-vector".raw) return true;
+        if (s == self.vector.raw) return true;
+        if (s == self.@"make-array".raw) return true;
+        // Primitives - String operations
+        if (s == self.char.raw) return true;
+        if (s == self.schar.raw) return true;
+        if (s == self.@"string-length".raw) return true;
+        if (s == self.@"string-concat".raw) return true;
+        if (s == self.@"string=".raw) return true;
+        if (s == self.substring.raw) return true;
+        if (s == self.subseq.raw) return true;
+        // Primitives - I/O
+        if (s == self.print.raw) return true;
+        if (s == self.princ.raw) return true;
+        if (s == self.terpri.raw) return true;
+        if (s == self.@"write-char".raw) return true;
+        if (s == self.random.raw) return true;
+        if (s == self.@"random-seed".raw) return true;
+        if (s == self.format.raw) return true;
+        // Primitives - Character functions
+        if (s == self.@"char-upcase".raw) return true;
+        if (s == self.@"char-downcase".raw) return true;
+        if (s == self.@"digit-char-p".raw) return true;
+        if (s == self.@"alpha-char-p".raw) return true;
+        // Primitives - String/number conversion
+        if (s == self.@"parse-integer".raw) return true;
+        if (s == self.@"write-to-string".raw) return true;
+        // Primitives - Bitwise operations
+        if (s == self.logand.raw) return true;
+        if (s == self.logior.raw) return true;
+        if (s == self.logxor.raw) return true;
+        if (s == self.lognot.raw) return true;
+        if (s == self.ash.raw) return true;
+        // Primitives - File I/O
+        if (s == self.@"read-file".raw) return true;
+        if (s == self.@"write-file".raw) return true;
+        // Primitives - String construction
+        if (s == self.@"make-string".raw) return true;
+        if (s == self.@"string-to-list".raw) return true;
+        if (s == self.@"list-to-string".raw) return true;
+        if (s == self.@"string-upcase".raw) return true;
+        if (s == self.@"string-downcase".raw) return true;
+        if (s == self.concatenate.raw) return true;
+        // Primitives - Hash tables
+        if (s == self.@"make-hash-table".raw) return true;
+        if (s == self.gethash.raw) return true;
+        if (s == self.puthash.raw) return true;
+        if (s == self.remhash.raw) return true;
+        if (s == self.@"hash-table-count".raw) return true;
+        if (s == self.clrhash.raw) return true;
+        if (s == self.@"hash-table-test".raw) return true;
+        if (s == self.@"hash-table-p".raw) return true;
+        // Primitives - Numeric types
+        if (s == self.rationalp.raw) return true;
+        if (s == self.complexp.raw) return true;
+        if (s == self.@"make-complex".raw) return true;
+        if (s == self.@"real-part".raw) return true;
+        if (s == self.@"imag-part".raw) return true;
+        if (s == self.numerator.raw) return true;
+        if (s == self.denominator.raw) return true;
+        // Primitives - Streams
+        if (s == self.streamp.raw) return true;
+        if (s == self.@"input-stream-p".raw) return true;
+        if (s == self.@"output-stream-p".raw) return true;
+        if (s == self.@"make-string-input-stream".raw) return true;
+        if (s == self.@"make-string-output-stream".raw) return true;
+        if (s == self.@"get-output-stream-string".raw) return true;
+        // Also funcall and apply are callable
+        if (s == self.funcall.raw) return true;
+        if (s == self.apply.raw) return true;
+        if (s == self.values.raw) return true;
+        if (s == self.@"values-list".raw) return true;
+        return false;
+    }
 };
 
 /// Lexical environment for variable resolution

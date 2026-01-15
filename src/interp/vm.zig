@@ -225,6 +225,10 @@ pub const Vm = struct {
     macroexpand_callback: ?*const fn (Value, *anyopaque) Error!Value,
     macroexpand_context: ?*anyopaque,
 
+    /// Callback for fboundp - checks if symbol is a function (macro, primitive, or defun)
+    fboundp_callback: ?*const fn (Value, *anyopaque) bool,
+    fboundp_context: ?*anyopaque,
+
     /// Counter for gensym
     gensym_counter: u64,
 
@@ -321,6 +325,8 @@ pub const Vm = struct {
             .eval_context = null,
             .macroexpand_callback = null,
             .macroexpand_context = null,
+            .fboundp_callback = null,
+            .fboundp_context = null,
             .gensym_counter = 0,
             .current_closure = null,
             .current_argc = 0,
@@ -366,6 +372,12 @@ pub const Vm = struct {
     pub fn setMacroexpandCallback(self: *Vm, callback: *const fn (Value, *anyopaque) Error!Value, context: *anyopaque) void {
         self.macroexpand_callback = callback;
         self.macroexpand_context = context;
+    }
+
+    /// Set the fboundp callback for checking function bindings
+    pub fn setFboundpCallback(self: *Vm, callback: *const fn (Value, *anyopaque) bool, context: *anyopaque) void {
+        self.fboundp_callback = callback;
+        self.fboundp_context = context;
     }
 
     /// Allocate a cons cell, running GC if needed
@@ -3278,7 +3290,7 @@ pub const Vm = struct {
                 try self.push(Value.nil);
             },
 
-            .boundp, .fboundp => {
+            .boundp => {
                 const val = try self.pop();
                 if (!val.isSymbol()) return error.TypeMismatch;
                 const sym = val.toPtr(Symbol);
@@ -3289,6 +3301,20 @@ pub const Vm = struct {
                 else
                     false;
                 try self.push(if (is_bound) Value.t else Value.nil);
+            },
+
+            .fboundp => {
+                const val = try self.pop();
+                if (!val.isSymbol()) return error.TypeMismatch;
+                // Use callback to check for function binding (macro, primitive, or defun)
+                const is_fbound = if (self.fboundp_callback) |cb|
+                    cb(val, self.fboundp_context.?)
+                else if (self.global_env) |env| blk: {
+                    // Fallback: check global env
+                    const sym = val.toPtr(Symbol);
+                    break :blk env.lookup(sym.getName()) != null;
+                } else false;
+                try self.push(if (is_fbound) Value.t else Value.nil);
             },
 
             .symbol_value, .symbol_function => {
