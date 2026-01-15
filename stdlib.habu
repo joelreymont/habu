@@ -1481,6 +1481,26 @@
            (subst-if new pred (cdr tree))))
     (t tree)))
 
+; nsubst - destructive tree substitution
+(defun nsubst (new old tree &key (test #'eql))
+  (cond
+    ((funcall test tree old) new)
+    ((consp tree)
+     (setf (car tree) (nsubst new old (car tree) :test test))
+     (setf (cdr tree) (nsubst new old (cdr tree) :test test))
+     tree)
+    (t tree)))
+
+; nsubst-if - destructive substitute if predicate
+(defun nsubst-if (new pred tree)
+  (cond
+    ((funcall pred tree) new)
+    ((consp tree)
+     (setf (car tree) (nsubst-if new pred (car tree)))
+     (setf (cdr tree) (nsubst-if new pred (cdr tree)))
+     tree)
+    (t tree)))
+
 ; acons - add entry to front of alist
 (defun acons (key value alist)
   (cons (cons key value) alist))
