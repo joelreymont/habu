@@ -32,3 +32,50 @@
 (defun logtest (a b)
   "Test if any bits set in both arguments"
   (not (zerop (logand a b))))
+
+;; Additional math functions
+(defun 1+ (x) "Add 1 to x" (+ x 1))
+(defun 1- (x) "Subtract 1 from x" (- x 1))
+
+(defun signum (x)
+  "Return -1, 0, or 1 depending on sign of x"
+  (cond
+    ((zerop x) 0)
+    ((plusp x) 1)
+    (t -1)))
+
+(defun ffloor (x &optional (divisor 1))
+  "Float floor - return float quotient"
+  (float (floor x divisor)))
+
+(defun fceiling (x &optional (divisor 1))
+  "Float ceiling - return float quotient"
+  (float (ceiling x divisor)))
+
+(defun fround (x &optional (divisor 1))
+  "Float round - return float quotient"
+  (float (round x divisor)))
+
+(defun ftruncate (x &optional (divisor 1))
+  "Float truncate - return float quotient"
+  (float (truncate x divisor)))
+
+(defun isqrt (n)
+  "Integer square root"
+  (if (< n 0)
+      (error "isqrt of negative number")
+      (floor (sqrt n))))
+
+;; Trigonometric functions (require native support)
+(defun asin (x) "Arc sine" (error "asin requires native support"))
+(defun acos (x) "Arc cosine" (error "acos requires native support"))
+(defun atan (y &optional x) "Arc tangent"
+  (if x
+      (error "atan2 requires native support")
+      (error "atan requires native support")))
+(defun sinh (x) "Hyperbolic sine" (error "sinh requires native support"))
+(defun cosh (x) "Hyperbolic cosine" (error "cosh requires native support"))
+(defun tanh (x) "Hyperbolic tangent" (error "tanh requires native support"))
+(defun asinh (x) "Inverse hyperbolic sine" (error "asinh requires native support"))
+(defun acosh (x) "Inverse hyperbolic cosine" (error "acosh requires native support"))
+(defun atanh (x) "Inverse hyperbolic tangent" (error "atanh requires native support"))

@@ -645,6 +645,73 @@ pub fn cos_val(a: Value) Error!Value {
     return Value.makeFloat(@cos(af));
 }
 
+/// Tangent
+pub fn tan_val(a: Value) Error!Value {
+    const af = try toNumber(a);
+    return Value.makeFloat(@tan(af));
+}
+
+/// Arcsine
+pub fn asin_val(a: Value) Error!Value {
+    const af = try toNumber(a);
+    return Value.makeFloat(std.math.asin(af));
+}
+
+/// Arccosine
+pub fn acos_val(a: Value) Error!Value {
+    const af = try toNumber(a);
+    return Value.makeFloat(std.math.acos(af));
+}
+
+/// Arctangent (1 arg)
+pub fn atan_val(a: Value) Error!Value {
+    const af = try toNumber(a);
+    return Value.makeFloat(std.math.atan(af));
+}
+
+/// Arctangent (2 arg)
+pub fn atan2_val(y: Value, x: Value) Error!Value {
+    const yf = try toNumber(y);
+    const xf = try toNumber(x);
+    return Value.makeFloat(std.math.atan2(yf, xf));
+}
+
+/// Hyperbolic sine
+pub fn sinh_val(a: Value) Error!Value {
+    const af = try toNumber(a);
+    return Value.makeFloat(std.math.sinh(af));
+}
+
+/// Hyperbolic cosine
+pub fn cosh_val(a: Value) Error!Value {
+    const af = try toNumber(a);
+    return Value.makeFloat(std.math.cosh(af));
+}
+
+/// Hyperbolic tangent
+pub fn tanh_val(a: Value) Error!Value {
+    const af = try toNumber(a);
+    return Value.makeFloat(std.math.tanh(af));
+}
+
+/// Inverse hyperbolic sine
+pub fn asinh_val(a: Value) Error!Value {
+    const af = try toNumber(a);
+    return Value.makeFloat(std.math.asinh(af));
+}
+
+/// Inverse hyperbolic cosine
+pub fn acosh_val(a: Value) Error!Value {
+    const af = try toNumber(a);
+    return Value.makeFloat(std.math.acosh(af));
+}
+
+/// Inverse hyperbolic tangent
+pub fn atanh_val(a: Value) Error!Value {
+    const af = try toNumber(a);
+    return Value.makeFloat(std.math.atanh(af));
+}
+
 /// Natural logarithm
 pub fn log_val(a: Value) Error!Value {
     const af = try toNumber(a);
