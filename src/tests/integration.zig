@@ -1208,6 +1208,22 @@ test "return-from in conditional" {
     try testing.expect(result.isSymbol());
 }
 
+test "cond with multiple body expressions" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    repl.wireGlobalEnv();
+    defer repl.deinit();
+
+    // cond body should evaluate all expressions, return last
+    const result = try repl.eval("(cond (t 1 2))");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 2), result.toFixnum());
+}
+
 test "nested blocks" {
     const allocator = testing.allocator;
 
