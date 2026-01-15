@@ -198,6 +198,9 @@ pub const Vm = struct {
     /// Number of defined globals
     num_globals: usize,
 
+    /// Current package (special variable)
+    current_package: Value,
+
     /// Chunk pool for closures (pointers to individually allocated chunks)
     chunk_pool: []*Chunk,
     /// Base offset for current eval's chunks
@@ -343,6 +346,7 @@ pub const Vm = struct {
             .allocator = allocator,
             .globals = undefined,
             .num_globals = 0,
+            .current_package = Value.nil,
             .chunk_pool = &[_]*Chunk{},
             .chunk_base = 0,
             .catch_stack = undefined,
