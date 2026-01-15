@@ -412,7 +412,6 @@ pub const Builtins = struct {
     kw_eq: Value,
     kw_eql: Value,
     kw_equal: Value,
-    kw_type: Value,
 
     /// Initialize all builtin symbols from heap
     pub fn init(heap: *Heap) !Builtins {
@@ -733,7 +732,6 @@ pub const Builtins = struct {
             .kw_eq = try heap.internKeyword("eq"),
             .kw_eql = try heap.internKeyword("eql"),
             .kw_equal = try heap.internKeyword("equal"),
-            .kw_type = try heap.internKeyword("type"),
         };
     }
 };
@@ -1994,21 +1992,9 @@ pub const Compiler = struct {
                         .default = default_ir,
                     });
                 } else {
-                    // Typed parameter: (name type) or (name :type type)
+                    // Typed parameter: (name type-expr)
                     if (!typed.cdr.isCons()) return error.InvalidLambda;
-                    const type_cons = typed.cdr.toPtr(Cons);
-                    const b = self.builtins orelse return error.UninitializedBuiltins;
-
-                    var type_val: Value = undefined;
-                    if (type_cons.car.isKeyword() and type_cons.car.raw == b.kw_type.raw) {
-                        // New syntax: (name :type type-expr)
-                        if (!type_cons.cdr.isCons()) return error.InvalidLambda;
-                        type_val = type_cons.cdr.toPtr(Cons).car;
-                    } else {
-                        // Old syntax: (name type-expr)
-                        type_val = type_cons.car;
-                    }
-
+                    const type_val = typed.cdr.toPtr(Cons).car;
                     try params.append(self.allocator, name);
                     try typed_params.append(self.allocator, .{ .name = name, .type_sym = type_val });
                 }
