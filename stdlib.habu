@@ -1559,8 +1559,9 @@
           (set-difference list2 list1 :test test)))
 
 ; subsetp - check if list1 is subset of list2
+; Note: wrapped to avoid tail-call closure bug with keyword args
 (defun subsetp (list1 list2 &key (test #'eql))
-  (every (lambda (x) (member x list2 :test test)) list1))
+  (every (lambda (x) (let ((r (member x list2 :test test))) r)) list1))
 
 ; adjoin - add item to set if not present
 (defun adjoin (item list &key (test #'eql))

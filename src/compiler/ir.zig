@@ -1099,6 +1099,24 @@ pub const IrBuilder = struct {
         return node;
     }
 
+    pub fn numEq(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .num_eq = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn le(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .le = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn ge(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .ge = .{ .left = left, .right = right } };
+        return node;
+    }
+
     // List operations
     pub fn cons(self: IrBuilder, car_val: *const Ir, cdr_val: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);

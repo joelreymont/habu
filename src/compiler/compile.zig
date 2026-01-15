@@ -3118,6 +3118,9 @@ pub const Compiler = struct {
         if (s == b.eql.raw) return try self.makeBinaryWrapper(&IrBuilder.eql);
         if (s == b.@"<".raw) return try self.makeBinaryWrapper(&IrBuilder.lt);
         if (s == b.@">".raw) return try self.makeBinaryWrapper(&IrBuilder.gt);
+        if (s == b.@"<=".raw) return try self.makeBinaryWrapper(&IrBuilder.le);
+        if (s == b.@">=".raw) return try self.makeBinaryWrapper(&IrBuilder.ge);
+        if (s == b.@"=".raw) return try self.makeBinaryWrapper(&IrBuilder.numEq);
         if (s == b.append.raw) return try self.makeBinaryWrapper(&IrBuilder.append);
 
         // Unary primitives: (lambda (a) (prim a))
