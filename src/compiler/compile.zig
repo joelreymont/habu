@@ -841,7 +841,7 @@ pub const Builtins = struct {
         if (s == self.get.raw) return true;
         if (s == self.put.raw) return true;
         if (s == self.remprop.raw) return true;
-        if (s == self.@"error".raw) return true;
+        // Note: error is NOT a primitive - stdlib provides (defun error (msg) (signal 'error msg))
         // Primitives - Numeric
         if (s == self.abs.raw) return true;
         if (s == self.zerop.raw) return true;
@@ -6588,6 +6588,8 @@ pub const Compiler = struct {
         if (s == b.eval.raw) return self.compileUnaryPrim(args, env, .eval);
         if (s == b.gensym.raw) return self.compileNullaryPrim(.gensym);
         if (s == b.macroexpand.raw) return self.compileUnaryPrim(args, env, .macroexpand);
+        // Note: error is NOT handled here - stdlib provides (defun error (msg) (signal 'error msg))
+        // This allows handler-case to catch errors
 
         // Symbol operations
         if (s == b.boundp.raw) return self.compileUnaryPrim(args, env, .boundp);
