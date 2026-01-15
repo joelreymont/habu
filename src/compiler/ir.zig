@@ -154,6 +154,7 @@ pub const Ir = union(enum) {
         body: *const Ir, // The protected expression
         handler: *const Ir, // Handler dispatch code
         cond_var: []const u8, // Variable name for caught condition
+        cond_idx: u16, // Local slot index for caught condition
     },
 
     /// Restart-case: establishes restarts around a form
@@ -936,13 +937,14 @@ pub const IrBuilder = struct {
         return node;
     }
 
-    pub fn handlerCase(self: IrBuilder, tag: *const Ir, body: *const Ir, handler: *const Ir, cond_var: []const u8) !*Ir {
+    pub fn handlerCase(self: IrBuilder, tag: *const Ir, body: *const Ir, handler: *const Ir, cond_var: []const u8, cond_idx: u16) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .handler_case = .{
             .tag = tag,
             .body = body,
             .handler = handler,
             .cond_var = cond_var,
+            .cond_idx = cond_idx,
         } };
         return node;
     }

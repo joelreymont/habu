@@ -1419,15 +1419,16 @@ pub const Emitter = struct {
         // Patch catch_jump to point here (throw lands here)
         try self.patchJumpAt(catch_jump);
 
-        // When throw happens, thrown value is on stack (like a let binding)
-        // The handler code was compiled with the condition variable referencing this stack slot
-        // Emit handler dispatch code
+        // When throw happens, thrown value is on operand stack
+        // Store it to the local slot where the handler code expects it
+        try self.emitOp(.store_local);
+        try self.emitU8(@intCast(hc.cond_idx));
+
+        // Now emit handler dispatch code (which reads from local slot)
         try self.emit(hc.handler);
 
-        // After handler: stack has [caught-value, result]
-        // Swap and pop to leave just result (like let cleanup)
-        try self.emitOp(.swap);
-        try self.emitOp(.pop);
+        // Handler result is on stack - that's our return value
+        // (caught value is in local slot, not on stack)
 
         // Patch end_jump
         try self.patchJumpAt(end_jump);
