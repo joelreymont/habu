@@ -103,6 +103,137 @@ pub fn typep(heap: *Heap, obj: Value, type_spec: Value) !bool {
     return error.InvalidTypeSpecifier;
 }
 
+pub fn subtypep(heap: *Heap, type1: Value, type2: Value) !Value {
+    const result = try subtypepCheck(heap, type1, type2);
+    const bool_val = if (result.is_subtype) Value.t else Value.nil;
+    const certain_val = if (result.certain) Value.t else Value.nil;
+    const list = try heap.allocCons(bool_val, try heap.allocCons(certain_val, Value.nil));
+    return list;
+}
+
+const SubtypeResult = struct {
+    is_subtype: bool,
+    certain: bool,
+};
+
+fn subtypepCheck(heap: *Heap, type1: Value, type2: Value) !SubtypeResult {
+    if (type2.eq(Value.t)) return .{ .is_subtype = true, .certain = true };
+    if (type1.eq(Value.nil)) return .{ .is_subtype = false, .certain = true };
+    if (type1.eq(type2)) return .{ .is_subtype = true, .certain = true };
+
+    if (type1.isSymbol() or type1.isT()) {
+        if (type2.isSymbol() or type2.isT()) {
+            return try checkSymbolSubtype(heap, type1, type2);
+        }
+    }
+
+    return .{ .is_subtype = false, .certain = false };
+}
+
+fn checkSymbolSubtype(heap: *Heap, t1: Value, t2: Value) !SubtypeResult {
+    const fixnum_sym = try heap.intern("fixnum");
+    const integer_sym = try heap.intern("integer");
+    const rational_sym = try heap.intern("rational");
+    const real_sym = try heap.intern("real");
+    const number_sym = try heap.intern("number");
+    const float_sym = try heap.intern("float");
+    const bignum_sym = try heap.intern("bignum");
+    const ratio_sym = try heap.intern("ratio");
+    const complex_sym = try heap.intern("complex");
+    const null_sym = try heap.intern("null");
+    const symbol_sym = try heap.intern("symbol");
+    const cons_sym = try heap.intern("cons");
+    const list_sym = try heap.intern("list");
+    const sequence_sym = try heap.intern("sequence");
+    const vector_sym = try heap.intern("vector");
+    const string_sym = try heap.intern("string");
+    const array_sym = try heap.intern("array");
+
+    if (t1.eq(fixnum_sym)) {
+        if (t2.eq(integer_sym) or t2.eq(rational_sym) or t2.eq(real_sym) or t2.eq(number_sym)) {
+            return .{ .is_subtype = true, .certain = true };
+        }
+    }
+
+    if (t1.eq(bignum_sym)) {
+        if (t2.eq(integer_sym) or t2.eq(rational_sym) or t2.eq(real_sym) or t2.eq(number_sym)) {
+            return .{ .is_subtype = true, .certain = true };
+        }
+    }
+
+    if (t1.eq(integer_sym)) {
+        if (t2.eq(rational_sym) or t2.eq(real_sym) or t2.eq(number_sym)) {
+            return .{ .is_subtype = true, .certain = true };
+        }
+    }
+
+    if (t1.eq(ratio_sym)) {
+        if (t2.eq(rational_sym) or t2.eq(real_sym) or t2.eq(number_sym)) {
+            return .{ .is_subtype = true, .certain = true };
+        }
+    }
+
+    if (t1.eq(rational_sym)) {
+        if (t2.eq(real_sym) or t2.eq(number_sym)) {
+            return .{ .is_subtype = true, .certain = true };
+        }
+    }
+
+    if (t1.eq(float_sym)) {
+        if (t2.eq(real_sym) or t2.eq(number_sym)) {
+            return .{ .is_subtype = true, .certain = true };
+        }
+    }
+
+    if (t1.eq(real_sym)) {
+        if (t2.eq(number_sym)) {
+            return .{ .is_subtype = true, .certain = true };
+        }
+    }
+
+    if (t1.eq(complex_sym) and t2.eq(number_sym)) {
+        return .{ .is_subtype = true, .certain = true };
+    }
+
+    if (t1.eq(null_sym)) {
+        if (t2.eq(symbol_sym) or t2.eq(list_sym) or t2.eq(sequence_sym)) {
+            return .{ .is_subtype = true, .certain = true };
+        }
+    }
+
+    if (t1.eq(cons_sym)) {
+        if (t2.eq(list_sym) or t2.eq(sequence_sym)) {
+            return .{ .is_subtype = true, .certain = true };
+        }
+    }
+
+    if (t1.eq(list_sym) and t2.eq(sequence_sym)) {
+        return .{ .is_subtype = true, .certain = true };
+    }
+
+    if (t1.eq(vector_sym)) {
+        if (t2.eq(array_sym) or t2.eq(sequence_sym)) {
+            return .{ .is_subtype = true, .certain = true };
+        }
+    }
+
+    if (t1.eq(string_sym)) {
+        if (t2.eq(array_sym) or t2.eq(sequence_sym)) {
+            return .{ .is_subtype = true, .certain = true };
+        }
+    }
+
+    if (t1.eq(array_sym) and t2.eq(sequence_sym)) {
+        return .{ .is_subtype = false, .certain = true };
+    }
+
+    if (t1.eq(t2)) {
+        return .{ .is_subtype = true, .certain = true };
+    }
+
+    return .{ .is_subtype = false, .certain = true };
+}
+
 pub fn typeOf(heap: *Heap, val: Value) !Value {
     return switch (val.typeKind()) {
         .nil => heap.intern("null"),
@@ -238,4 +369,53 @@ test "typeOf basic types" {
     const consval = try heap.allocCons(Value.makeFixnum(1), Value.nil);
     const cons_type = try typeOf(&heap, consval);
     try testing.expect(cons_type.isCons());
+}
+
+test "subtypep numeric hierarchy" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result1 = try subtypep(&heap, try heap.intern("fixnum"), try heap.intern("integer"));
+    try testing.expect(result1.isCons());
+    const r1_car = result1.toPtr(@import("../objects.zig").Cons).car;
+    try testing.expect(r1_car.isT());
+
+    const result2 = try subtypep(&heap, try heap.intern("integer"), try heap.intern("rational"));
+    const r2_car = result2.toPtr(@import("../objects.zig").Cons).car;
+    try testing.expect(r2_car.isT());
+
+    const result3 = try subtypep(&heap, try heap.intern("rational"), try heap.intern("real"));
+    const r3_car = result3.toPtr(@import("../objects.zig").Cons).car;
+    try testing.expect(r3_car.isT());
+
+    const result4 = try subtypep(&heap, try heap.intern("real"), try heap.intern("number"));
+    const r4_car = result4.toPtr(@import("../objects.zig").Cons).car;
+    try testing.expect(r4_car.isT());
+
+    const result5 = try subtypep(&heap, try heap.intern("string"), try heap.intern("fixnum"));
+    const r5_car = result5.toPtr(@import("../objects.zig").Cons).car;
+    try testing.expect(r5_car.isNil());
+}
+
+test "subtypep sequence hierarchy" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result1 = try subtypep(&heap, try heap.intern("null"), try heap.intern("list"));
+    const r1_car = result1.toPtr(@import("../objects.zig").Cons).car;
+    try testing.expect(r1_car.isT());
+
+    const result2 = try subtypep(&heap, try heap.intern("cons"), try heap.intern("list"));
+    const r2_car = result2.toPtr(@import("../objects.zig").Cons).car;
+    try testing.expect(r2_car.isT());
+
+    const result3 = try subtypep(&heap, try heap.intern("list"), try heap.intern("sequence"));
+    const r3_car = result3.toPtr(@import("../objects.zig").Cons).car;
+    try testing.expect(r3_car.isT());
+
+    const result4 = try subtypep(&heap, try heap.intern("vector"), try heap.intern("sequence"));
+    const r4_car = result4.toPtr(@import("../objects.zig").Cons).car;
+    try testing.expect(r4_car.isT());
 }

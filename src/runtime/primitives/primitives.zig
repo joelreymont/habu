@@ -39,8 +39,8 @@ pub const slotValue = clos.slotValue;
 pub const setSlotValue = clos.setSlotValue;
 
 pub const typep = ty.typep;
+pub const subtypep = ty.subtypep;
 pub const typeOf = ty.typeOf;
-
 test {
     _ = list;
     _ = arith;

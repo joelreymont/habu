@@ -1,9 +1,9 @@
 ---
 title: Add subtypep primitive
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-01-16T13:41:39.195338+02:00"
+created-at: "\"2026-01-16T13:41:39.195338+02:00\""
 ---
 
 src/types/check.zig: Implement subtypep predicate
