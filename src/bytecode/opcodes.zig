@@ -818,6 +818,14 @@ pub const Op = enum(u8) {
     /// ( -- symbol )
     gensym = 0xDA,
 
+    /// Search symbols by name substring, return list
+    /// ( substring -- list )
+    apropos_list = 0xFC,
+
+    /// Search symbols by name substring, print results
+    /// ( substring -- nil )
+    apropos = 0xFD,
+
     /// Expand macros in expression
     /// ( expr -- expanded )
     macroexpand = 0xDB,
@@ -984,15 +992,7 @@ pub const Op = enum(u8) {
 
     /// Find position of element in sequence (using eql - default)
     /// ( item sequence -- index-or-nil )
-    list_position = 0xFC,
-
-    /// Find position of element in sequence (using eq - identity)
-    /// ( item sequence -- index-or-nil )
-    list_position_eq = 0xFD,
-
-    /// Find position of element in sequence (using equal - structural)
-    /// ( item sequence -- index-or-nil )
-    list_position_equal = 0xFE,
+    list_position = 0xFE,
 
     // ========================================================================
     // Dynamic exception handling (catch/throw)
@@ -1322,6 +1322,8 @@ pub const Op = enum(u8) {
             .read_from_string,
             .eval,
             .gensym,
+            .apropos_list,
+            .apropos,
             .macroexpand,
             .princ,
             .terpri,
@@ -1368,8 +1370,6 @@ pub const Op = enum(u8) {
             .list_find_eq,
             .list_find_equal,
             .list_position,
-            .list_position_eq,
-            .list_position_equal,
             .list_count,
             .list_count_eq,
             .list_count_equal,

@@ -160,3 +160,53 @@ pub fn fmakunbound(sym: Value) !Value {
     s.function = Value.nil;
     return sym;
 }
+
+/// Return list of symbols whose names contain substring
+pub fn aproposList(heap: *Heap, substring: Value, package: ?Value) !Value {
+    _ = package;
+    if (!substring.isString()) return error.TypeError;
+
+    const search_str = substring.toPtr(objects.String).bytes();
+    var result = Value.nil;
+
+    // Search all packages
+    var pkg_iter = heap.packages.iterator();
+    while (pkg_iter.next()) |entry| {
+        const pkg = entry.value_ptr.*;
+        var sym_iter = pkg.symbols.iterator();
+        while (sym_iter.next()) |sym_entry| {
+            const name = sym_entry.key_ptr.*;
+            const sym = sym_entry.value_ptr.*;
+            if (std.mem.indexOf(u8, name, search_str) != null) {
+                result = try heap.allocCons(sym, result);
+            }
+        }
+    }
+
+    return result;
+}
+
+/// Print symbols whose names contain substring (interactive)
+pub fn apropos(heap: *Heap, substring: Value, package: ?Value) !Value {
+    const matches = try aproposList(heap, substring, package);
+
+    var curr = matches;
+    var buf: [4096]u8 = undefined;
+    const stdout = std.fs.File.stdout();
+    var writer = stdout.writer(&buf);
+    const w = &writer.interface;
+    while (!curr.isNil()) {
+        const pair = curr.toPtr(objects.Cons);
+        const sym = pair.car;
+        const sym_ptr = sym.toPtr(objects.Symbol);
+        const name = sym_ptr.getName();
+
+        try w.writeAll(name);
+        try w.writeAll("\n");
+
+        curr = pair.cdr;
+    }
+    try w.flush();
+
+    return Value.nil;
+}

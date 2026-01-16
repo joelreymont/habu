@@ -3289,22 +3289,9 @@ pub const Vm = struct {
             },
 
             .list_position => {
-                // position with eql test (default)
                 const seq = try self.pop();
                 const item = try self.pop();
                 try self.push(try self.positionInSeq(item, seq, .eql));
-            },
-            .list_position_eq => {
-                // position with eq test (identity)
-                const seq = try self.pop();
-                const item = try self.pop();
-                try self.push(try self.positionInSeq(item, seq, .eq));
-            },
-            .list_position_equal => {
-                // position with equal test (structural)
-                const seq = try self.pop();
-                const item = try self.pop();
-                try self.push(try self.positionInSeq(item, seq, .equal));
             },
 
             .list_count => {
@@ -3525,6 +3512,18 @@ pub const Vm = struct {
                 const prefix_arg = try self.pop();
                 const sym = try primitives.symbol.gensym(self.heap, if (!prefix_arg.isNil()) prefix_arg else null);
                 try self.push(sym);
+            },
+
+            .apropos_list => {
+                const substring = try self.pop();
+                const result = try primitives.symbol.aproposList(self.heap, substring, null);
+                try self.push(result);
+            },
+
+            .apropos => {
+                const substring = try self.pop();
+                const result = try primitives.symbol.apropos(self.heap, substring, null);
+                try self.push(result);
             },
 
             .macroexpand => {
