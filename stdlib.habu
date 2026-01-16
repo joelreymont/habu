@@ -2704,8 +2704,10 @@
 ;;; Stream macros
 ;;; ============================================================================
 
-(defmacro with-open-file ((var filespec) &body body)
-  (let ((stream (gensym "STREAM"))
+(defmacro with-open-file (spec &body body)
+  (let ((var (car spec))
+        (filespec (cadr spec))
+        (stream (gensym "STREAM"))
         (abort (gensym "ABORT")))
     `(let ((,stream ,filespec)
            (,abort t))
@@ -2716,11 +2718,14 @@
                ,@body))
          (close ,stream ,abort)))))
 
-(defmacro with-input-from-string ((var string) &body body)
-  `(let ((,var (make-string-input-stream ,string)))
-     ,@body))
+(defmacro with-input-from-string (spec &body body)
+  (let ((var (car spec))
+        (string (cadr spec)))
+    `(let ((,var (make-string-input-stream ,string)))
+       ,@body)))
 
-(defmacro with-output-to-string ((var) &body body)
-  `(let ((,var (make-string-output-stream)))
-     ,@body
-     (get-output-stream-string ,var)))
+(defmacro with-output-to-string (spec &body body)
+  (let ((var (car spec)))
+    `(let ((,var (make-string-output-stream)))
+       ,@body
+       (get-output-stream-string ,var))))

@@ -280,6 +280,7 @@ pub const Builtins = struct {
     // Stream I/O primitives
     @"%open": Value,
     @"%close": Value,
+    close: Value,
     @"%read-line": Value,
     @"%write-line": Value,
     @"%read-byte": Value,
@@ -648,6 +649,7 @@ pub const Builtins = struct {
             // Stream I/O primitives
             .@"%open" = try heap.intern("%open"),
             .@"%close" = try heap.intern("%close"),
+            .close = try heap.intern("close"),
             .@"%read-line" = try heap.intern("%read-line"),
             .@"%write-line" = try heap.intern("%write-line"),
             .@"%read-byte" = try heap.intern("%read-byte"),
@@ -6802,10 +6804,15 @@ pub const Compiler = struct {
             node.* = .{ .open = .{ .left = path_ir, .right = mode_ir } };
             return node;
         }
-        if (s == b.@"%close".raw) {
+        if (s == b.@"%close".raw or s == b.close.raw) {
             if (!args.isCons()) return error.InvalidSyntax;
             const cons1 = args.toPtr(Cons);
             const stream_ir = try self.compile(cons1.car, env);
+            // Optional second arg (abort flag) - compile but ignore
+            if (cons1.cdr.isCons()) {
+                const cons2 = cons1.cdr.toPtr(Cons);
+                _ = try self.compile(cons2.car, env);
+            }
             const node = try self.allocator.create(Ir);
             node.* = .{ .close = .{ .operand = stream_ir } };
             return node;
