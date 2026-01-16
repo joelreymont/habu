@@ -736,9 +736,14 @@ pub const BiChecker = struct {
                 }
 
                 const new_base = try self.substituteInType(r.base_type, var_name, replacement);
-                // TODO: Also substitute in predicate term
-                if (new_base == r.base_type) break :blk ty;
-                break :blk try self.type_builder.makeRefinement(new_base, r.predicate_var, r.predicate);
+                const new_predicate = if (r.predicate) |pred| blk2: {
+                    const old_term: *const Term = @ptrCast(@alignCast(pred));
+                    const new_term = try self.term_builder.substitute(old_term, var_name, replacement);
+                    break :blk2 @as(?*const anyopaque, @ptrCast(new_term));
+                } else null;
+
+                if (new_base == r.base_type and new_predicate == r.predicate) break :blk ty;
+                break :blk try self.type_builder.makeRefinement(new_base, r.predicate_var, new_predicate);
             },
 
             // Type application - would need term substitution

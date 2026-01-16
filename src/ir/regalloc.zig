@@ -270,13 +270,22 @@ pub const GraphColorAlloc = struct {
             while (i > 0) {
                 i -= 1;
                 const inst = func.code[i];
-                var live = if (i + 1 < n) self.live_out.items[i + 1] else std.StaticBitSet(32).initEmpty();
 
-                // Handle control flow (simplified: assume linear for now)
-                // TODO: Handle branches properly with CFG
+                // Compute live_out: union of successors' live_in
+                var live = std.StaticBitSet(32).initEmpty();
+                if (inst.op == .jmp or inst.op == .jz or inst.op == .jnz) {
+                    // Branch: target is i + imm
+                    const target = @as(isize, @intCast(i)) + inst.imm();
+                    if (target >= 0 and target < n) {
+                        live.setUnion(self.live_out.items[@intCast(target)]);
+                    }
+                }
+                if (inst.op != .jmp and inst.op != .ret and i + 1 < n) {
+                    // Fall-through to next instruction
+                    live.setUnion(self.live_out.items[i + 1]);
+                }
 
                 // live_in = use ∪ (live_out - def)
-                // live_out[i] = live_in[i+1]
 
                 // Remove def
                 if (self.isDef(inst.op) and inst.dest < 31) {

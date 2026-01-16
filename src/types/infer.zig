@@ -318,13 +318,65 @@ pub const InferCtx = struct {
         for (self.constraints.items) |c| {
             switch (c) {
                 .eq => |eq| try self.unify(eq.left, eq.right),
-                .subtype => |sub| {
-                    // For now, treat subtype as equality
-                    // TODO: proper subtyping with variance
-                    try self.unify(sub.sub, sub.super);
-                },
+                .subtype => |sub| try self.unifySub(sub.sub, sub.super),
             }
         }
+    }
+
+    /// Unify with subtyping (variance-aware)
+    fn unifySub(self: *InferCtx, sub: *const InferType, super: *const InferType) UnifyError!void {
+        const r1 = self.resolve(sub);
+        const r2 = self.resolve(super);
+
+        // Same type
+        if (r1 == r2) return;
+
+        // Variable - bind like normal unification
+        if (r1.* == .variable) {
+            const v = r1.variable;
+            if (self.occursIn(v, r2)) return error.InfiniteType;
+            try self.substitutions.put(v.id, r2);
+            return;
+        }
+
+        if (r2.* == .variable) {
+            const v = r2.variable;
+            if (self.occursIn(v, r1)) return error.InfiniteType;
+            try self.substitutions.put(v.id, r1);
+            return;
+        }
+
+        // Both concrete - structural check
+        if (r1.* == .concrete and r2.* == .concrete) {
+            if (!typeEquals(r1.concrete, r2.concrete)) {
+                return error.TypeMismatch;
+            }
+            return;
+        }
+
+        // Arrow types - contravariant domain, covariant range
+        if (r1.* == .arrow and r2.* == .arrow) {
+            const a1 = r1.arrow;
+            const a2 = r2.arrow;
+
+            if (a1.domain.len != a2.domain.len) return error.ArityMismatch;
+
+            // Domain is contravariant: super.domain <: sub.domain
+            for (a1.domain, a2.domain) |d1, d2| {
+                try self.unifySub(d2, d1);
+            }
+            // Range is covariant: sub.range <: super.range
+            try self.unifySub(a1.range, a2.range);
+            return;
+        }
+
+        // List types - covariant
+        if (r1.* == .list and r2.* == .list) {
+            try self.unifySub(r1.list, r2.list);
+            return;
+        }
+
+        return error.TypeMismatch;
     }
 
     // ========================================================================
@@ -905,27 +957,59 @@ pub const InferError = error{
 fn typeEquals(t1: *const types.Type, t2: *const types.Type) bool {
     if (t1 == t2) return true;
 
-    // Check structural equality
-    switch (t1.*) {
-        .primitive => |p1| {
-            if (t2.* == .primitive) {
-                return p1 == t2.primitive;
+    return switch (t1.*) {
+        .primitive => |p1| t2.* == .primitive and p1 == t2.primitive,
+        .any => t2.* == .any,
+        .type_level => t2.* == .type_level,
+
+        .@"struct" => |s1| blk: {
+            if (t2.* != .@"struct") break :blk false;
+            break :blk std.mem.eql(u8, s1.name, t2.@"struct".name);
+        },
+
+        .type_var => |v1| blk: {
+            if (t2.* != .type_var) break :blk false;
+            break :blk std.mem.eql(u8, v1, t2.type_var);
+        },
+
+        .list => |e1| blk: {
+            if (t2.* != .list) break :blk false;
+            break :blk typeEquals(e1, t2.list);
+        },
+
+        .vec => |e1| blk: {
+            if (t2.* != .vec) break :blk false;
+            break :blk typeEquals(e1, t2.vec);
+        },
+
+        .non_nil => |n1| blk: {
+            if (t2.* != .non_nil) break :blk false;
+            break :blk typeEquals(n1, t2.non_nil);
+        },
+
+        .arrow => |a1| blk: {
+            if (t2.* != .arrow) break :blk false;
+            const a2 = t2.arrow;
+            if (a1.domain.len != a2.domain.len) break :blk false;
+            for (a1.domain, a2.domain) |d1, d2| {
+                if (!typeEquals(d1, d2)) break :blk false;
             }
-            return false;
+            break :blk typeEquals(a1.range, a2.range);
         },
-        .any => return t2.* == .any,
-        .@"struct" => |s1| {
-            // Structs are nominally typed - must have same name
-            if (t2.* == .@"struct") {
-                return std.mem.eql(u8, s1.name, t2.@"struct".name);
+
+        .@"or" => |o1| blk: {
+            if (t2.* != .@"or") break :blk false;
+            const o2 = t2.@"or";
+            if (o1.len != o2.len) break :blk false;
+            for (o1, o2) |ty1, ty2| {
+                if (!typeEquals(ty1, ty2)) break :blk false;
             }
-            return false;
+            break :blk true;
         },
-        else => {
-            // TODO: structural equality for other compound types (or, arrow, list, vec)
-            return false;
-        },
-    }
+
+        // Pi, Sigma, refinement, type_app need deeper comparison
+        .pi, .sigma, .refinement, .type_app => false,
+    };
 }
 
 // ============================================================================

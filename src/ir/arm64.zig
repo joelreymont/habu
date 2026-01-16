@@ -517,9 +517,42 @@ fn emitInst(e: *Emitter, inst: Inst, reg_map: ?regalloc.RegisterMap) !void {
             try e.emit(ARM64.str(rs1, PHYS.fp, slot));
         },
 
+        .cons => {
+            // x0 = car (rs1), x1 = cdr (rs2)
+            try e.emit(ARM64.mov(PHYS.x0, rs1));
+            try e.emit(ARM64.mov(PHYS.x1, rs2));
+            // Call runtime: heap.allocCons(car, cdr)
+            // Assumes runtime_cons address in constant pool
+            try e.emit(ARM64.bl(0)); // TODO: patch with runtime_cons offset
+            // Move result from x0 to dest
+            if (rd != PHYS.x0) {
+                try e.emit(ARM64.mov(rd, PHYS.x0));
+            }
+        },
+        .car => {
+            // Extract car from cons in rs1
+            // car is at offset 0 in Cons struct
+            try e.emit(ARM64.ldr(rd, rs1, 0));
+        },
+        .cdr => {
+            // Extract cdr from cons in rs1
+            // cdr is at offset 8 in Cons struct (after 64-bit car)
+            try e.emit(ARM64.ldr(rd, rs1, 8));
+        },
+        .consp => {
+            // Check if value is cons (tag bits 1-3 == 0)
+            try e.emit(ARM64.movz(PHYS.x9, 0b1110));
+            try e.emit(ARM64.andReg(rd, rs1, PHYS.x9));
+            try e.emit(ARM64.cmp(rd, PHYS.zr));
+            try e.emit(ARM64.cset(rd, .eq));
+        },
+        .nullp => {
+            // Check if value is nil (raw == 0)
+            try e.emit(ARM64.cmp(rs1, PHYS.zr));
+            try e.emit(ARM64.cset(rd, .eq));
+        },
+
         else => {
-            // TODO: Implement remaining ops (cons, car, cdr, etc.)
-            // These will call runtime functions
             try e.emit(ARM64.nop());
         },
     }

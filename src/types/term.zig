@@ -403,6 +403,118 @@ pub const TermBuilder = struct {
         t.* = .{ .annotated = .{ .term = term, .type = ty } };
         return t;
     }
+
+    /// Substitute a term for a variable in a term
+    /// Implements: t[x := r] - replace x with r in t
+    pub fn substitute(self: *TermBuilder, term: *const Term, var_name: []const u8, replacement: *const Term) !*const Term {
+        return switch (term.*) {
+            .literal => term,
+
+            .var_ref => |v| {
+                if (std.mem.eql(u8, v.name, var_name)) return replacement;
+                return term;
+            },
+
+            .lambda => |lam| blk: {
+                // Check for variable capture
+                if (std.mem.eql(u8, lam.param, var_name)) break :blk term;
+
+                const new_body = try self.substitute(lam.body, var_name, replacement);
+                if (new_body == lam.body) break :blk term;
+                break :blk try self.lambda(lam.param, lam.param_type, new_body);
+            },
+
+            .pair => |p| blk: {
+                const new_first = try self.substitute(p.first, var_name, replacement);
+                const new_second = try self.substitute(p.second, var_name, replacement);
+                if (new_first == p.first and new_second == p.second) break :blk term;
+                break :blk try self.pair(new_first, new_second);
+            },
+
+            .app => |a| blk: {
+                const new_func = try self.substitute(a.func, var_name, replacement);
+                const new_arg = try self.substitute(a.arg, var_name, replacement);
+                if (new_func == a.func and new_arg == a.arg) break :blk term;
+                break :blk try self.app(new_func, new_arg);
+            },
+
+            .fst => |t| blk: {
+                const new_t = try self.substitute(t, var_name, replacement);
+                if (new_t == t) break :blk term;
+                break :blk try self.fst(new_t);
+            },
+
+            .snd => |t| blk: {
+                const new_t = try self.substitute(t, var_name, replacement);
+                if (new_t == t) break :blk term;
+                break :blk try self.snd(new_t);
+            },
+
+            .binop => |b| blk: {
+                const new_left = try self.substitute(b.left, var_name, replacement);
+                const new_right = try self.substitute(b.right, var_name, replacement);
+                if (new_left == b.left and new_right == b.right) break :blk term;
+                break :blk try self.binop(b.op, new_left, new_right);
+            },
+
+            .unop => |u| blk: {
+                const new_operand = try self.substitute(u.operand, var_name, replacement);
+                if (new_operand == u.operand) break :blk term;
+                break :blk try self.unop(u.op, new_operand);
+            },
+
+            .cmp => |c| blk: {
+                const new_left = try self.substitute(c.left, var_name, replacement);
+                const new_right = try self.substitute(c.right, var_name, replacement);
+                if (new_left == c.left and new_right == c.right) break :blk term;
+                break :blk try self.cmp(c.op, new_left, new_right);
+            },
+
+            .@"if" => |i| blk: {
+                const new_cond = try self.substitute(i.condition, var_name, replacement);
+                const new_then = try self.substitute(i.then_branch, var_name, replacement);
+                const new_else = try self.substitute(i.else_branch, var_name, replacement);
+                if (new_cond == i.condition and new_then == i.then_branch and new_else == i.else_branch) break :blk term;
+                break :blk try self.ifExpr(new_cond, new_then, new_else);
+            },
+
+            .let => |l| blk: {
+                // Substitute in value
+                const new_value = try self.substitute(l.value, var_name, replacement);
+
+                // Check for variable capture in body
+                if (std.mem.eql(u8, l.name, var_name)) {
+                    if (new_value == l.value) break :blk term;
+                    break :blk try self.letExpr(l.name, new_value, l.body);
+                }
+
+                const new_body = try self.substitute(l.body, var_name, replacement);
+                if (new_value == l.value and new_body == l.body) break :blk term;
+                break :blk try self.letExpr(l.name, new_value, new_body);
+            },
+
+            .builtin => |b| blk: {
+                var changed = false;
+                const new_args = try self.allocator().alloc(*const Term, b.args.len);
+                for (b.args, 0..) |arg, i| {
+                    new_args[i] = try self.substitute(arg, var_name, replacement);
+                    if (new_args[i] != arg) changed = true;
+                }
+
+                if (!changed) {
+                    self.allocator().free(new_args);
+                    break :blk term;
+                }
+                break :blk try self.builtin(b.func, new_args);
+            },
+
+            .annotated => |a| blk: {
+                const new_term = try self.substitute(a.term, var_name, replacement);
+                if (new_term == a.term) break :blk term;
+                break :blk try self.annotated(new_term, a.type);
+            },
+        };
+    }
 };
 
 // ============================================================================

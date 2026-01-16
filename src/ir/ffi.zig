@@ -92,9 +92,14 @@ pub fn fromZig(comptime T: type, val: T, heap: *Heap) FfiError!Value {
         },
         .void => Value.nil,
         .@"struct" => |s| {
-            // Convert struct to alist or vector
-            _ = s;
-            return FfiError.TypeMismatch; // TODO: implement struct conversion
+            var result = Value.nil;
+            inline for (s.fields) |field| {
+                const field_name = try heap.allocString(field.name) catch return FfiError.OutOfMemory;
+                const field_val = try fromZig(field.type, @field(val, field.name), heap);
+                const pair = try heap.allocCons(field_name, field_val) catch return FfiError.OutOfMemory;
+                result = try heap.allocCons(pair, result) catch return FfiError.OutOfMemory;
+            }
+            return result;
         },
         else => @compileError("Unsupported type for FFI: " ++ @typeName(T)),
     };
@@ -187,23 +192,30 @@ pub const NativeRegistry = struct {
 
 /// Callback wrapper - wraps a Habu closure for Zig to call
 pub fn Callback(comptime ReturnType: type, comptime ArgTypes: anytype) type {
-    _ = ArgTypes;
     return struct {
         closure: Value,
         heap: *Heap,
+        vm: *@import("../interp/vm.zig").Vm,
 
         const Self = @This();
 
-        pub fn init(closure: Value, heap: *Heap) Self {
-            return .{ .closure = closure, .heap = heap };
+        pub fn init(closure: Value, heap: *Heap, vm: *@import("../interp/vm.zig").Vm) Self {
+            return .{ .closure = closure, .heap = heap, .vm = vm };
         }
 
-        pub fn call(self: Self, args: anytype) !ReturnType {
-            _ = self;
-            _ = args;
-            // TODO: Implement calling Habu closure from Zig
-            // This requires access to the VM to execute the closure
-            @compileError("Callback.call not yet implemented");
+        pub fn call(self: Self, args: ArgTypes) !ReturnType {
+            if (!self.closure.isClosure()) return FfiError.TypeMismatch;
+            const closure_obj = self.closure.toPtr(objects.Closure);
+
+            // Convert args to Values and push on stack
+            inline for (@typeInfo(ArgTypes).@"struct".fields, 0..) |field, i| {
+                const arg_val = try fromZig(field.type, @field(args, field.name), self.heap);
+                self.vm.stack[i] = arg_val;
+            }
+
+            const argc: u8 = @intCast(@typeInfo(ArgTypes).@"struct".fields.len);
+            const result = try self.vm.callClosure(closure_obj, argc);
+            return try toZig(ReturnType, result, self.heap);
         }
     };
 }

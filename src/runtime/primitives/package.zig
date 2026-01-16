@@ -56,9 +56,15 @@ pub fn packageUseList(pkg: Value) !Value {
 
 /// List all packages
 pub fn listAllPackages(heap: *Heap) !Value {
-    _ = heap;
-    // TODO: return list from global registry
-    return Value.nil;
+    var result = Value.nil;
+    var it = heap.packages.valueIterator();
+    while (it.next()) |zig_pkg| {
+        const name_val = try heap.allocString(zig_pkg.*.name);
+        if (heap.findLispPackage(name_val)) |pkg_val| {
+            result = try heap.allocCons(pkg_val, result);
+        }
+    }
+    return result;
 }
 
 /// Intern a symbol in a package
