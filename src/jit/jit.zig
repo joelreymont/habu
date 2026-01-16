@@ -46,10 +46,10 @@ pub const Jit = struct {
         hole_type: stencils.HoleType,
     };
 
-    pub fn init(allocator: std.mem.Allocator) !Jit {
+    pub fn init(allocator: std.mem.Allocator, code_buf_size: usize) !Jit {
         return .{
             .allocator = allocator,
-            .code_buffer = try patch.CodeBuffer.init(allocator, 1024 * 1024), // 1MB
+            .code_buffer = try patch.CodeBuffer.init(allocator, code_buf_size),
             .fn_start = 0,
             .labels = std.AutoHashMap(usize, usize).init(allocator),
             .pending_jumps = std.ArrayList(PendingJump){},
@@ -347,7 +347,7 @@ test "jit init" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var jit = try Jit.init(allocator);
+    var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
 
     try testing.expectEqual(@as(usize, 0), jit.code_buffer.pos);
@@ -357,7 +357,7 @@ test "jit compile simple" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var jit = try Jit.init(allocator);
+    var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
 
     // push_i32 42; ret
