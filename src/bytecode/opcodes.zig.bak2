@@ -611,6 +611,14 @@ pub const Op = enum(u8) {
     /// ( value -- )
     return_from = 0x8C,
 
+    /// Push progv bindings (establish dynamic variable bindings)
+    /// ( symbols values -- )
+    push_progv = 0x8E,
+
+    /// Pop progv bindings (restore previous dynamic bindings)
+    /// ( -- )
+    pop_progv = 0x8F,
+
     /// Write string to output stream
     /// ( string stream -- string )
     write_to_stream = 0x8D,
@@ -920,7 +928,7 @@ pub const Op = enum(u8) {
 
     /// Bitwise equivalence (NOT XOR)
     /// ( a b -- ~(a^b) )
-    logeqv = 0x8E,
+    logeqv = 0xDB,
 
     /// Read entire file contents to string
     /// ( path-string -- string )
@@ -1045,41 +1053,33 @@ pub const Op = enum(u8) {
     /// ( name -- t/nil )
     find_restart = 0xB9,
 
-    /// Push progv frame (symbols list and values list on stack)
-    /// ( symbols values -- )
-    push_progv = 0xBA,
-
-    /// Pop progv frame, restoring previous bindings
-    /// ( -- )
-    pop_progv = 0xBB,
-
     // ========================================================================
     // Streams
     // ========================================================================
 
     /// Make a string input stream
     /// ( string -- stream )
-    make_string_input_stream = 0xBC,
+    make_string_input_stream = 0xBA,
 
     /// Make a string output stream
     /// ( -- stream )
-    make_string_output_stream = 0xBD,
+    make_string_output_stream = 0xBB,
 
     /// Get the accumulated string from an output stream
     /// ( stream -- string )
-    get_output_stream_string = 0xBE,
+    get_output_stream_string = 0xBC,
 
     /// Check if value is a stream
     /// ( val -- t/nil )
-    streamp = 0xBF,
+    streamp = 0xBD,
 
     /// Check if stream is an input stream
     /// ( stream -- t/nil )
-    input_stream_p = 0xC0,
+    input_stream_p = 0xBE,
 
     /// Check if stream is an output stream
     /// ( stream -- t/nil )
-    output_stream_p = 0xC1,
+    output_stream_p = 0xBF,
 
     // ========================================================================
     // Multiple values
@@ -1088,19 +1088,19 @@ pub const Op = enum(u8) {
     /// Return multiple values (operand: u8 count)
     /// Pops count values, pushes first, stores rest in secondary values
     /// ( v1 v2 ... vN -- v1 )
-    values = 0xC2,
+    values = 0xC0,
 
     /// Bind multiple values to locals (operand: u8 count)
     /// Takes primary value from stack, secondaries from buffer
     /// Stores into consecutive locals starting at next operand
     /// ( primary -- )
-    mv_bind = 0xC3,
+    mv_bind = 0xC1,
 
     /// Gather multiple values into a list (multiple-value-list)
     /// Takes primary from stack, secondaries from buffer
     /// Pushes list of all values
     /// ( primary -- list )
-    mv_list = 0xC4,
+    mv_list = 0xC2,
 
     /// Return list elements as multiple values (values-list)
     /// ( list -- first-element )
@@ -1109,27 +1109,27 @@ pub const Op = enum(u8) {
 
     /// Count occurrences of item in sequence (using eql - default)
     /// ( item sequence -- count )
-    list_count = 0xC5,
+    list_count = 0xC3,
 
     /// Count occurrences of item in sequence (using eq - identity)
     /// ( item sequence -- count )
-    list_count_eq = 0xC6,
+    list_count_eq = 0xC4,
 
     /// Count occurrences of item in sequence (using equal - structural)
     /// ( item sequence -- count )
-    list_count_equal = 0xC7,
+    list_count_equal = 0xC5,
 
     /// Remove all occurrences of item from sequence (using eql - default)
     /// ( item sequence -- new-sequence )
-    list_remove = 0xC8,
+    list_remove = 0xC6,
 
     /// Remove all occurrences of item from sequence (using eq - identity)
     /// ( item sequence -- new-sequence )
-    list_remove_eq = 0x3E,
+    list_remove_eq = 0xC7,
 
     /// Remove all occurrences of item from sequence (using equal - structural)
     /// ( item sequence -- new-sequence )
-    list_remove_equal = 0x3F,
+    list_remove_equal = 0xC8,
 
     /// Establish condition handler bindings
     /// ( body-fn handlers-alist -- result )
@@ -1282,6 +1282,7 @@ pub const Op = enum(u8) {
             .apply,
             .pop_catch,
             .pop_block,
+            .pop_progv,
             .throw,
             .write_to_stream,
             .hash_get,

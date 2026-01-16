@@ -114,12 +114,6 @@ pub const HandlerFrame = struct {
     handler_fn: Value,
 };
 
-/// Progv frame for dynamic variable binding
-pub const ProgvFrame = struct {
-    /// Saved global values (list of (symbol . old-value) pairs)
-    saved_bindings: Value,
-};
-
 /// Call frame for function calls
 pub const Frame = struct {
     /// Return address (chunk + ip)
@@ -240,11 +234,6 @@ pub const Vm = struct {
     /// Handler stack pointer
     handler_sp: usize,
 
-    /// Progv stack for dynamic variable binding
-    progv_stack: [MAX_PROGVS]ProgvFrame,
-    /// Progv stack pointer
-    progv_sp: usize,
-
     /// Let scope stack for nested let bindings
     scope_stack: [MAX_SCOPES]Scope,
     /// Scope stack pointer (number of active scopes)
@@ -353,7 +342,6 @@ pub const Vm = struct {
     const MAX_UNWINDS = 32;
     const MAX_RESTARTS = 64;
     const MAX_BLOCKS = 64;
-    const MAX_PROGVS = 32;
     const MAX_HANDLERS = 64;
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap) !Vm {
@@ -381,8 +369,6 @@ pub const Vm = struct {
             .block_sp = 0,
             .handler_stack = undefined,
             .handler_sp = 0,
-            .progv_stack = undefined,
-            .progv_sp = 0,
             .scope_stack = undefined,
             .scope_sp = 0,
             .pending_throw_tag = Value.nil,
@@ -1955,8 +1941,31 @@ pub const Vm = struct {
             },
             .type_of => {
                 const val = try self.pop();
-                const type_spec = try primitives.ty.typeOf(&self.heap, val);
-                try self.push(type_spec);
+                // Return symbol naming the type
+                const type_name: []const u8 = if (val.isNil())
+                    "nil"
+                else if (val.isFixnum())
+                    "fixnum"
+                else if (val.isCharacter())
+                    "character"
+                else if (val.isCons())
+                    "cons"
+                else if (val.isSymbol())
+                    "symbol"
+                else if (val.isVector())
+                    "vector"
+                else if (val.isString())
+                    "string"
+                else if (val.isClosure())
+                    "closure"
+                else if (val.isKeyword())
+                    "keyword"
+                else if (val.isHashTable())
+                    "hash-table"
+                else
+                    "unknown";
+                const type_sym = try self.heap.intern(type_name);
+                try self.push(type_sym);
             },
             .str_eq => {
                 const b = try self.pop();
@@ -2115,16 +2124,6 @@ pub const Vm = struct {
                 const value = try self.pop();
                 const tag = try self.pop();
                 try self.doThrow(tag, value);
-            },
-
-            .push_progv => {
-                const values = try self.pop();
-                const symbols = try self.pop();
-                try self.pushProgvFrame(symbols, values);
-            },
-
-            .pop_progv => {
-                try self.popProgvFrame();
             },
 
             // Block/return-from (lexical non-local exit)
@@ -3820,65 +3819,6 @@ pub const Vm = struct {
     }
 
     /// Handle return-from by searching for matching block frame and jumping to it
-    fn pushProgvFrame(self: *Vm, symbols: Value, values: Value) Error!void {
-        if (self.progv_sp >= MAX_PROGVS) return error.StackOverflow;
-
-        // Build list of (symbol . old-value) pairs
-        var saved_bindings = Value.nil;
-        var sym_list = symbols;
-        var val_list = values;
-
-        while (sym_list.isCons()) {
-            const sym_cons = sym_list.toPtr(Cons);
-            const symbol = sym_cons.car;
-
-            if (!symbol.isSymbol()) return error.InvalidSyntax;
-
-            // Get old value (or nil if unbound)
-            const old_value = try self.getGlobalBySymbol(symbol);
-
-            // Set new value
-            const new_value = if (val_list.isCons()) val_list.toPtr(Cons).car else Value.nil;
-            try self.setGlobalBySymbol(symbol, new_value);
-
-            // Save (symbol . old-value) pair
-            const pair = try self.heap.cons(symbol, old_value);
-            saved_bindings = try self.heap.cons(pair, saved_bindings);
-
-            // Advance lists
-            sym_list = sym_cons.cdr;
-            if (val_list.isCons()) {
-                val_list = val_list.toPtr(Cons).cdr;
-            }
-        }
-
-        self.progv_stack[self.progv_sp] = .{ .saved_bindings = saved_bindings };
-        self.progv_sp += 1;
-    }
-
-    fn popProgvFrame(self: *Vm) Error!void {
-        if (self.progv_sp == 0) return error.StackUnderflow;
-        self.progv_sp -= 1;
-
-        const frame = self.progv_stack[self.progv_sp];
-        var bindings = frame.saved_bindings;
-
-        // Restore old values
-        while (bindings.isCons()) {
-            const binding_cons = bindings.toPtr(Cons);
-            const pair = binding_cons.car;
-
-            if (pair.isCons()) {
-                const pair_cons = pair.toPtr(Cons);
-                const symbol = pair_cons.car;
-                const old_value = pair_cons.cdr;
-                try self.setGlobalBySymbol(symbol, old_value);
-            }
-
-            bindings = binding_cons.cdr;
-        }
-    }
-
     fn doReturnFrom(self: *Vm, name_raw: u64, value: Value) Error!void {
         // First, check if there's an unwind-protect that needs cleanup
         // Unwind frames take precedence - we must run cleanup before continuing

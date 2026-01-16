@@ -110,6 +110,7 @@ pub const Builtins = struct {
     @"find-restart": Value,
     tagbody: Value,
     go: Value,
+    progv: Value,
     values: Value,
     @"values-list": Value,
     @"multiple-value-bind": Value,
@@ -508,6 +509,7 @@ pub const Builtins = struct {
             .@"find-restart" = try heap.intern("find-restart"),
             .tagbody = try heap.intern("tagbody"),
             .go = try heap.intern("go"),
+            .progv = try heap.intern("progv"),
             .values = try heap.intern("values"),
             .@"values-list" = try heap.intern("values-list"),
             .@"multiple-value-bind" = try heap.intern("multiple-value-bind"),
@@ -1851,6 +1853,7 @@ pub const Compiler = struct {
         @"find-restart",
         tagbody,
         go,
+        progv,
         values,
         @"values-list",
         @"multiple-value-bind",
@@ -1920,6 +1923,7 @@ pub const Compiler = struct {
         .{ "find-restart", .@"find-restart" },
         .{ "tagbody", .tagbody },
         .{ "go", .go },
+        .{ "progv", .progv },
         .{ "values", .values },
         .{ "values-list", .@"values-list" },
         .{ "multiple-value-bind", .@"multiple-value-bind" },
@@ -1999,6 +2003,7 @@ pub const Compiler = struct {
                     .@"find-restart" => self.compileFindRestart(tail, env),
                     .tagbody => self.compileTagbody(tail, env),
                     .go => self.compileGo(tail),
+                    .progv => self.compileProgv(tail, env),
                     .values => self.compileValues(tail, env),
                     .@"values-list" => self.compileValuesList(tail, env),
                     .@"multiple-value-bind" => self.compileMvBind(tail, env),
@@ -3889,6 +3894,23 @@ pub const Compiler = struct {
         const value_ir = try self.compile(value, env);
 
         return try self.builder.throw(tag_ir, value_ir);
+    }
+
+    fn compileProgv(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        // (progv symbols values body...)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const symbols = cons1.car;
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const values = cons2.car;
+
+        const symbols_ir = try self.compile(symbols, env);
+        const values_ir = try self.compile(values, env);
+        const body_ir = try self.compileBody(cons2.cdr, env);
+
+        return try self.builder.progv(symbols_ir, values_ir, body_ir);
     }
 
     /// Compile (signal condition-type value) - signals a condition

@@ -188,6 +188,13 @@ pub const Ir = union(enum) {
     /// (find-restart name)
     find_restart: UnaryOp,
 
+    /// Progv: dynamic variable binding (progv symbols values body)
+    progv: struct {
+        symbols: *const Ir, // List of symbols to bind
+        values: *const Ir, // List of values to bind them to
+        body: *const Ir,
+    },
+
     /// Tagbody: (tagbody tag1 form1 tag2 form2 ...)
     /// Tags are symbols, forms are expressions
     tagbody: struct {
@@ -997,6 +1004,12 @@ pub const IrBuilder = struct {
     pub fn throw(self: IrBuilder, tag: *const Ir, value: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .throw = .{ .tag = tag, .value = value } };
+        return node;
+    }
+
+    pub fn progv(self: IrBuilder, symbols: *const Ir, vals: *const Ir, body: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .progv = .{ .symbols = symbols, .values = vals, .body = body } };
         return node;
     }
 

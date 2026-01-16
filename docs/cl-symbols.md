@@ -159,7 +159,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | multiple-value-call | ✓ | compile.zig:116 | MV function call |
 | multiple-value-prog1 | ✗ | - | |
 | progn | ✓ | compile.zig:73 | Sequencing |
-| progv | ✗ | - | Dynamic binding |
+| progv | ✓ | vm.zig | Dynamic binding |
 | quote | ✓ | compile.zig:78 | Literal data |
 | return-from | ✓ | compile.zig:100 | Block exit |
 | setq | ✓ | compile.zig:70 | Variable assignment |

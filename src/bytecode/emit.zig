@@ -518,6 +518,7 @@ pub const Emitter = struct {
             .find_restart => |fr| try self.emitUnaryOp(fr.operand, .find_restart),
             .tagbody => |tb| try self.emitTagbody(tb),
             .go => |g| try self.emitGo(g),
+            .progv => |p| try self.emitProgv(p),
             .values => |v| try self.emitValues(v),
             .values_list => |op| try self.emitUnaryOp(op.operand, .values_list),
             .mv_bind => |m| try self.emitMvBind(m),
@@ -1477,6 +1478,21 @@ pub const Emitter = struct {
 
         // Patch end_jump
         try self.patchJumpAt(end_jump);
+    }
+
+    fn emitProgv(self: *Emitter, p: anytype) Error!void {
+        // Emit symbols and values expressions
+        try self.emit(p.symbols);
+        try self.emit(p.values);
+
+        // Push progv frame (pops symbols and values, establishes bindings)
+        try self.emitOp(.push_progv);
+
+        // Emit body
+        try self.emit(p.body);
+
+        // Pop progv frame (restore previous bindings)
+        try self.emitOp(.pop_progv);
     }
 
     fn emitHandlerCase(self: *Emitter, hc: anytype) Error!void {
