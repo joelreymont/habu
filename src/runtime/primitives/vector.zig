@@ -74,6 +74,24 @@ pub fn arrayDimensions(heap: *Heap, val: Value) error{OutOfMemory}!Value {
     return result;
 }
 
+/// Get dimension size for specific axis
+pub fn arrayDimension(val: Value, axis: i64) ?i64 {
+    if (axis < 0) return null;
+
+    switch (val.typeKind()) {
+        .vector => {
+            if (axis != 0) return null;
+            return @intCast(val.toPtr(objects.Vector).length);
+        },
+        .array => {
+            const arr = val.toPtr(objects.Array);
+            if (axis >= arr.rank) return null;
+            return @intCast(arr.dimensions[@intCast(axis)]);
+        },
+        else => return null,
+    }
+}
+
 /// Get total array size
 pub fn arrayTotalSize(val: Value) i64 {
     if (!val.isArray()) return -1;
