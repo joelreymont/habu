@@ -2738,10 +2738,9 @@
                            (push (list 'setq keys-var (list 'cdr keys-var)) step-forms)
                            (push (list 'null keys-var) end-tests)))
                         ((hash-values hash-value)
-                         ; Note: key-var with (or ...) must come FIRST due to Habu let bug
-                         (let ((key-var (or other-var (gensym "key")))
-                               (keys-var (gensym "keys"))
-                               (hash-var (gensym "hash")))
+                         (let ((keys-var (gensym "keys"))
+                               (hash-var (gensym "hash"))
+                               (key-var (or other-var (gensym "key"))))
                            (push (list hash-var hash-expr) vars)
                            (push (list keys-var (list 'hash-table-keys hash-var)) vars)
                            (push (list key-var nil) vars)

@@ -2873,7 +2873,20 @@ pub const Compiler = struct {
         var let_env = Env.initLet(self.allocator, env);
         defer let_env.deinit();
 
-        // Second pass: compile bindings, get indices, wrap boxed ones with make-box
+        // First, reserve ALL slots by binding all names (so nested exprs like 'or' know
+        // to use higher indices). This fixes a bug where (or ...) in a let binding
+        // would reuse slot 0, overwriting earlier bindings.
+        for (binding_names.items) |name| {
+            _ = try let_env.bind(name);
+        }
+
+        // Create a slot-reserving environment for compiling value expressions.
+        // This env has the same localCount as let_env but no visible bindings.
+        // Nested lets/ors will use indices starting after our reserved slots.
+        var value_env = Env.initLet(self.allocator, &let_env);
+        defer value_env.deinit();
+
+        // Second pass: compile bindings using pre-assigned indices
         var bindings = std.ArrayList(Ir.Binding){};
         defer bindings.deinit(self.allocator);
 
@@ -2886,13 +2899,13 @@ pub const Compiler = struct {
             const b = binding.toPtr(Cons);
             const name = binding_names.items[name_idx];
 
-            // Bind name in let_env to get stack slot index
-            const index = try let_env.bind(name);
+            // Get the already-assigned index
+            const index = let_env.bindings.get(name).?;
 
-            // Get value expression - compile in outer env (let semantics)
+            // Get value expression - compile in value_env (has reserved slots)
             if (!b.cdr.isCons()) return error.InvalidLet;
             const val_cons = b.cdr.toPtr(Cons);
-            var val_ir = try self.compile(val_cons.car, env);
+            var val_ir = try self.compile(val_cons.car, &value_env);
 
             // If this variable needs boxing, wrap value in make-box
             if (boxed.contains(name)) {
