@@ -16,15 +16,16 @@ const TypedIr = ir_types.TypedIr;
 const types = @import("../../types/types.zig");
 const BiChecker = types.BiChecker;
 const TypingCtx = types.TypingCtx;
+const builtins_mod = @import("../../runtime/builtins.zig");
 
 /// Infer pass - runs BiChecker and populates types
-pub fn infer(allocator: std.mem.Allocator, input: *const TypedIr) PassError!PassResult(*const TypedIr) {
+pub fn infer(allocator: std.mem.Allocator, builtins: *const builtins_mod.BuiltinSymbols, input: *const TypedIr) PassError!PassResult(*const TypedIr) {
     // Create typing context
     var ctx = TypingCtx.init(std.heap.page_allocator);
     defer ctx.deinit();
 
     // Create type checker
-    var checker = BiChecker.init(std.heap.page_allocator);
+    var checker = BiChecker.init(std.heap.page_allocator, builtins);
     defer checker.deinit();
 
     // Infer type for the underlying IR
@@ -53,11 +54,17 @@ pub const pass = pass_mod.makePass(*const TypedIr, *const TypedIr, "infer", infe
 test "infer pass - literal" {
     const testing = std.testing;
     const Value = @import("../../runtime/value.zig").Value;
+    const Vm = @import("../../interp/vm.zig").Vm;
+    const Heap = @import("../../runtime/heap.zig").Heap;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var vm = try Vm.init(testing.allocator, &heap);
 
     const lit = Ir{ .lit = Value.makeFixnum(42) };
     const typed = TypedIr.init(&lit);
 
-    const result = try infer(testing.allocator, &typed);
+    const result = try infer(testing.allocator, &vm.builtins, &typed);
     defer if (result.modified) testing.allocator.destroy(@constCast(result.output));
 
     try testing.expect(result.modified);

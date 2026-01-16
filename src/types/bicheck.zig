@@ -21,6 +21,8 @@ const term_mod = @import("term.zig");
 const normalize_mod = @import("normalize.zig");
 const conversion_mod = @import("conversion.zig");
 const ir_mod = @import("../compiler/ir.zig");
+const builtins_mod = @import("../runtime/builtins.zig");
+const Value = @import("../runtime/value.zig").Value;
 
 const Type = type_mod.Type;
 const TypeBuilder = type_mod.TypeBuilder;
@@ -129,8 +131,9 @@ pub const BiChecker = struct {
     normalizer: Normalizer,
     converter: TypeConverter,
     errors: std.ArrayListUnmanaged(TypeError),
+    builtins: *const builtins_mod.BuiltinSymbols,
 
-    pub fn init(allocator: std.mem.Allocator) BiChecker {
+    pub fn init(allocator: std.mem.Allocator, builtins: *const builtins_mod.BuiltinSymbols) BiChecker {
         return .{
             .allocator = allocator,
             .type_builder = TypeBuilder.init(allocator),
@@ -138,6 +141,7 @@ pub const BiChecker = struct {
             .normalizer = Normalizer.init(allocator),
             .converter = TypeConverter.init(allocator),
             .errors = std.ArrayListUnmanaged(TypeError){},
+            .builtins = builtins,
         };
     }
 
@@ -776,15 +780,20 @@ pub const BiChecker = struct {
         // Full implementation would evaluate type-level terms
         switch (type_ir.*) {
             .@"var" => |v| {
-                // Look up type name
-                // This is a simplified version - would need proper type environment
-                if (std.mem.eql(u8, v.name, "fixnum")) return &type_mod.t_fixnum;
-                if (std.mem.eql(u8, v.name, "string")) return &type_mod.t_string;
-                if (std.mem.eql(u8, v.name, "symbol")) return &type_mod.t_symbol;
-                if (std.mem.eql(u8, v.name, "cons")) return &type_mod.t_cons;
-                if (std.mem.eql(u8, v.name, "nil")) return &type_mod.t_nil;
-                if (std.mem.eql(u8, v.name, "any")) return &type_mod.t_any;
-                if (std.mem.eql(u8, v.name, "Type")) return &type_mod.t_type;
+                // Table-driven type lookup
+                const TypeEntry = struct { name: []const u8, ty: *const Type };
+                const type_table: []const TypeEntry = &.{
+                    .{ .name = "fixnum", .ty = &type_mod.t_fixnum },
+                    .{ .name = "string", .ty = &type_mod.t_string },
+                    .{ .name = "symbol", .ty = &type_mod.t_symbol },
+                    .{ .name = "cons", .ty = &type_mod.t_cons },
+                    .{ .name = "nil", .ty = &type_mod.t_nil },
+                    .{ .name = "any", .ty = &type_mod.t_any },
+                    .{ .name = "Type", .ty = &type_mod.t_type },
+                };
+                for (type_table) |e| {
+                    if (std.mem.eql(u8, v.name, e.name)) return e.ty;
+                }
 
                 try self.reportError("Unknown type", v.name);
                 return error.TypeError;
@@ -843,9 +852,12 @@ pub const CheckError = error{
 test "infer literal types" {
     const testing = std.testing;
     const allocator = testing.allocator;
-    const Value = @import("../runtime/value.zig").Value;
-
-    var checker = BiChecker.init(allocator);
+    const Vm = @import("../interp/vm.zig").Vm;
+    const Heap = @import("../runtime/heap.zig").Heap;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
     var ctx = TypingCtx.init(allocator);
@@ -902,7 +914,12 @@ test "infer variable" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var checker = BiChecker.init(allocator);
+    const Vm = @import("../interp/vm.zig").Vm;
+    const Heap = @import("../runtime/heap.zig").Heap;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
     var ctx = TypingCtx.init(allocator);
@@ -925,7 +942,12 @@ test "check lambda against pi type" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var checker = BiChecker.init(allocator);
+    const Vm = @import("../interp/vm.zig").Vm;
+    const Heap = @import("../runtime/heap.zig").Heap;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
     var ctx = TypingCtx.init(allocator);
@@ -964,7 +986,12 @@ test "substitution in type" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var checker = BiChecker.init(allocator);
+    const Vm = @import("../interp/vm.zig").Vm;
+    const Heap = @import("../runtime/heap.zig").Heap;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
     // Create a type variable
@@ -987,7 +1014,12 @@ test "substitution preserves unchanged types" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var checker = BiChecker.init(allocator);
+    const Vm = @import("../interp/vm.zig").Vm;
+    const Heap = @import("../runtime/heap.zig").Heap;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
     // Substituting in a primitive type should return the same type
@@ -1003,7 +1035,12 @@ test "substitution with shadowing" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var checker = BiChecker.init(allocator);
+    const Vm = @import("../interp/vm.zig").Vm;
+    const Heap = @import("../runtime/heap.zig").Heap;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
     // Create: (Π (x : fixnum) x) where inner x shadows
@@ -1025,7 +1062,12 @@ test "check cons against sigma type" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var checker = BiChecker.init(allocator);
+    const Vm = @import("../interp/vm.zig").Vm;
+    const Heap = @import("../runtime/heap.zig").Heap;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
     var ctx = TypingCtx.init(allocator);
@@ -1035,7 +1077,6 @@ test "check cons against sigma type" {
     const sigma_ty = try checker.type_builder.makeSigma("n", &type_mod.t_fixnum, &type_mod.t_fixnum);
 
     // Create cons IR: (cons 42 100)
-    const Value = @import("../runtime/value.zig").Value;
     const left = try allocator.create(Ir);
     left.* = .{ .lit = Value.makeFixnum(42) };
 
@@ -1057,7 +1098,12 @@ test "infer car from sigma type" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var checker = BiChecker.init(allocator);
+    const Vm = @import("../interp/vm.zig").Vm;
+    const Heap = @import("../runtime/heap.zig").Heap;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
     var ctx = TypingCtx.init(allocator);
@@ -1086,7 +1132,12 @@ test "infer cdr from sigma type" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var checker = BiChecker.init(allocator);
+    const Vm = @import("../interp/vm.zig").Vm;
+    const Heap = @import("../runtime/heap.zig").Heap;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
     var ctx = TypingCtx.init(allocator);
@@ -1115,7 +1166,12 @@ test "infer car from list type" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var checker = BiChecker.init(allocator);
+    const Vm = @import("../interp/vm.zig").Vm;
+    const Heap = @import("../runtime/heap.zig").Heap;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
     var ctx = TypingCtx.init(allocator);
@@ -1144,7 +1200,12 @@ test "zero-quantity variable cannot be used at runtime" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var checker = BiChecker.init(allocator);
+    const Vm = @import("../interp/vm.zig").Vm;
+    const Heap = @import("../runtime/heap.zig").Heap;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
     var ctx = TypingCtx.init(allocator);
@@ -1170,7 +1231,12 @@ test "one-quantity variable in linear context" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var checker = BiChecker.init(allocator);
+    const Vm = @import("../interp/vm.zig").Vm;
+    const Heap = @import("../runtime/heap.zig").Heap;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
     var ctx = TypingCtx.init(allocator);

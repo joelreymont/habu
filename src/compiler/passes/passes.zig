@@ -86,7 +86,7 @@ pub fn runFullPipeline(
     const ir = try runFrontendPipeline(allocator, heap, globals, desugared);
 
     // p06-p08: Type pipeline (annotate→infer→erase)
-    const typed_ir = try runNanoPipeline(allocator, ir);
+    const typed_ir = try runNanoPipeline(allocator, &vm_ptr.builtins, ir);
 
     // p09: Emit bytecode
     const emit_result = emit.emitWithHeap(allocator, heap, typed_ir) catch return error.EmitFailed;
@@ -144,7 +144,7 @@ pub const FrontendError = error{
 ///
 /// Uses page_allocator for intermediate TypedIr nodes since they're
 /// temporary and don't need to be tracked for leak detection.
-pub fn runNanoPipeline(allocator: std.mem.Allocator, ir: *const Ir) PassError!*const Ir {
+pub fn runNanoPipeline(allocator: std.mem.Allocator, builtins: *const @import("../../runtime/builtins.zig").BuiltinSymbols, ir: *const Ir) PassError!*const Ir {
     // Use page_allocator for intermediate TypedIr (not tracked for leaks)
     const typed_alloc = std.heap.page_allocator;
 
@@ -153,7 +153,7 @@ pub fn runNanoPipeline(allocator: std.mem.Allocator, ir: *const Ir) PassError!*c
     const typed_ir = annotate_result.output;
 
     // Pass 2: Infer (TypedIr → TypedIr)
-    const infer_result = try infer.infer(typed_alloc, typed_ir);
+    const infer_result = try infer.infer(typed_alloc, builtins, typed_ir);
     const inferred_ir = infer_result.output;
 
     // Pass 3: Erase (TypedIr → Ir)

@@ -487,7 +487,7 @@ pub const Repl = struct {
     /// Run nanopass pipeline on IR, returning transformed IR
     /// Pipeline: annotate → infer → erase
     fn runPipeline(self: *Repl, ir_node: *const Ir) !*const Ir {
-        return passes.runNanoPipeline(self.allocator, ir_node) catch {
+        return passes.runNanoPipeline(self.allocator, &self.vm.builtins, ir_node) catch {
             return ir_node; // On error, return original IR
         };
     }
