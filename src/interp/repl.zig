@@ -1293,11 +1293,7 @@ pub const Repl = struct {
         const cons = expr.toPtr(Cons);
         if (!cons.car.isSymbol()) return false;
 
-        if (self.compiler.builtins) |b| {
-            return cons.car.raw == b.@"in-package".raw;
-        }
-        const sym = cons.car.toPtr(Symbol);
-        return std.mem.eql(u8, sym.getName(), "in-package");
+        return cons.car.eq(self.vm.builtins.sym_in_package);
     }
 
     /// Check if expression is (defpackage ...)

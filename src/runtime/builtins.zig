@@ -26,6 +26,8 @@ pub const BuiltinSymbols = struct {
     sym_defmethod: Value,
     sym_defgeneric: Value,
     sym_defstruct: Value,
+    sym_in_package: Value,
+    sym_defpackage: Value,
 
     // Type names
     sym_fixnum: Value,
@@ -84,6 +86,8 @@ pub const BuiltinSymbols = struct {
             .sym_defmethod = try heap.intern("defmethod"),
             .sym_defgeneric = try heap.intern("defgeneric"),
             .sym_defstruct = try heap.intern("defstruct"),
+            .sym_in_package = try heap.intern("in-package"),
+            .sym_defpackage = try heap.intern("defpackage"),
 
             // Type names
             .sym_fixnum = try heap.intern("fixnum"),
