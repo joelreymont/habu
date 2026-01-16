@@ -6342,29 +6342,31 @@ pub const Compiler = struct {
             const result_name = "%method-result%";
             const primary_call = try self.generateMethodCallByName(primary.function_name, param_names);
 
-            // Build let body: after calls (at depth 1, since we're inside the let)
-            // followed by returning %result%
+            // Build let body: after calls + result reference
             var let_body = std.ArrayList(*Ir){};
             defer let_body.deinit(self.allocator);
 
-            // Generate after calls with depth 1 (to reference lambda params, not let binding)
+            // Generate after calls at depth 0 - let doesn't create a new lambda scope
+            // The params are still at depth=0, indices 0..n-1
             var k = after_methods.len;
             while (k > 0) {
                 k -= 1;
                 const after = after_methods[k];
                 if (try self.specializerMatches(after.specializers, primary.specializers)) {
-                    try let_body.append(self.allocator, try self.generateMethodCallByNameAtDepth(after.function_name, param_names, 1));
+                    try let_body.append(self.allocator, try self.generateMethodCallByName(after.function_name, param_names));
                 }
             }
 
-            // Return the result variable (depth 0 is correct, it's the let binding)
-            const result_ref = try self.builder.variable(result_name, 0, 0);
+            // Return the result variable
+            // Let binding index is after all params: param_names.len
+            const result_index: u16 = @intCast(param_names.len);
+            const result_ref = try self.builder.variable(result_name, 0, result_index);
             try let_body.append(self.allocator, result_ref);
 
             const body_progn = try self.builder.progn(try let_body.toOwnedSlice(self.allocator));
 
-            // Create let binding for result
-            const let_ir = try self.builder.let1(result_name, 0, primary_call, body_progn);
+            // Create let binding for result at index after params
+            const let_ir = try self.builder.let1(result_name, result_index, primary_call, body_progn);
 
             try stmts.append(self.allocator, let_ir);
         } else {
