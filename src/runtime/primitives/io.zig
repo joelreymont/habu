@@ -706,12 +706,21 @@ pub fn openFile(heap: *Heap, filename: Value, direction: ?Value, if_exists: ?Val
     if (!filename.isString()) return error.TypeError;
 
     const fname = filename.toPtr(objects.String);
-    const dir = if (direction) |d| d else Value.intern(heap, "input");
-    _ = dir;
+    const kw_input = heap.internKeyword("input");
+    const kw_output = heap.internKeyword("output");
+    const kw_io = heap.internKeyword("io");
+    const dir = if (direction) |d| d else kw_input;
 
-    // TODO: parse direction keyword
-    const fd = try std.posix.open(fname.bytes(), .{ .ACCMODE = .RDONLY }, 0);
-    return try heap.allocFileInputStream(fd);
+    if (dir.eq(kw_output)) {
+        const fd = try std.posix.open(fname.bytes(), .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true }, 0o644);
+        return try heap.allocFileOutputStream(fd);
+    } else if (dir.eq(kw_io)) {
+        const fd = try std.posix.open(fname.bytes(), .{ .ACCMODE = .RDWR, .CREAT = true }, 0o644);
+        return try heap.allocFileOutputStream(fd);
+    } else {
+        const fd = try std.posix.open(fname.bytes(), .{ .ACCMODE = .RDONLY }, 0);
+        return try heap.allocFileInputStream(fd);
+    }
 }
 
 /// Close a stream
