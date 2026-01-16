@@ -1343,6 +1343,46 @@
       (signal-condition (car args))
       nil))
 
+;; Standard restart functions
+;; These invoke the corresponding named restarts
+
+(defun abort (&optional condition)
+  "Transfer control to the innermost applicable ABORT restart."
+  (declare (ignore condition))
+  (let ((r (find-restart 'abort)))
+    (if r
+        (invoke-restart 'abort)
+        (error "No ABORT restart is active"))))
+
+(defun continue (&optional condition)
+  "Transfer control to the innermost applicable CONTINUE restart."
+  (declare (ignore condition))
+  (let ((r (find-restart 'continue)))
+    (when r
+      (invoke-restart 'continue))))
+
+(defun muffle-warning (&optional condition)
+  "Transfer control to the innermost applicable MUFFLE-WARNING restart."
+  (declare (ignore condition))
+  (let ((r (find-restart 'muffle-warning)))
+    (if r
+        (invoke-restart 'muffle-warning)
+        (error "No MUFFLE-WARNING restart is active"))))
+
+(defun store-value (value &optional condition)
+  "Transfer control to the STORE-VALUE restart, passing VALUE."
+  (declare (ignore condition))
+  (let ((r (find-restart 'store-value)))
+    (when r
+      (invoke-restart 'store-value value))))
+
+(defun use-value (value &optional condition)
+  "Transfer control to the USE-VALUE restart, passing VALUE."
+  (declare (ignore condition))
+  (let ((r (find-restart 'use-value)))
+    (when r
+      (invoke-restart 'use-value value))))
+
 ;; ============================================================
 ;; Generalized Reference (SETF)
 ;; ============================================================

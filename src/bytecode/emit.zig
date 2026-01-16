@@ -1612,12 +1612,26 @@ pub const Emitter = struct {
 
             // Handler is a lambda - call it with the invoked value (already on stack)
             // Stack: [value]
-            try self.emit(r.handler); // Push lambda
-            // Stack: [value, lambda]
-            try self.emitOp(.swap); // Swap so lambda is TOS-1, value is TOS
-            // Stack: [lambda, value]
-            try self.emitOp(.call);
-            try self.emitU8(1); // 1 argument
+            // Check if handler has parameters
+            const has_params = if (r.handler.* == .lambda)
+                r.handler.lambda.params.len > 0
+            else
+                true; // Default to passing value for non-lambda handlers
+
+            if (has_params) {
+                try self.emit(r.handler); // Push lambda
+                // Stack: [value, lambda]
+                try self.emitOp(.swap); // Swap so lambda is TOS-1, value is TOS
+                // Stack: [lambda, value]
+                try self.emitOp(.call);
+                try self.emitU8(1); // 1 argument
+            } else {
+                // Handler takes no args - pop the value and call with 0 args
+                try self.emitOp(.pop); // Discard value
+                try self.emit(r.handler); // Push lambda
+                try self.emitOp(.call);
+                try self.emitU8(0); // 0 arguments
+            }
 
             // Jump to end
             try self.emitOp(.jmp);
