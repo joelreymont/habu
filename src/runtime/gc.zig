@@ -29,8 +29,10 @@ pub const GC = struct {
     heap: *Heap,
     /// Allocator for work list
     allocator: std.mem.Allocator,
-    /// Work list of objects to scan
+    /// Work list of objects to scan (preallocated, reused across collections)
     work_list: std.ArrayList(WorkItem),
+    /// Root list for collecting roots (preallocated, reused across collections)
+    root_list: std.ArrayList(Value),
 
     /// Initialize GC with heap
     pub fn init(allocator: std.mem.Allocator, heap: *Heap) GC {
@@ -38,17 +40,27 @@ pub const GC = struct {
             .heap = heap,
             .allocator = allocator,
             .work_list = std.ArrayList(WorkItem){},
+            .root_list = std.ArrayList(Value){},
         };
     }
 
     pub fn deinit(self: *GC) void {
         self.work_list.deinit(self.allocator);
+        self.root_list.deinit(self.allocator);
+    }
+
+    /// Calculate initial capacity for work queues based on heap size
+    /// Sizing: space_size / 64 as a heuristic (1.5% of semispace)
+    fn calculateInitialCapacity(self: *const GC) usize {
+        const min_cap = 256;
+        const cap = self.heap.space_size / 64;
+        return @max(min_cap, cap);
     }
 
     /// Run a garbage collection cycle
     /// Returns the number of bytes copied, or error on OOM during work list allocation
     pub fn collect(self: *GC, roots: []Value) !usize {
-        // Clear work list
+        // Clear work list, retaining capacity from previous collections
         self.work_list.clearRetainingCapacity();
         var alloc_ptr = self.heap.to_start;
 
@@ -81,7 +93,23 @@ pub const GC = struct {
         self.heap.stats.gc_count += 1;
         self.heap.stats.bytes_copied += bytes_copied;
 
+        // Phase 5: Grow queues AFTER collection completes if needed
+        try self.maybeGrowQueues();
+
         return bytes_copied;
+    }
+
+    /// Grow work queues after GC if they exceeded 75% capacity
+    /// Growth happens AFTER GC completes to avoid allocations during trace
+    fn maybeGrowQueues(self: *GC) !void {
+        const work_cap = self.work_list.capacity;
+        const work_peak = self.work_list.items.len;
+
+        // If we used >75% capacity, grow for next cycle
+        if (work_cap > 0 and work_peak * 4 > work_cap * 3) {
+            const new_cap = work_cap * 2;
+            try self.work_list.ensureTotalCapacity(self.allocator, new_cap);
+        }
     }
 
     /// Finalize unreachable objects that hold resources (e.g., file handles)
