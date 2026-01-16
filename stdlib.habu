@@ -3133,3 +3133,6 @@
 (defun pathname-version (pathname)
   "Return the version component of pathname."
   (%pathname-version pathname))
+
+(defun logtest (a b)
+  (not (zerop (logand a b))))

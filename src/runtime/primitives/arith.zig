@@ -225,22 +225,15 @@ pub fn logeqv(a: Value, b: Value) Error!Value {
     return Value.makeFixnum(@bitCast(~(ua ^ ub)));
 }
 
-/// Test if any bits set in both args
-pub fn logtest(a: Value, b: Value) Error!bool {
-    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-    const ua: u64 = @bitCast(a.toFixnum());
-    const ub: u64 = @bitCast(b.toFixnum());
-    return (ua & ub) != 0;
-}
-
 /// Test if bit at index is set
 pub fn logbitp(index: Value, n: Value) Error!bool {
     if (!index.isFixnum() or !n.isFixnum()) return error.TypeMismatch;
     const idx = index.toFixnum();
-    if (idx < 0 or idx >= 64) return error.InvalidArgument;
-    const un: u64 = @bitCast(n.toFixnum());
+    if (idx < 0) return error.TypeMismatch;
+    const val = n.toFixnum();
+    if (idx >= 63) return val < 0;
     const bit: u6 = @intCast(idx);
-    return ((un >> bit) & 1) == 1;
+    return ((val >> bit) & 1) == 1;
 }
 
 /// Count number of 1 bits
