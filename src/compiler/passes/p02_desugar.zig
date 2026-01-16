@@ -24,12 +24,14 @@ const Value = runtime.Value;
 const Cons = runtime.Cons;
 const Symbol = runtime.Symbol;
 const Heap = runtime.Heap;
+const builtins_mod = @import("../../runtime/builtins.zig");
 
 /// Desugarer transforms syntactic sugar to core forms
 pub const Desugarer = struct {
     allocator: std.mem.Allocator,
     heap: *Heap,
     gensym_counter: u32,
+    builtins: *const builtins_mod.BuiltinSymbols,
 
     /// Special form identifiers for dispatch
     const Form = enum {
@@ -53,11 +55,12 @@ pub const Desugarer = struct {
         .{ "unless", .unless },
     });
 
-    pub fn init(allocator: std.mem.Allocator, heap: *Heap) Desugarer {
+    pub fn init(allocator: std.mem.Allocator, heap: *Heap, builtins: *const builtins_mod.BuiltinSymbols) Desugarer {
         return .{
             .allocator = allocator,
             .heap = heap,
             .gensym_counter = 0,
+            .builtins = builtins,
         };
     }
 
@@ -210,12 +213,8 @@ pub const Desugarer = struct {
         // Check for (t ...) or (else ...) - default clause
         const is_default = blk: {
             if (test_expr.raw == Value.t.raw) break :blk true;
-            if (test_expr.isSymbol()) {
-                const name = test_expr.toPtr(Symbol).getName();
-                if (std.mem.eql(u8, name, "else") or std.mem.eql(u8, name, "t")) {
-                    break :blk true;
-                }
-            }
+            if (test_expr.eq(self.builtins.sym_else)) break :blk true;
+            if (test_expr.eq(self.builtins.sym_t)) break :blk true;
             break :blk false;
         };
 
@@ -416,8 +415,8 @@ pub const Desugarer = struct {
 };
 
 /// Pass wrapper for pipeline integration
-pub fn desugar(allocator: std.mem.Allocator, heap: *Heap, expr: Value) !Value {
-    var desugarer = Desugarer.init(allocator, heap);
+pub fn desugar(allocator: std.mem.Allocator, heap: *Heap, builtins: *const builtins_mod.BuiltinSymbols, expr: Value) !Value {
+    var desugarer = Desugarer.init(allocator, heap, builtins);
     return desugarer.desugar(expr);
 }
 
@@ -431,7 +430,9 @@ test "desugar - atom passthrough" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    var desugarer = Desugarer.init(testing.allocator, &heap);
+    const Vm = @import("../../interp/vm.zig").Vm;
+    var vm = try Vm.init(testing.allocator, &heap);
+    var desugarer = Desugarer.init(testing.allocator, &heap, &vm.builtins);
 
     // Nil passes through
     const result_nil = try desugarer.desugar(Value.nil);
@@ -453,7 +454,9 @@ test "desugar - and" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    var desugarer = Desugarer.init(testing.allocator, &heap);
+    const Vm = @import("../../interp/vm.zig").Vm;
+    var vm = try Vm.init(testing.allocator, &heap);
+    var desugarer = Desugarer.init(testing.allocator, &heap, &vm.builtins);
 
     // (and) → t
     const and_sym = try heap.intern("and");
@@ -468,7 +471,9 @@ test "desugar - or single" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    var desugarer = Desugarer.init(testing.allocator, &heap);
+    const Vm = @import("../../interp/vm.zig").Vm;
+    var vm = try Vm.init(testing.allocator, &heap);
+    var desugarer = Desugarer.init(testing.allocator, &heap, &vm.builtins);
 
     // (or x) → x
     const or_sym = try heap.intern("or");
@@ -484,7 +489,9 @@ test "desugar - defun" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    var desugarer = Desugarer.init(testing.allocator, &heap);
+    const Vm = @import("../../interp/vm.zig").Vm;
+    var vm = try Vm.init(testing.allocator, &heap);
+    var desugarer = Desugarer.init(testing.allocator, &heap, &vm.builtins);
 
     // (defun square (x) (* x x)) → (define square (lambda (x) (* x x)))
     const defun_sym = try heap.intern("defun");

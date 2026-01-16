@@ -76,7 +76,8 @@ pub fn runFullPipeline(
     const expanded = try expander.expand(expr);
 
     // p02: Desugar
-    var desugarer = desugar.Desugarer.init(allocator, heap);
+    const vm_ptr = vm orelse return error.InvalidInput;
+    var desugarer = desugar.Desugarer.init(allocator, heap, &vm_ptr.builtins);
     const desugared = desugarer.desugar(expanded) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
     };
@@ -205,10 +206,12 @@ test "runFullPipeline - simple literal" {
     var globals = resolve.GlobalRegistry.init(allocator);
     defer globals.deinit();
 
+    var vm = try Vm.init(allocator, &heap);
+
     // Test: simple literal
     const expr = Value.makeFixnum(42);
 
-    const chunk = try runFullPipeline(allocator, &heap, null, &macros, &globals, expr);
+    const chunk = try runFullPipeline(allocator, &heap, &vm, &macros, &globals, expr);
     _ = chunk; // Arena handles cleanup
 
     // If we get here without error, the pipeline worked

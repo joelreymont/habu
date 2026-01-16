@@ -1630,7 +1630,7 @@ pub const Repl = struct {
 
     /// Desugar an expression (let* → let, cond → if, etc.)
     fn desugarExpr(self: *Repl, expr: Value) ReplError!Value {
-        var desugarer = passes.Desugarer.init(self.allocator, self.heap);
+        var desugarer = passes.Desugarer.init(self.allocator, self.heap, &self.vm.builtins);
         return desugarer.desugar(expr) catch return error.CompileError;
     }
 
