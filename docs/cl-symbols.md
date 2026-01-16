@@ -944,7 +944,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | coerce | ✓ | stdlib.habu | Type coercion |
 | compiled-function-p | ✓ | stdlib.habu | Compiled pred |
 | subtypep | ✗ | - | |
-| type-of | ✓ | compile.zig:235 | Get type |
+| type-of | ✓ | primitives/type.zig | Get type |
 | typep | ✓ | compile.zig:234 | Type predicate |
 
 ## Type Specifiers (50)
