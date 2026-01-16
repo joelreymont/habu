@@ -23,6 +23,7 @@ const arith = @import("../runtime/primitives/arith.zig");
 const io = @import("../runtime/primitives/io.zig");
 const stringPrims = @import("../runtime/primitives/string.zig");
 const char_primitives = @import("../runtime/primitives/char.zig");
+const hash_prims = @import("../runtime/primitives/hash.zig");
 const HashTable = runtime.HashTable;
 const Vector = runtime.Vector;
 const compiler = @import("../compiler/compiler.zig");
@@ -2385,14 +2386,10 @@ pub const Vm = struct {
                 const result = hashTableGet(ht, key);
                 try self.push(result);
             },
-            .hash_get_default => {
-                const default = try self.pop();
-                const key = try self.pop();
-                const ht_val = try self.pop();
-                if (!ht_val.isHashTable()) return error.TypeMismatch;
-                const ht = ht_val.toPtr(HashTable);
-                const result = hashTableGet(ht, key);
-                try self.push(if (result.isNil()) default else result);
+            .sxhash => {
+                const obj = try self.pop();
+                const result = try hash_prims.primSxhash(self.heap, &[_]Value{obj});
+                try self.push(result);
             },
             .hash_set => {
                 const value = try self.pop();

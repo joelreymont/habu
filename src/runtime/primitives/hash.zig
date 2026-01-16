@@ -2,10 +2,11 @@
 
 const std = @import("std");
 const Value = @import("../value.zig").Value;
+const objects = @import("../objects.zig");
 const runtime = @import("../runtime.zig");
 const Heap = @import("../heap.zig").Heap;
-const HashTable = @import("../objects.zig").HashTable;
-const HashTest = @import("../objects.zig").HashTest;
+const HashTable = objects.HashTable;
+const HashTest = objects.HashTest;
 
 /// (make-hash-table &key test size) - create hash table
 /// test: eq (default), eql, equal, equalp
@@ -160,7 +161,7 @@ pub fn primMaphash(heap: *Heap, args: []const Value) !Value {
 
     // Iterate over entries
     for (ht.entries[0..ht.capacity]) |entry| {
-        if (entry.occupied) {
+        if (!HashTable.isAvailable(entry)) {
             // Call function with (key value)
             const call_args = [_]Value{ entry.key, entry.value };
 
@@ -173,4 +174,48 @@ pub fn primMaphash(heap: *Heap, args: []const Value) !Value {
     }
 
     return Value.nil;
+}
+
+/// (sxhash object) - compute hash code for object
+/// Returns non-negative fixnum
+pub fn primSxhash(_: *Heap, args: []const Value) !Value {
+    if (args.len != 1) return error.TypeMismatch;
+    const obj = args[0];
+    const h = hashValue(obj);
+    const fixnum_h = @as(i63, @intCast(h & 0x3FFFFFFFFFFFFFFF));
+    return Value.makeFixnum(fixnum_h);
+}
+
+fn hashValue(val: Value) u64 {
+    return switch (val.typeKind()) {
+        .nil => 0,
+        .t => 1,
+        .fixnum => @bitCast(@as(i64, val.toFixnum())),
+        .float => @bitCast(val.toFloat()),
+        .char => @intCast(val.toCharacter()),
+        .cons => blk: {
+            const c = val.toPtr(objects.Cons);
+            const h1 = hashValue(c.car);
+            const h2 = hashValue(c.cdr);
+            break :blk h1 *% 31 +% h2;
+        },
+        .symbol, .keyword => val.raw,
+        .string => blk: {
+            const s = val.toPtr(objects.String);
+            var h: u64 = 0;
+            for (s.bytes()) |b| {
+                h = h *% 31 +% b;
+            }
+            break :blk h;
+        },
+        .vector => blk: {
+            const v = val.toPtr(objects.Vector);
+            var h: u64 = 0;
+            for (v.items()) |item| {
+                h = h *% 31 +% hashValue(item);
+            }
+            break :blk h;
+        },
+        .closure, .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname, .package => val.raw,
+    };
 }

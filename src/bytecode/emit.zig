@@ -536,6 +536,7 @@ pub const Emitter = struct {
             .hash_test => |h| try self.emitUnaryOp(h.operand, .hash_test),
             .hash_keys => |h| try self.emitUnaryOp(h.operand, .hash_keys),
             .hash_alist => |h| try self.emitUnaryOp(h.operand, .hash_alist),
+            .sxhash => |h| try self.emitUnaryOp(h.operand, .sxhash),
             .hashtablep => |h| try self.emitUnaryOp(h.operand, .hashtablep),
             .rationalp => |r| try self.emitUnaryOp(r.operand, .rationalp),
             .complexp => |c| try self.emitUnaryOp(c.operand, .complexp),
@@ -1818,11 +1819,15 @@ pub const Emitter = struct {
     fn emitHashGet(self: *Emitter, h: anytype) Error!void {
         try self.emit(h.table);
         try self.emit(h.key);
+        try self.emitOp(.hash_get);
         if (h.default) |def| {
+            // Pattern: result = (hash-get ht key) or default
+            // Compile as: dup result, if not nil skip default
+            try self.emitOp(.dup);
+            const skip_default = try self.emitJump(.jmp_not_nil);
+            try self.emitOp(.pop); // pop nil
             try self.emit(def);
-            try self.emitOp(.hash_get_default);
-        } else {
-            try self.emitOp(.hash_get);
+            try self.patchJump(skip_default);
         }
     }
 

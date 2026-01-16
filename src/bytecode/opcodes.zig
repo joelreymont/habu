@@ -561,10 +561,9 @@ pub const Op = enum(u8) {
     /// Returns nil if key not found
     hash_get = 0x95,
 
-    /// Get value from hash table with default
-    /// ( hashtable key default -- value )
-    /// Returns default if key not found
-    hash_get_default = 0xC9,
+    /// Compute hash code for object
+    /// ( object -- fixnum )
+    sxhash = 0xC9,
 
     /// Set value in hash table
     /// ( hashtable key value -- )
@@ -1278,7 +1277,7 @@ pub const Op = enum(u8) {
             .throw,
             .write_to_stream,
             .hash_get,
-            .hash_get_default,
+            .sxhash,
             .hash_set,
             .hash_rem,
             .hash_count,
