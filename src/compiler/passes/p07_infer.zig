@@ -19,8 +19,6 @@ const TypingCtx = types.TypingCtx;
 
 /// Infer pass - runs BiChecker and populates types
 pub fn infer(allocator: std.mem.Allocator, input: *const TypedIr) PassError!PassResult(*const TypedIr) {
-    _ = allocator;
-
     // Create typing context
     var ctx = TypingCtx.init(std.heap.page_allocator);
     defer ctx.deinit();
@@ -30,14 +28,18 @@ pub fn infer(allocator: std.mem.Allocator, input: *const TypedIr) PassError!Pass
     defer checker.deinit();
 
     // Infer type for the underlying IR
-    // TODO: Properly populate TypedIr with inferred types
-    // For now, just run inference for its side effects (error detection)
-    _ = checker.infer(input.ir, &ctx) catch {
-        // Type error - but we continue for now
-        // In the future, this should return diagnostics
+    const inferred_ty = checker.infer(input.ir, &ctx) catch {
+        // Type error - return unchanged on error
+        return PassResult(*const TypedIr).unchanged(input);
     };
 
-    // Return unchanged for now - in the future we'll populate types
+    // If type changed, create new TypedIr with populated type
+    if (input.ty == null or input.ty.? != inferred_ty) {
+        const new_typed = try allocator.create(TypedIr);
+        new_typed.* = input.withType(inferred_ty);
+        return PassResult(*const TypedIr).changed(new_typed);
+    }
+
     return PassResult(*const TypedIr).unchanged(input);
 }
 
@@ -56,7 +58,8 @@ test "infer pass - literal" {
     const typed = TypedIr.init(&lit);
 
     const result = try infer(testing.allocator, &typed);
+    defer if (result.modified) testing.allocator.destroy(@constCast(result.output));
 
-    try testing.expect(!result.modified);
-    try testing.expectEqual(&typed, result.output);
+    try testing.expect(result.modified);
+    try testing.expect(result.output.ty != null);
 }
