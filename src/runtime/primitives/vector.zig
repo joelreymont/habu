@@ -271,16 +271,32 @@ pub fn vectorSlice(val: Value) ?[]Value {
     return vec.items();
 }
 
+/// Get fill-pointer value
+pub fn fillPointer(val: Value) ?i64 {
+    if (!val.isVector()) return null;
+    const vec = val.toPtr(objects.Vector);
+    const fp = vec.getFillPointer() orelse return null;
+    return @intCast(fp);
+}
+
 /// Push element to vector (if capacity allows)
-/// Returns new length, or -1 if failed
+/// Returns new fill-pointer value, or -1 if failed
 pub fn vectorPush(val: Value, element: Value) i64 {
     if (!val.isVector()) return -1;
     const vec = val.toPtr(objects.Vector);
-    if (vec.length >= vec.capacity) return -1;
 
-    vec.data[vec.length] = element;
-    vec.length += 1;
-    return @intCast(vec.length);
+    const fp = vec.getFillPointer() orelse {
+        // No fill-pointer: use length
+        if (vec.length >= vec.capacity) return -1;
+        vec.data[vec.length] = element;
+        vec.length += 1;
+        return @intCast(vec.length);
+    };
+
+    if (fp >= vec.capacity) return -1;
+    vec.data[fp] = element;
+    vec.setFillPointer(fp + 1);
+    return @intCast(fp + 1);
 }
 
 /// Pop element from vector
@@ -288,10 +304,16 @@ pub fn vectorPush(val: Value, element: Value) i64 {
 pub fn vectorPop(val: Value) Value {
     if (!val.isVector()) return Value.nil;
     const vec = val.toPtr(objects.Vector);
-    if (vec.length == 0) return Value.nil;
 
-    vec.length -= 1;
-    return vec.data[vec.length];
+    if (vec.getFillPointer()) |fp| {
+        if (fp == 0) return Value.nil;
+        vec.setFillPointer(fp - 1);
+        return vec.data[fp - 1];
+    } else {
+        if (vec.length == 0) return Value.nil;
+        vec.length -= 1;
+        return vec.data[vec.length];
+    }
 }
 
 /// Fill vector with a value
