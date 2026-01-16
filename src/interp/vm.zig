@@ -3605,50 +3605,8 @@ pub const Vm = struct {
             .typep => {
                 const type_spec = try self.pop();
                 const obj = try self.pop();
-                if (!type_spec.isSymbol()) return error.TypeMismatch;
-
-                // Use symbol identity for type dispatch (no string comparison)
-                const ts = self.type_syms;
-                const matches = if (type_spec.raw == ts.fixnum.raw or type_spec.raw == ts.number.raw)
-                    obj.isFixnum()
-                else if (type_spec.raw == ts.cons.raw)
-                    obj.isCons()
-                else if (type_spec.raw == ts.symbol.raw)
-                    obj.isSymbol()
-                else if (type_spec.raw == ts.string.raw)
-                    obj.isString()
-                else if (type_spec.raw == ts.vector.raw)
-                    obj.isVector()
-                else if (type_spec.raw == ts.closure.raw or type_spec.raw == ts.function.raw)
-                    obj.isClosure()
-                else if (type_spec.raw == ts.keyword.raw)
-                    obj.isKeyword()
-                else if (type_spec.raw == ts.character.raw)
-                    obj.isCharacter()
-                else if (type_spec.raw == ts.@"hash-table".raw)
-                    obj.isHashTable()
-                else if (type_spec.raw == ts.nil.raw or type_spec.raw == ts.null.raw)
-                    obj.isNil()
-                else if (type_spec.raw == ts.list.raw)
-                    obj.isNil() or obj.isCons()
-                else if (type_spec.raw == ts.atom.raw)
-                    !obj.isCons()
-                else if (type_spec.raw == ts.t.raw)
-                    true // Everything is of type t
-                else blk: {
-                    // Check for user-defined struct types
-                    // Structs are vectors with type name as first element
-                    if (obj.isVector()) {
-                        const vec = obj.toPtr(runtime.Vector);
-                        if (vec.length > 0) {
-                            const type_tag = vec.data[0];
-                            break :blk type_tag.raw == type_spec.raw;
-                        }
-                    }
-                    break :blk false;
-                };
-
-                try self.push(if (matches) Value.t else Value.nil);
+                const result = primitives.typep(self.heap, obj, type_spec) catch false;
+                try self.push(if (result) Value.t else Value.nil);
             },
 
             // Numeric predicates
