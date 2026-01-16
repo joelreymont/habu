@@ -31,6 +31,11 @@ pub const PrintCase = enum {
 /// :capitalize - Abc
 pub var print_case: PrintCase = .upcase;
 
+/// *print-readably* controls readable output
+/// When true, printer must output in a way that read can reconstruct
+/// When false (default), output may be abbreviated or truncated
+pub var print_readably: bool = false;
+
 fn writeCaseSymbol(name: []const u8, w: anytype) !void {
     switch (print_case) {
         .upcase => {
@@ -379,7 +384,7 @@ pub fn writeToString(heap: *Heap, val: Value) !Value {
 }
 
 fn printValueTo(val: Value, w: anytype) !void {
-    if (print_escape) {
+    if (print_readably or print_escape) {
         return printEscapedTo(val, w);
     } else {
         return princValueTo(val, w);
@@ -519,7 +524,18 @@ pub fn setPrintCase(_: *Heap, val: Value) !void {
     }
 }
 
+/// Get *print-readably* value
+pub fn getPrintReadably() Value {
+    return if (print_readably) Value.t else Value.nil;
+}
+
+/// Set *print-readably* value
+pub fn setPrintReadably(val: Value) void {
+    print_readably = !val.isNil();
+}
+
 /// Exit the process
+/// Get *print-readably* value
 pub fn sysExit(code: i64) noreturn {
     const exit_code: u8 = @truncate(@as(u64, @bitCast(code)));
     std.process.exit(exit_code);

@@ -1,9 +1,9 @@
 ---
 title: Add *print-readably* support
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-01-16T13:41:34.939099+02:00"
+created-at: "\"2026-01-16T13:41:34.939099+02:00\""
 ---
 
 src/interp/vm.zig + io.zig: Implement *print-readably* variable
