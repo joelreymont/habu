@@ -14,6 +14,11 @@ const LINE_BUF = 1024;
 /// Pushback buffer for unread-char (single character)
 var pushback_char: ?u8 = null;
 
+/// *print-escape* controls whether strings/symbols print readably
+/// When true (default), strings have quotes, symbols with special chars escaped
+/// When false (princ mode), strings print bare, symbols print as-is
+pub var print_escape: bool = true;
+
 /// Write a string to stdout
 pub fn sysWrite(val: Value) !void {
     if (!val.isString()) return;
@@ -336,6 +341,14 @@ pub fn writeToString(heap: *Heap, val: Value) !Value {
 }
 
 fn printValueTo(val: Value, w: anytype) !void {
+    if (print_escape) {
+        return printEscapedTo(val, w);
+    } else {
+        return princValueTo(val, w);
+    }
+}
+
+fn printEscapedTo(val: Value, w: anytype) !void {
     switch (val.typeKind()) {
         .nil => try w.writeAll("nil"),
         .t => try w.writeAll("t"),
@@ -365,12 +378,12 @@ fn printValueTo(val: Value, w: anytype) !void {
                 if (!first) try w.writeByte(' ');
                 first = false;
                 const cons = current.toPtr(objects.Cons);
-                try printValueTo(cons.car, w);
+                try printEscapedTo(cons.car, w);
                 current = cons.cdr;
             }
             if (!current.isNil()) {
                 try w.writeAll(" . ");
-                try printValueTo(current, w);
+                try printEscapedTo(current, w);
             }
             try w.writeByte(')');
         },
@@ -390,7 +403,7 @@ fn printValueTo(val: Value, w: anytype) !void {
             try w.writeAll("#(");
             for (vec.items(), 0..) |item, i| {
                 if (i > 0) try w.writeByte(' ');
-                try printValueTo(item, w);
+                try printEscapedTo(item, w);
             }
             try w.writeByte(')');
         },
@@ -431,6 +444,16 @@ fn printValueTo(val: Value, w: anytype) !void {
         },
         .chunk => try w.writeAll("#<chunk>"),
     }
+}
+
+/// Get *print-escape* value
+pub fn getPrintEscape() Value {
+    return if (print_escape) Value.t else Value.nil;
+}
+
+/// Set *print-escape* value
+pub fn setPrintEscape(val: Value) void {
+    print_escape = !val.isNil();
 }
 
 /// Exit the process
@@ -523,6 +546,26 @@ test "write bytes" {
     // This test just verifies the function compiles
     // Actual I/O testing would require mocking
     _ = sysWriteBytes;
+}
+
+test "*print-escape* flag" {
+    const testing = std.testing;
+
+    // Default is true
+    try testing.expect(print_escape == true);
+
+    // getPrintEscape returns t
+    try testing.expect(getPrintEscape().eq(Value.t));
+
+    // Set to false
+    setPrintEscape(Value.nil);
+    try testing.expect(print_escape == false);
+    try testing.expect(getPrintEscape().eq(Value.nil));
+
+    // Set to true
+    setPrintEscape(Value.t);
+    try testing.expect(print_escape == true);
+    try testing.expect(getPrintEscape().eq(Value.t));
 }
 
 /// Check if value is a stream
