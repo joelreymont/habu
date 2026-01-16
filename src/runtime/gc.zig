@@ -24,6 +24,8 @@ const WorkItem = struct {
     tag: Tag,
 };
 
+const builtin = @import("builtin");
+
 /// Garbage collector state
 pub const GC = struct {
     heap: *Heap,
@@ -33,6 +35,8 @@ pub const GC = struct {
     work_list: std.ArrayList(WorkItem),
     /// Root list for collecting roots (preallocated, reused across collections)
     root_list: std.ArrayList(Value),
+    /// Debug: flag set during GC trace/copy phase
+    gc_in_progress: if (builtin.mode == .Debug) bool else void,
 
     /// Initialize GC with heap
     pub fn init(allocator: std.mem.Allocator, heap: *Heap) GC {
@@ -41,6 +45,7 @@ pub const GC = struct {
             .allocator = allocator,
             .work_list = std.ArrayList(WorkItem){},
             .root_list = std.ArrayList(Value){},
+            .gc_in_progress = if (builtin.mode == .Debug) false else {},
         };
     }
 
@@ -60,6 +65,18 @@ pub const GC = struct {
     /// Run a garbage collection cycle
     /// Returns the number of bytes copied, or error on OOM during work list allocation
     pub fn collect(self: *GC, roots: []Value) !usize {
+        // Preallocate work queue if first collection
+        if (self.work_list.capacity == 0) {
+            const init_cap = self.calculateInitialCapacity();
+            try self.work_list.ensureTotalCapacity(self.allocator, init_cap);
+        }
+
+        // Set GC in-progress flag (debug only)
+        if (builtin.mode == .Debug) self.gc_in_progress = true;
+        defer {
+            if (builtin.mode == .Debug) self.gc_in_progress = false;
+        }
+
         // Clear work list, retaining capacity from previous collections
         self.work_list.clearRetainingCapacity();
         var alloc_ptr = self.heap.to_start;
@@ -106,7 +123,7 @@ pub const GC = struct {
         const work_peak = self.work_list.items.len;
 
         // If we used >75% capacity, grow for next cycle
-        if (work_cap > 0 and work_peak * 4 > work_cap * 3) {
+        if (work_peak * 4 > work_cap * 3) {
             const new_cap = work_cap * 2;
             try self.work_list.ensureTotalCapacity(self.allocator, new_cap);
         }
@@ -225,10 +242,24 @@ pub const GC = struct {
 
         // Add to work list for scanning (except strings/keywords which have no Value refs)
         if (tag != .string and tag != .keyword) {
-            try self.work_list.append(self.allocator, .{
-                .addr = new_addr,
-                .tag = tag,
-            });
+            // Debug check: detect allocations during GC
+            if (builtin.mode == .Debug and self.gc_in_progress) {
+                const old_cap = self.work_list.capacity;
+                try self.work_list.append(self.allocator, .{
+                    .addr = new_addr,
+                    .tag = tag,
+                });
+                const new_cap = self.work_list.capacity;
+                if (new_cap > old_cap) {
+                    std.debug.print("ERROR: work_list allocated during GC (cap: {} -> {})\n", .{ old_cap, new_cap });
+                    @panic("Allocation during GC detected");
+                }
+            } else {
+                try self.work_list.append(self.allocator, .{
+                    .addr = new_addr,
+                    .tag = tag,
+                });
+            }
         }
 
         // Return new tagged pointer
