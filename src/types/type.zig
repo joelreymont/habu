@@ -150,6 +150,7 @@ pub const StructType = struct {
 
     /// Get field type by name, returns null if not found
     pub fn getFieldType(self: StructType, field_name: []const u8) ?*const Type {
+        // String comparison needed: field names are raw strings from struct type definitions
         for (self.fields) |field| {
             if (std.mem.eql(u8, field.name, field_name)) {
                 return field.type;
@@ -160,6 +161,7 @@ pub const StructType = struct {
 
     /// Get field index by name, returns null if not found
     pub fn getFieldIndex(self: StructType, field_name: []const u8) ?usize {
+        // String comparison needed: field names are raw strings from struct type definitions
         for (self.fields, 0..) |field, i| {
             if (std.mem.eql(u8, field.name, field_name)) {
                 return i;
@@ -352,6 +354,7 @@ pub const Type = union(enum) {
             },
             .any => other == .any,
             .@"struct" => |s| switch (other) {
+                // String comparison needed: struct names are raw strings, not interned
                 .@"struct" => |os| std.mem.eql(u8, s.name, os.name),
                 else => false,
             },
@@ -408,7 +411,7 @@ pub const Type = union(enum) {
             .refinement => |r| switch (other) {
                 .refinement => |or_| {
                     // Note: Predicate comparison requires term equality
-                    // For now, just compare base types and var names
+                    // String comparison needed: predicate var names are raw strings, not interned
                     return r.base_type.eql(or_.base_type.*) and
                         std.mem.eql(u8, r.predicate_var, or_.predicate_var) and
                         r.predicate == or_.predicate; // Pointer equality for now
@@ -416,6 +419,7 @@ pub const Type = union(enum) {
                 else => false,
             },
             .type_var => |v| switch (other) {
+                // String comparison needed: type variable names are raw strings
                 .type_var => |ov| std.mem.eql(u8, v, ov),
                 else => false,
             },

@@ -84,6 +84,7 @@ pub fn stringEqual(a: Value, b: Value) bool {
     const str_b = b.toPtr(objects.String);
 
     if (str_a.length != str_b.length) return false;
+    // String comparison needed: comparing actual string content (not symbols)
     return std.mem.eql(u8, str_a.bytes(), str_b.bytes());
 }
 

@@ -1390,6 +1390,7 @@ pub const Emitter = struct {
             i -= 1;
             switch (self.control_stack.items[i]) {
                 .block => |*blk| {
+                    // String comparison needed: block names are raw strings from IR, not interned symbols
                     if (std.mem.eql(u8, blk.name, r.name)) {
                         // Found target block in same chunk - use compile-time jump
                         const jump_loc = try self.emitJump(.jmp);
@@ -1726,6 +1727,7 @@ pub const Emitter = struct {
             i -= 1;
             switch (self.control_stack.items[i]) {
                 .tagbody => |*tbe| {
+                    // String comparison needed: tag names are raw strings from IR, not interned symbols
                     // Search for tag
                     for (tbe.tags, 0..) |tag, tag_idx| {
                         if (std.mem.eql(u8, tag, g.tag)) {

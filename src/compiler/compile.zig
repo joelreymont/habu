@@ -2679,6 +2679,8 @@ pub const Compiler = struct {
                         const var_sym = set_cons.car.toPtr(Symbol);
                         const var_name = var_sym.getName();
                         // Check if this is one of our bindings
+                        // String comparison needed: binding_names is []const []const u8 (raw strings from lambda list parse)
+                        // NOT interned symbols, so pointer equality won't work
                         for (binding_names) |bn| {
                             if (std.mem.eql(u8, var_name, bn)) {
                                 try mutated.put(var_name, {});
@@ -2777,6 +2779,8 @@ pub const Compiler = struct {
             const name = sym.getName();
             // If it's not a param and is one of our bindings, it's captured
             if (!params.contains(name)) {
+                // String comparison needed: binding_names is []const []const u8 (raw strings from lambda list parse)
+                // NOT interned symbols, so pointer equality won't work
                 for (binding_names) |bn| {
                     if (std.mem.eql(u8, name, bn)) {
                         try captured.put(name, {});
@@ -5788,6 +5792,8 @@ pub const Compiler = struct {
             const value_ir = try self.compile(val_cons.car, env);
 
             // Find matching slot and store value
+            // String comparison needed: slot spec names are raw strings from defclass parsing,
+            // not interned symbols
             for (slot_specs, 0..) |spec, i| {
                 if (std.mem.eql(u8, kw_name, spec.name)) {
                     slot_values[i] = value_ir;
@@ -6385,6 +6391,7 @@ pub const Compiler = struct {
     fn specializerMatches(self: *Compiler, aux_specs: []const []const u8, primary_specs: []const []const u8) !bool {
         _ = self;
         if (aux_specs.len != primary_specs.len) return false;
+        // String comparison needed: specializer names are raw strings from defmethod parsing
         for (aux_specs, primary_specs) |aux, prim| {
             // "t" (any type) matches everything
             if (std.mem.eql(u8, aux, "t")) continue;
@@ -6780,6 +6787,7 @@ pub const Compiler = struct {
             // Search all defined types for this variant
             var type_iter = self.defined_types.iterator();
             while (type_iter.next()) |entry| {
+                // String comparison needed: variant names are raw strings from defdata parsing
                 for (entry.value_ptr.*) |v| {
                     if (std.mem.eql(u8, v.name, variant_name.*)) {
                         type_variants = entry.value_ptr.*;
