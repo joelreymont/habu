@@ -1,9 +1,9 @@
 ---
 title: Add array property predicates
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-01-16T13:41:19.470624+02:00"
+created-at: "\"2026-01-16T13:41:19.470624+02:00\""
 ---
 
 src/runtime/primitives/vector.zig: Implement array type predicates

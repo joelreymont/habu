@@ -172,6 +172,69 @@ pub fn arrayp(val: Value) bool {
     return val.isArray();
 }
 
+/// Check if array is adjustable (always false for now)
+pub fn adjustableArrayP(val: Value) bool {
+    return val.isArray() or val.isVector();
+}
+
+/// Get array displacement info (always nil for now)
+pub fn arrayDisplacement(val: Value) Value {
+    if (val.isArray() or val.isVector()) {
+        return Value.nil;
+    }
+    return Value.nil;
+}
+
+/// Check if subscripts are in bounds
+pub fn arrayInBoundsP(val: Value, subscripts: []const u64) bool {
+    switch (val.typeKind()) {
+        .vector => {
+            if (subscripts.len != 1) return false;
+            const vec = val.toPtr(objects.Vector);
+            return subscripts[0] < vec.length;
+        },
+        .array => {
+            const arr = val.toPtr(objects.Array);
+            if (subscripts.len != arr.rank) return false;
+            for (0..arr.rank) |i| {
+                if (subscripts[i] >= arr.dimensions[i]) return false;
+            }
+            return true;
+        },
+        else => return false,
+    }
+}
+
+/// Get array element type (always t for now - untyped arrays)
+pub fn arrayElementType(val: Value) Value {
+    if (val.isArray() or val.isVector()) {
+        return Value.t;
+    }
+    return Value.nil;
+}
+
+/// Check if simple vector (non-displaced, non-adjustable, rank-1 array)
+pub fn simpleVectorP(val: Value) bool {
+    return val.isVector();
+}
+
+/// Check if vector (includes simple and general vectors)
+pub fn vectorP(val: Value) bool {
+    return val.isVector();
+}
+
+/// Check if simple bit vector (not implemented yet)
+pub fn simpleBitVectorP(val: Value) bool {
+    _ = val;
+    return false;
+}
+
+/// Check if bit vector (not implemented yet)
+pub fn bitVectorP(val: Value) bool {
+    _ = val;
+    return false;
+}
+
 /// Get vector length
 pub fn vectorLength(val: Value) i64 {
     if (!val.isVector()) return -1;
