@@ -7,7 +7,7 @@ const Value = @import("../value.zig").Value;
 const Heap = @import("../heap.zig").Heap;
 const objects = @import("../objects.zig");
 
-pub const Error = error{ TypeMismatch, DivisionByZero, OutOfMemory };
+pub const Error = error{ TypeMismatch, DivisionByZero, OutOfMemory, InvalidArgument };
 
 /// Add two numbers (fixnum, bignum, float, rational, or complex)
 pub fn add(heap: *Heap, a: Value, b: Value) Error!Value {
@@ -37,7 +37,7 @@ pub fn add(heap: *Heap, a: Value, b: Value) Error!Value {
     return Value.makeFixnum(result[0]);
 }
 
-/// Subtract two numbers (fixnum, float, rational, or complex)
+/// Subtract two numbers (fixnum, bignum, float, rational, or complex)
 pub fn sub(heap: *Heap, a: Value, b: Value) Error!Value {
     // Complex contagion
     if (a.typeKind() == .complex or b.typeKind() == .complex) return subComplex(heap, a, b);
@@ -48,9 +48,20 @@ pub fn sub(heap: *Heap, a: Value, b: Value) Error!Value {
     // Rational arithmetic
     if (a.typeKind() == .rational or b.typeKind() == .rational) return subRational(heap, a, b);
 
+    // Bignum arithmetic
+    if (a.isBignum() or b.isBignum()) return subBignum(heap, a, b);
+
+    // Fixnum arithmetic with overflow check
     if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     const result = @subWithOverflow(a.toFixnum(), b.toFixnum());
-    if (result[1] != 0) return error.TypeMismatch;
+
+    // Check for i64 overflow OR fixnum range overflow (62-bit signed)
+    const max_fixnum: i64 = (1 << 62) - 1;
+    const min_fixnum: i64 = -(1 << 62);
+    if (result[1] != 0 or result[0] > max_fixnum or result[0] < min_fixnum) {
+        // Overflow - promote to bignum
+        return subBignum(heap, a, b);
+    }
     return Value.makeFixnum(result[0]);
 }
 
@@ -215,18 +226,18 @@ pub fn logeqv(a: Value, b: Value) Error!Value {
 }
 
 /// Test if any bits set in both args
-pub fn logtest(a: Value, b: Value) bool {
-    if (!a.isFixnum() or !b.isFixnum()) return false;
+pub fn logtest(a: Value, b: Value) Error!bool {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     const ua: u64 = @bitCast(a.toFixnum());
     const ub: u64 = @bitCast(b.toFixnum());
     return (ua & ub) != 0;
 }
 
 /// Test if bit at index is set
-pub fn logbitp(index: Value, n: Value) bool {
-    if (!index.isFixnum() or !n.isFixnum()) return false;
+pub fn logbitp(index: Value, n: Value) Error!bool {
+    if (!index.isFixnum() or !n.isFixnum()) return error.TypeMismatch;
     const idx = index.toFixnum();
-    if (idx < 0 or idx >= 64) return false;
+    if (idx < 0 or idx >= 64) return error.InvalidArgument;
     const un: u64 = @bitCast(n.toFixnum());
     const bit: u6 = @intCast(idx);
     return ((un >> bit) & 1) == 1;
@@ -1026,8 +1037,8 @@ fn subBignumMagnitudes(heap: *Heap, a_bn: *const objects.Bignum, b_bn: *const ob
     return heap.allocBignumFromLimbs(&result_limbs, result_neg);
 }
 
-/// Add two bignums (or mixed bignum/fixnum)
-fn addBignum(heap: *Heap, a: Value, b: Value) Error!Value {
+/// Subtract two bignums (or mixed bignum/fixnum)
+fn subBignum(heap: *Heap, a: Value, b: Value) Error!Value {
     // Convert fixnums to temporary bignums
     var a_tmp: objects.Bignum = undefined;
     var b_tmp: objects.Bignum = undefined;
@@ -1044,6 +1055,12 @@ fn addBignum(heap: *Heap, a: Value, b: Value) Error!Value {
     const a_neg = a_bn.isNegative();
     const b_neg = b_bn.isNegative();
 
+    // a - b = a + (-b), so flip b's sign and add
+    return addBignumImpl(heap, a_bn, b_bn, a_neg, !b_neg);
+}
+
+/// Add two bignum structs with explicit signs
+fn addBignumImpl(heap: *Heap, a_bn: *const objects.Bignum, b_bn: *const objects.Bignum, a_neg: bool, b_neg: bool) Error!Value {
     // Get absolute values
     const a_size: usize = @intCast(@abs(a_bn.size));
     const b_size: usize = @intCast(@abs(b_bn.size));
@@ -1075,6 +1092,27 @@ fn addBignum(heap: *Heap, a: Value, b: Value) Error!Value {
         // Signs differ - subtract magnitudes
         return subBignumMagnitudes(heap, a_bn, b_bn, a_neg);
     }
+}
+
+/// Add two bignums (or mixed bignum/fixnum)
+fn addBignum(heap: *Heap, a: Value, b: Value) Error!Value {
+    // Convert fixnums to temporary bignums
+    var a_tmp: objects.Bignum = undefined;
+    var b_tmp: objects.Bignum = undefined;
+
+    const a_bn = if (a.isBignum()) a.toPtr(objects.Bignum) else blk: {
+        a_tmp = objects.Bignum.make(a.toFixnum());
+        break :blk &a_tmp;
+    };
+    const b_bn = if (b.isBignum()) b.toPtr(objects.Bignum) else blk: {
+        b_tmp = objects.Bignum.make(b.toFixnum());
+        break :blk &b_tmp;
+    };
+
+    const a_neg = a_bn.isNegative();
+    const b_neg = b_bn.isNegative();
+
+    return addBignumImpl(heap, a_bn, b_bn, a_neg, b_neg);
 }
 
 /// Multiply two bignums (or mixed bignum/fixnum)

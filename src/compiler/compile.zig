@@ -442,6 +442,9 @@ pub const Builtins = struct {
     kw_eq: Value,
     kw_eql: Value,
     kw_equal: Value,
+    kw_colon: Value,
+    kw_type: Value,
+    kw_initform: Value,
 
     // *features* keywords
     kw_habu: Value,
@@ -798,6 +801,9 @@ pub const Builtins = struct {
             .kw_eq = try heap.internKeyword("eq"),
             .kw_eql = try heap.internKeyword("eql"),
             .kw_equal = try heap.internKeyword("equal"),
+            .kw_colon = try heap.intern(":"),
+            .kw_type = try heap.intern("type"),
+            .kw_initform = try heap.intern("initform"),
             // *features* keywords
             .kw_habu = try heap.internKeyword("habu"),
             .kw_zig = try heap.internKeyword("zig"),
@@ -5225,8 +5231,8 @@ pub const Compiler = struct {
         // Skip the colon if present
         var type_expr = rest1.car;
         if (rest1.car.isSymbol()) {
-            const sym = rest1.car.toPtr(Symbol);
-            if (std.mem.eql(u8, sym.getName(), ":")) {
+            const b = self.builtins orelse return null;
+            if (rest1.car.eq(b.kw_colon)) {
                 // Next is the actual type
                 if (!rest1.cdr.isCons()) return null;
                 type_expr = rest1.cdr.toPtr(Cons).car;
@@ -5259,8 +5265,8 @@ pub const Compiler = struct {
         const rest1 = binding.cdr.toPtr(Cons);
         var type_expr = rest1.car;
         if (rest1.car.isSymbol()) {
-            const sym = rest1.car.toPtr(Symbol);
-            if (std.mem.eql(u8, sym.getName(), ":")) {
+            const b = self.builtins orelse return null;
+            if (rest1.car.eq(b.kw_colon)) {
                 if (!rest1.cdr.isCons()) return null;
                 type_expr = rest1.cdr.toPtr(Cons).car;
             }
@@ -5526,11 +5532,11 @@ pub const Compiler = struct {
                     const opt_cons = opts.toPtr(Cons);
                     const opt_key = opt_cons.car;
 
-                    if (opt_key.isKeyword()) {
-                        const kw_name = opt_key.toPtr(runtime.Keyword).getName();
+                    if (opt_key.isSymbol()) {
+                        const b = self.builtins orelse return error.UninitializedBuiltins;
 
-                        if (std.mem.eql(u8, kw_name, "type")) {
-                            // :type keyword - next element is the type
+                        if (opt_key.eq(b.kw_type)) {
+                            // type keyword - next element is the type
                             if (opt_cons.cdr.isCons()) {
                                 const type_cons = opt_cons.cdr.toPtr(Cons);
                                 if (self.parseTypeExpr(type_cons.car)) |ty| {
@@ -5539,8 +5545,8 @@ pub const Compiler = struct {
                                 opts = type_cons.cdr;
                                 continue;
                             }
-                        } else if (std.mem.eql(u8, kw_name, "initform")) {
-                            // :initform keyword - next element is the init expression
+                        } else if (opt_key.eq(b.kw_initform)) {
+                            // initform keyword - next element is the init expression
                             if (opt_cons.cdr.isCons()) {
                                 const init_cons = opt_cons.cdr.toPtr(Cons);
                                 initform = init_cons.car;

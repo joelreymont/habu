@@ -761,7 +761,8 @@ pub const Vm = struct {
             self.executeOp(op) catch |err| {
                 if (err == error.Halt) {
                     // Program terminated - return result from stack
-                    return self.pop() catch Value.nil;
+                    std.debug.assert(self.sp > 0);
+                    return try self.pop();
                 }
                 return self.doError(err);
             };
@@ -1722,7 +1723,7 @@ pub const Vm = struct {
             .logbitp => {
                 const n = try self.pop();
                 const index = try self.pop();
-                const result = arith.logbitp(index, n);
+                const result = try arith.logbitp(index, n);
                 try self.push(if (result) Value.t else Value.nil);
             },
             .logcount => {
@@ -1739,10 +1740,7 @@ pub const Vm = struct {
                 const path_val = try self.pop();
                 if (!path_val.isString()) return error.TypeMismatch;
                 const path_str = path_val.toPtr(String);
-                const result = io.readFile(self.heap, path_str.bytes()) catch {
-                    try self.push(Value.nil);
-                    return;
-                };
+                const result = try io.readFile(self.heap, path_str.bytes());
                 try self.push(result);
             },
             .write_file => {
@@ -1750,10 +1748,7 @@ pub const Vm = struct {
                 const path_val = try self.pop();
                 if (!path_val.isString()) return error.TypeMismatch;
                 const path_str = path_val.toPtr(String);
-                io.writeFile(path_str.bytes(), content_val) catch {
-                    try self.push(Value.nil);
-                    return;
-                };
+                try io.writeFile(path_str.bytes(), content_val);
                 try self.push(Value.nil);
             },
             .make_string => {
@@ -1892,12 +1887,12 @@ pub const Vm = struct {
             },
             .random => {
                 const n = try self.pop();
-                const result = arith.random(&self.prng, &self.prng_seeded, n) catch return error.InvalidArgument;
+                const result = try arith.random(&self.prng, &self.prng_seeded, n);
                 try self.push(result);
             },
             .random_seed => {
                 const seed = try self.pop();
-                const result = arith.randomSeed(&self.prng, &self.prng_seeded, seed) catch return error.TypeMismatch;
+                const result = try arith.randomSeed(&self.prng, &self.prng_seeded, seed);
                 try self.push(result);
             },
             .intern => {
@@ -1917,7 +1912,7 @@ pub const Vm = struct {
                 if (start_signed < 0 or end_signed < 0) return error.TypeMismatch;
                 const start: usize = @intCast(start_signed);
                 const end: usize = @intCast(end_signed);
-                const result = stringPrims.substring(self.heap, str_val, start, end) catch return error.OutOfMemory;
+                const result = try stringPrims.substring(self.heap, str_val, start, end);
                 try self.push(result);
             },
             .sym_name => {
@@ -2580,19 +2575,19 @@ pub const Vm = struct {
             },
             .get_output_stream_string => {
                 const stream_val = try self.pop();
-                const result = primitives.stream.primGetOutputStreamString(self.heap, &[_]Value{stream_val}) catch return error.TypeMismatch;
+                const result = try primitives.stream.primGetOutputStreamString(self.heap, &[_]Value{stream_val});
                 try self.push(result);
             },
             .write_to_stream => {
                 const stream_val = try self.pop();
                 const str_val = try self.pop();
-                const result = primitives.stream.primWriteString(self.heap, &[_]Value{ str_val, stream_val }) catch return error.TypeMismatch;
+                const result = try primitives.stream.primWriteString(self.heap, &[_]Value{ str_val, stream_val });
                 try self.push(result);
             },
             .open => {
                 const mode_val = try self.pop();
                 const path_val = try self.pop();
-                const result = primitives.stream.primOpen(self.heap, &[_]Value{ path_val, mode_val }) catch return error.UserError;
+                const result = try primitives.stream.primOpen(self.heap, &[_]Value{ path_val, mode_val });
                 try self.push(result);
             },
             .close => {
@@ -2603,51 +2598,51 @@ pub const Vm = struct {
 
             .read_line => {
                 const stream_val = try self.pop();
-                const result = primitives.stream.primReadLine(self.heap, &[_]Value{stream_val}) catch return error.UserError;
+                const result = try primitives.stream.primReadLine(self.heap, &[_]Value{stream_val});
                 try self.push(result);
             },
 
             .write_line => {
                 const text_val = try self.pop();
                 const stream_val = try self.pop();
-                const result = primitives.stream.primWriteLine(self.heap, &[_]Value{ stream_val, text_val }) catch return error.UserError;
+                const result = try primitives.stream.primWriteLine(self.heap, &[_]Value{ stream_val, text_val });
                 try self.push(result);
             },
 
             .read_byte => {
                 const stream_val = try self.pop();
-                const result = primitives.stream.primReadByte(self.heap, &[_]Value{stream_val}) catch return error.UserError;
+                const result = try primitives.stream.primReadByte(self.heap, &[_]Value{stream_val});
                 try self.push(result);
             },
 
             .write_byte => {
                 const byte_val = try self.pop();
                 const stream_val = try self.pop();
-                const result = primitives.stream.primWriteByte(self.heap, &[_]Value{ stream_val, byte_val }) catch return error.UserError;
+                const result = try primitives.stream.primWriteByte(self.heap, &[_]Value{ stream_val, byte_val });
                 try self.push(result);
             },
 
             .file_position => {
                 const stream_val = try self.pop();
-                const result = primitives.stream.primFilePosition(self.heap, &[_]Value{stream_val}) catch return error.UserError;
+                const result = try primitives.stream.primFilePosition(self.heap, &[_]Value{stream_val});
                 try self.push(result);
             },
 
             .file_length => {
                 const stream_val = try self.pop();
-                const result = primitives.stream.primFileLength(self.heap, &[_]Value{stream_val}) catch return error.UserError;
+                const result = try primitives.stream.primFileLength(self.heap, &[_]Value{stream_val});
                 try self.push(result);
             },
 
             .finish_output => {
                 const stream_val = try self.pop();
-                const result = primitives.stream.primFinishOutput(self.heap, &[_]Value{stream_val}) catch return error.UserError;
+                const result = try primitives.stream.primFinishOutput(self.heap, &[_]Value{stream_val});
                 try self.push(result);
             },
 
             .force_output => {
                 const stream_val = try self.pop();
-                const result = primitives.stream.primForceOutput(self.heap, &[_]Value{stream_val}) catch return error.UserError;
+                const result = try primitives.stream.primForceOutput(self.heap, &[_]Value{stream_val});
                 try self.push(result);
             },
 

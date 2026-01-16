@@ -792,6 +792,30 @@ pub const Heap = struct {
             all_roots.append(self.backing_allocator, v.*) catch return 0;
         }
 
+        // Add package symbol table values
+        var pkg_it = self.packages.valueIterator();
+        while (pkg_it.next()) |pkg| {
+            var pkg_sym_it = pkg.*.symbols.map.valueIterator();
+            while (pkg_sym_it.next()) |v| {
+                all_roots.append(self.backing_allocator, v.*) catch return 0;
+            }
+        }
+
+        // Add readtable function values
+        var rt_it = self.readtable.valueIterator();
+        while (rt_it.next()) |entry| {
+            all_roots.append(self.backing_allocator, entry.function) catch return 0;
+        }
+
+        // Add dispatch readtable function values
+        var drt_it = self.dispatch_readtable.valueIterator();
+        while (drt_it.next()) |sub_table| {
+            var sub_it = sub_table.valueIterator();
+            while (sub_it.next()) |fn_val| {
+                all_roots.append(self.backing_allocator, fn_val.*) catch return 0;
+            }
+        }
+
         // Run GC
         var gc = GC.init(self.backing_allocator, self);
         defer gc.deinit();
@@ -801,6 +825,21 @@ pub const Heap = struct {
         const sym_count = self.symbols.map.count();
         const kw_count = self.keywords.map.count();
         const ext_count = external_roots.len;
+
+        // Count package symbols
+        var pkg_sym_count: usize = 0;
+        var pkg_count_it = self.packages.valueIterator();
+        while (pkg_count_it.next()) |pkg| {
+            pkg_sym_count += pkg.*.symbols.map.count();
+        }
+
+        // Count readtable functions
+        const rt_count = self.readtable.count();
+        var drt_count: usize = 0;
+        var drt_count_it = self.dispatch_readtable.valueIterator();
+        while (drt_count_it.next()) |sub_table| {
+            drt_count += sub_table.count();
+        }
 
         // External roots are updated in-place by GC.collect
         // Copy external roots back (they were passed by value to ArrayList)
@@ -823,7 +862,39 @@ pub const Heap = struct {
             v.* = all_roots.items[ext_count + sym_count + kw_idx];
             kw_idx += 1;
         }
-        _ = kw_count;
+
+        // Update package symbol table values
+        var pkg_sym_idx: usize = 0;
+        var pkg_update_it = self.packages.valueIterator();
+        while (pkg_update_it.next()) |pkg| {
+            var pkg_sym_update_it = pkg.*.symbols.map.valueIterator();
+            while (pkg_sym_update_it.next()) |v| {
+                v.* = all_roots.items[ext_count + sym_count + kw_count + pkg_sym_idx];
+                pkg_sym_idx += 1;
+            }
+        }
+        std.debug.assert(pkg_sym_idx == pkg_sym_count);
+
+        // Update readtable function values
+        var rt_idx: usize = 0;
+        var rt_update_it = self.readtable.valueIterator();
+        while (rt_update_it.next()) |entry| {
+            entry.function = all_roots.items[ext_count + sym_count + kw_count + pkg_sym_count + rt_idx];
+            rt_idx += 1;
+        }
+        std.debug.assert(rt_idx == rt_count);
+
+        // Update dispatch readtable function values
+        var drt_idx: usize = 0;
+        var drt_update_it = self.dispatch_readtable.valueIterator();
+        while (drt_update_it.next()) |sub_table| {
+            var sub_update_it = sub_table.valueIterator();
+            while (sub_update_it.next()) |fn_val| {
+                fn_val.* = all_roots.items[ext_count + sym_count + kw_count + pkg_sym_count + rt_count + drt_idx];
+                drt_idx += 1;
+            }
+        }
+        std.debug.assert(drt_idx == drt_count);
 
         const after = self.bytesUsed();
         return if (before > after) before - after else 0;
