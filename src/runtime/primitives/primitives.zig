@@ -20,6 +20,7 @@ pub const hash = @import("hash.zig");
 pub const char = @import("char.zig");
 pub const package = @import("package.zig");
 pub const symbol = @import("symbol.zig");
+pub const pathname = @import("pathname.zig");
 
 // Re-export commonly used functions
 pub const cons = list.cons;
@@ -50,4 +51,5 @@ test {
     _ = char;
     _ = package;
     _ = symbol;
+    _ = pathname;
 }

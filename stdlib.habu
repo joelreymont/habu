@@ -2441,10 +2441,9 @@
   (declare (ignore x))
   nil)
 
-; pathnamep - no pathnames yet
+; pathnamep - check if object is a pathname
 (defun pathnamep (x)
-  (declare (ignore x))
-  nil)
+  (eq (type-of x) 'pathname))
 
 ; streamp - no stream objects yet
 (defun streamp (x)
@@ -3096,3 +3095,41 @@
     `(let ((,var (make-string-output-stream)))
        ,@body
        (get-output-stream-string ,var))))
+
+;;; ============================================================================
+;;; Pathname Functions
+;;; ============================================================================
+
+(defun make-pathname (&key host device directory name type version defaults)
+  "Create a pathname from components, optionally merging with defaults."
+  (let ((h (if (null host) (if defaults (pathname-host defaults) nil) host))
+        (dev (if (null device) (if defaults (pathname-device defaults) nil) device))
+        (dir (if (null directory) (if defaults (pathname-directory defaults) nil) directory))
+        (n (if (null name) (if defaults (pathname-name defaults) nil) name))
+        (ty (if (null type) (if defaults (pathname-type defaults) nil) type))
+        (v (if (null version) (if defaults (pathname-version defaults) nil) version)))
+    (%make-pathname h dev dir n ty v)))
+
+(defun pathname-host (pathname)
+  "Return the host component of pathname."
+  (%pathname-host pathname))
+
+(defun pathname-device (pathname)
+  "Return the device component of pathname."
+  (%pathname-device pathname))
+
+(defun pathname-directory (pathname)
+  "Return the directory component of pathname."
+  (%pathname-directory pathname))
+
+(defun pathname-name (pathname)
+  "Return the name component of pathname."
+  (%pathname-name pathname))
+
+(defun pathname-type (pathname)
+  "Return the type component of pathname."
+  (%pathname-type pathname))
+
+(defun pathname-version (pathname)
+  "Return the version component of pathname."
+  (%pathname-version pathname))

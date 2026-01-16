@@ -688,6 +688,28 @@ pub const Heap = struct {
         return Value.makePackage(pkg);
     }
 
+    /// Allocate a Pathname object on the heap
+    pub fn allocPathname(
+        self: *Heap,
+        host: Value,
+        device: Value,
+        directory: Value,
+        name: Value,
+        ty: Value,
+        version: Value,
+    ) !Value {
+        const pn = try self.alloc(objects.Pathname);
+        pn.* = .{
+            .host = host,
+            .device = device,
+            .directory = directory,
+            .name = name,
+            .type = ty,
+            .version = version,
+        };
+        return Value.makePathname(pn);
+    }
+
     /// Find a Lisp-level package by name
     pub fn findLispPackage(self: *Heap, name: Value) ?Value {
         if (!name.isString() and !name.isSymbol()) return null;
