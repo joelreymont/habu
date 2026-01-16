@@ -57,4 +57,21 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&b.addRunArtifact(lib_tests).step);
+
+    // GC Benchmark
+    const gc_bench = b.addExecutable(.{
+        .name = "gc_bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/gc.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
+    b.installArtifact(gc_bench);
+
+    const bench_run_cmd = b.addRunArtifact(gc_bench);
+    bench_run_cmd.step.dependOn(b.getInstallStep());
+    const bench_step = b.step("bench", "Run GC benchmark");
+    bench_step.dependOn(&bench_run_cmd.step);
 }
