@@ -40,7 +40,7 @@ pub const Symbol = extern struct {
 };
 
 /// Vector: growable array of values
-/// Size: 24 bytes header + data
+/// Size: 32 bytes header + data
 pub const Vector = extern struct {
     /// Number of elements
     length: u64,
@@ -48,6 +48,8 @@ pub const Vector = extern struct {
     capacity: u64,
     /// Pointer to element data (array of Values)
     data: [*]Value,
+    /// Optional fill-pointer (0xFFFFFFFFFFFFFFFF = none)
+    fill_pointer: u64,
 
     pub fn get(self: *const Vector, index: usize) Value {
         std.debug.assert(index < self.length);
@@ -61,6 +63,19 @@ pub const Vector = extern struct {
 
     pub fn items(self: *const Vector) []Value {
         return self.data[0..self.length];
+    }
+
+    pub fn hasFillPointer(self: *const Vector) bool {
+        return self.fill_pointer != 0xFFFFFFFFFFFFFFFF;
+    }
+
+    pub fn getFillPointer(self: *const Vector) ?u64 {
+        if (self.fill_pointer == 0xFFFFFFFFFFFFFFFF) return null;
+        return self.fill_pointer;
+    }
+
+    pub fn setFillPointer(self: *Vector, fp: ?u64) void {
+        self.fill_pointer = fp orelse 0xFFFFFFFFFFFFFFFF;
     }
 };
 

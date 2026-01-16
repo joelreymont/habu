@@ -494,6 +494,7 @@ pub const Heap = struct {
             .length = length,
             .capacity = capacity,
             .data = data_ptr,
+            .fill_pointer = 0xFFFFFFFFFFFFFFFF, // no fill-pointer by default
         };
 
         return Value.makeVector(vec);
