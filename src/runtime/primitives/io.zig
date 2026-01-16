@@ -19,6 +19,44 @@ var pushback_char: ?u8 = null;
 /// When false (princ mode), strings print bare, symbols print as-is
 pub var print_escape: bool = true;
 
+pub const PrintCase = enum {
+    upcase,
+    downcase,
+    capitalize,
+};
+
+/// *print-case* controls case conversion for symbols
+/// :upcase (default) - ABC
+/// :downcase - abc
+/// :capitalize - Abc
+pub var print_case: PrintCase = .upcase;
+
+fn writeCaseSymbol(name: []const u8, w: anytype) !void {
+    switch (print_case) {
+        .upcase => {
+            for (name) |c| {
+                try w.writeByte(std.ascii.toUpper(c));
+            }
+        },
+        .downcase => {
+            for (name) |c| {
+                try w.writeByte(std.ascii.toLower(c));
+            }
+        },
+        .capitalize => {
+            var first = true;
+            for (name) |c| {
+                if (first and std.ascii.isAlphabetic(c)) {
+                    try w.writeByte(std.ascii.toUpper(c));
+                    first = false;
+                } else {
+                    try w.writeByte(std.ascii.toLower(c));
+                }
+            }
+        },
+    }
+}
+
 /// Write a string to stdout
 pub fn sysWrite(val: Value) !void {
     if (!val.isString()) return;
@@ -270,7 +308,7 @@ fn princValueTo(val: Value, w: anytype) !void {
             }
             try w.writeByte(')');
         },
-        .symbol => try w.writeAll(val.toPtr(objects.Symbol).getName()),
+        .symbol => try writeCaseSymbol(val.toPtr(objects.Symbol).getName(), w),
         .string => try w.writeAll(val.toPtr(objects.String).bytes()),
         .closure => try w.writeAll("#<closure>"),
         .keyword => {
@@ -387,7 +425,7 @@ fn printEscapedTo(val: Value, w: anytype) !void {
             }
             try w.writeByte(')');
         },
-        .symbol => try w.writeAll(val.toPtr(objects.Symbol).getName()),
+        .symbol => try writeCaseSymbol(val.toPtr(objects.Symbol).getName(), w),
         .string => {
             try w.writeByte('"');
             try w.writeAll(val.toPtr(objects.String).bytes());
@@ -454,6 +492,31 @@ pub fn getPrintEscape() Value {
 /// Set *print-escape* value
 pub fn setPrintEscape(val: Value) void {
     print_escape = !val.isNil();
+}
+
+/// Get *print-case* value
+pub fn getPrintCase(heap: *Heap) Value {
+    return switch (print_case) {
+        .upcase => heap.internKeyword("upcase"),
+        .downcase => heap.internKeyword("downcase"),
+        .capitalize => heap.internKeyword("capitalize"),
+    };
+}
+
+/// Set *print-case* value
+pub fn setPrintCase(_: *Heap, val: Value) !void {
+    if (!val.isKeyword()) return error.TypeError;
+    const kw = val.toPtr(objects.Keyword);
+    const name = kw.getName();
+    if (std.mem.eql(u8, name, "upcase")) {
+        print_case = .upcase;
+    } else if (std.mem.eql(u8, name, "downcase")) {
+        print_case = .downcase;
+    } else if (std.mem.eql(u8, name, "capitalize")) {
+        print_case = .capitalize;
+    } else {
+        return error.InvalidPrintCase;
+    }
 }
 
 /// Exit the process
@@ -566,6 +629,24 @@ test "*print-escape* flag" {
     setPrintEscape(Value.t);
     try testing.expect(print_escape == true);
     try testing.expect(getPrintEscape().eq(Value.t));
+}
+
+test "*print-case* flag" {
+    const testing = std.testing;
+
+    // Default is upcase
+    try testing.expect(print_case == .upcase);
+
+    // Change to downcase
+    print_case = .downcase;
+    try testing.expect(print_case == .downcase);
+
+    // Change to capitalize
+    print_case = .capitalize;
+    try testing.expect(print_case == .capitalize);
+
+    // Reset to default
+    print_case = .upcase;
 }
 
 /// Check if value is a stream
