@@ -13,6 +13,7 @@ pub const PatchError = error{
     OutOfMemory,
     OffsetTooLarge,
     InvalidHoleType,
+    InsufficientPatchValues,
 };
 
 /// Executable memory allocator for JIT code
@@ -80,8 +81,8 @@ pub fn patchStencil(
     @memcpy(dest, stencil.code);
 
     // Apply patches
+    if (values.len < stencil.holes.len) return error.InsufficientPatchValues;
     for (stencil.holes, 0..) |hole, i| {
-        if (i >= values.len) break;
         const value = values[i];
         try applyPatch(dest, hole, value, start, buffer);
     }
