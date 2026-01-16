@@ -51,8 +51,11 @@ All tests pass.
 
 ### Next Steps
 
-**Phase 6: Self-Hosting**
-- Compile Habu with Habu
+**Phase 6: ANSI CL Spec Parity**
+- Plan: `~/.claude/plans/steady-jingling-seal.md`
+- Tracking: `docs/cl-symbols.md` (978 symbols)
+- Status: ~523 implemented (53%), ~451 missing (46%)
+- Priority: LOOP, CLOS method combinations, conditions, pathnames
 
 ## Key Technical Details
 

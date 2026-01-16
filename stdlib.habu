@@ -2461,11 +2461,24 @@
                            collect-var collect-forms
                            sum-var sum-forms
                            count-var count-forms
+                           append-var append-forms
+                           nconc-var nconc-forms
+                           max-var max-forms
+                           min-var min-forms
+                           always-forms never-forms thereis-forms
+                           block-name
                            finally-forms initially-forms)
   (let* ((all-vars (nreverse vars))
          (has-collect (not (null collect-forms)))
          (has-sum (not (null sum-forms)))
          (has-count (not (null count-forms)))
+         (has-append (not (null append-forms)))
+         (has-nconc (not (null nconc-forms)))
+         (has-max (not (null max-forms)))
+         (has-min (not (null min-forms)))
+         (has-always (not (null always-forms)))
+         (has-never (not (null never-forms)))
+         (has-thereis (not (null thereis-forms)))
          (loop-body nil)
          (result-expr nil))
 
@@ -2476,6 +2489,14 @@
       (push (list sum-var 0) all-vars))
     (when has-count
       (push (list count-var 0) all-vars))
+    (when has-append
+      (push (list append-var nil) all-vars))
+    (when has-nconc
+      (push (list nconc-var nil) all-vars))
+    (when has-max
+      (push (list max-var nil) all-vars))
+    (when has-min
+      (push (list min-var nil) all-vars))
 
     ; Build end test
     (let ((end-test (if (null end-tests)
@@ -2485,16 +2506,24 @@
                         (cons 'or (nreverse end-tests))))))
 
       ; Determine result expression first (needed for end-test)
+      ; Priority: always/never/thereis > collect > append > nconc > sum > count > max > min
       (setq result-expr
             (cond
+              (has-always t)  ; always returns T on success
+              (has-never t)   ; never returns T on success
+              (has-thereis nil) ; thereis returns value found, or nil
               (has-collect collect-var)
+              (has-append append-var)
+              (has-nconc nconc-var)
               (has-sum sum-var)
               (has-count count-var)
+              (has-max max-var)
+              (has-min min-var)
               (t nil)))
 
       ; Build loop body using nested binary appends
       (let ((end-test-forms (when end-test
-                              (list (list 'when end-test (list 'return-from nil result-expr)))))
+                              (list (list 'when end-test (list 'return-from block-name result-expr)))))
             (main-body (nreverse body-forms))
             (collect-body (mapcar (lambda (expr)
                                     (list 'setq collect-var
@@ -2507,13 +2536,63 @@
                                   (list 'when expr
                                         (list 'setq count-var (list '+ count-var 1))))
                                 (nreverse count-forms)))
+            ; Append accumulates copies of lists
+            (append-body (mapcar (lambda (expr)
+                                   (list 'setq append-var
+                                         (list 'append append-var (list 'copy-list expr))))
+                                 (nreverse append-forms)))
+            ; Nconc destructively concatenates
+            (nconc-body (mapcar (lambda (expr)
+                                  (list 'setq nconc-var
+                                        (list 'nconc nconc-var expr)))
+                                (nreverse nconc-forms)))
+            ; Maximize tracks maximum value
+            (max-body (mapcar (lambda (expr)
+                                (let ((val-var (gensym "val")))
+                                  (list 'let (list (list val-var expr))
+                                        (list 'when (list 'or (list 'null max-var)
+                                                         (list '> val-var max-var))
+                                              (list 'setq max-var val-var)))))
+                              (nreverse max-forms)))
+            ; Minimize tracks minimum value
+            (min-body (mapcar (lambda (expr)
+                                (let ((val-var (gensym "val")))
+                                  (list 'let (list (list val-var expr))
+                                        (list 'when (list 'or (list 'null min-var)
+                                                         (list '< val-var min-var))
+                                              (list 'setq min-var val-var)))))
+                              (nreverse min-forms)))
+            ; Always returns NIL immediately if test fails
+            (always-body (mapcar (lambda (expr)
+                                   (list 'unless expr
+                                         (list 'return-from block-name nil)))
+                                 (nreverse always-forms)))
+            ; Never returns NIL immediately if test succeeds
+            (never-body (mapcar (lambda (expr)
+                                  (list 'when expr
+                                        (list 'return-from block-name nil)))
+                                (nreverse never-forms)))
+            ; Thereis returns value immediately if non-NIL
+            (thereis-body (mapcar (lambda (expr)
+                                    (let ((val-var (gensym "val")))
+                                      (list 'let (list (list val-var expr))
+                                            (list 'when val-var
+                                                  (list 'return-from block-name val-var)))))
+                                  (nreverse thereis-forms)))
             (step-body (nreverse step-forms)))
         (setq loop-body
               (append end-test-forms
                       (append main-body
                               (append collect-body
-                                      (append sum-body
-                                              (append count-body step-body)))))))
+                                      (append append-body
+                                              (append nconc-body
+                                                      (append sum-body
+                                                              (append count-body
+                                                                      (append max-body
+                                                                              (append min-body
+                                                                                      (append always-body
+                                                                                              (append never-body
+                                                                                                      (append thereis-body step-body))))))))))))))
 
       ; Build final code using (while t ...) instead of (loop ...) to avoid a bug
       (let ((loop-code (cons 'while (cons t loop-body))))
@@ -2521,14 +2600,14 @@
         (when initially-forms
           (setq loop-code (cons 'progn (append initially-forms (list loop-code)))))
 
-        ; Build the block with let bindings
-        (list 'block nil
-              (list 'let all-vars
+        ; Build the block with let* bindings (sequential for dependent vars)
+        (list 'block block-name
+              (list 'let* all-vars
                     (if finally-forms
                         (list 'unwind-protect
                               loop-code
                               (cons 'progn (append finally-forms
-                                                   (list (list 'return-from nil result-expr)))))
+                                                   (list (list 'return-from block-name result-expr)))))
                       (list 'progn loop-code result-expr))))))))
 
 
@@ -2544,6 +2623,18 @@
         (sum-forms nil)      ; summed expressions
         (count-var nil)      ; variable for count
         (count-forms nil)    ; counted expressions
+        (append-var nil)     ; variable for append
+        (append-forms nil)   ; appended expressions
+        (nconc-var nil)      ; variable for nconc
+        (nconc-forms nil)    ; nconced expressions
+        (max-var nil)        ; variable for maximize
+        (max-forms nil)      ; maximized expressions
+        (min-var nil)        ; variable for minimize
+        (min-forms nil)      ; minimized expressions
+        (always-forms nil)   ; always test expressions
+        (never-forms nil)    ; never test expressions
+        (thereis-forms nil)  ; thereis test expressions
+        (block-name nil)     ; named loop block name
         (finally-forms nil)  ; finally body
         (initially-forms nil) ; initially body
         (rest clauses))
@@ -2610,6 +2701,57 @@
                   (push (list 'setq idx-var (list '+ idx-var 1)) step-forms)
                   (push (list '>= idx-var len-var) end-tests)
                   (setq rest (cddddr rest))))
+
+               ; FOR var BEING THE/EACH HASH-KEYS/HASH-VALUES OF hash [USING (...)]
+               (being
+                (let ((the-rest (cdddr rest)))
+                  ; Skip 'the' or 'each' if present
+                  (when (member (car the-rest) '(the each))
+                    (setq the-rest (cdr the-rest)))
+                  (let ((iter-type (car the-rest))
+                        (of-rest (cdr the-rest)))
+                    ; Skip 'of' or 'in'
+                    (when (member (car of-rest) '(of in))
+                      (setq of-rest (cdr of-rest)))
+                    (let ((hash-expr (car of-rest))
+                          (using-rest (cdr of-rest))
+                          (other-var nil))
+                      ; Check for USING clause
+                      (when (and (consp using-rest) (eq (car using-rest) 'using))
+                        (let ((using-spec (cadr using-rest)))
+                          (when (consp using-spec)
+                            (setq other-var (cadr using-spec)))
+                          (setq using-rest (cddr using-rest))))
+                      ; Generate iteration code
+                      (case iter-type
+                        ((hash-keys hash-key)
+                         (let ((keys-var (gensym "keys"))
+                               (hash-var (gensym "hash")))
+                           (push (list hash-var hash-expr) vars)
+                           (push (list keys-var (list 'hash-table-keys hash-var)) vars)
+                           (push (list var nil) vars)
+                           (when other-var
+                             (push (list other-var nil) vars))
+                           (push (list 'setq var (list 'car keys-var)) body-forms)
+                           (when other-var
+                             (push (list 'setq other-var (list 'gethash var hash-var)) body-forms))
+                           (push (list 'setq keys-var (list 'cdr keys-var)) step-forms)
+                           (push (list 'null keys-var) end-tests)))
+                        ((hash-values hash-value)
+                         ; Note: key-var with (or ...) must come FIRST due to Habu let bug
+                         (let ((key-var (or other-var (gensym "key")))
+                               (keys-var (gensym "keys"))
+                               (hash-var (gensym "hash")))
+                           (push (list hash-var hash-expr) vars)
+                           (push (list keys-var (list 'hash-table-keys hash-var)) vars)
+                           (push (list key-var nil) vars)
+                           (push (list var nil) vars)
+                           (push (list 'setq key-var (list 'car keys-var)) body-forms)
+                           (push (list 'setq var (list 'gethash key-var hash-var)) body-forms)
+                           (push (list 'setq keys-var (list 'cdr keys-var)) step-forms)
+                           (push (list 'null keys-var) end-tests)))
+                        (t (error (format nil "Unknown hash iteration type: ~a" iter-type))))
+                      (setq rest using-rest)))))
 
                (t (error "Unknown FOR clause")))))
 
@@ -2705,7 +2847,75 @@
 
           ; RETURN expr
           (return
-           (push (list 'return-from nil (cadr rest)) body-forms)
+           (push (list 'return-from block-name (cadr rest)) body-forms)
+           (setq rest (cddr rest)))
+
+          ; NAMED name - set block name for return-from
+          (named
+           (setq block-name (cadr rest))
+           (setq rest (cddr rest)))
+
+          ; APPEND/APPENDING expr [INTO var]
+          ((append appending)
+           (let ((expr (cadr rest))
+                 (into-rest (cddr rest)))
+             (when (and (consp into-rest) (eq (car into-rest) 'into))
+               (setq append-var (cadr into-rest))
+               (setq into-rest (cddr into-rest)))
+             (unless append-var
+               (setq append-var (gensym "append")))
+             (push expr append-forms)
+             (setq rest into-rest)))
+
+          ; NCONC/NCONCING expr [INTO var]
+          ((nconc nconcing)
+           (let ((expr (cadr rest))
+                 (into-rest (cddr rest)))
+             (when (and (consp into-rest) (eq (car into-rest) 'into))
+               (setq nconc-var (cadr into-rest))
+               (setq into-rest (cddr into-rest)))
+             (unless nconc-var
+               (setq nconc-var (gensym "nconc")))
+             (push expr nconc-forms)
+             (setq rest into-rest)))
+
+          ; MAXIMIZE/MAXIMIZING expr [INTO var]
+          ((maximize maximizing)
+           (let ((expr (cadr rest))
+                 (into-rest (cddr rest)))
+             (when (and (consp into-rest) (eq (car into-rest) 'into))
+               (setq max-var (cadr into-rest))
+               (setq into-rest (cddr into-rest)))
+             (unless max-var
+               (setq max-var (gensym "max")))
+             (push expr max-forms)
+             (setq rest into-rest)))
+
+          ; MINIMIZE/MINIMIZING expr [INTO var]
+          ((minimize minimizing)
+           (let ((expr (cadr rest))
+                 (into-rest (cddr rest)))
+             (when (and (consp into-rest) (eq (car into-rest) 'into))
+               (setq min-var (cadr into-rest))
+               (setq into-rest (cddr into-rest)))
+             (unless min-var
+               (setq min-var (gensym "min")))
+             (push expr min-forms)
+             (setq rest into-rest)))
+
+          ; ALWAYS test - loop terminates with NIL if test fails
+          (always
+           (push (cadr rest) always-forms)
+           (setq rest (cddr rest)))
+
+          ; NEVER test - loop terminates with NIL if test succeeds
+          (never
+           (push (cadr rest) never-forms)
+           (setq rest (cddr rest)))
+
+          ; THEREIS test - loop terminates with value if non-NIL
+          (thereis
+           (push (cadr rest) thereis-forms)
            (setq rest (cddr rest)))
 
           (t (error (format nil "Unknown loop keyword: ~a" kw))))))
@@ -2715,6 +2925,12 @@
                         collect-var collect-forms
                         sum-var sum-forms
                         count-var count-forms
+                        append-var append-forms
+                        nconc-var nconc-forms
+                        max-var max-forms
+                        min-var min-forms
+                        always-forms never-forms thereis-forms
+                        block-name
                         finally-forms initially-forms)))
 
 ; Main LOOP macro
