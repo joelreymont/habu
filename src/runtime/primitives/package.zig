@@ -6,6 +6,10 @@ const std = @import("std");
 const Value = @import("../value.zig").Value;
 const objects = @import("../objects.zig");
 const Heap = @import("../heap.zig").Heap;
+const hash = @import("hash.zig");
+const Cons = objects.Cons;
+const String = objects.String;
+const Vector = objects.Vector;
 
 /// Create a new package
 pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value) !Value {
@@ -170,16 +174,60 @@ fn hashValueWithTest(key: Value, test_type: objects.HashTest) u64 {
     return switch (test_type) {
         .eq => key.raw,
         .eql => key.raw,
-        .equal => key.raw, // TODO: content hash
+        .equal => hash.hashValue(key),
     };
 }
 
 fn hashKeyEqualWithTest(a: Value, b: Value, test_type: objects.HashTest) bool {
     return switch (test_type) {
         .eq => a.raw == b.raw,
-        .eql => a.raw == b.raw,
-        .equal => a.raw == b.raw, // TODO: structural equality
+        .eql => valueEql(a, b),
+        .equal => valueEqual(a, b, 0),
     };
+}
+
+const MAX_EQUAL_DEPTH = 1000;
+
+fn valueEql(a: Value, b: Value) bool {
+    if (a.isFloat() and b.isFloat()) {
+        const af = a.toFloat();
+        const bf = b.toFloat();
+        if (std.math.isNan(af) or std.math.isNan(bf)) return false;
+        return af == bf;
+    }
+    return a.raw == b.raw;
+}
+
+fn valueEqual(a: Value, b: Value, depth: usize) bool {
+    if (depth > MAX_EQUAL_DEPTH) return false;
+    if (a.isFloat() and b.isFloat()) return valueEql(a, b);
+    if (a.raw == b.raw) return true;
+    if (a.isFixnum() or b.isFixnum()) return false;
+    if (a.isCharacter() or b.isCharacter()) return false;
+    if (a.isFloat() or b.isFloat()) return false;
+
+    const tag_a = a.raw & 0xF;
+    const tag_b = b.raw & 0xF;
+    if (tag_a != tag_b) return false;
+
+    if (a.isCons()) {
+        const ca = a.toPtr(Cons);
+        const cb = b.toPtr(Cons);
+        return valueEqual(ca.car, cb.car, depth + 1) and valueEqual(ca.cdr, cb.cdr, depth + 1);
+    } else if (a.isString()) {
+        const sa = a.toPtr(String);
+        const sb = b.toPtr(String);
+        return std.mem.eql(u8, sa.bytes(), sb.bytes());
+    } else if (a.isVector()) {
+        const va = a.toPtr(Vector);
+        const vb = b.toPtr(Vector);
+        if (va.length != vb.length) return false;
+        for (va.items(), vb.items()) |ea, eb| {
+            if (!valueEqual(ea, eb, depth + 1)) return false;
+        }
+        return true;
+    }
+    return false;
 }
 
 fn createHashTable(heap: *Heap, capacity: usize) !Value {
@@ -211,8 +259,8 @@ fn insertHashTable(heap: *Heap, table: Value, key: Value, value: Value) !void {
     const ht = table.toPtr(objects.HashTable);
 
     // Simple linear probing
-    const hash = key.raw;
-    var idx = hash % ht.capacity;
+    const h = key.raw;
+    var idx = h % ht.capacity;
     var i: usize = 0;
     while (i < ht.capacity) : (i += 1) {
         const entry = &ht.entries[idx];
@@ -460,8 +508,8 @@ pub fn unexportSymbols(heap: *Heap, symbols: Value, pkg: Value) !void {
 }
 
 fn removeFromHashTable(ht: *objects.HashTable, key: Value) !void {
-    const hash = key.raw;
-    var idx = hash % ht.capacity;
+    const h = key.raw;
+    var idx = h % ht.capacity;
     var i: usize = 0;
     while (i < ht.capacity) : (i += 1) {
         const entry = &ht.entries[idx];
@@ -484,8 +532,8 @@ pub fn uninternSymbol(symbol: Value, pkg: Value) !bool {
     if (p.symbols.raw == Value.nil.raw) return false;
 
     const ht = p.symbols.toPtr(objects.HashTable);
-    const hash = symbol.raw;
-    var idx = hash % ht.capacity;
+    const h = symbol.raw;
+    var idx = h % ht.capacity;
     var i: usize = 0;
     while (i < ht.capacity) : (i += 1) {
         const entry = &ht.entries[idx];

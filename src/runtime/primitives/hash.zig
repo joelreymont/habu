@@ -186,7 +186,7 @@ pub fn primSxhash(_: *Heap, args: []const Value) !Value {
     return Value.makeFixnum(fixnum_h);
 }
 
-fn hashValue(val: Value) u64 {
+pub fn hashValue(val: Value) u64 {
     return switch (val.typeKind()) {
         .nil => 0,
         .t => 1,
