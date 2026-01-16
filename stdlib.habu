@@ -3134,5 +3134,99 @@
   "Return the version component of pathname."
   (%pathname-version pathname))
 
+;;; Package Iteration Macros
+;;; ============================================================================
+
+; Helper to get package symbols as a list
+(defun %package-symbols-list (pkg)
+  "Internal: extract all symbols from package's internal hash table"
+  (let ((result nil))
+    (when pkg
+      ; Package.symbols is a hash table - extract symbols
+      (let ((syms (%package-symbols pkg)))
+        (when syms
+          (maphash (lambda (k v)
+                     (declare (ignore v))
+                     (when (symbolp k)
+                       (setq result (cons k result))))
+                   syms))))
+    result))
+
+; Helper to get package exports as a list
+(defun %package-exports-list (pkg)
+  "Internal: extract all exported symbols from package"
+  (let ((result nil))
+    (when pkg
+      (let ((exps (%package-exports pkg)))
+        (when exps
+          (maphash (lambda (k v)
+                     (declare (ignore v))
+                     (when (symbolp k)
+                       (setq result (cons k result))))
+                   exps))))
+    result))
+
+; do-symbols - iterate over accessible symbols in package
+; (do-symbols (var [package [result]]) body...)
+; Iterates over all accessible symbols (internal, external, inherited) in package
+(defmacro do-symbols (spec &rest body)
+  (let ((var (car spec))
+        (pkg (or (cadr spec) '*package*))
+        (result (caddr spec))
+        (temp-pkg (gensym "PKG"))
+        (sym-list (gensym "SYMS"))
+        (seen (gensym "SEEN")))
+    `(let* ((,temp-pkg ,pkg)
+            (,seen (make-hash-table :test 'eq))
+            (,sym-list nil))
+       (block nil
+         ; Collect internal symbols
+         (dolist (s (%package-symbols-list ,temp-pkg))
+           (unless (gethash s ,seen)
+             (setf (gethash s ,seen) t)
+             (push s ,sym-list)))
+         ; Collect inherited symbols from used packages
+         (dolist (used-pkg (package-use-list ,temp-pkg))
+           (dolist (s (%package-exports-list used-pkg))
+             (unless (gethash s ,seen)
+               (setf (gethash s ,seen) t)
+               (push s ,sym-list))))
+         ; Iterate over collected symbols
+         (dolist (,var ,sym-list)
+           ,@body)
+         ; Return result with var bound to nil
+         (let ((,var nil)) ,result)))))
+
+; do-external-symbols - iterate over exported symbols in package
+; (do-external-symbols (var [package [result]]) body...)
+(defmacro do-external-symbols (spec &rest body)
+  (let ((var (car spec))
+        (pkg (or (cadr spec) '*package*))
+        (result (caddr spec))
+        (temp-pkg (gensym "PKG")))
+    `(let ((,temp-pkg ,pkg))
+       (block nil
+         (dolist (,var (%package-exports-list ,temp-pkg))
+           ,@body)
+         (let ((,var nil)) ,result)))))
+
+; do-all-symbols - iterate over all symbols in all packages
+; (do-all-symbols (var [result]) body...)
+(defmacro do-all-symbols (spec &rest body)
+  (let ((var (car spec))
+        (result (cadr spec))
+        (pkg-list (gensym "PKGS"))
+        (pkg-var (gensym "PKG"))
+        (seen (gensym "SEEN")))
+    `(let* ((,pkg-list (list-all-packages))
+            (,seen (make-hash-table :test 'eq)))
+       (block nil
+         (dolist (,pkg-var ,pkg-list)
+           (dolist (,var (%package-symbols-list ,pkg-var))
+             (unless (gethash ,var ,seen)
+               (setf (gethash ,var ,seen) t)
+               ,@body)))
+         (let ((,var nil)) ,result)))))
+
 (defun logtest (a b)
   (not (zerop (logand a b))))
