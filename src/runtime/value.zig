@@ -404,6 +404,11 @@ pub const Value = packed struct {
         return makePtr(ptr, .boxed);
     }
 
+    /// Create a package value (boxed object)
+    pub inline fn makePackage(ptr: anytype) Value {
+        return makePtr(ptr, .boxed);
+    }
+
     /// Create a bignum value (boxed object)
     pub inline fn makeBignum(ptr: anytype) Value {
         return makePtr(ptr, .boxed);

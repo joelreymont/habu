@@ -153,7 +153,7 @@ pub const Heap = struct {
     symbols: SymbolTable,
     /// Interned keyword table
     keywords: SymbolTable,
-    /// Package registry
+    /// Package registry (Zig packages for symbol interning)
     packages: std.StringHashMapUnmanaged(*Package),
     /// Current package for symbol interning
     current_package: ?*Package,
@@ -165,6 +165,8 @@ pub const Heap = struct {
     gensym_counter: u64,
     /// The KEYWORD package
     keyword_package: ?*Package,
+    /// Lisp-level package registry (hash table: name -> Package Value)
+    lisp_packages: Value,
     /// Class metadata for CLOS slot-value lookup
     /// Maps class name to slot names array
     class_metadata: std.StringHashMapUnmanaged([]const []const u8),
@@ -223,10 +225,14 @@ pub const Heap = struct {
             .cl_user_package = null,
             .gensym_counter = 0,
             .keyword_package = null,
+            .lisp_packages = Value.nil,
             .class_metadata = .{},
             .readtable = .{},
             .dispatch_readtable = .{},
         };
+
+        // Create Lisp package registry
+        heap.lisp_packages = try heap.allocHashTable(16, .eql);
 
         // Create COMMON-LISP package (holds primitives, all symbols exported)
         heap.cl_package = Package.init(allocator, "COMMON-LISP") catch return error.OutOfMemory;
@@ -654,6 +660,57 @@ pub const Heap = struct {
         return Value.makeSymbol(sym);
     }
 
+    /// Allocate a Package object on the heap
+    pub fn allocPackage(self: *Heap, name: Value, nicknames: Value, use_list: Value, auto_export: bool) !Value {
+        const pkg = try self.alloc(objects.Package);
+        pkg.* = .{
+            .name = name,
+            .nicknames = nicknames,
+            .use_list = use_list,
+            .exports = Value.nil,
+            .symbols = Value.nil,
+            .shadowing = Value.nil,
+        };
+        _ = auto_export;
+        return Value.makePackage(pkg);
+    }
+
+    /// Find a Lisp-level package by name
+    pub fn findLispPackage(self: *Heap, name: Value) ?Value {
+        if (!name.isString() and !name.isSymbol()) return null;
+        if (self.lisp_packages.raw == Value.nil.raw) return null;
+        const ht = self.lisp_packages.toPtr(objects.HashTable);
+        var i: usize = 0;
+        while (i < ht.capacity) : (i += 1) {
+            const e = &ht.entries[i];
+            if (e.key.raw == objects.HashTable.EMPTY.raw or e.key.raw == objects.HashTable.DELETED.raw) continue;
+            if (e.key.raw == name.raw) return e.value;
+        }
+        return null;
+    }
+
+    /// Register a Lisp package
+    pub fn putLispPackage(self: *Heap, name: Value, pkg: Value) !void {
+        if (self.lisp_packages.raw == Value.nil.raw) return error.RegistryNotInitialized;
+        const ht = self.lisp_packages.toPtr(objects.HashTable);
+        const hash = name.raw;
+        var idx = hash % ht.capacity;
+        var i: usize = 0;
+        while (i < ht.capacity) : (i += 1) {
+            const e = &ht.entries[idx];
+            if (e.key.raw == objects.HashTable.EMPTY.raw or e.key.raw == objects.HashTable.DELETED.raw or e.key.raw == name.raw) {
+                e.key = name;
+                e.value = pkg;
+                if (e.key.raw == objects.HashTable.EMPTY.raw or e.key.raw == objects.HashTable.DELETED.raw) {
+                    ht.count += 1;
+                }
+                return;
+            }
+            idx = (idx + 1) % ht.capacity;
+        }
+        return error.HashTableFull;
+    }
+
     /// Intern a symbol (same name = same Value)
     /// Returns existing symbol if already interned, otherwise creates new one
     /// Uses current package if available, otherwise legacy global table
@@ -816,6 +873,11 @@ pub const Heap = struct {
             }
         }
 
+        // Add Lisp package registry
+        if (self.lisp_packages.raw != Value.nil.raw) {
+            all_roots.append(self.backing_allocator, self.lisp_packages) catch return 0;
+        }
+
         // Run GC
         var gc = GC.init(self.backing_allocator, self);
         defer gc.deinit();
@@ -896,6 +958,11 @@ pub const Heap = struct {
         }
         std.debug.assert(drt_idx == drt_count);
 
+        // Update Lisp package registry
+        if (self.lisp_packages.raw != Value.nil.raw) {
+            self.lisp_packages = all_roots.items[ext_count + sym_count + kw_count + pkg_sym_count + rt_count + drt_count];
+        }
+
         const after = self.bytesUsed();
         return if (before > after) before - after else 0;
     }
@@ -927,7 +994,8 @@ test "heap init and deinit" {
     defer heap.deinit();
 
     try testing.expectEqual(@as(usize, 512 * 1024), heap.space_size);
-    try testing.expectEqual(@as(usize, 0), heap.bytesUsed());
+    // lisp_packages hash table is allocated during init
+    try testing.expect(heap.bytesUsed() > 0);
 }
 
 test "heap alloc cons" {

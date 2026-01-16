@@ -67,12 +67,15 @@ pub const GC = struct {
         // Calculate bytes copied
         const bytes_copied = @intFromPtr(alloc_ptr) - @intFromPtr(self.heap.to_start);
 
-        // Phase 3: Finalize unreachable objects with resources
-        self.finalizeUnreachable();
+        // Save old alloc_ptr before swap for finalization
+        const old_alloc_ptr = self.heap.alloc_ptr;
 
-        // Phase 4: Swap spaces
+        // Phase 3: Swap spaces
         self.heap.swapSpaces();
         self.heap.resetAllocPtr(@ptrCast(@alignCast(self.heap.from_start + bytes_copied)));
+
+        // Phase 4: Finalize unreachable objects with resources (uses old space)
+        self.finalizeUnreachable(old_alloc_ptr);
 
         // Update stats
         self.heap.stats.gc_count += 1;
@@ -83,10 +86,12 @@ pub const GC = struct {
 
     /// Finalize unreachable objects that hold resources (e.g., file handles)
     /// This walks the from-space and closes any open streams that weren't copied
-    fn finalizeUnreachable(self: *GC) void {
-        var addr = @intFromPtr(self.heap.from_start);
-        // Only walk the used portion of from-space (up to the old alloc_ptr)
-        const from_used_end = @intFromPtr(self.heap.alloc_ptr);
+    /// old_alloc_ptr: the alloc_ptr value BEFORE swapSpaces was called
+    fn finalizeUnreachable(self: *GC, old_alloc_ptr: [*]align(ALIGNMENT) u8) void {
+        // After swap, from_start points to the OLD to-space (now the new from-space)
+        // But we want to finalize objects in the OLD from-space (now the new to-space)
+        var addr = @intFromPtr(self.heap.to_start);
+        const from_used_end = @intFromPtr(old_alloc_ptr);
 
         while (addr < from_used_end) {
             const first_word: *Value = @ptrFromInt(addr);
@@ -447,13 +452,12 @@ test "gc collect empty" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var gc = GC.init(testing.allocator, &heap);
-    defer gc.deinit();
-
+    // Use heap.collectGarbage which handles internal roots (lisp_packages)
     var roots = [_]Value{};
-    const bytes = try gc.collect(&roots);
+    _ = heap.collectGarbage(&roots);
 
-    try testing.expectEqual(@as(usize, 0), bytes);
+    // After GC, only lisp_packages hash table should remain
+    try testing.expect(heap.bytesUsed() > 0);
 }
 
 test "gc collect with cons" {

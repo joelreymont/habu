@@ -18,20 +18,19 @@ pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value
         .name = name,
         .nicknames = nicknames orelse Value.nil,
         .use_list = use_list orelse Value.nil,
-        .exports = Value.nil, // TODO: create hash table
-        .symbols = Value.nil, // TODO: create hash table
+        .exports = Value.nil,
+        .symbols = Value.nil,
         .shadowing = Value.nil,
     };
 
-    return Value.makePtr(pkg, .boxed);
+    const pkg_val = Value.makePtr(pkg, .boxed);
+    try heap.putLispPackage(name, pkg_val);
+    return pkg_val;
 }
 
 /// Find a package by name or nickname
 pub fn findPackage(heap: *Heap, name: Value) ?Value {
-    _ = heap;
-    _ = name;
-    // TODO: lookup in global package registry
-    return null;
+    return heap.findLispPackage(name);
 }
 
 /// Get package name
