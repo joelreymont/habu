@@ -20,6 +20,7 @@ pub const Error = error{
     VectorTooLarge,
     OutOfMemory,
     TypeMismatch,
+    Overflow,
 };
 
 pub const Parser = struct {
@@ -341,14 +342,14 @@ pub const Parser = struct {
         // Check if we need to decode escapes
         if (std.mem.indexOf(u8, text, "\\")) |_| {
             // Has escapes - decode them directly into allocated string
-            return self.decodeStringEscapes(text) orelse error.OutOfMemory;
+            return try self.decodeStringEscapes(text);
         }
 
         return try self.heap.allocString(text);
     }
 
     /// Decode escape sequences in a string, allocating result in heap's string space
-    fn decodeStringEscapes(self: *Parser, text: []const u8) ?Value {
+    fn decodeStringEscapes(self: *Parser, text: []const u8) Error!Value {
         // First pass: count output size
         var out_len: usize = 0;
         var i: usize = 0;
@@ -363,7 +364,7 @@ pub const Parser = struct {
         }
 
         // Allocate string with uninitialized content
-        const str_val = self.heap.allocStringUninitialized(out_len) catch return null;
+        const str_val = try self.heap.allocStringUninitialized(out_len);
         const str = str_val.toPtr(runtime.String);
         const buffer = str.mutableBytes();
 

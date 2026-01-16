@@ -58,6 +58,16 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&b.addRunArtifact(lib_tests).step);
 
+    // Error masking check
+    const check_errors = b.addSystemCommand(&.{
+        "sh",
+        "-c",
+        "if grep -rn 'catch return null\\|catch return;\\|orelse unreachable\\|catch |_|' src --exclude-dir=tests --exclude='*.md' | grep -v test.zig | grep -v lineedit.zig | grep -v vector.zig; then echo 'ERROR: Found error masking patterns in src/' && exit 1; fi",
+    });
+    const check_step = b.step("check-errors", "Check for error masking patterns");
+    check_step.dependOn(&check_errors.step);
+    test_step.dependOn(&check_errors.step);
+
     // GC Benchmark
     const gc_bench = b.addExecutable(.{
         .name = "gc_bench",
