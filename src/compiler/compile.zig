@@ -1272,6 +1272,8 @@ pub const Compiler = struct {
     /// Generic function registry for CLOS method dispatch
     /// Maps generic function name to list of methods
     generic_functions: std.StringHashMap(std.ArrayList(MethodDef)),
+    /// Current method params for call-next-method (set during method body compilation)
+    method_params: ?[]const []const u8 = null,
 
     /// ADT variant definition
     pub const Variant = struct {
@@ -1875,6 +1877,7 @@ pub const Compiler = struct {
         @"slot-value",
         defgeneric,
         defmethod,
+        @"call-next-method",
     };
 
     /// Comptime dispatch table for special forms
@@ -1943,6 +1946,7 @@ pub const Compiler = struct {
         .{ "slot-value", .@"slot-value" },
         .{ "defgeneric", .defgeneric },
         .{ "defmethod", .defmethod },
+        .{ "call-next-method", .@"call-next-method" },
     });
 
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
@@ -2021,6 +2025,7 @@ pub const Compiler = struct {
                     .@"slot-value" => self.compileSlotValue(tail, env),
                     .defgeneric => self.compileDefgeneric(tail, env),
                     .defmethod => self.compileDefmethod(tail, env),
+                    .@"call-next-method" => self.compileCallNextMethod(tail, env),
                 };
             }
 
@@ -4881,6 +4886,15 @@ pub const Compiler = struct {
         return result;
     }
 
+    /// Get qualified name for %next-method% (must match how symbol is interned)
+    fn getNextMethodName(self: *Compiler) ![]const u8 {
+        const nm_base = "%next-method%";
+        var buf: [256]u8 = undefined;
+        const qual = try self.qualifyName(nm_base, &buf);
+        // Dupe to allocator since buf is stack-local
+        return try self.allocator.dupe(u8, qual);
+    }
+
     // ========================================================================
     // Structure Definition (defstruct)
     // ========================================================================
@@ -5956,6 +5970,12 @@ pub const Compiler = struct {
             _ = try lambda_env.bind(param);
         }
 
+        // Save param names for call-next-method before compiling body
+        const param_names_for_cnm = try self.allocator.dupe([]const u8, param_names.items);
+        const saved_method_params = self.method_params;
+        self.method_params = param_names_for_cnm;
+        defer self.method_params = saved_method_params;
+
         // Compile method body in lambda environment
         const body = body_cons.cdr;
         const body_ir = try self.compileBodyWithTail(body, &lambda_env, true);
@@ -5992,6 +6012,7 @@ pub const Compiler = struct {
 
         // Generate unique method function name: generic-name$qualifier$specializer
         // Include qualifier to differentiate :before/:after/:around from primary
+        // Use simple (non-qualified) name - VM looks up by local name
         const qual_str: []const u8 = switch (qualifier) {
             .primary => "p",
             .before => "b",
@@ -5999,7 +6020,8 @@ pub const Compiler = struct {
             .around => "r",
         };
         const spec_str = if (specializers.items.len > 0) specializers.items[0] else "t";
-        const method_name = try std.fmt.allocPrint(self.allocator, "{s}${s}${s}", .{ gen_name, qual_str, spec_str });
+        const simple_name = name_sym.getName();
+        const method_name = try std.fmt.allocPrint(self.allocator, "{s}${s}${s}", .{ simple_name, qual_str, spec_str });
 
         // Define method as global function
         const method_global_idx = try self.globals.define(method_name);
@@ -6060,6 +6082,52 @@ pub const Compiler = struct {
         return try self.builder.progn(defs);
     }
 
+    /// Compile call-next-method: (call-next-method [args...])
+    /// Calls the next applicable method in the dispatch chain
+    fn compileCallNextMethod(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        // call-next-method calls the %next-method% special variable
+        // If no args provided, pass the original method arguments
+        // If args provided, use those
+
+        const nm_name = try self.getNextMethodName();
+
+        const nm_global_idx = self.globals.lookup(nm_name) orelse blk: {
+            break :blk try self.globals.define(nm_name);
+        };
+
+        const next_method_ir = try self.builder.globalRef(nm_name, nm_global_idx);
+
+        var arg_irs = std.ArrayList(*Ir){};
+        defer arg_irs.deinit(self.allocator);
+
+        if (args.isNil()) {
+            // No args provided - pass original method parameters
+            if (self.method_params) |params| {
+                for (params, 0..) |param_name, idx| {
+                    // Look up param in environment to get correct depth/index
+                    if (env.lookup(param_name)) |binding| {
+                        const var_ir = try self.builder.variable(param_name, binding.depth, binding.index);
+                        try arg_irs.append(self.allocator, var_ir);
+                    } else {
+                        // Shouldn't happen - param should be in scope
+                        const var_ir = try self.builder.variable(param_name, 0, @intCast(idx));
+                        try arg_irs.append(self.allocator, var_ir);
+                    }
+                }
+            }
+        } else {
+            // Explicit args provided
+            var curr = args;
+            while (curr.isCons()) {
+                const cons = curr.toPtr(Cons);
+                try arg_irs.append(self.allocator, try self.compile(cons.car, env));
+                curr = cons.cdr;
+            }
+        }
+
+        return try self.builder.call(next_method_ir, try arg_irs.toOwnedSlice(self.allocator));
+    }
+
     /// Generate a dispatcher lambda implementing standard method combination
     /// Order: :around (call-next-method) -> :before -> primary -> :after
     fn generateMethodDispatcher(
@@ -6112,8 +6180,8 @@ pub const Compiler = struct {
                 if (param_idx >= param_names.len) return error.InvalidSyntax;
 
                 // Skip unspecialized parameters (specializer = "t")
-                const spec_sym = try self.heap.?.intern(spec_name);
-                if (spec_sym.eq(self.builtins.?.t)) continue;
+                // Compare string directly since symbol interning may differ by package
+                if (std.mem.eql(u8, spec_name, "t")) continue;
 
                 // Reference to parameter
                 const arg_ir = try self.builder.variable(param_names[param_idx], 0, @intCast(param_idx));
@@ -6150,18 +6218,43 @@ pub const Compiler = struct {
             dispatch_body = try self.builder.ifExpr(cond_ir.?, effective_method, dispatch_body);
         }
 
-        // TODO: :around methods with call-next-method support
-        // For now, :around is treated like :before (called first, but doesn't wrap)
+        // Handle :around methods with call-next-method support
+        // Build a chain: around1 -> around2 -> ... -> effective_method
         if (around_methods.items.len > 0) {
-            // Prepend around method calls (simplified - no call-next-method yet)
-            var stmts = std.ArrayList(*Ir){};
-            defer stmts.deinit(self.allocator);
+            var next_method = dispatch_body;
 
-            for (around_methods.items) |around| {
-                try stmts.append(self.allocator, try self.generateMethodCallByName(around.function_name, param_names));
+            // Build chain from innermost (last around) to outermost (first around)
+            var a = around_methods.items.len;
+            while (a > 0) {
+                a -= 1;
+                const around = around_methods.items[a];
+
+                // Wrap next_method in a lambda so it can be called via %next-method%
+                const next_method_lambda = try self.builder.lambda(
+                    param_names,
+                    &[_]Ir.OptionalParam{},
+                    &[_]Ir.KeyParam{},
+                    null,
+                    &[_]Ir.Capture{},
+                    next_method,
+                );
+
+                // Define %next-method% global (use qualified name to match symbol interning)
+                const nm_name = try self.getNextMethodName();
+                const nm_idx = try self.globals.define(nm_name);
+                const set_next = try self.builder.define(nm_name, nm_idx, next_method_lambda);
+
+                // Call the around method
+                const around_call = try self.generateMethodCallByName(around.function_name, param_names);
+
+                // Sequence: set %next-method%, then call around method
+                const seq = try self.allocator.alloc(*Ir, 2);
+                seq[0] = set_next;
+                seq[1] = around_call;
+                next_method = try self.builder.progn(seq);
             }
-            try stmts.append(self.allocator, dispatch_body);
-            dispatch_body = try self.builder.progn(try stmts.toOwnedSlice(self.allocator));
+
+            dispatch_body = next_method;
         }
 
         // Wrap dispatch body in lambda
@@ -6178,6 +6271,7 @@ pub const Compiler = struct {
     }
 
     /// Build effective method: before* -> primary -> after*
+    /// Returns the primary method's value (after methods are for side effects only)
     fn buildEffectiveMethod(
         self: *Compiler,
         primary: MethodDef,
@@ -6185,27 +6279,72 @@ pub const Compiler = struct {
         after_methods: []const MethodDef,
         param_names: []const []const u8,
     ) anyerror!*Ir {
+        // Count applicable :after methods
+        var after_count: usize = 0;
+        for (after_methods) |after| {
+            if (try self.specializerMatches(after.specializers, primary.specializers)) {
+                after_count += 1;
+            }
+        }
+
+        // If no :before and no :after, just return primary call
+        var has_before = false;
+        for (before_methods) |before| {
+            if (try self.specializerMatches(before.specializers, primary.specializers)) {
+                has_before = true;
+                break;
+            }
+        }
+
+        if (!has_before and after_count == 0) {
+            return try self.generateMethodCallByName(primary.function_name, param_names);
+        }
+
         var stmts = std.ArrayList(*Ir){};
         defer stmts.deinit(self.allocator);
 
         // Call applicable :before methods (most specific first)
         for (before_methods) |before| {
-            if (try self.specializerMatches(before.specializers, primary.specializers)) {
+            const matches = try self.specializerMatches(before.specializers, primary.specializers);
+            if (matches) {
                 try stmts.append(self.allocator, try self.generateMethodCallByName(before.function_name, param_names));
             }
         }
 
-        // Call primary method
-        try stmts.append(self.allocator, try self.generateMethodCallByName(primary.function_name, param_names));
+        // If we have :after methods, save primary result and return it at the end
+        if (after_count > 0) {
+            // Generate: (let ((%result% (primary args))) (after1) ... (afterN) %result%)
+            const result_name = "%method-result%";
+            const primary_call = try self.generateMethodCallByName(primary.function_name, param_names);
 
-        // Call applicable :after methods (least specific first = reverse order)
-        var j = after_methods.len;
-        while (j > 0) {
-            j -= 1;
-            const after = after_methods[j];
-            if (try self.specializerMatches(after.specializers, primary.specializers)) {
-                try stmts.append(self.allocator, try self.generateMethodCallByName(after.function_name, param_names));
+            // Build let body: after calls (at depth 1, since we're inside the let)
+            // followed by returning %result%
+            var let_body = std.ArrayList(*Ir){};
+            defer let_body.deinit(self.allocator);
+
+            // Generate after calls with depth 1 (to reference lambda params, not let binding)
+            var k = after_methods.len;
+            while (k > 0) {
+                k -= 1;
+                const after = after_methods[k];
+                if (try self.specializerMatches(after.specializers, primary.specializers)) {
+                    try let_body.append(self.allocator, try self.generateMethodCallByNameAtDepth(after.function_name, param_names, 1));
+                }
             }
+
+            // Return the result variable (depth 0 is correct, it's the let binding)
+            const result_ref = try self.builder.variable(result_name, 0, 0);
+            try let_body.append(self.allocator, result_ref);
+
+            const body_progn = try self.builder.progn(try let_body.toOwnedSlice(self.allocator));
+
+            // Create let binding for result
+            const let_ir = try self.builder.let1(result_name, 0, primary_call, body_progn);
+
+            try stmts.append(self.allocator, let_ir);
+        } else {
+            // No :after methods, just call primary
+            try stmts.append(self.allocator, try self.generateMethodCallByName(primary.function_name, param_names));
         }
 
         if (stmts.items.len == 1) {
@@ -6234,12 +6373,21 @@ pub const Compiler = struct {
         function_name: []const u8,
         param_names: []const []const u8,
     ) anyerror!*Ir {
+        return try self.generateMethodCallByNameAtDepth(function_name, param_names, 0);
+    }
+
+    fn generateMethodCallByNameAtDepth(
+        self: *Compiler,
+        function_name: []const u8,
+        param_names: []const []const u8,
+        depth: u8,
+    ) anyerror!*Ir {
         // Build argument list: pass all parameters
         var args = std.ArrayList(*const Ir){};
         defer args.deinit(self.allocator);
 
         for (param_names, 0..) |param, idx| {
-            const arg_ir = try self.builder.variable(param, 0, @intCast(idx));
+            const arg_ir = try self.builder.variable(param, depth, @intCast(idx));
             try args.append(self.allocator, arg_ir);
         }
 

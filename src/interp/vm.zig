@@ -3585,9 +3585,18 @@ pub const Vm = struct {
                 } else if (val.isSymbol()) {
                     const sym = val.toPtr(Symbol);
                     const local_name = sym.getName();
-                    // Build qualified name: "CL-USER:name"
+                    // Build qualified name using symbol's package
                     var qual_buf: [512]u8 = undefined;
-                    const qual_name = std.fmt.bufPrint(&qual_buf, "CL-USER:{s}", .{local_name}) catch local_name;
+                    const qual_name = blk: {
+                        const pkg_ptr = sym.reserved;
+                        if (pkg_ptr != 0) {
+                            const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
+                            break :blk std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
+                        } else {
+                            // No package - use local name as is, or try CL-USER fallback
+                            break :blk local_name;
+                        }
+                    };
                     // Look up symbol in global environment
                     if (self.global_env) |env| {
                         // Try qualified name first, then local name

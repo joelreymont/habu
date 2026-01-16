@@ -1172,6 +1172,15 @@ pub const Emitter = struct {
             return error.OutOfMemory;
         };
 
+        // Patch lambda's make_closure indices to account for parent's existing child_chunks
+        // The lambda's code uses indices relative to its own child_chunks array (starting at 0).
+        // But when we copy those child_chunks into the parent, they'll be at offset = parent's current len.
+        // So we need to add this offset to all make_closure indices in the lambda's code.
+        const child_base: u16 = @intCast(self.child_chunks.items.len);
+        if (child_base > 0) {
+            patchMakeClosureIndicesOffset(chunk.code, child_base);
+        }
+
         // Collect any child chunks from the lambda
         for (lambda_emitter.child_chunks.items) |child_chunk| {
             self.child_chunks.append(self.allocator, child_chunk) catch {
@@ -2090,6 +2099,28 @@ pub const Emitter = struct {
         try self.emitOp(.cdr);
     }
 };
+
+/// Patch make_closure instructions by adding an offset to their chunk indices.
+/// Used when collecting child chunks from nested emitters - the nested code's
+/// indices are relative to ITS child_chunks array, but they need to be adjusted
+/// to be relative to the parent's array.
+fn patchMakeClosureIndicesOffset(code: []u8, offset: u16) void {
+    var i: usize = 0;
+    while (i < code.len) {
+        const op: Op = @enumFromInt(code[i]);
+        const size = op.operandSize();
+
+        if (op == .make_closure) {
+            // make_closure has: u16 chunk_index, u8 num_captures
+            // Add offset to the u16 index at code[i+1..i+3]
+            const rel_idx = std.mem.readInt(u16, code[i + 1 ..][0..2], .little);
+            const new_idx = rel_idx + offset;
+            std.mem.writeInt(u16, code[i + 1 ..][0..2], new_idx, .little);
+        }
+
+        i += 1 + size;
+    }
+}
 
 // ============================================================================
 // Tests
