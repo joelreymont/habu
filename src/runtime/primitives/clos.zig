@@ -96,14 +96,23 @@ pub fn slotValue(heap: *Heap, args: Value) !Value {
 
     // Get package from symbol
     const sym_pkg_ptr = @as(?*heap_mod.Package, @ptrFromInt(class_sym.reserved));
+    var qual_buf: [256]u8 = undefined;
     const qualified_class_name = if (sym_pkg_ptr) |pkg| blk: {
-        var qual_buf: [256]u8 = undefined;
         const qn = std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, class_name }) catch return error.InvalidArgument;
         break :blk qn;
     } else class_name;
 
     // Look up class metadata to find slot index
-    const slot_names = heap.class_metadata.get(qualified_class_name) orelse return error.InvalidArgument;
+    // Try qualified name first, then common package prefixes as fallback
+    const slot_names = heap.class_metadata.get(qualified_class_name) orelse blk: {
+        // Try common package prefixes
+        const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
+        for (prefixes) |prefix| {
+            const try_name = std.fmt.bufPrint(&qual_buf, "{s}{s}", .{ prefix, class_name }) catch continue;
+            if (heap.class_metadata.get(try_name)) |names| break :blk names;
+        }
+        return error.InvalidArgument;
+    };
 
     for (slot_names, 0..) |name, idx| {
         if (std.mem.eql(u8, name, slot_name)) {
@@ -159,14 +168,23 @@ pub fn setSlotValue(heap: *Heap, args: Value) !Value {
 
     // Get package from symbol
     const sym_pkg_ptr = @as(?*heap_mod.Package, @ptrFromInt(class_sym.reserved));
+    var qual_buf: [256]u8 = undefined;
     const qualified_class_name = if (sym_pkg_ptr) |pkg| blk: {
-        var qual_buf: [256]u8 = undefined;
         const qn = std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, class_name }) catch return error.InvalidArgument;
         break :blk qn;
     } else class_name;
 
     // Look up class metadata to find slot index
-    const slot_names = heap.class_metadata.get(qualified_class_name) orelse return error.InvalidArgument;
+    // Try qualified name first, then common package prefixes as fallback
+    const slot_names = heap.class_metadata.get(qualified_class_name) orelse blk: {
+        // Try common package prefixes
+        const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
+        for (prefixes) |prefix| {
+            const try_name = std.fmt.bufPrint(&qual_buf, "{s}{s}", .{ prefix, class_name }) catch continue;
+            if (heap.class_metadata.get(try_name)) |names| break :blk names;
+        }
+        return error.InvalidArgument;
+    };
 
     for (slot_names, 0..) |name, idx| {
         if (std.mem.eql(u8, name, slot_name)) {

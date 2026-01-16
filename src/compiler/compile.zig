@@ -817,8 +817,8 @@ pub const Builtins = struct {
             .kw_eql = try heap.internKeyword("eql"),
             .kw_equal = try heap.internKeyword("equal"),
             .kw_colon = try heap.intern(":"),
-            .kw_type = try heap.intern("type"),
-            .kw_initform = try heap.intern("initform"),
+            .kw_type = try heap.internKeyword("type"),
+            .kw_initform = try heap.internKeyword("initform"),
             // *features* keywords
             .kw_habu = try heap.internKeyword("habu"),
             .kw_zig = try heap.internKeyword("zig"),
@@ -5539,10 +5539,21 @@ pub const Compiler = struct {
                 if (super_name_val.isSymbol()) {
                     const super_name = super_name_val.toPtr(Symbol).getName();
 
-                    // Look up superclass metadata
-                    if (self.class_metadata.get(super_name)) |parent_specs| {
+                    // Look up superclass metadata - try unqualified first, then with package prefixes
+                    const parent_specs = self.class_metadata.get(super_name) orelse blk: {
+                        // Try with common package prefixes
+                        var qual_buf: [256]u8 = undefined;
+                        const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
+                        for (prefixes) |prefix| {
+                            const try_name = std.fmt.bufPrint(&qual_buf, "{s}{s}", .{ prefix, super_name }) catch continue;
+                            if (self.class_metadata.get(try_name)) |specs| break :blk specs;
+                        }
+                        break :blk null;
+                    };
+
+                    if (parent_specs) |specs| {
                         // Inherit slots from parent
-                        for (parent_specs) |parent_spec| {
+                        for (specs) |parent_spec| {
                             const inherited_name = try self.allocator.dupe(u8, parent_spec.name);
                             try slot_specs.append(self.allocator, .{
                                 .name = inherited_name,
@@ -5563,15 +5574,21 @@ pub const Compiler = struct {
         var rest = cons2.cdr;
 
         // Check for CL standard syntax: single list of slot specs
+        // e.g. (defclass name () ((slot1 ...) (slot2 ...))) or (defclass name () ())
         if (rest.isCons()) {
             const first = rest.toPtr(Cons);
-            // If first element is a list and next is nil, it's CL standard
-            if (first.car.isCons() and first.cdr.isNil()) {
-                // Check if first element looks like a slots list (list of symbols/lists)
-                const inner = first.car.toPtr(Cons);
-                if (inner.car.isSymbol() or inner.car.isCons()) {
-                    // CL standard: unwrap the outer list
-                    rest = first.car;
+            // If next element is nil, first could be the slot list
+            if (first.cdr.isNil()) {
+                if (first.car.isNil()) {
+                    // Empty slot list: (defclass name (supers) ())
+                    rest = Value.nil;
+                } else if (first.car.isCons()) {
+                    // Check if first element looks like a slots list (list of symbols/lists)
+                    const inner = first.car.toPtr(Cons);
+                    if (inner.car.isSymbol() or inner.car.isCons()) {
+                        // CL standard: unwrap the outer list
+                        rest = first.car;
+                    }
                 }
             }
         }
@@ -5600,7 +5617,7 @@ pub const Compiler = struct {
                     const opt_cons = opts.toPtr(Cons);
                     const opt_key = opt_cons.car;
 
-                    if (opt_key.isSymbol()) {
+                    if (opt_key.isKeyword()) {
                         const b = self.builtins orelse return error.UninitializedBuiltins;
 
                         if (opt_key.eq(b.kw_type)) {
@@ -5736,14 +5753,22 @@ pub const Compiler = struct {
 
         // Get package from symbol
         const sym_pkg_ptr = @as(?*runtime.heap.Package, @ptrFromInt(class_sym.reserved));
+        var class_qual_buf: [256]u8 = undefined;
         const qualified_class_name = if (sym_pkg_ptr) |pkg| blk: {
-            var qual_buf: [256]u8 = undefined;
-            const qn = try std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, class_name });
+            const qn = try std.fmt.bufPrint(&class_qual_buf, "{s}:{s}", .{ pkg.name, class_name });
             break :blk qn;
         } else class_name;
 
         // Look up class metadata to get slot order
-        const slot_specs = self.class_metadata.get(qualified_class_name) orelse return error.InvalidSyntax;
+        // Try qualified name first, then with common package prefixes as fallback
+        const slot_specs = self.class_metadata.get(qualified_class_name) orelse blk: {
+            const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
+            for (prefixes) |prefix| {
+                const try_name = std.fmt.bufPrint(&class_qual_buf, "{s}{s}", .{ prefix, class_name }) catch continue;
+                if (self.class_metadata.get(try_name)) |specs| break :blk specs;
+            }
+            return error.InvalidSyntax;
+        };
 
         // Parse keyword arguments and build positional args array
         const slot_values = try self.allocator.alloc(?*Ir, slot_specs.len);

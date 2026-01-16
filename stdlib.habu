@@ -1242,76 +1242,106 @@
        ,@body)))
 
 ;; ============================================================
-;; Condition System
+;; CLOS Introspection
 ;; ============================================================
 
-; Simple condition representation as a cons: (type . data)
+;; class-of - return the class of an object
+;; For CLOS instances (vectors), returns the class name symbol
+;; For primitives, returns their type name
+(defun class-of (obj)
+  (cond
+    ((and (vectorp obj) (> (length obj) 0) (symbolp (aref obj 0)))
+     (aref obj 0))  ; CLOS instance - class name is first element
+    ((null obj) 'null)
+    ((consp obj) 'cons)
+    ((symbolp obj) 'symbol)
+    ((numberp obj) (if (integerp obj) 'integer 'float))
+    ((stringp obj) 'string)
+    ((vectorp obj) 'vector)
+    ((functionp obj) 'function)
+    (t 't)))
 
-; define-condition - define a condition type
-; For now, just creates a constructor function
+;; class-name - return the name of a class
+;; For now, classes are just symbols, so return the symbol
+(defun class-name (class)
+  class)
+
+;; ============================================================
+;; Condition System (CLOS-based)
+;; ============================================================
+
+;; Base condition class
+(defclass condition ()
+  ((format-control :initform nil)
+   (format-arguments :initform nil)))
+
+;; define-condition - define a condition type
+;; Expands to defclass with the parent types (or condition if none)
 (defmacro define-condition (name parent-types slots &rest options)
-  (declare (ignore parent-types options))
-  (let ((slot-names (mapcar (lambda (s) (if (consp s) (car s) s)) slots)))
-    (list 'defun name slot-names
-          (list 'list (list 'quote name)
-                (cons 'list
-                      (mapcar (lambda (s) (list 'cons (list 'quote s) s))
-                              slot-names))))))
+  (declare (ignore options))  ; TODO: support :report, :documentation
+  (let ((parents (if (null parent-types) '(condition) parent-types)))
+    `(defclass ,name ,parents ,slots)))
 
-; make-condition - create a condition instance
-(defun make-condition (type &rest args)
-  (cons type (plist-alist args)))
+;; make-condition - alias for make-instance for condition types
+;; Note: In Habu, defclass generates make-<classname> constructors,
+;; so make-condition is already generated for the condition class.
+;; Users can also use (make-instance 'condition-type ...) directly.
 
-; Convert plist to alist
-(defun plist-alist (plist)
-  (if (null plist)
-      nil
-      (cons (cons (car plist) (cadr plist))
-            (plist-alist (cddr plist)))))
-
-; condition-type - get type of condition
+;; condition-type - get type of condition (class name)
 (defun condition-type (condition)
-  (car condition))
+  (class-name (class-of condition)))
 
-; condition-slot - get slot value from condition
+;; condition-slot - get slot value from condition
 (defun condition-slot (condition slot-name)
-  (cdr (assoc slot-name (cdr condition))))
+  (slot-value condition slot-name))
 
-; handler-bind - establish condition handlers
-(defmacro handler-bind (bindings &rest body)
-  (if (null bindings)
-      (cons 'progn body)
-      (let ((binding (car bindings)))
-        (list 'catch '%condition%
-              (list 'handler-bind (cdr bindings)
-                    (cons 'progn body))))))
+;; Standard condition hierarchy
+(define-condition simple-condition (condition)
+  ((format-control :initform nil)
+   (format-arguments :initform nil)))
 
-; signal - signal a condition (can be handled)
-(defun signal (condition-type &rest datum)
-  (throw '%condition% (cons condition-type datum)))
+(define-condition warning (condition) ())
 
-; error-condition - signal an error condition
-(defun error-condition (condition)
+(define-condition simple-warning (simple-condition warning) ())
+
+(define-condition serious-condition (condition) ())
+
+(define-condition error (serious-condition) ())
+
+(define-condition simple-error (simple-condition error) ())
+
+(define-condition type-error (error)
+  ((datum :initform nil)
+   (expected-type :initform nil)))
+
+(define-condition cell-error (error)
+  ((name :initform nil)))
+
+(define-condition unbound-variable (cell-error) ())
+
+(define-condition undefined-function (cell-error) ())
+
+(define-condition control-error (error) ())
+
+(define-condition program-error (error) ())
+
+(define-condition arithmetic-error (error)
+  ((operation :initform nil)
+   (operands :initform nil)))
+
+(define-condition division-by-zero (arithmetic-error) ())
+
+;; signal - signal a condition (can be handled and declined)
+;; For now, uses throw; proper implementation would check handlers first
+(defun signal-condition (condition)
   (throw '%condition% condition))
 
-; cerror - continuable error
-(defun cerror (format-string condition)
+;; cerror - continuable error
+(defun cerror (format-string &rest args)
   (declare (ignore format-string))
-  (signal condition))
-
-; NOTE: warn is defined at top of file using signal/condition system
-
-; simple-condition - basic condition with format control
-(defun simple-condition (format-control &rest format-arguments)
-  (cons 'simple-condition
-        (list (cons 'format-control format-control)
-              (cons 'format-arguments format-arguments))))
-
-; simple-error - basic error condition
-(defun simple-error (format-control &rest format-arguments)
-  (cons 'simple-error
-        (list (cons 'format-control format-control)
-              (cons 'format-arguments format-arguments))))
+  (if args
+      (signal-condition (car args))
+      nil))
 
 ;; ============================================================
 ;; Generalized Reference (SETF)
