@@ -2594,7 +2594,7 @@ pub const Vm = struct {
             .open => {
                 const mode_val = try self.pop();
                 const path_val = try self.pop();
-                const result = try primitives.stream.primOpen(self.heap, &[_]Value{ path_val, mode_val });
+                const result = try primitives.stream.primOpen(self.heap, &[_]Value{ path_val, mode_val }, &self.builtins);
                 try self.push(result);
             },
             .close => {

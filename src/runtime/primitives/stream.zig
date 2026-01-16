@@ -8,41 +8,33 @@ const Stream = @import("../objects.zig").Stream;
 const StreamDirection = @import("../objects.zig").StreamDirection;
 const StreamType = @import("../objects.zig").StreamType;
 const Symbol = @import("../objects.zig").Symbol;
+const BuiltinSymbols = @import("../builtins.zig").BuiltinSymbols;
 
-pub fn primOpen(heap: *Heap, args: []const Value) !Value {
+pub fn primOpen(heap: *Heap, args: []const Value, builtins: *const BuiltinSymbols) !Value {
     if (args.len < 2) return error.InvalidArgument;
 
     const path_val = args[0];
     const mode_val = args[1];
 
     if (!path_val.isString()) return error.InvalidArgument;
-    if (!mode_val.isSymbol()) return error.InvalidArgument;
+    if (!mode_val.isKeyword()) return error.InvalidArgument;
 
     const path_str = path_val.toPtr(String);
     const path = path_str.data[0..path_str.length];
 
-    const mode_sym = mode_val.toPtr(Symbol);
-    const mode_name = mode_sym.getName();
+    // Parse mode keyword using identity: :read, :write, :append
+    const is_read = mode_val.raw == builtins.kw_read.raw;
+    const is_write = mode_val.raw == builtins.kw_write.raw;
+    const is_append = mode_val.raw == builtins.kw_append.raw;
 
-    // Parse mode symbol: :read, :write, :append
-    const direction: StreamDirection = blk: {
-        if (std.mem.eql(u8, mode_name, "read")) break :blk .input;
-        if (std.mem.eql(u8, mode_name, "write")) break :blk .output;
-        if (std.mem.eql(u8, mode_name, "append")) break :blk .output;
-        return error.InvalidArgument;
-    };
+    if (!is_read and !is_write and !is_append) return error.InvalidArgument;
+
+    const direction: StreamDirection = if (is_read) .input else .output;
 
     // Open the file with appropriate flags
-    const flags: std.fs.File.OpenFlags = if (direction == .input)
-        .{ .mode = .read_only }
-    else if (std.mem.eql(u8, mode_name, "append"))
-        .{ .mode = .write_only }
-    else
-        .{ .mode = .write_only };
-
-    const file = if (direction == .input)
-        try std.fs.cwd().openFile(path, flags)
-    else if (std.mem.eql(u8, mode_name, "append"))
+    const file = if (is_read)
+        try std.fs.cwd().openFile(path, .{ .mode = .read_only })
+    else if (is_append)
         try std.fs.cwd().createFile(path, .{ .truncate = false })
     else
         try std.fs.cwd().createFile(path, .{ .truncate = true });

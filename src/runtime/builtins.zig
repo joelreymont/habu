@@ -70,6 +70,9 @@ pub const BuiltinSymbols = struct {
     // Keywords
     kw_absolute: Value,
     kw_relative: Value,
+    kw_read: Value,
+    kw_write: Value,
+    kw_append: Value,
 
     pub fn init(heap: *Heap) !BuiltinSymbols {
         return BuiltinSymbols{
@@ -139,6 +142,9 @@ pub const BuiltinSymbols = struct {
             // Keywords
             .kw_absolute = try heap.internKeyword("absolute"),
             .kw_relative = try heap.internKeyword("relative"),
+            .kw_read = try heap.internKeyword("read"),
+            .kw_write = try heap.internKeyword("write"),
+            .kw_append = try heap.internKeyword("append"),
         };
     }
 };
