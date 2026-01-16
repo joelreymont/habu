@@ -313,6 +313,9 @@ pub const Op = enum(u8) {
     numerator = 0x5D,
     /// Get denominator of rational (0x5E)
     denominator = 0x5E,
+    /// Convert to rational (0x0E)
+    rational = 0x0E,
+    /// Convert float to rational (0x0E) - same as rational
 
     // ========================================================================
     // Vector operations
@@ -1291,6 +1294,7 @@ pub const Op = enum(u8) {
             .imag_part,
             .numerator,
             .denominator,
+            .rational,
             .characterp,
             .floatp,
             .char_code,

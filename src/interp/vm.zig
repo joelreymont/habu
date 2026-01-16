@@ -2428,6 +2428,14 @@ pub const Vm = struct {
                 const rat = val.toPtr(runtime.Rational);
                 try self.push(Value.makeFixnum(rat.denominator));
             },
+            .rational => {
+                const val = try self.pop();
+                const result = if (val.isFloat())
+                    try primitives.rational.floatToRational(self.heap, val.toFloat())
+                else
+                    val; // Already rational or integer
+                try self.push(result);
+            },
             .get => {
                 const indicator = try self.pop();
                 const sym = try self.pop();

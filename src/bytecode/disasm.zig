@@ -147,6 +147,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .imag_part,
         .numerator,
         .denominator,
+        .rational,
         .characterp,
         .floatp,
         .char_code,

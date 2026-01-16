@@ -409,6 +409,8 @@ pub const Ir = union(enum) {
     imag_part: UnaryOp, // get imaginary part of complex
     numerator: UnaryOp, // get numerator of rational
     denominator: UnaryOp, // get denominator of rational
+    rational: UnaryOp, // convert number to rational
+    rationalize: UnaryOp, // convert float to rational
     /// Struct type predicate: checks if value is a specific struct type
     /// Used for occurrence typing to narrow to struct types
     struct_p: struct {
