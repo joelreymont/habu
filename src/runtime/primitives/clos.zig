@@ -1,7 +1,8 @@
 const std = @import("std");
 const Value = @import("../value.zig").Value;
 const runtime = @import("../runtime.zig");
-const Heap = @import("../heap.zig").Heap;
+const heap_mod = @import("../heap.zig");
+const Heap = heap_mod.Heap;
 const Cons = @import("../objects.zig").Cons;
 const Symbol = @import("../objects.zig").Symbol;
 const Vector = @import("../objects.zig").Vector;
@@ -89,10 +90,19 @@ pub fn slotValue(heap: *Heap, args: Value) !Value {
 
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const class_name = class_name_val.toPtr(Symbol).getName();
+    const class_sym = class_name_val.toPtr(Symbol);
+    const class_name = class_sym.getName();
+
+    // Get package from symbol
+    const sym_pkg_ptr = @as(?*heap_mod.Package, @ptrFromInt(class_sym.reserved));
+    const qualified_class_name = if (sym_pkg_ptr) |pkg| blk: {
+        var qual_buf: [256]u8 = undefined;
+        const qn = std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, class_name }) catch return error.InvalidArgument;
+        break :blk qn;
+    } else class_name;
 
     // Look up class metadata to find slot index
-    const slot_names = heap.class_metadata.get(class_name) orelse return error.InvalidArgument;
+    const slot_names = heap.class_metadata.get(qualified_class_name) orelse return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (std.mem.eql(u8, name, slot_name)) {
@@ -143,10 +153,19 @@ pub fn setSlotValue(heap: *Heap, args: Value) !Value {
 
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const class_name = class_name_val.toPtr(Symbol).getName();
+    const class_sym = class_name_val.toPtr(Symbol);
+    const class_name = class_sym.getName();
+
+    // Get package from symbol
+    const sym_pkg_ptr = @as(?*heap_mod.Package, @ptrFromInt(class_sym.reserved));
+    const qualified_class_name = if (sym_pkg_ptr) |pkg| blk: {
+        var qual_buf: [256]u8 = undefined;
+        const qn = std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, class_name }) catch return error.InvalidArgument;
+        break :blk qn;
+    } else class_name;
 
     // Look up class metadata to find slot index
-    const slot_names = heap.class_metadata.get(class_name) orelse return error.InvalidArgument;
+    const slot_names = heap.class_metadata.get(qualified_class_name) orelse return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (std.mem.eql(u8, name, slot_name)) {

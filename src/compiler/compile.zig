@@ -5597,7 +5597,9 @@ pub const Compiler = struct {
                 .initform = spec.initform,
             };
         }
-        const persistent_class_name = try self.globals.allocator.dupe(u8, class_name);
+        var qual_buf: [256]u8 = undefined;
+        const qualified_class_name = try self.qualifyName(class_name, &qual_buf);
+        const persistent_class_name = try self.globals.allocator.dupe(u8, qualified_class_name);
         try self.class_metadata.put(persistent_class_name, persistent_specs);
 
         // Also store in heap for runtime slot-value lookup
@@ -5661,10 +5663,19 @@ pub const Compiler = struct {
         }
 
         if (!class_name_expr.isSymbol()) return error.InvalidSyntax;
-        const class_name = class_name_expr.toPtr(Symbol).getName();
+        const class_sym = class_name_expr.toPtr(Symbol);
+        const class_name = class_sym.getName();
+
+        // Get package from symbol
+        const sym_pkg_ptr = @as(?*runtime.heap.Package, @ptrFromInt(class_sym.reserved));
+        const qualified_class_name = if (sym_pkg_ptr) |pkg| blk: {
+            var qual_buf: [256]u8 = undefined;
+            const qn = try std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, class_name });
+            break :blk qn;
+        } else class_name;
 
         // Look up class metadata to get slot order
-        const slot_specs = self.class_metadata.get(class_name) orelse return error.InvalidSyntax;
+        const slot_specs = self.class_metadata.get(qualified_class_name) orelse return error.InvalidSyntax;
 
         // Parse keyword arguments and build positional args array
         const slot_values = try self.allocator.alloc(?*Ir, slot_specs.len);
