@@ -1225,6 +1225,22 @@
 (defun hash-table-size (table)
   (hash-table-count table))
 
+; with-hash-table-iterator - iterate over hash table entries
+; (with-hash-table-iterator (name table) body...)
+; name is bound to iterator function that returns (has-entry-p key value)
+(defmacro with-hash-table-iterator (spec &rest body)
+  (let ((name (car spec))
+        (table (cadr spec))
+        (state-var (gensym)))
+    `(let* ((,state-var (cons (hash-table-alist ,table) nil))
+            (,name (lambda ()
+                     (if (car ,state-var)
+                         (let ((entry (car (car ,state-var))))
+                           (setf (car ,state-var) (cdr (car ,state-var)))
+                           (values t (car entry) (cdr entry)))
+                         (values nil nil nil)))))
+       ,@body)))
+
 ;; ============================================================
 ;; Condition System
 ;; ============================================================
