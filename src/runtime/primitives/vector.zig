@@ -510,6 +510,301 @@ pub fn vectorReverse(val: Value) bool {
     return true;
 }
 
+/// Replace elements from src into dst
+/// Copies from src[s2..e2] to dst[s1..s1+(e2-s2)]
+/// Returns true on success
+pub fn replace(dst: Value, src: Value, s1: usize, e1: ?usize, s2: usize, e2: ?usize) bool {
+    // Determine lengths
+    const dst_len = switch (dst.typeKind()) {
+        .vector => dst.toPtr(objects.Vector).length,
+        .cons, .nil => blk: {
+            const list_prim = @import("list.zig");
+            const len = list_prim.length(dst);
+            break :blk if (len < 0) return false else @as(usize, @intCast(len));
+        },
+        else => return false,
+    };
+
+    const src_len = switch (src.typeKind()) {
+        .vector => src.toPtr(objects.Vector).length,
+        .cons, .nil => blk: {
+            const list_prim = @import("list.zig");
+            const len = list_prim.length(src);
+            break :blk if (len < 0) return false else @as(usize, @intCast(len));
+        },
+        else => return false,
+    };
+
+    // Resolve end indices
+    const end1 = e1 orelse dst_len;
+    const end2 = e2 orelse src_len;
+
+    // Validate ranges
+    if (s1 > end1 or end1 > dst_len) return false;
+    if (s2 > end2 or end2 > src_len) return false;
+
+    // Compute copy count (min of available in src and space in dst)
+    const src_count = end2 - s2;
+    const dst_space = end1 - s1;
+    const copy_count = @min(src_count, dst_space);
+
+    // Fast path: vector to vector
+    if (dst.isVector() and src.isVector()) {
+        const dst_vec = dst.toPtr(objects.Vector);
+        const src_vec = src.toPtr(objects.Vector);
+
+        // Check for overlapping ranges on same vector
+        if (dst.raw == src.raw) {
+            // Same vector - handle overlap
+            if (s1 < s2) {
+                // Copy forward
+                for (0..copy_count) |i| {
+                    dst_vec.data[s1 + i] = src_vec.data[s2 + i];
+                }
+            } else if (s1 > s2) {
+                // Copy backward
+                var i = copy_count;
+                while (i > 0) {
+                    i -= 1;
+                    dst_vec.data[s1 + i] = src_vec.data[s2 + i];
+                }
+            }
+            // s1 == s2: no-op
+        } else {
+            // Different vectors - simple copy
+            for (0..copy_count) |i| {
+                dst_vec.data[s1 + i] = src_vec.data[s2 + i];
+            }
+        }
+        return true;
+    }
+
+    // Mixed or list sequences
+    const list_prim = @import("list.zig");
+
+    // Collect source elements
+    var src_items: [512]Value = undefined;
+    var idx: usize = 0;
+    switch (src.typeKind()) {
+        .vector => {
+            const src_vec = src.toPtr(objects.Vector);
+            for (s2..s2 + copy_count) |i| {
+                if (idx >= src_items.len) return false;
+                src_items[idx] = src_vec.data[i];
+                idx += 1;
+            }
+        },
+        .cons, .nil => {
+            var curr = src;
+            var pos: usize = 0;
+            while (pos < s2 and !curr.isNil()) {
+                if (!curr.isCons()) return false;
+                curr = list_prim.cdr(curr);
+                pos += 1;
+            }
+            while (pos < s2 + copy_count and !curr.isNil()) {
+                if (!curr.isCons()) return false;
+                if (idx >= src_items.len) return false;
+                src_items[idx] = list_prim.car(curr);
+                curr = list_prim.cdr(curr);
+                idx += 1;
+                pos += 1;
+            }
+        },
+        else => return false,
+    }
+
+    // Write to destination
+    switch (dst.typeKind()) {
+        .vector => {
+            const dst_vec = dst.toPtr(objects.Vector);
+            for (0..idx) |i| {
+                dst_vec.data[s1 + i] = src_items[i];
+            }
+        },
+        .cons, .nil => {
+            var curr = dst;
+            var pos: usize = 0;
+            while (pos < s1 and !curr.isNil()) {
+                if (!curr.isCons()) return false;
+                curr = list_prim.cdr(curr);
+                pos += 1;
+            }
+            for (0..idx) |i| {
+                if (!curr.isCons()) return false;
+                const cons = curr.toPtr(objects.Cons);
+                cons.car = src_items[i];
+                curr = cons.cdr;
+                pos += 1;
+            }
+        },
+        else => return false,
+    }
+
+    return true;
+}
+
+/// Search for subsequence in sequence
+/// Returns starting index if found, or null
+pub fn search(seq: Value, pat: Value, start: usize, end: ?usize, from_end: bool) ?usize {
+    // Get lengths
+    const seq_len = switch (seq.typeKind()) {
+        .vector => seq.toPtr(objects.Vector).length,
+        .cons, .nil => blk: {
+            const list_prim = @import("list.zig");
+            const len = list_prim.length(seq);
+            break :blk if (len < 0) return null else @as(usize, @intCast(len));
+        },
+        else => return null,
+    };
+
+    const pat_len = switch (pat.typeKind()) {
+        .vector => pat.toPtr(objects.Vector).length,
+        .cons, .nil => blk: {
+            const list_prim = @import("list.zig");
+            const len = list_prim.length(pat);
+            break :blk if (len < 0) return null else @as(usize, @intCast(len));
+        },
+        else => return null,
+    };
+
+    const e = end orelse seq_len;
+    if (start > e or e > seq_len) return null;
+
+    // Empty pattern always matches at start
+    if (pat_len == 0) return if (from_end) e else start;
+
+    // Pattern longer than search range
+    if (pat_len > e - start) return null;
+
+    const search_len = e - start - pat_len + 1;
+
+    if (from_end) {
+        var pos = search_len;
+        while (pos > 0) {
+            pos -= 1;
+            if (matchesAt(seq, pat, start + pos, pat_len)) {
+                return start + pos;
+            }
+        }
+    } else {
+        for (0..search_len) |i| {
+            if (matchesAt(seq, pat, start + i, pat_len)) {
+                return start + i;
+            }
+        }
+    }
+
+    return null;
+}
+
+fn matchesAt(seq: Value, pat: Value, seq_pos: usize, pat_len: usize) bool {
+    const list_prim = @import("list.zig");
+
+    // Fast path: both vectors
+    if (seq.isVector() and pat.isVector()) {
+        const seq_vec = seq.toPtr(objects.Vector);
+        const pat_vec = pat.toPtr(objects.Vector);
+        for (0..pat_len) |i| {
+            if (seq_vec.data[seq_pos + i].raw != pat_vec.data[i].raw) return false;
+        }
+        return true;
+    }
+
+    // Mixed: collect elements and compare
+    for (0..pat_len) |i| {
+        const s_val = switch (seq.typeKind()) {
+            .vector => seq.toPtr(objects.Vector).data[seq_pos + i],
+            .cons, .nil => list_prim.nth(seq, @intCast(seq_pos + i)),
+            else => return false,
+        };
+
+        const p_val = switch (pat.typeKind()) {
+            .vector => pat.toPtr(objects.Vector).data[i],
+            .cons, .nil => list_prim.nth(pat, @intCast(i)),
+            else => return false,
+        };
+
+        if (s_val.raw != p_val.raw) return false;
+    }
+
+    return true;
+}
+
+/// Find first position where sequences differ
+/// Returns index in seq1 where mismatch occurs, or null if equal
+pub fn mismatch(s1: Value, s2: Value, s1_start: usize, s1_end: ?usize, s2_start: usize, s2_end: ?usize, from_end: bool) ?usize {
+    // Get lengths
+    const s1_len = switch (s1.typeKind()) {
+        .vector => s1.toPtr(objects.Vector).length,
+        .cons, .nil => blk: {
+            const list_prim = @import("list.zig");
+            const len = list_prim.length(s1);
+            break :blk if (len < 0) return null else @as(usize, @intCast(len));
+        },
+        else => return null,
+    };
+
+    const s2_len = switch (s2.typeKind()) {
+        .vector => s2.toPtr(objects.Vector).length,
+        .cons, .nil => blk: {
+            const list_prim = @import("list.zig");
+            const len = list_prim.length(s2);
+            break :blk if (len < 0) return null else @as(usize, @intCast(len));
+        },
+        else => return null,
+    };
+
+    const e1 = s1_end orelse s1_len;
+    const e2 = s2_end orelse s2_len;
+
+    if (s1_start > e1 or e1 > s1_len) return null;
+    if (s2_start > e2 or e2 > s2_len) return null;
+
+    const cmp_len = @min(e1 - s1_start, e2 - s2_start);
+
+    if (from_end) {
+        var i = cmp_len;
+        while (i > 0) {
+            i -= 1;
+            if (!elemEq(s1, s1_start + i, s2, s2_start + i)) {
+                return s1_start + i;
+            }
+        }
+    } else {
+        for (0..cmp_len) |i| {
+            if (!elemEq(s1, s1_start + i, s2, s2_start + i)) {
+                return s1_start + i;
+            }
+        }
+    }
+
+    // All compared elements equal - check if lengths differ
+    if ((e1 - s1_start) != (e2 - s2_start)) {
+        return if (from_end) s1_start else s1_start + cmp_len;
+    }
+
+    return null;
+}
+
+fn elemEq(s: Value, idx: usize, s2: Value, idx2: usize) bool {
+    const list_prim = @import("list.zig");
+
+    const v1 = switch (s.typeKind()) {
+        .vector => s.toPtr(objects.Vector).data[idx],
+        .cons, .nil => list_prim.nth(s, @intCast(idx)),
+        else => return false,
+    };
+
+    const v2 = switch (s2.typeKind()) {
+        .vector => s2.toPtr(objects.Vector).data[idx2],
+        .cons, .nil => list_prim.nth(s2, @intCast(idx2)),
+        else => return false,
+    };
+
+    return v1.raw == v2.raw;
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -799,4 +1094,268 @@ test "fill list" {
     try testing.expectEqual(@as(i64, 42), list_prim.nth(lst2, 2).toFixnum());
     try testing.expectEqual(@as(i64, 42), list_prim.nth(lst2, 3).toFixnum());
     try testing.expectEqual(@as(i64, 5), list_prim.nth(lst2, 4).toFixnum());
+}
+
+test "replace vector to vector" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const src = try makeVector(&heap, 4);
+    _ = vectorSet(src, 0, Value.makeFixnum(10));
+    _ = vectorSet(src, 1, Value.makeFixnum(20));
+    _ = vectorSet(src, 2, Value.makeFixnum(30));
+    _ = vectorSet(src, 3, Value.makeFixnum(40));
+
+    const dst = try makeVector(&heap, 6);
+    _ = vectorSet(dst, 0, Value.makeFixnum(1));
+    _ = vectorSet(dst, 1, Value.makeFixnum(2));
+    _ = vectorSet(dst, 2, Value.makeFixnum(3));
+    _ = vectorSet(dst, 3, Value.makeFixnum(4));
+    _ = vectorSet(dst, 4, Value.makeFixnum(5));
+    _ = vectorSet(dst, 5, Value.makeFixnum(6));
+
+    // Replace dst[1..4] with src[0..3]
+    try testing.expect(replace(dst, src, 1, 4, 0, 3));
+    try testing.expectEqual(@as(i64, 1), vectorRef(dst, 0).toFixnum());
+    try testing.expectEqual(@as(i64, 10), vectorRef(dst, 1).toFixnum());
+    try testing.expectEqual(@as(i64, 20), vectorRef(dst, 2).toFixnum());
+    try testing.expectEqual(@as(i64, 30), vectorRef(dst, 3).toFixnum());
+    try testing.expectEqual(@as(i64, 5), vectorRef(dst, 4).toFixnum());
+    try testing.expectEqual(@as(i64, 6), vectorRef(dst, 5).toFixnum());
+}
+
+test "replace overlapping same vector" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const vec = try makeVector(&heap, 6);
+    _ = vectorSet(vec, 0, Value.makeFixnum(1));
+    _ = vectorSet(vec, 1, Value.makeFixnum(2));
+    _ = vectorSet(vec, 2, Value.makeFixnum(3));
+    _ = vectorSet(vec, 3, Value.makeFixnum(4));
+    _ = vectorSet(vec, 4, Value.makeFixnum(5));
+    _ = vectorSet(vec, 5, Value.makeFixnum(6));
+
+    // Shift right: copy [0..3] to [2..5]
+    try testing.expect(replace(vec, vec, 2, 5, 0, 3));
+    try testing.expectEqual(@as(i64, 1), vectorRef(vec, 0).toFixnum());
+    try testing.expectEqual(@as(i64, 2), vectorRef(vec, 1).toFixnum());
+    try testing.expectEqual(@as(i64, 1), vectorRef(vec, 2).toFixnum());
+    try testing.expectEqual(@as(i64, 2), vectorRef(vec, 3).toFixnum());
+    try testing.expectEqual(@as(i64, 3), vectorRef(vec, 4).toFixnum());
+    try testing.expectEqual(@as(i64, 6), vectorRef(vec, 5).toFixnum());
+}
+
+test "replace list to vector" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const list_prim = @import("list.zig");
+    const src = try list_prim.list(&heap, &[_]Value{
+        Value.makeFixnum(10),
+        Value.makeFixnum(20),
+        Value.makeFixnum(30),
+    });
+
+    const dst = try makeVector(&heap, 5);
+    _ = vectorSet(dst, 0, Value.makeFixnum(1));
+    _ = vectorSet(dst, 1, Value.makeFixnum(2));
+    _ = vectorSet(dst, 2, Value.makeFixnum(3));
+    _ = vectorSet(dst, 3, Value.makeFixnum(4));
+    _ = vectorSet(dst, 4, Value.makeFixnum(5));
+
+    try testing.expect(replace(dst, src, 1, 4, 0, 3));
+    try testing.expectEqual(@as(i64, 1), vectorRef(dst, 0).toFixnum());
+    try testing.expectEqual(@as(i64, 10), vectorRef(dst, 1).toFixnum());
+    try testing.expectEqual(@as(i64, 20), vectorRef(dst, 2).toFixnum());
+    try testing.expectEqual(@as(i64, 30), vectorRef(dst, 3).toFixnum());
+    try testing.expectEqual(@as(i64, 5), vectorRef(dst, 4).toFixnum());
+}
+
+test "replace vector to list" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const list_prim = @import("list.zig");
+
+    const src = try makeVector(&heap, 3);
+    _ = vectorSet(src, 0, Value.makeFixnum(10));
+    _ = vectorSet(src, 1, Value.makeFixnum(20));
+    _ = vectorSet(src, 2, Value.makeFixnum(30));
+
+    const dst = try list_prim.list(&heap, &[_]Value{
+        Value.makeFixnum(1),
+        Value.makeFixnum(2),
+        Value.makeFixnum(3),
+        Value.makeFixnum(4),
+        Value.makeFixnum(5),
+    });
+
+    try testing.expect(replace(dst, src, 1, 4, 0, 3));
+    try testing.expectEqual(@as(i64, 1), list_prim.nth(dst, 0).toFixnum());
+    try testing.expectEqual(@as(i64, 10), list_prim.nth(dst, 1).toFixnum());
+    try testing.expectEqual(@as(i64, 20), list_prim.nth(dst, 2).toFixnum());
+    try testing.expectEqual(@as(i64, 30), list_prim.nth(dst, 3).toFixnum());
+    try testing.expectEqual(@as(i64, 5), list_prim.nth(dst, 4).toFixnum());
+}
+
+test "search vector in vector" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const seq = try makeVector(&heap, 6);
+    _ = vectorSet(seq, 0, Value.makeFixnum(1));
+    _ = vectorSet(seq, 1, Value.makeFixnum(2));
+    _ = vectorSet(seq, 2, Value.makeFixnum(3));
+    _ = vectorSet(seq, 3, Value.makeFixnum(2));
+    _ = vectorSet(seq, 4, Value.makeFixnum(3));
+    _ = vectorSet(seq, 5, Value.makeFixnum(4));
+
+    const pat = try makeVector(&heap, 2);
+    _ = vectorSet(pat, 0, Value.makeFixnum(2));
+    _ = vectorSet(pat, 1, Value.makeFixnum(3));
+
+    // Find first occurrence
+    try testing.expectEqual(@as(usize, 1), search(seq, pat, 0, null, false).?);
+
+    // Find last occurrence
+    try testing.expectEqual(@as(usize, 3), search(seq, pat, 0, null, true).?);
+
+    // Not found
+    const pat2 = try makeVector(&heap, 2);
+    _ = vectorSet(pat2, 0, Value.makeFixnum(5));
+    _ = vectorSet(pat2, 1, Value.makeFixnum(6));
+    try testing.expect(search(seq, pat2, 0, null, false) == null);
+}
+
+test "search empty pattern" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const seq = try makeVector(&heap, 3);
+    _ = vectorSet(seq, 0, Value.makeFixnum(1));
+    _ = vectorSet(seq, 1, Value.makeFixnum(2));
+    _ = vectorSet(seq, 2, Value.makeFixnum(3));
+
+    const pat = try makeVector(&heap, 0);
+
+    try testing.expectEqual(@as(usize, 0), search(seq, pat, 0, null, false).?);
+    try testing.expectEqual(@as(usize, 3), search(seq, pat, 0, null, true).?);
+}
+
+test "search with range" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const seq = try makeVector(&heap, 6);
+    _ = vectorSet(seq, 0, Value.makeFixnum(1));
+    _ = vectorSet(seq, 1, Value.makeFixnum(2));
+    _ = vectorSet(seq, 2, Value.makeFixnum(3));
+    _ = vectorSet(seq, 3, Value.makeFixnum(2));
+    _ = vectorSet(seq, 4, Value.makeFixnum(3));
+    _ = vectorSet(seq, 5, Value.makeFixnum(4));
+
+    const pat = try makeVector(&heap, 2);
+    _ = vectorSet(pat, 0, Value.makeFixnum(2));
+    _ = vectorSet(pat, 1, Value.makeFixnum(3));
+
+    // Search in range [2..6]
+    try testing.expectEqual(@as(usize, 3), search(seq, pat, 2, 6, false).?);
+
+    // Search in range [0..3] - should only find first
+    try testing.expectEqual(@as(usize, 1), search(seq, pat, 0, 3, false).?);
+}
+
+test "mismatch vectors" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const v1 = try makeVector(&heap, 5);
+    _ = vectorSet(v1, 0, Value.makeFixnum(1));
+    _ = vectorSet(v1, 1, Value.makeFixnum(2));
+    _ = vectorSet(v1, 2, Value.makeFixnum(3));
+    _ = vectorSet(v1, 3, Value.makeFixnum(4));
+    _ = vectorSet(v1, 4, Value.makeFixnum(5));
+
+    const v2 = try makeVector(&heap, 5);
+    _ = vectorSet(v2, 0, Value.makeFixnum(1));
+    _ = vectorSet(v2, 1, Value.makeFixnum(2));
+    _ = vectorSet(v2, 2, Value.makeFixnum(9));
+    _ = vectorSet(v2, 3, Value.makeFixnum(4));
+    _ = vectorSet(v2, 4, Value.makeFixnum(5));
+
+    // Mismatch at index 2
+    try testing.expectEqual(@as(usize, 2), mismatch(v1, v2, 0, null, 0, null, false).?);
+
+    // Identical sequences
+    const v3 = try makeVector(&heap, 5);
+    _ = vectorSet(v3, 0, Value.makeFixnum(1));
+    _ = vectorSet(v3, 1, Value.makeFixnum(2));
+    _ = vectorSet(v3, 2, Value.makeFixnum(3));
+    _ = vectorSet(v3, 3, Value.makeFixnum(4));
+    _ = vectorSet(v3, 4, Value.makeFixnum(5));
+
+    try testing.expect(mismatch(v1, v3, 0, null, 0, null, false) == null);
+}
+
+test "mismatch different lengths" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const v1 = try makeVector(&heap, 5);
+    _ = vectorSet(v1, 0, Value.makeFixnum(1));
+    _ = vectorSet(v1, 1, Value.makeFixnum(2));
+    _ = vectorSet(v1, 2, Value.makeFixnum(3));
+    _ = vectorSet(v1, 3, Value.makeFixnum(4));
+    _ = vectorSet(v1, 4, Value.makeFixnum(5));
+
+    const v2 = try makeVector(&heap, 3);
+    _ = vectorSet(v2, 0, Value.makeFixnum(1));
+    _ = vectorSet(v2, 1, Value.makeFixnum(2));
+    _ = vectorSet(v2, 2, Value.makeFixnum(3));
+
+    // v1 longer than v2 - mismatch at index 3
+    try testing.expectEqual(@as(usize, 3), mismatch(v1, v2, 0, null, 0, null, false).?);
+}
+
+test "mismatch from end" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const v1 = try makeVector(&heap, 5);
+    _ = vectorSet(v1, 0, Value.makeFixnum(1));
+    _ = vectorSet(v1, 1, Value.makeFixnum(2));
+    _ = vectorSet(v1, 2, Value.makeFixnum(3));
+    _ = vectorSet(v1, 3, Value.makeFixnum(4));
+    _ = vectorSet(v1, 4, Value.makeFixnum(5));
+
+    const v2 = try makeVector(&heap, 5);
+    _ = vectorSet(v2, 0, Value.makeFixnum(9));
+    _ = vectorSet(v2, 1, Value.makeFixnum(2));
+    _ = vectorSet(v2, 2, Value.makeFixnum(3));
+    _ = vectorSet(v2, 3, Value.makeFixnum(4));
+    _ = vectorSet(v2, 4, Value.makeFixnum(5));
+
+    // From end: mismatch at index 0
+    try testing.expectEqual(@as(usize, 0), mismatch(v1, v2, 0, null, 0, null, true).?);
 }
