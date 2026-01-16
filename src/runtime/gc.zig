@@ -316,7 +316,17 @@ pub const GC = struct {
                         const old_ptr: usize = arr.data_ptr;
                         arr.data_ptr = @intCast(@as(isize, @intCast(old_ptr)) + addr_delta);
                     },
-                    .rational, .complex, .stream, .bignum, .pathname, .package, .chunk => {
+                    .chunk => {
+                        // Chunk has two interior pointers:
+                        // const_pool points to inline array after header
+                        // code points to inline array after constants
+                        const chunk: *objects.Chunk = @ptrFromInt(new_addr);
+                        const old_const_pool = @intFromPtr(chunk.const_pool);
+                        const old_code = @intFromPtr(chunk.code);
+                        chunk.const_pool = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_const_pool)) + addr_delta)));
+                        chunk.code = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_code)) + addr_delta)));
+                    },
+                    .rational, .complex, .stream, .bignum, .pathname, .package => {
                         // No interior pointers to repair
                     },
                 }
@@ -439,7 +449,16 @@ pub const GC = struct {
                             pkg.shadowing = try self.copyValue(pkg.shadowing, alloc_ptr);
                         }
                     },
-                    .rational, .complex, .bignum, .chunk => {
+                    .chunk => {
+                        // Scan all constants in the constant pool
+                        const chunk: *objects.Chunk = @ptrFromInt(addr);
+                        for (chunk.getConstants()) |*const_val| {
+                            if (const_val.isPointer() and !const_val.isNil()) {
+                                const_val.* = try self.copyValue(const_val.*, alloc_ptr);
+                            }
+                        }
+                    },
+                    .rational, .complex, .bignum => {
                         // No Value references to scan
                     },
                     .stream => {
