@@ -324,6 +324,16 @@ pub fn writeValueToBuffer(val: Value, w: anytype) !void {
     try printValueTo(val, w);
 }
 
+/// Convert value to string (write-to-string primitive)
+pub fn writeToString(heap: *Heap, val: Value) !Value {
+    var buf = std.ArrayList(u8){};
+    const w = buf.writer(heap.backing_allocator);
+    try printValueTo(val, w.any());
+    const bytes = try buf.toOwnedSlice(heap.backing_allocator);
+    defer heap.backing_allocator.free(bytes);
+    return try heap.allocString(bytes);
+}
+
 fn printValueTo(val: Value, w: anytype) !void {
     switch (val.typeKind()) {
         .nil => try w.writeAll("nil"),
