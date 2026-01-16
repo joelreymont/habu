@@ -21,6 +21,7 @@ pub const char = @import("char.zig");
 pub const package = @import("package.zig");
 pub const symbol = @import("symbol.zig");
 pub const pathname = @import("pathname.zig");
+pub const ty = @import("type.zig");
 
 // Re-export commonly used functions
 pub const cons = list.cons;
@@ -52,4 +53,5 @@ test {
     _ = package;
     _ = symbol;
     _ = pathname;
+    _ = ty;
 }

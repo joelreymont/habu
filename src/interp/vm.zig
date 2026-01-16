@@ -1941,31 +1941,8 @@ pub const Vm = struct {
             },
             .type_of => {
                 const val = try self.pop();
-                // Return symbol naming the type
-                const type_name: []const u8 = if (val.isNil())
-                    "nil"
-                else if (val.isFixnum())
-                    "fixnum"
-                else if (val.isCharacter())
-                    "character"
-                else if (val.isCons())
-                    "cons"
-                else if (val.isSymbol())
-                    "symbol"
-                else if (val.isVector())
-                    "vector"
-                else if (val.isString())
-                    "string"
-                else if (val.isClosure())
-                    "closure"
-                else if (val.isKeyword())
-                    "keyword"
-                else if (val.isHashTable())
-                    "hash-table"
-                else
-                    "unknown";
-                const type_sym = try self.heap.intern(type_name);
-                try self.push(type_sym);
+                const type_spec = try primitives.ty.typeOf(&self.heap, val);
+                try self.push(type_spec);
             },
             .str_eq => {
                 const b = try self.pop();
