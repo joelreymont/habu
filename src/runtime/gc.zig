@@ -369,8 +369,20 @@ pub const GC = struct {
                             pkg.shadowing = try self.copyValue(pkg.shadowing, alloc_ptr);
                         }
                     },
-                    .rational, .complex, .stream, .bignum => {
+                    .rational, .complex, .bignum => {
                         // No Value references to scan
+                    },
+                    .stream => {
+                        // Scan source_value if present
+                        const stream: *objects.Stream = @ptrFromInt(addr);
+                        if (!stream.source_value.isNil() and stream.source_value.isPointer()) {
+                            stream.source_value = try self.copyValue(stream.source_value, alloc_ptr);
+                            // Recompute data_ptr from relocated string
+                            if (stream.source_value.typeKind() == .string) {
+                                const str = stream.source_value.toPtr(objects.String);
+                                stream.data_ptr = @intFromPtr(str.data);
+                            }
+                        }
                     },
                 }
             },

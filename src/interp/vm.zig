@@ -556,6 +556,25 @@ pub const Vm = struct {
         // Secondary values
         try roots.appendSlice(self.allocator, self.secondary_values[0..self.secondary_values_count]);
 
+        // Current chunk constants
+        const current_chunk_start = roots.items.len;
+        for (self.chunk.constants) |c| {
+            try roots.append(self.allocator, Value{ .raw = c });
+        }
+
+        // Active frame chunks (from closures)
+        var frame_chunk_starts = std.ArrayList(usize){};
+        defer frame_chunk_starts.deinit(self.allocator);
+        for (self.frames[0..self.fp]) |frame| {
+            if (frame.closure) |closure| {
+                const chunk: *const Chunk = @ptrCast(@alignCast(closure.code));
+                try frame_chunk_starts.append(self.allocator, roots.items.len);
+                for (chunk.constants) |c| {
+                    try roots.append(self.allocator, Value{ .raw = c });
+                }
+            }
+        }
+
         // Chunk constant pools - track start index for each chunk
         var chunk_const_starts = std.ArrayList(usize){};
         defer chunk_const_starts.deinit(self.allocator);
@@ -638,6 +657,32 @@ pub const Vm = struct {
         for (self.secondary_values[0..self.secondary_values_count]) |*v| {
             v.* = roots.items[idx];
             idx += 1;
+        }
+
+        // Update current chunk constants
+        for (self.chunk.constants, 0..) |*c, i| {
+            c.* = roots.items[current_chunk_start + i].raw;
+        }
+        idx = current_chunk_start + self.chunk.constants.len;
+
+        // Update active frame chunk constants
+        var frame_idx: usize = 0;
+        for (self.frames[0..self.fp]) |frame| {
+            if (frame.closure) |closure| {
+                const chunk: *const Chunk = @ptrCast(@alignCast(closure.code));
+                const start = frame_chunk_starts.items[frame_idx];
+                for (chunk.constants, 0..) |*c, i| {
+                    c.* = roots.items[start + i].raw;
+                }
+                frame_idx += 1;
+            }
+        }
+        if (frame_chunk_starts.items.len > 0) {
+            idx = frame_chunk_starts.items[frame_chunk_starts.items.len - 1];
+            if (self.frames[self.fp - 1].closure) |last_closure| {
+                const last_chunk: *const Chunk = @ptrCast(@alignCast(last_closure.code));
+                idx += last_chunk.constants.len;
+            }
         }
 
         // Update chunk constant pools with relocated values

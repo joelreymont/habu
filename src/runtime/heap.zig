@@ -403,6 +403,7 @@ pub const Heap = struct {
             .data_ptr = @intFromPtr(str_obj.data),
             .length = str_obj.length,
             .file_fd = -1,
+            .source_value = str,
         };
         return Value.makeStream(stream);
     }
