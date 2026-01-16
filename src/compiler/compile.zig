@@ -131,6 +131,11 @@ pub const Builtins = struct {
     @"slot-value": Value,
     defgeneric: Value,
     defmethod: Value,
+    @"call-next-method": Value,
+    // Method qualifier keywords
+    kw_before: Value,
+    kw_after: Value,
+    kw_around: Value,
 
     // eval-when for compile-time evaluation
     @"eval-when": Value,
@@ -521,6 +526,10 @@ pub const Builtins = struct {
             .@"slot-value" = try heap.intern("slot-value"),
             .defgeneric = try heap.intern("defgeneric"),
             .defmethod = try heap.intern("defmethod"),
+            .@"call-next-method" = try heap.intern("call-next-method"),
+            .kw_before = try heap.internKeyword("before"),
+            .kw_after = try heap.internKeyword("after"),
+            .kw_around = try heap.internKeyword("around"),
             .@"eval-when" = try heap.intern("eval-when"),
             // Primitives - Arithmetic
             .@"+" = try heap.intern("+"),
@@ -1270,10 +1279,19 @@ pub const Compiler = struct {
         fields: []const []const u8,
     };
 
+    /// CLOS method qualifier for standard method combination
+    pub const MethodQualifier = enum {
+        primary,
+        before,
+        after,
+        around,
+    };
+
     /// CLOS method definition
     pub const MethodDef = struct {
         specializers: []const []const u8, // Class names for each parameter
         function_name: []const u8, // Global function name to call
+        qualifier: MethodQualifier = .primary,
     };
 
     /// Typed parameter info for function declarations
@@ -5851,8 +5869,8 @@ pub const Compiler = struct {
         return try self.builder.lit(name_val);
     }
 
-    /// Compile defmethod: (defmethod name ((arg1 class1) (arg2 class2) ...) body...)
-    /// Adds a method to a generic function
+    /// Compile defmethod: (defmethod name [qualifier] ((arg1 class1) ...) body...)
+    /// qualifier is :before, :after, or :around (optional, default is primary)
     fn compileDefmethod(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
@@ -5863,10 +5881,31 @@ pub const Compiler = struct {
         var qual_buf: [256]u8 = undefined;
         const gen_name_tmp = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
 
-        // Parse specialized lambda list
+        // Check for method qualifier (:before, :after, :around)
         if (!cons1.cdr.isCons()) return error.InvalidSyntax;
-        const cons2 = cons1.cdr.toPtr(Cons);
-        const lambda_list = cons2.car;
+        var rest = cons1.cdr.toPtr(Cons);
+        var qualifier: MethodQualifier = .primary;
+
+        // Check if second element is a qualifier keyword
+        if (rest.car.isKeyword()) {
+            const builtins = self.builtins orelse return error.CompilerNotInitialized;
+            if (rest.car.eq(builtins.kw_before)) {
+                qualifier = .before;
+            } else if (rest.car.eq(builtins.kw_after)) {
+                qualifier = .after;
+            } else if (rest.car.eq(builtins.kw_around)) {
+                qualifier = .around;
+            } else {
+                return error.InvalidMethodQualifier;
+            }
+            // Advance past qualifier
+            if (!rest.cdr.isCons()) return error.InvalidSyntax;
+            rest = rest.cdr.toPtr(Cons);
+        }
+
+        // Parse specialized lambda list
+        const lambda_list = rest.car;
+        const body_cons = rest;
 
         // Extract parameter names and specializers
         var param_names = std.ArrayList([]const u8){};
@@ -5918,7 +5957,7 @@ pub const Compiler = struct {
         }
 
         // Compile method body in lambda environment
-        const body = cons2.cdr;
+        const body = body_cons.cdr;
         const body_ir = try self.compileBodyWithTail(body, &lambda_env, true);
 
         // Collect free variables for captures
@@ -5951,12 +5990,16 @@ pub const Compiler = struct {
 
         const gop = try self.generic_functions.getOrPut(gen_name);
 
-        // Generate unique method function name: generic-name$specializer1$specializer2...
-        // Use first specializer as suffix (single-dispatch for now)
-        const method_name = if (specializers.items.len > 0)
-            try self.concatStrings3(gen_name, "$", specializers.items[0])
-        else
-            try self.concatStrings(gen_name, "$t");
+        // Generate unique method function name: generic-name$qualifier$specializer
+        // Include qualifier to differentiate :before/:after/:around from primary
+        const qual_str: []const u8 = switch (qualifier) {
+            .primary => "p",
+            .before => "b",
+            .after => "a",
+            .around => "r",
+        };
+        const spec_str = if (specializers.items.len > 0) specializers.items[0] else "t";
+        const method_name = try std.fmt.allocPrint(self.allocator, "{s}${s}${s}", .{ gen_name, qual_str, spec_str });
 
         // Define method as global function
         const method_global_idx = try self.globals.define(method_name);
@@ -5973,6 +6016,7 @@ pub const Compiler = struct {
         const method_def = MethodDef{
             .specializers = persistent_specializers,
             .function_name = persistent_method_name,
+            .qualifier = qualifier,
         };
 
         // Manually grow the methods list
@@ -6016,13 +6060,33 @@ pub const Compiler = struct {
         return try self.builder.progn(defs);
     }
 
-    /// Generate a dispatcher lambda that checks argument types and calls the matching method
+    /// Generate a dispatcher lambda implementing standard method combination
+    /// Order: :around (call-next-method) -> :before -> primary -> :after
     fn generateMethodDispatcher(
         self: *Compiler,
         _: []const u8,
         methods: std.ArrayList(MethodDef),
         param_names: []const []const u8,
     ) anyerror!*Ir {
+        // Separate methods by qualifier
+        var primary_methods = std.ArrayList(MethodDef){};
+        defer primary_methods.deinit(self.allocator);
+        var before_methods = std.ArrayList(MethodDef){};
+        defer before_methods.deinit(self.allocator);
+        var after_methods = std.ArrayList(MethodDef){};
+        defer after_methods.deinit(self.allocator);
+        var around_methods = std.ArrayList(MethodDef){};
+        defer around_methods.deinit(self.allocator);
+
+        for (methods.items) |method| {
+            switch (method.qualifier) {
+                .primary => try primary_methods.append(self.allocator, method),
+                .before => try before_methods.append(self.allocator, method),
+                .after => try after_methods.append(self.allocator, method),
+                .around => try around_methods.append(self.allocator, method),
+            }
+        }
+
         // Build dispatcher body: nested if-then-else checking types
         var dispatch_body: *Ir = undefined;
 
@@ -6032,18 +6096,19 @@ pub const Compiler = struct {
         const error_ir = try self.builder.errorUser(error_msg_ir);
         dispatch_body = error_ir;
 
-        // Work backwards through methods, wrapping in if statements
-        var i = methods.items.len;
+        // Build dispatch chain for primary methods (type checking)
+        // For each primary method, also run applicable :before and :after
+        var i = primary_methods.items.len;
         while (i > 0) {
             i -= 1;
-            const method = methods.items[i];
+            const primary = primary_methods.items[i];
 
-            if (method.specializers.len == 0) continue;
+            if (primary.specializers.len == 0) continue;
 
             // Build condition by AND-ing all parameter type checks
             var cond_ir: ?*Ir = null;
 
-            for (method.specializers, 0..) |spec_name, param_idx| {
+            for (primary.specializers, 0..) |spec_name, param_idx| {
                 if (param_idx >= param_names.len) return error.InvalidSyntax;
 
                 // Skip unspecialized parameters (specializer = "t")
@@ -6067,17 +6132,36 @@ pub const Compiler = struct {
                 } else check_ir;
             }
 
-            // If all parameters are unspecialized (all "t"), this method always matches
+            // Build effective method: before* -> primary -> after*
+            const effective_method = try self.buildEffectiveMethod(
+                primary,
+                before_methods.items,
+                after_methods.items,
+                param_names,
+            );
+
+            // If all parameters are unspecialized, this method always matches
             if (cond_ir == null) {
-                dispatch_body = try self.generateMethodCallByName(method.function_name, param_names);
+                dispatch_body = effective_method;
                 continue;
             }
 
-            // Method call
-            const then_ir = try self.generateMethodCallByName(method.function_name, param_names);
-
             // Wrap in if
-            dispatch_body = try self.builder.ifExpr(cond_ir.?, then_ir, dispatch_body);
+            dispatch_body = try self.builder.ifExpr(cond_ir.?, effective_method, dispatch_body);
+        }
+
+        // TODO: :around methods with call-next-method support
+        // For now, :around is treated like :before (called first, but doesn't wrap)
+        if (around_methods.items.len > 0) {
+            // Prepend around method calls (simplified - no call-next-method yet)
+            var stmts = std.ArrayList(*Ir){};
+            defer stmts.deinit(self.allocator);
+
+            for (around_methods.items) |around| {
+                try stmts.append(self.allocator, try self.generateMethodCallByName(around.function_name, param_names));
+            }
+            try stmts.append(self.allocator, dispatch_body);
+            dispatch_body = try self.builder.progn(try stmts.toOwnedSlice(self.allocator));
         }
 
         // Wrap dispatch body in lambda
@@ -6091,6 +6175,57 @@ pub const Compiler = struct {
         );
 
         return dispatcher;
+    }
+
+    /// Build effective method: before* -> primary -> after*
+    fn buildEffectiveMethod(
+        self: *Compiler,
+        primary: MethodDef,
+        before_methods: []const MethodDef,
+        after_methods: []const MethodDef,
+        param_names: []const []const u8,
+    ) anyerror!*Ir {
+        var stmts = std.ArrayList(*Ir){};
+        defer stmts.deinit(self.allocator);
+
+        // Call applicable :before methods (most specific first)
+        for (before_methods) |before| {
+            if (try self.specializerMatches(before.specializers, primary.specializers)) {
+                try stmts.append(self.allocator, try self.generateMethodCallByName(before.function_name, param_names));
+            }
+        }
+
+        // Call primary method
+        try stmts.append(self.allocator, try self.generateMethodCallByName(primary.function_name, param_names));
+
+        // Call applicable :after methods (least specific first = reverse order)
+        var j = after_methods.len;
+        while (j > 0) {
+            j -= 1;
+            const after = after_methods[j];
+            if (try self.specializerMatches(after.specializers, primary.specializers)) {
+                try stmts.append(self.allocator, try self.generateMethodCallByName(after.function_name, param_names));
+            }
+        }
+
+        if (stmts.items.len == 1) {
+            return stmts.items[0];
+        }
+        return try self.builder.progn(try stmts.toOwnedSlice(self.allocator));
+    }
+
+    /// Check if method specializers are compatible (aux method applies to primary)
+    /// For now: aux method applies if its specializers are same or more general
+    fn specializerMatches(self: *Compiler, aux_specs: []const []const u8, primary_specs: []const []const u8) !bool {
+        _ = self;
+        if (aux_specs.len != primary_specs.len) return false;
+        for (aux_specs, primary_specs) |aux, prim| {
+            // "t" (any type) matches everything
+            if (std.mem.eql(u8, aux, "t")) continue;
+            // Otherwise must be same specializer
+            if (!std.mem.eql(u8, aux, prim)) return false;
+        }
+        return true;
     }
 
     /// Generate a call to a method by function name with given parameters
