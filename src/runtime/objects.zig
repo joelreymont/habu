@@ -49,6 +49,8 @@ pub const Vector = extern struct {
     /// Pointer to element data (array of Values)
     data: [*]Value,
     /// Optional fill-pointer (0xFFFFFFFFFFFFFFFF = none)
+    /// Low 63 bits: fill-pointer value
+    /// High bit: adjustable flag
     fill_pointer: u64,
 
     pub fn get(self: *const Vector, index: usize) Value {
@@ -71,11 +73,31 @@ pub const Vector = extern struct {
 
     pub fn getFillPointer(self: *const Vector) ?u64 {
         if (self.fill_pointer == 0xFFFFFFFFFFFFFFFF) return null;
-        return self.fill_pointer;
+        return self.fill_pointer & 0x7FFFFFFFFFFFFFFF;
     }
 
     pub fn setFillPointer(self: *Vector, fp: ?u64) void {
-        self.fill_pointer = fp orelse 0xFFFFFFFFFFFFFFFF;
+        if (fp) |p| {
+            const adj_bit = if (self.fill_pointer == 0xFFFFFFFFFFFFFFFF)
+                0
+            else
+                self.fill_pointer & 0x8000000000000000;
+            self.fill_pointer = (p & 0x7FFFFFFFFFFFFFFF) | adj_bit;
+        } else {
+            self.fill_pointer = 0xFFFFFFFFFFFFFFFF;
+        }
+    }
+
+    pub fn isAdjustable(self: *const Vector) bool {
+        return (self.fill_pointer & 0x8000000000000000) != 0;
+    }
+
+    pub fn setAdjustable(self: *Vector, adj: bool) void {
+        if (adj) {
+            self.fill_pointer |= 0x8000000000000000;
+        } else {
+            self.fill_pointer &= 0x7FFFFFFFFFFFFFFF;
+        }
     }
 };
 

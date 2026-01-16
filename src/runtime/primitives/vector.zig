@@ -19,12 +19,12 @@ pub fn makeVectorWithCapacity(heap: *Heap, length: usize, capacity: usize) error
 }
 
 /// Create a vector initialized with a fill value
-pub fn makeVectorFill(heap: *Heap, length: usize, fill: Value) error{OutOfMemory}!Value {
+pub fn makeVectorFill(heap: *Heap, length: usize, fill_value: Value) error{OutOfMemory}!Value {
     const vec = try makeVector(heap, length);
     const vec_obj = vec.toPtr(objects.Vector);
 
     for (0..length) |i| {
-        vec_obj.data[i] = fill;
+        vec_obj.data[i] = fill_value;
     }
 
     return vec;
@@ -38,13 +38,13 @@ pub fn makeArray(heap: *Heap, dimensions: []const u64) error{OutOfMemory}!Value 
 }
 
 /// Create an array with initial fill value
-pub fn makeArrayFill(heap: *Heap, dimensions: []const u64, fill: Value) error{OutOfMemory}!Value {
+pub fn makeArrayFill(heap: *Heap, dimensions: []const u64, fill_value: Value) error{OutOfMemory}!Value {
     const arr = try makeArray(heap, dimensions);
     const arr_obj = arr.toPtr(objects.Array);
     const data: [*]Value = @ptrFromInt(arr_obj.data_ptr);
 
     for (0..arr_obj.total_size) |i| {
-        data[i] = fill;
+        data[i] = fill_value;
     }
 
     return arr;
@@ -299,6 +299,50 @@ pub fn vectorPush(val: Value, element: Value) i64 {
     return @intCast(fp + 1);
 }
 
+/// Push element with auto-extend (adjustable vectors only)
+/// Returns new fill-pointer value, or -1 if failed
+/// If extension is 0, doubles capacity (or adds 1 if empty)
+pub fn vectorPushExtend(heap: *Heap, val: Value, element: Value, extension: u64) !i64 {
+    if (!val.isVector()) return -1;
+    const vec = val.toPtr(objects.Vector);
+
+    const fp = vec.getFillPointer() orelse vec.length;
+
+    if (fp < vec.capacity) {
+        vec.data[fp] = element;
+        vec.setFillPointer(fp + 1);
+        return @intCast(fp);
+    }
+
+    // Need to extend - must be adjustable
+    if (!vec.isAdjustable()) return -1;
+    const ext = if (extension == 0) @max(vec.capacity, 1) else extension;
+    const new_cap = vec.capacity + ext;
+
+    // Allocate new vector
+    const new_vec = try heap.allocVector(fp + 1, new_cap);
+    const new_obj = new_vec.toPtr(objects.Vector);
+
+    // Copy existing data
+    @memcpy(new_obj.data[0..fp], vec.data[0..fp]);
+
+    // Add new element
+    new_obj.data[fp] = element;
+
+    // Preserve fill-pointer and adjustable flag
+    new_obj.setFillPointer(fp + 1);
+    new_obj.setAdjustable(true);
+
+    // Update original vector to point to new storage
+    // CRITICAL: This modifies the Vector struct in place
+    vec.data = new_obj.data;
+    vec.length = new_obj.length;
+    vec.capacity = new_obj.capacity;
+    vec.setFillPointer(fp + 1);
+
+    return @intCast(fp);
+}
+
 /// Pop element from vector
 /// Returns the popped element, or nil if empty
 pub fn vectorPop(val: Value) Value {
@@ -316,16 +360,51 @@ pub fn vectorPop(val: Value) Value {
     }
 }
 
-/// Fill vector with a value
-pub fn vectorFill(val: Value, fill: Value) bool {
-    if (!val.isVector()) return false;
-    const vec = val.toPtr(objects.Vector);
+/// Fill sequence with a value (destructive)
+/// start and end are indices (0-based)
+/// Returns true on success
+pub fn fill(seq: Value, fill_value: Value, start: usize, end: ?usize) bool {
+    switch (seq.typeKind()) {
+        .vector => {
+            const vec = seq.toPtr(objects.Vector);
+            const len = vec.length;
+            const e = end orelse len;
+            if (start >= len or e > len or start > e) return false;
 
-    for (0..vec.length) |i| {
-        vec.data[i] = fill;
+            for (start..e) |i| {
+                vec.data[i] = fill_value;
+            }
+            return true;
+        },
+        .cons, .nil => {
+            var current = seq;
+            var idx: usize = 0;
+            const e = end orelse std.math.maxInt(usize);
+
+            while (!current.isNil()) {
+                if (!current.isCons()) return false;
+
+                if (idx >= start and idx < e) {
+                    const cons_obj = current.toPtr(objects.Cons);
+                    cons_obj.car = fill_value;
+                }
+
+                if (idx >= e) break;
+
+                const cons_obj = current.toPtr(objects.Cons);
+                current = cons_obj.cdr;
+                idx += 1;
+            }
+
+            return idx >= start;
+        },
+        else => return false,
     }
+}
 
-    return true;
+/// Fill vector with a value (convenience wrapper)
+pub fn vectorFill(val: Value, fill_value: Value) bool {
+    return fill(val, fill_value, 0, null);
 }
 
 /// Copy vector
@@ -602,4 +681,122 @@ test "vector find" {
     try testing.expectEqual(@as(i64, 1), vectorFind(vec, Value.makeFixnum(20)));
     try testing.expectEqual(@as(i64, 2), vectorFind(vec, Value.makeFixnum(30)));
     try testing.expectEqual(@as(i64, -1), vectorFind(vec, Value.makeFixnum(40)));
+}
+
+test "vector push extend" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const vec = try makeVectorWithCapacity(&heap, 0, 2);
+    const vec_obj = vec.toPtr(objects.Vector);
+    vec_obj.setFillPointer(0);
+    vec_obj.setAdjustable(true);
+
+    try testing.expectEqual(@as(i64, 0), try vectorPushExtend(&heap, vec, Value.makeFixnum(10), 0));
+    try testing.expectEqual(@as(i64, 1), try vectorPushExtend(&heap, vec, Value.makeFixnum(20), 0));
+
+    // Should not extend yet
+    try testing.expectEqual(@as(u64, 2), vec_obj.capacity);
+
+    // This should trigger extension (doubles capacity: 2 -> 4)
+    try testing.expectEqual(@as(i64, 2), try vectorPushExtend(&heap, vec, Value.makeFixnum(30), 0));
+    try testing.expectEqual(@as(u64, 4), vec_obj.capacity);
+
+    // Verify data
+    try testing.expectEqual(@as(i64, 10), vectorRef(vec, 0).toFixnum());
+    try testing.expectEqual(@as(i64, 20), vectorRef(vec, 1).toFixnum());
+    try testing.expectEqual(@as(i64, 30), vectorRef(vec, 2).toFixnum());
+
+    // Test explicit extension
+    try testing.expectEqual(@as(i64, 3), try vectorPushExtend(&heap, vec, Value.makeFixnum(40), 10));
+    try testing.expectEqual(@as(u64, 4), vec_obj.capacity); // Still 4 (didn't need to extend)
+
+    try testing.expectEqual(@as(i64, 4), try vectorPushExtend(&heap, vec, Value.makeFixnum(50), 0));
+    try testing.expectEqual(@as(u64, 8), vec_obj.capacity); // Extended again (4 -> 8)
+}
+
+test "vector push extend non-adjustable" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const vec = try makeVectorWithCapacity(&heap, 0, 2);
+    const vec_obj = vec.toPtr(objects.Vector);
+    vec_obj.setFillPointer(0);
+    // Not adjustable
+
+    // Should succeed without extending
+    try testing.expectEqual(@as(i64, 0), try vectorPushExtend(&heap, vec, Value.makeFixnum(10), 0));
+
+    // Non-adjustable vector returns error when full
+    _ = try vectorPushExtend(&heap, vec, Value.makeFixnum(20), 0);
+    try testing.expectEqual(@as(i64, -1), try vectorPushExtend(&heap, vec, Value.makeFixnum(30), 0));
+}
+
+test "fill vector" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const vec = try makeVector(&heap, 5);
+    _ = vectorSet(vec, 0, Value.makeFixnum(1));
+    _ = vectorSet(vec, 1, Value.makeFixnum(2));
+    _ = vectorSet(vec, 2, Value.makeFixnum(3));
+    _ = vectorSet(vec, 3, Value.makeFixnum(4));
+    _ = vectorSet(vec, 4, Value.makeFixnum(5));
+
+    // Fill entire vector
+    try testing.expect(fill(vec, Value.makeFixnum(99), 0, null));
+    for (0..5) |i| {
+        try testing.expectEqual(@as(i64, 99), vectorRef(vec, i).toFixnum());
+    }
+
+    // Partial fill
+    try testing.expect(fill(vec, Value.makeFixnum(42), 1, 4));
+    try testing.expectEqual(@as(i64, 99), vectorRef(vec, 0).toFixnum());
+    try testing.expectEqual(@as(i64, 42), vectorRef(vec, 1).toFixnum());
+    try testing.expectEqual(@as(i64, 42), vectorRef(vec, 2).toFixnum());
+    try testing.expectEqual(@as(i64, 42), vectorRef(vec, 3).toFixnum());
+    try testing.expectEqual(@as(i64, 99), vectorRef(vec, 4).toFixnum());
+}
+
+test "fill list" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const list_prim = @import("list.zig");
+    const lst = try list_prim.list(&heap, &[_]Value{
+        Value.makeFixnum(1),
+        Value.makeFixnum(2),
+        Value.makeFixnum(3),
+        Value.makeFixnum(4),
+        Value.makeFixnum(5),
+    });
+
+    // Fill entire list
+    try testing.expect(fill(lst, Value.makeFixnum(99), 0, null));
+    for (0..5) |i| {
+        try testing.expectEqual(@as(i64, 99), list_prim.nth(lst, @intCast(i)).toFixnum());
+    }
+
+    // Partial fill
+    const lst2 = try list_prim.list(&heap, &[_]Value{
+        Value.makeFixnum(1),
+        Value.makeFixnum(2),
+        Value.makeFixnum(3),
+        Value.makeFixnum(4),
+        Value.makeFixnum(5),
+    });
+    try testing.expect(fill(lst2, Value.makeFixnum(42), 1, 4));
+    try testing.expectEqual(@as(i64, 1), list_prim.nth(lst2, 0).toFixnum());
+    try testing.expectEqual(@as(i64, 42), list_prim.nth(lst2, 1).toFixnum());
+    try testing.expectEqual(@as(i64, 42), list_prim.nth(lst2, 2).toFixnum());
+    try testing.expectEqual(@as(i64, 42), list_prim.nth(lst2, 3).toFixnum());
+    try testing.expectEqual(@as(i64, 5), list_prim.nth(lst2, 4).toFixnum());
 }
