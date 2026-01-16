@@ -164,6 +164,8 @@ pub const Heap = struct {
     cl_user_package: ?*Package,
     /// Gensym counter for unique symbol generation
     gensym_counter: u64,
+    /// Gentemp counter for temporary symbol generation
+    gentemp_counter: u64,
     /// The KEYWORD package
     keyword_package: ?*Package,
     /// Lisp-level package registry (hash table: name -> Package Value)
@@ -225,6 +227,7 @@ pub const Heap = struct {
             .cl_package = null,
             .cl_user_package = null,
             .gensym_counter = 0,
+            .gentemp_counter = 0,
             .keyword_package = null,
             .lisp_packages = Value.nil,
             .class_metadata = .{},
