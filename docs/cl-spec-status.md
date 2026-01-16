@@ -1,4 +1,8 @@
-# CL Spec Compatibility Status
+# Common Lisp Specification Compatibility
+
+Habu targets 100% compatibility with the ANSI Common Lisp specification (ANSI INCITS 226-1994), plus additional features including gradual typing and contracts. This is NOT a subset - it is a full implementation.
+
+## Implementation Status
 
 ## TIER 1 (Foundation) - ✅ COMPLETE
 - ✅ destructuring-bind (stdlib.habu:504)

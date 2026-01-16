@@ -22,6 +22,7 @@ const Symbol = runtime.Symbol;
 const arith = @import("../runtime/primitives/arith.zig");
 const io = @import("../runtime/primitives/io.zig");
 const stringPrims = @import("../runtime/primitives/string.zig");
+const char_primitives = @import("../runtime/primitives/char.zig");
 const HashTable = runtime.HashTable;
 const Vector = runtime.Vector;
 const compiler = @import("../compiler/compiler.zig");

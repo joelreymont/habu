@@ -1,6 +1,6 @@
 # Habu Architecture
 
-Habu is a Lisp implementation written in Zig, featuring a bytecode compiler and stack-based VM with gradual typing support.
+Habu is a full Common Lisp implementation written in Zig, targeting 100% compatibility with the ANSI CL specification, plus additional features including gradual typing, contracts, and native code generation via JIT.
 
 ## System Overview
 

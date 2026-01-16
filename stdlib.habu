@@ -1810,6 +1810,42 @@
   (graphic-char-p c))
 
 ;; ============================================================
+;; Character Comparison Functions
+;; ============================================================
+
+; char<= - character less than or equal
+(defun char<= (a b)
+  (or (char< a b) (char= a b)))
+
+; char>= - character greater than or equal
+(defun char>= (a b)
+  (or (char> a b) (char= a b)))
+
+; char/= - character not equal
+(defun char/= (a b)
+  (not (char= a b)))
+
+; char-equal - case-insensitive character equality
+(defun char-equal (a b)
+  (char= (char-upcase a) (char-upcase b)))
+
+; char-lessp - case-insensitive character less than
+(defun char-lessp (a b)
+  (char< (char-upcase a) (char-upcase b)))
+
+; char-greaterp - case-insensitive character greater than
+(defun char-greaterp (a b)
+  (char> (char-upcase a) (char-upcase b)))
+
+; char-not-greaterp - case-insensitive <=
+(defun char-not-greaterp (a b)
+  (or (char-lessp a b) (char-equal a b)))
+
+; char-not-lessp - case-insensitive >=
+(defun char-not-lessp (a b)
+  (or (char-greaterp a b) (char-equal a b)))
+
+;; ============================================================
 ;; String Case Functions
 ;; ============================================================
 
