@@ -93,7 +93,7 @@ pub fn charLessp(a: Value, b: Value) Error!Value {
     if (!a.isCharacter() or !b.isCharacter()) return error.TypeMismatch;
     const a_up = try charUpcase(a);
     const b_up = try charUpcase(b);
-    return if (a_up.toFixnum() < b_up.toFixnum()) Value.t else Value.nil;
+    return if (a_up.toCharacter() < b_up.toCharacter()) Value.t else Value.nil;
 }
 
 /// Test if character is greater than (case-insensitive)
@@ -101,7 +101,7 @@ pub fn charGreaterp(a: Value, b: Value) Error!Value {
     if (!a.isCharacter() or !b.isCharacter()) return error.TypeMismatch;
     const a_up = try charUpcase(a);
     const b_up = try charUpcase(b);
-    return if (a_up.toFixnum() > b_up.toFixnum()) Value.t else Value.nil;
+    return if (a_up.toCharacter() > b_up.toCharacter()) Value.t else Value.nil;
 }
 
 /// Test if character is alphanumeric
@@ -206,7 +206,7 @@ test "char case conversion" {
 
     const upper_z = Value.makeCharacter('Z');
     const lower_z = try charDowncase(upper_z);
-    try testing.expectEqual(@as(i64, 'z'), lower_z.toFixnum());
+    try testing.expectEqual(@as(i64, 'z'), lower_z.toCharacter());
 
     const digit = Value.makeCharacter('5');
     const same = try charUpcase(digit);
@@ -284,13 +284,13 @@ test "digit-char radix" {
     const radix16 = Value.makeFixnum(16);
 
     const d5 = try digitChar(Value.makeFixnum(5), radix10);
-    try testing.expectEqual(@as(i64, '5'), d5.toFixnum());
+    try testing.expectEqual(@as(i64, '5'), d5.toCharacter());
 
     const d15 = try digitChar(Value.makeFixnum(15), radix16);
-    try testing.expectEqual(@as(i64, 'F'), d15.toFixnum());
+    try testing.expectEqual(@as(i64, 'F'), d15.toCharacter());
 
     const d10 = try digitChar(Value.makeFixnum(10), radix16);
-    try testing.expectEqual(@as(i64, 'A'), d10.toFixnum());
+    try testing.expectEqual(@as(i64, 'A'), d10.toCharacter());
 
     const invalid = try digitChar(Value.makeFixnum(10), radix10);
     try testing.expect(invalid == Value.nil);
