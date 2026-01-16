@@ -115,7 +115,6 @@
 
 **Known Issues:**
 1. defmacro does not support destructuring in parameter lists (e.g., `(defmacro foo ((a b)) ...)` not supported)
-2. rational/rationalize primitives are stubs (return input unchanged instead of converting floats to rationals)
 
 **Recently Fixed:**
 - Complex number support: sqrt(-1) now returns #C(0 1) instead of NaN
@@ -124,10 +123,10 @@
 - gensym primitive added with optional prefix argument (works in macro expansion)
 - close primitive added as public alias for %close (stdlib.habu now loads successfully)
 - with-open-file, with-input-from-string, with-output-to-string macros working
+- rational/rationalize primitives fully implemented (0.5 -> 1/2, uses continued fractions)
 
 **Missing Features:**
 1. Full format justification parameters
-2. rational/rationalize conversion (stubs exist)
 
 ## Deferred Features (Large Scope)
 
