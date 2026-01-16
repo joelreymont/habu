@@ -67,7 +67,7 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
     if (!pkg.isPackage()) return error.TypeError;
     const p = pkg.toPtr(objects.Package);
 
-    // Get string name
+    // Get string name and create lookup symbol
     const name_str = if (name.isString())
         name.toPtr(objects.String).bytes()
     else if (name.isSymbol())
@@ -75,33 +75,23 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
     else
         return error.TypeError;
 
-    // Check if symbol exists in internal table
+    // Create temporary symbol for lookup
+    const lookup_sym = try heap.allocSymbol(name_str);
+
+    // Check if symbol exists in internal table using hash lookup
     if (p.symbols.raw != Value.nil.raw) {
-        const ht = p.symbols.toPtr(objects.HashTable);
-        var i: usize = 0;
-        while (i < ht.capacity) : (i += 1) {
-            const entry = &ht.entries[i];
-            if (entry.key.raw == objects.HashTable.EMPTY.raw or entry.key.raw == objects.HashTable.DELETED.raw) continue;
-            if (!entry.key.isSymbol()) continue;
-            const sym = entry.key.toPtr(objects.Symbol);
-            const sym_name = sym.getName();
-            if (std.mem.eql(u8, sym_name, name_str)) {
-                // Found in internal table - check if exported
-                if (p.exports.raw != Value.nil.raw) {
-                    const exp = p.exports.toPtr(objects.HashTable);
-                    var j: usize = 0;
-                    while (j < exp.capacity) : (j += 1) {
-                        const e = &exp.entries[j];
-                        if (e.key.raw == objects.HashTable.EMPTY.raw or e.key.raw == objects.HashTable.DELETED.raw) continue;
-                        if (e.key.raw == entry.key.raw) {
-                            const status = try heap.internKeyword("external");
-                            return try heap.allocCons(entry.key, try heap.allocCons(status, Value.nil));
-                        }
-                    }
+        const found = hashTableLookup(p.symbols, lookup_sym);
+        if (found.raw != Value.nil.raw) {
+            // Found in internal table - check if exported
+            if (p.exports.raw != Value.nil.raw) {
+                const exported = hashTableLookup(p.exports, found);
+                if (exported.raw != Value.nil.raw) {
+                    const status = try heap.internKeyword("external");
+                    return try heap.allocCons(found, try heap.allocCons(status, Value.nil));
                 }
-                const status = try heap.internKeyword("internal");
-                return try heap.allocCons(entry.key, try heap.allocCons(status, Value.nil));
             }
+            const status = try heap.internKeyword("internal");
+            return try heap.allocCons(found, try heap.allocCons(status, Value.nil));
         }
     }
 
@@ -113,26 +103,18 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
         if (used_pkg.isPackage()) {
             const up = used_pkg.toPtr(objects.Package);
             if (up.exports.raw != Value.nil.raw) {
-                const exp = up.exports.toPtr(objects.HashTable);
-                var i: usize = 0;
-                while (i < exp.capacity) : (i += 1) {
-                    const entry = &exp.entries[i];
-                    if (entry.key.raw == objects.HashTable.EMPTY.raw or entry.key.raw == objects.HashTable.DELETED.raw) continue;
-                    if (!entry.key.isSymbol()) continue;
-                    const sym = entry.key.toPtr(objects.Symbol);
-                    const sym_name = sym.getName();
-                    if (std.mem.eql(u8, sym_name, name_str)) {
-                        const status = try heap.internKeyword("inherited");
-                        return try heap.allocCons(entry.key, try heap.allocCons(status, Value.nil));
-                    }
+                const found = hashTableLookup(up.exports, lookup_sym);
+                if (found.raw != Value.nil.raw) {
+                    const status = try heap.internKeyword("inherited");
+                    return try heap.allocCons(found, try heap.allocCons(status, Value.nil));
                 }
             }
         }
         use = use.toPtr(objects.Cons).cdr;
     }
 
-    // Not found - create new internal symbol
-    const new_sym = try heap.allocSymbol(name_str);
+    // Not found - use the symbol we created
+    const new_sym = lookup_sym;
 
     // Add to symbols table (create if needed)
     if (p.symbols.raw == Value.nil.raw) {
@@ -142,6 +124,44 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
 
     const status = try heap.internKeyword("internal");
     return try heap.allocCons(new_sym, try heap.allocCons(status, Value.nil));
+}
+
+fn hashTableLookup(table: Value, key: Value) Value {
+    if (!table.isHashTable()) return Value.nil;
+    const ht = table.toPtr(objects.HashTable);
+    const entries = ht.getEntries();
+    const mask = ht.capacity - 1;
+    const test_type = ht.test_type;
+    var idx = hashValueWithTest(key, test_type) & mask;
+
+    var probes: usize = 0;
+    while (probes < ht.capacity) : (probes += 1) {
+        const entry = entries[idx];
+        if (objects.HashTable.isEmpty(entry)) {
+            return Value.nil;
+        }
+        if (!objects.HashTable.isDeleted(entry) and hashKeyEqualWithTest(entry.key, key, test_type)) {
+            return entry.key;
+        }
+        idx = (idx + 1) & mask;
+    }
+    return Value.nil;
+}
+
+fn hashValueWithTest(key: Value, test_type: objects.HashTest) u64 {
+    return switch (test_type) {
+        .eq => key.raw,
+        .eql => key.raw,
+        .equal => key.raw, // TODO: content hash
+    };
+}
+
+fn hashKeyEqualWithTest(a: Value, b: Value, test_type: objects.HashTest) bool {
+    return switch (test_type) {
+        .eq => a.raw == b.raw,
+        .eql => a.raw == b.raw,
+        .equal => a.raw == b.raw, // TODO: structural equality
+    };
 }
 
 fn createHashTable(heap: *Heap, capacity: usize) !Value {

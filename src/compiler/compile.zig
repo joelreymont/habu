@@ -1430,10 +1430,16 @@ pub const Compiler = struct {
             if (tp.type_sym) |type_sym| {
                 // Parse type from symbol
                 const param_type = self.parseTypeExpr(type_sym) orelse &types.t_any;
-                ctx.bind(tp.name, param_type, .many) catch continue;
+                ctx.bind(tp.name, param_type, .many) catch |err| {
+                    std.log.warn("Failed to bind parameter {s}: {}", .{ tp.name, err });
+                    continue;
+                };
             } else {
                 // Untyped parameter - bind as any
-                ctx.bind(tp.name, &types.t_any, .many) catch continue;
+                ctx.bind(tp.name, &types.t_any, .many) catch |err| {
+                    std.log.warn("Failed to bind parameter {s}: {}", .{ tp.name, err });
+                    continue;
+                };
             }
         }
 
