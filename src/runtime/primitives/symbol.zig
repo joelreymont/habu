@@ -130,3 +130,33 @@ pub fn setSymbolPlist(sym: Value, plist: Value) !void {
     const s = sym.toPtr(objects.Symbol);
     s.plist = plist;
 }
+
+/// Test if symbol has value binding
+pub fn boundp(sym: Value) bool {
+    if (!sym.isSymbol()) return false;
+    const s = sym.toPtr(objects.Symbol);
+    return !s.value.isNil();
+}
+
+/// Test if symbol has function binding
+pub fn fboundp(sym: Value) bool {
+    if (!sym.isSymbol()) return false;
+    const s = sym.toPtr(objects.Symbol);
+    return !s.function.isNil();
+}
+
+/// Remove symbol's value binding
+pub fn makunbound(sym: Value) !Value {
+    if (!sym.isSymbol()) return error.TypeError;
+    const s = sym.toPtr(objects.Symbol);
+    s.value = Value.nil;
+    return sym;
+}
+
+/// Remove symbol's function binding
+pub fn fmakunbound(sym: Value) !Value {
+    if (!sym.isSymbol()) return error.TypeError;
+    const s = sym.toPtr(objects.Symbol);
+    s.function = Value.nil;
+    return sym;
+}
