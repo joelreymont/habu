@@ -99,6 +99,14 @@ pub fn arrayTotalSize(val: Value) i64 {
     return @intCast(arr.total_size);
 }
 
+/// Convert subscripts to linear row-major index (public API)
+pub fn arrayRowMajorIndex(val: Value, subscripts: []const u64) ?i64 {
+    if (!val.isArray()) return null;
+    const arr = val.toPtr(objects.Array);
+    const idx = calculateRowMajorIndex(arr, subscripts) orelse return null;
+    return @intCast(idx);
+}
+
 /// Calculate row-major index from subscripts
 /// For a 3x4 array: subscripts [i,j] -> index i*4 + j
 fn calculateRowMajorIndex(arr: *const objects.Array, subscripts: []const u64) ?usize {
@@ -123,6 +131,16 @@ fn calculateRowMajorIndex(arr: *const objects.Array, subscripts: []const u64) ?u
     }
 
     return index;
+}
+
+/// Get element by linear index (public API for row-major-aref)
+pub fn rowMajorAref(val: Value, linear_idx: i64) ?Value {
+    if (linear_idx < 0) return null;
+    if (!val.isArray()) return null;
+    const arr = val.toPtr(objects.Array);
+    if (linear_idx >= arr.total_size) return null;
+    const data: [*]Value = @ptrFromInt(arr.data_ptr);
+    return data[@intCast(linear_idx)];
 }
 
 /// Get array element using row-major indexing

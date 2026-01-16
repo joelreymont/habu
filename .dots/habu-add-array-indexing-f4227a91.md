@@ -1,9 +1,9 @@
 ---
 title: Add array indexing primitives
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-01-16T13:41:19.162606+02:00"
+created-at: "\"2026-01-16T13:41:19.162606+02:00\""
 ---
 
 src/runtime/primitives/vector.zig: Implement row-major indexing
