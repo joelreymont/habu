@@ -242,6 +242,7 @@ pub const Builtins = struct {
     // Type specifier symbols for concatenate/coerce
     string: Value,
     character: Value,
+    t: Value,
 
     // Primitives - Numeric
     abs: Value,
@@ -620,6 +621,7 @@ pub const Builtins = struct {
             // Type specifier symbols for concatenate/coerce
             .string = try heap.intern("string"),
             .character = try heap.intern("character"),
+            .t = Value.t,
             // Primitives - Numeric
             .abs = try heap.intern("abs"),
             .zerop = try heap.intern("zerop"),
@@ -6015,7 +6017,8 @@ pub const Compiler = struct {
             const spec_name = method.specializers[0];
 
             // Skip unspecialized methods (specializer = "t")
-            if (std.mem.eql(u8, spec_name, "t")) {
+            const spec_sym = try self.heap.?.intern(spec_name);
+            if (spec_sym.eq(self.builtins.?.t)) {
                 // Unspecialized - always matches, make it the else branch
                 dispatch_body = try self.generateMethodCallByName(method.function_name, param_names);
                 continue;
