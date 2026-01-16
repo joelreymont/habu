@@ -5202,7 +5202,9 @@ pub const Compiler = struct {
         while (current.isCons()) {
             const c = current.toPtr(Cons);
             const t = self.parseTypeExpr(c.car) orelse return null;
-            type_list.append(self.allocator, t) catch return null;
+            type_list.append(self.allocator, t) catch {
+                return null;
+            };
             current = c.cdr;
         }
 
@@ -5229,13 +5231,17 @@ pub const Compiler = struct {
                 while (domain.isCons()) {
                     const dc = domain.toPtr(Cons);
                     const t = self.parseTypeExpr(dc.car) orelse return null;
-                    all_types.append(self.allocator, t) catch return null;
+                    all_types.append(self.allocator, t) catch {
+                        return null;
+                    };
                     domain = dc.cdr;
                 }
             } else {
                 // Single type
                 const t = self.parseTypeExpr(c.car) orelse return null;
-                all_types.append(self.allocator, t) catch return null;
+                all_types.append(self.allocator, t) catch {
+                    return null;
+                };
             }
             current = c.cdr;
         }
@@ -5267,7 +5273,9 @@ pub const Compiler = struct {
         if (c.cdr.isCons()) {
             const rest = c.cdr.toPtr(Cons);
             const size_term: *const anyopaque = @ptrCast(&rest.car);
-            const vec_t = self.type_checker.builder.makeVec(elem) catch return null;
+            const vec_t = self.type_checker.builder.makeVec(elem) catch {
+                return null;
+            };
             return self.type_checker.builder.makeTypeApp(vec_t, size_term) catch null;
         }
 
