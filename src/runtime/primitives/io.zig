@@ -76,7 +76,10 @@ pub fn sysReadLine(heap: *Heap) !Value {
     var line_len: usize = 0;
 
     while (line_len < line_buf.len) {
-        const byte = reader.takeByte() catch break;
+        const byte = reader.takeByte() catch |err| switch (err) {
+            error.EndOfStream => break,
+            else => return err,
+        };
 
         if (byte == '\n') break;
         line_buf[line_len] = byte;
@@ -101,7 +104,10 @@ pub fn sysReadChar() !i64 {
     var file_reader = stdin_file.reader(&read_buf);
     const reader = &file_reader.interface;
 
-    const byte = reader.takeByte() catch return -1;
+    const byte = reader.takeByte() catch |err| switch (err) {
+        error.EndOfStream => return -1,
+        else => return err,
+    };
 
     return @intCast(byte);
 }
@@ -119,7 +125,10 @@ pub fn sysPeekChar() !i64 {
     var file_reader = stdin_file.reader(&read_buf);
     const reader = &file_reader.interface;
 
-    const byte = reader.takeByte() catch return -1;
+    const byte = reader.takeByte() catch |err| switch (err) {
+        error.EndOfStream => return -1,
+        else => return err,
+    };
 
     pushback_char = byte;
     return @intCast(byte);
@@ -149,7 +158,10 @@ pub fn sysReadSexp(buffer: []u8) !usize {
         const byte: u8 = if (pushback_char) |ch| blk: {
             pushback_char = null;
             break :blk ch;
-        } else reader.takeByte() catch break;
+        } else reader.takeByte() catch |err| switch (err) {
+            error.EndOfStream => break,
+            else => return err,
+        };
 
         buffer[len] = byte;
         len += 1;
@@ -535,7 +547,7 @@ pub fn readChar(stream: Value, eof_error: ?Value, eof_value: ?Value) !Value {
     switch (s.stream_type) {
         .string => {
             const str = s.buffer.toPtr(objects.String);
-            if (s.position >= str.len) return Value.nil();
+            if (s.position >= str.len) return Value.nil;
             const ch = str.bytes()[s.position];
             s.position += 1;
             return Value.makeFixnum(@intCast(ch));
@@ -544,7 +556,7 @@ pub fn readChar(stream: Value, eof_error: ?Value, eof_value: ?Value) !Value {
             var buf: [1]u8 = undefined;
             const fd: std.posix.fd_t = @intCast(s.file_fd);
             const n = try std.posix.read(fd, &buf);
-            if (n == 0) return Value.nil();
+            if (n == 0) return Value.nil;
             return Value.makeFixnum(@intCast(buf[0]));
         },
         .byte => return error.NotImplemented,
@@ -570,14 +582,14 @@ pub fn peekChar(peek_type: ?Value, stream: Value) !Value {
     switch (s.stream_type) {
         .string => {
             const str = s.buffer.toPtr(objects.String);
-            if (s.position >= str.len) return Value.nil();
+            if (s.position >= str.len) return Value.nil;
             return Value.makeFixnum(@intCast(str.bytes()[s.position]));
         },
         .file => {
             var buf: [1]u8 = undefined;
             const fd: std.posix.fd_t = @intCast(s.file_fd);
             const n = try std.posix.read(fd, &buf);
-            if (n == 0) return Value.nil();
+            if (n == 0) return Value.nil;
             _ = try std.posix.lseek(fd, -1, .CUR);
             return Value.makeFixnum(@intCast(buf[0]));
         },
@@ -623,7 +635,7 @@ pub fn readLine(stream: Value) !Value {
             s.position = i;
             // TODO: return substring
             _ = line_end;
-            return Value.nil();
+            return Value.nil;
         },
         .file => {
             // TODO: implement file line reading

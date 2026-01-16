@@ -352,11 +352,11 @@ pub fn numEq(a: Value, b: Value) bool {
 }
 
 /// Less than
-pub fn lt(a: Value, b: Value) bool {
+pub fn lt(a: Value, b: Value) Error!bool {
     // Float comparison
     if (a.isFloat() or b.isFloat()) {
-        const af = toNumber(a) catch return false;
-        const bf = toNumber(b) catch return false;
+        const af = try toNumber(a);
+        const bf = try toNumber(b);
         return af < bf;
     }
 
@@ -373,11 +373,11 @@ pub fn lt(a: Value, b: Value) bool {
 }
 
 /// Greater than
-pub fn gt(a: Value, b: Value) bool {
+pub fn gt(a: Value, b: Value) Error!bool {
     // Float comparison
     if (a.isFloat() or b.isFloat()) {
-        const af = toNumber(a) catch return false;
-        const bf = toNumber(b) catch return false;
+        const af = try toNumber(a);
+        const bf = try toNumber(b);
         return af > bf;
     }
 
@@ -394,11 +394,11 @@ pub fn gt(a: Value, b: Value) bool {
 }
 
 /// Less than or equal
-pub fn le(a: Value, b: Value) bool {
+pub fn le(a: Value, b: Value) Error!bool {
     // Float comparison
     if (a.isFloat() or b.isFloat()) {
-        const af = toNumber(a) catch return false;
-        const bf = toNumber(b) catch return false;
+        const af = try toNumber(a);
+        const bf = try toNumber(b);
         return af <= bf;
     }
 
@@ -415,11 +415,11 @@ pub fn le(a: Value, b: Value) bool {
 }
 
 /// Greater than or equal
-pub fn ge(a: Value, b: Value) bool {
+pub fn ge(a: Value, b: Value) Error!bool {
     // Float comparison
     if (a.isFloat() or b.isFloat()) {
-        const af = toNumber(a) catch return false;
-        const bf = toNumber(b) catch return false;
+        const af = try toNumber(a);
+        const bf = try toNumber(b);
         return af >= bf;
     }
 
@@ -569,15 +569,15 @@ test "comparisons" {
     const b = Value.makeFixnum(10);
     const c = Value.makeFixnum(5);
 
-    try testing.expect(lt(a, b));
-    try testing.expect(!lt(b, a));
-    try testing.expect(!lt(a, c));
+    try testing.expect(try lt(a, b));
+    try testing.expect(!try lt(b, a));
+    try testing.expect(!try lt(a, c));
 
-    try testing.expect(gt(b, a));
-    try testing.expect(le(a, b));
-    try testing.expect(le(a, c));
-    try testing.expect(ge(b, a));
-    try testing.expect(ge(a, c));
+    try testing.expect(try gt(b, a));
+    try testing.expect(try le(a, b));
+    try testing.expect(try le(a, c));
+    try testing.expect(try ge(b, a));
+    try testing.expect(try ge(a, c));
 
     try testing.expect(numEq(a, c));
     try testing.expect(!numEq(a, b));

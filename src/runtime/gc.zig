@@ -96,6 +96,12 @@ pub const GC = struct {
         while (addr < from_used_end) {
             const first_word: *Value = @ptrFromInt(addr);
 
+            // Skip non-pointers (fixnums, nil, t can appear in object slots)
+            if (!first_word.isPointer()) {
+                addr += ALIGNMENT;
+                continue;
+            }
+
             // Skip if already copied (has forwarding pointer)
             if (first_word.isForwarding()) {
                 const size = objects.objectSize(first_word.*);
@@ -117,7 +123,7 @@ pub const GC = struct {
                     // Free string output stream buffer if allocated
                     if (stream.stream_type == .string and stream.direction == .output and stream.data_ptr != 0) {
                         const buf: [*]u8 = @ptrFromInt(stream.data_ptr);
-                        self.heap.backing_allocator.free(buf[0..stream.position]);
+                        self.heap.backing_allocator.free(buf[0..stream.length]);
                     }
                 }
             }
@@ -454,7 +460,7 @@ test "gc collect empty" {
 
     // Use heap.collectGarbage which handles internal roots (lisp_packages)
     var roots = [_]Value{};
-    _ = heap.collectGarbage(&roots);
+    _ = try heap.collectGarbage(&roots);
 
     // After GC, only lisp_packages hash table should remain
     try testing.expect(heap.bytesUsed() > 0);

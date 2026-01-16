@@ -1370,7 +1370,7 @@ pub const Compiler = struct {
                 self.globals.allocator.free(method.function_name);
             }
             // Free methods list
-            self.globals.allocator.free(entry.value_ptr.items);
+            entry.value_ptr.deinit(self.globals.allocator);
         }
         self.generic_functions.deinit();
         self.globals.deinit();

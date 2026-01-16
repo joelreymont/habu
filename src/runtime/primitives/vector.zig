@@ -99,8 +99,9 @@ fn calculateRowMajorIndex(arr: *const objects.Array, subscripts: []const u64) ?u
         // Bounds check
         if (sub >= dim) return null;
 
-        index += @as(usize, @intCast(sub)) * multiplier;
-        multiplier *= @intCast(dim);
+        const offset = std.math.mul(usize, @as(usize, @intCast(sub)), multiplier) catch return null;
+        index = std.math.add(usize, index, offset) catch return null;
+        multiplier = std.math.mul(usize, multiplier, @intCast(dim)) catch return null;
     }
 
     return index;

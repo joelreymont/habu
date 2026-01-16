@@ -152,7 +152,7 @@ pub fn primReadChar(heap: *Heap, args: []const Value) !Value {
     const file = std.fs.File{ .handle = stream.file_fd };
 
     var byte: [1]u8 = undefined;
-    const bytes_read = file.read(&byte) catch return Value.nil;
+    const bytes_read = try file.read(&byte);
     if (bytes_read == 0) return Value.nil;
 
     return Value.makeCharacter(byte[0]);
@@ -199,7 +199,7 @@ pub fn primReadByte(heap: *Heap, args: []const Value) !Value {
     const file = std.fs.File{ .handle = stream.file_fd };
 
     var byte: [1]u8 = undefined;
-    const bytes_read = file.read(&byte) catch return Value.nil;
+    const bytes_read = try file.read(&byte);
     if (bytes_read == 0) return Value.nil;
 
     return Value.makeFixnum(byte[0]);

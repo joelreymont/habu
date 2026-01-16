@@ -18,6 +18,8 @@ pub const JitError = error{
     UnsupportedOpcode,
     PatchFailed,
     CodeTooLarge,
+    InvalidConstantIndex,
+    BranchOutOfRange,
 };
 
 /// JIT-compiled function
@@ -113,11 +115,10 @@ pub const Jit = struct {
             .push_const => {
                 const idx = chunk.readU16(bc_offset.*);
                 bc_offset.* += 2;
-                if (idx < chunk.constants.len) {
-                    _ = patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
-                        .{ .imm64 = chunk.constants[idx] },
-                    }) catch return error.PatchFailed;
-                }
+                if (idx >= chunk.constants.len) return error.InvalidConstantIndex;
+                _ = patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                    .{ .imm64 = chunk.constants[idx] },
+                }) catch return error.PatchFailed;
             },
 
             .add => {
@@ -315,15 +316,19 @@ pub const Jit = struct {
             const target_addr = @intFromPtr(self.code_buffer.memory.ptr) + target_code_addr;
 
             const offset = @as(i64, @intCast(target_addr)) - @as(i64, @intCast(inst_addr));
-            const word_offset: u32 = @bitCast(@as(i32, @intCast(@divTrunc(offset, 4))));
+            const word_offset_i32 = @as(i32, @intCast(@divTrunc(offset, 4)));
 
             switch (jump.hole_type) {
                 .rel26 => {
+                    if (word_offset_i32 < -(1 << 25) or word_offset_i32 >= (1 << 25)) return error.BranchOutOfRange;
+                    const word_offset: u32 = @bitCast(word_offset_i32);
                     var inst = std.mem.readInt(u32, code_slice[0..4], .little);
                     inst = (inst & 0xFC000000) | (word_offset & 0x03FFFFFF);
                     std.mem.writeInt(u32, code_slice[0..4], inst, .little);
                 },
                 .rel19 => {
+                    if (word_offset_i32 < -(1 << 18) or word_offset_i32 >= (1 << 18)) return error.BranchOutOfRange;
+                    const word_offset: u32 = @bitCast(word_offset_i32);
                     var inst = std.mem.readInt(u32, code_slice[0..4], .little);
                     inst = (inst & 0xFF00001F) | ((word_offset & 0x7FFFF) << 5);
                     std.mem.writeInt(u32, code_slice[0..4], inst, .little);

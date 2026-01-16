@@ -463,7 +463,7 @@ pub const Vm = struct {
     }
 
     /// Allocate an uninitialized string, running GC if needed
-    pub fn allocStringUninitialized(self: *Vm, length: usize) error{OutOfMemory}!Value {
+    pub fn allocStringUninitialized(self: *Vm, length: usize) error{ OutOfMemory, Overflow }!Value {
         return self.heap.allocStringUninitialized(length) catch {
             _ = try self.collectGarbage();
             return try self.heap.allocStringUninitialized(length);
@@ -479,7 +479,7 @@ pub const Vm = struct {
     }
 
     /// Allocate a closure, running GC if needed
-    pub fn allocClosureWithGC(self: *Vm, code: *const anyopaque, arity: u32, captures: []const Value) error{OutOfMemory}!Value {
+    pub fn allocClosureWithGC(self: *Vm, code: *const anyopaque, arity: u32, captures: []const Value) error{ OutOfMemory, Overflow }!Value {
         return self.heap.allocClosure(code, arity, captures) catch {
             _ = try self.collectGarbage();
             return try self.heap.allocClosure(code, arity, captures);
@@ -1008,22 +1008,22 @@ pub const Vm = struct {
             .lt => {
                 const b = try self.pop();
                 const a = try self.pop();
-                try self.push(if (primitives.arith.lt(a, b)) Value.t else Value.nil);
+                try self.push(if (try primitives.arith.lt(a, b)) Value.t else Value.nil);
             },
             .gt => {
                 const b = try self.pop();
                 const a = try self.pop();
-                try self.push(if (primitives.arith.gt(a, b)) Value.t else Value.nil);
+                try self.push(if (try primitives.arith.gt(a, b)) Value.t else Value.nil);
             },
             .le => {
                 const b = try self.pop();
                 const a = try self.pop();
-                try self.push(if (primitives.arith.le(a, b)) Value.t else Value.nil);
+                try self.push(if (try primitives.arith.le(a, b)) Value.t else Value.nil);
             },
             .ge => {
                 const b = try self.pop();
                 const a = try self.pop();
-                try self.push(if (primitives.arith.ge(a, b)) Value.t else Value.nil);
+                try self.push(if (try primitives.arith.ge(a, b)) Value.t else Value.nil);
             },
             .num_eq => {
                 const b = try self.pop();
@@ -2403,7 +2403,7 @@ pub const Vm = struct {
                 // Try to insert, resize if needed
                 if (!hashTableSet(ht, key, value)) {
                     // Resize in place - updates ht's entries pointer
-                    if (!hashTableResizeInPlace(self, ht)) return error.OutOfMemory;
+                    try hashTableResizeInPlace(self, ht);
                     // Now insert should succeed
                     _ = hashTableSet(ht, key, value);
                 }
@@ -5664,11 +5664,10 @@ fn hashTableGet(ht: *HashTable, key: Value) Value {
 }
 
 /// Resize hash table in place by updating its entries pointer
-/// Returns true on success, false if allocation failed
-fn hashTableResizeInPlace(vm: *Vm, ht: *HashTable) bool {
+fn hashTableResizeInPlace(vm: *Vm, ht: *HashTable) Error!void {
     const new_capacity = ht.capacity * 2;
     // Preserve the test_type from the original hash table
-    const new_ht_val = vm.allocHashTable(new_capacity, ht.test_type) catch return false;
+    const new_ht_val = try vm.allocHashTable(new_capacity, ht.test_type);
     const new_ht = new_ht_val.toPtr(HashTable);
 
     // Copy all entries from old to new
@@ -5682,8 +5681,6 @@ fn hashTableResizeInPlace(vm: *Vm, ht: *HashTable) bool {
     ht.entries = new_ht.entries;
     ht.capacity = new_ht.capacity;
     // count stays the same (new_ht.count would be same as ht.count)
-
-    return true;
 }
 
 /// Set value in hash table (insert or update)

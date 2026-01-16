@@ -29,7 +29,7 @@ pub fn makeInstance(heap: *Heap, args: Value) !Value {
 
     // Collect keyword arguments into a list
     var slot_values = std.ArrayList(Value){};
-    defer slot_values.deinit(heap.allocator);
+    defer slot_values.deinit(heap.backing_allocator);
 
     var rest = cons1.cdr;
     while (rest.isCons()) {
@@ -44,19 +44,20 @@ pub fn makeInstance(heap: *Heap, args: Value) !Value {
         const val_cons = kw_cons.cdr.toPtr(Cons);
         const val = val_cons.car;
 
-        try slot_values.append(heap.allocator, val);
+        try slot_values.append(heap.backing_allocator, val);
         rest = val_cons.cdr;
     }
 
     // Create vector: #('class-name slot1-val slot2-val ...)
     const vec_size = 1 + slot_values.items.len;
-    const vec = try heap.allocVector(vec_size);
-    vec.elements[0] = class_name;
+    const vec_val = try heap.allocVector(vec_size, vec_size);
+    const vec = vec_val.toPtr(Vector);
+    vec.data[0] = class_name;
     for (slot_values.items, 0..) |val, i| {
-        vec.elements[1 + i] = val;
+        vec.data[1 + i] = val;
     }
 
-    return Value.fromPtr(vec);
+    return vec_val;
 }
 
 /// slot-value: (slot-value obj 'slot-name)

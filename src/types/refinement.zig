@@ -42,7 +42,7 @@ pub const RefinementChecker = struct {
     }
 
     /// Check if refinement {x : T | P} is valid (P is satisfiable)
-    pub fn checkSatisfiable(self: *RefinementChecker, predicate: *const Term, var_name: []const u8) RefineResult {
+    pub fn checkSatisfiable(self: *RefinementChecker, predicate: *const Term, var_name: []const u8) !RefineResult {
         self.smt_ctx.reset();
         self.var_map.clearRetainingCapacity();
 
@@ -54,7 +54,7 @@ pub const RefinementChecker = struct {
 
         // Create variable for refinement binder
         const z3_var = self.smt_ctx.mkIntVar(@ptrCast(&name_buf));
-        self.var_map.put(var_name, z3_var) catch return .unknown;
+        try self.var_map.put(var_name, z3_var);
 
         // Translate predicate to Z3
         const z3_pred = self.translateTerm(predicate) orelse return .unknown;
@@ -208,7 +208,7 @@ test "refinement satisfiability" {
     const zero = try builder.fixnum(0);
     const pred = try builder.cmp(.gt, x, zero);
 
-    const result = checker.checkSatisfiable(pred, "x");
+    const result = try checker.checkSatisfiable(pred, "x");
     try std.testing.expect(result == .valid);
 }
 
@@ -227,7 +227,7 @@ test "refinement unsatisfiable" {
     const lt_zero = try builder.cmp(.lt, x, zero);
     const pred = try builder.binop(.@"and", gt_zero, lt_zero);
 
-    const result = checker.checkSatisfiable(pred, "x");
+    const result = try checker.checkSatisfiable(pred, "x");
     try std.testing.expect(result == .invalid);
 }
 

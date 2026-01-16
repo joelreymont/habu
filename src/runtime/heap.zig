@@ -45,6 +45,7 @@ pub const SymbolTable = struct {
 
     pub fn put(self: *SymbolTable, name: []const u8, sym: Value) !void {
         const key = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(key);
         try self.map.put(self.allocator, key, sym);
     }
 
@@ -237,14 +238,20 @@ pub const Heap = struct {
         // Create COMMON-LISP package (holds primitives, all symbols exported)
         heap.cl_package = Package.init(allocator, "COMMON-LISP") catch return error.OutOfMemory;
         heap.cl_package.?.auto_export = true; // All CL symbols are exported
-        heap.packages.put(allocator, "COMMON-LISP", heap.cl_package.?) catch return error.OutOfMemory;
-        // Also register as "CL" alias
-        heap.packages.put(allocator, "CL", heap.cl_package.?) catch return error.OutOfMemory;
+        const cl_key = try allocator.dupe(u8, "COMMON-LISP");
+        errdefer allocator.free(cl_key);
+        heap.packages.put(allocator, cl_key, heap.cl_package.?) catch return error.OutOfMemory;
+        // Also register as "CL" alias (shared package pointer, separate key)
+        const cl_alias_key = try allocator.dupe(u8, "CL");
+        errdefer allocator.free(cl_alias_key);
+        heap.packages.put(allocator, cl_alias_key, heap.cl_package.?) catch return error.OutOfMemory;
 
         // Create CL-USER package (uses CL)
         heap.cl_user_package = Package.init(allocator, "CL-USER") catch return error.OutOfMemory;
         heap.cl_user_package.?.usePackage(heap.cl_package.?) catch return error.OutOfMemory;
-        heap.packages.put(allocator, "CL-USER", heap.cl_user_package.?) catch return error.OutOfMemory;
+        const cl_user_key = try allocator.dupe(u8, "CL-USER");
+        errdefer allocator.free(cl_user_key);
+        heap.packages.put(allocator, cl_user_key, heap.cl_user_package.?) catch return error.OutOfMemory;
 
         // Start in CL package so primitives get interned there
         // VM will switch to CL-USER after primitive registration
@@ -260,12 +267,13 @@ pub const Heap = struct {
         // Free all packages (dedup since CL is alias for COMMON-LISP)
         var seen = std.AutoHashMap(*Package, void).init(self.backing_allocator);
         defer seen.deinit();
-        var pkg_iter = self.packages.valueIterator();
-        while (pkg_iter.next()) |pkg| {
-            if (!seen.contains(pkg.*)) {
-                seen.put(pkg.*, {}) catch {};
-                pkg.*.deinit();
+        var pkg_iter = self.packages.iterator();
+        while (pkg_iter.next()) |entry| {
+            if (!seen.contains(entry.value_ptr.*)) {
+                seen.put(entry.value_ptr.*, {}) catch {};
+                entry.value_ptr.*.deinit();
             }
+            self.backing_allocator.free(entry.key_ptr.*);
         }
         self.packages.deinit(self.backing_allocator);
         // Free class_metadata keys and slot name arrays
@@ -465,8 +473,8 @@ pub const Heap = struct {
     /// Allocate a vector with given capacity
     pub fn allocVector(self: *Heap, length: usize, capacity: usize) error{OutOfMemory}!Value {
         // Allocate header + data array together
-        const data_size = capacity * @sizeOf(Value);
-        const total_size = @sizeOf(objects.Vector) + data_size;
+        const data_size = std.math.mul(usize, capacity, @sizeOf(Value)) catch return error.OutOfMemory;
+        const total_size = std.math.add(usize, @sizeOf(objects.Vector), data_size) catch return error.OutOfMemory;
 
         const ptr = try self.allocRaw(total_size);
         const vec: *objects.Vector = @ptrCast(@alignCast(ptr));
@@ -495,13 +503,13 @@ pub const Heap = struct {
         // Calculate total size (product of all dimensions)
         var total_size: u64 = 1;
         for (dimensions) |dim| {
-            total_size *= dim;
+            total_size = std.math.mul(u64, total_size, dim) catch return error.OutOfMemory;
         }
 
         // Allocate header + data array together
-        const data_size = total_size * @sizeOf(Value);
+        const data_size = std.math.mul(u64, total_size, @sizeOf(Value)) catch return error.OutOfMemory;
         const header_size = @sizeOf(objects.Array);
-        const alloc_size = header_size + data_size;
+        const alloc_size = std.math.add(u64, header_size, data_size) catch return error.OutOfMemory;
 
         const ptr = try self.allocRaw(alloc_size);
         const arr: *objects.Array = @ptrCast(@alignCast(ptr));
@@ -533,7 +541,7 @@ pub const Heap = struct {
     /// Allocate a string (copies the bytes)
     pub fn allocString(self: *Heap, bytes: []const u8) error{OutOfMemory}!Value {
         const aligned_len = std.mem.alignForward(usize, bytes.len, 8);
-        const total_size = @sizeOf(objects.String) + aligned_len;
+        const total_size = std.math.add(usize, @sizeOf(objects.String), aligned_len) catch return error.OutOfMemory;
 
         const ptr = try self.allocRaw(total_size);
         const str: *objects.String = @ptrCast(@alignCast(ptr));
@@ -553,9 +561,9 @@ pub const Heap = struct {
     }
 
     /// Allocate an uninitialized string of given length
-    pub fn allocStringUninitialized(self: *Heap, len: usize) error{OutOfMemory}!Value {
+    pub fn allocStringUninitialized(self: *Heap, len: usize) error{ OutOfMemory, Overflow }!Value {
         const aligned_len = std.mem.alignForward(usize, len, 8);
-        const total_size = @sizeOf(objects.String) + aligned_len;
+        const total_size = try std.math.add(usize, @sizeOf(objects.String), aligned_len);
 
         const ptr = try self.allocRaw(total_size);
         const str: *objects.String = @ptrCast(@alignCast(ptr));
@@ -572,8 +580,9 @@ pub const Heap = struct {
     }
 
     /// Allocate a closure
-    pub fn allocClosure(self: *Heap, code: *const anyopaque, arity: u32, captures: []const Value) error{OutOfMemory}!Value {
-        const total_size = @sizeOf(objects.Closure) + captures.len * @sizeOf(Value);
+    pub fn allocClosure(self: *Heap, code: *const anyopaque, arity: u32, captures: []const Value) error{ OutOfMemory, Overflow }!Value {
+        const captures_size = try std.math.mul(usize, captures.len, @sizeOf(Value));
+        const total_size = try std.math.add(usize, @sizeOf(objects.Closure), captures_size);
 
         const ptr = try self.allocRaw(total_size);
         const closure: *objects.Closure = @ptrCast(@alignCast(ptr));
@@ -731,9 +740,9 @@ pub const Heap = struct {
     }
 
     /// Intern a symbol in a specific package by name
-    pub fn internInPackage(self: *Heap, pkg_name: []const u8, sym_name: []const u8) ?Value {
+    pub fn internInPackage(self: *Heap, pkg_name: []const u8, sym_name: []const u8) !?Value {
         const pkg = self.findPackage(pkg_name) orelse return null;
-        return pkg.intern(self, sym_name) catch return null;
+        return try pkg.intern(self, sym_name);
     }
 
     /// Find a package by name
@@ -748,7 +757,9 @@ pub const Heap = struct {
         }
         const pkg = try Package.init(self.backing_allocator, name);
         errdefer pkg.deinit();
-        try self.packages.put(self.backing_allocator, name, pkg);
+        const key = try self.backing_allocator.dupe(u8, name);
+        errdefer self.backing_allocator.free(key);
+        try self.packages.put(self.backing_allocator, key, pkg);
         return pkg;
     }
 
@@ -827,7 +838,7 @@ pub const Heap = struct {
 
     /// Run garbage collection with external roots (from VM stack, globals, etc.)
     /// Returns bytes reclaimed (space_used_before - space_used_after)
-    pub fn collectGarbage(self: *Heap, external_roots: []Value) usize {
+    pub fn collectGarbage(self: *Heap, external_roots: []Value) !usize {
         const before = self.bytesUsed();
 
         // Build root set: external roots + interned symbol/keyword values
@@ -835,18 +846,18 @@ pub const Heap = struct {
         defer all_roots.deinit(self.backing_allocator);
 
         // Add external roots
-        all_roots.appendSlice(self.backing_allocator, external_roots) catch return 0;
+        all_roots.appendSlice(self.backing_allocator, external_roots) catch return error.OutOfMemory;
 
         // Add symbol table values (the Values need to be updated after GC)
         var sym_it = self.symbols.map.valueIterator();
         while (sym_it.next()) |v| {
-            all_roots.append(self.backing_allocator, v.*) catch return 0;
+            all_roots.append(self.backing_allocator, v.*) catch return error.OutOfMemory;
         }
 
         // Add keyword table values
         var kw_it = self.keywords.map.valueIterator();
         while (kw_it.next()) |v| {
-            all_roots.append(self.backing_allocator, v.*) catch return 0;
+            all_roots.append(self.backing_allocator, v.*) catch return error.OutOfMemory;
         }
 
         // Add package symbol table values
@@ -854,14 +865,14 @@ pub const Heap = struct {
         while (pkg_it.next()) |pkg| {
             var pkg_sym_it = pkg.*.symbols.map.valueIterator();
             while (pkg_sym_it.next()) |v| {
-                all_roots.append(self.backing_allocator, v.*) catch return 0;
+                all_roots.append(self.backing_allocator, v.*) catch return error.OutOfMemory;
             }
         }
 
         // Add readtable function values
         var rt_it = self.readtable.valueIterator();
         while (rt_it.next()) |entry| {
-            all_roots.append(self.backing_allocator, entry.function) catch return 0;
+            all_roots.append(self.backing_allocator, entry.function) catch return error.OutOfMemory;
         }
 
         // Add dispatch readtable function values
@@ -869,19 +880,19 @@ pub const Heap = struct {
         while (drt_it.next()) |sub_table| {
             var sub_it = sub_table.valueIterator();
             while (sub_it.next()) |fn_val| {
-                all_roots.append(self.backing_allocator, fn_val.*) catch return 0;
+                all_roots.append(self.backing_allocator, fn_val.*) catch return error.OutOfMemory;
             }
         }
 
         // Add Lisp package registry
         if (self.lisp_packages.raw != Value.nil.raw) {
-            all_roots.append(self.backing_allocator, self.lisp_packages) catch return 0;
+            all_roots.append(self.backing_allocator, self.lisp_packages) catch return error.OutOfMemory;
         }
 
         // Run GC
         var gc = GC.init(self.backing_allocator, self);
         defer gc.deinit();
-        _ = gc.collect(all_roots.items) catch return 0;
+        _ = gc.collect(all_roots.items) catch return error.OutOfMemory;
 
         // Update symbol table with new locations
         const sym_count = self.symbols.map.count();

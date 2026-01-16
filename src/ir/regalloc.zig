@@ -423,8 +423,8 @@ pub const GraphColorAlloc = struct {
 
     /// Merge node a into node b
     fn mergeNodes(self: *GraphColorAlloc, a: Reg, b: Reg) !void {
-        const node_a = &(self.nodes[a] orelse return);
-        if (self.nodes[b] == null) return; // b must exist
+        const node_a = &(self.nodes[a] orelse return error.InvalidState);
+        if (self.nodes[b] == null) return error.InvalidState;
 
         // Transfer edges from a to b
         for (node_a.neighbors.items) |neighbor| {
