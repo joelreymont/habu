@@ -58,6 +58,37 @@ pub fn packageUseList(pkg: Value) !Value {
     return p.use_list;
 }
 
+/// Get list of packages that use this package
+pub fn packageUsedByList(heap: *Heap, pkg: Value) !Value {
+    if (!pkg.isPackage()) return error.TypeError;
+
+    var result = Value.nil;
+    var it = heap.packages.valueIterator();
+    while (it.next()) |zig_pkg| {
+        const name_val = heap.allocString(zig_pkg.*.name) catch continue;
+        if (heap.findLispPackage(name_val)) |pkg_val| {
+            const p = pkg_val.toPtr(objects.Package);
+            var use_curr = p.use_list;
+            while (!use_curr.isNil()) {
+                const pair = use_curr.toPtr(objects.Cons);
+                if (pair.car.raw == pkg.raw) {
+                    result = try heap.allocCons(pkg_val, result);
+                    break;
+                }
+                use_curr = pair.cdr;
+            }
+        }
+    }
+    return result;
+}
+
+/// Get list of shadowing symbols in package
+pub fn packageShadowingSymbols(pkg: Value) !Value {
+    if (!pkg.isPackage()) return error.TypeError;
+    const p = pkg.toPtr(objects.Package);
+    return p.shadowing;
+}
+
 /// List all packages
 pub fn listAllPackages(heap: *Heap) !Value {
     var result = Value.nil;
