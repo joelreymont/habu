@@ -8,6 +8,9 @@ const Value = @import("../value.zig").Value;
 const objects = @import("../objects.zig");
 const Heap = @import("../heap.zig").Heap;
 
+const IO_BUF = 4096;
+const LINE_BUF = 1024;
+
 /// Pushback buffer for unread-char (single character)
 var pushback_char: ?u8 = null;
 
@@ -17,7 +20,7 @@ pub fn sysWrite(val: Value) !void {
 
     const str = val.toPtr(objects.String);
     const stdout_file = fs.File.stdout();
-    var buf: [4096]u8 = undefined;
+    var buf: [IO_BUF]u8 = undefined;
     var file_writer = stdout_file.writer(&buf);
     const w = &file_writer.interface;
 
@@ -28,7 +31,7 @@ pub fn sysWrite(val: Value) !void {
 /// Write bytes directly to stdout
 pub fn sysWriteBytes(bytes: []const u8) !void {
     const stdout_file = fs.File.stdout();
-    var buf: [4096]u8 = undefined;
+    var buf: [IO_BUF]u8 = undefined;
     var file_writer = stdout_file.writer(&buf);
     const w = &file_writer.interface;
 
@@ -39,7 +42,7 @@ pub fn sysWriteBytes(bytes: []const u8) !void {
 /// Write a character to stdout
 pub fn sysWriteChar(char: u8) !void {
     const stdout_file = fs.File.stdout();
-    var buf: [4096]u8 = undefined;
+    var buf: [IO_BUF]u8 = undefined;
     var file_writer = stdout_file.writer(&buf);
     const w = &file_writer.interface;
 
@@ -52,7 +55,7 @@ pub fn sysWriteFixnum(val: Value) !void {
     if (!val.isFixnum()) return;
 
     const stdout_file = fs.File.stdout();
-    var buf: [4096]u8 = undefined;
+    var buf: [IO_BUF]u8 = undefined;
     var file_writer = stdout_file.writer(&buf);
     const w = &file_writer.interface;
 
@@ -68,11 +71,11 @@ pub fn sysNewline() !void {
 /// Read a line from stdin (allocates in heap)
 pub fn sysReadLine(heap: *Heap) !Value {
     const stdin_file = fs.File.stdin();
-    var read_buf: [4096]u8 = undefined;
+    var read_buf: [IO_BUF]u8 = undefined;
     var file_reader = stdin_file.reader(&read_buf);
     const reader = &file_reader.interface;
 
-    var line_buf: [1024]u8 = undefined;
+    var line_buf: [LINE_BUF]u8 = undefined;
     var line_len: usize = 0;
 
     while (line_len < line_buf.len) {
@@ -100,7 +103,7 @@ pub fn sysReadChar() !i64 {
     }
 
     const stdin_file = fs.File.stdin();
-    var read_buf: [4096]u8 = undefined;
+    var read_buf: [IO_BUF]u8 = undefined;
     var file_reader = stdin_file.reader(&read_buf);
     const reader = &file_reader.interface;
 
@@ -121,7 +124,7 @@ pub fn sysPeekChar() !i64 {
 
     // Read and push back
     const stdin_file = fs.File.stdin();
-    var read_buf: [4096]u8 = undefined;
+    var read_buf: [IO_BUF]u8 = undefined;
     var file_reader = stdin_file.reader(&read_buf);
     const reader = &file_reader.interface;
 
@@ -143,7 +146,7 @@ pub fn sysUnreadChar(ch: u8) void {
 /// Returns the number of bytes read, or error
 pub fn sysReadSexp(buffer: []u8) !usize {
     const stdin_file = fs.File.stdin();
-    var read_buf: [4096]u8 = undefined;
+    var read_buf: [IO_BUF]u8 = undefined;
     var file_reader = stdin_file.reader(&read_buf);
     const reader = &file_reader.interface;
 
@@ -210,7 +213,7 @@ pub fn sysReadSexp(buffer: []u8) !usize {
 /// Print a Habu value to stdout (Lisp-style)
 pub fn printValue(val: Value) !void {
     const stdout_file = fs.File.stdout();
-    var buf: [4096]u8 = undefined;
+    var buf: [IO_BUF]u8 = undefined;
     var file_writer = stdout_file.writer(&buf);
     const w = &file_writer.interface;
 
@@ -221,7 +224,7 @@ pub fn printValue(val: Value) !void {
 /// Print a Habu value to stdout without escaping (princ style)
 pub fn princValue(val: Value) !void {
     const stdout_file = fs.File.stdout();
-    var buf: [4096]u8 = undefined;
+    var buf: [IO_BUF]u8 = undefined;
     var file_writer = stdout_file.writer(&buf);
     const w = &file_writer.interface;
 
