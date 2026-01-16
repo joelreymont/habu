@@ -2247,7 +2247,10 @@ test "finalize adds return" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var emitter = Emitter.init(allocator);
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var emitter = Emitter.initWithHeap(allocator, &heap);
     defer emitter.deinit();
 
     const builder = ir.IrBuilder.init(allocator);
@@ -2255,10 +2258,10 @@ test "finalize adds return" {
     defer allocator.destroy(node);
 
     try emitter.emit(node);
-    const chunk = try emitter.finalize();
-    defer allocator.free(chunk.code);
-    defer allocator.free(chunk.constants);
+    const chunk_val = try emitter.finalize();
+    const chunk = chunk_val.toPtr(Chunk);
 
     // Last instruction should be ret
-    try testing.expectEqual(@as(u8, @intFromEnum(Op.ret)), chunk.code[chunk.code.len - 1]);
+    const code = chunk.getCode();
+    try testing.expectEqual(@as(u8, @intFromEnum(Op.ret)), code[code.len - 1]);
 }

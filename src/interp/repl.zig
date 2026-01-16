@@ -194,35 +194,16 @@ pub const Repl = struct {
             return error.EmitError;
         };
         const child_chunks = emitter.getChildChunks() catch {
-            self.allocator.free(chunk.code);
-            self.allocator.free(chunk.constants);
             emitter.deinit();
             return error.EmitError;
         };
         emitter.deinit();
 
-        defer self.allocator.free(chunk.code);
-        defer self.allocator.free(chunk.constants);
-
         // Store child chunks for closures
-        const chunk_base: u16 = @intCast(self.persistent_chunk_ptrs.items.len);
+        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
         for (child_chunks) |c| {
-            const chunk_ptr = self.allocator.create(bytecode.Chunk) catch {
-                self.allocator.free(child_chunks);
-                return error.EmitError;
-            };
-            chunk_ptr.* = c;
-            patchMakeClosureIndices(chunk_ptr.code, chunk_base);
-            self.persistent_chunk_ptrs.append(self.allocator, chunk_ptr) catch {
-                self.allocator.free(c.code);
-                self.allocator.free(c.constants);
-                self.allocator.destroy(chunk_ptr);
-                self.allocator.free(child_chunks);
-                return error.EmitError;
-            };
+            try self.persistent_chunks.append(self.allocator, c);
         }
-        self.allocator.free(child_chunks);
-        patchMakeClosureIndices(chunk.code, chunk_base);
 
         // Use a separate VM to avoid stack issues
         var nested_vm = Vm.init(self.allocator, self.heap) catch return error.RuntimeError;
@@ -238,11 +219,17 @@ pub const Repl = struct {
         }
         nested_vm.num_globals = self.vm.num_globals;
 
-        // Set up chunk pool for closures
-        nested_vm.setChunkPool(self.persistent_chunk_ptrs.items);
+        // Set up chunk pool for closures - use base offset for this eval
+        var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
+        defer chunk_ptrs.deinit(self.allocator);
+        for (self.persistent_chunks.items) |chunk_val| {
+            chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
+        }
+        nested_vm.setChunkPoolWithBase(chunk_ptrs.items, chunk_base);
 
         // Execute
-        const result = nested_vm.run(&chunk) catch {
+        const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
+        const result = nested_vm.run(chunk_ptr) catch {
             return error.RuntimeError;
         };
 
@@ -433,54 +420,36 @@ pub const Repl = struct {
             return error.EmitError;
         };
         const child_chunks = emitter.getChildChunks() catch {
-            self.allocator.free(chunk.code);
-            self.allocator.free(chunk.constants);
             emitter.deinit();
             return error.OutOfMemory;
         };
-
-        // Store chunks persistently and patch indices
-        const chunk_base: u16 = @intCast(self.persistent_chunk_ptrs.items.len);
-        for (child_chunks) |child_chunk| {
-            const chunk_ptr = self.allocator.create(bytecode.Chunk) catch {
-                self.allocator.free(chunk.code);
-                self.allocator.free(chunk.constants);
-                return error.OutOfMemory;
-            };
-            chunk_ptr.* = child_chunk;
-            patchMakeClosureIndices(chunk_ptr.code, chunk_base);
-            self.persistent_chunk_ptrs.append(self.allocator, chunk_ptr) catch {
-                self.allocator.destroy(chunk_ptr);
-                self.allocator.free(chunk.code);
-                self.allocator.free(chunk.constants);
-                return error.OutOfMemory;
-            };
-        }
-        self.allocator.free(child_chunks);
-        patchMakeClosureIndices(chunk.code, chunk_base);
         emitter.deinit();
 
+        // Store chunks persistently
+        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
+        for (child_chunks) |child_chunk| {
+            try self.persistent_chunks.append(self.allocator, child_chunk);
+        }
+
         // Set chunk pool and run
-        vm.setChunkPool(self.persistent_chunk_ptrs.items);
-        const result = vm.run(&chunk) catch {
-            self.allocator.free(chunk.code);
-            self.allocator.free(chunk.constants);
+        var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
+        defer chunk_ptrs.deinit(self.allocator);
+        for (self.persistent_chunks.items) |chunk_val| {
+            chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
+        }
+        vm.setChunkPoolWithBase(chunk_ptrs.items, chunk_base);
+
+        const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
+        const result = vm.run(chunk_ptr) catch {
             return error.RuntimeError;
         };
-        self.allocator.free(chunk.code);
-        self.allocator.free(chunk.constants);
         return result;
     }
 
     pub fn deinit(self: *Repl) void {
         self.line_editor.deinit();
         self.compiler.deinit();
-        for (self.persistent_chunk_ptrs.items) |chunk_ptr| {
-            self.allocator.free(chunk_ptr.code);
-            self.allocator.free(chunk_ptr.constants);
-            self.allocator.destroy(chunk_ptr);
-        }
-        self.persistent_chunk_ptrs.deinit(self.allocator);
+        self.persistent_chunks.deinit(self.allocator);
         self.macros.deinit();
     }
 
@@ -922,54 +891,32 @@ pub const Repl = struct {
             return error.EmitError;
         };
         const child_chunks = emitter.getChildChunks() catch {
-            self.allocator.free(chunk.code);
-            self.allocator.free(chunk.constants);
             emitter.deinit();
             return error.EmitError;
         };
         emitter.deinit();
 
-        defer self.allocator.free(chunk.code);
-        defer self.allocator.free(chunk.constants);
-
-        // Add child chunks to persistent storage (each allocated separately)
-        // Store the base index for this eval's chunks
-        const chunk_base: u16 = @intCast(self.persistent_chunk_ptrs.items.len);
+        // Add child chunks to persistent storage
+        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
         for (child_chunks) |c| {
-            const chunk_ptr = self.allocator.create(bytecode.Chunk) catch {
-                self.allocator.free(child_chunks);
-                return error.EmitError;
-            };
-            chunk_ptr.* = c;
-            // Patch make_closure indices to absolute
-            patchMakeClosureIndices(chunk_ptr.code, chunk_base);
-            self.persistent_chunk_ptrs.append(self.allocator, chunk_ptr) catch {
-                self.allocator.free(c.code);
-                self.allocator.free(c.constants);
-                self.allocator.destroy(chunk_ptr);
-                self.allocator.free(child_chunks);
-                return error.EmitError;
-            };
+            try self.persistent_chunks.append(self.allocator, c);
         }
-        self.allocator.free(child_chunks);
 
-        // Patch main chunk as well
-        patchMakeClosureIndices(chunk.code, chunk_base);
-
-        // Optionally show disassembly
-        if (self.config.show_disasm) {
-            const stdout_file = std.fs.File.stdout();
-            var buf: [4096]u8 = undefined;
-            var file_writer = stdout_file.writer(&buf);
-            const w = &file_writer.interface;
-            disasm.disassemble(&chunk, w) catch {};
-            w.writeAll("\n") catch {};
-            w.flush() catch {};
-        }
+        // Optionally show disassembly (skip for now - needs bytecode Chunk type)
+        // if (self.config.show_disasm) {
+        //     ...
+        // }
 
         // Set chunk pool - VM uses absolute indices now
-        self.vm.setChunkPool(self.persistent_chunk_ptrs.items);
-        return self.vm.run(&chunk) catch return error.RuntimeError;
+        var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
+        defer chunk_ptrs.deinit(self.allocator);
+        for (self.persistent_chunks.items) |chunk_val| {
+            chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
+        }
+        self.vm.setChunkPoolWithBase(chunk_ptrs.items, chunk_base);
+
+        const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
+        return self.vm.run(chunk_ptr) catch return error.RuntimeError;
     }
 
     /// Print a value in Lisp notation
@@ -1364,43 +1311,28 @@ pub const Repl = struct {
             return error.EmitError;
         };
         const child_chunks = emitter.getChildChunks() catch {
-            self.allocator.free(chunk.code);
-            self.allocator.free(chunk.constants);
             emitter.deinit();
             return error.EmitError;
         };
         emitter.deinit();
 
-        defer self.allocator.free(chunk.code);
-        defer self.allocator.free(chunk.constants);
-
         // Add child chunks
-        const chunk_base: u16 = @intCast(self.persistent_chunk_ptrs.items.len);
+        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
         for (child_chunks) |c| {
-            const chunk_ptr = self.allocator.create(bytecode.Chunk) catch {
-                self.allocator.free(child_chunks);
-                return error.EmitError;
-            };
-            chunk_ptr.* = c;
-            patchMakeClosureIndices(chunk_ptr.code, chunk_base);
-            self.persistent_chunk_ptrs.append(self.allocator, chunk_ptr) catch {
-                self.allocator.free(c.code);
-                self.allocator.free(c.constants);
-                self.allocator.destroy(chunk_ptr);
-                self.allocator.free(child_chunks);
-                return error.EmitError;
-            };
+            try self.persistent_chunks.append(self.allocator, c);
         }
-        self.allocator.free(child_chunks);
-
-        var mutable_chunk = chunk;
-        patchMakeClosureIndices(mutable_chunk.code, chunk_base);
 
         // Use a separate VM to avoid corrupting the main VM's state
         // (handleDefmacro may be called during a load from within the main VM)
         var macro_vm = Vm.init(self.allocator, self.heap) catch return error.RuntimeError;
         macro_vm.setGlobalEnv(&self.compiler.globals);
-        macro_vm.setChunkPool(self.persistent_chunk_ptrs.items);
+
+        var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
+        defer chunk_ptrs.deinit(self.allocator);
+        for (self.persistent_chunks.items) |chunk_val| {
+            chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
+        }
+        macro_vm.setChunkPoolWithBase(chunk_ptrs.items, chunk_base);
 
         // Copy globals from current context
         const source_vm = self.current_vm orelse &self.vm;
@@ -1409,7 +1341,8 @@ pub const Repl = struct {
         }
         macro_vm.num_globals = source_vm.num_globals;
 
-        const closure = macro_vm.run(&mutable_chunk) catch return error.RuntimeError;
+        const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
+        const closure = macro_vm.run(chunk_ptr) catch return error.RuntimeError;
 
         if (!closure.isClosure()) return error.CompileError;
 
@@ -1562,42 +1495,28 @@ pub const Repl = struct {
             return error.EmitError;
         };
         const child_chunks = emitter.getChildChunks() catch {
-            self.allocator.free(chunk.code);
-            self.allocator.free(chunk.constants);
             emitter.deinit();
             return error.EmitError;
         };
         emitter.deinit();
 
-        defer self.allocator.free(chunk.code);
-        defer self.allocator.free(chunk.constants);
-
         // Add child chunks
-        const chunk_base: u16 = @intCast(self.persistent_chunk_ptrs.items.len);
+        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
         for (child_chunks) |c| {
-            const chunk_ptr = self.allocator.create(bytecode.Chunk) catch {
-                self.allocator.free(child_chunks);
-                return error.EmitError;
-            };
-            chunk_ptr.* = c;
-            patchMakeClosureIndices(chunk_ptr.code, chunk_base);
-            self.persistent_chunk_ptrs.append(self.allocator, chunk_ptr) catch {
-                self.allocator.free(c.code);
-                self.allocator.free(c.constants);
-                self.allocator.destroy(chunk_ptr);
-                self.allocator.free(child_chunks);
-                return error.EmitError;
-            };
+            try self.persistent_chunks.append(self.allocator, c);
         }
-        self.allocator.free(child_chunks);
-
-        var mutable_chunk = chunk;
-        patchMakeClosureIndices(mutable_chunk.code, chunk_base);
 
         // Use a separate VM to avoid corrupting the main VM's state
         var eval_vm = Vm.init(self.allocator, self.heap) catch return error.RuntimeError;
         eval_vm.setGlobalEnv(&self.compiler.globals);
-        eval_vm.setChunkPool(self.persistent_chunk_ptrs.items);
+
+        var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
+        defer chunk_ptrs.deinit(self.allocator);
+        for (self.persistent_chunks.items) |chunk_val| {
+            chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
+        }
+        eval_vm.setChunkPoolWithBase(chunk_ptrs.items, chunk_base);
+
         eval_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         eval_vm.setEvalCallback(&evalCallback, @ptrCast(self));
         eval_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
@@ -1615,7 +1534,8 @@ pub const Repl = struct {
         self.current_vm = &eval_vm;
         defer self.current_vm = saved_current_vm;
 
-        const result = eval_vm.run(&mutable_chunk) catch return error.RuntimeError;
+        const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
+        const result = eval_vm.run(chunk_ptr) catch return error.RuntimeError;
 
         // Copy back any new globals to the original source
         for (eval_vm.globals, 0..) |g, i| {
@@ -1757,29 +1677,20 @@ pub const Repl = struct {
         code_len += 1;
 
         // Build constants array
-        var constants = self.allocator.alloc(u64, const_idx) catch return error.RuntimeError;
-        defer self.allocator.free(constants);
-
-        constants[0] = closure.raw;
-        var idx: u16 = 1;
+        var constants = std.ArrayList(Value){};
+        defer constants.deinit(self.allocator);
+        try constants.append(self.allocator, closure);
         arg_list = args;
         while (arg_list.isCons()) {
             const arg_cons = arg_list.toPtr(Cons);
-            constants[idx] = arg_cons.car.raw;
-            idx += 1;
+            try constants.append(self.allocator, arg_cons.car);
             arg_list = arg_cons.cdr;
         }
 
-        const chunk = bytecode.Chunk{
-            .code = code_buf[0..code_len],
-            .constants = constants,
-            .arity = 0,
-            .optional_count = 0,
-            .key_count = 0,
-            .has_rest = false,
-            .num_locals = 0,
-            .name = "<macro-call>",
-        };
+        // Create a chunk on the heap
+        var emitter = Emitter.initWithHeap(self.allocator, self.heap);
+        defer emitter.deinit();
+        const chunk = try self.heap.allocChunk(code_buf[0..code_len], constants.items, 0, 0, 0, false, 0);
 
         // Use a separate VM to avoid corrupting the current VM state
         var macro_vm = Vm.init(self.allocator, self.heap) catch return error.RuntimeError;
@@ -1796,8 +1707,15 @@ pub const Repl = struct {
         }
         macro_vm.num_globals = source_vm.num_globals;
 
-        macro_vm.setChunkPool(self.persistent_chunk_ptrs.items);
-        return macro_vm.run(&chunk) catch return error.RuntimeError;
+        var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
+        defer chunk_ptrs.deinit(self.allocator);
+        for (self.persistent_chunks.items) |chunk_val| {
+            chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
+        }
+        macro_vm.setChunkPool(chunk_ptrs.items);
+
+        const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
+        return macro_vm.run(chunk_ptr) catch return error.RuntimeError;
     }
 
     /// Handle package forms (defpackage/in-package) - execute them immediately
@@ -1813,10 +1731,10 @@ pub const Repl = struct {
         defer emitter.deinit();
         try emitter.emit(ir_node);
         const chunk = try emitter.finalize();
-        defer self.allocator.free(chunk.code);
 
         // Execute to set package at runtime (though it's already set at compile time)
-        const result = try self.vm.run(&chunk);
+        const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
+        const result = try self.vm.run(chunk_ptr);
 
         // The package is now set in self.heap.current_package for future reads
         // Return the result (package name as symbol)

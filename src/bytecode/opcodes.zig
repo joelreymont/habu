@@ -469,20 +469,20 @@ pub const Op = enum(u8) {
 
     /// Open file stream (operand: u8 direction: 0=input, 1=output)
     /// ( pathname -- stream )
-    open = 0xCC,
+    open = 0xCE,
 
     /// Close stream
     /// ( stream -- stream )
-    close = 0xCD,
+    close = 0xCF,
 
     /// Seed random number generator
     /// ( seed -- seed )
-    random_seed = 0xCE,
+    random_seed = 0xD0,
 
     /// Make array (dimensions on stack, count in operand, optional initial-element)
     /// ( dim1 dim2 ... dimN [initial-element] -- array )
     /// Operand bits: [7:1] = dim count, [0] = has initial-element
-    make_array = 0xCF,
+    make_array = 0xD1,
 
     /// Array reference - access array element (operand: u8 subscript count)
     /// ( array sub1 sub2 ... subN -- value )
@@ -563,7 +563,7 @@ pub const Op = enum(u8) {
 
     /// Compute hash code for object
     /// ( object -- fixnum )
-    sxhash = 0xC9,
+    sxhash = 0xCB,
 
     /// Set value in hash table
     /// ( hashtable key value -- )
@@ -579,11 +579,11 @@ pub const Op = enum(u8) {
 
     /// Get hash table test function
     /// ( hashtable -- test-symbol )
-    hash_test = 0xCA,
+    hash_test = 0xCC,
 
     /// Clear hash table
     /// ( hashtable -- hashtable )
-    hash_clear = 0xCB,
+    hash_clear = 0xCD,
 
     /// Get list of keys from hash table
     /// ( hashtable -- keys-list )
@@ -687,7 +687,7 @@ pub const Op = enum(u8) {
     /// Stack: predicate result on top, original value below
     /// Pops predicate result, leaves original value if truthy, errors if not
     /// ( value predicate-result -- value )
-    check_refine = 0xF6,
+    check_refine = 0xF8,
 
     /// Assert value matches one of multiple types (union type)
     /// Operand: u16 constant pool index of vector containing type symbols
@@ -736,27 +736,27 @@ pub const Op = enum(u8) {
 
     /// Absolute value
     /// ( n -- |n| )
-    abs = 0xD0,
+    abs = 0xD2,
 
     /// Check if zero
     /// ( n -- t/nil )
-    zerop = 0xD1,
+    zerop = 0xD3,
 
     /// Check if positive
     /// ( n -- t/nil )
-    plusp = 0xD2,
+    plusp = 0xD4,
 
     /// Check if negative
     /// ( n -- t/nil )
-    minusp = 0xD3,
+    minusp = 0xD5,
 
     /// Check if even
     /// ( n -- t/nil )
-    evenp = 0xD4,
+    evenp = 0xD6,
 
     /// Check if odd
     /// ( n -- t/nil )
-    oddp = 0xD5,
+    oddp = 0xD7,
 
     // ========================================================================
     // Math functions
@@ -800,71 +800,63 @@ pub const Op = enum(u8) {
 
     /// Read S-expression from stdin
     /// ( -- value )
-    read = 0xD6,
+    read = 0xD8,
 
     /// Load a file: (load filename)
     /// ( filename -- result )
-    load = 0xD7,
+    load = 0xD9,
 
     /// Read S-expression from string
     /// ( string -- value )
-    read_from_string = 0xD8,
+    read_from_string = 0xDA,
 
     /// Evaluate expression at runtime
     /// ( expr -- result )
-    eval = 0xD9,
+    eval = 0xDB,
 
     /// Generate unique symbol
     /// ( -- symbol )
-    gensym = 0xDA,
-
-    /// Search symbols by name substring, return list
-    /// ( substring -- list )
-    apropos_list = 0xFC,
-
-    /// Search symbols by name substring, print results
-    /// ( substring -- nil )
-    apropos = 0xFD,
+    gensym = 0xDC,
 
     /// Expand macros in expression
     /// ( expr -- expanded )
-    macroexpand = 0xDB,
+    macroexpand = 0xDD,
 
     /// Print value without escaping (princ style)
     /// ( val -- val )
-    princ = 0xDC,
+    princ = 0xDE,
 
     /// Print newline
     /// ( -- nil )
-    terpri = 0xDD,
+    terpri = 0xDF,
 
     /// Write single character to stdout
     /// ( char -- char )
-    write_char = 0xDE,
+    write_char = 0xE0,
 
     /// Convert character to uppercase
     /// ( char -- char )
-    char_upcase = 0xDF,
+    char_upcase = 0xE1,
 
     /// Convert character to lowercase
     /// ( char -- char )
-    char_downcase = 0xE0,
+    char_downcase = 0xE2,
 
     /// Check if character is a digit
     /// ( char -- t/nil )
-    digit_char_p = 0xE1,
+    digit_char_p = 0xE3,
 
     /// Check if character is alphabetic
     /// ( char -- t/nil )
-    alpha_char_p = 0xE2,
+    alpha_char_p = 0xE4,
 
     /// Parse string to integer
     /// ( string -- fixnum )
-    parse_integer = 0xE3,
+    parse_integer = 0xE5,
 
     /// Convert value to string representation
     /// ( value -- string )
-    write_to_string = 0xE4,
+    write_to_string = 0xE6,
 
     // ========================================================================
     // Bitwise operations
@@ -872,23 +864,23 @@ pub const Op = enum(u8) {
 
     /// Bitwise AND
     /// ( a b -- a&b )
-    logand = 0xE5,
+    logand = 0xE7,
 
     /// Bitwise OR
     /// ( a b -- a|b )
-    logior = 0xE6,
+    logior = 0xE8,
 
     /// Bitwise XOR
     /// ( a b -- a^b )
-    logxor = 0xE7,
+    logxor = 0xE9,
 
     /// Bitwise NOT
     /// ( a -- ~a )
-    lognot = 0xE8,
+    lognot = 0xEA,
 
     /// Arithmetic shift (positive=left, negative=right)
     /// ( n count -- shifted )
-    ash = 0xE9,
+    ash = 0xEB,
 
     /// Test if bit at index is set
     /// ( index n -- bool )
@@ -924,71 +916,71 @@ pub const Op = enum(u8) {
 
     /// Read entire file contents to string
     /// ( path-string -- string )
-    read_file = 0xEA,
+    read_file = 0xEC,
 
     /// Write string to file
     /// ( path-string content-string -- nil )
-    write_file = 0xEB,
+    write_file = 0xED,
 
     /// Create string of given length filled with character
     /// ( length char -- string )
-    make_string = 0xEC,
+    make_string = 0xEE,
 
     /// Convert list of character codes to string
     /// ( list -- string )
-    list_to_string = 0xED,
+    list_to_string = 0xEF,
 
     /// Convert string to uppercase
     /// ( string -- string )
-    string_upcase = 0xEE,
+    string_upcase = 0xF0,
 
     /// Extended math operations (sub-opcode in next byte)
     /// ( ... -- ... )
-    math_ext = 0xEF,
+    math_ext = 0xF1,
 
     /// Convert string to lowercase
     /// ( string -- string )
-    string_downcase = 0xF0,
+    string_downcase = 0xF2,
 
     /// Check if value is a list (nil or cons)
     /// ( val -- t/nil )
-    listp = 0xF1,
+    listp = 0xF3,
 
     /// Check if value is an atom (not a cons)
     /// ( val -- t/nil )
-    atom = 0xF2,
+    atom = 0xF4,
 
     /// Association list lookup (using eq)
     /// ( key alist -- cons-or-nil )
-    assoc = 0xF3,
+    assoc = 0xF5,
 
     /// Structural equality (recursive)
     /// ( a b -- t/nil )
-    equal = 0xF4,
+    equal = 0xF6,
 
     /// Extended equality (eql)
     /// ( a b -- t/nil )
-    eql = 0xF5,
+    eql = 0xF7,
 
     /// Association list lookup (using eql - compares numbers by value)
     /// ( key alist -- cons-or-nil )
-    assoc_eql = 0xF7,
+    assoc_eql = 0xF9,
 
     /// Association list lookup (using equal - deep equality)
     /// ( key alist -- cons-or-nil )
-    assoc_equal = 0xF8,
+    assoc_equal = 0xFA,
 
     /// Find element in sequence (using eql - default)
     /// ( item sequence -- item-or-nil )
-    list_find = 0xF9,
+    list_find = 0xFB,
 
     /// Find element in sequence (using eq - identity)
     /// ( item sequence -- item-or-nil )
-    list_find_eq = 0xFA,
+    list_find_eq = 0xFC,
 
     /// Find element in sequence (using equal - structural)
     /// ( item sequence -- item-or-nil )
-    list_find_equal = 0xFB,
+    list_find_equal = 0xFD,
 
     /// Find position of element in sequence (using eql - default)
     /// ( item sequence -- index-or-nil )
@@ -1125,11 +1117,11 @@ pub const Op = enum(u8) {
 
     /// Remove all occurrences of item from sequence (using eq - identity)
     /// ( item sequence -- new-sequence )
-    list_remove_eq = 0x3E,
+    list_remove_eq = 0xC9,
 
     /// Remove all occurrences of item from sequence (using equal - structural)
     /// ( item sequence -- new-sequence )
-    list_remove_equal = 0x3F,
+    list_remove_equal = 0xCA,
 
     /// Establish condition handler bindings
     /// ( body-fn handlers-alist -- result )
@@ -1330,8 +1322,6 @@ pub const Op = enum(u8) {
             .read_from_string,
             .eval,
             .gensym,
-            .apropos_list,
-            .apropos,
             .macroexpand,
             .princ,
             .terpri,
@@ -1386,6 +1376,8 @@ pub const Op = enum(u8) {
             .list_remove_equal,
             .invoke_restart,
             .find_restart,
+            .push_progv,
+            .pop_progv,
             .handler_bind,
             .streamp,
             .input_stream_p,

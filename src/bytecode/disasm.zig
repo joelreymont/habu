@@ -185,8 +185,6 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .read_from_string,
         .eval,
         .gensym,
-        .apropos_list,
-        .apropos,
         .macroexpand,
         .princ,
         .terpri,
@@ -255,6 +253,8 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .parse_namestring,
         .namestring,
         .merge_pathnames,
+        .push_progv,
+        .pop_progv,
         => {
             try writer.print("{s}\n", .{op.name()});
             return offset + 1;

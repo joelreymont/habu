@@ -9,6 +9,8 @@ const testing = std.testing;
 const runtime = @import("../runtime/runtime.zig");
 const Value = runtime.Value;
 const Heap = runtime.Heap;
+const Chunk = runtime.Chunk;
+const Cons = runtime.Cons;
 
 const reader = @import("../reader/reader.zig");
 const Parser = reader.Parser;
@@ -49,12 +51,12 @@ fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Valu
     // Emit bytecode
     var emitter = Emitter.initWithHeap(arena_alloc, heap);
     try emitter.emit(ir_node);
-    const chunk = try emitter.finalize();
+    const chunk_val = try emitter.finalize();
     // Arena handles cleanup
 
     // Run - use main allocator for VM stack
     var vm = try Vm.init(allocator, heap);
-    return vm.run(&chunk);
+    return vm.run(chunk_val.toPtr(Chunk));
 }
 
 // ============================================================================
@@ -1594,6 +1596,28 @@ test "multiple-value-bind single var" {
     );
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "multiple-value-call basic" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    repl.wireGlobalEnv();
+    defer repl.deinit();
+
+    // (multiple-value-call (lambda (&rest args) args) (values 1 2) (values 3 4)) => (1 2 3 4)
+    const result = try repl.eval(
+        \\(multiple-value-call (lambda (&rest args) args)
+        \\    (values 1 2)
+        \\    (values 3 4))
+    );
+    try testing.expect(result.isCons());
+    // Should be list (1 2 3 4)
+    const c1 = result.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 1), c1.car.toFixnum());
 }
 
 // ============================================================================

@@ -17,6 +17,7 @@ const Value = runtime.Value;
 const Cons = runtime.Cons;
 const Symbol = runtime.Symbol;
 const Heap = runtime.Heap;
+const Chunk = runtime.Chunk;
 const Vm = @import("../../interp/vm.zig").Vm;
 
 /// MacroTable maps symbol names to macro definitions
@@ -120,10 +121,10 @@ pub const Expander = struct {
         var emitter = emit_mod.Emitter.initWithHeap(self.allocator, self.heap);
         defer emitter.deinit();
         try emitter.emit(ir);
-        const chunk = try emitter.finalize();
+        const chunk_val = try emitter.finalize();
 
         // Execute to get closure
-        const closure_val = try vm.run(&chunk);
+        const closure_val = try vm.run(chunk_val.toPtr(Chunk));
 
         // Push args onto stack
         var arg_iter = args;

@@ -509,6 +509,12 @@ pub const Chunk = extern struct {
         return @as(u16, c[offset]) | (@as(u16, c[offset + 1]) << 8);
     }
 
+    pub fn readI16(self: *const Chunk, offset: usize) i16 {
+        const c = self.getCode();
+        const val = @as(u16, c[offset]) | (@as(u16, c[offset + 1]) << 8);
+        return @bitCast(val);
+    }
+
     pub fn readI32(self: *const Chunk, offset: usize) i32 {
         const c = self.getCode();
         const val = @as(u32, c[offset]) |

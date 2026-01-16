@@ -70,7 +70,7 @@ pub fn runFullPipeline(
     macros: *const expand.MacroTable,
     globals: *resolve.GlobalRegistry,
     expr: Value,
-) FullPipelineError!Chunk {
+) FullPipelineError!Value {
     // p01: Expand macros
     var expander = expand.Expander.init(allocator, heap, vm, macros);
     const expanded = try expander.expand(expr);
@@ -89,7 +89,7 @@ pub fn runFullPipeline(
     const typed_ir = try runNanoPipeline(allocator, &vm_ptr.builtins, ir);
 
     // p09: Emit bytecode
-    const emit_result = emit.emitWithHeap(allocator, heap, typed_ir) catch return error.EmitFailed;
+    const emit_result = emit.emit(allocator, heap, typed_ir) catch return error.EmitFailed;
     return emit_result.output;
 }
 

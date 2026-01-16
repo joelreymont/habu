@@ -10,7 +10,7 @@ pub fn typeOf(heap: *Heap, val: Value) !Value {
             const n = val.toFixnum();
             const low = Value.makeFixnum(n);
             const high = Value.makeFixnum(n);
-            const int_sym = heap.intern("integer");
+            const int_sym = try heap.intern("integer");
             const list = try heap.allocCons(low, Value.nil);
             const list2 = try heap.allocCons(high, list);
             break :blk try heap.allocCons(int_sym, list2);
@@ -21,7 +21,7 @@ pub fn typeOf(heap: *Heap, val: Value) !Value {
             const c = val.toPtr(@import("../objects.zig").Cons);
             const car_type = try typeOf(heap, c.car);
             const cdr_type = try typeOf(heap, c.cdr);
-            const cons_sym = heap.intern("cons");
+            const cons_sym = try heap.intern("cons");
             const list = try heap.allocCons(car_type, Value.nil);
             const list2 = try heap.allocCons(cdr_type, list);
             break :blk try heap.allocCons(cons_sym, list2);
@@ -45,18 +45,20 @@ pub fn typeOf(heap: *Heap, val: Value) !Value {
 
 test "typeOf basic types" {
     const testing = std.testing;
-    var heap = try Heap.init(testing.allocator, 1024 * 1024);
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
+    // Fixnum returns (integer n n) not a symbol
     const fixnum = Value.makeFixnum(42);
     const result = try typeOf(&heap, fixnum);
-    try testing.expect(result.isSymbol());
+    try testing.expect(result.isCons());
 
     const str = try heap.allocString("test");
     const str_type = try typeOf(&heap, str);
     try testing.expect(str_type.isSymbol());
 
-    const cons = try heap.allocCons(Value.makeFixnum(1), Value.nil);
-    const cons_type = try typeOf(&heap, cons);
-    try testing.expect(cons_type.isSymbol());
+    // Cons returns (cons car-type cdr-type) not a symbol
+    const consval = try heap.allocCons(Value.makeFixnum(1), Value.nil);
+    const cons_type = try typeOf(&heap, consval);
+    try testing.expect(cons_type.isCons());
 }

@@ -77,7 +77,7 @@ pub const UnwindFrame = struct {
 /// Block frame for block/return-from (lexical non-local exit)
 pub const BlockFrame = struct {
     /// Block name (interned symbol raw value for identity comparison)
-    name_raw: u64,
+    name_raw: Value,
     /// Chunk to return to
     chunk: *const Chunk,
     /// IP to jump to after block exits (past the block body)
@@ -257,7 +257,7 @@ pub const Vm = struct {
     is_unwinding: bool,
 
     /// Saved return-from state for unwinding through unwind-protect
-    pending_block_name: u64,
+    pending_block_name: Value,
     pending_block_value: Value,
     is_returning_from_block: bool,
 
@@ -389,7 +389,7 @@ pub const Vm = struct {
             .pending_throw_value = Value.nil,
             .pending_error = null,
             .is_unwinding = false,
-            .pending_block_name = 0,
+            .pending_block_name = Value.nil,
             .pending_block_value = Value.nil,
             .is_returning_from_block = false,
             .prng = std.Random.DefaultPrng.init(0),
@@ -580,7 +580,7 @@ pub const Vm = struct {
         // Current chunk constants
         const current_chunk_start = roots.items.len;
         for (self.chunk.getConstants()) |c| {
-            try roots.append(self.allocator, Value{ .raw = c });
+            try roots.append(self.allocator, c);
         }
 
         // Active frame chunks (from closures)
@@ -591,7 +591,7 @@ pub const Vm = struct {
                 const chunk: *const Chunk = @ptrCast(@alignCast(closure.code));
                 try frame_chunk_starts.append(self.allocator, roots.items.len);
                 for (chunk.getConstants()) |c| {
-                    try roots.append(self.allocator, Value{ .raw = c });
+                    try roots.append(self.allocator, c);
                 }
             }
         }
@@ -602,7 +602,7 @@ pub const Vm = struct {
         for (self.chunk_pool) |chunk| {
             try chunk_const_starts.append(self.allocator, roots.items.len);
             for (chunk.getConstants()) |c| {
-                try roots.append(self.allocator, Value{ .raw = c });
+                try roots.append(self.allocator, c);
             }
         }
 
@@ -682,7 +682,7 @@ pub const Vm = struct {
 
         // Update current chunk constants
         for (self.chunk.getConstants(), 0..) |*c, i| {
-            c.* = roots.items[current_chunk_start + i].raw;
+            c.* = roots.items[current_chunk_start + i];
         }
         idx = current_chunk_start + self.chunk.getConstants().len;
 
@@ -693,7 +693,7 @@ pub const Vm = struct {
                 const chunk: *const Chunk = @ptrCast(@alignCast(closure.code));
                 const start = frame_chunk_starts.items[frame_idx];
                 for (chunk.getConstants(), 0..) |*c, i| {
-                    c.* = roots.items[start + i].raw;
+                    c.* = roots.items[start + i];
                 }
                 frame_idx += 1;
             }
@@ -710,7 +710,7 @@ pub const Vm = struct {
         for (self.chunk_pool, 0..) |chunk, chunk_idx| {
             const start = chunk_const_starts.items[chunk_idx];
             for (chunk.getConstants(), 0..) |_, const_idx| {
-                chunk.getConstants()[const_idx] = roots.items[start + const_idx].raw;
+                chunk.getConstants()[const_idx] = roots.items[start + const_idx];
             }
         }
 
@@ -955,7 +955,7 @@ pub const Vm = struct {
                     const chunk: *const Chunk = @ptrCast(@alignCast(f.closure.?.code));
                     // Layout: [positional] [key params] [keyword pairs]
                     // Keyword pairs start after positional + key param slots
-                    const max_positional = chunk.arity + chunk.optional_count;
+                    const max_positional = chunk.arity + chunk.opt_count;
                     const kw_pair_start: usize = max_positional + chunk.key_count;
                     const frame_argc = f.argc;
                     const positional_count = @min(frame_argc, max_positional);
@@ -1955,7 +1955,7 @@ pub const Vm = struct {
             },
             .type_of => {
                 const val = try self.pop();
-                const type_spec = try primitives.ty.typeOf(&self.heap, val);
+                const type_spec = try primitives.ty.typeOf(self.heap, val);
                 try self.push(type_spec);
             },
             .str_eq => {
@@ -2198,7 +2198,7 @@ pub const Vm = struct {
                     // Continue return-from
                     const name_raw = self.pending_block_name;
                     const value = self.pending_block_value;
-                    self.pending_block_name = 0;
+                    self.pending_block_name = Value.nil;
                     self.pending_block_value = Value.nil;
                     try self.doReturnFrom(name_raw, value);
                 }
@@ -3515,18 +3515,6 @@ pub const Vm = struct {
                 try self.push(sym);
             },
 
-            .apropos_list => {
-                const substring = try self.pop();
-                const result = try primitives.symbol.aproposList(self.heap, substring, null);
-                try self.push(result);
-            },
-
-            .apropos => {
-                const substring = try self.pop();
-                const result = try primitives.symbol.apropos(self.heap, substring, null);
-                try self.push(result);
-            },
-
             .macroexpand => {
                 // Expand macros in expression
                 const expr = try self.pop();
@@ -3832,18 +3820,30 @@ pub const Vm = struct {
             const sym_cons = sym_list.toPtr(Cons);
             const symbol = sym_cons.car;
 
-            if (!symbol.isSymbol()) return error.InvalidSyntax;
+            if (!symbol.isSymbol()) return error.TypeMismatch;
 
             // Get old value (or nil if unbound)
-            const old_value = try self.getGlobalBySymbol(symbol);
+            const sym_ptr = symbol.toPtr(Symbol);
+            const sym_name = sym_ptr.getName();
+            const global_idx = if (self.global_env) |env| env.lookup(sym_name) else null;
+            const old_value = if (global_idx) |idx| blk: {
+                if (idx < self.num_globals) break :blk self.globals[idx] else break :blk Value.nil;
+            } else Value.nil;
 
             // Set new value
             const new_value = if (val_list.isCons()) val_list.toPtr(Cons).car else Value.nil;
-            try self.setGlobalBySymbol(symbol, new_value);
+            if (global_idx) |idx| {
+                if (idx < MAX_GLOBALS) {
+                    self.globals[idx] = new_value;
+                    if (idx >= self.num_globals) {
+                        self.num_globals = idx + 1;
+                    }
+                }
+            }
 
             // Save (symbol . old-value) pair
-            const pair = try self.heap.cons(symbol, old_value);
-            saved_bindings = try self.heap.cons(pair, saved_bindings);
+            const pair = try self.heap.allocCons(symbol, old_value);
+            saved_bindings = try self.heap.allocCons(pair, saved_bindings);
 
             // Advance lists
             sym_list = sym_cons.cdr;
@@ -3872,14 +3872,22 @@ pub const Vm = struct {
                 const pair_cons = pair.toPtr(Cons);
                 const symbol = pair_cons.car;
                 const old_value = pair_cons.cdr;
-                try self.setGlobalBySymbol(symbol, old_value);
+                const sym_ptr = symbol.toPtr(Symbol);
+                const sym_name = sym_ptr.getName();
+                if (self.global_env) |env| {
+                    if (env.lookup(sym_name)) |idx| {
+                        if (idx < MAX_GLOBALS) {
+                            self.globals[idx] = old_value;
+                        }
+                    }
+                }
             }
 
             bindings = binding_cons.cdr;
         }
     }
 
-    fn doReturnFrom(self: *Vm, name_raw: u64, value: Value) Error!void {
+    fn doReturnFrom(self: *Vm, name_raw: Value, value: Value) Error!void {
         // First, check if there's an unwind-protect that needs cleanup
         // Unwind frames take precedence - we must run cleanup before continuing
         if (self.unwind_sp > 0) {
@@ -4986,9 +4994,9 @@ pub const Vm = struct {
         const closure = fn_val.toPtr(runtime.Closure);
         const callee_chunk: *const Chunk = @ptrCast(@alignCast(closure.code));
         const arity = callee_chunk.arity;
-        const optional_count = callee_chunk.optional_count;
+        const opt_count = callee_chunk.opt_count;
         const key_count = callee_chunk.key_count;
-        const max_positional = arity + optional_count;
+        const max_positional = arity + opt_count;
 
         // Find where keyword args actually start by scanning for first keyword
         // This handles cases like (foo req :k v) where optional is omitted
@@ -5006,7 +5014,7 @@ pub const Vm = struct {
         }
 
         // Check arity
-        if (callee_chunk.has_rest) {
+        if (callee_chunk.has_rest != 0) {
             // Variadic: need at least required args
             if (argc < arity) {
                 return error.TypeMismatch;
@@ -5021,8 +5029,8 @@ pub const Vm = struct {
             if (kw_arg_count % 2 != 0) {
                 return error.TypeMismatch;
             }
-        } else if (optional_count > 0) {
-            // Has optional params: argc must be in [arity, arity + optional_count]
+        } else if (opt_count > 0) {
+            // Has optional params: argc must be in [arity, arity + opt_count]
             if (argc < arity or argc > max_positional) {
                 return error.TypeMismatch;
             }
@@ -5036,7 +5044,7 @@ pub const Vm = struct {
         // Build rest list if variadic (before we modify the stack)
         // Rest list contains args beyond required + optional + key params
         var rest_list = Value.nil;
-        if (callee_chunk.has_rest and argc > max_positional) {
+        if (callee_chunk.has_rest != 0 and argc > max_positional) {
             // Build list from extra args (in reverse since we pop from end)
             const extra_count = argc - max_positional;
             var i: u8 = 0;
@@ -5094,7 +5102,7 @@ pub const Vm = struct {
             }
 
             // If variadic, push rest list as next local (after required + optional)
-            if (callee_chunk.has_rest) {
+            if (callee_chunk.has_rest != 0) {
                 try self.push(rest_list);
             }
 
@@ -5109,7 +5117,7 @@ pub const Vm = struct {
             }
 
             // Reserve space for additional locals (after args + rest)
-            const used_locals: usize = actual_argc + @as(u8, if (callee_chunk.has_rest) 1 else 0);
+            const used_locals: usize = actual_argc + @as(u8, if (callee_chunk.has_rest != 0) 1 else 0);
             var i: usize = used_locals;
             while (i < callee_chunk.num_locals) : (i += 1) {
                 try self.push(Value.nil);
@@ -5171,7 +5179,7 @@ pub const Vm = struct {
             }
 
             // If variadic, push rest list as next local (after required + optional)
-            if (callee_chunk.has_rest) {
+            if (callee_chunk.has_rest != 0) {
                 try self.push(rest_list);
             }
 
@@ -5183,7 +5191,7 @@ pub const Vm = struct {
             self.ip = 0;
 
             // Reserve space for additional locals (after args + rest)
-            const used: usize = actual_argc + @as(u8, if (callee_chunk.has_rest) 1 else 0);
+            const used: usize = actual_argc + @as(u8, if (callee_chunk.has_rest != 0) 1 else 0);
             var i: usize = used;
             while (i < callee_chunk.num_locals) : (i += 1) {
                 try self.push(Value.nil);
@@ -5838,13 +5846,14 @@ test "vm push and return" {
 
     const chunk = Chunk{
         .code = @constCast(&code),
-        .constants = &[_]u64{},
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
         .arity = 0,
-        .optional_count = 0,
+        .opt_count = 0,
         .key_count = 0,
-        .has_rest = false,
+        .has_rest = 0,
         .num_locals = 0,
-        .name = "test",
     };
 
     const result = try vm.run(&chunk);
@@ -5869,13 +5878,14 @@ test "vm arithmetic" {
 
     const chunk = Chunk{
         .code = @constCast(&code),
-        .constants = &[_]u64{},
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
         .arity = 0,
-        .optional_count = 0,
+        .opt_count = 0,
         .key_count = 0,
-        .has_rest = false,
+        .has_rest = 0,
         .num_locals = 0,
-        .name = "test",
     };
 
     const result = try vm.run(&chunk);
@@ -5900,13 +5910,14 @@ test "vm cons car cdr" {
 
     const chunk = Chunk{
         .code = @constCast(&code),
-        .constants = &[_]u64{},
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
         .arity = 0,
-        .optional_count = 0,
+        .opt_count = 0,
         .key_count = 0,
-        .has_rest = false,
+        .has_rest = 0,
         .num_locals = 0,
-        .name = "test",
     };
 
     const result = try vm.run(&chunk);
@@ -5935,13 +5946,14 @@ test "vm conditional" {
 
     const chunk = Chunk{
         .code = @constCast(&code),
-        .constants = &[_]u64{},
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
         .arity = 0,
-        .optional_count = 0,
+        .opt_count = 0,
         .key_count = 0,
-        .has_rest = false,
+        .has_rest = 0,
         .num_locals = 0,
-        .name = "test",
     };
 
     const result = try vm.run(&chunk);
@@ -5965,13 +5977,14 @@ test "vm locals" {
 
     const chunk = Chunk{
         .code = @constCast(&code),
-        .constants = &[_]u64{},
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
         .arity = 0,
-        .optional_count = 0,
+        .opt_count = 0,
         .key_count = 0,
-        .has_rest = false,
+        .has_rest = 0,
         .num_locals = 1,
-        .name = "test",
     };
 
     const result = try vm.run(&chunk);
@@ -6014,13 +6027,14 @@ test "vm hash table" {
 
     const chunk = Chunk{
         .code = @constCast(&code),
-        .constants = &[_]u64{},
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
         .arity = 0,
-        .optional_count = 0,
+        .opt_count = 0,
         .key_count = 0,
-        .has_rest = false,
+        .has_rest = 0,
         .num_locals = 1,
-        .name = "test",
     };
 
     const result = try vm.run(&chunk);
@@ -6072,13 +6086,14 @@ test "vm hash table count and remove" {
 
     const chunk = Chunk{
         .code = @constCast(&code),
-        .constants = &[_]u64{},
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
         .arity = 0,
-        .optional_count = 0,
+        .opt_count = 0,
         .key_count = 0,
-        .has_rest = false,
+        .has_rest = 0,
         .num_locals = 1,
-        .name = "test",
     };
 
     const result = try vm.run(&chunk);

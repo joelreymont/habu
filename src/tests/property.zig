@@ -13,6 +13,7 @@ const runtime = @import("../runtime/runtime.zig");
 const Value = runtime.Value;
 const Heap = runtime.Heap;
 const Cons = runtime.Cons;
+const Chunk = runtime.Chunk;
 
 const reader = @import("../reader/reader.zig");
 const Parser = reader.Parser;
@@ -49,10 +50,10 @@ fn eval(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {
 
     var emitter = Emitter.initWithHeap(arena_alloc, heap);
     try emitter.emit(ir_node);
-    const chunk = try emitter.finalize();
+    const chunk_val = try emitter.finalize();
 
     var vm = try Vm.init(allocator, heap);
-    return vm.run(&chunk);
+    return vm.run(chunk_val.toPtr(Chunk));
 }
 
 /// Format expression for evaluation

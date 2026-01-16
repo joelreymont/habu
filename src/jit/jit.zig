@@ -69,12 +69,13 @@ pub const Jit = struct {
         self.pending_jumps.clearRetainingCapacity();
 
         var bc_offset: usize = 0;
-        while (bc_offset < chunk.code.len) {
+        const code = chunk.getCode();
+        while (bc_offset < code.len) {
             // Record label for this bytecode offset
             self.labels.put(bc_offset, self.code_buffer.pos) catch
                 return error.OutOfMemory;
 
-            const op: Op = @enumFromInt(chunk.code[bc_offset]);
+            const op: Op = @enumFromInt(code[bc_offset]);
             bc_offset += 1;
 
             try self.compileOp(op, chunk, &bc_offset);
@@ -115,9 +116,9 @@ pub const Jit = struct {
             .push_const => {
                 const idx = chunk.readU16(bc_offset.*);
                 bc_offset.* += 2;
-                if (idx >= chunk.constants.len) return error.InvalidConstantIndex;
+                if (idx >= chunk.getConstants().len) return error.InvalidConstantIndex;
                 _ = patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
-                    .{ .imm64 = chunk.constants[idx] },
+                    .{ .imm64 = chunk.getConstants()[idx].raw },
                 }) catch return error.PatchFailed;
             },
 
@@ -368,13 +369,14 @@ test "jit compile simple" {
 
     const chunk = Chunk{
         .code = @constCast(&code),
-        .constants = &[_]u64{},
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
         .arity = 0,
-        .optional_count = 0,
+        .opt_count = 0,
         .key_count = 0,
-        .has_rest = false,
+        .has_rest = 0,
         .num_locals = 0,
-        .name = "test",
     };
 
     const fn_ptr = try jit.compile(&chunk);
