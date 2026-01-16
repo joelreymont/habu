@@ -185,8 +185,24 @@ pub const RefinementChecker = struct {
             // These would need to be normalized/evaluated first
             .lambda, .app, .pair, .fst, .snd, .annotated, .@"if", .let => null,
 
-            // Builtins - some can be translated
-            .builtin => null, // TODO: handle length, null, etc.
+            // Builtins - translate simple predicates
+            .builtin => |b| switch (b.func) {
+                .null => {
+                    if (b.args.len != 1) return null;
+                    const arg = self.translateTerm(b.args[0]) orelse return null;
+                    const nil = self.smt_ctx.mkIntConst(0);
+                    return self.smt_ctx.mkEq(arg, nil);
+                },
+                .length => {
+                    if (b.args.len != 1) return null;
+                    return self.smt_ctx.mkIntVar("list-length");
+                },
+                .vector_length => {
+                    if (b.args.len != 1) return null;
+                    return self.smt_ctx.mkIntVar("vec-length");
+                },
+                else => null,
+            },
         };
     }
 };
