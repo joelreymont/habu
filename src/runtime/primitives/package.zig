@@ -86,18 +86,30 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
 
     // Check if symbol exists in internal table using hash lookup
     if (p.symbols.raw != Value.nil.raw) {
-        const found = hashTableLookup(p.symbols, lookup_sym);
-        if (found.raw != Value.nil.raw) {
+        var found_sym: Value = Value.nil;
+        const ht = p.symbols.toPtr(objects.HashTable);
+        var i: usize = 0;
+        while (i < ht.capacity) : (i += 1) {
+            const entry = &ht.entries[i];
+            if (entry.key.raw == objects.HashTable.EMPTY.raw or entry.key.raw == objects.HashTable.DELETED.raw) continue;
+            if (!entry.key.isSymbol()) continue;
+            const sym = entry.key.toPtr(objects.Symbol);
+            if (std.mem.eql(u8, sym.getName(), name_str)) {
+                found_sym = entry.key;
+                break;
+            }
+        }
+        if (found_sym.raw != Value.nil.raw) {
             // Found in internal table - check if exported
             if (p.exports.raw != Value.nil.raw) {
-                const exported = hashTableLookup(p.exports, found);
+                const exported = hashTableLookup(p.exports, found_sym);
                 if (exported.raw != Value.nil.raw) {
                     const status = try heap.internKeyword("external");
-                    return try heap.allocCons(found, try heap.allocCons(status, Value.nil));
+                    return try heap.allocCons(found_sym, try heap.allocCons(status, Value.nil));
                 }
             }
             const status = try heap.internKeyword("internal");
-            return try heap.allocCons(found, try heap.allocCons(status, Value.nil));
+            return try heap.allocCons(found_sym, try heap.allocCons(status, Value.nil));
         }
     }
 
@@ -596,4 +608,86 @@ test "use-package and inherited symbols" {
     try testing.expect(found.isCons());
     const found_sym = found.toPtr(objects.Cons).car;
     try testing.expect(found_sym.raw == sym.raw);
+}
+
+test "intern returns correct status" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const pkg = try makePackage(&heap, try heap.allocString("TEST"), null, null);
+    const sym_name = try heap.allocString("X");
+
+    const result1 = try internSymbol(&heap, sym_name, pkg);
+    const status1 = result1.toPtr(objects.Cons).cdr.toPtr(objects.Cons).car;
+    try testing.expect(status1.isKeyword());
+    const s1_str = status1.toPtr(objects.Keyword).getName();
+    try testing.expect(std.mem.eql(u8, s1_str, "internal"));
+
+    const sym = result1.toPtr(objects.Cons).car;
+    try exportSymbols(&heap, sym, pkg);
+
+    const result2 = try internSymbol(&heap, sym_name, pkg);
+    const status2 = result2.toPtr(objects.Cons).cdr.toPtr(objects.Cons).car;
+    try testing.expect(status2.isKeyword());
+    const s2_str = status2.toPtr(objects.Keyword).getName();
+    try testing.expect(std.mem.eql(u8, s2_str, "external"));
+}
+
+test "unexport removes from exports" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const pkg = try makePackage(&heap, try heap.allocString("TEST"), null, null);
+    const sym_name = try heap.allocString("Y");
+    const result = try internSymbol(&heap, sym_name, pkg);
+    const sym = result.toPtr(objects.Cons).car;
+
+    try exportSymbols(&heap, sym, pkg);
+    const found1 = try findSymbol(&heap, sym_name, pkg);
+    const status1 = found1.toPtr(objects.Cons).cdr.toPtr(objects.Cons).car;
+    const s1_str = status1.toPtr(objects.Keyword).getName();
+    try testing.expect(std.mem.eql(u8, s1_str, "external"));
+
+    try unexportSymbols(&heap, sym, pkg);
+    const found2 = try findSymbol(&heap, sym_name, pkg);
+    const status2 = found2.toPtr(objects.Cons).cdr.toPtr(objects.Cons).car;
+    const s2_str = status2.toPtr(objects.Keyword).getName();
+    try testing.expect(std.mem.eql(u8, s2_str, "internal"));
+}
+
+test "unintern removes symbol" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const pkg = try makePackage(&heap, try heap.allocString("TEST"), null, null);
+    const sym_name = try heap.allocString("Z");
+    const result = try internSymbol(&heap, sym_name, pkg);
+    const sym = result.toPtr(objects.Cons).car;
+
+    const removed = try uninternSymbol(sym, pkg);
+    try testing.expect(removed);
+
+    const found = try findSymbol(&heap, sym_name, pkg);
+    const found_sym = found.toPtr(objects.Cons).car;
+    try testing.expect(found_sym.raw == Value.nil.raw);
+}
+
+test "unuse-package removes from use-list" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const pkg1 = try makePackage(&heap, try heap.allocString("PKG1"), null, null);
+    const pkg2 = try makePackage(&heap, try heap.allocString("PKG2"), null, null);
+
+    try usePackage(&heap, pkg1, pkg2);
+    const use1 = try packageUseList(pkg2);
+    try testing.expect(use1.isCons());
+
+    try unusePackage(&heap, pkg1, pkg2);
+    const use2 = try packageUseList(pkg2);
+    try testing.expect(use2.raw == Value.nil.raw);
 }
