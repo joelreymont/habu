@@ -2089,41 +2089,30 @@ pub const Compiler = struct {
             return error.InvalidSyntax;
         };
 
-        // Get child chunks and main chunk
+        // Get child chunks and main chunk (all GC-managed Values)
         const child_chunks = emitter.getChildChunks() catch {
             emitter.deinit();
             return error.OutOfMemory;
         };
-        var chunk = emitter.finalize() catch {
-            self.allocator.free(child_chunks);
+        defer self.allocator.free(child_chunks);
+
+        const chunk_val = emitter.finalize() catch {
             emitter.deinit();
             return error.OutOfMemory;
         };
         emitter.deinit();
 
-        // Use arena for temporary chunk allocations - single cleanup handles all error paths
-        var arena = std.heap.ArenaAllocator.init(self.allocator);
-        defer arena.deinit();
-
-        // Create temporary chunk pool for macro execution
-        var chunk_ptrs = arena.allocator().alloc(*Chunk, child_chunks.len) catch {
-            self.allocator.free(child_chunks);
-            return error.OutOfMemory;
-        };
-
-        for (child_chunks, 0..) |*child_chunk, i| {
-            const chunk_ptr = arena.allocator().create(Chunk) catch {
-                self.allocator.free(child_chunks);
-                return error.OutOfMemory;
-            };
-            chunk_ptr.* = child_chunk.*;
-            chunk_ptrs[i] = chunk_ptr;
+        // Convert Value chunks to *Chunk pointers for VM
+        const chunk_ptrs = try self.allocator.alloc(*Chunk, child_chunks.len);
+        defer self.allocator.free(chunk_ptrs);
+        for (child_chunks, 0..) |cv, i| {
+            chunk_ptrs[i] = cv.toPtr(Chunk);
         }
-        self.allocator.free(child_chunks);
 
-        // Set chunk pool and run - all error paths now cleaned up by arena.deinit
+        // Set chunk pool and run
         vm.setChunkPool(chunk_ptrs);
-        const closure_val = try vm.run(&chunk);
+        const chunk_ptr = chunk_val.toPtr(Chunk);
+        const closure_val = try vm.run(chunk_ptr);
 
         if (!closure_val.isClosure()) return error.InvalidSyntax;
         const closure = closure_val.toPtr(Closure);

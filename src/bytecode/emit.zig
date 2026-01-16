@@ -11,9 +11,10 @@ const ir = @import("../compiler/ir.zig");
 const Ir = ir.Ir;
 const opcodes = @import("opcodes.zig");
 const Op = opcodes.Op;
-const Chunk = opcodes.Chunk;
-const Value = @import("../runtime/value.zig").Value;
-const Heap = @import("../runtime/heap.zig").Heap;
+const runtime = @import("../runtime/runtime.zig");
+const Chunk = runtime.Chunk;
+const Value = runtime.Value;
+const Heap = runtime.Heap;
 
 pub const Error = error{
     OutOfMemory,
@@ -65,8 +66,8 @@ pub const Emitter = struct {
     constants: std.ArrayList(u64),
     /// Constant deduplication map: value -> index (O(1) lookup)
     constant_map: std.AutoHashMap(u64, u16),
-    /// Child chunks (for lambdas)
-    child_chunks: std.ArrayList(Chunk),
+    /// Child chunks (for lambdas) - GC-managed
+    child_chunks: std.ArrayList(Value),
     /// Number of local variables (set for lambdas, computed for REPL expressions)
     num_locals: u8,
     /// Maximum local index used (for computing num_locals in REPL)
@@ -94,7 +95,7 @@ pub const Emitter = struct {
             .code = std.ArrayList(u8){},
             .constants = std.ArrayList(u64){},
             .constant_map = std.AutoHashMap(u64, u16).init(allocator),
-            .child_chunks = std.ArrayList(Chunk){},
+            .child_chunks = std.ArrayList(Value){},
             .num_locals = 0,
             .max_local_idx = 0,
             .arity = 0,
@@ -114,7 +115,7 @@ pub const Emitter = struct {
             .code = std.ArrayList(u8){},
             .constants = std.ArrayList(u64){},
             .constant_map = std.AutoHashMap(u64, u16).init(allocator),
-            .child_chunks = std.ArrayList(Chunk){},
+            .child_chunks = std.ArrayList(Value){},
             .num_locals = 0,
             .max_local_idx = 0,
             .arity = 0,
@@ -132,11 +133,7 @@ pub const Emitter = struct {
         self.code.deinit(self.allocator);
         self.constants.deinit(self.allocator);
         self.constant_map.deinit();
-        // Free child chunks
-        for (self.child_chunks.items) |chunk| {
-            self.allocator.free(chunk.code);
-            self.allocator.free(chunk.constants);
-        }
+        // Child chunks are GC-managed, no manual free needed
         self.child_chunks.deinit(self.allocator);
         // Free control stack
         for (self.control_stack.items) |*entry| {
@@ -797,8 +794,8 @@ pub const Emitter = struct {
         }
     }
 
-    /// Finalize and return the chunk
-    pub fn finalize(self: *Emitter) Error!Chunk {
+    /// Finalize and return the chunk as a GC-managed Value
+    pub fn finalize(self: *Emitter) Error!Value {
         // Add implicit return if not present
         if (self.code.items.len == 0) {
             // Empty function returns nil
@@ -815,24 +812,29 @@ pub const Emitter = struct {
         else
             self.max_local_idx;
 
-        return Chunk{
-            .code = try self.allocator.dupe(u8, self.code.items),
-            .constants = try self.allocator.dupe(u64, self.constants.items),
-            .arity = self.arity,
-            .optional_count = self.optional_count,
-            .key_count = self.key_count,
-            .has_rest = self.has_rest,
-            .num_locals = final_num_locals,
-            .name = self.name,
-        };
+        const heap = self.heap orelse return error.NoHeap;
+
+        // Convert constant pool from u64 to Value
+        const const_values = try self.allocator.alloc(Value, self.constants.items.len);
+        defer self.allocator.free(const_values);
+        for (self.constants.items, 0..) |c, i| {
+            const_values[i] = Value{ .raw = c };
+        }
+
+        return heap.allocChunk(
+            self.code.items,
+            const_values,
+            self.arity,
+            self.optional_count,
+            self.key_count,
+            self.has_rest,
+            final_num_locals,
+        );
     }
 
-    /// Get child chunks (caller takes ownership via duped slice)
-    pub fn getChildChunks(self: *Emitter) ![]Chunk {
-        const chunks = try self.allocator.dupe(Chunk, self.child_chunks.items);
-        // Clear the list so deinit doesn't free the chunk contents
-        self.child_chunks.items.len = 0;
-        return chunks;
+    /// Get child chunks as GC Values (caller takes ownership via duped slice)
+    pub fn getChildChunks(self: *Emitter) ![]Value {
+        return self.allocator.dupe(Value, self.child_chunks.items);
     }
 
     // ========================================================================
@@ -1164,11 +1166,12 @@ pub const Emitter = struct {
             return error.InvalidIr;
         };
 
-        // Finalize lambda chunk
-        const chunk = lambda_emitter.finalize() catch {
+        // Finalize lambda chunk (GC Value)
+        const chunk_val = lambda_emitter.finalize() catch {
             lambda_emitter.deinit();
             return error.OutOfMemory;
         };
+        const chunk = chunk_val.toPtr(Chunk);
 
         // Patch lambda's make_closure indices to account for parent's existing child_chunks
         // The lambda's code uses indices relative to its own child_chunks array (starting at 0).
@@ -1176,22 +1179,16 @@ pub const Emitter = struct {
         // So we need to add this offset to all make_closure indices in the lambda's code.
         const child_base: u16 = @intCast(self.child_chunks.items.len);
         if (child_base > 0) {
-            patchMakeClosureIndicesOffset(chunk.code, child_base);
+            patchMakeClosureIndicesOffset(chunk.getCode(), child_base);
         }
 
         // Collect any child chunks from the lambda
-        for (lambda_emitter.child_chunks.items) |child_chunk| {
-            self.child_chunks.append(self.allocator, child_chunk) catch {
-                lambda_emitter.deinit();
-                return error.OutOfMemory;
-            };
-        }
-        lambda_emitter.child_chunks.items.len = 0; // Prevent double-free
+        try self.child_chunks.appendSlice(self.allocator, lambda_emitter.child_chunks.items);
         lambda_emitter.deinit();
 
-        // Store chunk in child_chunks, get its index
+        // Store chunk Value in child_chunks, get its index
         const chunk_idx: u16 = @intCast(self.child_chunks.items.len);
-        self.child_chunks.append(self.allocator, chunk) catch return error.OutOfMemory;
+        self.child_chunks.append(self.allocator, chunk_val) catch return error.OutOfMemory;
 
         // Emit captures (if any)
         for (lam.captures) |cap| {

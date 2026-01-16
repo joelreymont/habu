@@ -1,9 +1,9 @@
 ---
 title: Remove manual chunk management
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-01-16T16:15:56.208110+02:00"
+created-at: "\"2026-01-16T16:15:56.208110+02:00\""
 ---
 
 Files: src/bytecode/emit.zig, src/interp/vm.zig

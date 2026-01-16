@@ -565,7 +565,7 @@ pub const Vm = struct {
 
         // Current chunk constants
         const current_chunk_start = roots.items.len;
-        for (self.chunk.constants) |c| {
+        for (self.chunk.getConstants()) |c| {
             try roots.append(self.allocator, Value{ .raw = c });
         }
 
@@ -576,7 +576,7 @@ pub const Vm = struct {
             if (frame.closure) |closure| {
                 const chunk: *const Chunk = @ptrCast(@alignCast(closure.code));
                 try frame_chunk_starts.append(self.allocator, roots.items.len);
-                for (chunk.constants) |c| {
+                for (chunk.getConstants()) |c| {
                     try roots.append(self.allocator, Value{ .raw = c });
                 }
             }
@@ -587,7 +587,7 @@ pub const Vm = struct {
         defer chunk_const_starts.deinit(self.allocator);
         for (self.chunk_pool) |chunk| {
             try chunk_const_starts.append(self.allocator, roots.items.len);
-            for (chunk.constants) |c| {
+            for (chunk.getConstants()) |c| {
                 try roots.append(self.allocator, Value{ .raw = c });
             }
         }
@@ -667,10 +667,10 @@ pub const Vm = struct {
         }
 
         // Update current chunk constants
-        for (self.chunk.constants, 0..) |*c, i| {
+        for (self.chunk.getConstants(), 0..) |*c, i| {
             c.* = roots.items[current_chunk_start + i].raw;
         }
-        idx = current_chunk_start + self.chunk.constants.len;
+        idx = current_chunk_start + self.chunk.getConstants().len;
 
         // Update active frame chunk constants
         var frame_idx: usize = 0;
@@ -678,7 +678,7 @@ pub const Vm = struct {
             if (frame.closure) |closure| {
                 const chunk: *const Chunk = @ptrCast(@alignCast(closure.code));
                 const start = frame_chunk_starts.items[frame_idx];
-                for (chunk.constants, 0..) |*c, i| {
+                for (chunk.getConstants(), 0..) |*c, i| {
                     c.* = roots.items[start + i].raw;
                 }
                 frame_idx += 1;
@@ -688,15 +688,15 @@ pub const Vm = struct {
             idx = frame_chunk_starts.items[frame_chunk_starts.items.len - 1];
             if (self.frames[self.fp - 1].closure) |last_closure| {
                 const last_chunk: *const Chunk = @ptrCast(@alignCast(last_closure.code));
-                idx += last_chunk.constants.len;
+                idx += last_chunk.getConstants().len;
             }
         }
 
         // Update chunk constant pools with relocated values
         for (self.chunk_pool, 0..) |chunk, chunk_idx| {
             const start = chunk_const_starts.items[chunk_idx];
-            for (chunk.constants, 0..) |_, const_idx| {
-                chunk.constants[const_idx] = roots.items[start + const_idx].raw;
+            for (chunk.getConstants(), 0..) |_, const_idx| {
+                chunk.getConstants()[const_idx] = roots.items[start + const_idx].raw;
             }
         }
 
@@ -761,7 +761,7 @@ pub const Vm = struct {
     fn execute(self: *Vm) anyerror!Value {
         while (true) {
             // Bounds check before reading opcode to prevent read past end of chunk
-            if (self.ip >= self.chunk.code.len) return error.InvalidOpcode;
+            if (self.ip >= self.chunk.getCode().len) return error.InvalidOpcode;
             const op = self.readOp();
 
             // Execute opcode with error handling
@@ -788,8 +788,8 @@ pub const Vm = struct {
             },
             .push_const => {
                 const idx = self.readU16();
-                if (idx >= self.chunk.constants.len) return error.InvalidConstant;
-                try self.push(.{ .raw = self.chunk.constants[idx] });
+                if (idx >= self.chunk.getConstants().len) return error.InvalidConstant;
+                try self.push(self.chunk.getConstants()[idx]);
             },
             .dup => {
                 const val = try self.peek(0);
@@ -932,8 +932,8 @@ pub const Vm = struct {
             .find_key => {
                 // Get keyword to search for from constant pool
                 const kw_idx = self.readU16();
-                if (kw_idx >= self.chunk.constants.len) return error.InvalidConstant;
-                const keyword = Value{ .raw = self.chunk.constants[kw_idx] };
+                if (kw_idx >= self.chunk.getConstants().len) return error.InvalidConstant;
+                const keyword = self.chunk.getConstants()[kw_idx];
 
                 // Get current frame info
                 const frame = if (self.fp > 0) &self.frames[self.fp - 1] else null;
@@ -2034,8 +2034,8 @@ pub const Vm = struct {
             .check_or => {
                 // Read constant pool index for type vector
                 const type_vec_idx = self.readU16();
-                if (type_vec_idx >= self.chunk.constants.len) return error.InvalidConstant;
-                const type_vec = Value{ .raw = self.chunk.constants[type_vec_idx] };
+                if (type_vec_idx >= self.chunk.getConstants().len) return error.InvalidConstant;
+                const type_vec = self.chunk.getConstants()[type_vec_idx];
 
                 // Get value to check
                 const val = try self.peek(0);
@@ -2132,7 +2132,7 @@ pub const Vm = struct {
                 // Calculate exit_ip relative to current IP (after offset bytes, before name_idx)
                 const exit_ip = @as(usize, @intCast(@as(isize, @intCast(self.ip)) + offset));
                 const name_idx = self.readU16();
-                const name_raw = self.chunk.constants[name_idx];
+                const name_raw = self.chunk.getConstants()[name_idx];
                 if (self.block_sp >= MAX_BLOCKS) return error.StackOverflow;
                 self.block_stack[self.block_sp] = .{
                     .name_raw = name_raw,
@@ -2151,7 +2151,7 @@ pub const Vm = struct {
 
             .return_from => {
                 const name_idx = self.readU16();
-                const name_raw = self.chunk.constants[name_idx];
+                const name_raw = self.chunk.getConstants()[name_idx];
                 const value = try self.pop();
                 try self.doReturnFrom(name_raw, value);
             },
@@ -5355,13 +5355,13 @@ pub const Vm = struct {
     // ========================================================================
 
     fn readOp(self: *Vm) Op {
-        const byte = self.chunk.code[self.ip];
+        const byte = self.chunk.getCode()[self.ip];
         self.ip += 1;
         return @enumFromInt(byte);
     }
 
     fn readU8(self: *Vm) u8 {
-        const byte = self.chunk.code[self.ip];
+        const byte = self.chunk.getCode()[self.ip];
         self.ip += 1;
         return byte;
     }

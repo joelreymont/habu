@@ -36,6 +36,7 @@ pub const Bignum = objects.Bignum;
 pub const Array = objects.Array;
 pub const Pathname = objects.Pathname;
 pub const Package = objects.Package;
+pub const Chunk = objects.Chunk;
 pub const BoxedKind = objects.BoxedKind;
 
 pub const Heap = heap.Heap;

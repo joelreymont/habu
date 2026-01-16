@@ -655,6 +655,45 @@ pub const Heap = struct {
         return Value.makeHashTable(ht);
     }
 
+    /// Allocate a bytecode chunk with constant pool and code
+    pub fn allocChunk(
+        self: *Heap,
+        code: []const u8,
+        constants: []const Value,
+        arity: u8,
+        opt_count: u8,
+        key_count: u8,
+        has_rest: bool,
+        num_locals: u8,
+    ) !Value {
+        const const_size = constants.len * @sizeOf(Value);
+        const code_size = std.mem.alignForward(usize, code.len, 8);
+        const total = @sizeOf(objects.Chunk) + const_size + code_size;
+
+        const ptr = try self.allocRaw(total);
+        const chunk: *objects.Chunk = @ptrCast(@alignCast(ptr));
+
+        const const_ptr: [*]Value = @ptrCast(@alignCast(ptr + @sizeOf(objects.Chunk)));
+        const code_ptr: [*]u8 = @ptrCast(ptr + @sizeOf(objects.Chunk) + const_size);
+
+        @memcpy(code_ptr[0..code.len], code);
+        @memcpy(const_ptr[0..constants.len], constants);
+
+        chunk.* = .{
+            .const_count = @intCast(constants.len),
+            .code_len = @intCast(code.len),
+            .arity = arity,
+            .opt_count = opt_count,
+            .key_count = key_count,
+            .has_rest = if (has_rest) 1 else 0,
+            .num_locals = num_locals,
+            .const_pool = const_ptr,
+            .code = code_ptr,
+        };
+
+        return Value.makeChunk(chunk);
+    }
+
     /// Allocate a symbol from a string
     pub fn allocSymbol(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
         const aligned_name_len = std.mem.alignForward(usize, name.len, 8);

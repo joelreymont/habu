@@ -413,6 +413,11 @@ pub const Value = packed struct {
         return makePtr(ptr, .boxed);
     }
 
+    /// Create a chunk value (boxed object)
+    pub inline fn makeChunk(ptr: anytype) Value {
+        return makePtr(ptr, .boxed);
+    }
+
     /// Create a package value (boxed object)
     pub inline fn makePackage(ptr: anytype) Value {
         return makePtr(ptr, .boxed);

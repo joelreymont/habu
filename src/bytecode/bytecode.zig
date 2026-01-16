@@ -4,7 +4,9 @@
 
 pub const opcodes = @import("opcodes.zig");
 pub const Op = opcodes.Op;
-pub const Chunk = opcodes.Chunk;
+// Use GC-managed Chunk from runtime
+const runtime = @import("../runtime/runtime.zig");
+pub const Chunk = runtime.Chunk;
 
 pub const emit = @import("emit.zig");
 pub const Emitter = emit.Emitter;

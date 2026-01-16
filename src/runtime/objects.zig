@@ -499,6 +499,24 @@ pub const Chunk = extern struct {
     pub fn getCode(self: *const Chunk) []u8 {
         return self.code[0..self.code_len];
     }
+
+    pub fn readU8(self: *const Chunk, offset: usize) u8 {
+        return self.getCode()[offset];
+    }
+
+    pub fn readU16(self: *const Chunk, offset: usize) u16 {
+        const c = self.getCode();
+        return @as(u16, c[offset]) | (@as(u16, c[offset + 1]) << 8);
+    }
+
+    pub fn readI32(self: *const Chunk, offset: usize) i32 {
+        const c = self.getCode();
+        const val = @as(u32, c[offset]) |
+            (@as(u32, c[offset + 1]) << 8) |
+            (@as(u32, c[offset + 2]) << 16) |
+            (@as(u32, c[offset + 3]) << 24);
+        return @bitCast(val);
+    }
 };
 
 // ============================================================================
@@ -618,6 +636,12 @@ pub fn forEachValue(val: Value, callback: *const fn (Value) void) void {
                     callback(pkg.exports);
                     callback(pkg.symbols);
                     callback(pkg.shadowing);
+                },
+                .chunk => {
+                    const chunk = val.toPtr(Chunk);
+                    for (chunk.getConstants()) |c| {
+                        callback(c);
+                    }
                 },
                 .rational, .complex, .stream, .bignum, .pathname, .array => {
                     // No internal Values to scan

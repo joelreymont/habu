@@ -61,8 +61,8 @@ pub const Repl = struct {
     config: Config,
     /// Persistent compiler for global definitions
     compiler: Compiler,
-    /// Persistent chunk storage for closures (stored individually to avoid reallocation)
-    persistent_chunk_ptrs: std.ArrayList(*bytecode.Chunk),
+    /// Persistent chunk storage for closures - GC-managed Values
+    persistent_chunks: std.ArrayList(Value),
     /// Macro definitions: name -> closure
     macros: std.StringHashMap(Value),
     /// Line editor for interactive input
@@ -78,7 +78,7 @@ pub const Repl = struct {
             .vm = vm,
             .config = config,
             .compiler = try Compiler.initWithHeap(allocator, &vm),
-            .persistent_chunk_ptrs = std.ArrayList(*bytecode.Chunk){},
+            .persistent_chunks = std.ArrayList(Value){},
             .macros = std.StringHashMap(Value).init(allocator),
             .line_editor = LineEditor.init(allocator),
             .current_vm = null,
