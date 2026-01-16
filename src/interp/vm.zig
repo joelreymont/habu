@@ -536,6 +536,23 @@ pub const Vm = struct {
         try roots.append(self.allocator, self.pending_throw_tag);
         try roots.append(self.allocator, self.pending_throw_value);
 
+        // Pending block value
+        try roots.append(self.allocator, self.pending_block_value);
+
+        // Current package
+        try roots.append(self.allocator, self.current_package);
+
+        // Restart frames
+        for (self.restart_stack[0..self.restart_sp]) |frame| {
+            try roots.append(self.allocator, frame.name);
+        }
+
+        // Handler frames
+        for (self.handler_stack[0..self.handler_sp]) |frame| {
+            try roots.append(self.allocator, frame.condition_type);
+            try roots.append(self.allocator, frame.handler_fn);
+        }
+
         // Secondary values
         try roots.appendSlice(self.allocator, self.secondary_values[0..self.secondary_values_count]);
 
@@ -594,6 +611,28 @@ pub const Vm = struct {
         idx += 1;
         self.pending_throw_value = roots.items[idx];
         idx += 1;
+
+        // Update pending block value
+        self.pending_block_value = roots.items[idx];
+        idx += 1;
+
+        // Update current package
+        self.current_package = roots.items[idx];
+        idx += 1;
+
+        // Update restart frames
+        for (self.restart_stack[0..self.restart_sp]) |*frame| {
+            frame.name = roots.items[idx];
+            idx += 1;
+        }
+
+        // Update handler frames
+        for (self.handler_stack[0..self.handler_sp]) |*frame| {
+            frame.condition_type = roots.items[idx];
+            idx += 1;
+            frame.handler_fn = roots.items[idx];
+            idx += 1;
+        }
 
         // Update secondary values
         for (self.secondary_values[0..self.secondary_values_count]) |*v| {
