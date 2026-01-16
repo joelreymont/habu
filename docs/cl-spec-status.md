@@ -114,14 +114,16 @@
 - TIER 4: ⚠️ ~95% Complete (8/8 major subsystems)
 
 **Known Issues:**
-1. gensym in macro expansion context does not work (breaks stdlib.habu with-open-file macro)
+1. defmacro does not support destructuring in parameter lists (e.g., `(defmacro foo ((a b)) ...)` not supported)
 2. rational/rationalize primitives are stubs (return input unchanged instead of converting floats to rationals)
 
 **Recently Fixed:**
 - Complex number support: sqrt(-1) now returns #C(0 1) instead of NaN
 - REPL now auto-loads stdlib.habu on startup (loop, case, setf now work immediately)
 - Reader conditionals (#+ #-) fully implemented with (and/or/not) support
-- gensym primitive added with optional prefix argument (runtime use works)
+- gensym primitive added with optional prefix argument (works in macro expansion)
+- close primitive added as public alias for %close (stdlib.habu now loads successfully)
+- with-open-file, with-input-from-string, with-output-to-string macros working
 
 **Missing Features:**
 1. Full format justification parameters
