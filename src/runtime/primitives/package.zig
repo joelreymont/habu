@@ -611,24 +611,90 @@ pub fn uninternSymbol(symbol: Value, pkg: Value) !bool {
 pub fn deletePackage(heap: *Heap, pkg: Value) !bool {
     if (!pkg.isPackage()) return error.TypeError;
 
-    // TODO: In full implementation, check if package has used-by references
-    // For now, just clear the package's state
     const p = pkg.toPtr(objects.Package);
+
+    // Remove from heap's package table
+    const name_str = if (p.name.isString())
+        p.name.toPtr(objects.String).bytes()
+    else if (p.name.isSymbol())
+        p.name.toPtr(objects.Symbol).getName()
+    else
+        return error.TypeError;
+
+    _ = heap.packages.remove(name_str);
+
+    // Remove nicknames from table
+    var nicks = p.nicknames;
+    while (!nicks.isNil()) {
+        if (!nicks.isCons()) break;
+        const nick = nicks.toPtr(Cons).car;
+        const nick_str = if (nick.isString())
+            nick.toPtr(String).bytes()
+        else if (nick.isSymbol())
+            nick.toPtr(objects.Symbol).getName()
+        else
+            break;
+        _ = heap.packages.remove(nick_str);
+        nicks = nicks.toPtr(Cons).cdr;
+    }
+
+    // Clear package state
     p.symbols = Value.nil;
     p.exports = Value.nil;
     p.use_list = Value.nil;
     p.shadowing = Value.nil;
 
-    _ = heap;
     return true;
 }
 
 /// Rename a package
-pub fn renamePackage(pkg: Value, new_name: Value, new_nicknames: ?Value) !Value {
+pub fn renamePackage(heap: *Heap, pkg: Value, new_name: Value, new_nicknames: ?Value) !Value {
     if (!pkg.isPackage()) return error.TypeError;
+
     const p = pkg.toPtr(objects.Package);
+
+    // Remove old name from package table
+    const old_name_str = if (p.name.isString())
+        p.name.toPtr(objects.String).bytes()
+    else if (p.name.isSymbol())
+        p.name.toPtr(objects.Symbol).getName()
+    else
+        return error.TypeError;
+    _ = heap.packages.remove(old_name_str);
+
+    // Remove old nicknames
+    var old_nicks = p.nicknames;
+    while (!old_nicks.isNil()) {
+        if (!old_nicks.isCons()) break;
+        const nick = old_nicks.toPtr(Cons).car;
+        const nick_str = if (nick.isString())
+            nick.toPtr(String).bytes()
+        else if (nick.isSymbol())
+            nick.toPtr(objects.Symbol).getName()
+        else
+            break;
+        _ = heap.packages.remove(nick_str);
+        old_nicks = old_nicks.toPtr(Cons).cdr;
+    }
+
+    // Update package name
     p.name = new_name;
     if (new_nicknames) |nn| p.nicknames = nn;
+
+    // Add new name to package table
+    try heap.putLispPackage(new_name, pkg);
+
+    // Add new nicknames
+    if (new_nicknames) |nns| {
+        var nicks = nns;
+        while (!nicks.isNil()) {
+            if (!nicks.isCons()) break;
+            const nick = nicks.toPtr(Cons).car;
+            try heap.putLispPackage(nick, pkg);
+            nicks = nicks.toPtr(Cons).cdr;
+        }
+    }
+
     return pkg;
 }
 
@@ -796,4 +862,122 @@ test "unuse-package removes from use-list" {
     try unusePackage(&heap, pkg1, pkg2);
     const use2 = try packageUseList(pkg2);
     try testing.expect(use2.raw == Value.nil.raw);
+}
+
+test "delete-package removes from system" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const name = try heap.allocString("TO-DELETE");
+    const pkg = try makePackage(&heap, name, null, null);
+    try testing.expect(pkg.isPackage());
+
+    const found1 = findPackage(&heap, name);
+    try testing.expect(found1 != null);
+
+    const removed = try deletePackage(&heap, pkg);
+    try testing.expect(removed);
+
+    const found2 = findPackage(&heap, name);
+    try testing.expect(found2 == null);
+}
+
+test "delete-package removes nicknames" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const name = try heap.allocString("FULL-NAME");
+    const nick1 = try heap.allocString("SHORT");
+    const nicks = try heap.allocCons(nick1, Value.nil);
+    const pkg = try makePackage(&heap, name, nicks, null);
+
+    const found_by_nick = findPackage(&heap, nick1);
+    try testing.expect(found_by_nick != null);
+
+    _ = try deletePackage(&heap, pkg);
+
+    const after_del = findPackage(&heap, nick1);
+    try testing.expect(after_del == null);
+}
+
+test "rename-package updates name" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const old_name = try heap.allocString("OLD");
+    const pkg = try makePackage(&heap, old_name, null, null);
+
+    const new_name = try heap.allocString("NEW");
+    const renamed = try renamePackage(&heap, pkg, new_name, null);
+    try testing.expect(renamed.raw == pkg.raw);
+
+    const found_old = findPackage(&heap, old_name);
+    try testing.expect(found_old == null);
+
+    const found_new = findPackage(&heap, new_name);
+    try testing.expect(found_new != null);
+    try testing.expect(found_new.?.raw == pkg.raw);
+}
+
+test "rename-package updates nicknames" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const old_name = try heap.allocString("OLD");
+    const old_nick = try heap.allocString("O");
+    const old_nicks = try heap.allocCons(old_nick, Value.nil);
+    const pkg = try makePackage(&heap, old_name, old_nicks, null);
+
+    const new_name = try heap.allocString("NEW");
+    const new_nick = try heap.allocString("N");
+    const new_nicks = try heap.allocCons(new_nick, Value.nil);
+    _ = try renamePackage(&heap, pkg, new_name, new_nicks);
+
+    const found_old_nick = findPackage(&heap, old_nick);
+    try testing.expect(found_old_nick == null);
+
+    const found_new_nick = findPackage(&heap, new_nick);
+    try testing.expect(found_new_nick != null);
+    try testing.expect(found_new_nick.?.raw == pkg.raw);
+}
+
+test "shadow creates shadowing symbol" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const pkg = try makePackage(&heap, try heap.allocString("TEST"), null, null);
+    const name = try heap.allocString("SHADOWED");
+
+    try shadowSymbols(&heap, name, pkg);
+
+    const shadowing = try packageShadowingSymbols(pkg);
+    try testing.expect(shadowing.isCons());
+    const first = shadowing.toPtr(Cons).car;
+    try testing.expect(first.raw == name.raw);
+}
+
+test "shadowing-import imports and shadows" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const pkg = try makePackage(&heap, try heap.allocString("TEST"), null, null);
+    const sym_name = try heap.allocString("X");
+    const result = try internSymbol(&heap, sym_name, pkg);
+    const sym = result.toPtr(Cons).car;
+
+    const pkg2 = try makePackage(&heap, try heap.allocString("PKG2"), null, null);
+    try shadowingImport(&heap, sym, pkg2);
+
+    const found = try findSymbol(&heap, sym_name, pkg2);
+    const found_sym = found.toPtr(Cons).car;
+    try testing.expect(found_sym.raw == sym.raw);
+
+    const shadowing = try packageShadowingSymbols(pkg2);
+    try testing.expect(shadowing.isCons());
 }
