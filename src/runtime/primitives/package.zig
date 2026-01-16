@@ -89,6 +89,33 @@ pub fn packageShadowingSymbols(pkg: Value) !Value {
     return p.shadowing;
 }
 
+/// Find symbol in all packages, return list
+pub fn findAllSymbols(heap: *Heap, name: Value) !Value {
+    const name_str = if (name.isString())
+        name.toPtr(objects.String).bytes()
+    else if (name.isSymbol())
+        name.toPtr(objects.Symbol).getName()
+    else
+        return error.TypeError;
+
+    var result = Value.nil;
+    var it = heap.packages.valueIterator();
+    while (it.next()) |zig_pkg| {
+        const name_val = heap.allocString(zig_pkg.*.name) catch continue;
+        if (heap.findLispPackage(name_val)) |pkg_val| {
+            const p = pkg_val.toPtr(objects.Package);
+
+            const sym_table = p.symbols;
+            if (sym_table.isNil()) continue;
+            const ht = sym_table.toPtr(objects.HashTable);
+            if (hashTableLookup(heap, ht, name_str)) |sym| {
+                result = try heap.allocCons(sym, result);
+            }
+        }
+    }
+    return result;
+}
+
 /// List all packages
 pub fn listAllPackages(heap: *Heap) !Value {
     var result = Value.nil;
