@@ -2274,16 +2274,20 @@ pub const Vm = struct {
 
             .mv_bind => {
                 const count = self.readU8();
+                const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
 
-                // Primary value is already on stack
-                // Now push secondary values (or nil if not enough)
+                // Primary value is already on stack - store to local 0
+                const primary = try self.pop();
+                self.stack[bp] = primary;
+
+                // Store secondary values (or nil if not enough) to locals 1..count-1
                 var i: usize = 1;
                 while (i < count) : (i += 1) {
-                    if (i - 1 < self.secondary_values_count) {
-                        try self.push(self.secondary_values[i - 1]);
-                    } else {
-                        try self.push(Value.nil);
-                    }
+                    const val = if (i - 1 < self.secondary_values_count)
+                        self.secondary_values[i - 1]
+                    else
+                        Value.nil;
+                    self.stack[bp + i] = val;
                 }
 
                 // Clear secondary values
@@ -3739,6 +3743,11 @@ pub const Vm = struct {
             },
 
             .halt => return error.Halt,
+        }
+
+        // Clear stale secondary values after each op (except .values which sets them)
+        if (op != .values) {
+            self.secondary_values_count = 0;
         }
     }
 
