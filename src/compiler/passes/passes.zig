@@ -73,10 +73,7 @@ pub fn runFullPipeline(
 ) FullPipelineError!Chunk {
     // p01: Expand macros
     var expander = expand.Expander.init(allocator, heap, vm, macros);
-    const expanded = expander.expand(expr) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        error.InvalidSyntax => return error.InvalidSyntax,
-    };
+    const expanded = try expander.expand(expr);
 
     // p02: Desugar
     var desugarer = desugar.Desugarer.init(allocator, heap);
@@ -95,15 +92,7 @@ pub fn runFullPipeline(
     return emit_result.output;
 }
 
-pub const FullPipelineError = error{
-    InvalidSyntax,
-    InvalidLambda,
-    InvalidLet,
-    InvalidIf,
-    UnboundVariable,
-    EmitFailed,
-    OutOfMemory,
-} || PassError;
+pub const FullPipelineError = anyerror;
 
 /// Run the frontend pipeline: Value → lift → resolve → capture → Ir
 /// This converts S-expressions to fully-resolved IR with capture analysis.

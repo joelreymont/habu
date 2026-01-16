@@ -29,7 +29,7 @@ pub const Expander = struct {
     vm: ?*Vm,
     macros: *const MacroTable,
 
-    pub const Error = error{ OutOfMemory, InvalidSyntax };
+    pub const Error = anyerror;
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap, vm: ?*Vm, macros: *const MacroTable) Expander {
         return .{
@@ -87,11 +87,7 @@ pub const Expander = struct {
     }
 
     /// Expand a single macro call
-    /// Note: Currently uses simple parameter substitution.
-    /// Full macro expansion would require compiling and running the macro body.
     fn expandMacro(self: *Expander, macro_def: Value, args: Value, vm: *Vm) Error!Value {
-        _ = vm; // TODO: Use VM for full macro expansion
-
         // macro_def is ((params...) body...)
         if (!macro_def.isCons()) return error.InvalidSyntax;
 
@@ -104,9 +100,43 @@ pub const Expander = struct {
         const body_cons = body_list.toPtr(Cons);
         const body = body_cons.car;
 
-        // Simple substitution: replace parameter names with arguments
-        // For full macro expansion, we'd compile the lambda and call it
-        return self.substituteParams(body, params, args);
+        // Build lambda: (lambda (params) body)
+        const sym_lambda = self.heap.intern("lambda") catch return error.OutOfMemory;
+        const params_list = self.heap.allocCons(params, Value.nil) catch return error.OutOfMemory;
+        const body_list_val = self.heap.allocCons(body, Value.nil) catch return error.OutOfMemory;
+        const lambda_body = self.heap.allocCons(params_list, body_list_val) catch return error.OutOfMemory;
+        const lambda_expr = self.heap.allocCons(sym_lambda, lambda_body) catch return error.OutOfMemory;
+
+        // Compile lambda to bytecode
+        const compiler_mod = @import("../../compiler/compiler.zig");
+        var comp = try compiler_mod.Compiler.initWithHeap(self.allocator, self.heap);
+        defer comp.deinit();
+
+        var env = compiler_mod.Env.init(self.allocator, null);
+        defer env.deinit();
+        const ir = try comp.compile(lambda_expr, &env);
+
+        const emit_mod = @import("../../bytecode/emit.zig");
+        var emitter = emit_mod.Emitter.initWithHeap(self.allocator, self.heap);
+        defer emitter.deinit();
+        try emitter.emit(ir);
+        const chunk = try emitter.finalize();
+
+        // Execute to get closure
+        const closure_val = try vm.run(&chunk);
+
+        // Push args onto stack
+        var arg_iter = args;
+        var nargs: u8 = 0;
+        while (arg_iter.isCons()) {
+            const arg_cons = arg_iter.toPtr(Cons);
+            try vm.push(arg_cons.car);
+            arg_iter = arg_cons.cdr;
+            nargs += 1;
+        }
+
+        // Call closure with args
+        return vm.callClosure(closure_val.toPtr(runtime.Closure), nargs);
     }
 
     /// Simple parameter substitution (for macros without complex patterns)
