@@ -85,8 +85,8 @@ pub const IrPipeline = struct {
         try self.passes.append(self.allocator, p);
     }
 
-    pub fn run(self: *IrPipeline, input: *const Ir) PassError!PipelineResult {
-        var timer = std.time.Timer.start() catch return PassError.PassFailed;
+    pub fn run(self: *IrPipeline, input: *const Ir) !PipelineResult {
+        var timer = try std.time.Timer.start();
         var pass_times = std.ArrayListUnmanaged(Stats.PassTime){};
         var all_diagnostics = std.ArrayListUnmanaged(Diagnostic){};
         var current = input;

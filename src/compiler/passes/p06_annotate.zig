@@ -16,9 +16,9 @@ const TypedIr = ir_types.TypedIr;
 const TypedIrBuilder = ir_types.TypedIrBuilder;
 
 /// Annotate pass - wraps IR with type/quantity slots
-pub fn annotate(allocator: std.mem.Allocator, input: *const Ir) PassError!PassResult(*const TypedIr) {
+pub fn annotate(allocator: std.mem.Allocator, input: *const Ir) !PassResult(*const TypedIr) {
     var builder = TypedIrBuilder.init(allocator);
-    const typed = builder.buildTree(input) catch return PassError.OutOfMemory;
+    const typed = try builder.buildTree(input);
     return PassResult(*const TypedIr).changed(typed);
 }
 

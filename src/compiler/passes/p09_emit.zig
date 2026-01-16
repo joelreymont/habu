@@ -19,23 +19,23 @@ const Heap = @import("../../runtime/heap.zig").Heap;
 /// Emit pass - transforms IR to bytecode
 /// Note: This is a simplified pass that doesn't handle heap/symbol interning.
 /// For full functionality, use Emitter.initWithHeap() directly.
-pub fn emit(allocator: std.mem.Allocator, input: *const Ir) PassError!PassResult(Chunk) {
+pub fn emit(allocator: std.mem.Allocator, input: *const Ir) !PassResult(Chunk) {
     var emitter = Emitter.init(allocator);
     defer emitter.deinit();
 
-    emitter.emit(input) catch return PassError.PassFailed;
-    const chunk = emitter.finalize() catch return PassError.PassFailed;
+    try emitter.emit(input);
+    const chunk = try emitter.finalize();
 
     return PassResult(Chunk).changed(chunk);
 }
 
 /// Emit with heap for symbol interning (full functionality)
-pub fn emitWithHeap(allocator: std.mem.Allocator, heap: *Heap, input: *const Ir) PassError!PassResult(Chunk) {
+pub fn emitWithHeap(allocator: std.mem.Allocator, heap: *Heap, input: *const Ir) !PassResult(Chunk) {
     var emitter = Emitter.initWithHeap(allocator, heap);
     defer emitter.deinit();
 
-    emitter.emit(input) catch return PassError.PassFailed;
-    const chunk = emitter.finalize() catch return PassError.PassFailed;
+    try emitter.emit(input);
+    const chunk = try emitter.finalize();
 
     return PassResult(Chunk).changed(chunk);
 }
