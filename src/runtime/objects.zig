@@ -178,6 +178,7 @@ pub const BoxedKind = enum(u64) {
     array = 5,
     pathname = 6,
     package = 7,
+    chunk = 8,
 };
 
 /// Stream direction
@@ -466,6 +467,40 @@ pub const Pathname = extern struct {
     version: Value,
 };
 
+/// Compiled bytecode chunk (GC-managed)
+pub const Chunk = extern struct {
+    /// Boxed object discriminator (must be first)
+    kind: BoxedKind = .chunk,
+    /// Number of constants in pool
+    const_count: u32,
+    /// Number of bytecode bytes
+    code_len: u32,
+    /// Function arity (required params)
+    arity: u8,
+    /// Optional parameter count
+    opt_count: u8,
+    /// Keyword parameter count
+    key_count: u8,
+    /// Has rest parameter
+    has_rest: u8, // bool as u8 for alignment
+    /// Number of local variables
+    num_locals: u8,
+    /// Padding for alignment
+    _pad: [3]u8 = .{0} ** 3,
+    /// Constant pool pointer (points to inline array after header)
+    const_pool: [*]Value,
+    /// Bytecode pointer (points to inline array after constants)
+    code: [*]u8,
+
+    pub fn getConstants(self: *const Chunk) []Value {
+        return self.const_pool[0..self.const_count];
+    }
+
+    pub fn getCode(self: *const Chunk) []u8 {
+        return self.code[0..self.code_len];
+    }
+};
+
 // ============================================================================
 // Object size calculations (for GC)
 // ============================================================================
@@ -521,6 +556,13 @@ pub fn objectSize(val: Value) usize {
                 .bignum => @sizeOf(Bignum),
                 .pathname => @sizeOf(Pathname),
                 .package => @sizeOf(Package),
+                .chunk => {
+                    const chunk = val.toPtr(Chunk);
+                    // Header + const pool + bytecode (both aligned to 8)
+                    const const_size = chunk.const_count * @sizeOf(Value);
+                    const code_size = std.mem.alignForward(usize, chunk.code_len, 8);
+                    break :blk @sizeOf(Chunk) + const_size + code_size;
+                },
             };
         },
         .forwarding => @sizeOf(usize), // Just a pointer

@@ -29,6 +29,7 @@ const Vector = runtime.Vector;
 const compiler = @import("../compiler/compiler.zig");
 const GlobalEnv = compiler.GlobalEnv;
 const Parser = @import("../reader/parser.zig").Parser;
+const BuiltinSymbols = @import("../runtime/builtins.zig").BuiltinSymbols;
 
 pub const Error = error{
     StackOverflow,
@@ -286,6 +287,9 @@ pub const Vm = struct {
     /// Current argc for load_argc when fp=0 (used by callClosure)
     current_argc: u8,
 
+    /// Pre-interned builtin symbols for fast dispatch
+    builtins: BuiltinSymbols,
+
     /// Pre-interned type symbols for runtime type dispatch
     type_syms: TypeSymbols,
 
@@ -390,6 +394,7 @@ pub const Vm = struct {
             .gensym_counter = 0,
             .current_closure = null,
             .current_argc = 0,
+            .builtins = try BuiltinSymbols.init(heap),
             .type_syms = try TypeSymbols.init(heap),
         };
         // Initialize globals to nil
@@ -4769,6 +4774,7 @@ pub const Vm = struct {
             .array => result.appendSlice(self.allocator, "#<array>") catch return error.OutOfMemory,
             .pathname => result.appendSlice(self.allocator, "#<pathname>") catch return error.OutOfMemory,
             .package => result.appendSlice(self.allocator, "#<package>") catch return error.OutOfMemory,
+            .chunk => result.appendSlice(self.allocator, "#<chunk>") catch return error.OutOfMemory,
         }
     }
 
@@ -5595,7 +5601,7 @@ fn hashValueWithTest(val: Value, test_type: runtime.HashTest) u64 {
                 .keyword => fnvHash(val.toPtr(runtime.Keyword).getName()),
                 .string => fnvHash(val.toPtr(runtime.String).bytes()),
                 // Reference types: hash address (NOT stable across GC)
-                .cons, .vector, .closure, .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname, .package => fnvHashU64(val.raw),
+                .cons, .vector, .closure, .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname, .package, .chunk => fnvHashU64(val.raw),
             };
         },
     }

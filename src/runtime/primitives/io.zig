@@ -316,6 +316,7 @@ fn princValueTo(val: Value, w: anytype) !void {
             const name_sym = pkg.name.toPtr(objects.Symbol);
             try w.print("#<package {s}>", .{name_sym.getName()});
         },
+        .chunk => try w.writeAll("#<chunk>"),
     }
 }
 
@@ -428,6 +429,7 @@ fn printValueTo(val: Value, w: anytype) !void {
             const name_sym = pkg.name.toPtr(objects.Symbol);
             try w.print("#<package {s}>", .{name_sym.getName()});
         },
+        .chunk => try w.writeAll("#<chunk>"),
     }
 }
 
@@ -612,6 +614,55 @@ pub fn peekChar(peek_type: ?Value, stream: Value) !Value {
     }
 }
 
+/// Check if character available (non-blocking)
+pub fn listen(stream: Value) !Value {
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    if (s.direction != .input) return error.TypeError;
+
+    switch (s.stream_type) {
+        .string => {
+            return if (s.data_ptr == 0 or s.position >= s.length) Value.nil else Value.t;
+        },
+        .file => {
+            const fd: std.posix.fd_t = @intCast(s.file_fd);
+            var pollfd = [_]std.posix.pollfd{.{ .fd = fd, .events = std.posix.POLL.IN, .revents = 0 }};
+            const ready = try std.posix.poll(&pollfd, 0);
+            return if (ready > 0) Value.t else Value.nil;
+        },
+        .byte => return error.NotImplemented,
+    }
+}
+
+/// Read character if available, else nil (non-blocking)
+pub fn readCharNoHang(stream: Value) !Value {
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    if (s.direction != .input) return error.TypeError;
+
+    switch (s.stream_type) {
+        .string => {
+            if (s.data_ptr == 0 or s.position >= s.length) return Value.nil;
+            const data: [*]u8 = @ptrFromInt(s.data_ptr);
+            const ch = data[s.position];
+            s.position += 1;
+            return Value.makeFixnum(@intCast(ch));
+        },
+        .file => {
+            const fd: std.posix.fd_t = @intCast(s.file_fd);
+            var pollfd = [_]std.posix.pollfd{.{ .fd = fd, .events = std.posix.POLL.IN, .revents = 0 }};
+            const ready = try std.posix.poll(&pollfd, 0);
+            if (ready == 0) return Value.nil;
+
+            var buf: [1]u8 = undefined;
+            const n = try std.posix.read(fd, &buf);
+            if (n == 0) return Value.nil;
+            return Value.makeFixnum(@intCast(buf[0]));
+        },
+        .byte => return error.NotImplemented,
+    }
+}
+
 /// Write one character to stream
 pub fn writeChar(char: Value, stream: Value) !void {
     if (!char.isFixnum()) return error.TypeError;
@@ -697,6 +748,112 @@ pub fn writeString(str: Value, stream: Value, start: ?Value, end: ?Value) !void 
 pub fn writeLine(str: Value, stream: Value) !void {
     try writeString(str, stream, null, null);
     try writeChar(Value.makeFixnum('\n'), stream);
+}
+
+/// Flush output and wait
+pub fn finishOutput(stream: Value) !void {
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    if (s.direction != .output) return error.TypeError;
+
+    switch (s.stream_type) {
+        .string => {}, // No-op for string streams
+        .file => {
+            const fd: std.posix.fd_t = @intCast(s.file_fd);
+            try std.posix.fsync(fd);
+        },
+        .byte => return error.NotImplemented,
+    }
+}
+
+/// Flush output without waiting
+pub fn forceOutput(stream: Value) !void {
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    if (s.direction != .output) return error.TypeError;
+
+    switch (s.stream_type) {
+        .string => {}, // No-op for string streams
+        .file => {
+            const fd: std.posix.fd_t = @intCast(s.file_fd);
+            _ = fd; // Force flush already happens on write
+        },
+        .byte => return error.NotImplemented,
+    }
+}
+
+/// Discard buffered output
+pub fn clearOutput(stream: Value) !void {
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    if (s.direction != .output) return error.TypeError;
+
+    switch (s.stream_type) {
+        .string => {
+            if (s.data_ptr == 0) return error.StreamClosed;
+            const buf: *std.ArrayList(u8) = @ptrFromInt(s.data_ptr);
+            buf.clearRetainingCapacity();
+        },
+        .file => {}, // Can't clear OS buffer
+        .byte => return error.NotImplemented,
+    }
+}
+
+/// Get/set file position
+pub fn filePosition(heap: *Heap, stream: Value, pos: ?Value) !Value {
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+
+    if (pos == null) {
+        // Get current position
+        switch (s.stream_type) {
+            .string => return Value.makeFixnum(@intCast(s.position)),
+            .file => {
+                const fd: std.posix.fd_t = @intCast(s.file_fd);
+                const cur = try std.posix.lseek(fd, 0, .CUR);
+                return Value.makeFixnum(@intCast(cur));
+            },
+            .byte => return error.NotImplemented,
+        }
+    } else {
+        // Set position
+        const p = pos.?;
+        const new_pos: i64 = if (p.isKeyword()) blk: {
+            const kw = p.toPtr(objects.Keyword);
+            const name = kw.getName();
+            if (std.mem.eql(u8, name, "start")) {
+                break :blk 0;
+            } else if (std.mem.eql(u8, name, "end")) {
+                break :blk -1;
+            } else {
+                return error.InvalidArgument;
+            }
+        } else if (p.isFixnum()) p.toFixnum() else return error.TypeError;
+
+        switch (s.stream_type) {
+            .string => {
+                if (new_pos == -1) {
+                    s.position = s.length;
+                } else if (new_pos >= 0) {
+                    s.position = @intCast(new_pos);
+                } else {
+                    return error.InvalidArgument;
+                }
+                return Value.t;
+            },
+            .file => {
+                const fd: std.posix.fd_t = @intCast(s.file_fd);
+                if (new_pos == -1) {
+                    _ = try std.posix.lseek(fd, 0, .END);
+                } else {
+                    _ = try std.posix.lseek(fd, new_pos, .SET);
+                }
+                return Value.t;
+            },
+            .byte => return error.NotImplemented,
+        }
+    }
+    _ = heap;
 }
 
 /// Open a file stream

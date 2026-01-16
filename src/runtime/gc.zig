@@ -257,7 +257,7 @@ pub const GC = struct {
                         const old_ptr: usize = arr.data_ptr;
                         arr.data_ptr = @intCast(@as(isize, @intCast(old_ptr)) + addr_delta);
                     },
-                    .rational, .complex, .stream, .bignum, .pathname, .package => {
+                    .rational, .complex, .stream, .bignum, .pathname, .package, .chunk => {
                         // No interior pointers to repair
                     },
                 }
@@ -380,7 +380,7 @@ pub const GC = struct {
                             pkg.shadowing = try self.copyValue(pkg.shadowing, alloc_ptr);
                         }
                     },
-                    .rational, .complex, .bignum => {
+                    .rational, .complex, .bignum, .chunk => {
                         // No Value references to scan
                     },
                     .stream => {

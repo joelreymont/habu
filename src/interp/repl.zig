@@ -1038,6 +1038,7 @@ pub const Repl = struct {
                 const name_sym = pkg.name.toPtr(Symbol);
                 try writer.print("#<package {s}>", .{name_sym.getName()});
             },
+            .chunk => try writer.writeAll("#<chunk>"),
         }
     }
 

@@ -447,10 +447,10 @@ pub const Ir = union(enum) {
     char_gt: BinaryOp,
     read_char: void, // No operands - reads from stdin
     peek_char: void, // No operands - peeks at stdin
+    unread_char: UnaryOp, // Push character back
     read: void, // Read S-expression from stdin
     read_from_string: UnaryOp, // Parse string to value
     load: UnaryOp, // Load and evaluate a file
-    unread_char: UnaryOp, // Push character back
     eval: UnaryOp, // Evaluate expression at runtime
     gensym: OptionalOp, // Generate unique symbol (nullary or with prefix)
     macroexpand: UnaryOp, // Expand macros in expression
