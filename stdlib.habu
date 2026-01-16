@@ -1538,6 +1538,10 @@
            (subst-if new pred (cdr tree))))
     (t tree)))
 
+; subst-if-not - substitute new for elements not satisfying pred
+(defun subst-if-not (new pred tree)
+  (subst-if new (lambda (x) (not (funcall pred x))) tree))
+
 ; nsubst - destructive tree substitution
 (defun nsubst (new old tree &key (test #'eql))
   (cond
@@ -1557,6 +1561,10 @@
      (setf (cdr tree) (nsubst-if new pred (cdr tree)))
      tree)
     (t tree)))
+
+; nsubst-if-not - destructive substitute if not predicate
+(defun nsubst-if-not (new pred tree)
+  (nsubst-if new (lambda (x) (not (funcall pred x))) tree))
 
 ; acons - add entry to front of alist
 (defun acons (key value alist)
@@ -2009,6 +2017,28 @@
   (if (or (null list) (eq list sublist))
       nil
       (cons (car list) (ldiff (cdr list) sublist))))
+
+; sublis - substitute multiple associations in tree
+(defun sublis (alist tree)
+  (let ((pair (assoc tree alist)))
+    (if pair
+        (cdr pair)
+        (if (consp tree)
+            (cons (sublis alist (car tree))
+                  (sublis alist (cdr tree)))
+            tree))))
+
+; nsublis - destructive substitute multiple associations in tree
+(defun nsublis (alist tree)
+  (let ((pair (assoc tree alist)))
+    (if pair
+        (cdr pair)
+        (if (consp tree)
+            (progn
+              (rplaca tree (nsublis alist (car tree)))
+              (rplacd tree (nsublis alist (cdr tree)))
+              tree)
+            tree))))
 
 ;; ============================================================
 ;; Control Flow Utilities
