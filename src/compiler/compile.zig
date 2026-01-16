@@ -1278,7 +1278,7 @@ pub const Compiler = struct {
         type_sym: ?Value, // null for untyped, otherwise the type symbol
     };
 
-    pub fn init(allocator: std.mem.Allocator) Compiler {
+    pub fn init(allocator: std.mem.Allocator, vm: *Vm) Compiler {
         return .{
             .builder = IrBuilder.init(allocator),
             .allocator = allocator,
@@ -1293,20 +1293,20 @@ pub const Compiler = struct {
             .struct_types = std.StringHashMap(*const types.Type).init(allocator),
             .struct_predicates = std.StringHashMap(*const types.Type).init(allocator),
             .macro_table = std.StringHashMap(Value).init(allocator),
-            .vm = null,
-            .heap = null,
+            .vm = vm,
+            .heap = vm.heap,
             .class_metadata = std.StringHashMap([]const SlotSpec).init(allocator),
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
         };
     }
 
     /// Initialize with heap for symbol interning
-    pub fn initWithHeap(allocator: std.mem.Allocator, heap: *Heap) !Compiler {
+    pub fn initWithHeap(allocator: std.mem.Allocator, vm: *Vm) !Compiler {
         // Builtins are interned in CL package (current_package starts as CL)
-        const builtins = try Builtins.init(heap);
+        const builtins = try Builtins.init(vm.heap);
         // Switch to CL-USER for user code
-        if (heap.cl_user_package) |cl_user| {
-            heap.setCurrentPackage(cl_user);
+        if (vm.heap.cl_user_package) |cl_user| {
+            vm.heap.setCurrentPackage(cl_user);
         }
         return .{
             .builder = IrBuilder.init(allocator),
@@ -1322,8 +1322,8 @@ pub const Compiler = struct {
             .struct_types = std.StringHashMap(*const types.Type).init(allocator),
             .struct_predicates = std.StringHashMap(*const types.Type).init(allocator),
             .macro_table = std.StringHashMap(Value).init(allocator),
-            .vm = null,
-            .heap = heap,
+            .vm = vm,
+            .heap = vm.heap,
             .class_metadata = std.StringHashMap([]const SlotSpec).init(allocator),
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
         };
@@ -2042,11 +2042,9 @@ pub const Compiler = struct {
         const lambda_list = try heap.allocCons(lambda_sym, params_body);
 
         // Compile the lambda to get a closure
-        var macro_compiler = Compiler.initWithHeap(self.allocator, heap) catch
+        var macro_compiler = Compiler.initWithHeap(self.allocator, vm) catch
             return error.OutOfMemory;
         defer macro_compiler.deinit();
-        macro_compiler.vm = vm;
-
         // Share macro table so nested macros (like prog1) work in macro bodies
         var iter = self.macro_table.iterator();
         while (iter.next()) |entry| {
@@ -8709,7 +8707,11 @@ test "compile fixnum" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var compiler = Compiler.init(allocator);
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = Compiler.init(allocator, &vm);
     defer compiler.deinit();
 
     var env = Env.init(allocator, null);
@@ -8726,7 +8728,11 @@ test "compile nil" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var compiler = Compiler.init(allocator);
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = Compiler.init(allocator, &vm);
     defer compiler.deinit();
 
     var env = Env.init(allocator, null);
@@ -8772,7 +8778,11 @@ test "type inference for literals" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var compiler = Compiler.init(allocator);
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = Compiler.init(allocator, &vm);
     defer compiler.deinit();
 
     var env = Env.init(allocator, null);
@@ -8843,7 +8853,11 @@ test "BiChecker integration - type checking enabled" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var compiler = Compiler.init(allocator);
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = Compiler.init(allocator, &vm);
     defer compiler.deinit();
 
     // Enable type checking
@@ -8858,7 +8872,11 @@ test "BiChecker integration - checkLambdaTypes with correct types" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var compiler = Compiler.init(allocator);
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = Compiler.init(allocator, &vm);
     defer compiler.deinit();
 
     // Create a simple body IR (literal fixnum)
@@ -8879,7 +8897,11 @@ test "BiChecker integration - checkLambdaTypes with type mismatch" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var compiler = Compiler.init(allocator);
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = Compiler.init(allocator, &vm);
     defer compiler.deinit();
 
     // Create body that returns a fixnum

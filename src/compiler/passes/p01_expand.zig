@@ -109,7 +109,7 @@ pub const Expander = struct {
 
         // Compile lambda to bytecode
         const compiler_mod = @import("../../compiler/compiler.zig");
-        var comp = try compiler_mod.Compiler.initWithHeap(self.allocator, self.heap);
+        var comp = try compiler_mod.Compiler.initWithHeap(self.allocator, vm);
         defer comp.deinit();
 
         var env = compiler_mod.Env.init(self.allocator, null);

@@ -71,12 +71,13 @@ pub const Repl = struct {
     current_vm: ?*Vm,
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap, config: Config) !Repl {
+        var vm = try Vm.init(allocator, heap);
         return Repl{
             .allocator = allocator,
             .heap = heap,
-            .vm = try Vm.init(allocator, heap),
+            .vm = vm,
             .config = config,
-            .compiler = try Compiler.initWithHeap(allocator, heap),
+            .compiler = try Compiler.initWithHeap(allocator, &vm),
             .persistent_chunk_ptrs = std.ArrayList(*bytecode.Chunk){},
             .macros = std.StringHashMap(Value).init(allocator),
             .line_editor = LineEditor.init(allocator),
