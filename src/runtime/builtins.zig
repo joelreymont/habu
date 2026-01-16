@@ -67,6 +67,10 @@ pub const BuiltinSymbols = struct {
     sym_or: Value,
     sym_not: Value,
 
+    // Keywords
+    kw_absolute: Value,
+    kw_relative: Value,
+
     pub fn init(heap: *Heap) !BuiltinSymbols {
         return BuiltinSymbols{
             // Control flow
@@ -131,6 +135,10 @@ pub const BuiltinSymbols = struct {
             .sym_and = try heap.intern("and"),
             .sym_or = try heap.intern("or"),
             .sym_not = try heap.intern("not"),
+
+            // Keywords
+            .kw_absolute = try heap.internKeyword("absolute"),
+            .kw_relative = try heap.internKeyword("relative"),
         };
     }
 };

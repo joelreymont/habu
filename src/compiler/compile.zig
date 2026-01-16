@@ -454,6 +454,8 @@ pub const Builtins = struct {
     kw_unix: Value,
     kw_darwin: Value,
     kw_windows: Value,
+    kw_absolute: Value,
+    kw_relative: Value,
 
     /// Initialize all builtin symbols from heap
     pub fn init(heap: *Heap) !Builtins {
@@ -814,6 +816,8 @@ pub const Builtins = struct {
             .kw_unix = try heap.internKeyword("unix"),
             .kw_darwin = try heap.internKeyword("darwin"),
             .kw_windows = try heap.internKeyword("windows"),
+            .kw_absolute = try heap.internKeyword("absolute"),
+            .kw_relative = try heap.internKeyword("relative"),
         };
     }
 

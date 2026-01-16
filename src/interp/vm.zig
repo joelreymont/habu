@@ -3030,12 +3030,10 @@ pub const Vm = struct {
                     // Skip first element if it's :absolute or :relative keyword
                     if (dir_list.isCons()) {
                         const first = dir_list.toPtr(runtime.Cons).car;
-                        if (first.isKeyword()) {
-                            const kw = first.toPtr(runtime.Keyword);
-                            const kw_name = kw.getName();
-                            if (std.mem.eql(u8, kw_name, "absolute")) {
-                                try result.append(self.allocator, '/');
-                            }
+                        if (first.raw == self.builtins.kw_absolute.raw) {
+                            try result.append(self.allocator, '/');
+                            dir_list = dir_list.toPtr(runtime.Cons).cdr;
+                        } else if (first.raw == self.builtins.kw_relative.raw) {
                             dir_list = dir_list.toPtr(runtime.Cons).cdr;
                         }
                     }
