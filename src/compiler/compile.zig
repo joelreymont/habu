@@ -5202,12 +5202,20 @@ pub const Compiler = struct {
         return self.type_checker.builder.makeList(elem) catch null;
     }
 
-    /// Parse (vec T) or (vec T N) - for now just (vec T)
+    /// Parse (vec T) or (vec T N) - sized vectors use type_app
     fn parseVecType(self: *Compiler, args: Value) ?*const types.Type {
         if (!args.isCons()) return &types.t_vector;
         const c = args.toPtr(Cons);
         const elem = self.parseTypeExpr(c.car) orelse return null;
-        // TODO: handle (vec T N) for sized vectors with term parsing
+
+        // Check for (vec T N) - sized vector
+        if (c.cdr.isCons()) {
+            const rest = c.cdr.toPtr(Cons);
+            const size_term: *const anyopaque = @ptrCast(&rest.car);
+            const vec_t = self.type_checker.builder.makeVec(elem) catch return null;
+            return self.type_checker.builder.makeTypeApp(vec_t, size_term) catch null;
+        }
+
         return self.type_checker.builder.makeVec(elem) catch null;
     }
 
@@ -5401,14 +5409,15 @@ pub const Compiler = struct {
     }
 
     /// Generate copier: (lambda (obj) obj)
-    /// TODO: implement proper copy-seq when available
+    /// Identity function - opcode space full, proper copy requires extending bytecode
+    /// Users must call copy-seq explicitly for shallow copy
     fn generateStructCopier(self: *Compiler, copy_name: []const u8) anyerror!*Ir {
         // Qualify the copier name with current package
         var qual_buf: [512]u8 = undefined;
         const qualified_name = self.qualifyName(copy_name, &qual_buf) catch copy_name;
         const global_idx = self.globals.define(qualified_name) catch |e| return e;
 
-        // For now just return identity - proper copy-seq needs implementation
+        // Identity - proper copy needs opcode slot or multi-byte opcodes
         const obj_ref = try self.builder.variable("obj", 0, 0);
 
         const lambda_ir = self.builder.lambda(
@@ -6010,38 +6019,46 @@ pub const Compiler = struct {
             i -= 1;
             const method = methods.items[i];
 
-            // For now, only handle single-dispatch (first parameter specializer)
-            // TODO: Handle multi-parameter dispatch
             if (method.specializers.len == 0) continue;
 
-            const spec_name = method.specializers[0];
+            // Build condition by AND-ing all parameter type checks
+            var cond_ir: ?*Ir = null;
 
-            // Skip unspecialized methods (specializer = "t")
-            const spec_sym = try self.heap.?.intern(spec_name);
-            if (spec_sym.eq(self.builtins.?.t)) {
-                // Unspecialized - always matches, make it the else branch
+            for (method.specializers, 0..) |spec_name, param_idx| {
+                if (param_idx >= param_names.len) return error.InvalidSyntax;
+
+                // Skip unspecialized parameters (specializer = "t")
+                const spec_sym = try self.heap.?.intern(spec_name);
+                if (spec_sym.eq(self.builtins.?.t)) continue;
+
+                // Reference to parameter
+                const arg_ir = try self.builder.variable(param_names[param_idx], 0, @intCast(param_idx));
+
+                // Class name symbol
+                const class_sym = try self.heap.?.intern(spec_name);
+                const class_ir = try self.builder.lit(class_sym);
+
+                // typep check
+                const check_ir = try self.builder.typep(arg_ir, class_ir);
+
+                // AND with previous checks: (if prev check nil)
+                cond_ir = if (cond_ir) |prev| blk: {
+                    const nil_ir = try self.builder.lit(Value.nil);
+                    break :blk try self.builder.ifExpr(prev, check_ir, nil_ir);
+                } else check_ir;
+            }
+
+            // If all parameters are unspecialized (all "t"), this method always matches
+            if (cond_ir == null) {
                 dispatch_body = try self.generateMethodCallByName(method.function_name, param_names);
                 continue;
             }
-
-            // Build condition: (typep arg1 'class-name)
-            if (param_names.len == 0) return error.InvalidSyntax;
-
-            // Reference to first parameter
-            const arg_ir = try self.builder.variable(param_names[0], 0, 0); // depth 0, index 0 - first param
-
-            // Class name symbol
-            const class_sym = try self.heap.?.intern(spec_name);
-            const class_ir = try self.builder.lit(class_sym);
-
-            // typep check
-            const cond_ir = try self.builder.typep(arg_ir, class_ir);
 
             // Method call
             const then_ir = try self.generateMethodCallByName(method.function_name, param_names);
 
             // Wrap in if
-            dispatch_body = try self.builder.ifExpr(cond_ir, then_ir, dispatch_body);
+            dispatch_body = try self.builder.ifExpr(cond_ir.?, then_ir, dispatch_body);
         }
 
         // Wrap dispatch body in lambda

@@ -424,6 +424,9 @@ pub const Heap = struct {
 
     /// Allocate a string output stream
     pub fn allocStringOutputStream(self: *Heap) error{OutOfMemory}!Value {
+        const buf = try self.backing_allocator.create(std.ArrayList(u8));
+        buf.* = std.ArrayList(u8){};
+
         const stream = try self.alloc(objects.Stream);
         stream.* = .{
             .kind = .stream,
@@ -431,7 +434,7 @@ pub const Heap = struct {
             .stream_type = .string,
             .closed = false,
             .position = 0,
-            .data_ptr = 0, // Will be allocated lazily
+            .data_ptr = @intFromPtr(buf),
             .length = 0,
             .file_fd = -1,
         };

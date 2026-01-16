@@ -532,11 +532,13 @@ pub fn makeStringOutputStream(heap: *Heap) !Value {
 }
 
 /// Get the accumulated string from an output stream
-pub fn getOutputStreamString(stream: Value) !Value {
+pub fn getOutputStreamString(heap: *Heap, stream: Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
     if (s.direction != .output or s.stream_type != .string) return error.TypeError;
-    return s.buffer;
+    if (s.data_ptr == 0) return error.StreamClosed;
+    const buf: *std.ArrayList(u8) = @ptrFromInt(s.data_ptr);
+    return try heap.allocString(buf.items);
 }
 
 /// Read one character from stream
@@ -549,9 +551,9 @@ pub fn readChar(stream: Value, eof_error: ?Value, eof_value: ?Value) !Value {
 
     switch (s.stream_type) {
         .string => {
-            const str = s.buffer.toPtr(objects.String);
-            if (s.position >= str.len) return Value.nil;
-            const ch = str.bytes()[s.position];
+            if (s.data_ptr == 0 or s.position >= s.length) return Value.nil;
+            const data: [*]u8 = @ptrFromInt(s.data_ptr);
+            const ch = data[s.position];
             s.position += 1;
             return Value.makeFixnum(@intCast(ch));
         },
@@ -584,9 +586,9 @@ pub fn peekChar(peek_type: ?Value, stream: Value) !Value {
 
     switch (s.stream_type) {
         .string => {
-            const str = s.buffer.toPtr(objects.String);
-            if (s.position >= str.len) return Value.nil;
-            return Value.makeFixnum(@intCast(str.bytes()[s.position]));
+            if (s.data_ptr == 0 or s.position >= s.length) return Value.nil;
+            const data: [*]u8 = @ptrFromInt(s.data_ptr);
+            return Value.makeFixnum(@intCast(data[s.position]));
         },
         .file => {
             var buf: [1]u8 = undefined;
@@ -610,8 +612,9 @@ pub fn writeChar(char: Value, stream: Value) !void {
     const ch: u8 = @intCast(char.toFixnum());
     switch (s.stream_type) {
         .string => {
-            // TODO: grow string buffer
-            return error.NotImplemented;
+            if (s.data_ptr == 0) return error.StreamClosed;
+            const buf: *std.ArrayList(u8) = @ptrFromInt(s.data_ptr);
+            try buf.append(ch);
         },
         .file => {
             const fd: std.posix.fd_t = @intCast(s.file_fd);
@@ -622,27 +625,35 @@ pub fn writeChar(char: Value, stream: Value) !void {
 }
 
 /// Read a line from stream
-pub fn readLine(stream: Value) !Value {
+pub fn readLine(heap: *Heap, stream: Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
     if (s.direction != .input) return error.TypeError;
 
     switch (s.stream_type) {
         .string => {
-            const str = s.buffer.toPtr(objects.String);
+            if (s.data_ptr == 0 or s.position >= s.length) return Value.nil;
+            const data: [*]u8 = @ptrFromInt(s.data_ptr);
             const start = s.position;
             var i = start;
-            while (i < str.len and str.bytes()[i] != '\n') : (i += 1) {}
-            const line_end = i;
-            if (i < str.len) i += 1; // skip newline
-            s.position = i;
-            // TODO: return substring
-            _ = line_end;
-            return Value.nil;
+            while (i < s.length and data[i] != '\n') : (i += 1) {}
+            const line = data[start..i];
+            s.position = if (i < s.length) i + 1 else i;
+            return try heap.allocString(line);
         },
         .file => {
-            // TODO: implement file line reading
-            return error.NotImplemented;
+            var buf: [LINE_BUF]u8 = undefined;
+            var len: usize = 0;
+            const fd: std.posix.fd_t = @intCast(s.file_fd);
+            while (len < LINE_BUF) {
+                var ch: [1]u8 = undefined;
+                const n = try std.posix.read(fd, &ch);
+                if (n == 0) break;
+                if (ch[0] == '\n') break;
+                buf[len] = ch[0];
+                len += 1;
+            }
+            return try heap.allocString(buf[0..len]);
         },
         .byte => return error.NotImplemented,
     }
@@ -660,8 +671,9 @@ pub fn writeString(str: Value, stream: Value, start: ?Value, end: ?Value) !void 
     const string = str.toPtr(objects.String);
     switch (s.stream_type) {
         .string => {
-            // TODO: append to string buffer
-            return error.NotImplemented;
+            if (s.data_ptr == 0) return error.StreamClosed;
+            const buf: *std.ArrayList(u8) = @ptrFromInt(s.data_ptr);
+            try buf.appendSlice(string.bytes());
         },
         .file => {
             const fd: std.posix.fd_t = @intCast(s.file_fd);

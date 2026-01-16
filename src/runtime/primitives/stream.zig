@@ -382,10 +382,10 @@ pub fn primGetOutputStreamString(heap: *Heap, args: []const Value) !Value {
         return error.InvalidArgument;
     }
 
-    if (stream.data_ptr == 0 or stream.length == 0) {
+    if (stream.data_ptr == 0) {
         return try heap.allocString("");
     }
 
-    const buf: [*]u8 = @ptrFromInt(stream.data_ptr);
-    return try heap.allocString(buf[0..stream.length]);
+    const buf: *std.ArrayList(u8) = @ptrFromInt(stream.data_ptr);
+    return try heap.allocString(buf.items);
 }
