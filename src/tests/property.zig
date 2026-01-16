@@ -55,7 +55,7 @@ fn eval(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {
 }
 
 /// Format expression for evaluation
-fn fmt(comptime format: []const u8, args: anytype) ![]const u8 {
+fn fmt(comptime format: []const u8, args: anytype) []const u8 {
     var buf: [1024]u8 = undefined;
     return std.fmt.bufPrint(&buf, format, args) catch unreachable;
 }

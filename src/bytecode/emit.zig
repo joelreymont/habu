@@ -841,20 +841,16 @@ pub const Emitter = struct {
     // ========================================================================
 
     fn emitOp(self: *Emitter, op: Op) Error!void {
-        self.code.append(self.allocator, @intFromEnum(op)) catch
-            return error.OutOfMemory;
+        try self.code.append(self.allocator, @intFromEnum(op));
     }
 
     fn emitU8(self: *Emitter, val: u8) Error!void {
-        self.code.append(self.allocator, val) catch
-            return error.OutOfMemory;
+        try self.code.append(self.allocator, val);
     }
 
     fn emitU16(self: *Emitter, val: u16) Error!void {
-        self.code.append(self.allocator, @truncate(val)) catch
-            return error.OutOfMemory;
-        self.code.append(self.allocator, @truncate(val >> 8)) catch
-            return error.OutOfMemory;
+        try self.code.append(self.allocator, @truncate(val));
+        try self.code.append(self.allocator, @truncate(val >> 8));
     }
 
     fn emitI16(self: *Emitter, val: i16) Error!void {
@@ -864,7 +860,7 @@ pub const Emitter = struct {
     fn emitI32(self: *Emitter, val: i32) Error!void {
         const u: u32 = @bitCast(val);
         const bytes = [_]u8{ @truncate(u), @truncate(u >> 8), @truncate(u >> 16), @truncate(u >> 24) };
-        self.code.appendSlice(self.allocator, &bytes) catch return error.OutOfMemory;
+        try self.code.appendSlice(self.allocator, &bytes);
     }
 
     /// Add constant to pool, return index (O(1) deduplication via hash map)

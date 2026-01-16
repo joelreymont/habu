@@ -532,8 +532,8 @@ test "contract check" {
     };
 
     // Check passes for fixnum
-    const result = check(0b11, fixnum_ctc, blame); // tagged fixnum 1
-    try testing.expectEqual(@as(u64, 0b11), result catch unreachable);
+    const result = try check(0b11, fixnum_ctc, blame); // tagged fixnum 1
+    try testing.expectEqual(@as(u64, 0b11), result);
 
     // Check fails for non-fixnum
     const err_result = check(0, fixnum_ctc, blame); // nil

@@ -22,7 +22,7 @@ pub fn erase(allocator: std.mem.Allocator, input: *const TypedIr) PassError!Pass
     var erased_set = std.StringHashMap(void).init(allocator);
     defer erased_set.deinit();
 
-    collectErasedVars(input, &erased_set) catch return PassError.OutOfMemory;
+    try collectErasedVars(input, &erased_set);
 
     // If nothing to erase, return original IR
     if (erased_set.count() == 0) {
@@ -30,7 +30,7 @@ pub fn erase(allocator: std.mem.Allocator, input: *const TypedIr) PassError!Pass
     }
 
     // Transform IR, replacing erased vars with nil
-    const result = eraseIr(allocator, input.ir, &erased_set) catch return PassError.OutOfMemory;
+    const result = try eraseIr(allocator, input.ir, &erased_set);
 
     if (result == input.ir) {
         return PassResult(*const Ir).unchanged(input.ir);
