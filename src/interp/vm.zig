@@ -3495,6 +3495,7 @@ pub const Vm = struct {
 
                 const str = str_val.toPtr(String);
                 var parser = Parser.init(self.allocator, self.heap, str.bytes());
+                defer parser.deinit();
                 const result = parser.parse() catch {
                     try self.push(Value.nil);
                     return;
