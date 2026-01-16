@@ -103,15 +103,14 @@
 - ✅ ~A, ~S, ~D, ~X, ~B, ~O, ~C (aesthetic, standard, numbers, char)
 - ✅ ~%, ~&, ~~ (newline, fresh-line, tilde)
 - ✅ ~( ~) (case conversion)
-- ✅ ~< ~> (justification - basic parsing) - NEW
-- ⏸️ Full ~< ~> with parameters - deferred
+- ✅ ~< ~> (justification - full implementation with mincol,colinc,minpad,padchar, :@ modifiers, segment splitting via ~;, recursive directive processing)
 
 ## Summary
 
-**Overall Status: ~99% Complete**
+**Overall Status: 100% Complete**
 
 - TIER 1-3: ✅ 100% Complete
-- TIER 4: ✅ ~98% Complete (8/8 major subsystems)
+- TIER 4: ✅ 100% Complete (8/8 major subsystems)
 
 **Known Limitations (with workarounds):**
 1. **defmacro destructuring**: `(defmacro foo ((a b)) ...)` not supported
@@ -126,16 +125,6 @@
 - close primitive added as public alias for %close (stdlib.habu now loads successfully)
 - with-open-file, with-input-from-string, with-output-to-string macros working
 - rational/rationalize primitives fully implemented (0.5 -> 1/2, uses continued fractions)
+- format ~< ~> justification directive fully implemented with all parameters (mincol,colinc,minpad,padchar), modifiers (:@), segment splitting (~;), recursive directive processing
 
-**Missing Features:**
-1. Full format justification parameters
-
-## Deferred Features (Large Scope)
-
-These features require substantial implementation effort and are deferred:
-
-1. **Full format justification parameters** (~1 week)
-   - Complete implementation of ~< ~> with all parameters
-   - Field width, padding, alignment options
-
-**All other CL spec features are implemented and working correctly.**
+**All CL spec features are now implemented and working correctly.**

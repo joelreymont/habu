@@ -3890,7 +3890,13 @@ pub const Vm = struct {
                 var scan_idx = i + 1;
                 while (scan_idx < fmt.len) {
                     const ch = fmt[scan_idx];
-                    if ((ch >= '0' and ch <= '9') or ch == ',' or ch == '\'' or ch == ':' or ch == '@') {
+                    if (ch >= '0' and ch <= '9') {
+                        scan_idx += 1;
+                    } else if (ch == ',') {
+                        scan_idx += 1;
+                    } else if (ch == '\'' and scan_idx + 1 < fmt.len) {
+                        scan_idx += 2; // Skip quote and next char
+                    } else if (ch == ':' or ch == '@') {
                         scan_idx += 1;
                     } else {
                         break;
@@ -4372,14 +4378,13 @@ pub const Vm = struct {
                     },
                     '<' => {
                         // Justification: ~mincol,colinc,minpad,'padchar:@<...~>
-                        // Parse params: look backward from '<' to '~'
                         var mincol: usize = 0;
+                        var colinc: usize = 1;
                         var minpad: usize = 0;
                         var padchar: u8 = ' ';
                         var colon = false;
                         var at = false;
 
-                        // scan_idx points to '<', params are between i+1 and scan_idx
                         const param_str = fmt[i + 1 .. scan_idx];
                         var pidx: usize = 0;
                         var param_num: usize = 0;
@@ -4400,6 +4405,8 @@ pub const Vm = struct {
                                 }
                                 if (param_num == 0) {
                                     mincol = num;
+                                } else if (param_num == 1) {
+                                    colinc = num;
                                 } else if (param_num == 2) {
                                     minpad = num;
                                 }
@@ -4427,7 +4434,7 @@ pub const Vm = struct {
                         }
 
                         // Find matching ~>
-                        const start = scan_idx + 1; // After '<'
+                        const start = scan_idx + 1;
                         var depth: usize = 1;
                         var end = start;
 
@@ -4453,44 +4460,182 @@ pub const Vm = struct {
                             continue;
                         }
 
-                        const content = fmt[start..end];
-                        const text_len = content.len;
-                        const width = @max(mincol, text_len + minpad);
+                        const body = fmt[start..end];
 
-                        if (colon and at) {
-                            // ~:@<...~> - centered
-                            const pad_total = if (width > text_len) width - text_len else 0;
-                            const left_pad = pad_total / 2;
-                            const right_pad = pad_total - left_pad;
+                        // Split into segments by ~;
+                        var segments = std.ArrayList([]const u8){};
+                        defer segments.deinit(self.allocator);
+                        var seg_start: usize = 0;
+                        var j: usize = 0;
+                        var seg_depth: usize = 0;
 
-                            var k: usize = 0;
-                            while (k < left_pad) : (k += 1) {
-                                result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                        while (j < body.len) {
+                            if (j + 1 < body.len and body[j] == '~') {
+                                if (body[j + 1] == '<') {
+                                    seg_depth += 1;
+                                    j += 2;
+                                } else if (body[j + 1] == '>') {
+                                    if (seg_depth > 0) seg_depth -= 1;
+                                    j += 2;
+                                } else if (body[j + 1] == ';' and seg_depth == 0) {
+                                    segments.append(self.allocator, body[seg_start..j]) catch return error.OutOfMemory;
+                                    seg_start = j + 2;
+                                    j += 2;
+                                } else {
+                                    j += 1;
+                                }
+                            } else {
+                                j += 1;
                             }
-                            result.appendSlice(self.allocator, content) catch return error.OutOfMemory;
-                            k = 0;
-                            while (k < right_pad) : (k += 1) {
-                                result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                        }
+                        segments.append(self.allocator, body[seg_start..]) catch return error.OutOfMemory;
+
+                        // Process segments recursively
+                        var seg_texts = std.ArrayList([]const u8){};
+                        defer {
+                            for (seg_texts.items) |s| self.allocator.free(s);
+                            seg_texts.deinit(self.allocator);
+                        }
+
+                        var total_len: usize = 0;
+                        for (segments.items) |seg| {
+                            var seg_result = std.ArrayList(u8){};
+                            defer seg_result.deinit(self.allocator);
+
+                            var seg_idx: usize = 0;
+                            while (seg_idx < seg.len) {
+                                if (seg[seg_idx] == '~' and seg_idx + 1 < seg.len) {
+                                    const dir = seg[seg_idx + 1];
+                                    switch (dir) {
+                                        'A', 'a' => {
+                                            if (arg_idx < args.len) {
+                                                try self.formatValueAesthetic(args[arg_idx], &seg_result);
+                                                arg_idx += 1;
+                                            }
+                                            seg_idx += 2;
+                                        },
+                                        'S', 's' => {
+                                            if (arg_idx < args.len) {
+                                                try self.formatValueStandard(args[arg_idx], &seg_result);
+                                                arg_idx += 1;
+                                            }
+                                            seg_idx += 2;
+                                        },
+                                        'D', 'd' => {
+                                            if (arg_idx < args.len) {
+                                                const val = args[arg_idx];
+                                                if (val.isFixnum()) {
+                                                    var buf: [32]u8 = undefined;
+                                                    const num_str = std.fmt.bufPrint(&buf, "{d}", .{val.toFixnum()}) catch return error.OutOfMemory;
+                                                    seg_result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
+                                                }
+                                                arg_idx += 1;
+                                            }
+                                            seg_idx += 2;
+                                        },
+                                        else => {
+                                            seg_result.append(self.allocator, seg[seg_idx]) catch return error.OutOfMemory;
+                                            seg_idx += 1;
+                                        },
+                                    }
+                                } else {
+                                    seg_result.append(self.allocator, seg[seg_idx]) catch return error.OutOfMemory;
+                                    seg_idx += 1;
+                                }
                             }
-                        } else if (colon) {
-                            // ~:<...~> - right justify
-                            const pad_total = if (width > text_len) width - text_len else 0;
-                            var k: usize = 0;
-                            while (k < pad_total) : (k += 1) {
-                                result.append(self.allocator, padchar) catch return error.OutOfMemory;
+
+                            const owned = try self.allocator.dupe(u8, seg_result.items);
+                            try seg_texts.append(self.allocator, owned);
+                            total_len += owned.len;
+                        }
+
+                        // Calculate width with colinc
+                        const base_width = total_len + minpad * @max(1, seg_texts.items.len - 1);
+                        var width = mincol;
+                        if (base_width > mincol) {
+                            const k = (base_width - mincol + colinc - 1) / colinc;
+                            width = mincol + k * colinc;
+                        }
+
+                        const pad_total = if (width > total_len) width - total_len else 0;
+
+                        if (seg_texts.items.len == 1) {
+                            // Single segment - apply modifiers
+                            if (colon and at) {
+                                // Center
+                                const left_pad = pad_total / 2;
+                                const right_pad = pad_total - left_pad;
+                                var k: usize = 0;
+                                while (k < left_pad) : (k += 1) {
+                                    result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                                }
+                                result.appendSlice(self.allocator, seg_texts.items[0]) catch return error.OutOfMemory;
+                                k = 0;
+                                while (k < right_pad) : (k += 1) {
+                                    result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                                }
+                            } else if (at) {
+                                // Right justify
+                                var k: usize = 0;
+                                while (k < pad_total) : (k += 1) {
+                                    result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                                }
+                                result.appendSlice(self.allocator, seg_texts.items[0]) catch return error.OutOfMemory;
+                            } else {
+                                // Left justify
+                                result.appendSlice(self.allocator, seg_texts.items[0]) catch return error.OutOfMemory;
+                                var k: usize = 0;
+                                while (k < pad_total) : (k += 1) {
+                                    result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                                }
                             }
-                            result.appendSlice(self.allocator, content) catch return error.OutOfMemory;
                         } else {
-                            // ~<...~> - left justify (default)
-                            result.appendSlice(self.allocator, content) catch return error.OutOfMemory;
-                            const pad_total = if (width > text_len) width - text_len else 0;
-                            var k: usize = 0;
-                            while (k < pad_total) : (k += 1) {
-                                result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                            // Multiple segments - distribute padding
+                            const n_gaps = seg_texts.items.len - 1 + @intFromBool(colon) + @intFromBool(at);
+                            if (n_gaps == 0) {
+                                for (seg_texts.items) |s| {
+                                    result.appendSlice(self.allocator, s) catch return error.OutOfMemory;
+                                }
+                            } else {
+                                const pad_per_gap = pad_total / n_gaps;
+                                const extra_pads = pad_total % n_gaps;
+
+                                var gap_idx: usize = 0;
+
+                                // Leading pad if colon
+                                if (colon) {
+                                    const this_pad = pad_per_gap + @intFromBool(gap_idx < extra_pads);
+                                    var k: usize = 0;
+                                    while (k < this_pad + minpad) : (k += 1) {
+                                        result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                                    }
+                                    gap_idx += 1;
+                                }
+
+                                for (seg_texts.items, 0..) |s, idx| {
+                                    result.appendSlice(self.allocator, s) catch return error.OutOfMemory;
+                                    if (idx < seg_texts.items.len - 1) {
+                                        const this_pad = pad_per_gap + @intFromBool(gap_idx < extra_pads);
+                                        var k: usize = 0;
+                                        while (k < this_pad + minpad) : (k += 1) {
+                                            result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                                        }
+                                        gap_idx += 1;
+                                    }
+                                }
+
+                                // Trailing pad if at
+                                if (at) {
+                                    const this_pad = pad_per_gap + @intFromBool(gap_idx < extra_pads);
+                                    var k: usize = 0;
+                                    while (k < this_pad + minpad) : (k += 1) {
+                                        result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                                    }
+                                }
                             }
                         }
 
-                        i = end + 2; // Skip past ~>
+                        i = end + 2;
                     },
                     else => {
                         // Unknown directive, output as-is
