@@ -4015,65 +4015,29 @@ pub const Vm = struct {
                         i += 2;
                     },
                     'D', 'd' => {
-                        // Decimal integer
                         if (arg_idx < args.len) {
-                            const val = args[arg_idx];
-                            if (val.isFixnum()) {
-                                var buf: [32]u8 = undefined;
-                                const num_str = std.fmt.bufPrint(&buf, "{d}", .{val.toFixnum()}) catch return error.OutOfMemory;
-                                result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
-                            }
+                            try self.formatFixnumBase(args[arg_idx], 10, &result);
                             arg_idx += 1;
                         }
                         i += 2;
                     },
                     'X', 'x' => {
-                        // Hexadecimal integer
                         if (arg_idx < args.len) {
-                            const val = args[arg_idx];
-                            if (val.isFixnum()) {
-                                var buf: [32]u8 = undefined;
-                                const n = val.toFixnum();
-                                const num_str = if (n >= 0)
-                                    std.fmt.bufPrint(&buf, "{X}", .{@as(u64, @intCast(n))}) catch return error.OutOfMemory
-                                else
-                                    std.fmt.bufPrint(&buf, "-{X}", .{@as(u64, @intCast(-n))}) catch return error.OutOfMemory;
-                                result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
-                            }
+                            try self.formatFixnumBase(args[arg_idx], 16, &result);
                             arg_idx += 1;
                         }
                         i += 2;
                     },
                     'B', 'b' => {
-                        // Binary integer
                         if (arg_idx < args.len) {
-                            const val = args[arg_idx];
-                            if (val.isFixnum()) {
-                                var buf: [80]u8 = undefined;
-                                const n = val.toFixnum();
-                                const num_str = if (n >= 0)
-                                    std.fmt.bufPrint(&buf, "{b}", .{@as(u64, @intCast(n))}) catch return error.OutOfMemory
-                                else
-                                    std.fmt.bufPrint(&buf, "-{b}", .{@as(u64, @intCast(-n))}) catch return error.OutOfMemory;
-                                result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
-                            }
+                            try self.formatFixnumBase(args[arg_idx], 2, &result);
                             arg_idx += 1;
                         }
                         i += 2;
                     },
                     'O', 'o' => {
-                        // Octal integer
                         if (arg_idx < args.len) {
-                            const val = args[arg_idx];
-                            if (val.isFixnum()) {
-                                var buf: [32]u8 = undefined;
-                                const n = val.toFixnum();
-                                const num_str = if (n >= 0)
-                                    std.fmt.bufPrint(&buf, "{o}", .{@as(u64, @intCast(n))}) catch return error.OutOfMemory
-                                else
-                                    std.fmt.bufPrint(&buf, "-{o}", .{@as(u64, @intCast(-n))}) catch return error.OutOfMemory;
-                                result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
-                            }
+                            try self.formatFixnumBase(args[arg_idx], 8, &result);
                             arg_idx += 1;
                         }
                         i += 2;
@@ -4820,6 +4784,24 @@ pub const Vm = struct {
             // Everything else same as aesthetic
             try self.formatValueAesthetic(val, result);
         }
+    }
+
+    fn formatFixnumBase(self: *Vm, val: Value, comptime base: u8, result: *std.ArrayList(u8)) Error!void {
+        if (!val.isFixnum()) return;
+        const n = val.toFixnum();
+        var buf: [80]u8 = undefined;
+        const spec = comptime switch (base) {
+            2 => "{b}",
+            8 => "{o}",
+            10 => "{d}",
+            16 => "{X}",
+            else => unreachable,
+        };
+        const num_str = if (n >= 0)
+            std.fmt.bufPrint(&buf, spec, .{@as(u64, @intCast(n))}) catch return error.OutOfMemory
+        else
+            std.fmt.bufPrint(&buf, "-" ++ spec, .{@as(u64, @intCast(-n))}) catch return error.OutOfMemory;
+        result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
     }
 
     const MAX_FORMAT_DEPTH = 1000;
