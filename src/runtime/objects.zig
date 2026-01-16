@@ -173,7 +173,9 @@ pub const Stream = extern struct {
     length: u64,
     /// For file streams: file descriptor
     file_fd: i32,
-    _padding2: u32 = 0,
+    /// Pushback buffer for unread-char (0xFF = none)
+    pushback_char: u8 = 0xFF,
+    _padding2: [3]u8 = [_]u8{0} ** 3,
 
     pub fn isInput(self: *const Stream) bool {
         return self.direction == .input;
@@ -197,6 +199,7 @@ pub const Stream = extern struct {
             .data_ptr = 0,
             .length = 0,
             .file_fd = file_fd,
+            .pushback_char = 0xFF,
         };
     }
 
@@ -210,6 +213,7 @@ pub const Stream = extern struct {
             .data_ptr = data_ptr,
             .length = length,
             .file_fd = -1,
+            .pushback_char = 0xFF,
         };
     }
 };

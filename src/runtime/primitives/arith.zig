@@ -370,13 +370,6 @@ pub fn gt(a: Value, b: Value) bool {
         return af > bf;
     }
 
-    // Float comparison
-    if (a.isFloat() or b.isFloat()) {
-        const af = toNumber(a) catch return false;
-        const bf = toNumber(b) catch return false;
-        return af > bf;
-    }
-
     // Handle bignum comparisons
     if (a.isBignum() or b.isBignum()) {
         if (!a.isFixnum() and !a.isBignum()) return false;
@@ -435,32 +428,29 @@ pub fn ge(a: Value, b: Value) bool {
 // Random number generation
 // ============================================================================
 
-var prng: std.Random.DefaultPrng = std.Random.DefaultPrng.init(0);
-var prng_seeded: bool = false;
-
 pub const RangeError = error{InvalidRange};
 
 /// Seed the random number generator
-pub fn randomSeed(seed: Value) Error!Value {
+pub fn randomSeed(prng: *std.Random.DefaultPrng, seeded: *bool, seed: Value) Error!Value {
     if (!seed.isFixnum()) return error.TypeMismatch;
     const s: u64 = @bitCast(seed.toFixnum());
-    prng = std.Random.DefaultPrng.init(s);
-    prng_seeded = true;
+    prng.* = std.Random.DefaultPrng.init(s);
+    seeded.* = true;
     return seed;
 }
 
 /// Generate random integer in [0, n)
-pub fn random(n: Value) (Error || RangeError)!Value {
+pub fn random(prng: *std.Random.DefaultPrng, seeded: *bool, n: Value) (Error || RangeError)!Value {
     if (!n.isFixnum()) return error.TypeMismatch;
     const max = n.toFixnum();
     if (max <= 0) return error.InvalidRange;
 
     // Auto-seed on first use
-    if (!prng_seeded) {
+    if (!seeded.*) {
         const ts = std.time.nanoTimestamp();
         const seed: u64 = @truncate(@as(u128, @bitCast(ts)));
-        prng = std.Random.DefaultPrng.init(seed);
-        prng_seeded = true;
+        prng.* = std.Random.DefaultPrng.init(seed);
+        seeded.* = true;
     }
 
     const rand = prng.random();
@@ -992,6 +982,50 @@ fn divComplex(heap: *Heap, a: Value, b: Value) Error!Value {
 // Bignum arithmetic
 // ============================================================================
 
+/// Subtract bignum magnitudes when signs differ
+fn subBignumMagnitudes(heap: *Heap, a_bn: *const objects.Bignum, b_bn: *const objects.Bignum, a_neg: bool) Error!Value {
+    const a_size: usize = @intCast(@abs(a_bn.size));
+    const b_size: usize = @intCast(@abs(b_bn.size));
+
+    // Determine which magnitude is larger
+    const a_larger = blk: {
+        if (a_size != b_size) break :blk a_size > b_size;
+        var i = a_size;
+        while (i > 0) {
+            i -= 1;
+            if (a_bn.limbs[i] != b_bn.limbs[i]) {
+                break :blk a_bn.limbs[i] > b_bn.limbs[i];
+            }
+        }
+        break :blk true; // Equal magnitudes
+    };
+
+    // larger - smaller
+    const larger = if (a_larger) a_bn else b_bn;
+    const smaller = if (a_larger) b_bn else a_bn;
+    const larger_size = if (a_larger) a_size else b_size;
+    const smaller_size = if (a_larger) b_size else a_size;
+
+    var result_limbs: [8]u64 = [_]u64{0} ** 8;
+    var borrow: u64 = 0;
+
+    for (0..larger_size) |i| {
+        const l_limb = larger.limbs[i];
+        const s_limb = if (i < smaller_size) smaller.limbs[i] else 0;
+
+        const sub_res = @subWithOverflow(l_limb, s_limb);
+        const sub_with_borrow = @subWithOverflow(sub_res[0], borrow);
+
+        result_limbs[i] = sub_with_borrow[0];
+        borrow = sub_res[1] + sub_with_borrow[1];
+    }
+
+    // Result sign: if a was larger, use a's sign; else flip
+    const result_neg = if (a_larger) a_neg else !a_neg;
+
+    return heap.allocBignumFromLimbs(&result_limbs, result_neg);
+}
+
 /// Add two bignums (or mixed bignum/fixnum)
 fn addBignum(heap: *Heap, a: Value, b: Value) Error!Value {
     // Convert fixnums to temporary bignums
@@ -1039,8 +1073,7 @@ fn addBignum(heap: *Heap, a: Value, b: Value) Error!Value {
         return heap.allocBignumFromLimbs(&result_limbs, a_neg);
     } else {
         // Signs differ - subtract magnitudes
-        // For now, return type mismatch (implement subtraction separately)
-        return error.TypeMismatch;
+        return subBignumMagnitudes(heap, a_bn, b_bn, a_neg);
     }
 }
 

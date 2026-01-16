@@ -247,6 +247,10 @@ pub const Vm = struct {
     pending_block_value: Value,
     is_returning_from_block: bool,
 
+    /// Random number generator state
+    prng: std.Random.DefaultPrng,
+    prng_seeded: bool,
+
     /// Secondary values buffer for multiple-value-bind
     secondary_values: [MAX_SECONDARY_VALUES]Value,
     /// Number of secondary values currently available
@@ -368,6 +372,8 @@ pub const Vm = struct {
             .pending_block_name = 0,
             .pending_block_value = Value.nil,
             .is_returning_from_block = false,
+            .prng = std.Random.DefaultPrng.init(0),
+            .prng_seeded = false,
             .secondary_values = undefined,
             .secondary_values_count = 0,
             .global_env = null,
@@ -1194,7 +1200,7 @@ pub const Vm = struct {
             },
             .numberp => {
                 const a = try self.pop();
-                try self.push(if (a.isFixnum()) Value.t else Value.nil);
+                try self.push(if (a.isNumber()) Value.t else Value.nil);
             },
             .stringp => {
                 const a = try self.pop();
@@ -1802,12 +1808,12 @@ pub const Vm = struct {
             },
             .random => {
                 const n = try self.pop();
-                const result = arith.random(n) catch return error.InvalidArgument;
+                const result = arith.random(&self.prng, &self.prng_seeded, n) catch return error.InvalidArgument;
                 try self.push(result);
             },
             .random_seed => {
                 const seed = try self.pop();
-                const result = arith.randomSeed(seed) catch return error.TypeMismatch;
+                const result = arith.randomSeed(&self.prng, &self.prng_seeded, seed) catch return error.TypeMismatch;
                 try self.push(result);
             },
             .intern => {

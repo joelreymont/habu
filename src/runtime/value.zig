@@ -224,7 +224,7 @@ pub const Value = packed struct {
 
     /// Check if value is a number (fixnum or float)
     pub inline fn isNumber(self: Value) bool {
-        return self.isFixnum() or self.isFloat();
+        return self.isFixnum() or self.isFloat() or self.isBignum() or self.isRational() or self.isComplex();
     }
 
     /// Get the high-level type kind for this value
