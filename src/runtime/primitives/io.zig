@@ -530,6 +530,62 @@ pub fn streamp(val: Value) bool {
     return val.isStream();
 }
 
+/// Check if stream is input stream
+pub fn inputStreamP(stream: Value) bool {
+    if (!stream.isStream()) return false;
+    const s = stream.toPtr(objects.Stream);
+    return s.direction == .input;
+}
+
+/// Check if stream is output stream
+pub fn outputStreamP(stream: Value) bool {
+    if (!stream.isStream()) return false;
+    const s = stream.toPtr(objects.Stream);
+    return s.direction == .output;
+}
+
+/// Check if stream is interactive (tty)
+pub fn interactiveStreamP(stream: Value) bool {
+    if (!stream.isStream()) return false;
+    const s = stream.toPtr(objects.Stream);
+    if (s.stream_type != .file) return false;
+    const fd: std.posix.fd_t = @intCast(s.file_fd);
+    return std.posix.isatty(fd);
+}
+
+/// Check if stream is open
+pub fn openStreamP(stream: Value) bool {
+    if (!stream.isStream()) return false;
+    const s = stream.toPtr(objects.Stream);
+    return !s.closed;
+}
+
+/// Get stream element type
+pub fn streamElementType(heap: *Heap, stream: Value) !Value {
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    return switch (s.stream_type) {
+        .string, .file => heap.intern("character"),
+        .byte => heap.intern("unsigned-byte"),
+    };
+}
+
+/// Get file length in elements
+pub fn fileLength(stream: Value) !Value {
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+
+    switch (s.stream_type) {
+        .string => return Value.makeFixnum(@intCast(s.length)),
+        .file => {
+            const fd: std.posix.fd_t = @intCast(s.file_fd);
+            const stat = try std.posix.fstat(fd);
+            return Value.makeFixnum(@intCast(stat.size));
+        },
+        .byte => return error.NotImplemented,
+    }
+}
+
 /// Create a string input stream
 pub fn makeStringInputStream(heap: *Heap, str: Value, start: ?Value, end: ?Value) !Value {
     _ = start;
@@ -795,6 +851,60 @@ pub fn clearOutput(stream: Value) !void {
             buf.clearRetainingCapacity();
         },
         .file => {}, // Can't clear OS buffer
+        .byte => return error.NotImplemented,
+    }
+}
+
+/// Discard buffered input
+pub fn clearInput(stream: Value) !void {
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    if (s.direction != .input) return error.TypeError;
+
+    switch (s.stream_type) {
+        .string => {
+            s.position = s.length;
+        },
+        .file => {
+            const fd: std.posix.fd_t = @intCast(s.file_fd);
+            var pollfd = [_]std.posix.pollfd{.{ .fd = fd, .events = std.posix.POLL.IN, .revents = 0 }};
+            while (true) {
+                const ready = try std.posix.poll(&pollfd, 0);
+                if (ready == 0) break;
+                var buf: [IO_BUF]u8 = undefined;
+                const n = try std.posix.read(fd, &buf);
+                if (n == 0) break;
+            }
+        },
+        .byte => return error.NotImplemented,
+    }
+}
+
+/// Output newline
+pub fn terpri(stream: Value) !void {
+    try writeChar(Value.makeFixnum('\n'), stream);
+}
+
+/// Output newline only if not at line start
+pub fn freshLine(stream: Value) !Value {
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    if (s.direction != .output) return error.TypeError;
+
+    switch (s.stream_type) {
+        .string => {
+            if (s.data_ptr == 0) return error.StreamClosed;
+            const buf: *std.ArrayList(u8) = @ptrFromInt(s.data_ptr);
+            if (buf.items.len == 0 or buf.items[buf.items.len - 1] == '\n') {
+                return Value.nil;
+            }
+            try buf.append('\n');
+            return Value.t;
+        },
+        .file => {
+            try writeChar(Value.makeFixnum('\n'), stream);
+            return Value.t;
+        },
         .byte => return error.NotImplemented,
     }
 }
