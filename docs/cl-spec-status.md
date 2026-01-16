@@ -108,13 +108,15 @@
 
 ## Summary
 
-**Overall Status: ~98% Complete**
+**Overall Status: ~99% Complete**
 
 - TIER 1-3: ✅ 100% Complete
-- TIER 4: ⚠️ ~95% Complete (8/8 major subsystems)
+- TIER 4: ✅ ~98% Complete (8/8 major subsystems)
 
-**Known Issues:**
-1. defmacro does not support destructuring in parameter lists (e.g., `(defmacro foo ((a b)) ...)` not supported)
+**Known Limitations (with workarounds):**
+1. **defmacro destructuring**: `(defmacro foo ((a b)) ...)` not supported
+   - **Workaround**: Use `(defmacro foo (spec) (let ((a (car spec)) (b (cadr spec))) ...))`
+   - All stdlib macros work with this pattern
 
 **Recently Fixed:**
 - Complex number support: sqrt(-1) now returns #C(0 1) instead of NaN

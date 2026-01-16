@@ -34,6 +34,7 @@ const Vm = vm_mod.Vm;
 const bytecode = @import("../bytecode/bytecode.zig");
 const Emitter = bytecode.Emitter;
 const Chunk = bytecode.Chunk;
+const prims = @import("../runtime/primitives/symbol.zig");
 
 pub const Error = error{
     InvalidSyntax,
@@ -1818,6 +1819,7 @@ pub const Compiler = struct {
         match,
         // Macro support
         defmacro,
+        @"destructuring-bind",
         // Compile-time evaluation
         @"eval-when",
         // Packages
@@ -1885,6 +1887,7 @@ pub const Compiler = struct {
         .{ "match", .match },
         // Macro support
         .{ "defmacro", .defmacro },
+        .{ "destructuring-bind", .@"destructuring-bind" },
         // Compile-time evaluation
         .{ "eval-when", .@"eval-when" },
         // Packages
@@ -1962,6 +1965,7 @@ pub const Compiler = struct {
                     .match => self.compileMatch(tail, env),
                     // Macro support
                     .defmacro => self.compileDefmacro(tail, env),
+                    .@"destructuring-bind" => self.compileDestructuringBind(tail, env),
                     // Compile-time evaluation
                     .@"eval-when" => self.compileEvalWhen(tail, env),
                     // Packages
@@ -2006,22 +2010,17 @@ pub const Compiler = struct {
         const heap = self.heap orelse return error.InvalidSyntax;
 
         // macro_def is ((params...) body...)
-        // Create a lambda: (lambda (params...) body...)
+        // Transform destructured params before creating lambda
         if (!macro_def.isCons()) return error.InvalidSyntax;
-        const def_cons = macro_def.toPtr(Cons);
+        const transformed = try self.transformDestructuredParams(macro_def);
+
+        const def_cons = transformed.toPtr(Cons);
         const params = def_cons.car;
         const body_list = def_cons.cdr;
 
-        // Get first body form (for simple single-body macros)
-        if (!body_list.isCons()) return error.InvalidSyntax;
-        const body_cons = body_list.toPtr(Cons);
-        const body = body_cons.car;
-
-        // Build (lambda (params...) body) and compile it
+        // Build (lambda (params...) body...) with all body forms
         const lambda_sym = try heap.intern("lambda");
-        // Build: (lambda params body)
-        const body_cell = try heap.allocCons(body, Value.nil);
-        const params_body = try heap.allocCons(params, body_cell);
+        const params_body = try heap.allocCons(params, body_list);
         const lambda_list = try heap.allocCons(lambda_sym, params_body);
 
         // Compile the lambda to get a closure
@@ -4403,6 +4402,117 @@ pub const Compiler = struct {
         return try self.builder.define(name, idx, lambda_ir);
     }
 
+    /// Build cons list from slice
+    fn listFromSlice(self: *Compiler, items: []const Value) !Value {
+        const heap = self.heap orelse return error.InvalidSyntax;
+        var result = Value.nil;
+        var i = items.len;
+        while (i > 0) {
+            i -= 1;
+            result = try heap.allocCons(items[i], result);
+        }
+        return result;
+    }
+
+    /// Transform destructured params: ((a b) &body c) -> (g123 &body c) + wrap body
+    /// Returns ((new-params...) wrapped-body...)
+    pub fn transformDestructuredParams(self: *Compiler, lambda_args: Value) !Value {
+        const heap = self.heap orelse return error.InvalidSyntax;
+        const b = self.builtins orelse return error.UninitializedBuiltins;
+
+        // lambda_args is ((params...) body...)
+        const args_cons = lambda_args.toPtr(Cons);
+        const params = args_cons.car;
+        const body = args_cons.cdr;
+
+        // Scan params for destructured (cons) params, &optional, &rest, &key
+        var new_params = std.ArrayList(Value){};
+        defer new_params.deinit(self.allocator);
+        var bindings = std.ArrayList(Value){}; // (pattern gensym) pairs
+        defer bindings.deinit(self.allocator);
+
+        var p = params;
+        var in_optional = false;
+        var in_rest = false;
+        var in_key = false;
+
+        while (p.isCons()) {
+            const p_cons = p.toPtr(Cons);
+            const param = p_cons.car;
+
+            if (param.eq(b.@"&optional")) {
+                try new_params.append(self.allocator, param);
+                in_optional = true;
+                in_rest = false;
+                in_key = false;
+            } else if (param.eq(b.@"&rest") or param.eq(b.@"&body")) {
+                try new_params.append(self.allocator, param);
+                in_optional = false;
+                in_rest = true;
+                in_key = false;
+            } else if (param.eq(b.@"&key")) {
+                try new_params.append(self.allocator, param);
+                in_optional = false;
+                in_rest = false;
+                in_key = true;
+            } else if (param.isCons() and !in_optional and !in_rest and !in_key) {
+                // Check if this is destructured (car is cons) or typed (car is symbol)
+                const param_cons = param.toPtr(Cons);
+                if (param_cons.car.isCons()) {
+                    // Destructured param: ((a b)) - car is cons
+                    const g = try prims.gensym(heap, null);
+                    try new_params.append(self.allocator, g);
+                    try bindings.append(self.allocator, param);
+                    try bindings.append(self.allocator, g);
+                } else {
+                    // Typed param: (x fixnum) - car is symbol, keep as-is
+                    try new_params.append(self.allocator, param);
+                }
+            } else {
+                // Normal param or &optional/&key param with default: keep as-is
+                try new_params.append(self.allocator, param);
+            }
+
+            p = p_cons.cdr;
+        }
+
+        // If no bindings, return original
+        if (bindings.items.len == 0) {
+            return lambda_args;
+        }
+
+        // Build new params list
+        const new_params_list = try self.listFromSlice(new_params.items);
+
+        // Wrap body with (destructuring-bind pattern gensym ...) for each binding
+        var wrapped_body = body;
+        var i = bindings.items.len;
+        while (i >= 2) {
+            i -= 2;
+            const pattern = bindings.items[i];
+            const g = bindings.items[i + 1];
+
+            // (destructuring-bind pattern g (progn body...))
+            const db_sym = try heap.intern("destructuring-bind");
+            const progn_sym = try heap.intern("progn");
+
+            // (progn body...)
+            const progn_body = try heap.allocCons(progn_sym, wrapped_body);
+
+            // (destructuring-bind pattern g progn-body)
+            const progn_cell = try heap.allocCons(progn_body, Value.nil);
+            const g_cell = try heap.allocCons(g, progn_cell);
+            const pat_cell = try heap.allocCons(pattern, g_cell);
+            const db_form = try heap.allocCons(db_sym, pat_cell);
+            wrapped_body = try heap.allocCons(db_form, Value.nil);
+        }
+
+        // Return (new-params wrapped-body)
+        const result = try heap.allocCons(new_params_list, wrapped_body);
+
+        return result;
+    }
+
     /// Compile defmacro: (defmacro name (params...) body...)
     /// Stores the lambda-args in macro_table for expansion during macro calls.
     /// Returns nil since defmacro has no runtime effect.
@@ -4427,6 +4537,100 @@ pub const Compiler = struct {
 
         // defmacro has no runtime effect - return nil
         return try self.builder.lit(Value.nil);
+    }
+
+    /// Compile destructuring-bind: (destructuring-bind pattern expr &rest body)
+    /// Binds pattern to expr and evaluates body with those bindings.
+    fn compileDestructuringBind(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        // Parse: (pattern expr body...)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const pattern = cons1.car;
+
+        const rest1 = cons1.cdr;
+        if (!rest1.isCons()) return error.InvalidSyntax;
+        const cons2 = rest1.toPtr(Cons);
+        const expr = cons2.car;
+        const body = cons2.cdr;
+
+        // Strategy: (destructuring-bind (a b) expr body...)
+        // => (let ((#t expr)) (let ((a (car #t)) (b (cadr #t))) body...))
+
+        // Compile expr in current env
+        const expr_ir = try self.compile(expr, env);
+
+        // Create temp var for expr result
+        var temp_env = Env.init(self.allocator, env);
+        defer temp_env.deinit();
+        const temp_idx = try temp_env.bind("#destruct-temp");
+
+        // Generate bindings from pattern, using temp var
+        const bindings = try self.genDestructBindings(pattern, temp_idx);
+
+        // Compile body with all bindings in scope
+        var body_env = Env.init(self.allocator, &temp_env);
+        defer body_env.deinit();
+        for (bindings.items) |binding| {
+            _ = try body_env.bind(binding.name);
+        }
+
+        const body_ir = try self.compileProgn(body, &body_env);
+
+        // Build nested let: (let ((temp expr)) (let ((a ...) (b ...)) body))
+        // Convert bindings to Ir.Binding
+        var ir_bindings = try self.allocator.alloc(Ir.Binding, bindings.items.len);
+        defer self.allocator.free(ir_bindings);
+        for (bindings.items, 0..) |b, i| {
+            ir_bindings[i] = .{ .name = b.name, .index = @intCast(i), .value = b.init };
+        }
+
+        const inner_let = try self.builder.letExpr(ir_bindings, body_ir);
+
+        // Outer let binds temp
+        const temp_binding = [_]Ir.Binding{.{ .name = "#destruct-temp", .index = temp_idx, .value = expr_ir }};
+        return try self.builder.letExpr(&temp_binding, inner_let);
+    }
+
+    const Binding = struct {
+        name: []const u8,
+        init: *const Ir,
+    };
+
+    /// Generate bindings from destructuring pattern
+    /// temp_idx is the variable index of the temp var holding the expr result
+    fn genDestructBindings(self: *Compiler, pattern: Value, temp_idx: u16) !std.ArrayList(Binding) {
+        var bindings = std.ArrayList(Binding){};
+        errdefer bindings.deinit(self.allocator);
+
+        // Start with a var reference to the temp (depth=0 since it's in same scope)
+        const temp_ir = try self.builder.variable("#destruct-temp", 0, temp_idx);
+        try self.genDestructBindingsRec(pattern, temp_ir, &bindings);
+        return bindings;
+    }
+
+    fn genDestructBindingsRec(self: *Compiler, pattern: Value, expr_ir: *const Ir, bindings: *std.ArrayList(Binding)) !void {
+        if (pattern.isSymbol()) {
+            // Simple var binding
+            const sym = pattern.toPtr(Symbol);
+            try bindings.append(self.allocator, .{
+                .name = sym.getName(),
+                .init = expr_ir,
+            });
+        } else if (pattern.isCons()) {
+            // Recursive destructuring (car pattern) (cdr pattern)
+            const p = pattern.toPtr(Cons);
+            const car_pat = p.car;
+            const cdr_pat = p.cdr;
+
+            // car binding
+            const car_ir = try self.builder.car(expr_ir);
+            try self.genDestructBindingsRec(car_pat, car_ir, bindings);
+
+            // cdr binding
+            const cdr_ir = try self.builder.cdr(expr_ir);
+            try self.genDestructBindingsRec(cdr_pat, cdr_ir, bindings);
+        }
+        // nil pattern: ignore
     }
 
     /// Compile eval-when: (eval-when (situations...) body...)

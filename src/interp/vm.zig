@@ -3886,7 +3886,17 @@ pub const Vm = struct {
 
         while (i < fmt.len) {
             if (fmt[i] == '~' and i + 1 < fmt.len) {
-                const directive = fmt[i + 1];
+                // Scan ahead to find directive char (might have params/modifiers before it)
+                var scan_idx = i + 1;
+                while (scan_idx < fmt.len) {
+                    const ch = fmt[scan_idx];
+                    if ((ch >= '0' and ch <= '9') or ch == ',' or ch == '\'' or ch == ':' or ch == '@') {
+                        scan_idx += 1;
+                    } else {
+                        break;
+                    }
+                }
+                const directive = if (scan_idx < fmt.len) fmt[scan_idx] else fmt[i + 1];
                 switch (directive) {
                     'A', 'a' => {
                         // Aesthetic - print without quotes
@@ -4361,9 +4371,63 @@ pub const Vm = struct {
                         i += 2;
                     },
                     '<' => {
-                        // Justification: ~<...~>
-                        // Basic implementation: just output content (no justification yet)
-                        const start = i + 2;
+                        // Justification: ~mincol,colinc,minpad,'padchar:@<...~>
+                        // Parse params: look backward from '<' to '~'
+                        var mincol: usize = 0;
+                        var minpad: usize = 0;
+                        var padchar: u8 = ' ';
+                        var colon = false;
+                        var at = false;
+
+                        // scan_idx points to '<', params are between i+1 and scan_idx
+                        const param_str = fmt[i + 1 .. scan_idx];
+                        var pidx: usize = 0;
+                        var param_num: usize = 0;
+
+                        while (pidx < param_str.len) {
+                            const pch = param_str[pidx];
+                            if (pch == ':') {
+                                colon = true;
+                                pidx += 1;
+                            } else if (pch == '@') {
+                                at = true;
+                                pidx += 1;
+                            } else if (pch >= '0' and pch <= '9') {
+                                var num: usize = 0;
+                                while (pidx < param_str.len and param_str[pidx] >= '0' and param_str[pidx] <= '9') {
+                                    num = num * 10 + (param_str[pidx] - '0');
+                                    pidx += 1;
+                                }
+                                if (param_num == 0) {
+                                    mincol = num;
+                                } else if (param_num == 2) {
+                                    minpad = num;
+                                }
+                                param_num += 1;
+
+                                if (pidx < param_str.len and param_str[pidx] == ',') {
+                                    pidx += 1;
+                                }
+                            } else if (pch == '\'') {
+                                pidx += 1;
+                                if (pidx < param_str.len) {
+                                    padchar = param_str[pidx];
+                                    pidx += 1;
+                                    param_num += 1;
+                                    if (pidx < param_str.len and param_str[pidx] == ',') {
+                                        pidx += 1;
+                                    }
+                                }
+                            } else if (pch == ',') {
+                                param_num += 1;
+                                pidx += 1;
+                            } else {
+                                pidx += 1;
+                            }
+                        }
+
+                        // Find matching ~>
+                        const start = scan_idx + 1; // After '<'
                         var depth: usize = 1;
                         var end = start;
 
@@ -4385,14 +4449,47 @@ pub const Vm = struct {
                         }
 
                         if (depth != 0) {
-                            // Unmatched ~<, skip it
                             i += 2;
                             continue;
                         }
 
-                        // For now, just output the content without justification
                         const content = fmt[start..end];
-                        result.appendSlice(self.allocator, content) catch return error.OutOfMemory;
+                        const text_len = content.len;
+                        const width = @max(mincol, text_len + minpad);
+
+                        if (colon and at) {
+                            // ~:@<...~> - centered
+                            const pad_total = if (width > text_len) width - text_len else 0;
+                            const left_pad = pad_total / 2;
+                            const right_pad = pad_total - left_pad;
+
+                            var k: usize = 0;
+                            while (k < left_pad) : (k += 1) {
+                                result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                            }
+                            result.appendSlice(self.allocator, content) catch return error.OutOfMemory;
+                            k = 0;
+                            while (k < right_pad) : (k += 1) {
+                                result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                            }
+                        } else if (colon) {
+                            // ~:<...~> - right justify
+                            const pad_total = if (width > text_len) width - text_len else 0;
+                            var k: usize = 0;
+                            while (k < pad_total) : (k += 1) {
+                                result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                            }
+                            result.appendSlice(self.allocator, content) catch return error.OutOfMemory;
+                        } else {
+                            // ~<...~> - left justify (default)
+                            result.appendSlice(self.allocator, content) catch return error.OutOfMemory;
+                            const pad_total = if (width > text_len) width - text_len else 0;
+                            var k: usize = 0;
+                            while (k < pad_total) : (k += 1) {
+                                result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                            }
+                        }
+
                         i = end + 2; // Skip past ~>
                     },
                     else => {

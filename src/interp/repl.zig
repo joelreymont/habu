@@ -1327,9 +1327,13 @@ pub const Repl = struct {
         const rest2 = cons2.cdr;
         if (!rest2.isCons()) return error.CompileError;
 
+        // Transform destructured params before building lambda
+        const transformed_rest2 = self.compiler.transformDestructuredParams(rest2) catch
+            return error.CompileError;
+
         // Build (lambda (args...) body...) to evaluate
         const lambda_sym = try self.heap.intern("lambda");
-        const lambda_expr = try self.heap.allocCons(lambda_sym, rest2);
+        const lambda_expr = try self.heap.allocCons(lambda_sym, transformed_rest2);
 
         // Expand nested macros in the lambda body before compilation
         const expanded_lambda = self.expandMacros(lambda_expr) catch return error.CompileError;
