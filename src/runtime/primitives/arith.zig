@@ -1217,3 +1217,48 @@ fn compareBignum(a: Value, b: Value) i8 {
     // All limbs equal
     return 0;
 }
+
+test "logbitp fixnum boundaries" {
+    const testing = std.testing;
+
+    // Positive fixnum
+    try testing.expect(try logbitp(Value.makeFixnum(0), Value.makeFixnum(0b1011)) == true); // bit 0
+    try testing.expect(try logbitp(Value.makeFixnum(1), Value.makeFixnum(0b1011)) == true); // bit 1
+    try testing.expect(try logbitp(Value.makeFixnum(2), Value.makeFixnum(0b1011)) == false); // bit 2
+    try testing.expect(try logbitp(Value.makeFixnum(3), Value.makeFixnum(0b1011)) == true); // bit 3
+
+    // Negative fixnum (-1 has all bits set)
+    try testing.expect(try logbitp(Value.makeFixnum(0), Value.makeFixnum(-1)) == true);
+    try testing.expect(try logbitp(Value.makeFixnum(31), Value.makeFixnum(-1)) == true);
+    try testing.expect(try logbitp(Value.makeFixnum(62), Value.makeFixnum(-1)) == true);
+    try testing.expect(try logbitp(Value.makeFixnum(63), Value.makeFixnum(-1)) == true);
+    try testing.expect(try logbitp(Value.makeFixnum(127), Value.makeFixnum(-1)) == true);
+    try testing.expect(try logbitp(Value.makeFixnum(1000), Value.makeFixnum(-1)) == true);
+
+    // Boundary at 63 (sign bit)
+    try testing.expect(try logbitp(Value.makeFixnum(62), Value.makeFixnum(1)) == false);
+    try testing.expect(try logbitp(Value.makeFixnum(63), Value.makeFixnum(1)) == false);
+    try testing.expect(try logbitp(Value.makeFixnum(62), Value.makeFixnum(-2)) == true);
+    try testing.expect(try logbitp(Value.makeFixnum(63), Value.makeFixnum(-2)) == true);
+
+    // Zero
+    try testing.expect(try logbitp(Value.makeFixnum(0), Value.makeFixnum(0)) == false);
+    try testing.expect(try logbitp(Value.makeFixnum(100), Value.makeFixnum(0)) == false);
+}
+
+test "logbitp negative index" {
+    const testing = std.testing;
+
+    // Negative index is an error
+    try testing.expectError(error.TypeMismatch, logbitp(Value.makeFixnum(-1), Value.makeFixnum(42)));
+}
+
+test "logbitp type errors" {
+    const testing = std.testing;
+
+    // Non-integer index
+    try testing.expectError(error.TypeMismatch, logbitp(Value.nil, Value.makeFixnum(42)));
+
+    // Non-integer value
+    try testing.expectError(error.TypeMismatch, logbitp(Value.makeFixnum(0), Value.nil));
+}

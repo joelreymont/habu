@@ -673,3 +673,45 @@ test "gc finalizer path coverage" {
 
     // Finalizer ran and visited the stream (coverage achieved)
 }
+
+test "package gc correctness" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // Create package with symbol table
+    const pkg_name = try heap.intern("TEST-PKG");
+    const pkg = try heap.allocPackage(pkg_name);
+    const pkg_ptr = pkg.toPtr(objects.Package);
+
+    // Intern symbol in package
+    const sym = try heap.intern("FOO");
+    const sym_ht = pkg_ptr.symbols.toPtr(objects.HashTable);
+    try sym_ht.put(&heap, sym, sym);
+
+    // Add to exports
+    const exp_ht = pkg_ptr.exports.toPtr(objects.HashTable);
+    try exp_ht.put(&heap, sym, sym);
+
+    var root = pkg;
+    var gc = GC.init(testing.allocator, &heap);
+    defer gc.deinit();
+
+    // GC with package rooted
+    var roots = [_]Value{root};
+    _ = try gc.collect(&roots);
+    root = roots[0];
+
+    // Verify package structure intact
+    try testing.expect(root.isBoxed());
+    const pkg_after = root.toPtr(objects.Package);
+    try testing.expect(pkg_after.name.eq(pkg_name));
+    try testing.expect(pkg_after.symbols.isBoxed());
+    try testing.expect(pkg_after.exports.isBoxed());
+
+    // Verify symbol still in table (not stale pointer)
+    const sym_ht_after = pkg_after.symbols.toPtr(objects.HashTable);
+    const found = sym_ht_after.get(sym);
+    try testing.expect(found != null);
+}
