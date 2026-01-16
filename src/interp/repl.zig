@@ -763,45 +763,30 @@ pub const Repl = struct {
             return error.EmitError;
         };
         const child_chunks = emitter.getChildChunks() catch {
-            self.allocator.free(chunk.code);
-            self.allocator.free(chunk.constants);
             emitter.deinit();
             return error.EmitError;
         };
 
         // Store child chunks persistently (closures need them beyond this eval)
         // Store the base index for this eval's chunks
-        const chunk_base: u16 = @intCast(self.persistent_chunk_ptrs.items.len);
-        for (child_chunks) |child| {
-            const chunk_ptr = self.allocator.create(bytecode.Chunk) catch {
-                self.allocator.free(chunk.code);
-                self.allocator.free(chunk.constants);
-                return error.EmitError;
-            };
-            chunk_ptr.* = child;
-            // Patch make_closure indices to absolute
-            patchMakeClosureIndices(chunk_ptr.code, chunk_base);
-
-            self.persistent_chunk_ptrs.append(self.allocator, chunk_ptr) catch {
-                self.allocator.destroy(chunk_ptr);
-                self.allocator.free(chunk.code);
-                self.allocator.free(chunk.constants);
-                return error.EmitError;
-            };
+        for (child_chunks) |c| {
+            try self.persistent_chunks.append(self.allocator, c);
         }
 
-        // Free child chunk array (but not the contents, now owned by persistent storage)
+        // Free child chunk array (now owned by persistent storage)
         self.allocator.free(child_chunks);
         emitter.deinit();
 
-        // Patch main chunk as well
-        patchMakeClosureIndices(chunk.code, chunk_base);
-
         // Set chunk pool - VM uses absolute indices now
-        self.vm.setChunkPool(self.persistent_chunk_ptrs.items);
-        const result = self.vm.run(&chunk) catch |err| {
-            self.allocator.free(chunk.code);
-            self.allocator.free(chunk.constants);
+        var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
+        defer chunk_ptrs.deinit(self.allocator);
+        for (self.persistent_chunks.items) |chunk_val| {
+            const chunk_ptr = chunk_val.toPtr(runtime.objects.Chunk);
+            chunk_ptrs.appendAssumeCapacity(chunk_ptr);
+        }
+        self.vm.setChunkPool(chunk_ptrs.items);
+
+        const result = self.vm.run(chunk.toPtr(runtime.objects.Chunk)) catch |err| {
             err_info.* = .{
                 .kind = if (err == error.UserError) .runtime_user_error else .runtime_type_mismatch,
                 .line = 1,
@@ -810,8 +795,6 @@ pub const Repl = struct {
             };
             return error.RuntimeError;
         };
-        self.allocator.free(chunk.code);
-        self.allocator.free(chunk.constants);
         return result;
     }
 
