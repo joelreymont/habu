@@ -62,6 +62,11 @@ pub const BuiltinSymbols = struct {
     sym_eq: Value,
     sym_equal: Value,
 
+    // Feature evaluation
+    sym_and: Value,
+    sym_or: Value,
+    sym_not: Value,
+
     pub fn init(heap: *Heap) !BuiltinSymbols {
         return BuiltinSymbols{
             // Control flow
@@ -121,6 +126,11 @@ pub const BuiltinSymbols = struct {
             .sym_setf = try heap.intern("setf"),
             .sym_eq = try heap.intern("eq"),
             .sym_equal = try heap.intern("equal"),
+
+            // Feature evaluation
+            .sym_and = try heap.intern("and"),
+            .sym_or = try heap.intern("or"),
+            .sym_not = try heap.intern("not"),
         };
     }
 };

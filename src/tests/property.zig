@@ -36,11 +36,11 @@ fn eval(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {
     defer arena.deinit();
     const arena_alloc = arena.allocator();
 
-    var parser = Parser.init(arena_alloc, heap, source);
+    var comp_vm = try Vm.init(arena_alloc, heap);
+
+    var parser = Parser.init(arena_alloc, heap, source, &comp_vm.builtins);
     defer parser.deinit();
     const expr = try parser.parse();
-
-    var comp_vm = try Vm.init(arena_alloc, heap);
     var comp = try Compiler.initWithHeap(arena_alloc, &comp_vm);
     defer comp.deinit();
     var env = Env.init(arena_alloc, null);

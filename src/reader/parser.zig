@@ -11,6 +11,7 @@ const Value = runtime.Value;
 const Heap = runtime.Heap;
 const objects = @import("../runtime/objects.zig");
 const primitives = @import("../runtime/primitives/primitives.zig");
+const builtins_mod = @import("../runtime/builtins.zig");
 
 pub const Error = error{
     UnexpectedToken,
@@ -28,8 +29,9 @@ pub const Parser = struct {
     /// List of active feature keywords (e.g., :habu)
     features: std.ArrayList(Value),
     alloc: std.mem.Allocator,
+    builtins: *const builtins_mod.BuiltinSymbols,
 
-    pub fn init(alloc: std.mem.Allocator, heap: *Heap, source: []const u8) Parser {
+    pub fn init(alloc: std.mem.Allocator, heap: *Heap, source: []const u8, builtins: *const builtins_mod.BuiltinSymbols) Parser {
         var lexer = Lexer.init(source);
         const first_token = lexer.next();
 
@@ -44,6 +46,7 @@ pub const Parser = struct {
             .current = first_token,
             .features = feats,
             .alloc = alloc,
+            .builtins = builtins,
         };
     }
 
@@ -395,14 +398,6 @@ pub const Parser = struct {
         const text = self.current.text;
         self.advance();
 
-        // Check for nil and t (special symbols)
-        if (std.mem.eql(u8, text, "nil")) {
-            return Value.nil;
-        }
-        if (std.mem.eql(u8, text, "t")) {
-            return Value.t;
-        }
-
         // Check for package-qualified symbol (pkg:sym or pkg::sym)
         if (std.mem.indexOf(u8, text, ":")) |colon_pos| {
             if (colon_pos > 0) {
@@ -438,6 +433,9 @@ pub const Parser = struct {
 
     /// Intern a symbol (same name = same Value)
     fn internSymbol(self: *Parser, name: []const u8) Error!Value {
+        // Check for nil and t before interning
+        if (std.mem.eql(u8, name, "nil")) return Value.nil;
+        if (std.mem.eql(u8, name, "t")) return Value.t;
         return try self.heap.intern(name);
     }
 
@@ -537,10 +535,7 @@ pub const Parser = struct {
             const head = cons.car;
             if (!head.isSymbol()) return false;
 
-            const sym = head.toPtr(objects.Symbol);
-            const name = sym.getName();
-
-            if (std.mem.eql(u8, name, "and")) {
+            if (head.eq(self.builtins.sym_and)) {
                 var rest = cons.cdr;
                 while (rest.isCons()) {
                     const arg_cons = rest.toPtr(objects.Cons);
@@ -550,7 +545,7 @@ pub const Parser = struct {
                 return true;
             }
 
-            if (std.mem.eql(u8, name, "or")) {
+            if (head.eq(self.builtins.sym_or)) {
                 var rest = cons.cdr;
                 while (rest.isCons()) {
                     const arg_cons = rest.toPtr(objects.Cons);
@@ -560,7 +555,7 @@ pub const Parser = struct {
                 return false;
             }
 
-            if (std.mem.eql(u8, name, "not")) {
+            if (head.eq(self.builtins.sym_not)) {
                 const arg_cons = cons.cdr.toPtr(objects.Cons);
                 return !try self.evalFeature(arg_cons.car);
             }
@@ -580,13 +575,16 @@ pub const Parser = struct {
 // Tests
 // ============================================================================
 
+const Vm = @import("../interp/vm.zig").Vm;
+
 test "parse number" {
     const testing = std.testing;
 
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var parser = Parser.init(testing.allocator, &heap, "42");
+    var vm = try Vm.init(testing.allocator, &heap);
+    var parser = Parser.init(testing.allocator, &heap, "42", &vm.builtins);
     defer parser.deinit();
 
     const val = try parser.parse();
@@ -600,7 +598,8 @@ test "parse negative number" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var parser = Parser.init(testing.allocator, &heap, "-123");
+    var vm = try Vm.init(testing.allocator, &heap);
+    var parser = Parser.init(testing.allocator, &heap, "-123", &vm.builtins);
     defer parser.deinit();
 
     const val = try parser.parse();
@@ -614,7 +613,8 @@ test "parse nil" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var parser = Parser.init(testing.allocator, &heap, "nil");
+    var vm = try Vm.init(testing.allocator, &heap);
+    var parser = Parser.init(testing.allocator, &heap, "nil", &vm.builtins);
     defer parser.deinit();
 
     const val = try parser.parse();
@@ -627,7 +627,8 @@ test "parse empty list" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var parser = Parser.init(testing.allocator, &heap, "()");
+    var vm = try Vm.init(testing.allocator, &heap);
+    var parser = Parser.init(testing.allocator, &heap, "()", &vm.builtins);
     defer parser.deinit();
 
     const val = try parser.parse();
@@ -640,7 +641,8 @@ test "parse simple list" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var parser = Parser.init(testing.allocator, &heap, "(1 2 3)");
+    var vm = try Vm.init(testing.allocator, &heap);
+    var parser = Parser.init(testing.allocator, &heap, "(1 2 3)", &vm.builtins);
     defer parser.deinit();
 
     const val = try parser.parse();
@@ -659,7 +661,8 @@ test "parse dotted pair" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var parser = Parser.init(testing.allocator, &heap, "(1 . 2)");
+    var vm = try Vm.init(testing.allocator, &heap);
+    var parser = Parser.init(testing.allocator, &heap, "(1 . 2)", &vm.builtins);
     defer parser.deinit();
 
     const val = try parser.parse();
@@ -676,7 +679,8 @@ test "parse nested list" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var parser = Parser.init(testing.allocator, &heap, "((1 2) (3 4))");
+    var vm = try Vm.init(testing.allocator, &heap);
+    var parser = Parser.init(testing.allocator, &heap, "((1 2) (3 4))", &vm.builtins);
     defer parser.deinit();
 
     const val = try parser.parse();
@@ -694,7 +698,8 @@ test "parse string" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var parser = Parser.init(testing.allocator, &heap, "\"hello\"");
+    var vm = try Vm.init(testing.allocator, &heap);
+    var parser = Parser.init(testing.allocator, &heap, "\"hello\"", &vm.builtins);
     defer parser.deinit();
 
     const val = try parser.parse();
@@ -710,7 +715,8 @@ test "parse symbol" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var parser = Parser.init(testing.allocator, &heap, "foo");
+    var vm = try Vm.init(testing.allocator, &heap);
+    var parser = Parser.init(testing.allocator, &heap, "foo", &vm.builtins);
     defer parser.deinit();
 
     const val = try parser.parse();
@@ -726,7 +732,8 @@ test "parse keyword" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var parser = Parser.init(testing.allocator, &heap, ":test");
+    var vm = try Vm.init(testing.allocator, &heap);
+    var parser = Parser.init(testing.allocator, &heap, ":test", &vm.builtins);
     defer parser.deinit();
 
     const val = try parser.parse();
@@ -742,7 +749,8 @@ test "parse quote" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var parser = Parser.init(testing.allocator, &heap, "'foo");
+    var vm = try Vm.init(testing.allocator, &heap);
+    var parser = Parser.init(testing.allocator, &heap, "'foo", &vm.builtins);
     defer parser.deinit();
 
     const val = try parser.parse();
@@ -762,7 +770,8 @@ test "symbol interning" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var parser = Parser.init(testing.allocator, &heap, "foo foo");
+    var vm = try Vm.init(testing.allocator, &heap);
+    var parser = Parser.init(testing.allocator, &heap, "foo foo", &vm.builtins);
     defer parser.deinit();
 
     const sym1 = try parser.parse();
@@ -778,7 +787,8 @@ test "parse expression" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var parser = Parser.init(testing.allocator, &heap, "(+ 1 2)");
+    var vm = try Vm.init(testing.allocator, &heap);
+    var parser = Parser.init(testing.allocator, &heap, "(+ 1 2)", &vm.builtins);
     defer parser.deinit();
 
     const val = try parser.parse();
@@ -801,27 +811,29 @@ test "parse hex number" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
+    var vm = try Vm.init(testing.allocator, &heap);
+
     // #x20 = 32
-    var parser1 = Parser.init(testing.allocator, &heap, "#x20");
+    var parser1 = Parser.init(testing.allocator, &heap, "#x20", &vm.builtins);
     defer parser1.deinit();
     const val1 = try parser1.parse();
     try testing.expect(val1.isFixnum());
     try testing.expectEqual(@as(i64, 32), val1.toFixnum());
 
     // #xFF = 255
-    var parser2 = Parser.init(testing.allocator, &heap, "#xFF");
+    var parser2 = Parser.init(testing.allocator, &heap, "#xFF", &vm.builtins);
     defer parser2.deinit();
     const val2 = try parser2.parse();
     try testing.expectEqual(@as(i64, 255), val2.toFixnum());
 
     // #xABCD = 43981
-    var parser3 = Parser.init(testing.allocator, &heap, "#xABCD");
+    var parser3 = Parser.init(testing.allocator, &heap, "#xABCD", &vm.builtins);
     defer parser3.deinit();
     const val3 = try parser3.parse();
     try testing.expectEqual(@as(i64, 43981), val3.toFixnum());
 
     // Case insensitive: #X1a2B = 6699
-    var parser4 = Parser.init(testing.allocator, &heap, "#X1a2B");
+    var parser4 = Parser.init(testing.allocator, &heap, "#X1a2B", &vm.builtins);
     defer parser4.deinit();
     const val4 = try parser4.parse();
     try testing.expectEqual(@as(i64, 6699), val4.toFixnum());
@@ -833,21 +845,23 @@ test "parse binary number" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
+    var vm = try Vm.init(testing.allocator, &heap);
+
     // #b101 = 5
-    var parser1 = Parser.init(testing.allocator, &heap, "#b101");
+    var parser1 = Parser.init(testing.allocator, &heap, "#b101", &vm.builtins);
     defer parser1.deinit();
     const val1 = try parser1.parse();
     try testing.expect(val1.isFixnum());
     try testing.expectEqual(@as(i64, 5), val1.toFixnum());
 
     // #B11111111 = 255
-    var parser2 = Parser.init(testing.allocator, &heap, "#B11111111");
+    var parser2 = Parser.init(testing.allocator, &heap, "#B11111111", &vm.builtins);
     defer parser2.deinit();
     const val2 = try parser2.parse();
     try testing.expectEqual(@as(i64, 255), val2.toFixnum());
 
     // #b0 = 0
-    var parser3 = Parser.init(testing.allocator, &heap, "#b0");
+    var parser3 = Parser.init(testing.allocator, &heap, "#b0", &vm.builtins);
     defer parser3.deinit();
     const val3 = try parser3.parse();
     try testing.expectEqual(@as(i64, 0), val3.toFixnum());
@@ -859,21 +873,23 @@ test "parse octal number" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
+    var vm = try Vm.init(testing.allocator, &heap);
+
     // #o77 = 63
-    var parser1 = Parser.init(testing.allocator, &heap, "#o77");
+    var parser1 = Parser.init(testing.allocator, &heap, "#o77", &vm.builtins);
     defer parser1.deinit();
     const val1 = try parser1.parse();
     try testing.expect(val1.isFixnum());
     try testing.expectEqual(@as(i64, 63), val1.toFixnum());
 
     // #O755 = 493
-    var parser2 = Parser.init(testing.allocator, &heap, "#O755");
+    var parser2 = Parser.init(testing.allocator, &heap, "#O755", &vm.builtins);
     defer parser2.deinit();
     const val2 = try parser2.parse();
     try testing.expectEqual(@as(i64, 493), val2.toFixnum());
 
     // #o0 = 0
-    var parser3 = Parser.init(testing.allocator, &heap, "#o0");
+    var parser3 = Parser.init(testing.allocator, &heap, "#o0", &vm.builtins);
     defer parser3.deinit();
     const val3 = try parser3.parse();
     try testing.expectEqual(@as(i64, 0), val3.toFixnum());

@@ -30,14 +30,14 @@ fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Valu
     defer arena.deinit();
     const arena_alloc = arena.allocator();
 
+    // Compile (with heap for symbol interning)
+    var comp_vm = try Vm.init(arena_alloc, heap);
+
     // Parse
-    var parser = Parser.init(arena_alloc, heap, source);
+    var parser = Parser.init(arena_alloc, heap, source, &comp_vm.builtins);
     defer parser.deinit();
 
     const expr = try parser.parse();
-
-    // Compile (with heap for symbol interning)
-    var comp_vm = try Vm.init(arena_alloc, heap);
     var comp = try Compiler.initWithHeap(arena_alloc, &comp_vm);
     defer comp.deinit();
 
