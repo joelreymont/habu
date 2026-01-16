@@ -1620,6 +1620,26 @@ test "multiple-value-call basic" {
     try testing.expectEqual(@as(i64, 1), c1.car.toFixnum());
 }
 
+test "values-list returns elements as values" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    repl.wireGlobalEnv();
+    defer repl.deinit();
+
+    // (values-list '(1 2 3)) should return 1 as primary, 2 and 3 as secondaries
+    // Capture with multiple-value-bind to verify
+    const result = try repl.eval(
+        \\(multiple-value-bind (a b c) (values-list '(1 2 3))
+        \\  a)
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 1), result.toFixnum());
+}
+
 // ============================================================================
 // format tests
 // ============================================================================
