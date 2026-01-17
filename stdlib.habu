@@ -1669,26 +1669,16 @@
 ; hash-table-keys - get list of all keys
 (defun hash-table-keys (table)
   (let ((keys nil))
-    (maphash (lambda (k v)
-               (setq keys (cons k keys)))
-             table)
-    keys))
+    (dolist (pair (hash-table-alist table) keys)
+      (setq keys (cons (car pair) keys)))))
 
 ; hash-table-values - get list of all values
 (defun hash-table-values (table)
   (let ((vals nil))
-    (maphash (lambda (k v)
-               (setq vals (cons v vals)))
-             table)
-    vals))
+    (dolist (pair (hash-table-alist table) vals)
+      (setq vals (cons (cdr pair) vals)))))
 
-; hash-table-alist - convert hash table to alist
-(defun hash-table-alist (table)
-  (let ((alist nil))
-    (maphash (lambda (k v)
-               (setq alist (cons (cons k v) alist)))
-             table)
-    alist))
+; hash-table-alist is a primitive
 
 ; alist-hash-table - convert alist to hash table
 (defun alist-hash-table (alist &key (test #'eql))
@@ -1699,8 +1689,8 @@
 ; copy-hash-table - shallow copy of hash table
 (defun copy-hash-table (table)
   (let ((new (make-hash-table :test (hash-table-test table))))
-    (maphash (lambda (k v) (setf (gethash k new) v)) table)
-    new))
+    (dolist (pair (hash-table-alist table) new)
+      (setf (gethash (car pair) new) (cdr pair)))))
 
 ; hash-table-test - get test function of hash table
 ; (placeholder - returns 'eql for now)
@@ -1833,47 +1823,6 @@
 
 ;; Standard restart functions
 ;; These invoke the corresponding named restarts
-
-(defun abort (&optional condition)
-  "Transfer control to the innermost applicable ABORT restart."
-  (declare (ignore condition))
-  (let ((r (find-restart 'abort)))
-    (if r
-        (invoke-restart 'abort)
-        (error "No ABORT restart is active"))))
-
-(defun continue (&optional condition)
-  "Transfer control to the innermost applicable CONTINUE restart."
-  (declare (ignore condition))
-  (let ((r (find-restart 'continue)))
-    (when r
-      (invoke-restart 'continue))))
-
-(defun muffle-warning (&optional condition)
-  "Transfer control to the innermost applicable MUFFLE-WARNING restart."
-  (declare (ignore condition))
-  (let ((r (find-restart 'muffle-warning)))
-    (if r
-        (invoke-restart 'muffle-warning)
-        (error "No MUFFLE-WARNING restart is active"))))
-
-(defun store-value (value &optional condition)
-  "Transfer control to the STORE-VALUE restart, passing VALUE."
-  (declare (ignore condition))
-  (let ((r (find-restart 'store-value)))
-    (when r
-      (invoke-restart 'store-value value))))
-
-(defun use-value (value &optional condition)
-  "Transfer control to the USE-VALUE restart, passing VALUE."
-  (declare (ignore condition))
-  (let ((r (find-restart 'use-value)))
-    (when r
-      (invoke-restart 'use-value value))))
-
-;; ============================================================
-;; Generalized Reference (SETF)
-;; ============================================================
 
 ; psetf - parallel setf (evaluate all values before assigning)
 (defmacro psetf (&rest pairs)
@@ -2052,10 +2001,8 @@
         (sethash k groups (cons x (gethash k groups nil)))))
     ; Convert to alist with reversed lists
     (let ((result nil))
-      (maphash (lambda (k v)
-                 (setq result (cons (cons k (nreverse v)) result)))
-               groups)
-      result)))
+      (dolist (pair (hash-table-alist groups) result)
+        (setq result (cons (cons (car pair) (nreverse (cdr pair))) result))))))
 
 ; frequencies - count occurrences
 (defun frequencies (lst)
@@ -4157,10 +4104,9 @@
       ; Package.symbols is a hash table - extract symbols
       (let ((syms (%package-symbols pkg)))
         (when syms
-          (maphash (lambda (k _v)
-                     (when (symbolp k)
-                       (setq result (cons k result))))
-                   syms))))
+          (dolist (pair (hash-table-alist syms))
+            (when (symbolp (car pair))
+              (setq result (cons (car pair) result)))))))
     result))
 
 ; Helper to get package exports as a list
@@ -4170,10 +4116,9 @@
     (when pkg
       (let ((exps (%package-exports pkg)))
         (when exps
-          (maphash (lambda (k _v)
-                     (when (symbolp k)
-                       (setq result (cons k result))))
-                   exps))))
+          (dolist (pair (hash-table-alist exps))
+            (when (symbolp (car pair))
+              (setq result (cons (car pair) result)))))))
     result))
 
 ; do-symbols - iterate over accessible symbols in package
@@ -4299,22 +4244,5 @@
 
 ;; Restart convenience functions
 
-(defun abort (&optional condition)
-  "Invoke the abort restart"
-  (invoke-restart 'abort condition))
-
-(defun continue (&optional condition)
-  "Invoke the continue restart"
-  (invoke-restart 'continue condition))
-
-(defun muffle-warning (&optional condition)
-  "Invoke the muffle-warning restart"
-  (invoke-restart 'muffle-warning condition))
-
-(defun store-value (value &optional condition)
-  "Invoke the store-value restart with value"
-  (invoke-restart 'store-value value condition))
-
-(defun use-value (value &optional condition)
   "Invoke the use-value restart with value"
   (invoke-restart 'use-value value condition))
