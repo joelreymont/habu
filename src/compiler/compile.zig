@@ -1226,6 +1226,78 @@ pub const CaptureSet = struct {
     }
 };
 
+/// Declaration specifier types
+pub const DeclSpec = enum {
+    type_decl,
+    ftype,
+    inline_decl,
+    notinline,
+    ignore,
+    ignorable,
+    special,
+    dynamic_extent,
+};
+
+/// Declaration information for a variable
+pub const DeclInfo = struct {
+    spec: DeclSpec,
+    /// For type/ftype: type expression value
+    type_expr: ?Value = null,
+};
+
+/// Declaration environment - tracks declarations in current scope
+pub const DeclEnv = struct {
+    /// Map from variable name to declaration info
+    decls: std.StringHashMap(std.ArrayList(DeclInfo)),
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) DeclEnv {
+        return .{
+            .decls = std.StringHashMap(std.ArrayList(DeclInfo)).init(allocator),
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *DeclEnv) void {
+        var iter = self.decls.iterator();
+        while (iter.next()) |entry| {
+            entry.value_ptr.deinit(self.allocator);
+        }
+        self.decls.deinit();
+    }
+
+    /// Add a declaration for a variable
+    pub fn addDecl(self: *DeclEnv, name: []const u8, info: DeclInfo) !void {
+        const gop = try self.decls.getOrPut(name);
+        if (!gop.found_existing) {
+            gop.value_ptr.* = std.ArrayList(DeclInfo){};
+        }
+        try gop.value_ptr.append(self.allocator, info);
+    }
+
+    /// Check if variable has a specific declaration
+    pub fn hasDecl(self: *const DeclEnv, name: []const u8, spec: DeclSpec) bool {
+        if (self.decls.get(name)) |infos| {
+            for (infos.items) |info| {
+                if (info.spec == spec) return true;
+            }
+        }
+        return false;
+    }
+
+    /// Get type declaration for variable if present
+    pub fn getTypeDecl(self: *const DeclEnv, name: []const u8) ?Value {
+        if (self.decls.get(name)) |infos| {
+            for (infos.items) |info| {
+                if (info.spec == .type_decl and info.type_expr != null) {
+                    return info.type_expr.?;
+                }
+            }
+        }
+        return null;
+    }
+};
+
 /// Global environment for top-level definitions
 pub const GlobalEnv = struct {
     /// Map from name to global index
@@ -1314,6 +1386,8 @@ pub const Compiler = struct {
     /// Type abbreviations for CL deftype
     /// Maps type name to expansion function (Value closure)
     type_aliases: std.StringHashMap(Value),
+    /// Declaration environment for current scope
+    decl_env: ?DeclEnv = null,
 
     /// ADT variant definition
     pub const Variant = struct {
@@ -1452,6 +1526,10 @@ pub const Compiler = struct {
             self.globals.allocator.free(key.*);
         }
         self.type_aliases.deinit();
+        // Free decl_env if present
+        if (self.decl_env) |*de| {
+            de.deinit();
+        }
         // Note: defined_types contains references to ArrayList buffers and duped strings
         // that are intentionally not freed - they persist for the compiler's lifetime
         // and the memory is small (type definitions). The hashmap itself is freed.
@@ -2050,7 +2128,7 @@ pub const Compiler = struct {
                     .define, .defvar => self.compileDefine(tail, env),
                     .defun => self.compileDefun(tail, env),
                     .the => self.compileThe(tail, env),
-                    .declare => self.builder.lit(Value.nil), // no-op, returns nil
+                    .declare => self.compileDeclare(tail),
                     .@"return-from" => self.compileReturnFrom(tail, env),
                     .throw => self.compileThrow(tail, env),
                     .signal => self.compileSignal(tail, env),
@@ -7180,6 +7258,132 @@ pub const Compiler = struct {
         return self.compileSimpleTypeCheckSym(type_spec, expr_ir);
     }
 
+    fn compileDeclare(self: *Compiler, args: Value) !*Ir {
+        // (declare (spec var...) (spec2 var2...))
+        // Process each declaration spec
+        var list = args;
+        while (list.isCons()) {
+            const cons = list.toPtr(Cons);
+            const decl_spec = cons.car;
+
+            // Each spec should be a list like (type fixnum x y)
+            if (decl_spec.isCons()) {
+                try self.processDeclSpec(decl_spec);
+            }
+
+            list = cons.cdr;
+        }
+
+        // Declarations are compile-time only, return nil
+        return self.builder.lit(Value.nil);
+    }
+
+    fn processDeclSpec(self: *Compiler, spec: Value) !void {
+        const spec_cons = spec.toPtr(Cons);
+        const spec_name = spec_cons.car;
+        const spec_args = spec_cons.cdr;
+
+        if (!spec_name.isSymbol()) return error.InvalidSyntax;
+
+        const heap = self.heap orelse return error.InvalidSyntax;
+
+        // Create DeclEnv if not already present
+        if (self.decl_env == null) {
+            self.decl_env = DeclEnv.init(self.allocator);
+        }
+
+        // Match declaration spec by symbol identity
+        const type_sym = try heap.intern("type");
+        const ftype_sym = try heap.intern("ftype");
+        const inline_sym = try heap.intern("inline");
+        const notinline_sym = try heap.intern("notinline");
+        const ignore_sym = try heap.intern("ignore");
+        const ignorable_sym = try heap.intern("ignorable");
+        const special_sym = try heap.intern("special");
+        const dynamic_extent_sym = try heap.intern("dynamic-extent");
+
+        if (spec_name.eq(type_sym)) {
+            // (type type-spec var1 var2 ...)
+            if (!spec_args.isCons()) return error.InvalidSyntax;
+            const type_cons = spec_args.toPtr(Cons);
+            const type_expr = type_cons.car;
+            var var_list = type_cons.cdr;
+
+            while (var_list.isCons()) {
+                const var_cons = var_list.toPtr(Cons);
+                const var_name_val = var_cons.car;
+                if (!var_name_val.isSymbol()) return error.InvalidSyntax;
+
+                const var_sym = var_name_val.toPtr(Symbol);
+                const var_name = var_sym.getName();
+
+                try self.decl_env.?.addDecl(var_name, .{
+                    .spec = .type_decl,
+                    .type_expr = type_expr,
+                });
+
+                var_list = var_cons.cdr;
+            }
+        } else if (spec_name.eq(ftype_sym)) {
+            // (ftype function-type fname1 fname2 ...)
+            if (!spec_args.isCons()) return error.InvalidSyntax;
+            const ftype_cons = spec_args.toPtr(Cons);
+            const ftype_expr = ftype_cons.car;
+            var fn_list = ftype_cons.cdr;
+
+            while (fn_list.isCons()) {
+                const fn_cons = fn_list.toPtr(Cons);
+                const fn_name_val = fn_cons.car;
+                if (!fn_name_val.isSymbol()) return error.InvalidSyntax;
+
+                const fn_sym = fn_name_val.toPtr(Symbol);
+                const fn_name = fn_sym.getName();
+
+                try self.decl_env.?.addDecl(fn_name, .{
+                    .spec = .ftype,
+                    .type_expr = ftype_expr,
+                });
+
+                fn_list = fn_cons.cdr;
+            }
+        } else if (spec_name.eq(inline_sym)) {
+            // (inline fname1 fname2 ...)
+            try self.addSimpleDecls(spec_args, .inline_decl);
+        } else if (spec_name.eq(notinline_sym)) {
+            // (notinline fname1 fname2 ...)
+            try self.addSimpleDecls(spec_args, .notinline);
+        } else if (spec_name.eq(ignore_sym)) {
+            // (ignore var1 var2 ...)
+            try self.addSimpleDecls(spec_args, .ignore);
+        } else if (spec_name.eq(ignorable_sym)) {
+            // (ignorable var1 var2 ...)
+            try self.addSimpleDecls(spec_args, .ignorable);
+        } else if (spec_name.eq(special_sym)) {
+            // (special var1 var2 ...)
+            try self.addSimpleDecls(spec_args, .special);
+        } else if (spec_name.eq(dynamic_extent_sym)) {
+            // (dynamic-extent var1 var2 ...)
+            try self.addSimpleDecls(spec_args, .dynamic_extent);
+        }
+        // Ignore unknown declaration specs
+    }
+
+    fn addSimpleDecls(self: *Compiler, vars: Value, spec: DeclSpec) !void {
+        var list = vars;
+        while (list.isCons()) {
+            const cons = list.toPtr(Cons);
+            const var_val = cons.car;
+            if (!var_val.isSymbol()) return error.InvalidSyntax;
+
+            const var_sym = var_val.toPtr(Symbol);
+            const var_name = var_sym.getName();
+
+            try self.decl_env.?.addDecl(var_name, .{ .spec = spec });
+
+            list = cons.cdr;
+        }
+    }
+
     /// Compile a simple type check for a single type symbol (uses symbol identity)
     fn compileSimpleTypeCheckSym(self: *Compiler, type_sym: Value, expr_ir: *const Ir) anyerror!*Ir {
         const b = self.builtins orelse return error.UninitializedBuiltins;
@@ -9527,4 +9731,119 @@ test "BiChecker integration - checkLambdaTypes with type mismatch" {
 
     // BiChecker should have been invoked
     try testing.expect(!compiler.hasBiCheckErrors());
+}
+
+test "declare - type declaration" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = Compiler.init(allocator, &vm);
+    defer compiler.deinit();
+
+    // Build (declare (type fixnum x y))
+    const type_sym = try heap.intern("type");
+    const fixnum_sym = try heap.intern("fixnum");
+    const x_sym = try heap.intern("x");
+    const y_sym = try heap.intern("y");
+
+    // (fixnum x y)
+    const vars = try heap.allocCons(y_sym, Value.nil);
+    const type_args = try heap.allocCons(x_sym, vars);
+    const type_spec = try heap.allocCons(fixnum_sym, type_args);
+    const decl_spec = try heap.allocCons(type_sym, type_spec);
+    const args = try heap.allocCons(decl_spec, Value.nil);
+
+    const result = try compiler.compileDeclare(args);
+    defer allocator.destroy(result);
+
+    // Should return nil
+    try testing.expect(result.* == .lit);
+    try testing.expect(result.lit.isNil());
+
+    // Check that declarations were recorded
+    try testing.expect(compiler.decl_env.?.hasDecl("x", .type_decl));
+    try testing.expect(compiler.decl_env.?.hasDecl("y", .type_decl));
+    const x_type = compiler.decl_env.?.getTypeDecl("x");
+    try testing.expect(x_type != null);
+    try testing.expect(x_type.?.eq(fixnum_sym));
+}
+
+test "declare - ignore declaration" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = Compiler.init(allocator, &vm);
+    defer compiler.deinit();
+
+    // Build (declare (ignore x y))
+    const ignore_sym = try heap.intern("ignore");
+    const x_sym = try heap.intern("x");
+    const y_sym = try heap.intern("y");
+
+    const vars = try heap.allocCons(y_sym, Value.nil);
+    const ignore_args = try heap.allocCons(x_sym, vars);
+    const decl_spec = try heap.allocCons(ignore_sym, ignore_args);
+    const args = try heap.allocCons(decl_spec, Value.nil);
+
+    const result = try compiler.compileDeclare(args);
+    defer allocator.destroy(result);
+
+    // Should return nil
+    try testing.expect(result.* == .lit);
+    try testing.expect(result.lit.isNil());
+
+    // Check that declarations were recorded
+    try testing.expect(compiler.decl_env.?.hasDecl("x", .ignore));
+    try testing.expect(compiler.decl_env.?.hasDecl("y", .ignore));
+}
+
+test "declare - multiple declaration specs" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = Compiler.init(allocator, &vm);
+    defer compiler.deinit();
+
+    // Build (declare (type fixnum x) (ignore y))
+    const type_sym = try heap.intern("type");
+    const ignore_sym = try heap.intern("ignore");
+    const fixnum_sym = try heap.intern("fixnum");
+    const x_sym = try heap.intern("x");
+    const y_sym = try heap.intern("y");
+
+    // (type fixnum x)
+    const x_list = try heap.allocCons(x_sym, Value.nil);
+    const type_spec = try heap.allocCons(fixnum_sym, x_list);
+    const type_decl = try heap.allocCons(type_sym, type_spec);
+
+    // (ignore y)
+    const y_list = try heap.allocCons(y_sym, Value.nil);
+    const ignore_decl = try heap.allocCons(ignore_sym, y_list);
+
+    // (decl1 decl2)
+    const specs = try heap.allocCons(ignore_decl, Value.nil);
+    const args = try heap.allocCons(type_decl, specs);
+
+    const result = try compiler.compileDeclare(args);
+    defer allocator.destroy(result);
+
+    // Should return nil
+    try testing.expect(result.* == .lit);
+    try testing.expect(result.lit.isNil());
+
+    // Check both declarations
+    try testing.expect(compiler.decl_env.?.hasDecl("x", .type_decl));
+    try testing.expect(compiler.decl_env.?.hasDecl("y", .ignore));
 }
