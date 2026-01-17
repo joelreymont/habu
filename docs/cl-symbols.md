@@ -519,13 +519,13 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
 | adjust-array | ✗ | - | |
-| adjustable-array-p | ✗ | - | |
+| adjustable-array-p | ✓ | stdlib.habu | Adjustable array pred |
 | aref | ✓ | compile.zig:276 | Array element |
 | array-dimension | ✗ | - | |
 | array-dimensions | ✗ | - | |
 | array-displacement | ✗ | - | |
 | array-element-type | ✗ | - | |
-| array-has-fill-pointer-p | ✗ | - | |
+| array-has-fill-pointer-p | ✓ | stdlib.habu | Fill pointer pred |
 | array-in-bounds-p | ✗ | - | |
 | array-rank | ✗ | - | |
 | array-row-major-index | ✗ | - | |
@@ -548,7 +548,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | make-array | ✓ | compile.zig:298 | Create array |
 | row-major-aref | ✗ | - | |
 | sbit | ✗ | - | |
-| simple-bit-vector-p | ✗ | - | |
+| simple-bit-vector-p | ✓ | stdlib.habu | Bit-vector pred |
 | simple-vector-p | ✓ | stdlib.habu | Simple-vector pred |
 | svref | ✓ | compile.zig:277 | Simple-vector ref |
 | upgraded-array-element-type | ✗ | - | |
@@ -736,8 +736,8 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | write-line | ✓ | compile.zig:287 | Write line |
 | write-sequence | ✗ | - | |
 | write-string | ✓ | stdlib.habu | Write string |
-| y-or-n-p | ✗ | - | |
-| yes-or-no-p | ✗ | - | |
+| y-or-n-p | ✓ | stdlib.habu | Y/N query |
+| yes-or-no-p | ✓ | stdlib.habu | Yes/No query |
 
 ## Functions - Printer (25)
 | Symbol | Status | Location | Notes |
@@ -822,7 +822,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | sleep | ✗ | - | |
 | software-type | ✗ | - | |
 | software-version | ✗ | - | |
-| special-operator-p | ✗ | - | |
+| special-operator-p | ✓ | stdlib.habu | Special op pred |
 | user-homedir-pathname | ✗ | - | |
 
 ## Functions - Symbols (17)
@@ -832,7 +832,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | copy-symbol | ✗ | - | |
 | fboundp | ✓ | compile.zig:231 | Fbound pred |
 | gensym | ✓ | compile.zig:227 | Generate symbol |
-| gentemp | ✗ | - | |
+| gentemp | ✓ | stdlib.habu | Generate temp symbol |
 | get | ✓ | compile.zig:238 | Property get |
 | keywordp | ✓ | compile.zig:206 | Keyword pred |
 | make-symbol | ✓ | stdlib.habu | Create uninterned symbol |
