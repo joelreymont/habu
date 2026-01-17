@@ -2988,9 +2988,19 @@
                            (push (list hash-var target-expr) vars)
                            (push (list keys-var (list 'hash-table-keys hash-var)) vars)
                            (push (list key-var nil) vars)
-                           (push (list var nil) vars)
-                           (push (list 'setq key-var (list 'car keys-var)) body-forms)
-                           (push (list 'setq var (list 'gethash key-var hash-var)) body-forms)
+                           ; Check if var is a list (destructuring) or symbol
+                           (if (consp var)
+                               ; Destructuring: (for (a . b) being hash-values ...)
+                               (let ((tmp-var (gensym "tmp")))
+                                 (push (list tmp-var nil) vars)
+                                 (push (list 'setq key-var (list 'car keys-var)) body-forms)
+                                 (push (list 'setq tmp-var (list 'gethash key-var hash-var)) body-forms)
+                                 (push (cons 'destructuring-bind (cons var (cons tmp-var nil))) body-forms))
+                             ; Simple: var is symbol
+                             (progn
+                               (push (list var nil) vars)
+                               (push (list 'setq key-var (list 'car keys-var)) body-forms)
+                               (push (list 'setq var (list 'gethash key-var hash-var)) body-forms)))
                            (push (list 'setq keys-var (list 'cdr keys-var)) step-forms)
                            (push (list 'null keys-var) end-tests)))
                         ((symbols symbol)
