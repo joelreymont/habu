@@ -14,6 +14,77 @@
 (defvar pi 3.141592653589793)
 (defvar e 2.718281828459045)
 
+; Implementation limits
+(defconstant most-positive-fixnum 4611686018427387903)  ; 2^62 - 1
+(defconstant most-negative-fixnum -4611686018427387904) ; -2^62
+(defconstant array-dimension-limit 4611686018427387903)
+(defconstant array-rank-limit 65536)
+(defconstant array-total-size-limit 4611686018427387903)
+(defconstant call-arguments-limit 65536)
+(defconstant char-code-limit 1114112) ; Unicode range
+(defconstant lambda-parameters-limit 65536)
+(defconstant multiple-values-limit 256)
+
+; Float constants (using 64-bit IEEE 754)
+(defconstant most-positive-double-float 1.7976931348623157e308)
+(defconstant most-negative-double-float -1.7976931348623157e308)
+(defconstant least-positive-double-float 2.2250738585072014e-308)
+(defconstant least-negative-double-float -2.2250738585072014e-308)
+(defconstant least-positive-normalized-double-float 2.2250738585072014e-308)
+(defconstant least-negative-normalized-double-float -2.2250738585072014e-308)
+(defconstant double-float-epsilon 2.220446049250313e-16)
+(defconstant double-float-negative-epsilon 1.1102230246251565e-16)
+
+; Single/long/short float = double (no separate types)
+(defconstant most-positive-single-float most-positive-double-float)
+(defconstant most-negative-single-float most-negative-double-float)
+(defconstant least-positive-single-float least-positive-double-float)
+(defconstant least-negative-single-float least-negative-double-float)
+(defconstant least-positive-normalized-single-float least-positive-normalized-double-float)
+(defconstant least-negative-normalized-single-float least-negative-normalized-double-float)
+(defconstant single-float-epsilon double-float-epsilon)
+(defconstant single-float-negative-epsilon double-float-negative-epsilon)
+(defconstant most-positive-short-float most-positive-double-float)
+(defconstant most-negative-short-float most-negative-double-float)
+(defconstant least-positive-short-float least-positive-double-float)
+(defconstant least-negative-short-float least-negative-double-float)
+(defconstant least-positive-normalized-short-float least-positive-normalized-double-float)
+(defconstant least-negative-normalized-short-float least-negative-normalized-double-float)
+(defconstant short-float-epsilon double-float-epsilon)
+(defconstant short-float-negative-epsilon double-float-negative-epsilon)
+(defconstant most-positive-long-float most-positive-double-float)
+(defconstant most-negative-long-float most-negative-double-float)
+(defconstant least-positive-long-float least-positive-double-float)
+(defconstant least-negative-long-float least-negative-double-float)
+(defconstant least-positive-normalized-long-float least-positive-normalized-double-float)
+(defconstant least-negative-normalized-long-float least-negative-normalized-double-float)
+(defconstant long-float-epsilon double-float-epsilon)
+(defconstant long-float-negative-epsilon double-float-negative-epsilon)
+
+; Boole operation constants
+(defconstant boole-clr 0)
+(defconstant boole-set 1)
+(defconstant boole-1 2)
+(defconstant boole-2 3)
+(defconstant boole-c1 4)
+(defconstant boole-c2 5)
+(defconstant boole-and 6)
+(defconstant boole-ior 7)
+(defconstant boole-xor 8)
+(defconstant boole-eqv 9)
+(defconstant boole-nand 10)
+(defconstant boole-nor 11)
+(defconstant boole-andc1 12)
+(defconstant boole-andc2 13)
+(defconstant boole-orc1 14)
+(defconstant boole-orc2 15)
+
+; Lambda list keywords constant
+(defconstant lambda-list-keywords '(&optional &rest &key &aux &body &whole &environment &allow-other-keys))
+
+; Internal time units (microseconds)
+(defconstant internal-time-units-per-second 1000000)
+
 ; Printer control variables
 (defvar *print-escape* t)
 (defvar *print-case* :upcase)
