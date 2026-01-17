@@ -1274,7 +1274,6 @@ pub const DeclEnv = struct {
     pub fn deinit(self: *DeclEnv) void {
         var iter = self.decls.iterator();
         while (iter.next()) |entry| {
-            std.debug.print("  freeing key: {s}\n", .{entry.key_ptr.*});
             self.allocator.free(entry.key_ptr.*);
             entry.value_ptr.deinit(self.allocator);
         }
@@ -1283,7 +1282,6 @@ pub const DeclEnv = struct {
 
     /// Add a declaration for a variable
     pub fn addDecl(self: *DeclEnv, name: []const u8, info: DeclInfo) !void {
-        std.debug.print("  decls.count()={}, capacity={}\n", .{ self.decls.count(), self.decls.capacity() });
         const existing = self.decls.getPtr(name);
         if (existing) |list| {
             try list.append(self.allocator, info);
@@ -1401,8 +1399,6 @@ pub const Compiler = struct {
     /// Type abbreviations for CL deftype
     /// Maps type name to expansion function (Value closure)
     type_aliases: std.StringHashMap(Value),
-    /// Declaration environment for current scope
-    decl_env: ?*DeclEnv = null,
     /// Global declaration environment
     global_decls: DeclEnv,
 
@@ -1545,11 +1541,6 @@ pub const Compiler = struct {
             self.globals.allocator.free(key.*);
         }
         self.type_aliases.deinit();
-        // Free decl_env if present
-        if (self.decl_env) |de| {
-            de.deinit();
-            self.allocator.destroy(de);
-        }
         // Free global_decls
         self.global_decls.deinit();
         // Note: defined_types contains references to ArrayList buffers and duped strings
@@ -2591,10 +2582,6 @@ pub const Compiler = struct {
 
             if (tp.type_sym) |type_sym| {
                 type_sym_to_check = type_sym;
-            } else if (self.decl_env) |decl_env| {
-                if (decl_env.getTypeDecl(param_name)) |decl_type| {
-                    type_sym_to_check = decl_type;
-                }
             } else if (self.global_decls.getTypeDecl(param_name)) |decl_type| {
                 type_sym_to_check = decl_type;
             }
@@ -3143,11 +3130,7 @@ pub const Compiler = struct {
 
             // Check for type declaration and add type assertion
             var type_sym_to_check: ?Value = null;
-            if (self.decl_env) |decl_env| {
-                if (decl_env.getTypeDecl(name)) |decl_type| {
-                    type_sym_to_check = decl_type;
-                }
-            } else if (self.global_decls.getTypeDecl(name)) |decl_type| {
+            if (self.global_decls.getTypeDecl(name)) |decl_type| {
                 type_sym_to_check = decl_type;
             }
 
@@ -7393,14 +7376,7 @@ pub const Compiler = struct {
 
         const heap = self.heap orelse return error.InvalidSyntax;
 
-        // Create DeclEnv if not already present
-        if (self.decl_env == null) {
-            const env_ptr = try self.allocator.create(DeclEnv);
-            env_ptr.init(self.allocator);
-            self.decl_env = env_ptr;
-        } else {
-        }
-
+        // Use global_decls instead of per-scope decl_env
         // Match declaration spec by symbol identity
         const type_sym = try heap.intern("type");
         const ftype_sym = try heap.intern("ftype");
@@ -7426,7 +7402,7 @@ pub const Compiler = struct {
                 const var_sym = var_name_val.toPtr(Symbol);
                 const var_name = var_sym.getName();
 
-                try self.decl_env.?.addDecl(var_name, .{
+                try self.global_decls.addDecl(var_name, .{
                     .spec = .type_decl,
                     .type_expr = type_expr,
                 });
@@ -7448,7 +7424,7 @@ pub const Compiler = struct {
                 const fn_sym = fn_name_val.toPtr(Symbol);
                 const fn_name = fn_sym.getName();
 
-                try self.decl_env.?.addDecl(fn_name, .{
+                try self.global_decls.addDecl(fn_name, .{
                     .spec = .ftype,
                     .type_expr = ftype_expr,
                 });
@@ -7487,7 +7463,7 @@ pub const Compiler = struct {
             const var_sym = var_val.toPtr(Symbol);
             const var_name = var_sym.getName();
 
-            try self.decl_env.?.addDecl(var_name, .{ .spec = spec });
+            try self.global_decls.addDecl(var_name, .{ .spec = spec });
 
             list = cons.cdr;
         }
@@ -10013,10 +9989,10 @@ test "declare - type declaration" {
     try testing.expect(result.lit.isNil());
 
     // Check that declarations were recorded
-    try testing.expect(compiler.decl_env.?.hasDecl("x", .type_decl));
-    try testing.expect(compiler.decl_env.?.hasDecl("y", .type_decl));
+    try testing.expect(compiler.global_decls.hasDecl("x", .type_decl));
+    try testing.expect(compiler.global_decls.hasDecl("y", .type_decl));
     // TEMP: getTypeDecl disabled due to HashMap corruption bug
-    // const x_type = compiler.decl_env.?.getTypeDecl("x");
+    // const x_type = compiler.global_decls.getTypeDecl("x");
     // try testing.expect(x_type != null);
     // try testing.expect(x_type.?.eq(fixnum_sym));
 }
@@ -10050,8 +10026,8 @@ test "declare - ignore declaration" {
     try testing.expect(result.lit.isNil());
 
     // Check that declarations were recorded
-    try testing.expect(compiler.decl_env.?.hasDecl("x", .ignore));
-    try testing.expect(compiler.decl_env.?.hasDecl("y", .ignore));
+    try testing.expect(compiler.global_decls.hasDecl("x", .ignore));
+    try testing.expect(compiler.global_decls.hasDecl("y", .ignore));
 }
 
 test "declare - multiple declaration specs" {
@@ -10093,6 +10069,6 @@ test "declare - multiple declaration specs" {
     try testing.expect(result.lit.isNil());
 
     // Check both declarations
-    try testing.expect(compiler.decl_env.?.hasDecl("x", .type_decl));
-    try testing.expect(compiler.decl_env.?.hasDecl("y", .ignore));
+    try testing.expect(compiler.global_decls.hasDecl("x", .type_decl));
+    try testing.expect(compiler.global_decls.hasDecl("y", .ignore));
 }
