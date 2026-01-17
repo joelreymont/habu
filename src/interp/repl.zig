@@ -100,6 +100,8 @@ pub const Repl = struct {
         self.compiler.setVm(&self.vm);
         // Create *features* list
         self.createFeaturesGlobal() catch {};
+        // Create print control globals
+        self.createPrintGlobals() catch {};
     }
 
     fn createFeaturesGlobal(self: *Repl) !void {
@@ -116,6 +118,13 @@ pub const Repl = struct {
         features = try self.heap.allocCons(os_kw, features);
         const gidx = try self.compiler.globals.define("*features*");
         self.vm.globals[gidx] = features;
+    }
+
+    fn createPrintGlobals(self: *Repl) !void {
+        const gidx_len = try self.compiler.globals.define("*print-length*");
+        self.vm.globals[gidx_len] = Value.nil;
+        const gidx_lvl = try self.compiler.globals.define("*print-level*");
+        self.vm.globals[gidx_lvl] = Value.nil;
     }
 
     /// Callback for (load "filename") from VM

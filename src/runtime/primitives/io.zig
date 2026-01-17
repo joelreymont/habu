@@ -36,6 +36,14 @@ pub var print_case: PrintCase = .upcase;
 /// When false (default), output may be abbreviated or truncated
 pub var print_readably: bool = false;
 
+/// *print-length* limits max elements printed in lists/vectors
+/// When non-null, print ... after this many elements
+pub var print_length: ?usize = null;
+
+/// *print-level* limits max nesting depth for lists/vectors
+/// When non-null, print # when exceeding this depth
+pub var print_level: ?usize = null;
+
 fn writeCaseSymbol(name: []const u8, w: anytype) !void {
     switch (print_case) {
         .upcase => {
@@ -276,11 +284,18 @@ pub fn princValue(val: Value) !void {
     var file_writer = stdout_file.writer(&buf);
     const w = &file_writer.interface;
 
-    try princValueTo(val, w);
+    try princValueTo(val, w, 0);
     try w.flush();
 }
 
-fn princValueTo(val: Value, w: anytype) !void {
+fn princValueTo(val: Value, w: anytype, level: usize) !void {
+    if (print_level) |max_level| {
+        if (level >= max_level) {
+            try w.writeByte('#');
+            return;
+        }
+    }
+
     switch (val.typeKind()) {
         .nil => try w.writeAll("nil"),
         .t => try w.writeAll("t"),
@@ -300,16 +315,24 @@ fn princValueTo(val: Value, w: anytype) !void {
             try w.writeByte('(');
             var current = val;
             var first = true;
+            var count: usize = 0;
             while (current.isCons()) {
+                if (print_length) |max_len| {
+                    if (count >= max_len) {
+                        try w.writeAll("...");
+                        break;
+                    }
+                }
                 if (!first) try w.writeByte(' ');
                 first = false;
                 const cons = current.toPtr(objects.Cons);
-                try princValueTo(cons.car, w);
+                try princValueTo(cons.car, w, level + 1);
                 current = cons.cdr;
+                count += 1;
             }
-            if (!current.isNil()) {
+            if (!current.isNil() and (print_length == null or count < print_length.?)) {
                 try w.writeAll(" . ");
-                try princValueTo(current, w);
+                try princValueTo(current, w, level + 1);
             }
             try w.writeByte(')');
         },
@@ -323,9 +346,16 @@ fn princValueTo(val: Value, w: anytype) !void {
         .vector => {
             const vec = val.toPtr(objects.Vector);
             try w.writeAll("#(");
-            for (vec.items(), 0..) |item, i| {
+            const items = vec.items();
+            const max_count = if (print_length) |max_len| @min(max_len, items.len) else items.len;
+            for (0..max_count) |i| {
                 if (i > 0) try w.writeByte(' ');
-                try princValueTo(item, w);
+                try princValueTo(items[i], w, level + 1);
+            }
+            if (print_length) |max_len| {
+                if (items.len > max_len) {
+                    try w.writeAll(" ...");
+                }
             }
             try w.writeByte(')');
         },
@@ -385,13 +415,22 @@ pub fn writeToString(heap: *Heap, val: Value) !Value {
 
 fn printValueTo(val: Value, w: anytype) !void {
     if (print_readably or print_escape) {
-        return printEscapedTo(val, w);
+        return printEscapedTo(val, w, 0);
     } else {
-        return princValueTo(val, w);
+        return princValueTo(val, w, 0);
     }
 }
 
-fn printEscapedTo(val: Value, w: anytype) !void {
+fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
+    if (!print_readably) {
+        if (print_level) |max_level| {
+            if (level >= max_level) {
+                try w.writeByte('#');
+                return;
+            }
+        }
+    }
+
     switch (val.typeKind()) {
         .nil => try w.writeAll("nil"),
         .t => try w.writeAll("t"),
@@ -417,16 +456,28 @@ fn printEscapedTo(val: Value, w: anytype) !void {
             try w.writeByte('(');
             var current = val;
             var first = true;
+            var count: usize = 0;
             while (current.isCons()) {
+                if (!print_readably) {
+                    if (print_length) |max_len| {
+                        if (count >= max_len) {
+                            try w.writeAll("...");
+                            break;
+                        }
+                    }
+                }
                 if (!first) try w.writeByte(' ');
                 first = false;
                 const cons = current.toPtr(objects.Cons);
-                try printEscapedTo(cons.car, w);
+                try printEscapedTo(cons.car, w, level + 1);
                 current = cons.cdr;
+                count += 1;
             }
             if (!current.isNil()) {
-                try w.writeAll(" . ");
-                try printEscapedTo(current, w);
+                if (print_readably or print_length == null or count < print_length.?) {
+                    try w.writeAll(" . ");
+                    try printEscapedTo(current, w, level + 1);
+                }
             }
             try w.writeByte(')');
         },
@@ -444,9 +495,21 @@ fn printEscapedTo(val: Value, w: anytype) !void {
         .vector => {
             const vec = val.toPtr(objects.Vector);
             try w.writeAll("#(");
-            for (vec.items(), 0..) |item, i| {
+            const items = vec.items();
+            const max_count = if (!print_readably and print_length != null)
+                @min(print_length.?, items.len)
+            else
+                items.len;
+            for (0..max_count) |i| {
                 if (i > 0) try w.writeByte(' ');
-                try printEscapedTo(item, w);
+                try printEscapedTo(items[i], w, level + 1);
+            }
+            if (!print_readably) {
+                if (print_length) |max_len| {
+                    if (items.len > max_len) {
+                        try w.writeAll(" ...");
+                    }
+                }
             }
             try w.writeByte(')');
         },

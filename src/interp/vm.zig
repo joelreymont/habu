@@ -525,6 +525,29 @@ pub const Vm = struct {
 
     /// Run garbage collection, using VM state as roots
     /// Returns bytes reclaimed
+    fn syncPrintGlobals(self: *Vm) !void {
+        if (self.global_env) |env| {
+            if (env.lookup("*print-length*")) |idx| {
+                const val = self.globals[idx];
+                if (val.isFixnum()) {
+                    const len: usize = @intCast(val.toFixnum());
+                    io.print_length = len;
+                } else {
+                    io.print_length = null;
+                }
+            }
+            if (env.lookup("*print-level*")) |idx| {
+                const val = self.globals[idx];
+                if (val.isFixnum()) {
+                    const lvl: usize = @intCast(val.toFixnum());
+                    io.print_level = lvl;
+                } else {
+                    io.print_level = null;
+                }
+            }
+        }
+    }
+
     pub fn collectGarbage(self: *Vm) !usize {
         // Gather roots from VM state
         var roots = std.ArrayList(Value){};
@@ -1555,12 +1578,14 @@ pub const Vm = struct {
             // I/O
             .print => {
                 const val = try self.pop();
+                try self.syncPrintGlobals();
                 try io.printValue(val);
                 try io.sysNewline();
                 try self.push(val); // Return the printed value
             },
             .princ => {
                 const val = try self.pop();
+                try self.syncPrintGlobals();
                 try io.princValue(val);
                 // Note: no newline for princ
                 try self.push(val); // Return the printed value
