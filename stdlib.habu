@@ -3722,6 +3722,88 @@
        (let ((,var nil))
          ,result))))
 
+; with-simple-restart - establish simple restart
+(defmacro with-simple-restart (restart-spec &body body)
+  (let ((name (car restart-spec))
+        (format-control (cadr restart-spec))
+        (format-args (cddr restart-spec)))
+    `(restart-case
+         (progn ,@body)
+       (,name ()
+         :report (lambda (stream)
+                   (format stream ,format-control ,@format-args))
+         (values nil t)))))
+
+; with-compilation-unit - group compilation (stub)
+(defmacro with-compilation-unit (options &body body)
+  (declare (ignore options))
+  `(progn ,@body))
+
+; with-condition-restarts - associate restarts with condition (stub)
+(defmacro with-condition-restarts (condition restarts &body body)
+  (declare (ignore condition restarts))
+  `(progn ,@body))
+
+; with-package-iterator - package symbol iteration (stub)
+(defmacro with-package-iterator (spec &body body)
+  (let ((name (car spec)))
+    (declare (ignore name))
+    `(progn ,@body)))
+
+; defsetf - define setf expansion (simple form)
+(defmacro defsetf (access-fn update-fn &optional doc)
+  (declare (ignore doc))
+  `(put ',access-fn 'setf-function ',update-fn))
+
+; define-modify-macro - define read-modify-write macro
+(defmacro define-modify-macro (name lambda-list function &optional doc)
+  (declare (ignore doc))
+  (let ((ref (gensym "REF")))
+    `(defmacro ,name (,ref ,@lambda-list)
+       (list 'setf ,ref (list ',function ,ref ,@lambda-list)))))
+
+; define-symbol-macro - define symbol macro (needs compiler support)
+(defmacro define-symbol-macro (symbol expansion)
+  (declare (ignore symbol expansion))
+  nil)
+
+; define-setf-expander - define complex setf expansion (stub)
+(defmacro define-setf-expander (access-fn lambda-list &body body)
+  (declare (ignore access-fn lambda-list body))
+  nil)
+
+; define-compiler-macro - compiler optimization hint (stub)
+(defmacro define-compiler-macro (name lambda-list &body body)
+  (declare (ignore name lambda-list body))
+  nil)
+
+; define-method-combination - CLOS method combination (stub)
+(defmacro define-method-combination (name &rest args)
+  (declare (ignore name args))
+  nil)
+
+; formatter - compile format string (stub - just returns lambda)
+(defmacro formatter (control-string)
+  `(lambda (stream &rest args)
+     (apply #'format stream ,control-string args)))
+
+; pprint-logical-block - pretty-printing block (stub)
+(defmacro pprint-logical-block (spec &body body)
+  (let ((stream (car spec)))
+    `(progn
+       (princ "(" ,stream)
+       ,@body
+       (princ ")" ,stream))))
+
+; pprint-pop - pop from pprint list (stub)
+(defmacro pprint-pop ()
+  `(pop *pprint-list*))
+
+; pprint-exit-if-list-exhausted - exit if empty (stub)
+(defmacro pprint-exit-if-list-exhausted ()
+  `(when (null *pprint-list*)
+     (return-from nil nil)))
+
 ;;; ============================================================================
 ;;; Pathname Functions
 ;;; ============================================================================
