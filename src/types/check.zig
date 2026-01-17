@@ -247,6 +247,19 @@ pub const TypeChecker = struct {
             }
         }
 
+        // And: sub must be subtype of all alternatives
+        if (super.* == .@"and") {
+            for (super.@"and") |alt| {
+                if (!self.isSubtype(sub, alt)) return false;
+            }
+            return true;
+        }
+
+        // Not: sub cannot overlap with negated type
+        if (super.* == .not) {
+            return !self.isSubtype(sub, super.not);
+        }
+
         // Non-nil T is subtype of T
         if (sub.* == .non_nil) {
             return self.isSubtype(sub.non_nil, super);
