@@ -276,7 +276,7 @@
               (member x (cdr lst))))))
 
 ; Assoc - find pair in alist by key
-(defun assoc (key alist)
+(defun assoc (key (alist list))
   (if (null alist)
       nil
       (if (eq key (car (car alist)))

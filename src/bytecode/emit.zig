@@ -1058,6 +1058,7 @@ pub const Emitter = struct {
         const arity: u8 = @intCast(lam.params.len);
         const optional_count: u8 = @intCast(lam.optional_params.len);
         const key_count: u8 = @intCast(lam.key_params.len);
+        std.debug.print("emitLambda: params.len={}, arity={}\n", .{ lam.params.len, arity });
         lambda_emitter.arity = arity;
         lambda_emitter.optional_count = optional_count;
         lambda_emitter.key_count = key_count;
@@ -1273,7 +1274,7 @@ pub const Emitter = struct {
 
         // Jump back to start
         const back_distance = @as(i32, @intCast(loop_start)) -
-            @as(i32, @intCast(self.currentOffset() + 3)); // +3 for jmp instruction
+            @as(i32, @intCast(self.currentOffset() + 4)); // +4 for jmp instruction (2-byte opcode + 2-byte i16)
         if (back_distance > 32767 or back_distance < -32768) {
             return error.JumpTooLong;
         }

@@ -148,7 +148,7 @@
   (reverse-aux lst nil))
 
 ; Map (applies f to each element)
-(defun map (f lst)
+(defun (map -> list) (f (lst list))
   (if (null lst)
       nil
       (cons (funcall f (car lst)) (map f (cdr lst)))))
@@ -164,14 +164,14 @@
           (mapcar2 f (cdr lst1) (cdr lst2)))))
 
 ; Mapc - like map but for side effects, returns nil
-(defun mapc (f lst)
+(defun mapc (f (lst list))
   (if (null lst)
       nil
       (progn (funcall f (car lst))
              (mapc f (cdr lst)))))
 
 ; Filter (keeps elements where pred is true)
-(defun filter (pred lst)
+(defun (filter -> list) (pred (lst list))
   (if (null lst)
       nil
       (if (funcall pred (car lst))
@@ -179,13 +179,13 @@
           (filter pred (cdr lst)))))
 
 ; Fold left (reduce)
-(defun foldl (f acc lst)
+(defun foldl (f acc (lst list))
   (if (null lst)
       acc
       (foldl f (funcall f acc (car lst)) (cdr lst))))
 
 ; Fold right
-(defun foldr (f acc lst)
+(defun foldr (f acc (lst list))
   (if (null lst)
       acc
       (funcall f (car lst) (foldr f acc (cdr lst)))))
@@ -276,7 +276,7 @@
               (member x (cdr lst))))))
 
 ; Assoc - find pair in alist by key
-(defun assoc (key alist)
+(defun assoc (key (alist list))
   (if (null alist)
       nil
       (if (eq key (car (car alist)))
@@ -812,11 +812,11 @@
   (string< s2 s1))
 
 ; string<= - lexicographic less-than-or-equal
-(defun string<= (s1 s2)
+(defun string<= ((s1 string) (s2 string))
   (not (string> s1 s2)))
 
 ; string>= - lexicographic greater-than-or-equal
-(defun string>= (s1 s2)
+(defun string>= ((s1 string) (s2 string))
   (not (string< s1 s2)))
 
 ; char-whitespace-p - check if character is whitespace

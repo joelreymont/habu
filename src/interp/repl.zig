@@ -1404,8 +1404,12 @@ pub const Repl = struct {
         macro_vm.num_globals = source_vm.num_globals;
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        const closure = macro_vm.run(chunk_ptr) catch return error.RuntimeError;
+        const closure = macro_vm.run(chunk_ptr) catch |err| {
+            std.debug.print("handleDefmacro: run error: {}\n", .{err});
+            return error.RuntimeError;
+        };
 
+        std.debug.print("handleDefmacro: closure type={}, raw=0x{x}\n", .{ closure.typeKind(), closure.raw });
         if (!closure.isClosure()) return error.CompileError;
 
         // Store the closure in both REPL and Compiler macro tables
@@ -1671,6 +1675,7 @@ pub const Repl = struct {
             if (self.macros.get(name)) |macro_closure| {
                 // Expand macro: call the closure with the args
                 const expansion = try self.callMacro(macro_closure, cons.cdr);
+                std.debug.print("expandMacros: macro '{s}' expanded to type={}\n", .{ name, expansion.typeKind() });
                 // Recursively expand the result
                 return self.expandMacros(expansion);
             }
@@ -1761,6 +1766,9 @@ pub const Repl = struct {
         }
 
         // Create a chunk on the heap
+        std.debug.print("callMacro: Creating chunk with {} constants\n", .{constants.items.len});
+        std.debug.print("callMacro: argc={}\n", .{argc});
+        std.debug.print("callMacro: closure type={}\n", .{closure.typeKind()});
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
         defer emitter.deinit();
         const chunk = try self.heap.allocChunk(code_buf[0..code_len], constants.items, 0, 0, 0, false, 0);
@@ -1780,6 +1788,8 @@ pub const Repl = struct {
         }
         macro_vm.num_globals = source_vm.num_globals;
 
+        std.debug.print("callMacro: stack before call: sp={}\n", .{macro_vm.sp});
+
         var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
         defer chunk_ptrs.deinit(self.allocator);
         for (self.persistent_chunks.items) |chunk_val| {
@@ -1788,9 +1798,12 @@ pub const Repl = struct {
         macro_vm.setChunkPool(chunk_ptrs.items);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        return macro_vm.run(chunk_ptr) catch {
+        const result = macro_vm.run(chunk_ptr) catch |err| {
+            std.debug.print("callMacro: VM error: {}\n", .{err});
             return error.RuntimeError;
         };
+        std.debug.print("callMacro: result type={}, raw=0x{x}\n", .{ result.typeKind(), result.raw });
+        return result;
     }
 
     /// Handle package forms (defpackage/in-package) - execute them immediately
