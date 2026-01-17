@@ -226,7 +226,7 @@ pub const Repl = struct {
         emitter.deinit();
 
         // Record base before appending
-        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
+        const chunk_base = self.persistent_chunks.items.len;
 
         // Patch child chunks to use absolute indices
         for (child_chunks) |c| {
@@ -259,7 +259,7 @@ pub const Repl = struct {
         for (self.persistent_chunks.items) |chunk_val| {
             chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
         }
-        nested_vm.setChunkPool(chunk_ptrs.items);
+        nested_vm.setChunkPool(chunk_ptrs.items, chunk_base);
 
         // Execute
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
@@ -461,12 +461,7 @@ pub const Repl = struct {
         emitter.deinit();
 
         // Record base before appending
-        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
-
-        // Patch child chunks to use absolute indices
-        for (child_chunks) |child_chunk| {
-            patchChunkIndices(child_chunk.toPtr(runtime.objects.Chunk), chunk_base);
-        }
+        const chunk_base = self.persistent_chunks.items.len;
 
         // Store chunks persistently
         for (child_chunks) |child_chunk| {
@@ -479,7 +474,7 @@ pub const Repl = struct {
         for (self.persistent_chunks.items) |chunk_val| {
             chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
         }
-        vm.setChunkPool(chunk_ptrs.items);
+        vm.setChunkPool(chunk_ptrs.items, chunk_base);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         const result = vm.run(chunk_ptr) catch {
@@ -810,12 +805,7 @@ pub const Repl = struct {
         };
 
         // Record base before appending
-        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
-
-        // Patch child chunks to use absolute indices
-        for (child_chunks) |c| {
-            patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
-        }
+        const chunk_base = self.persistent_chunks.items.len;
 
         // Store child chunks persistently (closures need them beyond this eval)
         for (child_chunks) |c| {
@@ -833,7 +823,7 @@ pub const Repl = struct {
             const chunk_ptr = chunk_val.toPtr(runtime.objects.Chunk);
             chunk_ptrs.appendAssumeCapacity(chunk_ptr);
         }
-        self.vm.setChunkPool(chunk_ptrs.items);
+        self.vm.setChunkPool(chunk_ptrs.items, chunk_base);
 
         const result = self.vm.run(chunk.toPtr(runtime.objects.Chunk)) catch |err| {
             err_info.* = .{
@@ -930,6 +920,7 @@ pub const Repl = struct {
         emitter.deinit();
 
         // Record base index before adding child chunks
+        const chunk_base = self.persistent_chunks.items.len;
 
         // Add child chunks to persistent storage
         for (child_chunks) |c| {
@@ -947,7 +938,7 @@ pub const Repl = struct {
         for (self.persistent_chunks.items) |chunk_val| {
             chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
         }
-        self.vm.setChunkPool(chunk_ptrs.items);
+        self.vm.setChunkPool(chunk_ptrs.items, chunk_base);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         return self.vm.run(chunk_ptr) catch return error.RuntimeError;
@@ -1352,12 +1343,7 @@ pub const Repl = struct {
         emitter.deinit();
 
         // Record base before appending
-        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
-
-        // Patch child chunks to use absolute indices
-        for (child_chunks) |c| {
-            patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
-        }
+        const chunk_base = self.persistent_chunks.items.len;
 
         // Add child chunks
         for (child_chunks) |c| {
@@ -1374,7 +1360,7 @@ pub const Repl = struct {
         for (self.persistent_chunks.items) |chunk_val| {
             chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
         }
-        macro_vm.setChunkPool(chunk_ptrs.items);
+        macro_vm.setChunkPool(chunk_ptrs.items, chunk_base);
 
         // Copy globals from current context
         const source_vm = self.current_vm orelse &self.vm;
@@ -1547,12 +1533,7 @@ pub const Repl = struct {
         emitter.deinit();
 
         // Record base before appending
-        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
-
-        // Patch child chunks to use absolute indices
-        for (child_chunks) |c| {
-            patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
-        }
+        const chunk_base = self.persistent_chunks.items.len;
 
         // Add child chunks
         for (child_chunks) |c| {
@@ -1568,7 +1549,7 @@ pub const Repl = struct {
         for (self.persistent_chunks.items) |chunk_val| {
             chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
         }
-        eval_vm.setChunkPool(chunk_ptrs.items);
+        eval_vm.setChunkPool(chunk_ptrs.items, chunk_base);
 
         eval_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         eval_vm.setEvalCallback(&evalCallback, @ptrCast(self));
@@ -1765,7 +1746,7 @@ pub const Repl = struct {
         for (self.persistent_chunks.items) |chunk_val| {
             chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
         }
-        macro_vm.setChunkPool(chunk_ptrs.items);
+        macro_vm.setChunkPool(chunk_ptrs.items, 0);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         return macro_vm.run(chunk_ptr) catch return error.RuntimeError;
