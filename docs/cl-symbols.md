@@ -596,30 +596,30 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | copy-seq | ✓ | stdlib.habu | Copy sequence |
 | count | ✓ | compile.zig:193 | Count element |
 | count-if | ✓ | stdlib.habu | Count by pred |
-| count-if-not | ✗ | - | |
+| count-if-not | ✓ | stdlib.habu | Count not pred |
 | delete | ✓ | stdlib.habu | Destructive remove |
 | delete-duplicates | ✓ | stdlib.habu | Delete dups |
 | delete-if | ✓ | stdlib.habu | Delete by pred |
 | delete-if-not | ✓ | stdlib.habu | Delete not pred |
 | elt | ✓ | stdlib.habu:417 | Sequence element |
 | every | ✓ | stdlib.habu | All satisfy |
-| fill | ✗ | - | |
+| fill | ✓ | stdlib.habu | Fill sequence |
 | find | ✓ | compile.zig:191 | Find element |
 | find-if | ✓ | stdlib.habu | Find by pred |
-| find-if-not | ✗ | - | |
+| find-if-not | ✓ | stdlib.habu | Find not pred |
 | length | ✓ | compile.zig:184 | Sequence length |
-| map | ✗ | - | |
+| map | ✓ | stdlib.habu | Map function |
 | map-into | ✗ | - | |
-| merge | ✗ | - | |
-| mismatch | ✗ | - | |
+| merge | ✓ | stdlib.habu | Merge sequences |
+| mismatch | ✓ | stdlib.habu | Find first mismatch |
 | notany | ✓ | stdlib.habu | None satisfy |
 | notevery | ✓ | stdlib.habu | Not all satisfy |
-| nsubstitute | ✗ | - | |
+| nsubstitute | ✓ | stdlib.habu | Destructive substitute |
 | nsubstitute-if | ✗ | - | |
 | nsubstitute-if-not | ✗ | - | |
 | position | ✓ | compile.zig:192 | Find position |
 | position-if | ✓ | stdlib.habu | Position by pred |
-| position-if-not | ✗ | - | |
+| position-if-not | ✓ | stdlib.habu | Position not pred |
 | reduce | ✓ | stdlib.habu:152 | Reduce sequence |
 | remove | ✓ | compile.zig:194 | Remove element |
 | remove-duplicates | ✓ | stdlib.habu | Remove dups |
