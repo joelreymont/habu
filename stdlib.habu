@@ -2566,6 +2566,21 @@
   (declare (ignore x))
   nil)
 
+; simple-bit-vector-p - no bit vectors yet
+(defun simple-bit-vector-p (x)
+  (declare (ignore x))
+  nil)
+
+; adjustable-array-p - no adjustable arrays yet (all static)
+(defun adjustable-array-p (x)
+  (declare (ignore x))
+  nil)
+
+; array-has-fill-pointer-p - no fill pointers yet
+(defun array-has-fill-pointer-p (x)
+  (declare (ignore x))
+  nil)
+
 ; packagep - no packages yet
 (defun packagep (x)
   (declare (ignore x))
