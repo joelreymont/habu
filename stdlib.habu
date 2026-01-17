@@ -322,6 +322,148 @@
   (declare (ignore condition))
   nil)
 
+;;; ============================================================================
+;;; Array functions
+;;; ============================================================================
+
+; array-dimensions - get list of dimensions
+(defun array-dimensions (array)
+  (list (length array)))
+
+; array-dimension - get specific dimension
+(defun array-dimension (array axis)
+  (declare (ignore axis))
+  (length array))
+
+; array-rank - number of dimensions
+(defun array-rank (array)
+  (declare (ignore array))
+  1) ; vectors only
+
+; array-total-size - total number of elements
+(defun array-total-size (array)
+  (length array))
+
+; array-element-type - element type
+(defun array-element-type (array)
+  (declare (ignore array))
+  't)
+
+; array-row-major-index - convert indices to linear index
+(defun array-row-major-index (array &rest subscripts)
+  (declare (ignore array))
+  (car subscripts))
+
+; array-in-bounds-p - check if indices are in bounds
+(defun array-in-bounds-p (array &rest subscripts)
+  (every (lambda (i) (and (>= i 0) (< i (length array)))) subscripts))
+
+; row-major-aref - access by row-major index
+(defun row-major-aref (array index)
+  (svref array index))
+
+; array-displacement - get displacement (none for simple arrays)
+(defun array-displacement (array)
+  (declare (ignore array))
+  (values nil 0))
+
+; adjust-array - resize array (stub - returns same array)
+(defun adjust-array (array new-dimensions &rest args)
+  (declare (ignore new-dimensions args))
+  array)
+
+; upgraded-array-element-type - actual element type used
+(defun upgraded-array-element-type (typespec &optional environment)
+  (declare (ignore typespec environment))
+  't)
+
+; fill-pointer - get fill pointer (stub - no fill pointers)
+(defun fill-pointer (vector)
+  (declare (ignore vector))
+  nil)
+
+; vector-push - push onto fill pointer vector (stub)
+(defun vector-push (new-element vector)
+  (declare (ignore new-element vector))
+  nil)
+
+; vector-push-extend - push with extension (stub)
+(defun vector-push-extend (new-element vector &optional extension)
+  (declare (ignore new-element vector extension))
+  nil)
+
+; vector-pop - pop from fill pointer vector (stub)
+(defun vector-pop (vector)
+  (declare (ignore vector))
+  nil)
+
+;;; Bit vector operations (stubs - no bit vectors yet)
+
+; bit - access bit in bit vector
+(defun bit (bit-array &rest subscripts)
+  (declare (ignore bit-array subscripts))
+  0)
+
+; sbit - access simple bit vector
+(defun sbit (bit-array subscript)
+  (declare (ignore bit-array subscript))
+  0)
+
+; bit-and - bitwise and on bit arrays
+(defun bit-and (bit-array1 bit-array2 &optional result-bit-array)
+  (declare (ignore bit-array1 bit-array2 result-bit-array))
+  nil)
+
+; bit-ior - bitwise or on bit arrays
+(defun bit-ior (bit-array1 bit-array2 &optional result-bit-array)
+  (declare (ignore bit-array1 bit-array2 result-bit-array))
+  nil)
+
+; bit-xor - bitwise xor on bit arrays
+(defun bit-xor (bit-array1 bit-array2 &optional result-bit-array)
+  (declare (ignore bit-array1 bit-array2 result-bit-array))
+  nil)
+
+; bit-eqv - bitwise equivalence
+(defun bit-eqv (bit-array1 bit-array2 &optional result-bit-array)
+  (declare (ignore bit-array1 bit-array2 result-bit-array))
+  nil)
+
+; bit-nand - bitwise nand
+(defun bit-nand (bit-array1 bit-array2 &optional result-bit-array)
+  (declare (ignore bit-array1 bit-array2 result-bit-array))
+  nil)
+
+; bit-nor - bitwise nor
+(defun bit-nor (bit-array1 bit-array2 &optional result-bit-array)
+  (declare (ignore bit-array1 bit-array2 result-bit-array))
+  nil)
+
+; bit-andc1 - bitwise and complement 1
+(defun bit-andc1 (bit-array1 bit-array2 &optional result-bit-array)
+  (declare (ignore bit-array1 bit-array2 result-bit-array))
+  nil)
+
+; bit-andc2 - bitwise and complement 2
+(defun bit-andc2 (bit-array1 bit-array2 &optional result-bit-array)
+  (declare (ignore bit-array1 bit-array2 result-bit-array))
+  nil)
+
+; bit-orc1 - bitwise or complement 1
+(defun bit-orc1 (bit-array1 bit-array2 &optional result-bit-array)
+  (declare (ignore bit-array1 bit-array2 result-bit-array))
+  nil)
+
+; bit-orc2 - bitwise or complement 2
+(defun bit-orc2 (bit-array1 bit-array2 &optional result-bit-array)
+  (declare (ignore bit-array1 bit-array2 result-bit-array))
+  nil)
+
+; bit-not - bitwise not
+(defun bit-not (bit-array &optional result-bit-array)
+  (declare (ignore bit-array result-bit-array))
+  nil)
+
 (defun warn (msg)
   (print msg)
   nil)
