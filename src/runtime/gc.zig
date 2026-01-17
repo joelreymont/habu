@@ -326,7 +326,7 @@ pub const GC = struct {
                         chunk.const_pool = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_const_pool)) + addr_delta)));
                         chunk.code = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_code)) + addr_delta)));
                     },
-                    .rational, .complex, .stream, .bignum, .pathname, .package, .condition => {
+                    .rational, .complex, .stream, .bignum, .pathname, .package, .condition, .class => {
                         // No interior pointers to repair
                     },
                 }
@@ -475,6 +475,18 @@ pub const GC = struct {
                         }
                         if (cond.format_args.isPointer() and !cond.format_args.isNil()) {
                             cond.format_args = try self.copyValue(cond.format_args, alloc_ptr);
+                        }
+                    },
+                    .class => {
+                        // Scan class Value references
+                        const cls: *objects.Class = @ptrFromInt(addr);
+                        if (cls.name.isPointer() and !cls.name.isNil()) {
+                            cls.name = try self.copyValue(cls.name, alloc_ptr);
+                        }
+                        for (cls.shared_slots[0..cls.num_shared]) |*slot_val| {
+                            if (slot_val.isPointer() and !slot_val.isNil()) {
+                                slot_val.* = try self.copyValue(slot_val.*, alloc_ptr);
+                            }
                         }
                     },
                     .stream => {

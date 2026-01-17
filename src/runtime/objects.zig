@@ -180,6 +180,7 @@ pub const BoxedKind = enum(u64) {
     package = 7,
     chunk = 8,
     condition = 9,
+    class = 10,
 };
 
 /// Stream direction
@@ -582,6 +583,10 @@ pub fn objectSize(val: Value) usize {
                 .pathname => @sizeOf(Pathname),
                 .package => @sizeOf(Package),
                 .condition => @sizeOf(Condition),
+                .class => {
+                    const cls = val.toPtr(Class);
+                    break :blk @sizeOf(Class) + cls.num_shared * @sizeOf(Value);
+                },
                 .chunk => {
                     const chunk = val.toPtr(Chunk);
                     // Header + const pool + bytecode (both aligned to 8)
@@ -654,6 +659,16 @@ pub fn forEachValue(val: Value, callback: *const fn (Value) void) void {
                 .rational, .complex, .stream, .bignum, .pathname, .array => {
                     // No internal Values to scan
                 },
+                .class => {
+                    const cls = val.toPtr(Class);
+                    callback(cls.name);
+                    for (cls.shared_slots[0..cls.num_shared]) |slot_val| {
+                        callback(slot_val);
+                    }
+                },
+                .condition => {
+                    // No internal Values to scan
+                },
             }
         },
         .forwarding => {
@@ -722,3 +737,16 @@ test "condition layout" {
     const testing = std.testing;
     try testing.expectEqual(@as(usize, 32), @sizeOf(Condition));
 }
+
+/// Class: CLOS class metaobject with shared slot storage
+/// Size: 32 bytes + slot data
+pub const Class = extern struct {
+    kind: BoxedKind align(16),
+    /// Class name (symbol)
+    name: Value,
+    /// Number of shared slots
+    num_shared: u32,
+    _pad: u32 = 0,
+    /// Pointer to shared slot values array
+    shared_slots: [*]Value,
+};

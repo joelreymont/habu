@@ -264,6 +264,7 @@ pub fn typeOf(heap: *Heap, val: Value) !Value {
         .package => heap.intern("package"),
         .chunk => heap.intern("compiled-function"),
         .condition => heap.intern("condition"),
+        .class => heap.intern("standard-class"),
     };
 }
 

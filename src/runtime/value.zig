@@ -59,6 +59,7 @@ pub const TypeKind = enum {
     package,
     chunk,
     condition,
+    class,
 };
 
 /// A tagged Habu value (64-bit)
@@ -271,6 +272,7 @@ pub const Value = packed struct {
                     .package => .package,
                     .chunk => .chunk,
                     .condition => .condition,
+                    .class => .class,
                 };
             },
             .forwarding => .cons, // Shouldn't happen during normal execution

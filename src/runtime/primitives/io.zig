@@ -464,6 +464,11 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
             const type_sym = cond.type_sym.toPtr(objects.Symbol);
             try w.print("#<condition {s}>", .{type_sym.getName()});
         },
+        .class => {
+            const cls = val.toPtr(objects.Class);
+            const name_sym = cls.name.toPtr(objects.Symbol);
+            try w.print("#<class {s}>", .{name_sym.getName()});
+        },
     }
 }
 
@@ -622,6 +627,11 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
             const cond = val.toPtr(objects.Condition);
             const type_sym = cond.type_sym.toPtr(objects.Symbol);
             try w.print("#<condition {s}>", .{type_sym.getName()});
+        },
+        .class => {
+            const cls = val.toPtr(objects.Class);
+            const name_sym = cls.name.toPtr(objects.Symbol);
+            try w.print("#<class {s}>", .{name_sym.getName()});
         },
     }
 }

@@ -472,6 +472,9 @@ pub const Builtins = struct {
     kw_colon: Value,
     kw_type: Value,
     kw_initform: Value,
+    kw_allocation: Value,
+    kw_instance: Value,
+    kw_class: Value,
 
     // *features* keywords
     kw_habu: Value,
@@ -857,6 +860,9 @@ pub const Builtins = struct {
             .kw_colon = try heap.intern(":"),
             .kw_type = try heap.internKeyword("type"),
             .kw_initform = try heap.internKeyword("initform"),
+            .kw_allocation = try heap.internKeyword("allocation"),
+            .kw_instance = try heap.internKeyword("instance"),
+            .kw_class = try heap.internKeyword("class"),
             // *features* keywords
             .kw_habu = try heap.internKeyword("habu"),
             .kw_zig = try heap.internKeyword("zig"),
@@ -1670,6 +1676,7 @@ pub const Compiler = struct {
                 .package => &types.t_any, // Packages are rare as literals
                 .chunk => &types.t_any, // Chunks are internal
                 .condition => &types.t_any, // Condition objects
+                .class => &types.t_any, // Class objects
             },
             .@"var" => |v| {
                 // Check occurrence typing first (narrowed types)
@@ -5552,11 +5559,18 @@ pub const Compiler = struct {
         return try self.builder.progn(defs);
     }
 
+    /// Slot allocation type
+    const Allocation = enum {
+        instance, // :allocation :instance (default)
+        class, // :allocation :class (shared across all instances)
+    };
+
     /// Slot specification with name, type, and optional init form
     const SlotSpec = struct {
         name: []const u8,
         field_type: *const types.Type,
         initform: ?Value = null, // Optional initialization expression
+        allocation: Allocation = .instance,
     };
 
     /// Generate constructor: creates a closure that takes args, checks types, returns vector
@@ -6293,9 +6307,10 @@ pub const Compiler = struct {
                 const slot_name_raw = spec_cons.car.toPtr(Symbol).getName();
                 const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
 
-                // Extract :type and :initform options
+                // Extract :type, :initform, and :allocation options
                 var field_type: *const types.Type = &types.t_any;
                 var initform: ?Value = null;
+                var allocation: Allocation = .instance;
                 var opts = spec_cons.cdr;
                 while (opts.isCons()) {
                     const opt_cons = opts.toPtr(Cons);
@@ -6322,6 +6337,21 @@ pub const Compiler = struct {
                                 opts = init_cons.cdr;
                                 continue;
                             }
+                        } else if (opt_key.eq(b.kw_allocation)) {
+                            // allocation keyword - next element is :instance or :class
+                            if (opt_cons.cdr.isCons()) {
+                                const alloc_cons = opt_cons.cdr.toPtr(Cons);
+                                const alloc_val = alloc_cons.car;
+                                if (alloc_val.isKeyword()) {
+                                    if (alloc_val.eq(b.kw_class)) {
+                                        allocation = .class;
+                                    } else if (alloc_val.eq(b.kw_instance)) {
+                                        allocation = .instance;
+                                    }
+                                }
+                                opts = alloc_cons.cdr;
+                                continue;
+                            }
                         }
                     }
 
@@ -6337,6 +6367,7 @@ pub const Compiler = struct {
                     .name = slot_name,
                     .field_type = field_type,
                     .initform = initform,
+                    .allocation = allocation,
                 }) catch |e| return e;
             } else {
                 return error.InvalidSyntax;

@@ -1,9 +1,9 @@
 ---
 title: Add CLOS shared slot allocation
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-01-16T13:41:46.478067+02:00"
+created-at: "\"2026-01-16T13:41:46.478067+02:00\""
 ---
 
 src/runtime/objects.zig: Add :allocation :class support
