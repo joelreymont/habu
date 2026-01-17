@@ -507,7 +507,6 @@ pub const Repl = struct {
     /// Pipeline: annotate → infer → erase
     fn runPipeline(self: *Repl, ir_node: *const Ir) !*const Ir {
         return passes.runNanoPipeline(self.allocator, &self.vm.builtins, ir_node) catch |err| {
-            std.debug.print("Pipeline error: {}\n", .{err});
             return err;
         };
     }
@@ -912,7 +911,6 @@ pub const Repl = struct {
         const ir_node = self.compiler.compile(expr, &env) catch |err| {
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
-            std.debug.print("Compiler.compile error: {}\n", .{err});
             return if (err == error.UnboundVariable) error.CompileError else error.CompileError;
         };
         self.compiler.builder = saved_builder;
@@ -1204,16 +1202,7 @@ pub const Repl = struct {
 
             if (end > start) {
                 const expr = content[start..end];
-                _ = self.eval(expr) catch |err| {
-                    const max_display = 200;
-                    const display_expr = if (expr.len <= max_display) expr else expr[0..max_display];
-                    const suffix = if (expr.len > max_display) "..." else "";
-                    try writer.print("Error evaluating: {s}{s}\n  {s}\n", .{ display_expr, suffix, @errorName(err) });
-                    if (err == error.CompileError) {
-                        std.debug.print("DEBUG: CompileError on expr: {s}\n", .{expr});
-                    }
-                    return err;
-                };
+                _ = try self.eval(expr);
                 pos = end;
             } else {
                 break;
@@ -1410,12 +1399,10 @@ pub const Repl = struct {
         macro_vm.num_globals = source_vm.num_globals;
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        const closure = macro_vm.run(chunk_ptr) catch |err| {
-            std.debug.print("handleDefmacro: run error: {}\n", .{err});
+        const closure = macro_vm.run(chunk_ptr) catch {
             return error.RuntimeError;
         };
 
-        std.debug.print("handleDefmacro: closure type={}, raw=0x{x}\n", .{ closure.typeKind(), closure.raw });
         if (!closure.isClosure()) return error.CompileError;
 
         // Store the closure in both REPL and Compiler macro tables
@@ -1549,7 +1536,6 @@ pub const Repl = struct {
         const ir_node = self.compiler.compile(expr, &env) catch |err| {
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
-            std.debug.print("Compiler.compile error: {}\n", .{err});
             return if (err == error.UnboundVariable) error.CompileError else error.CompileError;
         };
         self.compiler.builder = saved_builder;
@@ -1675,7 +1661,6 @@ pub const Repl = struct {
             // Skip special forms that shouldn't be expanded
             if (self.compiler.builtins) |b| {
                 if (head.raw == b.quote.raw or head.raw == b.quasiquote.raw or head.raw == b.lambda.raw) {
-                    std.debug.print("expandMacros: skipping special form\n", .{});
                     return expr; // Don't expand inside quote or lambda
                 }
             }
@@ -1683,7 +1668,6 @@ pub const Repl = struct {
             if (self.macros.get(name)) |macro_closure| {
                 // Expand macro: call the closure with the args
                 const expansion = try self.callMacro(macro_closure, cons.cdr);
-                std.debug.print("expandMacros: macro '{s}' expanded to type={}\n", .{ name, expansion.typeKind() });
                 // Recursively expand the result
                 return self.expandMacros(expansion);
             }
@@ -1774,9 +1758,6 @@ pub const Repl = struct {
         }
 
         // Create a chunk on the heap
-        std.debug.print("callMacro: Creating chunk with {} constants\n", .{constants.items.len});
-        std.debug.print("callMacro: argc={}\n", .{argc});
-        std.debug.print("callMacro: closure type={}\n", .{closure.typeKind()});
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
         defer emitter.deinit();
         const chunk = try self.heap.allocChunk(code_buf[0..code_len], constants.items, 0, 0, 0, false, 0);
@@ -1796,8 +1777,6 @@ pub const Repl = struct {
         }
         macro_vm.num_globals = source_vm.num_globals;
 
-        std.debug.print("callMacro: stack before call: sp={}\n", .{macro_vm.sp});
-
         var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
         defer chunk_ptrs.deinit(self.allocator);
         for (self.persistent_chunks.items) |chunk_val| {
@@ -1806,11 +1785,9 @@ pub const Repl = struct {
         macro_vm.setChunkPool(chunk_ptrs.items);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        const result = macro_vm.run(chunk_ptr) catch |err| {
-            std.debug.print("callMacro: VM error: {}\n", .{err});
+        const result = macro_vm.run(chunk_ptr) catch {
             return error.RuntimeError;
         };
-        std.debug.print("callMacro: result type={}, raw=0x{x}\n", .{ result.typeKind(), result.raw });
         return result;
     }
 

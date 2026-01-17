@@ -5086,21 +5086,16 @@ pub const Vm = struct {
         // Get function value (below args on stack)
         const fn_val = self.stack[self.sp - argc - 1];
 
-        std.debug.print("doCall: argc={}, fn_val type={}, raw=0x{x}\n", .{ argc, fn_val.typeKind(), fn_val.raw });
         if (!fn_val.isClosure()) {
-            std.debug.print("doCall: NOT A CLOSURE!\n", .{});
             return error.TypeMismatch;
         }
 
         const closure = fn_val.toPtr(runtime.Closure);
         const callee_chunk: *const Chunk = closure.code.toPtr(Chunk);
-        std.debug.print("doCall: closure.code at 0x{x}\n", .{@intFromPtr(callee_chunk)});
         const arity = callee_chunk.arity;
-        std.debug.print("doCall: read arity from chunk: {}\n", .{arity});
         const opt_count = callee_chunk.opt_count;
         const key_count = callee_chunk.key_count;
         const max_positional = arity + opt_count;
-        std.debug.print("doCall: arity={}, opt={}, key={}, has_rest={}\n", .{ arity, opt_count, key_count, callee_chunk.has_rest });
 
         // Find where keyword args actually start by scanning for first keyword
         // This handles cases like (foo req :k v) where optional is omitted
@@ -5141,17 +5136,6 @@ pub const Vm = struct {
         } else {
             // Fixed: need exact arity
             if (argc != arity) {
-                std.debug.print("doCall: arity mismatch: argc={}, arity={}\n", .{ argc, arity });
-                std.debug.print("doCall: callee_ptr=0x{x}, code=0x{x}\n", .{ @intFromPtr(callee_chunk), closure.code.raw });
-                std.debug.print("doCall: caller IP: {}\n", .{self.ip});
-                std.debug.print("doCall: stack args:\n", .{});
-                var j: u8 = 0;
-                while (j < argc) : (j += 1) {
-                    const arg = self.stack[self.sp - argc + j];
-                    std.debug.print("  arg[{}]: type={s}, raw=0x{x}\n", .{ j, @tagName(arg.typeKind()), arg.raw });
-                }
-                // Try to disassemble the caller's instruction
-                std.debug.print("doCall: caller chunk at 0x{x}\n", .{@intFromPtr(self.chunk)});
                 return error.TypeMismatch;
             }
         }

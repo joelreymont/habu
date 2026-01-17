@@ -65,9 +65,14 @@
      (string= a b))
     (t nil)))
 
-; Error signaling via condition system
-(defun error (msg) (signal (quote error) msg))
-(defun warn (msg) (signal (quote warning) msg))
+; Error signaling - simplified stub
+(defun error (msg)
+  (print msg)
+  nil)
+
+(defun warn (msg)
+  (print msg)
+  nil)
 
 ; ignore-errors - catch any error and return nil
 (defmacro ignore-errors (&rest forms)
@@ -451,6 +456,7 @@
             ((eq op 'rest) (list 'rplacd (car rest) value))
             ((eq op 'svref) (list '%svset (car rest) (car (cdr rest)) value))
             ((eq op 'aref) (cons '%aset (append* rest (list value))))
+            ((eq op 'char) (list '%sset (car rest) (car (cdr rest)) value))
             ((eq op 'gethash) (list 'puthash (car rest) value (car (cdr rest))))
             ((eq op 'nth) (list 'rplaca (list 'nthcdr (car rest) (car (cdr rest))) value))
             ((eq op 'elt)
@@ -1030,6 +1036,21 @@
       ((eq result-type 'vector)
        (coerce combined 'vector))
       (t combined))))
+
+; String/list conversion helpers
+(defun string-to-list (str)
+  (let ((result nil)
+        (len (length str)))
+    (dotimes (i len (nreverse result))
+      (push (char str i) result))))
+
+(defun list-to-string (lst)
+  (let* ((len (length lst))
+         (str (make-string len #\space)))
+    (let ((i 0))
+      (dolist (ch lst str)
+        (setf (char str i) ch)
+        (setq i (+ i 1))))))
 
 ; coerce - convert between sequence types
 (defun coerce (object result-type)

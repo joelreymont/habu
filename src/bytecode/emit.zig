@@ -1058,7 +1058,6 @@ pub const Emitter = struct {
         const arity: u8 = @intCast(lam.params.len);
         const optional_count: u8 = @intCast(lam.optional_params.len);
         const key_count: u8 = @intCast(lam.key_params.len);
-        std.debug.print("emitLambda: params.len={}, arity={}\n", .{ lam.params.len, arity });
         lambda_emitter.arity = arity;
         lambda_emitter.optional_count = optional_count;
         lambda_emitter.key_count = key_count;

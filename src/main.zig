@@ -40,6 +40,9 @@ pub fn main() !void {
     // Auto-load stdlib.habu
     repl.loadFilePublic("stdlib.habu", writer) catch |err| {
         try writer.print("; Warning: Could not load stdlib.habu: {s}\n", .{@errorName(err)});
+        if (err == error.IoError) {
+            try writer.print("; Hint: Run from project root directory\n", .{});
+        }
     };
     try writer.flush();
 
