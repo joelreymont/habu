@@ -19,6 +19,7 @@ const normalize_mod = @import("normalize.zig");
 const refinement_mod = @import("refinement.zig");
 
 const Type = type_mod.Type;
+const eqlBound = type_mod.eqlBound;
 const Quantity = type_mod.Quantity;
 const Term = term_mod.Term;
 const Normalizer = normalize_mod.Normalizer;
@@ -78,6 +79,32 @@ pub const TypeConverter = struct {
             // Primitive types - must be identical
             .primitive => |p1| switch (t2.*) {
                 .primitive => |p2| p1 == p2,
+                else => false,
+            },
+
+            // Range types - structural equality
+            .integer => |int1| switch (t2.*) {
+                .integer => |int2| blk: {
+                    if (!eqlBound(int1.low, int2.low)) break :blk false;
+                    if (!eqlBound(int1.high, int2.high)) break :blk false;
+                    break :blk true;
+                },
+                else => false,
+            },
+            .rational_range => |rat1| switch (t2.*) {
+                .rational_range => |rat2| blk: {
+                    if (!eqlBound(rat1.low, rat2.low)) break :blk false;
+                    if (!eqlBound(rat1.high, rat2.high)) break :blk false;
+                    break :blk true;
+                },
+                else => false,
+            },
+            .float_range => |flt1| switch (t2.*) {
+                .float_range => |flt2| blk: {
+                    if (!eqlBound(flt1.low, flt2.low)) break :blk false;
+                    if (!eqlBound(flt1.high, flt2.high)) break :blk false;
+                    break :blk true;
+                },
                 else => false,
             },
 

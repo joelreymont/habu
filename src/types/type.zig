@@ -77,6 +77,32 @@ pub const Quantity = enum {
 // Primitive Types
 // ============================================================================
 
+/// Numeric range bound
+/// null = *, unspecified
+/// exclusive = (* value)
+pub const Bound = union(enum) {
+    inclusive: i64,
+    exclusive: i64,
+};
+
+/// Check if two bounds are equal
+pub fn eqlBound(a: ?Bound, b: ?Bound) bool {
+    if (a == null and b == null) return true;
+    if (a == null or b == null) return false;
+    const av = a.?;
+    const bv = b.?;
+    return switch (av) {
+        .inclusive => |ai| switch (bv) {
+            .inclusive => |bi| ai == bi,
+            .exclusive => false,
+        },
+        .exclusive => |ae| switch (bv) {
+            .exclusive => |be| ae == be,
+            .inclusive => false,
+        },
+    };
+}
+
 /// Primitive types matching Habu's tagged value scheme
 /// Note: enum values are NOT the runtime tags (see tag() method)
 pub const Primitive = enum {
@@ -180,6 +206,24 @@ pub const Type = union(enum) {
 
     /// Primitive type
     primitive: Primitive,
+
+    /// Integer with range: (integer low high)
+    integer: struct {
+        low: ?Bound,
+        high: ?Bound,
+    },
+
+    /// Rational with range: (rational low high)
+    rational_range: struct {
+        low: ?Bound,
+        high: ?Bound,
+    },
+
+    /// Float with range: (float low high)
+    float_range: struct {
+        low: ?Bound,
+        high: ?Bound,
+    },
 
     /// Union type: (or T1 T2 ...)
     @"or": []const *const Type,
@@ -321,6 +365,7 @@ pub const Type = union(enum) {
     pub fn couldBeNil(self: Type) bool {
         return switch (self) {
             .primitive => |p| p == .nil,
+            .integer, .rational_range, .float_range => false,
             .@"or" => |types| {
                 for (types) |t| {
                     if (t.couldBeNil()) return true;
@@ -359,6 +404,9 @@ pub const Type = union(enum) {
     pub fn name(self: Type) []const u8 {
         return switch (self) {
             .primitive => |p| p.name(),
+            .integer => "(integer ...)",
+            .rational_range => "(rational ...)",
+            .float_range => "(float ...)",
             .@"or" => "(or ...)",
             .@"and" => "(and ...)",
             .not => "(not ...)",
@@ -387,6 +435,30 @@ pub const Type = union(enum) {
         return switch (self) {
             .primitive => |p| switch (other) {
                 .primitive => |op| p == op,
+                else => false,
+            },
+            .integer => |i| switch (other) {
+                .integer => |oi| blk: {
+                    if (!eqlBound(i.low, oi.low)) break :blk false;
+                    if (!eqlBound(i.high, oi.high)) break :blk false;
+                    break :blk true;
+                },
+                else => false,
+            },
+            .rational_range => |r| switch (other) {
+                .rational_range => |or_| blk: {
+                    if (!eqlBound(r.low, or_.low)) break :blk false;
+                    if (!eqlBound(r.high, or_.high)) break :blk false;
+                    break :blk true;
+                },
+                else => false,
+            },
+            .float_range => |f| switch (other) {
+                .float_range => |of| blk: {
+                    if (!eqlBound(f.low, of.low)) break :blk false;
+                    if (!eqlBound(f.high, of.high)) break :blk false;
+                    break :blk true;
+                },
                 else => false,
             },
             .any => other == .any,

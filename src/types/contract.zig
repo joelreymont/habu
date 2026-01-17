@@ -328,6 +328,14 @@ pub const ContractCompiler = struct {
                     },
                 };
             },
+            .integer, .rational_range, .float_range => {
+                ctc.* = .{
+                    .flat = .{
+                        .predicate = predicates.isFixnum,
+                        .type_name = ty.name(),
+                    },
+                };
+            },
             .any => {
                 ctc.* = .{
                     .flat = .{

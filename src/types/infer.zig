@@ -995,6 +995,7 @@ fn typeEquals(t1: *const types.Type, t2: *const types.Type) bool {
 
     return switch (t1.*) {
         .primitive => |p1| t2.* == .primitive and p1 == t2.primitive,
+        .integer, .rational_range, .float_range => t1.eql(t2.*),
         .any => t2.* == .any,
         .type_level => t2.* == .type_level,
 
