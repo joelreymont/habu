@@ -1062,11 +1062,11 @@
 
 (defun list-to-string (lst)
   (let* ((len (length lst))
-         (str (make-string len #\space)))
-    (let ((i 0))
-      (dolist (ch lst str)
-        (setf (char str i) ch)
-        (setq i (+ i 1))))))
+         (str (make-string len #\space))
+         (i 0))
+    (dolist (ch lst str)
+      (setf (char str i) ch)
+      (setq i (+ i 1)))))
 
 ; coerce - convert between sequence types
 (defun coerce (object result-type)
