@@ -3382,3 +3382,42 @@
 ;; prin1 - same as write (readable output)
 (defun prin1 (object &optional stream)
   (write object stream))
+
+;; CLOS initialization protocol
+
+(defgeneric initialize-instance (instance &rest initargs)
+  (:documentation "Initialize a newly created instance with initargs"))
+
+(defmethod initialize-instance (instance &rest initargs)
+  "Default method: set slots from initargs"
+  (loop for (kw val) on initargs by #'cddr
+        do (when (keywordp kw)
+             (let ((slot-name (intern (symbol-name kw))))
+               (when (slot-exists-p instance slot-name)
+                 (setf (slot-value instance slot-name) val)))))
+  instance)
+
+(defgeneric reinitialize-instance (instance &rest initargs)
+  (:documentation "Update an existing instance with new initargs"))
+
+(defmethod reinitialize-instance (instance &rest initargs)
+  "Default method: update slots from initargs"
+  (apply #'initialize-instance instance initargs))
+
+(defgeneric update-instance-for-different-class (previous current &rest initargs)
+  (:documentation "Called by change-class to update instance after class change"))
+
+(defmethod update-instance-for-different-class (previous current &rest initargs)
+  "Default method: initialize new slots"
+  (apply #'initialize-instance current initargs))
+
+;; change-class: dynamically change an object's class
+(defun change-class (instance new-class &rest initargs)
+  "Change the class of INSTANCE to NEW-CLASS, copying compatible slots"
+  ;; For now, simplified implementation: create new instance and copy slots
+  ;; Full CLOS would: allocate new, copy matching slots, call update-instance-for-different-class
+  (let ((old-class (class-of instance))
+        (new-instance (apply #'make-instance new-class initargs)))
+    ;; In full implementation: copy compatible slot values, call protocol hook
+    ;; For now, return new instance (mutation would require internal VM support)
+    new-instance))

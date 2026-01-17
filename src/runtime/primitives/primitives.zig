@@ -38,6 +38,8 @@ pub const div = arith.div;
 pub const makeInstance = clos.makeInstance;
 pub const slotValue = clos.slotValue;
 pub const setSlotValue = clos.setSlotValue;
+pub const classOf = clos.classOf;
+pub const slotExistsP = clos.slotExistsP;
 
 pub const typep = ty.typep;
 pub const subtypep = ty.subtypep;

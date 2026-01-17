@@ -57,6 +57,8 @@ pub fn makeInstance(heap: *Heap, args: Value) !Value {
         vec.data[1 + i] = val;
     }
 
+    // Call initialize-instance if available
+    // For now, just return the instance - initialize-instance hook will be added via generic functions
     return vec_val;
 }
 
@@ -198,4 +200,74 @@ pub fn setSlotValue(heap: *Heap, args: Value) !Value {
 
     // Slot not found
     return error.InvalidArgument;
+}
+
+/// class-of: (class-of obj)
+/// Return the class of an object
+pub fn classOf(heap: *Heap, args: Value) !Value {
+    _ = heap;
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons1 = args.toPtr(Cons);
+    const obj = cons1.car;
+
+    if (!obj.isVector()) return error.InvalidArgument;
+    const vec = obj.toPtr(Vector);
+    if (vec.length == 0) return error.InvalidArgument;
+    return vec.data[0];
+}
+
+/// slot-exists-p: (slot-exists-p obj 'slot-name)
+/// Check if a slot exists in an object
+pub fn slotExistsP(heap: *Heap, args: Value) !Value {
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons1 = args.toPtr(Cons);
+    const obj = cons1.car;
+
+    if (!obj.isVector()) return Value.t();
+
+    if (!cons1.cdr.isCons()) return error.InvalidArgument;
+    const cons2 = cons1.cdr.toPtr(Cons);
+    var slot_name_val = cons2.car;
+
+    if (slot_name_val.isCons()) {
+        const quote_cons = slot_name_val.toPtr(Cons);
+        if (!quote_cons.cdr.isCons()) return error.InvalidArgument;
+        const cdr_cons = quote_cons.cdr.toPtr(Cons);
+        slot_name_val = cdr_cons.car;
+    }
+
+    if (!slot_name_val.isSymbol()) return error.InvalidArgument;
+    const slot_name = slot_name_val.toPtr(Symbol).getName();
+
+    const vec = obj.toPtr(Vector);
+    if (vec.length == 0) return Value.nil();
+
+    const class_name_val = vec.data[0];
+    if (!class_name_val.isSymbol()) return Value.nil();
+    const class_sym = class_name_val.toPtr(Symbol);
+    const class_name = class_sym.getName();
+
+    const sym_pkg_ptr = @as(?*heap_mod.Package, @ptrFromInt(class_sym.reserved));
+    var qual_buf: [256]u8 = undefined;
+    const qualified_class_name = if (sym_pkg_ptr) |pkg| blk: {
+        const qn = std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, class_name }) catch return error.InvalidArgument;
+        break :blk qn;
+    } else class_name;
+
+    const slot_names = heap.class_metadata.get(qualified_class_name) orelse blk: {
+        const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
+        for (prefixes) |prefix| {
+            const try_name = std.fmt.bufPrint(&qual_buf, "{s}{s}", .{ prefix, class_name }) catch continue;
+            if (heap.class_metadata.get(try_name)) |names| break :blk names;
+        }
+        return Value.nil();
+    };
+
+    for (slot_names) |name| {
+        if (std.mem.eql(u8, name, slot_name)) {
+            return Value.t();
+        }
+    }
+
+    return Value.nil();
 }

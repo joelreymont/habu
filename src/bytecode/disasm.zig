@@ -85,6 +85,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .box_ref,
         .box_set,
         .str_ref,
+        .str_set,
         .str_len,
         .str_concat,
         .str_eq,
