@@ -1984,6 +1984,34 @@
 (defun standard-char-p (c)
   (graphic-char-p c))
 
+(defun char-int (c)
+  (char-code c))
+
+(defun digit-char (weight &optional (radix 10))
+  (if (and (>= weight 0) (< weight radix) (< radix 37))
+      (cond
+        ((< weight 10) (code-char (+ weight 48)))
+        (t (code-char (+ (- weight 10) 65))))
+      nil))
+
+(defun char-name (c)
+  (case (char-code c)
+    (32 "Space")
+    (10 "Newline")
+    (9 "Tab")
+    (13 "Return")
+    (0 "Null")
+    (t nil)))
+
+(defun name-char (name)
+  (cond
+    ((string-equal name "Space") #\Space)
+    ((string-equal name "Newline") #\Newline)
+    ((string-equal name "Tab") #\Tab)
+    ((string-equal name "Return") #\Return)
+    ((string-equal name "Null") (code-char 0))
+    (t nil)))
+
 ;; ============================================================
 ;; Character Comparison Functions
 ;; ============================================================
@@ -2003,6 +2031,9 @@
 ; char-equal - case-insensitive character equality
 (defun char-equal (a b)
   (char= (char-upcase a) (char-upcase b)))
+
+(defun char-not-equal (a b)
+  (not (char-equal a b)))
 
 ; char-lessp - case-insensitive character less than
 (defun char-lessp (a b)

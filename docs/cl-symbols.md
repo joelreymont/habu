@@ -377,27 +377,27 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | char-downcase | ✓ | compile.zig:324 | To lowercase |
 | char-equal | ✓ | stdlib.habu | Case-insensitive = |
 | char-greaterp | ✓ | stdlib.habu | Case-insensitive > |
-| char-int | ✗ | - | |
+| char-int | ✓ | stdlib.habu | Char to int |
 | char-lessp | ✓ | stdlib.habu | Case-insensitive < |
-| char-name | ✗ | - | |
-| char-not-equal | ✗ | - | |
+| char-name | ✓ | stdlib.habu | Char to name |
+| char-not-equal | ✓ | stdlib.habu | Case-insensitive /= |
 | char-not-greaterp | ✓ | stdlib.habu | Case-insensitive <= |
 | char-not-lessp | ✓ | stdlib.habu | Case-insensitive >= |
 | char-upcase | ✓ | compile.zig:323 | To uppercase |
-| char/= | ✗ | - | |
+| char/= | ✓ | stdlib.habu | Char not equal |
 | char< | ✓ | compile.zig:218 | Char less |
-| char<= | ✗ | - | |
+| char<= | ✓ | stdlib.habu | Char less or equal |
 | char= | ✓ | compile.zig:217 | Char equal |
 | char> | ✓ | compile.zig:219 | Char greater |
-| char>= | ✗ | - | |
+| char>= | ✓ | stdlib.habu | Char greater or equal |
 | character | ✓ | compile.zig:244 | Coerce to char |
 | characterp | ✓ | compile.zig:209 | Char predicate |
 | code-char | ✓ | compile.zig:216 | From code point |
-| digit-char | ✗ | - | |
+| digit-char | ✓ | stdlib.habu | Digit to char |
 | digit-char-p | ✓ | compile.zig:325 | Digit predicate |
-| graphic-char-p | ✗ | - | |
+| graphic-char-p | ✓ | stdlib.habu | Graphic char predicate |
 | lower-case-p | ✓ | stdlib.habu | Lowercase pred |
-| name-char | ✗ | - | |
+| name-char | ✓ | stdlib.habu | Name to char |
 | standard-char-p | ✓ | stdlib.habu | Standard predicate |
 | upper-case-p | ✓ | stdlib.habu | Uppercase pred |
 
