@@ -8,7 +8,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
 | &allow-other-keys | ⚠ | compile.zig | Parsed but not fully enforced |
-| &aux | ✗ | - | Not implemented |
+| &aux | ✓ | compile.zig:453 | Aux bindings |
 | &body | ✓ | compile.zig:427 | Macro lambda lists |
 | &environment | ✗ | - | Not implemented |
 | &key | ✓ | compile.zig:429 | Keyword args |
