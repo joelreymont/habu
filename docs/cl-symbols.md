@@ -77,67 +77,67 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 ## Constants (43)
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
-| array-dimension-limit | ✗ | - | |
-| array-rank-limit | ✗ | - | |
-| array-total-size-limit | ✗ | - | |
-| boole-1 | ✗ | - | |
-| boole-2 | ✗ | - | |
-| boole-and | ✗ | - | |
-| boole-andc1 | ✗ | - | |
-| boole-andc2 | ✗ | - | |
-| boole-c1 | ✗ | - | |
-| boole-c2 | ✗ | - | |
-| boole-clr | ✗ | - | |
-| boole-eqv | ✗ | - | |
-| boole-ior | ✗ | - | |
-| boole-nand | ✗ | - | |
-| boole-nor | ✗ | - | |
-| boole-orc1 | ✗ | - | |
-| boole-orc2 | ✗ | - | |
-| boole-set | ✗ | - | |
-| boole-xor | ✗ | - | |
-| call-arguments-limit | ✗ | - | |
-| char-code-limit | ✗ | - | |
-| double-float-epsilon | ✗ | - | |
-| double-float-negative-epsilon | ✗ | - | |
-| internal-time-units-per-second | ✗ | - | |
-| lambda-list-keywords | ✗ | - | |
-| lambda-parameters-limit | ✗ | - | |
-| least-negative-double-float | ✗ | - | |
-| least-negative-long-float | ✗ | - | |
-| least-negative-normalized-double-float | ✗ | - | |
-| least-negative-normalized-long-float | ✗ | - | |
-| least-negative-normalized-short-float | ✗ | - | |
-| least-negative-normalized-single-float | ✗ | - | |
-| least-negative-short-float | ✗ | - | |
-| least-negative-single-float | ✗ | - | |
-| least-positive-double-float | ✗ | - | |
-| least-positive-long-float | ✗ | - | |
-| least-positive-normalized-double-float | ✗ | - | |
-| least-positive-normalized-long-float | ✗ | - | |
-| least-positive-normalized-short-float | ✗ | - | |
-| least-positive-normalized-single-float | ✗ | - | |
-| least-positive-short-float | ✗ | - | |
-| least-positive-single-float | ✗ | - | |
-| long-float-epsilon | ✗ | - | |
-| long-float-negative-epsilon | ✗ | - | |
-| most-negative-double-float | ✗ | - | |
-| most-negative-fixnum | ✗ | - | |
-| most-negative-long-float | ✗ | - | |
-| most-negative-short-float | ✗ | - | |
-| most-negative-single-float | ✗ | - | |
-| most-positive-double-float | ✗ | - | |
-| most-positive-fixnum | ✗ | - | |
-| most-positive-long-float | ✗ | - | |
-| most-positive-short-float | ✗ | - | |
-| most-positive-single-float | ✗ | - | |
-| multiple-values-limit | ✗ | - | |
+| array-dimension-limit | ✓ | stdlib.habu:20 | 2^62-1 |
+| array-rank-limit | ✓ | stdlib.habu:21 | 65536 |
+| array-total-size-limit | ✓ | stdlib.habu:22 | 2^62-1 |
+| boole-1 | ✓ | stdlib.habu:67 | 2 |
+| boole-2 | ✓ | stdlib.habu:68 | 3 |
+| boole-and | ✓ | stdlib.habu:71 | 6 |
+| boole-andc1 | ✓ | stdlib.habu:77 | 12 |
+| boole-andc2 | ✓ | stdlib.habu:78 | 13 |
+| boole-c1 | ✓ | stdlib.habu:69 | 4 |
+| boole-c2 | ✓ | stdlib.habu:70 | 5 |
+| boole-clr | ✓ | stdlib.habu:65 | 0 |
+| boole-eqv | ✓ | stdlib.habu:74 | 9 |
+| boole-ior | ✓ | stdlib.habu:72 | 7 |
+| boole-nand | ✓ | stdlib.habu:75 | 10 |
+| boole-nor | ✓ | stdlib.habu:76 | 11 |
+| boole-orc1 | ✓ | stdlib.habu:79 | 14 |
+| boole-orc2 | ✓ | stdlib.habu:80 | 15 |
+| boole-set | ✓ | stdlib.habu:66 | 1 |
+| boole-xor | ✓ | stdlib.habu:73 | 8 |
+| call-arguments-limit | ✓ | stdlib.habu:23 | 65536 |
+| char-code-limit | ✓ | stdlib.habu:24 | 1114112 (Unicode) |
+| double-float-epsilon | ✓ | stdlib.habu:35 | 2.22e-16 |
+| double-float-negative-epsilon | ✓ | stdlib.habu:36 | 1.11e-16 |
+| internal-time-units-per-second | ✓ | stdlib.habu:86 | 1000000 (µs) |
+| lambda-list-keywords | ✓ | stdlib.habu:83 | List of &-keywords |
+| lambda-parameters-limit | ✓ | stdlib.habu:25 | 65536 |
+| least-negative-double-float | ✓ | stdlib.habu:32 | -2.225e-308 |
+| least-negative-long-float | ✓ | stdlib.habu:58 | Same as double |
+| least-negative-normalized-double-float | ✓ | stdlib.habu:34 | -2.225e-308 |
+| least-negative-normalized-long-float | ✓ | stdlib.habu:60 | Same as double |
+| least-negative-normalized-short-float | ✓ | stdlib.habu:52 | Same as double |
+| least-negative-normalized-single-float | ✓ | stdlib.habu:44 | Same as double |
+| least-negative-short-float | ✓ | stdlib.habu:50 | Same as double |
+| least-negative-single-float | ✓ | stdlib.habu:42 | Same as double |
+| least-positive-double-float | ✓ | stdlib.habu:31 | 2.225e-308 |
+| least-positive-long-float | ✓ | stdlib.habu:57 | Same as double |
+| least-positive-normalized-double-float | ✓ | stdlib.habu:33 | 2.225e-308 |
+| least-positive-normalized-long-float | ✓ | stdlib.habu:59 | Same as double |
+| least-positive-normalized-short-float | ✓ | stdlib.habu:51 | Same as double |
+| least-positive-normalized-single-float | ✓ | stdlib.habu:43 | Same as double |
+| least-positive-short-float | ✓ | stdlib.habu:49 | Same as double |
+| least-positive-single-float | ✓ | stdlib.habu:41 | Same as double |
+| long-float-epsilon | ✓ | stdlib.habu:61 | Same as double |
+| long-float-negative-epsilon | ✓ | stdlib.habu:62 | Same as double |
+| most-negative-double-float | ✓ | stdlib.habu:30 | -1.797e308 |
+| most-negative-fixnum | ✓ | stdlib.habu:19 | -2^62 |
+| most-negative-long-float | ✓ | stdlib.habu:56 | Same as double |
+| most-negative-short-float | ✓ | stdlib.habu:48 | Same as double |
+| most-negative-single-float | ✓ | stdlib.habu:40 | Same as double |
+| most-positive-double-float | ✓ | stdlib.habu:29 | 1.797e308 |
+| most-positive-fixnum | ✓ | stdlib.habu:18 | 2^62-1 |
+| most-positive-long-float | ✓ | stdlib.habu:55 | Same as double |
+| most-positive-short-float | ✓ | stdlib.habu:47 | Same as double |
+| most-positive-single-float | ✓ | stdlib.habu:39 | Same as double |
+| multiple-values-limit | ✓ | stdlib.habu:26 | 256 |
 | nil | ✓ | value.zig | Constant |
 | pi | ✓ | arith.zig | 3.14159... |
-| short-float-epsilon | ✗ | - | |
-| short-float-negative-epsilon | ✗ | - | |
-| single-float-epsilon | ✗ | - | |
-| single-float-negative-epsilon | ✗ | - | |
+| short-float-epsilon | ✓ | stdlib.habu:53 | Same as double |
+| short-float-negative-epsilon | ✓ | stdlib.habu:54 | Same as double |
+| single-float-epsilon | ✓ | stdlib.habu:45 | Same as double |
+| single-float-negative-epsilon | ✓ | stdlib.habu:46 | Same as double |
 | t | ✓ | value.zig | True constant |
 
 ## Special Operators (25)
@@ -665,19 +665,19 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | host-namestring | ✗ | - | |
 | logical-pathname | ✗ | - | |
 | logical-pathname-translations | ✗ | - | |
-| make-pathname | ✗ | - | |
-| merge-pathnames | ✗ | - | |
-| namestring | ✗ | - | |
-| parse-namestring | ✗ | - | |
-| pathname | ✗ | - | |
-| pathname-device | ✓ | pathname.zig:30, vm.zig | Get device component |
-| pathname-directory | ✓ | pathname.zig:37, vm.zig | Get directory component |
-| pathname-host | ✓ | pathname.zig:23, vm.zig | Get host component |
+| make-pathname | ✓ | pathname.zig:9, vm.zig:3013, stdlib.habu:4080 | Create from components |
+| merge-pathnames | ✓ | pathname.zig:269, vm.zig:3232 | Merge with defaults |
+| namestring | ✓ | pathname.zig:78, vm.zig:3173 | Pathname to string |
+| parse-namestring | ✓ | pathname.zig:153, vm.zig:3074 | String to pathname |
+| pathname | ✓ | pathname.zig:71, vm.zig:3042 | Coerce to pathname |
+| pathname-device | ✓ | pathname.zig:31, vm.zig:2721 | Get device component |
+| pathname-directory | ✓ | pathname.zig:38, vm.zig:2728 | Get directory component |
+| pathname-host | ✓ | pathname.zig:24, vm.zig:2714 | Get host component |
 | pathname-match-p | ✗ | - | |
-| pathname-name | ✓ | pathname.zig:44, vm.zig | Get name component |
-| pathname-type | ✓ | pathname.zig:51, vm.zig | Get type component |
-| pathname-version | ✓ | pathname.zig:58, vm.zig | Get version component |
-| pathnamep | ✗ | - | |
+| pathname-name | ✓ | pathname.zig:45, vm.zig:2735 | Get name component |
+| pathname-type | ✓ | pathname.zig:52, vm.zig:2742 | Get type component |
+| pathname-version | ✓ | pathname.zig:59, vm.zig:2749 | Get version component |
+| pathnamep | ✓ | pathname.zig:66 | Check if pathname |
 | probe-file | ✗ | - | |
 | translate-logical-pathname | ✗ | - | |
 | translate-pathname | ✗ | - | |
@@ -1064,7 +1064,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 |----------|-------|-------------|---------|---------|
 | Lambda Keywords | 8 | 4 | 1 | 3 |
 | Special Variables | 65 | 18 | 0 | 47 |
-| Constants | 43 | 3 | 0 | 40 |
+| Constants | 43 | 43 | 0 | 0 |
 | Special Operators | 25 | 19 | 0 | 6 |
 | Macros | 86 | 53 | 1 | 32 |
 | Arithmetic | 79 | 64 | 0 | 15 |
@@ -1074,7 +1074,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | Strings | 28 | 23 | 0 | 5 |
 | Sequences | 56 | 36 | 0 | 20 |
 | Hash Tables | 17 | 11 | 0 | 6 |
-| Filenames | 26 | 0 | 0 | 26 |
+| Filenames | 26 | 7 | 0 | 19 |
 | Files/Streams | 47 | 24 | 0 | 23 |
 | Printer | 25 | 7 | 0 | 18 |
 | Reader | 19 | 10 | 0 | 9 |
@@ -1087,9 +1087,9 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | Type Specifiers | 50 | 28 | 2 | 20 |
 
 **Total: 978 symbols**
-- **Implemented: ~523 (53%)**
+- **Implemented: ~640 (65%)**
 - **Partial: ~4 (0.4%)**
-- **Missing: ~451 (46%)**
+- **Missing: ~334 (34%)**
 
 ---
 
