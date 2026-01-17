@@ -1,5 +1,15 @@
 ; Habu Standard Library
 
+; defconstant - define constant (same as defvar for now)
+(defmacro defconstant (name value &optional doc)
+  (declare (ignore doc))
+  `(defvar ,name ,value))
+
+; defparameter - define parameter (same as defvar)
+(defmacro defparameter (name value &optional doc)
+  (declare (ignore doc))
+  `(defvar ,name ,value))
+
 ; Mathematical constants
 (defvar pi 3.141592653589793)
 (defvar e 2.718281828459045)
