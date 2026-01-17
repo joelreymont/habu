@@ -3028,6 +3028,75 @@
                (setq rest (cdr rest)))
              (setq body-forms (append body-forms (nreverse forms)))))
 
+          ; IF/WHEN test clause [ELSE clause] [END]
+          ((if when)
+           (let ((test (cadr rest))
+                 (then-rest (cddr rest))
+                 (then-action nil)
+                 (else-action nil))
+             ; Parse THEN clause
+             (case (car then-rest)
+               ((do collect sum count append nconc maximize minimize)
+                (setq then-action (list (car then-rest) (cadr then-rest)))
+                (setq then-rest (cddr then-rest)))
+               (t (error "IF requires DO/COLLECT/SUM/COUNT/etc")))
+             ; Check for ELSE
+             (when (and (consp then-rest) (eq (car then-rest) 'else))
+               (setq then-rest (cdr then-rest))
+               (case (car then-rest)
+                 ((do collect sum count append nconc maximize minimize)
+                  (setq else-action (list (car then-rest) (cadr then-rest)))
+                  (setq then-rest (cddr then-rest)))
+                 (t (error "ELSE requires DO/COLLECT/SUM/COUNT/etc"))))
+             ; Skip END if present
+             (when (and (consp then-rest) (eq (car then-rest) 'end))
+               (setq then-rest (cdr then-rest)))
+             ; Generate conditional forms
+             (case (car then-action)
+               (do
+                (push (list 'when test (cadr then-action)) body-forms)
+                (when else-action
+                  (push (list 'unless test (cadr else-action)) body-forms)))
+               (collect
+                (push (list 'when test (cadr then-action)) collect-forms)
+                (when else-action
+                  (push (list 'unless test (cadr else-action)) collect-forms)))
+               (sum
+                (push (list 'when test (cadr then-action)) sum-forms)
+                (when else-action
+                  (push (list 'unless test (cadr else-action)) sum-forms)))
+               (count
+                (push (list 'when test (cadr then-action)) count-forms)
+                (when else-action
+                  (push (list 'unless test (cadr else-action)) count-forms))))
+             (setq rest then-rest)))
+
+          ; UNLESS test clause [END]
+          (unless
+           (let ((test (cadr rest))
+                 (then-rest (cddr rest))
+                 (then-action nil))
+             ; Parse clause
+             (case (car then-rest)
+               ((do collect sum count append nconc maximize minimize)
+                (setq then-action (list (car then-rest) (cadr then-rest)))
+                (setq then-rest (cddr then-rest)))
+               (t (error "UNLESS requires DO/COLLECT/SUM/COUNT/etc")))
+             ; Skip END if present
+             (when (and (consp then-rest) (eq (car then-rest) 'end))
+               (setq then-rest (cdr then-rest)))
+             ; Generate conditional forms
+             (case (car then-action)
+               (do
+                (push (list 'unless test (cadr then-action)) body-forms))
+               (collect
+                (push (list 'unless test (cadr then-action)) collect-forms))
+               (sum
+                (push (list 'unless test (cadr then-action)) sum-forms))
+               (count
+                (push (list 'unless test (cadr then-action)) count-forms)))
+             (setq rest then-rest)))
+
           ; COLLECT/COLLECTING expr [INTO var]
           ((collect collecting)
            (let ((expr (cadr rest))
