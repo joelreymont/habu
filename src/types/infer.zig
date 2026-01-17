@@ -42,6 +42,9 @@ pub const InferType = union(enum) {
     /// List with element type
     list: *const InferType,
 
+    /// Vector with element type
+    vec: *const InferType,
+
     pub fn isVariable(self: InferType) bool {
         return self == .variable;
     }
@@ -67,6 +70,11 @@ pub const InferType = union(enum) {
             },
             .list => |elem| {
                 try writer.writeAll("(list ");
+                try elem.format("", .{}, writer);
+                try writer.writeAll(")");
+            },
+            .vec => |elem| {
+                try writer.writeAll("(vector ");
                 try elem.format("", .{}, writer);
                 try writer.writeAll(")");
             },
@@ -294,6 +302,12 @@ pub const InferCtx = struct {
             return;
         }
 
+        // Vector types - unify element types
+        if (r1.* == .vec and r2.* == .vec) {
+            try self.unify(r1.vec, r2.vec);
+            return;
+        }
+
         return error.TypeMismatch;
     }
 
@@ -310,6 +324,7 @@ pub const InferCtx = struct {
                 return self.occursIn(v, a.range);
             },
             .list => |elem| return self.occursIn(v, elem),
+            .vec => |elem| return self.occursIn(v, elem),
         }
     }
 
@@ -402,6 +417,9 @@ pub const InferCtx = struct {
                 try self.collectFreeVars(a.range, free_vars);
             },
             .list => |elem| {
+                try self.collectFreeVars(elem, free_vars);
+            },
+            .vec => |elem| {
                 try self.collectFreeVars(elem, free_vars);
             },
         }
@@ -533,6 +551,12 @@ pub const InferCtx = struct {
                 new_t.* = .{ .list = new_elem };
                 return new_t;
             },
+            .vec => |elem| {
+                const new_elem = try self.substituteVars(elem, var_map);
+                const new_t = try self.alloc();
+                new_t.* = .{ .vec = new_elem };
+                return new_t;
+            },
         }
     }
 
@@ -622,6 +646,9 @@ pub const InferCtx = struct {
                 if (v.isFixnum()) return try self.concrete(&types.t_fixnum);
                 if (v.isNil()) return try self.concrete(&types.t_nil);
                 if (v.isCharacter()) return try self.concrete(&types.t_char);
+                if (v.isVector()) return try self.concrete(&types.t_vector);
+                if (v.isString()) return try self.concrete(&types.t_string);
+                if (v.isCons()) return try self.concrete(&types.t_cons);
                 // t (true) is represented as fixnum 1
                 return try self.concrete(&types.t_any);
             },
