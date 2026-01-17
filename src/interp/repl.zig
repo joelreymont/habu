@@ -1644,8 +1644,8 @@ pub const Repl = struct {
         var code_len: usize = 0;
 
         // push_const for closure (we'll add it as constant 0)
-        code_buf[code_len] = @intFromEnum(Op.push_const);
-        code_len += 1;
+        std.mem.writeInt(u16, code_buf[code_len..][0..2], @intFromEnum(Op.push_const), .little);
+        code_len += 2;
         std.mem.writeInt(u16, code_buf[code_len..][0..2], 0, .little);
         code_len += 2;
 
@@ -1655,8 +1655,8 @@ pub const Repl = struct {
         while (arg_list.isCons()) {
             const arg_cons = arg_list.toPtr(Cons);
             _ = arg_cons; // We'll add the constant later
-            code_buf[code_len] = @intFromEnum(Op.push_const);
-            code_len += 1;
+            std.mem.writeInt(u16, code_buf[code_len..][0..2], @intFromEnum(Op.push_const), .little);
+            code_len += 2;
             std.mem.writeInt(u16, code_buf[code_len..][0..2], const_idx, .little);
             code_len += 2;
             const_idx += 1;
@@ -1664,14 +1664,14 @@ pub const Repl = struct {
         }
 
         // call instruction
-        code_buf[code_len] = @intFromEnum(Op.call);
-        code_len += 1;
+        std.mem.writeInt(u16, code_buf[code_len..][0..2], @intFromEnum(Op.call), .little);
+        code_len += 2;
         code_buf[code_len] = @intCast(argc);
         code_len += 1;
 
         // ret to return the result
-        code_buf[code_len] = @intFromEnum(Op.ret);
-        code_len += 1;
+        std.mem.writeInt(u16, code_buf[code_len..][0..2], @intFromEnum(Op.ret), .little);
+        code_len += 2;
 
         // Build constants array
         var constants = std.ArrayList(Value){};
