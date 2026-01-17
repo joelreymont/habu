@@ -2911,7 +2911,7 @@
                   (push (list '>= idx-var len-var) end-tests)
                   (setq rest (cddddr rest))))
 
-               ; FOR var BEING THE/EACH HASH-KEYS/HASH-VALUES OF hash [USING (...)]
+               ; FOR var BEING THE/EACH HASH-KEYS/HASH-VALUES/SYMBOLS OF hash/package [USING (...)]
                (being
                 (let ((the-rest (cdddr rest)))
                   ; Skip 'the' or 'each' if present
@@ -2922,7 +2922,7 @@
                     ; Skip 'of' or 'in'
                     (when (member (car of-rest) '(of in))
                       (setq of-rest (cdr of-rest)))
-                    (let ((hash-expr (car of-rest))
+                    (let ((target-expr (car of-rest))
                           (using-rest (cdr of-rest))
                           (other-var nil))
                       ; Check for USING clause
@@ -2936,7 +2936,7 @@
                         ((hash-keys hash-key)
                          (let ((keys-var (gensym "keys"))
                                (hash-var (gensym "hash")))
-                           (push (list hash-var hash-expr) vars)
+                           (push (list hash-var target-expr) vars)
                            (push (list keys-var (list 'hash-table-keys hash-var)) vars)
                            (push (list var nil) vars)
                            (when other-var
@@ -2950,7 +2950,7 @@
                          (let ((keys-var (gensym "keys"))
                                (hash-var (gensym "hash"))
                                (key-var (or other-var (gensym "key"))))
-                           (push (list hash-var hash-expr) vars)
+                           (push (list hash-var target-expr) vars)
                            (push (list keys-var (list 'hash-table-keys hash-var)) vars)
                            (push (list key-var nil) vars)
                            (push (list var nil) vars)
@@ -2958,7 +2958,34 @@
                            (push (list 'setq var (list 'gethash key-var hash-var)) body-forms)
                            (push (list 'setq keys-var (list 'cdr keys-var)) step-forms)
                            (push (list 'null keys-var) end-tests)))
-                        (t (error (format nil "Unknown hash iteration type: ~a" iter-type))))
+                        ((symbols symbol)
+                         (let ((syms-var (gensym "syms"))
+                               (pkg-var (gensym "pkg")))
+                           (push (list pkg-var target-expr) vars)
+                           (push (list syms-var (list '%package-symbols-list pkg-var)) vars)
+                           (push (list var nil) vars)
+                           (push (list 'setq var (list 'car syms-var)) body-forms)
+                           (push (list 'setq syms-var (list 'cdr syms-var)) step-forms)
+                           (push (list 'null syms-var) end-tests)))
+                        ((present-symbols present-symbol)
+                         (let ((syms-var (gensym "syms"))
+                               (pkg-var (gensym "pkg")))
+                           (push (list pkg-var target-expr) vars)
+                           (push (list syms-var (list '%package-symbols-list pkg-var)) vars)
+                           (push (list var nil) vars)
+                           (push (list 'setq var (list 'car syms-var)) body-forms)
+                           (push (list 'setq syms-var (list 'cdr syms-var)) step-forms)
+                           (push (list 'null syms-var) end-tests)))
+                        ((external-symbols external-symbol)
+                         (let ((syms-var (gensym "syms"))
+                               (pkg-var (gensym "pkg")))
+                           (push (list pkg-var target-expr) vars)
+                           (push (list syms-var (list '%package-exports-list pkg-var)) vars)
+                           (push (list var nil) vars)
+                           (push (list 'setq var (list 'car syms-var)) body-forms)
+                           (push (list 'setq syms-var (list 'cdr syms-var)) step-forms)
+                           (push (list 'null syms-var) end-tests)))
+                        (t (error (format nil "Unknown iteration type: ~a" iter-type))))
                       (setq rest using-rest)))))
 
                (t (error "Unknown FOR clause")))))

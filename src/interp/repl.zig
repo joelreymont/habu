@@ -1043,6 +1043,7 @@ pub const Repl = struct {
                 try writer.print("#<package {s}>", .{name_sym.getName()});
             },
             .chunk => try writer.writeAll("#<chunk>"),
+            .condition => try writer.writeAll("#<condition>"),
         }
     }
 

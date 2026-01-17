@@ -2207,6 +2207,8 @@ pub const Compiler = struct {
                 if (self.vm) |vm| {
                     const expanded = try self.expandMacro(macro_def, tail, vm);
                     return self.compileWithTail(expanded, env, in_tail);
+                } else {
+                    std.debug.print("MACRO FOUND BUT NO VM: {s}\n", .{sym.getName()});
                 }
                 // No VM - can't expand macro, treat as function call
             }
@@ -2373,6 +2375,11 @@ pub const Compiler = struct {
     fn compileLambdaCore(self: *Compiler, args: Value, env: *const Env, return_type: ?Value) anyerror!*Ir {
         // (lambda (params...) body)
         // Params can be: symbol for untyped, (symbol type) for typed
+        const static = struct {
+            var counter: u32 = 0;
+        };
+        static.counter += 1;
+        std.debug.print("compileLambdaCore #{d}\n", .{static.counter});
         if (!args.isCons()) {
             std.debug.print("compileLambdaCore: args is not cons\n", .{});
             return error.InvalidLambda;
@@ -2652,8 +2659,10 @@ pub const Compiler = struct {
             body_ir = try self.builder.letExpr(aux_slice, body_ir);
         }
 
-        return self.builder.lambda(params.items, opt_params, kp_params, rest_param, captures, body_ir) catch
+        const result = self.builder.lambda(params.items, opt_params, kp_params, rest_param, captures, body_ir) catch
             return error.OutOfMemory;
+        std.debug.print("compileLambdaCore #{d} SUCCESS\n", .{static.counter});
+        return result;
     }
 
     /// Create a type assertion IR node for a given type symbol or complex type
