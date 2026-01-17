@@ -366,13 +366,15 @@
   (let ((var (car spec))
         (lst (cadr spec))
         (result (caddr spec))
-        (loop-fn (gensym)))
-    (list 'let (list (list loop-fn
-                           (list 'lambda (list var)
-                                 (cons 'progn body))))
-          (list 'mapc loop-fn lst)
-          (list 'let (list (list var nil))
-                result))))
+        (list-var (gensym "list")))
+    (list 'let (list (list list-var lst))
+          (list 'block nil
+                (list 'loop
+                      (list 'when (list 'null list-var)
+                            (list 'return-from nil (list 'let (list (list var nil)) result)))
+                      (list 'let (list (list var (list 'car list-var)))
+                            (cons 'progn body))
+                      (list 'setq list-var (list 'cdr list-var)))))))
 
 ; dotimes - iterate n times
 ; (dotimes (var n [result]) body...) => result (with var bound to n)
@@ -2877,7 +2879,7 @@
                         (let ((tmp-var (gensym "tmp")))
                           (push (list tmp-var nil) vars)
                           (push (list 'setq tmp-var (list 'car list-var)) body-forms)
-                          (push (cons 'destructuring-bind (cons var (cons tmp-var nil))) body-forms))
+                          (push (list 'destructuring-bind var tmp-var) body-forms))
                         (push (list 'setq list-var (list 'cdr list-var)) step-forms)
                         (push (list 'null list-var) end-tests)
                         (setq rest (cddddr rest)))
@@ -2924,7 +2926,7 @@
                       (let ((tmp-var (gensym "tmp")))
                         (push (list tmp-var nil) vars)
                         (push (list 'setq tmp-var (list 'aref vec-var idx-var)) body-forms)
-                        (push (cons 'destructuring-bind (cons var (cons tmp-var nil))) body-forms))
+                        (push (list 'destructuring-bind var tmp-var) body-forms))
                     ; Simple case: for x across vec
                     (progn
                       (push (list var nil) vars)
