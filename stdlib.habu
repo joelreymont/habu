@@ -3241,3 +3241,15 @@
 
 (defun logtest (a b)
   (not (zerop (logand a b))))
+
+;; write - output object readably (with *print-escape* = t)
+(defun write (object &optional stream)
+  (let ((old-escape *print-escape*))
+    (setf *print-escape* t)
+    (princ object stream)
+    (setf *print-escape* old-escape)
+    object))
+
+;; prin1 - same as write (readable output)
+(defun prin1 (object &optional stream)
+  (write object stream))

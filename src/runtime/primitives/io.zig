@@ -616,6 +616,73 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
     }
 }
 
+// ============================================================================
+// CL Output Primitives
+// ============================================================================
+
+/// write object &optional stream - output with *print-escape* = t (readable)
+pub fn write(val: Value, stream: Value) !Value {
+    _ = stream; // TODO: handle stream parameter
+    const old_escape = print_escape;
+    defer print_escape = old_escape;
+    print_escape = true;
+
+    const stdout_file = fs.File.stdout();
+    var buf: [IO_BUF]u8 = undefined;
+    var file_writer = stdout_file.writer(&buf);
+    const w = &file_writer.interface;
+
+    try printValueTo(val, w);
+    try w.flush();
+    return val;
+}
+
+/// prin1 object &optional stream - same as write, returns object
+pub fn prin1(val: Value, stream: Value) !Value {
+    return write(val, stream);
+}
+
+/// princ object &optional stream - output with *print-escape* = nil (no escaping)
+pub fn princ(val: Value, stream: Value) !Value {
+    _ = stream; // TODO: handle stream parameter
+    const old_escape = print_escape;
+    defer print_escape = old_escape;
+    print_escape = false;
+
+    const stdout_file = fs.File.stdout();
+    var buf: [IO_BUF]u8 = undefined;
+    var file_writer = stdout_file.writer(&buf);
+    const w = &file_writer.interface;
+
+    try printValueTo(val, w);
+    try w.flush();
+    return val;
+}
+
+/// print object &optional stream - output newline, prin1, space, returns object
+pub fn print(val: Value, stream: Value) !Value {
+    _ = stream; // TODO: handle stream parameter
+    const stdout_file = fs.File.stdout();
+    var buf: [IO_BUF]u8 = undefined;
+    var file_writer = stdout_file.writer(&buf);
+    const w = &file_writer.interface;
+
+    try w.writeByte('\n');
+
+    const old_escape = print_escape;
+    defer print_escape = old_escape;
+    print_escape = true;
+
+    try printValueTo(val, w);
+    try w.writeByte(' ');
+    try w.flush();
+    return val;
+}
+
+// ============================================================================
+// Print Control Variables
+// ============================================================================
+
 /// Get *print-escape* value
 pub fn getPrintEscape() Value {
     return if (print_escape) Value.t else Value.nil;
