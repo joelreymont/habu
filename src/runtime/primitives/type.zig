@@ -236,32 +236,16 @@ fn checkSymbolSubtype(heap: *Heap, t1: Value, t2: Value) !SubtypeResult {
 
 pub fn typeOf(heap: *Heap, val: Value) !Value {
     return switch (val.typeKind()) {
-        .nil => heap.intern("null"),
+        .nil => heap.intern("nil"),
         .t => heap.intern("boolean"),
-        .fixnum => blk: {
-            const n = val.toFixnum();
-            const low = Value.makeFixnum(n);
-            const high = Value.makeFixnum(n);
-            const int_sym = try heap.intern("integer");
-            const list = try heap.allocCons(low, Value.nil);
-            const list2 = try heap.allocCons(high, list);
-            break :blk try heap.allocCons(int_sym, list2);
-        },
+        .fixnum => heap.intern("fixnum"),
         .float => heap.intern("float"),
         .char => heap.intern("character"),
-        .cons => blk: {
-            const c = val.toPtr(@import("../objects.zig").Cons);
-            const car_type = try typeOf(heap, c.car);
-            const cdr_type = try typeOf(heap, c.cdr);
-            const cons_sym = try heap.intern("cons");
-            const list = try heap.allocCons(car_type, Value.nil);
-            const list2 = try heap.allocCons(cdr_type, list);
-            break :blk try heap.allocCons(cons_sym, list2);
-        },
+        .cons => heap.intern("cons"),
         .symbol => heap.intern("symbol"),
         .vector => heap.intern("vector"),
         .string => heap.intern("string"),
-        .closure => heap.intern("function"),
+        .closure => heap.intern("closure"),
         .keyword => heap.intern("keyword"),
         .hashtable => heap.intern("hash-table"),
         .rational => heap.intern("ratio"),
@@ -360,15 +344,21 @@ test "typeOf basic types" {
 
     const fixnum = Value.makeFixnum(42);
     const result = try typeOf(&heap, fixnum);
-    try testing.expect(result.isCons());
+    try testing.expect(result.isSymbol());
+    const fixnum_sym = try heap.intern("fixnum");
+    try testing.expect(result.eq(fixnum_sym));
 
     const str = try heap.allocString("test");
     const str_type = try typeOf(&heap, str);
     try testing.expect(str_type.isSymbol());
+    const string_sym = try heap.intern("string");
+    try testing.expect(str_type.eq(string_sym));
 
     const consval = try heap.allocCons(Value.makeFixnum(1), Value.nil);
     const cons_type = try typeOf(&heap, consval);
-    try testing.expect(cons_type.isCons());
+    try testing.expect(cons_type.isSymbol());
+    const cons_sym = try heap.intern("cons");
+    try testing.expect(cons_type.eq(cons_sym));
 }
 
 test "subtypep numeric hierarchy" {
