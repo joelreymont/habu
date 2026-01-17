@@ -3421,3 +3421,8 @@
     ;; In full implementation: copy compatible slot values, call protocol hook
     ;; For now, return new instance (mutation would require internal VM support)
     new-instance))
+
+;; %make-condition - primitive for simple conditions
+;; For CLOS-based conditions, use make-instance
+(defun make-condition (type &rest initargs)
+  (apply #'make-instance type initargs))

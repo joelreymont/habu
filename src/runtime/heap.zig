@@ -612,6 +612,17 @@ pub const Heap = struct {
         return Value.makeClosure(closure);
     }
 
+    pub fn allocCondition(self: *Heap, type_sym: Value, format_control: Value, format_args: Value) !Value {
+        const cond = try self.alloc(objects.Condition);
+        cond.* = .{
+            .kind = .condition,
+            .type_sym = type_sym,
+            .format_control = format_control,
+            .format_args = format_args,
+        };
+        return Value.makeCondition(cond);
+    }
+
     /// Round up to next power of two (for hash table capacity)
     fn nextPowerOfTwo(n: usize) usize {
         if (n == 0) return 1;
