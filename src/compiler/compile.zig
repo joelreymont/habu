@@ -1254,12 +1254,19 @@ pub const DeclInfo = struct {
 /// Declaration environment - tracks declarations in current scope
 pub const DeclEnv = struct {
     /// Map from variable name to declaration info
-    decls: std.StringHashMap(std.ArrayList(DeclInfo)),
+    decls: std.StringArrayHashMapUnmanaged(std.ArrayList(DeclInfo)),
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator) DeclEnv {
+    pub fn init(self: *DeclEnv, allocator: std.mem.Allocator) void {
+        self.* = .{
+            .decls = .{},
+            .allocator = allocator,
+        };
+    }
+
+    pub fn create(allocator: std.mem.Allocator) DeclEnv {
         return .{
-            .decls = std.StringHashMap(std.ArrayList(DeclInfo)).init(allocator),
+            .decls = .{},
             .allocator = allocator,
         };
     }
@@ -1267,18 +1274,25 @@ pub const DeclEnv = struct {
     pub fn deinit(self: *DeclEnv) void {
         var iter = self.decls.iterator();
         while (iter.next()) |entry| {
+            std.debug.print("  freeing key: {s}\n", .{entry.key_ptr.*});
+            self.allocator.free(entry.key_ptr.*);
             entry.value_ptr.deinit(self.allocator);
         }
-        self.decls.deinit();
+        self.decls.deinit(self.allocator);
     }
 
     /// Add a declaration for a variable
     pub fn addDecl(self: *DeclEnv, name: []const u8, info: DeclInfo) !void {
-        const gop = try self.decls.getOrPut(name);
-        if (!gop.found_existing) {
-            gop.value_ptr.* = std.ArrayList(DeclInfo){};
+        std.debug.print("  decls.count()={}, capacity={}\n", .{ self.decls.count(), self.decls.capacity() });
+        const existing = self.decls.getPtr(name);
+        if (existing) |list| {
+            try list.append(self.allocator, info);
+        } else {
+            const owned_name = try self.allocator.dupe(u8, name);
+            var list = std.ArrayList(DeclInfo){};
+            try list.append(self.allocator, info);
+            try self.decls.put(self.allocator, owned_name, list);
         }
-        try gop.value_ptr.append(self.allocator, info);
     }
 
     /// Check if variable has a specific declaration
@@ -1439,7 +1453,7 @@ pub const Compiler = struct {
             .class_metadata = std.StringHashMap([]const SlotSpec).init(allocator),
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
             .type_aliases = std.StringHashMap(Value).init(allocator),
-            .global_decls = DeclEnv.init(allocator),
+            .global_decls = DeclEnv.create(allocator),
         };
     }
 
@@ -1470,7 +1484,7 @@ pub const Compiler = struct {
             .class_metadata = std.StringHashMap([]const SlotSpec).init(allocator),
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
             .type_aliases = std.StringHashMap(Value).init(allocator),
-            .global_decls = DeclEnv.init(allocator),
+            .global_decls = DeclEnv.create(allocator),
         };
     }
 
@@ -7382,8 +7396,9 @@ pub const Compiler = struct {
         // Create DeclEnv if not already present
         if (self.decl_env == null) {
             const env_ptr = try self.allocator.create(DeclEnv);
-            env_ptr.* = DeclEnv.init(self.allocator);
+            env_ptr.init(self.allocator);
             self.decl_env = env_ptr;
+        } else {
         }
 
         // Match declaration spec by symbol identity
