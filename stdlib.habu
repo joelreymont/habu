@@ -3368,6 +3368,35 @@
                             slot-names)))))))
 
 ;;; ============================================================================
+;;; CLOS accessor macros
+;;; ============================================================================
+
+; with-slots - access slots as variables
+; TODO: Implement symbol-macrolet for proper setf support
+; For now, bind slots as regular variables (read-only access)
+(defmacro with-slots (slots instance &body body)
+  (let ((obj (gensym "OBJ")))
+    `(let ((,obj ,instance))
+       (let ,(mapcar (lambda (slot)
+                       (let ((name (if (consp slot) (car slot) slot))
+                             (accessor (if (consp slot) (cadr slot) slot)))
+                         (list name (list 'slot-value obj (list 'quote accessor)))))
+                     slots)
+         ,@body))))
+
+; with-accessors - bind accessors to variables
+; TODO: Implement symbol-macrolet for proper setf support
+(defmacro with-accessors (accessors instance &body body)
+  (let ((obj (gensym "OBJ")))
+    `(let ((,obj ,instance))
+       (let ,(mapcar (lambda (spec)
+                       (let ((var (car spec))
+                             (accessor (cadr spec)))
+                         (list var (list accessor obj))))
+                     accessors)
+         ,@body))))
+
+;;; ============================================================================
 ;;; Stream macros
 ;;; ============================================================================
 
