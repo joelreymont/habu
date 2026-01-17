@@ -559,26 +559,26 @@
   (list 'progn first
         (cons 'prog1 (cons second rest))))
 
-; and - short-circuit logical and (macro version)
-(defmacro and (&rest forms)
-  (if (null forms)
-      t
-      (if (null (cdr forms))
-          (car forms)
-          (list 'if (car forms)
-                (cons 'and (cdr forms))
-                nil))))
-
-; or - short-circuit logical or (macro version)
-(defmacro or (&rest forms)
-  (if (null forms)
-      nil
-      (if (null (cdr forms))
-          (car forms)
-          (let ((temp (gensym)))
-            (list 'let (list (list temp (car forms)))
-                  (list 'if temp temp
-                        (cons 'or (cdr forms))))))))
+; and/or - use built-in special forms (macros are broken)
+; TODO: fix macro versions
+; (defmacro and (&rest forms)
+;   (if (null forms)
+;       t
+;       (if (null (cdr forms))
+;           (car forms)
+;           (list 'if (car forms)
+;                 (cons 'and (cdr forms))
+;                 nil))))
+;
+; (defmacro or (&rest forms)
+;   (if (null forms)
+;       nil
+;       (if (null (cdr forms))
+;           (car forms)
+;           (let ((temp (gensym)))
+;             (list 'let (list (list temp (car forms)))
+;                   (list 'if temp temp
+;                         (cons 'or (cdr forms))))))))
 
 ; aif - anaphoric if (binds 'it' to test value)
 (defmacro aif (test then &optional else)
