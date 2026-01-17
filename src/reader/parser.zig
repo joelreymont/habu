@@ -212,27 +212,24 @@ pub const Parser = struct {
         }
         self.advance(); // consume ')'
 
-        // Convert to floats
-        var real: f64 = 0.0;
-        var imag: f64 = 0.0;
-
-        if (real_val.isFixnum()) {
-            real = @floatFromInt(real_val.toFixnum());
-        } else if (real_val.isFloat()) {
-            real = real_val.toFloat();
-        } else {
-            return error.TypeMismatch;
-        }
-
-        if (imag_val.isFixnum()) {
-            imag = @floatFromInt(imag_val.toFixnum());
-        } else if (imag_val.isFloat()) {
-            imag = imag_val.toFloat();
-        } else {
-            return error.TypeMismatch;
-        }
+        // Convert to floats - validate both parts are real numbers
+        const real = try toReal(real_val);
+        const imag = try toReal(imag_val);
 
         return primitives.complex.makeComplex(self.heap, real, imag);
+    }
+
+    fn toReal(val: Value) Error!f64 {
+        if (val.isFixnum()) {
+            return @floatFromInt(val.toFixnum());
+        } else if (val.isFloat()) {
+            return val.toFloat();
+        } else if (val.isRational()) {
+            const rat = val.toPtr(objects.Rational);
+            return @as(f64, @floatFromInt(rat.numerator)) / @as(f64, @floatFromInt(rat.denominator));
+        } else {
+            return error.TypeMismatch;
+        }
     }
 
     fn parseStruct(self: *Parser) Error!Value {
@@ -1114,6 +1111,51 @@ test "parse #P pathname" {
     const cons = result.toPtr(objects.Cons);
     const sym = cons.car.toPtr(objects.Symbol);
     try testing.expectEqualStrings("parse-namestring", sym.getName());
+}
+
+test "parse #C complex number" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+
+    // #C(3 4) = 3+4i
+    var parser1 = Parser.init(testing.allocator, &heap, "#C(3 4)", &vm.builtins);
+    defer parser1.deinit();
+    const val1 = try parser1.parse();
+    try testing.expect(val1.typeKind() == .complex);
+    const c1 = val1.toPtr(objects.Complex);
+    try testing.expectApproxEqAbs(@as(f64, 3.0), c1.real, 0.0001);
+    try testing.expectApproxEqAbs(@as(f64, 4.0), c1.imag, 0.0001);
+
+    // #C(1.5 2.5) = 1.5+2.5i
+    var parser2 = Parser.init(testing.allocator, &heap, "#C(1.5 2.5)", &vm.builtins);
+    defer parser2.deinit();
+    const val2 = try parser2.parse();
+    try testing.expect(val2.typeKind() == .complex);
+    const c2 = val2.toPtr(objects.Complex);
+    try testing.expectApproxEqAbs(@as(f64, 1.5), c2.real, 0.0001);
+    try testing.expectApproxEqAbs(@as(f64, 2.5), c2.imag, 0.0001);
+
+    // #C(0 -1) = -i
+    var parser3 = Parser.init(testing.allocator, &heap, "#C(0 -1)", &vm.builtins);
+    defer parser3.deinit();
+    const val3 = try parser3.parse();
+    try testing.expect(val3.typeKind() == .complex);
+    const c3 = val3.toPtr(objects.Complex);
+    try testing.expectApproxEqAbs(@as(f64, 0.0), c3.real, 0.0001);
+    try testing.expectApproxEqAbs(@as(f64, -1.0), c3.imag, 0.0001);
+
+    // #C(1/2 1/3) = 0.5+0.333...i (rational parts)
+    var parser4 = Parser.init(testing.allocator, &heap, "#C(1/2 1/3)", &vm.builtins);
+    defer parser4.deinit();
+    const val4 = try parser4.parse();
+    try testing.expect(val4.typeKind() == .complex);
+    const c4 = val4.toPtr(objects.Complex);
+    try testing.expectApproxEqAbs(@as(f64, 0.5), c4.real, 0.0001);
+    try testing.expectApproxEqAbs(@as(f64, 0.3333), c4.imag, 0.0001);
 }
 
 test "parse octal number" {
