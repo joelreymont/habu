@@ -95,6 +95,50 @@
 (defvar *print-radix* nil)
 (defvar *print-gensym* t)
 (defvar *print-array* t)
+(defvar *print-circle* nil)
+(defvar *print-pretty* nil)
+(defvar *print-lines* nil)
+(defvar *print-miser-width* nil)
+(defvar *print-pprint-dispatch* nil)
+(defvar *print-right-margin* nil)
+
+; Reader control variables
+(defvar *read-base* 10)
+(defvar *read-default-float-format* 'double-float)
+(defvar *read-eval* t)
+(defvar *read-suppress* nil)
+
+; I/O stream variables
+(defvar *standard-input* nil)  ; set by runtime
+(defvar *standard-output* nil) ; set by runtime
+(defvar *error-output* nil)    ; stderr (stub)
+(defvar *query-io* nil)        ; interactive queries (stub)
+(defvar *debug-io* nil)        ; debugger I/O (stub)
+(defvar *trace-output* nil)    ; trace output (stub)
+(defvar *terminal-io* nil)     ; terminal I/O (stub)
+
+; Compiler/loader variables
+(defvar *compile-file-pathname* nil)
+(defvar *compile-file-truename* nil)
+(defvar *compile-print* nil)
+(defvar *compile-verbose* t)
+(defvar *load-pathname* nil)
+(defvar *load-truename* nil)
+(defvar *load-print* nil)
+(defvar *load-verbose* t)
+
+; Debugger/condition system variables
+(defvar *break-on-signals* nil)
+(defvar *debugger-hook* nil)
+
+; Macro expansion
+(defvar *macroexpand-hook* #'funcall)
+
+; Module system
+(defvar *modules* nil)
+
+; Random state (using seed function for now)
+(defvar *random-state* 42)
 
 ; Identity function
 (defun identity (x) x)
