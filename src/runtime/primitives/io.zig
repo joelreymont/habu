@@ -53,6 +53,9 @@ pub var print_radix: bool = false;
 /// *print-gensym* controls whether to print #: prefix for uninterned symbols
 pub var print_gensym: bool = true;
 
+/// *print-array* controls whether to print array contents
+pub var print_array: bool = true;
+
 fn writeFixnum(n: i64, w: anytype) !void {
     if (print_radix) {
         switch (print_base) {
@@ -402,19 +405,23 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
         },
         .vector => {
             const vec = val.toPtr(objects.Vector);
-            try w.writeAll("#(");
-            const items = vec.items();
-            const max_count = if (print_length) |max_len| @min(max_len, items.len) else items.len;
-            for (0..max_count) |i| {
-                if (i > 0) try w.writeByte(' ');
-                try princValueTo(items[i], w, level + 1);
-            }
-            if (print_length) |max_len| {
-                if (items.len > max_len) {
-                    try w.writeAll(" ...");
+            if (!print_array) {
+                try w.print("#<VECTOR {d}>", .{vec.length});
+            } else {
+                try w.writeAll("#(");
+                const items = vec.items();
+                const max_count = if (print_length) |max_len| @min(max_len, items.len) else items.len;
+                for (0..max_count) |i| {
+                    if (i > 0) try w.writeByte(' ');
+                    try princValueTo(items[i], w, level + 1);
                 }
+                if (print_length) |max_len| {
+                    if (items.len > max_len) {
+                        try w.writeAll(" ...");
+                    }
+                }
+                try w.writeByte(')');
             }
-            try w.writeByte(')');
         },
         .hashtable => try w.print("#<hash-table count={d}>", .{val.toPtr(objects.HashTable).count}),
         .rational => {
@@ -687,6 +694,16 @@ pub fn setPrintGensym(val: Value) void {
     print_gensym = !val.isNil();
 }
 
+/// Get *print-array* value
+pub fn getPrintArray() Value {
+    return if (print_array) Value.t else Value.nil;
+}
+
+/// Set *print-array* value
+pub fn setPrintArray(val: Value) void {
+    print_array = !val.isNil();
+}
+
 /// Exit the process
 pub fn sysExit(code: i64) noreturn {
     const exit_code: u8 = @truncate(@as(u64, @bitCast(code)));
@@ -874,6 +891,26 @@ test "*print-gensym* flag" {
 
     // Reset
     print_gensym = true;
+}
+
+test "*print-array* flag" {
+    const testing = std.testing;
+
+    // Default is true
+    try testing.expect(print_array == true);
+    try testing.expect(getPrintArray().eq(Value.t));
+
+    // Set to false
+    setPrintArray(Value.nil);
+    try testing.expect(print_array == false);
+    try testing.expect(getPrintArray().eq(Value.nil));
+
+    // Set to true
+    setPrintArray(Value.t);
+    try testing.expect(print_array == true);
+
+    // Reset
+    print_array = true;
 }
 
 /// Check if value is a stream
