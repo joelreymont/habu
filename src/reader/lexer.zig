@@ -16,6 +16,7 @@ pub const TokenKind = enum {
     vector_open, // #(
     complex_open, // #C(
     struct_open, // #S(
+    array_open, // #A( or #nA(
 
     // Quotes
     quote,
@@ -365,6 +366,29 @@ pub const Lexer = struct {
             }
             return self.makeToken(.err);
         }
+        if (c == 'A' or c == 'a') {
+            // Array literal: #A(...) or general #nA(...)
+            _ = self.advance(); // consume 'A'
+            if (self.peek() == '(') {
+                _ = self.advance(); // consume '('
+                return self.makeToken(.array_open);
+            }
+            return self.makeToken(.err);
+        }
+        if (std.ascii.isDigit(c)) {
+            // Multi-dimensional array: #2A((row1)(row2))
+            while (!self.isAtEnd() and std.ascii.isDigit(self.peek())) {
+                _ = self.advance();
+            }
+            if ((self.peek() == 'A' or self.peek() == 'a')) {
+                _ = self.advance(); // consume 'A'
+                if (self.peek() == '(') {
+                    _ = self.advance(); // consume '('
+                    return self.makeToken(.array_open);
+                }
+            }
+            return self.makeToken(.err);
+        }
         if (c == '(') {
             // Vector literal: #(1 2 3)
             _ = self.advance(); // consume '('
@@ -708,6 +732,16 @@ test "lex vector literal" {
     try testing.expectEqual(TokenKind.number, lexer.next().kind);
     try testing.expectEqual(TokenKind.rparen, lexer.next().kind);
     try testing.expectEqual(TokenKind.eof, lexer.next().kind);
+}
+
+test "lex #2A array literal" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#2A((1 2))");
+
+    const t1 = lexer.next();
+    try testing.expectEqual(TokenKind.array_open, t1.kind);
+    try testing.expectEqualStrings("#2A(", t1.text);
 }
 
 test "lex block comment" {

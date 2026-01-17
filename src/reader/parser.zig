@@ -85,6 +85,7 @@ pub const Parser = struct {
             .vector_open => return self.parseVector(),
             .complex_open => return self.parseComplex(),
             .struct_open => return self.parseStruct(),
+            .array_open => return self.parseArray(),
             .quote => return self.parseQuote("quote"),
             .backquote => return self.parseQuote("quasiquote"),
             .comma => return self.parseQuote("unquote"),
@@ -279,6 +280,72 @@ pub const Parser = struct {
         const quote_sym = try self.internSymbol("quote");
         const inner = try self.heap.allocCons(expr, Value.nil);
         return try self.heap.allocCons(quote_sym, inner);
+    }
+
+    fn parseArray(self: *Parser) Error!Value {
+        const token_text = self.current.text;
+
+        // Extract rank from token text before consuming
+        // #2A( -> "2A(" text includes opening paren
+        var rank: ?i64 = null;
+        if (token_text.len > 2 and token_text[1] >= '0' and token_text[1] <= '9') {
+            const digits_end = blk: {
+                for (token_text[1..], 1..) |ch, idx| {
+                    if (ch == 'A' or ch == 'a') break :blk idx;
+                }
+                break :blk token_text.len;
+            };
+            rank = std.fmt.parseInt(i64, token_text[1..digits_end], 10) catch null;
+        }
+
+        self.advance(); // consume array_open token
+
+        // Parse all contents until closing paren (similar to parseList)
+        if (self.current.kind == .rparen) {
+            self.advance();
+            // Empty array
+            const make_array_sym = try self.internSymbol("make-array");
+            const dims = Value.makeFixnum(0);
+            const args = try self.heap.allocCons(dims, Value.nil);
+            return try self.heap.allocCons(make_array_sym, args);
+        }
+
+        const first = try self.parseExpr();
+        const rest = try self.parseListTail();
+        const contents = try self.heap.allocCons(first, rest);
+
+        // Build (make-array dims :initial-contents contents)
+        const make_array_sym = try self.internSymbol("make-array");
+        const initial_contents_kw = try self.internKeyword("initial-contents");
+
+        // Build dims argument based on rank
+        const dims_arg = if (rank) |r|
+            Value.makeFixnum(r)
+        else
+            try self.inferArrayDims(contents);
+
+        // Build argument list: (dims :initial-contents contents)
+        const kw_pair = try self.heap.allocCons(initial_contents_kw, try self.heap.allocCons(contents, Value.nil));
+        const args = try self.heap.allocCons(dims_arg, kw_pair);
+
+        return try self.heap.allocCons(make_array_sym, args);
+    }
+
+    fn inferArrayDims(self: *Parser, contents: Value) Error!Value {
+        _ = self;
+        // Infer dimensions from nested list structure
+        // For now, return rank 1 (simple case)
+        // TODO: implement full dimension inference for nested arrays
+        if (contents.isCons()) {
+            var len: i64 = 0;
+            var current = contents;
+            while (current.isCons()) {
+                len += 1;
+                current = current.toPtr(objects.Cons).cdr;
+            }
+            return Value.makeFixnum(len);
+        }
+        return Value.makeFixnum(0);
     }
 
     fn parseQuote(self: *Parser, quote_name: []const u8) Error!Value {
@@ -970,6 +1037,53 @@ test "parse #S empty struct" {
     const cons = result.toPtr(objects.Cons);
     const sym = cons.car.toPtr(objects.Symbol);
     try testing.expectEqualStrings("make-struct", sym.getName());
+}
+
+test "parse #A array" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+
+    // #A((1 2 3)) -> (make-array dims :initial-contents (1 2 3))
+    var parser = Parser.init(testing.allocator, &heap, "#A((1 2 3))", &vm.builtins);
+    defer parser.deinit();
+
+    const result = try parser.parse();
+    try testing.expect(result.isCons());
+
+    const cons = result.toPtr(objects.Cons);
+    const sym = cons.car.toPtr(objects.Symbol);
+    try testing.expectEqualStrings("make-array", sym.getName());
+}
+
+test "parse #2A array" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+
+    // #2A((1 2) (3 4)) -> (make-array 2 :initial-contents ((1 2) (3 4)))
+    var parser = Parser.init(testing.allocator, &heap, "#2A((1 2) (3 4))", &vm.builtins);
+    defer parser.deinit();
+
+    const result = try parser.parse();
+    try testing.expect(result.isCons());
+
+    const cons = result.toPtr(objects.Cons);
+    const sym = cons.car.toPtr(objects.Symbol);
+    try testing.expectEqualStrings("make-array", sym.getName());
+
+    // Check rank argument is 2
+    const args = cons.cdr;
+    try testing.expect(args.isCons());
+    const args_cons = args.toPtr(objects.Cons);
+    try testing.expect(args_cons.car.isFixnum());
+    try testing.expectEqual(@as(i64, 2), args_cons.car.toFixnum());
 }
 
 test "parse octal number" {

@@ -1,9 +1,9 @@
 ---
 title: "Add #A array reader macro"
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-01-16T13:41:52.237998+02:00"
+created-at: "\"2026-01-16T13:41:52.237998+02:00\""
 ---
 
 src/reader/parser.zig: Implement array reader
