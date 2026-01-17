@@ -50,6 +50,9 @@ pub var print_base: u8 = 10;
 /// *print-radix* controls whether to print radix prefix (#x #o #b)
 pub var print_radix: bool = false;
 
+/// *print-gensym* controls whether to print #: prefix for uninterned symbols
+pub var print_gensym: bool = true;
+
 fn writeFixnum(n: i64, w: anytype) !void {
     if (print_radix) {
         switch (print_base) {
@@ -674,6 +677,16 @@ pub fn setPrintRadix(val: Value) void {
     print_radix = !val.isNil();
 }
 
+/// Get *print-gensym* value
+pub fn getPrintGensym() Value {
+    return if (print_gensym) Value.t else Value.nil;
+}
+
+/// Set *print-gensym* value
+pub fn setPrintGensym(val: Value) void {
+    print_gensym = !val.isNil();
+}
+
 /// Exit the process
 pub fn sysExit(code: i64) noreturn {
     const exit_code: u8 = @truncate(@as(u64, @bitCast(code)));
@@ -841,6 +854,26 @@ test "*print-base*/*print-radix* flags" {
     // Reset
     print_base = 10;
     print_radix = false;
+}
+
+test "*print-gensym* flag" {
+    const testing = std.testing;
+
+    // Default is true
+    try testing.expect(print_gensym == true);
+    try testing.expect(getPrintGensym().eq(Value.t));
+
+    // Set to false
+    setPrintGensym(Value.nil);
+    try testing.expect(print_gensym == false);
+    try testing.expect(getPrintGensym().eq(Value.nil));
+
+    // Set to true
+    setPrintGensym(Value.t);
+    try testing.expect(print_gensym == true);
+
+    // Reset
+    print_gensym = true;
 }
 
 /// Check if value is a stream
