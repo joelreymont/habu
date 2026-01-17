@@ -44,6 +44,60 @@ pub var print_length: ?usize = null;
 /// When non-null, print # when exceeding this depth
 pub var print_level: ?usize = null;
 
+/// *print-base* controls radix for integer output (2-36, default 10)
+pub var print_base: u8 = 10;
+
+/// *print-radix* controls whether to print radix prefix (#x #o #b)
+pub var print_radix: bool = false;
+
+fn writeFixnum(n: i64, w: anytype) !void {
+    if (print_radix) {
+        switch (print_base) {
+            2 => try w.writeAll("#b"),
+            8 => try w.writeAll("#o"),
+            16 => try w.writeAll("#x"),
+            else => {},
+        }
+    }
+
+    switch (print_base) {
+        2 => try w.print("{b}", .{n}),
+        8 => try w.print("{o}", .{n}),
+        10 => try w.print("{d}", .{n}),
+        16 => try w.print("{x}", .{n}),
+        else => {
+            var buf: [65]u8 = undefined;
+            const len = formatIntBase(n, print_base, &buf);
+            try w.writeAll(buf[0..len]);
+        },
+    }
+}
+
+fn formatIntBase(n: i64, base: u8, buf: []u8) usize {
+    const digits = "0123456789abcdefghijklmnopqrstuvwxyz";
+    var val: u64 = if (n < 0) @as(u64, @intCast(-n)) else @as(u64, @intCast(n));
+    var i: usize = buf.len;
+
+    if (val == 0) {
+        buf[i - 1] = '0';
+        return 1;
+    }
+
+    while (val > 0) : (i -= 1) {
+        buf[i - 1] = digits[@as(usize, @intCast(val % base))];
+        val /= base;
+    }
+
+    if (n < 0) {
+        i -= 1;
+        buf[i] = '-';
+    }
+
+    const len = buf.len - i;
+    std.mem.copyForwards(u8, buf[0..len], buf[i..]);
+    return len;
+}
+
 fn writeCaseSymbol(name: []const u8, w: anytype) !void {
     switch (print_case) {
         .upcase => {
@@ -299,7 +353,7 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
     switch (val.typeKind()) {
         .nil => try w.writeAll("nil"),
         .t => try w.writeAll("t"),
-        .fixnum => try w.print("{d}", .{val.toFixnum()}),
+        .fixnum => try writeFixnum(val.toFixnum(), w),
         .float => try w.print("{d}", .{val.toFloat()}),
         .char => {
             const cp = val.toCharacter();
@@ -434,7 +488,7 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
     switch (val.typeKind()) {
         .nil => try w.writeAll("nil"),
         .t => try w.writeAll("t"),
-        .fixnum => try w.print("{d}", .{val.toFixnum()}),
+        .fixnum => try writeFixnum(val.toFixnum(), w),
         .float => try w.print("{d}", .{val.toFloat()}),
         .char => {
             const cp = val.toCharacter();
@@ -597,8 +651,30 @@ pub fn setPrintReadably(val: Value) void {
     print_readably = !val.isNil();
 }
 
+/// Get *print-base* value
+pub fn getPrintBase() Value {
+    return Value.makeFixnum(@intCast(print_base));
+}
+
+/// Set *print-base* value (2-36)
+pub fn setPrintBase(val: Value) !void {
+    if (!val.isFixnum()) return error.TypeError;
+    const base = val.toFixnum();
+    if (base < 2 or base > 36) return error.InvalidBase;
+    print_base = @intCast(base);
+}
+
+/// Get *print-radix* value
+pub fn getPrintRadix() Value {
+    return if (print_radix) Value.t else Value.nil;
+}
+
+/// Set *print-radix* value
+pub fn setPrintRadix(val: Value) void {
+    print_radix = !val.isNil();
+}
+
 /// Exit the process
-/// Get *print-readably* value
 pub fn sysExit(code: i64) noreturn {
     const exit_code: u8 = @truncate(@as(u64, @bitCast(code)));
     std.process.exit(exit_code);
@@ -726,6 +802,45 @@ test "*print-case* flag" {
 
     // Reset to default
     print_case = .upcase;
+}
+
+test "*print-base*/*print-radix* flags" {
+    const testing = std.testing;
+
+    // Default base is 10, radix is false
+    try testing.expectEqual(@as(u8, 10), print_base);
+    try testing.expect(print_radix == false);
+
+    // Test getPrintBase/setPrintBase
+    try testing.expect(getPrintBase().eq(Value.makeFixnum(10)));
+
+    try setPrintBase(Value.makeFixnum(16));
+    try testing.expectEqual(@as(u8, 16), print_base);
+    try testing.expect(getPrintBase().eq(Value.makeFixnum(16)));
+
+    try setPrintBase(Value.makeFixnum(2));
+    try testing.expectEqual(@as(u8, 2), print_base);
+
+    // Invalid base should error
+    try testing.expectError(error.InvalidBase, setPrintBase(Value.makeFixnum(1)));
+    try testing.expectError(error.InvalidBase, setPrintBase(Value.makeFixnum(37)));
+
+    // Type error
+    try testing.expectError(error.TypeError, setPrintBase(Value.nil));
+
+    // Test getPrintRadix/setPrintRadix
+    try testing.expect(getPrintRadix().eq(Value.nil));
+
+    setPrintRadix(Value.t);
+    try testing.expect(print_radix == true);
+    try testing.expect(getPrintRadix().eq(Value.t));
+
+    setPrintRadix(Value.nil);
+    try testing.expect(print_radix == false);
+
+    // Reset
+    print_base = 10;
+    print_radix = false;
 }
 
 /// Check if value is a stream
