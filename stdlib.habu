@@ -195,6 +195,133 @@
   (print msg)
   nil)
 
+;;; ============================================================================
+;;; Missing arithmetic functions
+;;; ============================================================================
+
+; boole - boolean operation on integers
+(defun boole (op int1 int2)
+  (case op
+    (0 0)                           ; boole-clr
+    (1 -1)                          ; boole-set
+    (2 int1)                        ; boole-1
+    (3 int2)                        ; boole-2
+    (4 (lognot int1))              ; boole-c1
+    (5 (lognot int2))              ; boole-c2
+    (6 (logand int1 int2))         ; boole-and
+    (7 (logior int1 int2))         ; boole-ior
+    (8 (logxor int1 int2))         ; boole-xor
+    (9 (logeqv int1 int2))         ; boole-eqv
+    (10 (lognand int1 int2))       ; boole-nand
+    (11 (lognor int1 int2))        ; boole-nor
+    (12 (logandc1 int1 int2))      ; boole-andc1
+    (13 (logandc2 int1 int2))      ; boole-andc2
+    (14 (logorc1 int1 int2))       ; boole-orc1
+    (15 (logorc2 int1 int2))       ; boole-orc2
+    (t (error "Invalid boole operation"))))
+
+; byte - create byte specifier
+(defun byte (size position)
+  (cons size position))
+
+; byte-size - extract size from byte specifier
+(defun byte-size (bytespec)
+  (car bytespec))
+
+; byte-position - extract position from byte specifier
+(defun byte-position (bytespec)
+  (cdr bytespec))
+
+; ldb - load byte from integer
+(defun ldb (bytespec int)
+  (let ((size (byte-size bytespec))
+        (pos (byte-position bytespec)))
+    (logand (ash int (- pos))
+            (1- (ash 1 size)))))
+
+; ldb-test - test if byte is non-zero
+(defun ldb-test (bytespec int)
+  (not (zerop (ldb bytespec int))))
+
+; mask-field - extract byte field (don't shift)
+(defun mask-field (bytespec int)
+  (let ((size (byte-size bytespec))
+        (pos (byte-position bytespec)))
+    (logand int
+            (ash (1- (ash 1 size)) pos))))
+
+; dpb - deposit byte into integer
+(defun dpb (newbyte bytespec int)
+  (let ((size (byte-size bytespec))
+        (pos (byte-position bytespec)))
+    (let ((mask (ash (1- (ash 1 size)) pos)))
+      (logior (logand int (lognot mask))
+              (logand (ash newbyte pos) mask)))))
+
+; deposit-field - deposit field (newbyte already shifted)
+(defun deposit-field (newbyte bytespec int)
+  (let ((size (byte-size bytespec))
+        (pos (byte-position bytespec)))
+    (let ((mask (ash (1- (ash 1 size)) pos)))
+      (logior (logand int (lognot mask))
+              (logand newbyte mask)))))
+
+; decode-float - decompose float (stub - simplified)
+(defun decode-float (float)
+  (values float 0 1.0))
+
+; integer-decode-float - decompose to integers (stub)
+(defun integer-decode-float (float)
+  (values (truncate float) 0 1))
+
+; float-radix - radix of float representation
+(defun float-radix (float)
+  (declare (ignore float))
+  2)
+
+; float-digits - number of digits in significand
+(defun float-digits (float)
+  (declare (ignore float))
+  53) ; IEEE 754 double precision
+
+; float-precision - actual precision
+(defun float-precision (float)
+  (if (zerop float)
+      0
+      (float-digits float)))
+
+; float-sign - return float with sign of first, magnitude of second
+(defun float-sign (float1 &optional (float2 1.0))
+  (if (minusp float1)
+      (- (abs float2))
+      (abs float2)))
+
+; scale-float - multiply by 2^k
+(defun scale-float (float k)
+  (* float (expt 2 k)))
+
+; make-random-state - create random state
+(defun make-random-state (&optional state)
+  (if state
+      (if (eq state t)
+          (get-internal-real-time)
+          state)
+      *random-state*))
+
+; random-state-p - check if random state
+(defun random-state-p (obj)
+  (numberp obj))
+
+; arithmetic-error-operands - get operands from error (stub)
+(defun arithmetic-error-operands (condition)
+  (declare (ignore condition))
+  nil)
+
+; arithmetic-error-operation - get operation from error (stub)
+(defun arithmetic-error-operation (condition)
+  (declare (ignore condition))
+  nil)
+
 (defun warn (msg)
   (print msg)
   nil)
