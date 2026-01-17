@@ -86,6 +86,7 @@ pub const Parser = struct {
             .complex_open => return self.parseComplex(),
             .struct_open => return self.parseStruct(),
             .array_open => return self.parseArray(),
+            .pathname => return self.parsePathname(),
             .quote => return self.parseQuote("quote"),
             .backquote => return self.parseQuote("quasiquote"),
             .comma => return self.parseQuote("unquote"),
@@ -346,6 +347,15 @@ pub const Parser = struct {
             return Value.makeFixnum(len);
         }
         return Value.makeFixnum(0);
+    }
+
+    fn parsePathname(self: *Parser) Error!Value {
+        const path_str = try self.parseString();
+
+        // Build (parse-namestring "path")
+        const parse_namestring_sym = try self.internSymbol("parse-namestring");
+        const args = try self.heap.allocCons(path_str, Value.nil);
+        return try self.heap.allocCons(parse_namestring_sym, args);
     }
 
     fn parseQuote(self: *Parser, quote_name: []const u8) Error!Value {
@@ -1084,6 +1094,26 @@ test "parse #2A array" {
     const args_cons = args.toPtr(objects.Cons);
     try testing.expect(args_cons.car.isFixnum());
     try testing.expectEqual(@as(i64, 2), args_cons.car.toFixnum());
+}
+
+test "parse #P pathname" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+
+    // #P"/path/to/file" -> (parse-namestring "/path/to/file")
+    var parser = Parser.init(testing.allocator, &heap, "#P\"/path/to/file\"", &vm.builtins);
+    defer parser.deinit();
+
+    const result = try parser.parse();
+    try testing.expect(result.isCons());
+
+    const cons = result.toPtr(objects.Cons);
+    const sym = cons.car.toPtr(objects.Symbol);
+    try testing.expectEqualStrings("parse-namestring", sym.getName());
 }
 
 test "parse octal number" {

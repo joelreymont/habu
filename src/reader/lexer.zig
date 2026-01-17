@@ -17,6 +17,7 @@ pub const TokenKind = enum {
     complex_open, // #C(
     struct_open, // #S(
     array_open, // #A( or #nA(
+    pathname, // #P"..."
 
     // Quotes
     quote,
@@ -104,7 +105,7 @@ pub const Lexer = struct {
             '\'' => self.makeToken(.quote),
             '`' => self.makeToken(.backquote),
             ',' => if (self.match('@')) self.makeToken(.comma_at) else self.makeToken(.comma),
-            '"' => self.readString(),
+            '"' => self.readString(.string),
             ':' => self.readKeyword(),
             '.' => if (isDelimiter(self.peek())) self.makeToken(.dot) else self.readSymbolFromDot(),
             '-', '+' => if (isDigit(self.peek())) self.readNumber() else self.readSymbolFromSign(c),
@@ -174,7 +175,7 @@ pub const Lexer = struct {
         }
     }
 
-    fn readString(self: *Lexer) Token {
+    fn readString(self: *Lexer, kind: TokenKind) Token {
         while (!self.isAtEnd() and self.peek() != '"') {
             if (self.peek() == '\\' and self.peekNext() != 0) {
                 _ = self.advance(); // skip backslash
@@ -187,7 +188,7 @@ pub const Lexer = struct {
         }
 
         _ = self.advance(); // closing quote
-        return self.makeToken(.string);
+        return self.makeToken(kind);
     }
 
     fn readNumber(self: *Lexer) Token {
@@ -363,6 +364,15 @@ pub const Lexer = struct {
             if (self.peek() == '(') {
                 _ = self.advance(); // consume '('
                 return self.makeToken(.struct_open);
+            }
+            return self.makeToken(.err);
+        }
+        if (c == 'P' or c == 'p') {
+            // Pathname literal: #P"path"
+            _ = self.advance(); // consume 'P'
+            if (self.peek() == '"') {
+                _ = self.advance(); // consume '"'
+                return self.readString(.pathname);
             }
             return self.makeToken(.err);
         }
