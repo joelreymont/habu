@@ -1670,8 +1670,7 @@
 (defun hash-table-keys (table)
   (let ((keys nil))
     (maphash (lambda (k v)
-               (declare (ignore v))
-               (push k keys))
+               (setq keys (cons k keys)))
              table)
     keys))
 
@@ -1679,8 +1678,7 @@
 (defun hash-table-values (table)
   (let ((vals nil))
     (maphash (lambda (k v)
-               (declare (ignore k))
-               (push v vals))
+               (setq vals (cons v vals)))
              table)
     vals))
 
@@ -1688,7 +1686,7 @@
 (defun hash-table-alist (table)
   (let ((alist nil))
     (maphash (lambda (k v)
-               (push (cons k v) alist))
+               (setq alist (cons (cons k v) alist)))
              table)
     alist))
 
@@ -1979,8 +1977,7 @@
 
 ; constantly - return a function that always returns value
 (defun constantly (value)
-  (lambda (&rest args)
-    (declare (ignore args))
+  (lambda (&rest _args)
     value))
 
 ; complement - return negation of predicate
@@ -2058,7 +2055,7 @@
     ; Convert to alist with reversed lists
     (let ((result nil))
       (maphash (lambda (k v)
-                 (push (cons k (nreverse v)) result))
+                 (setq result (cons (cons k (nreverse v)) result)))
                groups)
       result)))
 
@@ -2814,6 +2811,11 @@
   (if (stringp object)
       object
       (write-to-string object)))
+
+; prin1-to-string - convert to string with escaping (readable)
+(defun prin1-to-string (object)
+  (let ((*print-escape* t))
+    (write-to-string object)))
 
 ; stream-princ - write object to stream without escaping
 (defun stream-princ (object stream)
@@ -4160,8 +4162,7 @@
       ; Package.symbols is a hash table - extract symbols
       (let ((syms (%package-symbols pkg)))
         (when syms
-          (maphash (lambda (k v)
-                     (declare (ignore v))
+          (maphash (lambda (k _v)
                      (when (symbolp k)
                        (setq result (cons k result))))
                    syms))))
@@ -4174,8 +4175,7 @@
     (when pkg
       (let ((exps (%package-exports pkg)))
         (when exps
-          (maphash (lambda (k v)
-                     (declare (ignore v))
+          (maphash (lambda (k _v)
                      (when (symbolp k)
                        (setq result (cons k result))))
                    exps))))
