@@ -820,7 +820,9 @@ pub const Repl = struct {
         // Record base before appending
         const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
 
-        // Patch child chunks to use absolute indices
+        // Patch wrapper chunk AND child chunks to use absolute indices
+        const wrapper_chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
+        patchChunkIndices(wrapper_chunk_ptr, chunk_base);
         for (child_chunks) |c| {
             patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
         }
@@ -1374,7 +1376,9 @@ pub const Repl = struct {
         // Record base before appending
         const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
 
-        // Patch child chunks to use absolute indices
+        // Patch wrapper chunk AND child chunks to use absolute indices
+        const wrapper_chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
+        patchChunkIndices(wrapper_chunk_ptr, chunk_base);
         for (child_chunks) |c| {
             patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
         }
