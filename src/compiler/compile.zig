@@ -4988,6 +4988,174 @@ pub const Compiler = struct {
         // nil pattern: ignore
     }
 
+    /// Destructuring parameter tree node for defmacro
+    pub const DestructParam = struct {
+        pub const Kind = enum {
+            simple, // Simple symbol parameter
+            nested, // Nested list destructuring
+            optional, // &optional parameter
+            rest, // &rest parameter
+            key, // &key parameter
+        };
+        kind: Kind,
+        name: ?[]const u8, // For simple, optional, rest, key
+        children: ?[]DestructParam, // For nested lists
+        default_expr: ?Value, // For optional/key defaults
+        keyword: ?[]const u8, // For key parameters
+
+        fn deinit(self: *DestructParam, alloc: std.mem.Allocator) void {
+            if (self.children) |ch| {
+                for (ch) |*child| {
+                    child.deinit(alloc);
+                }
+                alloc.free(ch);
+            }
+        }
+    };
+
+    /// Parse destructuring parameter list supporting nested lists and lambda-list keywords
+    fn parseDestructParams(self: *Compiler, params: Value) ![]DestructParam {
+        var result = std.ArrayList(DestructParam){};
+        errdefer {
+            for (result.items) |*item| {
+                item.deinit(self.allocator);
+            }
+            result.deinit(self.allocator);
+        }
+
+        var in_optional = false;
+        var in_key = false;
+        var param_list = params;
+
+        while (param_list.isCons()) {
+            const cons = param_list.toPtr(Cons);
+            const item = cons.car;
+
+            if (item.isSymbol()) {
+                const b = self.builtins orelse return error.UninitializedBuiltins;
+
+                // Check for lambda-list keywords
+                if (item.raw == b.@"&optional".raw) {
+                    in_optional = true;
+                    in_key = false;
+                    param_list = cons.cdr;
+                    continue;
+                }
+
+                if (item.raw == b.@"&rest".raw or item.raw == b.@"&body".raw) {
+                    if (!cons.cdr.isCons()) return error.InvalidSyntax;
+                    const rest_cons = cons.cdr.toPtr(Cons);
+                    if (!rest_cons.car.isSymbol()) return error.InvalidSyntax;
+                    const rest_sym = rest_cons.car.toPtr(Symbol);
+                    try result.append(self.allocator, .{
+                        .kind = .rest,
+                        .name = rest_sym.getName(),
+                        .children = null,
+                        .default_expr = null,
+                        .keyword = null,
+                    });
+                    break; // &rest must be last
+                }
+
+                if (item.raw == b.@"&key".raw) {
+                    in_key = true;
+                    in_optional = false;
+                    param_list = cons.cdr;
+                    continue;
+                }
+
+                // Simple symbol parameter
+                const sym = item.toPtr(Symbol);
+                const name = sym.getName();
+
+                if (in_key) {
+                    try result.append(self.allocator, .{
+                        .kind = .key,
+                        .name = name,
+                        .children = null,
+                        .default_expr = null,
+                        .keyword = name,
+                    });
+                } else if (in_optional) {
+                    try result.append(self.allocator, .{
+                        .kind = .optional,
+                        .name = name,
+                        .children = null,
+                        .default_expr = null,
+                        .keyword = null,
+                    });
+                } else {
+                    try result.append(self.allocator, .{
+                        .kind = .simple,
+                        .name = name,
+                        .children = null,
+                        .default_expr = null,
+                        .keyword = null,
+                    });
+                }
+            } else if (item.isCons()) {
+                const nested = item.toPtr(Cons);
+
+                if (in_optional or in_key) {
+                    // (name default) form
+                    if (!nested.car.isSymbol()) return error.InvalidSyntax;
+                    const name_sym = nested.car.toPtr(Symbol);
+                    const name = name_sym.getName();
+                    var default_expr: ?Value = null;
+                    if (nested.cdr.isCons()) {
+                        default_expr = nested.cdr.toPtr(Cons).car;
+                    }
+
+                    if (in_key) {
+                        try result.append(self.allocator, .{
+                            .kind = .key,
+                            .name = name,
+                            .children = null,
+                            .default_expr = default_expr,
+                            .keyword = name,
+                        });
+                    } else {
+                        try result.append(self.allocator, .{
+                            .kind = .optional,
+                            .name = name,
+                            .children = null,
+                            .default_expr = default_expr,
+                            .keyword = null,
+                        });
+                    }
+                } else {
+                    // Nested destructuring list
+                    const children = try self.parseDestructParams(item);
+                    try result.append(self.allocator, .{
+                        .kind = .nested,
+                        .name = null,
+                        .children = children,
+                        .default_expr = null,
+                        .keyword = null,
+                    });
+                }
+            } else {
+                return error.InvalidSyntax;
+            }
+
+            param_list = cons.cdr;
+        }
+
+        // Handle dotted rest parameter: (a b . rest)
+        if (!param_list.isNil() and param_list.isSymbol()) {
+            const rest_sym = param_list.toPtr(Symbol);
+            try result.append(self.allocator, .{
+                .kind = .rest,
+                .name = rest_sym.getName(),
+                .children = null,
+                .default_expr = null,
+                .keyword = null,
+            });
+        }
+
+        return result.toOwnedSlice(self.allocator);
+    }
+
     /// Compile eval-when: (eval-when (situations...) body...)
     /// The REPL handles compile-time evaluation; compiler just handles :execute
     fn compileEvalWhen(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -9785,7 +9953,7 @@ test "compile fixnum" {
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
 
-    var compiler = Compiler.init(allocator, &vm);
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
 
     var env = Env.init(allocator, null);
@@ -9806,7 +9974,7 @@ test "compile nil" {
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
 
-    var compiler = Compiler.init(allocator, &vm);
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
 
     var env = Env.init(allocator, null);
@@ -9856,7 +10024,7 @@ test "type inference for literals" {
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
 
-    var compiler = Compiler.init(allocator, &vm);
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
 
     var env = Env.init(allocator, null);
@@ -9931,7 +10099,7 @@ test "BiChecker integration - type checking enabled" {
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
 
-    var compiler = Compiler.init(allocator, &vm);
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
 
     // Enable type checking
@@ -9950,7 +10118,7 @@ test "BiChecker integration - checkLambdaTypes with correct types" {
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
 
-    var compiler = Compiler.init(allocator, &vm);
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
 
     // Create a simple body IR (literal fixnum)
@@ -9975,7 +10143,7 @@ test "BiChecker integration - checkLambdaTypes with type mismatch" {
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
 
-    var compiler = Compiler.init(allocator, &vm);
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
 
     // Create body that returns a fixnum
@@ -10002,7 +10170,7 @@ test "declare - type declaration" {
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
 
-    var compiler = Compiler.init(allocator, &vm);
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
 
     // Build (declare (type fixnum x y))
@@ -10042,7 +10210,7 @@ test "declare - ignore declaration" {
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
 
-    var compiler = Compiler.init(allocator, &vm);
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
 
     // Build (declare (ignore x y))
@@ -10075,7 +10243,7 @@ test "declare - multiple declaration specs" {
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
 
-    var compiler = Compiler.init(allocator, &vm);
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
 
     // Build (declare (type fixnum x) (ignore y))
@@ -10108,4 +10276,229 @@ test "declare - multiple declaration specs" {
     // Check both declarations
     try testing.expect(compiler.global_decls.hasDecl("x", .type_decl));
     try testing.expect(compiler.global_decls.hasDecl("y", .ignore));
+}
+
+test "parseDestructParams - simple parameters" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    // (a b c)
+    const a = try heap.intern("a");
+    const b = try heap.intern("b");
+    const c = try heap.intern("c");
+    const params = try heap.allocCons(a, try heap.allocCons(b, try heap.allocCons(c, Value.nil)));
+
+    const result = try compiler.parseDestructParams(params);
+    defer {
+        for (result) |*p| {
+            var mut_p = p.*;
+            mut_p.deinit(allocator);
+        }
+        allocator.free(result);
+    }
+
+    try testing.expectEqual(@as(usize, 3), result.len);
+    try testing.expectEqual(Compiler.DestructParam.Kind.simple, result[0].kind);
+    try testing.expectEqualStrings("a", result[0].name.?);
+    try testing.expectEqual(Compiler.DestructParam.Kind.simple, result[1].kind);
+    try testing.expectEqualStrings("b", result[1].name.?);
+    try testing.expectEqual(Compiler.DestructParam.Kind.simple, result[2].kind);
+    try testing.expectEqualStrings("c", result[2].name.?);
+}
+
+test "parseDestructParams - nested lists" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    // ((a b) c)
+    const a = try heap.intern("a");
+    const b = try heap.intern("b");
+    const c = try heap.intern("c");
+    const nested = try heap.allocCons(a, try heap.allocCons(b, Value.nil));
+    const params = try heap.allocCons(nested, try heap.allocCons(c, Value.nil));
+
+    const result = try compiler.parseDestructParams(params);
+    defer {
+        for (result) |*p| {
+            var mut_p = p.*;
+            mut_p.deinit(allocator);
+        }
+        allocator.free(result);
+    }
+
+    try testing.expectEqual(@as(usize, 2), result.len);
+    try testing.expectEqual(Compiler.DestructParam.Kind.nested, result[0].kind);
+    try testing.expect(result[0].children != null);
+    try testing.expectEqual(@as(usize, 2), result[0].children.?.len);
+    try testing.expectEqualStrings("a", result[0].children.?[0].name.?);
+    try testing.expectEqualStrings("b", result[0].children.?[1].name.?);
+    try testing.expectEqual(Compiler.DestructParam.Kind.simple, result[1].kind);
+    try testing.expectEqualStrings("c", result[1].name.?);
+}
+
+test "parseDestructParams - optional parameters" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    // (a &optional b (c 10))
+    const a = try heap.intern("a");
+    const opt_kw = try heap.intern("&optional");
+    const b = try heap.intern("b");
+    const c = try heap.intern("c");
+    const ten = Value.makeFixnum(10);
+    const c_with_default = try heap.allocCons(c, try heap.allocCons(ten, Value.nil));
+    const params = try heap.allocCons(a, try heap.allocCons(opt_kw, try heap.allocCons(b, try heap.allocCons(c_with_default, Value.nil))));
+
+    const result = try compiler.parseDestructParams(params);
+    defer {
+        for (result) |*p| {
+            var mut_p = p.*;
+            mut_p.deinit(allocator);
+        }
+        allocator.free(result);
+    }
+
+    try testing.expectEqual(@as(usize, 3), result.len);
+    try testing.expectEqual(Compiler.DestructParam.Kind.simple, result[0].kind);
+    try testing.expectEqualStrings("a", result[0].name.?);
+    try testing.expectEqual(Compiler.DestructParam.Kind.optional, result[1].kind);
+    try testing.expectEqualStrings("b", result[1].name.?);
+    try testing.expect(result[1].default_expr == null);
+    try testing.expectEqual(Compiler.DestructParam.Kind.optional, result[2].kind);
+    try testing.expectEqualStrings("c", result[2].name.?);
+    try testing.expect(result[2].default_expr != null);
+    try testing.expect(result[2].default_expr.?.isFixnum());
+}
+
+test "parseDestructParams - rest parameter" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    // (a b &rest c)
+    const a = try heap.intern("a");
+    const b = try heap.intern("b");
+    const rest_kw = try heap.intern("&rest");
+    const c = try heap.intern("c");
+    const params = try heap.allocCons(a, try heap.allocCons(b, try heap.allocCons(rest_kw, try heap.allocCons(c, Value.nil))));
+
+    const result = try compiler.parseDestructParams(params);
+    defer {
+        for (result) |*p| {
+            var mut_p = p.*;
+            mut_p.deinit(allocator);
+        }
+        allocator.free(result);
+    }
+
+    try testing.expectEqual(@as(usize, 3), result.len);
+    try testing.expectEqual(Compiler.DestructParam.Kind.simple, result[0].kind);
+    try testing.expectEqual(Compiler.DestructParam.Kind.simple, result[1].kind);
+    try testing.expectEqual(Compiler.DestructParam.Kind.rest, result[2].kind);
+    try testing.expectEqualStrings("c", result[2].name.?);
+}
+
+test "parseDestructParams - key parameters" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    // (a &key b (c 20))
+    const a = try heap.intern("a");
+    const key_kw = try heap.intern("&key");
+    const b = try heap.intern("b");
+    const c = try heap.intern("c");
+    const twenty = Value.makeFixnum(20);
+    const c_with_default = try heap.allocCons(c, try heap.allocCons(twenty, Value.nil));
+    const params = try heap.allocCons(a, try heap.allocCons(key_kw, try heap.allocCons(b, try heap.allocCons(c_with_default, Value.nil))));
+
+    const result = try compiler.parseDestructParams(params);
+    defer {
+        for (result) |*p| {
+            var mut_p = p.*;
+            mut_p.deinit(allocator);
+        }
+        allocator.free(result);
+    }
+
+    try testing.expectEqual(@as(usize, 3), result.len);
+    try testing.expectEqual(Compiler.DestructParam.Kind.simple, result[0].kind);
+    try testing.expectEqual(Compiler.DestructParam.Kind.key, result[1].kind);
+    try testing.expectEqualStrings("b", result[1].name.?);
+    try testing.expectEqual(Compiler.DestructParam.Kind.key, result[2].kind);
+    try testing.expectEqualStrings("c", result[2].name.?);
+    try testing.expect(result[2].default_expr != null);
+}
+
+test "parseDestructParams - complex nested with keywords" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    // ((a b) &optional c &rest d)
+    const a = try heap.intern("a");
+    const b = try heap.intern("b");
+    const c = try heap.intern("c");
+    const d = try heap.intern("d");
+    const opt_kw = try heap.intern("&optional");
+    const rest_kw = try heap.intern("&rest");
+    const nested = try heap.allocCons(a, try heap.allocCons(b, Value.nil));
+    const params = try heap.allocCons(nested, try heap.allocCons(opt_kw, try heap.allocCons(c, try heap.allocCons(rest_kw, try heap.allocCons(d, Value.nil)))));
+
+    const result = try compiler.parseDestructParams(params);
+    defer {
+        for (result) |*p| {
+            var mut_p = p.*;
+            mut_p.deinit(allocator);
+        }
+        allocator.free(result);
+    }
+
+    try testing.expectEqual(@as(usize, 3), result.len);
+    try testing.expectEqual(Compiler.DestructParam.Kind.nested, result[0].kind);
+    try testing.expect(result[0].children != null);
+    try testing.expectEqual(@as(usize, 2), result[0].children.?.len);
+    try testing.expectEqual(Compiler.DestructParam.Kind.optional, result[1].kind);
+    try testing.expectEqualStrings("c", result[1].name.?);
+    try testing.expectEqual(Compiler.DestructParam.Kind.rest, result[2].kind);
+    try testing.expectEqualStrings("d", result[2].name.?);
 }
