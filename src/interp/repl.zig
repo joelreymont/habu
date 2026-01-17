@@ -36,15 +36,23 @@ const LineEditor = lineedit.LineEditor;
 fn patchChunkIndices(chunk: *runtime.objects.Chunk, base: u16) void {
     const code = chunk.getCode();
     var i: usize = 0;
-    while (i < code.len) {
-        const op: Op = @enumFromInt(code[i]);
+    while (i + 1 < code.len) {
+        // Read opcode (2 bytes, little-endian)
+        const low: u16 = code[i];
+        const high: u16 = code[i + 1];
+        const opcode = low | (high << 8);
+        const op: Op = @enumFromInt(opcode);
         const size = op.operandSize();
+
         if (op == .make_closure) {
-            const rel_idx = std.mem.readInt(u16, code[i + 1 ..][0..2], .little);
+            // Operand starts at i + 2 (after 2-byte opcode)
+            const rel_idx = std.mem.readInt(u16, code[i + 2 ..][0..2], .little);
             const abs_idx = rel_idx + base;
-            std.mem.writeInt(u16, code[i + 1 ..][0..2], abs_idx, .little);
+            std.mem.writeInt(u16, code[i + 2 ..][0..2], abs_idx, .little);
         }
-        i += 1 + size;
+
+        // Move to next instruction: 2 bytes for opcode + operand size
+        i += 2 + size;
     }
 }
 
@@ -931,6 +939,15 @@ pub const Repl = struct {
         emitter.deinit();
 
         // Record base index before adding child chunks
+        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
+
+        // Patch child chunks to use absolute indices
+        for (child_chunks) |c| {
+            patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
+        }
+
+        // Patch main chunk too
+        patchChunkIndices(chunk.toPtr(runtime.objects.Chunk), chunk_base);
 
         // Add child chunks to persistent storage
         for (child_chunks) |c| {
