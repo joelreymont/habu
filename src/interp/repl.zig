@@ -210,7 +210,6 @@ pub const Repl = struct {
         emitter.deinit();
 
         // Store child chunks for closures
-        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
         for (child_chunks) |c| {
             try self.persistent_chunks.append(self.allocator, c);
         }
@@ -229,13 +228,13 @@ pub const Repl = struct {
         }
         nested_vm.num_globals = self.vm.num_globals;
 
-        // Set up chunk pool for closures - use base offset for this eval
+        // Set up chunk pool for closures
         var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
         defer chunk_ptrs.deinit(self.allocator);
         for (self.persistent_chunks.items) |chunk_val| {
             chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
         }
-        nested_vm.setChunkPoolWithBase(chunk_ptrs.items, chunk_base);
+        nested_vm.setChunkPool(chunk_ptrs.items);
 
         // Execute
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
@@ -437,7 +436,6 @@ pub const Repl = struct {
         emitter.deinit();
 
         // Store chunks persistently
-        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
         for (child_chunks) |child_chunk| {
             try self.persistent_chunks.append(self.allocator, child_chunk);
         }
@@ -448,7 +446,7 @@ pub const Repl = struct {
         for (self.persistent_chunks.items) |chunk_val| {
             chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
         }
-        vm.setChunkPoolWithBase(chunk_ptrs.items, chunk_base);
+        vm.setChunkPool(chunk_ptrs.items);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         const result = vm.run(chunk_ptr) catch {
@@ -892,7 +890,6 @@ pub const Repl = struct {
         emitter.deinit();
 
         // Add child chunks to persistent storage
-        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
         for (child_chunks) |c| {
             try self.persistent_chunks.append(self.allocator, c);
         }
@@ -902,13 +899,13 @@ pub const Repl = struct {
         //     ...
         // }
 
-        // Set chunk pool - VM uses absolute indices now
+        // Set chunk pool
         var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
         defer chunk_ptrs.deinit(self.allocator);
         for (self.persistent_chunks.items) |chunk_val| {
             chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
         }
-        self.vm.setChunkPoolWithBase(chunk_ptrs.items, chunk_base);
+        self.vm.setChunkPool(chunk_ptrs.items);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         return self.vm.run(chunk_ptr) catch return error.RuntimeError;
@@ -1313,7 +1310,6 @@ pub const Repl = struct {
         emitter.deinit();
 
         // Add child chunks
-        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
         for (child_chunks) |c| {
             try self.persistent_chunks.append(self.allocator, c);
         }
@@ -1328,7 +1324,7 @@ pub const Repl = struct {
         for (self.persistent_chunks.items) |chunk_val| {
             chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
         }
-        macro_vm.setChunkPoolWithBase(chunk_ptrs.items, chunk_base);
+        macro_vm.setChunkPool(chunk_ptrs.items);
 
         // Copy globals from current context
         const source_vm = self.current_vm orelse &self.vm;
@@ -1498,7 +1494,6 @@ pub const Repl = struct {
         emitter.deinit();
 
         // Add child chunks
-        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
         for (child_chunks) |c| {
             try self.persistent_chunks.append(self.allocator, c);
         }
@@ -1512,7 +1507,7 @@ pub const Repl = struct {
         for (self.persistent_chunks.items) |chunk_val| {
             chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
         }
-        eval_vm.setChunkPoolWithBase(chunk_ptrs.items, chunk_base);
+        eval_vm.setChunkPool(chunk_ptrs.items);
 
         eval_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         eval_vm.setEvalCallback(&evalCallback, @ptrCast(self));
