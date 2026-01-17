@@ -694,11 +694,11 @@ pub fn setPrintEscape(val: Value) void {
 }
 
 /// Get *print-case* value
-pub fn getPrintCase(heap: *Heap) Value {
+pub fn getPrintCase(heap: *Heap) !Value {
     return switch (print_case) {
-        .upcase => heap.internKeyword("upcase"),
-        .downcase => heap.internKeyword("downcase"),
-        .capitalize => heap.internKeyword("capitalize"),
+        .upcase => try heap.internKeyword("upcase"),
+        .downcase => try heap.internKeyword("downcase"),
+        .capitalize => try heap.internKeyword("capitalize"),
     };
 }
 

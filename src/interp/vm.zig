@@ -6000,7 +6000,7 @@ test "vm cons car cdr" {
         0x02, 0x00, 2, 0, 0, 0, // push_i32 2
         0x40, 0x00, // cons
         0x41, 0x00, // car
-        0x70, 0x00, // ret
+        0x82, 0x00, // ret
     };
 
     const chunk = Chunk{
@@ -6031,11 +6031,11 @@ test "vm conditional" {
     // (if nil 1 2) = 2
     const code = [_]u8{
         0x00, 0x00, // push_nil
-        0x72, 0x00, 8, 0, // jmp_nil 8
+        0x72, 0x00, 10, 0, // jmp_nil 10
         0x02, 0x00, 1, 0, 0, 0, // push_i32 1
-        0x71, 0x00, 5, 0, // jmp 5
+        0x71, 0x00, 6, 0, // jmp 6
         0x02, 0x00, 2, 0, 0, 0, // push_i32 2
-        0x70, 0x00, // ret
+        0x82, 0x00, // ret
     };
 
     const chunk = Chunk{
@@ -6068,7 +6068,7 @@ test "vm locals" {
         0x02, 0x00, 42, 0, 0, 0, // push_i32 42
         0x11, 0x00, 0, // store_local 0
         0x10, 0x00, 0, // load_local 0
-        0x70, 0x00, // ret
+        0x82, 0x00, // ret
     };
 
     const chunk = Chunk{
@@ -6109,7 +6109,7 @@ test "vm hash table" {
         0x10, 0x00, 0, // load_local 0
         0x02, 0x00, 42, 0, 0, 0, // push_i32 42
         0x95, 0x00, // hash_get
-        0x70, 0x00, // ret
+        0x82, 0x00, // ret
     };
 
     const chunk = Chunk{
@@ -6153,7 +6153,7 @@ test "vm hash table count and remove" {
         0x05, 0x00, // pop
         0x10, 0x00, 0, // load_local 0
         0x98, 0x00, // hash_count
-        0x70, 0x00, // ret
+        0x82, 0x00, // ret
     };
 
     const chunk = Chunk{
