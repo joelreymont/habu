@@ -5155,6 +5155,72 @@ pub const Compiler = struct {
 
         return result.toOwnedSlice(self.allocator);
     }
+    /// Generate destructuring bindings from parsed parameter tree
+    /// Returns list of bindings to extract from args_expr
+    fn genDestructCode(self: *Compiler, params: []const DestructParam, args_expr: *const Ir, env: *const Env) !std.ArrayList(Binding) {
+        var bindings = std.ArrayList(Binding){};
+        errdefer bindings.deinit(self.allocator);
+
+        // Process each parameter, walking args with cdr
+        var current_expr = args_expr;
+        for (params, 0..) |param, i| {
+            switch (param.kind) {
+                .simple => {
+                    // Simple: bind name to (car current)
+                    const car_ir = try self.builder.car(current_expr);
+                    try bindings.append(self.allocator, .{
+                        .name = param.name.?,
+                        .init = car_ir,
+                    });
+                    // Advance to cdr for next param
+                    if (i + 1 < params.len) {
+                        current_expr = try self.builder.cdr(current_expr);
+                    }
+                },
+                .nested => {
+                    // Nested: recursively destructure (car current)
+                    const car_ir = try self.builder.car(current_expr);
+                    var nested_bindings = try self.genDestructCode(param.children.?, car_ir, env);
+                    defer nested_bindings.deinit(self.allocator);
+                    try bindings.appendSlice(self.allocator, nested_bindings.items);
+                    // Advance to cdr
+                    if (i + 1 < params.len) {
+                        current_expr = try self.builder.cdr(current_expr);
+                    }
+                },
+                .optional => {
+                    // Optional: bind to (car current)
+                    const car_ir = try self.builder.car(current_expr);
+                    try bindings.append(self.allocator, .{
+                        .name = param.name.?,
+                        .init = car_ir,
+                    });
+                    if (i + 1 < params.len) {
+                        current_expr = try self.builder.cdr(current_expr);
+                    }
+                },
+                .rest => {
+                    // Rest: bind to remaining list (no car/cdr)
+                    try bindings.append(self.allocator, .{
+                        .name = param.name.?,
+                        .init = current_expr,
+                    });
+                    // Rest is always last, don't advance
+                },
+                .key => {
+                    // Key: search for :keyword in remaining args
+                    // Implementation TBD - for now just bind nil
+                    const nil_ir = try self.builder.lit(Value.nil);
+                    try bindings.append(self.allocator, .{
+                        .name = param.name.?,
+                        .init = nil_ir,
+                    });
+                },
+            }
+        }
+
+        return bindings;
+    }
 
     /// Compile eval-when: (eval-when (situations...) body...)
     /// The REPL handles compile-time evaluation; compiler just handles :execute
@@ -10501,4 +10567,141 @@ test "parseDestructParams - complex nested with keywords" {
     try testing.expectEqualStrings("c", result[1].name.?);
     try testing.expectEqual(Compiler.DestructParam.Kind.rest, result[2].kind);
     try testing.expectEqualStrings("d", result[2].name.?);
+}
+
+test "genDestructCode - simple parameters" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    // Parse (a b) and generate code to extract from args
+    const a = try heap.intern("a");
+    const b = try heap.intern("b");
+    const params_val = try heap.allocCons(a, try heap.allocCons(b, Value.nil));
+    const params = try compiler.parseDestructParams(params_val);
+    defer {
+        for (params) |*p| {
+            var mut_p = p.*;
+            mut_p.deinit(allocator);
+        }
+        allocator.free(params);
+    }
+
+    // Create args_ir to destructure from
+    var env = Env.init(allocator, null);
+    defer env.deinit();
+
+    const args_ir = try compiler.builder.lit(Value.nil);
+    defer allocator.destroy(args_ir);
+
+    var bindings = try compiler.genDestructCode(params, args_ir, &env);
+    defer bindings.deinit(allocator);
+    defer {
+        for (bindings.items) |binding| {
+            allocator.destroy(binding.init);
+        }
+    }
+
+    try testing.expectEqual(@as(usize, 2), bindings.items.len);
+    try testing.expectEqualStrings("a", bindings.items[0].name);
+    try testing.expectEqualStrings("b", bindings.items[1].name);
+    // Check IR nodes are car/cdr operations
+    try testing.expect(bindings.items[0].init.* == .car);
+    try testing.expect(bindings.items[1].init.* == .car);
+}
+
+test "genDestructCode - nested parameters" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    // Parse ((a b) c) - nested destructuring
+    const a = try heap.intern("a");
+    const b = try heap.intern("b");
+    const c = try heap.intern("c");
+    const nested = try heap.allocCons(a, try heap.allocCons(b, Value.nil));
+    const params_val = try heap.allocCons(nested, try heap.allocCons(c, Value.nil));
+    const params = try compiler.parseDestructParams(params_val);
+    defer {
+        for (params) |*p| {
+            var mut_p = p.*;
+            mut_p.deinit(allocator);
+        }
+        allocator.free(params);
+    }
+
+    var env = Env.init(allocator, null);
+    defer env.deinit();
+
+    const args_ir = try compiler.builder.lit(Value.nil);
+    defer allocator.destroy(args_ir);
+    var bindings = try compiler.genDestructCode(params, args_ir, &env);
+    defer bindings.deinit(allocator);
+    defer {
+        for (bindings.items) |binding| {
+            allocator.destroy(binding.init);
+        }
+    }
+
+    try testing.expectEqual(@as(usize, 3), bindings.items.len);
+    try testing.expectEqualStrings("a", bindings.items[0].name);
+    try testing.expectEqualStrings("b", bindings.items[1].name);
+    try testing.expectEqualStrings("c", bindings.items[2].name);
+}
+
+test "genDestructCode - rest parameter" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    // Parse (a &rest b)
+    const a = try heap.intern("a");
+    const rest_kw = try heap.intern("&rest");
+    const b = try heap.intern("b");
+    const params_val = try heap.allocCons(a, try heap.allocCons(rest_kw, try heap.allocCons(b, Value.nil)));
+    const params = try compiler.parseDestructParams(params_val);
+    defer {
+        for (params) |*p| {
+            var mut_p = p.*;
+            mut_p.deinit(allocator);
+        }
+        allocator.free(params);
+    }
+
+    var env = Env.init(allocator, null);
+    defer env.deinit();
+
+    const args_ir = try compiler.builder.lit(Value.nil);
+    defer allocator.destroy(args_ir);
+    var bindings = try compiler.genDestructCode(params, args_ir, &env);
+    defer bindings.deinit(allocator);
+    defer {
+        for (bindings.items) |binding| {
+            allocator.destroy(binding.init);
+        }
+    }
+
+    try testing.expectEqual(@as(usize, 2), bindings.items.len);
+    try testing.expectEqualStrings("a", bindings.items[0].name);
+    try testing.expectEqualStrings("b", bindings.items[1].name);
+    // First is car, second is rest (no car)
+    try testing.expect(bindings.items[0].init.* == .car);
 }
