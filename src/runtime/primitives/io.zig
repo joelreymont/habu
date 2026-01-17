@@ -885,19 +885,65 @@ test "*print-escape* flag" {
 
 test "*print-case* flag" {
     const testing = std.testing;
-
     // Default is upcase
     try testing.expect(print_case == .upcase);
 
-    // Change to downcase
-    print_case = .downcase;
-    try testing.expect(print_case == .downcase);
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
 
-    // Change to capitalize
-    print_case = .capitalize;
+    // Test getPrintCase
+    const upcase_kw = try getPrintCase(&heap);
+    try testing.expect(upcase_kw.isKeyword());
+    try testing.expect(std.mem.eql(u8, upcase_kw.toPtr(objects.Keyword).getName(), "upcase"));
+
+    // Test setPrintCase to downcase
+    const downcase_kw = try heap.internKeyword("downcase");
+    try setPrintCase(&heap, downcase_kw);
+    try testing.expect(print_case == .downcase);
+    const downcase_result = try getPrintCase(&heap);
+    try testing.expect(std.mem.eql(u8, downcase_result.toPtr(objects.Keyword).getName(), "downcase"));
+
+    // Test capitalize
+    const capitalize_kw = try heap.internKeyword("capitalize");
+    try setPrintCase(&heap, capitalize_kw);
     try testing.expect(print_case == .capitalize);
 
     // Reset to default
+    print_case = .upcase;
+}
+
+test "symbol printing with *print-case*" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    _ = try heap.intern("TeSt");
+    _ = try heap.intern("TeSt");
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(testing.allocator);
+
+    // Upcase
+    print_case = .upcase;
+    const w_up = buf.writer(testing.allocator);
+    try writeCaseSymbol("TeSt", w_up.any());
+    try testing.expectEqualStrings("TEST", buf.items);
+
+    // Downcase
+    buf.clearRetainingCapacity();
+    print_case = .downcase;
+    const w_down = buf.writer(testing.allocator);
+    try writeCaseSymbol("TeSt", w_down.any());
+    try testing.expectEqualStrings("test", buf.items);
+
+    // Capitalize
+    buf.clearRetainingCapacity();
+    print_case = .capitalize;
+    const w_cap = buf.writer(testing.allocator);
+    try writeCaseSymbol("TeSt", w_cap.any());
+    try testing.expectEqualStrings("Test", buf.items);
+
+    // Reset
     print_case = .upcase;
 }
 

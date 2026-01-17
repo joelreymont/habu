@@ -548,6 +548,17 @@ pub const Vm = struct {
         }
     }
 
+    fn handleSpecialVarLoad(self: *Vm, idx: u16) !Value {
+        if (self.global_env) |env| {
+            if (env.lookup("*print-case*")) |case_idx| {
+                if (idx == case_idx) {
+                    return try io.getPrintCase(self.heap);
+                }
+            }
+        }
+        return self.globals[idx];
+    }
+
     fn handleSpecialVarStore(self: *Vm, idx: u16, val: Value) !void {
         if (self.global_env) |env| {
             if (env.lookup("*print-escape*")) |esc_idx| {
@@ -1018,7 +1029,7 @@ pub const Vm = struct {
             .load_global => {
                 const idx = self.readU16();
                 if (idx >= MAX_GLOBALS) return error.InvalidConstant;
-                const val = self.globals[idx];
+                const val = try self.handleSpecialVarLoad(idx);
                 try self.push(val);
             },
             .store_global => {
