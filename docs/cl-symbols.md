@@ -295,7 +295,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | ceiling | ✓ | compile.zig:272 | Ceiling |
 | cis | ✓ | stdlib.habu:1765 | cos+i*sin |
 | complex | ✓ | compile.zig:380 | Make complex |
-| conjugate | ✗ | - | |
+| conjugate | ✓ | stdlib.habu | Complex conjugate |
 | cos | ✓ | compile.zig:258 | Cosine |
 | cosh | ✓ | compile.zig:264 | Hyperbolic cos |
 | decode-float | ✗ | - | |
@@ -305,16 +305,16 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | evenp | ✓ | compile.zig:252 | Even predicate |
 | exp | ✓ | compile.zig:269 | Exponential |
 | expt | ✓ | stdlib.habu | Power |
-| fceiling | ✗ | - | |
-| ffloor | ✗ | - | |
+| fceiling | ✓ | stdlib.habu | Ceiling as float |
+| ffloor | ✓ | stdlib.habu | Floor as float |
 | float | ✓ | arith.zig | To float |
 | float-digits | ✗ | - | |
 | float-precision | ✗ | - | |
 | float-radix | ✗ | - | |
 | float-sign | ✗ | - | |
 | floor | ✓ | compile.zig:271 | Floor |
-| fround | ✗ | - | |
-| ftruncate | ✗ | - | |
+| fround | ✓ | stdlib.habu | Round as float |
+| ftruncate | ✓ | stdlib.habu | Truncate as float |
 | gcd | ✓ | stdlib.habu | Greatest common divisor |
 | imagpart | ✓ | compile.zig:382 | Complex imaginary |
 | integer-decode-float | ✗ | - | |

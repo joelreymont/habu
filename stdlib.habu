@@ -1899,6 +1899,18 @@
                 (t (if (< (* number divisor) 0) (- q 1) (+ q 1))))))
       (values rq (- number (* rq divisor))))))
 
+(defun ffloor (number &optional (divisor 1))
+  (float (floor number divisor)))
+
+(defun fceiling (number &optional (divisor 1))
+  (float (ceiling number divisor)))
+
+(defun ftruncate (number &optional (divisor 1))
+  (float (truncate number divisor)))
+
+(defun fround (number &optional (divisor 1))
+  (float (round number divisor)))
+
 ; gcd - greatest common divisor
 (defun gcd (&rest args)
   (labels ((gcd2 (a b)
@@ -1932,6 +1944,11 @@
 ; cis - e^(i*theta) = cos(theta) + i*sin(theta)
 (defun cis (theta)
   (make-complex (cos theta) (sin theta)))
+
+(defun conjugate (z)
+  (if (complexp z)
+      (make-complex (realpart z) (- (imagpart z)))
+      z))
 
 ; rational - convert number to exact rational
 (defun rational (x) x)
