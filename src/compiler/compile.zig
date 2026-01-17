@@ -5319,6 +5319,11 @@ pub const Compiler = struct {
             return self.parseEqlType(cons.cdr);
         }
 
+        // (function (arg-types...) return-type) - CL-style function type
+        if (head.raw == b.ty_function.raw) {
+            return self.parseFunctionType(cons.cdr) catch null;
+        }
+
         return null;
     }
 
@@ -5571,6 +5576,55 @@ pub const Compiler = struct {
         const c = args.toPtr(Cons);
         const val = @as(*const Value, @ptrCast(&c.car));
         return self.type_checker.builder.makeEql(@as(*const anyopaque, @ptrCast(val))) catch null;
+    }
+
+    /// Parse (function (arg-types...) return-type) - CL-style function type
+    /// Syntax: (function (arg1-type arg2-type...) return-type)
+    /// Supports &optional, &rest, &key in arg list (simplified: types only)
+    fn parseFunctionType(self: *Compiler, args: Value) anyerror!?*const types.Type {
+        if (args.isNil()) return &types.t_closure;
+        if (!args.isCons()) return null;
+
+        const c = args.toPtr(Cons);
+        var domain_types = std.ArrayList(*const types.Type){};
+        defer domain_types.deinit(self.allocator);
+
+        // First arg is the arg type list (possibly empty)
+        if (c.car.isNil()) {
+            // No args: (function () return-type)
+        } else if (c.car.isCons()) {
+            // Parse arg types: (type1 type2 ...)
+            var arg_list = c.car;
+            const b = self.builtins orelse return null;
+            while (arg_list.isCons()) {
+                const ac = arg_list.toPtr(Cons);
+                // Skip lambda list markers
+                if (ac.car.isSymbol()) {
+                    if (ac.car.raw == b.@"&optional".raw or
+                        ac.car.raw == b.@"&rest".raw or
+                        ac.car.raw == b.@"&key".raw)
+                    {
+                        arg_list = ac.cdr;
+                        continue;
+                    }
+                }
+                const arg_type = self.parseTypeExpr(ac.car) orelse return null;
+                try domain_types.append(self.allocator, arg_type);
+                arg_list = ac.cdr;
+            }
+        } else {
+            // First arg is a single type (not a list)
+            const arg_type = self.parseTypeExpr(c.car) orelse return null;
+            try domain_types.append(self.allocator, arg_type);
+        }
+
+        // Second arg is return type (defaults to any if not specified)
+        const return_type = if (c.cdr.isCons()) blk: {
+            const rc = c.cdr.toPtr(Cons);
+            break :blk self.parseTypeExpr(rc.car) orelse &types.t_any;
+        } else &types.t_any;
+
+        return try self.type_checker.builder.makeArrow(domain_types.items, return_type);
     }
 
     /// Generate accessor with runtime type check:
