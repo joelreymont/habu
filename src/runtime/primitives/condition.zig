@@ -36,3 +36,100 @@ pub fn makeCondition(heap: *Heap, args: []const Value) !Value {
 
     return try heap.allocCondition(type_sym, format_control, format_args);
 }
+
+/// warn: Signal warning condition
+/// (warn datum &rest arguments)
+pub fn warn(heap: *Heap, args: []const Value) !Value {
+    if (args.len < 1) return error.InvalidSyntax;
+
+    const datum = args[0];
+    const rest = if (args.len > 1) args[1..] else &[_]Value{};
+
+    // Create warning condition
+    const condition = if (datum.isString())
+        try heap.allocCondition(
+            try heap.intern("simple-warning"),
+            datum,
+            try heap.listFromSlice(rest),
+        )
+    else if (datum.isSymbol())
+        try makeCondition(heap, args)
+    else
+        datum;
+
+    // Signal the warning (default handler prints it)
+    // TODO: implement proper handler dispatch
+    const writer = std.fs.File.stdout().writer();
+    try writer.print("WARNING: ", .{});
+    try heap.print(writer, condition);
+    try writer.print("\n", .{});
+
+    return Value.nil;
+}
+
+/// invoke-restart: Invoke named restart with arguments
+/// (invoke-restart restart-name &rest arguments)
+pub fn invokeRestart(heap: *Heap, args: []const Value) !Value {
+    if (args.len < 1) return error.InvalidSyntax;
+    // TODO: implement restart invocation
+    _ = heap;
+    return error.NotImplemented;
+}
+
+/// invoke-restart-interactively: Invoke restart, prompting for arguments
+/// (invoke-restart-interactively restart-name)
+pub fn invokeRestartInteractively(heap: *Heap, args: []const Value) !Value {
+    if (args.len < 1) return error.InvalidSyntax;
+    // TODO: implement interactive restart invocation
+    _ = heap;
+    return error.NotImplemented;
+}
+
+/// find-restart: Lookup restart by name
+/// (find-restart name &optional condition)
+pub fn findRestart(heap: *Heap, args: []const Value) !Value {
+    if (args.len < 1) return error.InvalidSyntax;
+    // TODO: implement restart lookup
+    _ = heap;
+    return Value.nil;
+}
+
+/// compute-restarts: Return list of active restarts
+/// (compute-restarts &optional condition)
+pub fn computeRestarts(heap: *Heap, args: []const Value) !Value {
+    _ = args;
+    // TODO: implement restart enumeration
+    _ = heap;
+    return Value.nil;
+}
+
+/// restart-name: Get restart name
+/// (restart-name restart)
+pub fn restartName(heap: *Heap, args: []const Value) !Value {
+    if (args.len < 1) return error.InvalidSyntax;
+    // TODO: implement restart name accessor
+    _ = heap;
+    return Value.nil;
+}
+
+/// break: Enter debugger with continue restart
+/// (break &optional format-control &rest format-arguments)
+pub fn @"break"(heap: *Heap, args: []const Value) !Value {
+    const writer = std.fs.File.stdout().writer();
+
+    if (args.len > 0) {
+        const format_control = args[0];
+        if (format_control.isString()) {
+            try writer.print("BREAK: ", .{});
+            try heap.print(writer, format_control);
+            try writer.print("\n", .{});
+        }
+    } else {
+        try writer.print("BREAK\n", .{});
+    }
+
+    // TODO: implement proper debugger with continue restart
+    try writer.print("Continue restart available (not yet implemented)\n", .{});
+
+    return Value.nil;
+}

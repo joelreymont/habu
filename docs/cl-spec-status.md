@@ -54,6 +54,10 @@ Habu targets 100% compatibility with the ANSI Common Lisp specification (ANSI IN
 - ✅ restart-case (compile.zig:3384, opcodes.zig:B8)
 - ✅ handler-bind (stdlib.habu:1024)
 - ✅ cerror (stdlib.habu:1041)
+- ✅ warn (condition.zig:42) - signal warning condition
+- ✅ break (condition.zig:72) - enter debugger with continue restart
+- ✅ invoke-restart (condition.zig:70) - restart invocation primitives
+- ✅ abort, continue, muffle-warning, store-value, use-value (stdlib.habu:3580-3598) - restart convenience functions
 
 ### Strings
 - ✅ string comparisons (string<, string>, string=, string<=, string>=)
