@@ -753,6 +753,7 @@ pub const Emitter = struct {
             },
 
             // I/O
+            .write => |op| try self.emitUnaryOp(op.operand, .write),
             .print => |op| try self.emitUnaryOp(op.operand, .print),
             .random => |op| try self.emitUnaryOp(op.operand, .random),
             .random_seed => |op| try self.emitUnaryOp(op.operand, .random_seed),

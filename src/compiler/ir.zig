@@ -622,6 +622,7 @@ pub const Ir = union(enum) {
     // Primitives - I/O and Symbol
     // ========================================================================
 
+    write: UnaryOp,
     print: UnaryOp,
     random: UnaryOp,
     random_seed: UnaryOp,
@@ -1972,6 +1973,12 @@ pub const IrBuilder = struct {
     }
 
     // I/O
+    pub fn write(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .write = .{ .operand = operand } };
+        return node;
+    }
+
     pub fn print(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .print = .{ .operand = operand } };

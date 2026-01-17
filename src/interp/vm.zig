@@ -1646,19 +1646,23 @@ pub const Vm = struct {
             },
 
             // I/O
+            .write => {
+                const val = try self.pop();
+                try self.syncPrintGlobals();
+                const result = try io.write(val, Value.nil);
+                try self.push(result);
+            },
             .print => {
                 const val = try self.pop();
                 try self.syncPrintGlobals();
-                try io.printValue(val);
-                try io.sysNewline();
-                try self.push(val); // Return the printed value
+                const result = try io.print(val, Value.nil);
+                try self.push(result);
             },
             .princ => {
                 const val = try self.pop();
                 try self.syncPrintGlobals();
-                try io.princValue(val);
-                // Note: no newline for princ
-                try self.push(val); // Return the printed value
+                const result = try io.princ(val, Value.nil);
+                try self.push(result);
             },
             .terpri => {
                 try io.sysNewline();
@@ -5992,9 +5996,11 @@ test "vm cons car cdr" {
 
     // (car (cons 1 2)) = 1
     const code = [_]u8{
-        @intFromEnum(Op.push_i32), 1,                    0,                    0, 0,
-        @intFromEnum(Op.push_i32), 2,                    0,                    0, 0,
-        @intFromEnum(Op.cons),     @intFromEnum(Op.car), @intFromEnum(Op.ret),
+        0x02, 0x00, 1, 0, 0, 0, // push_i32 1
+        0x02, 0x00, 2, 0, 0, 0, // push_i32 2
+        0x40, 0x00, // cons
+        0x41, 0x00, // car
+        0x70, 0x00, // ret
     };
 
     const chunk = Chunk{
@@ -6024,13 +6030,12 @@ test "vm conditional" {
 
     // (if nil 1 2) = 2
     const code = [_]u8{
-        @intFromEnum(Op.push_nil),
-        @intFromEnum(Op.jmp_nil),  8, 0, // Jump 8 bytes if nil
-        @intFromEnum(Op.push_i32), 1, 0,
-        0,                         0,
-        @intFromEnum(Op.jmp),      5, 0, // Jump 5 bytes over else
-        @intFromEnum(Op.push_i32), 2, 0,
-        0,                         0, @intFromEnum(Op.ret),
+        0x00, 0x00, // push_nil
+        0x72, 0x00, 8, 0, // jmp_nil 8
+        0x02, 0x00, 1, 0, 0, 0, // push_i32 1
+        0x71, 0x00, 5, 0, // jmp 5
+        0x02, 0x00, 2, 0, 0, 0, // push_i32 2
+        0x70, 0x00, // ret
     };
 
     const chunk = Chunk{
@@ -6060,8 +6065,10 @@ test "vm locals" {
 
     // Store 42 in local 0, load it back
     const code = [_]u8{
-        @intFromEnum(Op.push_i32),    42, 0,                           0, 0,
-        @intFromEnum(Op.store_local), 0,  @intFromEnum(Op.load_local), 0, @intFromEnum(Op.ret),
+        0x02, 0x00, 42, 0, 0, 0, // push_i32 42
+        0x11, 0x00, 0, // store_local 0
+        0x10, 0x00, 0, // load_local 0
+        0x70, 0x00, // ret
     };
 
     const chunk = Chunk{
@@ -6092,26 +6099,17 @@ test "vm hash table" {
     // Create hash table, set key 42 to value 100, get key 42
     // Use local 0 to store ht
     const code = [_]u8{
-        // make_hash with capacity 16, test_type eql (1), store in local 0
-        @intFromEnum(Op.make_hash),   16,                        0,                           1,
-        @intFromEnum(Op.store_local), 0,
-        // load ht, push key (42), push value (100), hash_set
-                                @intFromEnum(Op.load_local), 0,
-        @intFromEnum(Op.push_i32),    42,                        0,                           0,
-        0,                            @intFromEnum(Op.push_i32), 100,                         0,
-        0,                            0,
-        @intFromEnum(Op.hash_set), // pushes value back
-        @intFromEnum(Op.pop), // discard returned value
-        // load ht, push key, hash_get
-        @intFromEnum(Op.load_local),
-        0,
-        @intFromEnum(Op.push_i32),
-        42,
-        0,
-        0,
-        0,
-        @intFromEnum(Op.hash_get),
-        @intFromEnum(Op.ret),
+        0x94, 0x00, 16, 0, 1, // make_hash cap=16 type=eql
+        0x11, 0x00, 0, // store_local 0
+        0x10, 0x00, 0, // load_local 0
+        0x02, 0x00, 42, 0, 0, 0, // push_i32 42
+        0x02, 0x00, 100, 0, 0, 0, // push_i32 100
+        0x96, 0x00, // hash_set
+        0x05, 0x00, // pop
+        0x10, 0x00, 0, // load_local 0
+        0x02, 0x00, 42, 0, 0, 0, // push_i32 42
+        0x95, 0x00, // hash_get
+        0x70, 0x00, // ret
     };
 
     const chunk = Chunk{
@@ -6141,36 +6139,21 @@ test "vm hash table count and remove" {
 
     // Create hash table, set 2 keys, get count
     const code = [_]u8{
-        // make_hash with capacity 16, test_type eql (1)
-        @intFromEnum(Op.make_hash),   16,                        0,                           1,
-        // store in local 0
-        @intFromEnum(Op.store_local), 0,
-        // Set key 1 -> 10
-                                @intFromEnum(Op.load_local), 0,
-        @intFromEnum(Op.push_i32),    1,                         0,                           0,
-        0,                            @intFromEnum(Op.push_i32), 10,                          0,
-        0,                            0,                         @intFromEnum(Op.hash_set),
-        @intFromEnum(Op.pop), // discard returned value
-        // Set key 2 -> 20
-        @intFromEnum(Op.load_local),
-        0,
-        @intFromEnum(Op.push_i32),
-        2,
-        0,
-        0,
-        0,
-        @intFromEnum(Op.push_i32),
-        20,
-        0,
-        0,
-        0,
-        @intFromEnum(Op.hash_set),
-        @intFromEnum(Op.pop), // discard returned value
-        // Get count (should be 2)
-        @intFromEnum(Op.load_local),
-        0,
-        @intFromEnum(Op.hash_count),
-        @intFromEnum(Op.ret),
+        0x94, 0x00, 16, 0, 1, // make_hash cap=16 type=eql
+        0x11, 0x00, 0, // store_local 0
+        0x10, 0x00, 0, // load_local 0
+        0x02, 0x00, 1, 0, 0, 0, // push_i32 1
+        0x02, 0x00, 10, 0, 0, 0, // push_i32 10
+        0x96, 0x00, // hash_set
+        0x05, 0x00, // pop
+        0x10, 0x00, 0, // load_local 0
+        0x02, 0x00, 2, 0, 0, 0, // push_i32 2
+        0x02, 0x00, 20, 0, 0, 0, // push_i32 20
+        0x96, 0x00, // hash_set
+        0x05, 0x00, // pop
+        0x10, 0x00, 0, // load_local 0
+        0x98, 0x00, // hash_count
+        0x70, 0x00, // ret
     };
 
     const chunk = Chunk{

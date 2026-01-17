@@ -459,8 +459,12 @@ pub const Op = enum(u16) {
     // I/O
     // ========================================================================
 
+    /// Write value (with escaping)
+    /// ( val -- val )
+    write = 0x0106,
+
     /// Print value
-    /// ( val -- )
+    /// ( val -- val )
     print = 0x90,
 
     /// Random number [0, n)
@@ -1266,6 +1270,7 @@ pub const Op = enum(u16) {
             .str_le,
             .str_ge,
             .ret,
+            .write,
             .print,
             .random,
             .random_seed,

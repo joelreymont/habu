@@ -317,6 +317,8 @@ pub const Builtins = struct {
     subseq: Value,
 
     // Primitives - I/O and misc
+    write: Value,
+    prin1: Value,
     print: Value,
     princ: Value,
     terpri: Value,
@@ -705,6 +707,8 @@ pub const Builtins = struct {
             .substring = try heap.intern("substring"),
             .subseq = try heap.intern("subseq"),
             // Primitives - I/O and misc
+            .write = try heap.intern("write"),
+            .prin1 = try heap.intern("prin1"),
             .print = try heap.intern("print"),
             .princ = try heap.intern("princ"),
             .terpri = try heap.intern("terpri"),
@@ -7530,8 +7534,10 @@ pub const Compiler = struct {
         // subseq handled by stdlib for list support (builtin only did strings)
 
         // I/O
-        if (s == b.print.raw) return self.compilePrintOrPrinc(args, env, true);
-        if (s == b.princ.raw) return self.compilePrintOrPrinc(args, env, false);
+        if (s == b.write.raw) return self.compileWrite(args, env);
+        if (s == b.prin1.raw) return self.compileWrite(args, env);
+        if (s == b.print.raw) return self.compilePrint(args, env);
+        if (s == b.princ.raw) return self.compilePrinc(args, env);
         if (s == b.terpri.raw) return self.compileNullaryPrim(.terpri);
         if (s == b.@"write-char".raw) return self.compileUnaryPrim(args, env, .write_char);
         if (s == b.format.raw) return self.compileFormat(args, env);
@@ -7839,6 +7845,27 @@ pub const Compiler = struct {
     /// Compile princ/print with optional stream argument
     /// (princ obj) -> print to stdout
     /// (princ obj stream) -> write obj to stream (strings directly, others via write-to-string)
+    fn compileWrite(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons = args.toPtr(Cons);
+        const obj_ir = try self.compile(cons.car, env);
+        return try self.builder.write(obj_ir);
+    }
+
+    fn compilePrint(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons = args.toPtr(Cons);
+        const obj_ir = try self.compile(cons.car, env);
+        return try self.builder.print(obj_ir);
+    }
+
+    fn compilePrinc(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons = args.toPtr(Cons);
+        const obj_ir = try self.compile(cons.car, env);
+        return try self.builder.princ(obj_ir);
+    }
+
     fn compilePrintOrPrinc(self: *Compiler, args: Value, env: *const Env, is_print: bool) anyerror!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
         const cons = args.toPtr(Cons);
