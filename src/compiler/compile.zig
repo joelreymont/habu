@@ -90,8 +90,10 @@ pub const Builtins = struct {
     defmacro: Value,
     macroexpand: Value,
 
-    // Declarations (no-op, for CL compatibility)
+    // Declarations
     declare: Value,
+    declaim: Value,
+    proclaim: Value,
 
     // Type assertions
     the: Value,
@@ -507,6 +509,8 @@ pub const Builtins = struct {
             .defmacro = try heap.intern("defmacro"),
             .macroexpand = try heap.intern("macroexpand"),
             .declare = try heap.intern("declare"),
+            .declaim = try heap.intern("declaim"),
+            .proclaim = try heap.intern("proclaim"),
             .the = try heap.intern("the"),
             .flet = try heap.intern("flet"),
             .labels = try heap.intern("labels"),
@@ -1388,6 +1392,8 @@ pub const Compiler = struct {
     type_aliases: std.StringHashMap(Value),
     /// Declaration environment for current scope
     decl_env: ?DeclEnv = null,
+    /// Global declaration environment
+    global_decls: DeclEnv,
 
     /// ADT variant definition
     pub const Variant = struct {
@@ -1436,6 +1442,7 @@ pub const Compiler = struct {
             .class_metadata = std.StringHashMap([]const SlotSpec).init(allocator),
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
             .type_aliases = std.StringHashMap(Value).init(allocator),
+            .global_decls = DeclEnv.init(allocator),
         };
     }
 
@@ -1466,6 +1473,7 @@ pub const Compiler = struct {
             .class_metadata = std.StringHashMap([]const SlotSpec).init(allocator),
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
             .type_aliases = std.StringHashMap(Value).init(allocator),
+            .global_decls = DeclEnv.init(allocator),
         };
     }
 
@@ -1530,6 +1538,8 @@ pub const Compiler = struct {
         if (self.decl_env) |*de| {
             de.deinit();
         }
+        // Free global_decls
+        self.global_decls.deinit();
         // Note: defined_types contains references to ArrayList buffers and duped strings
         // that are intentionally not freed - they persist for the compiler's lifetime
         // and the memory is small (type definitions). The hashmap itself is freed.
@@ -1976,6 +1986,8 @@ pub const Compiler = struct {
         defun,
         the,
         declare,
+        declaim,
+        proclaim,
         @"return-from",
         @"unwind-protect",
         @"catch",
@@ -2045,6 +2057,8 @@ pub const Compiler = struct {
         .{ "defun", .defun },
         .{ "the", .the },
         .{ "declare", .declare },
+        .{ "declaim", .declaim },
+        .{ "proclaim", .proclaim },
         .{ "block", .block },
         .{ "return-from", .@"return-from" },
         .{ "unwind-protect", .@"unwind-protect" },
@@ -2129,6 +2143,8 @@ pub const Compiler = struct {
                     .defun => self.compileDefun(tail, env),
                     .the => self.compileThe(tail, env),
                     .declare => self.compileDeclare(tail),
+                    .declaim => self.compileDeclaim(tail),
+                    .proclaim => self.compileProclaim(tail, env),
                     .@"return-from" => self.compileReturnFrom(tail, env),
                     .throw => self.compileThrow(tail, env),
                     .signal => self.compileSignal(tail, env),
@@ -7382,6 +7398,145 @@ pub const Compiler = struct {
 
             list = cons.cdr;
         }
+    }
+
+    fn compileDeclaim(self: *Compiler, args: Value) !*Ir {
+        // (declaim (spec var...) (spec2 var2...))
+        // Process each declaration spec into global declarations
+        var list = args;
+        while (list.isCons()) {
+            const cons = list.toPtr(Cons);
+            const decl_spec = cons.car;
+
+            // Each spec should be a list like (inline func-name)
+            if (decl_spec.isCons()) {
+                try self.processGlobalDeclSpec(decl_spec);
+            }
+
+            list = cons.cdr;
+        }
+
+        // Declarations are compile-time only, return nil
+        return self.builder.lit(Value.nil);
+    }
+
+    fn processGlobalDeclSpec(self: *Compiler, spec: Value) !void {
+        const spec_cons = spec.toPtr(Cons);
+        const spec_name = spec_cons.car;
+        const spec_args = spec_cons.cdr;
+
+        if (!spec_name.isSymbol()) return error.InvalidSyntax;
+
+        const heap = self.heap orelse return error.InvalidSyntax;
+
+        // Match declaration spec by symbol identity
+        const type_sym = try heap.intern("type");
+        const ftype_sym = try heap.intern("ftype");
+        const inline_sym = try heap.intern("inline");
+        const notinline_sym = try heap.intern("notinline");
+        const special_sym = try heap.intern("special");
+        const optimize_sym = try heap.intern("optimize");
+
+        if (spec_name.eq(type_sym)) {
+            // (type type-spec var1 var2 ...)
+            if (!spec_args.isCons()) return error.InvalidSyntax;
+            const type_cons = spec_args.toPtr(Cons);
+            const type_expr = type_cons.car;
+            var var_list = type_cons.cdr;
+
+            while (var_list.isCons()) {
+                const var_cons = var_list.toPtr(Cons);
+                const var_name_val = var_cons.car;
+                if (!var_name_val.isSymbol()) return error.InvalidSyntax;
+
+                const var_sym = var_name_val.toPtr(Symbol);
+                const var_name = var_sym.getName();
+
+                try self.global_decls.addDecl(var_name, .{
+                    .spec = .type_decl,
+                    .type_expr = type_expr,
+                });
+
+                var_list = var_cons.cdr;
+            }
+        } else if (spec_name.eq(ftype_sym)) {
+            // (ftype function-type fname1 fname2 ...)
+            if (!spec_args.isCons()) return error.InvalidSyntax;
+            const ftype_cons = spec_args.toPtr(Cons);
+            const ftype_expr = ftype_cons.car;
+            var fn_list = ftype_cons.cdr;
+
+            while (fn_list.isCons()) {
+                const fn_cons = fn_list.toPtr(Cons);
+                const fn_name_val = fn_cons.car;
+                if (!fn_name_val.isSymbol()) return error.InvalidSyntax;
+
+                const fn_sym = fn_name_val.toPtr(Symbol);
+                const fn_name = fn_sym.getName();
+
+                try self.global_decls.addDecl(fn_name, .{
+                    .spec = .ftype,
+                    .type_expr = ftype_expr,
+                });
+
+                fn_list = fn_cons.cdr;
+            }
+        } else if (spec_name.eq(inline_sym)) {
+            // (inline fname1 fname2 ...)
+            try self.addGlobalSimpleDecls(spec_args, .inline_decl);
+        } else if (spec_name.eq(notinline_sym)) {
+            // (notinline fname1 fname2 ...)
+            try self.addGlobalSimpleDecls(spec_args, .notinline);
+        } else if (spec_name.eq(special_sym)) {
+            // (special var1 var2 ...)
+            try self.addGlobalSimpleDecls(spec_args, .special);
+        } else if (spec_name.eq(optimize_sym)) {
+            // (optimize (quality value)...) - ignored for now
+        }
+        // Ignore unknown declaration specs
+    }
+
+    fn addGlobalSimpleDecls(self: *Compiler, vars: Value, spec: DeclSpec) !void {
+        var list = vars;
+        while (list.isCons()) {
+            const cons = list.toPtr(Cons);
+            const var_val = cons.car;
+            if (!var_val.isSymbol()) return error.InvalidSyntax;
+
+            const var_sym = var_val.toPtr(Symbol);
+            const var_name = var_sym.getName();
+
+            try self.global_decls.addDecl(var_name, .{ .spec = spec });
+
+            list = cons.cdr;
+        }
+    }
+
+    fn compileProclaim(self: *Compiler, args: Value, _: *const Env) !*Ir {
+        // (proclaim '(spec var...))
+        // Runtime global declaration - compile as call to proclaim primitive
+        // For now, just process at compile time
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons = args.toPtr(Cons);
+        const quoted = cons.car;
+
+        // Unwrap quote if present
+        const decl_spec = if (quoted.isCons()) blk: {
+            const q = quoted.toPtr(Cons);
+            const heap = self.heap orelse return error.InvalidSyntax;
+            const quote_sym = try heap.intern("quote");
+            if (q.car.eq(quote_sym) and q.cdr.isCons()) {
+                break :blk q.cdr.toPtr(Cons).car;
+            }
+            break :blk quoted;
+        } else quoted;
+
+        if (decl_spec.isCons()) {
+            try self.processGlobalDeclSpec(decl_spec);
+        }
+
+        // Return nil for now (in future, could emit runtime call)
+        return self.builder.lit(Value.nil);
     }
 
     /// Compile a simple type check for a single type symbol (uses symbol identity)
