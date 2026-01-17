@@ -386,8 +386,8 @@ pub const ContractCompiler = struct {
                 const elem_ctc = try self.compile(elem_ty);
                 ctc.* = .{ .listof = elem_ctc };
             },
-            .vec => |elem_ty| {
-                const elem_ctc = try self.compile(elem_ty);
+            .vec => |v| {
+                const elem_ctc = try self.compile(v.elem);
                 ctc.* = .{ .vectorof = elem_ctc };
             },
             .non_nil => |inner| {

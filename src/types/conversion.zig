@@ -115,8 +115,11 @@ pub const TypeConverter = struct {
             },
 
             // Vector types
-            .vec => |e1| switch (t2.*) {
-                .vec => |e2| self.typeEqual(e1, e2, ctx),
+            .vec => |v1| switch (t2.*) {
+                .vec => |v2| blk: {
+                    if (v1.dim != v2.dim) break :blk false;
+                    break :blk try self.typeEqual(v1.elem, v2.elem, ctx);
+                },
                 else => false,
             },
 
@@ -364,8 +367,11 @@ pub const TypeConverter = struct {
 
         // Vector covariance
         switch (t1.*) {
-            .vec => |e1| switch (t2.*) {
-                .vec => |e2| return self.isSubtype(e1, e2),
+            .vec => |v1| switch (t2.*) {
+                .vec => |v2| {
+                    if (v2.dim != null and v1.dim != v2.dim) return false;
+                    return self.isSubtype(v1.elem, v2.elem);
+                },
                 else => {},
             },
             else => {},

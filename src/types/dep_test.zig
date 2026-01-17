@@ -169,7 +169,7 @@ test "Type application creation" {
     // For now, arg is just a mock pointer
     const mock_term: *const anyopaque = @ptrCast(&type_adt.t_fixnum);
     const type_var_a = try builder.makeTypeVar("a");
-    const vec_a = try builder.makeVec(type_var_a);
+    const vec_a = try builder.makeVec(type_var_a, null);
     const vec_a_n = try builder.makeTypeApp(vec_a, mock_term);
 
     try std.testing.expect(vec_a_n.isDependent());
@@ -267,7 +267,7 @@ test "Complex dependent type: length-indexed vector" {
     // Function that takes a length and returns a vector of that length
 
     // First, create the return type: (vec fixnum)
-    const vec_fixnum = try builder.makeVec(&type_adt.t_fixnum);
+    const vec_fixnum = try builder.makeVec(&type_adt.t_fixnum, null);
 
     // Now wrap in Pi: (pi (n : fixnum) (vec fixnum))
     // Note: Full dependent typing would have (vec fixnum n) referencing n

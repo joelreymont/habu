@@ -656,10 +656,10 @@ pub const BiChecker = struct {
             },
 
             // Vector type
-            .vec => |elem| blk: {
-                const new_elem = try self.substituteInType(elem, var_name, replacement);
-                if (new_elem == elem) break :blk ty;
-                break :blk try self.type_builder.makeVec(new_elem);
+            .vec => |v| blk: {
+                const new_elem = try self.substituteInType(v.elem, var_name, replacement);
+                if (new_elem == v.elem) break :blk ty;
+                break :blk try self.type_builder.makeVec(new_elem, v.dim);
             },
 
             // Non-nil type

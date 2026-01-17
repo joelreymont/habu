@@ -272,7 +272,10 @@ pub const TypeChecker = struct {
 
         // Vec: covariant element type (for read-only usage)
         if (sub.* == .vec and super.* == .vec) {
-            return self.isSubtype(sub.vec, super.vec);
+            const sub_v = sub.vec;
+            const super_v = super.vec;
+            if (super_v.dim != null and sub_v.dim != super_v.dim) return false;
+            return self.isSubtype(sub_v.elem, super_v.elem);
         }
 
         return false;

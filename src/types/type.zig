@@ -201,8 +201,12 @@ pub const Type = union(enum) {
     /// A list is nil or (cons T (list T))
     list: *const Type,
 
-    /// Homogeneous vector: (vector T)
-    vec: *const Type,
+    /// Homogeneous vector: (vector T) or (vector T size)
+    vec: struct {
+        elem: *const Type,
+        /// Optional dimension constraint (null = any size)
+        dim: ?usize,
+    },
 
     /// Non-nil constraint: (non-nil T)
     /// Used to exclude nil from a type
@@ -406,7 +410,7 @@ pub const Type = union(enum) {
                 else => false,
             },
             .vec => |v| switch (other) {
-                .vec => |ov| v.eql(ov.*),
+                .vec => |ov| v.elem.eql(ov.elem.*) and v.dim == ov.dim,
                 else => false,
             },
             .non_nil => |n| switch (other) {
@@ -634,11 +638,11 @@ pub const TypeBuilder = struct {
         return t;
     }
 
-    /// Create (vector T)
-    pub fn makeVec(self: *TypeBuilder, elem: *const Type) !*Type {
+    /// Create (vector T) or (vector T size)
+    pub fn makeVec(self: *TypeBuilder, elem: *const Type, dim: ?usize) !*Type {
         const alloc = self.allocator();
         const t = try alloc.create(Type);
-        t.* = .{ .vec = elem };
+        t.* = .{ .vec = .{ .elem = elem, .dim = dim } };
         return t;
     }
 

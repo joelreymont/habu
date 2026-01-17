@@ -42,8 +42,11 @@ pub const InferType = union(enum) {
     /// List with element type
     list: *const InferType,
 
-    /// Vector with element type
-    vec: *const InferType,
+    /// Vector with element type and optional dimension
+    vec: struct {
+        elem: *const InferType,
+        dim: ?usize,
+    },
 
     pub fn isVariable(self: InferType) bool {
         return self == .variable;
@@ -73,9 +76,12 @@ pub const InferType = union(enum) {
                 try elem.format("", .{}, writer);
                 try writer.writeAll(")");
             },
-            .vec => |elem| {
+            .vec => |v| {
                 try writer.writeAll("(vector ");
-                try elem.format("", .{}, writer);
+                try v.elem.format("", .{}, writer);
+                if (v.dim) |d| {
+                    try writer.print(" {d}", .{d});
+                }
                 try writer.writeAll(")");
             },
         }
@@ -302,9 +308,12 @@ pub const InferCtx = struct {
             return;
         }
 
-        // Vector types - unify element types
+        // Vector types - unify element types and check dimensions
         if (r1.* == .vec and r2.* == .vec) {
-            try self.unify(r1.vec, r2.vec);
+            const v1 = r1.vec;
+            const v2 = r2.vec;
+            if (v1.dim != v2.dim) return error.TypeMismatch;
+            try self.unify(v1.elem, v2.elem);
             return;
         }
 
@@ -324,7 +333,7 @@ pub const InferCtx = struct {
                 return self.occursIn(v, a.range);
             },
             .list => |elem| return self.occursIn(v, elem),
-            .vec => |elem| return self.occursIn(v, elem),
+            .vec => |vec| return self.occursIn(v, vec.elem),
         }
     }
 
@@ -419,8 +428,8 @@ pub const InferCtx = struct {
             .list => |elem| {
                 try self.collectFreeVars(elem, free_vars);
             },
-            .vec => |elem| {
-                try self.collectFreeVars(elem, free_vars);
+            .vec => |v| {
+                try self.collectFreeVars(v.elem, free_vars);
             },
         }
     }
@@ -551,10 +560,10 @@ pub const InferCtx = struct {
                 new_t.* = .{ .list = new_elem };
                 return new_t;
             },
-            .vec => |elem| {
-                const new_elem = try self.substituteVars(elem, var_map);
+            .vec => |v| {
+                const new_elem = try self.substituteVars(v.elem, var_map);
                 const new_t = try self.alloc();
-                new_t.* = .{ .vec = new_elem };
+                new_t.* = .{ .vec = .{ .elem = new_elem, .dim = v.dim } };
                 return new_t;
             },
         }
@@ -1009,9 +1018,11 @@ fn typeEquals(t1: *const types.Type, t2: *const types.Type) bool {
             break :blk typeEquals(e1, t2.list);
         },
 
-        .vec => |e1| blk: {
+        .vec => |v1| blk: {
             if (t2.* != .vec) break :blk false;
-            break :blk typeEquals(e1, t2.vec);
+            const v2 = t2.vec;
+            if (v1.dim != v2.dim) break :blk false;
+            break :blk typeEquals(v1.elem, v2.elem);
         },
 
         .non_nil => |n1| blk: {

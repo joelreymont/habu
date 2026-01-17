@@ -5431,13 +5431,13 @@ pub const Compiler = struct {
         if (c.cdr.isCons()) {
             const rest = c.cdr.toPtr(Cons);
             const size_term: *const anyopaque = @ptrCast(&rest.car);
-            const vec_t = self.type_checker.builder.makeVec(elem) catch {
+            const vec_t = self.type_checker.builder.makeVec(elem, null) catch {
                 return null;
             };
             return self.type_checker.builder.makeTypeApp(vec_t, size_term) catch null;
         }
 
-        return self.type_checker.builder.makeVec(elem) catch null;
+        return self.type_checker.builder.makeVec(elem, null) catch null;
     }
 
     /// Parse (non-nil T)
