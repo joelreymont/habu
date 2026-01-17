@@ -2965,14 +2965,19 @@
                            ; Check if var is a list (destructuring) or symbol
                            (if (consp var)
                                ; Destructuring: (for (key . val) being hash-keys ...)
-                               (let ((tmp-var (gensym "tmp")))
+                               (let ((tmp-var (gensym "tmp"))
+                                     (val-var (gensym "val")))
                                  (push (list tmp-var nil) vars)
                                  (when other-var
                                    (push (list other-var nil) vars))
+                                 (push (list val-var nil) vars)
                                  (push (list 'setq tmp-var (list 'car keys-var)) body-forms)
                                  (when other-var
-                                   (push (list 'setq other-var (list 'gethash tmp-var hash-var)) body-forms))
-                                 (push (cons 'destructuring-bind (cons var (list (if other-var (list 'cons tmp-var other-var) tmp-var)))) body-forms))
+                                   (push (list 'setq other-var (list 'gethash tmp-var hash-var)) body-forms)
+                                   (push (list 'setq val-var (list 'cons tmp-var other-var)) body-forms))
+                                 (unless other-var
+                                   (push (list 'setq val-var tmp-var) body-forms))
+                                 (push (list 'destructuring-bind var val-var) body-forms))
                              ; Simple: var is symbol
                              (progn
                                (push (list var nil) vars)
@@ -2997,7 +3002,7 @@
                                  (push (list tmp-var nil) vars)
                                  (push (list 'setq key-var (list 'car keys-var)) body-forms)
                                  (push (list 'setq tmp-var (list 'gethash key-var hash-var)) body-forms)
-                                 (push (cons 'destructuring-bind (cons var (cons tmp-var nil))) body-forms))
+                                 (push (list 'destructuring-bind var tmp-var) body-forms))
                              ; Simple: var is symbol
                              (progn
                                (push (list var nil) vars)
