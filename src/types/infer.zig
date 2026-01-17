@@ -1056,6 +1056,21 @@ fn typeEquals(t1: *const types.Type, t2: *const types.Type) bool {
 
         // Pi, Sigma, refinement, type_app need deeper comparison
         .pi, .sigma, .refinement, .type_app => false,
+
+        .member => |objs1| blk: {
+            if (t2.* != .member) break :blk false;
+            const objs2 = t2.member;
+            if (objs1.len != objs2.len) break :blk false;
+            for (objs1, objs2) |o1, o2| {
+                if (o1 != o2) break :blk false;
+            }
+            break :blk true;
+        },
+
+        .type_eql => |obj1| blk: {
+            if (t2.* != .type_eql) break :blk false;
+            break :blk obj1 == t2.type_eql;
+        },
     };
 }
 

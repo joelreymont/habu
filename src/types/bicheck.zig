@@ -626,7 +626,7 @@ pub const BiChecker = struct {
     ) !*const Type {
         return switch (ty.*) {
             // Primitive types don't contain variables
-            .primitive, .any, .type_level, .satisfies => ty,
+            .primitive, .any, .type_level, .satisfies, .member, .type_eql => ty,
 
             // Type variable - check if it matches
             .type_var => |name| {

@@ -221,6 +221,16 @@ pub const Type = union(enum) {
     /// Predicate is a runtime Value (closure)
     satisfies: *const anyopaque, // Points to Value (predicate function)
 
+    /// Member type: (member obj1 obj2 ...)
+    /// Type that matches exactly one of the given objects
+    /// Objects are compared by identity (pointer equality)
+    member: []const *const anyopaque, // Points to Values
+
+    /// Eql type: (eql obj)
+    /// Type that matches exactly this one object
+    /// Object compared by equality (equal? semantics)
+    type_eql: *const anyopaque, // Points to Value
+
     // ========================================================================
     // Dependent Types (QTT)
     // ========================================================================
@@ -323,7 +333,7 @@ pub const Type = union(enum) {
             .list => true, // Empty list is nil
             .non_nil => false,
             .any => true,
-            .arrow, .vec, .@"struct", .satisfies => false,
+            .arrow, .vec, .@"struct", .satisfies, .member, .type_eql => false,
             // Dependent types
             .pi, .sigma => false, // Function/pair types are never nil
             .refinement => |r| r.base_type.couldBeNil(), // Depends on base type
@@ -355,6 +365,8 @@ pub const Type = union(enum) {
             .any => "any",
             .@"struct" => |s| s.name,
             .satisfies => "(satisfies ...)",
+            .member => "(member ...)",
+            .type_eql => "(eql ...)",
             // Dependent types
             .pi => "(pi ...)",
             .sigma => "(sigma ...)",
@@ -427,6 +439,20 @@ pub const Type = union(enum) {
             },
             .satisfies => |p| switch (other) {
                 .satisfies => |op| p == op, // Pointer equality for predicates
+                else => false,
+            },
+            .member => |objs| switch (other) {
+                .member => |oobjs| {
+                    if (objs.len != oobjs.len) return false;
+                    for (objs, oobjs) |o1, o2| {
+                        if (o1 != o2) return false;
+                    }
+                    return true;
+                },
+                else => false,
+            },
+            .type_eql => |obj| switch (other) {
+                .type_eql => |oobj| obj == oobj, // Pointer equality
                 else => false,
             },
             // Dependent types
@@ -737,6 +763,23 @@ pub const TypeBuilder = struct {
         const alloc = self.allocator();
         const t = try alloc.create(Type);
         t.* = .{ .type_level = level };
+        return t;
+    }
+
+    /// Create a member type: (member obj1 obj2 ...)
+    pub fn makeMember(self: *TypeBuilder, objs: []const *const anyopaque) !*Type {
+        const alloc = self.allocator();
+        const t = try alloc.create(Type);
+        const copy = try alloc.dupe(*const anyopaque, objs);
+        t.* = .{ .member = copy };
+        return t;
+    }
+
+    /// Create an eql type: (eql obj)
+    pub fn makeEql(self: *TypeBuilder, obj: *const anyopaque) !*Type {
+        const alloc = self.allocator();
+        const t = try alloc.create(Type);
+        t.* = .{ .type_eql = obj };
         return t;
     }
 };

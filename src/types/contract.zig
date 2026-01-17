@@ -487,6 +487,24 @@ pub const ContractCompiler = struct {
                     },
                 };
             },
+            .member => {
+                // Member type - accept any value (requires equal? check with stored values)
+                ctc.* = .{
+                    .flat = .{
+                        .predicate = predicates.isAny,
+                        .type_name = "(member ...)",
+                    },
+                };
+            },
+            .type_eql => {
+                // Eql type - accept any value (requires equal? check with stored value)
+                ctc.* = .{
+                    .flat = .{
+                        .predicate = predicates.isAny,
+                        .type_name = "(eql ...)",
+                    },
+                };
+            },
         }
         return ctc;
     }

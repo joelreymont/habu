@@ -433,6 +433,8 @@ pub const Builtins = struct {
     ty_or: Value, // (or T1 T2 ...) - alias for union
     ty_and: Value, // (and T1 T2 ...) - intersection type
     ty_not: Value, // (not T) - negation type
+    ty_member: Value, // (member obj1 obj2 ...) - member type
+    ty_eql: Value, // (eql obj) - eql type
 
     // Dependent type form symbols (QTT)
     ty_pi: Value, // (pi (x : A) B) - dependent function type
@@ -816,6 +818,8 @@ pub const Builtins = struct {
             .ty_or = try heap.intern("or"),
             .ty_and = try heap.intern("and"),
             .ty_not = try heap.intern("not"),
+            .ty_member = try heap.intern("member"),
+            .ty_eql = try heap.intern("eql"),
             // Dependent type form symbols (QTT)
             .ty_pi = try heap.intern("pi"),
             .ty_sigma = try heap.intern("sigma"),
@@ -5305,6 +5309,16 @@ pub const Compiler = struct {
             return self.parseRefineType(cons.cdr);
         }
 
+        // (member obj1 obj2 ...) - member type
+        if (head.raw == b.ty_member.raw) {
+            return self.parseMemberType(cons.cdr);
+        }
+
+        // (eql obj) - eql type
+        if (head.raw == b.ty_eql.raw) {
+            return self.parseEqlType(cons.cdr);
+        }
+
         return null;
     }
 
@@ -5530,6 +5544,33 @@ pub const Compiler = struct {
 
         // For now, create refinement with null predicate (will be enhanced later)
         return self.type_checker.builder.makeRefinement(base_type, var_name, null) catch null;
+    }
+
+    fn parseMemberType(self: *Compiler, args: Value) ?*const types.Type {
+        var obj_list = std.ArrayList(*const anyopaque){};
+        defer obj_list.deinit(self.allocator);
+
+        var current = args;
+        while (current.isCons()) {
+            const c = current.toPtr(Cons);
+            const val = @as(*const Value, @ptrCast(&c.car));
+            obj_list.append(self.allocator, @as(*const anyopaque, @ptrCast(val))) catch {
+                return null;
+            };
+            current = c.cdr;
+        }
+
+        if (obj_list.items.len == 0) return null;
+        return self.type_checker.builder.makeMember(obj_list.items) catch {
+            return null;
+        };
+    }
+
+    fn parseEqlType(self: *Compiler, args: Value) ?*const types.Type {
+        if (!args.isCons()) return null;
+        const c = args.toPtr(Cons);
+        const val = @as(*const Value, @ptrCast(&c.car));
+        return self.type_checker.builder.makeEql(@as(*const anyopaque, @ptrCast(val))) catch null;
     }
 
     /// Generate accessor with runtime type check:

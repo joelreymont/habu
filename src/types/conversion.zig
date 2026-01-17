@@ -257,6 +257,24 @@ pub const TypeConverter = struct {
                 .type_level => |lvl2| lvl1 == lvl2,
                 else => false,
             },
+
+            // Member types - pointer equality on object lists
+            .member => |objs1| switch (t2.*) {
+                .member => |objs2| {
+                    if (objs1.len != objs2.len) return false;
+                    for (objs1, objs2) |o1, o2| {
+                        if (o1 != o2) return false;
+                    }
+                    return true;
+                },
+                else => false,
+            },
+
+            // Eql types - pointer equality on object
+            .type_eql => |obj1| switch (t2.*) {
+                .type_eql => |obj2| obj1 == obj2,
+                else => false,
+            },
         };
     }
 
