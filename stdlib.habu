@@ -2357,6 +2357,32 @@
         (coerce (nreverse chars) 'string)
         "")))
 
+; y-or-n-p - prompt for yes/no answer (single char)
+(defun y-or-n-p (&optional format-string &rest args)
+  (when format-string
+    (apply #'format t format-string args)
+    (princ " (y/n) "))
+  (loop
+    (let ((answer (read-line)))
+      (when (or (string-equal answer "y") (string-equal answer "yes"))
+        (return t))
+      (when (or (string-equal answer "n") (string-equal answer "no"))
+        (return nil))
+      (princ "Please answer y or n: "))))
+
+; yes-or-no-p - prompt for yes/no answer (full word)
+(defun yes-or-no-p (&optional format-string &rest args)
+  (when format-string
+    (apply #'format t format-string args)
+    (princ " (yes/no) "))
+  (loop
+    (let ((answer (read-line)))
+      (when (string-equal answer "yes")
+        (return t))
+      (when (string-equal answer "no")
+        (return nil))
+      (princ "Please answer yes or no: "))))
+
 ; prin1-to-string - convert to string with escaping
 (defun prin1-to-string (object)
   (write-to-string object))
