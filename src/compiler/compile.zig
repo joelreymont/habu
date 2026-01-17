@@ -450,6 +450,7 @@ pub const Builtins = struct {
     @"&body": Value,
     @"&optional": Value,
     @"&key": Value,
+    @"&aux": Value,
 
     // Special dispatch symbols
     _: Value,
@@ -835,6 +836,7 @@ pub const Builtins = struct {
             .@"&body" = try heap.intern("&body"),
             .@"&optional" = try heap.intern("&optional"),
             .@"&key" = try heap.intern("&key"),
+            .@"&aux" = try heap.intern("&aux"),
             // Special dispatch symbols
             ._ = try heap.intern("_"),
             .@"else" = try heap.intern("else"),
@@ -2371,9 +2373,13 @@ pub const Compiler = struct {
         var key_params = std.ArrayList(Ir.KeyParam){};
         defer key_params.deinit(self.allocator);
 
+        var aux_bindings = std.ArrayList(Ir.Binding){};
+        defer aux_bindings.deinit(self.allocator);
+
         var rest_param: ?[]const u8 = null;
         var in_optional = false;
         var in_key = false;
+        var in_aux = false;
         var param_list = params_expr;
         while (param_list.isCons()) {
             const param_cons = param_list.toPtr(Cons);
@@ -2405,6 +2411,16 @@ pub const Compiler = struct {
                 if (param_item.raw == b.@"&key".raw) {
                     in_key = true;
                     in_optional = false;
+                    in_aux = false;
+                    param_list = param_cons.cdr;
+                    continue;
+                }
+
+                // Check for &aux keyword (use symbol identity)
+                if (param_item.raw == b.@"&aux".raw) {
+                    in_aux = true;
+                    in_key = false;
+                    in_optional = false;
                     param_list = param_cons.cdr;
                     continue;
                 }
@@ -2412,7 +2428,16 @@ pub const Compiler = struct {
                 const param_sym = param_item.toPtr(Symbol);
                 const name = param_sym.getName();
 
-                if (in_key) {
+                if (in_aux) {
+                    // Aux variable with nil default
+                    const nil_ir = try self.builder.lit(Value.nil);
+                    const idx: u16 = @intCast(aux_bindings.items.len);
+                    try aux_bindings.append(self.allocator, .{
+                        .name = name,
+                        .value = nil_ir,
+                        .index = idx,
+                    });
+                } else if (in_key) {
                     // Key parameter with nil default, keyword = name
                     try key_params.append(self.allocator, .{
                         .keyword = name,
@@ -2436,7 +2461,21 @@ pub const Compiler = struct {
                 const name_sym = typed.car.toPtr(Symbol);
                 const name = name_sym.getName();
 
-                if (in_key) {
+                if (in_aux) {
+                    // Aux variable: (name init-expr)
+                    // Compile init in parent env (not lambda env)
+                    var init_ir: *const Ir = try self.builder.lit(Value.nil);
+                    if (typed.cdr.isCons()) {
+                        const init_cons = typed.cdr.toPtr(Cons);
+                        init_ir = try self.compile(init_cons.car, env);
+                    }
+                    const idx: u16 = @intCast(aux_bindings.items.len);
+                    try aux_bindings.append(self.allocator, .{
+                        .name = name,
+                        .value = init_ir,
+                        .index = idx,
+                    });
+                } else if (in_key) {
                     // Key parameter: (name default-expr) or just name
                     // Compile default in parent env (not lambda env)
                     var default_ir: ?*const Ir = null;
@@ -2506,6 +2545,11 @@ pub const Compiler = struct {
         // Bind rest parameter if present
         if (rest_param) |rp| {
             _ = try lambda_env.bind(rp);
+        }
+
+        // Bind aux variables
+        for (aux_bindings.items) |ab| {
+            _ = try lambda_env.bind(ab.name);
         }
 
         // Capture analysis: collect free variables before compiling body
@@ -2582,6 +2626,13 @@ pub const Compiler = struct {
         // Copy key params
         const kp_params = self.allocator.dupe(Ir.KeyParam, key_params.items) catch
             return error.OutOfMemory;
+
+        // If we have aux bindings, wrap body in a let
+        if (aux_bindings.items.len > 0) {
+            const aux_slice = self.allocator.dupe(Ir.Binding, aux_bindings.items) catch
+                return error.OutOfMemory;
+            body_ir = try self.builder.letExpr(aux_slice, body_ir);
+        }
 
         return self.builder.lambda(params.items, opt_params, kp_params, rest_param, captures, body_ir) catch
             return error.OutOfMemory;
