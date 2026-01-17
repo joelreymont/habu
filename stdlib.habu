@@ -1080,11 +1080,11 @@
     ; List to vector
     ((and (eq result-type 'vector) (listp object))
      (let* ((len (length object))
-            (vec (make-vector len nil)))
-       (let ((i 0))
-         (dolist (x object vec)
-           (setf (svref vec i) x)
-           (setq i (+ i 1))))))
+            (vec (make-vector len nil))
+            (i 0))
+       (dolist (x object vec)
+         (setf (svref vec i) x)
+         (setq i (+ i 1)))))
     ; Vector to list
     ((and (eq result-type 'list) (vectorp object))
      (let ((lst nil)
