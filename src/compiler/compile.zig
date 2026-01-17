@@ -35,6 +35,7 @@ const bytecode = @import("../bytecode/bytecode.zig");
 const Emitter = bytecode.Emitter;
 const Chunk = bytecode.Chunk;
 const prims = @import("../runtime/primitives/symbol.zig");
+const io = @import("../runtime/primitives/io.zig");
 
 pub const Error = error{
     InvalidSyntax,
@@ -2066,6 +2067,7 @@ pub const Compiler = struct {
 
             // Check for macros - expand at compile time if VM is available
             if (self.macro_table.get(name)) |macro_def| {
+                std.debug.print("compileCall: found macro '{s}', vm={}\n", .{ name, self.vm != null });
                 if (self.vm) |vm| {
                     const expanded = try self.expandMacro(macro_def, tail, vm);
                     return self.compileWithTail(expanded, env, in_tail);
@@ -2087,6 +2089,7 @@ pub const Compiler = struct {
 
     /// Expand a macro by calling its expander function with the arguments
     fn expandMacro(self: *Compiler, macro_def: Value, args: Value, vm: *Vm) !Value {
+        std.debug.print("expandMacro: CALLED\n", .{});
         const heap = self.heap orelse return error.InvalidSyntax;
 
         // macro_def is ((params...) body...)
@@ -2097,6 +2100,10 @@ pub const Compiler = struct {
         const def_cons = transformed.toPtr(Cons);
         const params = def_cons.car;
         const body_list = def_cons.cdr;
+
+        std.debug.print("expandMacro: params = ", .{});
+        io.printValue(params) catch {};
+        std.debug.print("\n", .{});
 
         // Build (lambda (params...) body...) with all body forms
         const lambda_sym = try heap.intern("lambda");
@@ -2151,6 +2158,8 @@ pub const Compiler = struct {
 
         if (!closure_val.isClosure()) return error.InvalidSyntax;
         const closure = closure_val.toPtr(Closure);
+        const closure_chunk_check: *const Chunk = closure.code.toPtr(Chunk);
+        std.debug.print("expandMacro: closure@{*} code_chunk@{*} arity={d}\n", .{ closure, closure_chunk_check, closure_chunk_check.arity });
 
         // Now call the closure with the macro arguments
         var arg_count: u8 = 0;
@@ -2367,6 +2376,8 @@ pub const Compiler = struct {
 
             param_list = param_cons.cdr;
         }
+
+        std.debug.print("compileLambdaCore: parsed params.len={d}, optional.len={d}, key.len={d}, has_rest={}\n", .{ params.items.len, optional_params.items.len, key_params.items.len, rest_param != null });
 
         // Also check for rest parameter via dotted list: (a b . rest)
         if (rest_param == null and !param_list.isNil()) {
@@ -4526,6 +4537,14 @@ pub const Compiler = struct {
         const params = args_cons.car;
         const body = args_cons.cdr;
 
+        var count: usize = 0;
+        var p_count = params;
+        while (p_count.isCons()) {
+            count += 1;
+            p_count = p_count.toPtr(Cons).cdr;
+        }
+        std.debug.print("transformDestructuredParams: params count = {d}\n", .{count});
+
         // Scan params for destructured (cons) params, &optional, &rest, &key
         var new_params = std.ArrayList(Value){};
         defer new_params.deinit(self.allocator);
@@ -4540,6 +4559,10 @@ pub const Compiler = struct {
         while (p.isCons()) {
             const p_cons = p.toPtr(Cons);
             const param = p_cons.car;
+
+            std.debug.print("transformDestructuredParams: param = ", .{});
+            io.printValue(param) catch {};
+            std.debug.print(", isCons={}\n", .{param.isCons()});
 
             if (param.eq(b.@"&optional")) {
                 try new_params.append(self.allocator, param);
@@ -4579,11 +4602,17 @@ pub const Compiler = struct {
 
         // If no bindings, return original
         if (bindings.items.len == 0) {
+            std.debug.print("transformDestructuredParams: NO BINDINGS, returning original\n", .{});
             return lambda_args;
         }
+        std.debug.print("transformDestructuredParams: HAS BINDINGS, transforming\n", .{});
 
         // Build new params list
         const new_params_list = try self.listFromSlice(new_params.items);
+
+        std.debug.print("transformDestructuredParams: new_params_list = ", .{});
+        io.printValue(new_params_list) catch {};
+        std.debug.print("\n", .{});
 
         // Wrap body with (destructuring-bind pattern gensym ...) for each binding
         var wrapped_body = body;
@@ -4610,6 +4639,14 @@ pub const Compiler = struct {
 
         // Return (new-params wrapped-body)
         const result = try heap.allocCons(new_params_list, wrapped_body);
+
+        var new_count: usize = 0;
+        var np = new_params_list;
+        while (np.isCons()) {
+            new_count += 1;
+            np = np.toPtr(Cons).cdr;
+        }
+        std.debug.print("transformDestructuredParams: new_params count = {d}\n", .{new_count});
 
         return result;
     }

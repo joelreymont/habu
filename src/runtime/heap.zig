@@ -587,7 +587,7 @@ pub const Heap = struct {
     }
 
     /// Allocate a closure
-    pub fn allocClosure(self: *Heap, code: *const anyopaque, arity: u32, captures: []const Value) error{ OutOfMemory, Overflow }!Value {
+    pub fn allocClosure(self: *Heap, code: Value, arity: u32, captures: []const Value) error{ OutOfMemory, Overflow }!Value {
         const captures_size = try std.math.mul(usize, captures.len, @sizeOf(Value));
         const total_size = try std.math.add(usize, @sizeOf(objects.Closure), captures_size);
 

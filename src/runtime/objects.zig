@@ -121,8 +121,8 @@ pub const String = extern struct {
 /// Closure: function + captured environment
 /// Size: 32 bytes header + captures
 pub const Closure = extern struct {
-    /// Pointer to code (bytecode or JIT code address)
-    code: *const anyopaque,
+    /// Chunk value (GC-managed) - stores bytecode or JIT code
+    code: Value,
     /// Number of parameters
     arity: u32,
     /// Number of captured values

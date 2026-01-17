@@ -1406,6 +1406,10 @@ pub const Repl = struct {
 
         if (!closure.isClosure()) return error.CompileError;
 
+        const cls_ptr = closure.toPtr(runtime.Closure);
+        const chunk_check: *const runtime.objects.Chunk = cls_ptr.code.toPtr(runtime.objects.Chunk);
+        std.debug.print("handleDefmacro: storing closure@{*} with chunk@{*} arity={d}\n", .{ cls_ptr, chunk_check, chunk_check.arity });
+
         // Store the closure in both REPL and Compiler macro tables
         // REPL table is used by pre-compilation macro expansion (expandMacros)
         // Compiler table is used during function body compilation
@@ -1702,6 +1706,10 @@ pub const Repl = struct {
 
     /// Call a macro closure with arguments (as a list)
     fn callMacro(self: *Repl, closure: Value, args: Value) ReplError!Value {
+        const cls_ptr = closure.toPtr(runtime.Closure);
+        const chunk_check: *const runtime.objects.Chunk = cls_ptr.code.toPtr(runtime.objects.Chunk);
+        std.debug.print("callMacro: calling closure@{*} with chunk@{*} arity={d}\n", .{ cls_ptr, chunk_check, chunk_check.arity });
+
         // Build the function call: we need to apply the closure to the args
         // The args should NOT be evaluated - they're passed as-is (like quote)
 

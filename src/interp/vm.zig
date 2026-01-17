@@ -500,7 +500,7 @@ pub const Vm = struct {
     }
 
     /// Allocate a closure, running GC if needed
-    pub fn allocClosureWithGC(self: *Vm, code: *const anyopaque, arity: u32, captures: []const Value) error{ OutOfMemory, Overflow }!Value {
+    pub fn allocClosureWithGC(self: *Vm, code: Value, arity: u32, captures: []const Value) error{ OutOfMemory, Overflow }!Value {
         return self.heap.allocClosure(code, arity, captures) catch {
             _ = try self.collectGarbage();
             return try self.heap.allocClosure(code, arity, captures);
@@ -691,7 +691,7 @@ pub const Vm = struct {
         defer frame_chunk_starts.deinit(self.allocator);
         for (self.frames[0..self.fp]) |frame| {
             if (frame.closure) |closure| {
-                const chunk: *const Chunk = @ptrCast(@alignCast(closure.code));
+                const chunk: *const Chunk = closure.code.toPtr(Chunk);
                 try frame_chunk_starts.append(self.allocator, roots.items.len);
                 for (chunk.getConstants()) |c| {
                     try roots.append(self.allocator, c);
@@ -793,7 +793,7 @@ pub const Vm = struct {
         var frame_idx: usize = 0;
         for (self.frames[0..self.fp]) |frame| {
             if (frame.closure) |closure| {
-                const chunk: *const Chunk = @ptrCast(@alignCast(closure.code));
+                const chunk: *const Chunk = closure.code.toPtr(Chunk);
                 const start = frame_chunk_starts.items[frame_idx];
                 for (chunk.getConstants(), 0..) |*c, i| {
                     c.* = roots.items[start + i];
@@ -804,7 +804,7 @@ pub const Vm = struct {
         if (frame_chunk_starts.items.len > 0) {
             idx = frame_chunk_starts.items[frame_chunk_starts.items.len - 1];
             if (self.frames[self.fp - 1].closure) |last_closure| {
-                const last_chunk: *const Chunk = @ptrCast(@alignCast(last_closure.code));
+                const last_chunk: *const Chunk = last_closure.code.toPtr(Chunk);
                 idx += last_chunk.getConstants().len;
             }
         }
@@ -827,7 +827,7 @@ pub const Vm = struct {
         const saved_state = State.save(self);
 
         // Set up to execute the closure's chunk directly (like vm.run)
-        const closure_chunk: *const Chunk = @ptrCast(@alignCast(closure.code));
+        const closure_chunk: *const Chunk = closure.code.toPtr(Chunk);
         self.chunk = closure_chunk;
         self.ip = 0;
         self.fp = 0; // No frame - ret at fp=0 returns immediately
@@ -1056,7 +1056,7 @@ pub const Vm = struct {
                 // Get current frame info
                 const frame = if (self.fp > 0) &self.frames[self.fp - 1] else null;
                 if (frame) |f| {
-                    const chunk: *const Chunk = @ptrCast(@alignCast(f.closure.?.code));
+                    const chunk: *const Chunk = f.closure.?.code.toPtr(Chunk);
                     // Layout: [positional] [key params] [keyword pairs]
                     // Keyword pairs start after positional + key param slots
                     const max_positional = chunk.arity + chunk.opt_count;
@@ -1646,9 +1646,10 @@ pub const Vm = struct {
                     captures[i] = try self.pop();
                 }
 
-                // Create closure
+                // Create closure - wrap chunk pointer in a Value
+                const chunk_val = Value.makeChunk(closure_chunk);
                 const closure = try self.allocClosureWithGC(
-                    @ptrCast(closure_chunk),
+                    chunk_val,
                     closure_chunk.arity,
                     captures[0..num_captures],
                 );
@@ -5090,11 +5091,13 @@ pub const Vm = struct {
         }
 
         const closure = fn_val.toPtr(runtime.Closure);
-        const callee_chunk: *const Chunk = @ptrCast(@alignCast(closure.code));
+        const callee_chunk: *const Chunk = closure.code.toPtr(Chunk);
         const arity = callee_chunk.arity;
         const opt_count = callee_chunk.opt_count;
         const key_count = callee_chunk.key_count;
         const max_positional = arity + opt_count;
+
+        std.debug.print("doCall: chunk@{*} has arity={d}, opt={d}, argc={d}\n", .{ callee_chunk, arity, opt_count, argc });
 
         // Find where keyword args actually start by scanning for first keyword
         // This handles cases like (foo req :k v) where optional is omitted

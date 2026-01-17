@@ -369,8 +369,11 @@ pub const GC = struct {
                 }
             },
             .closure => {
-                // Scan captured values
+                // Scan code Value and captured values
                 const cls: *objects.Closure = @ptrFromInt(addr);
+                if (cls.code.isPointer() and !cls.code.isNil()) {
+                    cls.code = try self.copyValue(cls.code, alloc_ptr);
+                }
                 for (cls.getCapturedValues()) |*cap| {
                     if (cap.isPointer() and !cap.isNil()) {
                         cap.* = try self.copyValue(cap.*, alloc_ptr);
