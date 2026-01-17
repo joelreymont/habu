@@ -1338,8 +1338,11 @@ pub const Repl = struct {
 
         if (!closure.isClosure()) return error.CompileError;
 
-        // Store the closure in the macros table
+        // Store the closure in both REPL and Compiler macro tables
+        // REPL table is used by pre-compilation macro expansion (expandMacros)
+        // Compiler table is used during function body compilation
         self.macros.put(name, closure) catch return error.CompileError;
+        self.compiler.macro_table.put(name, closure) catch return error.CompileError;
 
         // Return the macro name as a symbol
         return cons2.car;
