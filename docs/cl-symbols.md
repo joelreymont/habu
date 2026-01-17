@@ -154,10 +154,10 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | let | ✓ | compile.zig:60 | Parallel binding |
 | let* | ✓ | compile.zig:61 | Sequential binding |
 | load-time-value | ✗ | - | |
-| locally | ✗ | - | |
+| locally | ✓ | stdlib.habu | Local declarations |
 | macrolet | ✗ | - | |
 | multiple-value-call | ✓ | compile.zig:116 | MV function call |
-| multiple-value-prog1 | ✗ | - | |
+| multiple-value-prog1 | ✓ | stdlib.habu | MV return first |
 | progn | ✓ | compile.zig:73 | Sequencing |
 | progv | ✓ | vm.zig | Dynamic binding |
 | quote | ✓ | compile.zig:78 | Literal data |
@@ -182,7 +182,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | decf | ✓ | stdlib.habu | Decrement place |
 | declaim | ✓ | compile.zig | Global declaration |
 | defclass | ✓ | compile.zig:129 | CLOS class |
-| defconstant | ✗ | - | Use defvar |
+| defconstant | ✓ | stdlib.habu | Constant definition |
 | defgeneric | ✓ | compile.zig:132 | Generic function |
 | define-compiler-macro | ✗ | - | |
 | define-condition | ✓ | stdlib.habu | Condition class |
@@ -193,7 +193,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | defmacro | ✓ | compile.zig:89 | Macro definition |
 | defmethod | ✓ | compile.zig:133 | CLOS method |
 | defpackage | ✓ | compile.zig:120 | Package definition |
-| defparameter | ✗ | - | Use defvar |
+| defparameter | ✓ | stdlib.habu | Parameter definition |
 | defsetf | ✗ | - | |
 | defstruct | ✓ | stdlib.habu:2739 | Structure |
 | deftype | ✓ | compile.zig | Type definition |
@@ -250,7 +250,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | unless | ✓ | stdlib.habu | Negated when |
 | untrace | ✗ | - | |
 | when | ✓ | stdlib.habu | Conditional |
-| with-accessors | ✗ | - | |
+| with-accessors | ⚠ | stdlib.habu | Accessor bindings (no setf) |
 | with-compilation-unit | ✗ | - | |
 | with-condition-restarts | ✗ | - | |
 | with-hash-table-iterator | ✓ | stdlib.habu | Hash iteration |
@@ -260,7 +260,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | with-output-to-string | ✓ | stdlib.habu | String output |
 | with-package-iterator | ✗ | - | |
 | with-simple-restart | ✗ | - | |
-| with-slots | ✗ | - | |
+| with-slots | ⚠ | stdlib.habu | Slot bindings (no setf) |
 | with-standard-io-syntax | ✗ | - | |
 
 ## Functions - Arithmetic (79)
