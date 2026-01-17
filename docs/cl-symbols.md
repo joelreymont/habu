@@ -642,12 +642,12 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | gethash | ✓ | compile.zig:368 | Get hash entry |
 | hash-table-count | ✓ | compile.zig:371 | Entry count |
 | hash-table-p | ✓ | compile.zig:374 | Hash-table pred |
-| hash-table-rehash-size | ✗ | - | |
-| hash-table-rehash-threshold | ✗ | - | |
-| hash-table-size | ✗ | - | |
+| hash-table-rehash-size | ✓ | stdlib.habu | Rehash size |
+| hash-table-rehash-threshold | ✓ | stdlib.habu | Rehash threshold |
+| hash-table-size | ✓ | stdlib.habu | Table size |
 | hash-table-test | ✓ | compile.zig:373 | Test function |
 | make-hash-table | ✓ | compile.zig:367 | Create hash table |
-| maphash | ✗ | - | |
+| maphash | ✓ | stdlib.habu | Map over hash |
 | remhash | ✓ | compile.zig:370 | Remove entry |
 | sxhash | ✓ | compile.zig:377 | Hash value |
 
@@ -835,7 +835,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | gentemp | ✗ | - | |
 | get | ✓ | compile.zig:238 | Property get |
 | keywordp | ✓ | compile.zig:206 | Keyword pred |
-| make-symbol | ✗ | - | |
+| make-symbol | ✓ | stdlib.habu | Create uninterned symbol |
 | makunbound | ✗ | - | |
 | remprop | ✓ | compile.zig:240 | Remove property |
 | set | ✗ | - | |
