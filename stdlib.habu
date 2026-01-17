@@ -433,7 +433,7 @@
           (list 'let (mapcar2 (lambda (v i) (list v i)) vars inits)
                 (list 'while (list 'not end-test)
                       (cons 'progn body)
-                      (cons 'psetq (flatten1 (mapcar2 (lambda (v s) (list v s)) vars steps))))
+                      (list* 'psetq (flatten1 (mapcar2 (lambda (v s) (list v s)) vars steps))))
                 (cons 'progn (if result result (list nil)))))))
 
 ; do* - general iteration macro (sequential binding)
