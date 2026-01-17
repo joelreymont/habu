@@ -4884,12 +4884,15 @@ pub const Compiler = struct {
         const name_sym = name_val.toPtr(Symbol);
         const name = name_sym.getName();
 
-        // Rest is ((params...) body...) - store as lambda-args for later expansion
+        // Rest is ((params...) body...)
         const lambda_args = cons1.cdr;
         if (!lambda_args.isCons()) return error.InvalidSyntax;
 
-        // Store in macro_table: name -> lambda-args
-        try self.macro_table.put(name, lambda_args);
+        // Transform destructured params: ((a (b c)) body) -> ((a g123) (d-bind (b c) g123 body))
+        const transformed = try self.transformDestructuredParams(lambda_args);
+
+        // Store in macro_table: name -> transformed-lambda-args
+        try self.macro_table.put(name, transformed);
 
         // defmacro has no runtime effect - return nil
         return try self.builder.lit(Value.nil);
@@ -10705,4 +10708,43 @@ test "genDestructCode - rest parameter" {
     try testing.expectEqualStrings("b", bindings.items[1].name);
     // First is car, second is rest (no car)
     try testing.expect(bindings.items[0].init.* == .car);
+}
+
+test "defmacro with destructured params" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(allocator, null);
+    defer env.deinit();
+
+    // (defmacro test-m ((a b)) (list a b))
+    const a_sym = try heap.intern("a");
+    const b_sym = try heap.intern("b");
+    const param_list = try heap.allocCons(a_sym, try heap.allocCons(b_sym, Value.nil));
+    const params = try heap.allocCons(param_list, Value.nil);
+
+    const list_sym = try heap.intern("list");
+    const body = try heap.allocCons(list_sym, try heap.allocCons(a_sym, try heap.allocCons(b_sym, Value.nil)));
+
+    const name_sym = try heap.intern("test-m");
+    const lambda_args = try heap.allocCons(params, try heap.allocCons(body, Value.nil));
+    const args = try heap.allocCons(name_sym, lambda_args);
+
+    const defmacro_ir = try compiler.compileDefmacro(args, &env);
+    try testing.expect(defmacro_ir.* == .lit);
+
+    // Macro should be in table with transformed params
+    const stored = compiler.macro_table.get("test-m").?;
+    try testing.expect(stored.isCons());
+
+    // First element should be params (now transformed with gensym)
+    const stored_cons = stored.toPtr(Cons);
+    const stored_params = stored_cons.car;
+    try testing.expect(stored_params.isCons());
 }
