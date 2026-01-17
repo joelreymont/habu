@@ -470,6 +470,11 @@ pub const Emitter = struct {
                 max_idx = computeMaxLocalIndexImpl(v.index, max_idx);
                 max_idx = computeMaxLocalIndexImpl(v.value, max_idx);
             },
+            .str_set => |s| {
+                max_idx = computeMaxLocalIndexImpl(s.str, max_idx);
+                max_idx = computeMaxLocalIndexImpl(s.index, max_idx);
+                max_idx = computeMaxLocalIndexImpl(s.value, max_idx);
+            },
             .substring => |s| {
                 max_idx = computeMaxLocalIndexImpl(s.str, max_idx);
                 max_idx = computeMaxLocalIndexImpl(s.start, max_idx);
@@ -739,6 +744,7 @@ pub const Emitter = struct {
             // String operations
             .str_ref => |op| try self.emitBinaryOp(op, .str_ref),
             .str_len => |op| try self.emitUnaryOp(op.operand, .str_len),
+            .str_set => |s| try self.emitStrSet(s),
             .str_concat => |op| try self.emitBinaryOp(op, .str_concat),
             .str_eq => |op| try self.emitBinaryOp(op, .str_eq),
             .str_lt => |op| try self.emitBinaryOp(op, .str_lt),
@@ -2010,6 +2016,13 @@ pub const Emitter = struct {
         try self.emit(v.index);
         try self.emit(v.value);
         try self.emitOp(.vec_set);
+    }
+
+    fn emitStrSet(self: *Emitter, s: anytype) Error!void {
+        try self.emit(s.str);
+        try self.emit(s.index);
+        try self.emit(s.value);
+        try self.emitOp(.str_set);
     }
 
     fn emitArrNew(self: *Emitter, a: anytype) Error!void {

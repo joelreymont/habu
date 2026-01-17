@@ -606,6 +606,11 @@ pub const Ir = union(enum) {
 
     str_ref: BinaryOp,
     str_len: UnaryOp,
+    str_set: struct {
+        str: *const Ir,
+        index: *const Ir,
+        value: *const Ir,
+    },
     str_concat: BinaryOp,
     str_eq: BinaryOp,
     str_lt: BinaryOp,
@@ -1963,6 +1968,12 @@ pub const IrBuilder = struct {
     pub fn strLen(self: IrBuilder, s: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .str_len = .{ .operand = s } };
+        return node;
+    }
+
+    pub fn strSet(self: IrBuilder, s: *const Ir, index: *const Ir, char: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .str_set = .{ .str = s, .index = index, .value = char } };
         return node;
     }
 

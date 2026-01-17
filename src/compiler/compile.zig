@@ -287,6 +287,7 @@ pub const Builtins = struct {
     @"%svset": Value, // internal: (setf (svref ...)) expands to this
     @"%aset": Value, // internal: (setf (aref ...)) expands to this
     @"%set-slot-value": Value, // internal: (setf (slot-value ...)) expands to this
+    @"%sset": Value, // internal: (setf (char ...)) expands to this
 
     // Stream I/O primitives
     @"%open": Value,
@@ -688,6 +689,7 @@ pub const Builtins = struct {
             .@"%svset" = try heap.intern("%svset"),
             .@"%aset" = try heap.intern("%aset"),
             .@"%set-slot-value" = try heap.intern("%set-slot-value"),
+            .@"%sset" = try heap.intern("%sset"),
             // Stream I/O primitives
             .@"%open" = try heap.intern("%open"),
             .@"%close" = try heap.intern("%close"),
@@ -1854,7 +1856,18 @@ pub const Compiler = struct {
 
     /// Compile a single expression
     pub fn compile(self: *Compiler, expr: Value, env: *const Env) anyerror!*Ir {
-        return self.compileWithTail(expr, env, false);
+        const result = self.compileWithTail(expr, env, false) catch |err| {
+            std.debug.print("COMPILE FAILED with {}\n", .{err});
+            if (expr.isCons()) {
+                const cons = expr.toPtr(Cons);
+                if (cons.car.isSymbol()) {
+                    const sym = cons.car.toPtr(Symbol);
+                    std.debug.print("  Failed form head: {s}\n", .{sym.getName()});
+                }
+            }
+            return err;
+        };
+        return result;
     }
 
     /// Compile with tail position tracking
@@ -2359,7 +2372,10 @@ pub const Compiler = struct {
     fn compileLambdaCore(self: *Compiler, args: Value, env: *const Env, return_type: ?Value) anyerror!*Ir {
         // (lambda (params...) body)
         // Params can be: symbol for untyped, (symbol type) for typed
-        if (!args.isCons()) return error.InvalidLambda;
+        if (!args.isCons()) {
+            std.debug.print("compileLambdaCore: args is not cons\n", .{});
+            return error.InvalidLambda;
+        }
 
         const cons = args.toPtr(Cons);
         const params_expr = cons.car;
@@ -2697,9 +2713,11 @@ pub const Compiler = struct {
             }
 
             // Other complex types not yet supported
+            std.debug.print("InvalidSyntax: unknown complex type\n", .{});
             return error.InvalidSyntax;
         }
 
+        std.debug.print("InvalidSyntax: unknown type\n", .{});
         return error.InvalidSyntax;
     }
 
@@ -4686,6 +4704,7 @@ pub const Compiler = struct {
 
         if (!cons1.cdr.isCons()) return error.InvalidSyntax;
         const cons2 = cons1.cdr.toPtr(Cons);
+        std.debug.print("  Compiling value for define: {s}\n", .{name});
         const value_ir = try self.compile(cons2.car, env);
 
         return try self.builder.define(name, idx, value_ir);
@@ -8018,6 +8037,7 @@ pub const Compiler = struct {
         if (s == b.@"%svset".raw) return self.compileSvset(args, env);
         if (s == b.@"%aset".raw) return self.compileAset(args, env);
         if (s == b.@"%set-slot-value".raw) return self.compileSetSlotValue(args, env);
+        if (s == b.@"%sset".raw) return self.compileSset(args, env);
         if (s == b.vector.raw) return self.compileVectorPrim(args, env);
         if (s == b.@"make-array".raw) return self.compileMakeArray(args, env);
 
@@ -9516,6 +9536,23 @@ pub const Compiler = struct {
         const val_ir = try self.compile(cons3.car, env);
 
         return try self.builder.vecSet(vec_ir, idx_ir, val_ir);
+    }
+
+    fn compileSset(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        // (%sset string index char) - internal setter for (setf (char ...))
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const str_ir = try self.compile(cons1.car, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const idx_ir = try self.compile(cons2.car, env);
+
+        if (!cons2.cdr.isCons()) return error.InvalidSyntax;
+        const cons3 = cons2.cdr.toPtr(Cons);
+        const char_ir = try self.compile(cons3.car, env);
+
+        return try self.builder.strSet(str_ir, idx_ir, char_ir);
     }
 
     fn compileAset(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {

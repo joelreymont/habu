@@ -208,9 +208,10 @@ pub const Repl = struct {
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
-        const ir_node = self.compiler.compile(expr, &env) catch {
+        const ir_node = self.compiler.compile(expr, &env) catch |err| {
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
+            std.debug.print("Compile error: {}\n", .{err});
             return error.CompileError;
         };
         self.compiler.builder = saved_builder;
@@ -386,7 +387,8 @@ pub const Repl = struct {
             const expr_slice = content[expr_start..pos];
             if (expr_slice.len > 0) {
                 // Use evalWithVm for the nested VM
-                last_value = self.evalWithVm(expr_slice, &nested_vm) catch {
+                last_value = self.evalWithVm(expr_slice, &nested_vm) catch |err| {
+                    std.debug.print("Error at pos {}: {} - {s}\n", .{ pos, err, expr_slice[0..@min(80, expr_slice.len)] });
                     continue;
                 };
             }
@@ -443,9 +445,10 @@ pub const Repl = struct {
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
-        const ir_node = self.compiler.compile(expr, &env) catch {
+        const ir_node = self.compiler.compile(expr, &env) catch |err| {
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
+            std.debug.print("Compile error: {}\n", .{err});
             return error.CompileError;
         };
         self.compiler.builder = saved_builder;

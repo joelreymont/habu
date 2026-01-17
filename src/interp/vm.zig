@@ -1555,6 +1555,21 @@ pub const Vm = struct {
                 const str = str_val.toPtr(runtime.String);
                 try self.push(Value.makeFixnum(@intCast(str.length)));
             },
+            .str_set => {
+                const char_val = try self.pop();
+                const idx_val = try self.pop();
+                const str_val = try self.pop();
+                if (!str_val.isString() or !idx_val.isFixnum()) return error.TypeMismatch;
+                const str = str_val.toPtr(runtime.String);
+                const idx_signed = idx_val.toFixnum();
+                if (idx_signed < 0) return error.TypeMismatch;
+                const idx: usize = @intCast(idx_signed);
+                if (idx >= str.length) return error.TypeMismatch;
+                const char_int = if (char_val.isFixnum()) char_val.toFixnum() else if (char_val.isCharacter()) @as(i64, @intCast(char_val.toCharacter())) else return error.TypeMismatch;
+                if (char_int < 0 or char_int > 255) return error.TypeMismatch;
+                str.mutableBytes()[idx] = @intCast(char_int);
+                try self.push(str_val);
+            },
             .str_concat => {
                 const s2 = try self.pop();
                 const s1 = try self.pop();

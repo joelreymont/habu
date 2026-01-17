@@ -373,21 +373,25 @@ pub const Op = enum(u16) {
     /// ( str -- len )
     str_len = 0x6B,
 
+    /// String set
+    /// ( str idx char -- str )
+    str_set = 0x6C,
+
     /// String concat
     /// ( s1 s2 -- s3 )
-    str_concat = 0x6C,
+    str_concat = 0x6D,
 
     /// Intern - create symbol from string
     /// ( str -- sym )
-    intern = 0x6D,
+    intern = 0x6E,
 
     /// Substring - extract part of a string
     /// ( str start end -- substr )
-    substring = 0x6E,
+    substring = 0x6F,
 
     /// Symbol name - get name of symbol as string
     /// ( sym -- str )
-    sym_name = 0x6F,
+    sym_name = 0x100,
     /// Get symbol property (0x6F)
     get = 0x85,
     /// Put symbol property (0x70)
@@ -1179,27 +1183,27 @@ pub const Op = enum(u16) {
 
     /// Get pathname host component
     /// ( pathname -- host )
-    pathname_host = 0x100,
+    pathname_host = 0x107,
 
     /// Get pathname device component
     /// ( pathname -- device )
-    pathname_device = 0x101,
+    pathname_device = 0x108,
 
     /// Get pathname directory component
     /// ( pathname -- directory )
-    pathname_directory = 0x102,
+    pathname_directory = 0x109,
 
     /// Get pathname name component
     /// ( pathname -- name )
-    pathname_name = 0x103,
+    pathname_name = 0x10A,
 
     /// Get pathname type component
     /// ( pathname -- type )
-    pathname_type = 0x104,
+    pathname_type = 0x10B,
 
     /// Get pathname version component
     /// ( pathname -- version )
-    pathname_version = 0x105,
+    pathname_version = 0x10C,
 
     /// Get operand size in bytes
     pub fn operandSize(self: Op) u8 {
@@ -1263,6 +1267,7 @@ pub const Op = enum(u16) {
             .box_set,
             .str_ref,
             .str_len,
+            .str_set,
             .str_concat,
             .str_eq,
             .str_lt,
