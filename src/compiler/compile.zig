@@ -10754,7 +10754,11 @@ test "genDestructCode - nested parameters" {
     defer result.deinit(allocator);
     defer {
         for (result.bindings.items) |binding| {
-            allocator.destroy(binding.init);
+            var is_ref = (binding.init == args_ir);
+            for (result.intermediates.items) |node| {
+                if (binding.init == node) is_ref = true;
+            }
+            if (!is_ref) allocator.destroy(binding.init);
         }
         for (result.intermediates.items) |node| {
             allocator.destroy(node);
