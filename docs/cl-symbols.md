@@ -912,30 +912,30 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 ## Functions - Conditions (25)
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
-| abort | ✗ | - | Standard restart |
+| abort | ✓ | stdlib.habu:472 | Standard restart |
 | assert | ✓ | stdlib.habu | Assertion |
-| break | ✗ | - | |
+| break | ✓ | stdlib.habu:499 | Debugger entry |
 | cell-error-name | ✗ | - | |
 | cerror | ✓ | stdlib.habu:1041 | Continuable error |
 | compute-restarts | ✗ | - | |
-| continue | ✗ | - | Standard restart |
+| continue | ✓ | stdlib.habu:477 | Standard restart |
 | error | ✓ | compile.zig:241 | Signal error |
 | find-restart | ✓ | compile.zig:110 | Find restart |
 | invoke-debugger | ✗ | - | |
 | invoke-restart | ✓ | compile.zig:109 | Invoke restart |
 | invoke-restart-interactively | ✗ | - | |
-| muffle-warning | ✗ | - | Standard restart |
+| muffle-warning | ✓ | stdlib.habu:484 | Standard restart |
 | package-error-package | ✗ | - | |
 | print-not-readable-object | ✗ | - | |
 | restart-name | ✗ | - | |
 | signal | ✓ | compile.zig:105 | Signal condition |
 | simple-condition-format-arguments | ✗ | - | |
 | simple-condition-format-control | ✗ | - | |
-| store-value | ✗ | - | Standard restart |
+| store-value | ✓ | stdlib.habu:489 | Standard restart |
 | type-error-datum | ✗ | - | |
 | type-error-expected-type | ✗ | - | |
 | unbound-slot-instance | ✗ | - | |
-| use-value | ✗ | - | Standard restart |
+| use-value | ✓ | stdlib.habu:494 | Standard restart |
 | warn | ✓ | stdlib.habu | Issue warning |
 
 ## Functions - Types (15)

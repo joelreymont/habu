@@ -468,6 +468,44 @@
   (print msg)
   nil)
 
+; Standard restarts
+(defun abort (&optional condition)
+  "Transfer control to ABORT restart"
+  (declare (ignore condition))
+  (invoke-restart 'abort))
+
+(defun continue (&optional condition)
+  "Transfer control to CONTINUE restart"
+  (declare (ignore condition))
+  (let ((restart (find-restart 'continue)))
+    (when restart
+      (invoke-restart 'continue))))
+
+(defun muffle-warning (&optional condition)
+  "Transfer control to MUFFLE-WARNING restart"
+  (declare (ignore condition))
+  (invoke-restart 'muffle-warning))
+
+(defun store-value (value &optional condition)
+  "Transfer control to STORE-VALUE restart with value"
+  (declare (ignore condition))
+  (invoke-restart 'store-value value))
+
+(defun use-value (value &optional condition)
+  "Transfer control to USE-VALUE restart with value"
+  (declare (ignore condition))
+  (invoke-restart 'use-value value))
+
+(defun break (&optional (format-control "Break") &rest format-arguments)
+  "Enter debugger with message"
+  (format t "~&BREAK: ")
+  (apply #'format t format-control format-arguments)
+  (terpri)
+  (let ((restart (find-restart 'continue)))
+    (if restart
+        (invoke-restart 'continue)
+        nil)))
+
 ; ignore-errors - catch any error and return nil
 (defmacro ignore-errors (&rest forms)
   `(handler-case (progn ,@forms)
