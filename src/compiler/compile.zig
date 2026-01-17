@@ -1647,9 +1647,14 @@ pub const Compiler = struct {
         // Handle struct_p specially - it carries the type directly
         if (node.* == .struct_p) {
             const sp = node.struct_p;
-            if (sp.operand.* == .@"var") {
+            var operand = sp.operand;
+            // Unwrap box_ref for closure variables
+            if (operand.* == .box_ref) {
+                operand = operand.box_ref.operand;
+            }
+            if (operand.* == .@"var") {
                 return .{
-                    .var_name = sp.operand.@"var".name,
+                    .var_name = operand.@"var".name,
                     .narrowed_type = sp.struct_type,
                     .else_type = null,
                 };
@@ -1662,9 +1667,14 @@ pub const Compiler = struct {
         for (predicate_types) |entry| {
             if (tag == entry.tag) {
                 if (getPredicateOperand(node)) |operand| {
-                    if (operand.* == .@"var") {
+                    var actual_operand = operand;
+                    // Unwrap box_ref for closure variables
+                    if (actual_operand.* == .box_ref) {
+                        actual_operand = actual_operand.box_ref.operand;
+                    }
+                    if (actual_operand.* == .@"var") {
                         return .{
-                            .var_name = operand.@"var".name,
+                            .var_name = actual_operand.@"var".name,
                             .narrowed_type = entry.then_ty,
                             .else_type = entry.else_ty,
                         };
