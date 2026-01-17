@@ -666,14 +666,12 @@ pub const Heap = struct {
         has_rest: bool,
         num_locals: u8,
     ) !Value {
-        std.debug.print("allocChunk: arity={}, opt={}, key={}, has_rest={}\n", .{ arity, opt_count, key_count, has_rest });
         const const_size = constants.len * @sizeOf(Value);
         const code_size = std.mem.alignForward(usize, code.len, 8);
         const total = @sizeOf(objects.Chunk) + const_size + code_size;
 
         const ptr = try self.allocRaw(total);
         const chunk: *objects.Chunk = @ptrCast(@alignCast(ptr));
-        std.debug.print("allocChunk: allocated chunk at 0x{x}\n", .{@intFromPtr(chunk)});
 
         const const_ptr: [*]Value = @ptrCast(@alignCast(ptr + @sizeOf(objects.Chunk)));
         const code_ptr: [*]u8 = @ptrCast(ptr + @sizeOf(objects.Chunk) + const_size);
@@ -693,7 +691,6 @@ pub const Heap = struct {
             .code = code_ptr,
         };
 
-        std.debug.print("allocChunk: chunk.arity={}\n", .{chunk.arity});
         return Value.makeChunk(chunk);
     }
 
