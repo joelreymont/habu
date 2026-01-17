@@ -180,7 +180,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | cond | ✓ | compile.zig:55 | Multi-branch cond |
 | ctypecase | ✓ | stdlib.habu | Continuable typecase |
 | decf | ✓ | stdlib.habu | Decrement place |
-| declaim | ✗ | - | Global declaration |
+| declaim | ✓ | compile.zig | Global declaration |
 | defclass | ✓ | compile.zig:129 | CLOS class |
 | defconstant | ✗ | - | Use defvar |
 | defgeneric | ✓ | compile.zig:132 | Generic function |
@@ -563,9 +563,9 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 |--------|--------|----------|-------|
 | char | ✓ | compile.zig:301 | String char |
 | make-string | ✓ | compile.zig:358 | Create string |
-| nstring-capitalize | ✗ | - | |
-| nstring-downcase | ✗ | - | |
-| nstring-upcase | ✗ | - | |
+| nstring-capitalize | ✓ | stdlib.habu | Destructive capitalize |
+| nstring-downcase | ✓ | stdlib.habu | Destructive downcase |
+| nstring-upcase | ✓ | stdlib.habu | Destructive upcase |
 | schar | ✓ | compile.zig:302 | Simple-string char |
 | simple-string-p | ✓ | stdlib.habu | Simple-string pred |
 | string | ✓ | compile.zig:243 | To string |
@@ -755,7 +755,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | prin1 | ✓ | io.zig:641 | Print readably |
 | prin1-to-string | ✗ | - | |
 | princ | ✓ | io.zig:646 | Print aesthetic |
-| princ-to-string | ✗ | - | |
+| princ-to-string | ✓ | stdlib.habu | Print to string |
 | print | ✓ | io.zig:663 | Print with newline |
 | print-object | ✗ | - | |
 | set-pprint-dispatch | ✗ | - | |
