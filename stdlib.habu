@@ -2870,11 +2870,24 @@
                (in
                 (let ((list-var (gensym "list")))
                   (push (list list-var (cadddr rest)) vars)
-                  (push (list var nil) vars)
-                  (push (list 'setq var (list 'car list-var)) body-forms)
-                  (push (list 'setq list-var (list 'cdr list-var)) step-forms)
-                  (push (list 'null list-var) end-tests)
-                  (setq rest (cddddr rest))))
+                  ; Check if var is a list (destructuring) or a symbol
+                  (if (consp var)
+                      ; Destructuring case: (for (a b) in list ...)
+                      (progn
+                        (let ((tmp-var (gensym "tmp")))
+                          (push (list tmp-var nil) vars)
+                          (push (list 'setq tmp-var (list 'car list-var)) body-forms)
+                          (push (cons 'destructuring-bind (cons var (cons tmp-var nil))) body-forms))
+                        (push (list 'setq list-var (list 'cdr list-var)) step-forms)
+                        (push (list 'null list-var) end-tests)
+                        (setq rest (cddddr rest)))
+                    ; Simple case: for x in list
+                    (progn
+                      (push (list var nil) vars)
+                      (push (list 'setq var (list 'car list-var)) body-forms)
+                      (push (list 'setq list-var (list 'cdr list-var)) step-forms)
+                      (push (list 'null list-var) end-tests)
+                      (setq rest (cddddr rest))))))
 
                ; FOR var ON list
                (on
@@ -2905,8 +2918,17 @@
                   (push (list vec-var (cadddr rest)) vars)
                   (push (list len-var (list 'length vec-var)) vars)
                   (push (list idx-var 0) vars)
-                  (push (list var nil) vars)
-                  (push (list 'setq var (list 'aref vec-var idx-var)) body-forms)
+                  ; Check if var is a list (destructuring) or a symbol
+                  (if (consp var)
+                      ; Destructuring case: (for (a b) across vec ...)
+                      (let ((tmp-var (gensym "tmp")))
+                        (push (list tmp-var nil) vars)
+                        (push (list 'setq tmp-var (list 'aref vec-var idx-var)) body-forms)
+                        (push (cons 'destructuring-bind (cons var (cons tmp-var nil))) body-forms))
+                    ; Simple case: for x across vec
+                    (progn
+                      (push (list var nil) vars)
+                      (push (list 'setq var (list 'aref vec-var idx-var)) body-forms)))
                   (push (list 'setq idx-var (list '+ idx-var 1)) step-forms)
                   (push (list '>= idx-var len-var) end-tests)
                   (setq rest (cddddr rest))))
@@ -2938,12 +2960,25 @@
                                (hash-var (gensym "hash")))
                            (push (list hash-var target-expr) vars)
                            (push (list keys-var (list 'hash-table-keys hash-var)) vars)
-                           (push (list var nil) vars)
-                           (when other-var
-                             (push (list other-var nil) vars))
-                           (push (list 'setq var (list 'car keys-var)) body-forms)
-                           (when other-var
-                             (push (list 'setq other-var (list 'gethash var hash-var)) body-forms))
+                           ; Check if var is a list (destructuring) or symbol
+                           (if (consp var)
+                               ; Destructuring: (for (key . val) being hash-keys ...)
+                               (let ((tmp-var (gensym "tmp")))
+                                 (push (list tmp-var nil) vars)
+                                 (when other-var
+                                   (push (list other-var nil) vars))
+                                 (push (list 'setq tmp-var (list 'car keys-var)) body-forms)
+                                 (when other-var
+                                   (push (list 'setq other-var (list 'gethash tmp-var hash-var)) body-forms))
+                                 (push (cons 'destructuring-bind (cons var (list (if other-var (list 'cons tmp-var other-var) tmp-var)))) body-forms))
+                             ; Simple: var is symbol
+                             (progn
+                               (push (list var nil) vars)
+                               (when other-var
+                                 (push (list other-var nil) vars))
+                               (push (list 'setq var (list 'car keys-var)) body-forms)
+                               (when other-var
+                                 (push (list 'setq other-var (list 'gethash var hash-var)) body-forms))))
                            (push (list 'setq keys-var (list 'cdr keys-var)) step-forms)
                            (push (list 'null keys-var) end-tests)))
                         ((hash-values hash-value)
