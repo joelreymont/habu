@@ -5221,6 +5221,7 @@ pub const Compiler = struct {
                 .nested => {
                     // Nested: recursively destructure (car current)
                     const car_ir = try self.builder.car(current_expr);
+                    try intermediates.append(self.allocator, car_ir);
                     var nested = try self.genDestructCode(param.children.?, car_ir, env);
                     defer nested.deinit(self.allocator);
                     try bindings.appendSlice(self.allocator, nested.bindings.items);
