@@ -3599,6 +3599,129 @@
        ,@body
        (get-output-stream-string ,var))))
 
+; with-open-stream - generic stream wrapper
+(defmacro with-open-stream (spec &body body)
+  (let ((var (car spec))
+        (stream-form (cadr spec))
+        (stream (gensym "STREAM"))
+        (abort (gensym "ABORT")))
+    `(let ((,stream ,stream-form)
+           (,abort t))
+       (unwind-protect
+           (progn
+             (let ((,var ,stream))
+               (setq ,abort nil)
+               ,@body))
+         (when ,stream
+           (close ,stream ,abort))))))
+
+; with-standard-io-syntax - establish standard I/O environment
+(defmacro with-standard-io-syntax (&body body)
+  `(let ((*package* (find-package "COMMON-LISP-USER"))
+         (*print-array* t)
+         (*print-base* 10)
+         (*print-case* :upcase)
+         (*print-circle* nil)
+         (*print-escape* t)
+         (*print-gensym* t)
+         (*print-length* nil)
+         (*print-level* nil)
+         (*print-lines* nil)
+         (*print-miser-width* nil)
+         (*print-pprint-dispatch* nil)
+         (*print-pretty* nil)
+         (*print-radix* nil)
+         (*print-readably* t)
+         (*print-right-margin* nil)
+         (*read-base* 10)
+         (*read-default-float-format* 'single-float)
+         (*read-eval* t)
+         (*read-suppress* nil))
+     ,@body))
+
+; print-unreadable-object - print #<...> notation
+(defmacro print-unreadable-object (spec &body body)
+  (let ((obj (car spec))
+        (stream (cadr spec))
+        (type-p (getf (cddr spec) :type))
+        (identity-p (getf (cddr spec) :identity)))
+    (let ((s (gensym "STREAM")))
+      `(let ((,s ,stream))
+         (princ "#<" ,s)
+         ,(when type-p
+            `(progn
+               (princ (type-of ,obj) ,s)
+               (princ " " ,s)))
+         ,@body
+         ,(when identity-p
+            `(progn
+               (princ " " ,s)
+               (prin1 (sxhash ,obj) ,s)))
+         (princ ">" ,s)
+         nil))))
+
+;;; ============================================================================
+;;; Debugging/tracing macros (stubs)
+;;; ============================================================================
+
+; step - single-step evaluator (stub)
+(defmacro step (form)
+  `(progn
+     (format t "~&STEP: ~S~%" ',form)
+     ,form))
+
+; time - time execution (stub)
+(defmacro time (form)
+  (let ((start (gensym "START"))
+        (result (gensym "RESULT")))
+    `(let ((,start (get-internal-real-time)))
+       (let ((,result ,form))
+         (format t "~&Evaluation took ~D microseconds~%"
+                 (- (get-internal-real-time) ,start))
+         ,result))))
+
+; trace - trace function calls (stub)
+(defmacro trace (&rest names)
+  (declare (ignore names))
+  '(progn))
+
+; untrace - untrace function calls (stub)
+(defmacro untrace (&rest names)
+  (declare (ignore names))
+  '(progn))
+
+;;; ============================================================================
+;;; Package iteration macros
+;;; ============================================================================
+
+; do-symbols - iterate over symbols in package
+(defmacro do-symbols (spec &body body)
+  (let ((var (car spec))
+        (package (or (cadr spec) '*package*))
+        (result (caddr spec)))
+    (declare (ignore package))
+    `(progn
+       (let ((,var nil))
+         ,result))))
+
+; do-external-symbols - iterate over external symbols
+(defmacro do-external-symbols (spec &body body)
+  (let ((var (car spec))
+        (package (or (cadr spec) '*package*))
+        (result (caddr spec)))
+    (declare (ignore package))
+    `(progn
+       (let ((,var nil))
+         ,result))))
+
+; do-all-symbols - iterate over all symbols
+(defmacro do-all-symbols (spec &body body)
+  (let ((var (car spec))
+        (result (cadr spec)))
+    `(progn
+       (let ((,var nil))
+         ,result))))
+
 ;;; ============================================================================
 ;;; Pathname Functions
 ;;; ============================================================================
