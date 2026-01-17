@@ -4976,6 +4976,18 @@ pub const Compiler = struct {
         init: *const Ir,
     };
 
+    const DestructResult = struct {
+        bindings: std.ArrayList(Binding),
+        /// Intermediate IR nodes created during destructuring (cdr nodes)
+        /// Caller must free these
+        intermediates: std.ArrayList(*const Ir),
+
+        fn deinit(self: *DestructResult, allocator: std.mem.Allocator) void {
+            self.bindings.deinit(allocator);
+            self.intermediates.deinit(allocator);
+        }
+    };
+
     /// Generate bindings from destructuring pattern
     /// temp_idx is the variable index of the temp var holding the expr result
     fn genDestructBindings(self: *Compiler, pattern: Value, temp_idx: u16) !std.ArrayList(Binding) {
@@ -5182,9 +5194,11 @@ pub const Compiler = struct {
     }
     /// Generate destructuring bindings from parsed parameter tree
     /// Returns list of bindings to extract from args_expr
-    fn genDestructCode(self: *Compiler, params: []const DestructParam, args_expr: *const Ir, env: *const Env) !std.ArrayList(Binding) {
+    fn genDestructCode(self: *Compiler, params: []const DestructParam, args_expr: *const Ir, env: *const Env) !DestructResult {
         var bindings = std.ArrayList(Binding){};
         errdefer bindings.deinit(self.allocator);
+        var intermediates = std.ArrayList(*const Ir){};
+        errdefer intermediates.deinit(self.allocator);
 
         // Process each parameter, walking args with cdr
         var current_expr = args_expr;
@@ -5199,18 +5213,23 @@ pub const Compiler = struct {
                     });
                     // Advance to cdr for next param
                     if (i + 1 < params.len) {
-                        current_expr = try self.builder.cdr(current_expr);
+                        const cdr_ir = try self.builder.cdr(current_expr);
+                        try intermediates.append(self.allocator, cdr_ir);
+                        current_expr = cdr_ir;
                     }
                 },
                 .nested => {
                     // Nested: recursively destructure (car current)
                     const car_ir = try self.builder.car(current_expr);
-                    var nested_bindings = try self.genDestructCode(param.children.?, car_ir, env);
-                    defer nested_bindings.deinit(self.allocator);
-                    try bindings.appendSlice(self.allocator, nested_bindings.items);
+                    var nested = try self.genDestructCode(param.children.?, car_ir, env);
+                    defer nested.deinit(self.allocator);
+                    try bindings.appendSlice(self.allocator, nested.bindings.items);
+                    try intermediates.appendSlice(self.allocator, nested.intermediates.items);
                     // Advance to cdr
                     if (i + 1 < params.len) {
-                        current_expr = try self.builder.cdr(current_expr);
+                        const cdr_ir = try self.builder.cdr(current_expr);
+                        try intermediates.append(self.allocator, cdr_ir);
+                        current_expr = cdr_ir;
                     }
                 },
                 .optional => {
@@ -5221,7 +5240,9 @@ pub const Compiler = struct {
                         .init = car_ir,
                     });
                     if (i + 1 < params.len) {
-                        current_expr = try self.builder.cdr(current_expr);
+                        const cdr_ir = try self.builder.cdr(current_expr);
+                        try intermediates.append(self.allocator, cdr_ir);
+                        current_expr = cdr_ir;
                     }
                 },
                 .rest => {
@@ -5244,7 +5265,10 @@ pub const Compiler = struct {
             }
         }
 
-        return bindings;
+        return .{
+            .bindings = bindings,
+            .intermediates = intermediates,
+        };
     }
 
     /// Compile eval-when: (eval-when (situations...) body...)
@@ -10671,20 +10695,28 @@ test "genDestructCode - simple parameters" {
     const args_ir = try compiler.builder.lit(Value.nil);
     defer allocator.destroy(args_ir);
 
-    var bindings = try compiler.genDestructCode(params, args_ir, &env);
-    defer bindings.deinit(allocator);
+    var result = try compiler.genDestructCode(params, args_ir, &env);
+    defer result.deinit(allocator);
     defer {
-        for (bindings.items) |binding| {
-            allocator.destroy(binding.init);
+        for (result.bindings.items) |binding| {
+            // Don't free if it's the input args_ir or already in intermediates
+            var is_ref = (binding.init == args_ir);
+            for (result.intermediates.items) |node| {
+                if (binding.init == node) is_ref = true;
+            }
+            if (!is_ref) allocator.destroy(binding.init);
+        }
+        for (result.intermediates.items) |node| {
+            allocator.destroy(node);
         }
     }
 
-    try testing.expectEqual(@as(usize, 2), bindings.items.len);
-    try testing.expectEqualStrings("a", bindings.items[0].name);
-    try testing.expectEqualStrings("b", bindings.items[1].name);
+    try testing.expectEqual(@as(usize, 2), result.bindings.items.len);
+    try testing.expectEqualStrings("a", result.bindings.items[0].name);
+    try testing.expectEqualStrings("b", result.bindings.items[1].name);
     // Check IR nodes are car/cdr operations
-    try testing.expect(bindings.items[0].init.* == .car);
-    try testing.expect(bindings.items[1].init.* == .car);
+    try testing.expect(result.bindings.items[0].init.* == .car);
+    try testing.expect(result.bindings.items[1].init.* == .car);
 }
 
 test "genDestructCode - nested parameters" {
@@ -10718,18 +10750,21 @@ test "genDestructCode - nested parameters" {
 
     const args_ir = try compiler.builder.lit(Value.nil);
     defer allocator.destroy(args_ir);
-    var bindings = try compiler.genDestructCode(params, args_ir, &env);
-    defer bindings.deinit(allocator);
+    var result = try compiler.genDestructCode(params, args_ir, &env);
+    defer result.deinit(allocator);
     defer {
-        for (bindings.items) |binding| {
+        for (result.bindings.items) |binding| {
             allocator.destroy(binding.init);
+        }
+        for (result.intermediates.items) |node| {
+            allocator.destroy(node);
         }
     }
 
-    try testing.expectEqual(@as(usize, 3), bindings.items.len);
-    try testing.expectEqualStrings("a", bindings.items[0].name);
-    try testing.expectEqualStrings("b", bindings.items[1].name);
-    try testing.expectEqualStrings("c", bindings.items[2].name);
+    try testing.expectEqual(@as(usize, 3), result.bindings.items.len);
+    try testing.expectEqualStrings("a", result.bindings.items[0].name);
+    try testing.expectEqualStrings("b", result.bindings.items[1].name);
+    try testing.expectEqualStrings("c", result.bindings.items[2].name);
 }
 
 test "genDestructCode - rest parameter" {
@@ -10762,19 +10797,27 @@ test "genDestructCode - rest parameter" {
 
     const args_ir = try compiler.builder.lit(Value.nil);
     defer allocator.destroy(args_ir);
-    var bindings = try compiler.genDestructCode(params, args_ir, &env);
-    defer bindings.deinit(allocator);
+    var result = try compiler.genDestructCode(params, args_ir, &env);
+    defer result.deinit(allocator);
     defer {
-        for (bindings.items) |binding| {
-            allocator.destroy(binding.init);
+        for (result.bindings.items) |binding| {
+            // Don't free if it's the input args_ir or already in intermediates
+            var is_ref = (binding.init == args_ir);
+            for (result.intermediates.items) |node| {
+                if (binding.init == node) is_ref = true;
+            }
+            if (!is_ref) allocator.destroy(binding.init);
+        }
+        for (result.intermediates.items) |node| {
+            allocator.destroy(node);
         }
     }
 
-    try testing.expectEqual(@as(usize, 2), bindings.items.len);
-    try testing.expectEqualStrings("a", bindings.items[0].name);
-    try testing.expectEqualStrings("b", bindings.items[1].name);
+    try testing.expectEqual(@as(usize, 2), result.bindings.items.len);
+    try testing.expectEqualStrings("a", result.bindings.items[0].name);
+    try testing.expectEqualStrings("b", result.bindings.items[1].name);
     // First is car, second is rest (no car)
-    try testing.expect(bindings.items[0].init.* == .car);
+    try testing.expect(result.bindings.items[0].init.* == .car);
 }
 
 test "defmacro with destructured params" {
@@ -10804,6 +10847,7 @@ test "defmacro with destructured params" {
     const args = try heap.allocCons(name_sym, lambda_args);
 
     const defmacro_ir = try compiler.compileDefmacro(args, &env);
+    defer allocator.destroy(defmacro_ir);
     try testing.expect(defmacro_ir.* == .lit);
 
     // Macro should be in table with transformed params
