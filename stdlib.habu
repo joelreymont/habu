@@ -735,6 +735,14 @@
 (defun nsubstitute (new old seq &key (test #'eql))
   (substitute new old seq :test test))
 
+; nsubstitute-if - destructive substitute-if
+(defun nsubstitute-if (new pred seq)
+  (substitute-if new pred seq))
+
+; nsubstitute-if-not - destructive substitute-if-not
+(defun nsubstitute-if-not (new pred seq)
+  (substitute-if-not new pred seq))
+
 ;; ============================================================
 ;; Destructuring
 ;; ============================================================

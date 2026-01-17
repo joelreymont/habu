@@ -609,14 +609,14 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | find-if-not | ✓ | stdlib.habu | Find not pred |
 | length | ✓ | compile.zig:184 | Sequence length |
 | map | ✓ | stdlib.habu | Map function |
-| map-into | ✗ | - | |
+| map-into | ✓ | stdlib.habu:125 | Map into result-seq |
 | merge | ✓ | stdlib.habu | Merge sequences |
 | mismatch | ✓ | stdlib.habu | Find first mismatch |
 | notany | ✓ | stdlib.habu | None satisfy |
 | notevery | ✓ | stdlib.habu | Not all satisfy |
 | nsubstitute | ✓ | stdlib.habu | Destructive substitute |
-| nsubstitute-if | ✗ | - | |
-| nsubstitute-if-not | ✗ | - | |
+| nsubstitute-if | ✓ | stdlib.habu:738 | Destructive substitute-if |
+| nsubstitute-if-not | ✓ | stdlib.habu:742 | Destructive substitute-if-not |
 | position | ✓ | compile.zig:192 | Find position |
 | position-if | ✓ | stdlib.habu | Position by pred |
 | position-if-not | ✓ | stdlib.habu | Position not pred |
