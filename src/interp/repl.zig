@@ -1667,8 +1667,9 @@ pub const Repl = struct {
 
             // Skip special forms that shouldn't be expanded
             if (self.compiler.builtins) |b| {
-                if (head.raw == b.quote.raw or head.raw == b.quasiquote.raw) {
-                    return expr; // Don't expand inside quote
+                if (head.raw == b.quote.raw or head.raw == b.quasiquote.raw or head.raw == b.lambda.raw) {
+                    std.debug.print("expandMacros: skipping special form\n", .{});
+                    return expr; // Don't expand inside quote or lambda
                 }
             }
 

@@ -2266,6 +2266,7 @@ pub const Compiler = struct {
         defer key_params.deinit(self.allocator);
 
         var rest_param: ?[]const u8 = null;
+        std.debug.print("compileLambdaCore: params_expr type={}\n", .{params_expr.typeKind()});
         var in_optional = false;
         var in_key = false;
         var param_list = params_expr;
