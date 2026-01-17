@@ -29,6 +29,18 @@ pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value
 
     const pkg_val = Value.makePtr(pkg, .boxed);
     try heap.putLispPackage(name, pkg_val);
+
+    // Register nicknames
+    if (nicknames) |nns| {
+        var nicks = nns;
+        while (!nicks.isNil()) {
+            if (!nicks.isCons()) break;
+            const nick = nicks.toPtr(Cons).car;
+            try heap.putLispPackage(nick, pkg_val);
+            nicks = nicks.toPtr(Cons).cdr;
+        }
+    }
+
     return pkg_val;
 }
 
@@ -627,28 +639,15 @@ pub fn deletePackage(heap: *Heap, pkg: Value) !bool {
 
     const p = pkg.toPtr(objects.Package);
 
-    // Remove from heap's package table
-    const name_str = if (p.name.isString())
-        p.name.toPtr(objects.String).bytes()
-    else if (p.name.isSymbol())
-        p.name.toPtr(objects.Symbol).getName()
-    else
-        return error.TypeError;
+    // Remove from Lisp package registry
+    _ = try heap.removeLispPackage(p.name);
 
-    _ = heap.packages.remove(name_str);
-
-    // Remove nicknames from table
+    // Remove nicknames from registry
     var nicks = p.nicknames;
     while (!nicks.isNil()) {
         if (!nicks.isCons()) break;
         const nick = nicks.toPtr(Cons).car;
-        const nick_str = if (nick.isString())
-            nick.toPtr(String).bytes()
-        else if (nick.isSymbol())
-            nick.toPtr(objects.Symbol).getName()
-        else
-            break;
-        _ = heap.packages.remove(nick_str);
+        _ = try heap.removeLispPackage(nick);
         nicks = nicks.toPtr(Cons).cdr;
     }
 
@@ -667,27 +666,15 @@ pub fn renamePackage(heap: *Heap, pkg: Value, new_name: Value, new_nicknames: ?V
 
     const p = pkg.toPtr(objects.Package);
 
-    // Remove old name from package table
-    const old_name_str = if (p.name.isString())
-        p.name.toPtr(objects.String).bytes()
-    else if (p.name.isSymbol())
-        p.name.toPtr(objects.Symbol).getName()
-    else
-        return error.TypeError;
-    _ = heap.packages.remove(old_name_str);
+    // Remove old name from Lisp package registry
+    _ = try heap.removeLispPackage(p.name);
 
     // Remove old nicknames
     var old_nicks = p.nicknames;
     while (!old_nicks.isNil()) {
         if (!old_nicks.isCons()) break;
         const nick = old_nicks.toPtr(Cons).car;
-        const nick_str = if (nick.isString())
-            nick.toPtr(String).bytes()
-        else if (nick.isSymbol())
-            nick.toPtr(objects.Symbol).getName()
-        else
-            break;
-        _ = heap.packages.remove(nick_str);
+        _ = try heap.removeLispPackage(nick);
         old_nicks = old_nicks.toPtr(Cons).cdr;
     }
 
