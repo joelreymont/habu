@@ -263,6 +263,7 @@ pub fn typeOf(heap: *Heap, val: Value) !Value {
         .pathname => heap.intern("pathname"),
         .package => heap.intern("package"),
         .chunk => heap.intern("compiled-function"),
+        .condition => heap.intern("condition"),
     };
 }
 

@@ -1669,6 +1669,7 @@ pub const Compiler = struct {
                 .pathname => &types.t_pathname,
                 .package => &types.t_any, // Packages are rare as literals
                 .chunk => &types.t_any, // Chunks are internal
+                .condition => &types.t_any, // Condition objects
             },
             .@"var" => |v| {
                 // Check occurrence typing first (narrowed types)

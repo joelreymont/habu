@@ -58,6 +58,7 @@ pub const TypeKind = enum {
     pathname,
     package,
     chunk,
+    condition,
 };
 
 /// A tagged Habu value (64-bit)
@@ -210,6 +211,12 @@ pub const Value = packed struct {
         return kind_ptr.* == .chunk;
     }
 
+    pub inline fn isCondition(self: Value) bool {
+        if (!self.isBoxed()) return false;
+        const kind_ptr: *const objects.BoxedKind = @ptrFromInt(self.raw & PTR_MASK);
+        return kind_ptr.* == .condition;
+    }
+
     /// Check if value is a forwarding pointer (GC)
     pub inline fn isForwarding(self: Value) bool {
         return self.isPointer() and self.getTag() == .forwarding;
@@ -263,6 +270,7 @@ pub const Value = packed struct {
                     .pathname => .pathname,
                     .package => .package,
                     .chunk => .chunk,
+                    .condition => .condition,
                 };
             },
             .forwarding => .cons, // Shouldn't happen during normal execution

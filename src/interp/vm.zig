@@ -4963,6 +4963,7 @@ pub const Vm = struct {
             .pathname => result.appendSlice(self.allocator, "#<pathname>") catch return error.OutOfMemory,
             .package => result.appendSlice(self.allocator, "#<package>") catch return error.OutOfMemory,
             .chunk => result.appendSlice(self.allocator, "#<chunk>") catch return error.OutOfMemory,
+            .condition => result.appendSlice(self.allocator, "#<condition>") catch return error.OutOfMemory,
         }
     }
 
@@ -5792,7 +5793,7 @@ fn hashValueWithTest(val: Value, test_type: runtime.HashTest) u64 {
                 .keyword => fnvHash(val.toPtr(runtime.Keyword).getName()),
                 .string => fnvHash(val.toPtr(runtime.String).bytes()),
                 // Reference types: hash address (NOT stable across GC)
-                .cons, .vector, .closure, .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname, .package, .chunk => fnvHashU64(val.raw),
+                .cons, .vector, .closure, .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname, .package, .chunk, .condition => fnvHashU64(val.raw),
             };
         },
     }

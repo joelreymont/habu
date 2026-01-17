@@ -326,7 +326,7 @@ pub const GC = struct {
                         chunk.const_pool = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_const_pool)) + addr_delta)));
                         chunk.code = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_code)) + addr_delta)));
                     },
-                    .rational, .complex, .stream, .bignum, .pathname, .package => {
+                    .rational, .complex, .stream, .bignum, .pathname, .package, .condition => {
                         // No interior pointers to repair
                     },
                 }
@@ -463,6 +463,19 @@ pub const GC = struct {
                     },
                     .rational, .complex, .bignum => {
                         // No Value references to scan
+                    },
+                    .condition => {
+                        // Scan condition Value references
+                        const cond: *objects.Condition = @ptrFromInt(addr);
+                        if (cond.type_sym.isPointer() and !cond.type_sym.isNil()) {
+                            cond.type_sym = try self.copyValue(cond.type_sym, alloc_ptr);
+                        }
+                        if (cond.format_control.isPointer() and !cond.format_control.isNil()) {
+                            cond.format_control = try self.copyValue(cond.format_control, alloc_ptr);
+                        }
+                        if (cond.format_args.isPointer() and !cond.format_args.isNil()) {
+                            cond.format_args = try self.copyValue(cond.format_args, alloc_ptr);
+                        }
                     },
                     .stream => {
                         // Scan source_value if present

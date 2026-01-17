@@ -179,6 +179,7 @@ pub const BoxedKind = enum(u64) {
     pathname = 6,
     package = 7,
     chunk = 8,
+    condition = 9,
 };
 
 /// Stream direction
@@ -580,6 +581,7 @@ pub fn objectSize(val: Value) usize {
                 .bignum => @sizeOf(Bignum),
                 .pathname => @sizeOf(Pathname),
                 .package => @sizeOf(Package),
+                .condition => @sizeOf(Condition),
                 .chunk => {
                     const chunk = val.toPtr(Chunk);
                     // Header + const pool + bytecode (both aligned to 8)
@@ -702,4 +704,21 @@ test "closure layout" {
     const testing = std.testing;
 
     try testing.expect(@sizeOf(Closure) >= 24);
+}
+
+/// Condition: base for error/warning hierarchy
+/// Size: 32 bytes (4 words)
+pub const Condition = extern struct {
+    kind: BoxedKind align(16),
+    /// Condition type (interned symbol)
+    type_sym: Value,
+    /// Format control string (or nil)
+    format_control: Value,
+    /// Format arguments list (or nil)
+    format_args: Value,
+};
+
+test "condition layout" {
+    const testing = std.testing;
+    try testing.expectEqual(@as(usize, 32), @sizeOf(Condition));
 }
