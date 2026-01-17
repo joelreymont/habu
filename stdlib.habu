@@ -1108,15 +1108,15 @@
 
 ; multiple-value-setq - set variables from multiple values
 (defmacro multiple-value-setq (vars form)
-  (let ((vals (gensym "VALS")))
+  (let ((vals (gensym "VALS"))
+        (i 0))
     (list 'let (list (list vals (list 'multiple-value-list form)))
           (cons 'progn
-                (let ((i 0))
-                  (mapcar (lambda (var)
-                            (prog1
-                                (list 'setq var (list 'nth i vals))
-                              (setq i (+ i 1))))
-                          vars))))))
+                (mapcar (lambda (var)
+                          (prog1
+                              (list 'setq var (list 'nth i vals))
+                            (setq i (+ i 1))))
+                        vars)))))
 
 ; nth-value - get nth value from multiple-value form
 (defmacro nth-value (n form)
