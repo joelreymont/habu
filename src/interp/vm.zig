@@ -5097,8 +5097,6 @@ pub const Vm = struct {
         const key_count = callee_chunk.key_count;
         const max_positional = arity + opt_count;
 
-        std.debug.print("doCall: chunk@{*} has arity={d}, opt={d}, argc={d}\n", .{ callee_chunk, arity, opt_count, argc });
-
         // Find where keyword args actually start by scanning for first keyword
         // This handles cases like (foo req :k v) where optional is omitted
         var actual_positional = argc;
@@ -5138,21 +5136,6 @@ pub const Vm = struct {
         } else {
             // Fixed: need exact arity
             if (argc != arity) {
-                std.debug.print("TypeMismatch: expected {d} args, got {d} for function at chunk {*}\n", .{ arity, argc, callee_chunk });
-                std.debug.print("Args on stack:\n", .{});
-                var i: u8 = 0;
-                while (i < argc) : (i += 1) {
-                    const arg = self.stack[self.sp - argc + i];
-                    switch (arg.typeKind()) {
-                        .symbol => {
-                            const sym = arg.toPtr(runtime.Symbol);
-                            std.debug.print("  arg[{d}]: symbol '{s}'\n", .{ i, sym.getName() });
-                        },
-                        .fixnum => std.debug.print("  arg[{d}]: fixnum {d}\n", .{ i, arg.toFixnum() }),
-                        .cons => std.debug.print("  arg[{d}]: cons\n", .{i}),
-                        else => std.debug.print("  arg[{d}]: {s}\n", .{ i, @tagName(arg.typeKind()) }),
-                    }
-                }
                 return error.TypeMismatch;
             }
         }

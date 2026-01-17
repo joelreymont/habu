@@ -909,7 +909,6 @@ pub const Repl = struct {
         const ir_node = self.compiler.compile(expr, &env) catch |err| {
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
-            std.debug.print("Compile error in compileExprWithEnv: {s}\n", .{@errorName(err)});
             return if (err == error.UnboundVariable) error.CompileError else error.CompileError;
         };
         self.compiler.builder = saved_builder;
@@ -1206,6 +1205,9 @@ pub const Repl = struct {
                     const display_expr = if (expr.len <= max_display) expr else expr[0..max_display];
                     const suffix = if (expr.len > max_display) "..." else "";
                     try writer.print("Error evaluating: {s}{s}\n  {s}\n", .{ display_expr, suffix, @errorName(err) });
+                    if (err == error.CompileError) {
+                        try writer.print("DEBUG: CompileError occurred\n", .{});
+                    }
                     return err;
                 };
                 pos = end;
@@ -1406,10 +1408,6 @@ pub const Repl = struct {
 
         if (!closure.isClosure()) return error.CompileError;
 
-        const cls_ptr = closure.toPtr(runtime.Closure);
-        const chunk_check: *const runtime.objects.Chunk = cls_ptr.code.toPtr(runtime.objects.Chunk);
-        std.debug.print("handleDefmacro: storing closure@{*} with chunk@{*} arity={d}\n", .{ cls_ptr, chunk_check, chunk_check.arity });
-
         // Store the closure in both REPL and Compiler macro tables
         // REPL table is used by pre-compilation macro expansion (expandMacros)
         // Compiler table is used during function body compilation
@@ -1541,7 +1539,6 @@ pub const Repl = struct {
         const ir_node = self.compiler.compile(expr, &env) catch |err| {
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
-            std.debug.print("Compile error in compileExprWithEnv: {s}\n", .{@errorName(err)});
             return if (err == error.UnboundVariable) error.CompileError else error.CompileError;
         };
         self.compiler.builder = saved_builder;
@@ -1706,10 +1703,6 @@ pub const Repl = struct {
 
     /// Call a macro closure with arguments (as a list)
     fn callMacro(self: *Repl, closure: Value, args: Value) ReplError!Value {
-        const cls_ptr = closure.toPtr(runtime.Closure);
-        const chunk_check: *const runtime.objects.Chunk = cls_ptr.code.toPtr(runtime.objects.Chunk);
-        std.debug.print("callMacro: calling closure@{*} with chunk@{*} arity={d}\n", .{ cls_ptr, chunk_check, chunk_check.arity });
-
         // Build the function call: we need to apply the closure to the args
         // The args should NOT be evaluated - they're passed as-is (like quote)
 
@@ -1795,8 +1788,7 @@ pub const Repl = struct {
         macro_vm.setChunkPool(chunk_ptrs.items);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        return macro_vm.run(chunk_ptr) catch |err| {
-            std.debug.print("Macro expansion error: {s}\n", .{@errorName(err)});
+        return macro_vm.run(chunk_ptr) catch {
             return error.RuntimeError;
         };
     }

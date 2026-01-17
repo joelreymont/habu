@@ -1062,13 +1062,6 @@ pub const Emitter = struct {
         lambda_emitter.optional_count = optional_count;
         lambda_emitter.key_count = key_count;
         lambda_emitter.has_rest = lam.rest_param != null;
-
-        std.debug.print("emit lambda: lam.params.len={d}, setting arity={d}, opt={d}\n", .{ lam.params.len, arity, optional_count });
-        defer {
-            const final_chunk = self.heap.?.allocChunk(self.code.items, &.{}, arity, optional_count, key_count, lambda_emitter.has_rest, lambda_emitter.num_locals) catch unreachable;
-            const chunk_ptr = final_chunk.toPtr(runtime.objects.Chunk);
-            std.debug.print("emit lambda: created chunk@{*} with arity={d}\n", .{ chunk_ptr, chunk_ptr.arity });
-        }
         // Layout: [positional] [key params] [keyword pairs] [rest] [let bindings]
         // num_locals = max of (param slots, max local index used in body + 1)
         const rest_count: u8 = if (lam.rest_param != null) 1 else 0;
