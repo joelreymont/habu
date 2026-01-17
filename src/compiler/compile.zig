@@ -399,6 +399,14 @@ pub const Builtins = struct {
     @"get-output-stream-string": Value,
     @"write-to-stream": Value,
 
+    // Pathname primitives
+    @"pathname-host": Value,
+    @"pathname-device": Value,
+    @"pathname-directory": Value,
+    @"pathname-name": Value,
+    @"pathname-type": Value,
+    @"pathname-version": Value,
+
     // Type name symbols (for type dispatch)
     ty_fixnum: Value,
     ty_integer: Value, // alias for fixnum
@@ -771,6 +779,13 @@ pub const Builtins = struct {
             .@"make-string-output-stream" = try heap.intern("make-string-output-stream"),
             .@"get-output-stream-string" = try heap.intern("get-output-stream-string"),
             .@"write-to-stream" = try heap.intern("write-to-stream"),
+            // Pathname primitives
+            .@"pathname-host" = try heap.intern("pathname-host"),
+            .@"pathname-device" = try heap.intern("pathname-device"),
+            .@"pathname-directory" = try heap.intern("pathname-directory"),
+            .@"pathname-name" = try heap.intern("pathname-name"),
+            .@"pathname-type" = try heap.intern("pathname-type"),
+            .@"pathname-version" = try heap.intern("pathname-version"),
             // Type name symbols
             .ty_fixnum = try heap.intern("fixnum"),
             .ty_integer = try heap.intern("integer"),
@@ -1035,6 +1050,13 @@ pub const Builtins = struct {
         if (s == self.@"make-string-output-stream".raw) return true;
         if (s == self.@"get-output-stream-string".raw) return true;
         if (s == self.@"write-to-stream".raw) return true;
+        // Pathname primitives
+        if (s == self.@"pathname-host".raw) return true;
+        if (s == self.@"pathname-device".raw) return true;
+        if (s == self.@"pathname-directory".raw) return true;
+        if (s == self.@"pathname-name".raw) return true;
+        if (s == self.@"pathname-type".raw) return true;
+        if (s == self.@"pathname-version".raw) return true;
         // Also funcall and apply are callable
         if (s == self.funcall.raw) return true;
         if (s == self.apply.raw) return true;
@@ -7588,6 +7610,14 @@ pub const Compiler = struct {
         if (s == b.@"get-output-stream-string".raw) return self.compileUnaryPrim(args, env, .get_output_stream_string);
         if (s == b.@"write-to-stream".raw) return self.compileBinaryPrim(args, env, .write_to_stream);
 
+        // Pathname accessors
+        if (s == b.@"pathname-host".raw) return self.compileUnaryPrim(args, env, .pathname_host);
+        if (s == b.@"pathname-device".raw) return self.compileUnaryPrim(args, env, .pathname_device);
+        if (s == b.@"pathname-directory".raw) return self.compileUnaryPrim(args, env, .pathname_directory);
+        if (s == b.@"pathname-name".raw) return self.compileUnaryPrim(args, env, .pathname_name);
+        if (s == b.@"pathname-type".raw) return self.compileUnaryPrim(args, env, .pathname_type);
+        if (s == b.@"pathname-version".raw) return self.compileUnaryPrim(args, env, .pathname_version);
+
         // Random
         if (s == b.random.raw) return self.compileUnaryPrim(args, env, .random);
         if (s == b.@"random-seed".raw) return self.compileUnaryPrim(args, env, .random_seed);
@@ -7595,7 +7625,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream };
+    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream, pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -8025,6 +8055,36 @@ pub const Compiler = struct {
             .output_stream_p => try self.builder.outputStreamP(operand),
             .make_string_input_stream => try self.builder.makeStringInputStream(operand),
             .get_output_stream_string => try self.builder.getOutputStreamString(operand),
+            .pathname_host => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pathname_host = .{ .operand = operand } };
+                break :blk node;
+            },
+            .pathname_device => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pathname_device = .{ .operand = operand } };
+                break :blk node;
+            },
+            .pathname_directory => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pathname_directory = .{ .operand = operand } };
+                break :blk node;
+            },
+            .pathname_name => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pathname_name = .{ .operand = operand } };
+                break :blk node;
+            },
+            .pathname_type => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pathname_type = .{ .operand = operand } };
+                break :blk node;
+            },
+            .pathname_version => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pathname_version = .{ .operand = operand } };
+                break :blk node;
+            },
             else => return error.InvalidSyntax,
         };
     }

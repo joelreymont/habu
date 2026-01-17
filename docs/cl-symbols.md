@@ -40,19 +40,19 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | *macroexpand-hook* | ✗ | - | |
 | *modules* | ✗ | - | |
 | *package* | ✓ | heap.zig | Current package |
-| *print-array* | ✗ | - | |
-| *print-base* | ✗ | - | |
-| *print-case* | ✗ | - | |
+| *print-array* | ✓ | vm.zig:590, io.zig | Control array printing |
+| *print-base* | ✓ | vm.zig:571, io.zig | Number output radix |
+| *print-case* | ✓ | vm.zig:559, io.zig | Symbol case control |
 | *print-circle* | ✗ | - | |
 | *print-escape* | ✗ | - | |
-| *print-gensym* | ✗ | - | |
+| *print-gensym* | ✓ | vm.zig:583, io.zig | Gensym prefix control |
 | *print-length* | ✗ | - | |
 | *print-level* | ✗ | - | |
 | *print-lines* | ✗ | - | |
 | *print-miser-width* | ✗ | - | |
 | *print-pprint-dispatch* | ✗ | - | |
 | *print-pretty* | ✗ | - | |
-| *print-radix* | ✗ | - | |
+| *print-radix* | ✓ | vm.zig:577, io.zig | Radix indicator control |
 | *print-readably* | ✗ | - | |
 | *print-right-margin* | ✗ | - | |
 | *query-io* | ✗ | - | |
@@ -752,16 +752,16 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | pprint-newline | ✗ | - | |
 | pprint-tab | ✗ | - | |
 | pprint-tabular | ✗ | - | |
-| prin1 | ✓ | vm.zig | Print readably |
+| prin1 | ✓ | io.zig:641 | Print readably |
 | prin1-to-string | ✗ | - | |
-| princ | ✓ | compile.zig:315 | Print aesthetic |
+| princ | ✓ | io.zig:646 | Print aesthetic |
 | princ-to-string | ✗ | - | |
-| print | ✓ | compile.zig:314 | Print with newline |
+| print | ✓ | io.zig:663 | Print with newline |
 | print-object | ✗ | - | |
 | set-pprint-dispatch | ✗ | - | |
 | terpri | ✓ | compile.zig:316 | Output newline |
-| write | ✗ | - | |
-| write-to-string | ✓ | compile.zig:336 | To string |
+| write | ✓ | io.zig:624 | General output function |
+| write-to-string | ✓ | io.zig:471 | To string |
 
 ## Functions - Reader (19)
 | Symbol | Status | Location | Notes |

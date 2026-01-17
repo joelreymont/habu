@@ -302,6 +302,29 @@ pub const Ir = union(enum) {
     },
 
     // ========================================================================
+    // Pathname operations
+    // ========================================================================
+
+    pathname_host: struct {
+        operand: *const Ir,
+    },
+    pathname_device: struct {
+        operand: *const Ir,
+    },
+    pathname_directory: struct {
+        operand: *const Ir,
+    },
+    pathname_name: struct {
+        operand: *const Ir,
+    },
+    pathname_type: struct {
+        operand: *const Ir,
+    },
+    pathname_version: struct {
+        operand: *const Ir,
+    },
+
+    // ========================================================================
     // Function calls
     // ========================================================================
 

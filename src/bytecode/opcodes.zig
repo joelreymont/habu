@@ -28,7 +28,7 @@ pub const MathExtOp = enum(u8) {
 };
 
 /// Bytecode opcodes
-pub const Op = enum(u8) {
+pub const Op = enum(u16) {
     // ========================================================================
     // Stack manipulation
     // ========================================================================
@@ -1169,6 +1169,34 @@ pub const Op = enum(u8) {
     /// ( -- )
     halt = 0xFF,
 
+    // ========================================================================
+    // Pathname operations (0x100+)
+    // ========================================================================
+
+    /// Get pathname host component
+    /// ( pathname -- host )
+    pathname_host = 0x100,
+
+    /// Get pathname device component
+    /// ( pathname -- device )
+    pathname_device = 0x101,
+
+    /// Get pathname directory component
+    /// ( pathname -- directory )
+    pathname_directory = 0x102,
+
+    /// Get pathname name component
+    /// ( pathname -- name )
+    pathname_name = 0x103,
+
+    /// Get pathname type component
+    /// ( pathname -- type )
+    pathname_type = 0x104,
+
+    /// Get pathname version component
+    /// ( pathname -- version )
+    pathname_version = 0x105,
+
     /// Get operand size in bytes
     pub fn operandSize(self: Op) u8 {
         return switch (self) {
@@ -1391,6 +1419,12 @@ pub const Op = enum(u8) {
             .parse_namestring,
             .namestring,
             .merge_pathnames,
+            .pathname_host,
+            .pathname_device,
+            .pathname_directory,
+            .pathname_name,
+            .pathname_type,
+            .pathname_version,
             => 0,
 
             // 1 byte operand

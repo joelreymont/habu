@@ -552,6 +552,12 @@ pub const Emitter = struct {
             .make_string_output_stream => try self.emitOp(.make_string_output_stream),
             .get_output_stream_string => |s| try self.emitUnaryOp(s.operand, .get_output_stream_string),
             .write_to_stream => |w| try self.emitBinaryOp(w, .write_to_stream),
+            .pathname_host => |p| try self.emitUnaryOp(p.operand, .pathname_host),
+            .pathname_device => |p| try self.emitUnaryOp(p.operand, .pathname_device),
+            .pathname_directory => |p| try self.emitUnaryOp(p.operand, .pathname_directory),
+            .pathname_name => |p| try self.emitUnaryOp(p.operand, .pathname_name),
+            .pathname_type => |p| try self.emitUnaryOp(p.operand, .pathname_type),
+            .pathname_version => |p| try self.emitUnaryOp(p.operand, .pathname_version),
             .call => |c| try self.emitCall(c, false),
             .tailcall => |c| try self.emitCall(c, true),
             .apply => |a| try self.emitApply(a),
@@ -843,7 +849,9 @@ pub const Emitter = struct {
     // ========================================================================
 
     fn emitOp(self: *Emitter, op: Op) Error!void {
-        try self.code.append(self.allocator, @intFromEnum(op));
+        const opcode: u16 = @intFromEnum(op);
+        try self.code.append(self.allocator, @truncate(opcode & 0xFF)); // low byte
+        try self.code.append(self.allocator, @truncate(opcode >> 8)); // high byte
     }
 
     fn emitU8(self: *Emitter, val: u8) Error!void {
@@ -2180,9 +2188,12 @@ test "emit literal fixnum" {
     defer allocator.destroy(node);
 
     try emitter.emit(node);
-    try testing.expectEqual(@as(u8, @intFromEnum(Op.push_i32)), emitter.code.items[0]);
-    // 42 in little-endian i32
-    try testing.expectEqual(@as(u8, 42), emitter.code.items[1]);
+    // Opcode is now 2 bytes (little-endian u16)
+    const push_i32_opcode: u16 = @intFromEnum(Op.push_i32);
+    try testing.expectEqual(@as(u8, @truncate(push_i32_opcode & 0xFF)), emitter.code.items[0]);
+    try testing.expectEqual(@as(u8, @truncate(push_i32_opcode >> 8)), emitter.code.items[1]);
+    // 42 in little-endian i32 starts at index 2
+    try testing.expectEqual(@as(u8, 42), emitter.code.items[2]);
 }
 
 test "emit add" {
@@ -2205,10 +2216,12 @@ test "emit add" {
 
     try emitter.emit(node);
 
-    // push_i32(5) + push_i32(5) + add(1) = 11 bytes
-    try testing.expectEqual(@as(usize, 11), emitter.code.items.len);
-    // Last byte should be add opcode
-    try testing.expectEqual(@as(u8, @intFromEnum(Op.add)), emitter.code.items[emitter.code.items.len - 1]);
+    // push_i32(2+4) + push_i32(2+4) + add(2) = 14 bytes
+    try testing.expectEqual(@as(usize, 14), emitter.code.items.len);
+    // Last 2 bytes should be add opcode (little-endian u16)
+    const add_opcode: u16 = @intFromEnum(Op.add);
+    try testing.expectEqual(@as(u8, @truncate(add_opcode & 0xFF)), emitter.code.items[emitter.code.items.len - 2]);
+    try testing.expectEqual(@as(u8, @truncate(add_opcode >> 8)), emitter.code.items[emitter.code.items.len - 1]);
 }
 
 test "emit if" {
@@ -2261,7 +2274,9 @@ test "finalize adds return" {
     const chunk_val = try emitter.finalize();
     const chunk = chunk_val.toPtr(Chunk);
 
-    // Last instruction should be ret
+    // Last instruction should be ret (2 bytes, little-endian)
     const code = chunk.getCode();
-    try testing.expectEqual(@as(u8, @intFromEnum(Op.ret)), code[code.len - 1]);
+    const ret_opcode: u16 = @intFromEnum(Op.ret);
+    try testing.expectEqual(@as(u8, @truncate(ret_opcode & 0xFF)), code[code.len - 2]);
+    try testing.expectEqual(@as(u8, @truncate(ret_opcode >> 8)), code[code.len - 1]);
 }

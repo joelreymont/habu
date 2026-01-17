@@ -2687,6 +2687,36 @@ pub const Vm = struct {
                 const result = try primitives.stream.primWriteString(self.heap, &[_]Value{ str_val, stream_val });
                 try self.push(result);
             },
+            .pathname_host => {
+                const path = try self.pop();
+                const result = try primitives.pathname.pathnameHost(path);
+                try self.push(result);
+            },
+            .pathname_device => {
+                const path = try self.pop();
+                const result = try primitives.pathname.pathnameDevice(path);
+                try self.push(result);
+            },
+            .pathname_directory => {
+                const path = try self.pop();
+                const result = try primitives.pathname.pathnameDirectory(path);
+                try self.push(result);
+            },
+            .pathname_name => {
+                const path = try self.pop();
+                const result = try primitives.pathname.pathnameName(path);
+                try self.push(result);
+            },
+            .pathname_type => {
+                const path = try self.pop();
+                const result = try primitives.pathname.pathnameType(path);
+                try self.push(result);
+            },
+            .pathname_version => {
+                const path = try self.pop();
+                const result = try primitives.pathname.pathnameVersion(path);
+                try self.push(result);
+            },
             .open => {
                 const mode_val = try self.pop();
                 const path_val = try self.pop();
@@ -5476,9 +5506,12 @@ pub const Vm = struct {
     // ========================================================================
 
     fn readOp(self: *Vm) Op {
-        const byte = self.chunk.getCode()[self.ip];
-        self.ip += 1;
-        return @enumFromInt(byte);
+        const code = self.chunk.getCode();
+        const low: u16 = code[self.ip];
+        const high: u16 = code[self.ip + 1];
+        self.ip += 2;
+        const opcode = low | (high << 8);
+        return @enumFromInt(opcode);
     }
 
     fn readU8(self: *Vm) u8 {
@@ -5888,13 +5921,13 @@ test "vm push and return" {
 
     var vm = try Vm.init(allocator, &heap);
 
+    // Opcodes are now 2 bytes (little-endian u16)
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const ret_op: u16 = @intFromEnum(Op.ret);
     const code = [_]u8{
-        @intFromEnum(Op.push_i32),
-        42,
-        0,
-        0,
-        0,
-        @intFromEnum(Op.ret),
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), // push_i32 opcode
+        42, 0, 0, 0, // i32 value: 42
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8), // ret opcode
     };
 
     const chunk = Chunk{
@@ -5923,10 +5956,13 @@ test "vm arithmetic" {
     var vm = try Vm.init(allocator, &heap);
 
     // (+ 10 20) = 30
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const add_op: u16 = @intFromEnum(Op.add);
+    const ret_op: u16 = @intFromEnum(Op.ret);
     const code = [_]u8{
-        @intFromEnum(Op.push_i32), 10,                   0, 0, 0,
-        @intFromEnum(Op.push_i32), 20,                   0, 0, 0,
-        @intFromEnum(Op.add),      @intFromEnum(Op.ret),
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 10,                       0,                      0, 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 20,                       0,                      0, 0,
+        @truncate(add_op & 0xFF),      @truncate(add_op >> 8),      @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
     };
 
     const chunk = Chunk{

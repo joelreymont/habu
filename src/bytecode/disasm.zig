@@ -253,6 +253,12 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .parse_namestring,
         .namestring,
         .merge_pathnames,
+        .pathname_host,
+        .pathname_device,
+        .pathname_directory,
+        .pathname_name,
+        .pathname_type,
+        .pathname_version,
         .push_progv,
         .pop_progv,
         => {
