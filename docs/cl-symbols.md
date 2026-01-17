@@ -670,13 +670,13 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | namestring | ✗ | - | |
 | parse-namestring | ✗ | - | |
 | pathname | ✗ | - | |
-| pathname-device | ✗ | - | |
-| pathname-directory | ✗ | - | |
-| pathname-host | ✗ | - | |
+| pathname-device | ✓ | pathname.zig:30, vm.zig | Get device component |
+| pathname-directory | ✓ | pathname.zig:37, vm.zig | Get directory component |
+| pathname-host | ✓ | pathname.zig:23, vm.zig | Get host component |
 | pathname-match-p | ✗ | - | |
-| pathname-name | ✗ | - | |
-| pathname-type | ✗ | - | |
-| pathname-version | ✗ | - | |
+| pathname-name | ✓ | pathname.zig:44, vm.zig | Get name component |
+| pathname-type | ✓ | pathname.zig:51, vm.zig | Get type component |
+| pathname-version | ✓ | pathname.zig:58, vm.zig | Get version component |
 | pathnamep | ✗ | - | |
 | probe-file | ✗ | - | |
 | translate-logical-pathname | ✗ | - | |
