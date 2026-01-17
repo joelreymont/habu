@@ -1307,6 +1307,9 @@ pub const Compiler = struct {
     generic_functions: std.StringHashMap(std.ArrayList(MethodDef)),
     /// Current method params for call-next-method (set during method body compilation)
     method_params: ?[]const []const u8 = null,
+    /// Type abbreviations for CL deftype
+    /// Maps type name to expansion function (Value closure)
+    type_aliases: std.StringHashMap(Value),
 
     /// ADT variant definition
     pub const Variant = struct {
@@ -1354,6 +1357,7 @@ pub const Compiler = struct {
             .heap = vm.heap,
             .class_metadata = std.StringHashMap([]const SlotSpec).init(allocator),
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
+            .type_aliases = std.StringHashMap(Value).init(allocator),
         };
     }
 
@@ -1383,6 +1387,7 @@ pub const Compiler = struct {
             .heap = vm.heap,
             .class_metadata = std.StringHashMap([]const SlotSpec).init(allocator),
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
+            .type_aliases = std.StringHashMap(Value).init(allocator),
         };
     }
 
@@ -1437,6 +1442,12 @@ pub const Compiler = struct {
         self.generic_functions.deinit();
         self.globals.deinit();
         self.macro_table.deinit();
+        // Free type_aliases keys
+        var alias_iter = self.type_aliases.keyIterator();
+        while (alias_iter.next()) |key| {
+            self.globals.allocator.free(key.*);
+        }
+        self.type_aliases.deinit();
         // Note: defined_types contains references to ArrayList buffers and duped strings
         // that are intentionally not freed - they persist for the compiler's lifetime
         // and the memory is small (type definitions). The hashmap itself is freed.
@@ -6579,69 +6590,35 @@ pub const Compiler = struct {
     // ADT Support: deftype and match
     // ========================================================================
 
-    /// Compile deftype: (deftype type-name (variant1 field1 field2) (variant2 field3) ...)
-    /// Generates: constructors, type predicate, variant predicates, field accessors
-    /// Runtime representation: #(:variant-tag field1 field2 ...)
+    /// Compile deftype: CL-style type abbreviation
+    /// (deftype name lambda-list body...) - defines type specifier expansion
+    /// Stores (lambda-list . body) in type_aliases registry
     fn compileDeftype(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         _ = env;
-        // Parse: (type-name (variant1 f1 f2) (variant2 f3) ...)
+        // Parse: (name lambda-list body...)
         if (!args.isCons()) return error.InvalidSyntax;
 
         const cons1 = args.toPtr(Cons);
         const type_name_val = cons1.car;
         if (!type_name_val.isSymbol()) return error.InvalidSyntax;
         const type_name_raw = type_name_val.toPtr(Symbol).getName();
-        // Dupe type name - symbol internal storage may be invalidated by GC
-        const type_name = try self.allocator.dupe(u8, type_name_raw);
+        const type_name = try self.globals.allocator.dupe(u8, type_name_raw);
 
-        // Collect variants
-        var variants = std.ArrayList(Variant){};
-        var current = cons1.cdr;
-        while (current.isCons()) {
-            const variant_cons = current.toPtr(Cons);
-            const variant = try self.parseVariant(variant_cons.car);
-            try variants.append(self.allocator, variant);
-            current = variant_cons.cdr;
-        }
+        // Rest is (lambda-list body...) - store for later expansion
+        const lambda_args = cons1.cdr;
+        if (!lambda_args.isCons()) return error.InvalidSyntax;
 
-        if (variants.items.len == 0) return error.InvalidSyntax;
+        // Store in type_aliases: name -> (lambda-list body...)
+        try self.type_aliases.put(type_name, lambda_args);
 
-        // Store type definition for match exhaustiveness checking
-        try self.defined_types.put(type_name, variants.items);
+        // deftype has no runtime effect - return nil
+        return try self.builder.lit(Value.nil);
+    }
 
-        // Generate definitions as a progn:
-        // 1. Constructor for each variant: (defun variant-name (fields...) (vector :variant-name fields...))
-        // 2. Type predicate: (defun type-name? (x) (and (vectorp x) (member (aref x 0) '(:v1 :v2 ...))))
-        // 3. Variant predicates: (defun variant-name? (x) (and (vectorp x) (eq (aref x 0) :variant-name)))
-        // 4. Field accessors: (defun variant-name-field (x) (aref x field-index))
-
-        var defs = std.ArrayList(*const Ir){};
-
-        for (variants.items) |variant| {
-            // Constructor: (variant-name f1 f2) -> #(:variant-name f1 f2)
-            const ctor = try self.generateAdtConstructor(variant);
-            try defs.append(self.allocator, ctor);
-
-            // Variant predicate: (variant-name? x) -> (and (vectorp x) (eq (aref x 0) :variant-name))
-            const pred = try self.generateVariantPredicate(variant);
-            try defs.append(self.allocator, pred);
-
-            // Field accessors: (variant-name-field x) -> (aref x index)
-            for (variant.fields, 1..) |field, idx| {
-                const accessor = try self.generateFieldAccessor(variant.name, field, @intCast(idx));
-                try defs.append(self.allocator, accessor);
-            }
-        }
-
-        // Type predicate: (type-name? x) -> checks if any variant matches
-        const type_pred = try self.generateTypePredicate(type_name, variants.items);
-        try defs.append(self.allocator, type_pred);
-
-        // Return progn of all definitions
-        const slice = try defs.toOwnedSlice(self.allocator);
-        const node = try self.allocator.create(Ir);
-        node.* = .{ .progn = slice };
-        return node;
+    /// Get type alias expansion function for a type name
+    /// Returns (lambda-list body...) or null if no alias defined
+    pub fn getTypeAlias(self: *const Compiler, type_name: []const u8) ?Value {
+        return self.type_aliases.get(type_name);
     }
 
     fn parseVariant(self: *Compiler, expr: Value) Error!Variant {
