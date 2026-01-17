@@ -1845,6 +1845,7 @@ pub const Compiler = struct {
             return try self.builder.lit(expr);
         }
 
+        std.debug.print("Invalid syntax: typeKind={}, raw=0x{x}\n", .{ expr.typeKind(), expr.raw });
         return error.InvalidSyntax;
     }
 

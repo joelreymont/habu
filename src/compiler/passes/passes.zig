@@ -149,16 +149,25 @@ pub fn runNanoPipeline(allocator: std.mem.Allocator, builtins: *const @import(".
     const typed_alloc = std.heap.page_allocator;
 
     // Pass 1: Annotate (Ir → TypedIr)
-    const annotate_result = try annotate.annotate(typed_alloc, ir);
+    const annotate_result = annotate.annotate(typed_alloc, ir) catch |err| {
+        std.debug.print("Annotate pass failed: {}\n", .{err});
+        return err;
+    };
     const typed_ir = annotate_result.output;
 
     // Pass 2: Infer (TypedIr → TypedIr)
-    const infer_result = try infer.infer(typed_alloc, builtins, typed_ir);
+    const infer_result = infer.infer(typed_alloc, builtins, typed_ir) catch |err| {
+        std.debug.print("Infer pass failed: {}\n", .{err});
+        return err;
+    };
     const inferred_ir = infer_result.output;
 
     // Pass 3: Erase (TypedIr → Ir)
     // Use original allocator for final Ir output
-    const erase_result = try erase.erase(allocator, inferred_ir);
+    const erase_result = erase.erase(allocator, inferred_ir) catch |err| {
+        std.debug.print("Erase pass failed: {}\n", .{err});
+        return err;
+    };
 
     return erase_result.output;
 }

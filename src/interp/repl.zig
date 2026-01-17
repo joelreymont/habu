@@ -506,8 +506,9 @@ pub const Repl = struct {
     /// Run nanopass pipeline on IR, returning transformed IR
     /// Pipeline: annotate → infer → erase
     fn runPipeline(self: *Repl, ir_node: *const Ir) !*const Ir {
-        return passes.runNanoPipeline(self.allocator, &self.vm.builtins, ir_node) catch {
-            return ir_node; // On error, return original IR
+        return passes.runNanoPipeline(self.allocator, &self.vm.builtins, ir_node) catch |err| {
+            std.debug.print("Pipeline error: {}\n", .{err});
+            return err;
         };
     }
 
@@ -911,6 +912,7 @@ pub const Repl = struct {
         const ir_node = self.compiler.compile(expr, &env) catch |err| {
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
+            std.debug.print("Compiler.compile error: {}\n", .{err});
             return if (err == error.UnboundVariable) error.CompileError else error.CompileError;
         };
         self.compiler.builder = saved_builder;
@@ -1208,7 +1210,7 @@ pub const Repl = struct {
                     const suffix = if (expr.len > max_display) "..." else "";
                     try writer.print("Error evaluating: {s}{s}\n  {s}\n", .{ display_expr, suffix, @errorName(err) });
                     if (err == error.CompileError) {
-                        try writer.print("DEBUG: CompileError occurred\n", .{});
+                        std.debug.print("DEBUG: CompileError on expr: {s}\n", .{expr});
                     }
                     return err;
                 };
@@ -1547,6 +1549,7 @@ pub const Repl = struct {
         const ir_node = self.compiler.compile(expr, &env) catch |err| {
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
+            std.debug.print("Compiler.compile error: {}\n", .{err});
             return if (err == error.UnboundVariable) error.CompileError else error.CompileError;
         };
         self.compiler.builder = saved_builder;
