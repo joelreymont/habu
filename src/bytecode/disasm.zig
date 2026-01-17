@@ -94,6 +94,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .str_ge,
         .ret,
         .print,
+        .write,
         .random,
         .random_seed,
         .type_of,
