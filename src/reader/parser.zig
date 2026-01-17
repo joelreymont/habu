@@ -87,6 +87,7 @@ pub const Parser = struct {
             .struct_open => return self.parseStruct(),
             .array_open => return self.parseArray(),
             .pathname => return self.parsePathname(),
+            .bitvec => return self.parseBitVector(),
             .quote => return self.parseQuote("quote"),
             .backquote => return self.parseQuote("quasiquote"),
             .comma => return self.parseQuote("unquote"),
@@ -344,6 +345,24 @@ pub const Parser = struct {
             return Value.makeFixnum(len);
         }
         return Value.makeFixnum(0);
+    }
+
+    fn parseBitVector(self: *Parser) Error!Value {
+        const text = self.current.text;
+        self.advance(); // consume bitvec token
+
+        // Strip '#*' prefix
+        const bits = text[2..];
+
+        // Create vector of fixnums (0 or 1)
+        const vec_val = try self.heap.allocVector(bits.len, bits.len);
+        const vec = vec_val.toPtr(runtime.Vector);
+
+        for (bits, 0..) |c, i| {
+            vec.data[i] = Value.makeFixnum(if (c == '1') 1 else 0);
+        }
+
+        return vec_val;
     }
 
     fn parsePathname(self: *Parser) Error!Value {
@@ -1156,6 +1175,46 @@ test "parse #C complex number" {
     const c4 = val4.toPtr(objects.Complex);
     try testing.expectApproxEqAbs(@as(f64, 0.5), c4.real, 0.0001);
     try testing.expectApproxEqAbs(@as(f64, 0.3333), c4.imag, 0.0001);
+}
+
+test "parse #* bit vector" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+
+    // #*101010 -> vector of 6 bits
+    var parser1 = Parser.init(testing.allocator, &heap, "#*101010", &vm.builtins);
+    defer parser1.deinit();
+    const val1 = try parser1.parse();
+    try testing.expect(val1.typeKind() == .vector);
+    const vec1 = val1.toPtr(objects.Vector);
+    try testing.expectEqual(@as(usize, 6), vec1.length);
+    try testing.expectEqual(@as(i64, 1), vec1.data[0].toFixnum());
+    try testing.expectEqual(@as(i64, 0), vec1.data[1].toFixnum());
+    try testing.expectEqual(@as(i64, 1), vec1.data[2].toFixnum());
+    try testing.expectEqual(@as(i64, 0), vec1.data[3].toFixnum());
+    try testing.expectEqual(@as(i64, 1), vec1.data[4].toFixnum());
+    try testing.expectEqual(@as(i64, 0), vec1.data[5].toFixnum());
+
+    // #*0 -> single bit
+    var parser2 = Parser.init(testing.allocator, &heap, "#*0", &vm.builtins);
+    defer parser2.deinit();
+    const val2 = try parser2.parse();
+    try testing.expect(val2.typeKind() == .vector);
+    const vec2 = val2.toPtr(objects.Vector);
+    try testing.expectEqual(@as(usize, 1), vec2.length);
+    try testing.expectEqual(@as(i64, 0), vec2.data[0].toFixnum());
+
+    // #* -> empty bit vector
+    var parser3 = Parser.init(testing.allocator, &heap, "#*", &vm.builtins);
+    defer parser3.deinit();
+    const val3 = try parser3.parse();
+    try testing.expect(val3.typeKind() == .vector);
+    const vec3 = val3.toPtr(objects.Vector);
+    try testing.expectEqual(@as(usize, 0), vec3.length);
 }
 
 test "parse octal number" {

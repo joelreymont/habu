@@ -18,6 +18,7 @@ pub const TokenKind = enum {
     struct_open, // #S(
     array_open, // #A( or #nA(
     pathname, // #P"..."
+    bitvec, // #*
 
     // Quotes
     quote,
@@ -419,8 +420,21 @@ pub const Lexer = struct {
             _ = self.advance(); // consume '-'
             return self.makeToken(.feature_absent);
         }
+        if (c == '*') {
+            // Bit vector: #*101010
+            _ = self.advance(); // consume '*'
+            return self.readBitVector();
+        }
         // Unknown # dispatch
         return self.makeToken(.err);
+    }
+
+    fn readBitVector(self: *Lexer) Token {
+        // Already consumed '#*'
+        while (!self.isAtEnd() and (self.peek() == '0' or self.peek() == '1')) {
+            _ = self.advance();
+        }
+        return self.makeToken(.bitvec);
     }
 
     fn readHexNumber(self: *Lexer) Token {

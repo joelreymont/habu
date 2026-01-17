@@ -1044,6 +1044,7 @@ pub const Repl = struct {
             },
             .chunk => try writer.writeAll("#<chunk>"),
             .condition => try writer.writeAll("#<condition>"),
+            .class => try writer.writeAll("#<class>"),
         }
     }
 

@@ -1,9 +1,9 @@
 ---
 title: "Add #* bit-vector reader macro"
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-01-16T13:41:53.146656+02:00"
+created-at: "\"2026-01-16T13:41:53.146656+02:00\""
 ---
 
 src/reader/parser.zig: Implement bit-vector reader
