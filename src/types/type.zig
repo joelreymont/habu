@@ -216,6 +216,11 @@ pub const Type = union(enum) {
     /// Created by defstruct, enables nominal typing
     @"struct": StructType,
 
+    /// Satisfies type: (satisfies predicate-fn)
+    /// Type of values for which predicate returns true
+    /// Predicate is a runtime Value (closure)
+    satisfies: *const anyopaque, // Points to Value (predicate function)
+
     // ========================================================================
     // Dependent Types (QTT)
     // ========================================================================
@@ -318,7 +323,7 @@ pub const Type = union(enum) {
             .list => true, // Empty list is nil
             .non_nil => false,
             .any => true,
-            .arrow, .vec, .@"struct" => false,
+            .arrow, .vec, .@"struct", .satisfies => false,
             // Dependent types
             .pi, .sigma => false, // Function/pair types are never nil
             .refinement => |r| r.base_type.couldBeNil(), // Depends on base type
@@ -349,6 +354,7 @@ pub const Type = union(enum) {
             .non_nil => "(non-nil ...)",
             .any => "any",
             .@"struct" => |s| s.name,
+            .satisfies => "(satisfies ...)",
             // Dependent types
             .pi => "(pi ...)",
             .sigma => "(sigma ...)",
@@ -417,6 +423,10 @@ pub const Type = union(enum) {
             },
             .not => |t| switch (other) {
                 .not => |ot| t.eql(ot.*),
+                else => false,
+            },
+            .satisfies => |p| switch (other) {
+                .satisfies => |op| p == op, // Pointer equality for predicates
                 else => false,
             },
             // Dependent types

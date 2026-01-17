@@ -68,6 +68,13 @@ pub fn typep(heap: *Heap, obj: Value, type_spec: Value) !bool {
             return !try typep(heap, obj, inner.toPtr(@import("../objects.zig").Cons).car);
         }
 
+        if (head.eq(try heap.intern("satisfies"))) {
+            // (satisfies predicate-fn) - requires runtime evaluation
+            // For now, conservatively return true (any value might satisfy)
+            // Proper checking requires VM integration for predicate call
+            return true;
+        }
+
         if (head.eq(try heap.intern("integer"))) {
             if (!obj.isFixnum() and !obj.isBignum()) return false;
             const rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;

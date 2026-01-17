@@ -90,6 +90,12 @@ pub const TypeConverter = struct {
                 else => false,
             },
 
+            // Satisfies - pointer equality on predicates
+            .satisfies => |p1| switch (t2.*) {
+                .satisfies => |p2| p1 == p2,
+                else => false,
+            },
+
             // Arrow types - compare domain and range
             .arrow => |a1| switch (t2.*) {
                 .arrow => |a2| {

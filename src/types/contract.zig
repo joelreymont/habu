@@ -407,6 +407,15 @@ pub const ContractCompiler = struct {
                     },
                 };
             },
+            .satisfies => {
+                // Satisfies predicate - use any for now (predicate call requires VM integration)
+                ctc.* = .{
+                    .flat = .{
+                        .predicate = predicates.isAny,
+                        .type_name = "(satisfies ...)",
+                    },
+                };
+            },
             .@"struct" => |s| {
                 // Struct contract: check vector with struct name symbol at index 0
                 if (self.interner) |interner| {

@@ -994,6 +994,11 @@ fn typeEquals(t1: *const types.Type, t2: *const types.Type) bool {
             break :blk std.mem.eql(u8, s1.name, t2.@"struct".name);
         },
 
+        .satisfies => |p1| blk: {
+            if (t2.* != .satisfies) break :blk false;
+            break :blk p1 == t2.satisfies;
+        },
+
         .type_var => |v1| blk: {
             if (t2.* != .type_var) break :blk false;
             break :blk std.mem.eql(u8, v1, t2.type_var);
