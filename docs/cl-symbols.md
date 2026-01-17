@@ -1086,10 +1086,10 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | Types | 15 | 4 | 0 | 11 |
 | Type Specifiers | 50 | 28 | 2 | 20 |
 
-**Total: 978 symbols**
-- **Implemented: ~640 (65%)**
-- **Partial: ~4 (0.4%)**
-- **Missing: ~334 (34%)**
+**Total: 942 symbols** (actual count)
+- **Implemented: ~646 (69%)**
+- **Partial: ~15 (1.6%)**
+- **Missing: ~281 (30%)**
 
 ---
 
