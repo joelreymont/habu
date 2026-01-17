@@ -408,36 +408,36 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | adjoin | ✓ | stdlib.habu | Set adjoin |
 | append | ✓ | compile.zig:183 | List append |
 | assoc | ✓ | compile.zig:190 | Alist lookup |
-| assoc-if | ✗ | - | |
-| assoc-if-not | ✗ | - | |
+| assoc-if | ✓ | stdlib.habu | Alist lookup if |
+| assoc-if-not | ✓ | stdlib.habu | Alist lookup if not |
 | atom | ✓ | compile.zig:212 | Atom predicate |
 | butlast | ✓ | stdlib.habu | All but last |
-| caaaar | ✗ | - | |
-| caaadr | ✗ | - | |
-| caaar | ✗ | - | |
-| caadar | ✗ | - | |
-| caaddr | ✗ | - | |
-| caadr | ✗ | - | |
+| caaaar | ✓ | stdlib.habu | 4-level car |
+| caaadr | ✓ | stdlib.habu | 4-level car |
+| caaar | ✓ | stdlib.habu | 3-level car |
+| caadar | ✓ | stdlib.habu | 4-level car |
+| caaddr | ✓ | stdlib.habu | 4-level car |
+| caadr | ✓ | stdlib.habu | 3-level car |
 | caar | ✓ | compile.zig:166 | Car of car |
-| cadaar | ✗ | - | |
-| cadadr | ✗ | - | |
+| cadaar | ✓ | stdlib.habu | 4-level car |
+| cadadr | ✓ | stdlib.habu | 4-level car |
 | cadar | ✓ | compile.zig:173 | Car of cdr of car |
-| caddar | ✗ | - | |
+| caddar | ✓ | stdlib.habu | 4-level car |
 | cadddr | ✓ | stdlib.habu | 4th via cdr |
 | caddr | ✓ | compile.zig:174 | Third |
 | cadr | ✓ | compile.zig:167 | Second |
 | car | ✓ | compile.zig:161 | First of cons |
-| cdaaar | ✗ | - | |
-| cdaadr | ✗ | - | |
-| cdaar | ✗ | - | |
-| cdadar | ✗ | - | |
-| cdaddr | ✗ | - | |
+| cdaaar | ✓ | stdlib.habu | 4-level cdr |
+| cdaadr | ✓ | stdlib.habu | 4-level cdr |
+| cdaar | ✓ | stdlib.habu | 3-level cdr |
+| cdadar | ✓ | stdlib.habu | 4-level cdr |
+| cdaddr | ✓ | stdlib.habu | 4-level cdr |
 | cdadr | ✓ | compile.zig:176 | Cdr of cadr |
 | cdar | ✓ | compile.zig:168 | Cdr of car |
-| cddaar | ✗ | - | |
-| cddadr | ✗ | - | |
+| cddaar | ✓ | stdlib.habu | 4-level cdr |
+| cddadr | ✓ | stdlib.habu | 4-level cdr |
 | cddar | ✓ | compile.zig:177 | Cdr of cdar |
-| cdddar | ✗ | - | |
+| cdddar | ✓ | stdlib.habu | 4-level cdr |
 | cddddr | ✓ | stdlib.habu | 4th cdr |
 | cdddr | ✓ | compile.zig:178 | Cdr of cddr |
 | cddr | ✓ | compile.zig:169 | Cdr of cdr |
@@ -452,7 +452,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | fifth | ✓ | stdlib.habu | 5th element |
 | first | ✓ | compile.zig:163 | First element |
 | fourth | ✓ | compile.zig:182 | 4th element |
-| get-properties | ✗ | - | |
+| get-properties | ✓ | stdlib.habu | Plist search |
 | getf | ✓ | stdlib.habu | Plist lookup |
 | intersection | ✓ | stdlib.habu | Set intersection |
 | last | ✓ | compile.zig:188 | Last cons |
@@ -466,34 +466,34 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | mapcan | ✓ | stdlib.habu:1092 | Nconc map |
 | mapcar | ✓ | stdlib.habu:456 | Map to list |
 | mapcon | ✓ | stdlib.habu:1098 | Nconc cons map |
-| mapl | ✗ | - | |
+| mapl | ✓ | stdlib.habu | Map for effect on tails |
 | maplist | ✓ | stdlib.habu:467 | Map over tails |
 | member | ✓ | compile.zig:189 | List member |
 | member-if | ✓ | stdlib.habu | Member by pred |
 | member-if-not | ✓ | stdlib.habu | Member not pred |
-| nbutlast | ✗ | - | |
+| nbutlast | ✓ | stdlib.habu | Destructive butlast |
 | nconc | ✓ | stdlib.habu | Destructive append |
-| nintersection | ✗ | - | |
+| nintersection | ✓ | stdlib.habu | Destructive intersection |
 | ninth | ✓ | stdlib.habu | 9th element |
 | nreconc | ✓ | stdlib.habu | Destructive revappend |
 | nreverse | ✓ | stdlib.habu | Destructive reverse |
-| nset-difference | ✗ | - | |
-| nset-exclusive-or | ✗ | - | |
-| nsublis | ✗ | - | |
-| nsubst | ✗ | - | |
-| nsubst-if | ✗ | - | |
-| nsubst-if-not | ✗ | - | |
+| nset-difference | ✓ | stdlib.habu | Destructive set-difference |
+| nset-exclusive-or | ✓ | stdlib.habu | Destructive set-exclusive-or |
+| nsublis | ✓ | stdlib.habu | Destructive sublis |
+| nsubst | ✓ | stdlib.habu | Destructive subst |
+| nsubst-if | ✓ | stdlib.habu | Destructive subst-if |
+| nsubst-if-not | ✓ | stdlib.habu | Destructive subst-if-not |
 | nth | ✓ | compile.zig:186 | Nth element |
 | nthcdr | ✓ | compile.zig:187 | Nth cdr |
 | null | ✓ | compile.zig:207 | Null predicate |
-| nunion | ✗ | - | |
+| nunion | ✓ | stdlib.habu | Destructive union |
 | pairlis | ✓ | stdlib.habu | Make alist |
 | pop | ✓ | stdlib.habu | Pop from list |
 | push | ✓ | stdlib.habu | Push to list |
 | pushnew | ✓ | stdlib.habu | Conditional push |
 | rassoc | ✓ | stdlib.habu | Reverse assoc |
 | rassoc-if | ✓ | stdlib.habu | Reverse assoc-if |
-| rassoc-if-not | ✗ | - | |
+| rassoc-if-not | ✓ | stdlib.habu | Reverse assoc-if-not |
 | rest | ✓ | compile.zig:164 | Rest of list |
 | revappend | ✓ | stdlib.habu | Reverse and append |
 | reverse | ✓ | compile.zig:185 | Reverse list |

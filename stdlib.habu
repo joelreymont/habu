@@ -253,6 +253,14 @@
       nil
       (cons (car lst) (butlast-aux (cdr lst) (- n 1)))))
 
+(defun nbutlast (lst &optional (n 1))
+  (let ((len (length lst)))
+    (if (<= len n)
+        nil
+        (let ((tail (nthcdr (- len n 1) lst)))
+          (rplacd tail nil)
+          lst))))
+
 ; Any/All predicates
 (defun any (pred lst)
   (if (null lst)
@@ -1723,6 +1731,9 @@
           (car alist)
           (rassoc-if pred (cdr alist)))))
 
+(defun rassoc-if-not (pred alist)
+  (rassoc-if (lambda (x) (not (funcall pred x))) alist))
+
 ; copy-alist - copy association list (shallow copy of pairs)
 (defun copy-alist (alist)
   (if (null alist)
@@ -1740,6 +1751,11 @@
     (dolist (x list1 result)
       (unless (member x result :test test)
         (push x result)))))
+
+(defun nunion (list1 list2 &key (test #'eql))
+  (dolist (x list1 list2)
+    (unless (member x list2 :test test)
+      (push x list2))))
 
 ; intersection - set intersection
 (defun intersection (list1 list2 &key (test #'eql))
@@ -1767,6 +1783,10 @@
 (defun set-exclusive-or (list1 list2 &key (test #'eql))
   (append (set-difference list1 list2 :test test)
           (set-difference list2 list1 :test test)))
+
+(defun nset-exclusive-or (list1 list2 &key (test #'eql))
+  (nconc (nset-difference list1 list2 :test test)
+         (nset-difference list2 list1 :test test)))
 
 ; subsetp - check if list1 is subset of list2
 ; Note: wrapped to avoid tail-call closure bug with keyword args
@@ -2512,8 +2532,28 @@
                    return from downfrom to upto below downto above by in on across
                    = then if when unless else end and named always never thereis))))
 
-; cadddr/cddddr helpers for loop parsing
+; c[ad]r accessors - all 28 compositions
+(defun caaar (x) (car (caar x)))
+(defun caadr (x) (car (cadr x)))
+(defun cadar (x) (car (cdar x)))
+(defun cdaar (x) (cdr (caar x)))
+(defun cdadr (x) (cdr (cadr x)))
+(defun cddar (x) (cdr (cdar x)))
+(defun caaaar (x) (car (caaar x)))
+(defun caaadr (x) (car (caadr x)))
+(defun caadar (x) (car (cadar x)))
+(defun caaddr (x) (car (caddr x)))
+(defun cadaar (x) (car (cdaar x)))
+(defun cadadr (x) (car (cdadr x)))
+(defun caddar (x) (car (cddar x)))
 (defun cadddr (x) (car (cdddr x)))
+(defun cdaaar (x) (cdr (caaar x)))
+(defun cdaadr (x) (cdr (caadr x)))
+(defun cdadar (x) (cdr (cadar x)))
+(defun cdaddr (x) (cdr (caddr x)))
+(defun cddaar (x) (cdr (cdaar x)))
+(defun cddadr (x) (cdr (cdadr x)))
+(defun cdddar (x) (cdr (cddar x)))
 (defun cddddr (x) (cdr (cdddr x)))
 
 ; Helper: Parse FOR clause - returns (var init step-form end-test remaining-clauses)
