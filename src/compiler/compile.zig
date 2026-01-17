@@ -2125,28 +2125,18 @@ pub const Compiler = struct {
         }
 
         var empty_env = Env.init(self.allocator, null);
-        const lambda_ir = macro_compiler.compile(lambda_list, &empty_env) catch
-            return error.InvalidSyntax;
+        const lambda_ir = try macro_compiler.compile(lambda_list, &empty_env);
 
         // Emit to bytecode
         var emitter = Emitter.initWithHeap(self.allocator, heap);
-        emitter.emit(lambda_ir) catch {
-            emitter.deinit();
-            return error.InvalidSyntax;
-        };
+        defer emitter.deinit();
+        try emitter.emit(lambda_ir);
 
         // Get child chunks and main chunk (all GC-managed Values)
-        const child_chunks = emitter.getChildChunks() catch {
-            emitter.deinit();
-            return error.OutOfMemory;
-        };
+        const child_chunks = try emitter.getChildChunks();
         defer self.allocator.free(child_chunks);
 
-        const chunk_val = emitter.finalize() catch {
-            emitter.deinit();
-            return error.OutOfMemory;
-        };
-        emitter.deinit();
+        const chunk_val = try emitter.finalize();
 
         // Convert Value chunks to *Chunk pointers for VM
         const chunk_ptrs = try self.allocator.alloc(*Chunk, child_chunks.len);
@@ -3294,14 +3284,50 @@ pub const Compiler = struct {
 
         // Handle variadic: (and a b c ...) -> (and a (and b c ...))
         if (!cons2.cdr.isNil()) {
-            const nested_and = try self.compileAnd(rest, env);
             const first_ir = try self.compile(first, env);
+
+            // Check for type predicate to enable occurrence typing in nested and
+            const pred_info = extractPredicateInfo(first_ir);
+            const nested_and = blk: {
+                if (pred_info) |info| {
+                    var then_occ = OccurrenceCtx.init(self.allocator);
+                    defer then_occ.deinit();
+                    try then_occ.narrowed.put(info.var_name, info.narrowed_type);
+
+                    const saved_occ = self.occ;
+                    self.occ = &then_occ;
+                    defer self.occ = saved_occ;
+
+                    break :blk try self.compileAnd(rest, env);
+                } else {
+                    break :blk try self.compileAnd(rest, env);
+                }
+            };
+
             const nil_ir = try self.builder.lit(Value.nil);
             return try self.builder.ifExpr(first_ir, nested_and, nil_ir);
         }
 
         const first_ir = try self.compile(first, env);
-        const second_ir = try self.compile(second, env);
+
+        // Check for type predicate to enable occurrence typing in second expr
+        const pred_info = extractPredicateInfo(first_ir);
+        const second_ir = blk: {
+            if (pred_info) |info| {
+                var then_occ = OccurrenceCtx.init(self.allocator);
+                defer then_occ.deinit();
+                try then_occ.narrowed.put(info.var_name, info.narrowed_type);
+
+                const saved_occ = self.occ;
+                self.occ = &then_occ;
+                defer self.occ = saved_occ;
+
+                break :blk try self.compile(second, env);
+            } else {
+                break :blk try self.compile(second, env);
+            }
+        };
+
         const nil_ir = try self.builder.lit(Value.nil);
 
         return try self.builder.ifExpr(first_ir, second_ir, nil_ir);
@@ -3321,8 +3347,6 @@ pub const Compiler = struct {
 
         if (!rest.isCons()) return error.InvalidSyntax;
 
-        // Compile rest for else branch
-        const else_ir = try self.compileOr(rest, env);
         const first_ir = try self.compile(first, env);
 
         // Create let binding for tmp
@@ -3336,6 +3360,25 @@ pub const Compiler = struct {
 
         const tmp_var1 = try self.builder.variable(tmp_name, 0, tmp_idx);
         const tmp_var2 = try self.builder.variable(tmp_name, 0, tmp_idx);
+
+        // Check for type predicate to enable occurrence typing in else branch
+        const pred_info = extractPredicateInfo(first_ir);
+        const else_ir = blk: {
+            if (pred_info) |info| {
+                if (info.else_type) |else_ty| {
+                    var else_occ = OccurrenceCtx.init(self.allocator);
+                    defer else_occ.deinit();
+                    try else_occ.narrowed.put(info.var_name, else_ty);
+
+                    const saved_occ = self.occ;
+                    self.occ = &else_occ;
+                    defer self.occ = saved_occ;
+
+                    break :blk try self.compileOr(rest, env);
+                }
+            }
+            break :blk try self.compileOr(rest, env);
+        };
 
         const body = try self.builder.ifExpr(tmp_var1, tmp_var2, else_ir);
         return try self.builder.letExpr(bindings, body);
