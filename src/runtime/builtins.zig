@@ -73,6 +73,9 @@ pub const BuiltinSymbols = struct {
     kw_read: Value,
     kw_write: Value,
     kw_append: Value,
+    kw_upcase: Value,
+    kw_downcase: Value,
+    kw_capitalize: Value,
 
     pub fn init(heap: *Heap) !BuiltinSymbols {
         return BuiltinSymbols{
@@ -145,6 +148,9 @@ pub const BuiltinSymbols = struct {
             .kw_read = try heap.internKeyword("read"),
             .kw_write = try heap.internKeyword("write"),
             .kw_append = try heap.internKeyword("append"),
+            .kw_upcase = try heap.internKeyword("upcase"),
+            .kw_downcase = try heap.internKeyword("downcase"),
+            .kw_capitalize = try heap.internKeyword("capitalize"),
         };
     }
 };
