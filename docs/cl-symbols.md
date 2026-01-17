@@ -753,7 +753,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | pprint-tab | ✗ | - | |
 | pprint-tabular | ✗ | - | |
 | prin1 | ✓ | io.zig:641 | Print readably |
-| prin1-to-string | ✗ | - | |
+| prin1-to-string | ✓ | stdlib.habu:2815 | Print to string readably |
 | princ | ✓ | io.zig:646 | Print aesthetic |
 | princ-to-string | ✓ | stdlib.habu | Print to string |
 | print | ✓ | io.zig:663 | Print with newline |
