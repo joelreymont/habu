@@ -1,6 +1,6 @@
 ---
 title: Add signal primitive
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-01-16T13:41:54.054411+02:00"
@@ -14,3 +14,4 @@ src/runtime/primitives/primitives.zig: Implement signal
 - Return if handler returns normally
 - Add tests for handler invocation
 - Est: 25 min
+Resolution: Already implemented in compileSignal (compile.zig:4204), uses throw with %condition% tag. Needs debugging.
