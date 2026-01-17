@@ -732,6 +732,29 @@ pub const BiChecker = struct {
                 break :blk try self.type_builder.makeOr(new_types);
             },
 
+            // Intersection types
+            .@"and" => |types| blk: {
+                var changed = false;
+                const new_types = try self.allocator.alloc(*const Type, types.len);
+                for (types, 0..) |t, i| {
+                    new_types[i] = try self.substituteInType(t, var_name, replacement);
+                    if (new_types[i] != t) changed = true;
+                }
+
+                if (!changed) {
+                    self.allocator.free(new_types);
+                    break :blk ty;
+                }
+                break :blk try self.type_builder.makeAnd(new_types);
+            },
+
+            // Negation type
+            .not => |inner| blk: {
+                const new_inner = try self.substituteInType(inner, var_name, replacement);
+                if (new_inner == inner) break :blk ty;
+                break :blk try self.type_builder.makeNot(new_inner);
+            },
+
             // Refinement type
             .refinement => |r| blk: {
                 // Check for variable capture

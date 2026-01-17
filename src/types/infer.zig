@@ -1007,6 +1007,21 @@ fn typeEquals(t1: *const types.Type, t2: *const types.Type) bool {
             break :blk true;
         },
 
+        .@"and" => |a1| blk: {
+            if (t2.* != .@"and") break :blk false;
+            const a2 = t2.@"and";
+            if (a1.len != a2.len) break :blk false;
+            for (a1, a2) |ty1, ty2| {
+                if (!typeEquals(ty1, ty2)) break :blk false;
+            }
+            break :blk true;
+        },
+
+        .not => |n1| blk: {
+            if (t2.* != .not) break :blk false;
+            break :blk typeEquals(n1, t2.not);
+        },
+
         // Pi, Sigma, refinement, type_app need deeper comparison
         .pi, .sigma, .refinement, .type_app => false,
     };

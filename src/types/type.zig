@@ -184,6 +184,12 @@ pub const Type = union(enum) {
     /// Union type: (or T1 T2 ...)
     @"or": []const *const Type,
 
+    /// Intersection type: (and T1 T2 ...)
+    @"and": []const *const Type,
+
+    /// Negation type: (not T)
+    not: *const Type,
+
     /// Function type: (-> (T1 T2 ...) R)
     /// Non-dependent: return type doesn't reference parameters
     arrow: struct {
@@ -302,6 +308,13 @@ pub const Type = union(enum) {
                 }
                 return false;
             },
+            .@"and" => |types| {
+                for (types) |t| {
+                    if (!t.couldBeNil()) return false;
+                }
+                return true;
+            },
+            .not => |t| !t.couldBeNil(),
             .list => true, // Empty list is nil
             .non_nil => false,
             .any => true,
@@ -328,6 +341,8 @@ pub const Type = union(enum) {
         return switch (self) {
             .primitive => |p| p.name(),
             .@"or" => "(or ...)",
+            .@"and" => "(and ...)",
+            .not => "(not ...)",
             .arrow => "(-> ...)",
             .list => "(list ...)",
             .vec => "(vector ...)",
@@ -388,6 +403,20 @@ pub const Type = union(enum) {
                     }
                     return true;
                 },
+                else => false,
+            },
+            .@"and" => |types| switch (other) {
+                .@"and" => |otypes| {
+                    if (types.len != otypes.len) return false;
+                    for (types, otypes) |t1, t2| {
+                        if (!t1.eql(t2.*)) return false;
+                    }
+                    return true;
+                },
+                else => false,
+            },
+            .not => |t| switch (other) {
+                .not => |ot| t.eql(ot.*),
                 else => false,
             },
             // Dependent types
@@ -532,6 +561,23 @@ pub const TypeBuilder = struct {
         const t = try alloc.create(Type);
         const copy = try alloc.dupe(*const Type, types);
         t.* = .{ .@"or" = copy };
+        return t;
+    }
+
+    /// Create (and T1 T2)
+    pub fn makeAnd(self: *TypeBuilder, types: []const *const Type) !*Type {
+        const alloc = self.allocator();
+        const t = try alloc.create(Type);
+        const copy = try alloc.dupe(*const Type, types);
+        t.* = .{ .@"and" = copy };
+        return t;
+    }
+
+    /// Create (not T)
+    pub fn makeNot(self: *TypeBuilder, base: *const Type) !*Type {
+        const alloc = self.allocator();
+        const t = try alloc.create(Type);
+        t.* = .{ .not = base };
         return t;
     }
 

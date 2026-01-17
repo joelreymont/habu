@@ -56,6 +56,9 @@ pub const Contract = union(enum) {
         left: *const Contract,
         right: *const Contract,
     },
+
+    /// Negation combinator
+    not: *const Contract,
 };
 
 /// Check a value against a contract
@@ -152,6 +155,13 @@ pub fn check(value: u64, contract: *const Contract, blame: Blame) !u64 {
         .@"or" => |o| {
             return check(value, o.left, blame) catch
                 check(value, o.right, blame);
+        },
+        .not => |n| {
+            if (check(value, n, blame)) |_| {
+                return blame.raise("(not ...)", value);
+            } else |_| {
+                return value;
+            }
         },
     }
 }
@@ -338,6 +348,24 @@ pub const ContractCompiler = struct {
                     result = new_ctc;
                 }
                 return result;
+            },
+            .@"and" => |and_types| {
+                // Build chain of and combinators: (and A (and B C))
+                var result = try self.compile(and_types[and_types.len - 1]);
+                var i: usize = and_types.len - 1;
+                while (i > 0) {
+                    i -= 1;
+                    const left = try self.compile(and_types[i]);
+                    const new_ctc = try alloc.create(Contract);
+                    new_ctc.* = .{ .@"and" = .{ .left = left, .right = result } };
+                    result = new_ctc;
+                }
+                return result;
+            },
+            .not => |inner_ty| {
+                // Negation: compile inner contract
+                const inner_ctc = try self.compile(inner_ty);
+                ctc.* = .{ .not = inner_ctc };
             },
             .arrow => |a| {
                 // Compile domain and range contracts

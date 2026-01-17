@@ -430,6 +430,8 @@ pub const Builtins = struct {
     ty_t: Value,
     ty_union: Value, // (union T1 T2 ...) - union type
     ty_or: Value, // (or T1 T2 ...) - alias for union
+    ty_and: Value, // (and T1 T2 ...) - intersection type
+    ty_not: Value, // (not T) - negation type
 
     // Dependent type form symbols (QTT)
     ty_pi: Value, // (pi (x : A) B) - dependent function type
@@ -811,6 +813,8 @@ pub const Builtins = struct {
             .ty_t = try heap.intern("t"),
             .ty_union = try heap.intern("union"),
             .ty_or = try heap.intern("or"),
+            .ty_and = try heap.intern("and"),
+            .ty_not = try heap.intern("not"),
             // Dependent type form symbols (QTT)
             .ty_pi = try heap.intern("pi"),
             .ty_sigma = try heap.intern("sigma"),
@@ -5192,6 +5196,16 @@ pub const Compiler = struct {
             return self.parseOrType(cons.cdr);
         }
 
+        // (and T1 T2 ...) - intersection type
+        if (head.raw == b.ty_and.raw) {
+            return self.parseAndType(cons.cdr);
+        }
+
+        // (not T) - negation type
+        if (head.raw == b.ty_not.raw) {
+            return self.parseNotType(cons.cdr);
+        }
+
         // (-> (A B) C) or (-> A B ... C) - function type
         if (head.raw == b.@"->".raw) {
             return self.parseArrowType(cons.cdr);
@@ -5249,6 +5263,35 @@ pub const Compiler = struct {
         if (type_list.items.len == 1) return type_list.items[0];
 
         return self.type_checker.builder.makeOr(type_list.items) catch null;
+    }
+
+    /// Parse (and T1 T2 ...)
+    fn parseAndType(self: *Compiler, args: Value) ?*const types.Type {
+        var type_list = std.ArrayList(*const types.Type){};
+        defer type_list.deinit(self.allocator);
+
+        var current = args;
+        while (current.isCons()) {
+            const c = current.toPtr(Cons);
+            const t = self.parseTypeExpr(c.car) orelse return null;
+            type_list.append(self.allocator, t) catch {
+                return null;
+            };
+            current = c.cdr;
+        }
+
+        if (type_list.items.len == 0) return null;
+        if (type_list.items.len == 1) return type_list.items[0];
+
+        return self.type_checker.builder.makeAnd(type_list.items) catch null;
+    }
+
+    /// Parse (not T)
+    fn parseNotType(self: *Compiler, args: Value) ?*const types.Type {
+        if (!args.isCons()) return null;
+        const c = args.toPtr(Cons);
+        const inner = self.parseTypeExpr(c.car) orelse return null;
+        return self.type_checker.builder.makeNot(inner) catch null;
     }
 
     /// Parse (-> (A B) C) or (-> A B ... C) function type

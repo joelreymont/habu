@@ -132,6 +132,24 @@ pub const TypeConverter = struct {
                 else => false,
             },
 
+            // Intersection types - must have same members in same order
+            .@"and" => |types1| switch (t2.*) {
+                .@"and" => |types2| {
+                    if (types1.len != types2.len) return false;
+                    for (types1, types2) |ty1, ty2| {
+                        if (!try self.typeEqual(ty1, ty2, ctx)) return false;
+                    }
+                    return true;
+                },
+                else => false,
+            },
+
+            // Negation types
+            .not => |n1| switch (t2.*) {
+                .not => |n2| self.typeEqual(n1, n2, ctx),
+                else => false,
+            },
+
             // Pi types - alpha equivalence for binders
             .pi => |p1| switch (t2.*) {
                 .pi => |p2| {
