@@ -136,6 +136,7 @@ pub const Builtins = struct {
     defgeneric: Value,
     defmethod: Value,
     @"call-next-method": Value,
+    @"define-method-combination": Value,
     // Method qualifier keywords
     kw_before: Value,
     kw_after: Value,
@@ -553,6 +554,7 @@ pub const Builtins = struct {
             .defgeneric = try heap.intern("defgeneric"),
             .defmethod = try heap.intern("defmethod"),
             .@"call-next-method" = try heap.intern("call-next-method"),
+            .@"define-method-combination" = try heap.intern("define-method-combination"),
             .kw_before = try heap.internKeyword("before"),
             .kw_after = try heap.internKeyword("after"),
             .kw_around = try heap.internKeyword("around"),
@@ -2052,6 +2054,7 @@ pub const Compiler = struct {
         defgeneric,
         defmethod,
         @"call-next-method",
+        @"define-method-combination",
     };
 
     /// Comptime dispatch table for special forms
@@ -2124,6 +2127,7 @@ pub const Compiler = struct {
         .{ "defgeneric", .defgeneric },
         .{ "defmethod", .defmethod },
         .{ "call-next-method", .@"call-next-method" },
+        .{ "define-method-combination", .@"define-method-combination" },
     });
 
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
@@ -2206,6 +2210,7 @@ pub const Compiler = struct {
                     .defgeneric => self.compileDefgeneric(tail, env),
                     .defmethod => self.compileDefmethod(tail, env),
                     .@"call-next-method" => self.compileCallNextMethod(tail, env),
+                    .@"define-method-combination" => self.compileDefineMethodCombination(tail, env),
                 };
             }
 
@@ -7143,6 +7148,28 @@ pub const Compiler = struct {
 
         // Call the method function
         return try self.builder.call(func_val_ir, try args.toOwnedSlice(self.allocator));
+    }
+
+    /// Compile define-method-combination: stub for custom method combinations
+    /// (define-method-combination name &optional operator identity)
+    /// Short form: defines simple list-combining method combination
+    fn compileDefineMethodCombination(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        _ = env;
+
+        // Parse: (name &optional operator identity)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const name_val = cons1.car;
+
+        if (!name_val.isSymbol()) return error.InvalidSyntax;
+
+        // For now, just return the name (stub implementation)
+        // Full implementation would:
+        // 1. Parse operator and identity-with-one-arg
+        // 2. Store combination type definition
+        // 3. Apply to generic functions via :method-combination
+
+        return try self.builder.lit(name_val);
     }
 
     // ========================================================================

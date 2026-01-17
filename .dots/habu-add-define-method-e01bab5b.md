@@ -1,9 +1,9 @@
 ---
 title: Add define-method-combination stub
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-01-16T13:41:48.604323+02:00"
+created-at: "\"2026-01-16T13:41:48.604323+02:00\""
 ---
 
 src/compiler/compile.zig: Add method combination macro
