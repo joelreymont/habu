@@ -4,6 +4,17 @@
 (defvar pi 3.141592653589793)
 (defvar e 2.718281828459045)
 
+; Printer control variables
+(defvar *print-escape* t)
+(defvar *print-case* :upcase)
+(defvar *print-readably* nil)
+(defvar *print-length* nil)
+(defvar *print-level* nil)
+(defvar *print-base* 10)
+(defvar *print-radix* nil)
+(defvar *print-gensym* t)
+(defvar *print-array* t)
+
 ; Identity function
 (defun identity (x) x)
 

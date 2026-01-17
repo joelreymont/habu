@@ -548,6 +548,75 @@ pub const Vm = struct {
         }
     }
 
+    fn handleSpecialVarStore(self: *Vm, idx: u16, val: Value) !void {
+        if (self.global_env) |env| {
+            if (env.lookup("*print-escape*")) |esc_idx| {
+                if (idx == esc_idx) {
+                    io.setPrintEscape(val);
+                    return;
+                }
+            }
+            if (env.lookup("*print-case*")) |case_idx| {
+                if (idx == case_idx) {
+                    try io.setPrintCase(self.heap, val);
+                    return;
+                }
+            }
+            if (env.lookup("*print-readably*")) |read_idx| {
+                if (idx == read_idx) {
+                    io.setPrintReadably(val);
+                    return;
+                }
+            }
+            if (env.lookup("*print-base*")) |base_idx| {
+                if (idx == base_idx) {
+                    try io.setPrintBase(val);
+                    return;
+                }
+            }
+            if (env.lookup("*print-radix*")) |radix_idx| {
+                if (idx == radix_idx) {
+                    io.setPrintRadix(val);
+                    return;
+                }
+            }
+            if (env.lookup("*print-gensym*")) |gensym_idx| {
+                if (idx == gensym_idx) {
+                    io.setPrintGensym(val);
+                    return;
+                }
+            }
+            if (env.lookup("*print-array*")) |array_idx| {
+                if (idx == array_idx) {
+                    io.setPrintArray(val);
+                    return;
+                }
+            }
+            if (env.lookup("*print-length*")) |len_idx| {
+                if (idx == len_idx) {
+                    if (val.isFixnum()) {
+                        const len: usize = @intCast(val.toFixnum());
+                        io.print_length = len;
+                    } else {
+                        io.print_length = null;
+                    }
+                    return;
+                }
+            }
+            if (env.lookup("*print-level*")) |lvl_idx| {
+                if (idx == lvl_idx) {
+                    if (val.isFixnum()) {
+                        const lvl: usize = @intCast(val.toFixnum());
+                        io.print_level = lvl;
+                    } else {
+                        io.print_level = null;
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
     pub fn collectGarbage(self: *Vm) !usize {
         // Gather roots from VM state
         var roots = std.ArrayList(Value){};
@@ -960,6 +1029,7 @@ pub const Vm = struct {
                 if (idx >= self.num_globals) {
                     self.num_globals = idx + 1;
                 }
+                try self.handleSpecialVarStore(idx, val);
             },
             .load_argc => {
                 // Get argc from current frame, or from current_argc if fp=0 (callClosure)
