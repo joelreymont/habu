@@ -2532,13 +2532,24 @@ pub const Compiler = struct {
         defer assertions.deinit(self.allocator);
 
         for (typed_params.items) |tp| {
+            const param_name = tp.name;
+            var type_sym_to_check: ?Value = null;
+
             if (tp.type_sym) |type_sym| {
-                // Create variable reference for parameter
-                const binding = lambda_env.lookup(tp.name) orelse continue;
-                const var_ir = self.builder.variable(tp.name, binding.depth, binding.index) catch
+                type_sym_to_check = type_sym;
+            } else if (self.decl_env) |decl_env| {
+                if (decl_env.getTypeDecl(param_name)) |decl_type| {
+                    type_sym_to_check = decl_type;
+                }
+            } else if (self.global_decls.getTypeDecl(param_name)) |decl_type| {
+                type_sym_to_check = decl_type;
+            }
+
+            if (type_sym_to_check) |type_sym| {
+                const binding = lambda_env.lookup(param_name) orelse continue;
+                const var_ir = self.builder.variable(param_name, binding.depth, binding.index) catch
                     return error.OutOfMemory;
 
-                // Create assertion based on type symbol
                 const assert_ir = self.makeTypeAssertionSym(var_ir, type_sym) catch
                     return error.InvalidSyntax;
                 if (assert_ir) |assert_node| {
@@ -3068,6 +3079,24 @@ pub const Compiler = struct {
             if (!b.cdr.isCons()) return error.InvalidLet;
             const val_cons = b.cdr.toPtr(Cons);
             var val_ir = try self.compile(val_cons.car, &value_env);
+
+            // Check for type declaration and add type assertion
+            var type_sym_to_check: ?Value = null;
+            if (self.decl_env) |decl_env| {
+                if (decl_env.getTypeDecl(name)) |decl_type| {
+                    type_sym_to_check = decl_type;
+                }
+            } else if (self.global_decls.getTypeDecl(name)) |decl_type| {
+                type_sym_to_check = decl_type;
+            }
+
+            if (type_sym_to_check) |type_sym| {
+                const assert_ir = self.makeTypeAssertionSym(val_ir, type_sym) catch
+                    return error.InvalidSyntax;
+                if (assert_ir) |wrapped| {
+                    val_ir = wrapped;
+                }
+            }
 
             // If this variable needs boxing, wrap value in make-box
             if (boxed.contains(name)) {
