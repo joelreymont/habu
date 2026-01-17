@@ -206,6 +206,7 @@ pub const Repl = struct {
             emitter.deinit();
             return error.EmitError;
         };
+        defer self.allocator.free(child_chunks);
         emitter.deinit();
 
         // Store child chunks for closures
@@ -432,6 +433,7 @@ pub const Repl = struct {
             emitter.deinit();
             return error.OutOfMemory;
         };
+        defer self.allocator.free(child_chunks);
         emitter.deinit();
 
         // Store chunks persistently
@@ -886,6 +888,7 @@ pub const Repl = struct {
             emitter.deinit();
             return error.EmitError;
         };
+        defer self.allocator.free(child_chunks);
         emitter.deinit();
 
         // Add child chunks to persistent storage
@@ -1306,6 +1309,7 @@ pub const Repl = struct {
             emitter.deinit();
             return error.EmitError;
         };
+        defer self.allocator.free(child_chunks);
         emitter.deinit();
 
         // Add child chunks
@@ -1490,6 +1494,7 @@ pub const Repl = struct {
             emitter.deinit();
             return error.EmitError;
         };
+        defer self.allocator.free(child_chunks);
         emitter.deinit();
 
         // Add child chunks
