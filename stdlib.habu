@@ -566,12 +566,6 @@
                         clauses)))))
 
 ; prog1 - evaluate forms, return first value
-(defmacro prog1 (first &rest rest)
-  (let ((result (gensym)))
-    (list 'let (list (list result first))
-          (cons 'progn rest)
-          result)))
-
 ; prog2 - evaluate forms, return second value
 (defmacro prog2 (first second &rest rest)
   (list 'progn first
@@ -1216,15 +1210,19 @@
 ; prog1 - evaluate forms, return first value
 (defmacro prog1 (first &rest rest)
   (let ((result (gensym "RESULT")))
-    (list 'let (list (list result first))
-          (cons 'progn rest)
-          result)))
+    `(let ((,result ,first))
+       ,@rest
+       ,result)))
 
 ; prog2 - evaluate forms, return second value
 (defmacro prog2 (first second &rest rest)
   (list 'progn
         first
         (cons 'prog1 (cons second rest))))
+
+; locally - execute body with local declarations
+(defmacro locally (&rest body)
+  `(let () ,@body))
 
 ;; ============================================================
 ;; Hash Table Functions
