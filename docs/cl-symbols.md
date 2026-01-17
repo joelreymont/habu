@@ -184,17 +184,17 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | defclass | ✓ | compile.zig:129 | CLOS class |
 | defconstant | ✓ | stdlib.habu | Constant definition |
 | defgeneric | ✓ | compile.zig:132 | Generic function |
-| define-compiler-macro | ✗ | - | |
+| define-compiler-macro | ✗ | stdlib.habu | Compiler macro (stub) |
 | define-condition | ✓ | stdlib.habu | Condition class |
-| define-method-combination | ✗ | - | |
-| define-modify-macro | ✗ | - | |
-| define-setf-expander | ✗ | - | |
-| define-symbol-macro | ✗ | - | |
+| define-method-combination | ✗ | stdlib.habu | Method combination (stub) |
+| define-modify-macro | ✓ | stdlib.habu | Read-modify-write macro |
+| define-setf-expander | ✗ | stdlib.habu | Setf expander (stub) |
+| define-symbol-macro | ✗ | stdlib.habu | Symbol macro (stub) |
 | defmacro | ✓ | compile.zig:89 | Macro definition |
 | defmethod | ✓ | compile.zig:133 | CLOS method |
 | defpackage | ✓ | compile.zig:120 | Package definition |
 | defparameter | ✓ | stdlib.habu | Parameter definition |
-| defsetf | ✗ | - | |
+| defsetf | ✓ | stdlib.habu | Setf expansion |
 | defstruct | ✓ | stdlib.habu:2739 | Structure |
 | deftype | ✓ | compile.zig | Type definition |
 | defun | ✓ | compile.zig:69 | Function definition |
@@ -202,14 +202,14 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | destructuring-bind | ✓ | stdlib.habu:504 | Pattern destructure |
 | do | ✓ | stdlib.habu:61 | Parallel iteration |
 | do* | ✓ | stdlib.habu:113 | Sequential iteration |
-| do-all-symbols | ✗ | - | |
-| do-external-symbols | ✗ | - | |
-| do-symbols | ✗ | - | |
+| do-all-symbols | ✓ | stdlib.habu | All symbol iteration (stub) |
+| do-external-symbols | ✓ | stdlib.habu | External symbol iteration (stub) |
+| do-symbols | ✓ | stdlib.habu | Symbol iteration (stub) |
 | dolist | ✓ | stdlib.habu | List iteration |
 | dotimes | ✓ | stdlib.habu | Count iteration |
 | ecase | ✓ | stdlib.habu | Error case |
 | etypecase | ✓ | stdlib.habu | Error typecase |
-| formatter | ✗ | - | |
+| formatter | ✓ | stdlib.habu | Format compiler |
 | handler-bind | ✓ | compile.zig:107 | Handler binding |
 | handler-case | ✓ | compile.zig:104 | Handler dispatch |
 | ignore-errors | ✓ | stdlib.habu:55 | Error suppression |
@@ -224,12 +224,12 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | nth-value | ✓ | stdlib.habu | Nth value select |
 | or | ✓ | compile.zig:57 | Short-circuit or |
 | pop | ✓ | stdlib.habu | List pop |
-| pprint-exit-if-list-exhausted | ✗ | - | |
-| pprint-logical-block | ✗ | - | |
-| pprint-pop | ✗ | - | |
-| print-unreadable-object | ✗ | - | |
+| pprint-exit-if-list-exhausted | ✗ | stdlib.habu | Pprint exit (stub) |
+| pprint-logical-block | ✗ | stdlib.habu | Pprint block (stub) |
+| pprint-pop | ✗ | stdlib.habu | Pprint pop (stub) |
+| print-unreadable-object | ✓ | stdlib.habu | Print #<...> notation |
 | prog | ✓ | stdlib.habu | Prog form |
-| prog* | ✗ | - | |
+| prog* | ✓ | stdlib.habu | Prog with let* |
 | prog1 | ✓ | stdlib.habu | Return first |
 | prog2 | ✓ | stdlib.habu | Return second |
 | psetf | ✓ | stdlib.habu | Parallel setf |
@@ -243,25 +243,25 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | rotatef | ✓ | stdlib.habu | Rotate places |
 | setf | ✓ | stdlib.habu:878 | Generalized set |
 | shiftf | ✓ | stdlib.habu | Shift places |
-| step | ✗ | - | |
-| time | ✗ | - | |
-| trace | ✗ | - | |
+| step | ✓ | stdlib.habu | Single-step (stub) |
+| time | ✓ | stdlib.habu | Time execution |
+| trace | ✓ | stdlib.habu | Trace calls (stub) |
 | typecase | ✓ | stdlib.habu | Type dispatch |
 | unless | ✓ | stdlib.habu | Negated when |
-| untrace | ✗ | - | |
+| untrace | ✓ | stdlib.habu | Untrace (stub) |
 | when | ✓ | stdlib.habu | Conditional |
 | with-accessors | ⚠ | stdlib.habu | Accessor bindings (no setf) |
-| with-compilation-unit | ✗ | - | |
-| with-condition-restarts | ✗ | - | |
+| with-compilation-unit | ✓ | stdlib.habu | Compilation unit (stub) |
+| with-condition-restarts | ✓ | stdlib.habu | Condition restarts (stub) |
 | with-hash-table-iterator | ✓ | stdlib.habu | Hash iteration |
 | with-input-from-string | ✓ | stdlib.habu | String input |
 | with-open-file | ✓ | stdlib.habu | File scope |
-| with-open-stream | ✗ | - | |
+| with-open-stream | ✓ | stdlib.habu | Generic stream wrapper |
 | with-output-to-string | ✓ | stdlib.habu | String output |
-| with-package-iterator | ✗ | - | |
-| with-simple-restart | ✗ | - | |
+| with-package-iterator | ✓ | stdlib.habu | Package iterator (stub) |
+| with-simple-restart | ✓ | stdlib.habu | Simple restart |
 | with-slots | ⚠ | stdlib.habu | Slot bindings (no setf) |
-| with-standard-io-syntax | ✗ | - | |
+| with-standard-io-syntax | ✓ | stdlib.habu | Standard I/O env |
 
 ## Functions - Arithmetic (79)
 | Symbol | Status | Location | Notes |
@@ -281,48 +281,48 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | abs | ✓ | compile.zig:248 | Absolute value |
 | acos | ✓ | compile.zig:261 | Arc cosine |
 | acosh | ✓ | compile.zig:267 | Hyperbolic arc cos |
-| arithmetic-error-operands | ✗ | - | |
-| arithmetic-error-operation | ✗ | - | |
+| arithmetic-error-operands | ⚠ | stdlib.habu | Error operands (stub) |
+| arithmetic-error-operation | ⚠ | stdlib.habu | Error operation (stub) |
 | ash | ✓ | compile.zig:343 | Arithmetic shift |
 | asin | ✓ | compile.zig:260 | Arc sine |
 | asinh | ✓ | compile.zig:266 | Hyperbolic arc sin |
 | atan | ✓ | compile.zig:262 | Arc tangent |
 | atanh | ✓ | compile.zig:268 | Hyperbolic arc tan |
-| boole | ✗ | - | |
-| byte | ✗ | - | |
-| byte-position | ✗ | - | |
-| byte-size | ✗ | - | |
+| boole | ✓ | stdlib.habu | Boolean ops on integers |
+| byte | ✓ | stdlib.habu | Byte specifier |
+| byte-position | ✓ | stdlib.habu | Get byte position |
+| byte-size | ✓ | stdlib.habu | Get byte size |
 | ceiling | ✓ | compile.zig:272 | Ceiling |
 | cis | ✓ | stdlib.habu:1765 | cos+i*sin |
 | complex | ✓ | compile.zig:380 | Make complex |
 | conjugate | ✓ | stdlib.habu | Complex conjugate |
 | cos | ✓ | compile.zig:258 | Cosine |
 | cosh | ✓ | compile.zig:264 | Hyperbolic cos |
-| decode-float | ✗ | - | |
+| decode-float | ⚠ | stdlib.habu | Decompose float (stub) |
 | denominator | ✓ | compile.zig:384 | Rational denom |
-| deposit-field | ✗ | - | |
-| dpb | ✗ | - | |
+| deposit-field | ✓ | stdlib.habu | Deposit field |
+| dpb | ✓ | stdlib.habu | Deposit byte |
 | evenp | ✓ | compile.zig:252 | Even predicate |
 | exp | ✓ | compile.zig:269 | Exponential |
 | expt | ✓ | stdlib.habu | Power |
 | fceiling | ✓ | stdlib.habu | Ceiling as float |
 | ffloor | ✓ | stdlib.habu | Floor as float |
 | float | ✓ | arith.zig | To float |
-| float-digits | ✗ | - | |
-| float-precision | ✗ | - | |
-| float-radix | ✗ | - | |
-| float-sign | ✗ | - | |
+| float-digits | ✓ | stdlib.habu | Float digits |
+| float-precision | ✓ | stdlib.habu | Float precision |
+| float-radix | ✓ | stdlib.habu | Float radix |
+| float-sign | ✓ | stdlib.habu | Float sign |
 | floor | ✓ | compile.zig:271 | Floor |
 | fround | ✓ | stdlib.habu | Round as float |
 | ftruncate | ✓ | stdlib.habu | Truncate as float |
 | gcd | ✓ | stdlib.habu | Greatest common divisor |
 | imagpart | ✓ | compile.zig:382 | Complex imaginary |
-| integer-decode-float | ✗ | - | |
+| integer-decode-float | ⚠ | stdlib.habu | Decompose to ints (stub) |
 | integer-length | ✓ | compile.zig:351 | Bit length |
 | isqrt | ✓ | stdlib.habu:63 | Integer sqrt |
 | lcm | ✓ | stdlib.habu | Least common multiple |
-| ldb | ✗ | - | |
-| ldb-test | ✗ | - | |
+| ldb | ✓ | stdlib.habu | Load byte |
+| ldb-test | ✓ | stdlib.habu | Test byte |
 | log | ✓ | compile.zig:270 | Logarithm |
 | logand | ✓ | compile.zig:339 | Bitwise and |
 | logandc1 | ✓ | compile.zig:346 | And complement 1 |
@@ -339,7 +339,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | logtest | ✓ | arith.zig | Bit test |
 | logxor | ✓ | compile.zig:341 | Bitwise xor |
 | make-random-state | ✗ | - | |
-| mask-field | ✗ | - | |
+| mask-field | ✓ | stdlib.habu | Extract field |
 | max | ✓ | stdlib.habu | Maximum |
 | min | ✓ | stdlib.habu | Minimum |
 | minusp | ✓ | compile.zig:251 | Negative predicate |
@@ -350,13 +350,13 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | phase | ✓ | stdlib.habu:1768 | Complex phase |
 | plusp | ✓ | compile.zig:250 | Positive predicate |
 | random | ✓ | compile.zig:318 | Random number |
-| random-state-p | ✗ | - | |
+| random-state-p | ✓ | stdlib.habu | Random state pred |
 | rational | ✓ | compile.zig:385 | To rational |
 | rationalize | ✓ | compile.zig:386 | Approx rational |
 | realpart | ✓ | compile.zig:381 | Complex real |
 | rem | ✓ | compile.zig:148 | Remainder |
 | round | ✓ | compile.zig:273 | Round |
-| scale-float | ✗ | - | |
+| scale-float | ✓ | stdlib.habu | Scale float |
 | signum | ✓ | stdlib.habu:41 | Sign |
 | sin | ✓ | compile.zig:257 | Sine |
 | sinh | ✓ | compile.zig:263 | Hyperbolic sin |
@@ -518,44 +518,44 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 ## Functions - Arrays (38)
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
-| adjust-array | ✗ | - | |
+| adjust-array | ⚠ | stdlib.habu | Resize array (stub) |
 | adjustable-array-p | ✓ | stdlib.habu | Adjustable array pred |
 | aref | ✓ | compile.zig:276 | Array element |
-| array-dimension | ✗ | - | |
-| array-dimensions | ✗ | - | |
-| array-displacement | ✗ | - | |
-| array-element-type | ✗ | - | |
+| array-dimension | ✓ | stdlib.habu | Get dimension |
+| array-dimensions | ✓ | stdlib.habu | Get dimensions list |
+| array-displacement | ✓ | stdlib.habu | Get displacement |
+| array-element-type | ✓ | stdlib.habu | Element type |
 | array-has-fill-pointer-p | ✓ | stdlib.habu | Fill pointer pred |
-| array-in-bounds-p | ✗ | - | |
-| array-rank | ✗ | - | |
-| array-row-major-index | ✗ | - | |
-| array-total-size | ✗ | - | |
+| array-in-bounds-p | ✓ | stdlib.habu | Bounds check |
+| array-rank | ✓ | stdlib.habu | Array rank |
+| array-row-major-index | ✓ | stdlib.habu | Row-major index |
+| array-total-size | ✓ | stdlib.habu | Total size |
 | arrayp | ✓ | stdlib.habu | Array predicate |
-| bit | ✗ | - | |
-| bit-and | ✗ | - | |
-| bit-andc1 | ✗ | - | |
-| bit-andc2 | ✗ | - | |
-| bit-eqv | ✗ | - | |
-| bit-ior | ✗ | - | |
-| bit-nand | ✗ | - | |
-| bit-nor | ✗ | - | |
-| bit-not | ✗ | - | |
-| bit-orc1 | ✗ | - | |
-| bit-orc2 | ✗ | - | |
+| bit | ⚠ | stdlib.habu | Bit access (stub) |
+| bit-and | ⚠ | stdlib.habu | Bitwise and (stub) |
+| bit-andc1 | ⚠ | stdlib.habu | Bit andc1 (stub) |
+| bit-andc2 | ⚠ | stdlib.habu | Bit andc2 (stub) |
+| bit-eqv | ⚠ | stdlib.habu | Bit equiv (stub) |
+| bit-ior | ⚠ | stdlib.habu | Bit ior (stub) |
+| bit-nand | ⚠ | stdlib.habu | Bit nand (stub) |
+| bit-nor | ⚠ | stdlib.habu | Bit nor (stub) |
+| bit-not | ⚠ | stdlib.habu | Bit not (stub) |
+| bit-orc1 | ⚠ | stdlib.habu | Bit orc1 (stub) |
+| bit-orc2 | ⚠ | stdlib.habu | Bit orc2 (stub) |
 | bit-vector-p | ✓ | stdlib.habu | Bit-vector pred |
-| bit-xor | ✗ | - | |
-| fill-pointer | ✗ | - | |
+| bit-xor | ⚠ | stdlib.habu | Bit xor (stub) |
+| fill-pointer | ⚠ | stdlib.habu | Get fill pointer (stub) |
 | make-array | ✓ | compile.zig:298 | Create array |
-| row-major-aref | ✗ | - | |
-| sbit | ✗ | - | |
+| row-major-aref | ✓ | stdlib.habu | Row-major access |
+| sbit | ⚠ | stdlib.habu | Simple bit access (stub) |
 | simple-bit-vector-p | ✓ | stdlib.habu | Bit-vector pred |
 | simple-vector-p | ✓ | stdlib.habu | Simple-vector pred |
 | svref | ✓ | compile.zig:277 | Simple-vector ref |
-| upgraded-array-element-type | ✗ | - | |
+| upgraded-array-element-type | ✓ | stdlib.habu | Upgraded type |
 | vector | ✓ | compile.zig:297 | Make vector |
-| vector-pop | ✗ | - | |
-| vector-push | ✗ | - | |
-| vector-push-extend | ✗ | - | |
+| vector-pop | ⚠ | stdlib.habu | Vector pop (stub) |
+| vector-push | ⚠ | stdlib.habu | Vector push (stub) |
+| vector-push-extend | ⚠ | stdlib.habu | Vector push extend (stub) |
 | vectorp | ✓ | compile.zig:204 | Vector predicate |
 
 ## Functions - Strings (28)
@@ -956,7 +956,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | base-char | ✗ | - | |
 | base-string | ✗ | - | |
 | bignum | ✓ | objects.zig | Large integer |
-| bit | ✗ | - | |
+| bit | ⚠ | stdlib.habu | Bit access (stub) |
 | bit-vector | ✓ | stdlib.habu | Bit vector |
 | boolean | ✗ | - | |
 | broadcast-stream | ✗ | - | |
