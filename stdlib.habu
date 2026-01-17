@@ -801,9 +801,9 @@
 (defmacro destructuring-bind (pattern expr &rest body)
   (let ((temp (gensym "EXPR")))
     (list 'let (list (list temp expr))
-          (cons 'let
-                (cons (destructuring-bind-impl pattern temp)
-                      body)))))
+          (list* 'let
+                (destructuring-bind-impl pattern temp)
+                body))))
 
 ;; ============================================================
 ;; String Functions
