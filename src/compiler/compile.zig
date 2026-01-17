@@ -2593,15 +2593,18 @@ pub const Compiler = struct {
             _ = try lambda_env.bind(ab.name);
         }
 
+        // Filter out declare forms from body
+
+        const filtered_body = try self.filterDeclares(body_exprs);
         // Capture analysis: collect free variables before compiling body
         var capture_set = CaptureSet.init(self.allocator);
         defer capture_set.deinit();
 
-        self.collectFreeVars(body_exprs, &lambda_env, &capture_set) catch
+        self.collectFreeVars(filtered_body, &lambda_env, &capture_set) catch
             return error.OutOfMemory;
 
         // Compile body (implicit progn) - body is in tail position
-        var body_ir = try self.compileBodyWithTail(body_exprs, &lambda_env, true);
+        var body_ir = try self.compileBodyWithTail(filtered_body, &lambda_env, true);
 
         // Bidirectional type checking (when enabled)
         if (self.type_checking_enabled) {
@@ -8205,6 +8208,62 @@ pub const Compiler = struct {
         std.debug.assert(std.meta.activeTag(result.*) == .progn);
         std.debug.assert(result.progn.len == count);
         return result;
+    }
+
+    fn filterDeclares(self: *Compiler, exprs: Value) !Value {
+        const heap = self.heap orelse return exprs;
+        const declare_sym = try heap.intern("declare");
+
+        var filtered = std.ArrayList(Value){};
+        defer filtered.deinit(self.allocator);
+
+        var list = exprs;
+        while (list.isCons()) {
+            const cons = list.toPtr(Cons);
+            const expr = cons.car;
+
+            var is_declare = false;
+            if (expr.isCons()) {
+                const expr_cons = expr.toPtr(Cons);
+                if (expr_cons.car.eq(declare_sym)) {
+                    is_declare = true;
+                    try self.processDeclareList(expr_cons.cdr);
+                }
+            }
+
+            if (!is_declare) {
+                try filtered.append(self.allocator, expr);
+            }
+
+            list = cons.cdr;
+        }
+
+        if (filtered.items.len == 0) {
+            return Value.nil;
+        }
+
+        var result = Value.nil;
+        var i = filtered.items.len;
+        while (i > 0) {
+            i -= 1;
+            const pair = try heap.alloc(Cons);
+            pair.car = filtered.items[i];
+            pair.cdr = result;
+            result = Value.makeCons(pair);
+        }
+        return result;
+    }
+
+    fn processDeclareList(self: *Compiler, decl_list: Value) !void {
+        var list = decl_list;
+        while (list.isCons()) {
+            const cons = list.toPtr(Cons);
+            const decl_spec = cons.car;
+            if (decl_spec.isCons()) {
+                try self.processDeclSpec(decl_spec);
+            }
+            list = cons.cdr;
+        }
     }
 
     fn compilePrimitive(self: *Compiler, sym: Value, args: Value, env: *const Env) anyerror!*Ir {
