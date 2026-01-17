@@ -51,6 +51,14 @@
 ; Equality - eql is same as eq for now (no floats with identity)
 (defun eql (a b) (eq a b))
 
+; Wrapper functions for primitives (needed for macro expansion)
+; These allow car/cdr/eq/list/cons to be called as functions at macro expansion time
+(defun %car (x) (car x))
+(defun %cdr (x) (cdr x))
+(defun %eq (a b) (eq a b))
+(defun %cons (a b) (cons a b))
+(defun %list (&rest args) (apply list args))
+
 ; Structural equality
 (defun equal (a b)
   (cond
@@ -93,6 +101,10 @@
 (defun tenth (x) (nth 9 x))
 (defun rest (x) (cdr x))
 
+; Basic list functions (needed for macro expansion at runtime)
+(defun car ((x cons)) (car x))
+(defun cdr ((x cons)) (cdr x))
+
 ; List construction
 (defun list (&rest args) args)
 (defun list1 (a) (cons a nil))
@@ -127,14 +139,14 @@
                  nil
                (if (null (cdr lsts))
                    (car lsts)
-                 (append (car lsts) (helper (cdr lsts)))))))
+                 (append* (car lsts) (helper (cdr lsts)))))))
     (helper lists)))
 
 ; flatten1 - flatten one level of nesting (concat list of lists)
 (defun flatten1 (lists)
   (if (null lists)
       nil
-    (append (car lists) (flatten1 (cdr lists)))))
+    (append* (car lists) (flatten1 (cdr lists)))))
 
 ; Reverse with TCO
 (defun reverse-aux (lst acc)
@@ -400,7 +412,7 @@
       ; generate: (let ((tmp1 val1) ...) (setq var1 tmp1) ... nil)
       (list 'let (mapcar2 (lambda (tmp val) (list tmp val)) tmps vals)
             (cons 'progn
-                  (append (mapcar2 (lambda (var tmp) (list 'setq var tmp)) vars tmps)
+                  (append* (mapcar2 (lambda (var tmp) (list 'setq var tmp)) vars tmps)
                           (list nil)))))))
 
 ; do - general iteration macro (parallel binding)
@@ -743,9 +755,9 @@
               ((eq first '&optional)
                (optionals rest ex))
               ((and (symbolp first) (symbolp rest) rest)
-               (append (bindings first (list 'car ex))
+               (append* (bindings first (list 'car ex))
                        (bindings rest (list 'cdr ex))))
-              (t (append (bindings first (list 'car ex))
+              (t (append* (bindings first (list 'car ex))
                          (bindings rest (list 'cdr ex)))))))
          (t (error "Invalid destructuring pattern"))))
      (optionals (params ex)
@@ -1535,7 +1547,7 @@
 ; rcurry - partial application (last arg)
 (defun rcurry (fn arg)
   (lambda (&rest args)
-    (apply fn (append args (list arg)))))
+    (apply fn (append* args (list arg)))))
 
 ; flip - swap first two arguments
 (defun flip (fn)
@@ -1734,7 +1746,7 @@
 
 ; set-exclusive-or - symmetric difference
 (defun set-exclusive-or (list1 list2 &key (test #'eql))
-  (append (set-difference list1 list2 :test test)
+  (append* (set-difference list1 list2 :test test)
           (set-difference list2 list1 :test test)))
 
 ; subsetp - check if list1 is subset of list2
@@ -2092,14 +2104,14 @@
       nil
     (if (null (cdr lists))
         (car lists)
-      (append (car lists) (nconc-helper (cdr lists))))))
+      (append* (car lists) (nconc-helper (cdr lists))))))
 
 (defun nconc (&rest lists)
   (nconc-helper lists))
 
 ; revappend - reverse first list and append second
 (defun revappend (list tail)
-  (append (reverse list) tail))
+  (append* (reverse list) tail))
 
 ; nreconc - destructive revappend
 (defun nreconc (list tail)
@@ -2663,24 +2675,24 @@
                                   (nreverse thereis-forms)))
             (step-body (nreverse step-forms)))
         (setq loop-body
-              (append end-test-forms
-                      (append main-body
-                              (append collect-body
-                                      (append append-body
-                                              (append nconc-body
-                                                      (append sum-body
-                                                              (append count-body
-                                                                      (append max-body
-                                                                              (append min-body
-                                                                                      (append always-body
-                                                                                              (append never-body
-                                                                                                      (append thereis-body step-body))))))))))))))
+              (append* end-test-forms
+                      (append* main-body
+                              (append* collect-body
+                                      (append* append-body
+                                              (append* nconc-body
+                                                      (append* sum-body
+                                                              (append* count-body
+                                                                      (append* max-body
+                                                                              (append* min-body
+                                                                                      (append* always-body
+                                                                                              (append* never-body
+                                                                                                      (append* thereis-body step-body))))))))))))))
 
       ; Build final code using (while t ...) instead of (loop ...) to avoid a bug
       (let ((loop-code (cons 'while (cons t loop-body))))
         ; Wrap with initially if present
         (when initially-forms
-          (setq loop-code (cons 'progn (append initially-forms (list loop-code)))))
+          (setq loop-code (cons 'progn (append* initially-forms (list loop-code)))))
 
         ; Build the block with let* bindings (sequential for dependent vars)
         (list 'block block-name
@@ -2688,7 +2700,7 @@
                     (if finally-forms
                         (list 'unwind-protect
                               loop-code
-                              (cons 'progn (append finally-forms
+                              (cons 'progn (append* finally-forms
                                                    (list (list 'return-from block-name result-expr)))))
                       (list 'progn loop-code result-expr))))))))
 
@@ -2872,7 +2884,7 @@
              (while (and rest (not (loop-keyword-p (car rest))))
                (push (car rest) forms)
                (setq rest (cdr rest)))
-             (setq body-forms (append body-forms (nreverse forms)))))
+             (setq body-forms (append* body-forms (nreverse forms)))))
 
           ; COLLECT/COLLECTING expr [INTO var]
           ((collect collecting)
@@ -2937,7 +2949,7 @@
            (setq rest (cddr rest)))
 
           ; APPEND/APPENDING expr [INTO var]
-          ((append appending)
+          ((append* appending)
            (let ((expr (cadr rest))
                  (into-rest (cddr rest)))
              (when (and (consp into-rest) (eq (car into-rest) 'into))

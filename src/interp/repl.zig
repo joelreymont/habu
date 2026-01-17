@@ -901,6 +901,7 @@ pub const Repl = struct {
         const ir_node = self.compiler.compile(expr, &env) catch |err| {
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
+            std.debug.print("Compile error in compileExprWithEnv: {s}\n", .{@errorName(err)});
             return if (err == error.UnboundVariable) error.CompileError else error.CompileError;
         };
         self.compiler.builder = saved_builder;
@@ -1519,6 +1520,7 @@ pub const Repl = struct {
         const ir_node = self.compiler.compile(expr, &env) catch |err| {
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
+            std.debug.print("Compile error in compileExprWithEnv: {s}\n", .{@errorName(err)});
             return if (err == error.UnboundVariable) error.CompileError else error.CompileError;
         };
         self.compiler.builder = saved_builder;
@@ -1768,7 +1770,10 @@ pub const Repl = struct {
         macro_vm.setChunkPool(chunk_ptrs.items);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        return macro_vm.run(chunk_ptr) catch return error.RuntimeError;
+        return macro_vm.run(chunk_ptr) catch |err| {
+            std.debug.print("Macro expansion error: {s}\n", .{@errorName(err)});
+            return error.RuntimeError;
+        };
     }
 
     /// Handle package forms (defpackage/in-package) - execute them immediately
