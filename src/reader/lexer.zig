@@ -15,6 +15,7 @@ pub const TokenKind = enum {
     dot,
     vector_open, // #(
     complex_open, // #C(
+    struct_open, // #S(
 
     // Quotes
     quote,
@@ -352,6 +353,15 @@ pub const Lexer = struct {
             if (self.peek() == '(') {
                 _ = self.advance(); // consume '('
                 return self.makeToken(.complex_open);
+            }
+            return self.makeToken(.err);
+        }
+        if (c == 'S' or c == 's') {
+            // Struct literal: #S(struct-name :slot1 val1 ...)
+            _ = self.advance(); // consume 'S'
+            if (self.peek() == '(') {
+                _ = self.advance(); // consume '('
+                return self.makeToken(.struct_open);
             }
             return self.makeToken(.err);
         }

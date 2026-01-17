@@ -18,6 +18,8 @@ pub const Error = error{
     UnterminatedList,
     InvalidNumber,
     VectorTooLarge,
+    InvalidStruct,
+    TooManySlots,
     OutOfMemory,
     TypeMismatch,
     Overflow,
@@ -82,6 +84,7 @@ pub const Parser = struct {
             .lparen => return self.parseList(),
             .vector_open => return self.parseVector(),
             .complex_open => return self.parseComplex(),
+            .struct_open => return self.parseStruct(),
             .quote => return self.parseQuote("quote"),
             .backquote => return self.parseQuote("quasiquote"),
             .comma => return self.parseQuote("unquote"),
@@ -228,6 +231,54 @@ pub const Parser = struct {
         }
 
         return primitives.complex.makeComplex(self.heap, real, imag);
+    }
+
+    fn parseStruct(self: *Parser) Error!Value {
+        self.advance(); // consume '#S('
+
+        // Parse struct name (must be a symbol)
+        if (self.current.kind != .symbol) {
+            return error.InvalidStruct;
+        }
+        const struct_name = try self.parseSymbol();
+
+        // Parse keyword-value pairs
+        var args_stack: [128]Value = undefined;
+        var arg_count: usize = 0;
+
+        while (self.current.kind != .rparen) {
+            if (self.current.kind == .eof) {
+                return error.UnterminatedList;
+            }
+            if (arg_count >= args_stack.len) {
+                return error.TooManySlots;
+            }
+            args_stack[arg_count] = try self.parseExpr();
+            arg_count += 1;
+        }
+        self.advance(); // consume ')'
+
+        // Build (make-struct 'struct-name :slot1 val1 :slot2 val2 ...)
+        const make_struct_sym = try self.internSymbol("make-struct");
+        const quoted_name = try self.buildQuote(struct_name);
+
+        // Build arg list
+        var args = Value.nil;
+        var i = arg_count;
+        while (i > 0) {
+            i -= 1;
+            args = try self.heap.allocCons(args_stack[i], args);
+        }
+
+        // Build (make-struct 'name ...)
+        const rest = try self.heap.allocCons(quoted_name, args);
+        return try self.heap.allocCons(make_struct_sym, rest);
+    }
+
+    fn buildQuote(self: *Parser, expr: Value) Error!Value {
+        const quote_sym = try self.internSymbol("quote");
+        const inner = try self.heap.allocCons(expr, Value.nil);
+        return try self.heap.allocCons(quote_sym, inner);
     }
 
     fn parseQuote(self: *Parser, quote_name: []const u8) Error!Value {
@@ -866,6 +917,59 @@ test "parse binary number" {
     defer parser3.deinit();
     const val3 = try parser3.parse();
     try testing.expectEqual(@as(i64, 0), val3.toFixnum());
+}
+
+test "parse #S struct" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+
+    // #S(point :x 10 :y 20) -> (make-struct 'point :x 10 :y 20)
+    var parser = Parser.init(testing.allocator, &heap, "#S(point :x 10 :y 20)", &vm.builtins);
+    defer parser.deinit();
+
+    const result = try parser.parse();
+    try testing.expect(result.isCons());
+
+    const cons = result.toPtr(objects.Cons);
+    try testing.expect(cons.car.isSymbol());
+
+    const sym = cons.car.toPtr(objects.Symbol);
+    try testing.expectEqualStrings("make-struct", sym.getName());
+
+    // Check second element is quoted name
+    const rest1 = cons.cdr;
+    try testing.expect(rest1.isCons());
+    const rest1_cons = rest1.toPtr(objects.Cons);
+    try testing.expect(rest1_cons.car.isCons());
+
+    // (quote point)
+    const quote_form = rest1_cons.car.toPtr(objects.Cons);
+    try testing.expect(quote_form.car.isSymbol());
+    const quote_sym = quote_form.car.toPtr(objects.Symbol);
+    try testing.expectEqualStrings("quote", quote_sym.getName());
+}
+
+test "parse #S empty struct" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+
+    var parser = Parser.init(testing.allocator, &heap, "#S(empty)", &vm.builtins);
+    defer parser.deinit();
+
+    const result = try parser.parse();
+    try testing.expect(result.isCons());
+
+    const cons = result.toPtr(objects.Cons);
+    const sym = cons.car.toPtr(objects.Symbol);
+    try testing.expectEqualStrings("make-struct", sym.getName());
 }
 
 test "parse octal number" {
