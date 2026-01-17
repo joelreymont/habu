@@ -44,16 +44,16 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | *print-base* | ✓ | vm.zig:571, io.zig | Number output radix |
 | *print-case* | ✓ | vm.zig:559, io.zig | Symbol case control |
 | *print-circle* | ✗ | - | |
-| *print-escape* | ✗ | - | |
+| *print-escape* | ✓ | vm.zig:551, io.zig:17 | Control escape sequences |
 | *print-gensym* | ✓ | vm.zig:583, io.zig | Gensym prefix control |
-| *print-length* | ✗ | - | |
-| *print-level* | ✗ | - | |
+| *print-length* | ✓ | vm.zig:534, io.zig:41 | Max elements to print |
+| *print-level* | ✓ | vm.zig:543, io.zig:45 | Max nesting depth |
 | *print-lines* | ✗ | - | |
 | *print-miser-width* | ✗ | - | |
 | *print-pprint-dispatch* | ✗ | - | |
 | *print-pretty* | ✗ | - | |
 | *print-radix* | ✓ | vm.zig:577, io.zig | Radix indicator control |
-| *print-readably* | ✗ | - | |
+| *print-readably* | ✓ | vm.zig:565, io.zig:37 | Readable output control |
 | *print-right-margin* | ✗ | - | |
 | *query-io* | ✗ | - | |
 | *random-state* | ✗ | - | Using seed fn |
