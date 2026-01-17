@@ -1,6 +1,6 @@
 ---
 title: Add *print-readably* support
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "\"2026-01-16T13:41:34.939099+02:00\""
@@ -13,3 +13,4 @@ src/interp/vm.zig + io.zig: Implement *print-readably* variable
 - Error if object not readable
 - Add tests for readable output
 - Est: 20 min
+Resolution: Already implemented - variable, getters/setters, integration in vm.zig, printer uses it.
