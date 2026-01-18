@@ -981,7 +981,7 @@ pub const Repl = struct {
         switch (val.typeKind()) {
             .nil => try writer.writeAll("nil"),
             .t => try writer.writeAll("t"),
-            .fixnum => try io.writeFixnumTo(val.toFixnum(), writer.any()),
+            .fixnum => try io.writeFixnumTo(val.toFixnum(), writer),
             .float => try writer.print("{d}", .{val.toFloat()}),
             .char => {
                 const cp = val.toCharacter();
@@ -1411,11 +1411,10 @@ pub const Repl = struct {
 
         if (!closure.isClosure()) return error.CompileError;
 
-        // Store the closure in both REPL and Compiler macro tables
-        // REPL table is used by pre-compilation macro expansion (expandMacros)
-        // Compiler table is used during function body compilation
+        // Store the closure in REPL macro table for pre-compilation macro expansion
+        // Store the AST in Compiler macro table for compile-time expansion
         self.macros.put(name, closure) catch return error.CompileError;
-        self.compiler.macro_table.put(name, closure) catch return error.CompileError;
+        self.compiler.macro_table.put(cons2.car, transformed_rest2) catch return error.CompileError;
 
         // Return the macro name as a symbol
         return cons2.car;

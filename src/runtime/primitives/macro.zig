@@ -23,11 +23,9 @@ pub fn macroFunction(heap: *Heap, compiler: ?*const Compiler, sym: Value) Error!
     if (!sym.isSymbol()) return error.InvalidArgument;
 
     const compiler_ptr = compiler orelse return Value.nil;
-    const sym_ptr = sym.toPtr(Symbol);
-    const name = sym_ptr.getName();
 
-    // Lookup in macro_table
-    if (compiler_ptr.macro_table.get(name)) |_| {
+    // Lookup in macro_table using symbol as key
+    if (compiler_ptr.macro_table.get(sym)) |_| {
         // Return the macro definition as-is (it's the lambda args)
         // In a full implementation, we'd return a closure
         // For now, return t to indicate it's a macro

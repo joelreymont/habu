@@ -1396,7 +1396,7 @@ pub const Compiler = struct {
     struct_predicates: std.StringHashMap(*const types.Type),
     /// Macro table: maps macro name to closure (expander function)
     /// When a form (macro-name args...) is compiled, the macro is expanded first
-    macro_table: std.StringHashMap(Value),
+    macro_table: std.AutoHashMap(Value, Value),
     /// Optional VM for compile-time macro expansion
     vm: ?*Vm,
     /// Heap for creating runtime values during macro expansion
@@ -1456,7 +1456,7 @@ pub const Compiler = struct {
             .defined_types = std.StringHashMap([]const Variant).init(allocator),
             .struct_types = std.StringHashMap(*const types.Type).init(allocator),
             .struct_predicates = std.StringHashMap(*const types.Type).init(allocator),
-            .macro_table = std.StringHashMap(Value).init(allocator),
+            .macro_table = std.AutoHashMap(Value, Value).init(allocator),
             .vm = vm,
             .heap = vm.heap,
             .class_metadata = std.StringHashMap([]const SlotSpec).init(allocator),
@@ -1487,7 +1487,7 @@ pub const Compiler = struct {
             .defined_types = std.StringHashMap([]const Variant).init(allocator),
             .struct_types = std.StringHashMap(*const types.Type).init(allocator),
             .struct_predicates = std.StringHashMap(*const types.Type).init(allocator),
-            .macro_table = std.StringHashMap(Value).init(allocator),
+            .macro_table = std.AutoHashMap(Value, Value).init(allocator),
             .vm = vm,
             .heap = vm.heap,
             .class_metadata = std.StringHashMap([]const SlotSpec).init(allocator),
@@ -2218,7 +2218,7 @@ pub const Compiler = struct {
             }
 
             // Check for macros - expand at compile time if VM is available
-            if (self.macro_table.get(name)) |macro_def| {
+            if (self.macro_table.get(head)) |macro_def| {
                 if (self.vm) |vm| {
                     const expanded = try self.expandMacro(macro_def, tail, vm);
                     return self.compileWithTail(expanded, env, in_tail);
@@ -4908,9 +4908,6 @@ pub const Compiler = struct {
         const name_val = cons1.car;
         if (!name_val.isSymbol()) return error.InvalidSyntax;
 
-        const name_sym = name_val.toPtr(Symbol);
-        const name = name_sym.getName();
-
         // Rest is ((params...) body...)
         const lambda_args = cons1.cdr;
         if (!lambda_args.isCons()) return error.InvalidSyntax;
@@ -4918,8 +4915,8 @@ pub const Compiler = struct {
         // Transform destructured params: ((a (b c)) body) -> ((a g123) (d-bind (b c) g123 body))
         const transformed = try self.transformDestructuredParams(lambda_args);
 
-        // Store in macro_table: name -> transformed-lambda-args
-        try self.macro_table.put(name, transformed);
+        // Store in macro_table: symbol -> transformed-lambda-args
+        try self.macro_table.put(name_val, transformed);
 
         // defmacro has no runtime effect - return nil
         return try self.builder.lit(Value.nil);
@@ -10930,7 +10927,7 @@ test "defmacro with destructured params" {
     try testing.expect(defmacro_ir.* == .lit);
 
     // Macro should be in table with transformed params
-    const stored = compiler.macro_table.get("test-m").?;
+    const stored = compiler.macro_table.get(name_sym).?;
     try testing.expect(stored.isCons());
 
     // First element should be params (now transformed with gensym)
