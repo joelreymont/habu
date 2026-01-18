@@ -3112,17 +3112,26 @@
 
 ; Generate loop code from parsed components
 (defun loop-generate-code (vars step-forms end-tests body-forms
-                           collect-var collect-forms
-                           sum-var sum-forms
-                           count-var count-forms
-                           append-var append-forms
-                           nconc-var nconc-forms
-                           max-var max-forms
-                           min-var min-forms
+                           collect-spec sum-spec count-spec
+                           append-spec nconc-spec max-spec min-spec
                            always-forms never-forms thereis-forms
                            block-name
                            finally-forms initially-forms)
-  (let* ((all-vars (nreverse vars))
+  (let* ((collect-var (car collect-spec))
+         (collect-forms (cdr collect-spec))
+         (sum-var (car sum-spec))
+         (sum-forms (cdr sum-spec))
+         (count-var (car count-spec))
+         (count-forms (cdr count-spec))
+         (append-var (car append-spec))
+         (append-forms (cdr append-spec))
+         (nconc-var (car nconc-spec))
+         (nconc-forms (cdr nconc-spec))
+         (max-var (car max-spec))
+         (max-forms (cdr max-spec))
+         (min-var (car min-spec))
+         (min-forms (cdr min-spec))
+         (all-vars (nreverse vars))
          (has-collect (not (null collect-forms)))
          (has-sum (not (null sum-forms)))
          (has-count (not (null count-forms)))
@@ -3743,13 +3752,13 @@
 
     ; Generate the loop code
     (loop-generate-code vars step-forms end-tests body-forms
-                        collect-var collect-forms
-                        sum-var sum-forms
-                        count-var count-forms
-                        append-var append-forms
-                        nconc-var nconc-forms
-                        max-var max-forms
-                        min-var min-forms
+                        (cons collect-var collect-forms)
+                        (cons sum-var sum-forms)
+                        (cons count-var count-forms)
+                        (cons append-var append-forms)
+                        (cons nconc-var nconc-forms)
+                        (cons max-var max-forms)
+                        (cons min-var min-forms)
                         always-forms never-forms thereis-forms
                         block-name
                         finally-forms initially-forms)))))
