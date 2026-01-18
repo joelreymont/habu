@@ -3149,9 +3149,8 @@ pub const Compiler = struct {
             if (!binding.isCons()) return error.InvalidLet;
             const b = binding.toPtr(Cons);
 
-            if (!b.car.isSymbol()) return error.InvalidLet;
-            const name_sym = b.car.toPtr(Symbol);
-            try binding_names.append(self.allocator, name_sym.getName());
+            if (!b.car.isSymbolLike()) return error.InvalidLet;
+            try binding_names.append(self.allocator, b.car.getSymbolName());
 
             binding_list = binding_cons.cdr;
         }
@@ -3460,9 +3459,8 @@ pub const Compiler = struct {
         if (!binding.isCons()) return error.InvalidLet;
         const b = binding.toPtr(Cons);
 
-        if (!b.car.isSymbol()) return error.InvalidLet;
-        const name_sym = b.car.toPtr(Symbol);
-        const name = name_sym.getName();
+        if (!b.car.isSymbolLike()) return error.InvalidLet;
+        const name = b.car.getSymbolName();
 
         if (!b.cdr.isCons()) return error.InvalidLet;
         const val_cons = b.cdr.toPtr(Cons);

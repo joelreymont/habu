@@ -124,6 +124,13 @@ pub const Value = packed struct {
         return self.isPointer() and self.getTag() == .symbol and (self.raw & PTR_MASK) != 0;
     }
 
+    /// Get symbol name from symbol-like value (handles nil, t, and symbols)
+    pub fn getSymbolName(self: Value) []const u8 {
+        if (self.isNil()) return "nil";
+        if (self.isT()) return "t";
+        return self.toPtr(objects.Symbol).getName();
+    }
+
     /// Check if value is a vector
     pub inline fn isVector(self: Value) bool {
         return self.isPointer() and self.getTag() == .vector;
