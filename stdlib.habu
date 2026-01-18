@@ -3341,12 +3341,29 @@
                       (push (list 'null list-var) end-tests)
                       (setq rest (cddddr rest))))))
 
-               ; FOR var ON list
+               ; FOR var ON list [BY step-fn]
                (on
-                (push (list var (cadddr rest)) vars)
-                (push (list 'setq var (list 'cdr var)) step-forms)
-                (push (list 'null var) end-tests)
-                (setq rest (cddddr rest)))
+                (let ((list-expr (cadddr rest))
+                      (by-rest (cddddr rest))
+                      (step-fn 'cdr))
+                  (when (and (consp by-rest) (eq (car by-rest) 'by))
+                    (setq step-fn (cadr by-rest))
+                    (setq by-rest (cddr by-rest)))
+                  (if (consp var)
+                      (let ((list-var (gensym "list"))
+                            (tmp-var (gensym "tmp")))
+                        (push (list list-var list-expr) vars)
+                        (push (list tmp-var nil) vars)
+                        (push (list 'setq tmp-var list-var) body-forms)
+                        (push (list 'destructuring-bind var tmp-var) body-forms)
+                        (push (list 'setq list-var (list step-fn list-var)) step-forms)
+                        (push (list 'null list-var) end-tests)
+                        (setq rest by-rest))
+                    (progn
+                      (push (list var list-expr) vars)
+                      (push (list 'setq var (list step-fn var)) step-forms)
+                      (push (list 'null var) end-tests)
+                      (setq rest by-rest))))
 
                ; FOR var = expr [THEN step-expr]
                (=
