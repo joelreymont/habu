@@ -741,10 +741,15 @@
           (assoc key (cdr alist)))))
 
 ; list* - like list but last arg is tail
-(defun list* (&rest args)
+; list* - creates improper list with last arg as tail
+; (list* 1 2 3 '(4 5)) => (1 2 3 4 5)
+; (list* 1 2 3) => (1 2 . 3)
+(defun list*-aux (args)
   (if (null (cdr args))
       (car args)
-      (cons (car args) (apply list* (cdr args)))))
+      (cons (car args) (list*-aux (cdr args)))))
+(defun list* (&rest args)
+  (list*-aux args))
 
 ; Zip two lists
 (defun zip (xs ys)
