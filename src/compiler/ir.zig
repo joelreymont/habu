@@ -272,6 +272,11 @@ pub const Ir = union(enum) {
         operand: *const Ir,
     },
 
+    /// Hash table capacity: (hash-table-capacity hashtable)
+    hash_capacity: struct {
+        operand: *const Ir,
+    },
+
     /// Hash table predicate: (hash-table-p x)
     hashtablep: struct {
         operand: *const Ir,

@@ -137,6 +137,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .hash_set,
         .hash_rem,
         .hash_count,
+        .hash_capacity,
         .hash_clear,
         .hash_test,
         .hash_keys,

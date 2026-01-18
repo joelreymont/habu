@@ -130,6 +130,17 @@ pub fn primHashTableCount(_: *Heap, args: []const Value) !Value {
     return Value.makeFixnum(@intCast(ht.count));
 }
 
+/// (hash-table-capacity hash-table) - get allocated capacity
+pub fn primHashTableCapacity(_: *Heap, args: []const Value) !Value {
+    if (args.len != 1) return error.TypeMismatch;
+
+    const ht_val = args[0];
+    if (ht_val.typeKind() != .hashtable) return error.TypeMismatch;
+
+    const ht = ht_val.toPtr(HashTable);
+    return Value.makeFixnum(@intCast(ht.capacity));
+}
+
 /// (hash-table-test hash-table) - get test function
 pub fn primHashTableTest(heap: *Heap, args: []const Value) !Value {
     if (args.len != 1) return error.TypeMismatch;

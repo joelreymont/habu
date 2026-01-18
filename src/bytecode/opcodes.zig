@@ -585,6 +585,10 @@ pub const Op = enum(u16) {
     /// ( hashtable -- count )
     hash_count = 0x98,
 
+    /// Get hash table capacity
+    /// ( hashtable -- fixnum )
+    hash_capacity = 0x10D,
+
     /// Get hash table test function
     /// ( hashtable -- test-symbol )
     hash_test = 0xCC,
@@ -1319,6 +1323,7 @@ pub const Op = enum(u16) {
             .hash_set,
             .hash_rem,
             .hash_count,
+            .hash_capacity,
             .hash_clear,
             .hash_test,
             .hash_keys,

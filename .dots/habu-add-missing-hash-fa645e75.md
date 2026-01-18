@@ -1,9 +1,9 @@
 ---
 title: Add missing hash table primitives
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-01-18T06:24:37.659745+02:00"
+created-at: "\"2026-01-18T06:24:37.659745+02:00\""
 ---
 
 Files: src/runtime/primitives/hash.zig

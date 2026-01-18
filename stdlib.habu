@@ -1699,9 +1699,18 @@
   'eql)
 
 ; hash-table-size - get allocated size
-; (placeholder - returns count for now)
 (defun hash-table-size (table)
-  (hash-table-count table))
+  (hash-table-capacity table))
+
+; hash-table-rehash-size - get rehash growth factor
+(defun hash-table-rehash-size (table)
+  (declare (ignore table))
+  2.0)
+
+; hash-table-rehash-threshold - get rehash load factor threshold
+(defun hash-table-rehash-threshold (table)
+  (declare (ignore table))
+  0.75)
 
 ; with-hash-table-iterator - iterate over hash table entries
 ; (with-hash-table-iterator (name table) body...)

@@ -2570,6 +2570,12 @@ pub const Vm = struct {
                 const ht = ht_val.toPtr(HashTable);
                 try self.push(Value.makeFixnum(@intCast(ht.count)));
             },
+            .hash_capacity => {
+                const ht_val = try self.pop();
+                if (!ht_val.isHashTable()) return error.TypeMismatch;
+                const ht = ht_val.toPtr(HashTable);
+                try self.push(Value.makeFixnum(@intCast(ht.capacity)));
+            },
             .hashtablep => {
                 const val = try self.pop();
                 try self.push(if (val.isHashTable()) Value.t else Value.nil);

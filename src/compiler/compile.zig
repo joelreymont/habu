@@ -382,6 +382,7 @@ pub const Builtins = struct {
     puthash: Value,
     remhash: Value,
     @"hash-table-count": Value,
+    @"hash-table-capacity": Value,
     clrhash: Value,
     @"hash-table-test": Value,
     @"hash-table-p": Value,
@@ -779,6 +780,7 @@ pub const Builtins = struct {
             .clrhash = try heap.intern("clrhash"),
             .@"hash-table-test" = try heap.intern("hash-table-test"),
             .@"hash-table-count" = try heap.intern("hash-table-count"),
+            .@"hash-table-capacity" = try heap.intern("hash-table-capacity"),
             .@"hash-table-p" = try heap.intern("hash-table-p"),
             .@"hash-table-keys" = try heap.intern("hash-table-keys"),
             .@"hash-table-alist" = try heap.intern("hash-table-alist"),
@@ -1057,6 +1059,7 @@ pub const Builtins = struct {
         if (s == self.puthash.raw) return true;
         if (s == self.remhash.raw) return true;
         if (s == self.@"hash-table-count".raw) return true;
+        if (s == self.@"hash-table-capacity".raw) return true;
         if (s == self.clrhash.raw) return true;
         if (s == self.@"hash-table-test".raw) return true;
         if (s == self.@"hash-table-p".raw) return true;
@@ -8598,6 +8601,7 @@ pub const Compiler = struct {
         if (s == b.@"hash-table-test".raw) return self.compileUnaryPrim(args, env, .hash_test);
         if (s == b.remhash.raw) return self.compileRemhash(args, env);
         if (s == b.@"hash-table-count".raw) return self.compileHashTableCount(args, env);
+        if (s == b.@"hash-table-capacity".raw) return self.compileHashTableCapacity(args, env);
         if (s == b.@"hash-table-p".raw) return self.compileHashTableP(args, env);
         if (s == b.@"hash-table-keys".raw) return self.compileUnaryPrim(args, env, .hash_keys);
         if (s == b.@"hash-table-alist".raw) return self.compileUnaryPrim(args, env, .hash_alist);
@@ -10040,6 +10044,17 @@ pub const Compiler = struct {
 
         const node = try self.allocator.create(Ir);
         node.* = .{ .hash_count = .{ .operand = table_ir } };
+        return node;
+    }
+
+    fn compileHashTableCapacity(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        // (hash-table-capacity hashtable)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons = args.toPtr(Cons);
+        const table_ir = try self.compile(cons.car, env);
+
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .hash_capacity = .{ .operand = table_ir } };
         return node;
     }
 

@@ -394,6 +394,7 @@ pub const Emitter = struct {
 
             // These have their own struct with operand field
             .hash_count => |h| max_idx = computeMaxLocalIndexImpl(h.operand, max_idx),
+            .hash_capacity => |h| max_idx = computeMaxLocalIndexImpl(h.operand, max_idx),
             .hashtablep => |h| max_idx = computeMaxLocalIndexImpl(h.operand, max_idx),
             .rationalp => |r| max_idx = computeMaxLocalIndexImpl(r.operand, max_idx),
             .complexp => |c| max_idx = computeMaxLocalIndexImpl(c.operand, max_idx),
@@ -535,6 +536,7 @@ pub const Emitter = struct {
             .hash_set => |h| try self.emitHashSet(h),
             .hash_rem => |h| try self.emitHashRem(h),
             .hash_count => |h| try self.emitUnaryOp(h.operand, .hash_count),
+            .hash_capacity => |h| try self.emitUnaryOp(h.operand, .hash_capacity),
             .hash_clear => |h| try self.emitUnaryOp(h.operand, .hash_clear),
             .hash_test => |h| try self.emitUnaryOp(h.operand, .hash_test),
             .hash_keys => |h| try self.emitUnaryOp(h.operand, .hash_keys),
