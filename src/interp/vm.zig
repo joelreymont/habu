@@ -2813,6 +2813,16 @@ pub const Vm = struct {
                 const result = try primitives.pathname.pathnameVersion(path);
                 try self.push(result);
             },
+            .package_symbols_table => {
+                const pkg = try self.pop();
+                const result = try primitives.package.packageSymbols(pkg);
+                try self.push(result);
+            },
+            .package_exports_table => {
+                const pkg = try self.pop();
+                const result = try primitives.package.packageExports(pkg);
+                try self.push(result);
+            },
             .open => {
                 const mode_val = try self.pop();
                 const path_val = try self.pop();

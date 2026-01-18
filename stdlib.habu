@@ -4124,13 +4124,23 @@
 ;;; Package Iteration Macros
 ;;; ============================================================================
 
+; Stub: will be replaced by native implementation
+(defun package-symbols-table (pkg)
+  (declare (ignore pkg))
+  nil)
+
+; Stub: will be replaced by native implementation
+(defun package-exports-table (pkg)
+  (declare (ignore pkg))
+  nil)
+
 ; Helper to get package symbols as a list
 (defun %package-symbols-list (pkg)
   "Internal: extract all symbols from package's internal hash table"
   (let ((result nil))
     (when pkg
       ; Package.symbols is a hash table - extract symbols
-      (let ((syms (%package-symbols pkg)))
+      (let ((syms (package-symbols-table pkg)))
         (when syms
           (dolist (pair (hash-table-alist syms))
             (when (symbolp (car pair))
@@ -4142,7 +4152,7 @@
   "Internal: extract all exported symbols from package"
   (let ((result nil))
     (when pkg
-      (let ((exps (%package-exports pkg)))
+      (let ((exps (package-exports-table pkg)))
         (when exps
           (dolist (pair (hash-table-alist exps))
             (when (symbolp (car pair))

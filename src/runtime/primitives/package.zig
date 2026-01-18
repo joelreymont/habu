@@ -102,14 +102,14 @@ pub fn packageShadowingSymbols(pkg: Value) !Value {
 }
 
 /// Get package internal symbols hash table
-pub fn packageSymbolsTable(pkg: Value) !Value {
+pub fn packageSymbols(pkg: Value) !Value {
     if (!pkg.isPackage()) return error.TypeError;
     const p = pkg.toPtr(objects.Package);
     return p.symbols;
 }
 
 /// Get package exports hash table
-pub fn packageExportsTable(pkg: Value) !Value {
+pub fn packageExports(pkg: Value) !Value {
     if (!pkg.isPackage()) return error.TypeError;
     const p = pkg.toPtr(objects.Package);
     return p.exports;

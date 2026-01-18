@@ -1229,6 +1229,14 @@ pub const Op = enum(u16) {
     /// ( pathname -- version )
     pathname_version = 0x10C,
 
+    /// Get package internal symbols hash table
+    /// ( pkg -- hashtable )
+    package_symbols_table = 0xB8,
+
+    /// Get package exports hash table
+    /// ( pkg -- hashtable )
+    package_exports_table = 0xB9,
+
     /// Get operand size in bytes
     pub fn operandSize(self: Op) u8 {
         return switch (self) {
@@ -1459,6 +1467,8 @@ pub const Op = enum(u16) {
             .pathname_name,
             .pathname_type,
             .pathname_version,
+            .package_symbols_table,
+            .package_exports_table,
             .vec_fill_ptr,
             .vec_push,
             .vec_push_ext,

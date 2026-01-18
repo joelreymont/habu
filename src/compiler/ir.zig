@@ -329,6 +329,14 @@ pub const Ir = union(enum) {
         operand: *const Ir,
     },
 
+    package_symbols_table: struct {
+        operand: *const Ir,
+    },
+
+    package_exports_table: struct {
+        operand: *const Ir,
+    },
+
     // ========================================================================
     // Function calls
     // ========================================================================

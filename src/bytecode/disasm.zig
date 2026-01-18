@@ -262,12 +262,15 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .pathname_name,
         .pathname_type,
         .pathname_version,
+        .package_symbols_table,
+        .package_exports_table,
         .push_progv,
         .pop_progv,
         .vec_fill_ptr,
         .vec_push,
         .vec_push_ext,
         .vec_pop,
+        .vec_adjust,
         => {
             try writer.print("{s}\n", .{op.name()});
             return offset + 1;
