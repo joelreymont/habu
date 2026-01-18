@@ -728,7 +728,7 @@
           (assoc key (cdr alist)))))
 
 ; list* - like list but last arg is tail
-(defun list* args
+(defun list* (&rest args)
   (if (null (cdr args))
       (car args)
       (cons (car args) (apply list* (cdr args)))))
