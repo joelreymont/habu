@@ -977,10 +977,11 @@ pub const Repl = struct {
 
     /// Print a value in Lisp notation
     pub fn printValue(self: *Repl, val: Value, writer: anytype) anyerror!void {
+        const io = runtime.primitives.io;
         switch (val.typeKind()) {
             .nil => try writer.writeAll("nil"),
             .t => try writer.writeAll("t"),
-            .fixnum => try writer.print("{d}", .{val.toFixnum()}),
+            .fixnum => try io.writeFixnumTo(val.toFixnum(), writer.any()),
             .float => try writer.print("{d}", .{val.toFloat()}),
             .char => {
                 const cp = val.toCharacter();

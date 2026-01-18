@@ -550,10 +550,26 @@ pub const Vm = struct {
 
     fn handleSpecialVarLoad(self: *Vm, idx: u16) !Value {
         if (self.global_env) |env| {
+            if (env.lookup("*print-escape*")) |esc_idx| {
+                if (idx == esc_idx) return io.getPrintEscape();
+            }
             if (env.lookup("*print-case*")) |case_idx| {
-                if (idx == case_idx) {
-                    return try io.getPrintCase(self.heap);
-                }
+                if (idx == case_idx) return try io.getPrintCase(self.heap);
+            }
+            if (env.lookup("*print-readably*")) |read_idx| {
+                if (idx == read_idx) return io.getPrintReadably();
+            }
+            if (env.lookup("*print-base*")) |base_idx| {
+                if (idx == base_idx) return io.getPrintBase();
+            }
+            if (env.lookup("*print-radix*")) |radix_idx| {
+                if (idx == radix_idx) return io.getPrintRadix();
+            }
+            if (env.lookup("*print-gensym*")) |gensym_idx| {
+                if (idx == gensym_idx) return io.getPrintGensym();
+            }
+            if (env.lookup("*print-array*")) |array_idx| {
+                if (idx == array_idx) return io.getPrintArray();
             }
         }
         return self.globals[idx];

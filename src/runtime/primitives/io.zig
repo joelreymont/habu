@@ -56,6 +56,10 @@ pub var print_gensym: bool = true;
 /// *print-array* controls whether to print array contents
 pub var print_array: bool = true;
 
+pub fn writeFixnumTo(n: i64, w: anytype) !void {
+    try writeFixnum(n, w);
+}
+
 fn writeFixnum(n: i64, w: anytype) !void {
     if (print_radix) {
         switch (print_base) {
