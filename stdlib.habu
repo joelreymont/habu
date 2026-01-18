@@ -3752,7 +3752,7 @@
                         min-var min-forms
                         always-forms never-forms thereis-forms
                         block-name
-                        finally-forms initially-forms))))
+                        finally-forms initially-forms)))))
 
 ; Main LOOP macro
 (defmacro loop (&rest clauses)
