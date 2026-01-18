@@ -149,8 +149,9 @@ pub const GC = struct {
 
             // Skip if already copied (has forwarding pointer)
             if (first_word.isForwarding()) {
-                const size = objects.objectSize(first_word.*);
-                const aligned_size = std.mem.alignForward(usize, size, ALIGNMENT);
+                // Read the aligned size from the second word (stored during copyValue)
+                const size_ptr: *const usize = @ptrFromInt(addr + @sizeOf(Value));
+                const aligned_size = size_ptr.*;
                 addr += aligned_size;
                 continue;
             }
@@ -238,7 +239,11 @@ pub const GC = struct {
         self.repairInteriorPointers(new_addr, tag, addr_delta);
 
         // Install forwarding pointer in old location
+        // Store the forwarding pointer in first word and size in second word
+        // This allows finalizeUnreachable to skip past forwarded objects
         first_word.* = Value.makeForwarding(@as(*u8, @ptrFromInt(new_addr)));
+        const size_ptr: *usize = @ptrFromInt(obj_addr + @sizeOf(Value));
+        size_ptr.* = aligned_size;
 
         // Add to work list for scanning (except strings/keywords which have no Value refs)
         if (tag != .string and tag != .keyword) {

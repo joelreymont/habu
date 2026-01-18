@@ -367,35 +367,34 @@
   (declare (ignore array))
   (values nil 0))
 
-; adjust-array - resize array (stub - returns same array)
+; adjust-array - resize array
 (defun adjust-array (array new-dimensions &rest args)
-  (declare (ignore new-dimensions args))
-  array)
+  (let ((init-elem (getf args :initial-element nil)))
+    (if (numberp new-dimensions)
+        (%adjust-array array new-dimensions init-elem)
+        array)))
 
 ; upgraded-array-element-type - actual element type used
 (defun upgraded-array-element-type (typespec &optional environment)
   (declare (ignore typespec environment))
   't)
 
-; fill-pointer - get fill pointer (stub - no fill pointers)
+; fill-pointer - get fill pointer
 (defun fill-pointer (vector)
-  (declare (ignore vector))
-  nil)
+  (let ((fp (%fill-pointer vector)))
+    (if fp fp (error "Vector has no fill pointer"))))
 
-; vector-push - push onto fill pointer vector (stub)
+; vector-push - push onto fill pointer vector
 (defun vector-push (new-element vector)
-  (declare (ignore new-element vector))
-  nil)
+  (%vector-push vector new-element))
 
-; vector-push-extend - push with extension (stub)
-(defun vector-push-extend (new-element vector &optional extension)
-  (declare (ignore new-element vector extension))
-  nil)
+; vector-push-extend - push with extension
+(defun vector-push-extend (new-element vector &optional (extension 0))
+  (%vector-push-extend vector new-element extension))
 
-; vector-pop - pop from fill pointer vector (stub)
+; vector-pop - pop from fill pointer vector
 (defun vector-pop (vector)
-  (declare (ignore vector))
-  nil)
+  (%vector-pop vector))
 
 ;;; Bit vector operations (stubs - no bit vectors yet)
 
@@ -1660,23 +1659,25 @@
 ;; Hash Table Functions
 ;; ============================================================
 
-; hash-table-alist - convert hash table to alist
-(defun hash-table-alist (table)
-  (let ((alist nil))
-    (%%maphash (lambda (k v) (setq alist (cons (cons k v) alist))) table)
-    alist))
+; maphash - call function on each key-value pair
+(defun maphash (fn table)
+  (dolist (pair (hash-table-alist table))
+    (funcall fn (car pair) (cdr pair)))
+  nil)
 
 ; hash-table-keys - get list of all keys
 (defun hash-table-keys (table)
   (let ((keys nil))
-    (%%maphash (lambda (k v) (setq keys (cons k keys))) table)
-    keys))
+    (dolist (pair (hash-table-alist table) keys)
+      (setq keys (cons (car pair) keys)))))
 
 ; hash-table-values - get list of all values
 (defun hash-table-values (table)
   (let ((vals nil))
-    (%%maphash (lambda (k v) (setq vals (cons v vals))) table)
-    vals))
+    (dolist (pair (hash-table-alist table) vals)
+      (setq vals (cons (cdr pair) vals)))))
+
+; hash-table-alist is a primitive
 
 ; alist-hash-table - convert alist to hash table
 (defun alist-hash-table (alist &key (test #'eql))
@@ -1687,8 +1688,8 @@
 ; copy-hash-table - shallow copy of hash table
 (defun copy-hash-table (table)
   (let ((new (make-hash-table :test (hash-table-test table))))
-    (%%maphash (lambda (k v) (setf (gethash k new) v)) table)
-    new))
+    (dolist (pair (hash-table-alist table) new)
+      (setf (gethash (car pair) new) (cdr pair)))))
 
 ; hash-table-test - get test function of hash table
 ; (placeholder - returns 'eql for now)
@@ -1697,9 +1698,18 @@
   'eql)
 
 ; hash-table-size - get allocated size
-; (placeholder - returns count for now)
 (defun hash-table-size (table)
-  (hash-table-count table))
+  (hash-table-capacity table))
+
+; hash-table-rehash-size - get rehash growth factor
+(defun hash-table-rehash-size (table)
+  (declare (ignore table))
+  2.0)
+
+; hash-table-rehash-threshold - get rehash load factor threshold
+(defun hash-table-rehash-threshold (table)
+  (declare (ignore table))
+  0.75)
 
 ; with-hash-table-iterator - iterate over hash table entries
 ; (with-hash-table-iterator (name table) body...)
@@ -1822,47 +1832,6 @@
 ;; Standard restart functions
 ;; These invoke the corresponding named restarts
 
-(defun abort (&optional condition)
-  "Transfer control to the innermost applicable ABORT restart."
-  (declare (ignore condition))
-  (let ((r (find-restart 'abort)))
-    (if r
-        (invoke-restart 'abort)
-        (error "No ABORT restart is active"))))
-
-(defun continue (&optional condition)
-  "Transfer control to the innermost applicable CONTINUE restart."
-  (declare (ignore condition))
-  (let ((r (find-restart 'continue)))
-    (when r
-      (invoke-restart 'continue))))
-
-(defun muffle-warning (&optional condition)
-  "Transfer control to the innermost applicable MUFFLE-WARNING restart."
-  (declare (ignore condition))
-  (let ((r (find-restart 'muffle-warning)))
-    (if r
-        (invoke-restart 'muffle-warning)
-        (error "No MUFFLE-WARNING restart is active"))))
-
-(defun store-value (value &optional condition)
-  "Transfer control to the STORE-VALUE restart, passing VALUE."
-  (declare (ignore condition))
-  (let ((r (find-restart 'store-value)))
-    (when r
-      (invoke-restart 'store-value value))))
-
-(defun use-value (value &optional condition)
-  "Transfer control to the USE-VALUE restart, passing VALUE."
-  (declare (ignore condition))
-  (let ((r (find-restart 'use-value)))
-    (when r
-      (invoke-restart 'use-value value))))
-
-;; ============================================================
-;; Generalized Reference (SETF)
-;; ============================================================
-
 ; psetf - parallel setf (evaluate all values before assigning)
 (defmacro psetf (&rest pairs)
   (if (null pairs)
@@ -1872,20 +1841,24 @@
             (temps nil))
         ; Collect places, values, and generate temps
         (let ((rest pairs))
-          (loop while rest do
-                (let ((place (car rest))
-                      (value (cadr rest))
-                      (temp (gensym "TEMP")))
-                  (push place places)
-                  (push (list temp value) temps)
-                  (push temp values)
-                  (setq rest (cddr rest)))))
+          (while rest
+            (let ((place (car rest))
+                  (value (cadr rest))
+                  (temp (gensym "TEMP")))
+              (push place places)
+              (push (list temp value) temps)
+              (push temp values)
+              (setq rest (cddr rest)))))
         ; Generate let with all temps, then setf all places
-        (list 'let (nreverse temps)
-              (cons 'progn
-                    (mapcar (lambda (p v) (list 'setf p v))
-                            (nreverse places)
-                            (nreverse values)))))))
+        (let ((setf-forms nil)
+              (pl (nreverse places))
+              (vl (nreverse values)))
+          (while pl
+            (push (list 'setf (car pl) (car vl)) setf-forms)
+            (setq pl (cdr pl))
+            (setq vl (cdr vl)))
+          (list 'let (nreverse temps)
+                (cons 'progn (nreverse setf-forms)))))))
 
 ; rotatef - rotate values through places
 ; (rotatef a b c) => a gets old b, b gets old c, c gets old a
@@ -2040,8 +2013,8 @@
         (sethash k groups (cons x (gethash k groups nil)))))
     ; Convert to alist with reversed lists
     (let ((result nil))
-      (%%maphash (lambda (k v) (setq result (cons (cons k (nreverse v)) result))) groups)
-      result)))
+      (dolist (pair (hash-table-alist groups) result)
+        (setq result (cons (cons (car pair) (nreverse (cdr pair))) result))))))
 
 ; frequencies - count occurrences
 (defun frequencies (lst)
@@ -2787,9 +2760,6 @@
       (princ "Please answer yes or no: "))))
 
 ; prin1-to-string - convert to string with escaping
-(defun prin1-to-string (object)
-  (write-to-string object))
-
 ; princ-to-string - convert to string without escaping
 (defun princ-to-string (object)
   (if (stringp object)
@@ -3010,10 +2980,9 @@
   (declare (ignore x))
   nil)
 
-; array-has-fill-pointer-p - no fill pointers yet
+; array-has-fill-pointer-p - check if array has fill pointer
 (defun array-has-fill-pointer-p (x)
-  (declare (ignore x))
-  nil)
+  (if (%fill-pointer x) t nil))
 
 ; packagep - no packages yet
 (defun packagep (x)
@@ -3293,7 +3262,7 @@
                               loop-code
                               (cons 'progn (append finally-forms
                                                    (list (list 'return-from block-name result-expr)))))
-                      (list 'progn loop-code result-expr))))))))
+                      (list 'progn loop-code (list 'return-from block-name result-expr))))))
 
 
 ; loop-finish - exit loop normally, running finally clause
@@ -3370,12 +3339,29 @@
                       (push (list 'null list-var) end-tests)
                       (setq rest (cddddr rest))))))
 
-               ; FOR var ON list
+               ; FOR var ON list [BY step-fn]
                (on
-                (push (list var (cadddr rest)) vars)
-                (push (list 'setq var (list 'cdr var)) step-forms)
-                (push (list 'null var) end-tests)
-                (setq rest (cddddr rest)))
+                (let ((list-expr (cadddr rest))
+                      (by-rest (cddddr rest))
+                      (step-fn 'cdr))
+                  (when (and (consp by-rest) (eq (car by-rest) 'by))
+                    (setq step-fn (cadr by-rest))
+                    (setq by-rest (cddr by-rest)))
+                  (if (consp var)
+                      (let ((list-var (gensym "list"))
+                            (tmp-var (gensym "tmp")))
+                        (push (list list-var list-expr) vars)
+                        (push (list tmp-var nil) vars)
+                        (push (list 'setq tmp-var list-var) body-forms)
+                        (push (list 'destructuring-bind var tmp-var) body-forms)
+                        (push (list 'setq list-var (list step-fn list-var)) step-forms)
+                        (push (list 'null list-var) end-tests)
+                        (setq rest by-rest))
+                    (progn
+                      (push (list var list-expr) vars)
+                      (push (list 'setq var (list step-fn var)) step-forms)
+                      (push (list 'null var) end-tests)
+                      (setq rest by-rest))))
 
                ; FOR var = expr [THEN step-expr]
                (=
@@ -3766,7 +3752,7 @@
                         min-var min-forms
                         always-forms never-forms thereis-forms
                         block-name
-                        finally-forms initially-forms)))
+                        finally-forms initially-forms)))))
 
 ; Main LOOP macro
 (defmacro loop (&rest clauses)
@@ -4138,15 +4124,27 @@
 ;;; Package Iteration Macros
 ;;; ============================================================================
 
+; Stub: will be replaced by native implementation
+(defun package-symbols-table (pkg)
+  (declare (ignore pkg))
+  nil)
+
+; Stub: will be replaced by native implementation
+(defun package-exports-table (pkg)
+  (declare (ignore pkg))
+  nil)
+
 ; Helper to get package symbols as a list
 (defun %package-symbols-list (pkg)
   "Internal: extract all symbols from package's internal hash table"
   (let ((result nil))
     (when pkg
       ; Package.symbols is a hash table - extract symbols
-      (let ((syms (%package-symbols pkg)))
+      (let ((syms (package-symbols-table pkg)))
         (when syms
-          (%%maphash (lambda (k _v) (when (symbolp k) (setq result (cons k result)))) syms))))
+          (dolist (pair (hash-table-alist syms))
+            (when (symbolp (car pair))
+              (setq result (cons (car pair) result)))))))
     result))
 
 ; Helper to get package exports as a list
@@ -4154,9 +4152,11 @@
   "Internal: extract all exported symbols from package"
   (let ((result nil))
     (when pkg
-      (let ((exps (%package-exports pkg)))
+      (let ((exps (package-exports-table pkg)))
         (when exps
-          (%%maphash (lambda (k _v) (when (symbolp k) (setq result (cons k result)))) exps))))
+          (dolist (pair (hash-table-alist exps))
+            (when (symbolp (car pair))
+              (setq result (cons (car pair) result)))))))
     result))
 
 ; do-symbols - iterate over accessible symbols in package
