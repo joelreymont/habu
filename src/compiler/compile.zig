@@ -2443,7 +2443,7 @@ pub const Compiler = struct {
             const param_cons = param_list.toPtr(Cons);
             const param_item = param_cons.car;
 
-            if (param_item.isSymbol()) {
+            if (param_item.isSymbolLike()) {
                 const b = self.builtins orelse return error.UninitializedBuiltins;
 
                 // Check for &rest/&body keyword (use symbol identity)
@@ -2451,9 +2451,13 @@ pub const Compiler = struct {
                     // Next element is the rest parameter name
                     if (!param_cons.cdr.isCons()) return error.InvalidLambda;
                     const rest_cons = param_cons.cdr.toPtr(Cons);
-                    if (!rest_cons.car.isSymbol()) return error.InvalidLambda;
-                    const rest_sym = rest_cons.car.toPtr(Symbol);
-                    rest_param = rest_sym.getName();
+                    if (!rest_cons.car.isSymbolLike()) return error.InvalidLambda;
+                    rest_param = if (rest_cons.car.isSymbol())
+                        rest_cons.car.toPtr(Symbol).getName()
+                    else if (rest_cons.car.isT())
+                        "t"
+                    else
+                        "nil";
                     break; // &rest must be last
                 }
 
@@ -2483,8 +2487,12 @@ pub const Compiler = struct {
                     continue;
                 }
 
-                const param_sym = param_item.toPtr(Symbol);
-                const name = param_sym.getName();
+                const name = if (param_item.isSymbol())
+                    param_item.toPtr(Symbol).getName()
+                else if (param_item.isT())
+                    "t"
+                else
+                    "nil";
 
                 if (in_aux) {
                     // Aux variable with nil default
@@ -2515,9 +2523,13 @@ pub const Compiler = struct {
                 }
             } else if (param_item.isCons()) {
                 const typed = param_item.toPtr(Cons);
-                if (!typed.car.isSymbol()) return error.InvalidLambda;
-                const name_sym = typed.car.toPtr(Symbol);
-                const name = name_sym.getName();
+                if (!typed.car.isSymbolLike()) return error.InvalidLambda;
+                const name = if (typed.car.isSymbol())
+                    typed.car.toPtr(Symbol).getName()
+                else if (typed.car.isT())
+                    "t"
+                else
+                    "nil";
 
                 if (in_aux) {
                     // Aux variable: (name init-expr)
@@ -2574,9 +2586,13 @@ pub const Compiler = struct {
 
         // Also check for rest parameter via dotted list: (a b . rest)
         if (rest_param == null and !param_list.isNil()) {
-            if (param_list.isSymbol()) {
-                const rest_sym = param_list.toPtr(Symbol);
-                rest_param = rest_sym.getName();
+            if (param_list.isSymbolLike()) {
+                rest_param = if (param_list.isSymbol())
+                    param_list.toPtr(Symbol).getName()
+                else if (param_list.isT())
+                    "t"
+                else
+                    "nil";
             } else {
                 return error.InvalidLambda;
             }
