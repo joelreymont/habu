@@ -2281,6 +2281,18 @@ pub const Compiler = struct {
         while (iter.next()) |entry| {
             try macro_compiler.macro_table.put(entry.key_ptr.*, entry.value_ptr.*);
         }
+        // Share global bindings so builtins like 'list' are accessible
+        // CRITICAL: Copy both name AND index so references resolve correctly
+        var giter = self.globals.bindings.iterator();
+        while (giter.next()) |entry| {
+            const name = entry.key_ptr.*;
+            const idx = entry.value_ptr.*;
+            const name_copy = try macro_compiler.globals.allocator.dupe(u8, name);
+            try macro_compiler.globals.bindings.put(name_copy, idx);
+            if (idx >= macro_compiler.globals.next_index) {
+                macro_compiler.globals.next_index = idx + 1;
+            }
+        }
 
         var empty_env = Env.init(self.allocator, null);
         const lambda_ir = try macro_compiler.compile(lambda_list, &empty_env);
