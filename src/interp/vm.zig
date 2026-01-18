@@ -5595,10 +5595,8 @@ pub const Vm = struct {
 
     fn readOp(self: *Vm) Op {
         const code = self.chunk.getCode();
-        const low: u16 = code[self.ip];
-        const high: u16 = code[self.ip + 1];
-        self.ip += 2;
-        const opcode = low | (high << 8);
+        const opcode = code[self.ip];
+        self.ip += 1;
         return @enumFromInt(opcode);
     }
 
@@ -6009,13 +6007,10 @@ test "vm push and return" {
 
     var vm = try Vm.init(allocator, &heap);
 
-    // Opcodes are now 2 bytes (little-endian u16)
-    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
-    const ret_op: u16 = @intFromEnum(Op.ret);
     const code = [_]u8{
-        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), // push_i32 opcode
+        0x02, // push_i32
         42, 0, 0, 0, // i32 value: 42
-        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8), // ret opcode
+        0x92, // ret
     };
 
     const chunk = Chunk{
@@ -6080,11 +6075,11 @@ test "vm cons car cdr" {
 
     // (car (cons 1 2)) = 1
     const code = [_]u8{
-        0x02, 0x00, 1, 0, 0, 0, // push_i32 1
-        0x02, 0x00, 2, 0, 0, 0, // push_i32 2
-        0x40, 0x00, // cons
-        0x41, 0x00, // car
-        0x82, 0x00, // ret
+        0x02, 1, 0, 0, 0, // push_i32 1
+        0x02, 2, 0, 0, 0, // push_i32 2
+        0x40, // cons
+        0x41, // car
+        0x92, // ret
     };
 
     const chunk = Chunk{
@@ -6149,10 +6144,10 @@ test "vm locals" {
 
     // Store 42 in local 0, load it back
     const code = [_]u8{
-        0x02, 0x00, 42, 0, 0, 0, // push_i32 42
-        0x11, 0x00, 0, // store_local 0
-        0x10, 0x00, 0, // load_local 0
-        0x82, 0x00, // ret
+        0x02, 42, 0, 0, 0, // push_i32 42
+        0x11, 0, // store_local 0
+        0x10, 0, // load_local 0
+        0x92, // ret
     };
 
     const chunk = Chunk{

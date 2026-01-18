@@ -804,19 +804,19 @@ pub const Op = enum(u16) {
 
     /// Tangent
     /// ( n -- float )
-    tan = 0xC3,
+    tan = 0x83,
 
     /// Exponential (e^x)
     /// ( n -- float )
-    exp = 0xC4,
+    exp = 0x84,
 
     /// Natural logarithm
     /// ( n -- float )
-    log = 0xC5,
+    log = 0x6E,
 
     /// Floor (round toward negative infinity)
     /// ( n -- fixnum )
-    floor = 0xC6,
+    floor = 0x6F,
 
     /// Ceiling (round toward positive infinity)
     /// ( n -- fixnum )
@@ -1455,6 +1455,10 @@ pub const Op = enum(u16) {
             .pathname_name,
             .pathname_type,
             .pathname_version,
+            .vec_fill_ptr,
+            .vec_push,
+            .vec_push_ext,
+            .vec_pop,
             => 0,
 
             // 1 byte operand

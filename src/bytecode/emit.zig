@@ -863,8 +863,8 @@ pub const Emitter = struct {
 
     fn emitOp(self: *Emitter, op: Op) Error!void {
         const opcode: u16 = @intFromEnum(op);
-        try self.code.append(self.allocator, @truncate(opcode & 0xFF)); // low byte
-        try self.code.append(self.allocator, @truncate(opcode >> 8)); // high byte
+        try self.code.append(self.allocator, @truncate(opcode & 0xFF));
+        try self.code.append(self.allocator, @truncate(opcode >> 8));
     }
 
     fn emitU8(self: *Emitter, val: u8) Error!void {
