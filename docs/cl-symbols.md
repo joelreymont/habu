@@ -2,7 +2,8 @@
 
 978 external symbols in COMMON-LISP package per ANSI INCITS 226-1994.
 
-Status: ✓ implemented | ⚠ partial | ✗ missing
+Status: ✓ implemented (653, 67%) | ⚠ partial (29, 3%) | ✗ missing (278, 28%)
+Note: 960 symbols documented, 18 symbols pending audit
 
 ## Lambda List Keywords (8)
 | Symbol | Status | Location | Notes |
@@ -133,7 +134,7 @@ Status: ✓ implemented | ⚠ partial | ✗ missing
 | most-positive-single-float | ✓ | stdlib.habu:39 | Same as double |
 | multiple-values-limit | ✓ | stdlib.habu:26 | 256 |
 | nil | ✓ | value.zig | Constant |
-| pi | ✓ | arith.zig | 3.14159... |
+| pi | ✓ | stdlib.habu:14 | 3.14159... |
 | short-float-epsilon | ✓ | stdlib.habu:53 | Same as double |
 | short-float-negative-epsilon | ✓ | stdlib.habu:54 | Same as double |
 | single-float-epsilon | ✓ | stdlib.habu:45 | Same as double |

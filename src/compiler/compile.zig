@@ -7005,8 +7005,9 @@ pub const Compiler = struct {
                 const around = around_methods.items[a];
 
                 // Wrap next_method in a lambda so it can be called via %next-method%
+                const lambda_params = try self.allocator.dupe([]const u8, param_names);
                 const next_method_lambda = try self.builder.lambda(
-                    param_names,
+                    lambda_params,
                     &[_]Ir.OptionalParam{},
                     &[_]Ir.KeyParam{},
                     null,

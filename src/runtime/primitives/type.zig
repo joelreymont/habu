@@ -36,6 +36,14 @@ pub fn typep(heap: *Heap, obj: Value, type_spec: Value) !bool {
         if (sym.eq(try heap.intern("pathname"))) return obj.isPathname();
         if (sym.eq(try heap.intern("package"))) return obj.isPackage();
 
+        // Check if it's a class name (instance type check)
+        if (obj.isVector()) {
+            const vec = obj.toPtr(@import("../objects.zig").Vector);
+            if (vec.length > 0 and vec.data[0].isSymbol()) {
+                return vec.data[0].eq(type_spec);
+            }
+        }
+
         return error.UnknownTypeSpecifier;
     }
 

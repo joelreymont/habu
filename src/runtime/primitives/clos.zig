@@ -271,3 +271,11 @@ pub fn slotExistsP(heap: *Heap, args: Value) !Value {
 
     return Value.nil();
 }
+
+/// call-next-method: (call-next-method &rest args)
+/// Stub implementation - will be used for method combinations
+pub fn callNextMethod(heap: *Heap, args: Value) !Value {
+    _ = heap;
+    _ = args;
+    return error.NotImplemented;
+}
