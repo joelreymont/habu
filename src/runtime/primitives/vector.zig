@@ -177,12 +177,55 @@ pub fn adjustableArrayP(val: Value) bool {
     return val.isArray() or val.isVector();
 }
 
-/// Get array displacement info (always nil for now)
+/// Get array displacement info (returns nil and 0 for simple arrays)
+/// Returns a tuple (displaced-to, offset) as multiple values
+/// For now, all arrays are simple (not displaced), so always (nil 0)
 pub fn arrayDisplacement(val: Value) Value {
     if (val.isArray() or val.isVector()) {
         return Value.nil;
     }
     return Value.nil;
+}
+
+/// Adjust vector to new size
+/// For vectors: resizes to new-size
+/// Preserves fill-pointer and adjustable flag
+/// Initializes new elements with fill_value
+pub fn adjustArray(heap: *Heap, val: Value, new_size: u64, fill_value: Value) !Value {
+    if (!val.isVector()) return val;
+
+    const old_vec = val.toPtr(objects.Vector);
+    const old_fp = old_vec.getFillPointer();
+    const old_adj = old_vec.isAdjustable();
+
+    // Create new vector with new size
+    const new_vec = try heap.allocVector(new_size, new_size);
+    const new_obj = new_vec.toPtr(objects.Vector);
+
+    // Copy existing data
+    const copy_len = @min(old_vec.length, new_size);
+    @memcpy(new_obj.data[0..copy_len], old_vec.data[0..copy_len]);
+
+    // Fill new slots with fill_value
+    for (copy_len..new_size) |i| {
+        new_obj.data[i] = fill_value;
+    }
+
+    // Preserve fill-pointer (clamped to new size)
+    if (old_fp) |fp| {
+        new_obj.setFillPointer(@min(fp, new_size));
+    }
+
+    // Preserve adjustable flag
+    new_obj.setAdjustable(old_adj);
+
+    // Update original vector to point to new storage
+    old_vec.data = new_obj.data;
+    old_vec.length = new_obj.length;
+    old_vec.capacity = new_obj.capacity;
+    old_vec.fill_pointer = new_obj.fill_pointer;
+
+    return val;
 }
 
 /// Check if subscripts are in bounds

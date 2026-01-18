@@ -1542,6 +1542,16 @@ pub const Vm = struct {
                 try self.push(result);
             },
 
+            .vec_adjust => {
+                const fill_val = try self.pop();
+                const new_size_val = try self.pop();
+                const vec_val = try self.pop();
+                if (!new_size_val.isFixnum()) return error.TypeMismatch;
+                const new_size: u64 = @intCast(new_size_val.toFixnum());
+                const result = try primitives.vector.adjustArray(self.heap, vec_val, new_size, fill_val);
+                try self.push(result);
+            },
+
             // CLOS operations
             .slot_value => {
                 const slot_name_val = try self.pop();

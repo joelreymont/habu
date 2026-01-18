@@ -311,6 +311,7 @@ pub const Builtins = struct {
     @"%vector-push": Value,
     @"%vector-push-extend": Value,
     @"%vector-pop": Value,
+    @"%adjust-array": Value,
 
     // Primitives - String operations (CL names)
     char: Value, // CL: character at index
@@ -720,6 +721,7 @@ pub const Builtins = struct {
             .@"%vector-push" = try heap.intern("%vector-push"),
             .@"%vector-push-extend" = try heap.intern("%vector-push-extend"),
             .@"%vector-pop" = try heap.intern("%vector-pop"),
+            .@"%adjust-array" = try heap.intern("%adjust-array"),
             // Primitives - String operations (CL names)
             .char = try heap.intern("char"),
             .schar = try heap.intern("schar"),
@@ -8444,6 +8446,7 @@ pub const Compiler = struct {
         if (s == b.@"%vector-push".raw) return self.compileBinaryPrim(args, env, .vec_push);
         if (s == b.@"%vector-push-extend".raw) return self.compileTernaryPrim(args, env, .vec_push_ext);
         if (s == b.@"%vector-pop".raw) return self.compileUnaryPrim(args, env, .vec_pop);
+        if (s == b.@"%adjust-array".raw) return self.compileTernaryPrim(args, env, .vec_adjust);
 
         // Stream I/O operations
         if (s == b.@"%open".raw) {
@@ -8652,7 +8655,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream, pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version };
+    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, vec_adjust, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream, pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)

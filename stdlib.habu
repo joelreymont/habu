@@ -367,10 +367,12 @@
   (declare (ignore array))
   (values nil 0))
 
-; adjust-array - resize array (stub - returns same array)
+; adjust-array - resize array
 (defun adjust-array (array new-dimensions &rest args)
-  (declare (ignore new-dimensions args))
-  array)
+  (let ((init-elem (getf args :initial-element nil)))
+    (if (numberp new-dimensions)
+        (%adjust-array array new-dimensions init-elem)
+        array)))
 
 ; upgraded-array-element-type - actual element type used
 (defun upgraded-array-element-type (typespec &optional environment)

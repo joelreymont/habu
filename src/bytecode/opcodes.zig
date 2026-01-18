@@ -707,6 +707,10 @@ pub const Op = enum(u16) {
     /// ( x -- x )
     check_non_nil = 0xB6,
 
+    /// Adjust array size
+    /// ( vec new-size fill-val -- vec )
+    vec_adjust = 0xB7,
+
     /// Assert value is list (nil or cons), error if not
     /// ( x -- x )
     check_list = 0xA7,
@@ -1459,6 +1463,7 @@ pub const Op = enum(u16) {
             .vec_push,
             .vec_push_ext,
             .vec_pop,
+            .vec_adjust,
             => 0,
 
             // 1 byte operand
