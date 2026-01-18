@@ -3752,7 +3752,7 @@
                         min-var min-forms
                         always-forms never-forms thereis-forms
                         block-name
-                        finally-forms initially-forms)))
+                        finally-forms initially-forms))))
 
 ; Main LOOP macro
 (defmacro loop (&rest clauses)
@@ -4282,5 +4282,22 @@
 
 ;; Restart convenience functions
 
+(defun abort (&optional condition)
+  "Invoke the abort restart"
+  (invoke-restart 'abort condition))
+
+(defun continue (&optional condition)
+  "Invoke the continue restart"
+  (invoke-restart 'continue condition))
+
+(defun muffle-warning (&optional condition)
+  "Invoke the muffle-warning restart"
+  (invoke-restart 'muffle-warning condition))
+
+(defun store-value (value &optional condition)
+  "Invoke the store-value restart with value"
+  (invoke-restart 'store-value value condition))
+
+(defun use-value (value &optional condition)
   "Invoke the use-value restart with value"
   (invoke-restart 'use-value value condition))
