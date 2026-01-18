@@ -1,5 +1,18 @@
 ; Habu Standard Library
 
+; quasiquote/backquote - must be first (no dependencies)
+(defun qq-expand (x)
+  (if (not (consp x))
+      (list 'quote x)
+    (if (eq (car x) 'unquote)
+        (cadr x)
+      (if (and (consp (car x)) (eq (caar x) 'unquote-splicing))
+          (list 'append (cadar x) (qq-expand (cdr x)))
+        (list 'cons (qq-expand (car x)) (qq-expand (cdr x)))))))
+
+(defmacro quasiquote (x)
+  (qq-expand x))
+
 ; defconstant - define constant (same as defvar for now)
 (defmacro defconstant (name value &optional doc)
   (declare (ignore doc))
