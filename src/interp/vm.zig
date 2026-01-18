@@ -6200,7 +6200,7 @@ test "vm hash table" {
     // Create hash table, set key 42 to value 100, get key 42
     // Use local 0 to store ht
     const code = [_]u8{
-        0x94, 0x00, 16, 0, 1, // make_hash cap=16 type=eql
+        0xA4, 0x00, 16, 0, 1, // make_hash cap=16 type=eql
         0x11, 0x00, 0, // store_local 0
         0x10, 0x00, 0, // load_local 0
         0x02, 0x00, 42, 0, 0, 0, // push_i32 42
@@ -6209,7 +6209,7 @@ test "vm hash table" {
         0x05, 0x00, // pop
         0x10, 0x00, 0, // load_local 0
         0x02, 0x00, 42, 0, 0, 0, // push_i32 42
-        0x95, 0x00, // hash_get
+        0xA5, 0x00, // hash_get
         0x92, 0x00, // ret
     };
 
@@ -6240,7 +6240,7 @@ test "vm hash table count and remove" {
 
     // Create hash table, set 2 keys, get count
     const code = [_]u8{
-        0x94, 0x00, 16, 0, 1, // make_hash cap=16 type=eql
+        0xA4, 0x00, 16, 0, 1, // make_hash cap=16 type=eql
         0x11, 0x00, 0, // store_local 0
         0x10, 0x00, 0, // load_local 0
         0x02, 0x00, 1, 0, 0, 0, // push_i32 1
