@@ -914,14 +914,22 @@ pub const Repl = struct {
         const ir_node = self.compiler.compile(expr, &env) catch |err| {
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
-            return if (err == error.UnboundVariable) error.CompileError else error.CompileError;
+            std.debug.print("Compile error: {s}\n", .{@errorName(err)});
+            return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+                else => error.CompileError,
+            };
         };
         self.compiler.builder = saved_builder;
         self.compiler.allocator = saved_allocator;
 
         // Run pipeline passes (typecheck, erasure)
-        const final_ir = self.runPipeline(ir_node) catch {
-            return error.CompileError;
+        const final_ir = self.runPipeline(ir_node) catch |err| {
+            std.debug.print("Pipeline error: {s}\n", .{@errorName(err)});
+            return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+                else => error.CompileError,
+            };
         };
 
         // Emit bytecode (with heap for symbol interning)
@@ -1348,7 +1356,11 @@ pub const Repl = struct {
         const ir_node = self.compiler.compile(expanded_lambda, &env) catch |err| {
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
-            return if (err == error.UnboundVariable) error.CompileError else error.CompileError;
+            std.debug.print("Compile error: {s}\n", .{@errorName(err)});
+            return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+                else => error.CompileError,
+            };
         };
         self.compiler.builder = saved_builder;
         self.compiler.allocator = saved_allocator;
@@ -1541,14 +1553,22 @@ pub const Repl = struct {
         const ir_node = self.compiler.compile(expr, &env) catch |err| {
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
-            return if (err == error.UnboundVariable) error.CompileError else error.CompileError;
+            std.debug.print("Compile error: {s}\n", .{@errorName(err)});
+            return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+                else => error.CompileError,
+            };
         };
         self.compiler.builder = saved_builder;
         self.compiler.allocator = saved_allocator;
 
         // Run pipeline passes (typecheck, erasure)
-        const final_ir = self.runPipeline(ir_node) catch {
-            return error.CompileError;
+        const final_ir = self.runPipeline(ir_node) catch |err| {
+            std.debug.print("Pipeline error: {s}\n", .{@errorName(err)});
+            return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+                else => error.CompileError,
+            };
         };
 
         // Emit bytecode
