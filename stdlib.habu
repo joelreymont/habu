@@ -1833,20 +1833,24 @@
             (temps nil))
         ; Collect places, values, and generate temps
         (let ((rest pairs))
-          (loop while rest do
-                (let ((place (car rest))
-                      (value (cadr rest))
-                      (temp (gensym "TEMP")))
-                  (push place places)
-                  (push (list temp value) temps)
-                  (push temp values)
-                  (setq rest (cddr rest)))))
+          (while rest
+            (let ((place (car rest))
+                  (value (cadr rest))
+                  (temp (gensym "TEMP")))
+              (push place places)
+              (push (list temp value) temps)
+              (push temp values)
+              (setq rest (cddr rest)))))
         ; Generate let with all temps, then setf all places
-        (list 'let (nreverse temps)
-              (cons 'progn
-                    (mapcar (lambda (p v) (list 'setf p v))
-                            (nreverse places)
-                            (nreverse values)))))))
+        (let ((setf-forms nil)
+              (pl (nreverse places))
+              (vl (nreverse values)))
+          (while pl
+            (push (list 'setf (car pl) (car vl)) setf-forms)
+            (setq pl (cdr pl))
+            (setq vl (cdr vl)))
+          (list 'let (nreverse temps)
+                (cons 'progn (nreverse setf-forms)))))))
 
 ; rotatef - rotate values through places
 ; (rotatef a b c) => a gets old b, b gets old c, c gets old a
