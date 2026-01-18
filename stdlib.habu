@@ -3262,7 +3262,7 @@
                               loop-code
                               (cons 'progn (append finally-forms
                                                    (list (list 'return-from block-name result-expr)))))
-                      (list 'progn loop-code result-expr))))))))
+                      (list 'progn loop-code (list 'return-from block-name result-expr))))))))
 
 
 ; loop-finish - exit loop normally, running finally clause
