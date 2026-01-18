@@ -2408,9 +2408,9 @@ pub const Compiler = struct {
             var counter: u32 = 0;
         };
         static.counter += 1;
-        std.debug.print("compileLambdaCore #{d}\n", .{static.counter});
+        // std.debug.print("compileLambdaCore #{d}\n", .{static.counter});
         if (!args.isCons()) {
-            std.debug.print("compileLambdaCore: args is not cons\n", .{});
+            // std.debug.print("compileLambdaCore: args is not cons\n", .{});
             return error.InvalidLambda;
         }
 
@@ -2693,7 +2693,7 @@ pub const Compiler = struct {
 
         const result = self.builder.lambda(params.items, opt_params, kp_params, rest_param, captures, body_ir) catch
             return error.OutOfMemory;
-        std.debug.print("compileLambdaCore #{d} SUCCESS\n", .{static.counter});
+        // std.debug.print("compileLambdaCore #{d} SUCCESS\n", .{static.counter});
         return result;
     }
 
@@ -4746,7 +4746,7 @@ pub const Compiler = struct {
 
         if (!cons1.cdr.isCons()) return error.InvalidSyntax;
         const cons2 = cons1.cdr.toPtr(Cons);
-        std.debug.print("  Compiling value for define: {s}\n", .{name});
+        // std.debug.print("  Compiling value for define: {s}\n", .{name});
         const value_ir = try self.compile(cons2.car, env);
 
         return try self.builder.define(name, idx, value_ir);

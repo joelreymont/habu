@@ -775,7 +775,10 @@ pub const Repl = struct {
         }
 
         // Expand macros before compilation
-        expr = self.expandMacros(expr) catch return error.CompileError;
+        expr = self.expandMacros(expr) catch |err| {
+            std.debug.print("expandMacros error: {}\n", .{err});
+            return error.CompileError;
+        };
 
         // Desugar (let* → let, cond → if, etc.)
         expr = try self.desugarExpr(expr);
@@ -896,7 +899,10 @@ pub const Repl = struct {
         }
 
         // Expand macros before compilation
-        expr = self.expandMacros(expr) catch return error.CompileError;
+        expr = self.expandMacros(expr) catch |err| {
+            std.debug.print("expandMacros error: {}\n", .{err});
+            return error.CompileError;
+        };
 
         // Desugar (let* → let, cond → if, etc.)
         expr = try self.desugarExpr(expr);
@@ -1216,7 +1222,11 @@ pub const Repl = struct {
 
             if (end > start) {
                 const expr = content[start..end];
-                _ = try self.eval(expr);
+                _ = self.eval(expr) catch |err| {
+                    try writer.print("Error evaluating expression at position {d}: {s}\n", .{ start, @errorName(err) });
+                    try writer.print("Expression: {s}\n", .{expr[0..@min(100, expr.len)]});
+                    return err;
+                };
                 pos = end;
             } else {
                 break;
@@ -1341,8 +1351,10 @@ pub const Repl = struct {
         const lambda_sym = try self.heap.intern("lambda");
         const lambda_expr = try self.heap.allocCons(lambda_sym, transformed_rest2);
 
-        // Expand nested macros in the lambda body before compilation
-        const expanded_lambda = self.expandMacros(lambda_expr) catch return error.CompileError;
+        // Don't expand macros in defmacro body - they'll be expanded when the macro is called
+        // Expanding here can cause issues with forward references and recursive macros
+        // const expanded_lambda = self.expandMacros(lambda_expr) catch return error.CompileError;
+        const expanded_lambda = lambda_expr;
 
         // Compile and evaluate the lambda to get a closure
         const saved_builder = self.compiler.builder;
@@ -1692,7 +1704,10 @@ pub const Repl = struct {
 
             if (self.macros.get(name)) |macro_closure| {
                 // Expand macro: call the closure with the args
-                const expansion = try self.callMacro(macro_closure, cons.cdr);
+                const expansion = self.callMacro(macro_closure, cons.cdr) catch |err| {
+                    std.debug.print("Error expanding macro '{s}': {}\n", .{ name, err });
+                    return err;
+                };
                 // Recursively expand the result
                 return self.expandMacros(expansion);
             }
@@ -1810,7 +1825,8 @@ pub const Repl = struct {
         macro_vm.setChunkPool(chunk_ptrs.items);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        const result = macro_vm.run(chunk_ptr) catch {
+        const result = macro_vm.run(chunk_ptr) catch |err| {
+            std.debug.print("macro_vm.run error: {}\n", .{err});
             return error.RuntimeError;
         };
         return result;
