@@ -67,6 +67,30 @@ pub fn warn(heap: *Heap, args: []const Value) !Value {
     return Value.nil;
 }
 
+/// simple-condition-format-control: Get format-control slot from condition
+/// (simple-condition-format-control condition)
+pub fn simpleConditionFormatControl(_: *Heap, args: []const Value) !Value {
+    if (args.len < 1) return error.InvalidSyntax;
+    const cond = args[0];
+
+    if (!cond.isCondition()) return error.TypeError;
+
+    const condition = cond.toPtr(runtime.Condition);
+    return condition.format_control;
+}
+
+/// simple-condition-format-arguments: Get format-arguments slot from condition
+/// (simple-condition-format-arguments condition)
+pub fn simpleConditionFormatArguments(_: *Heap, args: []const Value) !Value {
+    if (args.len < 1) return error.InvalidSyntax;
+    const cond = args[0];
+
+    if (!cond.isCondition()) return error.TypeError;
+
+    const condition = cond.toPtr(runtime.Condition);
+    return condition.format_args;
+}
+
 /// invoke-restart: Invoke named restart with arguments
 /// (invoke-restart restart-name &rest arguments)
 pub fn invokeRestart(heap: *Heap, args: []const Value) !Value {

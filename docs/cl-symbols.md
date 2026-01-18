@@ -930,8 +930,8 @@ Note: 960 symbols documented, 18 symbols pending audit
 | print-not-readable-object | ✗ | - | |
 | restart-name | ✗ | - | |
 | signal | ✓ | compile.zig:105 | Signal condition |
-| simple-condition-format-arguments | ✗ | - | |
-| simple-condition-format-control | ✗ | - | |
+| simple-condition-format-arguments | ✓ | condition.zig:93 | Get format-arguments slot |
+| simple-condition-format-control | ✓ | condition.zig:81 | Get format-control slot |
 | store-value | ✓ | stdlib.habu:489 | Standard restart |
 | type-error-datum | ✗ | - | |
 | type-error-expected-type | ✗ | - | |
