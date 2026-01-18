@@ -41,6 +41,7 @@ pub const slotValue = clos.slotValue;
 pub const setSlotValue = clos.setSlotValue;
 pub const classOf = clos.classOf;
 pub const slotExistsP = clos.slotExistsP;
+pub const callNextMethod = clos.callNextMethod;
 
 pub const typep = ty.typep;
 pub const subtypep = ty.subtypep;
