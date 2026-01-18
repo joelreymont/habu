@@ -1509,6 +1509,39 @@ pub const Vm = struct {
                 try self.push(Value.makeFixnum(@intCast(vec.length)));
             },
 
+            .vec_fill_ptr => {
+                const vec_val = try self.pop();
+                if (!vec_val.isVector()) return error.TypeMismatch;
+                const fp = primitives.vector.fillPointer(vec_val);
+                if (fp) |p| {
+                    try self.push(Value.makeFixnum(p));
+                } else {
+                    try self.push(Value.nil);
+                }
+            },
+
+            .vec_push => {
+                const elem = try self.pop();
+                const vec_val = try self.pop();
+                const result = primitives.vector.vectorPush(vec_val, elem);
+                try self.push(Value.makeFixnum(result));
+            },
+
+            .vec_push_ext => {
+                const ext = try self.pop();
+                const elem = try self.pop();
+                const vec_val = try self.pop();
+                if (!ext.isFixnum()) return error.TypeMismatch;
+                const result = try primitives.vector.vectorPushExtend(self.heap, vec_val, elem, @intCast(ext.toFixnum()));
+                try self.push(Value.makeFixnum(result));
+            },
+
+            .vec_pop => {
+                const vec_val = try self.pop();
+                const result = primitives.vector.vectorPop(vec_val);
+                try self.push(result);
+            },
+
             // CLOS operations
             .slot_value => {
                 const slot_name_val = try self.pop();

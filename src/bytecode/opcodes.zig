@@ -361,33 +361,49 @@ pub const Op = enum(u16) {
     /// ( v0 v1 ... vN-1 -- vec )
     make_vec_n = 0x69,
 
+    /// Get fill pointer
+    /// ( vec -- fp|nil )
+    vec_fill_ptr = 0x6A,
+
+    /// Vector push
+    /// ( vec val -- idx|-1 )
+    vec_push = 0x6B,
+
+    /// Vector push extend
+    /// ( vec val ext -- idx )
+    vec_push_ext = 0x6C,
+
+    /// Vector pop
+    /// ( vec -- val )
+    vec_pop = 0x6D,
+
     // ========================================================================
     // String operations
     // ========================================================================
 
     /// String ref
     /// ( str idx -- char )
-    str_ref = 0x6A,
+    str_ref = 0x70,
 
     /// String length
     /// ( str -- len )
-    str_len = 0x6B,
+    str_len = 0x71,
 
     /// String set
     /// ( str idx char -- str )
-    str_set = 0x6C,
+    str_set = 0x72,
 
     /// String concat
     /// ( s1 s2 -- s3 )
-    str_concat = 0x6D,
+    str_concat = 0x73,
 
     /// Intern - create symbol from string
     /// ( str -- sym )
-    intern = 0x6E,
+    intern = 0x74,
 
     /// Substring - extract part of a string
     /// ( str start end -- substr )
-    substring = 0x6F,
+    substring = 0x75,
 
     /// Symbol name - get name of symbol as string
     /// ( sym -- str )
@@ -401,23 +417,23 @@ pub const Op = enum(u16) {
 
     /// String equal
     /// ( s1 s2 -- bool )
-    str_eq = 0x70,
+    str_eq = 0x76,
 
     /// String less than
     /// ( s1 s2 -- bool )
-    str_lt = 0x08,
+    str_lt = 0x77,
 
     /// String greater than
     /// ( s1 s2 -- bool )
-    str_gt = 0x09,
+    str_gt = 0x78,
 
     /// String less than or equal
     /// ( s1 s2 -- bool )
-    str_le = 0x0A,
+    str_le = 0x79,
 
     /// String greater than or equal
     /// ( s1 s2 -- bool )
-    str_ge = 0x0B,
+    str_ge = 0x7A,
 
     // ========================================================================
     // Control flow
@@ -425,15 +441,15 @@ pub const Op = enum(u16) {
 
     /// Unconditional jump (operand: i16 offset)
     /// ( -- )
-    jmp = 0x71,
+    jmp = 0x80,
 
     /// Jump if nil (operand: i16 offset)
     /// ( val -- )
-    jmp_nil = 0x72,
+    jmp_nil = 0x81,
 
     /// Jump if not nil (operand: i16 offset)
     /// ( val -- )
-    jmp_not_nil = 0x73,
+    jmp_not_nil = 0x82,
 
     // ========================================================================
     // Function calls
@@ -441,23 +457,23 @@ pub const Op = enum(u16) {
 
     /// Call function (operand: u8 argc)
     /// ( fn arg1 ... argN -- result )
-    call = 0x80,
+    call = 0x90,
 
     /// Tail call (operand: u8 argc)
     /// ( fn arg1 ... argN -- result )
-    tail_call = 0x81,
+    tail_call = 0x91,
 
     /// Return from function
     /// ( result -- )
-    ret = 0x82,
+    ret = 0x92,
 
     /// Make closure (operand: u16 code index, u8 num_captures)
     /// ( cap1 ... capN -- closure )
-    make_closure = 0x83,
+    make_closure = 0x93,
 
     /// Apply function to list of args
     /// ( fn args-list -- result )
-    apply = 0x84,
+    apply = 0x94,
 
     // ========================================================================
     // I/O
@@ -469,11 +485,11 @@ pub const Op = enum(u16) {
 
     /// Print value
     /// ( val -- val )
-    print = 0x90,
+    print = 0xA0,
 
     /// Random number [0, n)
     /// ( n -- rand )
-    random = 0x91,
+    random = 0xA1,
 
     /// Open file stream (operand: u8 direction: 0=input, 1=output)
     /// ( pathname -- stream )
@@ -549,12 +565,12 @@ pub const Op = enum(u16) {
 
     /// Get type of value as symbol
     /// ( x -- type-sym )
-    type_of = 0x92,
+    type_of = 0xA2,
 
     /// Format string with arguments (operand: u8 argc)
     /// ( dest control-str arg1 ... argN -- result )
     /// dest=nil: return string, dest=t: print and return nil
-    format = 0x93,
+    format = 0xA3,
 
     // ========================================================================
     // Hash table operations
@@ -562,12 +578,12 @@ pub const Op = enum(u16) {
 
     /// Create hash table (operand: u16 initial capacity)
     /// ( -- hashtable )
-    make_hash = 0x94,
+    make_hash = 0xA4,
 
     /// Get value from hash table
     /// ( hashtable key -- value )
     /// Returns nil if key not found
-    hash_get = 0x95,
+    hash_get = 0xA5,
 
     /// Compute hash code for object
     /// ( object -- fixnum )
@@ -665,31 +681,31 @@ pub const Op = enum(u16) {
 
     /// Assert value is fixnum, error if not
     /// ( x -- x )
-    check_fixnum = 0xA0,
+    check_fixnum = 0xB0,
 
     /// Assert value is cons, error if not
     /// ( x -- x )
-    check_cons = 0xA1,
+    check_cons = 0xB1,
 
     /// Assert value is symbol, error if not
     /// ( x -- x )
-    check_symbol = 0xA2,
+    check_symbol = 0xB2,
 
     /// Assert value is string, error if not
     /// ( x -- x )
-    check_string = 0xA3,
+    check_string = 0xB3,
 
     /// Assert value is vector, error if not
     /// ( x -- x )
-    check_vector = 0xA4,
+    check_vector = 0xB4,
 
     /// Assert value is closure, error if not
     /// ( x -- x )
-    check_closure = 0xA5,
+    check_closure = 0xB5,
 
     /// Assert value is non-nil, error if nil
     /// ( x -- x )
-    check_non_nil = 0xA6,
+    check_non_nil = 0xB6,
 
     /// Assert value is list (nil or cons), error if not
     /// ( x -- x )
@@ -776,31 +792,31 @@ pub const Op = enum(u16) {
 
     /// Square root
     /// ( n -- float )
-    sqrt = 0x74,
+    sqrt = 0xC0,
 
     /// Sine
     /// ( n -- float )
-    sin = 0x75,
+    sin = 0xC1,
 
     /// Cosine
     /// ( n -- float )
-    cos = 0x76,
+    cos = 0xC2,
 
     /// Tangent
     /// ( n -- float )
-    tan = 0x77,
+    tan = 0xC3,
 
     /// Exponential (e^x)
     /// ( n -- float )
-    exp = 0x78,
+    exp = 0xC4,
 
     /// Natural logarithm
     /// ( n -- float )
-    log = 0x79,
+    log = 0xC5,
 
     /// Floor (round toward negative infinity)
     /// ( n -- fixnum )
-    floor = 0x7A,
+    floor = 0xC6,
 
     /// Ceiling (round toward positive infinity)
     /// ( n -- fixnum )
@@ -1005,28 +1021,28 @@ pub const Op = enum(u16) {
     /// Push catch frame (operand: i16 offset to catch handler)
     /// Pops tag from stack, saves state for unwinding
     /// ( tag -- )
-    push_catch = 0xB0,
+    push_catch = 0x1F0,
 
     /// Pop catch frame on normal exit
     /// ( -- )
-    pop_catch = 0xB1,
+    pop_catch = 0x1F1,
 
     /// Throw to matching catch (tag on stack, value on stack)
     /// ( tag value -- )
-    throw = 0xB2,
+    throw = 0x1F2,
 
     /// Push unwind-protect frame (operand: i16 offset to cleanup code)
     /// ( -- )
-    push_unwind = 0xB3,
+    push_unwind = 0x1F3,
 
     /// Pop unwind-protect frame on normal exit, jump to cleanup
     /// (operand: i16 offset past cleanup)
     /// ( -- )
-    pop_unwind = 0xB4,
+    pop_unwind = 0x1F4,
 
     /// Check if value is a float
     /// ( x -- t/nil )
-    floatp = 0xB5,
+    floatp = 0x1F5,
 
     // ========================================================================
     // Restart handling
@@ -1035,19 +1051,19 @@ pub const Op = enum(u16) {
     /// Push restart frame (operand: u16 handler offset)
     /// Stack contains restart name
     /// ( name -- )
-    push_restart = 0xB6,
+    push_restart = 0x1F6,
 
     /// Pop N restart frames on normal exit (operand: u8 count)
     /// ( -- )
-    pop_restarts = 0xB7,
+    pop_restarts = 0x1F7,
 
     /// Invoke restart by name - unwinds to restart handler
     /// ( name value -- ) value becomes result of restart-case
-    invoke_restart = 0xB8,
+    invoke_restart = 0x1F8,
 
     /// Find restart by name (for find-restart)
     /// ( name -- t/nil )
-    find_restart = 0xB9,
+    find_restart = 0x1F9,
 
     /// Push progv frame (symbols list and values list on stack)
     /// ( symbols values -- )
@@ -1079,11 +1095,11 @@ pub const Op = enum(u16) {
 
     /// Check if stream is an input stream
     /// ( stream -- t/nil )
-    input_stream_p = 0xC0,
+    input_stream_p = 0x1FA,
 
     /// Check if stream is an output stream
     /// ( stream -- t/nil )
-    output_stream_p = 0xC1,
+    output_stream_p = 0x1FB,
 
     // ========================================================================
     // Multiple values
@@ -1092,7 +1108,7 @@ pub const Op = enum(u16) {
     /// Return multiple values (operand: u8 count)
     /// Pops count values, pushes first, stores rest in secondary values
     /// ( v1 v2 ... vN -- v1 )
-    values = 0xC2,
+    values = 0x1FC,
 
     /// Bind multiple values to locals (operand: u8 count)
     /// Takes primary value from stack, secondaries from buffer

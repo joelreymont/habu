@@ -728,6 +728,10 @@ pub const Emitter = struct {
             .vec_ref => |op| try self.emitBinaryOp(op, .vec_ref),
             .vec_set => |v| try self.emitVecSet(v),
             .vec_len => |op| try self.emitUnaryOp(op.operand, .vec_len),
+            .vec_fill_ptr => |op| try self.emitUnaryOp(op.operand, .vec_fill_ptr),
+            .vec_push => |op| try self.emitBinaryOp(op, .vec_push),
+            .vec_push_ext => |op| try self.emitTernaryOp(op, .vec_push_ext),
+            .vec_pop => |op| try self.emitUnaryOp(op.operand, .vec_pop),
 
             // Array operations
             .arr_new => |a| try self.emitArrNew(a),

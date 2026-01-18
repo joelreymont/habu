@@ -574,6 +574,10 @@ pub const Ir = union(enum) {
         value: *const Ir,
     },
     vec_len: UnaryOp,
+    vec_fill_ptr: UnaryOp,
+    vec_push: BinaryOp,
+    vec_push_ext: TernaryOp,
+    vec_pop: UnaryOp,
 
     // Array operations (multi-dimensional)
     arr_new: struct {
@@ -847,6 +851,10 @@ pub const Ir = union(enum) {
             .vec_ref,
             .vec_set,
             .vec_len,
+            .vec_fill_ptr,
+            .vec_push,
+            .vec_push_ext,
+            .vec_pop,
             .arr_new,
             .arr_ref,
             .arr_set,

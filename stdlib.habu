@@ -377,25 +377,22 @@
   (declare (ignore typespec environment))
   't)
 
-; fill-pointer - get fill pointer (stub - no fill pointers)
+; fill-pointer - get fill pointer
 (defun fill-pointer (vector)
-  (declare (ignore vector))
-  nil)
+  (let ((fp (%fill-pointer vector)))
+    (if fp fp (error "Vector has no fill pointer"))))
 
-; vector-push - push onto fill pointer vector (stub)
+; vector-push - push onto fill pointer vector
 (defun vector-push (new-element vector)
-  (declare (ignore new-element vector))
-  nil)
+  (%vector-push vector new-element))
 
-; vector-push-extend - push with extension (stub)
-(defun vector-push-extend (new-element vector &optional extension)
-  (declare (ignore new-element vector extension))
-  nil)
+; vector-push-extend - push with extension
+(defun vector-push-extend (new-element vector &optional (extension 0))
+  (%vector-push-extend vector new-element extension))
 
-; vector-pop - pop from fill pointer vector (stub)
+; vector-pop - pop from fill pointer vector
 (defun vector-pop (vector)
-  (declare (ignore vector))
-  nil)
+  (%vector-pop vector))
 
 ;;; Bit vector operations (stubs - no bit vectors yet)
 
@@ -2981,10 +2978,9 @@
   (declare (ignore x))
   nil)
 
-; array-has-fill-pointer-p - no fill pointers yet
+; array-has-fill-pointer-p - check if array has fill pointer
 (defun array-has-fill-pointer-p (x)
-  (declare (ignore x))
-  nil)
+  (if (%fill-pointer x) t nil))
 
 ; packagep - no packages yet
 (defun packagep (x)
