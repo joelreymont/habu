@@ -1991,6 +1991,12 @@ pub const Compiler = struct {
             return try self.builder.lit(expr);
         }
 
+        // Closure - can appear as macro expansion result
+        // Treat as literal (will be used by funcall at runtime)
+        if (expr.isClosure()) {
+            return try self.builder.lit(expr);
+        }
+
         std.debug.print("Invalid syntax: typeKind={}, raw=0x{x}\n", .{ expr.typeKind(), expr.raw });
         return error.InvalidSyntax;
     }
