@@ -2741,9 +2741,9 @@
   (declare (ignore stream eof-error-p eof-value))
   (let ((chars nil)
         (c (read-char)))
-    (loop while (and c (char/= c #\Newline))
-          do (push c chars)
-             (setq c (read-char nil nil nil)))
+    (while (and c (char/= c #\Newline))
+      (push c chars)
+      (setq c (read-char nil nil nil)))
     (if chars
         (coerce (nreverse chars) 'string)
         "")))
@@ -2893,9 +2893,9 @@
 ; mapl - like maplist but for side effects
 (defun mapl (fn list &rest more-lists)
   (let ((lists (cons list more-lists)))
-    (loop while (notany #'null lists)
-          do (apply fn lists)
-             (setq lists (mapcar #'cdr lists))))
+    (while (notany #'null lists)
+      (apply fn lists)
+      (setq lists (mapcar #'cdr lists))))
   list)
 
 ;; ============================================================

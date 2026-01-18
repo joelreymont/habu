@@ -741,10 +741,15 @@
           (assoc key (cdr alist)))))
 
 ; list* - like list but last arg is tail
-(defun list* (&rest args)
+; list* - creates improper list with last arg as tail
+; (list* 1 2 3 '(4 5)) => (1 2 3 4 5)
+; (list* 1 2 3) => (1 2 . 3)
+(defun list*-aux (args)
   (if (null (cdr args))
       (car args)
-      (cons (car args) (apply list* (cdr args)))))
+      (cons (car args) (list*-aux (cdr args)))))
+(defun list* (&rest args)
+  (list*-aux args))
 
 ; Zip two lists
 (defun zip (xs ys)
@@ -1382,33 +1387,31 @@
 ; etypecase - error-signaling typecase
 (defmacro etypecase (keyform &rest clauses)
   (let ((key (gensym "KEY")))
-    (list 'let (list (list key keyform))
-          (cons 'cond
-                (append
-                 (mapcar (lambda (clause)
-                           (let ((type-spec (car clause))
-                                 (body (cdr clause)))
-                             (cons (list 'typep key (list 'quote type-spec))
-                                   body)))
-                         clauses)
-                 (list (list t (list 'error "No matching type in etypecase"))))))))
+    `(let ((,key ,keyform))
+       (cond
+         ,@(mapcar (lambda (clause)
+                     (let ((type-spec (car clause))
+                           (body (cdr clause)))
+                       `((typep ,key ',type-spec)
+                         ,@body)))
+                   clauses)
+         (t (error "No matching type in etypecase"))))))
 
 ; ecase - error-signaling case
 (defmacro ecase (keyform &rest clauses)
   (let ((key (gensym "KEY")))
-    (list 'let (list (list key keyform))
-          (cons 'cond
-                (append
-                 (mapcar (lambda (clause)
-                           (let ((keys (car clause))
-                                 (body (cdr clause)))
-                             (if (listp keys)
-                                 (cons (cons 'member (list key (list 'quote keys)))
-                                       body)
-                                 (cons (list 'eql key (list 'quote keys))
-                                       body))))
-                         clauses)
-                 (list (list t (list 'error "No matching key in ecase"))))))))
+    `(let ((,key ,keyform))
+       (cond
+         ,@(mapcar (lambda (clause)
+                     (let ((keys (car clause))
+                           (body (cdr clause)))
+                       (if (listp keys)
+                           `((member ,key ',keys)
+                             ,@body)
+                           `((eql ,key ',keys)
+                             ,@body))))
+                   clauses)
+         (t (error "No matching key in ecase"))))))
 
 ; ccase - correctable ecase (for now, same as ecase)
 (defmacro ccase (keyform &rest clauses)
@@ -2703,8 +2706,8 @@
 ; check-type - verify type of place
 (defmacro check-type (place typespec &optional string)
   (declare (ignore string))
-  (list 'unless (list 'typep place (list 'quote typespec))
-        (list 'error "Type check failed")))
+  `(unless (typep ,place ',typespec)
+     (error "Type check failed")))
 
 ; ecase - exhaustive case (already defined above)
 

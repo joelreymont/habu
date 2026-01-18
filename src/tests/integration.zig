@@ -1726,7 +1726,7 @@ test "stdlib compiles" {
     // Read stdlib file
     const file = try std.fs.cwd().openFile("lib/stdlib.habu", .{});
     defer file.close();
-    const stdlib = try file.readToEndAlloc(allocator, 64 * 1024);
+    const stdlib = try file.readToEndAlloc(allocator, 256 * 1024);
     defer allocator.free(stdlib);
 
     // Use evalFileContent to evaluate the whole file (handles multiple expressions)

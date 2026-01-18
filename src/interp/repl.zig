@@ -63,6 +63,7 @@ pub const ReplError = error{
     RuntimeError,
     IoError,
     OutOfMemory,
+    MacroExpansionTooDeep,
 };
 
 /// REPL configuration
@@ -1663,6 +1664,12 @@ pub const Repl = struct {
 
     /// Expand macros in an expression (recursive)
     fn expandMacros(self: *Repl, expr: Value) ReplError!Value {
+        return self.expandMacrosWithDepth(expr, 0);
+    }
+
+    fn expandMacrosWithDepth(self: *Repl, expr: Value, depth: u32) ReplError!Value {
+        if (depth > 1000) return error.MacroExpansionTooDeep;
+
         // Non-list: no expansion
         if (!expr.isCons()) return expr;
 
@@ -1689,7 +1696,7 @@ pub const Repl = struct {
                 const result = self.handleEvalWhen(expr, arena_alloc) catch return error.CompileError;
                 // If eval-when returned a progn (has :execute), expand it too
                 if (!result.isNil()) {
-                    return self.expandMacros(result);
+                    return self.expandMacrosWithDepth(result, depth + 1);
                 }
                 // Only :compile-toplevel - return nil
                 return Value.nil;
@@ -1704,18 +1711,19 @@ pub const Repl = struct {
 
             if (self.macros.get(name)) |macro_closure| {
                 // Expand macro: call the closure with the args
+                // std.debug.print("Expanding macro: {s}\n", .{name});
                 const expansion = self.callMacro(macro_closure, cons.cdr) catch |err| {
                     std.debug.print("Error expanding macro '{s}': {}\n", .{ name, err });
                     return err;
                 };
                 // Recursively expand the result
-                return self.expandMacros(expansion);
+                return self.expandMacrosWithDepth(expansion, depth + 1);
             }
         }
 
         // Recursively expand in subexpressions
-        const expanded_car = try self.expandMacros(cons.car);
-        const expanded_cdr = try self.expandMacroList(cons.cdr);
+        const expanded_car = try self.expandMacrosWithDepth(cons.car, depth + 1);
+        const expanded_cdr = try self.expandMacroListWithDepth(cons.cdr, depth + 1);
 
         // Rebuild cons if changed
         if (expanded_car.raw != cons.car.raw or expanded_cdr.raw != cons.cdr.raw) {
@@ -1726,11 +1734,16 @@ pub const Repl = struct {
 
     /// Expand macros in a list (for cdr of cons)
     fn expandMacroList(self: *Repl, list: Value) ReplError!Value {
+        return self.expandMacroListWithDepth(list, 0);
+    }
+
+    fn expandMacroListWithDepth(self: *Repl, list: Value, depth: u32) ReplError!Value {
+        if (depth > 1000) return error.MacroExpansionTooDeep;
         if (!list.isCons()) return list;
 
         const cons = list.toPtr(Cons);
-        const expanded_car = try self.expandMacros(cons.car);
-        const expanded_cdr = try self.expandMacroList(cons.cdr);
+        const expanded_car = try self.expandMacrosWithDepth(cons.car, depth + 1);
+        const expanded_cdr = try self.expandMacroListWithDepth(cons.cdr, depth + 1);
 
         if (expanded_car.raw != cons.car.raw or expanded_cdr.raw != cons.cdr.raw) {
             return try self.heap.allocCons(expanded_car, expanded_cdr);
