@@ -5615,8 +5615,10 @@ pub const Vm = struct {
 
     fn readOp(self: *Vm) Op {
         const code = self.chunk.getCode();
-        const opcode = code[self.ip];
-        self.ip += 1;
+        const low: u16 = code[self.ip];
+        const high: u16 = code[self.ip + 1];
+        self.ip += 2;
+        const opcode = low | (high << 8);
         return @enumFromInt(opcode);
     }
 
@@ -6028,9 +6030,9 @@ test "vm push and return" {
     var vm = try Vm.init(allocator, &heap);
 
     const code = [_]u8{
-        0x02, // push_i32
+        0x02, 0x00, // push_i32
         42, 0, 0, 0, // i32 value: 42
-        0x92, // ret
+        0x92, 0x00, // ret
     };
 
     const chunk = Chunk{
@@ -6095,11 +6097,11 @@ test "vm cons car cdr" {
 
     // (car (cons 1 2)) = 1
     const code = [_]u8{
-        0x02, 1, 0, 0, 0, // push_i32 1
-        0x02, 2, 0, 0, 0, // push_i32 2
-        0x40, // cons
-        0x41, // car
-        0x92, // ret
+        0x02, 0x00, 1, 0, 0, 0, // push_i32 1
+        0x02, 0x00, 2, 0, 0, 0, // push_i32 2
+        0x40, 0x00, // cons
+        0x41, 0x00, // car
+        0x92, 0x00, // ret
     };
 
     const chunk = Chunk{
@@ -6130,11 +6132,11 @@ test "vm conditional" {
     // (if nil 1 2) = 2
     const code = [_]u8{
         0x00, 0x00, // push_nil
-        0x72, 0x00, 10, 0, // jmp_nil 10
+        0x81, 0x00, 10, 0, // jmp_nil 10
         0x02, 0x00, 1, 0, 0, 0, // push_i32 1
-        0x71, 0x00, 6, 0, // jmp 6
+        0x80, 0x00, 6, 0, // jmp 6
         0x02, 0x00, 2, 0, 0, 0, // push_i32 2
-        0x82, 0x00, // ret
+        0x92, 0x00, // ret
     };
 
     const chunk = Chunk{
@@ -6164,10 +6166,10 @@ test "vm locals" {
 
     // Store 42 in local 0, load it back
     const code = [_]u8{
-        0x02, 42, 0, 0, 0, // push_i32 42
-        0x11, 0, // store_local 0
-        0x10, 0, // load_local 0
-        0x92, // ret
+        0x02, 0x00, 42, 0, 0, 0, // push_i32 42
+        0x11, 0x00, 0, // store_local 0
+        0x10, 0x00, 0, // load_local 0
+        0x92, 0x00, // ret
     };
 
     const chunk = Chunk{
@@ -6208,7 +6210,7 @@ test "vm hash table" {
         0x10, 0x00, 0, // load_local 0
         0x02, 0x00, 42, 0, 0, 0, // push_i32 42
         0x95, 0x00, // hash_get
-        0x82, 0x00, // ret
+        0x92, 0x00, // ret
     };
 
     const chunk = Chunk{
@@ -6252,7 +6254,7 @@ test "vm hash table count and remove" {
         0x05, 0x00, // pop
         0x10, 0x00, 0, // load_local 0
         0x98, 0x00, // hash_count
-        0x82, 0x00, // ret
+        0x92, 0x00, // ret
     };
 
     const chunk = Chunk{
