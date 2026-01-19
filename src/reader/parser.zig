@@ -9,6 +9,7 @@ const TokenKind = @import("lexer.zig").TokenKind;
 const runtime = @import("../runtime/runtime.zig");
 const Value = runtime.Value;
 const Heap = runtime.Heap;
+const Cons = runtime.Cons;
 const objects = @import("../runtime/objects.zig");
 const primitives = @import("../runtime/primitives/primitives.zig");
 const builtins_mod = @import("../runtime/builtins.zig");
@@ -1009,6 +1010,37 @@ test "parse binary number" {
     defer parser3.deinit();
     const val3 = try parser3.parse();
     try testing.expectEqual(@as(i64, 0), val3.toFixnum());
+}
+
+test "parse 21 parameter lambda" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    var parser = Parser.init(testing.allocator, &heap, "(lambda (a b c d e f g h i j k l m n o p q r s t u) u)", &vm.builtins);
+    defer parser.deinit();
+
+    const val = try parser.parse();
+    try testing.expect(val.isCons());
+
+    const cons1 = val.toPtr(Cons);
+    const params = cons1.cdr.toPtr(Cons).car;
+
+    var param_list = params;
+    var count: u32 = 0;
+    while (param_list.isCons()) {
+        const param_cons = param_list.toPtr(Cons);
+        const param_item = param_cons.car;
+        count += 1;
+        if (!param_item.isSymbol()) {
+            return error.TestExpectedSymbol;
+        }
+        param_list = param_cons.cdr;
+    }
+
+    try testing.expectEqual(@as(u32, 21), count);
 }
 
 test "parse #S struct" {

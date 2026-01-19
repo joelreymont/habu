@@ -2735,7 +2735,6 @@ pub const Compiler = struct {
 
         const result = self.builder.lambda(params.items, opt_params, kp_params, rest_param, captures, body_ir) catch
             return error.OutOfMemory;
-        // std.debug.print("compileLambdaCore #{d} SUCCESS\n", .{static.counter});
         return result;
     }
 
