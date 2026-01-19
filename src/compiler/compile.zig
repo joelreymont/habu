@@ -2326,6 +2326,9 @@ pub const Compiler = struct {
             chunk_ptrs[i] = cv.toPtr(Chunk);
         }
 
+        // Share global env with macro VM so it can see defuns
+        vm.setGlobalEnv(&self.globals);
+
         // Set chunk pool and run
         vm.setChunkPool(chunk_ptrs);
         const chunk_ptr = chunk_val.toPtr(Chunk);

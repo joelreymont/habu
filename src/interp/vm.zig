@@ -5179,6 +5179,7 @@ pub const Vm = struct {
         const fn_val = self.stack[self.sp - argc - 1];
 
         if (!fn_val.isClosure()) {
+            std.debug.print("doCall: fn_val is not a closure! type={}, argc={}\n", .{ fn_val.typeKind(), argc });
             return error.TypeMismatch;
         }
 
@@ -5228,6 +5229,7 @@ pub const Vm = struct {
         } else {
             // Fixed: need exact arity
             if (argc != arity) {
+                std.debug.print("doCall: arity mismatch! argc={}, arity={}, opt={}, key={}, rest={}\n", .{ argc, arity, opt_count, key_count, callee_chunk.has_rest });
                 return error.TypeMismatch;
             }
         }

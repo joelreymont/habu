@@ -1,5 +1,19 @@
 ; Habu Standard Library
 
+; Core list utilities - must be early (needed by macros)
+(defun map (f lst)
+  (if (null lst)
+      nil
+      (cons (funcall f (car lst)) (map f (cdr lst)))))
+
+(defun mapcar (f lst) (map f lst))
+
+(defun mapcar2 (f lst1 lst2)
+  (if (or (null lst1) (null lst2))
+      nil
+    (cons (funcall f (car lst1) (car lst2))
+          (mapcar2 f (cdr lst1) (cdr lst2)))))
+
 ; quasiquote/backquote - must be first (no dependencies)
 (defun qq-expand (x)
   (if (not (consp x))
@@ -596,22 +610,6 @@
 (defun reverse (lst)
   (reverse-aux lst nil))
 
-; Map (applies f to each element)
-(defun map (f lst)
-  (if (null lst)
-      nil
-      (cons (funcall f (car lst)) (map f (cdr lst)))))
-
-; CL-compatible mapcar alias
-(defun mapcar (f lst) (map f lst))
-
-; mapcar2 - mapcar over two lists in parallel
-(defun mapcar2 (f lst1 lst2)
-  (if (or (null lst1) (null lst2))
-      nil
-    (cons (funcall f (car lst1) (car lst2))
-          (mapcar2 f (cdr lst1) (cdr lst2)))))
-
 ; Mapc - like map but for side effects, returns nil
 (defun mapc (f lst)
   (if (null lst)
@@ -859,46 +857,67 @@
 (defmacro psetq (&rest pairs)
   (if (null pairs)
       nil
-    (let* ((collected (psetq-collect pairs nil nil nil))
-           (vars (car collected))
-           (vals (cadr collected))
-           (tmps (caddr collected)))
-      ; generate: (let ((tmp1 val1) ...) (setq var1 tmp1) ... nil)
-      (list 'let (mapcar2 (lambda (tmp val) (list tmp val)) tmps vals)
-            (cons 'progn
-                  (append (mapcar2 (lambda (var tmp) (list 'setq var tmp)) vars tmps)
-                          (list nil)))))))
+    (labels ((zip-tv (ts vs)
+               (if (null ts) nil (cons (list (car ts) (car vs)) (zip-tv (cdr ts) (cdr vs)))))
+             (zip-vt (vs ts)
+               (if (null vs) nil (cons (list 'setq (car vs) (car ts)) (zip-vt (cdr vs) (cdr ts))))))
+      (let* ((collected (psetq-collect pairs nil nil nil))
+             (vars (car collected))
+             (vals (cadr collected))
+             (tmps (caddr collected)))
+        ; generate: (let ((tmp1 val1) ...) (setq var1 tmp1) ... nil)
+        (list 'let (zip-tv tmps vals)
+              (cons 'progn
+                    (append (zip-vt vars tmps)
+                            (list nil))))))))
 
 ; do - general iteration macro (parallel binding)
 ; (do ((var init step) ...) (end-test result...) body...)
 ; Uses while instead of loop to avoid forward reference
 (defmacro do (bindings end-clause &rest body)
-  (let ((vars (mapcar #'car bindings))
-        (inits (mapcar #'cadr bindings))
-        (steps (mapcar (lambda (b) (if (cddr b) (caddr b) (car b))) bindings))
-        (end-test (car end-clause))
-        (result (cdr end-clause)))
-    (list 'block nil
-          (list 'let (mapcar2 (lambda (v i) (list v i)) vars inits)
-                (list 'while (list 'not end-test)
-                      (cons 'progn body)
-                      (list* 'psetq (flatten1 (mapcar2 (lambda (v s) (list v s)) vars steps))))
-                (cons 'progn (if result result (list nil)))))))
+  (labels ((extract-var (b) (car b))
+           (extract-init (b) (cadr b))
+           (extract-step (b) (if (cddr b) (caddr b) (car b)))
+           (map-vars (bs) (if (null bs) nil (cons (extract-var (car bs)) (map-vars (cdr bs)))))
+           (map-inits (bs) (if (null bs) nil (cons (extract-init (car bs)) (map-inits (cdr bs)))))
+           (map-steps (bs) (if (null bs) nil (cons (extract-step (car bs)) (map-steps (cdr bs)))))
+           (zip-vi (vs is) (if (null vs) nil (cons (list (car vs) (car is)) (zip-vi (cdr vs) (cdr is)))))
+           (zip-vs (vs ss) (if (null vs) nil (cons (list (car vs) (car ss)) (zip-vs (cdr vs) (cdr ss))))))
+    (let ((vars (map-vars bindings))
+          (inits (map-inits bindings))
+          (steps (map-steps bindings))
+          (end-test (car end-clause))
+          (result (cdr end-clause)))
+      (list 'block nil
+            (list 'let (zip-vi vars inits)
+                  (list 'while (list 'not end-test)
+                        (cons 'progn body)
+                        (list* 'psetq (flatten1 (zip-vs vars steps))))
+                  (cons 'progn (if result result (list nil))))))))
 
 ; do* - general iteration macro (sequential binding)
 ; (do* ((var init step) ...) (end-test result...) body...)
 (defmacro do* (bindings end-clause &rest body)
-  (let ((vars (mapcar #'car bindings))
-        (inits (mapcar #'cadr bindings))
-        (steps (mapcar (lambda (b) (if (cddr b) (caddr b) (car b))) bindings))
-        (end-test (car end-clause))
-        (result (cdr end-clause)))
-    (list 'block nil
-          (list 'let* (mapcar2 (lambda (v i) (list v i)) vars inits)
-                (list 'while (list 'not end-test)
-                      (cons 'progn body)
-                      (cons 'progn (mapcar2 (lambda (v s) (list 'setq v s)) vars steps)))
-                (cons 'progn (if result result (list nil)))))))
+  (labels ((extract-var (b) (car b))
+           (extract-init (b) (cadr b))
+           (extract-step (b) (if (cddr b) (caddr b) (car b)))
+           (map-vars (bs) (if (null bs) nil (cons (extract-var (car bs)) (map-vars (cdr bs)))))
+           (map-inits (bs) (if (null bs) nil (cons (extract-init (car bs)) (map-inits (cdr bs)))))
+           (map-steps (bs) (if (null bs) nil (cons (extract-step (car bs)) (map-steps (cdr bs)))))
+           (zip-vi (vs is) (if (null vs) nil (cons (list (car vs) (car is)) (zip-vi (cdr vs) (cdr is)))))
+           (setq-pair (v s) (list 'setq v s))
+           (map-setqs (vs ss) (if (null vs) nil (cons (setq-pair (car vs) (car ss)) (map-setqs (cdr vs) (cdr ss))))))
+    (let ((vars (map-vars bindings))
+          (inits (map-inits bindings))
+          (steps (map-steps bindings))
+          (end-test (car end-clause))
+          (result (cdr end-clause)))
+      (list 'block nil
+            (list 'let* (zip-vi vars inits)
+                  (list 'while (list 'not end-test)
+                        (cons 'progn body)
+                        (cons 'progn (map-setqs vars steps)))
+                  (cons 'progn (if result result (list nil))))))))
 
 ; setf - generalized assignment
 ; Handles: symbols, (car x), (cdr x), (svref v i), (aref a i), (gethash k h)
@@ -1002,16 +1021,20 @@
 ; So we check (eq keys t) not (eq keys 't)
 (defmacro case (keyform &rest clauses)
   (let ((key (gensym)))
-    `(let ((,key ,keyform))
-       (cond
-         ,@(mapcar (lambda (clause)
-                     (let ((keys (car clause))
-                           (body (cdr clause)))
-                       (if (or (eq keys t) (eq keys 'otherwise))
-                           (cons t body)
-                           `((member ,key ',(if (consp keys) keys (list keys)))
-                             (progn ,@body)))))
-                   clauses)))))
+    (labels ((map-clause (clause)
+               (let ((keys (car clause))
+                     (body (cdr clause)))
+                 (if (or (eq keys t) (eq keys 'otherwise))
+                     (cons t body)
+                     `((member ,key ',(if (consp keys) keys (list keys)))
+                       (progn ,@body)))))
+             (map-clauses (lst)
+               (if (null lst)
+                   nil
+                   (cons (map-clause (car lst))
+                         (map-clauses (cdr lst))))))
+      `(let ((,key ,keyform))
+         (cond ,@(map-clauses clauses))))))
 
 ; prog1 - evaluate forms, return first value
 ; prog2 - evaluate forms, return second value

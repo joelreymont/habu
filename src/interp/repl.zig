@@ -866,130 +866,10 @@ pub const Repl = struct {
 
     /// Evaluate a string, return the result
     pub fn eval(self: *Repl, source: []const u8) !Value {
-        // Use arena for IR nodes to simplify cleanup
-        var arena = std.heap.ArenaAllocator.init(self.allocator);
-        defer arena.deinit();
-        const arena_alloc = arena.allocator();
-
-        // Parse
-        var parser = Parser.init(arena_alloc, self.heap, source, &self.vm.builtins);
-        defer parser.deinit();
-
-        var expr = parser.parse() catch return error.ParseError;
-
-        // Check for defmacro
-        if (self.isDefmacro(expr)) {
-            return self.handleDefmacro(expr, arena_alloc);
-        }
-
-        // Check for defpackage/in-package - these need to execute immediately
-        if (self.isDefpackage(expr) or self.isInPackage(expr)) {
-            return self.evalPackageForm(expr, arena_alloc) catch |err| {
-                return switch (err) {
-                    error.OutOfMemory => error.OutOfMemory,
-                    else => error.CompileError,
-                };
-            };
-        }
-
-        // Check for eval-when - compile-time evaluation
-        if (self.isEvalWhen(expr)) {
-            const result = self.handleEvalWhen(expr, arena_alloc) catch return error.CompileError;
-            if (result.isNil()) return Value.nil;
-            expr = result;
-        }
-
-        // Expand macros before compilation
-        expr = self.expandMacros(expr) catch |err| {
-            std.debug.print("expandMacros error: {}\n", .{err});
-            return error.CompileError;
-        };
-
-        // Desugar (let* → let, cond → if, etc.)
-        expr = try self.desugarExpr(expr);
-
-        // Compile - use persistent compiler for globals, but temp builder/allocator
-        // Save and restore since they use arena allocator
-        const saved_builder = self.compiler.builder;
-        const saved_allocator = self.compiler.allocator;
-        self.compiler.builder = IrBuilder.init(arena_alloc);
-        self.compiler.allocator = arena_alloc;
-
-        var env = Env.init(arena_alloc, null);
-        defer env.deinit();
-
-        const ir_node = self.compiler.compile(expr, &env) catch |err| {
-            self.compiler.builder = saved_builder;
-            self.compiler.allocator = saved_allocator;
-            std.debug.print("Compile error: {s}\n", .{@errorName(err)});
-            return switch (err) {
-                error.OutOfMemory => error.OutOfMemory,
-                else => error.CompileError,
-            };
-        };
-        self.compiler.builder = saved_builder;
-        self.compiler.allocator = saved_allocator;
-
-        // Run pipeline passes (typecheck, erasure)
-        const final_ir = self.runPipeline(ir_node) catch |err| {
-            std.debug.print("Pipeline error: {s}\n", .{@errorName(err)});
-            return switch (err) {
-                error.OutOfMemory => error.OutOfMemory,
-                else => error.CompileError,
-            };
-        };
-
-        // Emit bytecode (with heap for symbol interning)
-        var emitter = Emitter.initWithHeap(self.allocator, self.heap);
-
-        emitter.emit(final_ir) catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
-        const chunk = emitter.finalize() catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
-        const child_chunks = emitter.getChildChunks() catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
-        defer self.allocator.free(child_chunks);
-        emitter.deinit();
-
-        // Record base index before adding child chunks
-        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
-
-        // Patch child chunks to use absolute indices
-        for (child_chunks) |c| {
-            patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
-        }
-
-        // Patch main chunk too
-        patchChunkIndices(chunk.toPtr(runtime.objects.Chunk), chunk_base);
-
-        // Add child chunks to persistent storage
-        for (child_chunks) |c| {
-            try self.persistent_chunks.append(self.allocator, c);
-        }
-
-        // Optionally show disassembly (skip for now - needs bytecode Chunk type)
-        // if (self.config.show_disasm) {
-        //     ...
-        // }
-
-        // Set chunk pool with base offset
-        var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
-        defer chunk_ptrs.deinit(self.allocator);
-        for (self.persistent_chunks.items) |chunk_val| {
-            chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
-        }
-        self.vm.setChunkPool(chunk_ptrs.items);
-
-        const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        return self.vm.run(chunk_ptr) catch return error.RuntimeError;
+        return self.evalWithVm(source, &self.vm);
     }
 
+    /// Evaluate with a specific VM instance
     /// Print a value in Lisp notation
     pub fn printValue(self: *Repl, val: Value, writer: anytype) anyerror!void {
         const io = runtime.primitives.io;
@@ -1711,6 +1591,7 @@ pub const Repl = struct {
 
             if (self.macros.get(name)) |macro_closure| {
                 // Expand macro: call the closure with the args
+                std.debug.print("Expanding macro: {s} (depth={})\n", .{ name, depth });
                 const expansion = self.callMacro(macro_closure, cons.cdr) catch |err| {
                     std.debug.print("Error expanding macro '{s}': {}\n", .{ name, err });
                     return err;
@@ -1752,6 +1633,10 @@ pub const Repl = struct {
 
     /// Call a macro closure with arguments (as a list)
     fn callMacro(self: *Repl, closure: Value, args: Value) ReplError!Value {
+        if (!closure.isClosure()) {
+            std.debug.print("callMacro: closure is not a closure! type={}\n", .{closure.typeKind()});
+            return error.RuntimeError;
+        }
         // Count args
         var argc: usize = 0;
         var arg_list = args;
@@ -1814,7 +1699,8 @@ pub const Repl = struct {
 
         // Copy globals from current context (nested VM if loading, main VM otherwise)
         const source_vm = self.current_vm orelse &self.vm;
-        for (source_vm.globals, 0..) |g, i| {
+        std.debug.print("callMacro: source_vm.num_globals={}, self.vm.num_globals={}\n", .{ source_vm.num_globals, self.vm.num_globals });
+        for (source_vm.globals[0..source_vm.num_globals], 0..) |g, i| {
             macro_vm.globals[i] = g;
         }
         macro_vm.num_globals = source_vm.num_globals;
@@ -1828,7 +1714,10 @@ pub const Repl = struct {
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         const result = macro_vm.run(chunk_ptr) catch |err| {
-            std.debug.print("macro_vm.run error: {}\n", .{err});
+            std.debug.print("macro_vm.run error: {} at ip={}\n", .{ err, macro_vm.ip });
+            if (macro_vm.sp > 0) {
+                std.debug.print("  top of stack: type={}\n", .{macro_vm.stack[macro_vm.sp - 1].typeKind()});
+            }
             return error.RuntimeError;
         };
         return result;
