@@ -578,9 +578,8 @@ pub const Parser = struct {
 
     /// Intern a symbol (same name = same Value)
     fn internSymbol(self: *Parser, name: []const u8) Error!Value {
-        // Check for nil and t before interning
+        // Check for nil before interning
         if (std.mem.eql(u8, name, "nil")) return Value.nil;
-        if (std.mem.eql(u8, name, "t")) return Value.t;
         return try self.heap.intern(name);
     }
 

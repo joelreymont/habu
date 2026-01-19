@@ -1954,6 +1954,11 @@ pub const Compiler = struct {
             const sym = expr.toPtr(Symbol);
             const name = sym.getName();
 
+            // t is self-evaluating
+            if (std.mem.eql(u8, name, "t")) {
+                return try self.builder.lit(expr);
+            }
+
             if (env.lookup(name)) |binding| {
                 const var_ir = self.builder.variable(name, binding.depth, binding.index) catch
                     return error.OutOfMemory;

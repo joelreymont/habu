@@ -1711,7 +1711,6 @@ pub const Repl = struct {
 
             if (self.macros.get(name)) |macro_closure| {
                 // Expand macro: call the closure with the args
-                // std.debug.print("Expanding macro: {s}\n", .{name});
                 const expansion = self.callMacro(macro_closure, cons.cdr) catch |err| {
                     std.debug.print("Error expanding macro '{s}': {}\n", .{ name, err });
                     return err;
@@ -1753,9 +1752,6 @@ pub const Repl = struct {
 
     /// Call a macro closure with arguments (as a list)
     fn callMacro(self: *Repl, closure: Value, args: Value) ReplError!Value {
-        // Build the function call: we need to apply the closure to the args
-        // The args should NOT be evaluated - they're passed as-is (like quote)
-
         // Count args
         var argc: usize = 0;
         var arg_list = args;
@@ -1764,23 +1760,20 @@ pub const Repl = struct {
             arg_list = arg_list.toPtr(Cons).cdr;
         }
 
-        // Push closure and args onto VM stack, then call
-        // We'll generate bytecode to do this
+        // Build bytecode to call closure with args
         var code_buf: [256]u8 = undefined;
         var code_len: usize = 0;
 
-        // push_const for closure (we'll add it as constant 0)
+        // push_const for closure (const 0)
         std.mem.writeInt(u16, code_buf[code_len..][0..2], @intFromEnum(Op.push_const), .little);
         code_len += 2;
         std.mem.writeInt(u16, code_buf[code_len..][0..2], 0, .little);
         code_len += 2;
 
-        // Push each arg as a constant (quoted values)
+        // push each arg as constant
         var const_idx: u16 = 1;
         arg_list = args;
         while (arg_list.isCons()) {
-            const arg_cons = arg_list.toPtr(Cons);
-            _ = arg_cons; // We'll add the constant later
             std.mem.writeInt(u16, code_buf[code_len..][0..2], @intFromEnum(Op.push_const), .little);
             code_len += 2;
             std.mem.writeInt(u16, code_buf[code_len..][0..2], const_idx, .little);
@@ -1789,30 +1782,26 @@ pub const Repl = struct {
             arg_list = arg_list.toPtr(Cons).cdr;
         }
 
-        // call instruction
+        // call
         std.mem.writeInt(u16, code_buf[code_len..][0..2], @intFromEnum(Op.call), .little);
         code_len += 2;
         code_buf[code_len] = @intCast(argc);
         code_len += 1;
 
-        // ret to return the result
+        // ret
         std.mem.writeInt(u16, code_buf[code_len..][0..2], @intFromEnum(Op.ret), .little);
         code_len += 2;
 
-        // Build constants array
+        // Build constants: [0]=closure, [1..]=args
         var constants = std.ArrayList(Value){};
         defer constants.deinit(self.allocator);
         try constants.append(self.allocator, closure);
         arg_list = args;
         while (arg_list.isCons()) {
-            const arg_cons = arg_list.toPtr(Cons);
-            try constants.append(self.allocator, arg_cons.car);
-            arg_list = arg_cons.cdr;
+            try constants.append(self.allocator, arg_list.toPtr(Cons).car);
+            arg_list = arg_list.toPtr(Cons).cdr;
         }
 
-        // Create a chunk on the heap
-        var emitter = Emitter.initWithHeap(self.allocator, self.heap);
-        defer emitter.deinit();
         const chunk = try self.heap.allocChunk(code_buf[0..code_len], constants.items, 0, 0, 0, false, 0);
 
         // Use a separate VM to avoid corrupting the current VM state
@@ -1820,7 +1809,7 @@ pub const Repl = struct {
         macro_vm.setGlobalEnv(&self.compiler.globals);
         macro_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         macro_vm.setEvalCallback(&evalCallback, @ptrCast(self));
-        macro_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
+        // NOTE: macroexpandCallback NOT set to prevent infinite expansion loops
         macro_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
 
         // Copy globals from current context (nested VM if loading, main VM otherwise)
