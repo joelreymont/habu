@@ -485,6 +485,10 @@ pub const Repl = struct {
             try self.persistent_chunks.append(self.allocator, child_chunk);
         }
 
+        // Patch main chunk to use absolute chunk indices
+        const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
+        patchChunkIndices(chunk_ptr, chunk_base);
+
         // Set chunk pool and run with base offset
         var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
         defer chunk_ptrs.deinit(self.allocator);
@@ -493,7 +497,6 @@ pub const Repl = struct {
         }
         vm.setChunkPool(chunk_ptrs.items);
 
-        const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         const result = vm.run(chunk_ptr) catch {
             return error.RuntimeError;
         };
