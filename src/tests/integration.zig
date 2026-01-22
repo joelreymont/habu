@@ -1811,3 +1811,92 @@ test "method dispatch - all qualifiers" {
     const primary = try heap.intern("primary-result");
     try testing.expect(result.eq(primary));
 }
+
+test "call-next-method - with explicit args" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass base () ())");
+    _ = try repl.eval("(defclass derived (base) ())");
+
+    _ = try repl.eval("(defgeneric process (x y))");
+    _ = try repl.eval("(defmethod process ((x base) y) (list 'base y))");
+    _ = try repl.eval("(defmethod process :around ((x derived) y) (call-next-method x (* y 2)))");
+
+    _ = try repl.eval("(setf obj (make-instance 'derived))");
+
+    // Around method passes modified args to next method
+    const result = try repl.eval("(process obj 5)");
+
+    // Should return (base 10) since around doubles the second arg
+    const base_sym = try heap.intern("base");
+    const result_cons = result.toPtr(runtime.Cons);
+    try testing.expect(result_cons.car.eq(base_sym));
+    try testing.expect(result_cons.cdr.toPtr(runtime.Cons).car.eq(Value.makeFixnum(10)));
+}
+
+test "next-method-p - returns t when next exists" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass base () ())");
+    _ = try repl.eval("(defclass derived (base) ())");
+
+    _ = try repl.eval("(defgeneric check-next (x))");
+    _ = try repl.eval("(defmethod check-next ((x base)) 'base-method)");
+    _ = try repl.eval("(defmethod check-next ((x derived)) (next-method-p))");
+
+    _ = try repl.eval("(setf obj (make-instance 'derived))");
+
+    const result = try repl.eval("(check-next obj)");
+    try testing.expect(result.eq(Value.t));
+}
+
+test "next-method-p - returns nil when no next" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass thing () ())");
+    _ = try repl.eval("(defgeneric check-next (x))");
+    _ = try repl.eval("(defmethod check-next ((x thing)) (next-method-p))");
+
+    _ = try repl.eval("(setf obj (make-instance 'thing))");
+
+    const result = try repl.eval("(check-next obj)");
+    try testing.expect(result.isNil());
+}
+
+test "call-next-method - no next method error" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass thing () ())");
+    _ = try repl.eval("(defgeneric do-thing (x))");
+    _ = try repl.eval("(defmethod do-thing ((x thing)) (call-next-method))");
+
+    _ = try repl.eval("(setf obj (make-instance 'thing))");
+
+    // Should error: no next method available
+    const err = repl.eval("(do-thing obj)");
+    try testing.expectError(error.UserError, err);
+}

@@ -22,21 +22,6 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(exe);
 
-    // Debug flet executable
-    const debug_flet = b.addExecutable(.{
-        .name = "debug_flet",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/debug_flet.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-    debug_flet.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
-    debug_flet.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
-    debug_flet.root_module.linkSystemLibrary("z3", .{});
-    debug_flet.root_module.linkSystemLibrary("c", .{});
-    b.installArtifact(debug_flet);
-
     // Run command
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());

@@ -7022,7 +7022,16 @@ pub const Compiler = struct {
             }
         }
 
-        return try self.builder.call(next_method_ir, try arg_irs.toOwnedSlice(self.allocator));
+        const call_ir = try self.builder.call(next_method_ir, try arg_irs.toOwnedSlice(self.allocator));
+
+        // Check if %next-method% is nil before calling
+        // (if %next-method% (call %next-method% args...) (error "no-next-method"))
+        const next_method_check_ir = try self.builder.globalRef(nm_name, nm_global_idx);
+        const msg_val = try self.heap.?.allocString("no-next-method");
+        const msg_ir = try self.builder.lit(msg_val);
+        const err_ir = try self.builder.errorUser(msg_ir);
+
+        return try self.builder.ifExpr(next_method_check_ir, call_ir, err_ir);
     }
 
     /// Compile next-method-p: returns t if call-next-method would succeed, nil otherwise
