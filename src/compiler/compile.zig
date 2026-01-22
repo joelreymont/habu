@@ -7025,13 +7025,36 @@ pub const Compiler = struct {
         const call_ir = try self.builder.call(next_method_ir, try arg_irs.toOwnedSlice(self.allocator));
 
         // Check if %next-method% is nil before calling
-        // (if %next-method% (call %next-method% args...) (error "no-next-method"))
+        // (if %next-method% (call %next-method% args...) (no-next-method gf method args...))
         const next_method_check_ir = try self.builder.globalRef(nm_name, nm_global_idx);
-        const msg_val = try self.heap.?.allocString("no-next-method");
-        const msg_ir = try self.builder.lit(msg_val);
-        const err_ir = try self.builder.errorUser(msg_ir);
 
-        return try self.builder.ifExpr(next_method_check_ir, call_ir, err_ir);
+        // Call (no-next-method gf method args...)
+        const no_next_fn_idx = self.globals.lookup("no-next-method") orelse
+            try self.globals.define("no-next-method");
+        const no_next_fn = try self.builder.globalRef("no-next-method", no_next_fn_idx);
+
+        // Build args: gf=nil, method=nil, original args
+        var no_next_args = std.ArrayList(*Ir){};
+        defer no_next_args.deinit(self.allocator);
+        try no_next_args.append(self.allocator, try self.builder.lit(Value.nil));
+        try no_next_args.append(self.allocator, try self.builder.lit(Value.nil));
+
+        // Add original method args
+        if (self.method_params) |params| {
+            for (params, 0..) |param_name, idx| {
+                if (env.lookup(param_name)) |binding| {
+                    const var_ir = try self.builder.variable(param_name, binding.depth, binding.index);
+                    try no_next_args.append(self.allocator, var_ir);
+                } else {
+                    const var_ir = try self.builder.variable(param_name, 0, @intCast(idx));
+                    try no_next_args.append(self.allocator, var_ir);
+                }
+            }
+        }
+
+        const no_next_call = try self.builder.call(no_next_fn, try no_next_args.toOwnedSlice(self.allocator));
+
+        return try self.builder.ifExpr(next_method_check_ir, call_ir, no_next_call);
     }
 
     /// Compile next-method-p: returns t if call-next-method would succeed, nil otherwise
