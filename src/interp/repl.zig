@@ -898,7 +898,13 @@ pub const Repl = struct {
                 }
             },
             .cons => try self.printList(val, writer),
-            .symbol => try writer.writeAll(val.toPtr(Symbol).getName()),
+            .symbol => {
+                if (val.isUnbound()) {
+                    try writer.writeAll("#<unbound>");
+                } else {
+                    try writer.writeAll(val.toPtr(Symbol).getName());
+                }
+            },
             .string => try writer.print("\"{s}\"", .{val.toPtr(String).bytes()}),
             .string32 => {
                 // Convert UTF-32 to UTF-8 for output
@@ -1608,9 +1614,7 @@ pub const Repl = struct {
 
             if (self.macros.get(name)) |macro_closure| {
                 // Expand macro: call the closure with the args
-                std.debug.print("Expanding macro: {s} (depth={})\n", .{ name, depth });
                 const expansion = self.callMacro(macro_closure, cons.cdr) catch |err| {
-                    std.debug.print("Error expanding macro '{s}': {}\n", .{ name, err });
                     return err;
                 };
                 // Recursively expand the result
@@ -1716,7 +1720,6 @@ pub const Repl = struct {
 
         // Copy globals from current context (nested VM if loading, main VM otherwise)
         const source_vm = self.current_vm orelse &self.vm;
-        std.debug.print("callMacro: source_vm.num_globals={}, self.vm.num_globals={}\n", .{ source_vm.num_globals, self.vm.num_globals });
         for (source_vm.globals[0..source_vm.num_globals], 0..) |g, i| {
             macro_vm.globals[i] = g;
         }
@@ -1730,14 +1733,7 @@ pub const Repl = struct {
         macro_vm.setChunkPool(chunk_ptrs.items);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        const result = macro_vm.run(chunk_ptr) catch |err| {
-            std.debug.print("macro_vm.run error: {} at ip={}\n", .{ err, macro_vm.ip });
-            if (macro_vm.sp > 0) {
-                std.debug.print("  top of stack: type={}\n", .{macro_vm.stack[macro_vm.sp - 1].typeKind()});
-            }
-            return error.RuntimeError;
-        };
-        return result;
+        return macro_vm.run(chunk_ptr) catch return error.RuntimeError;
     }
 
     /// Handle package forms (defpackage/in-package) - execute them immediately

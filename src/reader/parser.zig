@@ -1085,7 +1085,7 @@ test "parse 21 parameter lambda" {
         const param_cons = param_list.toPtr(Cons);
         const param_item = param_cons.car;
         count += 1;
-        if (!param_item.isSymbol()) {
+        if (!param_item.isSymbolLike()) {
             return error.TestExpectedSymbol;
         }
         param_list = param_cons.cdr;

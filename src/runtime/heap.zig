@@ -88,6 +88,10 @@ pub const Package = struct {
     }
 
     pub fn intern(self: *Package, heap: *Heap, name: []const u8) error{OutOfMemory}!Value {
+        // Magic symbols: t and nil
+        if (std.mem.eql(u8, name, "t")) return Value.t;
+        if (std.mem.eql(u8, name, "nil")) return Value.nil;
+
         // Check own symbols first
         if (self.symbols.get(name)) |existing| {
             return existing;
@@ -172,6 +176,10 @@ pub const Heap = struct {
     lisp_packages: Value,
     /// Lisp-level class registry (hash table: name -> Class Value)
     lisp_classes: Value,
+    /// Metaclass instances (chicken-egg bootstrap)
+    standard_class: Value,
+    built_in_class: Value,
+    structure_class: Value,
     /// Class metadata for CLOS slot-value lookup
     /// Maps class name to slot names array
     class_metadata: std.StringHashMapUnmanaged([]const []const u8),
@@ -233,6 +241,9 @@ pub const Heap = struct {
             .keyword_package = null,
             .lisp_packages = Value.nil,
             .lisp_classes = Value.nil,
+            .standard_class = Value.nil,
+            .built_in_class = Value.nil,
+            .structure_class = Value.nil,
             .class_metadata = .{},
             .readtable = .{},
             .dispatch_readtable = .{},
@@ -242,6 +253,44 @@ pub const Heap = struct {
         heap.lisp_packages = try heap.allocHashTable(16, .eql);
         // Create Lisp class registry
         heap.lisp_classes = try heap.allocHashTable(16, .eql);
+
+        // Bootstrap metaclasses (chicken-egg: class-of(standard-class) = standard-class)
+        // Step 1: Create standard-class with nil metaclass temporarily
+        const std_class_name = try heap.intern("standard-class");
+        const std_class_ptr = try heap.alloc(objects.Class);
+        std_class_ptr.* = .{
+            .kind = .class,
+            .name = std_class_name,
+            .direct_supers = Value.nil,
+            .cpl = Value.nil,
+            .direct_slots = Value.nil,
+            .slots = Value.nil,
+            .metaclass = Value.nil,
+            .num_shared = 0,
+            .shared_slots = undefined,
+        };
+        heap.standard_class = Value.makeClass(std_class_ptr);
+
+        // Step 2: Set standard-class's metaclass to itself
+        std_class_ptr.metaclass = heap.standard_class;
+
+        // Step 3: Set CPL = (standard-class)
+        const std_cpl = try heap.allocCons(heap.standard_class, Value.nil);
+        std_class_ptr.cpl = std_cpl;
+
+        // Step 4: Create other metaclasses with standard-class as metaclass
+        heap.built_in_class = try heap.allocMetaclass("built-in-class", heap.standard_class);
+        heap.structure_class = try heap.allocMetaclass("structure-class", heap.standard_class);
+
+        // Register metaclasses in class registry
+        try heap.putLispClass(std_class_name, heap.standard_class);
+        const bic_name = heap.built_in_class.toPtr(objects.Class).name;
+        try heap.putLispClass(bic_name, heap.built_in_class);
+        const struct_class_name = heap.structure_class.toPtr(objects.Class).name;
+        try heap.putLispClass(struct_class_name, heap.structure_class);
+
+        // Create built-in classes for primitive types
+        try heap.createBuiltInClasses();
 
         // Create COMMON-LISP package (holds primitives, all symbols exported)
         heap.cl_package = Package.init(allocator, "COMMON-LISP") catch return error.OutOfMemory;
@@ -1047,6 +1096,10 @@ pub const Heap = struct {
     /// Returns existing symbol if already interned, otherwise creates new one
     /// Uses current package if available, otherwise legacy global table
     pub fn intern(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
+        // Magic symbols: t and nil
+        if (std.mem.eql(u8, name, "t")) return Value.t;
+        if (std.mem.eql(u8, name, "nil")) return Value.nil;
+
         // Use current package if available
         if (self.current_package) |pkg| {
             return pkg.intern(self, name);
@@ -1215,6 +1268,17 @@ pub const Heap = struct {
             all_roots.append(self.backing_allocator, self.lisp_classes) catch return error.OutOfMemory;
         }
 
+        // Add metaclass roots
+        if (self.standard_class.raw != Value.nil.raw) {
+            all_roots.append(self.backing_allocator, self.standard_class) catch return error.OutOfMemory;
+        }
+        if (self.built_in_class.raw != Value.nil.raw) {
+            all_roots.append(self.backing_allocator, self.built_in_class) catch return error.OutOfMemory;
+        }
+        if (self.structure_class.raw != Value.nil.raw) {
+            all_roots.append(self.backing_allocator, self.structure_class) catch return error.OutOfMemory;
+        }
+
         // Run GC
         var gc = GC.init(self.backing_allocator, self);
         defer gc.deinit();
@@ -1303,6 +1367,21 @@ pub const Heap = struct {
         }
         if (self.lisp_classes.raw != Value.nil.raw) {
             self.lisp_classes = all_roots.items[idx];
+            idx += 1;
+        }
+
+        // Update metaclass roots
+        if (self.standard_class.raw != Value.nil.raw) {
+            self.standard_class = all_roots.items[idx];
+            idx += 1;
+        }
+        if (self.built_in_class.raw != Value.nil.raw) {
+            self.built_in_class = all_roots.items[idx];
+            idx += 1;
+        }
+        if (self.structure_class.raw != Value.nil.raw) {
+            self.structure_class = all_roots.items[idx];
+            idx += 1;
         }
 
         const after = self.bytesUsed();
@@ -1322,6 +1401,75 @@ pub const Heap = struct {
 
         // Try again
         return self.alloc(T);
+    }
+
+    /// Bootstrap metaclass: chicken-egg solution where class-of(Class) = Class itself
+    pub fn allocMetaclass(self: *Heap, name: []const u8, metaclass: Value) !Value {
+        const name_sym = try self.intern(name);
+
+        const class_ptr = try self.alloc(objects.Class);
+        class_ptr.* = .{
+            .kind = .class,
+            .name = name_sym,
+            .direct_supers = Value.nil,
+            .cpl = Value.nil,
+            .direct_slots = Value.nil,
+            .slots = Value.nil,
+            .num_shared = 0,
+            .shared_slots = undefined,
+            .metaclass = metaclass,
+        };
+        const class_val = Value.makeClass(class_ptr);
+
+        // Metacircular: CPL = (standard-class) for standard-class
+        const cpl_cons = try self.allocCons(class_val, Value.nil);
+        class_ptr.cpl = cpl_cons;
+
+        return class_val;
+    }
+
+    /// Create built-in classes for primitive types (fixnum, cons, symbol, string, vector, etc.)
+    fn createBuiltInClasses(self: *Heap) !void {
+        const type_names = [_][]const u8{
+            "fixnum",
+            "cons",
+            "symbol",
+            "string",
+            "vector",
+            "keyword",
+            "closure",
+            "hash-table",
+            "class",
+            "generic-function",
+            "method",
+            "slot-definition",
+        };
+
+        for (type_names) |name| {
+            const name_sym = try self.intern(name);
+            const class_ptr = try self.alloc(objects.Class);
+            class_ptr.* = .{
+                .kind = .class,
+                .name = name_sym,
+                .direct_supers = Value.nil,
+                .cpl = Value.nil,
+                .direct_slots = Value.nil,
+                .slots = Value.nil,
+                .metaclass = self.built_in_class,
+                .num_shared = 0,
+                .shared_slots = undefined,
+            };
+            const class_val = Value.makeClass(class_ptr);
+
+            // CPL = (type built-in-class t)
+            const t_sym = Value.t;
+            const bic_cpl_tail = try self.allocCons(self.built_in_class, try self.allocCons(t_sym, Value.nil));
+            const cpl = try self.allocCons(class_val, bic_cpl_tail);
+            class_ptr.cpl = cpl;
+
+            // Register in class registry
+            try self.putLispClass(name_sym, class_val);
+        }
     }
 };
 

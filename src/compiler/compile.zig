@@ -134,11 +134,18 @@ pub const Builtins = struct {
     defclass: Value,
     @"make-instance": Value,
     @"slot-value": Value,
+    @"class-of": Value,
     defgeneric: Value,
     defmethod: Value,
     @"call-next-method": Value,
     @"next-method-p": Value,
     @"define-method-combination": Value,
+    @"method-qualifiers": Value,
+    @"method-specializers": Value,
+    @"method-function": Value,
+    @"generic-function-methods": Value,
+    @"generic-function-lambda-list": Value,
+    @"generic-function-name": Value,
     // Method qualifier keywords
     kw_before: Value,
     kw_after: Value,
@@ -293,6 +300,7 @@ pub const Builtins = struct {
     @"%aset": Value, // internal: (setf (aref ...)) expands to this
     @"%set-slot-value": Value, // internal: (setf (slot-value ...)) expands to this
     @"%sset": Value, // internal: (setf (char ...)) expands to this
+    @"%make-unbound": Value, // internal: returns unbound marker
 
     // Stream I/O primitives
     @"%open": Value,
@@ -567,11 +575,18 @@ pub const Builtins = struct {
             .defclass = try heap.intern("defclass"),
             .@"make-instance" = try heap.intern("make-instance"),
             .@"slot-value" = try heap.intern("slot-value"),
+            .@"class-of" = try heap.intern("class-of"),
             .defgeneric = try heap.intern("defgeneric"),
             .defmethod = try heap.intern("defmethod"),
             .@"call-next-method" = try heap.intern("call-next-method"),
             .@"next-method-p" = try heap.intern("next-method-p"),
             .@"define-method-combination" = try heap.intern("define-method-combination"),
+            .@"method-qualifiers" = try heap.intern("method-qualifiers"),
+            .@"method-specializers" = try heap.intern("method-specializers"),
+            .@"method-function" = try heap.intern("method-function"),
+            .@"generic-function-methods" = try heap.intern("generic-function-methods"),
+            .@"generic-function-lambda-list" = try heap.intern("generic-function-lambda-list"),
+            .@"generic-function-name" = try heap.intern("generic-function-name"),
             .kw_before = try heap.internKeyword("before"),
             .kw_after = try heap.internKeyword("after"),
             .kw_around = try heap.internKeyword("around"),
@@ -714,6 +729,7 @@ pub const Builtins = struct {
             .@"%aset" = try heap.intern("%aset"),
             .@"%set-slot-value" = try heap.intern("%set-slot-value"),
             .@"%sset" = try heap.intern("%sset"),
+            .@"%make-unbound" = try heap.intern("%make-unbound"),
             // Stream I/O primitives
             .@"%open" = try heap.intern("%open"),
             .@"%close" = try heap.intern("%close"),
@@ -1552,6 +1568,12 @@ pub const Compiler = struct {
             self.globals.allocator.free(entry.key_ptr.*);
             for (entry.value_ptr.*) |spec| {
                 self.globals.allocator.free(spec.name);
+                var mut_initargs = spec.initargs;
+                var mut_readers = spec.readers;
+                var mut_writers = spec.writers;
+                mut_initargs.deinit(self.globals.allocator);
+                mut_readers.deinit(self.globals.allocator);
+                mut_writers.deinit(self.globals.allocator);
             }
             self.globals.allocator.free(entry.value_ptr.*);
         }
@@ -2095,6 +2117,12 @@ pub const Compiler = struct {
         @"call-next-method",
         @"next-method-p",
         @"define-method-combination",
+        @"method-qualifiers",
+        @"method-specializers",
+        @"method-function",
+        @"generic-function-methods",
+        @"generic-function-lambda-list",
+        @"generic-function-name",
     };
 
     /// Comptime dispatch table for special forms
@@ -2169,6 +2197,12 @@ pub const Compiler = struct {
         .{ "call-next-method", .@"call-next-method" },
         .{ "next-method-p", .@"next-method-p" },
         .{ "define-method-combination", .@"define-method-combination" },
+        .{ "method-qualifiers", .@"method-qualifiers" },
+        .{ "method-specializers", .@"method-specializers" },
+        .{ "method-function", .@"method-function" },
+        .{ "generic-function-methods", .@"generic-function-methods" },
+        .{ "generic-function-lambda-list", .@"generic-function-lambda-list" },
+        .{ "generic-function-name", .@"generic-function-name" },
     });
 
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
@@ -2253,6 +2287,12 @@ pub const Compiler = struct {
                     .@"call-next-method" => self.compileCallNextMethod(tail, env),
                     .@"next-method-p" => self.compileNextMethodP(env),
                     .@"define-method-combination" => self.compileDefineMethodCombination(tail, env),
+                    .@"method-qualifiers" => self.compileMethodQualifiers(tail, env),
+                    .@"method-specializers" => self.compileMethodSpecializers(tail, env),
+                    .@"method-function" => self.compileMethodFunction(tail, env),
+                    .@"generic-function-methods" => self.compileGenericFunctionMethods(tail, env),
+                    .@"generic-function-lambda-list" => self.compileGenericFunctionLambdaList(tail, env),
+                    .@"generic-function-name" => self.compileGenericFunctionName(tail, env),
                 };
             }
 
@@ -3054,21 +3094,21 @@ pub const Compiler = struct {
         const body = args_cons.cdr;
 
         // Get lambda parameter names to exclude from captures
-        var param_names = std.StringHashMap(void).init(self.allocator);
-        defer param_names.deinit();
+        var dispatch_params = std.StringHashMap(void).init(self.allocator);
+        defer dispatch_params.deinit();
 
         var param_list = params_expr;
         while (param_list.isCons()) {
             const param_cons = param_list.toPtr(Cons);
             if (param_cons.car.isSymbol()) {
                 const param_sym = param_cons.car.toPtr(Symbol);
-                try param_names.put(param_sym.getName(), {});
+                try dispatch_params.put(param_sym.getName(), {});
             }
             param_list = param_cons.cdr;
         }
 
         // Find free variable references in body that are our bindings
-        try self.collectFreeVarRefs(body, binding_names, &param_names, captured);
+        try self.collectFreeVarRefs(body, binding_names, &dispatch_params, captured);
     }
 
     /// Find references to binding names in expression (excluding params)
@@ -5779,6 +5819,7 @@ pub const Compiler = struct {
             .cpl = cpl_list,
             .direct_slots = direct_slots_list,
             .slots = direct_slots_list, // TODO: merge with inherited slots
+            .metaclass = heap.standard_class,
             .num_shared = 0,
             .shared_slots = undefined,
         };
@@ -6347,6 +6388,47 @@ pub const Compiler = struct {
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
 
+    /// Generate writer: (lambda (val obj) (if type-check (setf (vec-ref obj idx) val) (error)))
+    fn generateStructWriter(self: *Compiler, heap: *Heap, writer_name: []const u8, struct_name: []const u8, slot_idx: usize) anyerror!*Ir {
+        var qual_buf: [512]u8 = undefined;
+        const qualified_name = self.qualifyName(writer_name, &qual_buf) catch writer_name;
+        const global_idx = self.globals.define(qualified_name) catch |e| return e;
+
+        const obj_ref = try self.builder.variable("obj", 0, 1);
+        const vectorp_ir = try self.builder.vectorp(obj_ref);
+        const idx0 = try self.builder.lit(Value.makeFixnum(0));
+        const obj_ref2 = try self.builder.variable("obj", 0, 1);
+        const vecref0 = try self.builder.vecRef(obj_ref2, idx0);
+        const name_sym = try heap.intern(struct_name);
+        const name_lit = try self.builder.lit(name_sym);
+        const eq_ir = try self.builder.eq(vecref0, name_lit);
+        const nil_ir = try self.builder.lit(Value.nil);
+        const type_check = try self.builder.ifExpr(vectorp_ir, eq_ir, nil_ir);
+
+        const obj_ref3 = try self.builder.variable("obj", 0, 1);
+        const idx_lit = try self.builder.lit(Value.makeFixnum(@intCast(slot_idx + 1)));
+        const val_ref = try self.builder.variable("val", 0, 0);
+        const setf_ir = try self.builder.vecSet(obj_ref3, idx_lit, val_ref);
+
+        const error_msg = try self.concatStrings3("type error: expected ", struct_name, "");
+        const error_str = try heap.allocBaseString(error_msg);
+        const error_lit = try self.builder.lit(error_str);
+        const error_call = try self.builder.errorUser(error_lit);
+
+        const body_ir = try self.builder.ifExpr(type_check, setf_ir, error_call);
+
+        const lambda_ir = self.builder.lambda(
+            &[_][]const u8{ "val", "obj" },
+            &[_]Ir.OptionalParam{},
+            &[_]Ir.KeyParam{},
+            null,
+            &[_]Ir.Capture{},
+            body_ir,
+        ) catch |e| return e;
+
+        return try self.builder.define(qualified_name, global_idx, lambda_ir);
+    }
+
     /// Generate predicate: checks if obj is a vector with correct type tag
     fn generateStructPredicate(self: *Compiler, heap: *Heap, pred_name: []const u8, struct_name: []const u8) anyerror!*Ir {
         // Qualify the predicate name with current package
@@ -6669,19 +6751,16 @@ pub const Compiler = struct {
         // Store class metadata for compilation (compiler-side with initforms)
         const persistent_specs = try self.globals.allocator.alloc(SlotSpec, slot_specs.items.len);
         for (slot_specs.items, 0..) |spec, i| {
-            var persist_initargs = std.ArrayList(Value){};
-            for (spec.initargs.items) |ia| try persist_initargs.append(self.globals.allocator, ia);
-            var persist_readers = std.ArrayList(Value){};
-            for (spec.readers.items) |r| try persist_readers.append(self.globals.allocator, r);
-            var persist_writers = std.ArrayList(Value){};
-            for (spec.writers.items) |w| try persist_writers.append(self.globals.allocator, w);
+            const initargs_slice = try self.globals.allocator.dupe(Value, spec.initargs.items);
+            const readers_slice = try self.globals.allocator.dupe(Value, spec.readers.items);
+            const writers_slice = try self.globals.allocator.dupe(Value, spec.writers.items);
             persistent_specs[i] = .{
                 .name = try self.globals.allocator.dupe(u8, spec.name),
                 .field_type = spec.field_type,
                 .initform = spec.initform,
-                .initargs = persist_initargs,
-                .readers = persist_readers,
-                .writers = persist_writers,
+                .initargs = std.ArrayList(Value).fromOwnedSlice(initargs_slice),
+                .readers = std.ArrayList(Value).fromOwnedSlice(readers_slice),
+                .writers = std.ArrayList(Value).fromOwnedSlice(writers_slice),
             };
         }
         var qual_buf: [256]u8 = undefined;
@@ -6703,8 +6782,14 @@ pub const Compiler = struct {
         const class_obj = try self.allocateClass(heap, name_val, superclasses, slot_specs.items);
         _ = class_obj;
 
-        // Generate definitions: constructor + predicate + accessors + name_lit
-        const num_defs = 1 + 1 + slot_specs.items.len + 1; // constructor + predicate + accessors + name_lit
+        // Count total defs: constructor + predicate + default_accessors + readers + writers + name_lit
+        var num_readers: usize = 0;
+        var num_writers: usize = 0;
+        for (slot_specs.items) |spec| {
+            num_readers += spec.readers.items.len;
+            num_writers += spec.writers.items.len;
+        }
+        const num_defs = 1 + 1 + slot_specs.items.len + num_readers + num_writers + 1;
         const defs = try self.allocator.alloc(*Ir, num_defs);
         var def_idx: usize = 0;
 
@@ -6724,14 +6809,38 @@ pub const Compiler = struct {
         const persistent_pred_name = self.globals.allocator.dupe(u8, qualified_pred_name) catch |e| return e;
         self.struct_predicates.put(persistent_pred_name, class_type) catch |e| return e;
 
-        // 3. Accessors: (defun class-name-slot (obj) (if (class-name-p obj) (aref obj N+1) (error)))
+        // 3. Default accessors: (defun class-name-slot (obj) (if (class-name-p obj) (aref obj N+1) (error)))
         for (slot_specs.items, 0..) |spec, i| {
             const accessor_name = try self.concatStrings3(class_name, "-", spec.name);
             defs[def_idx] = try self.generateStructAccessor(heap, accessor_name, class_name, i);
             def_idx += 1;
         }
 
-        // 4. Return class name
+        // 4. Readers: (defun reader-name (obj) (class-name-slot obj))
+        for (slot_specs.items, 0..) |spec, i| {
+            for (spec.readers.items) |reader_val| {
+                if (!reader_val.isSymbol()) continue;
+                const reader_sym = reader_val.toPtr(Symbol);
+                const reader_name = reader_sym.getName();
+                defs[def_idx] = try self.generateStructAccessor(heap, reader_name, class_name, i);
+                def_idx += 1;
+            }
+        }
+
+        // 5. Writers: (defun (setf writer-name) (val obj) (if (class-name-p obj) (setf (aref obj N+1) val) (error)))
+        for (slot_specs.items, 0..) |spec, i| {
+            for (spec.writers.items) |writer_val| {
+                if (!writer_val.isSymbol()) continue;
+                const writer_sym = writer_val.toPtr(Symbol);
+                const writer_name = writer_sym.getName();
+                const setf_name = try self.concatStrings("(setf ", writer_name);
+                const setf_full = try self.concatStrings(setf_name, ")");
+                defs[def_idx] = try self.generateStructWriter(heap, setf_full, class_name, i);
+                def_idx += 1;
+            }
+        }
+
+        // 6. Return class name
         defs[def_idx] = try self.builder.lit(name_val);
 
         return try self.builder.progn(defs);
@@ -6893,6 +7002,17 @@ pub const Compiler = struct {
         return try self.builder.setSlotValue(obj_ir, slot_sym, value_ir);
     }
 
+    /// Compile class-of: (class-of obj)
+    /// Returns the class of an object
+    fn compileClassOf(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const obj_expr = cons1.car;
+        const obj_ir = try self.compile(obj_expr, env);
+
+        return try self.builder.classOf(obj_ir);
+    }
+
     /// Compile defgeneric: (defgeneric name (arg1 arg2 ...))
     /// Creates a generic function that dispatches on argument types
     fn compileDefgeneric(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -6917,12 +7037,15 @@ pub const Compiler = struct {
         const persistent_name = try self.globals.allocator.dupe(u8, gen_name);
         try self.generic_functions.put(persistent_name, std.ArrayList(MethodDef){});
 
-        // Generate: (setq name (%make-generic-function name lambda-list))
+        // Register as global
+        const idx = try self.globals.define(gen_name);
+
+        // Generate: (define name (%make-generic-function name lambda-list))
         const name_ir = try self.builder.lit(name_val);
         const lambda_list_ir = try self.builder.lit(lambda_list);
         const gf_ir = try self.builder.makeGenericFunction(name_ir, lambda_list_ir);
 
-        return try self.builder.set(gen_name, 0, 0, gf_ir);
+        return try self.builder.define(gen_name, idx, gf_ir);
     }
 
     /// Compile defmethod: (defmethod name [qualifier] ((arg1 class1) ...) body...)
@@ -6964,8 +7087,8 @@ pub const Compiler = struct {
         const body_cons = rest;
 
         // Extract parameter names and specializers (interned symbols)
-        var param_names = std.ArrayList([]const u8){};
-        defer param_names.deinit(self.allocator);
+        var dispatch_params = std.ArrayList([]const u8){};
+        defer dispatch_params.deinit(self.allocator);
         var specializers = std.ArrayList(Value){};
         defer specializers.deinit(self.allocator);
 
@@ -6979,14 +7102,14 @@ pub const Compiler = struct {
             if (param.isSymbol()) {
                 // Unspecialized parameter
                 const param_name = param.toPtr(Symbol).getName();
-                try param_names.append(self.allocator, try self.allocator.dupe(u8, param_name));
+                try dispatch_params.append(self.allocator, try self.allocator.dupe(u8, param_name));
                 try specializers.append(self.allocator, Value.t); // t = any type
             } else if (param.isCons()) {
                 // Specialized parameter: (param-name class-name)
                 const spec_cons = param.toPtr(Cons);
                 if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
                 const param_name = spec_cons.car.toPtr(Symbol).getName();
-                try param_names.append(self.allocator, try self.allocator.dupe(u8, param_name));
+                try dispatch_params.append(self.allocator, try self.allocator.dupe(u8, param_name));
 
                 if (spec_cons.cdr.isCons()) {
                     const class_cons = spec_cons.cdr.toPtr(Cons);
@@ -7011,14 +7134,14 @@ pub const Compiler = struct {
         var lambda_env = Env.init(self.allocator, env);
         defer lambda_env.deinit();
 
-        for (param_names.items) |param| {
+        for (dispatch_params.items) |param| {
             _ = try lambda_env.bind(param);
         }
 
         // Save param names for call-next-method before compiling body
-        const param_names_for_cnm = try self.allocator.dupe([]const u8, param_names.items);
+        const dispatch_params_for_cnm = try self.allocator.dupe([]const u8, dispatch_params.items);
         const saved_method_params = self.method_params;
-        self.method_params = param_names_for_cnm;
+        self.method_params = dispatch_params_for_cnm;
         defer self.method_params = saved_method_params;
 
         // Compile method body in lambda environment
@@ -7032,11 +7155,11 @@ pub const Compiler = struct {
         const captures = try self.allocator.dupe(Ir.Capture, capture_set.captures.items);
 
         // Save param names for dispatcher before toOwnedSlice consumes them
-        const param_names_copy = try self.allocator.dupe([]const u8, param_names.items);
+        const dispatch_params_copy = try self.allocator.dupe([]const u8, dispatch_params.items);
 
         // Create lambda
         const lambda_ir = try self.builder.lambda(
-            try param_names.toOwnedSlice(self.allocator),
+            try dispatch_params.toOwnedSlice(self.allocator),
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
             null,
@@ -7121,16 +7244,17 @@ pub const Compiler = struct {
         }
 
         // Generate dispatcher function
-        const dispatcher = try self.generateMethodDispatcher(gen_name, gop.value_ptr.*, param_names_copy);
+        const dispatcher = try self.generateMethodDispatcher(gen_name, gop.value_ptr.*, dispatch_params_copy);
 
-        // Define the generic function as the dispatcher
-        const global_idx = try self.globals.define(gen_name);
-        const dispatcher_define_ir = try self.builder.define(gen_name, global_idx, dispatcher);
+        // Get the existing GF and update its dispatcher
+        const global_idx = self.globals.lookup(gen_name) orelse return error.UnboundGenericFunction;
+        const gf_ir = try self.builder.globalRef(gen_name, global_idx);
+        const set_dispatcher_ir = try self.builder.setGfDispatcher(gf_ir, dispatcher);
 
-        // Return progn that defines method then dispatcher
+        // Return progn that defines method then updates dispatcher
         const defs = try self.allocator.alloc(*Ir, 2);
         defs[0] = method_define_ir;
-        defs[1] = dispatcher_define_ir;
+        defs[1] = set_dispatcher_ir;
         return try self.builder.progn(defs);
     }
 
@@ -7237,8 +7361,25 @@ pub const Compiler = struct {
         self: *Compiler,
         gf_name: []const u8,
         methods: std.ArrayList(MethodDef),
-        param_names: []const []const u8,
+        _: []const []const u8,
     ) anyerror!*Ir {
+        // Compute max arity across all methods - dispatcher needs to accept all params
+        var max_arity: usize = 0;
+        for (methods.items) |method| {
+            if (method.specializers.len > max_arity) {
+                max_arity = method.specializers.len;
+            }
+        }
+
+        // Generate parameter names for dispatcher: arg0, arg1, ...
+        var dispatcher_params = std.ArrayList([]const u8){};
+        defer dispatcher_params.deinit(self.allocator);
+        for (0..max_arity) |i| {
+            const pname = try std.fmt.allocPrint(self.allocator, "arg{d}", .{i});
+            try dispatcher_params.append(self.allocator, pname);
+        }
+        const dispatch_params = try dispatcher_params.toOwnedSlice(self.allocator);
+
         // Separate methods by qualifier
         var primary_methods = std.ArrayList(MethodDef){};
         defer primary_methods.deinit(self.allocator);
@@ -7273,7 +7414,7 @@ pub const Compiler = struct {
         const gf_lit = try self.builder.lit(gf_sym);
         var no_app_args = std.ArrayList(*Ir){};
         try no_app_args.append(self.allocator, gf_lit);
-        for (param_names, 0..) |pname, idx| {
+        for (dispatch_params, 0..) |pname, idx| {
             const arg_ir = try self.builder.variable(pname, 0, @intCast(idx));
             try no_app_args.append(self.allocator, arg_ir);
         }
@@ -7287,19 +7428,17 @@ pub const Compiler = struct {
             i -= 1;
             const primary = primary_methods.items[i];
 
-            if (primary.specializers.len == 0) continue;
-
             // Build condition by AND-ing all parameter type checks
             var cond_ir: ?*Ir = null;
 
             for (primary.specializers, 0..) |spec_val, param_idx| {
-                if (param_idx >= param_names.len) return error.InvalidSyntax;
+                if (param_idx >= dispatch_params.len) return error.InvalidSyntax;
 
                 // Skip unspecialized parameters (specializer = t)
                 if (spec_val.eq(Value.t)) continue;
 
                 // Reference to parameter
-                const arg_ir = try self.builder.variable(param_names[param_idx], 0, @intCast(param_idx));
+                const arg_ir = try self.builder.variable(dispatch_params[param_idx], 0, @intCast(param_idx));
 
                 // Class name symbol (already interned)
                 const class_ir = try self.builder.lit(spec_val);
@@ -7320,7 +7459,7 @@ pub const Compiler = struct {
                 primary,
                 before_methods.items,
                 after_methods.items,
-                param_names,
+                dispatch_params,
                 dispatch_body,
             );
 
@@ -7346,7 +7485,7 @@ pub const Compiler = struct {
                 const around = around_methods.items[a];
 
                 // Wrap next_method in a lambda so it can be called via %next-method%
-                const lambda_params = try self.allocator.dupe([]const u8, param_names);
+                const lambda_params = try self.allocator.dupe([]const u8, dispatch_params);
                 const next_method_lambda = try self.builder.lambda(
                     lambda_params,
                     &[_]Ir.OptionalParam{},
@@ -7362,7 +7501,7 @@ pub const Compiler = struct {
                 const set_next = try self.builder.define(nm_name, nm_idx, next_method_lambda);
 
                 // Call the around method
-                const around_call = try self.generateMethodCallByName(around.function_name, param_names);
+                const around_call = try self.generateMethodCall(around, dispatch_params);
 
                 // Sequence: set %next-method%, then call around method
                 const seq = try self.allocator.alloc(*Ir, 2);
@@ -7374,10 +7513,18 @@ pub const Compiler = struct {
             dispatch_body = next_method;
         }
 
-        // Wrap dispatch body in lambda
+        // Wrap dispatch body in lambda with all params optional (default nil)
+        // This allows calling with fewer args than max arity
+        var opt_params = std.ArrayList(Ir.OptionalParam){};
+        defer opt_params.deinit(self.allocator);
+        const nil_ir = try self.builder.lit(Value.nil);
+        for (dispatch_params) |pname| {
+            try opt_params.append(self.allocator, .{ .name = pname, .default = nil_ir });
+        }
+
         const dispatcher = try self.builder.lambda(
-            param_names,
-            &[_]Ir.OptionalParam{},
+            &[_][]const u8{}, // No required params
+            try opt_params.toOwnedSlice(self.allocator),
             &[_]Ir.KeyParam{},
             null,
             &[_]Ir.Capture{}, // No captures - methods are stored as IR
@@ -7395,7 +7542,7 @@ pub const Compiler = struct {
         primary: MethodDef,
         before_methods: []const MethodDef,
         after_methods: []const MethodDef,
-        param_names: []const []const u8,
+        dispatch_params: []const []const u8,
         next_method_body: ?*Ir,
     ) anyerror!*Ir {
         // Count applicable :after methods
@@ -7420,7 +7567,7 @@ pub const Compiler = struct {
         const nm_idx = self.globals.lookup(nm_name) orelse try self.globals.define(nm_name);
 
         const next_method_value = if (next_method_body) |body| blk: {
-            const lambda_params = try self.allocator.dupe([]const u8, param_names);
+            const lambda_params = try self.allocator.dupe([]const u8, dispatch_params);
             break :blk try self.builder.lambda(
                 lambda_params,
                 &[_]Ir.OptionalParam{},
@@ -7435,7 +7582,7 @@ pub const Compiler = struct {
 
         if (!has_before and after_count == 0) {
             // Just primary, wrapped with %next-method% binding
-            const primary_call = try self.generateMethodCallByName(primary.function_name, param_names);
+            const primary_call = try self.generateMethodCall(primary, dispatch_params);
             const seq = try self.allocator.alloc(*Ir, 2);
             seq[0] = set_next;
             seq[1] = primary_call;
@@ -7452,7 +7599,7 @@ pub const Compiler = struct {
         for (before_methods) |before| {
             const matches = try self.specializerMatches(before.specializers, primary.specializers);
             if (matches) {
-                try stmts.append(self.allocator, try self.generateMethodCallByName(before.function_name, param_names));
+                try stmts.append(self.allocator, try self.generateMethodCall(before, dispatch_params));
             }
         }
 
@@ -7460,7 +7607,7 @@ pub const Compiler = struct {
         if (after_count > 0) {
             // Generate: (let ((%result% (primary args))) (after1) ... (afterN) %result%)
             const result_name = "%method-result%";
-            const primary_call = try self.generateMethodCallByName(primary.function_name, param_names);
+            const primary_call = try self.generateMethodCall(primary, dispatch_params);
 
             // Build let body: after calls + result reference
             var let_body = std.ArrayList(*Ir){};
@@ -7473,13 +7620,13 @@ pub const Compiler = struct {
                 k -= 1;
                 const after = after_methods[k];
                 if (try self.specializerMatches(after.specializers, primary.specializers)) {
-                    try let_body.append(self.allocator, try self.generateMethodCallByName(after.function_name, param_names));
+                    try let_body.append(self.allocator, try self.generateMethodCall(after, dispatch_params));
                 }
             }
 
             // Return the result variable
-            // Let binding index is after all params: param_names.len
-            const result_index: u16 = @intCast(param_names.len);
+            // Let binding index is after all params: dispatch_params.len
+            const result_index: u16 = @intCast(dispatch_params.len);
             const result_ref = try self.builder.variable(result_name, 0, result_index);
             try let_body.append(self.allocator, result_ref);
 
@@ -7491,7 +7638,7 @@ pub const Compiler = struct {
             try stmts.append(self.allocator, let_ir);
         } else {
             // No :after methods, just call primary
-            try stmts.append(self.allocator, try self.generateMethodCallByName(primary.function_name, param_names));
+            try stmts.append(self.allocator, try self.generateMethodCall(primary, dispatch_params));
         }
 
         return try self.builder.progn(try stmts.toOwnedSlice(self.allocator));
@@ -7515,8 +7662,8 @@ pub const Compiler = struct {
                     if (a_is_t and !b_is_t) return false;
                     // Same specificity at this position, continue to next
                 }
-                // All compared positions equal - doesn't matter
-                return false;
+                // All compared positions equal - longer specializer list is more specific
+                return a.specializers.len > b.specializers.len;
             }
         }.lessThan);
     }
@@ -7540,22 +7687,32 @@ pub const Compiler = struct {
     fn generateMethodCallByName(
         self: *Compiler,
         function_name: []const u8,
-        param_names: []const []const u8,
+        dispatch_params: []const []const u8,
     ) anyerror!*Ir {
-        return try self.generateMethodCallByNameAtDepth(function_name, param_names, 0);
+        return try self.generateMethodCallByNameAtDepth(function_name, dispatch_params, 0);
+    }
+
+    fn generateMethodCall(
+        self: *Compiler,
+        method: MethodDef,
+        dispatch_params: []const []const u8,
+    ) anyerror!*Ir {
+        const arity = method.specializers.len;
+        const params = dispatch_params[0..arity];
+        return try self.generateMethodCallByName(method.function_name, params);
     }
 
     fn generateMethodCallByNameAtDepth(
         self: *Compiler,
         function_name: []const u8,
-        param_names: []const []const u8,
+        dispatch_params: []const []const u8,
         depth: u8,
     ) anyerror!*Ir {
         // Build argument list: pass all parameters
         var args = std.ArrayList(*const Ir){};
         defer args.deinit(self.allocator);
 
-        for (param_names, 0..) |param, idx| {
+        for (dispatch_params, 0..) |param, idx| {
             const arg_ir = try self.builder.variable(param, depth, @intCast(idx));
             try args.append(self.allocator, arg_ir);
         }
@@ -7589,6 +7746,36 @@ pub const Compiler = struct {
         // 3. Apply to generic functions via :method-combination
 
         return try self.builder.lit(name_val);
+    }
+
+    /// Compile method-qualifiers: (method-qualifiers method)
+    fn compileMethodQualifiers(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        return self.compileUnaryPrim(args, env, .method_qualifiers);
+    }
+
+    /// Compile method-specializers: (method-specializers method)
+    fn compileMethodSpecializers(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        return self.compileUnaryPrim(args, env, .method_specializers);
+    }
+
+    /// Compile method-function: (method-function method)
+    fn compileMethodFunction(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        return self.compileUnaryPrim(args, env, .method_function);
+    }
+
+    /// Compile generic-function-methods: (generic-function-methods gf)
+    fn compileGenericFunctionMethods(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        return self.compileUnaryPrim(args, env, .generic_function_methods);
+    }
+
+    /// Compile generic-function-lambda-list: (generic-function-lambda-list gf)
+    fn compileGenericFunctionLambdaList(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        return self.compileUnaryPrim(args, env, .generic_function_lambda_list);
+    }
+
+    /// Compile generic-function-name: (generic-function-name gf)
+    fn compileGenericFunctionName(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        return self.compileUnaryPrim(args, env, .generic_function_name);
     }
 
     // ========================================================================
@@ -8480,14 +8667,14 @@ pub const Compiler = struct {
         _ = pred_env.bind(var_name) catch |e| return e;
 
         const predicate_body = try self.compile(predicate_expr, &pred_env);
-        const param_names = try self.allocator.alloc([]const u8, 1);
-        param_names[0] = try self.allocator.dupe(u8, var_name);
+        const dispatch_params = try self.allocator.alloc([]const u8, 1);
+        dispatch_params[0] = try self.allocator.dupe(u8, var_name);
         const empty_opt = try self.allocator.alloc(Ir.OptionalParam, 0);
         const empty_key = try self.allocator.alloc(Ir.KeyParam, 0);
         const empty_cap = try self.allocator.alloc(Ir.Capture, 0);
 
         const predicate_lambda = try self.builder.lambda(
-            param_names,
+            dispatch_params,
             empty_opt,
             empty_key,
             null,
@@ -8724,6 +8911,13 @@ pub const Compiler = struct {
         if (s == b.vectorp.raw) return self.compileUnaryPrim(args, env, .vectorp);
         if (s == b.closurep.raw) return self.compileUnaryPrim(args, env, .closurep);
         if (s == b.keywordp.raw) return self.compileUnaryPrim(args, env, .keywordp);
+        if (s == b.@"method-qualifiers".raw) return self.compileUnaryPrim(args, env, .method_qualifiers);
+        if (s == b.@"method-specializers".raw) return self.compileUnaryPrim(args, env, .method_specializers);
+        if (s == b.@"method-function".raw) return self.compileUnaryPrim(args, env, .method_function);
+        if (s == b.@"generic-function-methods".raw) return self.compileUnaryPrim(args, env, .generic_function_methods);
+        if (s == b.@"generic-function-lambda-list".raw) return self.compileUnaryPrim(args, env, .generic_function_lambda_list);
+        if (s == b.@"generic-function-name".raw) return self.compileUnaryPrim(args, env, .generic_function_name);
+        if (s == b.@"class-of".raw) return self.compileClassOf(args, env);
         if (s == b.null.raw) return self.compileUnaryPrim(args, env, .nilp);
         if (s == b.not.raw) return self.compileUnaryPrim(args, env, .not);
         if (s == b.characterp.raw) return self.compileUnaryPrim(args, env, .characterp);
@@ -8821,6 +9015,7 @@ pub const Compiler = struct {
         if (s == b.@"%aset".raw) return self.compileAset(args, env);
         if (s == b.@"%set-slot-value".raw) return self.compileSetSlotValue(args, env);
         if (s == b.@"%sset".raw) return self.compileSset(args, env);
+        if (s == b.@"%make-unbound".raw) return self.builder.makeUnbound();
         if (s == b.vector.raw) return self.compileVectorPrim(args, env);
         if (s == b.@"make-array".raw) return self.compileMakeArray(args, env);
 
@@ -9042,7 +9237,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, vec_adjust, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, unintern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream, pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version, package_symbols_table, package_exports_table, find_symbol };
+    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, method_qualifiers, method_specializers, method_function, generic_function_methods, generic_function_lambda_list, generic_function_name, nilp, not, vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, vec_adjust, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, unintern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream, pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version, package_symbols_table, package_exports_table, find_symbol };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -9370,6 +9565,12 @@ pub const Compiler = struct {
             },
             .closurep => try self.builder.closurep(operand),
             .keywordp => try self.builder.keywordp(operand),
+            .method_qualifiers => try self.builder.methodQualifiers(operand),
+            .method_specializers => try self.builder.methodSpecializers(operand),
+            .method_function => try self.builder.methodFunction(operand),
+            .generic_function_methods => try self.builder.genericFunctionMethods(operand),
+            .generic_function_lambda_list => try self.builder.genericFunctionLambdaList(operand),
+            .generic_function_name => try self.builder.genericFunctionName(operand),
             .random => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .random = .{ .operand = operand } };

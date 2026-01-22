@@ -59,6 +59,10 @@ pub const addMethod = clos.addMethod;
 pub const genericFunctionName = clos.genericFunctionName;
 pub const genericFunctionMethods = clos.genericFunctionMethods;
 pub const genericFunctionLambdaList = clos.genericFunctionLambdaList;
+pub const methodQualifiers = clos.methodQualifiers;
+pub const methodSpecializers = clos.methodSpecializers;
+pub const methodFunction = clos.methodFunction;
+pub const makeUnbound = clos.makeUnbound;
 
 pub const typep = ty.typep;
 pub const subtypep = ty.subtypep;

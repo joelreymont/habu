@@ -444,6 +444,12 @@ pub const Ir = union(enum) {
     vectorp: UnaryOp,
     closurep: UnaryOp,
     keywordp: UnaryOp,
+    method_qualifiers: UnaryOp,
+    method_specializers: UnaryOp,
+    method_function: UnaryOp,
+    generic_function_methods: UnaryOp,
+    generic_function_lambda_list: UnaryOp,
+    generic_function_name: UnaryOp,
     nilp: UnaryOp,
     characterp: UnaryOp,
     floatp: UnaryOp,
@@ -608,8 +614,11 @@ pub const Ir = union(enum) {
 
     slot_value: BinaryOp, // (slot-value obj 'slot-name)
     set_slot_value: TernaryOp, // (%set-slot-value obj 'slot-name value)
+    class_of: UnaryOp, // (class-of obj)
     make_generic_function: BinaryOp, // (%make-generic-function name lambda-list)
+    make_unbound: void, // (%make-unbound)
     make_method: QuaternaryOp, // (%make-method qualifiers specializers lambda-list function)
+    set_gf_dispatcher: BinaryOp, // (%set-gf-dispatcher gf dispatcher)
 
     // ========================================================================
     // Primitives - Box operations (mutable cells)
@@ -848,6 +857,12 @@ pub const Ir = union(enum) {
             .vectorp,
             .closurep,
             .keywordp,
+            .method_qualifiers,
+            .method_specializers,
+            .method_function,
+            .generic_function_methods,
+            .generic_function_lambda_list,
+            .generic_function_name,
             .nilp,
             .listp,
             .atom,
@@ -1441,6 +1456,42 @@ pub const IrBuilder = struct {
         return node;
     }
 
+    pub fn methodQualifiers(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .method_qualifiers = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn methodSpecializers(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .method_specializers = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn methodFunction(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .method_function = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn genericFunctionMethods(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .generic_function_methods = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn genericFunctionLambdaList(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .generic_function_lambda_list = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn genericFunctionName(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .generic_function_name = .{ .operand = operand } };
+        return node;
+    }
+
     pub fn stringp(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .stringp = .{ .operand = operand } };
@@ -1984,9 +2035,27 @@ pub const IrBuilder = struct {
         return node;
     }
 
+    pub fn classOf(self: IrBuilder, obj: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .class_of = .{ .operand = obj } };
+        return node;
+    }
+
     pub fn makeGenericFunction(self: IrBuilder, name: *const Ir, lambda_list: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .make_generic_function = .{ .left = name, .right = lambda_list } };
+        return node;
+    }
+
+    pub fn setGfDispatcher(self: IrBuilder, gf: *const Ir, dispatcher: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .set_gf_dispatcher = .{ .left = gf, .right = dispatcher } };
+        return node;
+    }
+
+    pub fn makeUnbound(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .make_unbound = {} };
         return node;
     }
 

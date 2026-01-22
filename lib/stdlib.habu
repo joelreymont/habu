@@ -1751,21 +1751,8 @@
 ;; CLOS Introspection
 ;; ============================================================
 
-;; class-of - return the class of an object
-;; For CLOS instances (vectors), returns the class name symbol
-;; For primitives, returns their type name
-(defun class-of (obj)
-  (cond
-    ((and (vectorp obj) (> (length obj) 0) (symbolp (aref obj 0)))
-     (aref obj 0))  ; CLOS instance - class name is first element
-    ((null obj) 'null)
-    ((consp obj) 'cons)
-    ((symbolp obj) 'symbol)
-    ((numberp obj) (if (integerp obj) 'integer 'float))
-    ((stringp obj) 'string)
-    ((vectorp obj) 'vector)
-    ((functionp obj) 'function)
-    (t 't)))
+;; class-of is a primitive that returns Class objects
+;; Removed Lisp wrapper - use native primitive directly
 
 ;; class-name - return the name of a class
 (defun class-name (class)
@@ -1782,6 +1769,9 @@
 ;; class-slots - return all slot definitions
 (defun class-slots (class)
   nil)
+
+;; Note: method-qualifiers, method-specializers, method-function
+;; are compiler builtins, no wrapper needed
 
 ;; ============================================================
 ;; Condition System (CLOS-based)
@@ -2757,9 +2747,11 @@
   (declare (ignore stream eof-error-p eof-value))
   (let ((chars nil)
         (c (read-char)))
-    (loop while (and c (char/= c #\Newline))
-          do (push c chars)
-             (setq c (read-char nil nil nil)))
+    (loop
+      (when (or (null c) (char= c #\Newline))
+        (return))
+      (push c chars)
+      (setq c (read-char nil nil nil)))
     (if chars
         (coerce (nreverse chars) 'string)
         "")))
@@ -2909,9 +2901,9 @@
 ; mapl - like maplist but for side effects
 (defun mapl (fn list &rest more-lists)
   (let ((lists (cons list more-lists)))
-    (loop while (notany #'null lists)
-          do (apply fn lists)
-             (setq lists (mapcar #'cdr lists))))
+    (while (notany #'null lists)
+      (apply fn lists)
+      (setq lists (mapcar #'cdr lists))))
   list)
 
 ;; ============================================================
@@ -3293,7 +3285,7 @@
                               loop-code
                               (cons 'progn (append finally-forms
                                                    (list (list 'return-from block-name result-expr)))))
-                      (list 'progn loop-code (list 'return-from block-name result-expr))))))))
+                      (list 'progn loop-code (list 'return-from block-name result-expr))))))))))
 
 
 ; loop-finish - exit loop normally, running finally clause
@@ -3770,7 +3762,7 @@
            (push (cadr rest) thereis-forms)
            (setq rest (cddr rest)))
 
-          (t (error (format nil "Unknown loop keyword: ~a" kw))))))
+          (t (error (format nil "Unknown loop keyword: ~a" kw)))))))
 
     ; Generate the loop code
     (loop-generate-code vars step-forms end-tests body-forms
@@ -3783,7 +3775,7 @@
                         min-var min-forms
                         always-forms never-forms thereis-forms
                         block-name
-                        finally-forms initially-forms)))))
+                        finally-forms initially-forms)))
 
 ; Main LOOP macro
 (defmacro loop (&rest clauses)
@@ -4269,16 +4261,43 @@
 
 ;; CLOS initialization protocol
 
+(defgeneric make-instance (class &rest initargs)
+  (:documentation "Create and initialize an instance of CLASS"))
+
+(defmethod make-instance (class &rest initargs)
+  "Default method: allocate and initialize"
+  (let ((instance (apply #'allocate-instance class initargs)))
+    (apply #'initialize-instance instance initargs)))
+
+(defgeneric allocate-instance (class &rest initargs)
+  (:documentation "Allocate storage for a new instance of CLASS"))
+
+(defmethod allocate-instance (class &rest initargs)
+  "Default method: allocate vector with unbound slots"
+  (declare (ignore initargs))
+  (let* ((slots (class-slots class))
+         (num-slots (length slots))
+         (vec (make-array (+ num-slots 1)))
+         (unbound (%make-unbound)))
+    (setf (aref vec 0) (class-name class))
+    (dotimes (i num-slots)
+      (setf (aref vec (+ i 1)) unbound))
+    vec))
+
 (defgeneric initialize-instance (instance &rest initargs)
   (:documentation "Initialize a newly created instance with initargs"))
 
 (defmethod initialize-instance (instance &rest initargs)
   "Default method: set slots from initargs"
-  (loop for (kw val) on initargs by #'cddr
-        do (when (keywordp kw)
-             (let ((slot-name (intern (symbol-name kw))))
-               (when (slot-exists-p instance slot-name)
-                 (setf (slot-value instance slot-name) val)))))
+  (let ((args initargs))
+    (while args
+      (let ((kw (car args))
+            (val (cadr args)))
+        (when (keywordp kw)
+          (let ((slot-name (intern (symbol-name kw))))
+            (when (slot-exists-p instance slot-name)
+              (setf (slot-value instance slot-name) val))))
+        (setq args (cddr args)))))
   instance)
 
 (defgeneric reinitialize-instance (instance &rest initargs)

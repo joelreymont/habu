@@ -286,6 +286,30 @@ pub const Op = enum(u16) {
     /// ( x -- t/nil )
     keywordp = 0x56,
 
+    /// Get method qualifiers
+    /// ( method -- qualifiers )
+    method_qualifiers = 0x112,
+
+    /// Get method specializers
+    /// ( method -- specializers )
+    method_specializers = 0x113,
+
+    /// Get method function
+    /// ( method -- function )
+    method_function = 0x114,
+
+    /// Get generic function methods
+    /// ( gf -- methods )
+    generic_function_methods = 0x115,
+
+    /// Get generic function lambda list
+    /// ( gf -- lambda-list )
+    generic_function_lambda_list = 0x116,
+
+    /// Get generic function name
+    /// ( gf -- name )
+    generic_function_name = 0x117,
+
     /// Check if nil
     /// ( x -- t/nil )
     nilp = 0x57,
@@ -345,6 +369,10 @@ pub const Op = enum(u16) {
     /// ( obj slot-name-sym value -- value )
     set_slot_value = 0x65,
 
+    /// Get class of object
+    /// ( obj -- class )
+    class_of = 0x0B,
+
     /// Allocate GenericFunction object
     /// ( name lambda-list -- gf )
     make_generic_function = 0xA6,
@@ -352,6 +380,14 @@ pub const Op = enum(u16) {
     /// Allocate Method object
     /// ( qualifiers specializers lambda-list function -- method )
     make_method = 0xA7,
+
+    /// Return unbound slot marker
+    /// ( -- unbound )
+    make_unbound = 0x09,
+
+    /// Set GF dispatcher function
+    /// ( gf dispatcher -- gf )
+    set_gf_dispatcher = 0xB9,
 
     /// Check if CLOS slot is bound
     /// ( obj slot-name-sym -- t/nil )
@@ -1309,14 +1345,23 @@ pub const Op = enum(u16) {
             .vectorp,
             .closurep,
             .keywordp,
+            .method_qualifiers,
+            .method_specializers,
+            .method_function,
+            .generic_function_methods,
+            .generic_function_lambda_list,
+            .generic_function_name,
             .nilp,
             .vec_ref,
             .vec_set,
             .vec_len,
             .slot_value,
             .set_slot_value,
+            .class_of,
             .make_generic_function,
             .make_method,
+            .make_unbound,
+            .set_gf_dispatcher,
             .slot_boundp,
             .make_box,
             .box_ref,

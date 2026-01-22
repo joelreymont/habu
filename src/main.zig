@@ -50,6 +50,7 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
+    const has_files = args.len > 1;
     for (args[1..]) |arg| {
         repl.loadFilePublic(arg, writer) catch |err| {
             try writer.print("Error loading {s}: {s}\n", .{ arg, @errorName(err) });
@@ -57,5 +58,8 @@ pub fn main() !void {
         try writer.flush();
     }
 
-    try repl.runWithFiles(fs.File.stdin(), stdout);
+    // Only run interactive REPL if no files were loaded
+    if (!has_files) {
+        try repl.runWithFiles(fs.File.stdin(), stdout);
+    }
 }

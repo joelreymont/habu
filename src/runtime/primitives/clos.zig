@@ -8,6 +8,7 @@ const Cons = objects.Cons;
 const Symbol = objects.Symbol;
 const Vector = objects.Vector;
 const Keyword = objects.Keyword;
+const Class = objects.Class;
 const GenericFunction = objects.GenericFunction;
 
 /// make-instance: (make-instance 'class-name :slot1 val1 :slot2 val2 ...)
@@ -209,15 +210,66 @@ pub fn setSlotValue(heap: *Heap, args: Value) !Value {
 /// class-of: (class-of obj)
 /// Return the class of an object
 pub fn classOf(heap: *Heap, args: Value) !Value {
-    _ = heap;
     if (!args.isCons()) return error.InvalidArgument;
     const cons1 = args.toPtr(Cons);
     const obj = cons1.car;
 
-    if (!obj.isVector()) return error.InvalidArgument;
-    const vec = obj.toPtr(Vector);
-    if (vec.length == 0) return error.InvalidArgument;
-    return vec.data[0];
+    // Class objects: return their metaclass
+    if (obj.isClass()) {
+        return obj.toPtr(Class).metaclass;
+    }
+
+    // CLOS objects
+    if (obj.isGenericFunction()) {
+        const type_sym = try heap.intern("generic-function");
+        return heap.findLispClass(type_sym) orelse error.InvalidArgument;
+    }
+    if (obj.isMethod()) {
+        const type_sym = try heap.intern("method");
+        return heap.findLispClass(type_sym) orelse error.InvalidArgument;
+    }
+    if (obj.isSlotDefinition()) {
+        const type_sym = try heap.intern("slot-definition");
+        return heap.findLispClass(type_sym) orelse error.InvalidArgument;
+    }
+
+    // Built-in types: lookup class from registry
+    const type_name = switch (obj.typeKind()) {
+        .nil, .t => "symbol",
+        .fixnum => "fixnum",
+        .float => "float",
+        .char => "character",
+        .symbol => "symbol",
+        .cons => "cons",
+        .keyword => "keyword",
+        .string, .string32 => "string",
+        .vector => blk: {
+            // Check if it's a CLOS instance (has class in slot 0)
+            const vec = obj.toPtr(Vector);
+            if (vec.length > 0 and vec.data[0].isClass()) {
+                return vec.data[0];
+            }
+            break :blk "vector";
+        },
+        .closure => "closure",
+        .hashtable => "hash-table",
+        .rational => "rational",
+        .complex => "complex",
+        .stream => "stream",
+        .bignum => "bignum",
+        .array => "array",
+        .pathname => "pathname",
+        .class => unreachable, // handled above
+        .package => "package",
+        .chunk => "chunk",
+        .condition => "condition",
+        .slotdef => "slot-definition",
+        .generic_function => unreachable, // handled above
+        .method => unreachable, // handled above
+    };
+
+    const type_sym = try heap.intern(type_name);
+    return heap.findLispClass(type_sym) orelse error.InvalidArgument;
 }
 
 /// slot-exists-p: (slot-exists-p obj 'slot-name)
@@ -569,8 +621,16 @@ pub fn makeGenericFunction(heap: *Heap, args: Value) !Value {
     gf.name = name;
     gf.lambda_list = lambda_list;
     gf.methods = Value.nil;
+    gf.dispatcher = Value.nil;
 
     return Value.makeGenericFunction(gf);
+}
+
+/// %make-unbound: () -> unbound
+/// Returns the unbound slot marker
+pub fn makeUnbound(_: *Heap, args: Value) !Value {
+    if (!args.isNil()) return error.InvalidArgument;
+    return Value.unbound;
 }
 
 /// %make-method: (%make-method qualifiers specializers lambda-list function)
@@ -659,4 +719,43 @@ pub fn genericFunctionLambdaList(_: *Heap, args: Value) !Value {
     const gf = gf_val.toPtr(GenericFunction);
 
     return gf.lambda_list;
+}
+
+/// method-qualifiers: (method-qualifiers method)
+/// Return the qualifiers list of a method
+pub fn methodQualifiers(_: *Heap, args: Value) !Value {
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons1 = args.toPtr(Cons);
+    const method_val = cons1.car;
+
+    if (!method_val.isMethod()) return error.InvalidArgument;
+    const method = method_val.toPtr(objects.Method);
+
+    return method.qualifiers;
+}
+
+/// method-specializers: (method-specializers method)
+/// Return the specializers list of a method
+pub fn methodSpecializers(_: *Heap, args: Value) !Value {
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons1 = args.toPtr(Cons);
+    const method_val = cons1.car;
+
+    if (!method_val.isMethod()) return error.InvalidArgument;
+    const method = method_val.toPtr(objects.Method);
+
+    return method.specializers;
+}
+
+/// method-function: (method-function method)
+/// Return the function (closure) of a method
+pub fn methodFunction(_: *Heap, args: Value) !Value {
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons1 = args.toPtr(Cons);
+    const method_val = cons1.car;
+
+    if (!method_val.isMethod()) return error.InvalidArgument;
+    const method = method_val.toPtr(objects.Method);
+
+    return method.function;
 }

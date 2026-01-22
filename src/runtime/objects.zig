@@ -1023,6 +1023,8 @@ pub const Class = extern struct {
     direct_slots: Value,
     /// All slot definitions (list of SlotDefinition objects)
     slots: Value,
+    /// Metaclass (class of this class)
+    metaclass: Value,
     /// Number of shared slots
     num_shared: u32,
     _pad: u32 = 0,
@@ -1057,6 +1059,8 @@ pub const GenericFunction = extern struct {
     lambda_list: Value,
     /// Methods (list of Method objects)
     methods: Value,
+    /// Dispatcher function (closure that implements method dispatch)
+    dispatcher: Value,
 };
 
 /// Method object
@@ -1071,3 +1075,9 @@ pub const Method = extern struct {
     /// Function (closure)
     function: Value,
 };
+
+/// Instance: CLOS instance representation
+/// Stored as Vector: #(class slot1 slot2 ...)
+/// data[0] = class (Value pointing to Class object)
+/// data[1..] = instance slot values (may be Value.unbound)
+pub const Instance = Vector;

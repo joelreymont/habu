@@ -322,8 +322,10 @@ pub const Vm = struct {
         list: Value,
         atom: Value,
         t: Value,
+        unbound: Value,
 
         fn init(heap: *Heap) !TypeSymbols {
+            const unbound_val = try heap.intern("%unbound%");
             return .{
                 .fixnum = try heap.intern("fixnum"),
                 .number = try heap.intern("number"),
@@ -341,6 +343,7 @@ pub const Vm = struct {
                 .list = try heap.intern("list"),
                 .atom = try heap.intern("atom"),
                 .t = try heap.intern("t"),
+                .unbound = unbound_val,
             };
         }
     };
@@ -875,7 +878,7 @@ pub const Vm = struct {
     }
 
     /// Run a chunk to completion
-    pub fn run(self: *Vm, chunk: *const Chunk) anyerror!Value {
+    pub fn run(self: *Vm, chunk: *const Chunk) Error!Value {
         self.chunk = chunk;
         self.ip = 0;
         self.sp = 0;
@@ -891,7 +894,7 @@ pub const Vm = struct {
         return self.execute();
     }
 
-    fn execute(self: *Vm) anyerror!Value {
+    fn execute(self: *Vm) Error!Value {
         while (true) {
             // Bounds check before reading opcode to prevent read past end of chunk
             if (self.ip >= self.chunk.getCode().len) return error.InvalidOpcode;
@@ -1444,6 +1447,42 @@ pub const Vm = struct {
                 const a = try self.pop();
                 try self.push(if (a.isKeyword()) Value.t else Value.nil);
             },
+            .method_qualifiers => {
+                const method_val = try self.pop();
+                const args = try self.heap.allocCons(method_val, Value.nil);
+                const result = try primitives.methodQualifiers(self.heap, args);
+                try self.push(result);
+            },
+            .method_specializers => {
+                const method_val = try self.pop();
+                const args = try self.heap.allocCons(method_val, Value.nil);
+                const result = try primitives.methodSpecializers(self.heap, args);
+                try self.push(result);
+            },
+            .method_function => {
+                const method_val = try self.pop();
+                const args = try self.heap.allocCons(method_val, Value.nil);
+                const result = try primitives.methodFunction(self.heap, args);
+                try self.push(result);
+            },
+            .generic_function_methods => {
+                const gf_val = try self.pop();
+                const args = try self.heap.allocCons(gf_val, Value.nil);
+                const result = try primitives.genericFunctionMethods(self.heap, args);
+                try self.push(result);
+            },
+            .generic_function_lambda_list => {
+                const gf_val = try self.pop();
+                const args = try self.heap.allocCons(gf_val, Value.nil);
+                const result = try primitives.genericFunctionLambdaList(self.heap, args);
+                try self.push(result);
+            },
+            .generic_function_name => {
+                const gf_val = try self.pop();
+                const args = try self.heap.allocCons(gf_val, Value.nil);
+                const result = try primitives.genericFunctionName(self.heap, args);
+                try self.push(result);
+            },
             .nilp => {
                 const a = try self.pop();
                 try self.push(if (a.isNil()) Value.t else Value.nil);
@@ -1569,6 +1608,12 @@ pub const Vm = struct {
                 const result = try primitives.clos.setSlotValue(self.heap, args);
                 try self.push(result);
             },
+            .class_of => {
+                const obj = try self.pop();
+                const args = try self.heap.allocCons(obj, Value.nil);
+                const result = try primitives.classOf(self.heap, args);
+                try self.push(result);
+            },
             .make_generic_function => {
                 const lambda_list = try self.pop();
                 const name = try self.pop();
@@ -1584,6 +1629,17 @@ pub const Vm = struct {
                 const args = try self.heap.allocCons(qualifiers, try self.heap.allocCons(specializers, try self.heap.allocCons(lambda_list, try self.heap.allocCons(function, Value.nil))));
                 const result = try primitives.makeMethod(self.heap, args);
                 try self.push(result);
+            },
+            .set_gf_dispatcher => {
+                const dispatcher = try self.pop();
+                const gf_val = try self.pop();
+                if (!gf_val.isGenericFunction()) return error.TypeMismatch;
+                const gf = gf_val.toPtr(runtime.objects.GenericFunction);
+                gf.dispatcher = dispatcher;
+                try self.push(gf_val);
+            },
+            .make_unbound => {
+                try self.push(Value.unbound);
             },
             .slot_boundp => {
                 const slot_name_val = try self.pop();
@@ -4161,7 +4217,7 @@ pub const Vm = struct {
     }
 
     /// Handle an error by running unwind-protect cleanup if needed
-    fn doError(self: *Vm, err: anyerror) anyerror {
+    fn doError(self: *Vm, err: anyerror) Error {
         // Check if there's an unwind-protect that needs cleanup
         if (self.unwind_sp > 0) {
             // Pop the unwind frame
@@ -4183,13 +4239,33 @@ pub const Vm = struct {
             self.sp = unwind_frame.unwind_sp;
             self.fp = unwind_frame.unwind_fp;
 
-            // Return original error to signal cleanup is running
-            // pop_unwind will re-throw the error after cleanup
-            return err;
+            // Return appropriate error
+            return self.mapError(err);
         }
 
         // No unwind frames - propagate error normally
-        return err;
+        return self.mapError(err);
+    }
+
+    fn mapError(self: *Vm, err: anyerror) Error {
+        _ = self;
+        return switch (err) {
+            error.StackOverflow => error.StackOverflow,
+            error.StackUnderflow => error.StackUnderflow,
+            error.TypeMismatch => error.TypeMismatch,
+            error.DivisionByZero => error.DivisionByZero,
+            error.InvalidOpcode => error.InvalidOpcode,
+            error.InvalidConstant => error.InvalidConstant,
+            error.InvalidArgument => error.InvalidArgument,
+            error.OutOfMemory => error.OutOfMemory,
+            error.Halt => error.Halt,
+            error.UnhandledThrow => error.UnhandledThrow,
+            error.UnboundSymbol => error.UnboundSymbol,
+            error.UserError => error.UserError,
+            error.RestartNotFound => error.RestartNotFound,
+            error.NoMatchingBlock => error.NoMatchingBlock,
+            else => error.UserError,
+        };
     }
 
     fn doInvokeRestart(self: *Vm, name: Value, value: Value) Error!void {
@@ -5214,7 +5290,19 @@ pub const Vm = struct {
         if (self.sp < @as(usize, argc) + 1) return error.StackUnderflow;
 
         // Get function value (below args on stack)
-        const fn_val = self.stack[self.sp - argc - 1];
+        var fn_val = self.stack[self.sp - argc - 1];
+
+        // If calling a generic function, delegate to its dispatcher
+        if (fn_val.isGenericFunction()) {
+            const gf = fn_val.toPtr(runtime.objects.GenericFunction);
+            if (gf.dispatcher.isNil()) {
+                std.debug.print("doCall: generic function has no dispatcher! name={any}\n", .{gf.name});
+                return error.TypeMismatch;
+            }
+            fn_val = gf.dispatcher;
+            // Update function slot on stack
+            self.stack[self.sp - argc - 1] = fn_val;
+        }
 
         if (!fn_val.isClosure()) {
             std.debug.print("doCall: fn_val is not a closure! type={}, argc={}\n", .{ fn_val.typeKind(), argc });
@@ -5247,19 +5335,16 @@ pub const Vm = struct {
         if (callee_chunk.has_rest != 0) {
             // Variadic: need at least required args
             if (argc < arity) {
-                std.debug.print("doCall: variadic arity mismatch! argc={} < arity={}\n", .{ argc, arity });
                 return error.TypeMismatch;
             }
         } else if (key_count > 0) {
             // Has keyword params: need at least required args
             if (argc < arity) {
-                std.debug.print("doCall: keyword arity mismatch! argc={} < arity={}\n", .{ argc, arity });
                 return error.TypeMismatch;
             }
             // Keyword args must come in pairs (after actual positional args)
             const kw_arg_count = argc - actual_positional;
             if (kw_arg_count % 2 != 0) {
-                std.debug.print("doCall: keyword pair mismatch! kw_arg_count={}\n", .{kw_arg_count});
                 return error.TypeMismatch;
             }
         } else if (opt_count > 0) {

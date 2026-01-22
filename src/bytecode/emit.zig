@@ -632,6 +632,12 @@ pub const Emitter = struct {
             .vectorp => |op| try self.emitUnaryOp(op.operand, .vectorp),
             .closurep => |op| try self.emitUnaryOp(op.operand, .closurep),
             .keywordp => |op| try self.emitUnaryOp(op.operand, .keywordp),
+            .method_qualifiers => |op| try self.emitUnaryOp(op.operand, .method_qualifiers),
+            .method_specializers => |op| try self.emitUnaryOp(op.operand, .method_specializers),
+            .method_function => |op| try self.emitUnaryOp(op.operand, .method_function),
+            .generic_function_methods => |op| try self.emitUnaryOp(op.operand, .generic_function_methods),
+            .generic_function_lambda_list => |op| try self.emitUnaryOp(op.operand, .generic_function_lambda_list),
+            .generic_function_name => |op| try self.emitUnaryOp(op.operand, .generic_function_name),
             .nilp => |op| try self.emitUnaryOp(op.operand, .nilp),
             .characterp => |op| try self.emitUnaryOp(op.operand, .characterp),
             .floatp => |op| try self.emitUnaryOp(op.operand, .floatp),
@@ -743,8 +749,11 @@ pub const Emitter = struct {
             // CLOS operations
             .slot_value => |op| try self.emitBinaryOp(op, .slot_value),
             .set_slot_value => |op| try self.emitTernaryOp(op, .set_slot_value),
+            .class_of => |op| try self.emitUnaryOp(op.operand, .class_of),
             .make_generic_function => |op| try self.emitBinaryOp(op, .make_generic_function),
+            .make_unbound => try self.emitOp(.make_unbound),
             .make_method => |op| try self.emitQuaternaryOp(op, .make_method),
+            .set_gf_dispatcher => |op| try self.emitBinaryOp(op, .set_gf_dispatcher),
 
             // Box operations (mutable cells)
             .make_box => |op| try self.emitUnaryOp(op.operand, .make_box),

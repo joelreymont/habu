@@ -1802,7 +1802,7 @@ test "method dispatch - all qualifiers" {
     _ = try repl.eval("(defmethod make-sound :after ((x animal)) (print 'cleanup) (terpri))");
     _ = try repl.eval("(defmethod make-sound :around ((x animal)) (print 'outer) (terpri) (call-next-method))");
 
-    _ = try repl.eval("(setf my-animal (make-instance 'animal))");
+    _ = try repl.eval("(defvar my-animal (make-instance 'animal))");
 
     // Call should execute: around -> before -> primary -> after
     const result = try repl.eval("(make-sound my-animal)");
@@ -1828,7 +1828,7 @@ test "call-next-method - with explicit args" {
     _ = try repl.eval("(defmethod process ((x base) y) (list 'base y))");
     _ = try repl.eval("(defmethod process :around ((x derived) y) (call-next-method x (* y 2)))");
 
-    _ = try repl.eval("(setf obj (make-instance 'derived))");
+    _ = try repl.eval("(defvar obj (make-instance 'derived))");
 
     // Around method passes modified args to next method
     const result = try repl.eval("(process obj 5)");
@@ -1856,7 +1856,7 @@ test "next-method-p - returns t when next exists" {
     _ = try repl.eval("(defmethod check-next ((x base)) 'base-method)");
     _ = try repl.eval("(defmethod check-next ((x derived)) (next-method-p))");
 
-    _ = try repl.eval("(setf obj (make-instance 'derived))");
+    _ = try repl.eval("(defvar obj (make-instance 'derived))");
 
     const result = try repl.eval("(check-next obj)");
     try testing.expect(result.eq(Value.t));
@@ -1875,7 +1875,7 @@ test "next-method-p - returns nil when no next" {
     _ = try repl.eval("(defgeneric check-next (x))");
     _ = try repl.eval("(defmethod check-next ((x thing)) (next-method-p))");
 
-    _ = try repl.eval("(setf obj (make-instance 'thing))");
+    _ = try repl.eval("(defvar obj (make-instance 'thing))");
 
     const result = try repl.eval("(check-next obj)");
     try testing.expect(result.isNil());
@@ -1928,7 +1928,7 @@ test "call-next-method - no next method error" {
     _ = try repl.eval("(defgeneric do-thing (x))");
     _ = try repl.eval("(defmethod do-thing ((x thing)) (call-next-method))");
 
-    _ = try repl.eval("(setf obj (make-instance 'thing))");
+    _ = try repl.eval("(defvar obj (make-instance 'thing))");
 
     // Should error: no next method available
     const err = repl.eval("(do-thing obj)");
@@ -1945,7 +1945,7 @@ test "slot-boundp - returns t for bound slot" {
     repl.wireGlobalEnv();
 
     _ = try repl.eval("(defclass point () (x y))");
-    _ = try repl.eval("(setf p (make-instance 'point))");
+    _ = try repl.eval("(defvar p (make-instance 'point))");
     _ = try repl.eval("(setf (slot-value p 'x) 10)");
 
     const result = try repl.eval("(slot-boundp p 'x)");
@@ -1962,7 +1962,7 @@ test "slot-boundp - returns nil for unbound slot" {
     repl.wireGlobalEnv();
 
     _ = try repl.eval("(defclass point () (x y))");
-    _ = try repl.eval("(setf p (make-instance 'point))");
+    _ = try repl.eval("(defvar p (make-instance 'point))");
 
     const result = try repl.eval("(slot-boundp p 'x)");
     try testing.expect(result.isNil());
@@ -1978,7 +1978,7 @@ test "slot-makunbound - marks slot as unbound" {
     repl.wireGlobalEnv();
 
     _ = try repl.eval("(defclass point () (x y))");
-    _ = try repl.eval("(setf p (make-instance 'point))");
+    _ = try repl.eval("(defvar p (make-instance 'point))");
     _ = try repl.eval("(setf (slot-value p 'x) 10)");
 
     const bound_before = try repl.eval("(slot-boundp p 'x)");
@@ -2000,7 +2000,7 @@ test "class-name - returns name of class" {
     repl.wireGlobalEnv();
 
     _ = try repl.eval("(defclass point () (x y))");
-    _ = try repl.eval("(setf p (make-instance 'point))");
+    _ = try repl.eval("(defvar p (make-instance 'point))");
 
     const result = try repl.eval("(class-name (class-of p))");
     const expected = try repl.eval("'point");
@@ -2208,3 +2208,93 @@ test "generic-function-lambda-list" {
     const lambda_list = try repl.eval("(generic-function-lambda-list (symbol-function 'my-gf))");
     try testing.expect(lambda_list.isCons());
 }
+
+test "method-qualifiers" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defgeneric foo (x))");
+    _ = try repl.eval("(defmethod foo :before ((x fixnum)) 1)");
+    _ = try repl.eval("(defmethod foo ((x fixnum)) 2)");
+
+    _ = try repl.eval("(generic-function-methods (symbol-function 'foo))");
+    const m1_quals = try repl.eval("(method-qualifiers (car (generic-function-methods (symbol-function 'foo))))");
+    try testing.expect(m1_quals.isCons());
+    const m2_quals = try repl.eval("(method-qualifiers (cadr (generic-function-methods (symbol-function 'foo))))");
+    try testing.expect(m2_quals.isNil());
+}
+
+test "method-specializers" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defgeneric bar (x y))");
+    _ = try repl.eval("(defmethod bar ((x fixnum) (y cons)) 1)");
+
+    const specs = try repl.eval("(method-specializers (car (generic-function-methods (symbol-function 'bar))))");
+    try testing.expect(specs.isCons());
+    const len = try repl.eval("(length (method-specializers (car (generic-function-methods (symbol-function 'bar)))))");
+    try testing.expectEqual(@as(i64, 2), len.toFixnum());
+}
+
+test "method-function" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defgeneric baz (x))");
+    _ = try repl.eval("(defmethod baz ((x fixnum)) (* x 2))");
+
+    const func = try repl.eval("(method-function (car (generic-function-methods (symbol-function 'baz))))");
+    try testing.expect(func.isClosure());
+    const result = try repl.eval("(funcall (method-function (car (generic-function-methods (symbol-function 'baz)))) 5)");
+    try testing.expectEqual(@as(i64, 10), result.toFixnum());
+}
+
+test "defmethod multi-arity dispatch" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    // Define methods with different arities
+    _ = try repl.eval("(defmethod test-multi () :zero-args)");
+    _ = try repl.eval("(defmethod test-multi ((x fixnum)) :one-fixnum-arg)");
+    _ = try repl.eval("(defmethod test-multi ((x string)) :one-string-arg)");
+
+    // Test zero-arg method
+    const result0 = try repl.eval("(test-multi)");
+    try testing.expect(result0.isKeyword());
+    const kw0 = result0.toPtr(runtime.Keyword);
+    try testing.expectEqualStrings("zero-args", kw0.getName());
+
+    // Test one-arg fixnum method
+    const result1 = try repl.eval("(test-multi 42)");
+    try testing.expect(result1.isKeyword());
+    const kw1 = result1.toPtr(runtime.Keyword);
+    try testing.expectEqualStrings("one-fixnum-arg", kw1.getName());
+
+    // Test one-arg string method
+    const result2 = try repl.eval("(test-multi \"hello\")");
+    try testing.expect(result2.isKeyword());
+    const kw2 = result2.toPtr(runtime.Keyword);
+    try testing.expectEqualStrings("one-string-arg", kw2.getName());
+}
+
