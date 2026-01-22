@@ -601,3 +601,62 @@ pub fn makeMethod(heap: *Heap, args: Value) !Value {
 
     return Value.makeMethod(method);
 }
+
+/// %add-method: (%add-method generic-function method)
+/// Add method to generic function's methods list
+pub fn addMethod(heap: *Heap, args: Value) !Value {
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons1 = args.toPtr(Cons);
+    const gf_val = cons1.car;
+
+    if (!gf_val.isGenericFunction()) return error.InvalidArgument;
+    const gf = gf_val.toPtr(GenericFunction);
+
+    if (!cons1.cdr.isCons()) return error.InvalidArgument;
+    const cons2 = cons1.cdr.toPtr(Cons);
+    const method_val = cons2.car;
+
+    if (!method_val.isMethod()) return error.InvalidArgument;
+
+    gf.methods = try heap.allocCons(method_val, gf.methods);
+    return gf_val;
+}
+
+/// generic-function-name: (generic-function-name gf)
+/// Return the name of a generic function
+pub fn genericFunctionName(_: *Heap, args: Value) !Value {
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons1 = args.toPtr(Cons);
+    const gf_val = cons1.car;
+
+    if (!gf_val.isGenericFunction()) return error.InvalidArgument;
+    const gf = gf_val.toPtr(GenericFunction);
+
+    return gf.name;
+}
+
+/// generic-function-methods: (generic-function-methods gf)
+/// Return the list of methods for a generic function
+pub fn genericFunctionMethods(_: *Heap, args: Value) !Value {
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons1 = args.toPtr(Cons);
+    const gf_val = cons1.car;
+
+    if (!gf_val.isGenericFunction()) return error.InvalidArgument;
+    const gf = gf_val.toPtr(GenericFunction);
+
+    return gf.methods;
+}
+
+/// generic-function-lambda-list: (generic-function-lambda-list gf)
+/// Return the lambda list of a generic function
+pub fn genericFunctionLambdaList(_: *Heap, args: Value) !Value {
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons1 = args.toPtr(Cons);
+    const gf_val = cons1.car;
+
+    if (!gf_val.isGenericFunction()) return error.InvalidArgument;
+    const gf = gf_val.toPtr(GenericFunction);
+
+    return gf.lambda_list;
+}

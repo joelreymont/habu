@@ -3280,7 +3280,7 @@
                                                                                                       (append thereis-body step-body))))))))))))))
 
       ; Build final code using (while t ...) instead of (loop ...) to avoid a bug
-      (let ((loop-code (cons 'while (cons t loop-body))))
+      (let ((loop-code (list* 'while t loop-body)))
         ; Wrap with initially if present
         (when initially-forms
           (setq loop-code (cons 'progn (append initially-forms (list loop-code)))))

@@ -2162,3 +2162,49 @@ test "slot-definition-type" {
     const slot_type = try repl.eval("(slot-definition-type (car (class-slots (find-class 'test-class))))");
     try testing.expect(slot_type.isSymbol());
 }
+
+test "generic-function-name" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defgeneric my-gf (x))");
+    const gf_name = try repl.eval("(generic-function-name (symbol-function 'my-gf))");
+    try testing.expect(gf_name.isSymbol());
+}
+
+test "generic-function-methods" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defgeneric my-gf (x))");
+    _ = try repl.eval("(defmethod my-gf ((x fixnum)) 1)");
+    _ = try repl.eval("(defmethod my-gf ((x cons)) 2)");
+    const methods = try repl.eval("(generic-function-methods (symbol-function 'my-gf))");
+    try testing.expect(methods.isCons());
+    const len = try repl.eval("(length (generic-function-methods (symbol-function 'my-gf)))");
+    try testing.expectEqual(@as(i64, 2), len.toFixnum());
+}
+
+test "generic-function-lambda-list" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defgeneric my-gf (x y &optional z))");
+    const lambda_list = try repl.eval("(generic-function-lambda-list (symbol-function 'my-gf))");
+    try testing.expect(lambda_list.isCons());
+}

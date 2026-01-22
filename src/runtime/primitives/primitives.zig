@@ -55,6 +55,10 @@ pub const slotDefinitionAllocation = clos.slotDefinitionAllocation;
 pub const slotDefinitionType = clos.slotDefinitionType;
 pub const makeGenericFunction = clos.makeGenericFunction;
 pub const makeMethod = clos.makeMethod;
+pub const addMethod = clos.addMethod;
+pub const genericFunctionName = clos.genericFunctionName;
+pub const genericFunctionMethods = clos.genericFunctionMethods;
+pub const genericFunctionLambdaList = clos.genericFunctionLambdaList;
 
 pub const typep = ty.typep;
 pub const subtypep = ty.subtypep;
