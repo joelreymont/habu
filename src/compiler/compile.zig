@@ -136,6 +136,7 @@ pub const Builtins = struct {
     defgeneric: Value,
     defmethod: Value,
     @"call-next-method": Value,
+    @"next-method-p": Value,
     @"define-method-combination": Value,
     // Method qualifier keywords
     kw_before: Value,
@@ -562,6 +563,7 @@ pub const Builtins = struct {
             .defgeneric = try heap.intern("defgeneric"),
             .defmethod = try heap.intern("defmethod"),
             .@"call-next-method" = try heap.intern("call-next-method"),
+            .@"next-method-p" = try heap.intern("next-method-p"),
             .@"define-method-combination" = try heap.intern("define-method-combination"),
             .kw_before = try heap.internKeyword("before"),
             .kw_after = try heap.internKeyword("after"),
@@ -1445,7 +1447,7 @@ pub const Compiler = struct {
 
     /// CLOS method definition
     pub const MethodDef = struct {
-        specializers: []const []const u8, // Class names for each parameter
+        specializers: []const Value, // Interned class name symbols for each parameter
         function_name: []const u8, // Global function name to call
         qualifier: MethodQualifier = .primary,
     };
@@ -1548,10 +1550,7 @@ pub const Compiler = struct {
             self.globals.allocator.free(entry.key_ptr.*);
             // Free each method's data
             for (entry.value_ptr.items) |method| {
-                // Free specializers array and each specializer string
-                for (method.specializers) |spec| {
-                    self.globals.allocator.free(spec);
-                }
+                // Specializers are interned Values (no individual free needed)
                 self.globals.allocator.free(method.specializers);
                 // Free function name
                 self.globals.allocator.free(method.function_name);
@@ -2082,6 +2081,7 @@ pub const Compiler = struct {
         defgeneric,
         defmethod,
         @"call-next-method",
+        @"next-method-p",
         @"define-method-combination",
     };
 
@@ -2155,6 +2155,7 @@ pub const Compiler = struct {
         .{ "defgeneric", .defgeneric },
         .{ "defmethod", .defmethod },
         .{ "call-next-method", .@"call-next-method" },
+        .{ "next-method-p", .@"next-method-p" },
         .{ "define-method-combination", .@"define-method-combination" },
     });
 
@@ -2238,6 +2239,7 @@ pub const Compiler = struct {
                     .defgeneric => self.compileDefgeneric(tail, env),
                     .defmethod => self.compileDefmethod(tail, env),
                     .@"call-next-method" => self.compileCallNextMethod(tail, env),
+                    .@"next-method-p" => self.compileNextMethodP(env),
                     .@"define-method-combination" => self.compileDefineMethodCombination(tail, env),
                 };
             }
@@ -6749,11 +6751,13 @@ pub const Compiler = struct {
         const lambda_list = rest.car;
         const body_cons = rest;
 
-        // Extract parameter names and specializers
+        // Extract parameter names and specializers (interned symbols)
         var param_names = std.ArrayList([]const u8){};
         defer param_names.deinit(self.allocator);
-        var specializers = std.ArrayList([]const u8){};
+        var specializers = std.ArrayList(Value){};
         defer specializers.deinit(self.allocator);
+
+        const heap = self.heap orelse return error.CompilerNotInitialized;
 
         var params = lambda_list;
         while (params.isCons()) {
@@ -6764,7 +6768,7 @@ pub const Compiler = struct {
                 // Unspecialized parameter
                 const param_name = param.toPtr(Symbol).getName();
                 try param_names.append(self.allocator, try self.allocator.dupe(u8, param_name));
-                try specializers.append(self.allocator, try self.allocator.dupe(u8, "t")); // t = any type
+                try specializers.append(self.allocator, Value.t); // t = any type
             } else if (param.isCons()) {
                 // Specialized parameter: (param-name class-name)
                 const spec_cons = param.toPtr(Cons);
@@ -6775,13 +6779,14 @@ pub const Compiler = struct {
                 if (spec_cons.cdr.isCons()) {
                     const class_cons = spec_cons.cdr.toPtr(Cons);
                     if (class_cons.car.isSymbol()) {
+                        // Intern the class name symbol
                         const class_name = class_cons.car.toPtr(Symbol).getName();
-                        try specializers.append(self.allocator, try self.allocator.dupe(u8, class_name));
+                        try specializers.append(self.allocator, try heap.intern(class_name));
                     } else {
-                        try specializers.append(self.allocator, try self.allocator.dupe(u8, "t"));
+                        try specializers.append(self.allocator, Value.t);
                     }
                 } else {
-                    try specializers.append(self.allocator, try self.allocator.dupe(u8, "t"));
+                    try specializers.append(self.allocator, Value.t);
                 }
             } else {
                 return error.InvalidSyntax;
@@ -6847,7 +6852,16 @@ pub const Compiler = struct {
             .after => "a",
             .around => "r",
         };
-        const spec_str = if (specializers.items.len > 0) specializers.items[0] else "t";
+        const spec_str = if (specializers.items.len > 0) blk: {
+            const spec_val = specializers.items[0];
+            if (spec_val.eq(Value.t)) {
+                break :blk "t";
+            } else if (spec_val.isSymbol()) {
+                break :blk spec_val.toPtr(Symbol).getName();
+            } else {
+                break :blk "t";
+            }
+        } else "t";
         const simple_name = name_sym.getName();
         const method_name = try std.fmt.allocPrint(self.allocator, "{s}${s}${s}", .{ simple_name, qual_str, spec_str });
 
@@ -6857,10 +6871,8 @@ pub const Compiler = struct {
 
         // Store method function name (persistent, needs globals.allocator)
         const persistent_method_name = try self.globals.allocator.dupe(u8, method_name);
-        const persistent_specializers = try self.globals.allocator.alloc([]const u8, specializers.items.len);
-        for (specializers.items, 0..) |spec, i| {
-            persistent_specializers[i] = try self.globals.allocator.dupe(u8, spec);
-        }
+        // Copy specializer Values (they're interned, so no string duplication needed)
+        const persistent_specializers = try self.globals.allocator.dupe(Value, specializers.items);
 
         // Create method def
         const method_def = MethodDef{
@@ -6956,6 +6968,25 @@ pub const Compiler = struct {
         return try self.builder.call(next_method_ir, try arg_irs.toOwnedSlice(self.allocator));
     }
 
+    /// Compile next-method-p: returns t if call-next-method would succeed, nil otherwise
+    fn compileNextMethodP(self: *Compiler, env: *const Env) anyerror!*Ir {
+        _ = env;
+        // Check if %next-method% is bound and non-nil
+        const nm_name = try self.getNextMethodName();
+
+        const nm_global_idx = self.globals.lookup(nm_name) orelse blk: {
+            break :blk try self.globals.define(nm_name);
+        };
+
+        // Get %next-method% value
+        const next_method_ir = try self.builder.globalRef(nm_name, nm_global_idx);
+
+        // Check if it's non-nil: (if %next-method% t nil)
+        const t_ir = try self.builder.lit(Value.t);
+        const nil_ir = try self.builder.lit(Value.nil);
+        return try self.builder.ifExpr(next_method_ir, t_ir, nil_ir);
+    }
+
     /// Generate a dispatcher lambda implementing standard method combination
     /// Order: :around (call-next-method) -> :before -> primary -> :after
     fn generateMethodDispatcher(
@@ -7004,19 +7035,17 @@ pub const Compiler = struct {
             // Build condition by AND-ing all parameter type checks
             var cond_ir: ?*Ir = null;
 
-            for (primary.specializers, 0..) |spec_name, param_idx| {
+            for (primary.specializers, 0..) |spec_val, param_idx| {
                 if (param_idx >= param_names.len) return error.InvalidSyntax;
 
-                // Skip unspecialized parameters (specializer = "t")
-                // Compare string directly since symbol interning may differ by package
-                if (std.mem.eql(u8, spec_name, "t")) continue;
+                // Skip unspecialized parameters (specializer = t)
+                if (spec_val.eq(Value.t)) continue;
 
                 // Reference to parameter
                 const arg_ir = try self.builder.variable(param_names[param_idx], 0, @intCast(param_idx));
 
-                // Class name symbol
-                const class_sym = try self.heap.?.intern(spec_name);
-                const class_ir = try self.builder.lit(class_sym);
+                // Class name symbol (already interned)
+                const class_ir = try self.builder.lit(spec_val);
 
                 // typep check
                 const check_ir = try self.builder.typep(arg_ir, class_ir);
@@ -7186,15 +7215,15 @@ pub const Compiler = struct {
 
     /// Check if method specializers are compatible (aux method applies to primary)
     /// For now: aux method applies if its specializers are same or more general
-    fn specializerMatches(self: *Compiler, aux_specs: []const []const u8, primary_specs: []const []const u8) !bool {
+    fn specializerMatches(self: *Compiler, aux_specs: []const Value, primary_specs: []const Value) !bool {
         _ = self;
         if (aux_specs.len != primary_specs.len) return false;
-        // String comparison needed: specializer names are raw strings from defmethod parsing
+        // Symbol identity comparison via Value.eq()
         for (aux_specs, primary_specs) |aux, prim| {
-            // "t" (any type) matches everything
-            if (std.mem.eql(u8, aux, "t")) continue;
+            // t (any type) matches everything
+            if (aux.eq(Value.t)) continue;
             // Otherwise must be same specializer
-            if (!std.mem.eql(u8, aux, prim)) return false;
+            if (!aux.eq(prim)) return false;
         }
         return true;
     }

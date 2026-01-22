@@ -360,3 +360,29 @@ test "method combination order: around before primary after" {
     // Order: around-end, after, primary, before, around-start (reversed due to cons)
     try testing.expect(result.isCons());
 }
+
+test "next-method-p returns t when next method exists" {
+    var heap = Heap.init(testing.allocator);
+    defer heap.deinit();
+
+    const config = repl_mod.Config{};
+    var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
+    defer r.deinit();
+    r.wireGlobalEnv();
+
+    const code =
+        \\(defclass widget () value)
+        \\(defgeneric compute (obj))
+        \\(defmethod compute ((w widget)) (widget-value w))
+        \\(defmethod :around compute ((w widget))
+        \\  (if (next-method-p)
+        \\      (+ 100 (call-next-method))
+        \\      -1))
+        \\(define w (make-widget 5))
+        \\(compute w)
+    ;
+
+    const result = try r.eval(code);
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 105), result.toFixnum());
+}

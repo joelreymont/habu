@@ -1743,3 +1743,18 @@ test "stdlib compiles" {
     const map_result = try repl.eval("(map (lambda (x) (* x 2)) (list3 1 2 3))");
     try testing.expect(map_result.isCons());
 }
+
+test "next-method-p compiles" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    // Simple test: just check that next-method-p compiles and returns nil outside method
+    const result = try repl.eval("(next-method-p)");
+    // Outside of a method, %next-method% is nil, so next-method-p returns nil
+    try testing.expect(result.isNil());
+}
