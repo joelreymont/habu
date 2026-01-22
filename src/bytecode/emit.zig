@@ -2175,19 +2175,27 @@ pub const Emitter = struct {
 /// to be relative to the parent's array.
 fn patchMakeClosureIndicesOffset(code: []u8, offset: u16) void {
     var i: usize = 0;
-    while (i < code.len) {
-        const op: Op = @enumFromInt(code[i]);
+    while (i + 1 < code.len) {
+        // Read opcode (2 bytes, little-endian)
+        const low: u16 = code[i];
+        const high: u16 = code[i + 1];
+        const opcode = low | (high << 8);
+        const op: Op = @enumFromInt(opcode);
         const size = op.operandSize();
 
         if (op == .make_closure) {
             // make_closure has: u16 chunk_index, u8 num_captures
-            // Add offset to the u16 index at code[i+1..i+3]
-            const rel_idx = std.mem.readInt(u16, code[i + 1 ..][0..2], .little);
-            const new_idx = rel_idx + offset;
-            std.mem.writeInt(u16, code[i + 1 ..][0..2], new_idx, .little);
+            // Operand starts at i+2 (after 2-byte opcode)
+            // Add offset to the u16 index at code[i+2..i+4]
+            if (i + 2 + 2 <= code.len) {
+                const rel_idx = std.mem.readInt(u16, code[i + 2 ..][0..2], .little);
+                const new_idx = rel_idx + offset;
+                std.mem.writeInt(u16, code[i + 2 ..][0..2], new_idx, .little);
+            }
         }
 
-        i += 1 + size;
+        // Move to next instruction: 2 bytes for opcode + operand size
+        i += 2 + size;
     }
 }
 

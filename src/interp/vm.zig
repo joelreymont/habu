@@ -5247,21 +5247,25 @@ pub const Vm = struct {
         if (callee_chunk.has_rest != 0) {
             // Variadic: need at least required args
             if (argc < arity) {
+                std.debug.print("doCall: variadic arity mismatch! argc={} < arity={}\n", .{ argc, arity });
                 return error.TypeMismatch;
             }
         } else if (key_count > 0) {
             // Has keyword params: need at least required args
             if (argc < arity) {
+                std.debug.print("doCall: keyword arity mismatch! argc={} < arity={}\n", .{ argc, arity });
                 return error.TypeMismatch;
             }
             // Keyword args must come in pairs (after actual positional args)
             const kw_arg_count = argc - actual_positional;
             if (kw_arg_count % 2 != 0) {
+                std.debug.print("doCall: keyword pair mismatch! kw_arg_count={}\n", .{kw_arg_count});
                 return error.TypeMismatch;
             }
         } else if (opt_count > 0) {
             // Has optional params: argc must be in [arity, arity + opt_count]
             if (argc < arity or argc > max_positional) {
+                std.debug.print("doCall: optional arity mismatch! argc={}, arity={}, max_positional={}\n", .{ argc, arity, max_positional });
                 return error.TypeMismatch;
             }
         } else {
