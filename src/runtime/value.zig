@@ -74,6 +74,8 @@ pub const Value = packed struct {
     /// Special symbol value for t - uses symbol tag with reserved address 0
     /// This makes (symbolp t) true and (eq t 1) false
     pub const t: Value = .{ .raw = 2 }; // symbol tag (2) with ptr 0
+    /// Sentinel for unbound slots - symbol tag with reserved address 16
+    pub const unbound: Value = .{ .raw = 18 }; // symbol tag (2) + address 16
 
     const TAG_MASK: u64 = 0xE; // bits 1-3
     const PTR_MASK: u64 = ~@as(u64, 0xF); // clear low 4 bits
@@ -92,9 +94,14 @@ pub const Value = packed struct {
         return self.raw == t.raw;
     }
 
-    /// Check if value is a "magic" symbol (t or nil) that can't be dereferenced
+    /// Check if value is the unbound marker
+    pub inline fn isUnbound(self: Value) bool {
+        return self.raw == unbound.raw;
+    }
+
+    /// Check if value is a "magic" symbol (t, nil, or unbound) that can't be dereferenced
     pub inline fn isMagicSymbol(self: Value) bool {
-        return self.isNil() or self.isT();
+        return self.isNil() or self.isT() or self.isUnbound();
     }
 
     /// Check if value is symbol-like for symbolp (includes nil and t)

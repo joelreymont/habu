@@ -1881,6 +1881,40 @@ test "next-method-p - returns nil when no next" {
     try testing.expect(result.isNil());
 }
 
+test "no-applicable-method - no methods defined" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defgeneric test-gf (x))");
+
+    // Should error: no applicable method
+    const err = repl.eval("(test-gf 42)");
+    try testing.expectError(error.UserError, err);
+}
+
+test "no-applicable-method - no matching specializers" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass foo () ())");
+    _ = try repl.eval("(defgeneric process (x))");
+    _ = try repl.eval("(defmethod process ((x foo)) 'foo-result)");
+
+    // Should error: no applicable method for fixnum
+    const err = repl.eval("(process 42)");
+    try testing.expectError(error.UserError, err);
+}
+
 test "call-next-method - no next method error" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
