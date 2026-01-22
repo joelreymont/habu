@@ -11,6 +11,123 @@
 const std = @import("std");
 const Value = @import("value.zig").Value;
 
+/// Check if arg_class is a subtype of specializer_class
+/// This is true if specializer_class appears in arg_class's CPL
+pub fn isSubtype(arg_class: *const Class, specializer_class: Value) bool {
+    var cpl = arg_class.cpl;
+    while (cpl.isCons()) {
+        const cons = cpl.toPtr(Cons);
+        if (cons.car.eq(specializer_class)) return true;
+        cpl = cons.cdr;
+    }
+    return false;
+}
+
+/// Compare method specificity: returns true if m1 is more specific than m2
+/// Two methods are compared by finding the leftmost argument where specializers differ,
+/// then checking which specializer appears first in that argument's CPL
+pub fn isMoreSpecific(m1_specs: []const Value, m2_specs: []const Value, arg_classes: []const *const Class) bool {
+    const len = @min(m1_specs.len, m2_specs.len);
+    for (0..len) |i| {
+        if (m1_specs[i].eq(m2_specs[i])) continue;
+
+        // Found first differing specializer - check CPL position
+        var cpl = arg_classes[i].cpl;
+        while (cpl.isCons()) {
+            const cons = cpl.toPtr(Cons);
+            if (cons.car.eq(m1_specs[i])) return true;
+            if (cons.car.eq(m2_specs[i])) return false;
+            cpl = cons.cdr;
+        }
+        return false;
+    }
+    return false;
+}
+
+/// C3 linearization: compute class precedence list
+/// L[C(B1...BN)] = C + merge(L[B1]...L[BN], B1...BN)
+pub fn computeCpl(allocator: std.mem.Allocator, class: Value, direct_supers: []const Value, get_cpl: *const fn (Value) []const Value) ![]Value {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const tmp = arena.allocator();
+
+    // Build input lists: parent CPLs + direct supers list
+    var lists = std.ArrayList(std.ArrayList(Value)){};
+    defer {
+        for (lists.items) |*l| l.deinit(tmp);
+        lists.deinit(tmp);
+    }
+
+    for (direct_supers) |sup| {
+        var parent_cpl = std.ArrayList(Value){};
+        for (get_cpl(sup)) |c| try parent_cpl.append(tmp, c);
+        try lists.append(tmp, parent_cpl);
+    }
+
+    var supers_list = std.ArrayList(Value){};
+    for (direct_supers) |s| try supers_list.append(tmp, s);
+    try lists.append(tmp, supers_list);
+
+    // Result: class + merge
+    var result = std.ArrayList(Value){};
+    try result.append(tmp, class);
+
+    // Merge loop
+    while (true) {
+        var all_empty = true;
+        for (lists.items) |l| {
+            if (l.items.len > 0) {
+                all_empty = false;
+                break;
+            }
+        }
+        if (all_empty) break;
+
+        // Find eligible head: appears as head but not in any tail
+        var candidate: ?Value = null;
+        for (lists.items) |l| {
+            if (l.items.len == 0) continue;
+            const head = l.items[0];
+
+            var in_tail = false;
+            for (lists.items) |other| {
+                if (other.items.len <= 1) continue;
+                for (other.items[1..]) |t| {
+                    if (head.eq(t)) {
+                        in_tail = true;
+                        break;
+                    }
+                }
+                if (in_tail) break;
+            }
+
+            if (!in_tail) {
+                candidate = head;
+                break;
+            }
+        }
+
+        if (candidate) |c| {
+            try result.append(tmp, c);
+            // Remove from all lists
+            for (lists.items) |*l| {
+                var i: usize = 0;
+                while (i < l.items.len) {
+                    if (l.items[i].eq(c)) {
+                        _ = l.orderedRemove(i);
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+        } else {
+            return error.InconsistentPrecedence;
+        }
+    }
+
+    return allocator.dupe(Value, result.items);
+}
+
 /// Cons cell: (car . cdr)
 /// Size: 16 bytes (2 words), 16-byte aligned for tagging
 pub const Cons = extern struct {
@@ -739,11 +856,15 @@ test "condition layout" {
 }
 
 /// Class: CLOS class metaobject with shared slot storage
-/// Size: 32 bytes + slot data
+/// Size: 48 bytes + slot data
 pub const Class = extern struct {
     kind: BoxedKind align(16),
     /// Class name (symbol)
     name: Value,
+    /// Direct superclasses (list of Values)
+    direct_supers: Value,
+    /// Class precedence list (list of Values)
+    cpl: Value,
     /// Number of shared slots
     num_shared: u32,
     _pad: u32 = 0,

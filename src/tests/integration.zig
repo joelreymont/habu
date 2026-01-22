@@ -1758,3 +1758,56 @@ test "next-method-p compiles" {
     // Outside of a method, %next-method% is nil, so next-method-p returns nil
     try testing.expect(result.isNil());
 }
+
+test "method dispatch - specificity ordering" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    // Define generic with two methods of different specificity
+    _ = try repl.eval("(defgeneric test-fn (x))");
+    _ = try repl.eval("(defmethod test-fn (x) 'general)");
+    _ = try repl.eval("(defmethod test-fn ((x fixnum)) 'fixnum-specific)");
+
+    // Specific method should win for fixnum
+    const fix_result = try repl.eval("(test-fn 42)");
+    const fix_spec = try heap.intern("fixnum-specific");
+    try testing.expect(fix_result.eq(fix_spec));
+
+    // General method should win for non-fixnum
+    const gen_result = try repl.eval("(test-fn 'sym)");
+    const general = try heap.intern("general");
+    try testing.expect(gen_result.eq(general));
+}
+
+test "method dispatch - all qualifiers" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass animal () ())");
+
+    // Define generic with all qualifier types
+    _ = try repl.eval("(defgeneric make-sound (x))");
+    _ = try repl.eval("(defmethod make-sound :before ((x animal)) (print 'setup) (terpri))");
+    _ = try repl.eval("(defmethod make-sound ((x animal)) (print 'sound) (terpri) 'primary-result)");
+    _ = try repl.eval("(defmethod make-sound :after ((x animal)) (print 'cleanup) (terpri))");
+    _ = try repl.eval("(defmethod make-sound :around ((x animal)) (print 'outer) (terpri) (call-next-method))");
+
+    _ = try repl.eval("(setf my-animal (make-instance 'animal))");
+
+    // Call should execute: around -> before -> primary -> after
+    const result = try repl.eval("(make-sound my-animal)");
+
+    // Verify primary result is returned
+    const primary = try heap.intern("primary-result");
+    try testing.expect(result.eq(primary));
+}

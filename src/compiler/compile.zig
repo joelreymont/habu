@@ -5661,6 +5661,59 @@ pub const Compiler = struct {
         allocation: Allocation = .instance,
     };
 
+    /// Allocate Class object and compute CPL
+    fn allocateClass(self: *Compiler, heap: *Heap, name: Value, superclasses: Value) !Value {
+        const objects = @import("../runtime/objects.zig");
+
+        // Convert superclasses list to array
+        var supers = std.ArrayList(Value){};
+        defer supers.deinit(self.allocator);
+
+        var super_list = superclasses;
+        while (super_list.isCons()) {
+            const cons = super_list.toPtr(Cons);
+            try supers.append(self.allocator, cons.car);
+            super_list = cons.cdr;
+        }
+
+        // Compute CPL
+        const cpl = try objects.computeCpl(
+            heap.backing_allocator,
+            name,
+            supers.items,
+            getCpl,
+        );
+        defer heap.backing_allocator.free(cpl);
+
+        // Convert CPL array to list
+        var cpl_list = Value.nil;
+        var i = cpl.len;
+        while (i > 0) {
+            i -= 1;
+            cpl_list = try heap.allocCons(cpl[i], cpl_list);
+        }
+
+        // Allocate Class object
+        const class_ptr = try heap.alloc(objects.Class);
+        class_ptr.* = .{
+            .kind = .class,
+            .name = name,
+            .direct_supers = superclasses,
+            .cpl = cpl_list,
+            .num_shared = 0,
+            .shared_slots = undefined,
+        };
+
+        return Value.makeClass(class_ptr);
+    }
+
+    /// Get CPL for a class (used by computeCpl)
+    fn getCpl(class: Value) []const Value {
+        _ = class;
+        // TODO: Look up class in registry and return its CPL
+        return &.{};
+    }
+
     /// Generate constructor: creates a closure that takes args, checks types, returns vector
     fn generateStructConstructor(self: *Compiler, heap: *Heap, make_name: []const u8, struct_name: []const u8, slots: []const SlotSpec, env: *const Env) anyerror!*Ir {
         _ = env;
@@ -6500,6 +6553,10 @@ pub const Compiler = struct {
             try heap.class_metadata.put(heap.backing_allocator, heap_class_name, heap_slot_names);
         }
 
+        // Allocate Class object and compute CPL
+        const class_obj = try self.allocateClass(heap, name_val, superclasses);
+        _ = class_obj;
+
         // Generate definitions: constructor + predicate + accessors + name_lit
         const num_defs = 1 + 1 + slot_specs.items.len + 1; // constructor + predicate + accessors + name_lit
         const defs = try self.allocator.alloc(*Ir, num_defs);
@@ -7014,6 +7071,12 @@ pub const Compiler = struct {
             }
         }
 
+        // Sort each list by specificity (most specific first)
+        try self.sortMethodsBySpecificity(primary_methods.items);
+        try self.sortMethodsBySpecificity(before_methods.items);
+        try self.sortMethodsBySpecificity(after_methods.items);
+        try self.sortMethodsBySpecificity(around_methods.items);
+
         // Build dispatcher body: nested if-then-else checking types
         var dispatch_body: *Ir = undefined;
 
@@ -7058,11 +7121,13 @@ pub const Compiler = struct {
             }
 
             // Build effective method: before* -> primary -> after*
+            // Pass dispatch_body as next_method - it represents the fallback chain
             const effective_method = try self.buildEffectiveMethod(
                 primary,
                 before_methods.items,
                 after_methods.items,
                 param_names,
+                dispatch_body,
             );
 
             // If all parameters are unspecialized, this method always matches
@@ -7099,7 +7164,7 @@ pub const Compiler = struct {
 
                 // Define %next-method% global (use qualified name to match symbol interning)
                 const nm_name = try self.getNextMethodName();
-                const nm_idx = try self.globals.define(nm_name);
+                const nm_idx = self.globals.lookup(nm_name) orelse try self.globals.define(nm_name);
                 const set_next = try self.builder.define(nm_name, nm_idx, next_method_lambda);
 
                 // Call the around method
@@ -7130,12 +7195,14 @@ pub const Compiler = struct {
 
     /// Build effective method: before* -> primary -> after*
     /// Returns the primary method's value (after methods are for side effects only)
+    /// next_method_body: IR representing the next less-specific method (or nil)
     fn buildEffectiveMethod(
         self: *Compiler,
         primary: MethodDef,
         before_methods: []const MethodDef,
         after_methods: []const MethodDef,
         param_names: []const []const u8,
+        next_method_body: ?*Ir,
     ) anyerror!*Ir {
         // Count applicable :after methods
         var after_count: usize = 0;
@@ -7154,12 +7221,38 @@ pub const Compiler = struct {
             }
         }
 
+        // Bind %next-method% to closure or nil
+        const nm_name = try self.getNextMethodName();
+        const nm_idx = self.globals.lookup(nm_name) orelse try self.globals.define(nm_name);
+
+        const next_method_value = if (next_method_body) |body| blk: {
+            const lambda_params = try self.allocator.dupe([]const u8, param_names);
+            break :blk try self.builder.lambda(
+                lambda_params,
+                &[_]Ir.OptionalParam{},
+                &[_]Ir.KeyParam{},
+                null,
+                &[_]Ir.Capture{},
+                body,
+            );
+        } else try self.builder.lit(Value.nil);
+
+        const set_next = try self.builder.define(nm_name, nm_idx, next_method_value);
+
         if (!has_before and after_count == 0) {
-            return try self.generateMethodCallByName(primary.function_name, param_names);
+            // Just primary, wrapped with %next-method% binding
+            const primary_call = try self.generateMethodCallByName(primary.function_name, param_names);
+            const seq = try self.allocator.alloc(*Ir, 2);
+            seq[0] = set_next;
+            seq[1] = primary_call;
+            return try self.builder.progn(seq);
         }
 
         var stmts = std.ArrayList(*Ir){};
         defer stmts.deinit(self.allocator);
+
+        // Bind %next-method% first
+        try stmts.append(self.allocator, set_next);
 
         // Call applicable :before methods (most specific first)
         for (before_methods) |before| {
@@ -7207,10 +7300,31 @@ pub const Compiler = struct {
             try stmts.append(self.allocator, try self.generateMethodCallByName(primary.function_name, param_names));
         }
 
-        if (stmts.items.len == 1) {
-            return stmts.items[0];
-        }
         return try self.builder.progn(try stmts.toOwnedSlice(self.allocator));
+    }
+
+    /// Sort methods by specificity (most specific first)
+    /// Methods with more specialized (non-t) specializers come first
+    fn sortMethodsBySpecificity(self: *Compiler, methods: []MethodDef) !void {
+        _ = self;
+        if (methods.len <= 1) return;
+
+        std.mem.sort(MethodDef, methods, {}, struct {
+            fn lessThan(_: void, a: MethodDef, b: MethodDef) bool {
+                const min_len = @min(a.specializers.len, b.specializers.len);
+                for (0..min_len) |i| {
+                    const a_is_t = a.specializers[i].eq(Value.t);
+                    const b_is_t = b.specializers[i].eq(Value.t);
+
+                    // More specific (non-t) comes first
+                    if (!a_is_t and b_is_t) return true;
+                    if (a_is_t and !b_is_t) return false;
+                    // Same specificity at this position, continue to next
+                }
+                // All compared positions equal - doesn't matter
+                return false;
+            }
+        }.lessThan);
     }
 
     /// Check if method specializers are compatible (aux method applies to primary)

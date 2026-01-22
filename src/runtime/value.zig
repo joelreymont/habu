@@ -460,6 +460,11 @@ pub const Value = packed struct {
         return makePtr(ptr, .boxed);
     }
 
+    /// Create a class value (boxed object)
+    pub inline fn makeClass(ptr: anytype) Value {
+        return makePtr(ptr, .boxed);
+    }
+
     /// Create a forwarding pointer (GC)
     pub inline fn makeForwarding(ptr: anytype) Value {
         return makePtr(ptr, .forwarding);
