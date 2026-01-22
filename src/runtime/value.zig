@@ -47,6 +47,7 @@ pub const TypeKind = enum {
     symbol,
     vector,
     string,
+    string32,
     closure,
     keyword,
     hashtable,
@@ -60,6 +61,9 @@ pub const TypeKind = enum {
     chunk,
     condition,
     class,
+    slotdef,
+    generic_function,
+    method,
 };
 
 /// A tagged Habu value (64-bit)
@@ -143,9 +147,16 @@ pub const Value = packed struct {
         return self.isPointer() and self.getTag() == .vector;
     }
 
-    /// Check if value is a string
+    /// Check if value is a string (8-bit base-string)
     pub inline fn isString(self: Value) bool {
         return self.isPointer() and self.getTag() == .string;
+    }
+
+    /// Check if value is a String32 (UTF-32 string)
+    pub inline fn isString32(self: Value) bool {
+        if (!self.isBoxed()) return false;
+        const kind_ptr: *const objects.BoxedKind = @ptrFromInt(self.raw & PTR_MASK);
+        return kind_ptr.* == .string32;
     }
 
     /// Check if value is a closure
@@ -232,6 +243,30 @@ pub const Value = packed struct {
         return kind_ptr.* == .condition;
     }
 
+    pub inline fn isClass(self: Value) bool {
+        if (!self.isBoxed()) return false;
+        const kind_ptr: *const objects.BoxedKind = @ptrFromInt(self.raw & PTR_MASK);
+        return kind_ptr.* == .class;
+    }
+
+    pub inline fn isSlotDefinition(self: Value) bool {
+        if (!self.isBoxed()) return false;
+        const kind_ptr: *const objects.BoxedKind = @ptrFromInt(self.raw & PTR_MASK);
+        return kind_ptr.* == .slotdef;
+    }
+
+    pub inline fn isGenericFunction(self: Value) bool {
+        if (!self.isBoxed()) return false;
+        const kind_ptr: *const objects.BoxedKind = @ptrFromInt(self.raw & PTR_MASK);
+        return kind_ptr.* == .generic_function;
+    }
+
+    pub inline fn isMethod(self: Value) bool {
+        if (!self.isBoxed()) return false;
+        const kind_ptr: *const objects.BoxedKind = @ptrFromInt(self.raw & PTR_MASK);
+        return kind_ptr.* == .method;
+    }
+
     /// Check if value is a forwarding pointer (GC)
     pub inline fn isForwarding(self: Value) bool {
         return self.isPointer() and self.getTag() == .forwarding;
@@ -287,6 +322,10 @@ pub const Value = packed struct {
                     .chunk => .chunk,
                     .condition => .condition,
                     .class => .class,
+                    .string32 => .string32,
+                    .slotdef => .slotdef,
+                    .generic_function => .generic_function,
+                    .method => .method,
                 };
             },
             .forwarding => .cons, // Shouldn't happen during normal execution
@@ -407,6 +446,11 @@ pub const Value = packed struct {
         return makePtr(ptr, .string);
     }
 
+    /// Create a String32 value (boxed object)
+    pub inline fn makeString32(ptr: anytype) Value {
+        return makePtr(ptr, .boxed);
+    }
+
     /// Create a closure value
     pub inline fn makeClosure(ptr: anytype) Value {
         return makePtr(ptr, .closure);
@@ -469,6 +513,20 @@ pub const Value = packed struct {
 
     /// Create a class value (boxed object)
     pub inline fn makeClass(ptr: anytype) Value {
+        return makePtr(ptr, .boxed);
+    }
+
+    /// Create a generic function value (boxed object)
+    pub inline fn makeGenericFunction(ptr: anytype) Value {
+        return makePtr(ptr, .boxed);
+    }
+
+    /// Create a method value (boxed object)
+    pub inline fn makeMethod(ptr: anytype) Value {
+        return makePtr(ptr, .boxed);
+    }
+
+    pub inline fn makeSlotDef(ptr: anytype) Value {
         return makePtr(ptr, .boxed);
     }
 

@@ -608,6 +608,8 @@ pub const Ir = union(enum) {
 
     slot_value: BinaryOp, // (slot-value obj 'slot-name)
     set_slot_value: TernaryOp, // (%set-slot-value obj 'slot-name value)
+    make_generic_function: BinaryOp, // (%make-generic-function name lambda-list)
+    make_method: QuaternaryOp, // (%make-method qualifiers specializers lambda-list function)
 
     // ========================================================================
     // Primitives - Box operations (mutable cells)
@@ -649,6 +651,8 @@ pub const Ir = union(enum) {
     random: UnaryOp,
     random_seed: UnaryOp,
     intern: UnaryOp,
+    unintern: BinaryOp,
+    find_symbol: BinaryOp,
     sym_name: UnaryOp,
     get: BinaryOp,
     put: TernaryOp,
@@ -767,6 +771,13 @@ pub const Ir = union(enum) {
         first: *const Ir,
         second: *const Ir,
         third: *const Ir,
+    };
+
+    pub const QuaternaryOp = struct {
+        first: *const Ir,
+        second: *const Ir,
+        third: *const Ir,
+        fourth: *const Ir,
     };
 
     pub const Binding = struct {
@@ -1970,6 +1981,18 @@ pub const IrBuilder = struct {
     pub fn slotValue(self: IrBuilder, obj: *const Ir, slot_name: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .slot_value = .{ .left = obj, .right = slot_name } };
+        return node;
+    }
+
+    pub fn makeGenericFunction(self: IrBuilder, name: *const Ir, lambda_list: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .make_generic_function = .{ .left = name, .right = lambda_list } };
+        return node;
+    }
+
+    pub fn makeMethod(self: IrBuilder, qualifiers: *const Ir, specializers: *const Ir, lambda_list: *const Ir, function: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .make_method = .{ .first = qualifiers, .second = specializers, .third = lambda_list, .fourth = function } };
         return node;
     }
 

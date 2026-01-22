@@ -484,34 +484,61 @@ pub const Parser = struct {
             text = text[1 .. text.len - 1];
         }
 
-        // Check if we need to decode escapes
-        if (std.mem.indexOf(u8, text, "\\")) |_| {
-            // Has escapes - decode them directly into allocated string
-            return try self.decodeStringEscapes(text);
-        }
-
-        return try self.heap.allocString(text);
-    }
-
-    /// Decode escape sequences in a string, allocating result in heap's string space
-    fn decodeStringEscapes(self: *Parser, text: []const u8) Error!Value {
-        // First pass: count output size
-        var out_len: usize = 0;
-        var i: usize = 0;
-        while (i < text.len) {
-            if (text[i] == '\\' and i + 1 < text.len) {
-                out_len += 1;
-                i += 2;
-            } else {
-                out_len += 1;
-                i += 1;
+        // Check if we need to decode escapes or if string has non-ASCII
+        const has_escape = std.mem.indexOf(u8, text, "\\") != null;
+        var has_non_ascii = false;
+        for (text) |byte| {
+            if (byte >= 128) {
+                has_non_ascii = true;
+                break;
             }
         }
 
-        // Allocate string with uninitialized content
-        const str_val = try self.heap.allocStringUninitialized(out_len);
-        const str = str_val.toPtr(runtime.String);
-        const buffer = str.mutableBytes();
+        if (has_escape) {
+            // Has escapes - decode them into String32
+            return try self.decodeStringEscapes(text);
+        }
+
+        if (has_non_ascii) {
+            // UTF-8 content without escapes - convert to String32
+            return try self.heap.allocString32FromUtf8(text);
+        }
+
+        // Pure ASCII without escapes - use base-string
+        return try self.heap.allocBaseString(text);
+    }
+
+    /// Decode escape sequences in a string, allocating result in heap's string space
+    /// Returns String32 to support Unicode escapes
+    fn decodeStringEscapes(self: *Parser, text: []const u8) Error!Value {
+        // First pass: count output codepoints and check for Unicode escapes
+        var out_len: usize = 0;
+        var has_unicode = false;
+        var i: usize = 0;
+        while (i < text.len) {
+            if (text[i] == '\\' and i + 1 < text.len) {
+                const next = text[i + 1];
+                if (next == 'u' or next == 'U') {
+                    has_unicode = true;
+                    // \uXXXX or \UXXXXXXXX
+                    const hex_digits = if (next == 'u') @as(usize, 4) else @as(usize, 8);
+                    i += 2 + hex_digits;
+                } else {
+                    i += 2;
+                }
+                out_len += 1;
+            } else {
+                // Decode UTF-8 to count codepoints
+                const cp_len = std.unicode.utf8ByteSequenceLength(text[i]) catch 1;
+                i += cp_len;
+                out_len += 1;
+            }
+        }
+
+        // Allocate UTF-32 string with uninitialized content
+        const str_val = try self.heap.allocString32Uninitialized(out_len);
+        const str = str_val.toPtr(runtime.String32);
+        const buffer = str.mutableCodepoints();
 
         // Second pass: decode into buffer
         var out_idx: usize = 0;
@@ -525,15 +552,39 @@ pub const Parser = struct {
                     'r' => '\r',
                     '\\' => '\\',
                     '"' => '"',
-                    '0' => 0, // null character
-                    else => next, // Unknown escape - keep as-is
+                    '0' => 0,
+                    'u' => blk: {
+                        // \uXXXX - 4 hex digits
+                        if (i + 6 > text.len) break :blk @as(u32, 'u');
+                        const hex = text[i + 2 .. i + 6];
+                        const cp = std.fmt.parseInt(u32, hex, 16) catch break :blk @as(u32, 'u');
+                        i += 4; // Extra advance (base +2 below)
+                        break :blk cp;
+                    },
+                    'U' => blk: {
+                        // \UXXXXXXXX - 8 hex digits
+                        if (i + 10 > text.len) break :blk @as(u32, 'U');
+                        const hex = text[i + 2 .. i + 10];
+                        const cp = std.fmt.parseInt(u32, hex, 16) catch break :blk @as(u32, 'U');
+                        i += 8; // Extra advance
+                        break :blk cp;
+                    },
+                    else => @as(u32, next),
                 };
                 out_idx += 1;
                 i += 2;
             } else {
-                buffer[out_idx] = text[i];
+                // Decode UTF-8 codepoint
+                const cp_len = std.unicode.utf8ByteSequenceLength(text[i]) catch {
+                    buffer[out_idx] = @as(u32, text[i]);
+                    out_idx += 1;
+                    i += 1;
+                    continue;
+                };
+                const cp = std.unicode.utf8Decode(text[i .. i + cp_len]) catch @as(u32, text[i]);
+                buffer[out_idx] = cp;
                 out_idx += 1;
-                i += 1;
+                i += cp_len;
             }
         }
 

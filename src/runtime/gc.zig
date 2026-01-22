@@ -331,7 +331,13 @@ pub const GC = struct {
                         chunk.const_pool = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_const_pool)) + addr_delta)));
                         chunk.code = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_code)) + addr_delta)));
                     },
-                    .rational, .complex, .stream, .bignum, .pathname, .package, .condition, .class => {
+                    .string32 => {
+                        // String32.data points to inline codepoint data after header
+                        const s32: *objects.String32 = @ptrFromInt(new_addr);
+                        const old_ptr = @intFromPtr(s32.data);
+                        s32.data = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
+                    },
+                    .rational, .complex, .stream, .bignum, .pathname, .package, .condition, .class, .slotdef, .generic_function, .method => {
                         // No interior pointers to repair
                     },
                 }
@@ -488,6 +494,18 @@ pub const GC = struct {
                         if (cls.name.isPointer() and !cls.name.isNil()) {
                             cls.name = try self.copyValue(cls.name, alloc_ptr);
                         }
+                        if (cls.direct_supers.isPointer() and !cls.direct_supers.isNil()) {
+                            cls.direct_supers = try self.copyValue(cls.direct_supers, alloc_ptr);
+                        }
+                        if (cls.cpl.isPointer() and !cls.cpl.isNil()) {
+                            cls.cpl = try self.copyValue(cls.cpl, alloc_ptr);
+                        }
+                        if (cls.direct_slots.isPointer() and !cls.direct_slots.isNil()) {
+                            cls.direct_slots = try self.copyValue(cls.direct_slots, alloc_ptr);
+                        }
+                        if (cls.slots.isPointer() and !cls.slots.isNil()) {
+                            cls.slots = try self.copyValue(cls.slots, alloc_ptr);
+                        }
                         for (cls.shared_slots[0..cls.num_shared]) |*slot_val| {
                             if (slot_val.isPointer() and !slot_val.isNil()) {
                                 slot_val.* = try self.copyValue(slot_val.*, alloc_ptr);
@@ -504,6 +522,63 @@ pub const GC = struct {
                                 const str = stream.source_value.toPtr(objects.String);
                                 stream.data_ptr = @intFromPtr(str.data);
                             }
+                        }
+                    },
+                    .slotdef => {
+                        // Scan slot definition Value references
+                        const slotdef: *objects.SlotDefinition = @ptrFromInt(addr);
+                        if (slotdef.name.isPointer() and !slotdef.name.isNil()) {
+                            slotdef.name = try self.copyValue(slotdef.name, alloc_ptr);
+                        }
+                        if (slotdef.initform.isPointer() and !slotdef.initform.isNil()) {
+                            slotdef.initform = try self.copyValue(slotdef.initform, alloc_ptr);
+                        }
+                        if (slotdef.initargs.isPointer() and !slotdef.initargs.isNil()) {
+                            slotdef.initargs = try self.copyValue(slotdef.initargs, alloc_ptr);
+                        }
+                        if (slotdef.readers.isPointer() and !slotdef.readers.isNil()) {
+                            slotdef.readers = try self.copyValue(slotdef.readers, alloc_ptr);
+                        }
+                        if (slotdef.writers.isPointer() and !slotdef.writers.isNil()) {
+                            slotdef.writers = try self.copyValue(slotdef.writers, alloc_ptr);
+                        }
+                        if (slotdef.allocation.isPointer() and !slotdef.allocation.isNil()) {
+                            slotdef.allocation = try self.copyValue(slotdef.allocation, alloc_ptr);
+                        }
+                        if (slotdef.slot_type.isPointer() and !slotdef.slot_type.isNil()) {
+                            slotdef.slot_type = try self.copyValue(slotdef.slot_type, alloc_ptr);
+                        }
+                    },
+                    .string32 => {
+                        // No Value references to scan
+                    },
+                    .generic_function => {
+                        // Scan generic function Value references
+                        const gf: *objects.GenericFunction = @ptrFromInt(addr);
+                        if (gf.name.isPointer() and !gf.name.isNil()) {
+                            gf.name = try self.copyValue(gf.name, alloc_ptr);
+                        }
+                        if (gf.lambda_list.isPointer() and !gf.lambda_list.isNil()) {
+                            gf.lambda_list = try self.copyValue(gf.lambda_list, alloc_ptr);
+                        }
+                        if (gf.methods.isPointer() and !gf.methods.isNil()) {
+                            gf.methods = try self.copyValue(gf.methods, alloc_ptr);
+                        }
+                    },
+                    .method => {
+                        // Scan method Value references
+                        const method: *objects.Method = @ptrFromInt(addr);
+                        if (method.qualifiers.isPointer() and !method.qualifiers.isNil()) {
+                            method.qualifiers = try self.copyValue(method.qualifiers, alloc_ptr);
+                        }
+                        if (method.specializers.isPointer() and !method.specializers.isNil()) {
+                            method.specializers = try self.copyValue(method.specializers, alloc_ptr);
+                        }
+                        if (method.lambda_list.isPointer() and !method.lambda_list.isNil()) {
+                            method.lambda_list = try self.copyValue(method.lambda_list, alloc_ptr);
+                        }
+                        if (method.function.isPointer() and !method.function.isNil()) {
+                            method.function = try self.copyValue(method.function, alloc_ptr);
                         }
                     },
                 }

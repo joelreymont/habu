@@ -219,6 +219,14 @@ pub fn hashValue(val: Value) u64 {
             }
             break :blk h;
         },
+        .string32 => blk: {
+            const s32 = val.toPtr(objects.String32);
+            var h: u64 = 0;
+            for (s32.codepoints()) |cp| {
+                h = h *% 31 +% cp;
+            }
+            break :blk h;
+        },
         .vector => blk: {
             const v = val.toPtr(objects.Vector);
             var h: u64 = 0;
@@ -227,6 +235,6 @@ pub fn hashValue(val: Value) u64 {
             }
             break :blk h;
         },
-        .closure, .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname, .package, .chunk, .condition, .class => val.raw,
+        .closure, .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname, .package, .chunk, .condition, .class, .slotdef, .generic_function, .method => val.raw,
     };
 }

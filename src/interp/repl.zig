@@ -900,6 +900,17 @@ pub const Repl = struct {
             .cons => try self.printList(val, writer),
             .symbol => try writer.writeAll(val.toPtr(Symbol).getName()),
             .string => try writer.print("\"{s}\"", .{val.toPtr(String).bytes()}),
+            .string32 => {
+                // Convert UTF-32 to UTF-8 for output
+                try writer.writeByte('"');
+                const s32 = val.toPtr(runtime.String32);
+                var utf8_buf: [4]u8 = undefined;
+                for (s32.codepoints()) |cp| {
+                    const len = std.unicode.utf8Encode(@intCast(cp), &utf8_buf) catch continue;
+                    try writer.writeAll(utf8_buf[0..len]);
+                }
+                try writer.writeByte('"');
+            },
             .keyword => {
                 try writer.writeByte(':');
                 try writer.writeAll(val.toPtr(runtime.Keyword).getName());
@@ -944,6 +955,9 @@ pub const Repl = struct {
             .chunk => try writer.writeAll("#<chunk>"),
             .condition => try writer.writeAll("#<condition>"),
             .class => try writer.writeAll("#<class>"),
+            .slotdef => try writer.writeAll("#<slot-definition>"),
+            .generic_function => try writer.writeAll("#<generic-function>"),
+            .method => try writer.writeAll("#<method>"),
         }
     }
 

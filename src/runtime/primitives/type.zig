@@ -60,6 +60,7 @@ pub fn typep(heap: *Heap, obj: Value, type_spec: Value) !bool {
             return false;
         }
 
+        // (and t1 t2 ...) - intersection type
         if (head.eq(try heap.intern("and"))) {
             var rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
             while (rest.isCons()) {
@@ -139,6 +140,75 @@ fn subtypepCheck(heap: *Heap, type1: Value, type2: Value) !SubtypeResult {
     if (type1.isSymbol() or type1.isT()) {
         if (type2.isSymbol() or type2.isT()) {
             return try checkSymbolSubtype(heap, type1, type2);
+        }
+        if (type2.isCons()) {
+            const head = type2.toPtr(@import("../objects.zig").Cons).car;
+            if (head.eq(try heap.intern("and"))) {
+                var rest = type2.toPtr(@import("../objects.zig").Cons).cdr;
+                while (rest.isCons()) {
+                    const spec = rest.toPtr(@import("../objects.zig").Cons).car;
+                    const sub = try subtypepCheck(heap, type1, spec);
+                    if (sub.is_subtype) return .{ .is_subtype = true, .certain = sub.certain };
+                    rest = rest.toPtr(@import("../objects.zig").Cons).cdr;
+                }
+                return .{ .is_subtype = false, .certain = true };
+            }
+        }
+    }
+
+    if (type1.isCons()) {
+        const head = type1.toPtr(@import("../objects.zig").Cons).car;
+        if (head.eq(try heap.intern("and"))) {
+            var rest = type1.toPtr(@import("../objects.zig").Cons).cdr;
+            while (rest.isCons()) {
+                const spec = rest.toPtr(@import("../objects.zig").Cons).car;
+                const sub = try subtypepCheck(heap, spec, type2);
+                if (!sub.is_subtype) return .{ .is_subtype = false, .certain = sub.certain };
+                rest = rest.toPtr(@import("../objects.zig").Cons).cdr;
+            }
+            return .{ .is_subtype = true, .certain = true };
+        }
+        if (head.eq(try heap.intern("or"))) {
+            var rest = type1.toPtr(@import("../objects.zig").Cons).cdr;
+            while (rest.isCons()) {
+                const spec = rest.toPtr(@import("../objects.zig").Cons).car;
+                const sub = try subtypepCheck(heap, spec, type2);
+                if (!sub.is_subtype) return .{ .is_subtype = false, .certain = sub.certain };
+                rest = rest.toPtr(@import("../objects.zig").Cons).cdr;
+            }
+            return .{ .is_subtype = true, .certain = true };
+        }
+        if (head.eq(try heap.intern("not"))) {
+            const inner_cons = type1.toPtr(@import("../objects.zig").Cons).cdr;
+            if (!inner_cons.isCons()) return .{ .is_subtype = false, .certain = false };
+            const inner = inner_cons.toPtr(@import("../objects.zig").Cons).car;
+            if (type2.isCons()) {
+                const head2 = type2.toPtr(@import("../objects.zig").Cons).car;
+                if (head2.eq(try heap.intern("not"))) {
+                    const inner_cons2 = type2.toPtr(@import("../objects.zig").Cons).cdr;
+                    if (!inner_cons2.isCons()) return .{ .is_subtype = false, .certain = false };
+                    const inner2 = inner_cons2.toPtr(@import("../objects.zig").Cons).car;
+                    return try subtypepCheck(heap, inner2, inner);
+                }
+            }
+            return .{ .is_subtype = false, .certain = false };
+        }
+    }
+
+    if (type2.isCons()) {
+        const head = type2.toPtr(@import("../objects.zig").Cons).car;
+        if (head.eq(try heap.intern("or"))) {
+            var rest = type2.toPtr(@import("../objects.zig").Cons).cdr;
+            while (rest.isCons()) {
+                const spec = rest.toPtr(@import("../objects.zig").Cons).car;
+                const sub = try subtypepCheck(heap, type1, spec);
+                if (sub.is_subtype) return .{ .is_subtype = true, .certain = sub.certain };
+                rest = rest.toPtr(@import("../objects.zig").Cons).cdr;
+            }
+            return .{ .is_subtype = false, .certain = true };
+        }
+        if (head.eq(try heap.intern("not"))) {
+            return .{ .is_subtype = false, .certain = false };
         }
     }
 
@@ -260,6 +330,7 @@ pub fn typeOf(heap: *Heap, val: Value) !Value {
         .symbol => heap.intern("symbol"),
         .vector => heap.intern("vector"),
         .string => heap.intern("string"),
+        .string32 => heap.intern("string"),
         .closure => heap.intern("closure"),
         .keyword => heap.intern("keyword"),
         .hashtable => heap.intern("hash-table"),
@@ -273,6 +344,9 @@ pub fn typeOf(heap: *Heap, val: Value) !Value {
         .chunk => heap.intern("compiled-function"),
         .condition => heap.intern("condition"),
         .class => heap.intern("standard-class"),
+        .slotdef => heap.intern("slot-definition"),
+        .generic_function => heap.intern("generic-function"),
+        .method => heap.intern("method"),
     };
 }
 
@@ -286,7 +360,7 @@ test "typep basic types" {
     try testing.expect(try typep(&heap, fixnum, try heap.intern("fixnum")));
     try testing.expect(!try typep(&heap, fixnum, try heap.intern("string")));
 
-    const str = try heap.allocString("test");
+    const str = try heap.allocBaseString("test");
     try testing.expect(try typep(&heap, str, try heap.intern("string")));
     try testing.expect(!try typep(&heap, str, try heap.intern("integer")));
 
@@ -316,7 +390,7 @@ test "typep compound types" {
     );
     try testing.expect(try typep(&heap, fixnum, or_spec));
 
-    const str = try heap.allocString("test");
+    const str = try heap.allocBaseString("test");
     try testing.expect(try typep(&heap, str, or_spec));
 
     const not_spec = try heap.allocCons(
@@ -365,7 +439,7 @@ test "typeOf basic types" {
     const fixnum_sym = try heap.intern("fixnum");
     try testing.expect(result.eq(fixnum_sym));
 
-    const str = try heap.allocString("test");
+    const str = try heap.allocBaseString("test");
     const str_type = try typeOf(&heap, str);
     try testing.expect(str_type.isSymbol());
     const string_sym = try heap.intern("string");

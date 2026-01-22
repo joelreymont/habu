@@ -22,6 +22,7 @@ const Cons = runtime.Cons;
 const Symbol = runtime.Symbol;
 const Heap = runtime.Heap;
 const Closure = runtime.Closure;
+const primitives = runtime.primitives;
 const types = @import("../types/types.zig");
 const Type = types.Type;
 const TypeEnv = types.TypeEnv;
@@ -245,6 +246,8 @@ pub const Builtins = struct {
     typep: Value,
     @"type-of": Value,
     intern: Value,
+    unintern: Value,
+    @"find-symbol": Value,
     @"symbol-name": Value,
     get: Value,
     put: Value,
@@ -485,6 +488,10 @@ pub const Builtins = struct {
     kw_allocation: Value,
     kw_instance: Value,
     kw_class: Value,
+    kw_initarg: Value,
+    kw_reader: Value,
+    kw_writer: Value,
+    kw_accessor: Value,
 
     // *features* keywords
     kw_habu: Value,
@@ -663,6 +670,8 @@ pub const Builtins = struct {
             .typep = try heap.intern("typep"),
             .@"type-of" = try heap.intern("type-of"),
             .intern = try heap.intern("intern"),
+            .unintern = try heap.intern("unintern"),
+            .@"find-symbol" = try heap.intern("find-symbol"),
             .@"symbol-name" = try heap.intern("symbol-name"),
             .get = try heap.intern("get"),
             .put = try heap.intern("put"),
@@ -883,6 +892,10 @@ pub const Builtins = struct {
             .kw_allocation = try heap.internKeyword("allocation"),
             .kw_instance = try heap.internKeyword("instance"),
             .kw_class = try heap.internKeyword("class"),
+            .kw_initarg = try heap.internKeyword("initarg"),
+            .kw_reader = try heap.internKeyword("reader"),
+            .kw_writer = try heap.internKeyword("writer"),
+            .kw_accessor = try heap.internKeyword("accessor"),
             // *features* keywords
             .kw_habu = try heap.internKeyword("habu"),
             .kw_zig = try heap.internKeyword("zig"),
@@ -1679,6 +1692,7 @@ pub const Compiler = struct {
                 .float => &types.t_float,
                 .char => &types.t_char,
                 .string => &types.t_string,
+                .string32 => &types.t_string,
                 .symbol => &types.t_symbol,
                 .cons => &types.t_cons,
                 .vector => &types.t_vector,
@@ -1695,6 +1709,9 @@ pub const Compiler = struct {
                 .chunk => &types.t_any, // Chunks are internal
                 .condition => &types.t_any, // Condition objects
                 .class => &types.t_any, // Class objects
+                .slotdef => &types.t_any, // SlotDefinition objects
+                .generic_function => &types.t_any, // Generic function objects
+                .method => &types.t_any, // Method objects
             },
             .@"var" => |v| {
                 // Check occurrence typing first (narrowed types)
@@ -1952,11 +1969,6 @@ pub const Compiler = struct {
         if (expr.isSymbol()) {
             const sym = expr.toPtr(Symbol);
             const name = sym.getName();
-
-            // t is self-evaluating
-            if (std.mem.eql(u8, name, "t")) {
-                return try self.builder.lit(expr);
-            }
 
             if (env.lookup(name)) |binding| {
                 const var_ir = self.builder.variable(name, binding.depth, binding.index) catch
@@ -5568,7 +5580,13 @@ pub const Compiler = struct {
                 // Simple slot: `x` -> type is any
                 const slot_name_raw = slot_spec.toPtr(Symbol).getName();
                 const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
-                slot_specs.append(self.allocator, .{ .name = slot_name, .field_type = &types.t_any }) catch |e| return e;
+                try slot_specs.append(self.allocator, .{
+                    .name = slot_name,
+                    .field_type = &types.t_any,
+                    .initargs = std.ArrayList(Value){},
+                    .readers = std.ArrayList(Value){},
+                    .writers = std.ArrayList(Value){},
+                });
             } else if (slot_spec.isCons()) {
                 // Typed slot: `(x fixnum)` -> parse name and type
                 const spec_cons = slot_spec.toPtr(Cons);
@@ -5583,7 +5601,13 @@ pub const Compiler = struct {
 
                 // Parse type expression (supports compound types like (list fixnum))
                 const field_type = self.parseTypeExpr(type_expr) orelse return error.InvalidSyntax;
-                slot_specs.append(self.allocator, .{ .name = slot_name, .field_type = field_type }) catch |e| return e;
+                try slot_specs.append(self.allocator, .{
+                    .name = slot_name,
+                    .field_type = field_type,
+                    .initargs = std.ArrayList(Value){},
+                    .readers = std.ArrayList(Value){},
+                    .writers = std.ArrayList(Value){},
+                });
             } else {
                 return error.InvalidSyntax;
             }
@@ -5657,12 +5681,15 @@ pub const Compiler = struct {
     const SlotSpec = struct {
         name: []const u8,
         field_type: *const types.Type,
-        initform: ?Value = null, // Optional initialization expression
+        initform: ?Value = null,
         allocation: Allocation = .instance,
+        initargs: std.ArrayList(Value),
+        readers: std.ArrayList(Value),
+        writers: std.ArrayList(Value),
     };
 
     /// Allocate Class object and compute CPL
-    fn allocateClass(self: *Compiler, heap: *Heap, name: Value, superclasses: Value) !Value {
+    fn allocateClass(self: *Compiler, heap: *Heap, name: Value, superclasses: Value, slot_specs: []const SlotSpec) !Value {
         const objects = @import("../runtime/objects.zig");
 
         // Convert superclasses list to array
@@ -5693,6 +5720,56 @@ pub const Compiler = struct {
             cpl_list = try heap.allocCons(cpl[i], cpl_list);
         }
 
+        // Create SlotDefinition objects
+        var direct_slots_list = Value.nil;
+        for (slot_specs) |spec| {
+            const slot_def = try heap.alloc(objects.SlotDefinition);
+
+            // Convert initargs ArrayList to list
+            var initargs_list = Value.nil;
+            var ia_i = spec.initargs.items.len;
+            while (ia_i > 0) {
+                ia_i -= 1;
+                initargs_list = try heap.allocCons(spec.initargs.items[ia_i], initargs_list);
+            }
+
+            // Convert readers ArrayList to list
+            var readers_list = Value.nil;
+            var r_i = spec.readers.items.len;
+            while (r_i > 0) {
+                r_i -= 1;
+                readers_list = try heap.allocCons(spec.readers.items[r_i], readers_list);
+            }
+
+            // Convert writers ArrayList to list
+            var writers_list = Value.nil;
+            var w_i = spec.writers.items.len;
+            while (w_i > 0) {
+                w_i -= 1;
+                writers_list = try heap.allocCons(spec.writers.items[w_i], writers_list);
+            }
+
+            // Convert slot name to symbol
+            const slot_name_sym = try heap.intern(spec.name);
+
+            // Convert allocation to keyword
+            const b = self.builtins orelse return error.UninitializedBuiltins;
+            const allocation_kw = if (spec.allocation == .class) b.kw_class else b.kw_instance;
+
+            slot_def.* = .{
+                .kind = .slotdef,
+                .name = slot_name_sym,
+                .initform = spec.initform orelse Value.nil,
+                .initargs = initargs_list,
+                .readers = readers_list,
+                .writers = writers_list,
+                .allocation = allocation_kw,
+                .slot_type = Value.t, // TODO: convert type to runtime representation
+            };
+
+            direct_slots_list = try heap.allocCons(Value.makeSlotDef(slot_def), direct_slots_list);
+        }
+
         // Allocate Class object
         const class_ptr = try heap.alloc(objects.Class);
         class_ptr.* = .{
@@ -5700,6 +5777,8 @@ pub const Compiler = struct {
             .name = name,
             .direct_supers = superclasses,
             .cpl = cpl_list,
+            .direct_slots = direct_slots_list,
+            .slots = direct_slots_list, // TODO: merge with inherited slots
             .num_shared = 0,
             .shared_slots = undefined,
         };
@@ -6248,7 +6327,7 @@ pub const Compiler = struct {
 
         // Else branch: (error "type error: expected struct-name")
         const error_msg = try self.concatStrings3("type error: expected ", struct_name, "");
-        const error_str = try heap.allocString(error_msg);
+        const error_str = try heap.allocBaseString(error_msg);
         const error_lit = try self.builder.lit(error_str);
         const error_call = try self.builder.errorUser(error_lit);
 
@@ -6366,7 +6445,14 @@ pub const Compiler = struct {
 
         // Collect inherited slots from superclasses
         var slot_specs = std.ArrayList(SlotSpec){};
-        defer slot_specs.deinit(self.allocator);
+        defer {
+            for (slot_specs.items) |*spec| {
+                spec.initargs.deinit(self.allocator);
+                spec.readers.deinit(self.allocator);
+                spec.writers.deinit(self.allocator);
+            }
+            slot_specs.deinit(self.allocator);
+        }
 
         // Process superclass list
         if (superclasses.isCons()) {
@@ -6394,10 +6480,19 @@ pub const Compiler = struct {
                         // Inherit slots from parent
                         for (specs) |parent_spec| {
                             const inherited_name = try self.allocator.dupe(u8, parent_spec.name);
+                            var inherited_initargs = std.ArrayList(Value){};
+                            for (parent_spec.initargs.items) |ia| try inherited_initargs.append(self.allocator, ia);
+                            var inherited_readers = std.ArrayList(Value){};
+                            for (parent_spec.readers.items) |r| try inherited_readers.append(self.allocator, r);
+                            var inherited_writers = std.ArrayList(Value){};
+                            for (parent_spec.writers.items) |w| try inherited_writers.append(self.allocator, w);
                             try slot_specs.append(self.allocator, .{
                                 .name = inherited_name,
                                 .field_type = parent_spec.field_type,
                                 .initform = parent_spec.initform,
+                                .initargs = inherited_initargs,
+                                .readers = inherited_readers,
+                                .writers = inherited_writers,
                             });
                         }
                     }
@@ -6440,7 +6535,13 @@ pub const Compiler = struct {
                 // Simple slot: `x`
                 const slot_name_raw = slot_spec.toPtr(Symbol).getName();
                 const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
-                slot_specs.append(self.allocator, .{ .name = slot_name, .field_type = &types.t_any }) catch |e| return e;
+                try slot_specs.append(self.allocator, .{
+                    .name = slot_name,
+                    .field_type = &types.t_any,
+                    .initargs = std.ArrayList(Value){},
+                    .readers = std.ArrayList(Value){},
+                    .writers = std.ArrayList(Value){},
+                });
             } else if (slot_spec.isCons()) {
                 // Slot with options: (name :initform expr :type type ...)
                 const spec_cons = slot_spec.toPtr(Cons);
@@ -6448,10 +6549,13 @@ pub const Compiler = struct {
                 const slot_name_raw = spec_cons.car.toPtr(Symbol).getName();
                 const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
 
-                // Extract :type, :initform, and :allocation options
+                // Extract slot options
                 var field_type: *const types.Type = &types.t_any;
                 var initform: ?Value = null;
                 var allocation: Allocation = .instance;
+                var initargs = std.ArrayList(Value){};
+                var readers = std.ArrayList(Value){};
+                var writers = std.ArrayList(Value){};
                 var opts = spec_cons.cdr;
                 while (opts.isCons()) {
                     const opt_cons = opts.toPtr(Cons);
@@ -6493,6 +6597,36 @@ pub const Compiler = struct {
                                 opts = alloc_cons.cdr;
                                 continue;
                             }
+                        } else if (opt_key.eq(b.kw_initarg)) {
+                            if (opt_cons.cdr.isCons()) {
+                                const initarg_cons = opt_cons.cdr.toPtr(Cons);
+                                try initargs.append(self.allocator, initarg_cons.car);
+                                opts = initarg_cons.cdr;
+                                continue;
+                            }
+                        } else if (opt_key.eq(b.kw_reader)) {
+                            if (opt_cons.cdr.isCons()) {
+                                const reader_cons = opt_cons.cdr.toPtr(Cons);
+                                try readers.append(self.allocator, reader_cons.car);
+                                opts = reader_cons.cdr;
+                                continue;
+                            }
+                        } else if (opt_key.eq(b.kw_writer)) {
+                            if (opt_cons.cdr.isCons()) {
+                                const writer_cons = opt_cons.cdr.toPtr(Cons);
+                                try writers.append(self.allocator, writer_cons.car);
+                                opts = writer_cons.cdr;
+                                continue;
+                            }
+                        } else if (opt_key.eq(b.kw_accessor)) {
+                            if (opt_cons.cdr.isCons()) {
+                                const accessor_cons = opt_cons.cdr.toPtr(Cons);
+                                const accessor_name = accessor_cons.car;
+                                try readers.append(self.allocator, accessor_name);
+                                try writers.append(self.allocator, accessor_name);
+                                opts = accessor_cons.cdr;
+                                continue;
+                            }
                         }
                     }
 
@@ -6504,12 +6638,15 @@ pub const Compiler = struct {
                     }
                 }
 
-                slot_specs.append(self.allocator, .{
+                try slot_specs.append(self.allocator, .{
                     .name = slot_name,
                     .field_type = field_type,
                     .initform = initform,
                     .allocation = allocation,
-                }) catch |e| return e;
+                    .initargs = initargs,
+                    .readers = readers,
+                    .writers = writers,
+                });
             } else {
                 return error.InvalidSyntax;
             }
@@ -6532,10 +6669,19 @@ pub const Compiler = struct {
         // Store class metadata for compilation (compiler-side with initforms)
         const persistent_specs = try self.globals.allocator.alloc(SlotSpec, slot_specs.items.len);
         for (slot_specs.items, 0..) |spec, i| {
+            var persist_initargs = std.ArrayList(Value){};
+            for (spec.initargs.items) |ia| try persist_initargs.append(self.globals.allocator, ia);
+            var persist_readers = std.ArrayList(Value){};
+            for (spec.readers.items) |r| try persist_readers.append(self.globals.allocator, r);
+            var persist_writers = std.ArrayList(Value){};
+            for (spec.writers.items) |w| try persist_writers.append(self.globals.allocator, w);
             persistent_specs[i] = .{
                 .name = try self.globals.allocator.dupe(u8, spec.name),
                 .field_type = spec.field_type,
                 .initform = spec.initform,
+                .initargs = persist_initargs,
+                .readers = persist_readers,
+                .writers = persist_writers,
             };
         }
         var qual_buf: [256]u8 = undefined;
@@ -6554,7 +6700,7 @@ pub const Compiler = struct {
         }
 
         // Allocate Class object and compute CPL
-        const class_obj = try self.allocateClass(heap, name_val, superclasses);
+        const class_obj = try self.allocateClass(heap, name_val, superclasses, slot_specs.items);
         _ = class_obj;
 
         // Generate definitions: constructor + predicate + accessors + name_lit
@@ -6673,11 +6819,11 @@ pub const Compiler = struct {
             if (maybe_val) |val| {
                 call_args[i] = val;
             } else {
-                // No value provided - use initform or nil
+                // No value provided - use initform or unbound
                 if (slot_specs[i].initform) |initform_expr| {
                     call_args[i] = try self.compile(initform_expr, env);
                 } else {
-                    call_args[i] = try self.builder.lit(Value.nil);
+                    call_args[i] = try self.builder.lit(Value.unbound);
                 }
             }
         }
@@ -6762,12 +6908,21 @@ pub const Compiler = struct {
         const gen_name_tmp = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
         const gen_name = try self.allocator.dupe(u8, gen_name_tmp);
 
+        // Parse lambda-list
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const lambda_list = cons2.car;
+
         // Register generic function
         const persistent_name = try self.globals.allocator.dupe(u8, gen_name);
         try self.generic_functions.put(persistent_name, std.ArrayList(MethodDef){});
 
-        // Return the name
-        return try self.builder.lit(name_val);
+        // Generate: (setq name (%make-generic-function name lambda-list))
+        const name_ir = try self.builder.lit(name_val);
+        const lambda_list_ir = try self.builder.lit(lambda_list);
+        const gf_ir = try self.builder.makeGenericFunction(name_ir, lambda_list_ir);
+
+        return try self.builder.set(gen_name, 0, 0, gf_ir);
     }
 
     /// Compile defmethod: (defmethod name [qualifier] ((arg1 class1) ...) body...)
@@ -8608,6 +8763,9 @@ pub const Compiler = struct {
         if (s == b.typep.raw) return self.compileBinaryPrim(args, env, .typep);
         if (s == b.@"type-of".raw) return self.compileUnaryPrim(args, env, .type_of);
         if (s == b.intern.raw) return self.compileUnaryPrim(args, env, .intern);
+        if (s == b.intern.raw) return self.compileUnaryPrim(args, env, .intern);
+        if (s == b.unintern.raw) return self.compileBinaryPrim(args, env, .unintern);
+        if (s == b.@"find-symbol".raw) return self.compileBinaryPrim(args, env, .find_symbol);
         if (s == b.@"symbol-name".raw) return self.compileUnaryPrim(args, env, .sym_name);
         if (s == b.get.raw) return self.compileBinaryPrim(args, env, .get);
         if (s == b.put.raw) return self.compileTernaryPrim(args, env, .put);
@@ -8884,7 +9042,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, vec_adjust, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream, pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version, package_symbols_table, package_exports_table };
+    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, vec_adjust, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, unintern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream, pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version, package_symbols_table, package_exports_table, find_symbol };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -9046,6 +9204,11 @@ pub const Compiler = struct {
                 node.* = .{ .remprop = .{ .left = left, .right = right } };
                 break :blk node;
             },
+            .find_symbol => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .find_symbol = .{ .left = left, .right = right } };
+                break :blk node;
+            },
             .write_to_stream => try self.builder.writeToStream(left, right),
             else => return error.InvalidSyntax,
         };
@@ -9138,7 +9301,7 @@ pub const Compiler = struct {
             if (is_print) {
                 // print also needs a newline - create concat with newline
                 const heap = self.heap orelse return error.UninitializedBuiltins;
-                const newline_ir = try self.builder.lit(try heap.allocString("\n"));
+                const newline_ir = try self.builder.lit(try heap.allocBaseString("\n"));
                 const with_newline = try self.builder.strConcat(str_ir, newline_ir);
                 return try self.builder.writeToStream(with_newline, stream_ir);
             } else {

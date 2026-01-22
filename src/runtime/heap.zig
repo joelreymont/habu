@@ -170,6 +170,8 @@ pub const Heap = struct {
     keyword_package: ?*Package,
     /// Lisp-level package registry (hash table: name -> Package Value)
     lisp_packages: Value,
+    /// Lisp-level class registry (hash table: name -> Class Value)
+    lisp_classes: Value,
     /// Class metadata for CLOS slot-value lookup
     /// Maps class name to slot names array
     class_metadata: std.StringHashMapUnmanaged([]const []const u8),
@@ -230,6 +232,7 @@ pub const Heap = struct {
             .gentemp_counter = 0,
             .keyword_package = null,
             .lisp_packages = Value.nil,
+            .lisp_classes = Value.nil,
             .class_metadata = .{},
             .readtable = .{},
             .dispatch_readtable = .{},
@@ -237,6 +240,8 @@ pub const Heap = struct {
 
         // Create Lisp package registry
         heap.lisp_packages = try heap.allocHashTable(16, .eql);
+        // Create Lisp class registry
+        heap.lisp_classes = try heap.allocHashTable(16, .eql);
 
         // Create COMMON-LISP package (holds primitives, all symbols exported)
         heap.cl_package = Package.init(allocator, "COMMON-LISP") catch return error.OutOfMemory;
@@ -546,7 +551,7 @@ pub const Heap = struct {
     }
 
     /// Allocate a string (copies the bytes)
-    pub fn allocString(self: *Heap, bytes: []const u8) error{OutOfMemory}!Value {
+    pub fn allocBaseString(self: *Heap, bytes: []const u8) error{OutOfMemory}!Value {
         const aligned_len = std.mem.alignForward(usize, bytes.len, 8);
         const total_size = std.math.add(usize, @sizeOf(objects.String), aligned_len) catch return error.OutOfMemory;
 
@@ -584,6 +589,118 @@ pub const Heap = struct {
         };
 
         return Value.makeString(str);
+    }
+
+    /// Allocate a String32 (UTF-32 string) from codepoints
+    pub fn allocString32(self: *Heap, codepoints: []const u32) error{ OutOfMemory, Overflow }!Value {
+        const byte_len = try std.math.mul(usize, codepoints.len, 4);
+        const aligned_len = std.mem.alignForward(usize, byte_len, 8);
+        const total_size = try std.math.add(usize, @sizeOf(objects.String32), aligned_len);
+
+        const ptr = try self.allocRaw(total_size);
+        const s32: *objects.String32 = @ptrCast(@alignCast(ptr));
+
+        // Data follows immediately after header
+        const data_ptr: [*]u32 = @ptrCast(@alignCast(ptr + @sizeOf(objects.String32)));
+
+        // Copy codepoints
+        @memcpy(data_ptr[0..codepoints.len], codepoints);
+
+        s32.* = .{
+            .length = @intCast(codepoints.len),
+            .data = data_ptr,
+        };
+
+        return Value.makeString32(s32);
+    }
+
+    /// Allocate an uninitialized String32 of given codepoint length
+    pub fn allocString32Uninitialized(self: *Heap, len: usize) error{ OutOfMemory, Overflow }!Value {
+        const byte_len = try std.math.mul(usize, len, 4);
+        const aligned_len = std.mem.alignForward(usize, byte_len, 8);
+        const total_size = try std.math.add(usize, @sizeOf(objects.String32), aligned_len);
+
+        const ptr = try self.allocRaw(total_size);
+        const s32: *objects.String32 = @ptrCast(@alignCast(ptr));
+
+        // Data follows immediately after header
+        const data_ptr: [*]u32 = @ptrCast(@alignCast(ptr + @sizeOf(objects.String32)));
+
+        s32.* = .{
+            .length = @intCast(len),
+            .data = data_ptr,
+        };
+
+        return Value.makeString32(s32);
+    }
+
+    /// Allocate a String32 from UTF-8 bytes, replacing invalid sequences with U+FFFD
+    pub fn allocString32FromUtf8(self: *Heap, bytes: []const u8) error{ OutOfMemory, Overflow }!Value {
+        // First pass: count codepoints
+        var count: usize = 0;
+        var i: usize = 0;
+        while (i < bytes.len) {
+            const cp_len = std.unicode.utf8ByteSequenceLength(bytes[i]) catch {
+                count += 1; // Replacement character
+                i += 1;
+                continue;
+            };
+            if (i + cp_len > bytes.len) {
+                count += 1; // Incomplete sequence, replacement character
+                break;
+            }
+            _ = std.unicode.utf8Decode(bytes[i..][0..cp_len]) catch {
+                count += 1; // Invalid sequence, replacement character
+                i += 1;
+                continue;
+            };
+            count += 1;
+            i += cp_len;
+        }
+
+        // Allocate String32
+        const byte_len = try std.math.mul(usize, count, 4);
+        const aligned_len = std.mem.alignForward(usize, byte_len, 8);
+        const total_size = try std.math.add(usize, @sizeOf(objects.String32), aligned_len);
+
+        const ptr = try self.allocRaw(total_size);
+        const s32: *objects.String32 = @ptrCast(@alignCast(ptr));
+
+        // Data follows immediately after header
+        const data_ptr: [*]u32 = @ptrCast(@alignCast(ptr + @sizeOf(objects.String32)));
+
+        // Second pass: decode and store codepoints
+        var out_idx: usize = 0;
+        i = 0;
+        while (i < bytes.len) {
+            const cp_len = std.unicode.utf8ByteSequenceLength(bytes[i]) catch {
+                data_ptr[out_idx] = 0xFFFD; // Replacement character
+                out_idx += 1;
+                i += 1;
+                continue;
+            };
+            if (i + cp_len > bytes.len) {
+                data_ptr[out_idx] = 0xFFFD; // Incomplete sequence
+                out_idx += 1;
+                break;
+            }
+            const cp = std.unicode.utf8Decode(bytes[i..][0..cp_len]) catch {
+                data_ptr[out_idx] = 0xFFFD; // Invalid sequence
+                out_idx += 1;
+                i += 1;
+                continue;
+            };
+            data_ptr[out_idx] = cp;
+            out_idx += 1;
+            i += cp_len;
+        }
+
+        s32.* = .{
+            .length = @intCast(count),
+            .data = data_ptr,
+        };
+
+        return Value.makeString32(s32);
     }
 
     /// Allocate a closure
@@ -881,6 +998,51 @@ pub const Heap = struct {
         return false;
     }
 
+    /// Register a class in the global class registry
+    pub fn putLispClass(self: *Heap, name: Value, class: Value) !void {
+        if (self.lisp_classes.raw == Value.nil.raw) return error.RegistryNotInitialized;
+        const ht = self.lisp_classes.toPtr(objects.HashTable);
+
+        const hash = name.raw;
+        var idx = hash % ht.capacity;
+        var i: usize = 0;
+        while (i < ht.capacity) : (i += 1) {
+            const e = &ht.entries[idx];
+            const is_empty = e.key.raw == objects.HashTable.EMPTY.raw;
+            const is_deleted = e.key.raw == objects.HashTable.DELETED.raw;
+
+            if (is_empty or is_deleted or e.key.raw == name.raw) {
+                const was_new = is_empty or is_deleted;
+                e.key = name;
+                e.value = class;
+                if (was_new) ht.count += 1;
+                return;
+            }
+
+            idx = (idx + 1) % ht.capacity;
+        }
+        return error.HashTableFull;
+    }
+
+    /// Find a class by name in the global class registry
+    pub fn findLispClass(self: *Heap, name: Value) ?Value {
+        if (self.lisp_classes.raw == Value.nil.raw) return null;
+        const ht = self.lisp_classes.toPtr(objects.HashTable);
+
+        const hash = name.raw;
+        var idx = hash % ht.capacity;
+        var i: usize = 0;
+        while (i < ht.capacity) : (i += 1) {
+            const e = &ht.entries[idx];
+            if (e.key.raw == objects.HashTable.EMPTY.raw) return null;
+            if (e.key.raw != objects.HashTable.DELETED.raw and e.key.raw == name.raw) {
+                return e.value;
+            }
+            idx = (idx + 1) % ht.capacity;
+        }
+        return null;
+    }
+
     /// Intern a symbol (same name = same Value)
     /// Returns existing symbol if already interned, otherwise creates new one
     /// Uses current package if available, otherwise legacy global table
@@ -1049,6 +1211,9 @@ pub const Heap = struct {
         if (self.lisp_packages.raw != Value.nil.raw) {
             all_roots.append(self.backing_allocator, self.lisp_packages) catch return error.OutOfMemory;
         }
+        if (self.lisp_classes.raw != Value.nil.raw) {
+            all_roots.append(self.backing_allocator, self.lisp_classes) catch return error.OutOfMemory;
+        }
 
         // Run GC
         var gc = GC.init(self.backing_allocator, self);
@@ -1131,8 +1296,13 @@ pub const Heap = struct {
         std.debug.assert(drt_idx == drt_count);
 
         // Update Lisp package registry
+        var idx = ext_count + sym_count + kw_count + pkg_sym_count + rt_count + drt_count;
         if (self.lisp_packages.raw != Value.nil.raw) {
-            self.lisp_packages = all_roots.items[ext_count + sym_count + kw_count + pkg_sym_count + rt_count + drt_count];
+            self.lisp_packages = all_roots.items[idx];
+            idx += 1;
+        }
+        if (self.lisp_classes.raw != Value.nil.raw) {
+            self.lisp_classes = all_roots.items[idx];
         }
 
         const after = self.bytesUsed();
@@ -1191,7 +1361,7 @@ test "heap alloc string" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    const str = try heap.allocString("hello");
+    const str = try heap.allocBaseString("hello");
 
     try testing.expect(str.isString());
 

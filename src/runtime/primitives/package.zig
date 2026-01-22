@@ -77,7 +77,7 @@ pub fn packageUsedByList(heap: *Heap, pkg: Value) !Value {
     var result = Value.nil;
     var it = heap.packages.valueIterator();
     while (it.next()) |zig_pkg| {
-        const name_val = heap.allocString(zig_pkg.*.name) catch continue;
+        const name_val = heap.allocBaseString(zig_pkg.*.name) catch continue;
         if (heap.findLispPackage(name_val)) |pkg_val| {
             const p = pkg_val.toPtr(objects.Package);
             var use_curr = p.use_list;
@@ -127,7 +127,7 @@ pub fn findAllSymbols(heap: *Heap, name: Value) !Value {
     var result = Value.nil;
     var it = heap.packages.valueIterator();
     while (it.next()) |zig_pkg| {
-        const name_val = heap.allocString(zig_pkg.*.name) catch continue;
+        const name_val = heap.allocBaseString(zig_pkg.*.name) catch continue;
         if (heap.findLispPackage(name_val)) |pkg_val| {
             const p = pkg_val.toPtr(objects.Package);
 
@@ -147,7 +147,7 @@ pub fn listAllPackages(heap: *Heap) !Value {
     var result = Value.nil;
     var it = heap.packages.valueIterator();
     while (it.next()) |zig_pkg| {
-        const name_val = try heap.allocString(zig_pkg.*.name);
+        const name_val = try heap.allocBaseString(zig_pkg.*.name);
         if (heap.findLispPackage(name_val)) |pkg_val| {
             result = try heap.allocCons(pkg_val, result);
         }
@@ -609,7 +609,7 @@ fn removeFromHashTable(ht: *objects.HashTable, key: Value) !void {
 }
 
 /// Remove symbol from package
-pub fn uninternSymbol(symbol: Value, pkg: Value) !bool {
+pub fn uninternSymbol(heap: *Heap, symbol: Value, pkg: Value) !bool {
     if (!symbol.isSymbol()) return error.TypeError;
     if (!pkg.isPackage()) return error.TypeError;
     const p = pkg.toPtr(objects.Package);
@@ -619,18 +619,41 @@ pub fn uninternSymbol(symbol: Value, pkg: Value) !bool {
     const h = symbol.raw;
     var idx = h % ht.capacity;
     var i: usize = 0;
+    var found = false;
     while (i < ht.capacity) : (i += 1) {
         const entry = &ht.entries[idx];
-        if (entry.key.raw == objects.HashTable.EMPTY.raw) return false;
+        if (entry.key.raw == objects.HashTable.EMPTY.raw) break;
         if (entry.key.raw == symbol.raw) {
             entry.key = objects.HashTable.DELETED;
             entry.value = Value.nil;
             ht.count -= 1;
-            return true;
+            found = true;
+            break;
         }
         idx = (idx + 1) % ht.capacity;
     }
-    return false;
+
+    if (!found) return false;
+
+    // Remove from exports if present
+    if (p.exports.raw != Value.nil.raw) {
+        try removeFromHashTable(p.exports.toPtr(objects.HashTable), symbol);
+    }
+
+    // Remove from shadowing list if present
+    var new_shadowing = Value.nil;
+    var curr = p.shadowing;
+    while (curr.raw != Value.nil.raw) {
+        if (!curr.isCons()) break;
+        const item = curr.toPtr(Cons).car;
+        if (item.raw != symbol.raw) {
+            new_shadowing = try heap.allocCons(item, new_shadowing);
+        }
+        curr = curr.toPtr(Cons).cdr;
+    }
+    p.shadowing = new_shadowing;
+
+    return true;
 }
 
 /// Delete a package
@@ -704,7 +727,7 @@ test "package creation and lookup" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    const name = try heap.allocString("MY-PKG");
+    const name = try heap.allocBaseString("MY-PKG");
     const pkg = try makePackage(&heap, name, null, null);
 
     try testing.expect(pkg.isPackage());
@@ -717,10 +740,10 @@ test "intern and find symbol" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    const name = try heap.allocString("TEST-PKG");
+    const name = try heap.allocBaseString("TEST-PKG");
     const pkg = try makePackage(&heap, name, null, null);
 
-    const sym_name = try heap.allocString("FOO");
+    const sym_name = try heap.allocBaseString("FOO");
     const result = try internSymbol(&heap, sym_name, pkg);
 
     try testing.expect(result.isCons());
@@ -738,16 +761,16 @@ test "export and import symbols" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    const name1 = try heap.allocString("PKG1");
+    const name1 = try heap.allocBaseString("PKG1");
     const pkg1 = try makePackage(&heap, name1, null, null);
 
-    const sym_name = try heap.allocString("BAR");
+    const sym_name = try heap.allocBaseString("BAR");
     const result = try internSymbol(&heap, sym_name, pkg1);
     const sym = result.toPtr(objects.Cons).car;
 
     try exportSymbols(&heap, sym, pkg1);
 
-    const name2 = try heap.allocString("PKG2");
+    const name2 = try heap.allocBaseString("PKG2");
     const pkg2 = try makePackage(&heap, name2, null, null);
 
     try importSymbols(&heap, sym, pkg2);
@@ -763,16 +786,16 @@ test "use-package and inherited symbols" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    const name1 = try heap.allocString("PKG1");
+    const name1 = try heap.allocBaseString("PKG1");
     const pkg1 = try makePackage(&heap, name1, null, null);
 
-    const sym_name = try heap.allocString("BAZ");
+    const sym_name = try heap.allocBaseString("BAZ");
     const result = try internSymbol(&heap, sym_name, pkg1);
     const sym = result.toPtr(objects.Cons).car;
 
     try exportSymbols(&heap, sym, pkg1);
 
-    const name2 = try heap.allocString("PKG2");
+    const name2 = try heap.allocBaseString("PKG2");
     const pkg2 = try makePackage(&heap, name2, null, null);
 
     try usePackage(&heap, pkg1, pkg2);
@@ -788,8 +811,8 @@ test "intern returns correct status" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    const pkg = try makePackage(&heap, try heap.allocString("TEST"), null, null);
-    const sym_name = try heap.allocString("X");
+    const pkg = try makePackage(&heap, try heap.allocBaseString("TEST"), null, null);
+    const sym_name = try heap.allocBaseString("X");
 
     const result1 = try internSymbol(&heap, sym_name, pkg);
     const status1 = result1.toPtr(objects.Cons).cdr.toPtr(objects.Cons).car;
@@ -812,8 +835,8 @@ test "unexport removes from exports" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    const pkg = try makePackage(&heap, try heap.allocString("TEST"), null, null);
-    const sym_name = try heap.allocString("Y");
+    const pkg = try makePackage(&heap, try heap.allocBaseString("TEST"), null, null);
+    const sym_name = try heap.allocBaseString("Y");
     const result = try internSymbol(&heap, sym_name, pkg);
     const sym = result.toPtr(objects.Cons).car;
 
@@ -835,12 +858,12 @@ test "unintern removes symbol" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    const pkg = try makePackage(&heap, try heap.allocString("TEST"), null, null);
-    const sym_name = try heap.allocString("Z");
+    const pkg = try makePackage(&heap, try heap.allocBaseString("TEST"), null, null);
+    const sym_name = try heap.allocBaseString("Z");
     const result = try internSymbol(&heap, sym_name, pkg);
     const sym = result.toPtr(objects.Cons).car;
 
-    const removed = try uninternSymbol(sym, pkg);
+    const removed = try uninternSymbol(&heap, sym, pkg);
     try testing.expect(removed);
 
     const found = try findSymbol(&heap, sym_name, pkg);
@@ -853,8 +876,8 @@ test "unuse-package removes from use-list" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    const pkg1 = try makePackage(&heap, try heap.allocString("PKG1"), null, null);
-    const pkg2 = try makePackage(&heap, try heap.allocString("PKG2"), null, null);
+    const pkg1 = try makePackage(&heap, try heap.allocBaseString("PKG1"), null, null);
+    const pkg2 = try makePackage(&heap, try heap.allocBaseString("PKG2"), null, null);
 
     try usePackage(&heap, pkg1, pkg2);
     const use1 = try packageUseList(pkg2);
@@ -870,7 +893,7 @@ test "delete-package removes from system" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    const name = try heap.allocString("TO-DELETE");
+    const name = try heap.allocBaseString("TO-DELETE");
     const pkg = try makePackage(&heap, name, null, null);
     try testing.expect(pkg.isPackage());
 
@@ -889,8 +912,8 @@ test "delete-package removes nicknames" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    const name = try heap.allocString("FULL-NAME");
-    const nick1 = try heap.allocString("SHORT");
+    const name = try heap.allocBaseString("FULL-NAME");
+    const nick1 = try heap.allocBaseString("SHORT");
     const nicks = try heap.allocCons(nick1, Value.nil);
     const pkg = try makePackage(&heap, name, nicks, null);
 
@@ -908,10 +931,10 @@ test "rename-package updates name" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    const old_name = try heap.allocString("OLD");
+    const old_name = try heap.allocBaseString("OLD");
     const pkg = try makePackage(&heap, old_name, null, null);
 
-    const new_name = try heap.allocString("NEW");
+    const new_name = try heap.allocBaseString("NEW");
     const renamed = try renamePackage(&heap, pkg, new_name, null);
     try testing.expect(renamed.raw == pkg.raw);
 
@@ -928,13 +951,13 @@ test "rename-package updates nicknames" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    const old_name = try heap.allocString("OLD");
-    const old_nick = try heap.allocString("O");
+    const old_name = try heap.allocBaseString("OLD");
+    const old_nick = try heap.allocBaseString("O");
     const old_nicks = try heap.allocCons(old_nick, Value.nil);
     const pkg = try makePackage(&heap, old_name, old_nicks, null);
 
-    const new_name = try heap.allocString("NEW");
-    const new_nick = try heap.allocString("N");
+    const new_name = try heap.allocBaseString("NEW");
+    const new_nick = try heap.allocBaseString("N");
     const new_nicks = try heap.allocCons(new_nick, Value.nil);
     _ = try renamePackage(&heap, pkg, new_name, new_nicks);
 
@@ -951,8 +974,8 @@ test "shadow creates shadowing symbol" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    const pkg = try makePackage(&heap, try heap.allocString("TEST"), null, null);
-    const name = try heap.allocString("SHADOWED");
+    const pkg = try makePackage(&heap, try heap.allocBaseString("TEST"), null, null);
+    const name = try heap.allocBaseString("SHADOWED");
 
     try shadowSymbols(&heap, name, pkg);
 
@@ -967,12 +990,12 @@ test "shadowing-import imports and shadows" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    const pkg = try makePackage(&heap, try heap.allocString("TEST"), null, null);
-    const sym_name = try heap.allocString("X");
+    const pkg = try makePackage(&heap, try heap.allocBaseString("TEST"), null, null);
+    const sym_name = try heap.allocBaseString("X");
     const result = try internSymbol(&heap, sym_name, pkg);
     const sym = result.toPtr(Cons).car;
 
-    const pkg2 = try makePackage(&heap, try heap.allocString("PKG2"), null, null);
+    const pkg2 = try makePackage(&heap, try heap.allocBaseString("PKG2"), null, null);
     try shadowingImport(&heap, sym, pkg2);
 
     const found = try findSymbol(&heap, sym_name, pkg2);

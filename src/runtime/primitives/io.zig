@@ -211,7 +211,7 @@ pub fn sysReadLine(heap: *Heap) !Value {
 
     if (line_len == 0) return Value.nil;
 
-    return try heap.allocString(line_buf[0..line_len]);
+    return try heap.allocBaseString(line_buf[0..line_len]);
 }
 
 /// Read a single character from stdin
@@ -402,6 +402,15 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
         },
         .symbol => try writeCaseSymbol(val.toPtr(objects.Symbol).getName(), w),
         .string => try w.writeAll(val.toPtr(objects.String).bytes()),
+        .string32 => {
+            // Convert UTF-32 to UTF-8 for output
+            const s32 = val.toPtr(objects.String32);
+            var utf8_buf: [4]u8 = undefined;
+            for (s32.codepoints()) |cp| {
+                const len = std.unicode.utf8Encode(@intCast(cp), &utf8_buf) catch continue;
+                try w.writeAll(utf8_buf[0..len]);
+            }
+        },
         .closure => try w.writeAll("#<closure>"),
         .keyword => {
             try w.writeByte(':');
@@ -473,6 +482,17 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
             const name_sym = cls.name.toPtr(objects.Symbol);
             try w.print("#<class {s}>", .{name_sym.getName()});
         },
+        .slotdef => {
+            const slotdef = val.toPtr(objects.SlotDefinition);
+            const name_sym = slotdef.name.toPtr(objects.Symbol);
+            try w.print("#<slot-definition {s}>", .{name_sym.getName()});
+        },
+        .generic_function => {
+            const gf = val.toPtr(objects.GenericFunction);
+            const name_sym = gf.name.toPtr(objects.Symbol);
+            try w.print("#<generic-function {s}>", .{name_sym.getName()});
+        },
+        .method => try w.writeAll("#<method>"),
     }
 }
 
@@ -488,7 +508,7 @@ pub fn writeToString(heap: *Heap, val: Value) !Value {
     try printValueTo(val, w.any());
     const bytes = try buf.toOwnedSlice(heap.backing_allocator);
     defer heap.backing_allocator.free(bytes);
-    return try heap.allocString(bytes);
+    return try heap.allocBaseString(bytes);
 }
 
 fn printValueTo(val: Value, w: anytype) !void {
@@ -565,6 +585,17 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
             try w.writeAll(val.toPtr(objects.String).bytes());
             try w.writeByte('"');
         },
+        .string32 => {
+            // Convert UTF-32 to UTF-8 for output
+            try w.writeByte('"');
+            const s32 = val.toPtr(objects.String32);
+            var utf8_buf: [4]u8 = undefined;
+            for (s32.codepoints()) |cp| {
+                const len = std.unicode.utf8Encode(@intCast(cp), &utf8_buf) catch continue;
+                try w.writeAll(utf8_buf[0..len]);
+            }
+            try w.writeByte('"');
+        },
         .closure => try w.writeAll("#<closure>"),
         .keyword => {
             try w.writeByte(':');
@@ -637,6 +668,17 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
             const name_sym = cls.name.toPtr(objects.Symbol);
             try w.print("#<class {s}>", .{name_sym.getName()});
         },
+        .slotdef => {
+            const slotdef = val.toPtr(objects.SlotDefinition);
+            const name_sym = slotdef.name.toPtr(objects.Symbol);
+            try w.print("#<slot-definition {s}>", .{name_sym.getName()});
+        },
+        .generic_function => {
+            const gf = val.toPtr(objects.GenericFunction);
+            const name_sym = gf.name.toPtr(objects.Symbol);
+            try w.print("#<generic-function {s}>", .{name_sym.getName()});
+        },
+        .method => try w.writeAll("#<method>"),
     }
 }
 
@@ -1131,7 +1173,7 @@ pub fn getOutputStreamString(heap: *Heap, stream: Value) !Value {
     if (s.direction != .output or s.stream_type != .string) return error.TypeError;
     if (s.data_ptr == 0) return error.StreamClosed;
     const buf: *std.ArrayList(u8) = @ptrFromInt(s.data_ptr);
-    return try heap.allocString(buf.items);
+    return try heap.allocBaseString(buf.items);
 }
 
 /// Read one character from stream
@@ -1281,7 +1323,7 @@ pub fn readLine(heap: *Heap, stream: Value) !Value {
             while (i < s.length and data[i] != '\n') : (i += 1) {}
             const line = data[start..i];
             s.position = if (i < s.length) i + 1 else i;
-            return try heap.allocString(line);
+            return try heap.allocBaseString(line);
         },
         .file => {
             var buf: [LINE_BUF]u8 = undefined;
@@ -1295,7 +1337,7 @@ pub fn readLine(heap: *Heap, stream: Value) !Value {
                 buf[len] = ch[0];
                 len += 1;
             }
-            return try heap.allocString(buf[0..len]);
+            return try heap.allocBaseString(buf[0..len]);
         },
         .byte => return error.NotImplemented,
     }

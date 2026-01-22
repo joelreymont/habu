@@ -78,7 +78,7 @@ pub fn fromZig(comptime T: type, val: T, heap: *Heap) FfiError!Value {
         .pointer => |ptr| {
             if (ptr.size == .slice and ptr.child == u8) {
                 // []const u8 - create string
-                return heap.allocString(val) catch return FfiError.OutOfMemory;
+                return heap.allocBaseString(val) catch return FfiError.OutOfMemory;
             } else if (ptr.child == Value) {
                 return val.*;
             }
@@ -94,7 +94,7 @@ pub fn fromZig(comptime T: type, val: T, heap: *Heap) FfiError!Value {
         .@"struct" => |s| {
             var result = Value.nil;
             inline for (s.fields) |field| {
-                const field_name = try heap.allocString(field.name) catch return FfiError.OutOfMemory;
+                const field_name = try heap.allocBaseString(field.name) catch return FfiError.OutOfMemory;
                 const field_val = try fromZig(field.type, @field(val, field.name), heap);
                 const pair = try heap.allocCons(field_name, field_val) catch return FfiError.OutOfMemory;
                 result = try heap.allocCons(pair, result) catch return FfiError.OutOfMemory;
@@ -261,7 +261,7 @@ test "toZig string" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
-    const str = try heap.allocString("hello");
+    const str = try heap.allocBaseString("hello");
     const result = try toZig([]const u8, str, &heap);
     try testing.expectEqualStrings("hello", result);
 }

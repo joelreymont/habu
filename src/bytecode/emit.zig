@@ -743,6 +743,8 @@ pub const Emitter = struct {
             // CLOS operations
             .slot_value => |op| try self.emitBinaryOp(op, .slot_value),
             .set_slot_value => |op| try self.emitTernaryOp(op, .set_slot_value),
+            .make_generic_function => |op| try self.emitBinaryOp(op, .make_generic_function),
+            .make_method => |op| try self.emitQuaternaryOp(op, .make_method),
 
             // Box operations (mutable cells)
             .make_box => |op| try self.emitUnaryOp(op.operand, .make_box),
@@ -772,6 +774,8 @@ pub const Emitter = struct {
             .random => |op| try self.emitUnaryOp(op.operand, .random),
             .random_seed => |op| try self.emitUnaryOp(op.operand, .random_seed),
             .intern => |op| try self.emitUnaryOp(op.operand, .intern),
+            .unintern => |op| try self.emitBinaryOp(op, .unintern),
+            .find_symbol => |op| try self.emitBinaryOp(op, .find_symbol),
             .sym_name => |op| try self.emitUnaryOp(op.operand, .sym_name),
             .get => |op| try self.emitBinaryOp(op, .get),
             .put => |op| try self.emitTernaryOp(op, .put),
@@ -1945,6 +1949,14 @@ pub const Emitter = struct {
         try self.emit(op.first);
         try self.emit(op.second);
         try self.emit(op.third);
+        try self.emitOp(opcode);
+    }
+
+    fn emitQuaternaryOp(self: *Emitter, op: Ir.QuaternaryOp, opcode: Op) Error!void {
+        try self.emit(op.first);
+        try self.emit(op.second);
+        try self.emit(op.third);
+        try self.emit(op.fourth);
         try self.emitOp(opcode);
     }
 

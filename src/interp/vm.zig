@@ -477,9 +477,9 @@ pub const Vm = struct {
 
     /// Allocate a string, running GC if needed
     pub fn allocString(self: *Vm, data: []const u8) error{OutOfMemory}!Value {
-        return self.heap.allocString(data) catch {
+        return self.heap.allocBaseString(data) catch {
             _ = try self.collectGarbage();
-            return try self.heap.allocString(data);
+            return try self.heap.allocBaseString(data);
         };
     }
 
@@ -1567,6 +1567,29 @@ pub const Vm = struct {
                 const obj = try self.pop();
                 const args = try self.heap.allocCons(obj, try self.heap.allocCons(slot_name_val, try self.heap.allocCons(value, Value.nil)));
                 const result = try primitives.clos.setSlotValue(self.heap, args);
+                try self.push(result);
+            },
+            .make_generic_function => {
+                const lambda_list = try self.pop();
+                const name = try self.pop();
+                const args = try self.heap.allocCons(name, try self.heap.allocCons(lambda_list, Value.nil));
+                const result = try primitives.makeGenericFunction(self.heap, args);
+                try self.push(result);
+            },
+            .make_method => {
+                const function = try self.pop();
+                const lambda_list = try self.pop();
+                const specializers = try self.pop();
+                const qualifiers = try self.pop();
+                const args = try self.heap.allocCons(qualifiers, try self.heap.allocCons(specializers, try self.heap.allocCons(lambda_list, try self.heap.allocCons(function, Value.nil))));
+                const result = try primitives.makeMethod(self.heap, args);
+                try self.push(result);
+            },
+            .slot_boundp => {
+                const slot_name_val = try self.pop();
+                const obj = try self.pop();
+                const args = try self.heap.allocCons(obj, try self.heap.allocCons(slot_name_val, Value.nil));
+                const result = try primitives.slotBoundp(self.heap, args);
                 try self.push(result);
             },
 
@@ -2823,6 +2846,18 @@ pub const Vm = struct {
                 const result = try primitives.package.packageExports(pkg);
                 try self.push(result);
             },
+            .unintern => {
+                const pkg = try self.pop();
+                const sym = try self.pop();
+                const result = try primitives.package.uninternSymbol(self.heap, sym, pkg);
+                try self.push(if (result) Value.t else Value.nil);
+            },
+            .find_symbol => {
+                const pkg = try self.pop();
+                const name = try self.pop();
+                const result = try primitives.package.findSymbol(self.heap, name, pkg);
+                try self.push(result);
+            },
             .open => {
                 const mode_val = try self.pop();
                 const path_val = try self.pop();
@@ -3179,7 +3214,7 @@ pub const Vm = struct {
 
                         if (j > i) {
                             const component = path[i..j];
-                            const comp_str = try self.heap.allocString(component);
+                            const comp_str = try self.allocString(component);
                             try components.append(self.allocator, comp_str);
                         }
 
@@ -3196,8 +3231,8 @@ pub const Vm = struct {
                         if (std.mem.lastIndexOf(u8, fname, ".")) |dot_pos| {
                             if (dot_pos > 0) {
                                 // Has extension
-                                name = try self.heap.allocString(fname[0..dot_pos]);
-                                type_comp = try self.heap.allocString(fname[dot_pos + 1 ..]);
+                                name = try self.allocString(fname[0..dot_pos]);
+                                type_comp = try self.allocString(fname[dot_pos + 1 ..]);
                             } else {
                                 // Starts with dot (hidden file on Unix)
                                 name = filename_val;
@@ -3300,7 +3335,7 @@ pub const Vm = struct {
                 }
 
                 // Create string from result
-                const result_str = try self.heap.allocString(result.items);
+                const result_str = try self.allocString(result.items);
                 try self.push(result_str);
             },
 
@@ -5010,7 +5045,7 @@ pub const Vm = struct {
                     result.append(self.allocator, @as(u8, @intCast(cp))) catch return error.OutOfMemory;
                 }
             },
-            .string => result.appendSlice(self.allocator, val.toPtr(runtime.String).bytes()) catch return error.OutOfMemory,
+            .string, .string32 => result.appendSlice(self.allocator, val.toPtr(runtime.String).bytes()) catch return error.OutOfMemory,
             .symbol => result.appendSlice(self.allocator, val.toPtr(Symbol).getName()) catch return error.OutOfMemory,
             .keyword => {
                 result.append(self.allocator, ':') catch return error.OutOfMemory;
@@ -5040,6 +5075,9 @@ pub const Vm = struct {
             .chunk => result.appendSlice(self.allocator, "#<chunk>") catch return error.OutOfMemory,
             .condition => result.appendSlice(self.allocator, "#<condition>") catch return error.OutOfMemory,
             .class => result.appendSlice(self.allocator, "#<class>") catch return error.OutOfMemory,
+            .slotdef => result.appendSlice(self.allocator, "#<slot-definition>") catch return error.OutOfMemory,
+            .generic_function => result.appendSlice(self.allocator, "#<generic-function>") catch return error.OutOfMemory,
+            .method => result.appendSlice(self.allocator, "#<method>") catch return error.OutOfMemory,
         }
     }
 
@@ -5869,9 +5907,9 @@ fn hashValueWithTest(val: Value, test_type: runtime.HashTest) u64 {
                 .float => fnvHashU64(normalizeFloatForHash(val.toFloat())),
                 .symbol => fnvHash(val.toPtr(runtime.Symbol).getName()),
                 .keyword => fnvHash(val.toPtr(runtime.Keyword).getName()),
-                .string => fnvHash(val.toPtr(runtime.String).bytes()),
+                .string, .string32 => fnvHash(val.toPtr(runtime.String).bytes()),
                 // Reference types: hash address (NOT stable across GC)
-                .cons, .vector, .closure, .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname, .package, .chunk, .condition, .class => fnvHashU64(val.raw),
+                .cons, .vector, .closure, .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname, .package, .chunk, .condition, .class, .slotdef, .generic_function, .method => fnvHashU64(val.raw),
             };
         },
     }

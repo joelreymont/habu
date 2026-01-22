@@ -1934,3 +1934,231 @@ test "call-next-method - no next method error" {
     const err = repl.eval("(do-thing obj)");
     try testing.expectError(error.UserError, err);
 }
+
+test "slot-boundp - returns t for bound slot" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass point () (x y))");
+    _ = try repl.eval("(setf p (make-instance 'point))");
+    _ = try repl.eval("(setf (slot-value p 'x) 10)");
+
+    const result = try repl.eval("(slot-boundp p 'x)");
+    try testing.expect(result.eq(Value.t));
+}
+
+test "slot-boundp - returns nil for unbound slot" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass point () (x y))");
+    _ = try repl.eval("(setf p (make-instance 'point))");
+
+    const result = try repl.eval("(slot-boundp p 'x)");
+    try testing.expect(result.isNil());
+}
+
+test "slot-makunbound - marks slot as unbound" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass point () (x y))");
+    _ = try repl.eval("(setf p (make-instance 'point))");
+    _ = try repl.eval("(setf (slot-value p 'x) 10)");
+
+    const bound_before = try repl.eval("(slot-boundp p 'x)");
+    try testing.expect(bound_before.eq(Value.t));
+
+    _ = try repl.eval("(slot-makunbound p 'x)");
+
+    const bound_after = try repl.eval("(slot-boundp p 'x)");
+    try testing.expect(bound_after.isNil());
+}
+
+test "class-name - returns name of class" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass point () (x y))");
+    _ = try repl.eval("(setf p (make-instance 'point))");
+
+    const result = try repl.eval("(class-name (class-of p))");
+    const expected = try repl.eval("'point");
+    try testing.expect(result.eq(expected));
+}
+
+test "class-direct-superclasses - returns direct supers" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass shape () ())");
+    _ = try repl.eval("(defclass colored () ())");
+    _ = try repl.eval("(defclass square (shape colored) ())");
+
+    const result = try repl.eval("(class-direct-superclasses (find-class 'square))");
+    const shape = try repl.eval("(find-class 'shape)");
+    const colored = try repl.eval("(find-class 'colored)");
+
+    try testing.expect(result.isCons());
+    const cons1 = result.toPtr(Cons);
+    try testing.expect(cons1.car.eq(shape));
+
+    const rest = cons1.cdr;
+    try testing.expect(rest.isCons());
+    const cons2 = rest.toPtr(Cons);
+    try testing.expect(cons2.car.eq(colored));
+}
+
+test "class-precedence-list - returns CPL" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass a () ())");
+    _ = try repl.eval("(defclass b () ())");
+    _ = try repl.eval("(defclass c (a b) ())");
+
+    const result = try repl.eval("(class-precedence-list (find-class 'c))");
+    try testing.expect(result.isCons());
+
+    const c_class = try repl.eval("(find-class 'c)");
+    const cons1 = result.toPtr(Cons);
+    try testing.expect(cons1.car.eq(c_class));
+}
+
+test "class-slots - returns all slot definitions" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass shape () (color))");
+    _ = try repl.eval("(defclass square (shape) (side))");
+
+    const result = try repl.eval("(class-slots (find-class 'square))");
+    try testing.expect(result.isCons());
+}
+
+test "slot-definition-name" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass test-class () (my-slot))");
+    const name = try repl.eval("(slot-definition-name (car (class-slots (find-class 'test-class))))");
+    try testing.expect(name.isSymbol());
+    const sym = name.toPtr(runtime.Symbol);
+    const name_str = sym.getName();
+    try testing.expect(std.mem.eql(u8, name_str, "my-slot"));
+}
+
+test "slot-definition-initform" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass test-class () ((my-slot :initform 42)))");
+    const initform = try repl.eval("(slot-definition-initform (car (class-slots (find-class 'test-class))))");
+    try testing.expect(initform.isFixnum());
+    try testing.expectEqual(@as(i64, 42), initform.toFixnum());
+}
+
+test "slot-definition-initargs" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass test-class () ((my-slot :initarg :my-slot)))");
+    const initargs = try repl.eval("(slot-definition-initargs (car (class-slots (find-class 'test-class))))");
+    try testing.expect(initargs.isCons());
+    const cons = initargs.toPtr(Cons);
+    try testing.expect(cons.car.isKeyword());
+}
+
+test "slot-definition-readers and writers" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass test-class () ((my-slot :reader get-my-slot :writer set-my-slot)))");
+    const readers = try repl.eval("(slot-definition-readers (car (class-slots (find-class 'test-class))))");
+    try testing.expect(readers.isCons());
+    const writers = try repl.eval("(slot-definition-writers (car (class-slots (find-class 'test-class))))");
+    try testing.expect(writers.isCons());
+}
+
+test "slot-definition-allocation" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass test-class () ((my-slot :allocation :instance)))");
+    const allocation = try repl.eval("(slot-definition-allocation (car (class-slots (find-class 'test-class))))");
+    try testing.expect(allocation.isKeyword());
+}
+
+test "slot-definition-type" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass test-class () ((my-slot :type fixnum)))");
+    const slot_type = try repl.eval("(slot-definition-type (car (class-slots (find-class 'test-class))))");
+    try testing.expect(slot_type.isSymbol());
+}

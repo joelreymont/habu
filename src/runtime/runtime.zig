@@ -22,6 +22,7 @@ pub const Cons = objects.Cons;
 pub const Symbol = objects.Symbol;
 pub const Vector = objects.Vector;
 pub const String = objects.String;
+pub const String32 = objects.String32;
 pub const Closure = objects.Closure;
 pub const Keyword = objects.Keyword;
 pub const HashTable = objects.HashTable;

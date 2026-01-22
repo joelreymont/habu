@@ -345,6 +345,18 @@ pub const Op = enum(u16) {
     /// ( obj slot-name-sym value -- value )
     set_slot_value = 0x65,
 
+    /// Allocate GenericFunction object
+    /// ( name lambda-list -- gf )
+    make_generic_function = 0xA6,
+
+    /// Allocate Method object
+    /// ( qualifiers specializers lambda-list function -- method )
+    make_method = 0xA7,
+
+    /// Check if CLOS slot is bound
+    /// ( obj slot-name-sym -- t/nil )
+    slot_boundp = 0x95,
+
     /// Create box (mutable cell for closure capture)
     /// ( val -- box )
     make_box = 0x66,
@@ -400,6 +412,10 @@ pub const Op = enum(u16) {
     /// Intern - create symbol from string
     /// ( str -- sym )
     intern = 0x74,
+
+    /// Unintern - remove symbol from package
+    /// ( sym pkg -- bool )
+    unintern = 0x0A,
 
     /// Substring - extract part of a string
     /// ( str start end -- substr )
@@ -713,7 +729,7 @@ pub const Op = enum(u16) {
 
     /// Assert value is list (nil or cons), error if not
     /// ( x -- x )
-    check_list = 0xA7,
+    check_list = 0xB8,
 
     /// Assert refinement predicate holds, error if not
     /// Stack: predicate result on top, original value below
@@ -1231,11 +1247,16 @@ pub const Op = enum(u16) {
 
     /// Get package internal symbols hash table
     /// ( pkg -- hashtable )
-    package_symbols_table = 0xB8,
+    package_symbols_table = 0x110,
 
     /// Get package exports hash table
     /// ( pkg -- hashtable )
-    package_exports_table = 0xB9,
+    package_exports_table = 0x111,
+
+    /// Find symbol in package
+    /// ( name pkg -- (symbol . status) | (nil . nil) )
+    /// Returns cons: (symbol . status) where status is :internal/:external/:inherited/nil
+    find_symbol = 0x10E,
 
     /// Get operand size in bytes
     pub fn operandSize(self: Op) u8 {
@@ -1294,6 +1315,9 @@ pub const Op = enum(u16) {
             .vec_len,
             .slot_value,
             .set_slot_value,
+            .make_generic_function,
+            .make_method,
+            .slot_boundp,
             .make_box,
             .box_ref,
             .box_set,
@@ -1313,6 +1337,7 @@ pub const Op = enum(u16) {
             .random_seed,
             .type_of,
             .intern,
+            .unintern,
             .substring,
             .sym_name,
             .get,
@@ -1469,6 +1494,7 @@ pub const Op = enum(u16) {
             .pathname_version,
             .package_symbols_table,
             .package_exports_table,
+            .find_symbol,
             .vec_fill_ptr,
             .vec_push,
             .vec_push_ext,

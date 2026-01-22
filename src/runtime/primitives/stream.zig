@@ -4,6 +4,7 @@ const Value = @import("../value.zig").Value;
 const Heap = @import("../heap.zig").Heap;
 const Vector = @import("../objects.zig").Vector;
 const String = @import("../objects.zig").String;
+const String32 = @import("../objects.zig").String32;
 const Stream = @import("../objects.zig").Stream;
 const StreamDirection = @import("../objects.zig").StreamDirection;
 const StreamType = @import("../objects.zig").StreamType;
@@ -99,7 +100,7 @@ pub fn primReadLine(heap: *Heap, args: []const Value) !Value {
         index += 1;
     }
 
-    return try heap.allocString(buffer[0..index]);
+    return try heap.allocBaseString(buffer[0..index]);
 }
 
 pub fn primWriteLine(heap: *Heap, args: []const Value) !Value {
@@ -305,26 +306,49 @@ pub fn primWriteString(heap: *Heap, args: []const Value) !Value {
     const str_val = args[0];
     const stream_val = args[1];
 
-    if (!str_val.isString()) return error.InvalidArgument;
+    if (!str_val.isString() and !str_val.isString32()) return error.InvalidArgument;
     if (!stream_val.isStream()) return error.InvalidArgument;
 
-    const str = str_val.toPtr(String);
     const stream = stream_val.toPtr(Stream);
 
     if (stream.closed) return error.StreamClosed;
     if (stream.direction != .output) return error.NotOutputStreamError;
 
-    const data = str.data[0..str.length];
+    // Convert to UTF-8 bytes for output
+    if (str_val.isString()) {
+        const str = str_val.toPtr(String);
+        const data = str.data[0..str.length];
 
-    if (stream.stream_type == .file) {
-        // Write to file
-        const file = std.fs.File{ .handle = stream.file_fd };
-        try file.writeAll(data);
-    } else if (stream.stream_type == .string) {
-        // Write to string output stream buffer
-        try streamWriteBytes(heap, stream, data);
+        if (stream.stream_type == .file) {
+            const file = std.fs.File{ .handle = stream.file_fd };
+            try file.writeAll(data);
+        } else if (stream.stream_type == .string) {
+            try streamWriteBytes(heap, stream, data);
+        } else {
+            return error.InvalidArgument;
+        }
     } else {
-        return error.InvalidArgument;
+        // String32 - encode to UTF-8
+        const s32 = str_val.toPtr(String32);
+        var utf8_buf: [4096]u8 = undefined;
+        var fbs = std.io.fixedBufferStream(&utf8_buf);
+        const w = fbs.writer();
+
+        for (s32.codepoints()) |cp| {
+            var cp_buf: [4]u8 = undefined;
+            const len = try std.unicode.utf8Encode(@intCast(cp), &cp_buf);
+            try w.writeAll(cp_buf[0..len]);
+        }
+
+        const utf8_data = fbs.getWritten();
+        if (stream.stream_type == .file) {
+            const file = std.fs.File{ .handle = stream.file_fd };
+            try file.writeAll(utf8_data);
+        } else if (stream.stream_type == .string) {
+            try streamWriteBytes(heap, stream, utf8_data);
+        } else {
+            return error.InvalidArgument;
+        }
     }
 
     return str_val;
@@ -375,9 +399,9 @@ pub fn primGetOutputStreamString(heap: *Heap, args: []const Value) !Value {
     }
 
     if (stream.data_ptr == 0) {
-        return try heap.allocString("");
+        return try heap.allocBaseString("");
     }
 
     const buf: *std.ArrayList(u8) = @ptrFromInt(stream.data_ptr);
-    return try heap.allocString(buf.items);
+    return try heap.allocBaseString(buf.items);
 }

@@ -220,6 +220,7 @@ pub const Vector = extern struct {
 
 /// String: mutable byte sequence (CL strings are mutable)
 /// Size: 16 bytes header + data (inline for short strings)
+/// Note: This is "base-string" in CL terminology (8-bit characters)
 pub const String = extern struct {
     /// Length in bytes
     length: u64,
@@ -231,6 +232,24 @@ pub const String = extern struct {
     }
 
     pub fn mutableBytes(self: *String) []u8 {
+        return self.data[0..self.length];
+    }
+};
+
+/// String32: UTF-32 string for full Unicode support
+/// Size: 16 bytes header + data
+pub const String32 = extern struct {
+    /// Length in codepoints
+    length: u32,
+    _pad: u32 = 0,
+    /// Pointer to u32 codepoint data
+    data: [*]u32,
+
+    pub fn codepoints(self: *const String32) []const u32 {
+        return self.data[0..self.length];
+    }
+
+    pub fn mutableCodepoints(self: *String32) []u32 {
         return self.data[0..self.length];
     }
 };
@@ -298,6 +317,10 @@ pub const BoxedKind = enum(u64) {
     chunk = 8,
     condition = 9,
     class = 10,
+    string32 = 11,
+    slotdef = 12,
+    generic_function = 13,
+    method = 14,
 };
 
 /// Stream direction
@@ -548,6 +571,113 @@ pub const HashTable = extern struct {
     pub fn getEntries(self: *const HashTable) []HashEntry {
         return self.entries[0..self.capacity];
     }
+
+    /// Get value by key, returns null if not found
+    pub fn get(self: *const HashTable, heap: anytype, key: Value) ?Value {
+        _ = heap;
+        const h = @import("../runtime/primitives/hash.zig").hashValue(key);
+        var idx = h % self.capacity;
+        var i: usize = 0;
+        while (i < self.capacity) : (i += 1) {
+            const entry = self.entries[idx];
+            if (isEmpty(entry)) return null;
+            if (!isDeleted(entry) and self.keysEqual(entry.key, key)) {
+                return entry.value;
+            }
+            idx = (idx + 1) % self.capacity;
+        }
+        return null;
+    }
+
+    /// Put key-value pair, returns error if needs rehashing
+    pub fn put(self: *HashTable, key: Value, value: Value) !void {
+        const h = @import("../runtime/primitives/hash.zig").hashValue(key);
+        var idx = h % self.capacity;
+        var i: usize = 0;
+        var first_deleted: ?usize = null;
+
+        while (i < self.capacity) : (i += 1) {
+            const entry = &self.entries[idx];
+            if (isEmpty(entry.*)) {
+                // Use first deleted slot if found, otherwise use empty slot
+                const target_idx = first_deleted orelse idx;
+                self.entries[target_idx] = .{ .key = key, .value = value };
+                self.count += 1;
+                return;
+            }
+            if (isDeleted(entry.*) and first_deleted == null) {
+                first_deleted = idx;
+            } else if (!isDeleted(entry.*) and self.keysEqual(entry.key, key)) {
+                // Update existing
+                entry.value = value;
+                return;
+            }
+            idx = (idx + 1) % self.capacity;
+        }
+        return error.HashTableFull;
+    }
+
+    /// Remove key, returns true if found
+    pub fn remove(self: *HashTable, key: Value) bool {
+        const h = @import("../runtime/primitives/hash.zig").hashValue(key);
+        var idx = h % self.capacity;
+        var i: usize = 0;
+        while (i < self.capacity) : (i += 1) {
+            const entry = &self.entries[idx];
+            if (isEmpty(entry.*)) return false;
+            if (!isDeleted(entry.*) and self.keysEqual(entry.key, key)) {
+                entry.* = .{ .key = DELETED, .value = Value.nil };
+                self.count -= 1;
+                return true;
+            }
+            idx = (idx + 1) % self.capacity;
+        }
+        return false;
+    }
+
+    /// Clear all entries
+    pub fn clear(self: *HashTable) void {
+        for (0..self.capacity) |i| {
+            self.entries[i] = .{ .key = EMPTY, .value = Value.nil };
+        }
+        self.count = 0;
+    }
+
+    /// Compare keys according to hash table test type
+    fn keysEqual(self: *const HashTable, a: Value, b: Value) bool {
+        return switch (self.test_type) {
+            .eq => a.raw == b.raw,
+            .eql => blk: {
+                if (a.raw == b.raw) break :blk true;
+                if (a.typeKind() != b.typeKind()) break :blk false;
+                // eql: same for numbers with same value
+                if (a.isFixnum() and b.isFixnum()) break :blk a.toFixnum() == b.toFixnum();
+                if (a.isFloat() and b.isFloat()) break :blk a.toFloat() == b.toFloat();
+                if (a.isCharacter() and b.isCharacter()) break :blk a.toCharacter() == b.toCharacter();
+                break :blk false;
+            },
+            .equal => blk: {
+                if (a.raw == b.raw) break :blk true;
+                const tk_a = a.typeKind();
+                const tk_b = b.typeKind();
+                if (tk_a != tk_b) break :blk false;
+                // equal: compares string contents
+                if (tk_a == .string) {
+                    const sa = a.toPtr(String);
+                    const sb = b.toPtr(String);
+                    break :blk std.mem.eql(u8, sa.bytes(), sb.bytes());
+                }
+                if (tk_a == .string32) {
+                    const sa = a.toPtr(String32);
+                    const sb = b.toPtr(String32);
+                    break :blk std.mem.eql(u32, sa.codepoints(), sb.codepoints());
+                }
+                // Fall back to eql for other types
+                break :blk self.keysEqual(a, b); // This would recurse with .eql
+            },
+            .equalp => unreachable, // Not yet implemented
+        };
+    }
 };
 
 /// Package object for symbol namespace management
@@ -693,6 +823,11 @@ pub fn objectSize(val: Value) usize {
                     // Header + data array
                     break :blk @sizeOf(Array) + arr.total_size * @sizeOf(Value);
                 },
+                .string32 => {
+                    const s32 = val.toPtr(String32);
+                    // Header + u32 codepoint data (aligned to 8)
+                    break :blk @sizeOf(String32) + std.mem.alignForward(usize, s32.length * 4, 8);
+                },
                 .rational => @sizeOf(Rational),
                 .complex => @sizeOf(Complex),
                 .stream => @sizeOf(Stream),
@@ -704,6 +839,9 @@ pub fn objectSize(val: Value) usize {
                     const cls = val.toPtr(Class);
                     break :blk @sizeOf(Class) + cls.num_shared * @sizeOf(Value);
                 },
+                .slotdef => @sizeOf(SlotDefinition),
+                .generic_function => @sizeOf(GenericFunction),
+                .method => @sizeOf(Method),
                 .chunk => {
                     const chunk = val.toPtr(Chunk);
                     // Header + const pool + bytecode (both aligned to 8)
@@ -773,7 +911,7 @@ pub fn forEachValue(val: Value, callback: *const fn (Value) void) void {
                         callback(c);
                     }
                 },
-                .rational, .complex, .stream, .bignum, .pathname, .array => {
+                .string32, .rational, .complex, .stream, .bignum, .pathname, .array => {
                     // No internal Values to scan
                 },
                 .class => {
@@ -785,6 +923,22 @@ pub fn forEachValue(val: Value, callback: *const fn (Value) void) void {
                 },
                 .condition => {
                     // No internal Values to scan
+                },
+                .slotdef => {
+                    // No internal Values to scan
+                },
+                .generic_function => {
+                    const gf = val.toPtr(GenericFunction);
+                    callback(gf.name);
+                    callback(gf.lambda_list);
+                    callback(gf.methods);
+                },
+                .method => {
+                    const method = val.toPtr(Method);
+                    callback(method.qualifiers);
+                    callback(method.specializers);
+                    callback(method.lambda_list);
+                    callback(method.function);
                 },
             }
         },
@@ -865,9 +1019,55 @@ pub const Class = extern struct {
     direct_supers: Value,
     /// Class precedence list (list of Values)
     cpl: Value,
+    /// Direct slot definitions (list of SlotDefinition objects)
+    direct_slots: Value,
+    /// All slot definitions (list of SlotDefinition objects)
+    slots: Value,
     /// Number of shared slots
     num_shared: u32,
     _pad: u32 = 0,
     /// Pointer to shared slot values array
     shared_slots: [*]Value,
+};
+
+pub const SlotDefinition = extern struct {
+    kind: BoxedKind align(16),
+    /// Slot name (symbol)
+    name: Value,
+    /// Initform (s-expr or nil)
+    initform: Value,
+    /// Initargs (list of keywords)
+    initargs: Value,
+    /// Readers (list of symbols)
+    readers: Value,
+    /// Writers (list of symbols)
+    writers: Value,
+    /// Allocation type (symbol: :instance or :class)
+    allocation: Value,
+    /// Type specifier (type or t)
+    slot_type: Value,
+};
+
+/// Generic function object
+pub const GenericFunction = extern struct {
+    kind: BoxedKind align(16),
+    /// GF name (symbol)
+    name: Value,
+    /// Lambda list (list of symbols, may include &rest etc)
+    lambda_list: Value,
+    /// Methods (list of Method objects)
+    methods: Value,
+};
+
+/// Method object
+pub const Method = extern struct {
+    kind: BoxedKind align(16),
+    /// Qualifiers (list of symbols: :before, :after, :around)
+    qualifiers: Value,
+    /// Specializers (list of class names or (eql value))
+    specializers: Value,
+    /// Lambda list (list of symbols)
+    lambda_list: Value,
+    /// Function (closure)
+    function: Value,
 };

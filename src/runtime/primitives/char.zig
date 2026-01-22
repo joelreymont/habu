@@ -168,7 +168,7 @@ pub fn charName(heap: *Heap, val: Value) Error!Value {
         else => return Value.nil,
     };
 
-    return try heap.allocString(name);
+    return try heap.allocBaseString(name);
 }
 
 /// Get character from name (e.g., "Space" -> #\Space)

@@ -3,10 +3,12 @@ const Value = @import("../value.zig").Value;
 const runtime = @import("../runtime.zig");
 const heap_mod = @import("../heap.zig");
 const Heap = heap_mod.Heap;
-const Cons = @import("../objects.zig").Cons;
-const Symbol = @import("../objects.zig").Symbol;
-const Vector = @import("../objects.zig").Vector;
-const Keyword = @import("../objects.zig").Keyword;
+const objects = @import("../objects.zig");
+const Cons = objects.Cons;
+const Symbol = objects.Symbol;
+const Vector = objects.Vector;
+const Keyword = objects.Keyword;
+const GenericFunction = objects.GenericFunction;
 
 /// make-instance: (make-instance 'class-name :slot1 val1 :slot2 val2 ...)
 /// Creates an instance of a class by allocating a vector #('class-name slot1-val slot2-val ...)
@@ -121,7 +123,9 @@ pub fn slotValue(heap: *Heap, args: Value) !Value {
             // Slot index in vector is idx+1 (since data[0] is class name)
             const vec_idx = idx + 1;
             if (vec_idx >= vec.length) return error.InvalidArgument;
-            return vec.data[vec_idx];
+            const val = vec.data[vec_idx];
+            if (val.isUnbound()) return error.UnboundSlot;
+            return val;
         }
     }
 
@@ -272,10 +276,328 @@ pub fn slotExistsP(heap: *Heap, args: Value) !Value {
     return Value.nil();
 }
 
+/// slot-boundp: (slot-boundp obj 'slot-name)
+/// Check if slot is bound (not unbound)
+pub fn slotBoundp(heap: *Heap, args: Value) !Value {
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons1 = args.toPtr(Cons);
+    const obj = cons1.car;
+
+    if (!obj.isVector()) return error.InvalidArgument;
+
+    if (!cons1.cdr.isCons()) return error.InvalidArgument;
+    const cons2 = cons1.cdr.toPtr(Cons);
+    var slot_name_val = cons2.car;
+
+    if (slot_name_val.isCons()) {
+        const quote_cons = slot_name_val.toPtr(Cons);
+        if (!quote_cons.cdr.isCons()) return error.InvalidArgument;
+        const cdr_cons = quote_cons.cdr.toPtr(Cons);
+        slot_name_val = cdr_cons.car;
+    }
+
+    if (!slot_name_val.isSymbol()) return error.InvalidArgument;
+    const slot_name = slot_name_val.toPtr(Symbol).getName();
+
+    const vec = obj.toPtr(Vector);
+    if (vec.length == 0) return error.InvalidArgument;
+
+    const class_name_val = vec.data[0];
+    if (!class_name_val.isSymbol()) return error.InvalidArgument;
+    const class_sym = class_name_val.toPtr(Symbol);
+    const class_name = class_sym.getName();
+
+    const sym_pkg_ptr = @as(?*heap_mod.Package, @ptrFromInt(class_sym.reserved));
+    var qual_buf: [256]u8 = undefined;
+    const qualified_class_name = if (sym_pkg_ptr) |pkg| blk: {
+        const qn = std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, class_name }) catch return error.InvalidArgument;
+        break :blk qn;
+    } else class_name;
+
+    const slot_names = heap.class_metadata.get(qualified_class_name) orelse blk: {
+        const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
+        for (prefixes) |prefix| {
+            const try_name = std.fmt.bufPrint(&qual_buf, "{s}{s}", .{ prefix, class_name }) catch continue;
+            if (heap.class_metadata.get(try_name)) |names| break :blk names;
+        }
+        return error.InvalidArgument;
+    };
+
+    for (slot_names, 0..) |name, idx| {
+        if (std.mem.eql(u8, name, slot_name)) {
+            const vec_idx = idx + 1;
+            if (vec_idx >= vec.length) return error.InvalidArgument;
+            const val = vec.data[vec_idx];
+            if (val.isUnbound()) {
+                return Value.nil;
+            } else {
+                return Value.t;
+            }
+        }
+    }
+
+    return error.InvalidArgument;
+}
+
+/// slot-makunbound: (slot-makunbound obj 'slot-name)
+/// Mark slot as unbound
+pub fn slotMakunbound(heap: *Heap, args: Value) !Value {
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons1 = args.toPtr(Cons);
+    const obj = cons1.car;
+
+    if (!obj.isVector()) return error.InvalidArgument;
+
+    if (!cons1.cdr.isCons()) return error.InvalidArgument;
+    const cons2 = cons1.cdr.toPtr(Cons);
+    var slot_name_val = cons2.car;
+
+    if (slot_name_val.isCons()) {
+        const quote_cons = slot_name_val.toPtr(Cons);
+        if (!quote_cons.cdr.isCons()) return error.InvalidArgument;
+        const cdr_cons = quote_cons.cdr.toPtr(Cons);
+        slot_name_val = cdr_cons.car;
+    }
+
+    if (!slot_name_val.isSymbol()) return error.InvalidArgument;
+    const slot_name = slot_name_val.toPtr(Symbol).getName();
+
+    const vec = obj.toPtr(Vector);
+    if (vec.length == 0) return error.InvalidArgument;
+
+    const class_name_val = vec.data[0];
+    if (!class_name_val.isSymbol()) return error.InvalidArgument;
+    const class_sym = class_name_val.toPtr(Symbol);
+    const class_name = class_sym.getName();
+
+    const sym_pkg_ptr = @as(?*heap_mod.Package, @ptrFromInt(class_sym.reserved));
+    var qual_buf: [256]u8 = undefined;
+    const qualified_class_name = if (sym_pkg_ptr) |pkg| blk: {
+        const qn = std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, class_name }) catch return error.InvalidArgument;
+        break :blk qn;
+    } else class_name;
+
+    const slot_names = heap.class_metadata.get(qualified_class_name) orelse blk: {
+        const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
+        for (prefixes) |prefix| {
+            const try_name = std.fmt.bufPrint(&qual_buf, "{s}{s}", .{ prefix, class_name }) catch continue;
+            if (heap.class_metadata.get(try_name)) |names| break :blk names;
+        }
+        return error.InvalidArgument;
+    };
+
+    for (slot_names, 0..) |name, idx| {
+        if (std.mem.eql(u8, name, slot_name)) {
+            const vec_idx = idx + 1;
+            if (vec_idx >= vec.length) return error.InvalidArgument;
+            vec.data[vec_idx] = Value.unbound();
+            return obj;
+        }
+    }
+
+    return error.InvalidArgument;
+}
+
 /// call-next-method: (call-next-method &rest args)
 /// Stub implementation - will be used for method combinations
 pub fn callNextMethod(heap: *Heap, args: Value) !Value {
     _ = heap;
     _ = args;
     return error.NotImplemented;
+}
+
+/// classp: (classp obj)
+/// Check if object is a Class
+pub fn classp(heap: *Heap, args: Value) !Value {
+    _ = heap;
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons = args.toPtr(Cons);
+    const obj = cons.car;
+    return if (obj.isClass()) Value.t() else Value.nil();
+}
+
+/// class-name: (class-name class)
+/// Return the name of a class
+pub fn className(heap: *Heap, args: Value) !Value {
+    _ = heap;
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons = args.toPtr(Cons);
+    const class_val = cons.car;
+    if (!class_val.isClass()) return error.TypeError;
+    const class = class_val.toPtr(runtime.Class);
+    return class.name;
+}
+
+/// class-direct-superclasses: (class-direct-superclasses class)
+/// Return the list of direct superclasses
+pub fn classDirectSuperclasses(class_val: Value) !Value {
+    if (!class_val.isClass()) return error.TypeError;
+    const class = class_val.toPtr(runtime.Class);
+    return class.direct_supers;
+}
+
+/// class-precedence-list: (class-precedence-list class)
+/// Return the class precedence list (linearized superclasses)
+pub fn classPrecedenceList(class_val: Value) !Value {
+    if (!class_val.isClass()) return error.TypeError;
+    const class = class_val.toPtr(runtime.Class);
+    return class.cpl;
+}
+
+/// class-direct-slots: (class-direct-slots class)
+/// Return the list of direct slot definitions
+pub fn classDirectSlots(class_val: Value) !Value {
+    if (!class_val.isClass()) return error.TypeError;
+    const class = class_val.toPtr(runtime.Class);
+    return class.direct_slots;
+}
+
+/// class-slots: (class-slots class)
+/// Return the list of all slot definitions (direct + inherited)
+pub fn classSlots(class_val: Value) !Value {
+    if (!class_val.isClass()) return error.TypeError;
+    const class = class_val.toPtr(runtime.Class);
+    return class.slots;
+}
+
+/// slot-definition-name: (slot-definition-name slot-def)
+/// Return the name of a slot definition
+pub fn slotDefinitionName(heap: *Heap, args: Value) !Value {
+    _ = heap;
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons = args.toPtr(Cons);
+    const slot_def = cons.car;
+
+    if (!slot_def.isSlotDefinition()) return error.TypeError;
+    const sd = slot_def.toPtr(runtime.SlotDefinition);
+    return sd.name;
+}
+
+/// slot-definition-initform: (slot-definition-initform slot-def)
+/// Return the initform of a slot definition
+pub fn slotDefinitionInitform(heap: *Heap, args: Value) !Value {
+    _ = heap;
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons = args.toPtr(Cons);
+    const slot_def = cons.car;
+
+    if (!slot_def.isSlotDefinition()) return error.TypeError;
+    const sd = slot_def.toPtr(runtime.SlotDefinition);
+    return sd.initform;
+}
+
+/// slot-definition-initargs: (slot-definition-initargs slot-def)
+/// Return the initargs of a slot definition
+pub fn slotDefinitionInitargs(heap: *Heap, args: Value) !Value {
+    _ = heap;
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons = args.toPtr(Cons);
+    const slot_def = cons.car;
+
+    if (!slot_def.isSlotDefinition()) return error.TypeError;
+    const sd = slot_def.toPtr(runtime.SlotDefinition);
+    return sd.initargs;
+}
+
+/// slot-definition-readers: (slot-definition-readers slot-def)
+/// Return the readers of a slot definition
+pub fn slotDefinitionReaders(heap: *Heap, args: Value) !Value {
+    _ = heap;
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons = args.toPtr(Cons);
+    const slot_def = cons.car;
+
+    if (!slot_def.isSlotDefinition()) return error.TypeError;
+    const sd = slot_def.toPtr(runtime.SlotDefinition);
+    return sd.readers;
+}
+
+/// slot-definition-writers: (slot-definition-writers slot-def)
+/// Return the writers of a slot definition
+pub fn slotDefinitionWriters(heap: *Heap, args: Value) !Value {
+    _ = heap;
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons = args.toPtr(Cons);
+    const slot_def = cons.car;
+
+    if (!slot_def.isSlotDefinition()) return error.TypeError;
+    const sd = slot_def.toPtr(runtime.SlotDefinition);
+    return sd.writers;
+}
+
+/// slot-definition-allocation: (slot-definition-allocation slot-def)
+/// Return the allocation type of a slot definition
+pub fn slotDefinitionAllocation(heap: *Heap, args: Value) !Value {
+    _ = heap;
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons = args.toPtr(Cons);
+    const slot_def = cons.car;
+
+    if (!slot_def.isSlotDefinition()) return error.TypeError;
+    const sd = slot_def.toPtr(runtime.SlotDefinition);
+    return sd.allocation;
+}
+
+/// slot-definition-type: (slot-definition-type slot-def)
+/// Return the type specifier of a slot definition
+pub fn slotDefinitionType(heap: *Heap, args: Value) !Value {
+    _ = heap;
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons = args.toPtr(Cons);
+    const slot_def = cons.car;
+
+    if (!slot_def.isSlotDefinition()) return error.TypeError;
+    const sd = slot_def.toPtr(runtime.SlotDefinition);
+    return sd.slot_type;
+}
+
+/// %make-generic-function: (%make-generic-function name lambda-list)
+/// Internal primitive to allocate a GenericFunction object
+pub fn makeGenericFunction(heap: *Heap, args: Value) !Value {
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons1 = args.toPtr(Cons);
+    const name = cons1.car;
+
+    if (!name.isSymbol()) return error.InvalidArgument;
+
+    if (!cons1.cdr.isCons()) return error.InvalidArgument;
+    const cons2 = cons1.cdr.toPtr(Cons);
+    const lambda_list = cons2.car;
+
+    const gf = try heap.alloc(GenericFunction);
+    gf.kind = .generic_function;
+    gf.name = name;
+    gf.lambda_list = lambda_list;
+    gf.methods = Value.nil;
+
+    return Value.makeGenericFunction(gf);
+}
+
+/// %make-method: (%make-method qualifiers specializers lambda-list function)
+/// Internal primitive to allocate a Method object
+pub fn makeMethod(heap: *Heap, args: Value) !Value {
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons1 = args.toPtr(Cons);
+    const qualifiers = cons1.car;
+
+    if (!cons1.cdr.isCons()) return error.InvalidArgument;
+    const cons2 = cons1.cdr.toPtr(Cons);
+    const specializers = cons2.car;
+
+    if (!cons2.cdr.isCons()) return error.InvalidArgument;
+    const cons3 = cons2.cdr.toPtr(Cons);
+    const lambda_list = cons3.car;
+
+    if (!cons3.cdr.isCons()) return error.InvalidArgument;
+    const cons4 = cons3.cdr.toPtr(Cons);
+    const function = cons4.car;
+
+    const method = try heap.alloc(objects.Method);
+    method.kind = .method;
+    method.qualifiers = qualifiers;
+    method.specializers = specializers;
+    method.lambda_list = lambda_list;
+    method.function = function;
+
+    return Value.makeMethod(method);
 }
