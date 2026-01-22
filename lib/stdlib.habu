@@ -4295,6 +4295,14 @@
   "Default method: update slots from initargs"
   (apply #'initialize-instance instance initargs))
 
+(defgeneric no-applicable-method (generic-function &rest args)
+  (:documentation "Called when no applicable method found for generic function"))
+
+(defmethod no-applicable-method (generic-function &rest args)
+  "Default method: signal error"
+  (error "No applicable method for generic function ~A with arguments ~A"
+         generic-function args))
+
 (defgeneric update-instance-for-different-class (previous current &rest initargs)
   (:documentation "Called by change-class to update instance after class change"))
 

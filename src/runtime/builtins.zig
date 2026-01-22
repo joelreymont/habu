@@ -61,6 +61,7 @@ pub const BuiltinSymbols = struct {
     sym_setf: Value,
     sym_eq: Value,
     sym_equal: Value,
+    sym_no_applicable_method: Value,
 
     // Feature evaluation
     sym_and: Value,
@@ -136,6 +137,7 @@ pub const BuiltinSymbols = struct {
             .sym_setf = try heap.intern("setf"),
             .sym_eq = try heap.intern("eq"),
             .sym_equal = try heap.intern("equal"),
+            .sym_no_applicable_method = try heap.intern("no-applicable-method"),
 
             // Feature evaluation
             .sym_and = try heap.intern("and"),

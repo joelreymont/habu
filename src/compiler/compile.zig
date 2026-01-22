@@ -7057,7 +7057,7 @@ pub const Compiler = struct {
     /// Order: :around (call-next-method) -> :before -> primary -> :after
     fn generateMethodDispatcher(
         self: *Compiler,
-        _: []const u8,
+        gf_name: []const u8,
         methods: std.ArrayList(MethodDef),
         param_names: []const []const u8,
     ) anyerror!*Ir {
@@ -7089,11 +7089,18 @@ pub const Compiler = struct {
         // Build dispatcher body: nested if-then-else checking types
         var dispatch_body: *Ir = undefined;
 
-        // Start from the end: error case
-        const error_msg = try self.heap.?.allocString("No applicable method");
-        const error_msg_ir = try self.builder.lit(error_msg);
-        const error_ir = try self.builder.errorUser(error_msg_ir);
-        dispatch_body = error_ir;
+        // Start from the end: call no-applicable-method
+        // (no-applicable-method gf-sym arg1 arg2 ...)
+        const gf_sym = try self.heap.?.intern(gf_name);
+        const gf_lit = try self.builder.lit(gf_sym);
+        var no_app_args = std.ArrayList(*Ir){};
+        try no_app_args.append(self.allocator, gf_lit);
+        for (param_names, 0..) |pname, idx| {
+            const arg_ir = try self.builder.variable(pname, 0, @intCast(idx));
+            try no_app_args.append(self.allocator, arg_ir);
+        }
+        const no_app_fn = try self.builder.variable("no-applicable-method", 0, 0);
+        dispatch_body = try self.builder.call(no_app_fn, no_app_args.items);
 
         // Build dispatch chain for primary methods (type checking)
         // For each primary method, also run applicable :before and :after
