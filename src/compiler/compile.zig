@@ -301,6 +301,7 @@ pub const Builtins = struct {
     @"%set-slot-value": Value, // internal: (setf (slot-value ...)) expands to this
     @"%sset": Value, // internal: (setf (char ...)) expands to this
     @"%make-unbound": Value, // internal: returns unbound marker
+    @"%class-of": Value, // internal: class-of primitive
 
     // Stream I/O primitives
     @"%open": Value,
@@ -730,6 +731,7 @@ pub const Builtins = struct {
             .@"%set-slot-value" = try heap.intern("%set-slot-value"),
             .@"%sset" = try heap.intern("%sset"),
             .@"%make-unbound" = try heap.intern("%make-unbound"),
+            .@"%class-of" = try heap.intern("%class-of"),
             // Stream I/O primitives
             .@"%open" = try heap.intern("%open"),
             .@"%close" = try heap.intern("%close"),
@@ -9016,6 +9018,7 @@ pub const Compiler = struct {
         if (s == b.@"%set-slot-value".raw) return self.compileSetSlotValue(args, env);
         if (s == b.@"%sset".raw) return self.compileSset(args, env);
         if (s == b.@"%make-unbound".raw) return self.builder.makeUnbound();
+        if (s == b.@"%class-of".raw) return self.compileClassOf(args, env);
         if (s == b.vector.raw) return self.compileVectorPrim(args, env);
         if (s == b.@"make-array".raw) return self.compileMakeArray(args, env);
 

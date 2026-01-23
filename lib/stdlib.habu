@@ -1751,8 +1751,9 @@
 ;; CLOS Introspection
 ;; ============================================================
 
-;; class-of is a primitive that returns Class objects
-;; Removed Lisp wrapper - use native primitive directly
+;; class-of - return the class of an object
+(defun class-of (obj)
+  (%class-of obj))
 
 ;; class-name - return the name of a class
 (defun class-name (class)

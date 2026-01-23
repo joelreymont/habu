@@ -2298,3 +2298,53 @@ test "defmethod multi-arity dispatch" {
     try testing.expectEqualStrings("one-string-arg", kw2.getName());
 }
 
+test "metaclass: standard-class is its own class" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // standard-class should be its own metaclass
+    try testing.expect(!heap.standard_class.isNil());
+    const std_class = heap.standard_class.toPtr(runtime.Class);
+    try testing.expect(std_class.metaclass.eq(heap.standard_class));
+}
+
+test "metaclass: built-in classes have built-in-class as metaclass" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // fixnum class
+    const fixnum_sym = try heap.intern("fixnum");
+    const fixnum_class = heap.findLispClass(fixnum_sym);
+    try testing.expect(fixnum_class != null);
+    const fixnum_cls = fixnum_class.?.toPtr(runtime.Class);
+    try testing.expect(fixnum_cls.metaclass.eq(heap.built_in_class));
+
+    // cons class
+    const cons_sym = try heap.intern("cons");
+    const cons_class = heap.findLispClass(cons_sym);
+    try testing.expect(cons_class != null);
+    const cons_cls = cons_class.?.toPtr(runtime.Class);
+    try testing.expect(cons_cls.metaclass.eq(heap.built_in_class));
+}
+
+test "metaclass: class-of returns metaclass for Class objects" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    repl.wireGlobalEnv();
+
+    // class-of on standard-class should return standard-class
+    const sc_sym = try heap.intern("standard-class");
+    const sc_class = heap.findLispClass(sc_sym);
+    try testing.expect(sc_class != null);
+
+    // Build args for class-of: (standard-class)
+    const args = try heap.allocCons(sc_class.?, Value.nil);
+    const result = try runtime.clos.classOf(&heap, args);
+    try testing.expect(result.eq(heap.standard_class));
+}

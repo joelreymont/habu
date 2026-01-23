@@ -39,11 +39,14 @@ pub const Pathname = objects.Pathname;
 pub const Package = objects.Package;
 pub const Chunk = objects.Chunk;
 pub const BoxedKind = objects.BoxedKind;
+pub const Class = objects.Class;
 
 pub const Heap = heap.Heap;
 pub const GC = gc.GC;
 pub const RootSet = gc.RootSet;
 pub const Interner = interner.Interner;
+
+pub const clos = primitives.clos;
 
 test {
     _ = value;

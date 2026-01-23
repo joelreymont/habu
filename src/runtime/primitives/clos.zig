@@ -244,10 +244,13 @@ pub fn classOf(heap: *Heap, args: Value) !Value {
         .keyword => "keyword",
         .string, .string32 => "string",
         .vector => blk: {
-            // Check if it's a CLOS instance (has class in slot 0)
+            // Check if it's a CLOS instance (has class name symbol in slot 0)
             const vec = obj.toPtr(Vector);
-            if (vec.length > 0 and vec.data[0].isClass()) {
-                return vec.data[0];
+            if (vec.length > 0 and vec.data[0].isSymbol()) {
+                // Instance format: #(class-name slot1-val ...)
+                const class_name_sym = vec.data[0];
+                const class_val = heap.findLispClass(class_name_sym);
+                if (class_val) |cls| return cls;
             }
             break :blk "vector";
         },
@@ -268,7 +271,7 @@ pub fn classOf(heap: *Heap, args: Value) !Value {
         .method => unreachable, // handled above
     };
 
-    const type_sym = try heap.intern(type_name);
+    const type_sym = (try heap.internInPackage("CL", type_name)) orelse return error.InvalidArgument;
     return heap.findLispClass(type_sym) orelse error.InvalidArgument;
 }
 

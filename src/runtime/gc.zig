@@ -137,91 +137,91 @@ pub const GC = struct {
         _ = old_alloc_ptr;
         // TODO: Fix heap iteration - current approach doesn't work with boxed objects
         // Skipping finalization for now
-        return;
+        //
         // After swap, from_start points to the OLD to-space (now the new from-space)
         // But we want to finalize objects in the OLD from-space (now the new to-space)
         //var addr = @intFromPtr(self.heap.to_start);
         //const from_used_end = @intFromPtr(old_alloc_ptr);
+        //
+        //while (addr < from_used_end) {
+        //    const first_word: *Value = @ptrFromInt(addr);
 
-        while (addr < from_used_end) {
-            const first_word: *Value = @ptrFromInt(addr);
+        //    // Skip if already copied (has forwarding pointer)
+        //    if (first_word.isForwarding()) {
+        //        // Read the aligned size from the second word (stored during copyValue)
+        //        const size_ptr: *const usize = @ptrFromInt(addr + @sizeOf(Value));
+        //        const aligned_size = size_ptr.*;
+        //        addr += aligned_size;
+        //        continue;
+        //    }
 
-            // Skip if already copied (has forwarding pointer)
-            if (first_word.isForwarding()) {
-                // Read the aligned size from the second word (stored during copyValue)
-                const size_ptr: *const usize = @ptrFromInt(addr + @sizeOf(Value));
-                const aligned_size = size_ptr.*;
-                addr += aligned_size;
-                continue;
-            }
+        //    // Check if first word is a BoxedKind enum
+        //    const kind_ptr: *const objects.BoxedKind = @ptrFromInt(addr);
+        //    const kind_val = @intFromEnum(kind_ptr.*);
+        //    if (kind_val <= @intFromEnum(objects.BoxedKind.method)) {
+        //        // Boxed object - handle finalization and sizing
+        //        const size = switch (kind_ptr.*) {
+        //            .stream => blk: {
+        //                const stream: *objects.Stream = @ptrFromInt(addr);
+        //                if (!stream.closed and stream.stream_type == .file and stream.file_fd >= 0) {
+        //                    const file = std.fs.File{ .handle = stream.file_fd };
+        //                    file.close();
+        //                }
+        //                if (stream.stream_type == .string and stream.direction == .output and stream.data_ptr != 0) {
+        //                    const buf: [*]u8 = @ptrFromInt(stream.data_ptr);
+        //                    self.heap.backing_allocator.free(buf[0..stream.length]);
+        //                }
+        //                break :blk @sizeOf(objects.Stream);
+        //            },
+        //            .hashtable => blk: {
+        //                const ht: *const objects.HashTable = @ptrFromInt(addr);
+        //                break :blk @sizeOf(objects.HashTable) + ht.capacity * @sizeOf(objects.HashEntry);
+        //            },
+        //            .array => blk: {
+        //                const arr: *const objects.Array = @ptrFromInt(addr);
+        //                break :blk @sizeOf(objects.Array) + arr.total_size * @sizeOf(Value);
+        //            },
+        //            .string32 => blk: {
+        //                const s32: *const objects.String32 = @ptrFromInt(addr);
+        //                break :blk @sizeOf(objects.String32) + std.mem.alignForward(usize, s32.length * 4, 8);
+        //            },
+        //            .class => blk: {
+        //                const cls: *const objects.Class = @ptrFromInt(addr);
+        //                break :blk @sizeOf(objects.Class) + cls.num_shared * @sizeOf(Value);
+        //            },
+        //            .chunk => blk: {
+        //                const chunk: *const objects.Chunk = @ptrFromInt(addr);
+        //                const const_size = chunk.const_count * @sizeOf(Value);
+        //                const code_size = std.mem.alignForward(usize, chunk.code_len, 8);
+        //                break :blk @sizeOf(objects.Chunk) + const_size + code_size;
+        //            },
+        //            .rational => @sizeOf(objects.Rational),
+        //            .complex => @sizeOf(objects.Complex),
+        //            .bignum => @sizeOf(objects.Bignum),
+        //            .pathname => @sizeOf(objects.Pathname),
+        //            .package => @sizeOf(objects.Package),
+        //            .condition => @sizeOf(objects.Condition),
+        //            .slotdef => @sizeOf(objects.SlotDefinition),
+        //            .generic_function => @sizeOf(objects.GenericFunction),
+        //            .method => @sizeOf(objects.Method),
+        //        };
+        //        const aligned_size = std.mem.alignForward(usize, size, ALIGNMENT);
+        //        addr += aligned_size;
+        //        continue;
+        //    }
 
-            // Check if first word is a BoxedKind enum
-            const kind_ptr: *const objects.BoxedKind = @ptrFromInt(addr);
-            const kind_val = @intFromEnum(kind_ptr.*);
-            if (kind_val <= @intFromEnum(objects.BoxedKind.method)) {
-                // Boxed object - handle finalization and sizing
-                const size = switch (kind_ptr.*) {
-                    .stream => blk: {
-                        const stream: *objects.Stream = @ptrFromInt(addr);
-                        if (!stream.closed and stream.stream_type == .file and stream.file_fd >= 0) {
-                            const file = std.fs.File{ .handle = stream.file_fd };
-                            file.close();
-                        }
-                        if (stream.stream_type == .string and stream.direction == .output and stream.data_ptr != 0) {
-                            const buf: [*]u8 = @ptrFromInt(stream.data_ptr);
-                            self.heap.backing_allocator.free(buf[0..stream.length]);
-                        }
-                        break :blk @sizeOf(objects.Stream);
-                    },
-                    .hashtable => blk: {
-                        const ht: *const objects.HashTable = @ptrFromInt(addr);
-                        break :blk @sizeOf(objects.HashTable) + ht.capacity * @sizeOf(objects.HashEntry);
-                    },
-                    .array => blk: {
-                        const arr: *const objects.Array = @ptrFromInt(addr);
-                        break :blk @sizeOf(objects.Array) + arr.total_size * @sizeOf(Value);
-                    },
-                    .string32 => blk: {
-                        const s32: *const objects.String32 = @ptrFromInt(addr);
-                        break :blk @sizeOf(objects.String32) + std.mem.alignForward(usize, s32.length * 4, 8);
-                    },
-                    .class => blk: {
-                        const cls: *const objects.Class = @ptrFromInt(addr);
-                        break :blk @sizeOf(objects.Class) + cls.num_shared * @sizeOf(Value);
-                    },
-                    .chunk => blk: {
-                        const chunk: *const objects.Chunk = @ptrFromInt(addr);
-                        const const_size = chunk.const_count * @sizeOf(Value);
-                        const code_size = std.mem.alignForward(usize, chunk.code_len, 8);
-                        break :blk @sizeOf(objects.Chunk) + const_size + code_size;
-                    },
-                    .rational => @sizeOf(objects.Rational),
-                    .complex => @sizeOf(objects.Complex),
-                    .bignum => @sizeOf(objects.Bignum),
-                    .pathname => @sizeOf(objects.Pathname),
-                    .package => @sizeOf(objects.Package),
-                    .condition => @sizeOf(objects.Condition),
-                    .slotdef => @sizeOf(objects.SlotDefinition),
-                    .generic_function => @sizeOf(objects.GenericFunction),
-                    .method => @sizeOf(objects.Method),
-                };
-                const aligned_size = std.mem.alignForward(usize, size, ALIGNMENT);
-                addr += aligned_size;
-                continue;
-            }
+        //    // Non-boxed objects: cons, symbol, vector, string, keyword, closure
+        //    // Skip non-pointers (fixnums, nil, t appear in slots but aren't object headers)
+        //    if (!first_word.isPointer()) {
+        //        addr += ALIGNMENT;
+        //        continue;
+        //    }
 
-            // Non-boxed objects: cons, symbol, vector, string, keyword, closure
-            // Skip non-pointers (fixnums, nil, t appear in slots but aren't object headers)
-            if (!first_word.isPointer()) {
-                addr += ALIGNMENT;
-                continue;
-            }
-
-            // Valid pointer - use objectSize
-            const size = objects.objectSize(first_word.*);
-            const aligned_size = std.mem.alignForward(usize, size, ALIGNMENT);
-            addr += aligned_size;
-        }
+        //    // Valid pointer - use objectSize
+        //    const size = objects.objectSize(first_word.*);
+        //    const aligned_size = std.mem.alignForward(usize, size, ALIGNMENT);
+        //    addr += aligned_size;
+        //}
     }
 
     /// Copy a value to to-space if needed

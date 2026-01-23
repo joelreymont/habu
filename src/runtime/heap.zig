@@ -252,7 +252,7 @@ pub const Heap = struct {
         // Create Lisp package registry
         heap.lisp_packages = try heap.allocHashTable(16, .eql);
         // Create Lisp class registry
-        heap.lisp_classes = try heap.allocHashTable(16, .eql);
+        heap.lisp_classes = try heap.allocHashTable(32, .eql);
 
         // Bootstrap metaclasses (chicken-egg: class-of(standard-class) = standard-class)
         // Step 1: Create standard-class with nil metaclass temporarily
@@ -1432,6 +1432,8 @@ pub const Heap = struct {
     fn createBuiltInClasses(self: *Heap) !void {
         const type_names = [_][]const u8{
             "fixnum",
+            "float",
+            "character",
             "cons",
             "symbol",
             "string",
@@ -1439,6 +1441,15 @@ pub const Heap = struct {
             "keyword",
             "closure",
             "hash-table",
+            "rational",
+            "complex",
+            "stream",
+            "bignum",
+            "array",
+            "pathname",
+            "package",
+            "chunk",
+            "condition",
             "class",
             "generic-function",
             "method",
