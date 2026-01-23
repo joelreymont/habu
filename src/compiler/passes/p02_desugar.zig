@@ -46,13 +46,13 @@ pub const Desugarer = struct {
 
     /// Comptime lookup table for sugar forms
     const sugar_forms = std.StaticStringMap(Form).initComptime(.{
-        .{ "let*", .@"let*" },
-        .{ "cond", .cond },
-        .{ "and", .@"and" },
-        .{ "or", .@"or" },
-        .{ "defun", .defun },
-        .{ "when", .when },
-        .{ "unless", .unless },
+        .{ "LET*", .@"let*" },
+        .{ "COND", .cond },
+        .{ "AND", .@"and" },
+        .{ "OR", .@"or" },
+        .{ "DEFUN", .defun },
+        .{ "WHEN", .when },
+        .{ "UNLESS", .unless },
     });
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap, builtins: *const builtins_mod.BuiltinSymbols) Desugarer {
@@ -440,7 +440,7 @@ test "desugar - atom passthrough" {
 
     // t passes through
     const result_t = try desugarer.desugar(Value.t);
-    try testing.expectEqual(Value.t, result_t);
+    try testing.expect(result_t.isMagicSymbol());
 
     // Fixnum passes through
     const num = Value.makeFixnum(42);
@@ -462,7 +462,8 @@ test "desugar - and" {
     const and_sym = try heap.intern("and");
     const empty_and = try heap.allocCons(and_sym, Value.nil);
     const result = try desugarer.desugar(empty_and);
-    try testing.expectEqual(Value.t, result);
+    try testing.expect(result.isMagicSymbol());
+    try testing.expect(result.eq(try heap.intern("t")));
 }
 
 test "desugar - or single" {
@@ -514,5 +515,5 @@ test "desugar - defun" {
     const result_cons = result.toPtr(Cons);
     try testing.expect(result_cons.car.isSymbol());
     const result_head = result_cons.car.toPtr(Symbol);
-    try testing.expectEqualStrings("define", result_head.getName());
+    try testing.expectEqualStrings("DEFINE", result_head.getName());
 }

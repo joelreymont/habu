@@ -537,7 +537,7 @@ test "lift - variable" {
     const result = try lift(alloc, &heap, x_sym);
 
     try testing.expectEqual(Ir.@"var", std.meta.activeTag(result.*));
-    try testing.expectEqualStrings("x", result.@"var".name);
+    try testing.expectEqualStrings("X", result.@"var".name);
     try testing.expectEqual(UNRESOLVED, result.@"var".depth);
     try testing.expectEqual(UNRESOLVED, result.@"var".index);
 }

@@ -919,7 +919,7 @@ test "parse symbol" {
     try testing.expect(val.isSymbol());
 
     const string = @import("../runtime/primitives/string.zig");
-    try testing.expectEqualStrings("foo", string.symbolNameBytes(val).?);
+    try testing.expectEqualStrings("FOO", string.symbolNameBytes(val).?);
 }
 
 test "parse keyword" {
@@ -936,7 +936,7 @@ test "parse keyword" {
     try testing.expect(val.isKeyword());
 
     const string = @import("../runtime/primitives/string.zig");
-    try testing.expectEqualStrings("test", string.keywordNameBytes(val).?);
+    try testing.expectEqualStrings("TEST", string.keywordNameBytes(val).?);
 }
 
 test "parse quote" {
@@ -957,7 +957,7 @@ test "parse quote" {
     try testing.expect(quote_sym.isSymbol());
 
     const string = @import("../runtime/primitives/string.zig");
-    try testing.expectEqualStrings("quote", string.symbolNameBytes(quote_sym).?);
+    try testing.expectEqualStrings("QUOTE", string.symbolNameBytes(quote_sym).?);
 }
 
 test "symbol interning" {
@@ -1113,7 +1113,7 @@ test "parse #S struct" {
     try testing.expect(cons.car.isSymbol());
 
     const sym = cons.car.toPtr(objects.Symbol);
-    try testing.expectEqualStrings("make-struct", sym.getName());
+    try testing.expectEqualStrings("MAKE-STRUCT", sym.getName());
 
     // Check second element is quoted name
     const rest1 = cons.cdr;
@@ -1125,7 +1125,7 @@ test "parse #S struct" {
     const quote_form = rest1_cons.car.toPtr(objects.Cons);
     try testing.expect(quote_form.car.isSymbol());
     const quote_sym = quote_form.car.toPtr(objects.Symbol);
-    try testing.expectEqualStrings("quote", quote_sym.getName());
+    try testing.expectEqualStrings("QUOTE", quote_sym.getName());
 }
 
 test "parse #S empty struct" {
@@ -1144,7 +1144,7 @@ test "parse #S empty struct" {
 
     const cons = result.toPtr(objects.Cons);
     const sym = cons.car.toPtr(objects.Symbol);
-    try testing.expectEqualStrings("make-struct", sym.getName());
+    try testing.expectEqualStrings("MAKE-STRUCT", sym.getName());
 }
 
 test "parse #A array" {
@@ -1164,7 +1164,7 @@ test "parse #A array" {
 
     const cons = result.toPtr(objects.Cons);
     const sym = cons.car.toPtr(objects.Symbol);
-    try testing.expectEqualStrings("make-array", sym.getName());
+    try testing.expectEqualStrings("MAKE-ARRAY", sym.getName());
 }
 
 test "parse #2A array" {
@@ -1184,7 +1184,7 @@ test "parse #2A array" {
 
     const cons = result.toPtr(objects.Cons);
     const sym = cons.car.toPtr(objects.Symbol);
-    try testing.expectEqualStrings("make-array", sym.getName());
+    try testing.expectEqualStrings("MAKE-ARRAY", sym.getName());
 
     // Check rank argument is 2
     const args = cons.cdr;
@@ -1211,7 +1211,7 @@ test "parse #P pathname" {
 
     const cons = result.toPtr(objects.Cons);
     const sym = cons.car.toPtr(objects.Symbol);
-    try testing.expectEqualStrings("parse-namestring", sym.getName());
+    try testing.expectEqualStrings("PARSE-NAMESTRING", sym.getName());
 }
 
 test "parse #C complex number" {

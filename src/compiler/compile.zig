@@ -60,7 +60,7 @@ pub const Builtins = struct {
 
     // Binding forms
     let: Value,
-    @"let*": Value,
+    @"LET*": Value,
     letrec: Value,
     flet: Value,
     labels: Value,
@@ -317,6 +317,7 @@ pub const Builtins = struct {
     @"%file-length": Value,
     @"%finish-output": Value,
     @"%force-output": Value,
+    @"%sleep": Value,
 
     @"vector-length": Value,
     @"make-vector": Value,
@@ -521,7 +522,7 @@ pub const Builtins = struct {
             .@"and" = try heap.intern("and"),
             .@"or" = try heap.intern("or"),
             .let = try heap.intern("let"),
-            .@"let*" = try heap.intern("let*"),
+            .@"LET*" = try heap.intern("LET*"),
             .letrec = try heap.intern("letrec"),
             .lambda = try heap.intern("lambda"),
             .@"fn" = try heap.intern("fn"),
@@ -748,6 +749,7 @@ pub const Builtins = struct {
             .@"%file-length" = try heap.intern("%file-length"),
             .@"%finish-output" = try heap.intern("%finish-output"),
             .@"%force-output" = try heap.intern("%force-output"),
+            .@"%sleep" = try heap.intern("%sleep"),
             .@"vector-length" = try heap.intern("vector-length"),
             .@"make-vector" = try heap.intern("make-vector"),
             .vector = try heap.intern("vector"),
@@ -2055,7 +2057,7 @@ pub const Compiler = struct {
         @"if",
         let,
         letrec,
-        @"let*",
+        @"LET*",
         cond,
         progn,
         begin,
@@ -2133,82 +2135,82 @@ pub const Compiler = struct {
 
     /// Comptime dispatch table for special forms
     const special_forms = std.StaticStringMap(SpecialForm).initComptime(.{
-        .{ "if", .@"if" },
-        .{ "let", .let },
-        .{ "letrec", .letrec },
-        .{ "let*", .@"let*" },
-        .{ "cond", .cond },
-        .{ "progn", .progn },
-        .{ "begin", .begin },
-        .{ "flet", .flet },
-        .{ "labels", .labels },
-        .{ "lambda", .lambda },
-        .{ "and", .@"and" },
-        .{ "or", .@"or" },
-        .{ "funcall", .funcall },
-        .{ "apply", .apply },
-        .{ "setq", .setq },
-        .{ "quote", .quote },
-        .{ "function", .function },
-        .{ "quasiquote", .quasiquote },
-        .{ "while", .@"while" },
-        .{ "loop", .loop },
-        .{ "define", .define },
-        .{ "defvar", .defvar },
-        .{ "defun", .defun },
-        .{ "the", .the },
-        .{ "declare", .declare },
-        .{ "declaim", .declaim },
-        .{ "proclaim", .proclaim },
-        .{ "block", .block },
-        .{ "return-from", .@"return-from" },
-        .{ "unwind-protect", .@"unwind-protect" },
-        .{ "catch", .@"catch" },
-        .{ "throw", .throw },
-        .{ "handler-case", .@"handler-case" },
-        .{ "signal", .signal },
-        .{ "handler-bind", .@"handler-bind" },
-        .{ "restart-case", .@"restart-case" },
-        .{ "invoke-restart", .@"invoke-restart" },
-        .{ "find-restart", .@"find-restart" },
-        .{ "tagbody", .tagbody },
-        .{ "go", .go },
-        .{ "progv", .progv },
-        .{ "values", .values },
-        .{ "values-list", .@"values-list" },
-        .{ "multiple-value-bind", .@"multiple-value-bind" },
-        .{ "multiple-value-call", .@"multiple-value-call" },
-        .{ "multiple-value-list", .@"multiple-value-list" },
+        .{ "IF", .@"if" },
+        .{ "LET", .let },
+        .{ "LETREC", .letrec },
+        .{ "LET*", .@"LET*" },
+        .{ "COND", .cond },
+        .{ "PROGN", .progn },
+        .{ "BEGIN", .begin },
+        .{ "FLET", .flet },
+        .{ "LABELS", .labels },
+        .{ "LAMBDA", .lambda },
+        .{ "AND", .@"and" },
+        .{ "OR", .@"or" },
+        .{ "FUNCALL", .funcall },
+        .{ "APPLY", .apply },
+        .{ "SETQ", .setq },
+        .{ "QUOTE", .quote },
+        .{ "FUNCTION", .function },
+        .{ "QUASIQUOTE", .quasiquote },
+        .{ "WHILE", .@"while" },
+        .{ "LOOP", .loop },
+        .{ "DEFINE", .define },
+        .{ "DEFVAR", .defvar },
+        .{ "DEFUN", .defun },
+        .{ "THE", .the },
+        .{ "DECLARE", .declare },
+        .{ "DECLAIM", .declaim },
+        .{ "PROCLAIM", .proclaim },
+        .{ "BLOCK", .block },
+        .{ "RETURN-FROM", .@"return-from" },
+        .{ "UNWIND-PROTECT", .@"unwind-protect" },
+        .{ "CATCH", .@"catch" },
+        .{ "THROW", .throw },
+        .{ "HANDLER-CASE", .@"handler-case" },
+        .{ "SIGNAL", .signal },
+        .{ "HANDLER-BIND", .@"handler-bind" },
+        .{ "RESTART-CASE", .@"restart-case" },
+        .{ "INVOKE-RESTART", .@"invoke-restart" },
+        .{ "FIND-RESTART", .@"find-restart" },
+        .{ "TAGBODY", .tagbody },
+        .{ "GO", .go },
+        .{ "PROGV", .progv },
+        .{ "VALUES", .values },
+        .{ "VALUES-LIST", .@"values-list" },
+        .{ "MULTIPLE-VALUE-BIND", .@"multiple-value-bind" },
+        .{ "MULTIPLE-VALUE-CALL", .@"multiple-value-call" },
+        .{ "MULTIPLE-VALUE-LIST", .@"multiple-value-list" },
         // ADT support
-        .{ "deftype", .deftype },
-        .{ "match", .match },
+        .{ "DEFTYPE", .deftype },
+        .{ "MATCH", .match },
         // Macro support
-        .{ "defmacro", .defmacro },
-        .{ "destructuring-bind", .@"destructuring-bind" },
+        .{ "DEFMACRO", .defmacro },
+        .{ "DESTRUCTURING-BIND", .@"destructuring-bind" },
         // Compile-time evaluation
-        .{ "eval-when", .@"eval-when" },
+        .{ "EVAL-WHEN", .@"eval-when" },
         // Packages
-        .{ "defpackage", .defpackage },
-        .{ "in-package", .@"in-package" },
-        .{ "export", .@"export" },
-        .{ "use-package", .@"use-package" },
+        .{ "DEFPACKAGE", .defpackage },
+        .{ "IN-PACKAGE", .@"in-package" },
+        .{ "EXPORT", .@"export" },
+        .{ "USE-PACKAGE", .@"use-package" },
         // Structure definition
-        .{ "defstruct", .defstruct },
+        .{ "DEFSTRUCT", .defstruct },
         // CLOS
-        .{ "defclass", .defclass },
-        .{ "make-instance", .@"make-instance" },
-        .{ "slot-value", .@"slot-value" },
-        .{ "defgeneric", .defgeneric },
-        .{ "defmethod", .defmethod },
-        .{ "call-next-method", .@"call-next-method" },
-        .{ "next-method-p", .@"next-method-p" },
-        .{ "define-method-combination", .@"define-method-combination" },
-        .{ "method-qualifiers", .@"method-qualifiers" },
-        .{ "method-specializers", .@"method-specializers" },
-        .{ "method-function", .@"method-function" },
-        .{ "generic-function-methods", .@"generic-function-methods" },
-        .{ "generic-function-lambda-list", .@"generic-function-lambda-list" },
-        .{ "generic-function-name", .@"generic-function-name" },
+        .{ "DEFCLASS", .defclass },
+        .{ "MAKE-INSTANCE", .@"make-instance" },
+        .{ "SLOT-VALUE", .@"slot-value" },
+        .{ "DEFGENERIC", .defgeneric },
+        .{ "DEFMETHOD", .defmethod },
+        .{ "CALL-NEXT-METHOD", .@"call-next-method" },
+        .{ "NEXT-METHOD-P", .@"next-method-p" },
+        .{ "DEFINE-METHOD-COMBINATION", .@"define-method-combination" },
+        .{ "METHOD-QUALIFIERS", .@"method-qualifiers" },
+        .{ "METHOD-SPECIALIZERS", .@"method-specializers" },
+        .{ "METHOD-FUNCTION", .@"method-function" },
+        .{ "GENERIC-FUNCTION-METHODS", .@"generic-function-methods" },
+        .{ "GENERIC-FUNCTION-LAMBDA-LIST", .@"generic-function-lambda-list" },
+        .{ "GENERIC-FUNCTION-NAME", .@"generic-function-name" },
     });
 
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
@@ -2227,7 +2229,7 @@ pub const Compiler = struct {
                     .@"if" => self.compileIfWithTail(tail, env, in_tail),
                     .let => self.compileLetWithTail(tail, env, in_tail),
                     .letrec => self.compileLetrecWithTail(tail, env, in_tail),
-                    .@"let*" => self.compileLetStarWithTail(tail, env, in_tail),
+                    .@"LET*" => self.compileLetStarWithTail(tail, env, in_tail),
                     .cond => self.compileCondWithTail(tail, env, in_tail),
                     .progn, .begin => self.compilePrognWithTail(tail, env, in_tail),
                     .flet => self.compileFletWithTail(tail, env, in_tail),
@@ -5669,7 +5671,6 @@ pub const Compiler = struct {
             };
         }
         var type_builder = types.TypeBuilder.init(self.allocator);
-        defer type_builder.deinit();
         const struct_type = type_builder.makeStruct(struct_name, struct_fields) catch |e| return e;
         self.registerStructType(struct_name, struct_type) catch |e| return e;
 
@@ -6750,7 +6751,6 @@ pub const Compiler = struct {
             };
         }
         var type_builder = types.TypeBuilder.init(self.allocator);
-        defer type_builder.deinit();
         const class_type = type_builder.makeStruct(class_name, class_fields) catch |e| return e;
         self.registerStructType(class_name, class_type) catch |e| return e;
 
@@ -7253,7 +7253,12 @@ pub const Compiler = struct {
         const dispatcher = try self.generateMethodDispatcher(gen_name, gop.value_ptr.*, dispatch_params_copy);
 
         // Get the existing GF and update its dispatcher
-        const global_idx = self.globals.lookup(gen_name) orelse return error.UnboundGenericFunction;
+        std.debug.print("DEFMETHOD: looking up '{s}'\n", .{gen_name});
+        const global_idx = self.globals.lookup(gen_name) orelse {
+            std.debug.print("DEFMETHOD: '{s}' not found in globals!\n", .{gen_name});
+            return error.UnboundGenericFunction;
+        };
+        std.debug.print("DEFMETHOD: found '{s}' at idx {}\n", .{ gen_name, global_idx });
         const gf_ir = try self.builder.globalRef(gen_name, global_idx);
         const set_dispatcher_ir = try self.builder.setGfDispatcher(gf_ir, dispatcher);
 
@@ -7723,10 +7728,10 @@ pub const Compiler = struct {
             try args.append(self.allocator, arg_ir);
         }
 
-        // Look up the method function by name
-        const func_sym = try self.heap.?.intern(function_name);
-        const func_ir = try self.builder.lit(func_sym);
-        const func_val_ir = try self.builder.symbolFunction(func_ir);
+        // Look up the method function by name (direct global lookup, not symbol interning)
+        // Method function names are synthetic (e.g., "foo$p$fixnum") and don't use package qualification
+        const func_idx = self.globals.lookup(function_name) orelse return error.UnboundMethodFunction;
+        const func_val_ir = try self.builder.globalRef(function_name, func_idx);
 
         // Call the method function
         return try self.builder.call(func_val_ir, try args.toOwnedSlice(self.allocator));
@@ -9246,7 +9251,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, method_qualifiers, method_specializers, method_function, generic_function_methods, generic_function_lambda_list, generic_function_name, nilp, not, vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, vec_adjust, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, unintern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream, pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version, package_symbols_table, package_exports_table, find_symbol, find_class, class_name };
+    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, method_qualifiers, method_specializers, method_function, generic_function_methods, generic_function_lambda_list, generic_function_name, nilp, not, vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, vec_adjust, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, unintern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream, pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version, package_symbols_table, package_exports_table, find_symbol, find_class, class_name, sleep };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -11057,8 +11062,8 @@ test "declare - type declaration" {
     try testing.expect(result.lit.isNil());
 
     // Check that declarations were recorded
-    try testing.expect(compiler.global_decls.hasDecl("x", .type_decl));
-    try testing.expect(compiler.global_decls.hasDecl("y", .type_decl));
+    try testing.expect(compiler.global_decls.hasDecl("X", .type_decl));
+    try testing.expect(compiler.global_decls.hasDecl("Y", .type_decl));
     // TEMP: getTypeDecl disabled due to HashMap corruption bug
     // const x_type = compiler.global_decls.getTypeDecl("x");
     // try testing.expect(x_type != null);
@@ -11094,8 +11099,8 @@ test "declare - ignore declaration" {
     try testing.expect(result.lit.isNil());
 
     // Check that declarations were recorded
-    try testing.expect(compiler.global_decls.hasDecl("x", .ignore));
-    try testing.expect(compiler.global_decls.hasDecl("y", .ignore));
+    try testing.expect(compiler.global_decls.hasDecl("X", .ignore));
+    try testing.expect(compiler.global_decls.hasDecl("Y", .ignore));
 }
 
 test "declare - multiple declaration specs" {
@@ -11137,8 +11142,8 @@ test "declare - multiple declaration specs" {
     try testing.expect(result.lit.isNil());
 
     // Check both declarations
-    try testing.expect(compiler.global_decls.hasDecl("x", .type_decl));
-    try testing.expect(compiler.global_decls.hasDecl("y", .ignore));
+    try testing.expect(compiler.global_decls.hasDecl("X", .type_decl));
+    try testing.expect(compiler.global_decls.hasDecl("Y", .ignore));
 }
 
 test "parseDestructParams - simple parameters" {
@@ -11169,11 +11174,11 @@ test "parseDestructParams - simple parameters" {
 
     try testing.expectEqual(@as(usize, 3), result.len);
     try testing.expectEqual(Compiler.DestructParam.Kind.simple, result[0].kind);
-    try testing.expectEqualStrings("a", result[0].name.?);
+    try testing.expectEqualStrings("A", result[0].name.?);
     try testing.expectEqual(Compiler.DestructParam.Kind.simple, result[1].kind);
-    try testing.expectEqualStrings("b", result[1].name.?);
+    try testing.expectEqualStrings("B", result[1].name.?);
     try testing.expectEqual(Compiler.DestructParam.Kind.simple, result[2].kind);
-    try testing.expectEqualStrings("c", result[2].name.?);
+    try testing.expectEqualStrings("C", result[2].name.?);
 }
 
 test "parseDestructParams - nested lists" {
@@ -11207,10 +11212,10 @@ test "parseDestructParams - nested lists" {
     try testing.expectEqual(Compiler.DestructParam.Kind.nested, result[0].kind);
     try testing.expect(result[0].children != null);
     try testing.expectEqual(@as(usize, 2), result[0].children.?.len);
-    try testing.expectEqualStrings("a", result[0].children.?[0].name.?);
-    try testing.expectEqualStrings("b", result[0].children.?[1].name.?);
+    try testing.expectEqualStrings("A", result[0].children.?[0].name.?);
+    try testing.expectEqualStrings("B", result[0].children.?[1].name.?);
     try testing.expectEqual(Compiler.DestructParam.Kind.simple, result[1].kind);
-    try testing.expectEqualStrings("c", result[1].name.?);
+    try testing.expectEqualStrings("C", result[1].name.?);
 }
 
 test "parseDestructParams - optional parameters" {
@@ -11244,12 +11249,12 @@ test "parseDestructParams - optional parameters" {
 
     try testing.expectEqual(@as(usize, 3), result.len);
     try testing.expectEqual(Compiler.DestructParam.Kind.simple, result[0].kind);
-    try testing.expectEqualStrings("a", result[0].name.?);
+    try testing.expectEqualStrings("A", result[0].name.?);
     try testing.expectEqual(Compiler.DestructParam.Kind.optional, result[1].kind);
-    try testing.expectEqualStrings("b", result[1].name.?);
+    try testing.expectEqualStrings("B", result[1].name.?);
     try testing.expect(result[1].default_expr == null);
     try testing.expectEqual(Compiler.DestructParam.Kind.optional, result[2].kind);
-    try testing.expectEqualStrings("c", result[2].name.?);
+    try testing.expectEqualStrings("C", result[2].name.?);
     try testing.expect(result[2].default_expr != null);
     try testing.expect(result[2].default_expr.?.isFixnum());
 }
@@ -11285,7 +11290,7 @@ test "parseDestructParams - rest parameter" {
     try testing.expectEqual(Compiler.DestructParam.Kind.simple, result[0].kind);
     try testing.expectEqual(Compiler.DestructParam.Kind.simple, result[1].kind);
     try testing.expectEqual(Compiler.DestructParam.Kind.rest, result[2].kind);
-    try testing.expectEqualStrings("c", result[2].name.?);
+    try testing.expectEqualStrings("C", result[2].name.?);
 }
 
 test "parseDestructParams - key parameters" {
@@ -11320,9 +11325,9 @@ test "parseDestructParams - key parameters" {
     try testing.expectEqual(@as(usize, 3), result.len);
     try testing.expectEqual(Compiler.DestructParam.Kind.simple, result[0].kind);
     try testing.expectEqual(Compiler.DestructParam.Kind.key, result[1].kind);
-    try testing.expectEqualStrings("b", result[1].name.?);
+    try testing.expectEqualStrings("B", result[1].name.?);
     try testing.expectEqual(Compiler.DestructParam.Kind.key, result[2].kind);
-    try testing.expectEqualStrings("c", result[2].name.?);
+    try testing.expectEqualStrings("C", result[2].name.?);
     try testing.expect(result[2].default_expr != null);
 }
 
@@ -11361,9 +11366,9 @@ test "parseDestructParams - complex nested with keywords" {
     try testing.expect(result[0].children != null);
     try testing.expectEqual(@as(usize, 2), result[0].children.?.len);
     try testing.expectEqual(Compiler.DestructParam.Kind.optional, result[1].kind);
-    try testing.expectEqualStrings("c", result[1].name.?);
+    try testing.expectEqualStrings("C", result[1].name.?);
     try testing.expectEqual(Compiler.DestructParam.Kind.rest, result[2].kind);
-    try testing.expectEqualStrings("d", result[2].name.?);
+    try testing.expectEqualStrings("D", result[2].name.?);
 }
 
 test "genDestructCode - simple parameters" {
@@ -11414,8 +11419,8 @@ test "genDestructCode - simple parameters" {
     }
 
     try testing.expectEqual(@as(usize, 2), result.bindings.items.len);
-    try testing.expectEqualStrings("a", result.bindings.items[0].name);
-    try testing.expectEqualStrings("b", result.bindings.items[1].name);
+    try testing.expectEqualStrings("A", result.bindings.items[0].name);
+    try testing.expectEqualStrings("B", result.bindings.items[1].name);
     // Check IR nodes are car/cdr operations
     try testing.expect(result.bindings.items[0].init.* == .car);
     try testing.expect(result.bindings.items[1].init.* == .car);
@@ -11468,9 +11473,9 @@ test "genDestructCode - nested parameters" {
     }
 
     try testing.expectEqual(@as(usize, 3), result.bindings.items.len);
-    try testing.expectEqualStrings("a", result.bindings.items[0].name);
-    try testing.expectEqualStrings("b", result.bindings.items[1].name);
-    try testing.expectEqualStrings("c", result.bindings.items[2].name);
+    try testing.expectEqualStrings("A", result.bindings.items[0].name);
+    try testing.expectEqualStrings("B", result.bindings.items[1].name);
+    try testing.expectEqualStrings("C", result.bindings.items[2].name);
 }
 
 test "genDestructCode - rest parameter" {
@@ -11520,8 +11525,8 @@ test "genDestructCode - rest parameter" {
     }
 
     try testing.expectEqual(@as(usize, 2), result.bindings.items.len);
-    try testing.expectEqualStrings("a", result.bindings.items[0].name);
-    try testing.expectEqualStrings("b", result.bindings.items[1].name);
+    try testing.expectEqualStrings("A", result.bindings.items[0].name);
+    try testing.expectEqualStrings("B", result.bindings.items[1].name);
     // First is car, second is rest (no car)
     try testing.expect(result.bindings.items[0].init.* == .car);
 }

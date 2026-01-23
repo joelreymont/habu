@@ -126,6 +126,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .file_length,
         .finish_output,
         .force_output,
+        .sleep,
         .halt,
         .check_fixnum,
         .check_cons,

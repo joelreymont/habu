@@ -591,6 +591,11 @@ pub const HashTable = extern struct {
 
     /// Put key-value pair, returns error if needs rehashing
     pub fn put(self: *HashTable, key: Value, value: Value) !void {
+        // Check load factor, signal need to grow
+        if (self.count * 4 >= self.capacity * 3) {
+            return error.HashTableNeedsGrowth;
+        }
+
         const h = @import("../runtime/primitives/hash.zig").hashValue(key);
         var idx = h % self.capacity;
         var i: usize = 0;
@@ -675,7 +680,6 @@ pub const HashTable = extern struct {
                 // Fall back to eql for other types
                 break :blk self.keysEqual(a, b); // This would recurse with .eql
             },
-            .equalp => unreachable, // Not yet implemented
         };
     }
 };

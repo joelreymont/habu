@@ -682,6 +682,7 @@ pub const Ir = union(enum) {
     file_length: UnaryOp, // (file-length stream)
     finish_output: UnaryOp, // (finish-output stream)
     force_output: UnaryOp, // (force-output stream)
+    sleep: UnaryOp, // (sleep seconds)
 
     // Reader macros
     set_macro_character: TernaryOp, // char, function, non-terminating-p

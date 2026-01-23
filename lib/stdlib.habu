@@ -112,6 +112,11 @@
 ; Internal time units (microseconds)
 (defconstant internal-time-units-per-second 1000000)
 
+; sleep - sleep for N seconds (stub - implement via FFI later)
+(defun sleep (seconds)
+  (declare (ignore seconds))
+  nil)
+
 ; Printer control variables
 (defvar *print-escape* t)
 (defvar *print-case* :upcase)
@@ -142,6 +147,9 @@
 (defvar *query-io* nil)        ; interactive queries (stub)
 (defvar *debug-io* nil)        ; debugger I/O (stub)
 (defvar *trace-output* nil)    ; trace output (stub)
+
+; CLOS metadata
+(defvar *class-metadata* (make-hash-table :test 'eq))
 (defvar *terminal-io* nil)     ; terminal I/O (stub)
 
 ; Compiler/loader variables
@@ -1778,6 +1786,86 @@
 
 ;; Note: method-qualifiers, method-specializers, method-function
 ;; are compiler builtins, no wrapper needed
+
+;; ============================================================
+;; CLOS defgeneric/defmethod/defclass
+;; ============================================================
+;; NOTE: These are compiler special forms, not macros.
+;; Macro definitions commented out to avoid shadowing compiler implementations.
+
+;; defgeneric - define a generic function
+;; Usage: (defgeneric name lambda-list [option]*)
+;; Handled by compiler special form
+; (defmacro defgeneric (name lambda-list &rest options)
+;   (declare (ignore options))
+;   `(progn
+;      (setf (symbol-function ',name)
+;            (%make-generic-function ',name ',lambda-list))
+;      ',name))
+
+;; defmethod - add a method to a generic function
+;; Usage: (defmethod name [qualifier]* lambda-list body...)
+;; Handled by compiler special form
+; (defmacro defmethod (name &rest args)
+;   (let ((qualifiers nil)
+;         (lambda-list nil)
+;         (body nil)
+;         (rest args))
+;     ; Parse qualifiers (:before, :after, :around)
+;     (while (and rest (keywordp (car rest)))
+;       (push (car rest) qualifiers)
+;       (setq rest (cdr rest)))
+;     (setq qualifiers (nreverse qualifiers))
+;
+;     ; Lambda list is next
+;     (setq lambda-list (car rest))
+;     (setq body (cdr rest))
+;
+;     ; Extract specializers from lambda list
+;     (let ((specializers nil)
+;           (plain-lambda nil))
+;       ; Parse lambda-list: (arg1 (arg2 class2) ...) -> specializers + plain args
+;       (dolist (param lambda-list)
+;         (if (consp param)
+;             (progn
+;               (push (cadr param) specializers)
+;               (push (car param) plain-lambda))
+;           (progn
+;             (push t specializers)
+;             (push param plain-lambda))))
+;       (setq specializers (nreverse specializers))
+;       (setq plain-lambda (nreverse plain-lambda))
+;
+;       ; Generate code to create method and add to generic function
+;       `(progn
+;          ; Ensure generic function exists
+;          (unless (fboundp ',name)
+;            (setf (symbol-function ',name)
+;                  (%make-generic-function ',name ',plain-lambda)))
+;          ; Create method object
+;          (let ((method (%make-method
+;                         ',qualifiers
+;                         ',specializers
+;                         ',plain-lambda
+;                         (lambda ,plain-lambda ,@body))))
+;            ; Add method to generic function
+;            (%add-method (symbol-function ',name) method)
+;            ',name)))))
+
+;; defclass - define a CLOS class
+;; Usage: (defclass name (superclasses...) (slot-specs...) [class-option]*)
+;; Handled by compiler special form
+; (defmacro defclass (name superclasses slot-specs &rest class-options)
+;   (declare (ignore class-options))
+;   (let ((slot-names (mapcar (lambda (spec)
+;                               (if (consp spec) (car spec) spec))
+;                             slot-specs)))
+;     `(progn
+;        ; Register class metadata for slot lookup
+;        (setf (gethash ',name *class-metadata*)
+;              ',slot-names)
+;        ; Return class name
+;        ',name)))
 
 ;; ============================================================
 ;; Condition System (CLOS-based)
@@ -4266,20 +4354,15 @@
   (write object stream))
 
 ;; CLOS initialization protocol
+;; NOTE: Using defun for now - proper generic functions TODO
 
-(defgeneric make-instance (class &rest initargs)
-  (:documentation "Create and initialize an instance of CLASS"))
-
-(defmethod make-instance (class &rest initargs)
-  "Default method: allocate and initialize"
+(defun make-instance (class &rest initargs)
+  "Create and initialize an instance of CLASS"
   (let ((instance (apply #'allocate-instance class initargs)))
     (apply #'initialize-instance instance initargs)))
 
-(defgeneric allocate-instance (class &rest initargs)
-  (:documentation "Allocate storage for a new instance of CLASS"))
-
-(defmethod allocate-instance (class &rest initargs)
-  "Default method: allocate vector with unbound slots"
+(defun allocate-instance (class &rest initargs)
+  "Allocate storage for a new instance of CLASS"
   (declare (ignore initargs))
   (let* ((slots (class-slots class))
          (num-slots (length slots))
@@ -4290,10 +4373,8 @@
       (setf (aref vec (+ i 1)) unbound))
     vec))
 
-(defgeneric initialize-instance (instance &rest initargs)
-  (:documentation "Initialize a newly created instance with initargs"))
+(defun initialize-instance (instance &rest initargs)
 
-(defmethod initialize-instance (instance &rest initargs)
   "Default method: set slots from initargs"
   (let ((args initargs))
     (while args
@@ -4306,33 +4387,25 @@
         (setq args (cddr args)))))
   instance)
 
-(defgeneric reinitialize-instance (instance &rest initargs)
-  (:documentation "Update an existing instance with new initargs"))
+(defun reinitialize-instance (instance &rest initargs)
 
-(defmethod reinitialize-instance (instance &rest initargs)
   "Default method: update slots from initargs"
   (apply #'initialize-instance instance initargs))
 
-(defgeneric no-applicable-method (generic-function &rest args)
-  (:documentation "Called when no applicable method found for generic function"))
+(defun no-applicable-method (generic-function &rest args)
 
-(defmethod no-applicable-method (generic-function &rest args)
   "Default method: signal error"
   (error "No applicable method for generic function ~A with arguments ~A"
          generic-function args))
 
-(defgeneric no-next-method (generic-function method &rest args)
-  (:documentation "Called when call-next-method has no next method"))
+(defun no-next-method (generic-function method &rest args)
 
-(defmethod no-next-method (generic-function method &rest args)
   "Default method: signal error"
   (error "No next method for generic function ~A, method ~A with arguments ~A"
          generic-function method args))
 
-(defgeneric update-instance-for-different-class (previous current &rest initargs)
-  (:documentation "Called by change-class to update instance after class change"))
+(defun update-instance-for-different-class (previous current &rest initargs)
 
-(defmethod update-instance-for-different-class (previous current &rest initargs)
   "Default method: initialize new slots"
   (apply #'initialize-instance current initargs))
 

@@ -1252,6 +1252,10 @@ pub const Op = enum(u16) {
     /// ( stream -- nil )
     force_output = 0x3E,
 
+    /// Sleep for N seconds
+    /// ( seconds -- nil )
+    sleep = 0x118,
+
     // ========================================================================
     // Special
     // ========================================================================
@@ -1409,6 +1413,7 @@ pub const Op = enum(u16) {
             .file_length,
             .finish_output,
             .force_output,
+            .sleep,
             .halt,
             .close,
             .check_fixnum,

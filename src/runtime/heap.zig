@@ -82,37 +82,52 @@ pub const Package = struct {
     pub fn deinit(self: *Package) void {
         self.symbols.deinit();
         self.use_list.deinit(self.allocator);
+        // Free export keys
+        var it = self.exports.keyIterator();
+        while (it.next()) |key| {
+            self.allocator.free(key.*);
+        }
         self.exports.deinit(self.allocator);
         self.allocator.free(self.name);
         self.allocator.destroy(self);
     }
 
     pub fn intern(self: *Package, heap: *Heap, name: []const u8) error{OutOfMemory}!Value {
-        // Magic symbols: t and nil
-        if (std.mem.eql(u8, name, "t")) return Value.t;
-        if (std.mem.eql(u8, name, "nil")) return Value.nil;
+        // Upcase name per CL spec
+        var upper_buf: [256]u8 = undefined;
+        const upper_name = if (name.len <= upper_buf.len) blk: {
+            for (name, 0..) |c, i| {
+                upper_buf[i] = std.ascii.toUpper(c);
+            }
+            break :blk upper_buf[0..name.len];
+        } else name;
+
+        // Magic symbols: T and NIL
+        if (std.mem.eql(u8, upper_name, "T")) return Value.t;
+        if (std.mem.eql(u8, upper_name, "NIL")) return Value.nil;
 
         // Check own symbols first
-        if (self.symbols.get(name)) |existing| {
+        if (self.symbols.get(upper_name)) |existing| {
             return existing;
         }
         // Check used packages for exported symbols
         for (self.use_list.items) |used_pkg| {
-            if (used_pkg.exports.contains(name) or used_pkg.auto_export) {
-                if (used_pkg.symbols.get(name)) |sym| {
+            if (used_pkg.exports.contains(upper_name) or used_pkg.auto_export) {
+                if (used_pkg.symbols.get(upper_name)) |sym| {
                     return sym;
                 }
             }
         }
-        // Allocate new symbol in this package
-        const sym = try heap.allocSymbol(name);
+        // Allocate new symbol in this package (already upcased in allocSymbol)
+        const sym = try heap.allocSymbol(upper_name);
         // Store package pointer in symbol's reserved field
         const sym_ptr = sym.toPtr(Symbol);
         sym_ptr.reserved = @intFromPtr(self);
-        try self.symbols.put(name, sym);
+        try self.symbols.put(upper_name, sym);
         // Auto-export if flag is set (for CL package)
         if (self.auto_export) {
-            try self.exports.put(self.allocator, name, {});
+            const persistent_export_name = try self.allocator.dupe(u8, upper_name);
+            try self.exports.put(self.allocator, persistent_export_name, {});
         }
         return sym;
     }
@@ -1061,22 +1076,32 @@ pub const Heap = struct {
     /// Returns existing symbol if already interned, otherwise creates new one
     /// Uses current package if available, otherwise legacy global table
     pub fn intern(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
-        // Magic symbols: t and nil
-        if (std.mem.eql(u8, name, "t")) return Value.t;
-        if (std.mem.eql(u8, name, "nil")) return Value.nil;
+        // Upcase name per CL spec
+        var upper_buf: [256]u8 = undefined;
+        const upper_name = if (name.len <= upper_buf.len) blk: {
+            for (name, 0..) |c, i| {
+                upper_buf[i] = std.ascii.toUpper(c);
+            }
+            break :blk upper_buf[0..name.len];
+        } else name;
+
+        // Magic symbols: T and NIL
+        if (std.mem.eql(u8, upper_name, "T")) return Value.t;
+        if (std.mem.eql(u8, upper_name, "NIL")) return Value.nil;
 
         // Use current package if available
         if (self.current_package) |pkg| {
-            return pkg.intern(self, name);
+            return pkg.intern(self, upper_name);
         }
 
         // Fallback to legacy global table
-        if (self.symbols.get(name)) |existing| {
+        if (self.symbols.get(upper_name)) |existing| {
             return existing;
         }
 
-        const sym = try self.allocSymbol(name);
-        try self.symbols.put(name, sym);
+        const sym = try self.allocSymbol(upper_name);
+        const persistent_name = try self.backing_allocator.dupe(u8, upper_name);
+        try self.symbols.put(persistent_name, sym);
         return sym;
     }
 
@@ -1149,16 +1174,25 @@ pub const Heap = struct {
     /// Intern a keyword (same name = same Value)
     /// Returns existing keyword if already interned, otherwise creates new one
     pub fn internKeyword(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
-        // Check for existing keyword
-        if (self.keywords.get(name)) |existing| {
+        // Upcase name per CL spec
+        var upper_buf: [256]u8 = undefined;
+        const upper_name = if (name.len <= upper_buf.len) blk: {
+            for (name, 0..) |c, i| {
+                upper_buf[i] = std.ascii.toUpper(c);
+            }
+            break :blk upper_buf[0..name.len];
+        } else name;
+
+        // Check for existing keyword with upcased name
+        if (self.keywords.get(upper_name)) |existing| {
             return existing;
         }
 
-        // Allocate new keyword
-        const kw = try self.allocKeyword(name);
+        // Allocate new keyword (already upcased in allocKeyword)
+        const kw = try self.allocKeyword(upper_name);
 
-        // Add to keyword table
-        try self.keywords.put(name, kw);
+        // Add to keyword table with upcased name
+        try self.keywords.put(upper_name, kw);
 
         return kw;
     }

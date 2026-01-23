@@ -804,6 +804,7 @@ pub const Emitter = struct {
             .file_length => |op| try self.emitUnaryOp(op.operand, .file_length),
             .finish_output => |op| try self.emitUnaryOp(op.operand, .finish_output),
             .force_output => |op| try self.emitUnaryOp(op.operand, .force_output),
+            .sleep => |op| try self.emitUnaryOp(op.operand, .sleep),
 
             // Reader macros
             .set_macro_character => |op| try self.emitTernaryOp(op, .set_macro_character),

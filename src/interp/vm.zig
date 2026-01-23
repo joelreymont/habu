@@ -2988,6 +2988,12 @@ pub const Vm = struct {
                 try self.push(result);
             },
 
+            .sleep => {
+                const seconds = try self.pop();
+                try primitives.io.sleepSeconds(seconds);
+                try self.push(Value.nil);
+            },
+
             .make_array => {
                 const operand = self.readU8();
                 const rank: u8 = operand >> 1;
@@ -3922,10 +3928,13 @@ pub const Vm = struct {
                     // Look up symbol in global environment
                     if (self.global_env) |env| {
                         // Try qualified name first, then local name
+                        std.debug.print("VM lookup: qual_name='{s}', local_name='{s}'\n", .{ qual_name, local_name });
                         const idx = env.lookup(qual_name) orelse env.lookup(local_name);
                         if (idx) |i| {
+                            std.debug.print("VM lookup: found at idx {}\n", .{i});
                             try self.push(self.globals[i]);
                         } else {
+                            std.debug.print("VM lookup: NOT FOUND\n", .{});
                             return error.UnboundSymbol;
                         }
                     } else {

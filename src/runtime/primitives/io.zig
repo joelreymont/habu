@@ -762,9 +762,9 @@ pub fn setPrintEscape(val: Value) void {
 /// Get *print-case* value
 pub fn getPrintCase(heap: *Heap) !Value {
     return switch (print_case) {
-        .upcase => try heap.internKeyword("upcase"),
-        .downcase => try heap.internKeyword("downcase"),
-        .capitalize => try heap.internKeyword("capitalize"),
+        .upcase => try heap.internKeyword("UPCASE"),
+        .downcase => try heap.internKeyword("DOWNCASE"),
+        .capitalize => try heap.internKeyword("CAPITALIZE"),
     };
 }
 
@@ -773,11 +773,11 @@ pub fn setPrintCase(_: *Heap, val: Value) !void {
     if (!val.isKeyword()) return error.TypeError;
     const kw = val.toPtr(objects.Keyword);
     const name = kw.getName();
-    if (std.mem.eql(u8, name, "upcase")) {
+    if (std.mem.eql(u8, name, "UPCASE")) {
         print_case = .upcase;
-    } else if (std.mem.eql(u8, name, "downcase")) {
+    } else if (std.mem.eql(u8, name, "DOWNCASE")) {
         print_case = .downcase;
-    } else if (std.mem.eql(u8, name, "capitalize")) {
+    } else if (std.mem.eql(u8, name, "CAPITALIZE")) {
         print_case = .capitalize;
     } else {
         return error.InvalidPrintCase;
@@ -913,6 +913,14 @@ pub fn sleep(ms: i64) void {
     std.Thread.sleep(@as(u64, @intCast(ms)) * std.time.ns_per_ms);
 }
 
+/// Sleep for seconds (ANSI CL SLEEP function)
+pub fn sleepSeconds(seconds: Value) !void {
+    if (!seconds.isFixnum()) return error.TypeError;
+    const secs = seconds.toFixnum();
+    if (secs <= 0) return;
+    std.Thread.sleep(@as(u64, @intCast(secs)) * std.time.ns_per_s);
+}
+
 // Custom error types
 const IoError = struct {
     const FileTooLarge = std.fs.File.OpenError || std.fs.File.StatError;
@@ -960,17 +968,17 @@ test "*print-case* flag" {
     // Test getPrintCase
     const upcase_kw = try getPrintCase(&heap);
     try testing.expect(upcase_kw.isKeyword());
-    try testing.expect(std.mem.eql(u8, upcase_kw.toPtr(objects.Keyword).getName(), "upcase"));
+    try testing.expect(std.mem.eql(u8, upcase_kw.toPtr(objects.Keyword).getName(), "UPCASE"));
 
     // Test setPrintCase to downcase
-    const downcase_kw = try heap.internKeyword("downcase");
+    const downcase_kw = try heap.internKeyword("DOWNCASE");
     try setPrintCase(&heap, downcase_kw);
     try testing.expect(print_case == .downcase);
     const downcase_result = try getPrintCase(&heap);
-    try testing.expect(std.mem.eql(u8, downcase_result.toPtr(objects.Keyword).getName(), "downcase"));
+    try testing.expect(std.mem.eql(u8, downcase_result.toPtr(objects.Keyword).getName(), "DOWNCASE"));
 
     // Test capitalize
-    const capitalize_kw = try heap.internKeyword("capitalize");
+    const capitalize_kw = try heap.internKeyword("CAPITALIZE");
     try setPrintCase(&heap, capitalize_kw);
     try testing.expect(print_case == .capitalize);
 

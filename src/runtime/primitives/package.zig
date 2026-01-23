@@ -192,11 +192,11 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
             if (p.exports.raw != Value.nil.raw) {
                 const exported = hashTableLookup(p.exports, found_sym);
                 if (exported.raw != Value.nil.raw) {
-                    const status = try heap.internKeyword("external");
+                    const status = try heap.internKeyword("EXTERNAL");
                     return try heap.allocCons(found_sym, try heap.allocCons(status, Value.nil));
                 }
             }
-            const status = try heap.internKeyword("internal");
+            const status = try heap.internKeyword("INTERNAL");
             return try heap.allocCons(found_sym, try heap.allocCons(status, Value.nil));
         }
     }
@@ -211,7 +211,7 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
             if (up.exports.raw != Value.nil.raw) {
                 const found = hashTableLookup(up.exports, lookup_sym);
                 if (found.raw != Value.nil.raw) {
-                    const status = try heap.internKeyword("inherited");
+                    const status = try heap.internKeyword("INHERITED");
                     return try heap.allocCons(found, try heap.allocCons(status, Value.nil));
                 }
             }
@@ -228,7 +228,7 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
     }
     try insertHashTable(heap, p.symbols, new_sym, Value.t);
 
-    const status = try heap.internKeyword("internal");
+    const status = try heap.internKeyword("INTERNAL");
     return try heap.allocCons(new_sym, try heap.allocCons(status, Value.nil));
 }
 
@@ -393,12 +393,12 @@ pub fn findSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
                         const e = &exp.entries[j];
                         if (e.key.raw == objects.HashTable.EMPTY.raw or e.key.raw == objects.HashTable.DELETED.raw) continue;
                         if (e.key.raw == entry.key.raw) {
-                            const status = try heap.internKeyword("external");
+                            const status = try heap.internKeyword("EXTERNAL");
                             return try heap.allocCons(entry.key, try heap.allocCons(status, Value.nil));
                         }
                     }
                 }
-                const status = try heap.internKeyword("internal");
+                const status = try heap.internKeyword("INTERNAL");
                 return try heap.allocCons(entry.key, try heap.allocCons(status, Value.nil));
             }
         }
@@ -421,7 +421,7 @@ pub fn findSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
                     const sym = entry.key.toPtr(objects.Symbol);
                     const sym_name = sym.getName();
                     if (std.mem.eql(u8, sym_name, name_str)) {
-                        const status = try heap.internKeyword("inherited");
+                        const status = try heap.internKeyword("INHERITED");
                         return try heap.allocCons(entry.key, try heap.allocCons(status, Value.nil));
                     }
                 }
@@ -818,7 +818,7 @@ test "intern returns correct status" {
     const status1 = result1.toPtr(objects.Cons).cdr.toPtr(objects.Cons).car;
     try testing.expect(status1.isKeyword());
     const s1_str = status1.toPtr(objects.Keyword).getName();
-    try testing.expect(std.mem.eql(u8, s1_str, "internal"));
+    try testing.expect(std.mem.eql(u8, s1_str, "INTERNAL"));
 
     const sym = result1.toPtr(objects.Cons).car;
     try exportSymbols(&heap, sym, pkg);
@@ -827,7 +827,7 @@ test "intern returns correct status" {
     const status2 = result2.toPtr(objects.Cons).cdr.toPtr(objects.Cons).car;
     try testing.expect(status2.isKeyword());
     const s2_str = status2.toPtr(objects.Keyword).getName();
-    try testing.expect(std.mem.eql(u8, s2_str, "external"));
+    try testing.expect(std.mem.eql(u8, s2_str, "EXTERNAL"));
 }
 
 test "unexport removes from exports" {
@@ -844,13 +844,13 @@ test "unexport removes from exports" {
     const found1 = try findSymbol(&heap, sym_name, pkg);
     const status1 = found1.toPtr(objects.Cons).cdr.toPtr(objects.Cons).car;
     const s1_str = status1.toPtr(objects.Keyword).getName();
-    try testing.expect(std.mem.eql(u8, s1_str, "external"));
+    try testing.expect(std.mem.eql(u8, s1_str, "EXTERNAL"));
 
     try unexportSymbols(&heap, sym, pkg);
     const found2 = try findSymbol(&heap, sym_name, pkg);
     const status2 = found2.toPtr(objects.Cons).cdr.toPtr(objects.Cons).car;
     const s2_str = status2.toPtr(objects.Keyword).getName();
-    try testing.expect(std.mem.eql(u8, s2_str, "internal"));
+    try testing.expect(std.mem.eql(u8, s2_str, "INTERNAL"));
 }
 
 test "unintern removes symbol" {
