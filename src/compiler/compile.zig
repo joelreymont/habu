@@ -146,6 +146,21 @@ pub const Builtins = struct {
     @"generic-function-methods": Value,
     @"generic-function-lambda-list": Value,
     @"generic-function-name": Value,
+    @"slot-boundp": Value,
+    @"slot-makunbound": Value,
+    @"class-name": Value,
+    @"find-class": Value,
+    @"class-direct-superclasses": Value,
+    @"class-precedence-list": Value,
+    @"class-direct-slots": Value,
+    @"class-slots": Value,
+    @"slot-definition-name": Value,
+    @"slot-definition-initform": Value,
+    @"slot-definition-initargs": Value,
+    @"slot-definition-readers": Value,
+    @"slot-definition-writers": Value,
+    @"slot-definition-allocation": Value,
+    @"slot-definition-type": Value,
     // Method qualifier keywords
     kw_before: Value,
     kw_after: Value,
@@ -387,6 +402,8 @@ pub const Builtins = struct {
     // Primitives - File I/O
     @"read-file": Value,
     @"write-file": Value,
+    @"delete-file": Value,
+    @"rename-file": Value,
 
     // Primitives - String construction
     @"make-string": Value,
@@ -437,6 +454,12 @@ pub const Builtins = struct {
     @"pathname-version": Value,
     @"package-symbols-table": Value,
     @"package-exports-table": Value,
+    @"package-name": Value,
+    @"package-nicknames": Value,
+    @"package-use-list": Value,
+    @"package-used-by-list": Value,
+    @"package-shadowing-symbols": Value,
+    packagep: Value,
 
     // Type name symbols (for type dispatch)
     ty_fixnum: Value,
@@ -591,6 +614,21 @@ pub const Builtins = struct {
             .@"generic-function-methods" = try heap.intern("generic-function-methods"),
             .@"generic-function-lambda-list" = try heap.intern("generic-function-lambda-list"),
             .@"generic-function-name" = try heap.intern("generic-function-name"),
+            .@"slot-boundp" = try heap.intern("slot-boundp"),
+            .@"slot-makunbound" = try heap.intern("slot-makunbound"),
+            .@"class-name" = try heap.intern("class-name"),
+            .@"find-class" = try heap.intern("find-class"),
+            .@"class-direct-superclasses" = try heap.intern("class-direct-superclasses"),
+            .@"class-precedence-list" = try heap.intern("class-precedence-list"),
+            .@"class-direct-slots" = try heap.intern("class-direct-slots"),
+            .@"class-slots" = try heap.intern("class-slots"),
+            .@"slot-definition-name" = try heap.intern("slot-definition-name"),
+            .@"slot-definition-initform" = try heap.intern("slot-definition-initform"),
+            .@"slot-definition-initargs" = try heap.intern("slot-definition-initargs"),
+            .@"slot-definition-readers" = try heap.intern("slot-definition-readers"),
+            .@"slot-definition-writers" = try heap.intern("slot-definition-writers"),
+            .@"slot-definition-allocation" = try heap.intern("slot-definition-allocation"),
+            .@"slot-definition-type" = try heap.intern("slot-definition-type"),
             .kw_before = try heap.internKeyword("before"),
             .kw_after = try heap.internKeyword("after"),
             .kw_around = try heap.internKeyword("around"),
@@ -811,6 +849,8 @@ pub const Builtins = struct {
             // Primitives - File I/O
             .@"read-file" = try heap.intern("read-file"),
             .@"write-file" = try heap.intern("write-file"),
+            .@"delete-file" = try heap.intern("delete-file"),
+            .@"rename-file" = try heap.intern("rename-file"),
             // Primitives - String construction
             .@"make-string" = try heap.intern("make-string"),
             .@"string-to-list" = try heap.intern("string-to-list"),
@@ -858,6 +898,12 @@ pub const Builtins = struct {
             .@"pathname-version" = try heap.intern("pathname-version"),
             .@"package-symbols-table" = try heap.intern("package-symbols-table"),
             .@"package-exports-table" = try heap.intern("package-exports-table"),
+            .@"package-name" = try heap.intern("package-name"),
+            .@"package-nicknames" = try heap.intern("package-nicknames"),
+            .@"package-use-list" = try heap.intern("package-use-list"),
+            .@"package-used-by-list" = try heap.intern("package-used-by-list"),
+            .@"package-shadowing-symbols" = try heap.intern("package-shadowing-symbols"),
+            .packagep = try heap.intern("packagep"),
             // Type name symbols
             .ty_fixnum = try heap.intern("fixnum"),
             .ty_integer = try heap.intern("integer"),
@@ -1099,6 +1145,8 @@ pub const Builtins = struct {
         // Primitives - File I/O
         if (s == self.@"read-file".raw) return true;
         if (s == self.@"write-file".raw) return true;
+        if (s == self.@"delete-file".raw) return true;
+        if (s == self.@"rename-file".raw) return true;
         // Primitives - String construction
         if (s == self.@"make-string".raw) return true;
         if (s == self.@"string-to-list".raw) return true;
@@ -1975,8 +2023,8 @@ pub const Compiler = struct {
             return try self.builder.lit(expr);
         }
 
-        // String
-        if (expr.isString()) {
+        // String (base-string or String32)
+        if (expr.isString() or expr.isString32()) {
             return try self.builder.lit(expr);
         }
 
@@ -2131,6 +2179,21 @@ pub const Compiler = struct {
         @"generic-function-methods",
         @"generic-function-lambda-list",
         @"generic-function-name",
+        @"slot-boundp",
+        @"slot-makunbound",
+        @"class-name",
+        @"find-class",
+        @"class-direct-superclasses",
+        @"class-precedence-list",
+        @"class-direct-slots",
+        @"class-slots",
+        @"slot-definition-name",
+        @"slot-definition-initform",
+        @"slot-definition-initargs",
+        @"slot-definition-readers",
+        @"slot-definition-writers",
+        @"slot-definition-allocation",
+        @"slot-definition-type",
     };
 
     /// Comptime dispatch table for special forms
@@ -2211,6 +2274,21 @@ pub const Compiler = struct {
         .{ "GENERIC-FUNCTION-METHODS", .@"generic-function-methods" },
         .{ "GENERIC-FUNCTION-LAMBDA-LIST", .@"generic-function-lambda-list" },
         .{ "GENERIC-FUNCTION-NAME", .@"generic-function-name" },
+        .{ "SLOT-BOUNDP", .@"slot-boundp" },
+        .{ "SLOT-MAKUNBOUND", .@"slot-makunbound" },
+        .{ "CLASS-NAME", .@"class-name" },
+        .{ "FIND-CLASS", .@"find-class" },
+        .{ "CLASS-DIRECT-SUPERCLASSES", .@"class-direct-superclasses" },
+        .{ "CLASS-PRECEDENCE-LIST", .@"class-precedence-list" },
+        .{ "CLASS-DIRECT-SLOTS", .@"class-direct-slots" },
+        .{ "CLASS-SLOTS", .@"class-slots" },
+        .{ "SLOT-DEFINITION-NAME", .@"slot-definition-name" },
+        .{ "SLOT-DEFINITION-INITFORM", .@"slot-definition-initform" },
+        .{ "SLOT-DEFINITION-INITARGS", .@"slot-definition-initargs" },
+        .{ "SLOT-DEFINITION-READERS", .@"slot-definition-readers" },
+        .{ "SLOT-DEFINITION-WRITERS", .@"slot-definition-writers" },
+        .{ "SLOT-DEFINITION-ALLOCATION", .@"slot-definition-allocation" },
+        .{ "SLOT-DEFINITION-TYPE", .@"slot-definition-type" },
     });
 
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
@@ -2301,6 +2379,21 @@ pub const Compiler = struct {
                     .@"generic-function-methods" => self.compileGenericFunctionMethods(tail, env),
                     .@"generic-function-lambda-list" => self.compileGenericFunctionLambdaList(tail, env),
                     .@"generic-function-name" => self.compileGenericFunctionName(tail, env),
+                    .@"slot-boundp" => self.compileSlotBoundp(tail, env),
+                    .@"slot-makunbound" => self.compileSlotMakunbound(tail, env),
+                    .@"class-name" => self.compileUnaryPrim(tail, env, .class_name),
+                    .@"find-class" => self.compileUnaryPrim(tail, env, .find_class),
+                    .@"class-direct-superclasses" => self.compileUnaryPrim(tail, env, .class_direct_superclasses),
+                    .@"class-precedence-list" => self.compileUnaryPrim(tail, env, .class_precedence_list),
+                    .@"class-direct-slots" => self.compileUnaryPrim(tail, env, .class_direct_slots),
+                    .@"class-slots" => self.compileUnaryPrim(tail, env, .class_slots),
+                    .@"slot-definition-name" => self.compileUnaryPrim(tail, env, .slot_definition_name),
+                    .@"slot-definition-initform" => self.compileUnaryPrim(tail, env, .slot_definition_initform),
+                    .@"slot-definition-initargs" => self.compileUnaryPrim(tail, env, .slot_definition_initargs),
+                    .@"slot-definition-readers" => self.compileUnaryPrim(tail, env, .slot_definition_readers),
+                    .@"slot-definition-writers" => self.compileUnaryPrim(tail, env, .slot_definition_writers),
+                    .@"slot-definition-allocation" => self.compileUnaryPrim(tail, env, .slot_definition_allocation),
+                    .@"slot-definition-type" => self.compileUnaryPrim(tail, env, .slot_definition_type),
                 };
             }
 
@@ -2868,7 +2961,7 @@ pub const Compiler = struct {
 
     /// Collect free variables in an expression
     fn collectFreeVars(self: *Compiler, expr: Value, env: *const Env, captures: *CaptureSet) error{OutOfMemory}!void {
-        if (expr.isNil() or expr.isFixnum() or expr.isBignum() or expr.isString() or expr.isKeyword() or expr.isCharacter() or expr.isMagicSymbol() or expr.isVector()) {
+        if (expr.isNil() or expr.isFixnum() or expr.isBignum() or expr.isString() or expr.isString32() or expr.isKeyword() or expr.isCharacter() or expr.isMagicSymbol() or expr.isVector()) {
             return; // Literals have no free variables
         }
 
@@ -3014,7 +3107,7 @@ pub const Compiler = struct {
         mutated: *std.StringHashMap(void),
         captured: *std.StringHashMap(void),
     ) error{OutOfMemory}!void {
-        if (expr.isNil() or expr.isFixnum() or expr.isBignum() or expr.isString() or expr.isKeyword() or expr.isCharacter() or expr.isVector()) {
+        if (expr.isNil() or expr.isFixnum() or expr.isBignum() or expr.isString() or expr.isString32() or expr.isKeyword() or expr.isCharacter() or expr.isVector()) {
             return;
         }
 
@@ -3127,7 +3220,7 @@ pub const Compiler = struct {
         params: *std.StringHashMap(void),
         captured: *std.StringHashMap(void),
     ) error{OutOfMemory}!void {
-        if (expr.isNil() or expr.isFixnum() or expr.isBignum() or expr.isString() or expr.isKeyword() or expr.isCharacter() or expr.isVector()) {
+        if (expr.isNil() or expr.isFixnum() or expr.isBignum() or expr.isString() or expr.isString32() or expr.isKeyword() or expr.isCharacter() or expr.isVector()) {
             return;
         }
 
@@ -5728,6 +5821,7 @@ pub const Compiler = struct {
     const SlotSpec = struct {
         name: []const u8,
         field_type: *const types.Type,
+        type_sym: Value = Value.t, // Runtime type symbol (default T = any)
         initform: ?Value = null,
         allocation: Allocation = .instance,
         initargs: std.ArrayList(Value),
@@ -5739,15 +5833,33 @@ pub const Compiler = struct {
     fn allocateClass(self: *Compiler, heap: *Heap, name: Value, superclasses: Value, slot_specs: []const SlotSpec) !Value {
         const objects = @import("../runtime/objects.zig");
 
-        // Convert superclasses list to array
+        // Convert superclasses list to array and resolve symbols to Class objects
         var supers = std.ArrayList(Value){};
         defer supers.deinit(self.allocator);
+        var direct_supers_classes = std.ArrayList(Value){};
+        defer direct_supers_classes.deinit(self.allocator);
 
         var super_list = superclasses;
         while (super_list.isCons()) {
             const cons = super_list.toPtr(Cons);
-            try supers.append(self.allocator, cons.car);
+            const super_sym = cons.car;
+            try supers.append(self.allocator, super_sym);
+            // Resolve symbol to Class object for direct_supers
+            if (heap.findLispClass(super_sym)) |class_val| {
+                try direct_supers_classes.append(self.allocator, class_val);
+            } else {
+                // Superclass not found - this is an error in standard CL
+                // For now, just skip it
+            }
             super_list = cons.cdr;
+        }
+
+        // Build direct_supers list from resolved Class objects
+        var direct_supers_list = Value.nil;
+        var ds_i = direct_supers_classes.items.len;
+        while (ds_i > 0) {
+            ds_i -= 1;
+            direct_supers_list = try heap.allocCons(direct_supers_classes.items[ds_i], direct_supers_list);
         }
 
         // Compute CPL
@@ -5759,12 +5871,21 @@ pub const Compiler = struct {
         );
         defer heap.backing_allocator.free(cpl);
 
-        // Convert CPL array to list
+        // Convert CPL array to list, resolving symbols to Class objects
+        // Note: The current class won't be in the registry yet, so we'll add it separately
         var cpl_list = Value.nil;
         var i = cpl.len;
         while (i > 0) {
             i -= 1;
-            cpl_list = try heap.allocCons(cpl[i], cpl_list);
+            const cpl_sym = cpl[i];
+            // Try to resolve to Class object
+            if (heap.findLispClass(cpl_sym)) |class_val| {
+                cpl_list = try heap.allocCons(class_val, cpl_list);
+            } else {
+                // Symbol not yet registered (might be the current class being defined)
+                // We'll patch this later when the class is registered
+                cpl_list = try heap.allocCons(cpl_sym, cpl_list);
+            }
         }
 
         // Create SlotDefinition objects
@@ -5811,7 +5932,7 @@ pub const Compiler = struct {
                 .readers = readers_list,
                 .writers = writers_list,
                 .allocation = allocation_kw,
-                .slot_type = Value.t, // TODO: convert type to runtime representation
+                .slot_type = spec.type_sym,
             };
 
             direct_slots_list = try heap.allocCons(Value.makeSlotDef(slot_def), direct_slots_list);
@@ -5819,11 +5940,24 @@ pub const Compiler = struct {
 
         // Allocate Class object
         const class_ptr = try heap.alloc(objects.Class);
+        const class_val = Value.makeClass(class_ptr);
+
+        // The CPL's first element should be the class itself, but it was built with symbols.
+        // Replace the first element (the class's own name) with the actual class object.
+        // Also check if any remaining CPL elements can be resolved to Class objects.
+        var final_cpl_list = cpl_list;
+        if (cpl_list.isCons()) {
+            const cpl_cons = cpl_list.toPtr(Cons);
+            // The first element is the class name symbol - replace with class object
+            // Keep the rest of the list (which may have resolved Class objects)
+            final_cpl_list = try heap.allocCons(class_val, cpl_cons.cdr);
+        }
+
         class_ptr.* = .{
             .kind = .class,
             .name = name,
-            .direct_supers = superclasses,
-            .cpl = cpl_list,
+            .direct_supers = direct_supers_list,
+            .cpl = final_cpl_list,
             .direct_slots = direct_slots_list,
             .slots = direct_slots_list, // TODO: merge with inherited slots
             .metaclass = heap.standard_class,
@@ -5831,7 +5965,7 @@ pub const Compiler = struct {
             .shared_slots = undefined,
         };
 
-        return Value.makeClass(class_ptr);
+        return class_val;
     }
 
     /// Get CPL for a class (used by computeCpl)
@@ -6640,6 +6774,7 @@ pub const Compiler = struct {
 
                 // Extract slot options
                 var field_type: *const types.Type = &types.t_any;
+                var type_sym: Value = Value.t;
                 var initform: ?Value = null;
                 var allocation: Allocation = .instance;
                 var initargs = std.ArrayList(Value){};
@@ -6657,6 +6792,7 @@ pub const Compiler = struct {
                             // type keyword - next element is the type
                             if (opt_cons.cdr.isCons()) {
                                 const type_cons = opt_cons.cdr.toPtr(Cons);
+                                type_sym = type_cons.car; // Store the type expression as runtime value
                                 if (self.parseTypeExpr(type_cons.car)) |ty| {
                                     field_type = ty;
                                 }
@@ -6730,6 +6866,7 @@ pub const Compiler = struct {
                 try slot_specs.append(self.allocator, .{
                     .name = slot_name,
                     .field_type = field_type,
+                    .type_sym = type_sym,
                     .initform = initform,
                     .allocation = allocation,
                     .initargs = initargs,
@@ -6784,9 +6921,9 @@ pub const Compiler = struct {
             try heap.class_metadata.put(heap.backing_allocator, heap_class_name, heap_slot_names);
         }
 
-        // Allocate Class object and compute CPL
+        // Allocate Class object and compute CPL, then register in class registry
         const class_obj = try self.allocateClass(heap, name_val, superclasses, slot_specs.items);
-        _ = class_obj;
+        try heap.putLispClass(name_val, class_obj);
 
         // Count total defs: constructor + predicate + default_accessors + readers + writers + name_lit
         var num_readers: usize = 0;
@@ -6973,6 +7110,60 @@ pub const Compiler = struct {
 
         const slot_sym = try self.builder.quoteSym(slot_name);
         return try self.builder.slotValue(obj_ir, slot_sym);
+    }
+
+    /// Compile slot-boundp: (slot-boundp obj 'slot-name)
+    fn compileSlotBoundp(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const obj_expr = cons1.car;
+        const obj_ir = try self.compile(obj_expr, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        var slot_name_expr = cons2.car;
+
+        // Handle quoted slot name
+        if (slot_name_expr.isCons()) {
+            const quote_cons = slot_name_expr.toPtr(Cons);
+            if (quote_cons.cdr.isCons()) {
+                slot_name_expr = quote_cons.cdr.toPtr(Cons).car;
+            }
+        }
+
+        if (!slot_name_expr.isSymbol()) return error.InvalidSyntax;
+        const slot_name = slot_name_expr.toPtr(Symbol).getName();
+
+        const slot_sym = try self.builder.quoteSym(slot_name);
+        return try self.builder.slotBoundp(obj_ir, slot_sym);
+    }
+
+    /// Compile slot-makunbound: (slot-makunbound obj 'slot-name)
+    fn compileSlotMakunbound(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const obj_expr = cons1.car;
+        const obj_ir = try self.compile(obj_expr, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        var slot_name_expr = cons2.car;
+
+        // Handle quoted slot name
+        if (slot_name_expr.isCons()) {
+            const quote_cons = slot_name_expr.toPtr(Cons);
+            if (quote_cons.cdr.isCons()) {
+                slot_name_expr = quote_cons.cdr.toPtr(Cons).car;
+            }
+        }
+
+        if (!slot_name_expr.isSymbol()) return error.InvalidSyntax;
+        const slot_name = slot_name_expr.toPtr(Symbol).getName();
+
+        const slot_sym = try self.builder.quoteSym(slot_name);
+        return try self.builder.slotMakunbound(obj_ir, slot_sym);
     }
 
     /// Compile %set-slot-value: (%set-slot-value obj 'slot-name value)
@@ -7224,7 +7415,9 @@ pub const Compiler = struct {
 
         // Manually grow the methods list
         // Use globals.allocator for persistent storage across arena resets
-        if (!gop.found_existing) {
+        // Also track if this is a new GF (needs implicit creation)
+        const needs_implicit_gf = !gop.found_existing;
+        if (needs_implicit_gf) {
             // New generic function - create list with first method
             const new_methods = try self.globals.allocator.alloc(MethodDef, 1);
             new_methods[0] = method_def;
@@ -7252,21 +7445,77 @@ pub const Compiler = struct {
         // Generate dispatcher function
         const dispatcher = try self.generateMethodDispatcher(gen_name, gop.value_ptr.*, dispatch_params_copy);
 
-        // Get the existing GF and update its dispatcher
-        std.debug.print("DEFMETHOD: looking up '{s}'\n", .{gen_name});
-        const global_idx = self.globals.lookup(gen_name) orelse {
-            std.debug.print("DEFMETHOD: '{s}' not found in globals!\n", .{gen_name});
-            return error.UnboundGenericFunction;
+        // Build qualifiers list for Method object (e.g., (:before) or nil for primary)
+        const builtins = self.builtins orelse return error.CompilerNotInitialized;
+        const qualifiers_list: Value = switch (qualifier) {
+            .primary => Value.nil,
+            .before => try heap.allocCons(builtins.kw_before, Value.nil),
+            .after => try heap.allocCons(builtins.kw_after, Value.nil),
+            .around => try heap.allocCons(builtins.kw_around, Value.nil),
         };
-        std.debug.print("DEFMETHOD: found '{s}' at idx {}\n", .{ gen_name, global_idx });
-        const gf_ir = try self.builder.globalRef(gen_name, global_idx);
-        const set_dispatcher_ir = try self.builder.setGfDispatcher(gf_ir, dispatcher);
 
-        // Return progn that defines method then updates dispatcher
-        const defs = try self.allocator.alloc(*Ir, 2);
-        defs[0] = method_define_ir;
-        defs[1] = set_dispatcher_ir;
-        return try self.builder.progn(defs);
+        // Build specializers list for Method object
+        var specializers_list = Value.nil;
+        var spec_i = specializers.items.len;
+        while (spec_i > 0) {
+            spec_i -= 1;
+            specializers_list = try heap.allocCons(specializers.items[spec_i], specializers_list);
+        }
+
+        // IR for qualifiers, specializers, lambda_list, and method function reference
+        const qualifiers_ir = try self.builder.lit(qualifiers_list);
+        const specializers_ir = try self.builder.lit(specializers_list);
+        const lambda_list_ir = try self.builder.lit(lambda_list);
+        const method_fn_ir = try self.builder.globalRef(method_name, method_global_idx);
+
+        // Create Method object
+        const make_method_ir = try self.builder.makeMethod(qualifiers_ir, specializers_ir, lambda_list_ir, method_fn_ir);
+
+        if (needs_implicit_gf) {
+            // Create implicit generic function
+            const global_idx = try self.globals.define(gen_name);
+
+            // Build lambda list from dispatch params (heap already defined above)
+            var gf_params = Value.nil;
+            var i = dispatch_params_copy.len;
+            while (i > 0) {
+                i -= 1;
+                const param_sym = try heap.intern(dispatch_params_copy[i]);
+                gf_params = try heap.allocCons(param_sym, gf_params);
+            }
+
+            const name_ir = try self.builder.lit(name_val);
+            const gf_params_ir = try self.builder.lit(gf_params);
+            const gf_create_ir = try self.builder.makeGenericFunction(name_ir, gf_params_ir);
+            const gf_def_ir = try self.builder.define(gen_name, global_idx, gf_create_ir);
+
+            // Reference the newly defined GF
+            const gf_ir = try self.builder.globalRef(gen_name, global_idx);
+            const gf_ir2 = try self.builder.globalRef(gen_name, global_idx);
+            const add_method_ir = try self.builder.addMethod(gf_ir, make_method_ir);
+            const set_dispatcher_ir = try self.builder.setGfDispatcher(gf_ir2, dispatcher);
+
+            // Return progn: [defgeneric, defmethod, add-method, set-dispatcher]
+            const defs = try self.allocator.alloc(*Ir, 4);
+            defs[0] = gf_def_ir;
+            defs[1] = method_define_ir;
+            defs[2] = add_method_ir;
+            defs[3] = set_dispatcher_ir;
+            return try self.builder.progn(defs);
+        } else {
+            // GF already exists - just update its dispatcher
+            const global_idx = self.globals.lookup(gen_name) orelse return error.UnboundGenericFunction;
+            const gf_ir = try self.builder.globalRef(gen_name, global_idx);
+            const gf_ir2 = try self.builder.globalRef(gen_name, global_idx);
+            const add_method_ir = try self.builder.addMethod(gf_ir, make_method_ir);
+            const set_dispatcher_ir = try self.builder.setGfDispatcher(gf_ir2, dispatcher);
+
+            const defs = try self.allocator.alloc(*Ir, 3);
+            defs[0] = method_define_ir;
+            defs[1] = add_method_ir;
+            defs[2] = set_dispatcher_ir;
+            return try self.builder.progn(defs);
+        }
     }
 
     /// Compile call-next-method: (call-next-method [args...])
@@ -7429,11 +7678,15 @@ pub const Compiler = struct {
             const arg_ir = try self.builder.variable(pname, 0, @intCast(idx));
             try no_app_args.append(self.allocator, arg_ir);
         }
-        const no_app_fn = try self.builder.variable("no-applicable-method", 0, 0);
+        // Look up no-applicable-method as a global function
+        const no_app_idx = self.globals.lookup("no-applicable-method") orelse try self.globals.define("no-applicable-method");
+        const no_app_fn = try self.builder.globalRef("no-applicable-method", no_app_idx);
         dispatch_body = try self.builder.call(no_app_fn, no_app_args.items);
 
         // Build dispatch chain for primary methods (type checking)
         // For each primary method, also run applicable :before and :after
+        // Track effective methods for call-next-method chaining
+        var prev_effective: ?*Ir = null;
         var i = primary_methods.items.len;
         while (i > 0) {
             i -= 1;
@@ -7465,14 +7718,16 @@ pub const Compiler = struct {
             }
 
             // Build effective method: before* -> primary -> after*
-            // Pass dispatch_body as next_method - it represents the fallback chain
+            // For call-next-method: use prev_effective (the less-specific method)
+            // For the least specific method, prev_effective is null -> %next-method% = nil
             const effective_method = try self.buildEffectiveMethod(
                 primary,
                 before_methods.items,
                 after_methods.items,
                 dispatch_params,
-                dispatch_body,
+                prev_effective,
             );
+            prev_effective = effective_method;
 
             // If all parameters are unspecialized, this method always matches
             if (cond_ir == null) {
@@ -7656,27 +7911,114 @@ pub const Compiler = struct {
     }
 
     /// Sort methods by specificity (most specific first)
-    /// Methods with more specialized (non-t) specializers come first
+    /// Uses CPL to determine which class is more specific
     fn sortMethodsBySpecificity(self: *Compiler, methods: []MethodDef) !void {
-        _ = self;
         if (methods.len <= 1) return;
 
-        std.mem.sort(MethodDef, methods, {}, struct {
-            fn lessThan(_: void, a: MethodDef, b: MethodDef) bool {
-                const min_len = @min(a.specializers.len, b.specializers.len);
-                for (0..min_len) |i| {
-                    const a_is_t = a.specializers[i].eq(Value.t);
-                    const b_is_t = b.specializers[i].eq(Value.t);
-
-                    // More specific (non-t) comes first
-                    if (!a_is_t and b_is_t) return true;
-                    if (a_is_t and !b_is_t) return false;
-                    // Same specificity at this position, continue to next
-                }
-                // All compared positions equal - longer specializer list is more specific
-                return a.specializers.len > b.specializers.len;
+        // Insertion sort - stable and works well for small arrays
+        // We need manual sort because std.mem.sort doesn't support fallible comparators
+        var i: usize = 1;
+        while (i < methods.len) : (i += 1) {
+            const key = methods[i];
+            var j: usize = i;
+            while (j > 0) {
+                const cmp = try self.compareMethodSpecificity(key, methods[j - 1]);
+                if (cmp != .more_specific) break;
+                methods[j] = methods[j - 1];
+                j -= 1;
             }
-        }.lessThan);
+            methods[j] = key;
+        }
+    }
+
+    const SpecificityOrder = enum { more_specific, less_specific, equal };
+
+    /// Compare two methods for specificity
+    /// Returns .more_specific if a is more specific than b
+    fn compareMethodSpecificity(self: *Compiler, a: MethodDef, b: MethodDef) !SpecificityOrder {
+        const min_len = @min(a.specializers.len, b.specializers.len);
+
+        for (0..min_len) |i| {
+            const a_spec = a.specializers[i];
+            const b_spec = b.specializers[i];
+
+            const a_is_t = a_spec.eq(Value.t);
+            const b_is_t = b_spec.eq(Value.t);
+
+            // Non-t is more specific than t
+            if (!a_is_t and b_is_t) return .more_specific;
+            if (a_is_t and !b_is_t) return .less_specific;
+
+            // Both t - equal at this position
+            if (a_is_t and b_is_t) continue;
+
+            // Both non-t - check class hierarchy
+            if (a_spec.eq(b_spec)) continue; // Same class
+
+            // Check if a_spec is more specific (subclass of b_spec)
+            const cmp = try self.compareClassSpecificity(a_spec, b_spec);
+            if (cmp != .equal) return cmp;
+        }
+
+        // All compared positions equal - longer specializer list is more specific
+        if (a.specializers.len > b.specializers.len) return .more_specific;
+        if (a.specializers.len < b.specializers.len) return .less_specific;
+        return .equal;
+    }
+
+    /// Compare two class specializers using CPL
+    /// Returns .more_specific if class_a is a subclass of class_b
+    fn compareClassSpecificity(self: *Compiler, class_a: Value, class_b: Value) !SpecificityOrder {
+        const heap = self.heap orelse return .equal;
+
+        // Look up both classes
+        const a_class = self.lookupClass(heap, class_a) orelse return .equal;
+        const b_class = self.lookupClass(heap, class_b) orelse return .equal;
+
+        // Check if class_b appears in class_a's CPL (meaning a is a subclass of b)
+        if (self.classInCpl(a_class, class_b)) return .more_specific;
+        // Check if class_a appears in class_b's CPL (meaning b is a subclass of a)
+        if (self.classInCpl(b_class, class_a)) return .less_specific;
+
+        return .equal;
+    }
+
+    /// Look up a class by name in the class registry
+    fn lookupClass(self: *Compiler, heap: *Heap, class_name: Value) ?*runtime.Class {
+        _ = self;
+        if (heap.lisp_classes.raw == Value.nil.raw) return null;
+        const ht = heap.lisp_classes.toPtr(runtime.HashTable);
+
+        const hash = class_name.raw;
+        var idx = hash % ht.capacity;
+        var i: usize = 0;
+        while (i < ht.capacity) : (i += 1) {
+            const e = &ht.entries[idx];
+            if (e.key.raw == runtime.HashTable.EMPTY.raw) break;
+            if (e.key.raw == class_name.raw) {
+                if (e.value.isClass()) return e.value.toPtr(runtime.Class);
+                return null;
+            }
+            idx = (idx + 1) % ht.capacity;
+        }
+        return null;
+    }
+
+    /// Check if target_class (a class name symbol) appears in class's CPL
+    fn classInCpl(self: *Compiler, class: *runtime.Class, target_class: Value) bool {
+        _ = self;
+        var cpl = class.cpl;
+        while (cpl.isCons()) {
+            const cons = cpl.toPtr(Cons);
+            const car = cons.car;
+            // CPL contains Class objects, compare their names with target_class
+            if (car.isClass()) {
+                const c = car.toPtr(runtime.Class);
+                if (c.name.eq(target_class)) return true;
+            }
+            cpl = cons.cdr;
+        }
+        return false;
     }
 
     /// Check if method specializers are compatible (aux method applies to primary)
@@ -9191,6 +9533,8 @@ pub const Compiler = struct {
         // File I/O
         if (s == b.@"read-file".raw) return self.compileUnaryPrim(args, env, .read_file);
         if (s == b.@"write-file".raw) return self.compileBinaryPrim(args, env, .write_file);
+        if (s == b.@"delete-file".raw) return self.compileUnaryPrim(args, env, .delete_file);
+        if (s == b.@"rename-file".raw) return self.compileBinaryPrim(args, env, .rename_file);
 
         // String construction
         if (s == b.@"make-string".raw) return self.compileBinaryPrim(args, env, .make_string);
@@ -9243,6 +9587,12 @@ pub const Compiler = struct {
         // Package
         if (s == b.@"package-symbols-table".raw) return self.compileUnaryPrim(args, env, .package_symbols_table);
         if (s == b.@"package-exports-table".raw) return self.compileUnaryPrim(args, env, .package_exports_table);
+        if (s == b.@"package-name".raw) return self.compileUnaryPrim(args, env, .package_name);
+        if (s == b.@"package-nicknames".raw) return self.compileUnaryPrim(args, env, .package_nicknames);
+        if (s == b.@"package-use-list".raw) return self.compileUnaryPrim(args, env, .package_use_list);
+        if (s == b.@"package-used-by-list".raw) return self.compileUnaryPrim(args, env, .package_used_by_list);
+        if (s == b.@"package-shadowing-symbols".raw) return self.compileUnaryPrim(args, env, .package_shadowing_symbols);
+        if (s == b.packagep.raw) return self.compileUnaryPrim(args, env, .packagep);
 
         // Random
         if (s == b.random.raw) return self.compileUnaryPrim(args, env, .random);
@@ -9251,7 +9601,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, method_qualifiers, method_specializers, method_function, generic_function_methods, generic_function_lambda_list, generic_function_name, nilp, not, vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, vec_adjust, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, unintern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream, pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version, package_symbols_table, package_exports_table, find_symbol, find_class, class_name, sleep };
+    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, method_qualifiers, method_specializers, method_function, generic_function_methods, generic_function_lambda_list, generic_function_name, nilp, not, vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, vec_adjust, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, unintern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, delete_file, rename_file, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream, pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version, package_symbols_table, package_exports_table, package_name, package_nicknames, package_use_list, package_used_by_list, package_shadowing_symbols, packagep, find_symbol, find_class, class_name, class_direct_superclasses, class_precedence_list, class_direct_slots, class_slots, slot_definition_name, slot_definition_initform, slot_definition_initargs, slot_definition_readers, slot_definition_writers, slot_definition_allocation, slot_definition_type, sleep };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -9399,6 +9749,7 @@ pub const Compiler = struct {
             .ash => try self.builder.ash(left, right),
             .atan2 => try self.builder.atan2(left, right),
             .write_file => try self.builder.writeFile(left, right),
+            .rename_file => try self.builder.renameFile(left, right),
             .make_string => try self.builder.makeString(left, right),
             .rplaca => try self.builder.rplaca(left, right),
             .rplacd => try self.builder.rplacd(left, right),
@@ -9564,6 +9915,7 @@ pub const Compiler = struct {
             .logcount => try self.builder.logcount(operand),
             .integer_length => try self.builder.integerLength(operand),
             .read_file => try self.builder.readFile(operand),
+            .delete_file => try self.builder.deleteFile(operand),
             .list_to_string => try self.builder.listToString(operand),
             .string_upcase => try self.builder.stringUpcase(operand),
             .string_downcase => try self.builder.stringDowncase(operand),
@@ -9751,6 +10103,61 @@ pub const Compiler = struct {
             .class_name => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .class_name = .{ .operand = operand } };
+                break :blk node;
+            },
+            .class_direct_superclasses => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .class_direct_superclasses = .{ .operand = operand } };
+                break :blk node;
+            },
+            .class_precedence_list => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .class_precedence_list = .{ .operand = operand } };
+                break :blk node;
+            },
+            .class_direct_slots => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .class_direct_slots = .{ .operand = operand } };
+                break :blk node;
+            },
+            .class_slots => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .class_slots = .{ .operand = operand } };
+                break :blk node;
+            },
+            .slot_definition_name => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .slot_definition_name = .{ .operand = operand } };
+                break :blk node;
+            },
+            .slot_definition_initform => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .slot_definition_initform = .{ .operand = operand } };
+                break :blk node;
+            },
+            .slot_definition_initargs => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .slot_definition_initargs = .{ .operand = operand } };
+                break :blk node;
+            },
+            .slot_definition_readers => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .slot_definition_readers = .{ .operand = operand } };
+                break :blk node;
+            },
+            .slot_definition_writers => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .slot_definition_writers = .{ .operand = operand } };
+                break :blk node;
+            },
+            .slot_definition_allocation => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .slot_definition_allocation = .{ .operand = operand } };
+                break :blk node;
+            },
+            .slot_definition_type => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .slot_definition_type = .{ .operand = operand } };
                 break :blk node;
             },
             else => return error.InvalidSyntax,

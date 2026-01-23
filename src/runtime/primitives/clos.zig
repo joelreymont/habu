@@ -445,7 +445,7 @@ pub fn slotMakunbound(heap: *Heap, args: Value) !Value {
         if (std.mem.eql(u8, name, slot_name)) {
             const vec_idx = idx + 1;
             if (vec_idx >= vec.length) return error.InvalidArgument;
-            vec.data[vec_idx] = Value.unbound();
+            vec.data[vec_idx] = Value.unbound;
             return obj;
         }
     }
@@ -475,8 +475,8 @@ pub fn classp(heap: *Heap, args: Value) !Value {
 /// Look up a class by name symbol in the global registry
 pub fn findClass(heap: *Heap, args: Value) !Value {
     if (!args.isCons()) return error.InvalidArgument;
-    const cons = args.toPtr(Cons);
-    const name = cons.car;
+    const c = args.toPtr(Cons);
+    const name = c.car;
     if (!name.isSymbol()) return error.TypeError;
 
     if (heap.lisp_classes.raw == Value.nil.raw) return Value.nil;
@@ -508,7 +508,11 @@ pub fn className(heap: *Heap, args: Value) !Value {
 
 /// class-direct-superclasses: (class-direct-superclasses class)
 /// Return the list of direct superclasses
-pub fn classDirectSuperclasses(class_val: Value) !Value {
+pub fn classDirectSuperclasses(heap: *Heap, args: Value) !Value {
+    _ = heap;
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons = args.toPtr(Cons);
+    const class_val = cons.car;
     if (!class_val.isClass()) return error.TypeError;
     const class = class_val.toPtr(runtime.Class);
     return class.direct_supers;
@@ -516,7 +520,11 @@ pub fn classDirectSuperclasses(class_val: Value) !Value {
 
 /// class-precedence-list: (class-precedence-list class)
 /// Return the class precedence list (linearized superclasses)
-pub fn classPrecedenceList(class_val: Value) !Value {
+pub fn classPrecedenceList(heap: *Heap, args: Value) !Value {
+    _ = heap;
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons = args.toPtr(Cons);
+    const class_val = cons.car;
     if (!class_val.isClass()) return error.TypeError;
     const class = class_val.toPtr(runtime.Class);
     return class.cpl;
@@ -524,7 +532,11 @@ pub fn classPrecedenceList(class_val: Value) !Value {
 
 /// class-direct-slots: (class-direct-slots class)
 /// Return the list of direct slot definitions
-pub fn classDirectSlots(class_val: Value) !Value {
+pub fn classDirectSlots(heap: *Heap, args: Value) !Value {
+    _ = heap;
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons = args.toPtr(Cons);
+    const class_val = cons.car;
     if (!class_val.isClass()) return error.TypeError;
     const class = class_val.toPtr(runtime.Class);
     return class.direct_slots;
@@ -532,7 +544,11 @@ pub fn classDirectSlots(class_val: Value) !Value {
 
 /// class-slots: (class-slots class)
 /// Return the list of all slot definitions (direct + inherited)
-pub fn classSlots(class_val: Value) !Value {
+pub fn classSlots(heap: *Heap, args: Value) !Value {
+    _ = heap;
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons = args.toPtr(Cons);
+    const class_val = cons.car;
     if (!class_val.isClass()) return error.TypeError;
     const class = class_val.toPtr(runtime.Class);
     return class.slots;
@@ -547,7 +563,7 @@ pub fn slotDefinitionName(heap: *Heap, args: Value) !Value {
     const slot_def = cons.car;
 
     if (!slot_def.isSlotDefinition()) return error.TypeError;
-    const sd = slot_def.toPtr(runtime.SlotDefinition);
+    const sd = slot_def.toPtr(objects.SlotDefinition);
     return sd.name;
 }
 
@@ -560,7 +576,7 @@ pub fn slotDefinitionInitform(heap: *Heap, args: Value) !Value {
     const slot_def = cons.car;
 
     if (!slot_def.isSlotDefinition()) return error.TypeError;
-    const sd = slot_def.toPtr(runtime.SlotDefinition);
+    const sd = slot_def.toPtr(objects.SlotDefinition);
     return sd.initform;
 }
 
@@ -573,7 +589,7 @@ pub fn slotDefinitionInitargs(heap: *Heap, args: Value) !Value {
     const slot_def = cons.car;
 
     if (!slot_def.isSlotDefinition()) return error.TypeError;
-    const sd = slot_def.toPtr(runtime.SlotDefinition);
+    const sd = slot_def.toPtr(objects.SlotDefinition);
     return sd.initargs;
 }
 
@@ -586,7 +602,7 @@ pub fn slotDefinitionReaders(heap: *Heap, args: Value) !Value {
     const slot_def = cons.car;
 
     if (!slot_def.isSlotDefinition()) return error.TypeError;
-    const sd = slot_def.toPtr(runtime.SlotDefinition);
+    const sd = slot_def.toPtr(objects.SlotDefinition);
     return sd.readers;
 }
 
@@ -599,7 +615,7 @@ pub fn slotDefinitionWriters(heap: *Heap, args: Value) !Value {
     const slot_def = cons.car;
 
     if (!slot_def.isSlotDefinition()) return error.TypeError;
-    const sd = slot_def.toPtr(runtime.SlotDefinition);
+    const sd = slot_def.toPtr(objects.SlotDefinition);
     return sd.writers;
 }
 
@@ -612,7 +628,7 @@ pub fn slotDefinitionAllocation(heap: *Heap, args: Value) !Value {
     const slot_def = cons.car;
 
     if (!slot_def.isSlotDefinition()) return error.TypeError;
-    const sd = slot_def.toPtr(runtime.SlotDefinition);
+    const sd = slot_def.toPtr(objects.SlotDefinition);
     return sd.allocation;
 }
 
@@ -625,7 +641,7 @@ pub fn slotDefinitionType(heap: *Heap, args: Value) !Value {
     const slot_def = cons.car;
 
     if (!slot_def.isSlotDefinition()) return error.TypeError;
-    const sd = slot_def.toPtr(runtime.SlotDefinition);
+    const sd = slot_def.toPtr(objects.SlotDefinition);
     return sd.slot_type;
 }
 

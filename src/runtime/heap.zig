@@ -267,7 +267,7 @@ pub const Heap = struct {
         // Create Lisp package registry
         heap.lisp_packages = try heap.allocHashTable(16, .eql);
         // Create Lisp class registry
-        heap.lisp_classes = try heap.allocHashTable(32, .eql);
+        heap.lisp_classes = try heap.allocHashTable(128, .eql);
 
         // Create COMMON-LISP package first so metaclasses are interned in CL
         heap.cl_package = Package.init(allocator, "COMMON-LISP") catch return error.OutOfMemory;

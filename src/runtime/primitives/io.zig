@@ -902,6 +902,16 @@ pub fn fileSize(path: []const u8) !i64 {
     return @intCast(stat.size);
 }
 
+/// Delete file
+pub fn deleteFile(path: []const u8) !void {
+    try fs.deleteFileAbsolute(path);
+}
+
+/// Rename file
+pub fn renameFile(old_path: []const u8, new_path: []const u8) !void {
+    try fs.renameAbsolute(old_path, new_path);
+}
+
 /// Get current time in milliseconds
 pub fn currentTimeMillis() i64 {
     return std.time.milliTimestamp();

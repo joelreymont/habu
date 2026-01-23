@@ -181,14 +181,36 @@ pub const Repl = struct {
         const self: *Repl = @ptrCast(@alignCast(context));
         if (!sym.isSymbol()) return false;
         const s = sym.toPtr(Symbol);
-        const name = s.getName();
-        // Check if it's a macro
-        if (self.macros.contains(name)) return true;
-        // Check if it's a user-defined function
-        if (self.compiler.globals.lookup(name) != null) return true;
+        const local_name = s.getName();
+
+        // Build qualified name using symbol's package
+        var qbuf: [512]u8 = undefined;
+        const qual_name = blk: {
+            const pkg_ptr = s.reserved;
+            if (pkg_ptr != 0) {
+                const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
+                break :blk std.fmt.bufPrint(&qbuf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
+            } else {
+                break :blk local_name;
+            }
+        };
+
+        // Check if it's a macro (try both names)
+        if (self.macros.contains(qual_name) or self.macros.contains(local_name)) {
+            std.debug.print("  -> macro found\n", .{});
+            return true;
+        }
+        // Check if it's a user-defined function (try both names)
+        const in_qual = self.compiler.globals.lookup(qual_name) != null;
+        const in_local = self.compiler.globals.lookup(local_name) != null;
+        std.debug.print("  -> globals: qual={}, local={}\n", .{ in_qual, in_local });
+        if (in_qual or in_local) return true;
         // Check if it's a builtin primitive
         if (self.compiler.builtins) |b| {
-            if (b.isBuiltinFunction(sym)) return true;
+            if (b.isBuiltinFunction(sym)) {
+                std.debug.print("  -> builtin\n", .{});
+                return true;
+            }
         }
         return false;
     }
@@ -432,7 +454,10 @@ pub const Repl = struct {
         }
 
         // Expand macros
-        expr = self.expandMacros(expr) catch return error.CompileError;
+        expr = self.expandMacros(expr) catch |err| {
+            std.debug.print("Macro expansion error: {}\n", .{err});
+            return error.CompileError;
+        };
 
         // Desugar (let* → let, cond → if, etc.)
         expr = try self.desugarExpr(expr);
@@ -1614,9 +1639,7 @@ pub const Repl = struct {
 
             if (self.macros.get(name)) |macro_closure| {
                 // Expand macro: call the closure with the args
-                const expansion = self.callMacro(macro_closure, cons.cdr) catch |err| {
-                    return err;
-                };
+                const expansion = try self.callMacro(macro_closure, cons.cdr);
                 // Recursively expand the result
                 return self.expandMacrosWithDepth(expansion, depth + 1);
             }
@@ -1733,7 +1756,9 @@ pub const Repl = struct {
         macro_vm.setChunkPool(chunk_ptrs.items);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        return macro_vm.run(chunk_ptr) catch return error.RuntimeError;
+        return macro_vm.run(chunk_ptr) catch {
+            return error.RuntimeError;
+        };
     }
 
     /// Handle package forms (defpackage/in-package) - execute them immediately

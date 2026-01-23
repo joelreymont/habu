@@ -84,10 +84,16 @@ pub const Desugarer = struct {
         const head = cons.car;
         const tail = cons.cdr;
 
-        // Check if head is a sugar form
+        // Check if head is a symbol
         if (head.isSymbol()) {
             const name = head.toPtr(Symbol).getName();
 
+            // Skip quote forms - don't desugar inside quotes
+            if (std.mem.eql(u8, name, "QUOTE") or std.mem.eql(u8, name, "QUASIQUOTE")) {
+                return expr;
+            }
+
+            // Check if head is a sugar form
             if (sugar_forms.get(name)) |form| {
                 return switch (form) {
                     .@"let*" => self.desugarLetStar(tail),

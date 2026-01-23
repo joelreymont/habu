@@ -1626,6 +1626,72 @@ pub const Vm = struct {
                 const result = try primitives.className(self.heap, args);
                 try self.push(result);
             },
+            .class_direct_superclasses => {
+                const class_val = try self.pop();
+                const args = try self.heap.allocCons(class_val, Value.nil);
+                const result = try primitives.classDirectSuperclasses(self.heap, args);
+                try self.push(result);
+            },
+            .class_precedence_list => {
+                const class_val = try self.pop();
+                const args = try self.heap.allocCons(class_val, Value.nil);
+                const result = try primitives.classPrecedenceList(self.heap, args);
+                try self.push(result);
+            },
+            .class_direct_slots => {
+                const class_val = try self.pop();
+                const args = try self.heap.allocCons(class_val, Value.nil);
+                const result = try primitives.classDirectSlots(self.heap, args);
+                try self.push(result);
+            },
+            .class_slots => {
+                const class_val = try self.pop();
+                const args = try self.heap.allocCons(class_val, Value.nil);
+                const result = try primitives.classSlots(self.heap, args);
+                try self.push(result);
+            },
+            .slot_definition_name => {
+                const slot_def = try self.pop();
+                const args = try self.heap.allocCons(slot_def, Value.nil);
+                const result = try primitives.slotDefinitionName(self.heap, args);
+                try self.push(result);
+            },
+            .slot_definition_initform => {
+                const slot_def = try self.pop();
+                const args = try self.heap.allocCons(slot_def, Value.nil);
+                const result = try primitives.slotDefinitionInitform(self.heap, args);
+                try self.push(result);
+            },
+            .slot_definition_initargs => {
+                const slot_def = try self.pop();
+                const args = try self.heap.allocCons(slot_def, Value.nil);
+                const result = try primitives.slotDefinitionInitargs(self.heap, args);
+                try self.push(result);
+            },
+            .slot_definition_readers => {
+                const slot_def = try self.pop();
+                const args = try self.heap.allocCons(slot_def, Value.nil);
+                const result = try primitives.slotDefinitionReaders(self.heap, args);
+                try self.push(result);
+            },
+            .slot_definition_writers => {
+                const slot_def = try self.pop();
+                const args = try self.heap.allocCons(slot_def, Value.nil);
+                const result = try primitives.slotDefinitionWriters(self.heap, args);
+                try self.push(result);
+            },
+            .slot_definition_allocation => {
+                const slot_def = try self.pop();
+                const args = try self.heap.allocCons(slot_def, Value.nil);
+                const result = try primitives.slotDefinitionAllocation(self.heap, args);
+                try self.push(result);
+            },
+            .slot_definition_type => {
+                const slot_def = try self.pop();
+                const args = try self.heap.allocCons(slot_def, Value.nil);
+                const result = try primitives.slotDefinitionType(self.heap, args);
+                try self.push(result);
+            },
             .make_generic_function => {
                 const lambda_list = try self.pop();
                 const name = try self.pop();
@@ -1650,6 +1716,13 @@ pub const Vm = struct {
                 gf.dispatcher = dispatcher;
                 try self.push(gf_val);
             },
+            .add_method => {
+                const method_val = try self.pop();
+                const gf_val = try self.pop();
+                const args = try self.heap.allocCons(gf_val, try self.heap.allocCons(method_val, Value.nil));
+                const result = try primitives.addMethod(self.heap, args);
+                try self.push(result);
+            },
             .make_unbound => {
                 try self.push(Value.unbound);
             },
@@ -1658,6 +1731,13 @@ pub const Vm = struct {
                 const obj = try self.pop();
                 const args = try self.heap.allocCons(obj, try self.heap.allocCons(slot_name_val, Value.nil));
                 const result = try primitives.slotBoundp(self.heap, args);
+                try self.push(result);
+            },
+            .slot_makunbound => {
+                const slot_name_val = try self.pop();
+                const obj = try self.pop();
+                const args = try self.heap.allocCons(obj, try self.heap.allocCons(slot_name_val, Value.nil));
+                const result = try primitives.slotMakunbound(self.heap, args);
                 try self.push(result);
             },
 
@@ -2046,6 +2126,23 @@ pub const Vm = struct {
                 if (!path_val.isString()) return error.TypeMismatch;
                 const path_str = path_val.toPtr(String);
                 try io.writeFile(path_str.bytes(), content_val);
+                try self.push(Value.nil);
+            },
+            .delete_file => {
+                const path_val = try self.pop();
+                if (!path_val.isString()) return error.TypeMismatch;
+                const path_str = path_val.toPtr(String);
+                try io.deleteFile(path_str.bytes());
+                try self.push(Value.nil);
+            },
+            .rename_file => {
+                const new_path_val = try self.pop();
+                const old_path_val = try self.pop();
+                if (!old_path_val.isString()) return error.TypeMismatch;
+                if (!new_path_val.isString()) return error.TypeMismatch;
+                const old_path_str = old_path_val.toPtr(String);
+                const new_path_str = new_path_val.toPtr(String);
+                try io.renameFile(old_path_str.bytes(), new_path_str.bytes());
                 try self.push(Value.nil);
             },
             .make_string => {
@@ -3880,10 +3977,21 @@ pub const Vm = struct {
                 const val = try self.pop();
                 if (!val.isSymbol()) return error.TypeMismatch;
                 const sym = val.toPtr(Symbol);
-                const name = sym.getName();
-                // Check if symbol exists in global environment
+                const local_name = sym.getName();
+                // Build qualified name using symbol's package
+                var qual_buf: [512]u8 = undefined;
+                const qual_name = blk: {
+                    const pkg_ptr = sym.reserved;
+                    if (pkg_ptr != 0) {
+                        const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
+                        break :blk std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
+                    } else {
+                        break :blk local_name;
+                    }
+                };
+                // Check if symbol exists in global environment (qualified or local)
                 const is_bound = if (self.global_env) |env|
-                    env.lookup(name) != null
+                    (env.lookup(qual_name) orelse env.lookup(local_name)) != null
                 else
                     false;
                 try self.push(if (is_bound) Value.t else Value.nil);
@@ -3896,9 +4004,21 @@ pub const Vm = struct {
                 const is_fbound = if (self.fboundp_callback) |cb|
                     cb(val, self.fboundp_context.?)
                 else if (self.global_env) |env| blk: {
-                    // Fallback: check global env
                     const sym = val.toPtr(Symbol);
-                    break :blk env.lookup(sym.getName()) != null;
+                    const local_name = sym.getName();
+                    // Build qualified name using symbol's package
+                    var qbuf: [512]u8 = undefined;
+                    const qual_name = inner: {
+                        const pkg_ptr = sym.reserved;
+                        if (pkg_ptr != 0) {
+                            const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
+                            break :inner std.fmt.bufPrint(&qbuf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
+                        } else {
+                            break :inner local_name;
+                        }
+                    };
+                    // Check qualified name first, then local name
+                    break :blk (env.lookup(qual_name) orelse env.lookup(local_name)) != null;
                 } else false;
                 try self.push(if (is_fbound) Value.t else Value.nil);
             },
@@ -3928,13 +4048,10 @@ pub const Vm = struct {
                     // Look up symbol in global environment
                     if (self.global_env) |env| {
                         // Try qualified name first, then local name
-                        std.debug.print("VM lookup: qual_name='{s}', local_name='{s}'\n", .{ qual_name, local_name });
                         const idx = env.lookup(qual_name) orelse env.lookup(local_name);
                         if (idx) |i| {
-                            std.debug.print("VM lookup: found at idx {}\n", .{i});
                             try self.push(self.globals[i]);
                         } else {
-                            std.debug.print("VM lookup: NOT FOUND\n", .{});
                             return error.UnboundSymbol;
                         }
                     } else {

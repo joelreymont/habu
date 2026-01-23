@@ -6,13 +6,35 @@
       nil
       (cons (funcall f (car lst)) (map f (cdr lst)))))
 
-(defun mapcar (f lst) (map f lst))
+(defun mapcar (f &rest lists)
+  (cond
+    ((null lists) nil)
+    ((null (cdr lists)) (map f (car lists)))
+    ((null (cddr lists)) (mapcar2 f (car lists) (cadr lists)))
+    (t (error "mapcar: >2 lists not yet supported"))))
 
 (defun mapcar2 (f lst1 lst2)
   (if (or (null lst1) (null lst2))
       nil
     (cons (funcall f (car lst1) (car lst2))
           (mapcar2 f (cdr lst1) (cdr lst2)))))
+
+; case - dispatch on value (must be early, uses mapcar)
+; Note: In Habu, 't' at read time becomes the value t (= fixnum 1), not a symbol.
+; So we check (eq keys t) not (eq keys 't)
+(defmacro case (keyform &rest clauses)
+  (let* ((key (gensym))
+         (cond-clauses (mapcar
+                        (lambda (clause)
+                          (let ((keys (car clause))
+                                (body (cdr clause)))
+                            (if (or (eq keys t) (eq keys 'otherwise))
+                                (cons t body)
+                                `((member ,key ',(if (consp keys) keys (list keys)))
+                                  (progn ,@body)))))
+                        clauses)))
+    `(let ((,key ,keyform))
+       (cond ,@cond-clauses))))
 
 ; quasiquote/backquote - must be first (no dependencies)
 (defun qq-expand (x)
@@ -1008,23 +1030,7 @@
 ; cond - multi-way conditional
 ; Already have this as a special form, but define macro version for completeness
 ; (Note: cond is a special form in Habu, so this is just documentation)
-
-; case - dispatch on value (simple version)
-; Note: In Habu, 't' at read time becomes the value t (= fixnum 1), not a symbol.
-; So we check (eq keys t) not (eq keys 't)
-(defmacro case (keyform &rest clauses)
-  (let* ((key (gensym))
-         (cond-clauses (mapcar
-                        (lambda (clause)
-                          (let ((keys (car clause))
-                                (body (cdr clause)))
-                            (if (or (eq keys t) (eq keys 'otherwise))
-                                (cons t body)
-                                `((member ,key ',(if (consp keys) keys (list keys)))
-                                  (progn ,@body)))))
-                        clauses)))
-    `(let ((,key ,keyform))
-       (cond ,@cond-clauses))))
+; case macro moved to line 25 (early in file, after mapcar)
 
 ; prog1 - evaluate forms, return first value
 ; prog2 - evaluate forms, return second value
@@ -3186,36 +3192,36 @@
     ; Parse modifiers using while loop
     (while (and rest (member (car rest) '(from downfrom to upto below downto above by)))
       (case (car rest)
-        (from
+        ((from)
          (setq from-val (cadr rest))
          (setq rest (cddr rest)))
-        (downfrom
+        ((downfrom)
          (setq from-val (cadr rest))
          (setq downp t)
          (setq rest (cddr rest)))
-        (to
+        ((to)
          (setq to-val (cadr rest))
          (setq to-op (if downp '>= '<=))
          (setq rest (cddr rest)))
-        (upto
+        ((upto)
          (setq to-val (cadr rest))
          (setq to-op '<=)
          (setq rest (cddr rest)))
-        (below
+        ((below)
          (setq to-val (cadr rest))
          (setq to-op '<)
          (setq rest (cddr rest)))
-        (downto
+        ((downto)
          (setq to-val (cadr rest))
          (setq to-op '>=)
          (setq downp t)
          (setq rest (cddr rest)))
-        (above
+        ((above)
          (setq to-val (cadr rest))
          (setq to-op '>)
          (setq downp t)
          (setq rest (cddr rest)))
-        (by
+        ((by)
          (setq by-val (cadr rest))
          (setq rest (cddr rest)))))
     ; Generate: (var init step-form end-test remaining-clauses)
@@ -3295,13 +3301,23 @@
       ; Build loop body using nested binary appends
       (let ((end-test-forms (when end-test
                               (list (list 'when end-test (list 'return-from block-name result-expr)))))
-            (main-body (nreverse body-forms))
+            (main-body body-forms)  ; Already in correct order from DO clause
             (collect-body (mapcar (lambda (expr)
-                                    (list 'setq collect-var
-                                          (list 'nconc collect-var (list 'list expr))))
+                                    ; Handle conditional forms: (when test val) or (unless test val)
+                                    (if (and (consp expr) (member (car expr) '(when unless)))
+                                        ; Wrap setq inside conditional
+                                        (list (car expr) (cadr expr)
+                                              (list 'setq collect-var
+                                                    (list 'nconc collect-var (list 'list (caddr expr)))))
+                                        ; Normal form
+                                        (list 'setq collect-var
+                                              (list 'nconc collect-var (list 'list expr)))))
                                   (nreverse collect-forms)))
             (sum-body (mapcar (lambda (expr)
-                                (list 'setq sum-var (list '+ sum-var expr)))
+                                (if (and (consp expr) (member (car expr) '(when unless)))
+                                    (list (car expr) (cadr expr)
+                                          (list 'setq sum-var (list '+ sum-var (caddr expr))))
+                                    (list 'setq sum-var (list '+ sum-var expr))))
                               (nreverse sum-forms)))
             (count-body (mapcar (lambda (expr)
                                   (list 'when expr
@@ -3309,29 +3325,53 @@
                                 (nreverse count-forms)))
             ; Append accumulates copies of lists
             (append-body (mapcar (lambda (expr)
-                                   (list 'setq append-var
-                                         (list 'append append-var (list 'copy-list expr))))
+                                   (if (and (consp expr) (member (car expr) '(when unless)))
+                                       (list (car expr) (cadr expr)
+                                             (list 'setq append-var
+                                                   (list 'append append-var (list 'copy-list (caddr expr)))))
+                                       (list 'setq append-var
+                                             (list 'append append-var (list 'copy-list expr)))))
                                  (nreverse append-forms)))
             ; Nconc destructively concatenates
             (nconc-body (mapcar (lambda (expr)
-                                  (list 'setq nconc-var
-                                        (list 'nconc nconc-var expr)))
+                                  (if (and (consp expr) (member (car expr) '(when unless)))
+                                      (list (car expr) (cadr expr)
+                                            (list 'setq nconc-var
+                                                  (list 'nconc nconc-var (caddr expr))))
+                                      (list 'setq nconc-var
+                                            (list 'nconc nconc-var expr))))
                                 (nreverse nconc-forms)))
             ; Maximize tracks maximum value
             (max-body (mapcar (lambda (expr)
                                 (let ((val-var (gensym "val")))
-                                  (list 'let (list (list val-var expr))
-                                        (list 'when (list 'or (list 'null max-var)
-                                                         (list '> val-var max-var))
-                                              (list 'setq max-var val-var)))))
+                                  (if (and (consp expr) (member (car expr) '(when unless)))
+                                      ; Conditional: wrap the let in the conditional
+                                      (list (car expr) (cadr expr)
+                                            (list 'let (list (list val-var (caddr expr)))
+                                                  (list 'when (list 'or (list 'null max-var)
+                                                                   (list '> val-var max-var))
+                                                        (list 'setq max-var val-var))))
+                                      ; Normal form
+                                      (list 'let (list (list val-var expr))
+                                            (list 'when (list 'or (list 'null max-var)
+                                                               (list '> val-var max-var))
+                                                  (list 'setq max-var val-var))))))
                               (nreverse max-forms)))
             ; Minimize tracks minimum value
             (min-body (mapcar (lambda (expr)
                                 (let ((val-var (gensym "val")))
-                                  (list 'let (list (list val-var expr))
-                                        (list 'when (list 'or (list 'null min-var)
-                                                         (list '< val-var min-var))
-                                              (list 'setq min-var val-var)))))
+                                  (if (and (consp expr) (member (car expr) '(when unless)))
+                                      ; Conditional: wrap the let in the conditional
+                                      (list (car expr) (cadr expr)
+                                            (list 'let (list (list val-var (caddr expr)))
+                                                  (list 'when (list 'or (list 'null min-var)
+                                                                   (list '< val-var min-var))
+                                                        (list 'setq min-var val-var))))
+                                      ; Normal form
+                                      (list 'let (list (list val-var expr))
+                                            (list 'when (list 'or (list 'null min-var)
+                                                               (list '< val-var min-var))
+                                                  (list 'setq min-var val-var))))))
                               (nreverse min-forms)))
             ; Always returns NIL immediately if test fails
             (always-body (mapcar (lambda (expr)
@@ -3379,7 +3419,7 @@
                               loop-code
                               (cons 'progn (append finally-forms
                                                    (list (list 'return-from block-name result-expr)))))
-                      (list 'progn loop-code (list 'return-from block-name result-expr))))))))))
+                      (list 'progn loop-code (list 'return-from block-name result-expr)))))))))
 
 
 ; loop-finish - exit loop normally, running finally clause
@@ -3434,7 +3474,7 @@
                   (setq rest (car (cddddr parsed)))))
 
                ; FOR var IN list
-               (in
+               ((in)
                 (let ((list-var (gensym "list")))
                   (push (list list-var (cadddr rest)) vars)
                   ; Check if var is a list (destructuring) or a symbol
@@ -3457,7 +3497,7 @@
                       (setq rest (cddddr rest))))))
 
                ; FOR var ON list [BY step-fn]
-               (on
+               ((on)
                 (let ((list-expr (cadddr rest))
                       (by-rest (cddddr rest))
                       (step-fn 'cdr))
@@ -3478,10 +3518,10 @@
                       (push (list var list-expr) vars)
                       (push (list 'setq var (list step-fn var)) step-forms)
                       (push (list 'null var) end-tests)
-                      (setq rest by-rest))))
+                      (setq rest by-rest)))))
 
                ; FOR var = expr [THEN step-expr]
-               (=
+               ((=)
                 (let ((init-expr (cadddr rest))
                       (then-rest (cddddr rest)))
                   (if (and (consp then-rest) (eq (car then-rest) 'then))
@@ -3495,7 +3535,7 @@
                       (setq rest then-rest)))))
 
                ; FOR var ACROSS vector
-               (across
+               ((across)
                 (let ((vec-var (gensym "vec"))
                       (idx-var (gensym "idx"))
                       (len-var (gensym "len")))
@@ -3518,7 +3558,7 @@
                   (setq rest (cddddr rest))))
 
                ; FOR var BEING THE/EACH HASH-KEYS/HASH-VALUES/SYMBOLS OF hash/package [USING (...)]
-               (being
+               ((being)
                 (let ((the-rest (cdddr rest)))
                   ; Skip 'the' or 'each' if present
                   (when (member (car the-rest) '(the each))
@@ -3625,7 +3665,7 @@
                (t (error "Unknown FOR clause")))))
 
           ; WITH var = expr
-          (with
+          ((with)
            (let ((var (cadr rest)))
              (if (and (cdddr rest) (eq (caddr rest) '=))
                  (progn
@@ -3636,7 +3676,7 @@
                  (setq rest (cddr rest))))))
 
           ; REPEAT n
-          (repeat
+          ((repeat)
            (let ((cnt-var (gensym "count")))
              (push (list cnt-var (cadr rest)) vars)
              (push (list 'setq cnt-var (list '- cnt-var 1)) step-forms)
@@ -3644,12 +3684,12 @@
              (setq rest (cddr rest))))
 
           ; WHILE test
-          (while
+          ((while)
            (push (list 'not (cadr rest)) end-tests)
            (setq rest (cddr rest)))
 
           ; UNTIL test
-          (until
+          ((until)
            (push (cadr rest) end-tests)
            (setq rest (cddr rest)))
 
@@ -3687,26 +3727,35 @@
                (setq then-rest (cdr then-rest)))
              ; Generate conditional forms
              (case (car then-action)
-               (do
+               ((do)
                 (push (list 'when test (cadr then-action)) body-forms)
                 (when else-action
                   (push (list 'unless test (cadr else-action)) body-forms)))
-               (collect
+               ((collect)
+                ; Ensure collect-var exists
+                (unless collect-var
+                  (setq collect-var (gensym "collect")))
                 (push (list 'when test (cadr then-action)) collect-forms)
                 (when else-action
                   (push (list 'unless test (cadr else-action)) collect-forms)))
-               (sum
+               ((sum)
+                ; Ensure sum-var exists
+                (unless sum-var
+                  (setq sum-var (gensym "sum")))
                 (push (list 'when test (cadr then-action)) sum-forms)
                 (when else-action
                   (push (list 'unless test (cadr else-action)) sum-forms)))
-               (count
+               ((count)
+                ; Ensure count-var exists
+                (unless count-var
+                  (setq count-var (gensym "count")))
                 (push (list 'when test (cadr then-action)) count-forms)
                 (when else-action
                   (push (list 'unless test (cadr else-action)) count-forms))))
              (setq rest then-rest)))
 
           ; UNLESS test clause [END]
-          (unless
+          ((unless)
            (let ((test (cadr rest))
                  (then-rest (cddr rest))
                  (then-action nil))
@@ -3721,13 +3770,22 @@
                (setq then-rest (cdr then-rest)))
              ; Generate conditional forms
              (case (car then-action)
-               (do
+               ((do)
                 (push (list 'unless test (cadr then-action)) body-forms))
-               (collect
+               ((collect)
+                ; Ensure collect-var exists
+                (unless collect-var
+                  (setq collect-var (gensym "collect")))
                 (push (list 'unless test (cadr then-action)) collect-forms))
-               (sum
+               ((sum)
+                ; Ensure sum-var exists
+                (unless sum-var
+                  (setq sum-var (gensym "sum")))
                 (push (list 'unless test (cadr then-action)) sum-forms))
-               (count
+               ((count)
+                ; Ensure count-var exists
+                (unless count-var
+                  (setq count-var (gensym "count")))
                 (push (list 'unless test (cadr then-action)) count-forms)))
              (setq rest then-rest)))
 
@@ -3768,7 +3826,7 @@
              (setq rest into-rest)))
 
           ; FINALLY body...
-          (finally
+          ((finally)
            (setq rest (cdr rest))
            (while (and rest (not (loop-keyword-p (car rest))))
              (push (car rest) finally-forms)
@@ -3776,7 +3834,7 @@
            (setq finally-forms (nreverse finally-forms)))
 
           ; INITIALLY body...
-          (initially
+          ((initially)
            (setq rest (cdr rest))
            (while (and rest (not (loop-keyword-p (car rest))))
              (push (car rest) initially-forms)
@@ -3784,12 +3842,12 @@
            (setq initially-forms (nreverse initially-forms)))
 
           ; RETURN expr
-          (return
+          ((return)
            (push (list 'return-from block-name (cadr rest)) body-forms)
            (setq rest (cddr rest)))
 
           ; NAMED name - set block name for return-from
-          (named
+          ((named)
            (setq block-name (cadr rest))
            (setq rest (cddr rest)))
 
@@ -3842,21 +3900,21 @@
              (setq rest into-rest)))
 
           ; ALWAYS test - loop terminates with NIL if test fails
-          (always
+          ((always)
            (push (cadr rest) always-forms)
            (setq rest (cddr rest)))
 
           ; NEVER test - loop terminates with NIL if test succeeds
-          (never
+          ((never)
            (push (cadr rest) never-forms)
            (setq rest (cddr rest)))
 
           ; THEREIS test - loop terminates with value if non-NIL
-          (thereis
+          ((thereis)
            (push (cadr rest) thereis-forms)
            (setq rest (cddr rest)))
 
-          (t (error (format nil "Unknown loop keyword: ~a" kw)))))))
+          (t (error (format nil "Unknown loop keyword: ~a" kw))))))
 
     ; Generate the loop code
     (loop-generate-code vars step-forms end-tests body-forms
@@ -4419,6 +4477,17 @@
     ;; In full implementation: copy compatible slot values, call protocol hook
     ;; For now, return new instance (mutation would require internal VM support)
     new-instance))
+
+;; slot-exists-p: check if a slot exists in an object's class
+(defun slot-exists-p (object slot-name)
+  "Return T if OBJECT has a slot named SLOT-NAME, NIL otherwise"
+  (let ((class (class-of object)))
+    (if (null class)
+        nil
+        (let ((slots (class-slots class)))
+          (dolist (slot slots nil)
+            (when (eq (slot-definition-name slot) slot-name)
+              (return t)))))))
 
 ;; %make-condition - primitive for simple conditions
 ;; For CLOS-based conditions, use make-instance

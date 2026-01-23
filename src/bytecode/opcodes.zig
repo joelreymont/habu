@@ -379,6 +379,28 @@ pub const Op = enum(u16) {
     /// Return the name of a class
     /// ( class -- name )
     class_name = 0x102,
+    /// Return direct superclasses list
+    /// ( class -- list )
+    class_direct_superclasses = 0x103,
+    /// Return class precedence list
+    /// ( class -- list )
+    class_precedence_list = 0x104,
+    /// Return direct slots list
+    /// ( class -- list )
+    class_direct_slots = 0x105,
+    /// Return all slots list (use 0x11D to avoid collision with write=0x106)
+    /// ( class -- list )
+    class_slots = 0x11D,
+
+    /// Slot definition accessors
+    /// ( slot-def -- value )
+    slot_definition_name = 0x11E,
+    slot_definition_initform = 0x11F,
+    slot_definition_initargs = 0x120,
+    slot_definition_readers = 0x121,
+    slot_definition_writers = 0x122,
+    slot_definition_allocation = 0x123,
+    slot_definition_type = 0x124,
 
     /// Allocate GenericFunction object
     /// ( name lambda-list -- gf )
@@ -396,9 +418,17 @@ pub const Op = enum(u16) {
     /// ( gf dispatcher -- gf )
     set_gf_dispatcher = 0xB9,
 
+    /// Add method to generic function
+    /// ( gf method -- gf )
+    add_method = 0x125,
+
     /// Check if CLOS slot is bound
     /// ( obj slot-name-sym -- t/nil )
     slot_boundp = 0x95,
+
+    /// Make CLOS slot unbound
+    /// ( obj slot-name-sym -- obj )
+    slot_makunbound = 0x11B,
 
     /// Create box (mutable cell for closure capture)
     /// ( val -- box )
@@ -1256,6 +1286,14 @@ pub const Op = enum(u16) {
     /// ( seconds -- nil )
     sleep = 0x118,
 
+    /// Delete file
+    /// ( path-string -- nil )
+    delete_file = 0x119,
+
+    /// Rename file
+    /// ( old-path new-path -- nil )
+    rename_file = 0x11A,
+
     // ========================================================================
     // Special
     // ========================================================================
@@ -1371,11 +1409,24 @@ pub const Op = enum(u16) {
             .class_of,
             .find_class,
             .class_name,
+            .class_direct_superclasses,
+            .class_precedence_list,
+            .class_direct_slots,
+            .class_slots,
+            .slot_definition_name,
+            .slot_definition_initform,
+            .slot_definition_initargs,
+            .slot_definition_readers,
+            .slot_definition_writers,
+            .slot_definition_allocation,
+            .slot_definition_type,
             .make_generic_function,
             .make_method,
             .make_unbound,
             .set_gf_dispatcher,
+            .add_method,
             .slot_boundp,
+            .slot_makunbound,
             .make_box,
             .box_ref,
             .box_set,
@@ -1502,6 +1553,8 @@ pub const Op = enum(u16) {
             .integer_length,
             .read_file,
             .write_file,
+            .delete_file,
+            .rename_file,
             .make_string,
             .list_to_string,
             .string_upcase,

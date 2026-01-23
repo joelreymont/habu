@@ -527,6 +527,8 @@ pub const Ir = union(enum) {
     integer_length: UnaryOp, // Bits needed to represent
     read_file: UnaryOp, // Read file to string
     write_file: BinaryOp, // Write string to file
+    delete_file: UnaryOp, // Delete file
+    rename_file: BinaryOp, // Rename file (old, new)
     make_string: BinaryOp, // Create string (length, char)
     list_to_string: UnaryOp, // List of chars to string
     string_upcase: UnaryOp, // Convert string to uppercase
@@ -617,10 +619,24 @@ pub const Ir = union(enum) {
     class_of: UnaryOp, // (class-of obj)
     find_class: UnaryOp, // (find-class name)
     class_name: UnaryOp, // (class-name class)
+    class_direct_superclasses: UnaryOp, // (class-direct-superclasses class)
+    class_precedence_list: UnaryOp, // (class-precedence-list class)
+    class_direct_slots: UnaryOp, // (class-direct-slots class)
+    class_slots: UnaryOp, // (class-slots class)
+    slot_definition_name: UnaryOp, // (slot-definition-name slot-def)
+    slot_definition_initform: UnaryOp, // (slot-definition-initform slot-def)
+    slot_definition_initargs: UnaryOp, // (slot-definition-initargs slot-def)
+    slot_definition_readers: UnaryOp, // (slot-definition-readers slot-def)
+    slot_definition_writers: UnaryOp, // (slot-definition-writers slot-def)
+    slot_definition_allocation: UnaryOp, // (slot-definition-allocation slot-def)
+    slot_definition_type: UnaryOp, // (slot-definition-type slot-def)
     make_generic_function: BinaryOp, // (%make-generic-function name lambda-list)
     make_unbound: void, // (%make-unbound)
     make_method: QuaternaryOp, // (%make-method qualifiers specializers lambda-list function)
     set_gf_dispatcher: BinaryOp, // (%set-gf-dispatcher gf dispatcher)
+    add_method: BinaryOp, // (%add-method gf method)
+    slot_boundp: BinaryOp, // (slot-boundp obj 'slot-name)
+    slot_makunbound: BinaryOp, // (slot-makunbound obj 'slot-name)
 
     // ========================================================================
     // Primitives - Box operations (mutable cells)
@@ -1771,6 +1787,18 @@ pub const IrBuilder = struct {
         return node;
     }
 
+    pub fn deleteFile(self: IrBuilder, path: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .delete_file = .{ .operand = path } };
+        return node;
+    }
+
+    pub fn renameFile(self: IrBuilder, old_path: *const Ir, new_path: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .rename_file = .{ .left = old_path, .right = new_path } };
+        return node;
+    }
+
     pub fn makeString(self: IrBuilder, len: *const Ir, char: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .make_string = .{ .left = len, .right = char } };
@@ -2053,6 +2081,24 @@ pub const IrBuilder = struct {
     pub fn setGfDispatcher(self: IrBuilder, gf: *const Ir, dispatcher: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .set_gf_dispatcher = .{ .left = gf, .right = dispatcher } };
+        return node;
+    }
+
+    pub fn addMethod(self: IrBuilder, gf: *const Ir, method: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .add_method = .{ .left = gf, .right = method } };
+        return node;
+    }
+
+    pub fn slotBoundp(self: IrBuilder, obj: *const Ir, slot_name: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .slot_boundp = .{ .left = obj, .right = slot_name } };
+        return node;
+    }
+
+    pub fn slotMakunbound(self: IrBuilder, obj: *const Ir, slot_name: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .slot_makunbound = .{ .left = obj, .right = slot_name } };
         return node;
     }
 

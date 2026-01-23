@@ -702,7 +702,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | file-string-length | ✗ | - | |
 | finish-output | ✓ | compile.zig:292 | Finish output |
 | force-output | ✓ | compile.zig:293 | Force output |
-| fresh-line | ✗ | - | |
+| fresh-line | ✓ | stdlib.habu:2821 | Output newline if needed |
 | get-output-stream-string | ✓ | compile.zig:393 | Get string |
 | input-stream-p | ✓ | compile.zig:389 | Input pred |
 | interactive-stream-p | ✗ | - | |
@@ -878,36 +878,36 @@ Note: 960 symbols documented, 18 symbols pending audit
 ## Functions - CLOS (25)
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
-| add-method | ✗ | - | |
+| add-method | ✓ | opcodes.zig:0x125 | Add method to GF |
 | allocate-instance | ✗ | - | |
-| call-next-method | ✗ | - | Need for :around |
-| change-class | ✗ | - | |
-| class-name | ✗ | - | |
-| class-of | ✗ | - | |
+| call-next-method | ✓ | compile.zig:7521 | Call next method |
+| change-class | ✓ | stdlib.habu | Change object class |
+| class-name | ✓ | compile.zig:2384 | Get class name |
+| class-of | ✓ | compile.zig:7202 | Get class of object |
 | compute-applicable-methods | ✗ | - | |
 | ensure-generic-function | ✗ | - | |
-| find-class | ✗ | - | |
+| find-class | ✓ | compile.zig:2385 | Find class by name |
 | find-method | ✗ | - | |
 | function-keywords | ✗ | - | |
-| initialize-instance | ✗ | - | |
+| initialize-instance | ✓ | stdlib.habu | Initialize slots |
 | make-instance | ✓ | compile.zig:130 | Create instance |
 | make-instances-obsolete | ✗ | - | |
 | make-load-form | ✗ | - | |
 | make-load-form-saving-slots | ✗ | - | |
-| method-qualifiers | ✗ | - | |
-| next-method-p | ✗ | - | |
+| method-qualifiers | ✓ | compile.zig:8013 | Get method qualifiers |
+| next-method-p | ✓ | compile.zig:7599 | Check for next method |
 | no-applicable-method | ✗ | - | |
 | no-next-method | ✗ | - | |
-| reinitialize-instance | ✗ | - | |
+| reinitialize-instance | ✓ | stdlib.habu | Reinitialize slots |
 | remove-method | ✗ | - | |
 | shared-initialize | ✗ | - | |
-| slot-boundp | ✗ | - | |
-| slot-exists-p | ✗ | - | |
-| slot-makunbound | ✗ | - | |
+| slot-boundp | ✓ | compile.zig:7115 | Check slot bound |
+| slot-exists-p | ✓ | stdlib.habu | Check slot exists |
+| slot-makunbound | ✓ | opcodes.zig | Unbind slot |
 | slot-missing | ✗ | - | |
 | slot-unbound | ✗ | - | |
 | slot-value | ✓ | compile.zig:131 | Access slot |
-| update-instance-for-different-class | ✗ | - | |
+| update-instance-for-different-class | ✓ | stdlib.habu | Update after class change |
 | update-instance-for-redefined-class | ✗ | - | |
 
 ## Functions - Conditions (25)

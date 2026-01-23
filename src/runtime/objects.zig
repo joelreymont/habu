@@ -237,8 +237,9 @@ pub const String = extern struct {
 };
 
 /// String32: UTF-32 string for full Unicode support
-/// Size: 16 bytes header + data
+/// Size: 24 bytes header + data
 pub const String32 = extern struct {
+    kind: BoxedKind = .string32, // Must be first - discriminator
     /// Length in codepoints
     length: u32,
     _pad: u32 = 0,

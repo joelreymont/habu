@@ -691,6 +691,8 @@ pub const Emitter = struct {
             .integer_length => |op| try self.emitUnaryOp(op.operand, .integer_length),
             .read_file => |op| try self.emitUnaryOp(op.operand, .read_file),
             .write_file => |op| try self.emitBinaryOp(op, .write_file),
+            .delete_file => |op| try self.emitUnaryOp(op.operand, .delete_file),
+            .rename_file => |op| try self.emitBinaryOp(op, .rename_file),
             .make_string => |op| try self.emitBinaryOp(op, .make_string),
             .list_to_string => |op| try self.emitUnaryOp(op.operand, .list_to_string),
             .string_upcase => |op| try self.emitUnaryOp(op.operand, .string_upcase),
@@ -752,10 +754,24 @@ pub const Emitter = struct {
             .class_of => |op| try self.emitUnaryOp(op.operand, .class_of),
             .find_class => |op| try self.emitUnaryOp(op.operand, .find_class),
             .class_name => |op| try self.emitUnaryOp(op.operand, .class_name),
+            .class_direct_superclasses => |op| try self.emitUnaryOp(op.operand, .class_direct_superclasses),
+            .class_precedence_list => |op| try self.emitUnaryOp(op.operand, .class_precedence_list),
+            .class_direct_slots => |op| try self.emitUnaryOp(op.operand, .class_direct_slots),
+            .class_slots => |op| try self.emitUnaryOp(op.operand, .class_slots),
+            .slot_definition_name => |op| try self.emitUnaryOp(op.operand, .slot_definition_name),
+            .slot_definition_initform => |op| try self.emitUnaryOp(op.operand, .slot_definition_initform),
+            .slot_definition_initargs => |op| try self.emitUnaryOp(op.operand, .slot_definition_initargs),
+            .slot_definition_readers => |op| try self.emitUnaryOp(op.operand, .slot_definition_readers),
+            .slot_definition_writers => |op| try self.emitUnaryOp(op.operand, .slot_definition_writers),
+            .slot_definition_allocation => |op| try self.emitUnaryOp(op.operand, .slot_definition_allocation),
+            .slot_definition_type => |op| try self.emitUnaryOp(op.operand, .slot_definition_type),
             .make_generic_function => |op| try self.emitBinaryOp(op, .make_generic_function),
             .make_unbound => try self.emitOp(.make_unbound),
             .make_method => |op| try self.emitQuaternaryOp(op, .make_method),
             .set_gf_dispatcher => |op| try self.emitBinaryOp(op, .set_gf_dispatcher),
+            .add_method => |op| try self.emitBinaryOp(op, .add_method),
+            .slot_boundp => |op| try self.emitBinaryOp(op, .slot_boundp),
+            .slot_makunbound => |op| try self.emitBinaryOp(op, .slot_makunbound),
 
             // Box operations (mutable cells)
             .make_box => |op| try self.emitUnaryOp(op.operand, .make_box),
@@ -1419,7 +1435,10 @@ pub const Emitter = struct {
         // Emit the return value
         try self.emit(r.value);
 
-        // First check if block is in current chunk - if so, use compile-time jump
+        // Check if block is in current chunk with NO intervening unwind-protect
+        // If there's an unwind_protect between us and the block, we must use runtime
+        // return_from so the VM can properly handle cleanup (which may contain
+        // additional non-local exits)
         var i = self.control_stack.items.len;
         while (i > 0) {
             i -= 1;
@@ -1427,7 +1446,8 @@ pub const Emitter = struct {
                 .block => |*blk| {
                     // String comparison needed: block names are raw strings from IR, not interned symbols
                     if (std.mem.eql(u8, blk.name, r.name)) {
-                        // Found target block in same chunk - use compile-time jump
+                        // Found target block in same chunk with no unwind-protect between
+                        // Use compile-time jump
                         const jump_loc = try self.emitJump(.jmp);
                         blk.pending_exits.append(self.allocator, jump_loc) catch
                             return error.OutOfMemory;
@@ -1435,10 +1455,11 @@ pub const Emitter = struct {
                     }
                     // Not our target block, keep searching
                 },
-                .unwind_protect => |up| {
-                    // Crossing an unwind-protect - emit cleanup
-                    try self.emit(up.cleanup);
-                    try self.emitOp(.pop);
+                .unwind_protect => {
+                    // Crossing an unwind-protect - must use runtime return_from
+                    // The VM will run cleanup code properly (which may itself
+                    // contain non-local exits that replace the original return)
+                    break;
                 },
                 .tagbody => {
                     // Crossing a tagbody - no cleanup, just continue
@@ -1446,8 +1467,8 @@ pub const Emitter = struct {
             }
         }
 
-        // Block not in current chunk - emit runtime return_from opcode
-        // This handles cross-closure return-from
+        // Block not in current chunk or crosses unwind-protect
+        // Emit runtime return_from opcode for proper cleanup handling
         const heap = self.heap orelse return error.OutOfMemory;
         const name_sym = try heap.intern(r.name);
         const name_idx = try self.addConstant(name_sym.raw);

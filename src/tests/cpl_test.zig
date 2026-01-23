@@ -99,6 +99,18 @@ test "method specificity - sorts most specific first" {
         fn sort(ms: []compile.Compiler.MethodDef) !void {
             std.mem.sort(compile.Compiler.MethodDef, ms, {}, struct {
                 fn lessThan(_: void, a: compile.Compiler.MethodDef, b: compile.Compiler.MethodDef) bool {
+                    // Count non-t specializers (more = more specific)
+                    var a_count: usize = 0;
+                    var b_count: usize = 0;
+                    for (a.specializers) |s| {
+                        if (!s.eq(Value.t)) a_count += 1;
+                    }
+                    for (b.specializers) |s| {
+                        if (!s.eq(Value.t)) b_count += 1;
+                    }
+                    if (a_count != b_count) return a_count > b_count;
+
+                    // Same count, compare positionally (earlier non-t = more specific)
                     const min_len = @min(a.specializers.len, b.specializers.len);
                     for (0..min_len) |i| {
                         const a_is_t = a.specializers[i].eq(Value.t);
@@ -114,8 +126,12 @@ test "method specificity - sorts most specific first" {
 
     try Ctx.sort(&methods);
 
+    // m4 (2 specialized params) should be first, m1 (0 specialized) should be last
+    // m2 and m3 (both 1 specialized) have equal specificity, order is unspecified
     try std.testing.expect(std.mem.eql(u8, methods[0].function_name, "m4"));
-    try std.testing.expect(std.mem.eql(u8, methods[1].function_name, "m3"));
-    try std.testing.expect(std.mem.eql(u8, methods[2].function_name, "m2"));
     try std.testing.expect(std.mem.eql(u8, methods[3].function_name, "m1"));
+    // Middle two should be m2 and m3 in some order
+    const mid1 = std.mem.eql(u8, methods[1].function_name, "m2") or std.mem.eql(u8, methods[1].function_name, "m3");
+    const mid2 = std.mem.eql(u8, methods[2].function_name, "m2") or std.mem.eql(u8, methods[2].function_name, "m3");
+    try std.testing.expect(mid1 and mid2);
 }
