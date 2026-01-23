@@ -254,45 +254,7 @@ pub const Heap = struct {
         // Create Lisp class registry
         heap.lisp_classes = try heap.allocHashTable(32, .eql);
 
-        // Bootstrap metaclasses (chicken-egg: class-of(standard-class) = standard-class)
-        // Step 1: Create standard-class with nil metaclass temporarily
-        const std_class_name = try heap.intern("standard-class");
-        const std_class_ptr = try heap.alloc(objects.Class);
-        std_class_ptr.* = .{
-            .kind = .class,
-            .name = std_class_name,
-            .direct_supers = Value.nil,
-            .cpl = Value.nil,
-            .direct_slots = Value.nil,
-            .slots = Value.nil,
-            .metaclass = Value.nil,
-            .num_shared = 0,
-            .shared_slots = undefined,
-        };
-        heap.standard_class = Value.makeClass(std_class_ptr);
-
-        // Step 2: Set standard-class's metaclass to itself
-        std_class_ptr.metaclass = heap.standard_class;
-
-        // Step 3: Set CPL = (standard-class)
-        const std_cpl = try heap.allocCons(heap.standard_class, Value.nil);
-        std_class_ptr.cpl = std_cpl;
-
-        // Step 4: Create other metaclasses with standard-class as metaclass
-        heap.built_in_class = try heap.allocMetaclass("built-in-class", heap.standard_class);
-        heap.structure_class = try heap.allocMetaclass("structure-class", heap.standard_class);
-
-        // Register metaclasses in class registry
-        try heap.putLispClass(std_class_name, heap.standard_class);
-        const bic_name = heap.built_in_class.toPtr(objects.Class).name;
-        try heap.putLispClass(bic_name, heap.built_in_class);
-        const struct_class_name = heap.structure_class.toPtr(objects.Class).name;
-        try heap.putLispClass(struct_class_name, heap.structure_class);
-
-        // Create built-in classes for primitive types
-        try heap.createBuiltInClasses();
-
-        // Create COMMON-LISP package (holds primitives, all symbols exported)
+        // Create COMMON-LISP package first so metaclasses are interned in CL
         heap.cl_package = Package.init(allocator, "COMMON-LISP") catch return error.OutOfMemory;
         heap.cl_package.?.auto_export = true; // All CL symbols are exported
         const cl_key = try allocator.dupe(u8, "COMMON-LISP");
@@ -313,6 +275,9 @@ pub const Heap = struct {
         // Start in CL package so primitives get interned there
         // VM will switch to CL-USER after primitive registration
         heap.current_package = heap.cl_package;
+
+        // Create built-in classes for primitive types (must be after CL package exists)
+        try heap.createBuiltInClasses();
 
         return heap;
     }
@@ -1430,6 +1395,42 @@ pub const Heap = struct {
 
     /// Create built-in classes for primitive types (fixnum, cons, symbol, string, vector, etc.)
     fn createBuiltInClasses(self: *Heap) !void {
+        // Bootstrap metaclasses first (chicken-egg: class-of(standard-class) = standard-class)
+        // Step 1: Create standard-class with nil metaclass temporarily
+        const std_class_name = try self.intern("standard-class");
+        const std_class_ptr = try self.alloc(objects.Class);
+        std_class_ptr.* = .{
+            .kind = .class,
+            .name = std_class_name,
+            .direct_supers = Value.nil,
+            .cpl = Value.nil,
+            .direct_slots = Value.nil,
+            .slots = Value.nil,
+            .metaclass = Value.nil,
+            .num_shared = 0,
+            .shared_slots = undefined,
+        };
+        self.standard_class = Value.makeClass(std_class_ptr);
+
+        // Step 2: Set standard-class's metaclass to itself
+        std_class_ptr.metaclass = self.standard_class;
+
+        // Step 3: Set CPL = (standard-class)
+        const std_cpl = try self.allocCons(self.standard_class, Value.nil);
+        std_class_ptr.cpl = std_cpl;
+
+        // Step 4: Create other metaclasses with standard-class as metaclass
+        self.built_in_class = try self.allocMetaclass("built-in-class", self.standard_class);
+        self.structure_class = try self.allocMetaclass("structure-class", self.standard_class);
+
+        // Register metaclasses in class registry
+        try self.putLispClass(std_class_name, self.standard_class);
+        const bic_name = self.built_in_class.toPtr(objects.Class).name;
+        try self.putLispClass(bic_name, self.built_in_class);
+        const struct_class_name = self.structure_class.toPtr(objects.Class).name;
+        try self.putLispClass(struct_class_name, self.structure_class);
+
+        // Now create built-in classes for primitive types
         const type_names = [_][]const u8{
             "fixnum",
             "float",

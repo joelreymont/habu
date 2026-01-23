@@ -373,6 +373,13 @@ pub const Op = enum(u16) {
     /// ( obj -- class )
     class_of = 0x0B,
 
+    /// Find class by name symbol
+    /// ( name -- class )
+    find_class = 0x101,
+    /// Return the name of a class
+    /// ( class -- name )
+    class_name = 0x102,
+
     /// Allocate GenericFunction object
     /// ( name lambda-list -- gf )
     make_generic_function = 0xA6,
@@ -1358,6 +1365,8 @@ pub const Op = enum(u16) {
             .slot_value,
             .set_slot_value,
             .class_of,
+            .find_class,
+            .class_name,
             .make_generic_function,
             .make_method,
             .make_unbound,

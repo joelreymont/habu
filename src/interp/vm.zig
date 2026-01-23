@@ -1614,6 +1614,18 @@ pub const Vm = struct {
                 const result = try primitives.classOf(self.heap, args);
                 try self.push(result);
             },
+            .find_class => {
+                const name = try self.pop();
+                const args = try self.heap.allocCons(name, Value.nil);
+                const result = try primitives.findClass(self.heap, args);
+                try self.push(result);
+            },
+            .class_name => {
+                const class_val = try self.pop();
+                const args = try self.heap.allocCons(class_val, Value.nil);
+                const result = try primitives.className(self.heap, args);
+                try self.push(result);
+            },
             .make_generic_function => {
                 const lambda_list = try self.pop();
                 const name = try self.pop();

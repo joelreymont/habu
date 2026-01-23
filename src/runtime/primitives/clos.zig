@@ -471,6 +471,29 @@ pub fn classp(heap: *Heap, args: Value) !Value {
     return if (obj.isClass()) Value.t() else Value.nil();
 }
 
+/// find-class: (find-class name)
+/// Look up a class by name symbol in the global registry
+pub fn findClass(heap: *Heap, args: Value) !Value {
+    if (!args.isCons()) return error.InvalidArgument;
+    const cons = args.toPtr(Cons);
+    const name = cons.car;
+    if (!name.isSymbol()) return error.TypeError;
+
+    if (heap.lisp_classes.raw == Value.nil.raw) return Value.nil;
+    const ht = heap.lisp_classes.toPtr(objects.HashTable);
+
+    const hash = name.raw;
+    var idx = hash % ht.capacity;
+    var i: usize = 0;
+    while (i < ht.capacity) : (i += 1) {
+        const e = &ht.entries[idx];
+        if (e.key.raw == objects.HashTable.EMPTY.raw) break;
+        if (e.key.raw == name.raw) return e.value;
+        idx = (idx + 1) % ht.capacity;
+    }
+    return Value.nil;
+}
+
 /// class-name: (class-name class)
 /// Return the name of a class
 pub fn className(heap: *Heap, args: Value) !Value {

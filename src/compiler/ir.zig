@@ -615,6 +615,8 @@ pub const Ir = union(enum) {
     slot_value: BinaryOp, // (slot-value obj 'slot-name)
     set_slot_value: TernaryOp, // (%set-slot-value obj 'slot-name value)
     class_of: UnaryOp, // (class-of obj)
+    find_class: UnaryOp, // (find-class name)
+    class_name: UnaryOp, // (class-name class)
     make_generic_function: BinaryOp, // (%make-generic-function name lambda-list)
     make_unbound: void, // (%make-unbound)
     make_method: QuaternaryOp, // (%make-method qualifiers specializers lambda-list function)

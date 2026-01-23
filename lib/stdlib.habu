@@ -1755,21 +1755,26 @@
 (defun class-of (obj)
   (%class-of obj))
 
+;; find-class - look up class by name symbol
+(defun find-class (name &optional errorp environment)
+  (declare (ignore errorp environment))
+  (%find-class name))
+
 ;; class-name - return the name of a class
 (defun class-name (class)
-  class)
+  (%class-name class))
 
 ;; class-direct-superclasses - return direct superclasses list
 (defun class-direct-superclasses (class)
-  nil)
+  (%class-direct-superclasses class))
 
 ;; class-precedence-list - return class precedence list (CPL)
 (defun class-precedence-list (class)
-  nil)
+  (%class-precedence-list class))
 
 ;; class-slots - return all slot definitions
 (defun class-slots (class)
-  nil)
+  (%class-slots class))
 
 ;; Note: method-qualifiers, method-specializers, method-function
 ;; are compiler builtins, no wrapper needed

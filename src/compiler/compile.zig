@@ -302,6 +302,8 @@ pub const Builtins = struct {
     @"%sset": Value, // internal: (setf (char ...)) expands to this
     @"%make-unbound": Value, // internal: returns unbound marker
     @"%class-of": Value, // internal: class-of primitive
+    @"%find-class": Value, // internal: find-class primitive
+    @"%class-name": Value, // internal: class-name primitive
 
     // Stream I/O primitives
     @"%open": Value,
@@ -732,6 +734,8 @@ pub const Builtins = struct {
             .@"%sset" = try heap.intern("%sset"),
             .@"%make-unbound" = try heap.intern("%make-unbound"),
             .@"%class-of" = try heap.intern("%class-of"),
+            .@"%find-class" = try heap.intern("%find-class"),
+            .@"%class-name" = try heap.intern("%class-name"),
             // Stream I/O primitives
             .@"%open" = try heap.intern("%open"),
             .@"%close" = try heap.intern("%close"),
@@ -9019,6 +9023,8 @@ pub const Compiler = struct {
         if (s == b.@"%sset".raw) return self.compileSset(args, env);
         if (s == b.@"%make-unbound".raw) return self.builder.makeUnbound();
         if (s == b.@"%class-of".raw) return self.compileClassOf(args, env);
+        if (s == b.@"%find-class".raw) return self.compileUnaryPrim(args, env, .find_class);
+        if (s == b.@"%class-name".raw) return self.compileUnaryPrim(args, env, .class_name);
         if (s == b.vector.raw) return self.compileVectorPrim(args, env);
         if (s == b.@"make-array".raw) return self.compileMakeArray(args, env);
 
@@ -9240,7 +9246,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, method_qualifiers, method_specializers, method_function, generic_function_methods, generic_function_lambda_list, generic_function_name, nilp, not, vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, vec_adjust, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, unintern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream, pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version, package_symbols_table, package_exports_table, find_symbol };
+    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, method_qualifiers, method_specializers, method_function, generic_function_methods, generic_function_lambda_list, generic_function_name, nilp, not, vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, vec_adjust, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, unintern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream, pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version, package_symbols_table, package_exports_table, find_symbol, find_class, class_name };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -9730,6 +9736,16 @@ pub const Compiler = struct {
             .pathname_version => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .pathname_version = .{ .operand = operand } };
+                break :blk node;
+            },
+            .find_class => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .find_class = .{ .operand = operand } };
+                break :blk node;
+            },
+            .class_name => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .class_name = .{ .operand = operand } };
                 break :blk node;
             },
             else => return error.InvalidSyntax,

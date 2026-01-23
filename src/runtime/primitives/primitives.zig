@@ -45,6 +45,7 @@ pub const slotBoundp = clos.slotBoundp;
 pub const slotMakunbound = clos.slotMakunbound;
 pub const callNextMethod = clos.callNextMethod;
 pub const classp = clos.classp;
+pub const findClass = clos.findClass;
 pub const className = clos.className;
 pub const slotDefinitionName = clos.slotDefinitionName;
 pub const slotDefinitionInitform = clos.slotDefinitionInitform;
