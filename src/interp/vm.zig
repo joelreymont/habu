@@ -8,6 +8,7 @@ comptime {
 }
 
 const std = @import("std");
+const builtin = @import("builtin");
 const bytecode = @import("../bytecode/bytecode.zig");
 const opcodes = @import("../bytecode/opcodes.zig");
 const Op = bytecode.Op;
@@ -2176,6 +2177,22 @@ pub const Vm = struct {
                 const stats = self.heap.stats;
                 io.room(stats.allocations, stats.bytes_allocated, stats.gc_count, stats.bytes_copied);
                 try self.push(Value.nil);
+            },
+            .lisp_implementation_type => {
+                const str = try self.heap.allocBaseString("Habu");
+                try self.push(str);
+            },
+            .lisp_implementation_version => {
+                const str = try self.heap.allocBaseString("0.1.0");
+                try self.push(str);
+            },
+            .software_type => {
+                const str = try self.heap.allocBaseString(@tagName(builtin.os.tag));
+                try self.push(str);
+            },
+            .machine_type => {
+                const str = try self.heap.allocBaseString(@tagName(builtin.cpu.arch));
+                try self.push(str);
             },
             .make_string => {
                 const char_val = try self.pop();

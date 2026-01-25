@@ -2,7 +2,7 @@
 
 978 external symbols in COMMON-LISP package per ANSI INCITS 226-1994.
 
-Status: ✓ implemented (677, 70%) | ⚠ partial (29, 3%) | ✗ missing (254, 26%)
+Status: ✓ implemented (681, 71%) | ⚠ partial (29, 3%) | ✗ missing (250, 26%)
 Note: 960 symbols documented, 18 symbols pending audit
 
 ## Lambda List Keywords (8)
@@ -806,12 +806,12 @@ Note: 960 symbols documented, 18 symbols pending audit
 | get-internal-run-time | ✗ | - | |
 | get-universal-time | ✓ | compile.zig:9549, vm.zig:2165 | Get current time |
 | inspect | ✗ | - | |
-| lisp-implementation-type | ✗ | - | |
-| lisp-implementation-version | ✗ | - | |
+| lisp-implementation-type | ✓ | compile.zig:9557, vm.zig:2181 | Returns "Habu" |
+| lisp-implementation-version | ✓ | compile.zig:9558, vm.zig:2185 | Returns "0.1.0" |
 | load | ✓ | compile.zig:225 | Load file |
 | long-site-name | ✗ | - | |
 | machine-instance | ✗ | - | |
-| machine-type | ✗ | - | |
+| machine-type | ✓ | compile.zig:9560, vm.zig:2193 | CPU architecture |
 | machine-version | ✗ | - | |
 | macro-function | ✗ | - | |
 | macroexpand | ✓ | compile.zig:90 | Expand macro |
@@ -821,7 +821,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | room | ✓ | compile.zig:9555, vm.zig:2174 | Memory statistics |
 | short-site-name | ✗ | - | |
 | sleep | ✗ | - | |
-| software-type | ✗ | - | |
+| software-type | ✓ | compile.zig:9559, vm.zig:2189 | Operating system |
 | software-version | ✗ | - | |
 | special-operator-p | ✓ | stdlib.habu | Special op pred |
 | user-homedir-pathname | ✗ | - | |

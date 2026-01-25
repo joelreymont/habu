@@ -1314,6 +1314,22 @@ pub const Op = enum(u16) {
     /// ( -- nil )
     room = 0x134,
 
+    /// Get Lisp implementation type
+    /// ( -- string )
+    lisp_implementation_type = 0x135,
+
+    /// Get Lisp implementation version
+    /// ( -- string )
+    lisp_implementation_version = 0x136,
+
+    /// Get software type (OS)
+    /// ( -- string )
+    software_type = 0x137,
+
+    /// Get machine type (architecture)
+    /// ( -- string )
+    machine_type = 0x138,
+
     // ========================================================================
     // Special
     // ========================================================================
@@ -1580,6 +1596,10 @@ pub const Op = enum(u16) {
             .get_universal_time,
             .get_internal_real_time,
             .room,
+            .lisp_implementation_type,
+            .lisp_implementation_version,
+            .software_type,
+            .machine_type,
             .make_string,
             .list_to_string,
             .string_upcase,

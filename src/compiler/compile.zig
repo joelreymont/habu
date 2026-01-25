@@ -409,6 +409,10 @@ pub const Builtins = struct {
     @"get-universal-time": Value,
     @"get-internal-real-time": Value,
     room: Value,
+    @"lisp-implementation-type": Value,
+    @"lisp-implementation-version": Value,
+    @"software-type": Value,
+    @"machine-type": Value,
 
     // Primitives - String construction
     @"make-string": Value,
@@ -861,6 +865,10 @@ pub const Builtins = struct {
             .@"get-universal-time" = try heap.intern("get-universal-time"),
             .@"get-internal-real-time" = try heap.intern("get-internal-real-time"),
             .room = try heap.intern("room"),
+            .@"lisp-implementation-type" = try heap.intern("lisp-implementation-type"),
+            .@"lisp-implementation-version" = try heap.intern("lisp-implementation-version"),
+            .@"software-type" = try heap.intern("software-type"),
+            .@"machine-type" = try heap.intern("machine-type"),
             // Primitives - String construction
             .@"make-string" = try heap.intern("make-string"),
             .@"string-to-list" = try heap.intern("string-to-list"),
@@ -1162,6 +1170,10 @@ pub const Builtins = struct {
         if (s == self.@"get-universal-time".raw) return true;
         if (s == self.@"get-internal-real-time".raw) return true;
         if (s == self.room.raw) return true;
+        if (s == self.@"lisp-implementation-type".raw) return true;
+        if (s == self.@"lisp-implementation-version".raw) return true;
+        if (s == self.@"software-type".raw) return true;
+        if (s == self.@"machine-type".raw) return true;
         // Primitives - String construction
         if (s == self.@"make-string".raw) return true;
         if (s == self.@"string-to-list".raw) return true;
@@ -9555,6 +9567,10 @@ pub const Compiler = struct {
         if (s == b.@"get-universal-time".raw) return self.compileNullaryPrim(.get_universal_time);
         if (s == b.@"get-internal-real-time".raw) return self.compileNullaryPrim(.get_internal_real_time);
         if (s == b.room.raw) return self.compileNullaryPrim(.room);
+        if (s == b.@"lisp-implementation-type".raw) return self.compileNullaryPrim(.lisp_implementation_type);
+        if (s == b.@"lisp-implementation-version".raw) return self.compileNullaryPrim(.lisp_implementation_version);
+        if (s == b.@"software-type".raw) return self.compileNullaryPrim(.software_type);
+        if (s == b.@"machine-type".raw) return self.compileNullaryPrim(.machine_type);
 
         // String construction
         if (s == b.@"make-string".raw) return self.compileBinaryPrim(args, env, .make_string);
@@ -9621,7 +9637,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, method_qualifiers, method_specializers, method_function, generic_function_methods, generic_function_lambda_list, generic_function_name, nilp, not, vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, vec_adjust, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, unintern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, delete_file, rename_file, probe_file, file_write_date, get_universal_time, get_internal_real_time, room, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream, pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version, package_symbols_table, package_exports_table, package_name, package_nicknames, package_use_list, package_used_by_list, package_shadowing_symbols, packagep, find_symbol, find_class, class_name, class_direct_superclasses, class_precedence_list, class_direct_slots, class_slots, slot_definition_name, slot_definition_initform, slot_definition_initargs, slot_definition_readers, slot_definition_writers, slot_definition_allocation, slot_definition_type, sleep };
+    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, method_qualifiers, method_specializers, method_function, generic_function_methods, generic_function_lambda_list, generic_function_name, nilp, not, vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, vec_adjust, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, unintern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, delete_file, rename_file, probe_file, file_write_date, get_universal_time, get_internal_real_time, room, lisp_implementation_type, lisp_implementation_version, software_type, machine_type, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream, pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version, package_symbols_table, package_exports_table, package_name, package_nicknames, package_use_list, package_used_by_list, package_shadowing_symbols, packagep, find_symbol, find_class, class_name, class_direct_superclasses, class_precedence_list, class_direct_slots, class_slots, slot_definition_name, slot_definition_initform, slot_definition_initargs, slot_definition_readers, slot_definition_writers, slot_definition_allocation, slot_definition_type, sleep };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -10226,6 +10242,10 @@ pub const Compiler = struct {
             .get_universal_time => try self.builder.getUniversalTime(),
             .get_internal_real_time => try self.builder.getInternalRealTime(),
             .room => try self.builder.room(),
+            .lisp_implementation_type => try self.builder.lispImplementationType(),
+            .lisp_implementation_version => try self.builder.lispImplementationVersion(),
+            .software_type => try self.builder.softwareType(),
+            .machine_type => try self.builder.machineType(),
             else => return error.InvalidSyntax,
         };
     }

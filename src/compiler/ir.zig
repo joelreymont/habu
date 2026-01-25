@@ -534,6 +534,10 @@ pub const Ir = union(enum) {
     get_universal_time: void, // Get current universal time
     get_internal_real_time: void, // Get internal time (microseconds)
     room: void, // Print memory statistics
+    lisp_implementation_type: void, // Get implementation name
+    lisp_implementation_version: void, // Get implementation version
+    software_type: void, // Get OS type
+    machine_type: void, // Get architecture
     make_string: BinaryOp, // Create string (length, char)
     list_to_string: UnaryOp, // List of chars to string
     string_upcase: UnaryOp, // Convert string to uppercase
@@ -1831,6 +1835,30 @@ pub const IrBuilder = struct {
     pub fn room(self: IrBuilder) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .room = {} };
+        return node;
+    }
+
+    pub fn lispImplementationType(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .lisp_implementation_type = {} };
+        return node;
+    }
+
+    pub fn lispImplementationVersion(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .lisp_implementation_version = {} };
+        return node;
+    }
+
+    pub fn softwareType(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .software_type = {} };
+        return node;
+    }
+
+    pub fn machineType(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .machine_type = {} };
         return node;
     }
 
