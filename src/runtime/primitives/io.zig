@@ -912,6 +912,54 @@ pub fn renameFile(old_path: []const u8, new_path: []const u8) !void {
     try fs.renameAbsolute(old_path, new_path);
 }
 
+/// Probe file (check if exists)
+/// Returns true if file exists, false otherwise
+pub fn probeFile(path: []const u8) bool {
+    _ = fs.accessAbsolute(path, .{}) catch return false;
+    return true;
+}
+
+/// Get file write date (modification time) as Universal Time
+/// Universal Time is seconds since 1900-01-01
+pub fn fileWriteDate(path: []const u8) !i64 {
+    const file = try fs.openFileAbsolute(path, .{});
+    defer file.close();
+    const stat = try file.stat();
+    // Convert from nanoseconds to seconds, then from Unix to Universal Time
+    const unix_seconds: i64 = @intCast(@divFloor(stat.mtime, std.time.ns_per_s));
+    // Universal Time epoch is 1900-01-01, Unix epoch is 1970-01-01
+    // Difference: 70 years = 2208988800 seconds
+    return unix_seconds + 2208988800;
+}
+
+/// Get current Universal Time
+/// Universal Time is seconds since 1900-01-01
+pub fn getUniversalTime() i64 {
+    const unix_seconds = std.time.timestamp();
+    // Convert Unix time to Universal Time (add 70 years in seconds)
+    return unix_seconds + 2208988800;
+}
+
+/// Get internal real time in microseconds
+/// Returns a monotonic timestamp suitable for measuring elapsed time
+pub fn getInternalRealTime() i64 {
+    return std.time.microTimestamp();
+}
+
+/// Print memory usage statistics
+pub fn room(allocations: usize, bytes_allocated: usize, gc_count: usize, bytes_copied: usize) void {
+    const stdout_file = fs.File.stdout();
+    var buf: [IO_BUF]u8 = undefined;
+    var file_writer = stdout_file.writer(&buf);
+    const w = &file_writer.interface;
+    w.print("; Memory usage:\n", .{}) catch {};
+    w.print(";   Allocations: {d}\n", .{allocations}) catch {};
+    w.print(";   Bytes allocated: {d}\n", .{bytes_allocated}) catch {};
+    w.print(";   GC collections: {d}\n", .{gc_count}) catch {};
+    w.print(";   Bytes copied (last GC): {d}\n", .{bytes_copied}) catch {};
+    w.flush() catch {};
+}
+
 /// Get current time in milliseconds
 pub fn currentTimeMillis() i64 {
     return std.time.milliTimestamp();

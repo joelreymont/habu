@@ -1294,6 +1294,26 @@ pub const Op = enum(u16) {
     /// ( old-path new-path -- nil )
     rename_file = 0x11A,
 
+    /// Probe file (check if exists)
+    /// ( path-string -- truename-or-nil )
+    probe_file = 0x130,
+
+    /// File write date (modification time)
+    /// ( path-string -- universal-time )
+    file_write_date = 0x131,
+
+    /// Get current universal time
+    /// ( -- universal-time )
+    get_universal_time = 0x132,
+
+    /// Get internal real time (microseconds)
+    /// ( -- internal-time )
+    get_internal_real_time = 0x133,
+
+    /// Print memory usage information
+    /// ( -- nil )
+    room = 0x134,
+
     // ========================================================================
     // Special
     // ========================================================================
@@ -1555,6 +1575,11 @@ pub const Op = enum(u16) {
             .write_file,
             .delete_file,
             .rename_file,
+            .probe_file,
+            .file_write_date,
+            .get_universal_time,
+            .get_internal_real_time,
+            .room,
             .make_string,
             .list_to_string,
             .string_upcase,

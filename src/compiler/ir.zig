@@ -529,6 +529,11 @@ pub const Ir = union(enum) {
     write_file: BinaryOp, // Write string to file
     delete_file: UnaryOp, // Delete file
     rename_file: BinaryOp, // Rename file (old, new)
+    probe_file: UnaryOp, // Check if file exists
+    file_write_date: UnaryOp, // Get file modification time
+    get_universal_time: void, // Get current universal time
+    get_internal_real_time: void, // Get internal time (microseconds)
+    room: void, // Print memory statistics
     make_string: BinaryOp, // Create string (length, char)
     list_to_string: UnaryOp, // List of chars to string
     string_upcase: UnaryOp, // Convert string to uppercase
@@ -1796,6 +1801,36 @@ pub const IrBuilder = struct {
     pub fn renameFile(self: IrBuilder, old_path: *const Ir, new_path: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .rename_file = .{ .left = old_path, .right = new_path } };
+        return node;
+    }
+
+    pub fn probeFile(self: IrBuilder, path: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .probe_file = .{ .operand = path } };
+        return node;
+    }
+
+    pub fn fileWriteDate(self: IrBuilder, path: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .file_write_date = .{ .operand = path } };
+        return node;
+    }
+
+    pub fn getUniversalTime(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .get_universal_time = {} };
+        return node;
+    }
+
+    pub fn getInternalRealTime(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .get_internal_real_time = {} };
+        return node;
+    }
+
+    pub fn room(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .room = {} };
         return node;
     }
 

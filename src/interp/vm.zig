@@ -2145,6 +2145,38 @@ pub const Vm = struct {
                 try io.renameFile(old_path_str.bytes(), new_path_str.bytes());
                 try self.push(Value.nil);
             },
+            .probe_file => {
+                const path_val = try self.pop();
+                if (!path_val.isString()) return error.TypeMismatch;
+                const path_str = path_val.toPtr(String);
+                if (io.probeFile(path_str.bytes())) {
+                    // Return the path as truename
+                    try self.push(path_val);
+                } else {
+                    try self.push(Value.nil);
+                }
+            },
+            .file_write_date => {
+                const path_val = try self.pop();
+                if (!path_val.isString()) return error.TypeMismatch;
+                const path_str = path_val.toPtr(String);
+                const timestamp = try io.fileWriteDate(path_str.bytes());
+                try self.push(Value.makeFixnum(timestamp));
+            },
+            .get_universal_time => {
+                const timestamp = io.getUniversalTime();
+                try self.push(Value.makeFixnum(timestamp));
+            },
+            .get_internal_real_time => {
+                const timestamp = io.getInternalRealTime();
+                try self.push(Value.makeFixnum(timestamp));
+            },
+            .room => {
+                // Print memory statistics
+                const stats = self.heap.stats;
+                io.room(stats.allocations, stats.bytes_allocated, stats.gc_count, stats.bytes_copied);
+                try self.push(Value.nil);
+            },
             .make_string => {
                 const char_val = try self.pop();
                 const len_val = try self.pop();

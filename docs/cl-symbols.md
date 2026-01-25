@@ -2,7 +2,7 @@
 
 978 external symbols in COMMON-LISP package per ANSI INCITS 226-1994.
 
-Status: ✓ implemented (653, 67%) | ⚠ partial (29, 3%) | ✗ missing (278, 28%)
+Status: ✓ implemented (677, 70%) | ⚠ partial (29, 3%) | ✗ missing (254, 26%)
 Note: 960 symbols documented, 18 symbols pending audit
 
 ## Lambda List Keywords (8)
@@ -662,7 +662,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | file-author | ✗ | - | |
 | file-error-pathname | ✗ | - | |
 | file-namestring | ✗ | - | |
-| file-write-date | ✗ | - | |
+| file-write-date | ✓ | compile.zig:9545, vm.zig:2159 | Get file modification time |
 | host-namestring | ✗ | - | |
 | logical-pathname | ✗ | - | |
 | logical-pathname-translations | ✗ | - | |
@@ -679,7 +679,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | pathname-type | ✓ | pathname.zig:52, vm.zig:2742 | Get type component |
 | pathname-version | ✓ | pathname.zig:59, vm.zig:2749 | Get version component |
 | pathnamep | ✓ | pathname.zig:66 | Check if pathname |
-| probe-file | ✗ | - | |
+| probe-file | ✓ | compile.zig:9541, vm.zig:2148 | Check if file exists |
 | translate-logical-pathname | ✗ | - | |
 | translate-pathname | ✗ | - | |
 | truename | ✗ | - | |
@@ -693,7 +693,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | clear-output | ✗ | - | |
 | close | ✓ | compile.zig:285 | Close stream |
 | concatenated-stream-streams | ✗ | - | |
-| delete-file | ✗ | - | |
+| delete-file | ✓ | compile.zig:9536, vm.zig:2131 | File deletion |
 | echo-stream-input-stream | ✗ | - | |
 | echo-stream-output-stream | ✗ | - | |
 | ensure-directories-exist | ✗ | - | |
@@ -723,7 +723,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | read-char-no-hang | ✗ | - | |
 | read-line | ✓ | compile.zig:286 | Read line |
 | read-sequence | ✗ | - | |
-| rename-file | ✗ | - | |
+| rename-file | ✓ | compile.zig:9537, vm.zig:2138 | File renaming |
 | stream-element-type | ✗ | - | |
 | stream-error-stream | ✗ | - | |
 | stream-external-format | ✗ | - | |
@@ -802,9 +802,9 @@ Note: 960 symbols documented, 18 symbols pending audit
 | encode-universal-time | ✗ | - | |
 | eval | ✓ | compile.zig:226 | Evaluate form |
 | get-decoded-time | ✗ | - | |
-| get-internal-real-time | ✗ | - | |
+| get-internal-real-time | ✓ | compile.zig:9551, vm.zig:2169 | High-resolution timing |
 | get-internal-run-time | ✗ | - | |
-| get-universal-time | ✗ | - | |
+| get-universal-time | ✓ | compile.zig:9549, vm.zig:2165 | Get current time |
 | inspect | ✗ | - | |
 | lisp-implementation-type | ✗ | - | |
 | lisp-implementation-version | ✗ | - | |
@@ -818,7 +818,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | macroexpand-1 | ✗ | - | |
 | provide | ✗ | - | |
 | require | ✗ | - | |
-| room | ✗ | - | |
+| room | ✓ | compile.zig:9555, vm.zig:2174 | Memory statistics |
 | short-site-name | ✗ | - | |
 | sleep | ✗ | - | |
 | software-type | ✗ | - | |
