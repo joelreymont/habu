@@ -2415,6 +2415,101 @@ pub const Vm = struct {
                     return error.TypeMismatch;
                 }
             },
+            .copy_symbol => {
+                const copy_props = try self.pop();
+                const sym_val = try self.pop();
+                // Get the symbol name
+                const name = if (sym_val.isNil())
+                    "nil"
+                else if (sym_val.isT())
+                    "t"
+                else if (sym_val.isSymbol())
+                    sym_val.toPtr(Symbol).getName()
+                else
+                    return error.TypeMismatch;
+                // Create new uninterned symbol
+                const new_sym = try self.heap.allocSymbol(name);
+                // Copy properties if requested (only plist is stored in Symbol)
+                if (!copy_props.isNil() and sym_val.isSymbol()) {
+                    const orig = sym_val.toPtr(Symbol);
+                    const new = new_sym.toPtr(Symbol);
+                    // Copy plist
+                    if (orig.plist != Value.nil) {
+                        new.plist = orig.plist;
+                    }
+                }
+                try self.push(new_sym);
+            },
+            .makunbound => {
+                const sym_val = try self.pop();
+                if (sym_val.isNil() or sym_val.isT()) {
+                    // nil and t cannot be made unbound
+                    return error.InvalidArgument;
+                } else if (sym_val.isSymbol()) {
+                    const sym = sym_val.toPtr(Symbol);
+                    const local_name = sym.getName();
+                    // Build qualified name using symbol's package
+                    var qual_buf: [512]u8 = undefined;
+                    const qual_name = blk: {
+                        const pkg_ptr = sym.reserved;
+                        if (pkg_ptr != 0) {
+                            const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
+                            break :blk std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
+                        } else {
+                            break :blk local_name;
+                        }
+                    };
+                    // Look up symbol in global environment (qualified or local)
+                    if (self.global_env) |env| {
+                        const idx = env.lookup(qual_name) orelse env.lookup(local_name);
+                        if (idx) |i| {
+                            if (i < MAX_GLOBALS) {
+                                self.globals[i] = Value.unbound;
+                            }
+                        }
+                    }
+                    try self.push(sym_val);
+                } else {
+                    return error.TypeMismatch;
+                }
+            },
+            .set_sym_val => {
+                const val = try self.pop();
+                const sym_val = try self.pop();
+                if (sym_val.isNil() or sym_val.isT()) {
+                    // nil and t cannot be set
+                    return error.InvalidArgument;
+                } else if (sym_val.isSymbol()) {
+                    const sym = sym_val.toPtr(Symbol);
+                    const local_name = sym.getName();
+                    // Build qualified name using symbol's package
+                    var qual_buf: [512]u8 = undefined;
+                    const qual_name = blk: {
+                        const pkg_ptr = sym.reserved;
+                        if (pkg_ptr != 0) {
+                            const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
+                            break :blk std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
+                        } else {
+                            break :blk local_name;
+                        }
+                    };
+                    // Look up symbol in global environment (qualified or local)
+                    if (self.global_env) |env| {
+                        const idx = env.lookup(qual_name) orelse env.lookup(local_name);
+                        if (idx) |i| {
+                            if (i < MAX_GLOBALS) {
+                                self.globals[i] = val;
+                                if (i >= self.num_globals) {
+                                    self.num_globals = i + 1;
+                                }
+                            }
+                        }
+                    }
+                    try self.push(val);
+                } else {
+                    return error.TypeMismatch;
+                }
+            },
             .type_of => {
                 const val = try self.pop();
                 const type_spec = try primitives.ty.typeOf(self.heap, val);
@@ -4092,11 +4187,17 @@ pub const Vm = struct {
                         break :blk local_name;
                     }
                 };
-                // Check if symbol exists in global environment (qualified or local)
-                const is_bound = if (self.global_env) |env|
-                    (env.lookup(qual_name) orelse env.lookup(local_name)) != null
-                else
-                    false;
+                // Check if symbol exists in global environment and is not unbound
+                const is_bound = if (self.global_env) |env| blk: {
+                    const idx = env.lookup(qual_name) orelse env.lookup(local_name);
+                    if (idx) |i| {
+                        if (i < MAX_GLOBALS) {
+                            // Check if value is unbound marker
+                            break :blk self.globals[i].raw != Value.unbound.raw;
+                        }
+                    }
+                    break :blk false;
+                } else false;
                 try self.push(if (is_bound) Value.t else Value.nil);
             },
 

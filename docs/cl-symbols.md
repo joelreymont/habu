@@ -2,7 +2,7 @@
 
 978 external symbols in COMMON-LISP package per ANSI INCITS 226-1994.
 
-Status: ✓ implemented (690, 73%) | ⚠ partial (29, 3%) | ✗ missing (241, 25%)
+Status: ✓ implemented (693, 73%) | ⚠ partial (29, 3%) | ✗ missing (238, 25%)
 Note: 960 symbols documented, 18 symbols pending audit
 
 ## Lambda List Keywords (8)
@@ -830,16 +830,16 @@ Note: 960 symbols documented, 18 symbols pending audit
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
 | boundp | ✓ | compile.zig:230 | Bound pred |
-| copy-symbol | ✗ | - | |
+| copy-symbol | ✓ | vm.zig | Copy symbol (optionally with plist) |
 | fboundp | ✓ | compile.zig:231 | Fbound pred |
 | gensym | ✓ | compile.zig:227 | Generate symbol |
 | gentemp | ✓ | stdlib.habu | Generate temp symbol |
 | get | ✓ | compile.zig:238 | Property get |
 | keywordp | ✓ | compile.zig:206 | Keyword pred |
 | make-symbol | ✓ | stdlib.habu | Create uninterned symbol |
-| makunbound | ✗ | - | |
+| makunbound | ✓ | vm.zig | Make symbol unbound |
 | remprop | ✓ | compile.zig:240 | Remove property |
-| set | ✗ | - | |
+| set | ✓ | vm.zig | Set symbol value (deprecated) |
 | symbol-function | ✓ | compile.zig:233 | Get function |
 | symbol-name | ✓ | compile.zig:237 | Get name |
 | symbol-package | ✗ | - | |

@@ -272,6 +272,9 @@ pub const Builtins = struct {
     unintern: Value,
     @"find-symbol": Value,
     @"symbol-name": Value,
+    @"copy-symbol": Value,
+    makunbound: Value,
+    set: Value,
     get: Value,
     put: Value,
     remprop: Value,
@@ -748,6 +751,9 @@ pub const Builtins = struct {
             .unintern = try heap.intern("unintern"),
             .@"find-symbol" = try heap.intern("find-symbol"),
             .@"symbol-name" = try heap.intern("symbol-name"),
+            .@"copy-symbol" = try heap.intern("copy-symbol"),
+            .makunbound = try heap.intern("makunbound"),
+            .set = try heap.intern("set"),
             .get = try heap.intern("get"),
             .put = try heap.intern("put"),
             .remprop = try heap.intern("remprop"),
@@ -1034,7 +1040,8 @@ pub const Builtins = struct {
         "eval", "gensym", "macroexpand", "macroexpand-1",
         // Symbol operations
         "boundp", "fboundp", "symbol-value", "symbol-function",
-        "typep", "type-of", "intern", "symbol-name", "get", "put", "remprop",
+        "typep", "type-of", "intern", "symbol-name", "copy-symbol", "makunbound", "set",
+        "get", "put", "remprop",
         // Numeric
         "abs", "zerop", "plusp", "minusp", "evenp", "oddp",
         // Math functions
@@ -9114,7 +9121,7 @@ pub const Compiler = struct {
         // I/O
         print, princ, terpri, write_char, random, random_seed,
         // Symbol
-        intern, unintern, sym_name, type_of, error_user, boundp, fboundp, symbol_value, symbol_function, typep,
+        intern, unintern, sym_name, copy_symbol, makunbound, set_sym_val, type_of, error_user, boundp, fboundp, symbol_value, symbol_function, typep,
         // Character
         char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p,
         read_char, peek_char, unread_char,
@@ -9194,6 +9201,7 @@ pub const Compiler = struct {
         .{ .field = "type-of", .tag = .type_of },
         .{ .field = "intern", .tag = .intern },
         .{ .field = "symbol-name", .tag = .sym_name },
+        .{ .field = "makunbound", .tag = .makunbound },
         .{ .field = "abs", .tag = .abs },
         .{ .field = "zerop", .tag = .zerop },
         .{ .field = "plusp", .tag = .plusp },
@@ -9311,6 +9319,8 @@ pub const Compiler = struct {
         .{ .field = "typep", .tag = .typep },
         .{ .field = "unintern", .tag = .unintern },
         .{ .field = "find-symbol", .tag = .find_symbol },
+        .{ .field = "copy-symbol", .tag = .copy_symbol },
+        .{ .field = "set", .tag = .set_sym_val },
         .{ .field = "get", .tag = .get },
         .{ .field = "remprop", .tag = .remprop },
         .{ .field = "svref", .tag = .vec_ref },
@@ -9756,6 +9766,16 @@ pub const Compiler = struct {
                 node.* = .{ .find_symbol = .{ .left = left, .right = right } };
                 break :blk node;
             },
+            .copy_symbol => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .copy_symbol = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .set_sym_val => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .set_sym_val = .{ .left = left, .right = right } };
+                break :blk node;
+            },
             .write_to_stream => try self.builder.writeToStream(left, right),
             else => return error.InvalidSyntax,
         };
@@ -9944,6 +9964,11 @@ pub const Compiler = struct {
             .sym_name => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .sym_name = .{ .operand = operand } };
+                break :blk node;
+            },
+            .makunbound => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .makunbound = .{ .operand = operand } };
                 break :blk node;
             },
             .type_of => try self.builder.typeOf(operand),

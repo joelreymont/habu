@@ -698,6 +698,9 @@ pub const Ir = union(enum) {
     unintern: BinaryOp,
     find_symbol: BinaryOp,
     sym_name: UnaryOp,
+    copy_symbol: BinaryOp, // (copy-symbol sym copy-props)
+    makunbound: UnaryOp, // (makunbound sym)
+    set_sym_val: BinaryOp, // (set sym val)
     get: BinaryOp,
     put: TernaryOp,
     remprop: BinaryOp,

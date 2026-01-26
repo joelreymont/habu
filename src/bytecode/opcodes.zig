@@ -1318,6 +1318,18 @@ pub const Op = enum(u16) {
     /// ( -- internal-time )
     get_internal_run_time = 0x140,
 
+    /// Copy a symbol (optionally with properties)
+    /// ( symbol copy-props -- new-symbol )
+    copy_symbol = 0x141,
+
+    /// Make a symbol unbound
+    /// ( symbol -- symbol )
+    makunbound = 0x142,
+
+    /// Set symbol's value (deprecated, use setq)
+    /// ( symbol value -- value )
+    set_sym_val = 0x143,
+
     /// Print memory usage information
     /// ( -- nil )
     room = 0x134,
@@ -1629,6 +1641,9 @@ pub const Op = enum(u16) {
             .get_universal_time,
             .get_internal_real_time,
             .get_internal_run_time,
+            .copy_symbol,
+            .makunbound,
+            .set_sym_val,
             .room,
             .lisp_implementation_type,
             .lisp_implementation_version,
