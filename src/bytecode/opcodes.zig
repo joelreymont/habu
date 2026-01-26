@@ -1410,6 +1410,22 @@ pub const Op = enum(u16) {
     /// ( pathname -- version )
     pathname_version = 0x10C,
 
+    /// Get canonical pathname (truename)
+    /// ( pathname -- truename-or-nil )
+    truename = 0x144,
+
+    /// Ensure directories exist for pathname
+    /// ( pathname -- pathname )
+    ensure_directories_exist = 0x145,
+
+    /// Get current decoded time (9 values)
+    /// ( -- second minute hour date month year dow dst-p zone )
+    get_decoded_time = 0x146,
+
+    /// Decode universal time to components
+    /// ( universal-time -- second minute hour date month year dow dst-p zone )
+    decode_universal_time = 0x147,
+
     /// Get package internal symbols hash table
     /// ( pkg -- hashtable )
     package_symbols_table = 0x110,
@@ -1641,6 +1657,8 @@ pub const Op = enum(u16) {
             .get_universal_time,
             .get_internal_real_time,
             .get_internal_run_time,
+            .get_decoded_time,
+            .decode_universal_time,
             .copy_symbol,
             .makunbound,
             .set_sym_val,
@@ -1704,6 +1722,8 @@ pub const Op = enum(u16) {
             .pathname_name,
             .pathname_type,
             .pathname_version,
+            .truename,
+            .ensure_directories_exist,
             .package_symbols_table,
             .package_exports_table,
             .find_symbol,

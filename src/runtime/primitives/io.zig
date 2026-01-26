@@ -954,6 +954,108 @@ pub fn getInternalRunTime() i64 {
     return @as(i64, ts.sec) * 1_000_000 + @divTrunc(@as(i64, ts.nsec), 1000);
 }
 
+/// Decoded time components
+pub const DecodedTime = struct {
+    second: i64, // 0-59
+    minute: i64, // 0-59
+    hour: i64, // 0-23
+    date: i64, // 1-31
+    month: i64, // 1-12
+    year: i64, // e.g., 2024
+    day_of_week: i64, // 0=Monday, 6=Sunday
+    daylight_p: bool, // true if daylight saving time
+    zone: i64, // time zone offset in hours (negative = west of GMT)
+};
+
+/// Decode universal time to calendar components
+/// Universal time is seconds since 1900-01-01 00:00:00 UTC
+pub fn decodeUniversalTime(universal_time: i64, time_zone: ?i64) DecodedTime {
+    // Convert to Unix timestamp
+    const unix_seconds = universal_time - 2208988800;
+
+    // Get the time zone offset (hours west of GMT)
+    const tz_offset_hours: i64 = time_zone orelse 0;
+
+    // Adjust for timezone (CL timezone is hours west, so subtract to get local)
+    const local_seconds = unix_seconds - (tz_offset_hours * 3600);
+
+    // Extract time components
+    const day_seconds = @mod(local_seconds, 86400);
+    const second = @mod(day_seconds, 60);
+    const minute = @mod(@divFloor(day_seconds, 60), 60);
+    const hour = @divFloor(day_seconds, 3600);
+
+    // Calculate days since Unix epoch
+    var days = @divFloor(local_seconds, 86400);
+    // Adjust to algorithm epoch (March 1, year 0)
+    days += 719468;
+
+    // Calculate year, month, day using the civil calendar algorithm
+    const era: i64 = @divFloor(if (days >= 0) days else days - 146096, 146097);
+    const doe: i64 = days - era * 146097; // day of era [0, 146096]
+    const yoe: i64 = @divFloor(doe - @divFloor(doe, 1460) + @divFloor(doe, 36524) - @divFloor(doe, 146096), 365);
+    const y: i64 = yoe + era * 400;
+    const doy: i64 = doe - (365 * yoe + @divFloor(yoe, 4) - @divFloor(yoe, 100)); // day of year [0, 365]
+    const mp: i64 = @divFloor(5 * doy + 2, 153); // month index [0, 11]
+    const d: i64 = doy - @divFloor(153 * mp + 2, 5) + 1; // day [1, 31]
+    const m: i64 = mp + @as(i64, if (mp < 10) 3 else -9); // month [1, 12]
+    const year = y + @as(i64, if (m <= 2) 1 else 0);
+
+    // Day of week (0 = Monday)
+    // January 1, 1970 was Thursday, which is day 3 in 0=Monday system
+    const dow = @mod(days + 3, 7);
+
+    return .{
+        .second = second,
+        .minute = minute,
+        .hour = hour,
+        .date = d,
+        .month = m,
+        .year = year,
+        .day_of_week = dow,
+        .daylight_p = false, // TODO: detect DST
+        .zone = tz_offset_hours,
+    };
+}
+
+/// Encode calendar components to universal time
+pub fn encodeUniversalTime(
+    second: i64,
+    minute: i64,
+    hour: i64,
+    date: i64,
+    month: i64,
+    year: i64,
+    time_zone: ?i64,
+) i64 {
+    // Get time zone offset (hours west of GMT)
+    const tz_offset_hours: i64 = time_zone orelse 0;
+
+    // Calculate days since Unix epoch using a simple algorithm
+    // This handles the Gregorian calendar correctly
+    const y = year - @as(i64, if (month <= 2) @as(i64, 1) else 0);
+    const m_adj = month + @as(i64, if (month <= 2) @as(i64, 12) else 0);
+
+    // Days from years
+    var days: i64 = 365 * y + @divFloor(y, 4) - @divFloor(y, 100) + @divFloor(y, 400);
+    // Days from months (using the offset formula)
+    days += @divFloor(153 * (m_adj - 3) + 2, 5);
+    // Add day of month
+    days += date;
+    // Adjust to Unix epoch (days from year 0 to 1970-01-01)
+    days -= 719528;
+
+    // Convert to seconds
+    const day_seconds = second + minute * 60 + hour * 3600;
+    var unix_seconds = days * 86400 + day_seconds;
+
+    // Adjust for timezone (add hours west of GMT to get UTC)
+    unix_seconds += tz_offset_hours * 3600;
+
+    // Convert Unix time to Universal Time (add 70 years)
+    return unix_seconds + 2208988800;
+}
+
 /// Print memory usage statistics
 pub fn room(allocations: usize, bytes_allocated: usize, gc_count: usize, bytes_copied: usize) void {
     const stdout_file = fs.File.stdout();

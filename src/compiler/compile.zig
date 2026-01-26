@@ -413,6 +413,9 @@ pub const Builtins = struct {
     @"get-universal-time": Value,
     @"get-internal-real-time": Value,
     @"get-internal-run-time": Value,
+    @"get-decoded-time": Value,
+    @"decode-universal-time": Value,
+    @"encode-universal-time": Value,
     room: Value,
     @"lisp-implementation-type": Value,
     @"lisp-implementation-version": Value,
@@ -472,6 +475,12 @@ pub const Builtins = struct {
     @"pathname-name": Value,
     @"pathname-type": Value,
     @"pathname-version": Value,
+    truename: Value,
+    @"ensure-directories-exist": Value,
+    pathname: Value,
+    @"parse-namestring": Value,
+    namestring: Value,
+    @"merge-pathnames": Value,
     @"package-symbols-table": Value,
     @"package-exports-table": Value,
     @"package-name": Value,
@@ -880,6 +889,9 @@ pub const Builtins = struct {
             .@"get-universal-time" = try heap.intern("get-universal-time"),
             .@"get-internal-real-time" = try heap.intern("get-internal-real-time"),
             .@"get-internal-run-time" = try heap.intern("get-internal-run-time"),
+            .@"get-decoded-time" = try heap.intern("get-decoded-time"),
+            .@"decode-universal-time" = try heap.intern("decode-universal-time"),
+            .@"encode-universal-time" = try heap.intern("encode-universal-time"),
             .room = try heap.intern("room"),
             .@"lisp-implementation-type" = try heap.intern("lisp-implementation-type"),
             .@"lisp-implementation-version" = try heap.intern("lisp-implementation-version"),
@@ -936,6 +948,12 @@ pub const Builtins = struct {
             .@"pathname-name" = try heap.intern("pathname-name"),
             .@"pathname-type" = try heap.intern("pathname-type"),
             .@"pathname-version" = try heap.intern("pathname-version"),
+            .truename = try heap.intern("truename"),
+            .@"ensure-directories-exist" = try heap.intern("ensure-directories-exist"),
+            .pathname = try heap.intern("pathname"),
+            .@"parse-namestring" = try heap.intern("parse-namestring"),
+            .namestring = try heap.intern("namestring"),
+            .@"merge-pathnames" = try heap.intern("merge-pathnames"),
             .@"package-symbols-table" = try heap.intern("package-symbols-table"),
             .@"package-exports-table" = try heap.intern("package-exports-table"),
             .@"package-name" = try heap.intern("package-name"),
@@ -1065,7 +1083,8 @@ pub const Builtins = struct {
         // File I/O
         "read-file", "write-file", "delete-file", "rename-file",
         "probe-file", "file-write-date",
-        "get-universal-time", "get-internal-real-time", "get-internal-run-time", "room",
+        "get-universal-time", "get-internal-real-time", "get-internal-run-time",
+        "get-decoded-time", "decode-universal-time", "encode-universal-time", "room",
         "lisp-implementation-type", "lisp-implementation-version",
         "software-type", "machine-type",
         "machine-instance", "machine-version", "software-version",
@@ -1087,6 +1106,8 @@ pub const Builtins = struct {
         // Pathname primitives
         "pathname-host", "pathname-device", "pathname-directory",
         "pathname-name", "pathname-type", "pathname-version",
+        "truename", "ensure-directories-exist",
+        "pathname", "parse-namestring", "namestring", "merge-pathnames",
         // Also callable
         "funcall", "apply", "values", "values-list",
     };
@@ -9135,6 +9156,7 @@ pub const Compiler = struct {
         read_file, write_file, delete_file, rename_file, probe_file, file_write_date,
         // Time
         get_universal_time, get_internal_real_time, get_internal_run_time,
+        get_decoded_time, decode_universal_time, encode_universal_time,
         // Environment
         room, lisp_implementation_type, lisp_implementation_version, software_type, machine_type,
         machine_instance, machine_version, software_version, short_site_name, long_site_name, user_homedir_pathname,
@@ -9153,7 +9175,8 @@ pub const Compiler = struct {
         // Streams
         streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream,
         // Pathnames
-        pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version,
+        pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version, truename, ensure_directories_exist,
+        pathname, parse_namestring, namestring, merge_pathnames,
         // Packages
         package_symbols_table, package_exports_table, package_name, package_nicknames, package_use_list, package_used_by_list, package_shadowing_symbols, packagep,
         // Class/slot introspection
@@ -9273,6 +9296,12 @@ pub const Compiler = struct {
         .{ .field = "pathname-name", .tag = .pathname_name },
         .{ .field = "pathname-type", .tag = .pathname_type },
         .{ .field = "pathname-version", .tag = .pathname_version },
+        .{ .field = "truename", .tag = .truename },
+        .{ .field = "ensure-directories-exist", .tag = .ensure_directories_exist },
+        .{ .field = "pathname", .tag = .pathname },
+        .{ .field = "parse-namestring", .tag = .parse_namestring },
+        .{ .field = "namestring", .tag = .namestring },
+        .{ .field = "decode-universal-time", .tag = .decode_universal_time },
         .{ .field = "package-symbols-table", .tag = .package_symbols_table },
         .{ .field = "package-exports-table", .tag = .package_exports_table },
         .{ .field = "package-name", .tag = .package_name },
@@ -9346,6 +9375,7 @@ pub const Compiler = struct {
         .{ .field = "make-string", .tag = .make_string },
         .{ .field = "make-complex", .tag = .make_complex },
         .{ .field = "write-to-stream", .tag = .write_to_stream },
+        .{ .field = "merge-pathnames", .tag = .merge_pathnames },
     };
 
     /// Dispatch entry for ternary primitives
@@ -9368,6 +9398,7 @@ pub const Compiler = struct {
         .{ .field = "get-universal-time", .tag = .get_universal_time },
         .{ .field = "get-internal-real-time", .tag = .get_internal_real_time },
         .{ .field = "get-internal-run-time", .tag = .get_internal_run_time },
+        .{ .field = "get-decoded-time", .tag = .get_decoded_time },
         .{ .field = "room", .tag = .room },
         .{ .field = "lisp-implementation-type", .tag = .lisp_implementation_type },
         .{ .field = "lisp-implementation-version", .tag = .lisp_implementation_version },
@@ -9777,6 +9808,11 @@ pub const Compiler = struct {
                 break :blk node;
             },
             .write_to_stream => try self.builder.writeToStream(left, right),
+            .merge_pathnames => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .merge_pathnames = .{ .left = left, .right = right } };
+                break :blk node;
+            },
             else => return error.InvalidSyntax,
         };
     }
@@ -10110,6 +10146,36 @@ pub const Compiler = struct {
                 node.* = .{ .pathname_version = .{ .operand = operand } };
                 break :blk node;
             },
+            .truename => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .truename = .{ .operand = operand } };
+                break :blk node;
+            },
+            .ensure_directories_exist => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .ensure_directories_exist = .{ .operand = operand } };
+                break :blk node;
+            },
+            .pathname => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pathname = .{ .operand = operand } };
+                break :blk node;
+            },
+            .parse_namestring => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .parse_namestring = .{ .operand = operand } };
+                break :blk node;
+            },
+            .namestring => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .namestring = .{ .operand = operand } };
+                break :blk node;
+            },
+            .decode_universal_time => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .decode_universal_time = .{ .operand = operand } };
+                break :blk node;
+            },
             .find_class => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .find_class = .{ .operand = operand } };
@@ -10219,6 +10285,7 @@ pub const Compiler = struct {
             .get_universal_time => try self.builder.getUniversalTime(),
             .get_internal_real_time => try self.builder.getInternalRealTime(),
             .get_internal_run_time => try self.builder.getInternalRunTime(),
+            .get_decoded_time => try self.builder.getDecodedTime(),
             .room => try self.builder.room(),
             .lisp_implementation_type => try self.builder.lispImplementationType(),
             .lisp_implementation_version => try self.builder.lispImplementationVersion(),

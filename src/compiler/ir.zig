@@ -328,6 +328,12 @@ pub const Ir = union(enum) {
     pathname_version: struct {
         operand: *const Ir,
     },
+    truename: UnaryOp, // Get canonical pathname
+    ensure_directories_exist: UnaryOp, // Create directories for pathname
+    pathname: UnaryOp, // Convert pathspec to pathname
+    parse_namestring: UnaryOp, // Parse string to pathname
+    namestring: UnaryOp, // Convert pathname to string
+    merge_pathnames: BinaryOp, // Merge two pathnames
 
     package_symbols_table: struct {
         operand: *const Ir,
@@ -535,6 +541,8 @@ pub const Ir = union(enum) {
     get_universal_time: void, // Get current universal time
     get_internal_real_time: void, // Get internal real time (microseconds)
     get_internal_run_time: void, // Get internal run time (CPU microseconds)
+    get_decoded_time: void, // Get current decoded time (9 values)
+    decode_universal_time: UnaryOp, // Decode universal time to components
     room: void, // Print memory statistics
     lisp_implementation_type: void, // Get implementation name
     lisp_implementation_version: void, // Get implementation version
@@ -1852,6 +1860,12 @@ pub const IrBuilder = struct {
     pub fn getInternalRunTime(self: IrBuilder) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .get_internal_run_time = {} };
+        return node;
+    }
+
+    pub fn getDecodedTime(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .get_decoded_time = {} };
         return node;
     }
 

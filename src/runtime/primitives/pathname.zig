@@ -75,24 +75,25 @@ pub fn pathname(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
 }
 
 /// Convert pathname to namestring
-pub fn namestring(allocator: std.mem.Allocator, val: Value) !Value {
+pub fn namestring(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
+    _ = allocator;
     if (!val.isPathname()) return error.TypeMismatch;
     const p = val.toPtr(Pathname);
 
     var buf = std.ArrayList(u8){};
-    defer buf.deinit(allocator);
-    const writer = buf.writer(allocator);
+    defer buf.deinit(heap.allocator);
+    const writer = buf.writer(heap.allocator);
 
     // host://device/directory/name.type;version format
     if (!p.host.isNil()) {
-        const host_str = p.host.toString();
-        try writer.writeAll(host_str.data);
+        const host_str = p.host.toPtr(objects.String);
+        try writer.writeAll(host_str.bytes());
         try writer.writeAll("://");
     }
 
     if (!p.device.isNil()) {
-        const dev_str = p.device.toString();
-        try writer.writeAll(dev_str.data);
+        const dev_str = p.device.toPtr(objects.String);
+        try writer.writeAll(dev_str.bytes());
         try writer.writeAll("/");
     }
 
@@ -104,8 +105,8 @@ pub fn namestring(allocator: std.mem.Allocator, val: Value) !Value {
 
         // :absolute starts with /, :relative has no prefix
         if (first.isKeyword()) {
-            const kw = first.toKeyword();
-            if (std.mem.eql(u8, kw.name.data, "absolute")) {
+            const kw = first.toPtr(objects.Keyword);
+            if (std.mem.eql(u8, kw.getName(), "absolute")) {
                 try writer.writeByte('/');
             }
         }
@@ -113,8 +114,8 @@ pub fn namestring(allocator: std.mem.Allocator, val: Value) !Value {
         while (!dir.isNil()) {
             const component = dir.car();
             if (component.isString()) {
-                const comp_str = component.toString();
-                try writer.writeAll(comp_str.data);
+                const comp_str = component.toPtr(objects.String);
+                try writer.writeAll(comp_str.bytes());
                 dir = dir.cdr();
                 if (!dir.isNil()) try writer.writeByte('/');
             } else break;
@@ -125,56 +126,54 @@ pub fn namestring(allocator: std.mem.Allocator, val: Value) !Value {
         if (buf.items.len > 0 and buf.items[buf.items.len - 1] != '/') {
             try writer.writeByte('/');
         }
-        const name_str = p.name.toString();
-        try writer.writeAll(name_str.data);
+        const name_str = p.name.toPtr(objects.String);
+        try writer.writeAll(name_str.bytes());
     }
 
     if (!p.type.isNil()) {
         try writer.writeByte('.');
-        const type_str = p.type.toString();
-        try writer.writeAll(type_str.data);
+        const type_str = p.type.toPtr(objects.String);
+        try writer.writeAll(type_str.bytes());
     }
 
     if (!p.version.isNil()) {
         try writer.writeByte(';');
         if (p.version.isKeyword()) {
-            const kw = p.version.toKeyword();
-            try writer.writeAll(kw.name.data);
+            const kw = p.version.toPtr(objects.Keyword);
+            try writer.writeAll(kw.getName());
         } else if (p.version.isFixnum()) {
             try writer.print("{d}", .{p.version.toFixnum()});
         }
     }
 
-    const str = try objects.String.create(allocator, buf.items);
-    return Value.fromString(str);
+    return try heap.allocBaseString(buf.items);
 }
 
 /// Parse namestring into pathname
 pub fn parseNamestring(allocator: std.mem.Allocator, heap: *Heap, str: Value) !Value {
+    _ = allocator;
     if (!str.isString()) return error.TypeMismatch;
-    const s = str.toString();
-    const path = s.data;
+    const s = str.toPtr(objects.String);
+    const path = s.bytes();
 
-    var host = Value.nil();
-    var device = Value.nil();
-    var directory = Value.nil();
-    var name = Value.nil();
-    var ty = Value.nil();
-    var version = Value.nil();
+    var host = Value.nil;
+    var device = Value.nil;
+    var directory = Value.nil;
+    var name = Value.nil;
+    var ty = Value.nil;
+    var version = Value.nil;
 
     var i: usize = 0;
 
     // Parse host://
     if (std.mem.indexOf(u8, path, "://")) |host_end| {
-        const host_str = try objects.String.create(allocator, path[0..host_end]);
-        host = Value.fromString(host_str);
+        host = try heap.allocBaseString(path[0..host_end]);
         i = host_end + 3;
     }
 
     // Parse device/ (single letter followed by /)
     if (i + 2 < path.len and path[i + 1] == '/') {
-        const dev_str = try objects.String.create(allocator, path[i .. i + 1]);
-        device = Value.fromString(dev_str);
+        device = try heap.allocBaseString(path[i .. i + 1]);
         i += 2;
     }
 
@@ -184,15 +183,15 @@ pub fn parseNamestring(allocator: std.mem.Allocator, heap: *Heap, str: Value) !V
     // Parse directory
     if (last_slash) |ls_idx| {
         const dir_part = path[i .. i + ls_idx];
-        var dir_list = Value.nil();
+        var dir_list = Value.nil;
 
         // Determine if absolute or relative
         const dir_type = if (dir_part.len > 0 and dir_part[0] == '/')
-            heap.intern("absolute")
+            try heap.internKeyword("absolute")
         else
-            heap.intern("relative");
+            try heap.internKeyword("relative");
 
-        dir_list = try heap.allocCons(dir_type, Value.nil());
+        dir_list = try heap.allocCons(dir_type, Value.nil);
         var tail = dir_list;
 
         // Split directory components
@@ -201,18 +200,18 @@ pub fn parseNamestring(allocator: std.mem.Allocator, heap: *Heap, str: Value) !V
         while (j < dir_part.len) : (j += 1) {
             if (dir_part[j] == '/') {
                 if (j > start) {
-                    const comp_str = try objects.String.create(allocator, dir_part[start..j]);
-                    const new_cons = try heap.allocCons(Value.fromString(comp_str), Value.nil());
-                    tail.toCons().cdr = new_cons;
+                    const comp_str = try heap.allocBaseString(dir_part[start..j]);
+                    const new_cons = try heap.allocCons(comp_str, Value.nil);
+                    tail.toPtr(objects.Cons).cdr = new_cons;
                     tail = new_cons;
                 }
                 start = j + 1;
             }
         }
         if (j > start and start < dir_part.len) {
-            const comp_str = try objects.String.create(allocator, dir_part[start..j]);
-            const new_cons = try heap.allocCons(Value.fromString(comp_str), Value.nil());
-            tail.toCons().cdr = new_cons;
+            const comp_str = try heap.allocBaseString(dir_part[start..j]);
+            const new_cons = try heap.allocCons(comp_str, Value.nil);
+            tail.toPtr(objects.Cons).cdr = new_cons;
         }
 
         directory = dir_list;
@@ -226,12 +225,12 @@ pub fn parseNamestring(allocator: std.mem.Allocator, heap: *Heap, str: Value) !V
     if (std.mem.lastIndexOf(u8, remainder, ";")) |ver_idx| {
         const ver_part = remainder[ver_idx + 1 ..];
         if (std.mem.eql(u8, ver_part, "newest")) {
-            version = heap.internKeyword("newest");
+            version = try heap.internKeyword("newest");
         } else if (std.mem.eql(u8, ver_part, "unspecific")) {
-            version = heap.internKeyword("unspecific");
+            version = try heap.internKeyword("unspecific");
         } else {
             const ver_num = std.fmt.parseInt(i64, ver_part, 10) catch 0;
-            version = Value.fromFixnum(ver_num);
+            version = Value.makeFixnum(ver_num);
         }
         // Continue parsing name.type before version
         i = remainder.len - (remainder.len - ver_idx);
@@ -248,18 +247,15 @@ pub fn parseNamestring(allocator: std.mem.Allocator, heap: *Heap, str: Value) !V
     if (std.mem.lastIndexOf(u8, name_type_part, ".")) |dot_idx| {
         const type_part = name_type_part[dot_idx + 1 ..];
         if (type_part.len > 0) {
-            const type_str = try objects.String.create(allocator, type_part);
-            ty = Value.fromString(type_str);
+            ty = try heap.allocBaseString(type_part);
         }
 
         const name_part = name_type_part[0..dot_idx];
         if (name_part.len > 0) {
-            const name_str = try objects.String.create(allocator, name_part);
-            name = Value.fromString(name_str);
+            name = try heap.allocBaseString(name_part);
         }
     } else if (name_type_part.len > 0) {
-        const name_str = try objects.String.create(allocator, name_type_part);
-        name = Value.fromString(name_str);
+        name = try heap.allocBaseString(name_type_part);
     }
 
     return try heap.allocPathname(host, device, directory, name, ty, version);
@@ -313,7 +309,7 @@ pub fn userHomedirPathname(allocator: std.mem.Allocator, heap: *Heap) !Value {
     var i = parts_len;
     while (i > 0) {
         i -= 1;
-        const part_str = try heap.allocString32FromUtf8(parts_buf[i]);
+        const part_str = try heap.allocBaseString(parts_buf[i]);
         dir_list = try heap.allocCons(part_str, dir_list);
     }
 
@@ -322,4 +318,120 @@ pub fn userHomedirPathname(allocator: std.mem.Allocator, heap: *Heap) !Value {
     dir_list = try heap.allocCons(absolute_kw, dir_list);
 
     return try heap.allocPathname(Value.nil, Value.nil, dir_list, Value.nil, Value.nil, Value.nil);
+}
+
+/// Get the canonical (truename) of a pathname
+/// Returns the resolved absolute path, or nil if file doesn't exist
+pub fn truename(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
+    // Get the namestring from the pathname or string
+    const needs_free = val.isPathname();
+    const path_str = if (val.isPathname()) blk: {
+        const pn = val.toPtr(Pathname);
+        break :blk try pathnameToString(allocator, pn);
+    } else if (val.isString()) blk: {
+        const s = val.toPtr(objects.String);
+        break :blk s.bytes();
+    } else return error.TypeMismatch;
+    defer if (needs_free) allocator.free(path_str);
+
+    // Use realpath to get the canonical path
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
+    const real_path = std.posix.realpath(path_str, &buf) catch |err| switch (err) {
+        error.FileNotFound => return Value.nil,
+        else => return error.FileError,
+    };
+
+    // Parse the real path into a pathname
+    const str_val = try heap.allocBaseString(real_path);
+    return try parseNamestring(allocator, heap, str_val);
+}
+
+/// Ensure directories exist for a pathname
+/// Creates any missing directories, returns pathname
+pub fn ensureDirectoriesExist(allocator: std.mem.Allocator, heap: *Heap, val: Value) !struct { pathname: Value, created: bool } {
+    _ = heap;
+    // Get the pathname
+    const pn = if (val.isPathname())
+        val.toPtr(Pathname)
+    else if (val.isString())
+        return error.TypeMismatch // Need to parse first
+    else
+        return error.TypeMismatch;
+
+    // Get the directory string
+    const path_str = try pathnameToString(allocator, pn);
+    defer allocator.free(path_str);
+
+    // Find the directory portion (everything up to the last /)
+    var dir_end: usize = 0;
+    for (path_str, 0..) |c, i| {
+        if (c == '/') dir_end = i;
+    }
+
+    if (dir_end == 0) {
+        // No directory component
+        return .{ .pathname = val, .created = false };
+    }
+
+    const dir_path = path_str[0..dir_end];
+
+    // Create directories
+    std.fs.cwd().makePath(dir_path) catch |err| switch (err) {
+        error.PathAlreadyExists => return .{ .pathname = val, .created = false },
+        else => return error.FileError,
+    };
+
+    return .{ .pathname = val, .created = true };
+}
+
+/// Helper to convert pathname to string path
+fn pathnameToString(allocator: std.mem.Allocator, pn: *const Pathname) ![]const u8 {
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(allocator);
+    const writer = buf.writer(allocator);
+
+    // Build path from directory
+    if (pn.directory.isCons()) {
+        var dir = pn.directory;
+        var first_component = true;
+
+        while (dir.isCons()) {
+            const cons = dir.toPtr(objects.Cons);
+            const part = cons.car;
+
+            if (part.isKeyword()) {
+                // :absolute or :relative
+                const kw = part.toPtr(objects.Keyword);
+                if (std.mem.eql(u8, kw.getName(), "ABSOLUTE") or std.mem.eql(u8, kw.getName(), "absolute")) {
+                    try writer.writeByte('/');
+                }
+                // :relative means start with nothing
+            } else if (part.isString()) {
+                if (!first_component) try writer.writeByte('/');
+                const s = part.toPtr(objects.String);
+                try writer.writeAll(s.bytes());
+                first_component = false;
+            }
+
+            dir = cons.cdr;
+        }
+    }
+
+    // Add name
+    if (pn.name.isString()) {
+        if (buf.items.len > 0 and buf.items[buf.items.len - 1] != '/') {
+            try writer.writeByte('/');
+        }
+        const s = pn.name.toPtr(objects.String);
+        try writer.writeAll(s.bytes());
+    }
+
+    // Add type (extension)
+    if (pn.type.isString()) {
+        try writer.writeByte('.');
+        const s = pn.type.toPtr(objects.String);
+        try writer.writeAll(s.bytes());
+    }
+
+    return try buf.toOwnedSlice(allocator);
 }

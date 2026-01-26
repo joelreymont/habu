@@ -2188,6 +2188,38 @@ pub const Vm = struct {
                 const timestamp = io.getInternalRunTime();
                 try self.push(Value.makeFixnum(timestamp));
             },
+            .get_decoded_time => {
+                const ut = io.getUniversalTime();
+                const dt = io.decodeUniversalTime(ut, null);
+                // Return 9 values: second, minute, hour, date, month, year, dow, dst-p, zone
+                try self.push(Value.makeFixnum(dt.second));
+                self.secondary_values[0] = Value.makeFixnum(dt.minute);
+                self.secondary_values[1] = Value.makeFixnum(dt.hour);
+                self.secondary_values[2] = Value.makeFixnum(dt.date);
+                self.secondary_values[3] = Value.makeFixnum(dt.month);
+                self.secondary_values[4] = Value.makeFixnum(dt.year);
+                self.secondary_values[5] = Value.makeFixnum(dt.day_of_week);
+                self.secondary_values[6] = if (dt.daylight_p) Value.t else Value.nil;
+                self.secondary_values[7] = Value.makeFixnum(dt.zone);
+                self.secondary_values_count = 8;
+            },
+            .decode_universal_time => {
+                const ut_val = try self.pop();
+                if (!ut_val.isFixnum()) return error.TypeMismatch;
+                const ut = ut_val.toFixnum();
+                const dt = io.decodeUniversalTime(ut, null);
+                // Return 9 values: second, minute, hour, date, month, year, dow, dst-p, zone
+                try self.push(Value.makeFixnum(dt.second));
+                self.secondary_values[0] = Value.makeFixnum(dt.minute);
+                self.secondary_values[1] = Value.makeFixnum(dt.hour);
+                self.secondary_values[2] = Value.makeFixnum(dt.date);
+                self.secondary_values[3] = Value.makeFixnum(dt.month);
+                self.secondary_values[4] = Value.makeFixnum(dt.year);
+                self.secondary_values[5] = Value.makeFixnum(dt.day_of_week);
+                self.secondary_values[6] = if (dt.daylight_p) Value.t else Value.nil;
+                self.secondary_values[7] = Value.makeFixnum(dt.zone);
+                self.secondary_values_count = 8;
+            },
             .room => {
                 // Print memory statistics
                 const stats = self.heap.stats;
@@ -3185,6 +3217,16 @@ pub const Vm = struct {
                 const result = try primitives.pathname.pathnameVersion(path);
                 try self.push(result);
             },
+            .truename => {
+                const path = try self.pop();
+                const result = try primitives.pathname.truename(self.allocator, self.heap, path);
+                try self.push(result);
+            },
+            .ensure_directories_exist => {
+                const path = try self.pop();
+                const result = try primitives.pathname.ensureDirectoriesExist(self.allocator, self.heap, path);
+                try self.push(result.pathname);
+            },
             .package_symbols_table => {
                 const pkg = try self.pop();
                 const result = try primitives.package.packageSymbols(pkg);
@@ -3506,34 +3548,8 @@ pub const Vm = struct {
 
             .pathname => {
                 const pathspec = try self.pop();
-
-                // If already a pathname, return it
-                if (pathspec.isPathname()) {
-                    try self.push(pathspec);
-                } else if (pathspec.isString()) {
-                    // Parse string as pathname
-                    // For now, just use the string as the name component
-                    const bytes = try self.heap.allocRaw(@sizeOf(runtime.Pathname));
-                    const pn: *runtime.Pathname = @ptrCast(@alignCast(bytes));
-
-                    pn.* = .{
-                        .kind = .pathname,
-                        .host = Value.nil,
-                        .device = Value.nil,
-                        .directory = Value.nil,
-                        .name = pathspec,
-                        .type = Value.nil,
-                        .version = Value.nil,
-                    };
-
-                    try self.push(Value.makePathname(pn));
-                } else if (pathspec.isStream()) {
-                    // Return stream's pathname (not implemented yet)
-                    // For now, return nil
-                    try self.push(Value.nil);
-                } else {
-                    return error.TypeMismatch;
-                }
+                const result = try primitives.pathname.pathname(self.allocator, self.heap, pathspec);
+                try self.push(result);
             },
 
             .parse_namestring => {
@@ -4366,8 +4382,8 @@ pub const Vm = struct {
             .halt => return error.Halt,
         }
 
-        // Clear stale secondary values after each op (except .values which sets them)
-        if (op != .values) {
+        // Clear stale secondary values after each op (except ops that set them)
+        if (op != .values and op != .get_decoded_time and op != .decode_universal_time) {
             self.secondary_values_count = 0;
         }
     }

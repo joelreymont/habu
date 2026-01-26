@@ -2,7 +2,7 @@
 
 978 external symbols in COMMON-LISP package per ANSI INCITS 226-1994.
 
-Status: ✓ implemented (693, 73%) | ⚠ partial (29, 3%) | ✗ missing (238, 25%)
+Status: ✓ implemented (697, 71%) | ⚠ partial (29, 3%) | ✗ missing (234, 24%)
 Note: 960 symbols documented, 18 symbols pending audit
 
 ## Lambda List Keywords (8)
@@ -682,7 +682,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | probe-file | ✓ | compile.zig:9541, vm.zig:2148 | Check if file exists |
 | translate-logical-pathname | ✗ | - | |
 | translate-pathname | ✗ | - | |
-| truename | ✗ | - | |
+| truename | ✓ | pathname.zig:325, vm.zig:3188 | Get canonical pathname |
 | wild-pathname-p | ✗ | - | |
 
 ## Functions - Files/Streams (47)
@@ -696,7 +696,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | delete-file | ✓ | compile.zig:9536, vm.zig:2131 | File deletion |
 | echo-stream-input-stream | ✗ | - | |
 | echo-stream-output-stream | ✗ | - | |
-| ensure-directories-exist | ✗ | - | |
+| ensure-directories-exist | ✓ | pathname.zig:349, vm.zig:3193 | Create missing directories |
 | file-length | ✓ | compile.zig:291 | File length |
 | file-position | ✓ | compile.zig:290 | File position |
 | file-string-length | ✗ | - | |
@@ -792,7 +792,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | compiled-function-p | ✓ | stdlib.habu | Compiled pred |
 | compiler-macro-function | ✗ | - | |
 | constantp | ✓ | stdlib.habu | Constant pred |
-| decode-universal-time | ✗ | - | |
+| decode-universal-time | ✓ | io.zig:968, vm.zig:2199 | Decode to 9 values |
 | describe | ✗ | - | |
 | describe-object | ✗ | - | |
 | disassemble | ✗ | - | |
@@ -801,7 +801,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | ed | ✗ | - | |
 | encode-universal-time | ✗ | - | |
 | eval | ✓ | compile.zig:226 | Evaluate form |
-| get-decoded-time | ✗ | - | |
+| get-decoded-time | ✓ | io.zig:968, vm.zig:2191 | Current time as 9 values |
 | get-internal-real-time | ✓ | compile.zig:9551, vm.zig:2169 | High-resolution timing |
 | get-internal-run-time | ✓ | io.zig, vm.zig | Process CPU time |
 | get-universal-time | ✓ | compile.zig:9549, vm.zig:2165 | Get current time |
