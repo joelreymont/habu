@@ -939,9 +939,13 @@ pub const Op = enum(u16) {
     /// ( -- symbol )
     gensym = 0xDC,
 
-    /// Expand macros in expression
+    /// Expand macros fully
     /// ( expr -- expanded )
     macroexpand = 0xDD,
+
+    /// Expand macros once
+    /// ( expr -- expanded )
+    macroexpand_1 = 0x13E,
 
     /// Print value without escaping (princ style)
     /// ( val -- val )
@@ -1310,6 +1314,10 @@ pub const Op = enum(u16) {
     /// ( -- internal-time )
     get_internal_real_time = 0x133,
 
+    /// Get internal run time (process CPU time, microseconds)
+    /// ( -- internal-time )
+    get_internal_run_time = 0x140,
+
     /// Print memory usage information
     /// ( -- nil )
     room = 0x134,
@@ -1329,6 +1337,30 @@ pub const Op = enum(u16) {
     /// Get machine type (architecture)
     /// ( -- string )
     machine_type = 0x138,
+
+    /// Get machine instance (hostname)
+    /// ( -- string-or-nil )
+    machine_instance = 0x139,
+
+    /// Get machine version
+    /// ( -- string-or-nil )
+    machine_version = 0x13A,
+
+    /// Get software version
+    /// ( -- string-or-nil )
+    software_version = 0x13B,
+
+    /// Get short site name
+    /// ( -- string-or-nil )
+    short_site_name = 0x13C,
+
+    /// Get long site name
+    /// ( -- string-or-nil )
+    long_site_name = 0x13D,
+
+    /// Get user home directory pathname
+    /// ( -- pathname-or-nil )
+    user_homedir_pathname = 0x13F,
 
     // ========================================================================
     // Special
@@ -1565,6 +1597,7 @@ pub const Op = enum(u16) {
             .eval,
             .gensym,
             .macroexpand,
+            .macroexpand_1,
             .princ,
             .terpri,
             .write_char,
@@ -1595,11 +1628,18 @@ pub const Op = enum(u16) {
             .file_write_date,
             .get_universal_time,
             .get_internal_real_time,
+            .get_internal_run_time,
             .room,
             .lisp_implementation_type,
             .lisp_implementation_version,
             .software_type,
             .machine_type,
+            .machine_instance,
+            .machine_version,
+            .software_version,
+            .short_site_name,
+            .long_site_name,
+            .user_homedir_pathname,
             .make_string,
             .list_to_string,
             .string_upcase,

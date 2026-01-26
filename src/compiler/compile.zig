@@ -90,6 +90,7 @@ pub const Builtins = struct {
     // Macros
     defmacro: Value,
     macroexpand: Value,
+    @"macroexpand-1": Value,
 
     // Declarations
     declare: Value,
@@ -408,11 +409,18 @@ pub const Builtins = struct {
     @"file-write-date": Value,
     @"get-universal-time": Value,
     @"get-internal-real-time": Value,
+    @"get-internal-run-time": Value,
     room: Value,
     @"lisp-implementation-type": Value,
     @"lisp-implementation-version": Value,
     @"software-type": Value,
     @"machine-type": Value,
+    @"machine-instance": Value,
+    @"machine-version": Value,
+    @"software-version": Value,
+    @"short-site-name": Value,
+    @"long-site-name": Value,
+    @"user-homedir-pathname": Value,
 
     // Primitives - String construction
     @"make-string": Value,
@@ -574,6 +582,7 @@ pub const Builtins = struct {
             .apply = try heap.intern("apply"),
             .defmacro = try heap.intern("defmacro"),
             .macroexpand = try heap.intern("macroexpand"),
+            .@"macroexpand-1" = try heap.intern("macroexpand-1"),
             .declare = try heap.intern("declare"),
             .declaim = try heap.intern("declaim"),
             .proclaim = try heap.intern("proclaim"),
@@ -864,11 +873,18 @@ pub const Builtins = struct {
             .@"file-write-date" = try heap.intern("file-write-date"),
             .@"get-universal-time" = try heap.intern("get-universal-time"),
             .@"get-internal-real-time" = try heap.intern("get-internal-real-time"),
+            .@"get-internal-run-time" = try heap.intern("get-internal-run-time"),
             .room = try heap.intern("room"),
             .@"lisp-implementation-type" = try heap.intern("lisp-implementation-type"),
             .@"lisp-implementation-version" = try heap.intern("lisp-implementation-version"),
             .@"software-type" = try heap.intern("software-type"),
             .@"machine-type" = try heap.intern("machine-type"),
+            .@"machine-instance" = try heap.intern("machine-instance"),
+            .@"machine-version" = try heap.intern("machine-version"),
+            .@"software-version" = try heap.intern("software-version"),
+            .@"short-site-name" = try heap.intern("short-site-name"),
+            .@"long-site-name" = try heap.intern("long-site-name"),
+            .@"user-homedir-pathname" = try heap.intern("user-homedir-pathname"),
             // Primitives - String construction
             .@"make-string" = try heap.intern("make-string"),
             .@"string-to-list" = try heap.intern("string-to-list"),
@@ -995,233 +1011,85 @@ pub const Builtins = struct {
         };
     }
 
+    /// Comptime list of primitive function field names (not special forms)
+    const primitive_fields = [_][]const u8{
+        // Arithmetic
+        "+", "-", "*", "/", "mod", "%", "quot", "truncate", "rem",
+        // Comparison
+        "eq", "equal", "eql", "<", ">", "<=", ">=", "=",
+        // List operations
+        "cons", "car", "cdr", "first", "rest",
+        "caar", "cadr", "cdar", "cddr",
+        "caaar", "caadr", "cadar", "caddr", "cdaar", "cdadr", "cddar", "cdddr",
+        "second", "third", "fourth",
+        "append", "length", "reverse", "nth", "nthcdr", "last",
+        "member", "assoc", "find", "position", "count", "remove",
+        "list", "rplaca", "rplacd",
+        // Type predicates
+        "consp", "symbolp", "numberp", "stringp", "vectorp", "closurep", "keywordp",
+        "null", "not", "characterp", "floatp", "listp", "atom",
+        // Character operations
+        "char-code", "code-char", "char=", "char<", "char>",
+        "read-char", "peek-char", "read", "read-from-string", "load", "unread-char",
+        "eval", "gensym", "macroexpand", "macroexpand-1",
+        // Symbol operations
+        "boundp", "fboundp", "symbol-value", "symbol-function",
+        "typep", "type-of", "intern", "symbol-name", "get", "put", "remprop",
+        // Numeric
+        "abs", "zerop", "plusp", "minusp", "evenp", "oddp",
+        // Math functions
+        "sqrt", "sin", "cos", "tan", "exp", "log", "floor", "ceiling", "round",
+        // Vector operations
+        "aref", "svref", "vector-length", "make-vector", "vector", "make-array",
+        // String operations
+        "char", "schar", "string-length", "string-concat",
+        "string=", "string<", "string>", "string<=", "string>=",
+        "substring", "subseq",
+        // I/O
+        "print", "princ", "terpri", "write-char", "random", "random-seed", "format",
+        // Character functions
+        "char-upcase", "char-downcase", "digit-char-p", "alpha-char-p",
+        // String/number conversion
+        "parse-integer", "write-to-string",
+        // Bitwise operations
+        "logand", "logior", "logxor", "lognot", "ash",
+        "lognand", "lognor", "logandc1", "logandc2", "logeqv",
+        "logbitp", "logcount", "integer-length",
+        // File I/O
+        "read-file", "write-file", "delete-file", "rename-file",
+        "probe-file", "file-write-date",
+        "get-universal-time", "get-internal-real-time", "get-internal-run-time", "room",
+        "lisp-implementation-type", "lisp-implementation-version",
+        "software-type", "machine-type",
+        "machine-instance", "machine-version", "software-version",
+        "short-site-name", "long-site-name", "user-homedir-pathname",
+        // String construction
+        "make-string", "string-to-list", "list-to-string",
+        "string-upcase", "string-downcase", "concatenate",
+        // Hash tables
+        "make-hash-table", "gethash", "puthash", "remhash",
+        "hash-table-count", "hash-table-capacity", "clrhash",
+        "hash-table-test", "hash-table-p", "hash-table-keys", "hash-table-alist", "sxhash",
+        // Numeric types
+        "rationalp", "complexp", "make-complex", "real-part", "imag-part",
+        "numerator", "denominator",
+        // Streams
+        "streamp", "input-stream-p", "output-stream-p",
+        "make-string-input-stream", "make-string-output-stream",
+        "get-output-stream-string", "write-to-stream",
+        // Pathname primitives
+        "pathname-host", "pathname-device", "pathname-directory",
+        "pathname-name", "pathname-type", "pathname-version",
+        // Also callable
+        "funcall", "apply", "values", "values-list",
+    };
+
     /// Check if a symbol is a builtin function (not special form)
     pub fn isBuiltinFunction(self: *const Builtins, sym: Value) bool {
         const s = sym.raw;
-        // Primitives - Arithmetic
-        if (s == self.@"+".raw) return true;
-        if (s == self.@"-".raw) return true;
-        if (s == self.@"*".raw) return true;
-        if (s == self.@"/".raw) return true;
-        if (s == self.mod.raw) return true;
-        if (s == self.@"%".raw) return true;
-        if (s == self.quot.raw) return true;
-        if (s == self.truncate.raw) return true;
-        if (s == self.rem.raw) return true;
-        // Primitives - Comparison
-        if (s == self.eq.raw) return true;
-        if (s == self.equal.raw) return true;
-        if (s == self.eql.raw) return true;
-        if (s == self.@"<".raw) return true;
-        if (s == self.@">".raw) return true;
-        if (s == self.@"<=".raw) return true;
-        if (s == self.@">=".raw) return true;
-        if (s == self.@"=".raw) return true;
-        // Primitives - List operations
-        if (s == self.cons.raw) return true;
-        if (s == self.car.raw) return true;
-        if (s == self.cdr.raw) return true;
-        if (s == self.first.raw) return true;
-        if (s == self.rest.raw) return true;
-        if (s == self.caar.raw) return true;
-        if (s == self.cadr.raw) return true;
-        if (s == self.cdar.raw) return true;
-        if (s == self.cddr.raw) return true;
-        if (s == self.caaar.raw) return true;
-        if (s == self.caadr.raw) return true;
-        if (s == self.cadar.raw) return true;
-        if (s == self.caddr.raw) return true;
-        if (s == self.cdaar.raw) return true;
-        if (s == self.cdadr.raw) return true;
-        if (s == self.cddar.raw) return true;
-        if (s == self.cdddr.raw) return true;
-        if (s == self.second.raw) return true;
-        if (s == self.third.raw) return true;
-        if (s == self.fourth.raw) return true;
-        if (s == self.append.raw) return true;
-        if (s == self.length.raw) return true;
-        if (s == self.reverse.raw) return true;
-        if (s == self.nth.raw) return true;
-        if (s == self.nthcdr.raw) return true;
-        if (s == self.last.raw) return true;
-        if (s == self.member.raw) return true;
-        if (s == self.assoc.raw) return true;
-        if (s == self.find.raw) return true;
-        if (s == self.position.raw) return true;
-        if (s == self.count.raw) return true;
-        if (s == self.remove.raw) return true;
-        if (s == self.list.raw) return true;
-        if (s == self.rplaca.raw) return true;
-        if (s == self.rplacd.raw) return true;
-        // Primitives - Type predicates
-        if (s == self.consp.raw) return true;
-        if (s == self.symbolp.raw) return true;
-        if (s == self.numberp.raw) return true;
-        if (s == self.stringp.raw) return true;
-        if (s == self.vectorp.raw) return true;
-        if (s == self.closurep.raw) return true;
-        if (s == self.keywordp.raw) return true;
-        if (s == self.null.raw) return true;
-        if (s == self.not.raw) return true;
-        if (s == self.characterp.raw) return true;
-        if (s == self.floatp.raw) return true;
-        if (s == self.listp.raw) return true;
-        if (s == self.atom.raw) return true;
-        // Primitives - Character operations
-        if (s == self.@"char-code".raw) return true;
-        if (s == self.@"code-char".raw) return true;
-        if (s == self.@"char=".raw) return true;
-        if (s == self.@"char<".raw) return true;
-        if (s == self.@"char>".raw) return true;
-        if (s == self.@"read-char".raw) return true;
-        if (s == self.@"peek-char".raw) return true;
-        if (s == self.read.raw) return true;
-        if (s == self.@"read-from-string".raw) return true;
-        if (s == self.load.raw) return true;
-        if (s == self.@"unread-char".raw) return true;
-        if (s == self.eval.raw) return true;
-        if (s == self.gensym.raw) return true;
-        // Primitives - Symbol operations
-        if (s == self.boundp.raw) return true;
-        if (s == self.fboundp.raw) return true;
-        if (s == self.@"symbol-value".raw) return true;
-        if (s == self.@"symbol-function".raw) return true;
-        if (s == self.typep.raw) return true;
-        if (s == self.@"type-of".raw) return true;
-        if (s == self.intern.raw) return true;
-        if (s == self.@"symbol-name".raw) return true;
-        if (s == self.get.raw) return true;
-        if (s == self.put.raw) return true;
-        if (s == self.remprop.raw) return true;
-        // Note: error is NOT a primitive - stdlib provides (defun error (msg) (signal 'error msg))
-        // Primitives - Numeric
-        if (s == self.abs.raw) return true;
-        if (s == self.zerop.raw) return true;
-        if (s == self.plusp.raw) return true;
-        if (s == self.minusp.raw) return true;
-        if (s == self.evenp.raw) return true;
-        if (s == self.oddp.raw) return true;
-        // Primitives - Math functions
-        if (s == self.sqrt.raw) return true;
-        if (s == self.sin.raw) return true;
-        if (s == self.cos.raw) return true;
-        if (s == self.tan.raw) return true;
-        if (s == self.exp.raw) return true;
-        if (s == self.log.raw) return true;
-        if (s == self.floor.raw) return true;
-        if (s == self.ceiling.raw) return true;
-        if (s == self.round.raw) return true;
-        // Primitives - Vector operations
-        if (s == self.aref.raw) return true;
-        if (s == self.svref.raw) return true;
-        if (s == self.@"vector-length".raw) return true;
-        if (s == self.@"make-vector".raw) return true;
-        if (s == self.vector.raw) return true;
-        if (s == self.@"make-array".raw) return true;
-        // Primitives - String operations
-        if (s == self.char.raw) return true;
-        if (s == self.schar.raw) return true;
-        if (s == self.@"string-length".raw) return true;
-        if (s == self.@"string-concat".raw) return true;
-        if (s == self.@"string=".raw) return true;
-        if (s == self.@"string<".raw) return true;
-        if (s == self.@"string>".raw) return true;
-        if (s == self.@"string<=".raw) return true;
-        if (s == self.@"string>=".raw) return true;
-        if (s == self.substring.raw) return true;
-        if (s == self.subseq.raw) return true;
-        // Primitives - I/O
-        if (s == self.print.raw) return true;
-        if (s == self.princ.raw) return true;
-        if (s == self.terpri.raw) return true;
-        if (s == self.@"write-char".raw) return true;
-        if (s == self.random.raw) return true;
-        if (s == self.@"random-seed".raw) return true;
-        if (s == self.format.raw) return true;
-        // Primitives - Character functions
-        if (s == self.@"char-upcase".raw) return true;
-        if (s == self.@"char-downcase".raw) return true;
-        if (s == self.@"digit-char-p".raw) return true;
-        if (s == self.@"alpha-char-p".raw) return true;
-        // Primitives - String/number conversion
-        if (s == self.@"parse-integer".raw) return true;
-        if (s == self.@"write-to-string".raw) return true;
-        // Primitives - Bitwise operations
-        if (s == self.logand.raw) return true;
-        if (s == self.logior.raw) return true;
-        if (s == self.logxor.raw) return true;
-        if (s == self.lognot.raw) return true;
-        if (s == self.ash.raw) return true;
-        if (s == self.lognand.raw) return true;
-        if (s == self.lognor.raw) return true;
-        if (s == self.logandc1.raw) return true;
-        if (s == self.logandc2.raw) return true;
-        if (s == self.logeqv.raw) return true;
-        if (s == self.logbitp.raw) return true;
-        if (s == self.logcount.raw) return true;
-        if (s == self.@"integer-length".raw) return true;
-        // Primitives - File I/O
-        if (s == self.@"read-file".raw) return true;
-        if (s == self.@"write-file".raw) return true;
-        if (s == self.@"delete-file".raw) return true;
-        if (s == self.@"rename-file".raw) return true;
-        if (s == self.@"probe-file".raw) return true;
-        if (s == self.@"file-write-date".raw) return true;
-        if (s == self.@"get-universal-time".raw) return true;
-        if (s == self.@"get-internal-real-time".raw) return true;
-        if (s == self.room.raw) return true;
-        if (s == self.@"lisp-implementation-type".raw) return true;
-        if (s == self.@"lisp-implementation-version".raw) return true;
-        if (s == self.@"software-type".raw) return true;
-        if (s == self.@"machine-type".raw) return true;
-        // Primitives - String construction
-        if (s == self.@"make-string".raw) return true;
-        if (s == self.@"string-to-list".raw) return true;
-        if (s == self.@"list-to-string".raw) return true;
-        if (s == self.@"string-upcase".raw) return true;
-        if (s == self.@"string-downcase".raw) return true;
-        if (s == self.concatenate.raw) return true;
-        // Primitives - Hash tables
-        if (s == self.@"make-hash-table".raw) return true;
-        if (s == self.gethash.raw) return true;
-        if (s == self.puthash.raw) return true;
-        if (s == self.remhash.raw) return true;
-        if (s == self.@"hash-table-count".raw) return true;
-        if (s == self.@"hash-table-capacity".raw) return true;
-        if (s == self.clrhash.raw) return true;
-        if (s == self.@"hash-table-test".raw) return true;
-        if (s == self.@"hash-table-p".raw) return true;
-        if (s == self.@"hash-table-keys".raw) return true;
-        if (s == self.@"hash-table-alist".raw) return true;
-        if (s == self.sxhash.raw) return true;
-        // Primitives - Numeric types
-        if (s == self.rationalp.raw) return true;
-        if (s == self.complexp.raw) return true;
-        if (s == self.@"make-complex".raw) return true;
-        if (s == self.@"real-part".raw) return true;
-        if (s == self.@"imag-part".raw) return true;
-        if (s == self.numerator.raw) return true;
-        if (s == self.denominator.raw) return true;
-        // Primitives - Streams
-        if (s == self.streamp.raw) return true;
-        if (s == self.@"input-stream-p".raw) return true;
-        if (s == self.@"output-stream-p".raw) return true;
-        if (s == self.@"make-string-input-stream".raw) return true;
-        if (s == self.@"make-string-output-stream".raw) return true;
-        if (s == self.@"get-output-stream-string".raw) return true;
-        if (s == self.@"write-to-stream".raw) return true;
-        // Pathname primitives
-        if (s == self.@"pathname-host".raw) return true;
-        if (s == self.@"pathname-device".raw) return true;
-        if (s == self.@"pathname-directory".raw) return true;
-        if (s == self.@"pathname-name".raw) return true;
-        if (s == self.@"pathname-type".raw) return true;
-        if (s == self.@"pathname-version".raw) return true;
-        // Also funcall and apply are callable
-        if (s == self.funcall.raw) return true;
-        if (s == self.apply.raw) return true;
-        if (s == self.values.raw) return true;
-        if (s == self.@"values-list".raw) return true;
+        inline for (primitive_fields) |field| {
+            if (s == @field(self, field).raw) return true;
+        }
         return false;
     }
 };
@@ -9224,6 +9092,305 @@ pub const Compiler = struct {
         }
     }
 
+    /// Primitive operation tags for dispatch
+    const PrimTag = enum {
+        // Arithmetic
+        add, sub, mul, div, mod, quot, rem,
+        // Comparison
+        eq, equal, eql, lt, gt, le, ge, num_eq,
+        // List
+        cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd,
+        // Type predicates
+        consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, characterp, floatp, listp, atom,
+        // CLOS introspection
+        method_qualifiers, method_specializers, method_function,
+        generic_function_methods, generic_function_lambda_list, generic_function_name,
+        // Vector
+        vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, vec_adjust,
+        // Box
+        make_box, box_ref, box_set,
+        // String
+        str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat,
+        // I/O
+        print, princ, terpri, write_char, random, random_seed,
+        // Symbol
+        intern, unintern, sym_name, type_of, error_user, boundp, fboundp, symbol_value, symbol_function, typep,
+        // Character
+        char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p,
+        read_char, peek_char, unread_char,
+        // Read/eval
+        read, read_from_string, load, eval, gensym, macroexpand, macroexpand_1,
+        // String/number conversion
+        parse_integer, write_to_string,
+        // Bitwise
+        logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length,
+        // File I/O
+        read_file, write_file, delete_file, rename_file, probe_file, file_write_date,
+        // Time
+        get_universal_time, get_internal_real_time, get_internal_run_time,
+        // Environment
+        room, lisp_implementation_type, lisp_implementation_version, software_type, machine_type,
+        machine_instance, machine_version, software_version, short_site_name, long_site_name, user_homedir_pathname,
+        // String construction
+        make_string, list_to_string, string_upcase, string_downcase,
+        // Numeric
+        abs, zerop, plusp, minusp, evenp, oddp,
+        // Math
+        sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round,
+        // Numeric types
+        rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize,
+        // Properties
+        get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character,
+        // Hash tables
+        hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash,
+        // Streams
+        streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream,
+        // Pathnames
+        pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version,
+        // Packages
+        package_symbols_table, package_exports_table, package_name, package_nicknames, package_use_list, package_used_by_list, package_shadowing_symbols, packagep,
+        // Class/slot introspection
+        find_symbol, find_class, class_name, class_direct_superclasses, class_precedence_list, class_direct_slots, class_slots,
+        slot_definition_name, slot_definition_initform, slot_definition_initargs, slot_definition_readers, slot_definition_writers, slot_definition_allocation, slot_definition_type,
+        // Misc
+        sleep,
+    };
+
+    /// Dispatch entry for simple unary primitives
+    const UnaryEntry = struct { field: []const u8, tag: PrimTag };
+    const unary_dispatch = [_]UnaryEntry{
+        .{ .field = "car", .tag = .car },
+        .{ .field = "first", .tag = .car },
+        .{ .field = "cdr", .tag = .cdr },
+        .{ .field = "rest", .tag = .cdr },
+        .{ .field = "length", .tag = .length },
+        .{ .field = "reverse", .tag = .reverse },
+        .{ .field = "last", .tag = .last },
+        .{ .field = "consp", .tag = .consp },
+        .{ .field = "symbolp", .tag = .symbolp },
+        .{ .field = "numberp", .tag = .numberp },
+        .{ .field = "stringp", .tag = .stringp },
+        .{ .field = "vectorp", .tag = .vectorp },
+        .{ .field = "closurep", .tag = .closurep },
+        .{ .field = "keywordp", .tag = .keywordp },
+        .{ .field = "null", .tag = .nilp },
+        .{ .field = "not", .tag = .not },
+        .{ .field = "characterp", .tag = .characterp },
+        .{ .field = "floatp", .tag = .floatp },
+        .{ .field = "listp", .tag = .listp },
+        .{ .field = "atom", .tag = .atom },
+        .{ .field = "char-code", .tag = .char_code },
+        .{ .field = "code-char", .tag = .code_char },
+        .{ .field = "unread-char", .tag = .unread_char },
+        .{ .field = "read-from-string", .tag = .read_from_string },
+        .{ .field = "load", .tag = .load },
+        .{ .field = "eval", .tag = .eval },
+        .{ .field = "macroexpand", .tag = .macroexpand },
+        .{ .field = "macroexpand-1", .tag = .macroexpand_1 },
+        .{ .field = "boundp", .tag = .boundp },
+        .{ .field = "fboundp", .tag = .fboundp },
+        .{ .field = "symbol-value", .tag = .symbol_value },
+        .{ .field = "symbol-function", .tag = .symbol_function },
+        .{ .field = "type-of", .tag = .type_of },
+        .{ .field = "intern", .tag = .intern },
+        .{ .field = "symbol-name", .tag = .sym_name },
+        .{ .field = "abs", .tag = .abs },
+        .{ .field = "zerop", .tag = .zerop },
+        .{ .field = "plusp", .tag = .plusp },
+        .{ .field = "minusp", .tag = .minusp },
+        .{ .field = "evenp", .tag = .evenp },
+        .{ .field = "oddp", .tag = .oddp },
+        .{ .field = "sqrt", .tag = .sqrt },
+        .{ .field = "sin", .tag = .sin },
+        .{ .field = "cos", .tag = .cos },
+        .{ .field = "tan", .tag = .tan },
+        .{ .field = "asin", .tag = .asin },
+        .{ .field = "acos", .tag = .acos },
+        .{ .field = "sinh", .tag = .sinh },
+        .{ .field = "cosh", .tag = .cosh },
+        .{ .field = "tanh", .tag = .tanh },
+        .{ .field = "asinh", .tag = .asinh },
+        .{ .field = "acosh", .tag = .acosh },
+        .{ .field = "atanh", .tag = .atanh },
+        .{ .field = "exp", .tag = .exp },
+        .{ .field = "log", .tag = .log },
+        .{ .field = "vector-length", .tag = .vec_len },
+        .{ .field = "%fill-pointer", .tag = .vec_fill_ptr },
+        .{ .field = "%vector-pop", .tag = .vec_pop },
+        .{ .field = "%find-class", .tag = .find_class },
+        .{ .field = "%class-name", .tag = .class_name },
+        .{ .field = "string-length", .tag = .str_len },
+        .{ .field = "print", .tag = .print },
+        .{ .field = "princ", .tag = .princ },
+        .{ .field = "write-char", .tag = .write_char },
+        .{ .field = "char-upcase", .tag = .char_upcase },
+        .{ .field = "char-downcase", .tag = .char_downcase },
+        .{ .field = "digit-char-p", .tag = .digit_char_p },
+        .{ .field = "alpha-char-p", .tag = .alpha_char_p },
+        .{ .field = "parse-integer", .tag = .parse_integer },
+        .{ .field = "write-to-string", .tag = .write_to_string },
+        .{ .field = "lognot", .tag = .lognot },
+        .{ .field = "logcount", .tag = .logcount },
+        .{ .field = "integer-length", .tag = .integer_length },
+        .{ .field = "read-file", .tag = .read_file },
+        .{ .field = "delete-file", .tag = .delete_file },
+        .{ .field = "probe-file", .tag = .probe_file },
+        .{ .field = "file-write-date", .tag = .file_write_date },
+        .{ .field = "list-to-string", .tag = .list_to_string },
+        .{ .field = "string-upcase", .tag = .string_upcase },
+        .{ .field = "string-downcase", .tag = .string_downcase },
+        .{ .field = "rationalp", .tag = .rationalp },
+        .{ .field = "complexp", .tag = .complexp },
+        .{ .field = "real-part", .tag = .real_part },
+        .{ .field = "imag-part", .tag = .imag_part },
+        .{ .field = "numerator", .tag = .numerator },
+        .{ .field = "denominator", .tag = .denominator },
+        .{ .field = "rational", .tag = .rational },
+        .{ .field = "rationalize", .tag = .rationalize },
+        .{ .field = "get-macro-character", .tag = .get_macro_character },
+        .{ .field = "hash-table-p", .tag = .hashtablep },
+        .{ .field = "clrhash", .tag = .hash_clear },
+        .{ .field = "hash-table-test", .tag = .hash_test },
+        .{ .field = "hash-table-keys", .tag = .hash_keys },
+        .{ .field = "hash-table-alist", .tag = .hash_alist },
+        .{ .field = "sxhash", .tag = .sxhash },
+        .{ .field = "streamp", .tag = .streamp },
+        .{ .field = "input-stream-p", .tag = .input_stream_p },
+        .{ .field = "output-stream-p", .tag = .output_stream_p },
+        .{ .field = "make-string-input-stream", .tag = .make_string_input_stream },
+        .{ .field = "get-output-stream-string", .tag = .get_output_stream_string },
+        .{ .field = "pathname-host", .tag = .pathname_host },
+        .{ .field = "pathname-device", .tag = .pathname_device },
+        .{ .field = "pathname-directory", .tag = .pathname_directory },
+        .{ .field = "pathname-name", .tag = .pathname_name },
+        .{ .field = "pathname-type", .tag = .pathname_type },
+        .{ .field = "pathname-version", .tag = .pathname_version },
+        .{ .field = "package-symbols-table", .tag = .package_symbols_table },
+        .{ .field = "package-exports-table", .tag = .package_exports_table },
+        .{ .field = "package-name", .tag = .package_name },
+        .{ .field = "package-nicknames", .tag = .package_nicknames },
+        .{ .field = "package-use-list", .tag = .package_use_list },
+        .{ .field = "package-used-by-list", .tag = .package_used_by_list },
+        .{ .field = "package-shadowing-symbols", .tag = .package_shadowing_symbols },
+        .{ .field = "packagep", .tag = .packagep },
+        .{ .field = "random", .tag = .random },
+        .{ .field = "random-seed", .tag = .random_seed },
+        .{ .field = "method-qualifiers", .tag = .method_qualifiers },
+        .{ .field = "method-specializers", .tag = .method_specializers },
+        .{ .field = "method-function", .tag = .method_function },
+        .{ .field = "generic-function-methods", .tag = .generic_function_methods },
+        .{ .field = "generic-function-lambda-list", .tag = .generic_function_lambda_list },
+        .{ .field = "generic-function-name", .tag = .generic_function_name },
+        .{ .field = "%sleep", .tag = .sleep },
+    };
+
+    /// Dispatch entry for simple binary primitives
+    const BinaryEntry = struct { field: []const u8, tag: PrimTag };
+    const binary_dispatch = [_]BinaryEntry{
+        .{ .field = "mod", .tag = .mod },
+        .{ .field = "%", .tag = .mod },
+        .{ .field = "quot", .tag = .quot },
+        .{ .field = "rem", .tag = .rem },
+        .{ .field = "eq", .tag = .eq },
+        .{ .field = "equal", .tag = .equal },
+        .{ .field = "eql", .tag = .eql },
+        .{ .field = "<", .tag = .lt },
+        .{ .field = ">", .tag = .gt },
+        .{ .field = "<=", .tag = .le },
+        .{ .field = ">=", .tag = .ge },
+        .{ .field = "=", .tag = .num_eq },
+        .{ .field = "cons", .tag = .cons },
+        .{ .field = "append", .tag = .append },
+        .{ .field = "nth", .tag = .nth },
+        .{ .field = "nthcdr", .tag = .nthcdr },
+        .{ .field = "rplaca", .tag = .rplaca },
+        .{ .field = "rplacd", .tag = .rplacd },
+        .{ .field = "char=", .tag = .char_eq },
+        .{ .field = "char<", .tag = .char_lt },
+        .{ .field = "char>", .tag = .char_gt },
+        .{ .field = "typep", .tag = .typep },
+        .{ .field = "unintern", .tag = .unintern },
+        .{ .field = "find-symbol", .tag = .find_symbol },
+        .{ .field = "get", .tag = .get },
+        .{ .field = "remprop", .tag = .remprop },
+        .{ .field = "svref", .tag = .vec_ref },
+        .{ .field = "%vector-push", .tag = .vec_push },
+        .{ .field = "string-concat", .tag = .str_concat },
+        .{ .field = "string=", .tag = .str_eq },
+        .{ .field = "string<", .tag = .str_lt },
+        .{ .field = "string>", .tag = .str_gt },
+        .{ .field = "string<=", .tag = .str_le },
+        .{ .field = "string>=", .tag = .str_ge },
+        .{ .field = "logand", .tag = .logand },
+        .{ .field = "logior", .tag = .logior },
+        .{ .field = "logxor", .tag = .logxor },
+        .{ .field = "ash", .tag = .ash },
+        .{ .field = "lognand", .tag = .lognand },
+        .{ .field = "lognor", .tag = .lognor },
+        .{ .field = "logandc1", .tag = .logandc1 },
+        .{ .field = "logandc2", .tag = .logandc2 },
+        .{ .field = "logeqv", .tag = .logeqv },
+        .{ .field = "logbitp", .tag = .logbitp },
+        .{ .field = "write-file", .tag = .write_file },
+        .{ .field = "rename-file", .tag = .rename_file },
+        .{ .field = "make-string", .tag = .make_string },
+        .{ .field = "make-complex", .tag = .make_complex },
+        .{ .field = "write-to-stream", .tag = .write_to_stream },
+    };
+
+    /// Dispatch entry for ternary primitives
+    const TernaryEntry = struct { field: []const u8, tag: PrimTag };
+    const ternary_dispatch = [_]TernaryEntry{
+        .{ .field = "put", .tag = .put },
+        .{ .field = "%vector-push-extend", .tag = .vec_push_ext },
+        .{ .field = "%adjust-array", .tag = .vec_adjust },
+        .{ .field = "set-dispatch-macro-character", .tag = .set_dispatch_macro_character },
+    };
+
+    /// Dispatch entry for nullary primitives
+    const NullaryEntry = struct { field: []const u8, tag: PrimTag };
+    const nullary_dispatch = [_]NullaryEntry{
+        .{ .field = "read-char", .tag = .read_char },
+        .{ .field = "peek-char", .tag = .peek_char },
+        .{ .field = "read", .tag = .read },
+        .{ .field = "terpri", .tag = .terpri },
+        .{ .field = "make-string-output-stream", .tag = .make_string_output_stream },
+        .{ .field = "get-universal-time", .tag = .get_universal_time },
+        .{ .field = "get-internal-real-time", .tag = .get_internal_real_time },
+        .{ .field = "get-internal-run-time", .tag = .get_internal_run_time },
+        .{ .field = "room", .tag = .room },
+        .{ .field = "lisp-implementation-type", .tag = .lisp_implementation_type },
+        .{ .field = "lisp-implementation-version", .tag = .lisp_implementation_version },
+        .{ .field = "software-type", .tag = .software_type },
+        .{ .field = "machine-type", .tag = .machine_type },
+        .{ .field = "machine-instance", .tag = .machine_instance },
+        .{ .field = "machine-version", .tag = .machine_version },
+        .{ .field = "software-version", .tag = .software_version },
+        .{ .field = "short-site-name", .tag = .short_site_name },
+        .{ .field = "long-site-name", .tag = .long_site_name },
+        .{ .field = "user-homedir-pathname", .tag = .user_homedir_pathname },
+    };
+
+    /// Composed accessor patterns (c[ad]+r)
+    const ComposedEntry = struct { field: []const u8, pattern: []const u8 };
+    const composed_dispatch = [_]ComposedEntry{
+        .{ .field = "caar", .pattern = "aa" },
+        .{ .field = "cadr", .pattern = "ad" },
+        .{ .field = "second", .pattern = "ad" },
+        .{ .field = "cdar", .pattern = "da" },
+        .{ .field = "cddr", .pattern = "dd" },
+        .{ .field = "caaar", .pattern = "aaa" },
+        .{ .field = "caadr", .pattern = "aad" },
+        .{ .field = "cadar", .pattern = "ada" },
+        .{ .field = "caddr", .pattern = "add" },
+        .{ .field = "third", .pattern = "add" },
+        .{ .field = "cdaar", .pattern = "daa" },
+        .{ .field = "cdadr", .pattern = "dad" },
+        .{ .field = "cddar", .pattern = "dda" },
+        .{ .field = "cdddr", .pattern = "ddd" },
+        .{ .field = "fourth", .pattern = "addd" },
+    };
+
     fn compilePrimitive(self: *Compiler, sym: Value, args: Value, env: *const Env) anyerror!*Ir {
         const s = sym.raw;
         const b = self.builtins orelse return error.InvalidSyntax;
@@ -9233,91 +9400,33 @@ pub const Compiler = struct {
         if (s == b.@"-".raw) return self.compileVariadicArith(args, env, .sub, null);
         if (s == b.@"*".raw) return self.compileVariadicArith(args, env, .mul, 1);
         if (s == b.@"/".raw) return self.compileVariadicArith(args, env, .div, null);
-        if (s == b.mod.raw or s == b.@"%".raw) return self.compileBinaryPrim(args, env, .mod);
-        if (s == b.quot.raw) return self.compileBinaryPrim(args, env, .quot);
-        if (s == b.rem.raw) return self.compileBinaryPrim(args, env, .rem);
 
-        // Comparison
-        if (s == b.eq.raw) return self.compileBinaryPrim(args, env, .eq);
-        if (s == b.equal.raw) return self.compileBinaryPrim(args, env, .equal);
-        if (s == b.eql.raw) return self.compileBinaryPrim(args, env, .eql);
-        if (s == b.@"<".raw) return self.compileBinaryPrim(args, env, .lt);
-        if (s == b.@">".raw) return self.compileBinaryPrim(args, env, .gt);
-        if (s == b.@"<=".raw) return self.compileBinaryPrim(args, env, .le);
-        if (s == b.@">=".raw) return self.compileBinaryPrim(args, env, .ge);
-        if (s == b.@"=".raw) return self.compileBinaryPrim(args, env, .num_eq);
+        // Table-driven dispatch for unary primitives
+        inline for (unary_dispatch) |entry| {
+            if (s == @field(b, entry.field).raw) return self.compileUnaryPrim(args, env, entry.tag);
+        }
 
-        // List operations
-        if (s == b.cons.raw) return self.compileBinaryPrim(args, env, .cons);
-        if (s == b.car.raw or s == b.first.raw) return self.compileUnaryPrim(args, env, .car);
-        if (s == b.cdr.raw or s == b.rest.raw) return self.compileUnaryPrim(args, env, .cdr);
-        // Composed accessors (2-level)
-        if (s == b.caar.raw) return self.compileComposedAccessor(args, env, "aa");
-        if (s == b.cadr.raw or s == b.second.raw) return self.compileComposedAccessor(args, env, "ad");
-        if (s == b.cdar.raw) return self.compileComposedAccessor(args, env, "da");
-        if (s == b.cddr.raw) return self.compileComposedAccessor(args, env, "dd");
-        // Composed accessors (3-level)
-        if (s == b.caaar.raw) return self.compileComposedAccessor(args, env, "aaa");
-        if (s == b.caadr.raw) return self.compileComposedAccessor(args, env, "aad");
-        if (s == b.cadar.raw) return self.compileComposedAccessor(args, env, "ada");
-        if (s == b.caddr.raw or s == b.third.raw) return self.compileComposedAccessor(args, env, "add");
-        if (s == b.cdaar.raw) return self.compileComposedAccessor(args, env, "daa");
-        if (s == b.cdadr.raw) return self.compileComposedAccessor(args, env, "dad");
-        if (s == b.cddar.raw) return self.compileComposedAccessor(args, env, "dda");
-        if (s == b.cdddr.raw) return self.compileComposedAccessor(args, env, "ddd");
-        // fourth = (car (cdr (cdr (cdr x)))) = cadddr
-        if (s == b.fourth.raw) return self.compileComposedAccessor(args, env, "addd");
-        if (s == b.append.raw) return self.compileBinaryPrim(args, env, .append);
-        if (s == b.length.raw) return self.compileUnaryPrim(args, env, .length);
-        if (s == b.reverse.raw) return self.compileUnaryPrim(args, env, .reverse);
-        if (s == b.nth.raw) return self.compileBinaryPrim(args, env, .nth);
-        if (s == b.nthcdr.raw) return self.compileBinaryPrim(args, env, .nthcdr);
-        if (s == b.last.raw) return self.compileUnaryPrim(args, env, .last);
-        if (s == b.member.raw) return self.compileMemberWithTest(args, env);
-        if (s == b.assoc.raw) return self.compileAssocWithTest(args, env);
-        if (s == b.find.raw) return self.compileFindWithTest(args, env);
-        if (s == b.position.raw) return self.compilePositionWithTest(args, env);
-        if (s == b.count.raw) return self.compileCountWithTest(args, env);
-        if (s == b.remove.raw) return self.compileRemoveWithTest(args, env);
-        if (s == b.list.raw) return self.compileListPrim(args, env);
-        if (s == b.rplaca.raw) return self.compileBinaryPrim(args, env, .rplaca);
-        if (s == b.rplacd.raw) return self.compileBinaryPrim(args, env, .rplacd);
+        // Table-driven dispatch for binary primitives
+        inline for (binary_dispatch) |entry| {
+            if (s == @field(b, entry.field).raw) return self.compileBinaryPrim(args, env, entry.tag);
+        }
 
-        // Type predicates (CL-style -p suffix)
-        if (s == b.consp.raw) return self.compileUnaryPrim(args, env, .consp);
-        if (s == b.symbolp.raw) return self.compileUnaryPrim(args, env, .symbolp);
-        if (s == b.numberp.raw) return self.compileUnaryPrim(args, env, .numberp);
-        if (s == b.stringp.raw) return self.compileUnaryPrim(args, env, .stringp);
-        if (s == b.vectorp.raw) return self.compileUnaryPrim(args, env, .vectorp);
-        if (s == b.closurep.raw) return self.compileUnaryPrim(args, env, .closurep);
-        if (s == b.keywordp.raw) return self.compileUnaryPrim(args, env, .keywordp);
-        if (s == b.@"method-qualifiers".raw) return self.compileUnaryPrim(args, env, .method_qualifiers);
-        if (s == b.@"method-specializers".raw) return self.compileUnaryPrim(args, env, .method_specializers);
-        if (s == b.@"method-function".raw) return self.compileUnaryPrim(args, env, .method_function);
-        if (s == b.@"generic-function-methods".raw) return self.compileUnaryPrim(args, env, .generic_function_methods);
-        if (s == b.@"generic-function-lambda-list".raw) return self.compileUnaryPrim(args, env, .generic_function_lambda_list);
-        if (s == b.@"generic-function-name".raw) return self.compileUnaryPrim(args, env, .generic_function_name);
-        if (s == b.@"class-of".raw) return self.compileClassOf(args, env);
-        if (s == b.null.raw) return self.compileUnaryPrim(args, env, .nilp);
-        if (s == b.not.raw) return self.compileUnaryPrim(args, env, .not);
-        if (s == b.characterp.raw) return self.compileUnaryPrim(args, env, .characterp);
-        if (s == b.floatp.raw) return self.compileUnaryPrim(args, env, .floatp);
-        if (s == b.listp.raw) return self.compileUnaryPrim(args, env, .listp);
-        if (s == b.atom.raw) return self.compileUnaryPrim(args, env, .atom);
+        // Table-driven dispatch for ternary primitives
+        inline for (ternary_dispatch) |entry| {
+            if (s == @field(b, entry.field).raw) return self.compileTernaryPrim(args, env, entry.tag);
+        }
 
-        // Character operations
-        if (s == b.@"char-code".raw) return self.compileUnaryPrim(args, env, .char_code);
-        if (s == b.@"code-char".raw) return self.compileUnaryPrim(args, env, .code_char);
-        if (s == b.@"char=".raw) return self.compileBinaryPrim(args, env, .char_eq);
-        if (s == b.@"char<".raw) return self.compileBinaryPrim(args, env, .char_lt);
-        if (s == b.@"char>".raw) return self.compileBinaryPrim(args, env, .char_gt);
-        if (s == b.@"read-char".raw) return self.compileNullaryPrim(.read_char);
-        if (s == b.@"peek-char".raw) return self.compileNullaryPrim(.peek_char);
-        if (s == b.@"unread-char".raw) return self.compileUnaryPrim(args, env, .unread_char);
-        if (s == b.read.raw) return self.compileNullaryPrim(.read);
-        if (s == b.@"read-from-string".raw) return self.compileUnaryPrim(args, env, .read_from_string);
-        if (s == b.load.raw) return self.compileUnaryPrim(args, env, .load);
-        if (s == b.eval.raw) return self.compileUnaryPrim(args, env, .eval);
+        // Table-driven dispatch for nullary primitives
+        inline for (nullary_dispatch) |entry| {
+            if (s == @field(b, entry.field).raw) return self.compileNullaryPrim(entry.tag);
+        }
+
+        // Table-driven dispatch for composed accessors
+        inline for (composed_dispatch) |entry| {
+            if (s == @field(b, entry.field).raw) return self.compileComposedAccessor(args, env, entry.pattern);
+        }
+
+        // Special cases with custom handling
         if (s == b.gensym.raw) {
             if (args.isNil()) {
                 return self.compileNullaryPrim(.gensym);
@@ -9325,71 +9434,29 @@ pub const Compiler = struct {
                 return self.compileUnaryPrim(args, env, .gensym);
             }
         }
-        if (s == b.macroexpand.raw) return self.compileUnaryPrim(args, env, .macroexpand);
-        // Note: error is NOT handled here - stdlib provides (defun error (msg) (signal 'error msg))
-        // This allows handler-case to catch errors
-
-        // Symbol operations
-        if (s == b.boundp.raw) return self.compileUnaryPrim(args, env, .boundp);
-        if (s == b.fboundp.raw) return self.compileUnaryPrim(args, env, .fboundp);
-        if (s == b.@"symbol-value".raw) return self.compileUnaryPrim(args, env, .symbol_value);
-        if (s == b.@"symbol-function".raw) return self.compileUnaryPrim(args, env, .symbol_function);
-        if (s == b.typep.raw) return self.compileBinaryPrim(args, env, .typep);
-        if (s == b.@"type-of".raw) return self.compileUnaryPrim(args, env, .type_of);
-        if (s == b.intern.raw) return self.compileUnaryPrim(args, env, .intern);
-        if (s == b.intern.raw) return self.compileUnaryPrim(args, env, .intern);
-        if (s == b.unintern.raw) return self.compileBinaryPrim(args, env, .unintern);
-        if (s == b.@"find-symbol".raw) return self.compileBinaryPrim(args, env, .find_symbol);
-        if (s == b.@"symbol-name".raw) return self.compileUnaryPrim(args, env, .sym_name);
-        if (s == b.get.raw) return self.compileBinaryPrim(args, env, .get);
-        if (s == b.put.raw) return self.compileTernaryPrim(args, env, .put);
-        if (s == b.remprop.raw) return self.compileBinaryPrim(args, env, .remprop);
-        // Note: `error` is now defined in stdlib using signal/handler-case
-
-        // Numeric predicates
-        if (s == b.abs.raw) return self.compileUnaryPrim(args, env, .abs);
-        if (s == b.zerop.raw) return self.compileUnaryPrim(args, env, .zerop);
-        if (s == b.plusp.raw) return self.compileUnaryPrim(args, env, .plusp);
-        if (s == b.minusp.raw) return self.compileUnaryPrim(args, env, .minusp);
-        if (s == b.evenp.raw) return self.compileUnaryPrim(args, env, .evenp);
-        if (s == b.oddp.raw) return self.compileUnaryPrim(args, env, .oddp);
-
-        // Math functions
-        if (s == b.sqrt.raw) return self.compileUnaryPrim(args, env, .sqrt);
-        if (s == b.sin.raw) return self.compileUnaryPrim(args, env, .sin);
-        if (s == b.cos.raw) return self.compileUnaryPrim(args, env, .cos);
-        if (s == b.tan.raw) return self.compileUnaryPrim(args, env, .tan);
-        if (s == b.asin.raw) return self.compileUnaryPrim(args, env, .asin);
-        if (s == b.acos.raw) return self.compileUnaryPrim(args, env, .acos);
         if (s == b.atan.raw) {
             // atan can be 1 or 2 arg
             if (args.isNil()) return error.InvalidSyntax;
             const rest = args.toPtr(Cons).cdr;
             if (rest.isNil()) {
-                // 1 arg: atan(y)
                 return self.compileUnaryPrim(args, env, .atan);
             } else {
-                // 2 arg: atan2(y, x)
                 return self.compileBinaryPrim(args, env, .atan2);
             }
         }
-        if (s == b.sinh.raw) return self.compileUnaryPrim(args, env, .sinh);
-        if (s == b.cosh.raw) return self.compileUnaryPrim(args, env, .cosh);
-        if (s == b.tanh.raw) return self.compileUnaryPrim(args, env, .tanh);
-        if (s == b.asinh.raw) return self.compileUnaryPrim(args, env, .asinh);
-        if (s == b.acosh.raw) return self.compileUnaryPrim(args, env, .acosh);
-        if (s == b.atanh.raw) return self.compileUnaryPrim(args, env, .atanh);
-        if (s == b.exp.raw) return self.compileUnaryPrim(args, env, .exp);
-        if (s == b.log.raw) return self.compileUnaryPrim(args, env, .log);
-        // floor/ceiling/round - primitives return just the quotient, stdlib versions return multiple values
+        if (s == b.member.raw) return self.compileMemberWithTest(args, env);
+        if (s == b.assoc.raw) return self.compileAssocWithTest(args, env);
+        if (s == b.find.raw) return self.compileFindWithTest(args, env);
+        if (s == b.position.raw) return self.compilePositionWithTest(args, env);
+        if (s == b.count.raw) return self.compileCountWithTest(args, env);
+        if (s == b.remove.raw) return self.compileRemoveWithTest(args, env);
+        if (s == b.list.raw) return self.compileListPrim(args, env);
+        if (s == b.@"class-of".raw) return self.compileClassOf(args, env);
         if (s == b.floor.raw) return self.compileFloorCeilRound(args, env, .floor);
         if (s == b.ceiling.raw) return self.compileFloorCeilRound(args, env, .ceiling);
         if (s == b.round.raw) return self.compileFloorCeilRound(args, env, .round);
-
-        // Vector operations (CL names: aref, svref, %svset, %aset)
+        if (s == b.truncate.raw) return self.compileBinaryPrim(args, env, .quot);
         if (s == b.aref.raw) return self.compileAref(args, env);
-        if (s == b.svref.raw) return self.compileBinaryPrim(args, env, .vec_ref);
-        if (s == b.@"vector-length".raw) return self.compileUnaryPrim(args, env, .vec_len);
         if (s == b.@"make-vector".raw) return self.compileMakeVector(args, env);
         if (s == b.@"%svset".raw) return self.compileSvset(args, env);
         if (s == b.@"%aset".raw) return self.compileAset(args, env);
@@ -9397,19 +9464,22 @@ pub const Compiler = struct {
         if (s == b.@"%sset".raw) return self.compileSset(args, env);
         if (s == b.@"%make-unbound".raw) return self.builder.makeUnbound();
         if (s == b.@"%class-of".raw) return self.compileClassOf(args, env);
-        if (s == b.@"%find-class".raw) return self.compileUnaryPrim(args, env, .find_class);
-        if (s == b.@"%class-name".raw) return self.compileUnaryPrim(args, env, .class_name);
         if (s == b.vector.raw) return self.compileVectorPrim(args, env);
         if (s == b.@"make-array".raw) return self.compileMakeArray(args, env);
+        if (s == b.char.raw or s == b.schar.raw) return self.compileBinaryPrim(args, env, .str_ref);
+        if (s == b.substring.raw) return self.compileSubstring(args, env);
+        if (s == b.subseq.raw) return self.compileSubseq(args, env);
+        if (s == b.concatenate.raw) return self.compileConcatenate(args, env);
+        if (s == b.format.raw) return self.compileFormat(args, env);
+        if (s == b.@"set-macro-character".raw) return self.compileSetMacroCharacter(args, env);
+        if (s == b.@"make-hash-table".raw) return self.compileMakeHash(args);
+        if (s == b.gethash.raw) return self.compileGethash(args, env);
+        if (s == b.puthash.raw) return self.compileSethash(args, env);
+        if (s == b.remhash.raw) return self.compileRemhash(args, env);
+        if (s == b.@"hash-table-count".raw) return self.compileHashTableCount(args, env);
+        if (s == b.@"hash-table-capacity".raw) return self.compileHashTableCapacity(args, env);
 
-        // Vector operations
-        if (s == b.@"%fill-pointer".raw) return self.compileUnaryPrim(args, env, .vec_fill_ptr);
-        if (s == b.@"%vector-push".raw) return self.compileBinaryPrim(args, env, .vec_push);
-        if (s == b.@"%vector-push-extend".raw) return self.compileTernaryPrim(args, env, .vec_push_ext);
-        if (s == b.@"%vector-pop".raw) return self.compileUnaryPrim(args, env, .vec_pop);
-        if (s == b.@"%adjust-array".raw) return self.compileTernaryPrim(args, env, .vec_adjust);
-
-        // Stream I/O operations
+        // Stream I/O operations - inline handling
         if (s == b.@"%open".raw) {
             if (!args.isCons()) return error.InvalidSyntax;
             const cons1 = args.toPtr(Cons);
@@ -9425,7 +9495,6 @@ pub const Compiler = struct {
             if (!args.isCons()) return error.InvalidSyntax;
             const cons1 = args.toPtr(Cons);
             const stream_ir = try self.compile(cons1.car, env);
-            // Optional second arg (abort flag) - compile but ignore
             if (cons1.cdr.isCons()) {
                 const cons2 = cons1.cdr.toPtr(Cons);
                 _ = try self.compile(cons2.car, env);
@@ -9505,139 +9574,21 @@ pub const Compiler = struct {
             return node;
         }
 
-        // String operations (CL names: char, schar)
-        if (s == b.char.raw or s == b.schar.raw) return self.compileBinaryPrim(args, env, .str_ref);
-        if (s == b.@"string-length".raw) return self.compileUnaryPrim(args, env, .str_len);
-        if (s == b.@"string=".raw) return self.compileBinaryPrim(args, env, .str_eq);
-        if (s == b.@"string<".raw) return self.compileBinaryPrim(args, env, .str_lt);
-        if (s == b.@"string>".raw) return self.compileBinaryPrim(args, env, .str_gt);
-        if (s == b.@"string<=".raw) return self.compileBinaryPrim(args, env, .str_le);
-        if (s == b.@"string>=".raw) return self.compileBinaryPrim(args, env, .str_ge);
-        if (s == b.@"string-concat".raw) return self.compileBinaryPrim(args, env, .str_concat);
-        if (s == b.substring.raw) return self.compileSubstring(args, env);
-        // subseq handled by stdlib for list support (builtin only did strings)
+        // Class/slot introspection (CLOS)
+        if (s == b.@"class-direct-superclasses".raw) return self.compileUnaryPrim(args, env, .class_direct_superclasses);
+        if (s == b.@"class-precedence-list".raw) return self.compileUnaryPrim(args, env, .class_precedence_list);
+        if (s == b.@"class-direct-slots".raw) return self.compileUnaryPrim(args, env, .class_direct_slots);
+        if (s == b.@"class-slots".raw) return self.compileUnaryPrim(args, env, .class_slots);
+        if (s == b.@"slot-definition-name".raw) return self.compileUnaryPrim(args, env, .slot_definition_name);
+        if (s == b.@"slot-definition-initform".raw) return self.compileUnaryPrim(args, env, .slot_definition_initform);
+        if (s == b.@"slot-definition-initargs".raw) return self.compileUnaryPrim(args, env, .slot_definition_initargs);
+        if (s == b.@"slot-definition-readers".raw) return self.compileUnaryPrim(args, env, .slot_definition_readers);
+        if (s == b.@"slot-definition-writers".raw) return self.compileUnaryPrim(args, env, .slot_definition_writers);
+        if (s == b.@"slot-definition-allocation".raw) return self.compileUnaryPrim(args, env, .slot_definition_allocation);
+        if (s == b.@"slot-definition-type".raw) return self.compileUnaryPrim(args, env, .slot_definition_type);
 
-        // I/O
-        if (s == b.write.raw) return self.compileWrite(args, env);
-        if (s == b.prin1.raw) return self.compileWrite(args, env);
-        if (s == b.print.raw) return self.compilePrint(args, env);
-        if (s == b.princ.raw) return self.compilePrinc(args, env);
-        if (s == b.terpri.raw) return self.compileNullaryPrim(.terpri);
-        if (s == b.@"write-char".raw) return self.compileUnaryPrim(args, env, .write_char);
-        if (s == b.format.raw) return self.compileFormat(args, env);
-
-        // Character functions
-        if (s == b.@"char-upcase".raw) return self.compileUnaryPrim(args, env, .char_upcase);
-        if (s == b.@"char-downcase".raw) return self.compileUnaryPrim(args, env, .char_downcase);
-        if (s == b.@"digit-char-p".raw) return self.compileUnaryPrim(args, env, .digit_char_p);
-        if (s == b.@"alpha-char-p".raw) return self.compileUnaryPrim(args, env, .alpha_char_p);
-
-        // Reader macros
-        if (s == b.@"set-macro-character".raw) return self.compileSetMacroCharacter(args, env);
-        if (s == b.@"get-macro-character".raw) return self.compileUnaryPrim(args, env, .get_macro_character);
-        if (s == b.@"set-dispatch-macro-character".raw) return self.compileTernaryPrim(args, env, .set_dispatch_macro_character);
-        if (s == b.@"get-dispatch-macro-character".raw) return self.compileBinaryPrim(args, env, .get_dispatch_macro_character);
-
-        // String/number conversion
-        if (s == b.@"parse-integer".raw) return self.compileUnaryPrim(args, env, .parse_integer);
-        if (s == b.@"write-to-string".raw) return self.compileUnaryPrim(args, env, .write_to_string);
-
-        // Bitwise operations
-        if (s == b.logand.raw) return self.compileBinaryPrim(args, env, .logand);
-        if (s == b.logior.raw) return self.compileBinaryPrim(args, env, .logior);
-        if (s == b.logxor.raw) return self.compileBinaryPrim(args, env, .logxor);
-        if (s == b.lognot.raw) return self.compileUnaryPrim(args, env, .lognot);
-        if (s == b.ash.raw) return self.compileBinaryPrim(args, env, .ash);
-        if (s == b.lognand.raw) return self.compileBinaryPrim(args, env, .lognand);
-        if (s == b.lognor.raw) return self.compileBinaryPrim(args, env, .lognor);
-        if (s == b.logandc1.raw) return self.compileBinaryPrim(args, env, .logandc1);
-        if (s == b.logandc2.raw) return self.compileBinaryPrim(args, env, .logandc2);
-        if (s == b.logeqv.raw) return self.compileBinaryPrim(args, env, .logeqv);
-        if (s == b.logbitp.raw) return self.compileBinaryPrim(args, env, .logbitp);
-        if (s == b.logcount.raw) return self.compileUnaryPrim(args, env, .logcount);
-        if (s == b.@"integer-length".raw) return self.compileUnaryPrim(args, env, .integer_length);
-
-        // File I/O
-        if (s == b.@"read-file".raw) return self.compileUnaryPrim(args, env, .read_file);
-        if (s == b.@"write-file".raw) return self.compileBinaryPrim(args, env, .write_file);
-        if (s == b.@"delete-file".raw) return self.compileUnaryPrim(args, env, .delete_file);
-        if (s == b.@"rename-file".raw) return self.compileBinaryPrim(args, env, .rename_file);
-        if (s == b.@"probe-file".raw) return self.compileUnaryPrim(args, env, .probe_file);
-        if (s == b.@"file-write-date".raw) return self.compileUnaryPrim(args, env, .file_write_date);
-        if (s == b.@"get-universal-time".raw) return self.compileNullaryPrim(.get_universal_time);
-        if (s == b.@"get-internal-real-time".raw) return self.compileNullaryPrim(.get_internal_real_time);
-        if (s == b.room.raw) return self.compileNullaryPrim(.room);
-        if (s == b.@"lisp-implementation-type".raw) return self.compileNullaryPrim(.lisp_implementation_type);
-        if (s == b.@"lisp-implementation-version".raw) return self.compileNullaryPrim(.lisp_implementation_version);
-        if (s == b.@"software-type".raw) return self.compileNullaryPrim(.software_type);
-        if (s == b.@"machine-type".raw) return self.compileNullaryPrim(.machine_type);
-
-        // String construction
-        if (s == b.@"make-string".raw) return self.compileBinaryPrim(args, env, .make_string);
-        if (s == b.@"list-to-string".raw) return self.compileUnaryPrim(args, env, .list_to_string);
-        if (s == b.@"string-upcase".raw) return self.compileUnaryPrim(args, env, .string_upcase);
-        if (s == b.@"string-downcase".raw) return self.compileUnaryPrim(args, env, .string_downcase);
-        if (s == b.concatenate.raw) return self.compileConcatenate(args, env);
-        // coerce is handled by stdlib function, not special form
-
-        // Hash tables
-        if (s == b.@"make-hash-table".raw) return self.compileMakeHash(args);
-        if (s == b.gethash.raw) return self.compileGethash(args, env);
-        if (s == b.puthash.raw) return self.compileSethash(args, env);
-        if (s == b.clrhash.raw) return self.compileUnaryPrim(args, env, .hash_clear);
-        if (s == b.@"hash-table-test".raw) return self.compileUnaryPrim(args, env, .hash_test);
-        if (s == b.remhash.raw) return self.compileRemhash(args, env);
-        if (s == b.@"hash-table-count".raw) return self.compileHashTableCount(args, env);
-        if (s == b.@"hash-table-capacity".raw) return self.compileHashTableCapacity(args, env);
-        if (s == b.@"hash-table-p".raw) return self.compileHashTableP(args, env);
-        if (s == b.@"hash-table-keys".raw) return self.compileUnaryPrim(args, env, .hash_keys);
-        if (s == b.@"hash-table-alist".raw) return self.compileUnaryPrim(args, env, .hash_alist);
-        if (s == b.sxhash.raw) return self.compileUnaryPrim(args, env, .sxhash);
-        if (s == b.rationalp.raw) return self.compileUnaryPrim(args, env, .rationalp);
-        if (s == b.complexp.raw) return self.compileUnaryPrim(args, env, .complexp);
-        if (s == b.@"make-complex".raw) return self.compileBinaryPrim(args, env, .make_complex);
-        if (s == b.@"real-part".raw) return self.compileUnaryPrim(args, env, .real_part);
-        if (s == b.@"imag-part".raw) return self.compileUnaryPrim(args, env, .imag_part);
-        if (s == b.numerator.raw) return self.compileUnaryPrim(args, env, .numerator);
-        if (s == b.denominator.raw) return self.compileUnaryPrim(args, env, .denominator);
-        if (s == b.rational.raw) return self.compileUnaryPrim(args, env, .rational);
-        if (s == b.rationalize.raw) return self.compileUnaryPrim(args, env, .rationalize);
-
-        // Streams
-        if (s == b.streamp.raw) return self.compileUnaryPrim(args, env, .streamp);
-        if (s == b.@"input-stream-p".raw) return self.compileUnaryPrim(args, env, .input_stream_p);
-        if (s == b.@"output-stream-p".raw) return self.compileUnaryPrim(args, env, .output_stream_p);
-        if (s == b.@"make-string-input-stream".raw) return self.compileUnaryPrim(args, env, .make_string_input_stream);
-        if (s == b.@"make-string-output-stream".raw) return self.compileNullaryPrim(.make_string_output_stream);
-        if (s == b.@"get-output-stream-string".raw) return self.compileUnaryPrim(args, env, .get_output_stream_string);
-        if (s == b.@"write-to-stream".raw) return self.compileBinaryPrim(args, env, .write_to_stream);
-
-        // Pathname accessors
-        if (s == b.@"pathname-host".raw) return self.compileUnaryPrim(args, env, .pathname_host);
-        if (s == b.@"pathname-device".raw) return self.compileUnaryPrim(args, env, .pathname_device);
-        if (s == b.@"pathname-directory".raw) return self.compileUnaryPrim(args, env, .pathname_directory);
-        if (s == b.@"pathname-name".raw) return self.compileUnaryPrim(args, env, .pathname_name);
-        if (s == b.@"pathname-type".raw) return self.compileUnaryPrim(args, env, .pathname_type);
-        if (s == b.@"pathname-version".raw) return self.compileUnaryPrim(args, env, .pathname_version);
-
-        // Package
-        if (s == b.@"package-symbols-table".raw) return self.compileUnaryPrim(args, env, .package_symbols_table);
-        if (s == b.@"package-exports-table".raw) return self.compileUnaryPrim(args, env, .package_exports_table);
-        if (s == b.@"package-name".raw) return self.compileUnaryPrim(args, env, .package_name);
-        if (s == b.@"package-nicknames".raw) return self.compileUnaryPrim(args, env, .package_nicknames);
-        if (s == b.@"package-use-list".raw) return self.compileUnaryPrim(args, env, .package_use_list);
-        if (s == b.@"package-used-by-list".raw) return self.compileUnaryPrim(args, env, .package_used_by_list);
-        if (s == b.@"package-shadowing-symbols".raw) return self.compileUnaryPrim(args, env, .package_shadowing_symbols);
-        if (s == b.packagep.raw) return self.compileUnaryPrim(args, env, .packagep);
-
-        // Random
-        if (s == b.random.raw) return self.compileUnaryPrim(args, env, .random);
-        if (s == b.@"random-seed".raw) return self.compileUnaryPrim(args, env, .random_seed);
-
-        return error.InvalidSyntax; // Not a known primitive
+        return error.InvalidSyntax; // Not a known primitive - let the special form handler try it
     }
-
-    const PrimTag = enum { add, sub, mul, div, mod, quot, rem, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, method_qualifiers, method_specializers, method_function, generic_function_methods, generic_function_lambda_list, generic_function_name, nilp, not, vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, vec_adjust, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat, print, princ, terpri, write_char, random, random_seed, intern, unintern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, unread_char, read, read_from_string, load, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length, read_file, write_file, delete_file, rename_file, probe_file, file_write_date, get_universal_time, get_internal_real_time, room, lisp_implementation_type, lisp_implementation_version, software_type, machine_type, make_string, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp, sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round, rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize, get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character, hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash, streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream, pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version, package_symbols_table, package_exports_table, package_name, package_nicknames, package_use_list, package_used_by_list, package_shadowing_symbols, packagep, find_symbol, find_class, class_name, class_direct_superclasses, class_precedence_list, class_direct_slots, class_slots, slot_definition_name, slot_definition_initform, slot_definition_initargs, slot_definition_readers, slot_definition_writers, slot_definition_allocation, slot_definition_type, sleep };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -10013,6 +9964,7 @@ pub const Compiler = struct {
                 break :blk node;
             },
             .macroexpand => try self.builder.macroexpand(operand),
+            .macroexpand_1 => try self.builder.macroexpand1(operand),
             .boundp => try self.builder.boundp(operand),
             .fboundp => try self.builder.fboundp(operand),
             .symbol_value => try self.builder.symbolValue(operand),
@@ -10241,11 +10193,18 @@ pub const Compiler = struct {
             .make_string_output_stream => try self.builder.makeStringOutputStream(),
             .get_universal_time => try self.builder.getUniversalTime(),
             .get_internal_real_time => try self.builder.getInternalRealTime(),
+            .get_internal_run_time => try self.builder.getInternalRunTime(),
             .room => try self.builder.room(),
             .lisp_implementation_type => try self.builder.lispImplementationType(),
             .lisp_implementation_version => try self.builder.lispImplementationVersion(),
             .software_type => try self.builder.softwareType(),
             .machine_type => try self.builder.machineType(),
+            .machine_instance => try self.builder.machineInstance(),
+            .machine_version => try self.builder.machineVersion(),
+            .software_version => try self.builder.softwareVersion(),
+            .short_site_name => try self.builder.shortSiteName(),
+            .long_site_name => try self.builder.longSiteName(),
+            .user_homedir_pathname => try self.builder.userHomedirPathname(),
             else => return error.InvalidSyntax,
         };
     }

@@ -117,8 +117,9 @@ pub const Repl = struct {
         self.vm.setLoadCallback(&loadCallback, @ptrCast(self));
         // Set up eval callback
         self.vm.setEvalCallback(&evalCallback, @ptrCast(self));
-        // Set up macroexpand callback
+        // Set up macroexpand callbacks
         self.vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
+        self.vm.setMacroexpand1Callback(&macroexpand1Callback, @ptrCast(self));
         // Set up fboundp callback
         self.vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
         // Set VM on compiler for macro expansion
@@ -172,6 +173,14 @@ pub const Repl = struct {
     fn macroexpandCallback(expr: Value, context: *anyopaque) vm_mod.Error!Value {
         const self: *Repl = @ptrCast(@alignCast(context));
         return self.expandMacros(expr) catch {
+            return vm_mod.Error.InvalidArgument;
+        };
+    }
+
+    /// Callback for (macroexpand-1 expr) from VM
+    fn macroexpand1Callback(expr: Value, context: *anyopaque) vm_mod.Error!Value {
+        const self: *Repl = @ptrCast(@alignCast(context));
+        return self.expandMacrosOnce(expr) catch {
             return vm_mod.Error.InvalidArgument;
         };
     }
@@ -277,6 +286,7 @@ pub const Repl = struct {
         nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
         nested_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
+        nested_vm.setMacroexpand1Callback(&macroexpand1Callback, @ptrCast(self));
         nested_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
 
         // Copy globals from main VM
@@ -338,6 +348,7 @@ pub const Repl = struct {
         nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
         nested_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
+        nested_vm.setMacroexpand1Callback(&macroexpand1Callback, @ptrCast(self));
         nested_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
 
         // Copy globals from current VM context (for nested loads)
@@ -1556,6 +1567,7 @@ pub const Repl = struct {
         eval_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         eval_vm.setEvalCallback(&evalCallback, @ptrCast(self));
         eval_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
+        eval_vm.setMacroexpand1Callback(&macroexpand1Callback, @ptrCast(self));
         eval_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
 
         // Copy globals from current context
@@ -1593,6 +1605,29 @@ pub const Repl = struct {
     /// Expand macros in an expression (recursive)
     fn expandMacros(self: *Repl, expr: Value) ReplError!Value {
         return self.expandMacrosWithDepth(expr, 0);
+    }
+
+    /// Expand macros once (non-recursive, for macroexpand-1)
+    fn expandMacrosOnce(self: *Repl, expr: Value) ReplError!Value {
+        // Non-list: no expansion
+        if (!expr.isCons()) return expr;
+
+        const cons = expr.toPtr(Cons);
+        const head = cons.car;
+
+        // Check if head is a macro
+        if (head.isSymbol()) {
+            const sym = head.toPtr(Symbol);
+            const name = sym.getName();
+
+            if (self.macros.get(name)) |macro_closure| {
+                // Expand macro once and return without recursive expansion
+                return try self.callMacro(macro_closure, cons.cdr);
+            }
+        }
+
+        // Not a macro call, return unchanged
+        return expr;
     }
 
     fn expandMacrosWithDepth(self: *Repl, expr: Value, depth: u32) ReplError!Value {

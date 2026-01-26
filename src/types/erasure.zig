@@ -333,6 +333,7 @@ pub const Eraser = struct {
             .unread_char,
             .eval,
             .macroexpand,
+            .macroexpand_1,
             .parse_integer,
             .write_to_string,
             .read_file,

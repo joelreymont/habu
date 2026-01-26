@@ -2,7 +2,7 @@
 
 978 external symbols in COMMON-LISP package per ANSI INCITS 226-1994.
 
-Status: ✓ implemented (681, 71%) | ⚠ partial (29, 3%) | ✗ missing (250, 26%)
+Status: ✓ implemented (690, 73%) | ⚠ partial (29, 3%) | ✗ missing (241, 25%)
 Note: 960 symbols documented, 18 symbols pending audit
 
 ## Lambda List Keywords (8)
@@ -803,28 +803,28 @@ Note: 960 symbols documented, 18 symbols pending audit
 | eval | ✓ | compile.zig:226 | Evaluate form |
 | get-decoded-time | ✗ | - | |
 | get-internal-real-time | ✓ | compile.zig:9551, vm.zig:2169 | High-resolution timing |
-| get-internal-run-time | ✗ | - | |
+| get-internal-run-time | ✓ | io.zig, vm.zig | Process CPU time |
 | get-universal-time | ✓ | compile.zig:9549, vm.zig:2165 | Get current time |
 | inspect | ✗ | - | |
 | lisp-implementation-type | ✓ | compile.zig:9557, vm.zig:2181 | Returns "Habu" |
 | lisp-implementation-version | ✓ | compile.zig:9558, vm.zig:2185 | Returns "0.1.0" |
 | load | ✓ | compile.zig:225 | Load file |
-| long-site-name | ✗ | - | |
-| machine-instance | ✗ | - | |
+| long-site-name | ✓ | compile.zig, vm.zig | Returns nil |
+| machine-instance | ✓ | compile.zig, vm.zig | Returns nil |
 | machine-type | ✓ | compile.zig:9560, vm.zig:2193 | CPU architecture |
-| machine-version | ✗ | - | |
+| machine-version | ✓ | compile.zig, vm.zig | Returns nil |
 | macro-function | ✗ | - | |
 | macroexpand | ✓ | compile.zig:90 | Expand macro |
-| macroexpand-1 | ✗ | - | |
+| macroexpand-1 | ✓ | compile.zig, vm.zig | Single expansion |
 | provide | ✗ | - | |
 | require | ✗ | - | |
 | room | ✓ | compile.zig:9555, vm.zig:2174 | Memory statistics |
-| short-site-name | ✗ | - | |
-| sleep | ✗ | - | |
+| short-site-name | ✓ | compile.zig, vm.zig | Returns nil |
+| sleep | ✓ | compile.zig, vm.zig | Thread sleep |
 | software-type | ✓ | compile.zig:9559, vm.zig:2189 | Operating system |
-| software-version | ✗ | - | |
+| software-version | ✓ | compile.zig, vm.zig | Returns nil |
 | special-operator-p | ✓ | stdlib.habu | Special op pred |
-| user-homedir-pathname | ✗ | - | |
+| user-homedir-pathname | ✓ | pathname.zig, vm.zig | Home directory |
 
 ## Functions - Symbols (17)
 | Symbol | Status | Location | Notes |
@@ -1079,7 +1079,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | Files/Streams | 47 | 24 | 0 | 23 |
 | Printer | 25 | 7 | 0 | 18 |
 | Reader | 19 | 10 | 0 | 9 |
-| System/Environment | 43 | 5 | 0 | 38 |
+| System/Environment | 43 | 14 | 0 | 29 |
 | Symbols | 17 | 12 | 0 | 5 |
 | Packages | 22 | 6 | 0 | 16 |
 | CLOS | 25 | 2 | 0 | 23 |

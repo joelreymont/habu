@@ -296,7 +296,7 @@ pub const BiChecker = struct {
             .type_of => &type_mod.t_symbol,
             .typep => &type_mod.t_any,
             .random => &type_mod.t_fixnum,
-            .eval, .macroexpand, .load => &type_mod.t_any,
+            .eval, .macroexpand, .macroexpand_1, .load => &type_mod.t_any,
             .error_user => &type_mod.t_any, // Never returns normally
             .parse_integer => &type_mod.t_fixnum,
 

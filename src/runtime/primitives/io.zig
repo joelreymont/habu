@@ -946,6 +946,14 @@ pub fn getInternalRealTime() i64 {
     return std.time.microTimestamp();
 }
 
+/// Get internal run time (process CPU time in microseconds)
+pub fn getInternalRunTime() i64 {
+    const ts = std.posix.clock_gettime(.PROCESS_CPUTIME_ID) catch {
+        return std.time.microTimestamp();
+    };
+    return @as(i64, ts.sec) * 1_000_000 + @divTrunc(@as(i64, ts.nsec), 1000);
+}
+
 /// Print memory usage statistics
 pub fn room(allocations: usize, bytes_allocated: usize, gc_count: usize, bytes_copied: usize) void {
     const stdout_file = fs.File.stdout();

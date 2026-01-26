@@ -286,6 +286,10 @@ pub const Vm = struct {
     macroexpand_callback: ?*const fn (Value, *anyopaque) Error!Value,
     macroexpand_context: ?*anyopaque,
 
+    /// Callback for (macroexpand-1 expr) - set by REPL
+    macroexpand_1_callback: ?*const fn (Value, *anyopaque) Error!Value,
+    macroexpand_1_context: ?*anyopaque,
+
     /// Callback for fboundp - checks if symbol is a function (macro, primitive, or defun)
     fboundp_callback: ?*const fn (Value, *anyopaque) bool,
     fboundp_context: ?*anyopaque,
@@ -407,6 +411,8 @@ pub const Vm = struct {
             .eval_context = null,
             .macroexpand_callback = null,
             .macroexpand_context = null,
+            .macroexpand_1_callback = null,
+            .macroexpand_1_context = null,
             .fboundp_callback = null,
             .fboundp_context = null,
             .gensym_counter = 0,
@@ -455,6 +461,12 @@ pub const Vm = struct {
     pub fn setMacroexpandCallback(self: *Vm, callback: *const fn (Value, *anyopaque) Error!Value, context: *anyopaque) void {
         self.macroexpand_callback = callback;
         self.macroexpand_context = context;
+    }
+
+    /// Set the macroexpand-1 callback for (macroexpand-1 expr)
+    pub fn setMacroexpand1Callback(self: *Vm, callback: *const fn (Value, *anyopaque) Error!Value, context: *anyopaque) void {
+        self.macroexpand_1_callback = callback;
+        self.macroexpand_1_context = context;
     }
 
     /// Set the fboundp callback for checking function bindings
@@ -2172,6 +2184,10 @@ pub const Vm = struct {
                 const timestamp = io.getInternalRealTime();
                 try self.push(Value.makeFixnum(timestamp));
             },
+            .get_internal_run_time => {
+                const timestamp = io.getInternalRunTime();
+                try self.push(Value.makeFixnum(timestamp));
+            },
             .room => {
                 // Print memory statistics
                 const stats = self.heap.stats;
@@ -2193,6 +2209,30 @@ pub const Vm = struct {
             .machine_type => {
                 const str = try self.heap.allocBaseString(@tagName(builtin.cpu.arch));
                 try self.push(str);
+            },
+            .machine_instance => {
+                // Return hostname or nil
+                try self.push(Value.nil);
+            },
+            .machine_version => {
+                // Return nil - no specific hardware version info available
+                try self.push(Value.nil);
+            },
+            .software_version => {
+                // Return nil - could be expanded to return OS version
+                try self.push(Value.nil);
+            },
+            .short_site_name => {
+                // Site names are installation-specific; return nil
+                try self.push(Value.nil);
+            },
+            .long_site_name => {
+                // Site names are installation-specific; return nil
+                try self.push(Value.nil);
+            },
+            .user_homedir_pathname => {
+                const result = try primitives.pathname.userHomedirPathname(self.allocator, self.heap);
+                try self.push(result);
             },
             .make_string => {
                 const char_val = try self.pop();
@@ -4002,12 +4042,26 @@ pub const Vm = struct {
             },
 
             .macroexpand => {
-                // Expand macros in expression
+                // Expand macros fully
                 const expr = try self.pop();
 
                 // Call the macroexpand callback if set
                 if (self.macroexpand_callback) |callback| {
                     const result = try callback(expr, self.macroexpand_context.?);
+                    try self.push(result);
+                } else {
+                    // No callback set - return the expression unchanged
+                    try self.push(expr);
+                }
+            },
+
+            .macroexpand_1 => {
+                // Expand macros once
+                const expr = try self.pop();
+
+                // Call the macroexpand-1 callback if set
+                if (self.macroexpand_1_callback) |callback| {
+                    const result = try callback(expr, self.macroexpand_1_context.?);
                     try self.push(result);
                 } else {
                     // No callback set - return the expression unchanged

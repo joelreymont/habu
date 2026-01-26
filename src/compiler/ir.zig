@@ -502,7 +502,8 @@ pub const Ir = union(enum) {
     load: UnaryOp, // Load and evaluate a file
     eval: UnaryOp, // Evaluate expression at runtime
     gensym: OptionalOp, // Generate unique symbol (nullary or with prefix)
-    macroexpand: UnaryOp, // Expand macros in expression
+    macroexpand: UnaryOp, // Expand macros fully
+    macroexpand_1: UnaryOp, // Expand macros once
     princ: UnaryOp, // Print without escaping
     terpri: void, // Print newline
     write_char: UnaryOp, // Write character to stdout
@@ -532,12 +533,19 @@ pub const Ir = union(enum) {
     probe_file: UnaryOp, // Check if file exists
     file_write_date: UnaryOp, // Get file modification time
     get_universal_time: void, // Get current universal time
-    get_internal_real_time: void, // Get internal time (microseconds)
+    get_internal_real_time: void, // Get internal real time (microseconds)
+    get_internal_run_time: void, // Get internal run time (CPU microseconds)
     room: void, // Print memory statistics
     lisp_implementation_type: void, // Get implementation name
     lisp_implementation_version: void, // Get implementation version
     software_type: void, // Get OS type
     machine_type: void, // Get architecture
+    machine_instance: void, // Get hostname
+    machine_version: void, // Get hardware version
+    software_version: void, // Get OS version
+    short_site_name: void, // Get short site name
+    long_site_name: void, // Get long site name
+    user_homedir_pathname: void, // Get user home directory as pathname
     make_string: BinaryOp, // Create string (length, char)
     list_to_string: UnaryOp, // List of chars to string
     string_upcase: UnaryOp, // Convert string to uppercase
@@ -1652,6 +1660,12 @@ pub const IrBuilder = struct {
         return node;
     }
 
+    pub fn macroexpand1(self: IrBuilder, expr: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .macroexpand_1 = .{ .operand = expr } };
+        return node;
+    }
+
     pub fn princ(self: IrBuilder, val: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .princ = .{ .operand = val } };
@@ -1832,6 +1846,12 @@ pub const IrBuilder = struct {
         return node;
     }
 
+    pub fn getInternalRunTime(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .get_internal_run_time = {} };
+        return node;
+    }
+
     pub fn room(self: IrBuilder) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .room = {} };
@@ -1859,6 +1879,42 @@ pub const IrBuilder = struct {
     pub fn machineType(self: IrBuilder) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .machine_type = {} };
+        return node;
+    }
+
+    pub fn machineInstance(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .machine_instance = {} };
+        return node;
+    }
+
+    pub fn machineVersion(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .machine_version = {} };
+        return node;
+    }
+
+    pub fn softwareVersion(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .software_version = {} };
+        return node;
+    }
+
+    pub fn shortSiteName(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .short_site_name = {} };
+        return node;
+    }
+
+    pub fn longSiteName(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .long_site_name = {} };
+        return node;
+    }
+
+    pub fn userHomedirPathname(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .user_homedir_pathname = {} };
         return node;
     }
 

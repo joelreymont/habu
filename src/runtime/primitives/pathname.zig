@@ -286,3 +286,40 @@ pub fn mergePathnames(
 
     return try heap.allocPathname(host, device, directory, name, ty, version);
 }
+
+/// Get user's home directory as a pathname
+pub fn userHomedirPathname(allocator: std.mem.Allocator, heap: *Heap) !Value {
+    _ = allocator;
+    const home = std.posix.getenv("HOME") orelse return Value.nil;
+    if (home.len == 0) return Value.nil;
+
+    // Parse the home directory path into a pathname object
+    // Build directory list: (:absolute "component1" "component2" ...)
+    var dir_list = Value.nil;
+
+    // Split path by '/' and collect parts
+    var it = std.mem.splitScalar(u8, home, '/');
+    var parts_buf: [64][]const u8 = undefined;
+    var parts_len: usize = 0;
+
+    while (it.next()) |part| {
+        if (part.len > 0 and parts_len < parts_buf.len) {
+            parts_buf[parts_len] = part;
+            parts_len += 1;
+        }
+    }
+
+    // Build list in reverse order (for cons)
+    var i = parts_len;
+    while (i > 0) {
+        i -= 1;
+        const part_str = try heap.allocString32FromUtf8(parts_buf[i]);
+        dir_list = try heap.allocCons(part_str, dir_list);
+    }
+
+    // Prepend :absolute
+    const absolute_kw = try heap.internKeyword("ABSOLUTE");
+    dir_list = try heap.allocCons(absolute_kw, dir_list);
+
+    return try heap.allocPathname(Value.nil, Value.nil, dir_list, Value.nil, Value.nil, Value.nil);
+}
