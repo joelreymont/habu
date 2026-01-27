@@ -128,6 +128,27 @@ pub const Repl = struct {
         self.createFeaturesGlobal() catch {};
         // Create print control globals
         self.createPrintGlobals() catch {};
+        // Create standard stream globals
+        self.createStreamGlobals() catch {};
+    }
+
+    /// Helper to set a global and update num_globals
+    fn setGlobal(self: *Repl, name: []const u8, value: Value) !void {
+        const idx = try self.compiler.globals.define(name);
+        self.vm.globals[idx] = value;
+        if (idx >= self.vm.num_globals) {
+            self.vm.num_globals = idx + 1;
+        }
+    }
+
+    /// Helper to set a CL global: intern symbol in CL, define global, set value
+    fn setClGlobal(self: *Repl, sym_name: []const u8, value: Value) !void {
+        // Intern symbol in CL package so it's found when CL-USER code references it
+        _ = try self.heap.internInPackage("COMMON-LISP", sym_name);
+        // Define global with qualified name
+        var buf: [256]u8 = undefined;
+        const qual_name = try std.fmt.bufPrint(&buf, "COMMON-LISP:{s}", .{sym_name});
+        try self.setGlobal(qual_name, value);
     }
 
     fn createFeaturesGlobal(self: *Repl) !void {
@@ -142,15 +163,28 @@ pub const Repl = struct {
             else => b.kw_unix,
         };
         features = try self.heap.allocCons(os_kw, features);
-        const gidx = try self.compiler.globals.define("*features*");
-        self.vm.globals[gidx] = features;
+        try self.setClGlobal("*FEATURES*", features);
     }
 
     fn createPrintGlobals(self: *Repl) !void {
-        const gidx_len = try self.compiler.globals.define("*print-length*");
-        self.vm.globals[gidx_len] = Value.nil;
-        const gidx_lvl = try self.compiler.globals.define("*print-level*");
-        self.vm.globals[gidx_lvl] = Value.nil;
+        try self.setClGlobal("*PRINT-LENGTH*", Value.nil);
+        try self.setClGlobal("*PRINT-LEVEL*", Value.nil);
+    }
+
+    fn createStreamGlobals(self: *Repl) !void {
+        // Create standard stream objects
+        const stdin_stream = try self.heap.allocStdin();
+        const stdout_stream = try self.heap.allocStdout();
+        const stderr_stream = try self.heap.allocStderr();
+
+        // Pre-intern in CL and set globals
+        try self.setClGlobal("*STANDARD-INPUT*", stdin_stream);
+        try self.setClGlobal("*STANDARD-OUTPUT*", stdout_stream);
+        try self.setClGlobal("*ERROR-OUTPUT*", stderr_stream);
+        try self.setClGlobal("*QUERY-IO*", stdout_stream);
+        try self.setClGlobal("*DEBUG-IO*", stdout_stream);
+        try self.setClGlobal("*TRACE-OUTPUT*", stdout_stream);
+        try self.setClGlobal("*TERMINAL-IO*", stdout_stream);
     }
 
     /// Callback for (load "filename") from VM
@@ -915,6 +949,7 @@ pub const Repl = struct {
         switch (val.typeKind()) {
             .nil => try writer.writeAll("nil"),
             .t => try writer.writeAll("t"),
+            .unbound => try writer.writeAll("#<unbound>"),
             .fixnum => try io.writeFixnumTo(val.toFixnum(), writer),
             .float => try writer.print("{d}", .{val.toFloat()}),
             .char => {
@@ -977,6 +1012,11 @@ pub const Repl = struct {
                     .stdin => "stdin",
                     .stdout => "stdout",
                     .stderr => "stderr",
+                    .broadcast => "broadcast",
+                    .concatenated => "concatenated",
+                    .echo => "echo",
+                    .synonym => "synonym",
+                    .two_way => "two-way",
                 };
                 try writer.print("#<{s}-{s}-stream>", .{ kind, dir });
             },
@@ -1669,6 +1709,22 @@ pub const Repl = struct {
             if (self.compiler.builtins) |b| {
                 if (head.raw == b.quote.raw or head.raw == b.quasiquote.raw or head.raw == b.lambda.raw) {
                     return expr; // Don't expand inside quote or lambda
+                }
+                // For setf, don't expand the place (first arg) but do expand value (second arg)
+                if (head.raw == b.setf.raw) {
+                    const args = cons.cdr;
+                    if (args.isCons()) {
+                        const args_cons = args.toPtr(Cons);
+                        const place = args_cons.car; // Keep place unexpanded
+                        const rest = args_cons.cdr;
+                        if (rest.isCons()) {
+                            const expanded_value = try self.expandMacrosWithDepth(rest.toPtr(Cons).car, depth + 1);
+                            const new_rest = try self.heap.allocCons(expanded_value, rest.toPtr(Cons).cdr);
+                            const new_args = try self.heap.allocCons(place, new_rest);
+                            return try self.heap.allocCons(head, new_args);
+                        }
+                    }
+                    return expr;
                 }
             }
 

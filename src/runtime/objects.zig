@@ -337,6 +337,12 @@ pub const StreamType = enum(u8) {
     stdin = 2,
     stdout = 3,
     stderr = 4,
+    // Compound stream types (ANSI CL)
+    broadcast = 5, // writes to multiple streams
+    concatenated = 6, // reads from sequence of streams
+    echo = 7, // echoes input to output
+    synonym = 8, // delegates to symbol's value
+    two_way = 9, // bidirectional: input + output
 };
 
 /// Stream object for I/O operations

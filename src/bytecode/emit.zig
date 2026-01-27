@@ -316,6 +316,16 @@ pub const Emitter = struct {
             .typep,
             .make_string,
             .write_file,
+            .merge_pathnames,
+            .pkg_import,
+            .pkg_unexport,
+            .pkg_shadow,
+            .pkg_shadowing_import,
+            .pkg_unuse_package,
+            .pkg_unintern,
+            .pkg_find_symbol,
+            .make_echo_stream,
+            .make_two_way_stream,
             => |op| {
                 max_idx = computeMaxLocalIndexImpl(op.left, max_idx);
                 max_idx = computeMaxLocalIndexImpl(op.right, max_idx);
@@ -397,6 +407,54 @@ pub const Emitter = struct {
             .hash_count => |h| max_idx = computeMaxLocalIndexImpl(h.operand, max_idx),
             .hash_capacity => |h| max_idx = computeMaxLocalIndexImpl(h.operand, max_idx),
             .hashtablep => |h| max_idx = computeMaxLocalIndexImpl(h.operand, max_idx),
+            .packagep => |p| max_idx = computeMaxLocalIndexImpl(p.operand, max_idx),
+            .symbol_package => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
+            .package_name => |p| max_idx = computeMaxLocalIndexImpl(p.operand, max_idx),
+            .package_nicknames => |p| max_idx = computeMaxLocalIndexImpl(p.operand, max_idx),
+            .package_use_list => |p| max_idx = computeMaxLocalIndexImpl(p.operand, max_idx),
+            .package_used_by_list => |p| max_idx = computeMaxLocalIndexImpl(p.operand, max_idx),
+            .package_shadowing_symbols => |p| max_idx = computeMaxLocalIndexImpl(p.operand, max_idx),
+            .list_all_packages => {},
+            .compute_restarts => {},
+            .restart_name => |r| max_idx = computeMaxLocalIndexImpl(r.operand, max_idx),
+            .directory => |d| max_idx = computeMaxLocalIndexImpl(d.operand, max_idx),
+            .pathname_match_p => |op| {
+                max_idx = computeMaxLocalIndexImpl(op.left, max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.right, max_idx);
+            },
+            .enough_namestring => |e| max_idx = computeMaxLocalIndexImpl(e.operand, max_idx),
+            .find_package => |f| max_idx = computeMaxLocalIndexImpl(f.operand, max_idx),
+            .delete_package => |d| max_idx = computeMaxLocalIndexImpl(d.operand, max_idx),
+            .pkg_find_all_symbols => |p| max_idx = computeMaxLocalIndexImpl(p.operand, max_idx),
+            .apropos_list => |a| max_idx = computeMaxLocalIndexImpl(a.operand, max_idx),
+            .read_char_no_hang => |r| max_idx = computeMaxLocalIndexImpl(r.operand, max_idx),
+            .pkg_make_package => |op| {
+                max_idx = computeMaxLocalIndexImpl(op.first, max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.second, max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.third, max_idx);
+            },
+            .pkg_rename_package => |op| {
+                max_idx = computeMaxLocalIndexImpl(op.first, max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.second, max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.third, max_idx);
+            },
+            .encode_universal_time => |op| {
+                max_idx = computeMaxLocalIndexImpl(op.second, max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.minute, max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.hour, max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.date, max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.month, max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.year, max_idx);
+                if (op.zone) |z| max_idx = computeMaxLocalIndexImpl(z, max_idx);
+            },
+            .make_pathname => |op| {
+                max_idx = computeMaxLocalIndexImpl(op.host, max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.device, max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.directory, max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.name, max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.@"type", max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.version, max_idx);
+            },
             .rationalp => |r| max_idx = computeMaxLocalIndexImpl(r.operand, max_idx),
             .complexp => |c| max_idx = computeMaxLocalIndexImpl(c.operand, max_idx),
             .make_complex => |mc| {
@@ -413,6 +471,10 @@ pub const Emitter = struct {
             .streamp => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
             .input_stream_p => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
             .output_stream_p => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
+            .open_stream_p => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
+            .interactive_stream_p => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
+            .stream_element_type => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
+            .stream_external_format => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
             .make_string_input_stream => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
             .make_string_output_stream => {}, // No operands
             .get_output_stream_string => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
@@ -420,9 +482,26 @@ pub const Emitter = struct {
                 max_idx = computeMaxLocalIndexImpl(w.left, max_idx);
                 max_idx = computeMaxLocalIndexImpl(w.right, max_idx);
             },
+            // Compound stream operations
+            .broadcast_stream_streams,
+            .concatenated_stream_streams,
+            .echo_stream_input_stream,
+            .echo_stream_output_stream,
+            .synonym_stream_symbol,
+            .two_way_stream_input_stream,
+            .two_way_stream_output_stream,
+            .make_synonym_stream,
+            .make_broadcast_stream_list,
+            .make_concatenated_stream_list,
+            .disassemble,
+            => |s| max_idx = computeMaxLocalIndexImpl(s.operand, max_idx),
 
             // List/array nodes - recurse into all elements
-            .list, .vec => |elements| {
+            .list,
+            .vec,
+            .make_broadcast_stream,
+            .make_concatenated_stream,
+            => |elements| {
                 for (elements) |elem| max_idx = computeMaxLocalIndexImpl(elem, max_idx);
             },
             .format => |f| {
@@ -476,6 +555,11 @@ pub const Emitter = struct {
                 max_idx = computeMaxLocalIndexImpl(s.str, max_idx);
                 max_idx = computeMaxLocalIndexImpl(s.index, max_idx);
                 max_idx = computeMaxLocalIndexImpl(s.value, max_idx);
+            },
+            .elt_set => |e| {
+                max_idx = computeMaxLocalIndexImpl(e.seq, max_idx);
+                max_idx = computeMaxLocalIndexImpl(e.index, max_idx);
+                max_idx = computeMaxLocalIndexImpl(e.value, max_idx);
             },
             .substring => |s| {
                 max_idx = computeMaxLocalIndexImpl(s.str, max_idx);
@@ -544,6 +628,21 @@ pub const Emitter = struct {
             .hash_alist => |h| try self.emitUnaryOp(h.operand, .hash_alist),
             .sxhash => |h| try self.emitUnaryOp(h.operand, .sxhash),
             .hashtablep => |h| try self.emitUnaryOp(h.operand, .hashtablep),
+            .packagep => |p| try self.emitUnaryOp(p.operand, .packagep),
+            .symbol_package => |s| try self.emitUnaryOp(s.operand, .symbol_package),
+            .package_name => |p| try self.emitUnaryOp(p.operand, .package_name),
+            .package_nicknames => |p| try self.emitUnaryOp(p.operand, .package_nicknames),
+            .package_use_list => |p| try self.emitUnaryOp(p.operand, .package_use_list),
+            .package_used_by_list => |p| try self.emitUnaryOp(p.operand, .package_used_by_list),
+            .package_shadowing_symbols => |p| try self.emitUnaryOp(p.operand, .package_shadowing_symbols),
+            .list_all_packages => try self.emitOp(.list_all_packages),
+            .compute_restarts => try self.emitOp(.compute_restarts),
+            .restart_name => |r| try self.emitUnaryOp(r.operand, .restart_name),
+            .directory => |d| try self.emitUnaryOp(d.operand, .directory),
+            .pathname_match_p => |op| try self.emitBinaryOp(op, .pathname_match_p),
+            .enough_namestring => |e| try self.emitUnaryOp(e.operand, .enough_namestring),
+            .find_package => |f| try self.emitUnaryOp(f.operand, .find_package),
+            .delete_package => |d| try self.emitUnaryOp(d.operand, .delete_package),
             .rationalp => |r| try self.emitUnaryOp(r.operand, .rationalp),
             .complexp => |c| try self.emitUnaryOp(c.operand, .complexp),
             .make_complex => |mc| try self.emitBinaryOp(mc, .make_complex),
@@ -556,10 +655,34 @@ pub const Emitter = struct {
             .streamp => |s| try self.emitUnaryOp(s.operand, .streamp),
             .input_stream_p => |s| try self.emitUnaryOp(s.operand, .input_stream_p),
             .output_stream_p => |s| try self.emitUnaryOp(s.operand, .output_stream_p),
+            .open_stream_p => |s| try self.emitUnaryOp(s.operand, .open_stream_p),
+            .interactive_stream_p => |s| try self.emitUnaryOp(s.operand, .interactive_stream_p),
+            .stream_element_type => |s| try self.emitUnaryOp(s.operand, .stream_element_type),
+            .stream_external_format => |s| try self.emitUnaryOp(s.operand, .stream_external_format),
             .make_string_input_stream => |s| try self.emitUnaryOp(s.operand, .make_string_input_stream),
             .make_string_output_stream => try self.emitOp(.make_string_output_stream),
             .get_output_stream_string => |s| try self.emitUnaryOp(s.operand, .get_output_stream_string),
             .write_to_stream => |w| try self.emitBinaryOp(w, .write_to_stream),
+            // Compound stream operations
+            .broadcast_stream_streams => |s| try self.emitUnaryOp(s.operand, .broadcast_stream_streams),
+            .concatenated_stream_streams => |s| try self.emitUnaryOp(s.operand, .concatenated_stream_streams),
+            .echo_stream_input_stream => |s| try self.emitUnaryOp(s.operand, .echo_stream_input_stream),
+            .echo_stream_output_stream => |s| try self.emitUnaryOp(s.operand, .echo_stream_output_stream),
+            .synonym_stream_symbol => |s| try self.emitUnaryOp(s.operand, .synonym_stream_symbol),
+            .two_way_stream_input_stream => |s| try self.emitUnaryOp(s.operand, .two_way_stream_input_stream),
+            .two_way_stream_output_stream => |s| try self.emitUnaryOp(s.operand, .two_way_stream_output_stream),
+            .make_synonym_stream => |s| try self.emitUnaryOp(s.operand, .make_synonym_stream),
+            .make_echo_stream => |op| try self.emitBinaryOp(op, .make_echo_stream),
+            .make_two_way_stream => |op| try self.emitBinaryOp(op, .make_two_way_stream),
+            .make_broadcast_stream => |streams| try self.emitStreamList(streams, .make_broadcast_stream),
+            .make_concatenated_stream => |streams| try self.emitStreamList(streams, .make_concatenated_stream),
+            .make_broadcast_stream_list => |s| try self.emitUnaryOp(s.operand, .make_broadcast_stream_list),
+            .make_concatenated_stream_list => |s| try self.emitUnaryOp(s.operand, .make_concatenated_stream_list),
+            .disassemble => |s| try self.emitUnaryOp(s.operand, .disassemble),
+            .read_char_stream => |s| try self.emitUnaryOp(s.operand, .read_char_stream),
+            .peek_char_stream => |s| try self.emitUnaryOp(s.operand, .peek_char_stream),
+            .open_file => |op| try self.emitBinaryOp(op, .open_file),
+            .close_stream => |s| try self.emitUnaryOp(s.operand, .close_stream),
             .pathname_host => |p| try self.emitUnaryOp(p.operand, .pathname_host),
             .pathname_device => |p| try self.emitUnaryOp(p.operand, .pathname_device),
             .pathname_directory => |p| try self.emitUnaryOp(p.operand, .pathname_directory),
@@ -571,9 +694,27 @@ pub const Emitter = struct {
             .pathname => |op| try self.emitUnaryOp(op.operand, .pathname),
             .parse_namestring => |op| try self.emitUnaryOp(op.operand, .parse_namestring),
             .namestring => |op| try self.emitUnaryOp(op.operand, .namestring),
+            .directory_namestring => |op| try self.emitUnaryOp(op.operand, .directory_namestring),
+            .file_namestring => |op| try self.emitUnaryOp(op.operand, .file_namestring),
+            .host_namestring => |op| try self.emitUnaryOp(op.operand, .host_namestring),
+            .wild_pathname_p => |op| try self.emitUnaryOp(op.operand, .wild_pathname_p),
             .merge_pathnames => |op| try self.emitBinaryOp(op, .merge_pathnames),
+            .pkg_import => |op| try self.emitBinaryOp(op, .pkg_import),
+            .pkg_unexport => |op| try self.emitBinaryOp(op, .pkg_unexport),
+            .pkg_shadow => |op| try self.emitBinaryOp(op, .pkg_shadow),
+            .pkg_shadowing_import => |op| try self.emitBinaryOp(op, .pkg_shadowing_import),
+            .pkg_unuse_package => |op| try self.emitBinaryOp(op, .pkg_unuse_package),
+            .pkg_unintern => |op| try self.emitBinaryOp(op, .pkg_unintern),
+            .pkg_find_symbol => |op| try self.emitBinaryOp(op, .pkg_find_symbol),
+            .pkg_find_all_symbols => |p| try self.emitUnaryOp(p.operand, .pkg_find_all_symbols),
+            .apropos_list => |a| try self.emitUnaryOp(a.operand, .apropos_list),
+            .read_char_no_hang => |r| try self.emitUnaryOp(r.operand, .read_char_no_hang),
+            .pkg_make_package => |op| try self.emitTernaryOp(op, .pkg_make_package),
+            .pkg_rename_package => |op| try self.emitTernaryOp(op, .pkg_rename_package),
             .package_symbols_table => |p| try self.emitUnaryOp(p.operand, .package_symbols_table),
             .package_exports_table => |p| try self.emitUnaryOp(p.operand, .package_exports_table),
+            .package_symbols_list => |p| try self.emitUnaryOp(p.operand, .package_symbols_list),
+            .package_exports_list => |p| try self.emitUnaryOp(p.operand, .package_exports_list),
             .call => |c| try self.emitCall(c, false),
             .tailcall => |c| try self.emitCall(c, true),
             .apply => |a| try self.emitApply(a),
@@ -661,6 +802,8 @@ pub const Emitter = struct {
             .read_char => try self.emitOp(.read_char),
             .peek_char => try self.emitOp(.peek_char),
             .unread_char => |op| try self.emitUnaryOp(op.operand, .unread_char),
+            .listen => |op| try self.emitUnaryOp(op.operand, .listen),
+            .upgraded_complex_part_type => |op| try self.emitUnaryOp(op.operand, .upgraded_complex_part_type),
             .read => try self.emitOp(.read),
             .read_from_string => |op| try self.emitUnaryOp(op.operand, .read_from_string),
             .load => |op| try self.emitUnaryOp(op.operand, .load),
@@ -703,11 +846,26 @@ pub const Emitter = struct {
             .rename_file => |op| try self.emitBinaryOp(op, .rename_file),
             .probe_file => |op| try self.emitUnaryOp(op.operand, .probe_file),
             .file_write_date => |op| try self.emitUnaryOp(op.operand, .file_write_date),
+            .file_author => |op| try self.emitUnaryOp(op.operand, .file_author),
+            .file_string_length => |op| try self.emitBinaryOp(op, .file_string_length),
             .get_universal_time => try self.emitOp(.get_universal_time),
             .get_internal_real_time => try self.emitOp(.get_internal_real_time),
             .get_internal_run_time => try self.emitOp(.get_internal_run_time),
             .get_decoded_time => try self.emitOp(.get_decoded_time),
             .decode_universal_time => |op| try self.emitUnaryOp(op.operand, .decode_universal_time),
+            .encode_universal_time => |op| {
+                // Emit args in order: second, minute, hour, date, month, year, [zone]
+                try self.emit(op.second);
+                try self.emit(op.minute);
+                try self.emit(op.hour);
+                try self.emit(op.date);
+                try self.emit(op.month);
+                try self.emit(op.year);
+                if (op.zone) |z| try self.emit(z);
+                try self.emitOp(.encode_universal_time);
+                // Emit argc (6 or 7)
+                try self.emitU8(if (op.zone != null) 7 else 6);
+            },
             .room => try self.emitOp(.room),
             .lisp_implementation_type => try self.emitOp(.lisp_implementation_type),
             .lisp_implementation_version => try self.emitOp(.lisp_implementation_version),
@@ -719,6 +877,18 @@ pub const Emitter = struct {
             .short_site_name => try self.emitOp(.short_site_name),
             .long_site_name => try self.emitOp(.long_site_name),
             .user_homedir_pathname => try self.emitOp(.user_homedir_pathname),
+            .make_pathname => |op| {
+                // Emit all 6 components in order
+                try self.emit(op.host);
+                try self.emit(op.device);
+                try self.emit(op.directory);
+                try self.emit(op.name);
+                try self.emit(op.@"type");
+                try self.emit(op.version);
+                try self.emitOp(.make_pathname);
+                // All 6 flags set: host=1, device=2, dir=4, name=8, type=16, version=32
+                try self.emitU8(0x3F);
+            },
             .make_string => |op| try self.emitBinaryOp(op, .make_string),
             .list_to_string => |op| try self.emitUnaryOp(op.operand, .list_to_string),
             .string_upcase => |op| try self.emitUnaryOp(op.operand, .string_upcase),
@@ -728,6 +898,7 @@ pub const Emitter = struct {
             .symbol_value => |op| try self.emitUnaryOp(op.operand, .symbol_value),
             .symbol_function => |op| try self.emitUnaryOp(op.operand, .symbol_function),
             .typep => |op| try self.emitBinaryOp(op, .typep),
+            .subtypep => |op| try self.emitBinaryOp(op, .subtypep),
 
             // Numeric predicates
             .abs => |op| try self.emitUnaryOp(op.operand, .abs),
@@ -757,6 +928,10 @@ pub const Emitter = struct {
             .floor => |op| try self.emitUnaryOp(op.operand, .floor),
             .ceiling => |op| try self.emitUnaryOp(op.operand, .ceiling),
             .round => |op| try self.emitUnaryOp(op.operand, .round),
+            .decode_float => |op| try self.emitUnaryOp(op.operand, .decode_float),
+            .integer_decode_float => |op| try self.emitUnaryOp(op.operand, .integer_decode_float),
+            .float_radix => |op| try self.emitUnaryOp(op.operand, .float_radix),
+            .float_digits => |op| try self.emitUnaryOp(op.operand, .float_digits),
 
             // Vector operations
             .vec_new => |v| try self.emitVecNew(v),
@@ -765,9 +940,13 @@ pub const Emitter = struct {
             .vec_set => |v| try self.emitVecSet(v),
             .vec_len => |op| try self.emitUnaryOp(op.operand, .vec_len),
             .vec_fill_ptr => |op| try self.emitUnaryOp(op.operand, .vec_fill_ptr),
+            .vec_set_fill_ptr => |op| try self.emitBinaryOp(op, .vec_set_fill_ptr),
+            .vec_set_adjustable => |op| try self.emitBinaryOp(op, .vec_set_adjustable),
             .vec_push => |op| try self.emitBinaryOp(op, .vec_push),
             .vec_push_ext => |op| try self.emitTernaryOp(op, .vec_push_ext),
             .vec_pop => |op| try self.emitUnaryOp(op.operand, .vec_pop),
+            .vec_adjust => |op| try self.emitTernaryOp(op, .vec_adjust),
+            .elt_set => |e| try self.emitEltSet(e),
 
             // Array operations
             .arr_new => |a| try self.emitArrNew(a),
@@ -843,12 +1022,15 @@ pub const Emitter = struct {
             .close => |op| try self.emitUnaryOp(op.operand, .close),
             .read_line => |op| try self.emitUnaryOp(op.operand, .read_line),
             .write_line => |op| try self.emitBinaryOp(op, .write_line),
+            .write_string => |op| try self.emitBinaryOp(op, .write_string),
             .read_byte => |op| try self.emitUnaryOp(op.operand, .read_byte),
             .write_byte => |op| try self.emitBinaryOp(op, .write_byte),
             .file_position => |op| try self.emitUnaryOp(op.operand, .file_position),
             .file_length => |op| try self.emitUnaryOp(op.operand, .file_length),
             .finish_output => |op| try self.emitUnaryOp(op.operand, .finish_output),
             .force_output => |op| try self.emitUnaryOp(op.operand, .force_output),
+            .clear_input => |op| try self.emitUnaryOp(op.operand, .clear_input),
+            .clear_output => |op| try self.emitUnaryOp(op.operand, .clear_output),
             .sleep => |op| try self.emitUnaryOp(op.operand, .sleep),
 
             // Reader macros
@@ -2070,6 +2252,17 @@ pub const Emitter = struct {
         }
     }
 
+    fn emitStreamList(self: *Emitter, streams: []const *const Ir, op: opcodes.Op) Error!void {
+        // Emit streams in order
+        for (streams) |stream| {
+            try self.emit(stream);
+        }
+        // Emit opcode with count
+        if (streams.len > 255) return error.TooManyLocals;
+        try self.emitOp(op);
+        try self.emitU8(@intCast(streams.len));
+    }
+
     fn emitVecNew(self: *Emitter, v: anytype) Error!void {
         try self.emit(v.size);
         if (v.init) |init_val| {
@@ -2105,6 +2298,13 @@ pub const Emitter = struct {
         try self.emit(s.index);
         try self.emit(s.value);
         try self.emitOp(.str_set);
+    }
+
+    fn emitEltSet(self: *Emitter, e: anytype) Error!void {
+        try self.emit(e.seq);
+        try self.emit(e.index);
+        try self.emit(e.value);
+        try self.emitOp(.elt_set);
     }
 
     fn emitArrNew(self: *Emitter, a: anytype) Error!void {

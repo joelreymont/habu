@@ -2,7 +2,7 @@
 
 978 external symbols in COMMON-LISP package per ANSI INCITS 226-1994.
 
-Status: ✓ implemented (697, 71%) | ⚠ partial (29, 3%) | ✗ missing (234, 24%)
+Status: ✓ implemented (957, 98%) | ⚠ partial (3, 0%)
 Note: 960 symbols documented, 18 symbols pending audit
 
 ## Lambda List Keywords (8)
@@ -11,11 +11,11 @@ Note: 960 symbols documented, 18 symbols pending audit
 | &allow-other-keys | ⚠ | compile.zig | Parsed but not fully enforced |
 | &aux | ✓ | compile.zig:453 | Aux bindings |
 | &body | ✓ | compile.zig:427 | Macro lambda lists |
-| &environment | ✗ | - | Not implemented |
+| &environment | ⚠ | compile.zig:2444 | Macro env (nil), REPL path incomplete |
 | &key | ✓ | compile.zig:429 | Keyword args |
 | &optional | ✓ | compile.zig:428 | Optional args |
 | &rest | ✓ | compile.zig:426 | Rest args |
-| &whole | ✗ | - | Not implemented |
+| &whole | ⚠ | compile.zig:2444 | Macro whole form, REPL path incomplete |
 
 ## Special Variables (65)
 | Symbol | Status | Location | Notes |
@@ -23,50 +23,50 @@ Note: 960 symbols documented, 18 symbols pending audit
 | * | ✓ | repl.zig | Previous result |
 | ** | ✓ | repl.zig | 2nd previous result |
 | *** | ✓ | repl.zig | 3rd previous result |
-| *break-on-signals* | ✗ | - | |
-| *compile-file-pathname* | ✗ | - | |
-| *compile-file-truename* | ✗ | - | |
-| *compile-print* | ✗ | - | |
-| *compile-verbose* | ✗ | - | |
-| *debug-io* | ✗ | - | |
-| *debugger-hook* | ✗ | - | |
-| *default-pathname-defaults* | ✗ | - | |
-| *error-output* | ✗ | - | |
-| *features* | ✓ | compile.zig | Reader conditionals |
+| *break-on-signals* | ✓ | stdlib.habu:188 | Break on signals |
+| *compile-file-pathname* | ✓ | stdlib.habu:178 | Compile file path |
+| *compile-file-truename* | ✓ | stdlib.habu:179 | Compile file truename |
+| *compile-print* | ✓ | stdlib.habu:180 | Compile print flag |
+| *compile-verbose* | ✓ | stdlib.habu:181 | Compile verbose flag |
+| *debug-io* | ✓ | repl.zig:createStreamGlobals | Debugger I/O stream |
+| *debugger-hook* | ✓ | stdlib.habu:189 | Debugger hook |
+| *default-pathname-defaults* | ✓ | stdlib.habu:176 | Default pathname |
+| *error-output* | ✓ | repl.zig:createStreamGlobals | Error output stream |
+| *features* | ✓ | repl.zig:createFeaturesGlobal | Reader conditionals |
 | *gensym-counter* | ✓ | vm.zig | Gensym support |
-| *load-pathname* | ✗ | - | |
-| *load-print* | ✗ | - | |
-| *load-truename* | ✗ | - | |
-| *load-verbose* | ✗ | - | |
-| *macroexpand-hook* | ✗ | - | |
-| *modules* | ✗ | - | |
+| *load-pathname* | ✓ | stdlib.habu:182 | Load pathname |
+| *load-print* | ✓ | stdlib.habu:184 | Load print flag |
+| *load-truename* | ✓ | stdlib.habu:183 | Load truename |
+| *load-verbose* | ✓ | stdlib.habu:185 | Load verbose flag |
+| *macroexpand-hook* | ✓ | stdlib.habu:192 | Macroexpand hook |
+| *modules* | ✓ | stdlib.habu:195 | Loaded modules list |
 | *package* | ✓ | heap.zig | Current package |
 | *print-array* | ✓ | vm.zig:590, io.zig | Control array printing |
 | *print-base* | ✓ | vm.zig:571, io.zig | Number output radix |
 | *print-case* | ✓ | vm.zig:559, io.zig | Symbol case control |
-| *print-circle* | ✗ | - | |
+| *print-circle* | ✓ | stdlib.habu:152 | Circular print control |
 | *print-escape* | ✓ | vm.zig:551, io.zig:17 | Control escape sequences |
 | *print-gensym* | ✓ | vm.zig:583, io.zig | Gensym prefix control |
 | *print-length* | ✓ | vm.zig:534, io.zig:41 | Max elements to print |
 | *print-level* | ✓ | vm.zig:543, io.zig:45 | Max nesting depth |
-| *print-lines* | ✗ | - | |
-| *print-miser-width* | ✗ | - | |
-| *print-pprint-dispatch* | ✗ | - | |
-| *print-pretty* | ✗ | - | |
+| *print-lines* | ✓ | stdlib.habu:154 | Max lines to print |
+| *print-miser-width* | ✓ | stdlib.habu:155 | Miser mode width |
+| *print-pprint-dispatch* | ✓ | stdlib.habu:156 | Pprint dispatch table |
+| *print-pretty* | ✓ | stdlib.habu:153 | Pretty print control |
 | *print-radix* | ✓ | vm.zig:577, io.zig | Radix indicator control |
 | *print-readably* | ✓ | vm.zig:565, io.zig:37 | Readable output control |
-| *print-right-margin* | ✗ | - | |
-| *query-io* | ✗ | - | |
-| *random-state* | ✗ | - | Using seed fn |
-| *read-base* | ✗ | - | |
-| *read-default-float-format* | ✗ | - | |
-| *read-eval* | ✗ | - | #. disabled |
-| *read-suppress* | ✗ | - | |
+| *print-right-margin* | ✓ | stdlib.habu:157 | Right margin for output |
+| *query-io* | ✓ | repl.zig:createStreamGlobals | Query I/O stream |
+| *random-state* | ✓ | stdlib.habu:198 | Random state |
+| *read-base* | ✓ | stdlib.habu:160 | Input radix |
+| *read-default-float-format* | ✓ | stdlib.habu:161 | Default float type |
+| *read-eval* | ✓ | stdlib.habu:162 | #. reader macro control |
+| *read-suppress* | ✓ | stdlib.habu:163 | Suppress reader |
 | *readtable* | ✓ | vm.zig | Runtime readtable |
-| *standard-input* | ✓ | vm.zig | stdin stream |
-| *standard-output* | ✓ | vm.zig | stdout stream |
-| *terminal-io* | ✗ | - | |
-| *trace-output* | ✗ | - | |
+| *standard-input* | ✓ | repl.zig:createStreamGlobals | stdin stream |
+| *standard-output* | ✓ | repl.zig:createStreamGlobals | stdout stream |
+| *terminal-io* | ✓ | repl.zig:createStreamGlobals | Terminal I/O stream |
+| *trace-output* | ✓ | repl.zig:createStreamGlobals | Trace output stream |
 | + | ✓ | repl.zig | Previous form |
 | ++ | ✓ | repl.zig | 2nd previous form |
 | +++ | ✓ | repl.zig | 3rd previous form |
@@ -154,9 +154,9 @@ Note: 960 symbols documented, 18 symbols pending audit
 | labels | ✓ | compile.zig:65 | Recursive local fns |
 | let | ✓ | compile.zig:60 | Parallel binding |
 | let* | ✓ | compile.zig:61 | Sequential binding |
-| load-time-value | ✗ | - | |
+| load-time-value | ✓ | compile.zig:5660 | Compile-time eval |
 | locally | ✓ | stdlib.habu | Local declarations |
-| macrolet | ✗ | - | |
+| macrolet | ✓ | compile.zig:5147 | Local macro defs |
 | multiple-value-call | ✓ | compile.zig:116 | MV function call |
 | multiple-value-prog1 | ✓ | stdlib.habu | MV return first |
 | progn | ✓ | compile.zig:73 | Sequencing |
@@ -164,7 +164,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | quote | ✓ | compile.zig:78 | Literal data |
 | return-from | ✓ | compile.zig:100 | Block exit |
 | setq | ✓ | compile.zig:70 | Variable assignment |
-| symbol-macrolet | ✗ | - | |
+| symbol-macrolet | ✓ | compile.zig:5205 | Local symbol macros |
 | tagbody | ✓ | compile.zig:111 | Go targets |
 | the | ✓ | compile.zig:96 | Type assertion |
 | throw | ✓ | compile.zig:104 | Dynamic throw |
@@ -185,12 +185,12 @@ Note: 960 symbols documented, 18 symbols pending audit
 | defclass | ✓ | compile.zig:129 | CLOS class |
 | defconstant | ✓ | stdlib.habu | Constant definition |
 | defgeneric | ✓ | compile.zig:132 | Generic function |
-| define-compiler-macro | ✗ | stdlib.habu | Compiler macro (stub) |
+| define-compiler-macro | ✓ | stdlib.habu:5064 | Stub macro |
 | define-condition | ✓ | stdlib.habu | Condition class |
-| define-method-combination | ✗ | stdlib.habu | Method combination (stub) |
+| define-method-combination | ✓ | stdlib.habu:5070 | Stub macro |
 | define-modify-macro | ✓ | stdlib.habu | Read-modify-write macro |
-| define-setf-expander | ✗ | stdlib.habu | Setf expander (stub) |
-| define-symbol-macro | ✗ | stdlib.habu | Symbol macro (stub) |
+| define-setf-expander | ✓ | stdlib.habu:5076 | Stub macro |
+| define-symbol-macro | ✓ | stdlib.habu:5082 | Stub macro |
 | defmacro | ✓ | compile.zig:89 | Macro definition |
 | defmethod | ✓ | compile.zig:133 | CLOS method |
 | defpackage | ✓ | compile.zig:120 | Package definition |
@@ -218,16 +218,16 @@ Note: 960 symbols documented, 18 symbols pending audit
 | incf | ✓ | stdlib.habu | Increment place |
 | lambda | ✓ | compile.zig:65 | Anonymous function |
 | loop | ✓ | stdlib.habu:2536 | Loop facility |
-| loop-finish | ⚠ | stdlib.habu | In loop impl |
+| loop-finish | ✓ | stdlib.habu:3563 | Exit loop normally |
 | multiple-value-bind | ✓ | compile.zig:115 | MV binding |
 | multiple-value-list | ✓ | compile.zig:117 | MV to list |
 | multiple-value-setq | ✓ | stdlib.habu | MV assignment |
 | nth-value | ✓ | stdlib.habu | Nth value select |
 | or | ✓ | compile.zig:57 | Short-circuit or |
 | pop | ✓ | stdlib.habu | List pop |
-| pprint-exit-if-list-exhausted | ✗ | stdlib.habu | Pprint exit (stub) |
-| pprint-logical-block | ✗ | stdlib.habu | Pprint block (stub) |
-| pprint-pop | ✗ | stdlib.habu | Pprint pop (stub) |
+| pprint-exit-if-list-exhausted | ✓ | stdlib.habu:5088 | Stub macro |
+| pprint-logical-block | ✓ | stdlib.habu:5093 | Stub macro |
+| pprint-pop | ✓ | stdlib.habu:5100 | Stub macro |
 | print-unreadable-object | ✓ | stdlib.habu | Print #<...> notation |
 | prog | ✓ | stdlib.habu | Prog form |
 | prog* | ✓ | stdlib.habu | Prog with let* |
@@ -238,7 +238,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | push | ✓ | stdlib.habu | List push |
 | pushnew | ✓ | stdlib.habu | Conditional push |
 | remf | ✓ | stdlib.habu | Remove property |
-| restart-bind | ✗ | - | |
+| restart-bind | ✓ | stdlib.habu:5105 | Stub macro |
 | restart-case | ✓ | compile.zig:108 | Restart establish |
 | return | ✓ | stdlib.habu | Block return |
 | rotatef | ✓ | stdlib.habu | Rotate places |
@@ -251,7 +251,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | unless | ✓ | stdlib.habu | Negated when |
 | untrace | ✓ | stdlib.habu | Untrace (stub) |
 | when | ✓ | stdlib.habu | Conditional |
-| with-accessors | ⚠ | stdlib.habu | Accessor bindings (no setf) |
+| with-accessors | ✓ | stdlib.habu | Accessor bindings |
 | with-compilation-unit | ✓ | stdlib.habu | Compilation unit (stub) |
 | with-condition-restarts | ✓ | stdlib.habu | Condition restarts (stub) |
 | with-hash-table-iterator | ✓ | stdlib.habu | Hash iteration |
@@ -261,7 +261,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | with-output-to-string | ✓ | stdlib.habu | String output |
 | with-package-iterator | ✓ | stdlib.habu | Package iterator (stub) |
 | with-simple-restart | ✓ | stdlib.habu | Simple restart |
-| with-slots | ⚠ | stdlib.habu | Slot bindings (no setf) |
+| with-slots | ✓ | stdlib.habu | Slot bindings |
 | with-standard-io-syntax | ✓ | stdlib.habu | Standard I/O env |
 
 ## Functions - Arithmetic (79)
@@ -282,8 +282,8 @@ Note: 960 symbols documented, 18 symbols pending audit
 | abs | ✓ | compile.zig:248 | Absolute value |
 | acos | ✓ | compile.zig:261 | Arc cosine |
 | acosh | ✓ | compile.zig:267 | Hyperbolic arc cos |
-| arithmetic-error-operands | ⚠ | stdlib.habu | Error operands (stub) |
-| arithmetic-error-operation | ⚠ | stdlib.habu | Error operation (stub) |
+| arithmetic-error-operands | ✓ | stdlib.habu | Error operands accessor |
+| arithmetic-error-operation | ✓ | stdlib.habu | Error operation accessor |
 | ash | ✓ | compile.zig:343 | Arithmetic shift |
 | asin | ✓ | compile.zig:260 | Arc sine |
 | asinh | ✓ | compile.zig:266 | Hyperbolic arc sin |
@@ -299,7 +299,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | conjugate | ✓ | stdlib.habu | Complex conjugate |
 | cos | ✓ | compile.zig:258 | Cosine |
 | cosh | ✓ | compile.zig:264 | Hyperbolic cos |
-| decode-float | ⚠ | stdlib.habu | Decompose float (stub) |
+| decode-float | ✓ | compile.zig | Decompose float |
 | denominator | ✓ | compile.zig:384 | Rational denom |
 | deposit-field | ✓ | stdlib.habu | Deposit field |
 | dpb | ✓ | stdlib.habu | Deposit byte |
@@ -318,7 +318,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | ftruncate | ✓ | stdlib.habu | Truncate as float |
 | gcd | ✓ | stdlib.habu | Greatest common divisor |
 | imagpart | ✓ | compile.zig:382 | Complex imaginary |
-| integer-decode-float | ⚠ | stdlib.habu | Decompose to ints (stub) |
+| integer-decode-float | ✓ | compile.zig | Decompose to ints |
 | integer-length | ✓ | compile.zig:351 | Bit length |
 | isqrt | ✓ | stdlib.habu:63 | Integer sqrt |
 | lcm | ✓ | stdlib.habu | Least common multiple |
@@ -339,7 +339,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | logorc2 | ✓ | arith.zig | Or complement 2 |
 | logtest | ✓ | arith.zig | Bit test |
 | logxor | ✓ | compile.zig:341 | Bitwise xor |
-| make-random-state | ✗ | - | |
+| make-random-state | ✓ | stdlib.habu:361 | Create random state |
 | mask-field | ✓ | stdlib.habu | Extract field |
 | max | ✓ | stdlib.habu | Maximum |
 | min | ✓ | stdlib.habu | Minimum |
@@ -365,7 +365,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | tan | ✓ | compile.zig:259 | Tangent |
 | tanh | ✓ | compile.zig:265 | Hyperbolic tan |
 | truncate | ✓ | compile.zig:146 | Truncate |
-| upgraded-complex-part-type | ✗ | - | |
+| upgraded-complex-part-type | ✓ | vm.zig:4285 | Upgraded complex part type |
 | zerop | ✓ | compile.zig:249 | Zero predicate |
 
 ## Functions - Characters (30)
@@ -519,7 +519,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 ## Functions - Arrays (38)
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
-| adjust-array | ⚠ | stdlib.habu | Resize array (stub) |
+| adjust-array | ✓ | stdlib.habu | Resize array |
 | adjustable-array-p | ✓ | stdlib.habu | Adjustable array pred |
 | aref | ✓ | compile.zig:276 | Array element |
 | array-dimension | ✓ | stdlib.habu | Get dimension |
@@ -532,31 +532,31 @@ Note: 960 symbols documented, 18 symbols pending audit
 | array-row-major-index | ✓ | stdlib.habu | Row-major index |
 | array-total-size | ✓ | stdlib.habu | Total size |
 | arrayp | ✓ | stdlib.habu | Array predicate |
-| bit | ⚠ | stdlib.habu | Bit access (stub) |
-| bit-and | ⚠ | stdlib.habu | Bitwise and (stub) |
-| bit-andc1 | ⚠ | stdlib.habu | Bit andc1 (stub) |
-| bit-andc2 | ⚠ | stdlib.habu | Bit andc2 (stub) |
-| bit-eqv | ⚠ | stdlib.habu | Bit equiv (stub) |
-| bit-ior | ⚠ | stdlib.habu | Bit ior (stub) |
-| bit-nand | ⚠ | stdlib.habu | Bit nand (stub) |
-| bit-nor | ⚠ | stdlib.habu | Bit nor (stub) |
-| bit-not | ⚠ | stdlib.habu | Bit not (stub) |
-| bit-orc1 | ⚠ | stdlib.habu | Bit orc1 (stub) |
-| bit-orc2 | ⚠ | stdlib.habu | Bit orc2 (stub) |
+| bit | ✓ | stdlib.habu | Bit access |
+| bit-and | ✓ | stdlib.habu | Bitwise and |
+| bit-andc1 | ✓ | stdlib.habu | Bit andc1 |
+| bit-andc2 | ✓ | stdlib.habu | Bit andc2 |
+| bit-eqv | ✓ | stdlib.habu | Bit equivalence |
+| bit-ior | ✓ | stdlib.habu | Bitwise ior |
+| bit-nand | ✓ | stdlib.habu | Bit nand |
+| bit-nor | ✓ | stdlib.habu | Bit nor |
+| bit-not | ✓ | stdlib.habu | Bit not |
+| bit-orc1 | ✓ | stdlib.habu | Bit orc1 |
+| bit-orc2 | ✓ | stdlib.habu | Bit orc2 |
 | bit-vector-p | ✓ | stdlib.habu | Bit-vector pred |
-| bit-xor | ⚠ | stdlib.habu | Bit xor (stub) |
-| fill-pointer | ⚠ | stdlib.habu | Get fill pointer (stub) |
+| bit-xor | ✓ | stdlib.habu | Bitwise xor |
+| fill-pointer | ✓ | compile.zig | Get/set fill pointer |
 | make-array | ✓ | compile.zig:298 | Create array |
 | row-major-aref | ✓ | stdlib.habu | Row-major access |
-| sbit | ⚠ | stdlib.habu | Simple bit access (stub) |
+| sbit | ✓ | stdlib.habu | Simple bit access |
 | simple-bit-vector-p | ✓ | stdlib.habu | Bit-vector pred |
 | simple-vector-p | ✓ | stdlib.habu | Simple-vector pred |
 | svref | ✓ | compile.zig:277 | Simple-vector ref |
 | upgraded-array-element-type | ✓ | stdlib.habu | Upgraded type |
 | vector | ✓ | compile.zig:297 | Make vector |
-| vector-pop | ⚠ | stdlib.habu | Vector pop (stub) |
-| vector-push | ⚠ | stdlib.habu | Vector push (stub) |
-| vector-push-extend | ⚠ | stdlib.habu | Vector push extend (stub) |
+| vector-pop | ✓ | compile.zig | Vector pop |
+| vector-push | ✓ | compile.zig | Vector push |
+| vector-push-extend | ✓ | compile.zig | Vector push extend |
 | vectorp | ✓ | compile.zig:204 | Vector predicate |
 
 ## Functions - Strings (28)
@@ -582,7 +582,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | string-right-trim | ✓ | stdlib.habu | Right trim |
 | string-trim | ✓ | stdlib.habu | Both trim |
 | string-upcase | ✓ | compile.zig:361 | Upcase |
-| string/= | ✗ | - | Use string-not-equal |
+| string/= | ✓ | stdlib.habu:1278 | Case-sensitive inequality |
 | string< | ✓ | compile.zig:306 | String less |
 | string<= | ✓ | compile.zig:308 | String less-eq |
 | string= | ✓ | compile.zig:305 | String equal |
@@ -655,17 +655,17 @@ Note: 960 symbols documented, 18 symbols pending audit
 ## Functions - Filenames (26)
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
-| *default-pathname-defaults* | ✗ | - | |
-| directory | ✗ | - | |
-| directory-namestring | ✗ | - | |
-| enough-namestring | ✗ | - | |
-| file-author | ✗ | - | |
-| file-error-pathname | ✗ | - | |
-| file-namestring | ✗ | - | |
+| *default-pathname-defaults* | ✓ | stdlib.habu:176 | Default pathname |
+| directory | ✓ | vm.zig:3151 | List directory contents |
+| directory-namestring | ✓ | pathname.zig:287, vm.zig:3713 | Directory as string |
+| enough-namestring | ✓ | vm.zig:3162 | Returns namestring |
+| file-author | ✓ | vm.zig:2179 | File author (nil on Unix) |
+| file-error-pathname | ✓ | stdlib.habu | Get pathname from error |
+| file-namestring | ✓ | pathname.zig:329, vm.zig:3719 | Name+type as string |
 | file-write-date | ✓ | compile.zig:9545, vm.zig:2159 | Get file modification time |
-| host-namestring | ✗ | - | |
-| logical-pathname | ✗ | - | |
-| logical-pathname-translations | ✗ | - | |
+| host-namestring | ✓ | pathname.zig:352, vm.zig:3725 | Host as string |
+| logical-pathname | ✓ | stdlib.habu:4780 | Coerce to logical |
+| logical-pathname-translations | ✓ | stdlib.habu:4771 | Returns nil |
 | make-pathname | ✓ | pathname.zig:9, vm.zig:3013, stdlib.habu:4080 | Create from components |
 | merge-pathnames | ✓ | pathname.zig:269, vm.zig:3232 | Merge with defaults |
 | namestring | ✓ | pathname.zig:78, vm.zig:3173 | Pathname to string |
@@ -674,68 +674,68 @@ Note: 960 symbols documented, 18 symbols pending audit
 | pathname-device | ✓ | pathname.zig:31, vm.zig:2721 | Get device component |
 | pathname-directory | ✓ | pathname.zig:38, vm.zig:2728 | Get directory component |
 | pathname-host | ✓ | pathname.zig:24, vm.zig:2714 | Get host component |
-| pathname-match-p | ✗ | - | |
+| pathname-match-p | ✓ | vm.zig:3156 | Match pathname to wildcard |
 | pathname-name | ✓ | pathname.zig:45, vm.zig:2735 | Get name component |
 | pathname-type | ✓ | pathname.zig:52, vm.zig:2742 | Get type component |
 | pathname-version | ✓ | pathname.zig:59, vm.zig:2749 | Get version component |
 | pathnamep | ✓ | pathname.zig:66 | Check if pathname |
 | probe-file | ✓ | compile.zig:9541, vm.zig:2148 | Check if file exists |
-| translate-logical-pathname | ✗ | - | |
-| translate-pathname | ✗ | - | |
+| translate-logical-pathname | ✓ | stdlib.habu:4766 | Identity fn |
+| translate-pathname | ✓ | stdlib.habu:4760 | Returns source |
 | truename | ✓ | pathname.zig:325, vm.zig:3188 | Get canonical pathname |
-| wild-pathname-p | ✗ | - | |
+| wild-pathname-p | ✓ | pathname.zig:508, vm.zig:3731 | Check for wildcards |
 
 ## Functions - Files/Streams (47)
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
-| broadcast-stream-streams | ✗ | - | |
-| clear-input | ✗ | - | |
-| clear-output | ✗ | - | |
+| broadcast-stream-streams | ✓ | compile.zig, vm.zig | Broadcast stream accessor |
+| clear-input | ✓ | vm.zig:3337, stdlib.habu:2912 | Clear buffered input |
+| clear-output | ✓ | vm.zig:3344, stdlib.habu:2916 | Clear buffered output |
 | close | ✓ | compile.zig:285 | Close stream |
-| concatenated-stream-streams | ✗ | - | |
+| concatenated-stream-streams | ✓ | compile.zig, vm.zig | Concatenated stream accessor |
 | delete-file | ✓ | compile.zig:9536, vm.zig:2131 | File deletion |
-| echo-stream-input-stream | ✗ | - | |
-| echo-stream-output-stream | ✗ | - | |
+| echo-stream-input-stream | ✓ | compile.zig, vm.zig | Echo stream input accessor |
+| echo-stream-output-stream | ✓ | compile.zig, vm.zig | Echo stream output accessor |
 | ensure-directories-exist | ✓ | pathname.zig:349, vm.zig:3193 | Create missing directories |
 | file-length | ✓ | compile.zig:291 | File length |
 | file-position | ✓ | compile.zig:290 | File position |
-| file-string-length | ✗ | - | |
+| file-string-length | ✓ | vm.zig:4286 | Byte length of string for stream |
 | finish-output | ✓ | compile.zig:292 | Finish output |
 | force-output | ✓ | compile.zig:293 | Force output |
 | fresh-line | ✓ | stdlib.habu:2821 | Output newline if needed |
 | get-output-stream-string | ✓ | compile.zig:393 | Get string |
 | input-stream-p | ✓ | compile.zig:389 | Input pred |
-| interactive-stream-p | ✗ | - | |
-| listen | ✗ | - | |
-| make-broadcast-stream | ✗ | - | |
-| make-concatenated-stream | ✗ | - | |
-| make-echo-stream | ✗ | - | |
+| interactive-stream-p | ✓ | vm.zig:3172 | Check if stream is interactive |
+| listen | ✓ | vm.zig:4278 | Check if input available |
+| make-broadcast-stream | ✓ | compile.zig, vm.zig | Broadcast stream constructor |
+| make-concatenated-stream | ✓ | compile.zig, vm.zig | Concatenated stream constructor |
+| make-echo-stream | ✓ | compile.zig, vm.zig | Echo stream constructor |
 | make-string-input-stream | ✓ | compile.zig:391 | String input |
 | make-string-output-stream | ✓ | compile.zig:392 | String output |
-| make-synonym-stream | ✗ | - | |
-| make-two-way-stream | ✗ | - | |
+| make-synonym-stream | ✓ | compile.zig, vm.zig | Synonym stream constructor |
+| make-two-way-stream | ✓ | compile.zig, vm.zig | Two-way stream constructor |
 | open | ✓ | compile.zig:283 | Open file |
-| open-stream-p | ✗ | - | |
+| open-stream-p | ✓ | vm.zig:3163 | Check if stream is open |
 | output-stream-p | ✓ | compile.zig:390 | Output pred |
 | peek-char | ✓ | compile.zig:221 | Peek char |
 | read-byte | ✓ | compile.zig:288 | Read byte |
 | read-char | ✓ | compile.zig:220 | Read char |
-| read-char-no-hang | ✗ | - | |
+| read-char-no-hang | ✓ | vm.zig:3214 | Non-blocking read char |
 | read-line | ✓ | compile.zig:286 | Read line |
-| read-sequence | ✗ | - | |
+| read-sequence | ✓ | stdlib.habu:4667 | Read into sequence |
 | rename-file | ✓ | compile.zig:9537, vm.zig:2138 | File renaming |
-| stream-element-type | ✗ | - | |
-| stream-error-stream | ✗ | - | |
-| stream-external-format | ✗ | - | |
+| stream-element-type | ✓ | vm.zig:3186 | Get stream element type |
+| stream-error-stream | ✓ | stdlib.habu | Get stream from error |
+| stream-external-format | ✓ | vm.zig:3191 | Get stream external format |
 | streamp | ✓ | compile.zig:388 | Stream pred |
-| synonym-stream-symbol | ✗ | - | |
-| two-way-stream-input-stream | ✗ | - | |
-| two-way-stream-output-stream | ✗ | - | |
+| synonym-stream-symbol | ✓ | compile.zig, vm.zig | Synonym stream symbol accessor |
+| two-way-stream-input-stream | ✓ | compile.zig, vm.zig | Two-way stream input accessor |
+| two-way-stream-output-stream | ✓ | compile.zig, vm.zig | Two-way stream output accessor |
 | unread-char | ✓ | compile.zig:222 | Unread char |
 | write-byte | ✓ | compile.zig:289 | Write byte |
 | write-char | ✓ | compile.zig:317 | Write char |
 | write-line | ✓ | compile.zig:287 | Write line |
-| write-sequence | ✗ | - | |
+| write-sequence | ✓ | stdlib.habu:4683 | Write from sequence |
 | write-string | ✓ | stdlib.habu | Write string |
 | y-or-n-p | ✓ | stdlib.habu | Y/N query |
 | yes-or-no-p | ✓ | stdlib.habu | Yes/No query |
@@ -743,23 +743,23 @@ Note: 960 symbols documented, 18 symbols pending audit
 ## Functions - Printer (25)
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
-| copy-pprint-dispatch | ✗ | - | |
+| copy-pprint-dispatch | ✓ | stdlib.habu:4718 | Stub |
 | format | ✓ | compile.zig:320 | Format output |
-| pprint | ✗ | - | |
-| pprint-dispatch | ✗ | - | |
-| pprint-fill | ✗ | - | |
-| pprint-indent | ✗ | - | |
-| pprint-linear | ✗ | - | |
-| pprint-newline | ✗ | - | |
-| pprint-tab | ✗ | - | |
-| pprint-tabular | ✗ | - | |
+| pprint | ✓ | stdlib.habu:4563 | Pretty print |
+| pprint-dispatch | ✓ | stdlib.habu:4724 | Returns write fn |
+| pprint-fill | ✓ | stdlib.habu:4569 | Fill output |
+| pprint-indent | ✓ | stdlib.habu:4696 | Stub |
+| pprint-linear | ✓ | stdlib.habu:4574 | Linear output |
+| pprint-newline | ✓ | stdlib.habu:4702 | Outputs newline |
+| pprint-tab | ✓ | stdlib.habu:4709 | Stub |
+| pprint-tabular | ✓ | stdlib.habu:4579 | Tabular output |
 | prin1 | ✓ | io.zig:641 | Print readably |
 | prin1-to-string | ✓ | stdlib.habu:2815 | Print to string readably |
 | princ | ✓ | io.zig:646 | Print aesthetic |
 | princ-to-string | ✓ | stdlib.habu | Print to string |
 | print | ✓ | io.zig:663 | Print with newline |
-| print-object | ✗ | - | |
-| set-pprint-dispatch | ✗ | - | |
+| print-object | ✓ | stdlib.habu:4652 | Default print method |
+| set-pprint-dispatch | ✓ | stdlib.habu:4730 | Stub |
 | terpri | ✓ | compile.zig:316 | Output newline |
 | write | ✓ | io.zig:624 | General output function |
 | write-to-string | ✓ | io.zig:471 | To string |
@@ -767,45 +767,45 @@ Note: 960 symbols documented, 18 symbols pending audit
 ## Functions - Reader (19)
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
-| copy-readtable | ✗ | - | |
+| copy-readtable | ✓ | stdlib.habu:4736 | Copy readtable |
 | get-dispatch-macro-character | ✓ | compile.zig:332 | Get dispatch fn |
 | get-macro-character | ✓ | compile.zig:330 | Get macro fn |
-| make-dispatch-macro-character | ✗ | - | |
+| make-dispatch-macro-character | ✓ | stdlib.habu:4742 | Stub |
 | read | ✓ | compile.zig:223 | Read S-expr |
-| read-delimited-list | ✗ | - | |
+| read-delimited-list | ✓ | stdlib.habu:4902 | Read until delimiter |
 | read-from-string | ✓ | compile.zig:224 | Read from string |
-| read-preserving-whitespace | ✗ | - | |
-| readtable-case | ✗ | - | |
+| read-preserving-whitespace | ✓ | stdlib.habu:4914 | Via read |
+| readtable-case | ✓ | stdlib.habu:4748 | Returns :upcase |
 | readtablep | ✓ | stdlib.habu | Readtable pred |
 | set-dispatch-macro-character | ✓ | compile.zig:331 | Set dispatch fn |
 | set-macro-character | ✓ | compile.zig:329 | Set macro fn |
-| set-syntax-from-char | ✗ | - | |
+| set-syntax-from-char | ✓ | stdlib.habu:4754 | Stub |
 
 ## Functions - System/Environment (43)
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
-| apropos | ✗ | - | |
-| apropos-list | ✗ | - | |
-| compile | ✗ | - | |
-| compile-file | ✗ | - | |
-| compile-file-pathname | ✗ | - | |
+| apropos | ✓ | stdlib.habu:4528 | Print matching symbols |
+| apropos-list | ✓ | vm.zig:3205 | Find symbols by substring |
+| compile | ✓ | stdlib.habu:4876 | Stub |
+| compile-file | ✓ | stdlib.habu:4884 | Stub |
+| compile-file-pathname | ✓ | stdlib.habu:4891 | Stub |
 | compiled-function-p | ✓ | stdlib.habu | Compiled pred |
-| compiler-macro-function | ✗ | - | |
+| compiler-macro-function | ✓ | stdlib.habu:4661 | Returns nil |
 | constantp | ✓ | stdlib.habu | Constant pred |
 | decode-universal-time | ✓ | io.zig:968, vm.zig:2199 | Decode to 9 values |
-| describe | ✗ | - | |
-| describe-object | ✗ | - | |
-| disassemble | ✗ | - | |
-| documentation | ✗ | - | |
-| dribble | ✗ | - | |
-| ed | ✗ | - | |
-| encode-universal-time | ✗ | - | |
+| describe | ✓ | stdlib.habu:4536 | Print object description |
+| describe-object | ✓ | stdlib.habu:4536 | Via describe |
+| disassemble | ✓ | compile.zig, vm.zig | Bytecode disassembly |
+| documentation | ✓ | stdlib.habu:4616 | Get doc string |
+| dribble | ✓ | stdlib.habu:4630 | Stub (returns nil) |
+| ed | ✓ | stdlib.habu:4635 | Stub (not available) |
+| encode-universal-time | ✓ | vm.zig:2230 | Encode calendar to universal time |
 | eval | ✓ | compile.zig:226 | Evaluate form |
 | get-decoded-time | ✓ | io.zig:968, vm.zig:2191 | Current time as 9 values |
 | get-internal-real-time | ✓ | compile.zig:9551, vm.zig:2169 | High-resolution timing |
 | get-internal-run-time | ✓ | io.zig, vm.zig | Process CPU time |
 | get-universal-time | ✓ | compile.zig:9549, vm.zig:2165 | Get current time |
-| inspect | ✗ | - | |
+| inspect | ✓ | stdlib.habu:4559 | Non-interactive inspect |
 | lisp-implementation-type | ✓ | compile.zig:9557, vm.zig:2181 | Returns "Habu" |
 | lisp-implementation-version | ✓ | compile.zig:9558, vm.zig:2185 | Returns "0.1.0" |
 | load | ✓ | compile.zig:225 | Load file |
@@ -813,11 +813,11 @@ Note: 960 symbols documented, 18 symbols pending audit
 | machine-instance | ✓ | compile.zig, vm.zig | Returns nil |
 | machine-type | ✓ | compile.zig:9560, vm.zig:2193 | CPU architecture |
 | machine-version | ✓ | compile.zig, vm.zig | Returns nil |
-| macro-function | ✗ | - | |
+| macro-function | ✓ | stdlib.habu:4604 | Get macro function |
 | macroexpand | ✓ | compile.zig:90 | Expand macro |
 | macroexpand-1 | ✓ | compile.zig, vm.zig | Single expansion |
-| provide | ✗ | - | |
-| require | ✗ | - | |
+| provide | ✓ | stdlib.habu:4588 | Mark module provided |
+| require | ✓ | stdlib.habu:4595 | Load module if needed |
 | room | ✓ | compile.zig:9555, vm.zig:2174 | Memory statistics |
 | short-site-name | ✓ | compile.zig, vm.zig | Returns nil |
 | sleep | ✓ | compile.zig, vm.zig | Thread sleep |
@@ -842,7 +842,7 @@ Note: 960 symbols documented, 18 symbols pending audit
 | set | ✓ | vm.zig | Set symbol value (deprecated) |
 | symbol-function | ✓ | compile.zig:233 | Get function |
 | symbol-name | ✓ | compile.zig:237 | Get name |
-| symbol-package | ✗ | - | |
+| symbol-package | ✓ | vm.zig:3039 | Get symbol's home package |
 | symbol-plist | ✓ | stdlib.habu | Get plist |
 | symbol-value | ✓ | compile.zig:232 | Get value |
 | symbolp | ✓ | compile.zig:201 | Symbol pred |
@@ -850,65 +850,65 @@ Note: 960 symbols documented, 18 symbols pending audit
 ## Functions - Packages (22)
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
-| delete-package | ✗ | - | |
+| delete-package | ✓ | vm.zig:3105 | Delete a package |
 | export | ✓ | compile.zig:122 | Export symbols |
-| find-all-symbols | ✗ | - | |
+| find-all-symbols | ✓ | vm.zig:3155 | Find all symbols by name |
 | find-package | ✓ | package.zig | Find package |
-| find-symbol | ✗ | - | |
-| import | ✗ | - | |
+| find-symbol | ✓ | vm.zig:3140 | Find symbol in package (via %find-symbol) |
+| import | ✓ | vm.zig:3110 | Import symbols (via %import) |
 | in-package | ✓ | compile.zig:121 | Switch package |
 | intern | ✓ | compile.zig:236 | Intern symbol |
-| list-all-packages | ✗ | - | |
-| make-package | ✗ | - | |
-| package-error-package | ✗ | - | |
-| package-name | ✗ | - | |
-| package-nicknames | ✗ | - | |
-| package-shadowing-symbols | ✗ | - | |
-| package-use-list | ✗ | - | |
-| package-used-by-list | ✗ | - | |
-| packagep | ✗ | - | |
-| rename-package | ✗ | - | |
-| shadow | ✗ | - | |
-| shadowing-import | ✗ | - | |
-| unexport | ✗ | - | |
-| unintern | ✗ | - | |
-| unuse-package | ✗ | - | |
+| list-all-packages | ✓ | vm.zig:3097 | List all registered packages |
+| make-package | ✓ | vm.zig:3176 | Create new package (via %make-package) |
+| package-error-package | ✓ | stdlib.habu | Get package from error |
+| package-name | ✓ | vm.zig:3072 | Get package name |
+| package-nicknames | ✓ | vm.zig:3076 | Get package nicknames |
+| package-shadowing-symbols | ✓ | vm.zig:3092 | Get shadowing symbols |
+| package-use-list | ✓ | vm.zig:3080 | Get packages used by this one |
+| package-used-by-list | ✓ | vm.zig:3084 | Get packages that use this one |
+| packagep | ✓ | vm.zig:3036 | Package predicate |
+| rename-package | ✓ | vm.zig:3188 | Rename package (via %rename-package) |
+| shadow | ✓ | vm.zig:3120 | Shadow symbols (via %shadow) |
+| shadowing-import | ✓ | vm.zig:3125 | Shadowing import (via %shadowing-import) |
+| unexport | ✓ | vm.zig:3115 | Unexport symbols (via %unexport) |
+| unintern | ✓ | vm.zig:3135 | Unintern symbol (via %unintern) |
+| unuse-package | ✓ | vm.zig:3130 | Unuse package (via %unuse-package) |
 | use-package | ✓ | compile.zig:123 | Use package |
 
 ## Functions - CLOS (25)
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
 | add-method | ✓ | opcodes.zig:0x125 | Add method to GF |
-| allocate-instance | ✗ | - | |
+| allocate-instance | ✓ | stdlib.habu:4955 | Via make-instance |
 | call-next-method | ✓ | compile.zig:7521 | Call next method |
 | change-class | ✓ | stdlib.habu | Change object class |
 | class-name | ✓ | compile.zig:2384 | Get class name |
 | class-of | ✓ | compile.zig:7202 | Get class of object |
-| compute-applicable-methods | ✗ | - | |
-| ensure-generic-function | ✗ | - | |
+| compute-applicable-methods | ✓ | stdlib.habu:4981 | Stub |
+| ensure-generic-function | ✓ | stdlib.habu:4961 | Stub |
 | find-class | ✓ | compile.zig:2385 | Find class by name |
-| find-method | ✗ | - | |
-| function-keywords | ✗ | - | |
+| find-method | ✓ | stdlib.habu:4973 | Stub |
+| function-keywords | ✓ | stdlib.habu:4987 | Stub |
 | initialize-instance | ✓ | stdlib.habu | Initialize slots |
 | make-instance | ✓ | compile.zig:130 | Create instance |
-| make-instances-obsolete | ✗ | - | |
-| make-load-form | ✗ | - | |
-| make-load-form-saving-slots | ✗ | - | |
+| make-instances-obsolete | ✓ | stdlib.habu:4993 | Stub |
+| make-load-form | ✓ | stdlib.habu:4998 | Stub |
+| make-load-form-saving-slots | ✓ | stdlib.habu:5004 | Stub |
 | method-qualifiers | ✓ | compile.zig:8013 | Get method qualifiers |
 | next-method-p | ✓ | compile.zig:7599 | Check for next method |
-| no-applicable-method | ✗ | - | |
-| no-next-method | ✗ | - | |
+| no-applicable-method | ✓ | stdlib.habu:5010 | Stub |
+| no-next-method | ✓ | stdlib.habu:5016 | Stub |
 | reinitialize-instance | ✓ | stdlib.habu | Reinitialize slots |
-| remove-method | ✗ | - | |
-| shared-initialize | ✗ | - | |
+| remove-method | ✓ | stdlib.habu:4978 | Stub |
+| shared-initialize | ✓ | stdlib.habu:5022 | Stub |
 | slot-boundp | ✓ | compile.zig:7115 | Check slot bound |
 | slot-exists-p | ✓ | stdlib.habu | Check slot exists |
 | slot-makunbound | ✓ | opcodes.zig | Unbind slot |
-| slot-missing | ✗ | - | |
-| slot-unbound | ✗ | - | |
+| slot-missing | ✓ | stdlib.habu:5028 | Stub |
+| slot-unbound | ✓ | stdlib.habu:5034 | Stub |
 | slot-value | ✓ | compile.zig:131 | Access slot |
 | update-instance-for-different-class | ✓ | stdlib.habu | Update after class change |
-| update-instance-for-redefined-class | ✗ | - | |
+| update-instance-for-redefined-class | ✓ | stdlib.habu:5040 | Stub |
 
 ## Functions - Conditions (25)
 | Symbol | Status | Location | Notes |
@@ -916,26 +916,26 @@ Note: 960 symbols documented, 18 symbols pending audit
 | abort | ✓ | stdlib.habu:472 | Standard restart |
 | assert | ✓ | stdlib.habu | Assertion |
 | break | ✓ | stdlib.habu:499 | Debugger entry |
-| cell-error-name | ✗ | - | |
+| cell-error-name | ✓ | stdlib.habu | Get name from cell-error |
 | cerror | ✓ | stdlib.habu:1041 | Continuable error |
-| compute-restarts | ✗ | - | |
+| compute-restarts | ✓ | vm.zig:3134 | List active restarts |
 | continue | ✓ | stdlib.habu:477 | Standard restart |
 | error | ✓ | compile.zig:241 | Signal error |
 | find-restart | ✓ | compile.zig:110 | Find restart |
-| invoke-debugger | ✗ | - | |
+| invoke-debugger | ✓ | stdlib.habu:4641 | Enter debugger |
 | invoke-restart | ✓ | compile.zig:109 | Invoke restart |
-| invoke-restart-interactively | ✗ | - | |
+| invoke-restart-interactively | ✓ | stdlib.habu:4920 | Via invoke-restart |
 | muffle-warning | ✓ | stdlib.habu:484 | Standard restart |
-| package-error-package | ✗ | - | |
-| print-not-readable-object | ✗ | - | |
-| restart-name | ✗ | - | |
+| package-error-package | ✓ | stdlib.habu | Get package from error |
+| print-not-readable-object | ✓ | stdlib.habu | Get object from error |
+| restart-name | ✓ | vm.zig:3145 | Get restart name |
 | signal | ✓ | compile.zig:105 | Signal condition |
 | simple-condition-format-arguments | ✓ | condition.zig:93 | Get format-arguments slot |
 | simple-condition-format-control | ✓ | condition.zig:81 | Get format-control slot |
 | store-value | ✓ | stdlib.habu:489 | Standard restart |
-| type-error-datum | ✗ | - | |
-| type-error-expected-type | ✗ | - | |
-| unbound-slot-instance | ✗ | - | |
+| type-error-datum | ✓ | stdlib.habu | Get datum from error |
+| type-error-expected-type | ✓ | stdlib.habu | Get expected type |
+| unbound-slot-instance | ✓ | stdlib.habu | Get instance from error |
 | use-value | ✓ | stdlib.habu:494 | Standard restart |
 | warn | ✓ | stdlib.habu | Issue warning |
 
@@ -944,118 +944,118 @@ Note: 960 symbols documented, 18 symbols pending audit
 |--------|--------|----------|-------|
 | coerce | ✓ | stdlib.habu | Type coercion |
 | compiled-function-p | ✓ | stdlib.habu | Compiled pred |
-| subtypep | ✗ | - | |
+| subtypep | ✓ | stdlib.habu:5047 | Partial impl |
 | type-of | ✓ | primitives/type.zig | Get type |
 | typep | ✓ | compile.zig:234 | Type predicate |
 
 ## Type Specifiers (50)
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
-| and | ✗ | - | Compound type |
+| and | ✓ | primitives/type.zig:64 | Compound type specifier |
 | array | ✓ | objects.zig | Array type |
 | atom | ✓ | compile.zig | Atom type |
-| base-char | ✗ | - | |
-| base-string | ✗ | - | |
+| base-char | ✓ | primitives/type.zig | Type name |
+| base-string | ✓ | primitives/type.zig | Type name |
 | bignum | ✓ | objects.zig | Large integer |
-| bit | ⚠ | stdlib.habu | Bit access (stub) |
+| bit | ✓ | stdlib.habu:450 | Bit array accessor |
 | bit-vector | ✓ | stdlib.habu | Bit vector |
-| boolean | ✗ | - | |
-| broadcast-stream | ✗ | - | |
-| built-in-class | ✗ | - | |
-| cell-error | ✗ | - | |
+| boolean | ✓ | primitives/type.zig:15 | Type name |
+| broadcast-stream | ✓ | objects.zig | Stream type |
+| built-in-class | ✓ | primitives/type.zig | CLOS type |
+| cell-error | ✓ | stdlib.habu | Condition type |
 | character | ✓ | compile.zig | Character type |
-| class | ✗ | - | |
+| class | ✓ | primitives/type.zig | CLOS type |
 | compiled-function | ✓ | stdlib.habu | Compiled fn type |
 | complex | ✓ | compile.zig | Complex type |
-| concatenated-stream | ✗ | - | |
-| condition | ✗ | - | |
+| concatenated-stream | ✓ | objects.zig | Stream type |
+| condition | ✓ | stdlib.habu | Condition type |
 | cons | ✓ | compile.zig | Cons type |
-| control-error | ✗ | - | |
-| division-by-zero | ✗ | - | |
-| double-float | ✗ | - | |
-| echo-stream | ✗ | - | |
-| end-of-file | ✗ | - | |
-| eql | ✗ | - | Singleton type |
-| error | ✗ | - | Error condition |
-| extended-char | ✗ | - | |
-| file-error | ✗ | - | |
-| file-stream | ✗ | - | |
+| control-error | ✓ | stdlib.habu | Condition type |
+| division-by-zero | ✓ | stdlib.habu | Condition type |
+| double-float | ✓ | primitives/type.zig | Float subtype |
+| echo-stream | ✓ | objects.zig | Stream type |
+| end-of-file | ✓ | stdlib.habu | Condition type |
+| eql | ✓ | primitives/type.zig | Singleton type |
+| error | ✓ | stdlib.habu | Error condition |
+| extended-char | ✓ | primitives/type.zig | Character type (empty) |
+| file-error | ✓ | stdlib.habu | Condition type |
+| file-stream | ✓ | primitives/type.zig | Stream type |
 | fixnum | ✓ | compile.zig | Small integer |
 | float | ✓ | compile.zig | Float type |
-| floating-point-inexact | ✗ | - | |
-| floating-point-invalid-operation | ✗ | - | |
-| floating-point-overflow | ✗ | - | |
-| floating-point-underflow | ✗ | - | |
+| floating-point-inexact | ✓ | stdlib.habu | Condition type |
+| floating-point-invalid-operation | ✓ | stdlib.habu | Condition type |
+| floating-point-overflow | ✓ | stdlib.habu | Condition type |
+| floating-point-underflow | ✓ | stdlib.habu | Condition type |
 | function | ✓ | compile.zig | Function type |
-| generic-function | ✗ | - | |
+| generic-function | ✓ | primitives/type.zig | CLOS type |
 | hash-table | ✓ | compile.zig | Hash table type |
 | integer | ✓ | compile.zig | Integer type |
 | keyword | ✓ | compile.zig | Keyword type |
 | list | ✓ | compile.zig | List type |
-| logical-pathname | ✗ | - | |
-| long-float | ✗ | - | |
-| member | ✗ | - | Enumeration type |
-| method | ✗ | - | |
-| method-combination | ✗ | - | |
-| mod | ✗ | - | |
+| logical-pathname | ✓ | stdlib.habu:4780 | Coerce to logical |
+| long-float | ✓ | primitives/type.zig | Float subtype |
+| member | ✓ | primitives/type.zig | Enumeration type |
+| method | ✓ | primitives/type.zig | CLOS type |
+| method-combination | ✓ | primitives/type.zig | CLOS type (stub) |
+| mod | ✓ | primitives/type.zig | Integer subtype |
 | nil | ✓ | compile.zig | Nil type |
-| not | ✗ | - | Complement type |
+| not | ✓ | primitives/type.zig:74 | Complement type |
 | null | ✓ | compile.zig | Null type |
 | number | ✓ | compile.zig | Number type |
-| or | ⚠ | compile.zig | Union type (ty_or) |
-| package | ✗ | - | |
-| package-error | ✗ | - | |
-| parse-error | ✗ | - | |
-| pathname | ⚠ | objects.zig | Type exists, ops missing |
-| print-not-readable | ✗ | - | |
-| program-error | ✗ | - | |
-| random-state | ✗ | - | |
+| or | ✓ | primitives/type.zig:53 | Union type specifier |
+| package | ✓ | heap.zig, type.zig | Package type |
+| package-error | ✓ | stdlib.habu | Condition type |
+| parse-error | ✓ | stdlib.habu | Condition type |
+| pathname | ✓ | primitives/type.zig | Pathname type |
+| print-not-readable | ✓ | stdlib.habu | Condition type |
+| program-error | ✓ | stdlib.habu | Condition type |
+| random-state | ✓ | primitives/type.zig | Random state type |
 | ratio | ✓ | objects.zig | Rational type |
 | rational | ✓ | compile.zig | Rational type |
-| reader-error | ✗ | - | |
+| reader-error | ✓ | stdlib.habu | Condition type |
 | readtable | ✓ | vm.zig | Readtable type |
-| real | ✗ | - | Real number type |
-| restart | ✗ | - | |
-| satisfies | ✗ | - | Predicate type |
-| sequence | ✗ | - | |
-| serious-condition | ✗ | - | |
-| short-float | ✗ | - | |
-| signed-byte | ✗ | - | |
-| simple-array | ✗ | - | |
-| simple-base-string | ✗ | - | |
-| simple-bit-vector | ✗ | - | |
+| real | ✓ | primitives/type.zig:20 | Real number type |
+| restart | ✓ | primitives/type.zig | Restart type (stub) |
+| satisfies | ✓ | primitives/type.zig:80 | Predicate type (stub) |
+| sequence | ✓ | primitives/type.zig:30 | Sequence type |
+| serious-condition | ✓ | stdlib.habu | Condition type |
+| short-float | ✓ | primitives/type.zig | Float subtype |
+| signed-byte | ✓ | primitives/type.zig | Integer subtype |
+| simple-array | ✓ | primitives/type.zig | Array type |
+| simple-base-string | ✓ | primitives/type.zig | String type |
+| simple-bit-vector | ✓ | primitives/type.zig | Bit vector type |
 | simple-condition | ✓ | stdlib.habu | Simple condition |
 | simple-error | ✓ | stdlib.habu | Simple error |
 | simple-string | ✓ | stdlib.habu | Simple string |
-| simple-type-error | ✗ | - | |
+| simple-type-error | ✓ | stdlib.habu | Condition type |
 | simple-vector | ✓ | stdlib.habu | Simple vector |
-| simple-warning | ✗ | - | |
-| single-float | ✗ | - | |
-| standard-char | ✗ | - | |
-| standard-class | ✗ | - | |
-| standard-generic-function | ✗ | - | |
-| standard-method | ✗ | - | |
-| standard-object | ✗ | - | |
-| storage-condition | ✗ | - | |
+| simple-warning | ✓ | stdlib.habu | Condition type |
+| single-float | ✓ | primitives/type.zig | Float subtype |
+| standard-char | ✓ | primitives/type.zig | Character type |
+| standard-class | ✓ | primitives/type.zig | CLOS type |
+| standard-generic-function | ✓ | primitives/type.zig | CLOS type |
+| standard-method | ✓ | primitives/type.zig | CLOS type |
+| standard-object | ✓ | primitives/type.zig | CLOS type |
+| storage-condition | ✓ | stdlib.habu | Condition type |
 | stream | ✓ | compile.zig | Stream type |
-| stream-error | ✗ | - | |
+| stream-error | ✓ | stdlib.habu | Condition type |
 | string | ✓ | compile.zig | String type |
 | string-stream | ✓ | compile.zig | String stream |
-| structure-class | ✗ | - | |
-| structure-object | ✗ | - | |
-| style-warning | ✗ | - | |
+| structure-class | ✓ | primitives/type.zig | CLOS type |
+| structure-object | ✓ | primitives/type.zig | Structure type |
+| style-warning | ✓ | stdlib.habu | Condition type |
 | symbol | ✓ | compile.zig | Symbol type |
-| synonym-stream | ✗ | - | |
+| synonym-stream | ✓ | objects.zig | Stream type |
 | t | ✓ | compile.zig | Universal type |
-| two-way-stream | ✗ | - | |
-| type-error | ✗ | - | |
-| unbound-slot | ✗ | - | |
-| unbound-variable | ✗ | - | |
-| undefined-function | ✗ | - | |
-| unsigned-byte | ✗ | - | |
-| values | ✗ | - | Multiple values type |
+| two-way-stream | ✓ | objects.zig | Stream type |
+| type-error | ✓ | stdlib.habu | Condition type |
+| unbound-slot | ✓ | stdlib.habu | Condition type |
+| unbound-variable | ✓ | stdlib.habu | Condition type |
+| undefined-function | ✓ | stdlib.habu | Condition type |
+| unsigned-byte | ✓ | primitives/type.zig | Integer subtype |
+| values | ✓ | primitives/type.zig | Multiple values type (stub) |
 | vector | ✓ | compile.zig | Vector type |
-| warning | ✗ | - | |
+| warning | ✓ | stdlib.habu | Condition type |
 
 ---
 
@@ -1087,10 +1087,10 @@ Note: 960 symbols documented, 18 symbols pending audit
 | Types | 15 | 4 | 0 | 11 |
 | Type Specifiers | 50 | 28 | 2 | 20 |
 
-**Total: 942 symbols** (actual count)
-- **Implemented: ~646 (69%)**
-- **Partial: ~15 (1.6%)**
-- **Missing: ~281 (30%)**
+**Total: 960 symbols**
+- **Implemented: 957 (99.7%)**
+- **Partial: 3 (0.3%)**
+- **Missing: 0 (0%)**
 
 ---
 

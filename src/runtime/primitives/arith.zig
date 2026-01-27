@@ -6,6 +6,7 @@ const std = @import("std");
 const Value = @import("../value.zig").Value;
 const Heap = @import("../heap.zig").Heap;
 const objects = @import("../objects.zig");
+const list_prim = @import("list.zig");
 
 pub const Error = error{ TypeMismatch, DivisionByZero, OutOfMemory, InvalidArgument };
 
@@ -723,6 +724,123 @@ pub fn pow_val(x: Value, y: Value) Error!Value {
     const xf = try toNumber(x);
     const yf = try toNumber(y);
     return Value.makeFloat(std.math.pow(f64, xf, yf));
+}
+
+/// Decode-float: returns (significand, exponent, sign) as multiple values
+/// Such that (= f (* sign significand (expt 2 exponent)))
+/// significand is between 0.5 (inclusive) and 1.0 (exclusive) for non-zero
+pub fn decodeFloat(heap: *Heap, a: Value) Error!Value {
+    const f = try toNumber(a);
+
+    // Handle special cases
+    if (f == 0.0) {
+        const vals = [_]Value{
+            Value.makeFloat(0.0),
+            Value.makeFixnum(0),
+            Value.makeFloat(1.0),
+        };
+        return list_prim.list(heap, &vals);
+    }
+
+    const sign: f64 = if (f < 0) -1.0 else 1.0;
+    const abs_f = @abs(f);
+
+    // Get the binary exponent using frexp-like logic
+    // frexp returns (significand, exponent) where 0.5 <= |sig| < 1.0
+    const frexp_result = std.math.frexp(abs_f);
+
+    const vals = [_]Value{
+        Value.makeFloat(frexp_result.significand),
+        Value.makeFixnum(frexp_result.exponent),
+        Value.makeFloat(sign),
+    };
+    return list_prim.list(heap, &vals);
+}
+
+/// Integer-decode-float: returns (significand, exponent, sign) as integers
+/// Such that (= f (* sign significand (expt 2 exponent)))
+/// significand is an integer representing the mantissa bits
+pub fn integerDecodeFloat(heap: *Heap, a: Value) Error!Value {
+    const f = try toNumber(a);
+
+    // Handle special cases
+    if (f == 0.0) {
+        const vals = [_]Value{
+            Value.makeFixnum(0),
+            Value.makeFixnum(0),
+            Value.makeFixnum(1),
+        };
+        return list_prim.list(heap, &vals);
+    }
+
+    // Extract bits from the IEEE 754 representation
+    const bits: u64 = @bitCast(f);
+
+    // IEEE 754 double: 1 sign + 11 exponent + 52 mantissa
+    const sign_bit = (bits >> 63) & 1;
+    const exp_bits = (bits >> 52) & 0x7FF;
+    var mantissa = bits & 0xFFFFFFFFFFFFF;
+
+    const sign: i64 = if (sign_bit == 1) -1 else 1;
+
+    // Handle denormalized numbers (exp_bits == 0)
+    var exponent: i64 = undefined;
+    if (exp_bits == 0) {
+        // Denormalized: no implicit leading 1
+        exponent = 1 - 1023 - 52; // -1074
+    } else {
+        // Normalized: implicit leading 1
+        mantissa |= (1 << 52);
+        exponent = @as(i64, @intCast(exp_bits)) - 1023 - 52;
+    }
+
+    // Normalize: remove trailing zeros from mantissa, adjust exponent
+    while (mantissa != 0 and (mantissa & 1) == 0) {
+        mantissa >>= 1;
+        exponent += 1;
+    }
+
+    const vals = [_]Value{
+        Value.makeFixnum(@intCast(mantissa)),
+        Value.makeFixnum(exponent),
+        Value.makeFixnum(sign),
+    };
+    return list_prim.list(heap, &vals);
+}
+
+/// Float-radix: returns the radix of floating-point representation (always 2)
+pub fn floatRadix(_: Value) Error!Value {
+    return Value.makeFixnum(2);
+}
+
+/// Float-digits: returns the number of digits in floating-point representation
+pub fn floatDigits(_: Value) Error!Value {
+    // IEEE 754 double has 53 bits of precision (52 mantissa + implicit leading 1)
+    return Value.makeFixnum(53);
+}
+
+/// Float-precision: returns the precision of the float (same as float-digits for normalized)
+pub fn floatPrecision(a: Value) Error!Value {
+    const f = try toNumber(a);
+    if (f == 0.0) return Value.makeFixnum(0);
+
+    // For denormalized numbers, precision may be less
+    const bits: u64 = @bitCast(f);
+    const exp_bits = (bits >> 52) & 0x7FF;
+
+    if (exp_bits == 0) {
+        // Denormalized: count significant bits in mantissa
+        var mantissa = bits & 0xFFFFFFFFFFFFF;
+        var precision: i64 = 0;
+        while (mantissa != 0) {
+            precision += 1;
+            mantissa >>= 1;
+        }
+        return Value.makeFixnum(precision);
+    }
+
+    // Normalized: full precision
+    return Value.makeFixnum(53);
 }
 
 /// Floor: largest integer not greater than x/y

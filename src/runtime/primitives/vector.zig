@@ -322,6 +322,26 @@ pub fn fillPointer(val: Value) ?i64 {
     return @intCast(fp);
 }
 
+/// Set fill-pointer value. Returns true on success, false if val is not a vector
+/// or if new_fp is out of range.
+pub fn setFillPointer(val: Value, new_fp: i64) bool {
+    if (!val.isVector()) return false;
+    if (new_fp < 0) return false;
+    const vec = val.toPtr(objects.Vector);
+    const fp: u64 = @intCast(new_fp);
+    if (fp > vec.capacity) return false;
+    vec.setFillPointer(fp);
+    return true;
+}
+
+/// Set adjustable flag on a vector. Returns true on success.
+pub fn setAdjustable(val: Value, adjustable: bool) bool {
+    if (!val.isVector()) return false;
+    const vec = val.toPtr(objects.Vector);
+    vec.setAdjustable(adjustable);
+    return true;
+}
+
 /// Push element to vector (if capacity allows)
 /// Returns new fill-pointer value, or -1 if failed
 pub fn vectorPush(val: Value, element: Value) i64 {

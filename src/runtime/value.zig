@@ -40,6 +40,7 @@ pub const Tag = enum(u4) {
 pub const TypeKind = enum {
     nil,
     t, // special symbol for true
+    unbound, // unbound slot marker
     fixnum,
     float,
     char,
@@ -296,6 +297,7 @@ pub const Value = packed struct {
     pub inline fn typeKind(self: Value) TypeKind {
         if (self.raw == 0) return .nil;
         if (self.raw == t.raw) return .t;
+        if (self.raw == unbound.raw) return .unbound;
         if ((self.raw & 1) == 1) return .fixnum;
         if ((self.raw >> 63) == 1) return .char;
         if (((self.raw >> 62) & 3) == 1) return .float;

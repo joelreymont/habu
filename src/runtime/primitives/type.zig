@@ -2,6 +2,19 @@ const std = @import("std");
 const Value = @import("../value.zig").Value;
 const Heap = @import("../heap.zig").Heap;
 
+/// Check if two values are eql (eq for most types, numeric for numbers)
+fn valueEql(a: Value, b: Value) bool {
+    if (a.raw == b.raw) return true;
+    if (a.isFloat() and b.isFloat()) {
+        const af = a.toFloat();
+        const bf = b.toFloat();
+        // NaN != NaN, but +0.0 == -0.0
+        if (std.math.isNan(af) or std.math.isNan(bf)) return false;
+        return af == bf;
+    }
+    return false;
+}
+
 pub fn typep(heap: *Heap, obj: Value, type_spec: Value) !bool {
     if (type_spec.isT()) return true;
     if (type_spec.isNil()) return false;
@@ -35,12 +48,76 @@ pub fn typep(heap: *Heap, obj: Value, type_spec: Value) !bool {
         if (sym.eq(try heap.intern("stream"))) return obj.isStream();
         if (sym.eq(try heap.intern("pathname"))) return obj.isPathname();
         if (sym.eq(try heap.intern("package"))) return obj.isPackage();
+        if (sym.eq(try heap.intern("atom"))) return !obj.isCons();
+        if (sym.eq(try heap.intern("base-char"))) return obj.isCharacter();
+        if (sym.eq(try heap.intern("standard-char"))) return obj.isCharacter();
+        if (sym.eq(try heap.intern("extended-char"))) return false; // no extended chars
+        if (sym.eq(try heap.intern("base-string"))) return obj.isString();
+        if (sym.eq(try heap.intern("simple-string"))) return obj.isString();
+        if (sym.eq(try heap.intern("simple-base-string"))) return obj.isString();
+        if (sym.eq(try heap.intern("simple-vector"))) return obj.isVector();
+        if (sym.eq(try heap.intern("simple-array"))) return obj.isVector() or obj.isString() or obj.isArray();
+        if (sym.eq(try heap.intern("bit-vector"))) return obj.isVector();
+        if (sym.eq(try heap.intern("simple-bit-vector"))) return obj.isVector();
+        if (sym.eq(try heap.intern("single-float"))) return obj.isFloat();
+        if (sym.eq(try heap.intern("double-float"))) return obj.isFloat();
+        if (sym.eq(try heap.intern("short-float"))) return obj.isFloat();
+        if (sym.eq(try heap.intern("long-float"))) return obj.isFloat();
+        if (sym.eq(try heap.intern("class"))) return obj.isClass();
+        if (sym.eq(try heap.intern("standard-class"))) return obj.isClass();
+        if (sym.eq(try heap.intern("built-in-class"))) return obj.isClass();
+        if (sym.eq(try heap.intern("structure-class"))) return obj.isClass();
+        if (sym.eq(try heap.intern("generic-function"))) return obj.isGenericFunction();
+        if (sym.eq(try heap.intern("standard-generic-function"))) return obj.isGenericFunction();
+        if (sym.eq(try heap.intern("method"))) return obj.isMethod();
+        if (sym.eq(try heap.intern("standard-method"))) return obj.isMethod();
+        if (sym.eq(try heap.intern("standard-object"))) return obj.isVector(); // instances are vectors
+        if (sym.eq(try heap.intern("structure-object"))) return obj.isVector(); // structs are vectors
+        if (sym.eq(try heap.intern("file-stream"))) {
+            if (!obj.isStream()) return false;
+            const stream = obj.toPtr(@import("../objects.zig").Stream);
+            return stream.stream_type != .string;
+        }
+        if (sym.eq(try heap.intern("string-stream"))) {
+            if (!obj.isStream()) return false;
+            const stream = obj.toPtr(@import("../objects.zig").Stream);
+            return stream.stream_type == .string;
+        }
+        // random-state is implemented as an integer in Habu
+        if (sym.eq(try heap.intern("random-state"))) return obj.isFixnum();
+        // restart objects aren't first-class - always false for typep
+        if (sym.eq(try heap.intern("restart"))) return false;
+        // method-combination isn't implemented as separate type
+        if (sym.eq(try heap.intern("method-combination"))) return false;
+        // values is a type specifier for multiple return values, not for typep
+        if (sym.eq(try heap.intern("values"))) return false;
 
         // Check if it's a class name (instance type check)
         if (obj.isVector()) {
             const vec = obj.toPtr(@import("../objects.zig").Vector);
             if (vec.length > 0 and vec.data[0].isSymbol()) {
-                return vec.data[0].eq(type_spec);
+                // Direct class name match
+                if (vec.data[0].eq(type_spec)) return true;
+
+                // Check class hierarchy via CPL
+                if (heap.findLispClass(vec.data[0])) |class_val| {
+                    if (class_val.isClass()) {
+                        const class = class_val.toPtr(@import("../objects.zig").Class);
+                        // Check if type_spec is in the CPL
+                        var cpl = class.cpl;
+                        while (cpl.isCons()) {
+                            const cons = cpl.toPtr(@import("../objects.zig").Cons);
+                            // CPL contains class objects or symbols - check both
+                            if (cons.car.eq(type_spec)) return true;
+                            if (cons.car.isClass()) {
+                                const cpl_class = cons.car.toPtr(@import("../objects.zig").Class);
+                                if (cpl_class.name.eq(type_spec)) return true;
+                            }
+                            cpl = cons.cdr;
+                        }
+                    }
+                }
+                return false;
             }
         }
 
@@ -111,6 +188,73 @@ pub fn typep(heap: *Heap, obj: Value, type_spec: Value) !bool {
                 return error.InvalidTypeSpecifier;
 
             return low_ok and high_ok;
+        }
+
+        // (eql value) - singleton type
+        if (head.eq(try heap.intern("eql"))) {
+            const rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
+            if (!rest.isCons()) return error.InvalidTypeSpecifier;
+            const expected = rest.toPtr(@import("../objects.zig").Cons).car;
+            return valueEql(obj,expected);
+        }
+
+        // (member value...) - enumeration type
+        if (head.eq(try heap.intern("member"))) {
+            var rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
+            while (rest.isCons()) {
+                const item = rest.toPtr(@import("../objects.zig").Cons).car;
+                if (valueEql(obj,item)) return true;
+                rest = rest.toPtr(@import("../objects.zig").Cons).cdr;
+            }
+            return false;
+        }
+
+        // (mod n) - integers from 0 to n-1
+        if (head.eq(try heap.intern("mod"))) {
+            if (!obj.isFixnum() and !obj.isBignum()) return false;
+            const rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
+            if (!rest.isCons()) return error.InvalidTypeSpecifier;
+            const n = rest.toPtr(@import("../objects.zig").Cons).car;
+            if (!n.isFixnum()) return error.InvalidTypeSpecifier;
+            const limit = n.toFixnum();
+            const val = if (obj.isFixnum()) obj.toFixnum() else return false;
+            return val >= 0 and val < limit;
+        }
+
+        // (signed-byte n) - signed integers in n bits
+        if (head.eq(try heap.intern("signed-byte"))) {
+            if (!obj.isFixnum() and !obj.isBignum()) return false;
+            const rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
+            if (!rest.isCons()) return error.InvalidTypeSpecifier;
+            const n = rest.toPtr(@import("../objects.zig").Cons).car;
+            if (!n.isFixnum()) return error.InvalidTypeSpecifier;
+            const bits = n.toFixnum();
+            if (bits <= 0 or bits > 63) return error.InvalidTypeSpecifier;
+            const val = if (obj.isFixnum()) obj.toFixnum() else return false;
+            const min = -(@as(i64, 1) << @intCast(bits - 1));
+            const max = (@as(i64, 1) << @intCast(bits - 1)) - 1;
+            return val >= min and val <= max;
+        }
+
+        // (unsigned-byte n) - unsigned integers in n bits
+        if (head.eq(try heap.intern("unsigned-byte"))) {
+            if (!obj.isFixnum() and !obj.isBignum()) return false;
+            const rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
+            if (!rest.isCons()) return error.InvalidTypeSpecifier;
+            const n = rest.toPtr(@import("../objects.zig").Cons).car;
+            if (!n.isFixnum()) return error.InvalidTypeSpecifier;
+            const bits = n.toFixnum();
+            if (bits <= 0 or bits > 63) return error.InvalidTypeSpecifier;
+            const val = if (obj.isFixnum()) obj.toFixnum() else return false;
+            if (val < 0) return false;
+            const max = (@as(i64, 1) << @intCast(bits)) - 1;
+            return val <= max;
+        }
+
+        // (values type...) - multiple values type specifier, not for typep
+        if (head.eq(try heap.intern("values"))) {
+            // values type is for declarations, not runtime typep
+            return false;
         }
 
         return error.UnknownTypeSpecifier;
@@ -316,6 +460,26 @@ fn checkSymbolSubtype(heap: *Heap, t1: Value, t2: Value) !SubtypeResult {
         return .{ .is_subtype = true, .certain = true };
     }
 
+    // Check user-defined class hierarchy via CPL
+    if (heap.findLispClass(t1)) |class1_val| {
+        if (class1_val.isClass()) {
+            const class1 = class1_val.toPtr(@import("../objects.zig").Class);
+            // Check if t2 is in class1's CPL
+            var cpl = class1.cpl;
+            while (cpl.isCons()) {
+                const cons = cpl.toPtr(@import("../objects.zig").Cons);
+                if (cons.car.eq(t2)) return .{ .is_subtype = true, .certain = true };
+                if (cons.car.isClass()) {
+                    const cpl_class = cons.car.toPtr(@import("../objects.zig").Class);
+                    if (cpl_class.name.eq(t2)) return .{ .is_subtype = true, .certain = true };
+                }
+                cpl = cons.cdr;
+            }
+            // t1 is a known class but t2 not in its CPL
+            return .{ .is_subtype = false, .certain = true };
+        }
+    }
+
     return .{ .is_subtype = false, .certain = true };
 }
 
@@ -323,12 +487,20 @@ pub fn typeOf(heap: *Heap, val: Value) !Value {
     return switch (val.typeKind()) {
         .nil => heap.intern("nil"),
         .t => heap.intern("boolean"),
+        .unbound => heap.intern("symbol"),
         .fixnum => heap.intern("fixnum"),
         .float => heap.intern("float"),
         .char => heap.intern("character"),
         .cons => heap.intern("cons"),
         .symbol => heap.intern("symbol"),
-        .vector => heap.intern("vector"),
+        .vector => {
+            // Check if this is a class/struct instance (first element is class name symbol)
+            const vec = val.toPtr(@import("../objects.zig").Vector);
+            if (vec.length > 0 and vec.data[0].isSymbol()) {
+                return vec.data[0];
+            }
+            return heap.intern("vector");
+        },
         .string => heap.intern("string"),
         .string32 => heap.intern("string"),
         .closure => heap.intern("closure"),

@@ -106,7 +106,7 @@ pub fn namestring(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value 
         // :absolute starts with /, :relative has no prefix
         if (first.isKeyword()) {
             const kw = first.toPtr(objects.Keyword);
-            if (std.mem.eql(u8, kw.getName(), "absolute")) {
+            if (std.ascii.eqlIgnoreCase(kw.getName(), "absolute")) {
                 try writer.writeByte('/');
             }
         }
@@ -283,6 +283,89 @@ pub fn mergePathnames(
     return try heap.allocPathname(host, device, directory, name, ty, version);
 }
 
+/// Get directory portion as a string
+/// Returns the directory component of a pathname as a namestring
+pub fn directoryNamestring(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
+    if (!val.isPathname()) return error.TypeMismatch;
+    const p = val.toPtr(Pathname);
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(allocator);
+    const writer = buf.writer(allocator);
+
+    // directory - list like (:absolute "foo" "bar") or (:relative "baz")
+    if (!p.directory.isNil() and p.directory.isCons()) {
+        var dir = p.directory;
+        const first = dir.toPtr(objects.Cons).car;
+        dir = dir.toPtr(objects.Cons).cdr;
+
+        if (first.isKeyword()) {
+            const kw = first.toPtr(objects.Keyword);
+            if (std.ascii.eqlIgnoreCase(kw.getName(), "absolute")) {
+                try writer.writeByte('/');
+            }
+        }
+
+        while (!dir.isNil() and dir.isCons()) {
+            const cons = dir.toPtr(objects.Cons);
+            const component = cons.car;
+            if (component.isString()) {
+                const comp_str = component.toPtr(objects.String);
+                try writer.writeAll(comp_str.bytes());
+                dir = cons.cdr;
+                if (!dir.isNil()) try writer.writeByte('/');
+            } else break;
+        }
+
+        // Add trailing slash for directory
+        if (buf.items.len > 0 and buf.items[buf.items.len - 1] != '/') {
+            try writer.writeByte('/');
+        }
+    }
+
+    return try heap.allocBaseString(buf.items);
+}
+
+/// Get file portion (name + type) as a string
+pub fn fileNamestring(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
+    if (!val.isPathname()) return error.TypeMismatch;
+    const p = val.toPtr(Pathname);
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(allocator);
+    const writer = buf.writer(allocator);
+
+    if (!p.name.isNil() and p.name.isString()) {
+        const name_str = p.name.toPtr(objects.String);
+        try writer.writeAll(name_str.bytes());
+    }
+
+    if (!p.type.isNil() and p.type.isString()) {
+        try writer.writeByte('.');
+        const type_str = p.type.toPtr(objects.String);
+        try writer.writeAll(type_str.bytes());
+    }
+
+    return try heap.allocBaseString(buf.items);
+}
+
+/// Get host portion as a string
+pub fn hostNamestring(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
+    _ = allocator;
+    if (!val.isPathname()) return error.TypeMismatch;
+    const p = val.toPtr(Pathname);
+
+    if (p.host.isNil()) {
+        return try heap.allocBaseString("");
+    }
+
+    if (p.host.isString()) {
+        return p.host; // Already a string
+    }
+
+    return try heap.allocBaseString("");
+}
+
 /// Get user's home directory as a pathname
 pub fn userHomedirPathname(allocator: std.mem.Allocator, heap: *Heap) !Value {
     _ = allocator;
@@ -402,7 +485,7 @@ fn pathnameToString(allocator: std.mem.Allocator, pn: *const Pathname) ![]const 
             if (part.isKeyword()) {
                 // :absolute or :relative
                 const kw = part.toPtr(objects.Keyword);
-                if (std.mem.eql(u8, kw.getName(), "ABSOLUTE") or std.mem.eql(u8, kw.getName(), "absolute")) {
+                if (std.ascii.eqlIgnoreCase(kw.getName(), "absolute")) {
                     try writer.writeByte('/');
                 }
                 // :relative means start with nothing
@@ -434,4 +517,89 @@ fn pathnameToString(allocator: std.mem.Allocator, pn: *const Pathname) ![]const 
     }
 
     return try buf.toOwnedSlice(allocator);
+}
+
+/// Check if pathname contains wildcards
+/// Returns T if any component contains :wild or wildcard characters
+pub fn wildPathnameP(val: Value, field_key: ?Value) bool {
+    if (!val.isPathname()) return false;
+    const p = val.toPtr(Pathname);
+
+    // If field-key specified, only check that component
+    if (field_key) |key| {
+        if (key.isKeyword()) {
+            const kw = key.toPtr(objects.Keyword);
+            const name = kw.getName();
+            if (std.ascii.eqlIgnoreCase(name, "host")) return hasWildcard(p.host);
+            if (std.ascii.eqlIgnoreCase(name, "device")) return hasWildcard(p.device);
+            if (std.ascii.eqlIgnoreCase(name, "directory")) return dirHasWildcard(p.directory);
+            if (std.ascii.eqlIgnoreCase(name, "name")) return hasWildcard(p.name);
+            if (std.ascii.eqlIgnoreCase(name, "type")) return hasWildcard(p.type);
+            if (std.ascii.eqlIgnoreCase(name, "version")) return hasWildcard(p.version);
+        }
+        return false;
+    }
+
+    // Check all components
+    return hasWildcard(p.host) or
+        hasWildcard(p.device) or
+        dirHasWildcard(p.directory) or
+        hasWildcard(p.name) or
+        hasWildcard(p.type) or
+        hasWildcard(p.version);
+}
+
+fn hasWildcard(val: Value) bool {
+    if (val.isNil()) return false;
+
+    // :wild keyword indicates wildcard
+    if (val.isKeyword()) {
+        const kw = val.toPtr(objects.Keyword);
+        return std.ascii.eqlIgnoreCase(kw.getName(), "wild");
+    }
+
+    // String containing * or ? is wild
+    if (val.isString()) {
+        const s = val.toPtr(objects.String);
+        const bytes = s.bytes();
+        for (bytes) |c| {
+            if (c == '*' or c == '?') return true;
+        }
+    }
+
+    return false;
+}
+
+fn dirHasWildcard(dir: Value) bool {
+    if (dir.isNil()) return false;
+
+    // :wild keyword
+    if (dir.isKeyword()) {
+        const kw = dir.toPtr(objects.Keyword);
+        return std.ascii.eqlIgnoreCase(kw.getName(), "wild");
+    }
+
+    // Check each element of directory list
+    var list = dir;
+    while (!list.isNil() and list.isCons()) {
+        const cons = list.toPtr(objects.Cons);
+        const elem = cons.car;
+
+        // :wild-inferiors means ** (recursive wildcard)
+        if (elem.isKeyword()) {
+            const kw = elem.toPtr(objects.Keyword);
+            const name = kw.getName();
+            if (std.ascii.eqlIgnoreCase(name, "wild") or
+                std.ascii.eqlIgnoreCase(name, "wild-inferiors"))
+            {
+                return true;
+            }
+        } else if (hasWildcard(elem)) {
+            return true;
+        }
+
+        list = cons.cdr;
+    }
+
+    return false;
 }

@@ -201,6 +201,7 @@ pub fn hashValue(val: Value) u64 {
     return switch (val.typeKind()) {
         .nil => 0,
         .t => 1,
+        .unbound => 2,
         .fixnum => @bitCast(@as(i64, val.toFixnum())),
         .float => @bitCast(val.toFloat()),
         .char => @intCast(val.toCharacter()),

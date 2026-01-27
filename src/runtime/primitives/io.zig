@@ -363,6 +363,7 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
     switch (val.typeKind()) {
         .nil => try w.writeAll("nil"),
         .t => try w.writeAll("t"),
+        .unbound => try w.writeAll("#<unbound>"),
         .fixnum => try writeFixnum(val.toFixnum(), w),
         .float => try w.print("{d}", .{val.toFloat()}),
         .char => {
@@ -454,6 +455,11 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
                 .stdin => "stdin",
                 .stdout => "stdout",
                 .stderr => "stderr",
+                .broadcast => "broadcast",
+                .concatenated => "concatenated",
+                .echo => "echo",
+                .synonym => "synonym",
+                .two_way => "two-way",
             };
             try w.print("#<{s}-{s}-stream>", .{ kind, dir });
         },
@@ -532,6 +538,7 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
     switch (val.typeKind()) {
         .nil => try w.writeAll("nil"),
         .t => try w.writeAll("t"),
+        .unbound => try w.writeAll("#<unbound>"),
         .fixnum => try writeFixnum(val.toFixnum(), w),
         .float => try w.print("{d}", .{val.toFloat()}),
         .char => {
@@ -640,6 +647,11 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
                 .stdin => "stdin",
                 .stdout => "stdout",
                 .stderr => "stderr",
+                .broadcast => "broadcast",
+                .concatenated => "concatenated",
+                .echo => "echo",
+                .synonym => "synonym",
+                .two_way => "two-way",
             };
             try w.print("#<{s}-{s}-stream>", .{ kind, dir });
         },
@@ -1375,7 +1387,7 @@ pub fn readChar(stream: Value, eof_error: ?Value, eof_value: ?Value) !Value {
             if (n == 0) return Value.nil;
             return Value.makeFixnum(@intCast(buf[0]));
         },
-        .byte => return error.NotImplemented,
+        else => return error.NotImplemented,
     }
 }
 
@@ -1406,10 +1418,10 @@ pub fn peekChar(peek_type: ?Value, stream: Value) !Value {
             const fd: std.posix.fd_t = @intCast(s.file_fd);
             const n = try std.posix.read(fd, &buf);
             if (n == 0) return Value.nil;
-            _ = try std.posix.lseek(fd, -1, .CUR);
+            try std.posix.lseek_CUR(fd, -1);
             return Value.makeFixnum(@intCast(buf[0]));
         },
-        .byte => return error.NotImplemented,
+        else => return error.NotImplemented,
     }
 }
 
@@ -1447,8 +1459,11 @@ pub fn readCharNoHang(stream: Value) !Value {
             s.position += 1;
             return Value.makeFixnum(@intCast(ch));
         },
-        .file => {
-            const fd: std.posix.fd_t = @intCast(s.file_fd);
+        .file, .stdin => {
+            const fd: std.posix.fd_t = if (s.stream_type == .stdin)
+                std.posix.STDIN_FILENO
+            else
+                @intCast(s.file_fd);
             var pollfd = [_]std.posix.pollfd{.{ .fd = fd, .events = std.posix.POLL.IN, .revents = 0 }};
             const ready = try std.posix.poll(&pollfd, 0);
             if (ready == 0) return Value.nil;
@@ -1456,9 +1471,14 @@ pub fn readCharNoHang(stream: Value) !Value {
             var buf: [1]u8 = undefined;
             const n = try std.posix.read(fd, &buf);
             if (n == 0) return Value.nil;
-            return Value.makeFixnum(@intCast(buf[0]));
+            return Value.makeCharacter(buf[0]);
         },
-        .byte => return error.NotImplemented,
+        .stdout, .stderr, .broadcast => return error.TypeError, // Output streams, not input
+        // Compound streams: delegate or return nil for now
+        .concatenated, .echo, .synonym, .two_way => {
+            // TODO: Implement proper delegation to underlying streams
+            return Value.nil;
+        },
     }
 }
 
@@ -1663,10 +1683,10 @@ pub fn filePosition(heap: *Heap, stream: Value, pos: ?Value) !Value {
             .string => return Value.makeFixnum(@intCast(s.position)),
             .file => {
                 const fd: std.posix.fd_t = @intCast(s.file_fd);
-                const cur = try std.posix.lseek(fd, 0, .CUR);
+                const cur = try std.posix.lseek_CUR_get(fd);
                 return Value.makeFixnum(@intCast(cur));
             },
-            .byte => return error.NotImplemented,
+            else => return error.NotImplemented,
         }
     } else {
         // Set position
@@ -1697,13 +1717,13 @@ pub fn filePosition(heap: *Heap, stream: Value, pos: ?Value) !Value {
             .file => {
                 const fd: std.posix.fd_t = @intCast(s.file_fd);
                 if (new_pos == -1) {
-                    _ = try std.posix.lseek(fd, 0, .END);
+                    try std.posix.lseek_END(fd, 0);
                 } else {
-                    _ = try std.posix.lseek(fd, new_pos, .SET);
+                    try std.posix.lseek_SET(fd, @intCast(new_pos));
                 }
                 return Value.t;
             },
-            .byte => return error.NotImplemented,
+            else => return error.NotImplemented,
         }
     }
     _ = heap;
@@ -1716,9 +1736,9 @@ pub fn openFile(heap: *Heap, filename: Value, direction: ?Value, if_exists: ?Val
     if (!filename.isString()) return error.TypeError;
 
     const fname = filename.toPtr(objects.String);
-    const kw_input = heap.internKeyword("input");
-    const kw_output = heap.internKeyword("output");
-    const kw_io = heap.internKeyword("io");
+    const kw_input = try heap.internKeyword("input");
+    const kw_output = try heap.internKeyword("output");
+    const kw_io = try heap.internKeyword("io");
     const dir = if (direction) |d| d else kw_input;
 
     if (dir.eq(kw_output)) {
@@ -1744,6 +1764,141 @@ pub fn closeStream(stream: Value, abort: ?Value) !void {
         std.posix.close(fd);
         s.file_fd = -1;
     }
+}
+
+/// List files in a directory matching pathname
+pub fn listDirectory(heap: *Heap, pathname: Value) !Value {
+    // Get path string from pathname or string
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const path_str = if (pathname.isString())
+        pathname.toPtr(objects.String).bytes()
+    else if (pathname.isPathname()) blk: {
+        // Build namestring from pathname components
+        const pn = pathname.toPtr(objects.Pathname);
+        var len: usize = 0;
+
+        // Add directory
+        if (pn.directory.isCons()) {
+            var dir = pn.directory;
+            while (dir.isCons()) {
+                const cons = dir.toPtr(objects.Cons);
+                if (cons.car.isString()) {
+                    const s = cons.car.toPtr(objects.String).bytes();
+                    if (len > 0 and len < path_buf.len) {
+                        path_buf[len] = '/';
+                        len += 1;
+                    }
+                    const copy_len = @min(s.len, path_buf.len - len);
+                    @memcpy(path_buf[len..][0..copy_len], s[0..copy_len]);
+                    len += copy_len;
+                }
+                dir = cons.cdr;
+            }
+        }
+
+        // Add name
+        if (pn.name.isString()) {
+            const s = pn.name.toPtr(objects.String).bytes();
+            if (len > 0 and len < path_buf.len) {
+                path_buf[len] = '/';
+                len += 1;
+            }
+            const copy_len = @min(s.len, path_buf.len - len);
+            @memcpy(path_buf[len..][0..copy_len], s[0..copy_len]);
+            len += copy_len;
+        }
+
+        break :blk path_buf[0..len];
+    } else
+        return error.TypeError;
+
+    // Handle wildcards - for now, just list all files in directory
+    // Strip trailing wildcard if present
+    var dir_path = path_str;
+    if (std.mem.endsWith(u8, dir_path, "*.*") or std.mem.endsWith(u8, dir_path, "*")) {
+        // Find last path separator
+        if (std.mem.lastIndexOf(u8, dir_path, "/")) |idx| {
+            dir_path = dir_path[0..idx];
+        } else {
+            dir_path = ".";
+        }
+    }
+
+    // Open directory
+    var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| {
+        switch (err) {
+            error.FileNotFound, error.NotDir => return Value.nil,
+            else => return error.FileError,
+        }
+    };
+    defer dir.close();
+
+    // Build list of pathnames
+    var result = Value.nil;
+    var iter = dir.iterate();
+    while (iter.next() catch return error.FileError) |entry| {
+        // Build full path
+        var full_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+        const full_path = std.fmt.bufPrint(&full_path_buf, "{s}/{s}", .{ dir_path, entry.name }) catch continue;
+
+        // Parse path into pathname components
+        const name_str = try heap.allocBaseString(std.fs.path.stem(entry.name));
+        const type_str = if (std.fs.path.extension(entry.name).len > 0)
+            try heap.allocBaseString(std.fs.path.extension(entry.name)[1..]) // Skip the '.'
+        else
+            Value.nil;
+        const dir_str = try heap.allocBaseString(dir_path);
+        const dir_list = try heap.allocCons(dir_str, Value.nil);
+
+        const pn = try heap.allocPathname(
+            Value.nil, // host
+            Value.nil, // device
+            dir_list, // directory
+            name_str, // name
+            type_str, // type
+            Value.nil, // version
+        );
+        _ = full_path;
+        result = try heap.allocCons(pn, result);
+    }
+    return result;
+}
+
+/// Check if pathname matches wildcard pattern
+pub fn pathnameMatchP(pathname: Value, wildcard: Value) !Value {
+    // Get path strings
+    const pn_str = if (pathname.isString())
+        pathname.toPtr(objects.String).bytes()
+    else if (pathname.isPathname()) blk: {
+        const pn = pathname.toPtr(objects.Pathname);
+        if (pn.name.isString()) break :blk pn.name.toPtr(objects.String).bytes();
+        break :blk "";
+    } else
+        return error.TypeError;
+
+    const wild_str = if (wildcard.isString())
+        wildcard.toPtr(objects.String).bytes()
+    else if (wildcard.isPathname()) blk: {
+        const wc = wildcard.toPtr(objects.Pathname);
+        if (wc.name.isString()) break :blk wc.name.toPtr(objects.String).bytes();
+        break :blk "*";
+    } else
+        return error.TypeError;
+
+    // Simple wildcard matching: * matches anything
+    if (std.mem.eql(u8, wild_str, "*")) return Value.t;
+
+    // Check for *.ext pattern
+    if (wild_str.len > 1 and wild_str[0] == '*' and wild_str[1] == '.') {
+        const ext = wild_str[1..]; // includes the dot
+        if (std.mem.endsWith(u8, pn_str, ext)) return Value.t;
+        return Value.nil;
+    }
+
+    // Exact match
+    if (std.mem.eql(u8, pn_str, wild_str)) return Value.t;
+
+    return Value.nil;
 }
 
 test "time functions" {

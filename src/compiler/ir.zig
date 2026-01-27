@@ -302,6 +302,117 @@ pub const Ir = union(enum) {
         operand: *const Ir,
     },
 
+    /// Package predicate: (packagep x)
+    packagep: struct {
+        operand: *const Ir,
+    },
+
+    /// Symbol's package: (symbol-package symbol)
+    symbol_package: struct {
+        operand: *const Ir,
+    },
+
+    /// Package name: (package-name package)
+    package_name: struct {
+        operand: *const Ir,
+    },
+
+    /// Package nicknames: (package-nicknames package)
+    package_nicknames: struct {
+        operand: *const Ir,
+    },
+
+    /// Package use-list: (package-use-list package)
+    package_use_list: struct {
+        operand: *const Ir,
+    },
+
+    /// Package used-by-list: (package-used-by-list package)
+    package_used_by_list: struct {
+        operand: *const Ir,
+    },
+
+    /// Package shadowing symbols: (package-shadowing-symbols package)
+    package_shadowing_symbols: struct {
+        operand: *const Ir,
+    },
+
+    /// List all packages: (list-all-packages)
+    list_all_packages: struct {},
+
+    /// Compute list of active restarts: (compute-restarts)
+    compute_restarts: struct {},
+
+    /// Get restart name: (restart-name restart)
+    restart_name: struct {
+        operand: *const Ir,
+    },
+
+    /// List directory contents: (directory pathname)
+    directory: struct {
+        operand: *const Ir,
+    },
+
+    /// Check if pathname matches wildcard: (pathname-match-p pathname wildcard)
+    pathname_match_p: BinaryOp,
+
+    /// Get shortest sufficient pathname string: (enough-namestring pathname)
+    enough_namestring: struct {
+        operand: *const Ir,
+    },
+
+    /// Find a package by name: (find-package name)
+    find_package: struct {
+        operand: *const Ir,
+    },
+
+    /// Delete a package: (delete-package package)
+    delete_package: struct {
+        operand: *const Ir,
+    },
+
+    /// Import symbols into package: (%import symbols package)
+    pkg_import: BinaryOp,
+
+    /// Unexport symbols from package: (%unexport symbols package)
+    pkg_unexport: BinaryOp,
+
+    /// Shadow symbols in package: (%shadow names package)
+    pkg_shadow: BinaryOp,
+
+    /// Shadowing import: (%shadowing-import symbols package)
+    pkg_shadowing_import: BinaryOp,
+
+    /// Unuse package: (%unuse-package packages package)
+    pkg_unuse_package: BinaryOp,
+
+    /// Unintern symbol from package: (%unintern symbol package)
+    pkg_unintern: BinaryOp,
+
+    /// Find symbol in package: (%find-symbol name package)
+    pkg_find_symbol: BinaryOp,
+
+    /// Find all symbols by name: (find-all-symbols name)
+    pkg_find_all_symbols: struct {
+        operand: *const Ir,
+    },
+
+    /// Find symbols containing substring: (apropos-list string)
+    apropos_list: struct {
+        operand: *const Ir,
+    },
+
+    /// Read character if available: (read-char-no-hang stream)
+    read_char_no_hang: struct {
+        operand: *const Ir,
+    },
+
+    /// Make a new package: (%make-package name nicknames use-list)
+    pkg_make_package: TernaryOp,
+
+    /// Rename a package: (%rename-package package new-name new-nicknames)
+    pkg_rename_package: TernaryOp,
+
     sxhash: struct {
         operand: *const Ir,
     },
@@ -333,6 +444,10 @@ pub const Ir = union(enum) {
     pathname: UnaryOp, // Convert pathspec to pathname
     parse_namestring: UnaryOp, // Parse string to pathname
     namestring: UnaryOp, // Convert pathname to string
+    directory_namestring: UnaryOp, // Get directory portion as string
+    file_namestring: UnaryOp, // Get file portion as string
+    host_namestring: UnaryOp, // Get host portion as string
+    wild_pathname_p: UnaryOp, // Check if pathname contains wildcards
     merge_pathnames: BinaryOp, // Merge two pathnames
 
     package_symbols_table: struct {
@@ -340,6 +455,14 @@ pub const Ir = union(enum) {
     },
 
     package_exports_table: struct {
+        operand: *const Ir,
+    },
+
+    package_symbols_list: struct {
+        operand: *const Ir,
+    },
+
+    package_exports_list: struct {
         operand: *const Ir,
     },
 
@@ -486,10 +609,34 @@ pub const Ir = union(enum) {
     streamp: UnaryOp, // stream predicate
     input_stream_p: UnaryOp, // input stream predicate
     output_stream_p: UnaryOp, // output stream predicate
+    open_stream_p: UnaryOp, // open (not closed) stream predicate
+    interactive_stream_p: UnaryOp, // interactive stream predicate
+    stream_element_type: UnaryOp, // get stream element type
+    stream_external_format: UnaryOp, // get stream external format
     make_string_input_stream: UnaryOp, // create string input stream
     make_string_output_stream: void, // create string output stream
     get_output_stream_string: UnaryOp, // get string from output stream
     write_to_stream: BinaryOp, // write string to stream
+    // Compound stream operations
+    broadcast_stream_streams: UnaryOp, // get broadcast stream's component streams
+    concatenated_stream_streams: UnaryOp, // get concatenated stream's remaining streams
+    echo_stream_input_stream: UnaryOp, // get echo stream's input stream
+    echo_stream_output_stream: UnaryOp, // get echo stream's output stream
+    synonym_stream_symbol: UnaryOp, // get synonym stream's symbol
+    two_way_stream_input_stream: UnaryOp, // get two-way stream's input stream
+    two_way_stream_output_stream: UnaryOp, // get two-way stream's output stream
+    make_synonym_stream: UnaryOp, // create synonym stream from symbol
+    make_echo_stream: BinaryOp, // create echo stream (input, output)
+    make_two_way_stream: BinaryOp, // create two-way stream (input, output)
+    make_broadcast_stream: []const *const Ir, // create broadcast stream (&rest streams)
+    make_concatenated_stream: []const *const Ir, // create concatenated stream (&rest streams)
+    make_broadcast_stream_list: UnaryOp, // create broadcast stream from list
+    make_concatenated_stream_list: UnaryOp, // create concatenated stream from list
+    disassemble: UnaryOp, // disassemble a function
+    read_char_stream: UnaryOp, // read character from stream
+    peek_char_stream: UnaryOp, // peek character from stream
+    open_file: BinaryOp, // open file (filename, direction)
+    close_stream: UnaryOp, // close a stream
 
     // ========================================================================
     // Primitives - Character operations
@@ -503,6 +650,8 @@ pub const Ir = union(enum) {
     read_char: void, // No operands - reads from stdin
     peek_char: void, // No operands - peeks at stdin
     unread_char: UnaryOp, // Push character back
+    listen: UnaryOp, // Check if input available
+    upgraded_complex_part_type: UnaryOp, // Get upgraded complex part type
     read: void, // Read S-expression from stdin
     read_from_string: UnaryOp, // Parse string to value
     load: UnaryOp, // Load and evaluate a file
@@ -538,11 +687,22 @@ pub const Ir = union(enum) {
     rename_file: BinaryOp, // Rename file (old, new)
     probe_file: UnaryOp, // Check if file exists
     file_write_date: UnaryOp, // Get file modification time
+    file_author: UnaryOp, // Get file author (nil on Unix)
+    file_string_length: BinaryOp, // Get length of string in file (stream, string)
     get_universal_time: void, // Get current universal time
     get_internal_real_time: void, // Get internal real time (microseconds)
     get_internal_run_time: void, // Get internal run time (CPU microseconds)
     get_decoded_time: void, // Get current decoded time (9 values)
     decode_universal_time: UnaryOp, // Decode universal time to components
+    encode_universal_time: struct { // Encode calendar components to universal time
+        second: *const Ir,
+        minute: *const Ir,
+        hour: *const Ir,
+        date: *const Ir,
+        month: *const Ir,
+        year: *const Ir,
+        zone: ?*const Ir, // optional time zone
+    },
     room: void, // Print memory statistics
     lisp_implementation_type: void, // Get implementation name
     lisp_implementation_version: void, // Get implementation version
@@ -554,6 +714,14 @@ pub const Ir = union(enum) {
     short_site_name: void, // Get short site name
     long_site_name: void, // Get long site name
     user_homedir_pathname: void, // Get user home directory as pathname
+    make_pathname: struct { // Create pathname from components
+        host: *const Ir,
+        device: *const Ir,
+        directory: *const Ir,
+        name: *const Ir,
+        @"type": *const Ir,
+        version: *const Ir,
+    },
     make_string: BinaryOp, // Create string (length, char)
     list_to_string: UnaryOp, // List of chars to string
     string_upcase: UnaryOp, // Convert string to uppercase
@@ -563,6 +731,7 @@ pub const Ir = union(enum) {
     symbol_value: UnaryOp, // Get symbol's global value
     symbol_function: UnaryOp, // Get symbol's function binding
     typep: BinaryOp, // Check if object is of given type
+    subtypep: BinaryOp, // Check subtype relationship
 
     // ========================================================================
     // Primitives - Numeric predicates
@@ -598,6 +767,10 @@ pub const Ir = union(enum) {
     floor: UnaryOp,
     ceiling: UnaryOp,
     round: UnaryOp,
+    decode_float: UnaryOp,
+    integer_decode_float: UnaryOp,
+    float_radix: UnaryOp,
+    float_digits: UnaryOp,
 
     // ========================================================================
     // Primitives - Vector operations
@@ -616,9 +789,17 @@ pub const Ir = union(enum) {
     },
     vec_len: UnaryOp,
     vec_fill_ptr: UnaryOp,
+    vec_set_fill_ptr: BinaryOp,
+    vec_set_adjustable: BinaryOp,
     vec_push: BinaryOp,
     vec_push_ext: TernaryOp,
     vec_pop: UnaryOp,
+    vec_adjust: TernaryOp,
+    elt_set: struct { // (setf (elt seq idx) val) - polymorphic
+        seq: *const Ir,
+        index: *const Ir,
+        value: *const Ir,
+    },
 
     // Array operations (multi-dimensional)
     arr_new: struct {
@@ -720,12 +901,15 @@ pub const Ir = union(enum) {
     close: UnaryOp, // (close stream)
     read_line: UnaryOp, // (read-line stream)
     write_line: BinaryOp, // (write-line stream text)
+    write_string: BinaryOp, // (write-string stream text)
     read_byte: UnaryOp, // (read-byte stream)
     write_byte: BinaryOp, // (write-byte stream byte)
     file_position: UnaryOp, // (file-position stream)
     file_length: UnaryOp, // (file-length stream)
     finish_output: UnaryOp, // (finish-output stream)
     force_output: UnaryOp, // (force-output stream)
+    clear_input: UnaryOp, // (clear-input stream)
+    clear_output: UnaryOp, // (clear-output stream)
     sleep: UnaryOp, // (sleep seconds)
 
     // Reader macros
@@ -921,6 +1105,16 @@ pub const Ir = union(enum) {
             .numerator,
             .denominator,
             .hashtablep,
+            .packagep,
+            .symbol_package,
+            .package_name,
+            .package_nicknames,
+            .package_use_list,
+            .package_used_by_list,
+            .package_shadowing_symbols,
+            .find_package,
+            .delete_package,
+            .pkg_find_all_symbols,
             .streamp,
             .input_stream_p,
             .output_stream_p,
@@ -933,9 +1127,12 @@ pub const Ir = union(enum) {
             .vec_set,
             .vec_len,
             .vec_fill_ptr,
+            .vec_set_fill_ptr,
+            .vec_set_adjustable,
             .vec_push,
             .vec_push_ext,
             .vec_pop,
+            .vec_adjust,
             .arr_new,
             .arr_ref,
             .arr_set,
@@ -1461,6 +1658,30 @@ pub const IrBuilder = struct {
         return node;
     }
 
+    pub fn openStreamP(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .open_stream_p = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn interactiveStreamP(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .interactive_stream_p = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn streamElementType(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .stream_element_type = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn streamExternalFormat(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .stream_external_format = .{ .operand = operand } };
+        return node;
+    }
+
     pub fn makeStringInputStream(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .make_string_input_stream = .{ .operand = operand } };
@@ -1488,6 +1709,120 @@ pub const IrBuilder = struct {
     pub fn hashtablep(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .hashtablep = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn packagep(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .packagep = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn symbolPackage(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .symbol_package = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn packageName(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .package_name = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn packageNicknames(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .package_nicknames = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn packageUseList(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .package_use_list = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn packageUsedByList(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .package_used_by_list = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn packageShadowingSymbols(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .package_shadowing_symbols = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn packageSymbolsList(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .package_symbols_list = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn packageExportsList(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .package_exports_list = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn listAllPackages(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .list_all_packages = .{} };
+        return node;
+    }
+
+    pub fn computeRestarts(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .compute_restarts = .{} };
+        return node;
+    }
+
+    pub fn restartName(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .restart_name = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn directory(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .directory = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn enoughNamestring(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .enough_namestring = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn findPackage(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .find_package = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn deletePackage(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .delete_package = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn findAllSymbols(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .pkg_find_all_symbols = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn aproposList(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .apropos_list = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn readCharNoHang(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .read_char_no_hang = .{ .operand = operand } };
         return node;
     }
 
@@ -1650,6 +1985,12 @@ pub const IrBuilder = struct {
     pub fn unreadChar(self: IrBuilder, char: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .unread_char = .{ .operand = char } };
+        return node;
+    }
+
+    pub fn listen(self: IrBuilder, stream: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .listen = .{ .operand = stream } };
         return node;
     }
 
@@ -1845,6 +2186,12 @@ pub const IrBuilder = struct {
         return node;
     }
 
+    pub fn fileAuthor(self: IrBuilder, path: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .file_author = .{ .operand = path } };
+        return node;
+    }
+
     pub fn getUniversalTime(self: IrBuilder) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .get_universal_time = {} };
@@ -1935,6 +2282,19 @@ pub const IrBuilder = struct {
         return node;
     }
 
+    pub fn makePathname(self: IrBuilder, h: *const Ir, dev: *const Ir, dir: *const Ir, n: *const Ir, ty: *const Ir, ver: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .make_pathname = .{
+            .host = h,
+            .device = dev,
+            .directory = dir,
+            .name = n,
+            .@"type" = ty,
+            .version = ver,
+        } };
+        return node;
+    }
+
     pub fn makeString(self: IrBuilder, len: *const Ir, char: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .make_string = .{ .left = len, .right = char } };
@@ -1992,6 +2352,12 @@ pub const IrBuilder = struct {
     pub fn typep(self: IrBuilder, obj: *const Ir, type_spec: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .typep = .{ .left = obj, .right = type_spec } };
+        return node;
+    }
+
+    pub fn subtypep(self: IrBuilder, type1: *const Ir, type2: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .subtypep = .{ .left = type1, .right = type2 } };
         return node;
     }
 

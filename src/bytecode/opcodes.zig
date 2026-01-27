@@ -462,6 +462,14 @@ pub const Op = enum(u16) {
     /// ( vec -- val )
     vec_pop = 0x6D,
 
+    /// Set fill pointer
+    /// ( vec fp -- t|nil )
+    vec_set_fill_ptr = 0x172,
+
+    /// Set adjustable flag
+    /// ( vec bool -- t|nil )
+    vec_set_adjustable = 0x173,
+
     // ========================================================================
     // String operations
     // ========================================================================
@@ -830,6 +838,14 @@ pub const Op = enum(u16) {
     /// Push character back to input
     /// ( char -- )
     unread_char = 0xAA,
+
+    /// Check if input is available on stream
+    /// ( stream -- t/nil )
+    listen = 0x153,
+
+    /// Get upgraded complex part type
+    /// ( typespec -- real )
+    upgraded_complex_part_type = 0x154,
 
     /// Check if symbol has a global value binding
     /// ( symbol -- t/nil )
@@ -1262,6 +1278,14 @@ pub const Op = enum(u16) {
     /// ( stream text -- t )
     write_line = 0x37,
 
+    /// Write string to stream (no newline)
+    /// ( stream text -- t )
+    write_string = 0x18C,
+
+    /// Check subtype relationship
+    /// ( type1 type2 -- (subtype-p certain-p) )
+    subtypep = 0x18D,
+
     /// Read byte from stream
     /// ( stream -- fixnum | nil )
     read_byte = 0x39,
@@ -1286,6 +1310,14 @@ pub const Op = enum(u16) {
     /// ( stream -- nil )
     force_output = 0x3E,
 
+    /// Clear input (discard buffered input)
+    /// ( stream -- nil )
+    clear_input = 0x14E,
+
+    /// Clear output (discard buffered output)
+    /// ( stream -- nil )
+    clear_output = 0x14F,
+
     /// Sleep for N seconds
     /// ( seconds -- nil )
     sleep = 0x118,
@@ -1305,6 +1337,223 @@ pub const Op = enum(u16) {
     /// File write date (modification time)
     /// ( path-string -- universal-time )
     file_write_date = 0x131,
+
+    /// File author (nil on Unix-like systems)
+    /// ( path-string -- author-string-or-nil )
+    file_author = 0x150,
+
+    /// Get string length in file (bytes)
+    /// ( stream string -- length )
+    file_string_length = 0x155,
+
+    /// Package predicate
+    /// ( x -- bool )
+    packagep = 0x156,
+
+    /// Get symbol's package
+    /// ( symbol -- package-or-nil )
+    symbol_package = 0x157,
+
+    /// Get package name
+    /// ( package -- name-string )
+    package_name = 0x158,
+
+    /// Get package nicknames
+    /// ( package -- nickname-list )
+    package_nicknames = 0x159,
+
+    /// Get package use-list
+    /// ( package -- package-list )
+    package_use_list = 0x15A,
+
+    /// Get packages that use this package
+    /// ( package -- package-list )
+    package_used_by_list = 0x15B,
+
+    /// Get package shadowing symbols
+    /// ( package -- symbol-list )
+    package_shadowing_symbols = 0x15C,
+
+    /// List all packages
+    /// ( -- package-list )
+    list_all_packages = 0x15D,
+
+    /// Find a package by name
+    /// ( name -- package-or-nil )
+    find_package = 0x15E,
+
+    /// Delete a package
+    /// ( package -- t-or-nil )
+    delete_package = 0x15F,
+
+    /// Import symbols into package
+    /// ( symbols package -- t )
+    pkg_import = 0x160,
+
+    /// Unexport symbols from package
+    /// ( symbols package -- t )
+    pkg_unexport = 0x161,
+
+    /// Shadow symbols in package
+    /// ( names package -- t )
+    pkg_shadow = 0x162,
+
+    /// Shadowing import
+    /// ( symbols package -- t )
+    pkg_shadowing_import = 0x163,
+
+    /// Unuse package
+    /// ( packages package -- t )
+    pkg_unuse_package = 0x164,
+
+    /// Unintern symbol from package
+    /// ( symbol package -- t-or-nil )
+    pkg_unintern = 0x165,
+
+    /// Find symbol in package
+    /// ( name package -- symbol status )
+    pkg_find_symbol = 0x166,
+
+    /// Find all symbols by name
+    /// ( name -- symbol-list )
+    pkg_find_all_symbols = 0x167,
+
+    /// Make a new package
+    /// ( name nicknames use-list -- package )
+    pkg_make_package = 0x168,
+
+    /// Rename a package
+    /// ( package new-name new-nicknames -- package )
+    pkg_rename_package = 0x169,
+
+    /// Encode calendar components to universal time
+    /// Operand: u8 argc (6 or 7 - 7 includes timezone)
+    /// ( second minute hour date month year [zone] -- universal-time )
+    encode_universal_time = 0x16A,
+
+    /// Find symbols containing substring
+    /// ( string -- symbol-list )
+    apropos_list = 0x16B,
+
+    /// Read character if available (non-blocking)
+    /// ( stream -- char | nil )
+    read_char_no_hang = 0x16C,
+
+    /// Compute list of active restarts
+    /// ( -- restart-list )
+    compute_restarts = 0x16D,
+
+    /// Get restart name
+    /// ( restart -- name )
+    restart_name = 0x16E,
+
+    /// List directory contents
+    /// ( pathname -- list-of-pathnames )
+    directory = 0x16F,
+
+    /// Check if pathname matches wildcard
+    /// ( pathname wildcard -- t/nil )
+    pathname_match_p = 0x170,
+
+    /// Get shortest pathname string
+    /// ( pathname -- string )
+    enough_namestring = 0x171,
+
+    /// Decode float into (significand, exponent, sign) list
+    /// ( float -- list )
+    decode_float = 0x174,
+
+    /// Integer decode float into (significand, exponent, sign) list
+    /// ( float -- list )
+    integer_decode_float = 0x175,
+
+    /// Float radix (always 2)
+    /// ( float -- 2 )
+    float_radix = 0x176,
+
+    /// Float digits (precision bits)
+    /// ( float -- fixnum )
+    float_digits = 0x177,
+
+    /// Set element in sequence (polymorphic for vectors and lists)
+    /// ( seq index value -- value )
+    elt_set = 0x178,
+
+    /// Create broadcast stream (writes to multiple streams) - varargs version
+    /// ( streams... n -- stream )
+    make_broadcast_stream = 0x179,
+
+    /// Create concatenated stream (reads from sequence of streams) - varargs version
+    /// ( streams... n -- stream )
+    make_concatenated_stream = 0x17A,
+
+    /// Create broadcast stream from list - list version
+    /// ( streams-list -- stream )
+    make_broadcast_stream_list = 0x185,
+
+    /// Create concatenated stream from list - list version
+    /// ( streams-list -- stream )
+    make_concatenated_stream_list = 0x186,
+
+    /// Create echo stream (reads from input, echoes to output)
+    /// ( input-stream output-stream -- stream )
+    make_echo_stream = 0x17B,
+
+    /// Create synonym stream (delegates to symbol's value)
+    /// ( symbol -- stream )
+    make_synonym_stream = 0x17C,
+
+    /// Create two-way stream (bidirectional input + output)
+    /// ( input-stream output-stream -- stream )
+    make_two_way_stream = 0x17D,
+
+    /// Get broadcast stream's component streams
+    /// ( stream -- list )
+    broadcast_stream_streams = 0x17E,
+
+    /// Get concatenated stream's remaining streams
+    /// ( stream -- list )
+    concatenated_stream_streams = 0x17F,
+
+    /// Get echo stream's input stream
+    /// ( stream -- stream )
+    echo_stream_input_stream = 0x180,
+
+    /// Get echo stream's output stream
+    /// ( stream -- stream )
+    echo_stream_output_stream = 0x181,
+
+    /// Get synonym stream's symbol
+    /// ( stream -- symbol )
+    synonym_stream_symbol = 0x182,
+
+    /// Get two-way stream's input stream
+    /// ( stream -- stream )
+    two_way_stream_input_stream = 0x183,
+
+    /// Get two-way stream's output stream
+    /// ( stream -- stream )
+    two_way_stream_output_stream = 0x184,
+
+    /// Disassemble a function and print bytecode
+    /// ( function -- nil )
+    disassemble = 0x187,
+
+    /// Read a character from a stream
+    /// ( stream -- char )
+    read_char_stream = 0x188,
+
+    /// Peek a character from a stream without consuming
+    /// ( stream -- char )
+    peek_char_stream = 0x189,
+
+    /// Open a file stream
+    /// ( filename direction -- stream )
+    open_file = 0x18A,
+
+    /// Close a stream
+    /// ( stream -- nil )
+    close_stream = 0x18B,
 
     /// Get current universal time
     /// ( -- universal-time )
@@ -1426,6 +1675,38 @@ pub const Op = enum(u16) {
     /// ( universal-time -- second minute hour date month year dow dst-p zone )
     decode_universal_time = 0x147,
 
+    /// Get directory portion of pathname as string
+    /// ( pathname -- string )
+    directory_namestring = 0x148,
+
+    /// Get file portion of pathname as string
+    /// ( pathname -- string )
+    file_namestring = 0x149,
+
+    /// Get host portion of pathname as string
+    /// ( pathname -- string )
+    host_namestring = 0x14A,
+
+    /// Check if pathname contains wildcards
+    /// ( pathname -- t/nil )
+    wild_pathname_p = 0x14B,
+
+    /// Check if stream is open (not closed)
+    /// ( stream -- t/nil )
+    open_stream_p = 0x14C,
+
+    /// Check if stream is interactive
+    /// ( stream -- t/nil )
+    interactive_stream_p = 0x14D,
+
+    /// Get stream element type
+    /// ( stream -- type-symbol )
+    stream_element_type = 0x151,
+
+    /// Get stream external format
+    /// ( stream -- format-keyword )
+    stream_external_format = 0x152,
+
     /// Get package internal symbols hash table
     /// ( pkg -- hashtable )
     package_symbols_table = 0x110,
@@ -1433,6 +1714,14 @@ pub const Op = enum(u16) {
     /// Get package exports hash table
     /// ( pkg -- hashtable )
     package_exports_table = 0x111,
+
+    /// Get list of all symbols in native package by name
+    /// ( pkg-name -- symbol-list )
+    package_symbols_list = 0x11C,
+
+    /// Get list of exported symbols in native package
+    /// ( pkg -- symbol-list )
+    package_exports_list = 0x126,
 
     /// Find symbol in package
     /// ( name pkg -- (symbol . status) | (nil . nil) )
@@ -1554,12 +1843,15 @@ pub const Op = enum(u16) {
             .get_dispatch_macro_character,
             .read_line,
             .write_line,
+            .write_string,
             .read_byte,
             .write_byte,
             .file_position,
             .file_length,
             .finish_output,
             .force_output,
+            .clear_input,
+            .clear_output,
             .sleep,
             .halt,
             .close,
@@ -1606,11 +1898,14 @@ pub const Op = enum(u16) {
             .read_char,
             .peek_char,
             .unread_char,
+            .listen,
+            .upgraded_complex_part_type,
             .boundp,
             .fboundp,
             .symbol_value,
             .symbol_function,
             .typep,
+            .subtypep,
             .abs,
             .zerop,
             .plusp,
@@ -1654,6 +1949,40 @@ pub const Op = enum(u16) {
             .rename_file,
             .probe_file,
             .file_write_date,
+            .file_author,
+            .file_string_length,
+            .packagep,
+            .symbol_package,
+            .package_name,
+            .package_nicknames,
+            .package_use_list,
+            .package_used_by_list,
+            .package_shadowing_symbols,
+            .list_all_packages,
+            .find_package,
+            .delete_package,
+            .pkg_import,
+            .pkg_unexport,
+            .pkg_shadow,
+            .pkg_shadowing_import,
+            .pkg_unuse_package,
+            .pkg_unintern,
+            .pkg_find_symbol,
+            .pkg_find_all_symbols,
+            .pkg_make_package,
+            .pkg_rename_package,
+            .apropos_list,
+            .read_char_no_hang,
+            .compute_restarts,
+            .restart_name,
+            .directory,
+            .pathname_match_p,
+            .enough_namestring,
+            .decode_float,
+            .integer_decode_float,
+            .float_radix,
+            .float_digits,
+            .elt_set,
             .get_universal_time,
             .get_internal_real_time,
             .get_internal_run_time,
@@ -1715,6 +2044,14 @@ pub const Op = enum(u16) {
             .pathname,
             .parse_namestring,
             .namestring,
+            .directory_namestring,
+            .file_namestring,
+            .host_namestring,
+            .wild_pathname_p,
+            .open_stream_p,
+            .interactive_stream_p,
+            .stream_element_type,
+            .stream_external_format,
             .merge_pathnames,
             .pathname_host,
             .pathname_device,
@@ -1726,12 +2063,34 @@ pub const Op = enum(u16) {
             .ensure_directories_exist,
             .package_symbols_table,
             .package_exports_table,
+            .package_symbols_list,
+            .package_exports_list,
             .find_symbol,
             .vec_fill_ptr,
+            .vec_set_fill_ptr,
+            .vec_set_adjustable,
             .vec_push,
             .vec_push_ext,
             .vec_pop,
             .vec_adjust,
+            // Compound stream accessors (no operand)
+            .make_echo_stream,
+            .make_synonym_stream,
+            .make_two_way_stream,
+            .make_broadcast_stream_list,
+            .make_concatenated_stream_list,
+            .broadcast_stream_streams,
+            .concatenated_stream_streams,
+            .echo_stream_input_stream,
+            .echo_stream_output_stream,
+            .synonym_stream_symbol,
+            .two_way_stream_input_stream,
+            .two_way_stream_output_stream,
+            .disassemble,
+            .read_char_stream,
+            .peek_char_stream,
+            .open_file,
+            .close_stream,
             => 0,
 
             // 1 byte operand
@@ -1754,6 +2113,10 @@ pub const Op = enum(u16) {
             .aref,
             .aset,
             .make_pathname,
+            .encode_universal_time,
+            // Compound stream constructors with count operand
+            .make_broadcast_stream,
+            .make_concatenated_stream,
             => 1,
 
             // 2 byte operand

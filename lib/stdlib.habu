@@ -162,17 +162,17 @@
 (defvar *read-eval* t)
 (defvar *read-suppress* nil)
 
-; I/O stream variables
-(defvar *standard-input* nil)  ; set by runtime
-(defvar *standard-output* nil) ; set by runtime
-(defvar *error-output* nil)    ; stderr (stub)
-(defvar *query-io* nil)        ; interactive queries (stub)
-(defvar *debug-io* nil)        ; debugger I/O (stub)
-(defvar *trace-output* nil)    ; trace output (stub)
+; I/O stream variables - set by runtime in repl.zig:createStreamGlobals
+; *standard-input*, *standard-output*, *error-output*, *query-io*,
+; *debug-io*, *trace-output*, *terminal-io* are all pre-initialized
+
+; Package system
+(defvar *package* (find-package "CL-USER"))  ; current package
 
 ; CLOS metadata
 (defvar *class-metadata* (make-hash-table :test 'eq))
-(defvar *terminal-io* nil)     ; terminal I/O (stub)
+; *terminal-io* set by runtime
+(defvar *default-pathname-defaults* nil) ; set after make-pathname is defined
 
 ; Compiler/loader variables
 (defvar *compile-file-pathname* nil)
@@ -323,18 +323,8 @@
       (logior (logand int (lognot mask))
               (logand newbyte mask)))))
 
-; decode-float - decompose float (stub - simplified)
-(defun decode-float (float)
-  (values float 0 1.0))
-
-; integer-decode-float - decompose to integers (stub)
-(defun integer-decode-float (float)
-  (values (truncate float) 0 1))
-
-; float-radix - radix of float representation
-(defun float-radix (float)
-  (declare (ignore float))
-  2)
+; decode-float, integer-decode-float, float-radix, float-digits
+; are implemented as primitives in compile.zig
 
 ; float-digits - number of digits in significand
 (defun float-digits (float)
@@ -369,15 +359,15 @@
 (defun random-state-p (obj)
   (numberp obj))
 
-; arithmetic-error-operands - get operands from error (stub)
+; arithmetic-error-operands - get operands from arithmetic-error condition
 (defun arithmetic-error-operands (condition)
-  (declare (ignore condition))
-  nil)
+  "Return the operands from an arithmetic-error condition."
+  (slot-value condition 'operands))
 
-; arithmetic-error-operation - get operation from error (stub)
+; arithmetic-error-operation - get operation from arithmetic-error condition
 (defun arithmetic-error-operation (condition)
-  (declare (ignore condition))
-  nil)
+  "Return the operation from an arithmetic-error condition."
+  (slot-value condition 'operation))
 
 ;;; ============================================================================
 ;;; Array functions
@@ -453,72 +443,158 @@
 (defun vector-pop (vector)
   (%vector-pop vector))
 
-;;; Bit vector operations (stubs - no bit vectors yet)
+;;; Bit vector operations
 
-; bit - access bit in bit vector
-(defun bit (bit-array &rest subscripts)
-  (declare (ignore bit-array subscripts))
-  0)
+; bit - access bit in bit vector (1D only)
+(defun bit (bit-array subscript)
+  "Access element of bit-array at subscript."
+  (aref bit-array subscript))
 
-; sbit - access simple bit vector
+; sbit - access simple bit vector (same as bit for simple vectors)
 (defun sbit (bit-array subscript)
-  (declare (ignore bit-array subscript))
-  0)
+  "Access element of simple bit-array at subscript."
+  (svref bit-array subscript))
+
+; Helper for bit operations - determine result array
+(defun %bit-result (arr1 res)
+  "Determine result array for bit operations."
+  (cond ((null res) (make-vector (length arr1) 0))
+        ((eq res t) arr1)
+        (t res)))
 
 ; bit-and - bitwise and on bit arrays
 (defun bit-and (bit-array1 bit-array2 &optional result-bit-array)
-  (declare (ignore bit-array1 bit-array2 result-bit-array))
-  nil)
+  "Element-wise AND of two bit arrays."
+  (let* ((result (%bit-result bit-array1 result-bit-array))
+         (len (length result))
+         (i 0))
+    (block nil
+      (loop
+        (when (>= i len) (return-from nil result))
+        (setf (aref result i) (logand (aref bit-array1 i) (aref bit-array2 i)))
+        (setq i (+ i 1))))))
 
 ; bit-ior - bitwise or on bit arrays
 (defun bit-ior (bit-array1 bit-array2 &optional result-bit-array)
-  (declare (ignore bit-array1 bit-array2 result-bit-array))
-  nil)
+  "Element-wise OR of two bit arrays."
+  (let* ((result (%bit-result bit-array1 result-bit-array))
+         (len (length result))
+         (i 0))
+    (block nil
+      (loop
+        (when (>= i len) (return-from nil result))
+        (setf (aref result i) (logior (aref bit-array1 i) (aref bit-array2 i)))
+        (setq i (+ i 1))))))
 
 ; bit-xor - bitwise xor on bit arrays
 (defun bit-xor (bit-array1 bit-array2 &optional result-bit-array)
-  (declare (ignore bit-array1 bit-array2 result-bit-array))
-  nil)
+  "Element-wise XOR of two bit arrays."
+  (let* ((result (%bit-result bit-array1 result-bit-array))
+         (len (length result))
+         (i 0))
+    (block nil
+      (loop
+        (when (>= i len) (return-from nil result))
+        (setf (aref result i) (logxor (aref bit-array1 i) (aref bit-array2 i)))
+        (setq i (+ i 1))))))
 
 ; bit-eqv - bitwise equivalence
 (defun bit-eqv (bit-array1 bit-array2 &optional result-bit-array)
-  (declare (ignore bit-array1 bit-array2 result-bit-array))
-  nil)
+  "Element-wise EQV (XNOR) of two bit arrays."
+  (let* ((result (%bit-result bit-array1 result-bit-array))
+         (len (length result))
+         (i 0))
+    (block nil
+      (loop
+        (when (>= i len) (return-from nil result))
+        (setf (aref result i) (if (= (aref bit-array1 i) (aref bit-array2 i)) 1 0))
+        (setq i (+ i 1))))))
 
 ; bit-nand - bitwise nand
 (defun bit-nand (bit-array1 bit-array2 &optional result-bit-array)
-  (declare (ignore bit-array1 bit-array2 result-bit-array))
-  nil)
+  "Element-wise NAND of two bit arrays."
+  (let* ((result (%bit-result bit-array1 result-bit-array))
+         (len (length result))
+         (i 0))
+    (block nil
+      (loop
+        (when (>= i len) (return-from nil result))
+        (setf (aref result i)
+              (if (and (= (aref bit-array1 i) 1) (= (aref bit-array2 i) 1)) 0 1))
+        (setq i (+ i 1))))))
 
 ; bit-nor - bitwise nor
 (defun bit-nor (bit-array1 bit-array2 &optional result-bit-array)
-  (declare (ignore bit-array1 bit-array2 result-bit-array))
-  nil)
+  "Element-wise NOR of two bit arrays."
+  (let* ((result (%bit-result bit-array1 result-bit-array))
+         (len (length result))
+         (i 0))
+    (block nil
+      (loop
+        (when (>= i len) (return-from nil result))
+        (setf (aref result i)
+              (if (or (= (aref bit-array1 i) 1) (= (aref bit-array2 i) 1)) 0 1))
+        (setq i (+ i 1))))))
 
-; bit-andc1 - bitwise and complement 1
+; bit-andc1 - bitwise and complement of first
 (defun bit-andc1 (bit-array1 bit-array2 &optional result-bit-array)
-  (declare (ignore bit-array1 bit-array2 result-bit-array))
-  nil)
+  "Element-wise AND of complement of first array with second."
+  (let* ((result (%bit-result bit-array1 result-bit-array))
+         (len (length result))
+         (i 0))
+    (block nil
+      (loop
+        (when (>= i len) (return-from nil result))
+        (setf (aref result i) (logand (- 1 (aref bit-array1 i)) (aref bit-array2 i)))
+        (setq i (+ i 1))))))
 
-; bit-andc2 - bitwise and complement 2
+; bit-andc2 - bitwise and complement of second
 (defun bit-andc2 (bit-array1 bit-array2 &optional result-bit-array)
-  (declare (ignore bit-array1 bit-array2 result-bit-array))
-  nil)
+  "Element-wise AND of first array with complement of second."
+  (let* ((result (%bit-result bit-array1 result-bit-array))
+         (len (length result))
+         (i 0))
+    (block nil
+      (loop
+        (when (>= i len) (return-from nil result))
+        (setf (aref result i) (logand (aref bit-array1 i) (- 1 (aref bit-array2 i))))
+        (setq i (+ i 1))))))
 
-; bit-orc1 - bitwise or complement 1
+; bit-orc1 - bitwise or complement of first
 (defun bit-orc1 (bit-array1 bit-array2 &optional result-bit-array)
-  (declare (ignore bit-array1 bit-array2 result-bit-array))
-  nil)
+  "Element-wise OR of complement of first array with second."
+  (let* ((result (%bit-result bit-array1 result-bit-array))
+         (len (length result))
+         (i 0))
+    (block nil
+      (loop
+        (when (>= i len) (return-from nil result))
+        (setf (aref result i) (logior (- 1 (aref bit-array1 i)) (aref bit-array2 i)))
+        (setq i (+ i 1))))))
 
-; bit-orc2 - bitwise or complement 2
+; bit-orc2 - bitwise or complement of second
 (defun bit-orc2 (bit-array1 bit-array2 &optional result-bit-array)
-  (declare (ignore bit-array1 bit-array2 result-bit-array))
-  nil)
+  "Element-wise OR of first array with complement of second."
+  (let* ((result (%bit-result bit-array1 result-bit-array))
+         (len (length result))
+         (i 0))
+    (block nil
+      (loop
+        (when (>= i len) (return-from nil result))
+        (setf (aref result i) (logior (aref bit-array1 i) (- 1 (aref bit-array2 i))))
+        (setq i (+ i 1))))))
 
 ; bit-not - bitwise not
 (defun bit-not (bit-array &optional result-bit-array)
-  (declare (ignore bit-array result-bit-array))
-  nil)
+  "Element-wise NOT of a bit array."
+  (let* ((result (%bit-result bit-array result-bit-array))
+         (len (length result))
+         (i 0))
+    (block nil
+      (loop
+        (when (>= i len) (return-from nil result))
+        (setf (aref result i) (- 1 (aref bit-array i)))
+        (setq i (+ i 1))))))
 
 (defun warn (msg)
   (print msg)
@@ -978,6 +1054,12 @@
                    (error "setf getf: plist must be a variable"))))
             ((eq op 'char) (list '%string-set (car rest) (car (cdr rest)) value))
             ((eq op 'slot-value) (list '%set-slot-value (car rest) (car (cdr rest)) value))
+            ((eq op 'symbol-function) (list '%set-symbol-function (car rest) value))
+            ((eq op 'symbol-value) (list '%set-symbol-value (car rest) value))
+            ((eq op 'symbol-plist) (list '%set-symbol-plist (car rest) value))
+            ((eq op 'fdefinition) (list '%set-symbol-function (car rest) value))
+            ((eq op 'get) (list 'put (car rest) (car (cdr rest)) value))
+            ((eq op 'fill-pointer) (list '%set-fill-pointer (car rest) value))
             (t (error "setf: unsupported place"))))
       (error "setf: invalid place"))))
 
@@ -1938,6 +2020,41 @@
 
 (define-condition division-by-zero (arithmetic-error) ())
 
+(define-condition floating-point-inexact (arithmetic-error) ())
+
+(define-condition floating-point-invalid-operation (arithmetic-error) ())
+
+(define-condition floating-point-overflow (arithmetic-error) ())
+
+(define-condition floating-point-underflow (arithmetic-error) ())
+
+(define-condition unbound-slot (cell-error)
+  ((instance :initform nil)))
+
+(define-condition print-not-readable (error)
+  ((object :initform nil)))
+
+(define-condition file-error (error)
+  ((pathname :initform nil)))
+
+(define-condition stream-error (error)
+  ((stream :initform nil)))
+
+(define-condition package-error (error)
+  ((package :initform nil)))
+
+(define-condition end-of-file (stream-error) ())
+
+(define-condition parse-error (error) ())
+
+(define-condition reader-error (parse-error stream-error) ())
+
+(define-condition simple-type-error (simple-condition type-error) ())
+
+(define-condition storage-condition (serious-condition) ())
+
+(define-condition style-warning (warning) ())
+
 ;; signal - signal a condition (can be handled and declined)
 ;; For now, uses throw; proper implementation would check handlers first
 (defun signal-condition (condition)
@@ -2831,30 +2948,34 @@
 
 ; write-string - write string to output
 (defun write-string (string &optional stream)
-  (declare (ignore stream))
-  (princ string)
+  (if stream
+      (%write-string stream string)
+      (princ string))
   string)
 
 ; write-line - write string followed by newline
 (defun write-line (string &optional stream)
-  (declare (ignore stream))
-  (princ string)
-  (terpri)
+  (if stream
+      (%write-line stream string)
+      (progn (princ string) (terpri)))
   string)
 
-; read-line - read line from input (placeholder)
+; read-line - read line from input
 (defun read-line (&optional stream eof-error-p eof-value)
-  (declare (ignore stream eof-error-p eof-value))
-  (let ((chars nil)
-        (c (read-char)))
-    (loop
-      (when (or (null c) (char= c #\Newline))
-        (return))
-      (push c chars)
-      (setq c (read-char nil nil nil)))
-    (if chars
-        (coerce (nreverse chars) 'string)
-        "")))
+  (declare (ignore eof-error-p))
+  (if stream
+      (let ((result (%read-line stream)))
+        (if result result eof-value))
+      (let ((chars nil)
+            (c (read-char)))
+        (loop
+          (when (or (null c) (char= c #\Newline))
+            (return))
+          (push c chars)
+          (setq c (read-char nil nil nil)))
+        (if chars
+            (coerce (nreverse chars) 'string)
+            ""))))
 
 ; y-or-n-p - prompt for yes/no answer (single char)
 (defun y-or-n-p (&optional format-string &rest args)
@@ -2907,6 +3028,14 @@
   (stream-princ object stream)
   (write-to-stream (string #\Newline) stream)
   object)
+
+; clear-input - clear any buffered input (returns nil)
+(defun clear-input (&optional (stream *standard-input*))
+  (%clear-input stream))
+
+; clear-output - discard buffered output (returns nil)
+(defun clear-output (&optional (stream *standard-output*))
+  (%clear-output stream))
 
 ; with-output-to-string - capture output to string
 ; Usage: (with-output-to-string (var) body...) -> string
@@ -3088,15 +3217,26 @@
 (defun simple-string-p (x)
   (stringp x))
 
-; bit-vector-p - no bit vectors yet
+; bit-vector-p - check if vector contains only 0 and 1
 (defun bit-vector-p (x)
-  (declare (ignore x))
-  nil)
+  "Return T if X is a bit vector (vector with all elements 0 or 1)."
+  (and (vectorp x)
+       (let ((len (length x))
+             (i 0)
+             (result t))
+         (block nil
+           (loop
+             (when (>= i len) (return-from nil result))
+             (let ((e (aref x i)))
+               (unless (or (eql e 0) (eql e 1))
+                 (setq result nil)
+                 (return-from nil nil)))
+             (setq i (+ i 1)))))))
 
-; simple-bit-vector-p - no bit vectors yet
+; simple-bit-vector-p - same as bit-vector-p (all our vectors are simple)
 (defun simple-bit-vector-p (x)
-  (declare (ignore x))
-  nil)
+  "Return T if X is a simple bit vector."
+  (bit-vector-p x))
 
 ; adjustable-array-p - no adjustable arrays yet (all static)
 (defun adjustable-array-p (x)
@@ -3998,30 +4138,58 @@
 ;;; CLOS accessor macros
 ;;; ============================================================================
 
-; with-slots - access slots as variables
-; TODO: Implement symbol-macrolet for proper setf support
-; For now, bind slots as regular variables (read-only access)
+; with-slots - access slots as variables (with setf support via symbol-macrolet)
 (defmacro with-slots (slots instance &body body)
   (let ((obj (gensym "OBJ")))
     `(let ((,obj ,instance))
-       (let ,(mapcar (lambda (slot)
-                       (let ((name (if (consp slot) (car slot) slot))
-                             (accessor (if (consp slot) (cadr slot) slot)))
-                         (list name (list 'slot-value obj (list 'quote accessor)))))
-                     slots)
+       (symbol-macrolet ,(mapcar (lambda (slot)
+                                   (let ((name (if (consp slot) (car slot) slot))
+                                         (slot-name (if (consp slot) (cadr slot) slot)))
+                                     (list name (list 'slot-value obj (list 'quote slot-name)))))
+                                 slots)
          ,@body))))
 
-; with-accessors - bind accessors to variables
-; TODO: Implement symbol-macrolet for proper setf support
+; with-accessors - bind accessors to variables (with setf support via symbol-macrolet)
 (defmacro with-accessors (accessors instance &body body)
   (let ((obj (gensym "OBJ")))
     `(let ((,obj ,instance))
-       (let ,(mapcar (lambda (spec)
-                       (let ((var (car spec))
-                             (accessor (cadr spec)))
-                         (list var (list accessor obj))))
-                     accessors)
+       (symbol-macrolet ,(mapcar (lambda (spec)
+                                   (let ((var (car spec))
+                                         (accessor (cadr spec)))
+                                     (list var (list accessor obj))))
+                                 accessors)
          ,@body))))
+
+;;; ============================================================================
+;;; Stream functions
+;;; ============================================================================
+
+; open - open a file stream
+; (open filename &key direction if-exists if-does-not-exist)
+(defun open (filename &key (direction :input) if-exists if-does-not-exist)
+  (declare (ignore if-exists if-does-not-exist))
+  (%open-file filename direction))
+
+; close - close a stream
+(defun close (stream &optional abort)
+  (declare (ignore abort))
+  (%close-stream stream))
+
+; read-char - read a character from stream (or *standard-input*)
+(defun read-char (&optional stream eof-error-p eof-value recursive-p)
+  (declare (ignore eof-error-p recursive-p))
+  (if stream
+      (let ((code (%read-char-from-stream stream)))
+        (if code (code-char code) eof-value))
+      (%read-char)))
+
+; peek-char - peek at next character from stream
+(defun peek-char (&optional peek-type stream eof-error-p eof-value recursive-p)
+  (declare (ignore eof-error-p recursive-p peek-type))
+  (if stream
+      (let ((code (%peek-char-from-stream stream)))
+        (if code (code-char code) eof-value))
+      (%peek-char)))
 
 ;;; ============================================================================
 ;;; Stream macros
@@ -4030,10 +4198,11 @@
 (defmacro with-open-file (spec &body body)
   (let ((var (car spec))
         (filespec (cadr spec))
+        (options (cddr spec))
         (stream (gensym "STREAM"))
         (abort (gensym "ABORT")))
-    `(let ((,stream ,filespec)
-           (,abort t))
+    `(let* ((,stream (open ,filespec ,@options))
+            (,abort t))
        (unwind-protect
            (progn
              (let ((,var ,stream))
@@ -4143,38 +4312,6 @@
 (defmacro untrace (&rest names)
   (declare (ignore names))
   '(progn))
-
-;;; ============================================================================
-;;; Package iteration macros
-;;; ============================================================================
-
-; do-symbols - iterate over symbols in package
-(defmacro do-symbols (spec &body body)
-  (let ((var (car spec))
-        (package (or (cadr spec) '*package*))
-        (result (caddr spec)))
-    (declare (ignore package))
-    `(progn
-       (let ((,var nil))
-         ,result))))
-
-; do-external-symbols - iterate over external symbols
-(defmacro do-external-symbols (spec &body body)
-  (let ((var (car spec))
-        (package (or (cadr spec) '*package*))
-        (result (caddr spec)))
-    (declare (ignore package))
-    `(progn
-       (let ((,var nil))
-         ,result))))
-
-; do-all-symbols - iterate over all symbols
-(defmacro do-all-symbols (spec &body body)
-  (let ((var (car spec))
-        (result (cadr spec)))
-    `(progn
-       (let ((,var nil))
-         ,result))))
 
 ; with-simple-restart - establish simple restart
 (defmacro with-simple-restart (restart-spec &body body)
@@ -4414,41 +4551,26 @@
 ;; CLOS initialization protocol
 ;; NOTE: Using defun for now - proper generic functions TODO
 
+; Simple stubs for CLOS initialization
 (defun make-instance (class &rest initargs)
-  "Create and initialize an instance of CLASS"
-  (let ((instance (apply #'allocate-instance class initargs)))
-    (apply #'initialize-instance instance initargs)))
+  "Create an instance of CLASS (stub)"
+  (declare (ignore initargs class))
+  nil)
 
 (defun allocate-instance (class &rest initargs)
-  "Allocate storage for a new instance of CLASS"
-  (declare (ignore initargs))
-  (let* ((slots (class-slots class))
-         (num-slots (length slots))
-         (vec (make-array (+ num-slots 1)))
-         (unbound (%make-unbound)))
-    (setf (aref vec 0) (class-name class))
-    (dotimes (i num-slots)
-      (setf (aref vec (+ i 1)) unbound))
-    vec))
+  "Allocate storage for an instance (stub)"
+  (declare (ignore initargs class))
+  nil)
 
 (defun initialize-instance (instance &rest initargs)
-
-  "Default method: set slots from initargs"
-  (let ((args initargs))
-    (while args
-      (let ((kw (car args))
-            (val (cadr args)))
-        (when (keywordp kw)
-          (let ((slot-name (intern (symbol-name kw))))
-            (when (slot-exists-p instance slot-name)
-              (setf (slot-value instance slot-name) val))))
-        (setq args (cddr args)))))
+  "Initialize an instance (stub)"
+  (declare (ignore initargs))
   instance)
 
 (defun reinitialize-instance (instance &rest initargs)
-
-  "Default method: update slots from initargs"
-  (apply #'initialize-instance instance initargs))
+  "Reinitialize an instance (stub)"
+  (declare (ignore initargs))
+  instance)
 
 (defun no-applicable-method (generic-function &rest args)
 
@@ -4515,3 +4637,509 @@
 (defun use-value (value &optional condition)
   "Invoke the use-value restart with value"
   (invoke-restart 'use-value value condition))
+
+; apropos - print symbols matching string
+(defun apropos (string &optional package)
+  "Print all symbols matching STRING"
+  (let ((syms (apropos-list string package)))
+    (dolist (sym syms)
+      (print sym))
+    (values)))
+
+; describe - print description of an object
+(defun describe (object &optional stream)
+  "Print a description of OBJECT to STREAM"
+  (let ((out (or stream *standard-output*)))
+    (format out "~A~%" object)
+    (format out "  Type: ~A~%" (type-of object))
+    (cond
+      ((consp object)
+       (format out "  CAR: ~A~%" (car object))
+       (format out "  CDR: ~A~%" (cdr object)))
+      ((vectorp object)
+       (format out "  Length: ~A~%" (length object)))
+      ((stringp object)
+       (format out "  Length: ~A~%" (length object)))
+      ((symbolp object)
+       (format out "  Package: ~A~%" (symbol-package object))
+       (when (boundp object)
+         (format out "  Value: ~A~%" (symbol-value object)))
+       (when (fboundp object)
+         (format out "  Function: ~A~%" (symbol-function object)))))
+    (values)))
+
+; inspect - inspect an object (non-interactive version)
+(defun inspect (object)
+  "Interactively inspect OBJECT (calls describe)"
+  (describe object))
+
+; pprint - pretty print an object
+(defun pprint (object &optional stream)
+  "Pretty print OBJECT to STREAM"
+  (terpri stream)
+  (write object stream)
+  (values))
+
+; pprint-fill - print as filling output
+(defun pprint-fill (stream list &optional colon-p at-sign-p)
+  "Print LIST elements filling lines"
+  (declare (ignore colon-p at-sign-p))
+  (format stream "~{~A~^ ~}" list))
+
+; pprint-linear - print linearly
+(defun pprint-linear (stream list &optional colon-p at-sign-p)
+  "Print LIST elements one per line"
+  (declare (ignore colon-p at-sign-p))
+  (format stream "~{~A~%~}" list))
+
+; pprint-tabular - print in tabular format
+(defun pprint-tabular (stream list &optional colon-p at-sign-p tabsize)
+  "Print LIST in tabular format"
+  (declare (ignore colon-p at-sign-p tabsize))
+  (format stream "~{~A~%~}" list))
+
+; provide - mark a module as loaded
+(defun provide (module-name)
+  "Mark MODULE-NAME as provided"
+  (let ((name (string module-name)))
+    (unless (member name *modules* :test #'string=)
+      (push name *modules*))
+    name))
+
+; require - load a module if not already loaded
+(defun require (module-name &optional pathname-list)
+  "Load MODULE-NAME if not already provided"
+  (let ((name (string module-name)))
+    (unless (member name *modules* :test #'string=)
+      (if pathname-list
+          (dolist (path pathname-list)
+            (load path))
+          (load (concatenate 'string name ".lisp")))
+      (provide name))
+    name))
+
+; macro-function - get macro expansion function
+(defun macro-function (symbol &optional env)
+  "Return the macro function for SYMBOL, or NIL"
+  (declare (ignore env))
+  ;; In our implementation, check if symbol has macro property
+  (get symbol 'macro-function))
+
+; documentation - get documentation string
+(defun documentation (x doc-type)
+  "Return documentation string for X of type DOC-TYPE"
+  (declare (ignore doc-type))
+  (if (symbolp x)
+      (get x 'documentation)
+      nil))
+
+; (setf documentation) - set documentation string
+(defun set-documentation (x doc-type value)
+  "Set documentation string for X of type DOC-TYPE"
+  (declare (ignore doc-type))
+  (when (symbolp x)
+    (setf (get x 'documentation) value))
+  value)
+
+; dribble - toggle output recording (stub)
+(defun dribble (&optional pathname)
+  "Start or stop recording of terminal I/O to a file"
+  (declare (ignore pathname))
+  nil)
+
+; ed - invoke editor (stub)
+(defun ed (&optional x)
+  "Invoke text editor on X"
+  (declare (ignore x))
+  (format t "Editor not available~%")
+  nil)
+
+; invoke-debugger - enter debugger
+(defun invoke-debugger (condition)
+  "Invoke the debugger on CONDITION"
+  (format *error-output* "~%Debugger invoked: ~A~%" condition)
+  (when *debugger-hook*
+    (let ((hook *debugger-hook*))
+      (setf *debugger-hook* nil)
+      (funcall hook condition hook)))
+  (error "Unhandled condition in debugger"))
+
+; print-object - CLOS print method (simplified)
+(defun print-object (object stream)
+  "Print OBJECT to STREAM (default method)"
+  (write object :stream stream)
+  object)
+
+; compiler-macro-function - get compiler macro
+(defun compiler-macro-function (name &optional env)
+  "Return the compiler-macro function for NAME, or NIL"
+  (declare (ignore name env))
+  nil)
+
+; read-sequence - read into sequence (stub)
+(defun read-sequence (sequence stream &key (start 0) end)
+  "Read elements into SEQUENCE from STREAM"
+  (declare (ignore end))
+  (let ((pos start))
+    (if (stringp sequence)
+        (dotimes (i (- (length sequence) start))
+          (let ((ch (read-char stream nil nil)))
+            (if ch
+                (progn
+                  (setf (char sequence pos) ch)
+                  (incf pos))
+                (return pos))))
+        pos)
+    pos))
+
+; write-sequence - write from sequence (stub)
+(defun write-sequence (sequence stream &key (start 0) end)
+  "Write elements from SEQUENCE to STREAM"
+  (let ((end-pos (or end (length sequence))))
+    (if (stringp sequence)
+        (do ((i start (1+ i)))
+            ((>= i end-pos))
+          (write-char (char sequence i) stream))
+        (do ((i start (1+ i)))
+            ((>= i end-pos))
+          (write (elt sequence i) stream))))
+  sequence)
+
+; pprint-indent - set indentation (stub)
+(defun pprint-indent (relative-to n &optional stream)
+  "Set indentation for pretty printing"
+  (declare (ignore relative-to n stream))
+  nil)
+
+; pprint-newline - conditional newline (stub)
+(defun pprint-newline (kind &optional stream)
+  "Output conditional newline"
+  (declare (ignore kind))
+  (terpri stream)
+  nil)
+
+; pprint-tab - tabulation (stub)
+(defun pprint-tab (kind colnum colinc &optional stream)
+  "Move to column for pretty printing"
+  (declare (ignore kind colnum colinc stream))
+  nil)
+
+; copy-pprint-dispatch - copy dispatch table (stub)
+(defun copy-pprint-dispatch (&optional table)
+  "Copy the pprint dispatch table"
+  (declare (ignore table))
+  nil)
+
+; pprint-dispatch - get dispatch function (stub)
+(defun pprint-dispatch (object &optional table)
+  "Return the pprint dispatch function for OBJECT"
+  (declare (ignore table))
+  (values #'write nil))
+
+; set-pprint-dispatch - set dispatch function (stub)
+(defun set-pprint-dispatch (type-specifier function &optional priority table)
+  "Set the pprint dispatch function for TYPE-SPECIFIER"
+  (declare (ignore type-specifier function priority table))
+  nil)
+
+; copy-readtable - copy readtable
+(defun copy-readtable (&optional from-readtable to-readtable)
+  "Copy FROM-READTABLE to TO-READTABLE"
+  (declare (ignore to-readtable))
+  (or from-readtable *readtable*))
+
+; make-dispatch-macro-character - make char dispatch (stub)
+(defun make-dispatch-macro-character (char &optional non-terminating-p readtable)
+  "Make CHAR a dispatch macro character"
+  (declare (ignore char non-terminating-p readtable))
+  t)
+
+; readtable-case - get readtable case
+(defun readtable-case (readtable)
+  "Return the case of READTABLE"
+  (declare (ignore readtable))
+  :upcase)
+
+; set-syntax-from-char - copy character syntax (stub)
+(defun set-syntax-from-char (to-char from-char &optional to-readtable from-readtable)
+  "Copy syntax from FROM-CHAR to TO-CHAR"
+  (declare (ignore to-char from-char to-readtable from-readtable))
+  t)
+
+; translate-pathname - translate pathname (stub)
+(defun translate-pathname (source from-wildcard to-wildcard &key)
+  "Translate SOURCE pathname using wildcards"
+  (declare (ignore from-wildcard to-wildcard))
+  source)
+
+; translate-logical-pathname - translate logical pathname (stub)
+(defun translate-logical-pathname (pathname &key)
+  "Translate logical pathname to physical"
+  pathname)
+
+; logical-pathname-translations - get translations (stub)
+(defun logical-pathname-translations (host)
+  "Return translations for HOST"
+  (declare (ignore host))
+  nil)
+
+; (setf logical-pathname-translations) - set translations (stub)
+(defun set-logical-pathname-translations (host translations)
+  "Set translations for HOST"
+  (declare (ignore host translations))
+  nil)
+
+; logical-pathname - coerce to logical pathname (stub)
+(defun logical-pathname (pathspec)
+  "Coerce PATHSPEC to a logical pathname"
+  (if (pathnamep pathspec)
+      pathspec
+      (pathname pathspec)))
+
+; make-broadcast-stream - create broadcast stream
+(defun make-broadcast-stream (&rest streams)
+  "Create a broadcast stream"
+  (%make-broadcast-stream-list streams))
+
+; broadcast-stream-streams - primitive (defined in compiler/vm)
+
+; make-concatenated-stream - create concatenated stream
+(defun make-concatenated-stream (&rest streams)
+  "Create a concatenated input stream"
+  (%make-concatenated-stream-list streams))
+
+; concatenated-stream-streams - primitive (defined in compiler/vm)
+
+; make-echo-stream - create echo stream
+(defun make-echo-stream (input-stream output-stream)
+  "Create an echo stream"
+  (%make-echo-stream input-stream output-stream))
+
+; echo-stream-input-stream - primitive (defined in compiler/vm)
+; echo-stream-output-stream - primitive (defined in compiler/vm)
+
+; make-synonym-stream - create synonym stream
+(defun make-synonym-stream (symbol)
+  "Create a synonym stream for SYMBOL"
+  (%make-synonym-stream symbol))
+
+; synonym-stream-symbol is a primitive (defined in compiler/vm)
+
+; make-two-way-stream - create two-way stream
+(defun make-two-way-stream (input-stream output-stream)
+  "Create a two-way stream"
+  (%make-two-way-stream input-stream output-stream))
+
+; two-way-stream-input-stream - primitive (defined in compiler/vm)
+; two-way-stream-output-stream - primitive (defined in compiler/vm)
+
+; file-error-pathname - get pathname from file-error
+(defun file-error-pathname (condition)
+  "Return the pathname associated with the condition"
+  (slot-value condition 'pathname))
+
+; stream-error-stream - get stream from stream-error
+(defun stream-error-stream (condition)
+  "Return the stream associated with the condition"
+  (slot-value condition 'stream))
+
+; package-error-package - get package from package-error
+(defun package-error-package (condition)
+  "Return the package associated with the condition"
+  (slot-value condition 'package))
+
+; compile - compile function (stub)
+(defun compile (name &optional definition)
+  "Compile NAME as a function"
+  (declare (ignore definition))
+  name) ; Stub: habu is already compiled
+
+; compile-file - compile file (stub)
+(defun compile-file (input-file &key output-file verbose print external-format)
+  "Compile INPUT-FILE"
+  (declare (ignore output-file verbose print external-format))
+  (load input-file)
+  (values (pathname input-file) nil nil))
+
+; compile-file-pathname - get output pathname (stub)
+(defun compile-file-pathname (input-file &key output-file &allow-other-keys)
+  "Return the pathname that compile-file would write"
+  (or output-file (make-pathname :type "fasl" :defaults input-file)))
+
+; disassemble - show bytecode disassembly
+(defun disassemble (fn)
+  "Display the disassembly of FN"
+  (format t "~&Disassembly of ~A:~%" fn)
+  (%disassemble fn))
+
+; read-delimited-list - read until delimiter (stub)
+(defun read-delimited-list (char &optional stream recursive-p)
+  "Read objects until CHAR is encountered"
+  (declare (ignore char recursive-p))
+  (let ((result nil))
+    (loop
+      (let ((obj (read stream nil 'eof)))
+        (when (eq obj 'eof)
+          (return (nreverse result)))
+        (push obj result)))))
+
+; read-preserving-whitespace - read without consuming trailing whitespace
+(defun read-preserving-whitespace (&optional stream eof-error-p eof-value recursive-p)
+  "Read an object, preserving trailing whitespace"
+  ;; In our simple implementation, same as read
+  (read stream eof-error-p eof-value recursive-p))
+
+; invoke-restart-interactively - invoke restart with user input (stub)
+(defun invoke-restart-interactively (restart)
+  "Invoke RESTART, prompting for any required arguments"
+  (invoke-restart restart))
+
+; cell-error-name - get name from cell-error
+(defun cell-error-name (condition)
+  "Return the name associated with the cell-error"
+  (slot-value condition 'name))
+
+; type-error-datum - get datum from type-error
+(defun type-error-datum (condition)
+  "Return the datum from the type-error"
+  (slot-value condition 'datum))
+
+; type-error-expected-type - get expected type
+(defun type-error-expected-type (condition)
+  "Return the expected type from the type-error"
+  (slot-value condition 'expected-type))
+
+; unbound-slot-instance - get instance from unbound-slot error
+(defun unbound-slot-instance (condition)
+  "Return the instance with the unbound slot"
+  (slot-value condition 'instance))
+
+; print-not-readable-object - get object from print-not-readable error
+(defun print-not-readable-object (condition)
+  "Return the object that is not readable"
+  (slot-value condition 'object))
+
+; ensure-generic-function - get or create GF (stub)
+(defun ensure-generic-function (function-name &key lambda-list &allow-other-keys)
+  "Ensure that a generic function exists for FUNCTION-NAME"
+  (declare (ignore lambda-list))
+  (if (fboundp function-name)
+      (symbol-function function-name)
+      nil)) ; Stub: cannot dynamically create functions yet
+
+; find-method - find method in GF (stub)
+(defun find-method (gf qualifiers specializers &optional errorp)
+  "Find a method in GF with given QUALIFIERS and SPECIALIZERS"
+  (declare (ignore gf qualifiers specializers errorp))
+  nil)
+
+; remove-method - remove method from GF (stub)
+(defun remove-method (gf method)
+  "Remove METHOD from GF"
+  (declare (ignore method))
+  gf)
+
+; compute-applicable-methods - find applicable methods (stub)
+(defun compute-applicable-methods (gf args)
+  "Compute the applicable methods for ARGS"
+  (declare (ignore gf args))
+  nil)
+
+; function-keywords - get keyword params (stub)
+(defun function-keywords (method)
+  "Return the keyword parameters accepted by METHOD"
+  (declare (ignore method))
+  (values nil nil))
+
+; make-instances-obsolete - mark class instances obsolete (stub)
+(defun make-instances-obsolete (class)
+  "Make instances of CLASS obsolete"
+  class)
+
+; make-load-form - make form to reconstruct object (stub)
+(defun make-load-form (object &optional environment)
+  "Return forms to reconstruct OBJECT"
+  (declare (ignore environment))
+  `(error "Cannot reconstruct ~A" ,object))
+
+; make-load-form-saving-slots - make form saving slots (stub)
+(defun make-load-form-saving-slots (object &key slot-names environment)
+  "Return forms to reconstruct OBJECT saving slots"
+  (declare (ignore slot-names environment))
+  `(error "Cannot reconstruct ~A" ,object))
+
+; no-applicable-method - called when no methods apply (stub)
+(defun no-applicable-method (gf &rest args)
+  "Called when no methods are applicable"
+  (declare (ignore args))
+  (error "No applicable method for ~A" gf))
+
+; no-next-method - called when no next method (stub)
+(defun no-next-method (gf method &rest args)
+  "Called when there is no next method"
+  (declare (ignore method args))
+  (error "No next method for ~A" gf))
+
+; shared-initialize - initialize shared slots (stub)
+(defun shared-initialize (instance slot-names &rest initargs)
+  "Initialize the shared slots of INSTANCE"
+  (declare (ignore slot-names initargs))
+  instance)
+
+; slot-missing - called when slot is missing (stub)
+(defun slot-missing (class object slot-name operation &optional new-value)
+  "Called when a slot is missing"
+  (declare (ignore class object operation new-value))
+  (error "Missing slot ~A" slot-name))
+
+; slot-unbound - called when slot is unbound (stub)
+(defun slot-unbound (class instance slot-name)
+  "Called when a slot is unbound"
+  (declare (ignore class instance))
+  (error "Unbound slot ~A" slot-name))
+
+; update-instance-for-redefined-class - update after redef (stub)
+(defun update-instance-for-redefined-class (instance added-slots discarded-slots property-list &rest initargs)
+  "Update INSTANCE after its class is redefined"
+  (declare (ignore added-slots discarded-slots property-list initargs))
+  instance)
+
+; subtypep is now a primitive
+
+; define-compiler-macro - define compiler macro (stub)
+(defmacro define-compiler-macro (name lambda-list &body body)
+  "Define a compiler macro (not implemented)"
+  (declare (ignore lambda-list body))
+  `',name)
+
+; define-method-combination - define method combination (stub)
+(defmacro define-method-combination (name &rest options)
+  "Define a method combination (not implemented)"
+  (declare (ignore options))
+  `',name)
+
+; define-setf-expander - define setf expansion (stub)
+(defmacro define-setf-expander (access-fn lambda-list &body body)
+  "Define a setf expander (not implemented)"
+  (declare (ignore lambda-list body))
+  `',access-fn)
+
+; define-symbol-macro - define symbol macro (stub)
+(defmacro define-symbol-macro (symbol expansion)
+  "Define a symbol macro (not implemented)"
+  (declare (ignore expansion))
+  `',symbol)
+
+; pprint-exit-if-list-exhausted - exit pprint block (stub)
+(defmacro pprint-exit-if-list-exhausted ()
+  "Exit if list is exhausted in pprint-logical-block"
+  nil)
+
+; pprint-logical-block - logical block for pprint (stub)
+; pprint-logical-block and pprint-pop defined earlier
+
+; restart-bind - bind restart handlers (stub)
+(defmacro restart-bind (bindings &body body)
+  "Establish restart bindings"
+  (declare (ignore bindings))
+  `(progn ,@body))

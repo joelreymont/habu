@@ -70,6 +70,7 @@ pub const Builtins = struct {
     defvar: Value,
     defun: Value,
     setq: Value,
+    setf: Value,
 
     // Sequencing
     progn: Value,
@@ -252,9 +253,11 @@ pub const Builtins = struct {
     @"char=": Value,
     @"char<": Value,
     @"char>": Value,
-    @"read-char": Value,
-    @"peek-char": Value,
+    @"%read-char": Value,
+    @"%peek-char": Value,
     @"unread-char": Value,
+    listen: Value,
+    @"upgraded-complex-part-type": Value,
     read: Value,
     @"read-from-string": Value,
     load: Value,
@@ -267,6 +270,7 @@ pub const Builtins = struct {
     @"symbol-value": Value,
     @"symbol-function": Value,
     typep: Value,
+    subtypep: Value,
     @"type-of": Value,
     intern: Value,
     unintern: Value,
@@ -311,10 +315,15 @@ pub const Builtins = struct {
     floor: Value,
     ceiling: Value,
     round: Value,
+    @"decode-float": Value,
+    @"integer-decode-float": Value,
+    @"float-radix": Value,
+    @"float-digits": Value,
 
     // Primitives - Vector operations (CL names)
     aref: Value, // CL: array element access
     svref: Value, // CL: simple-vector element access
+    elt: Value, // CL: generic sequence element access
     @"%svset": Value, // internal: (setf (svref ...)) expands to this
     @"%aset": Value, // internal: (setf (aref ...)) expands to this
     @"%set-slot-value": Value, // internal: (setf (slot-value ...)) expands to this
@@ -330,12 +339,15 @@ pub const Builtins = struct {
     close: Value,
     @"%read-line": Value,
     @"%write-line": Value,
+    @"%write-string": Value,
     @"%read-byte": Value,
     @"%write-byte": Value,
     @"%file-position": Value,
     @"%file-length": Value,
     @"%finish-output": Value,
     @"%force-output": Value,
+    @"%clear-input": Value,
+    @"%clear-output": Value,
     @"%sleep": Value,
 
     @"vector-length": Value,
@@ -343,6 +355,8 @@ pub const Builtins = struct {
     vector: Value,
     @"make-array": Value, // CL: multi-dimensional array creation
     @"%fill-pointer": Value,
+    @"%set-fill-pointer": Value,
+    @"%set-adjustable": Value,
     @"%vector-push": Value,
     @"%vector-push-extend": Value,
     @"%vector-pop": Value,
@@ -410,6 +424,8 @@ pub const Builtins = struct {
     @"rename-file": Value,
     @"probe-file": Value,
     @"file-write-date": Value,
+    @"file-author": Value,
+    @"file-string-length": Value,
     @"get-universal-time": Value,
     @"get-internal-real-time": Value,
     @"get-internal-run-time": Value,
@@ -427,6 +443,7 @@ pub const Builtins = struct {
     @"short-site-name": Value,
     @"long-site-name": Value,
     @"user-homedir-pathname": Value,
+    @"%make-pathname": Value,
 
     // Primitives - String construction
     @"make-string": Value,
@@ -463,10 +480,34 @@ pub const Builtins = struct {
     streamp: Value,
     @"input-stream-p": Value,
     @"output-stream-p": Value,
+    @"open-stream-p": Value,
+    @"interactive-stream-p": Value,
+    @"stream-element-type": Value,
+    @"stream-external-format": Value,
     @"make-string-input-stream": Value,
     @"make-string-output-stream": Value,
     @"get-output-stream-string": Value,
     @"write-to-stream": Value,
+    // Compound streams
+    @"broadcast-stream-streams": Value,
+    @"concatenated-stream-streams": Value,
+    @"echo-stream-input-stream": Value,
+    @"echo-stream-output-stream": Value,
+    @"synonym-stream-symbol": Value,
+    @"two-way-stream-input-stream": Value,
+    @"two-way-stream-output-stream": Value,
+    @"%make-synonym-stream": Value,
+    @"%make-echo-stream": Value,
+    @"%make-two-way-stream": Value,
+    @"%make-broadcast-stream": Value,
+    @"%make-concatenated-stream": Value,
+    @"%make-broadcast-stream-list": Value,
+    @"%make-concatenated-stream-list": Value,
+    @"%disassemble": Value,
+    @"%read-char-from-stream": Value,
+    @"%peek-char-from-stream": Value,
+    @"%open-file": Value,
+    @"%close-stream": Value,
 
     // Pathname primitives
     @"pathname-host": Value,
@@ -481,14 +522,41 @@ pub const Builtins = struct {
     @"parse-namestring": Value,
     namestring: Value,
     @"merge-pathnames": Value,
+    @"directory-namestring": Value,
+    @"file-namestring": Value,
+    @"host-namestring": Value,
+    @"wild-pathname-p": Value,
     @"package-symbols-table": Value,
     @"package-exports-table": Value,
+    @"%package-symbols-list": Value,
+    @"%package-exports-list": Value,
     @"package-name": Value,
     @"package-nicknames": Value,
     @"package-use-list": Value,
     @"package-used-by-list": Value,
     @"package-shadowing-symbols": Value,
     packagep: Value,
+    @"symbol-package": Value,
+    @"list-all-packages": Value,
+    @"find-package": Value,
+    @"delete-package": Value,
+    @"%import": Value,
+    @"%unexport": Value,
+    @"%shadow": Value,
+    @"%shadowing-import": Value,
+    @"%unuse-package": Value,
+    @"%unintern": Value,
+    @"%find-symbol": Value,
+    @"find-all-symbols": Value,
+    @"apropos-list": Value,
+    @"read-char-no-hang": Value,
+    @"compute-restarts": Value,
+    @"restart-name": Value,
+    directory: Value,
+    @"pathname-match-p": Value,
+    @"enough-namestring": Value,
+    @"%make-package": Value,
+    @"%rename-package": Value,
 
     // Type name symbols (for type dispatch)
     ty_fixnum: Value,
@@ -529,6 +597,8 @@ pub const Builtins = struct {
     @"&optional": Value,
     @"&key": Value,
     @"&aux": Value,
+    @"&whole": Value,
+    @"&environment": Value,
 
     // Special dispatch symbols
     _: Value,
@@ -582,6 +652,7 @@ pub const Builtins = struct {
             .defvar = try heap.intern("defvar"),
             .defun = try heap.intern("defun"),
             .setq = try heap.intern("setq"),
+            .setf = try heap.intern("setf"),
             .progn = try heap.intern("progn"),
             .begin = try heap.intern("begin"),
             .@"while" = try heap.intern("while"),
@@ -741,9 +812,11 @@ pub const Builtins = struct {
             .@"char=" = try heap.intern("char="),
             .@"char<" = try heap.intern("char<"),
             .@"char>" = try heap.intern("char>"),
-            .@"read-char" = try heap.intern("read-char"),
-            .@"peek-char" = try heap.intern("peek-char"),
+            .@"%read-char" = try heap.intern("%read-char"),
+            .@"%peek-char" = try heap.intern("%peek-char"),
             .@"unread-char" = try heap.intern("unread-char"),
+            .listen = try heap.intern("listen"),
+            .@"upgraded-complex-part-type" = try heap.intern("upgraded-complex-part-type"),
             .read = try heap.intern("read"),
             .@"read-from-string" = try heap.intern("read-from-string"),
             .load = try heap.intern("load"),
@@ -755,6 +828,7 @@ pub const Builtins = struct {
             .@"symbol-value" = try heap.intern("symbol-value"),
             .@"symbol-function" = try heap.intern("symbol-function"),
             .typep = try heap.intern("typep"),
+            .subtypep = try heap.intern("subtypep"),
             .@"type-of" = try heap.intern("type-of"),
             .intern = try heap.intern("intern"),
             .unintern = try heap.intern("unintern"),
@@ -797,9 +871,14 @@ pub const Builtins = struct {
             .floor = try heap.intern("floor"),
             .ceiling = try heap.intern("ceiling"),
             .round = try heap.intern("round"),
+            .@"decode-float" = try heap.intern("decode-float"),
+            .@"integer-decode-float" = try heap.intern("integer-decode-float"),
+            .@"float-radix" = try heap.intern("float-radix"),
+            .@"float-digits" = try heap.intern("float-digits"),
             // Primitives - Vector operations (CL names)
             .aref = try heap.intern("aref"),
             .svref = try heap.intern("svref"),
+            .elt = try heap.intern("elt"),
             .@"%svset" = try heap.intern("%svset"),
             .@"%aset" = try heap.intern("%aset"),
             .@"%set-slot-value" = try heap.intern("%set-slot-value"),
@@ -814,18 +893,23 @@ pub const Builtins = struct {
             .close = try heap.intern("close"),
             .@"%read-line" = try heap.intern("%read-line"),
             .@"%write-line" = try heap.intern("%write-line"),
+            .@"%write-string" = try heap.intern("%write-string"),
             .@"%read-byte" = try heap.intern("%read-byte"),
             .@"%write-byte" = try heap.intern("%write-byte"),
             .@"%file-position" = try heap.intern("%file-position"),
             .@"%file-length" = try heap.intern("%file-length"),
             .@"%finish-output" = try heap.intern("%finish-output"),
             .@"%force-output" = try heap.intern("%force-output"),
+            .@"%clear-input" = try heap.intern("%clear-input"),
+            .@"%clear-output" = try heap.intern("%clear-output"),
             .@"%sleep" = try heap.intern("%sleep"),
             .@"vector-length" = try heap.intern("vector-length"),
             .@"make-vector" = try heap.intern("make-vector"),
             .vector = try heap.intern("vector"),
             .@"make-array" = try heap.intern("make-array"),
             .@"%fill-pointer" = try heap.intern("%fill-pointer"),
+            .@"%set-fill-pointer" = try heap.intern("%set-fill-pointer"),
+            .@"%set-adjustable" = try heap.intern("%set-adjustable"),
             .@"%vector-push" = try heap.intern("%vector-push"),
             .@"%vector-push-extend" = try heap.intern("%vector-push-extend"),
             .@"%vector-pop" = try heap.intern("%vector-pop"),
@@ -886,6 +970,8 @@ pub const Builtins = struct {
             .@"rename-file" = try heap.intern("rename-file"),
             .@"probe-file" = try heap.intern("probe-file"),
             .@"file-write-date" = try heap.intern("file-write-date"),
+            .@"file-author" = try heap.intern("file-author"),
+            .@"file-string-length" = try heap.intern("file-string-length"),
             .@"get-universal-time" = try heap.intern("get-universal-time"),
             .@"get-internal-real-time" = try heap.intern("get-internal-real-time"),
             .@"get-internal-run-time" = try heap.intern("get-internal-run-time"),
@@ -903,6 +989,7 @@ pub const Builtins = struct {
             .@"short-site-name" = try heap.intern("short-site-name"),
             .@"long-site-name" = try heap.intern("long-site-name"),
             .@"user-homedir-pathname" = try heap.intern("user-homedir-pathname"),
+            .@"%make-pathname" = try heap.intern("%make-pathname"),
             // Primitives - String construction
             .@"make-string" = try heap.intern("make-string"),
             .@"string-to-list" = try heap.intern("string-to-list"),
@@ -937,10 +1024,34 @@ pub const Builtins = struct {
             .streamp = try heap.intern("streamp"),
             .@"input-stream-p" = try heap.intern("input-stream-p"),
             .@"output-stream-p" = try heap.intern("output-stream-p"),
+            .@"open-stream-p" = try heap.intern("open-stream-p"),
+            .@"interactive-stream-p" = try heap.intern("interactive-stream-p"),
+            .@"stream-element-type" = try heap.intern("stream-element-type"),
+            .@"stream-external-format" = try heap.intern("stream-external-format"),
             .@"make-string-input-stream" = try heap.intern("make-string-input-stream"),
             .@"make-string-output-stream" = try heap.intern("make-string-output-stream"),
             .@"get-output-stream-string" = try heap.intern("get-output-stream-string"),
             .@"write-to-stream" = try heap.intern("write-to-stream"),
+            // Compound streams
+            .@"broadcast-stream-streams" = try heap.intern("broadcast-stream-streams"),
+            .@"concatenated-stream-streams" = try heap.intern("concatenated-stream-streams"),
+            .@"echo-stream-input-stream" = try heap.intern("echo-stream-input-stream"),
+            .@"echo-stream-output-stream" = try heap.intern("echo-stream-output-stream"),
+            .@"synonym-stream-symbol" = try heap.intern("synonym-stream-symbol"),
+            .@"two-way-stream-input-stream" = try heap.intern("two-way-stream-input-stream"),
+            .@"two-way-stream-output-stream" = try heap.intern("two-way-stream-output-stream"),
+            .@"%make-synonym-stream" = try heap.intern("%make-synonym-stream"),
+            .@"%make-echo-stream" = try heap.intern("%make-echo-stream"),
+            .@"%make-two-way-stream" = try heap.intern("%make-two-way-stream"),
+            .@"%make-broadcast-stream" = try heap.intern("%make-broadcast-stream"),
+            .@"%make-concatenated-stream" = try heap.intern("%make-concatenated-stream"),
+            .@"%make-broadcast-stream-list" = try heap.intern("%make-broadcast-stream-list"),
+            .@"%make-concatenated-stream-list" = try heap.intern("%make-concatenated-stream-list"),
+            .@"%disassemble" = try heap.intern("%disassemble"),
+            .@"%read-char-from-stream" = try heap.intern("%read-char-from-stream"),
+            .@"%peek-char-from-stream" = try heap.intern("%peek-char-from-stream"),
+            .@"%open-file" = try heap.intern("%open-file"),
+            .@"%close-stream" = try heap.intern("%close-stream"),
             // Pathname primitives
             .@"pathname-host" = try heap.intern("pathname-host"),
             .@"pathname-device" = try heap.intern("pathname-device"),
@@ -954,14 +1065,41 @@ pub const Builtins = struct {
             .@"parse-namestring" = try heap.intern("parse-namestring"),
             .namestring = try heap.intern("namestring"),
             .@"merge-pathnames" = try heap.intern("merge-pathnames"),
+            .@"directory-namestring" = try heap.intern("directory-namestring"),
+            .@"file-namestring" = try heap.intern("file-namestring"),
+            .@"host-namestring" = try heap.intern("host-namestring"),
+            .@"wild-pathname-p" = try heap.intern("wild-pathname-p"),
             .@"package-symbols-table" = try heap.intern("package-symbols-table"),
             .@"package-exports-table" = try heap.intern("package-exports-table"),
+            .@"%package-symbols-list" = try heap.intern("%package-symbols-list"),
+            .@"%package-exports-list" = try heap.intern("%package-exports-list"),
             .@"package-name" = try heap.intern("package-name"),
             .@"package-nicknames" = try heap.intern("package-nicknames"),
             .@"package-use-list" = try heap.intern("package-use-list"),
             .@"package-used-by-list" = try heap.intern("package-used-by-list"),
             .@"package-shadowing-symbols" = try heap.intern("package-shadowing-symbols"),
             .packagep = try heap.intern("packagep"),
+            .@"symbol-package" = try heap.intern("symbol-package"),
+            .@"list-all-packages" = try heap.intern("list-all-packages"),
+            .@"find-package" = try heap.intern("find-package"),
+            .@"delete-package" = try heap.intern("delete-package"),
+            .@"%import" = try heap.intern("%import"),
+            .@"%unexport" = try heap.intern("%unexport"),
+            .@"%shadow" = try heap.intern("%shadow"),
+            .@"%shadowing-import" = try heap.intern("%shadowing-import"),
+            .@"%unuse-package" = try heap.intern("%unuse-package"),
+            .@"%unintern" = try heap.intern("%unintern"),
+            .@"%find-symbol" = try heap.intern("%find-symbol"),
+            .@"find-all-symbols" = try heap.intern("find-all-symbols"),
+            .@"apropos-list" = try heap.intern("apropos-list"),
+            .@"read-char-no-hang" = try heap.intern("read-char-no-hang"),
+            .@"compute-restarts" = try heap.intern("compute-restarts"),
+            .@"restart-name" = try heap.intern("restart-name"),
+            .directory = try heap.intern("directory"),
+            .@"pathname-match-p" = try heap.intern("pathname-match-p"),
+            .@"enough-namestring" = try heap.intern("enough-namestring"),
+            .@"%make-package" = try heap.intern("%make-package"),
+            .@"%rename-package" = try heap.intern("%rename-package"),
             // Type name symbols
             .ty_fixnum = try heap.intern("fixnum"),
             .ty_integer = try heap.intern("integer"),
@@ -999,6 +1137,8 @@ pub const Builtins = struct {
             .@"&optional" = try heap.intern("&optional"),
             .@"&key" = try heap.intern("&key"),
             .@"&aux" = try heap.intern("&aux"),
+            .@"&whole" = try heap.intern("&whole"),
+            .@"&environment" = try heap.intern("&environment"),
             // Special dispatch symbols
             ._ = try heap.intern("_"),
             .@"else" = try heap.intern("else"),
@@ -1054,7 +1194,8 @@ pub const Builtins = struct {
         "null", "not", "characterp", "floatp", "listp", "atom",
         // Character operations
         "char-code", "code-char", "char=", "char<", "char>",
-        "read-char", "peek-char", "read", "read-from-string", "load", "unread-char",
+        "%read-char", "%peek-char", "read", "read-from-string", "load", "unread-char", "listen",
+        "upgraded-complex-part-type",
         "eval", "gensym", "macroexpand", "macroexpand-1",
         // Symbol operations
         "boundp", "fboundp", "symbol-value", "symbol-function",
@@ -1082,7 +1223,7 @@ pub const Builtins = struct {
         "logbitp", "logcount", "integer-length",
         // File I/O
         "read-file", "write-file", "delete-file", "rename-file",
-        "probe-file", "file-write-date",
+        "probe-file", "file-write-date", "file-author", "file-string-length",
         "get-universal-time", "get-internal-real-time", "get-internal-run-time",
         "get-decoded-time", "decode-universal-time", "encode-universal-time", "room",
         "lisp-implementation-type", "lisp-implementation-version",
@@ -1100,7 +1241,8 @@ pub const Builtins = struct {
         "rationalp", "complexp", "make-complex", "real-part", "imag-part",
         "numerator", "denominator",
         // Streams
-        "streamp", "input-stream-p", "output-stream-p",
+        "streamp", "input-stream-p", "output-stream-p", "open-stream-p", "interactive-stream-p",
+        "stream-element-type", "stream-external-format",
         "make-string-input-stream", "make-string-output-stream",
         "get-output-stream-string", "write-to-stream",
         // Pathname primitives
@@ -1108,6 +1250,7 @@ pub const Builtins = struct {
         "pathname-name", "pathname-type", "pathname-version",
         "truename", "ensure-directories-exist",
         "pathname", "parse-namestring", "namestring", "merge-pathnames",
+        "directory-namestring", "file-namestring", "host-namestring", "wild-pathname-p",
         // Also callable
         "funcall", "apply", "values", "values-list",
     };
@@ -1421,6 +1564,9 @@ pub const Compiler = struct {
     /// Macro table: maps macro name to closure (expander function)
     /// When a form (macro-name args...) is compiled, the macro is expanded first
     macro_table: std.AutoHashMap(Value, Value),
+    /// Symbol macro table: maps symbol to expansion form
+    /// When a symbol is compiled, if in this table, the expansion is compiled instead
+    symbol_macros: std.AutoHashMap(Value, Value),
     /// Optional VM for compile-time macro expansion
     vm: ?*Vm,
     /// Heap for creating runtime values during macro expansion
@@ -1481,6 +1627,7 @@ pub const Compiler = struct {
             .struct_types = std.StringHashMap(*const types.Type).init(allocator),
             .struct_predicates = std.StringHashMap(*const types.Type).init(allocator),
             .macro_table = std.AutoHashMap(Value, Value).init(allocator),
+            .symbol_macros = std.AutoHashMap(Value, Value).init(allocator),
             .vm = vm,
             .heap = vm.heap,
             .class_metadata = std.StringHashMap([]const SlotSpec).init(allocator),
@@ -1512,6 +1659,7 @@ pub const Compiler = struct {
             .struct_types = std.StringHashMap(*const types.Type).init(allocator),
             .struct_predicates = std.StringHashMap(*const types.Type).init(allocator),
             .macro_table = std.AutoHashMap(Value, Value).init(allocator),
+            .symbol_macros = std.AutoHashMap(Value, Value).init(allocator),
             .vm = vm,
             .heap = vm.heap,
             .class_metadata = std.StringHashMap([]const SlotSpec).init(allocator),
@@ -1575,6 +1723,7 @@ pub const Compiler = struct {
         self.generic_functions.deinit();
         self.globals.deinit();
         self.macro_table.deinit();
+        self.symbol_macros.deinit();
         // Free type_aliases keys
         var alias_iter = self.type_aliases.keyIterator();
         while (alias_iter.next()) |key| {
@@ -1689,6 +1838,7 @@ pub const Compiler = struct {
             .lit => |val| return switch (val.typeKind()) {
                 .nil => &types.t_nil,
                 .t => &types.t_symbol, // t is a symbol
+                .unbound => &types.t_symbol, // unbound marker is symbol-like
                 .fixnum => &types.t_fixnum,
                 .float => &types.t_float,
                 .char => &types.t_char,
@@ -1966,8 +2116,13 @@ pub const Compiler = struct {
             return try self.builder.lit(expr);
         }
 
-        // Symbol (variable reference)
+        // Symbol (variable reference or symbol macro)
         if (expr.isSymbol()) {
+            // Check for symbol macros first
+            if (self.symbol_macros.get(expr)) |expansion| {
+                return self.compileWithTail(expansion, env, in_tail);
+            }
+
             const sym = expr.toPtr(Symbol);
             const name = sym.getName();
 
@@ -2042,6 +2197,7 @@ pub const Compiler = struct {
         funcall,
         apply,
         setq,
+        setf,
         quote,
         function,
         quasiquote,
@@ -2077,9 +2233,12 @@ pub const Compiler = struct {
         match,
         // Macro support
         defmacro,
+        macrolet,
+        @"symbol-macrolet",
         @"destructuring-bind",
         // Compile-time evaluation
         @"eval-when",
+        @"load-time-value",
         // Packages
         defpackage,
         @"in-package",
@@ -2136,6 +2295,7 @@ pub const Compiler = struct {
         .{ "FUNCALL", .funcall },
         .{ "APPLY", .apply },
         .{ "SETQ", .setq },
+        .{ "SETF", .setf },
         .{ "QUOTE", .quote },
         .{ "FUNCTION", .function },
         .{ "QUASIQUOTE", .quasiquote },
@@ -2172,9 +2332,12 @@ pub const Compiler = struct {
         .{ "MATCH", .match },
         // Macro support
         .{ "DEFMACRO", .defmacro },
+        .{ "MACROLET", .macrolet },
+        .{ "SYMBOL-MACROLET", .@"symbol-macrolet" },
         .{ "DESTRUCTURING-BIND", .@"destructuring-bind" },
         // Compile-time evaluation
         .{ "EVAL-WHEN", .@"eval-when" },
+        .{ "LOAD-TIME-VALUE", .@"load-time-value" },
         // Packages
         .{ "DEFPACKAGE", .defpackage },
         .{ "IN-PACKAGE", .@"in-package" },
@@ -2246,6 +2409,7 @@ pub const Compiler = struct {
                     .funcall => self.compileFuncall(tail, env),
                     .apply => self.compileApply(tail, env),
                     .setq => self.compileSet(tail, env),
+                    .setf => self.compileSetf(tail, env),
                     .quote => self.compileQuote(tail),
                     .function => self.compileFunction(tail, env),
                     .quasiquote => self.compileQuasiquote(tail, env),
@@ -2277,9 +2441,12 @@ pub const Compiler = struct {
                     .match => self.compileMatch(tail, env),
                     // Macro support
                     .defmacro => self.compileDefmacro(tail, env),
+                    .macrolet => self.compileMacrolet(tail, env),
+                    .@"symbol-macrolet" => self.compileSymbolMacrolet(tail, env),
                     .@"destructuring-bind" => self.compileDestructuringBind(tail, env),
                     // Compile-time evaluation
                     .@"eval-when" => self.compileEvalWhen(tail, env),
+                    .@"load-time-value" => self.compileLoadTimeValue(tail, env),
                     // Packages
                     .defpackage => self.compileDefpackage(tail),
                     .@"in-package" => self.compileInPackage(tail),
@@ -2323,10 +2490,8 @@ pub const Compiler = struct {
             // Check for macros - expand at compile time if VM is available
             if (self.macro_table.get(head)) |macro_def| {
                 if (self.vm) |vm| {
-                    const expanded = try self.expandMacro(macro_def, tail, vm);
+                    const expanded = try self.expandMacro(macro_def, tail, expr, vm);
                     return self.compileWithTail(expanded, env, in_tail);
-                } else {
-                    std.debug.print("MACRO FOUND BUT NO VM: {s}\n", .{sym.getName()});
                 }
                 // No VM - can't expand macro, treat as function call
             }
@@ -2344,8 +2509,9 @@ pub const Compiler = struct {
     }
 
     /// Expand a macro by calling its expander function with the arguments
-    fn expandMacro(self: *Compiler, macro_def: Value, args: Value, vm: *Vm) !Value {
+    fn expandMacro(self: *Compiler, macro_def: Value, args: Value, whole_form: Value, vm: *Vm) !Value {
         const heap = self.heap orelse return error.InvalidSyntax;
+        const b = self.builtins orelse return error.InvalidSyntax;
 
         // macro_def is ((params...) body...)
         // Transform destructured params before creating lambda
@@ -2353,12 +2519,68 @@ pub const Compiler = struct {
         const transformed = try self.transformDestructuredParams(macro_def);
 
         const def_cons = transformed.toPtr(Cons);
-        const params = def_cons.car;
+        var params = def_cons.car;
         const body_list = def_cons.cdr;
+
+        // Check for &whole at the beginning of params and extract the var name
+        var whole_var: ?Value = null;
+        if (params.isCons()) {
+            const first_cons = params.toPtr(Cons);
+            if (first_cons.car.raw == b.@"&whole".raw) {
+                // &whole var - extract var name and skip both
+                if (first_cons.cdr.isCons()) {
+                    const rest = first_cons.cdr.toPtr(Cons);
+                    whole_var = rest.car; // The variable name
+                    params = rest.cdr; // Skip &whole and var
+                }
+            }
+        }
+
+        // Check for &environment in params, extract var name, and remove it
+        var env_var: ?Value = null;
+        var new_params = Value.nil;
+        var param_tail: ?*Cons = null;
+        var p = params;
+        while (p.isCons()) {
+            const pc = p.toPtr(Cons);
+            if (pc.car.raw == b.@"&environment".raw) {
+                // Extract var name following &environment and skip both
+                if (pc.cdr.isCons()) {
+                    const env_rest = pc.cdr.toPtr(Cons);
+                    env_var = env_rest.car; // The variable name
+                    p = env_rest.cdr; // Skip &environment and var
+                } else {
+                    p = pc.cdr;
+                }
+                continue;
+            }
+            // Keep this param
+            const new_cell = try heap.allocCons(pc.car, Value.nil);
+            const new_cons = new_cell.toPtr(Cons);
+            if (param_tail) |t| {
+                t.cdr = new_cell;
+            } else {
+                new_params = new_cell;
+            }
+            param_tail = new_cons;
+            p = pc.cdr;
+        }
+        params = new_params;
+
+        // Build lambda params: (whole-var env-var regular-params...) if needed
+        var final_params = params;
+        if (env_var) |ev| {
+            // Add env var at the beginning (will receive nil)
+            final_params = try heap.allocCons(ev, final_params);
+        }
+        if (whole_var) |wv| {
+            // Add whole var at the beginning
+            final_params = try heap.allocCons(wv, final_params);
+        }
 
         // Build (lambda (params...) body...) with all body forms
         const lambda_sym = try heap.intern("lambda");
-        const params_body = try heap.allocCons(params, body_list);
+        const params_body = try heap.allocCons(final_params, body_list);
         const lambda_list = try heap.allocCons(lambda_sym, params_body);
 
         // Compile the lambda to get a closure
@@ -2417,6 +2639,20 @@ pub const Compiler = struct {
 
         // Now call the closure with the macro arguments
         var arg_count: u8 = 0;
+
+        // Push &whole form first if needed
+        if (whole_var != null) {
+            try vm.push(whole_form);
+            arg_count += 1;
+        }
+
+        // Push &environment (nil) if needed
+        if (env_var != null) {
+            try vm.push(Value.nil);
+            arg_count += 1;
+        }
+
+        // Push regular arguments
         var arg_list = args;
         while (arg_list.isCons()) {
             const arg_cons = arg_list.toPtr(Cons);
@@ -3837,6 +4073,288 @@ pub const Compiler = struct {
         return error.UnboundVariable;
     }
 
+    /// Compile setf special form: (setf place value)
+    /// Handles symbol macros, compound places like (car x), (slot-value obj 'slot), etc.
+    fn compileSetf(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const place = cons1.car;
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const value_expr = cons2.car;
+
+        // If place is a symbol, check for symbol macro
+        if (place.isSymbol()) {
+            if (self.symbol_macros.get(place)) |expansion| {
+                // Symbol macro expands to compound form - apply setf to expansion
+                if (expansion.isCons()) {
+                    // Rebuild (setf expanded-place value) and recompile
+                    const heap = self.heap orelse return error.InvalidSyntax;
+                    const new_args = try heap.allocCons(expansion, cons1.cdr);
+                    return self.compileSetf(new_args, env);
+                }
+                // Symbol macro expands to simple symbol - use setq on that symbol
+                if (expansion.isSymbol()) {
+                    const exp_sym = expansion.toPtr(Symbol);
+                    const exp_name = exp_sym.getName();
+                    const val_ir = try self.compile(value_expr, env);
+
+                    // Check local environment
+                    if (env.lookup(exp_name)) |binding| {
+                        if (self.boxed_vars) |bv| {
+                            if (bv.contains(exp_name)) {
+                                const var_ir = self.builder.variable(exp_name, binding.depth, binding.index) catch
+                                    return error.OutOfMemory;
+                                const box_set = try self.allocator.create(Ir);
+                                box_set.* = .{ .box_set = .{ .left = var_ir, .right = val_ir } };
+                                return box_set;
+                            }
+                        }
+                        return self.builder.set(exp_name, binding.depth, binding.index, val_ir) catch
+                            return error.OutOfMemory;
+                    }
+
+                    // Check globals
+                    var qual_buf: [256]u8 = undefined;
+                    const global_name = self.getQualifiedName(exp_sym, &qual_buf) catch exp_name;
+                    if (self.globals.lookup(global_name)) |idx| {
+                        return self.builder.define(global_name, idx, val_ir) catch
+                            return error.OutOfMemory;
+                    }
+                    return error.UnboundVariable;
+                }
+                return error.InvalidSyntax;
+            }
+            // Simple variable - delegate to setq
+            return self.compileSet(args, env);
+        }
+
+        // Place is a compound form - dispatch based on head
+        if (place.isCons()) {
+            const place_cons = place.toPtr(Cons);
+            const head = place_cons.car;
+            const place_args = place_cons.cdr;
+
+            if (head.isSymbol()) {
+                const b = self.builtins orelse return error.InvalidSyntax;
+                const h = head.raw;
+
+                // (setf (car x) val) -> (rplaca x val)
+                if (h == b.car.raw or h == b.first.raw) {
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const obj_ir = try self.compile(place_args.toPtr(Cons).car, env);
+                    const val_ir = try self.compile(value_expr, env);
+                    return try self.builder.rplaca(obj_ir, val_ir);
+                }
+
+                // (setf (cdr x) val) -> (rplacd x val)
+                if (h == b.cdr.raw or h == b.rest.raw) {
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const obj_ir = try self.compile(place_args.toPtr(Cons).car, env);
+                    const val_ir = try self.compile(value_expr, env);
+                    return try self.builder.rplacd(obj_ir, val_ir);
+                }
+
+                // (setf (slot-value obj 'slot) val) -> set_slot_value
+                if (h == b.@"slot-value".raw) {
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const pc1 = place_args.toPtr(Cons);
+                    const obj_ir = try self.compile(pc1.car, env);
+
+                    if (!pc1.cdr.isCons()) return error.InvalidSyntax;
+                    const pc2 = pc1.cdr.toPtr(Cons);
+                    var slot_name_expr = pc2.car;
+
+                    // Handle quoted slot name
+                    if (slot_name_expr.isCons()) {
+                        const quote_cons = slot_name_expr.toPtr(Cons);
+                        if (quote_cons.cdr.isCons()) {
+                            slot_name_expr = quote_cons.cdr.toPtr(Cons).car;
+                        }
+                    }
+
+                    if (!slot_name_expr.isSymbol()) return error.InvalidSyntax;
+                    const slot_name = slot_name_expr.toPtr(Symbol).getName();
+                    const slot_sym = try self.builder.quoteSym(slot_name);
+                    const val_ir = try self.compile(value_expr, env);
+                    return try self.builder.setSlotValue(obj_ir, slot_sym, val_ir);
+                }
+
+                // (setf (gethash key table) val) -> hash_set IR
+                if (h == b.gethash.raw) {
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const pc1 = place_args.toPtr(Cons);
+                    const key_ir = try self.compile(pc1.car, env);
+
+                    if (!pc1.cdr.isCons()) return error.InvalidSyntax;
+                    const pc2 = pc1.cdr.toPtr(Cons);
+                    const table_ir = try self.compile(pc2.car, env);
+                    const val_ir = try self.compile(value_expr, env);
+
+                    const node = try self.allocator.create(Ir);
+                    node.* = .{ .hash_set = .{ .table = table_ir, .key = key_ir, .value = val_ir } };
+                    return node;
+                }
+
+                // (setf (aref array idx...) val) -> (%aset array idx... val)
+                if (h == b.aref.raw) {
+                    // Build args for compileAset: (array sub1 sub2 ... val)
+                    const heap = self.heap orelse return error.InvalidSyntax;
+                    // Append value_expr to place_args
+                    var aset_args = place_args;
+                    var last: ?*Cons = null;
+                    var p = place_args;
+                    while (p.isCons()) {
+                        last = p.toPtr(Cons);
+                        p = last.?.cdr;
+                    }
+                    if (last) |l| {
+                        const new_cell = try heap.allocCons(value_expr, Value.nil);
+                        l.cdr = new_cell;
+                    } else {
+                        aset_args = try heap.allocCons(value_expr, Value.nil);
+                    }
+                    return self.compileAset(aset_args, env);
+                }
+
+                // (setf (svref vec idx) val) -> vec_set
+                if (h == b.svref.raw) {
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const pc1 = place_args.toPtr(Cons);
+                    const vec_ir = try self.compile(pc1.car, env);
+
+                    if (!pc1.cdr.isCons()) return error.InvalidSyntax;
+                    const pc2 = pc1.cdr.toPtr(Cons);
+                    const idx_ir = try self.compile(pc2.car, env);
+                    const val_ir = try self.compile(value_expr, env);
+                    return try self.builder.vecSet(vec_ir, idx_ir, val_ir);
+                }
+
+                // (setf (nth n list) val) -> (rplaca (nthcdr n list) val)
+                if (h == b.nth.raw) {
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const pc1 = place_args.toPtr(Cons);
+                    const n_ir = try self.compile(pc1.car, env);
+
+                    if (!pc1.cdr.isCons()) return error.InvalidSyntax;
+                    const pc2 = pc1.cdr.toPtr(Cons);
+                    const list_ir = try self.compile(pc2.car, env);
+                    const val_ir = try self.compile(value_expr, env);
+
+                    // Build (nthcdr n list)
+                    const nthcdr_node = try self.allocator.create(Ir);
+                    nthcdr_node.* = .{ .nthcdr = .{ .left = n_ir, .right = list_ir } };
+                    // Build (rplaca nthcdr-result val)
+                    return try self.builder.rplaca(nthcdr_node, val_ir);
+                }
+
+                // (setf (elt seq idx) val) -> elt_set (polymorphic)
+                if (h == b.elt.raw) {
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const pc1 = place_args.toPtr(Cons);
+                    const seq_ir = try self.compile(pc1.car, env);
+
+                    if (!pc1.cdr.isCons()) return error.InvalidSyntax;
+                    const pc2 = pc1.cdr.toPtr(Cons);
+                    const idx_ir = try self.compile(pc2.car, env);
+                    const val_ir = try self.compile(value_expr, env);
+
+                    const node = try self.allocator.create(Ir);
+                    node.* = .{ .elt_set = .{ .seq = seq_ir, .index = idx_ir, .value = val_ir } };
+                    return node;
+                }
+
+                // (setf (fill-pointer vec) val) -> vec_set_fill_ptr
+                if (h == b.@"%fill-pointer".raw) {
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const vec_ir = try self.compile(place_args.toPtr(Cons).car, env);
+                    const val_ir = try self.compile(value_expr, env);
+                    const node = try self.allocator.create(Ir);
+                    node.* = .{ .vec_set_fill_ptr = .{ .left = vec_ir, .right = val_ir } };
+                    return node;
+                }
+
+                // (setf (char str idx) val) -> str_set
+                if (h == b.char.raw or h == b.schar.raw) {
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const pc1 = place_args.toPtr(Cons);
+                    const str_ir = try self.compile(pc1.car, env);
+
+                    if (!pc1.cdr.isCons()) return error.InvalidSyntax;
+                    const pc2 = pc1.cdr.toPtr(Cons);
+                    const idx_ir = try self.compile(pc2.car, env);
+                    const val_ir = try self.compile(value_expr, env);
+                    return try self.builder.strSet(str_ir, idx_ir, val_ir);
+                }
+
+                // (setf (get sym key) val) -> put IR
+                if (h == b.get.raw) {
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const pc1 = place_args.toPtr(Cons);
+                    const sym_ir = try self.compile(pc1.car, env);
+
+                    if (!pc1.cdr.isCons()) return error.InvalidSyntax;
+                    const pc2 = pc1.cdr.toPtr(Cons);
+                    const key_ir = try self.compile(pc2.car, env);
+                    const val_ir = try self.compile(value_expr, env);
+
+                    const node = try self.allocator.create(Ir);
+                    node.* = .{ .put = .{ .first = sym_ir, .second = key_ir, .third = val_ir } };
+                    return node;
+                }
+
+                // Fallback: look for (setf accessor-name) function
+                // (setf (accessor-name args...) val) -> ((setf accessor-name) val args...)
+                const func_sym = head.toPtr(Symbol);
+                const func_name = func_sym.getName();
+
+                // Build "(setf func-name)" and look it up
+                var setf_buf: [512]u8 = undefined;
+                const setf_name = std.fmt.bufPrint(&setf_buf, "(setf {s})", .{func_name}) catch
+                    return error.InvalidSyntax;
+
+                // Try unqualified first, then qualified
+                var setf_idx: ?u16 = self.globals.lookup(setf_name);
+                if (setf_idx == null) {
+                    // Try with package qualification
+                    var qual_buf: [512]u8 = undefined;
+                    const qual_setf_name = self.qualifyName(setf_name, &qual_buf) catch setf_name;
+                    setf_idx = self.globals.lookup(qual_setf_name);
+                }
+
+                // Check if setf function exists in globals
+                if (setf_idx) |idx| {
+                    // Compile as call to (setf func-name) with (value args...)
+                    const val_ir = try self.compile(value_expr, env);
+                    const setf_ref = try self.builder.globalRef(setf_name, idx);
+
+                    // Build argument list: (value arg1 arg2 ...)
+                    var arg_count: usize = 1; // value first
+                    var p = place_args;
+                    while (p.isCons()) : (p = p.toPtr(Cons).cdr) arg_count += 1;
+
+                    const call_args = try self.allocator.alloc(*Ir, arg_count);
+                    call_args[0] = val_ir;
+
+                    var i: usize = 1;
+                    p = place_args;
+                    while (p.isCons()) {
+                        const arg_cons = p.toPtr(Cons);
+                        call_args[i] = try self.compile(arg_cons.car, env);
+                        i += 1;
+                        p = arg_cons.cdr;
+                    }
+
+                    return try self.builder.call(setf_ref, call_args);
+                }
+            }
+        }
+
+        return error.InvalidSyntax;
+    }
+
     fn compileQuote(self: *Compiler, args: Value) anyerror!*Ir {
         // (quote expr)
         if (!args.isCons()) return error.InvalidSyntax;
@@ -4971,6 +5489,9 @@ pub const Compiler = struct {
                 in_optional = false;
                 in_rest = false;
                 in_key = true;
+            } else if (param.eq(b.@"&whole") or param.eq(b.@"&environment")) {
+                // &whole and &environment are handled in expandMacro - keep as-is
+                try new_params.append(self.allocator, param);
             } else if (param.isCons() and !in_optional and !in_rest and !in_key) {
                 // Check if this is destructured (car is cons) or typed (car is symbol)
                 const param_cons = param.toPtr(Cons);
@@ -5051,6 +5572,120 @@ pub const Compiler = struct {
 
         // defmacro has no runtime effect - return nil
         return try self.builder.lit(Value.nil);
+    }
+
+    /// Compile macrolet: (macrolet ((name (params) body)...) forms...)
+    /// Establishes local macro definitions for the duration of body evaluation.
+    fn compileMacrolet(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        // Parse: (((name1 (params1) body1) (name2 (params2) body2)...) forms...)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const macro_defs = cons1.car;
+        const body = cons1.cdr;
+
+        // Save old macro definitions for restoration
+        const SavedMacro = struct { name: Value, def: ?Value };
+        var saved_macros: std.ArrayList(SavedMacro) = .{};
+        defer saved_macros.deinit(self.allocator);
+
+        // Process each macro definition
+        var defs = macro_defs;
+        while (defs.isCons()) {
+            const def_cons = defs.toPtr(Cons);
+            const def = def_cons.car;
+            defs = def_cons.cdr;
+
+            if (!def.isCons()) return error.InvalidSyntax;
+
+            const name_cons = def.toPtr(Cons);
+            const name = name_cons.car;
+            if (!name.isSymbol()) return error.InvalidSyntax;
+
+            // Save old definition (if any)
+            const old_def = self.macro_table.get(name);
+            try saved_macros.append(self.allocator, .{ .name = name, .def = old_def });
+
+            // Rest is ((params...) body...)
+            const lambda_args = name_cons.cdr;
+            if (!lambda_args.isCons()) return error.InvalidSyntax;
+
+            // Transform destructured params
+            const transformed = try self.transformDestructuredParams(lambda_args);
+
+            // Add to macro table
+            try self.macro_table.put(name, transformed);
+        }
+
+        // Compile body with local macros in effect
+        const body_ir = try self.compileBody(body, env);
+
+        // Restore old macro definitions
+        for (saved_macros.items) |saved| {
+            if (saved.def) |def| {
+                try self.macro_table.put(saved.name, def);
+            } else {
+                _ = self.macro_table.remove(saved.name);
+            }
+        }
+
+        return body_ir;
+    }
+
+    /// Compile symbol-macrolet: (symbol-macrolet ((sym expansion)...) forms...)
+    /// Establishes local symbol macros for the duration of body evaluation.
+    fn compileSymbolMacrolet(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        // Parse: (((sym1 expansion1) (sym2 expansion2)...) forms...)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const sym_defs = cons1.car;
+        const body = cons1.cdr;
+
+        // Save old symbol macro definitions for restoration
+        const SavedSym = struct { name: Value, def: ?Value };
+        var saved_syms: std.ArrayList(SavedSym) = .{};
+        defer saved_syms.deinit(self.allocator);
+
+        // Process each symbol macro definition
+        var defs = sym_defs;
+        while (defs.isCons()) {
+            const def_cons = defs.toPtr(Cons);
+            const def = def_cons.car;
+            defs = def_cons.cdr;
+
+            if (!def.isCons()) return error.InvalidSyntax;
+
+            const bind_cons = def.toPtr(Cons);
+            const name = bind_cons.car;
+            if (!name.isSymbol()) return error.InvalidSyntax;
+
+            // Get expansion form
+            const rest = bind_cons.cdr;
+            if (!rest.isCons()) return error.InvalidSyntax;
+            const expansion = rest.toPtr(Cons).car;
+
+            // Save old definition (if any)
+            const old_def = self.symbol_macros.get(name);
+            try saved_syms.append(self.allocator, .{ .name = name, .def = old_def });
+
+            // Add to symbol macro table
+            try self.symbol_macros.put(name, expansion);
+        }
+
+        // Compile body with local symbol macros in effect
+        const body_ir = try self.compileBody(body, env);
+
+        // Restore old symbol macro definitions
+        for (saved_syms.items) |saved| {
+            if (saved.def) |def| {
+                try self.symbol_macros.put(saved.name, def);
+            } else {
+                _ = self.symbol_macros.remove(saved.name);
+            }
+        }
+
+        return body_ir;
     }
 
     /// Compile destructuring-bind: (destructuring-bind pattern expr &rest body)
@@ -5443,6 +6078,78 @@ pub const Compiler = struct {
 
         // Otherwise return nil (compile-time only)
         return try self.builder.lit(Value.nil);
+    }
+
+    /// Compile load-time-value: (load-time-value form [read-only-p])
+    /// Evaluates form at load time (compile time in our case) and returns the result.
+    fn compileLoadTimeValue(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        _ = env;
+        // Parse: (form [read-only-p])
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const form = cons1.car;
+        // read-only-p is optional and ignored in our implementation
+
+        // Need VM to evaluate at compile time
+        const vm = self.vm orelse return error.InvalidSyntax;
+        const heap = self.heap orelse return error.InvalidSyntax;
+
+        // Compile the form
+        var eval_compiler = Compiler.initWithHeap(self.allocator, vm) catch
+            return error.OutOfMemory;
+        defer eval_compiler.deinit();
+
+        // Copy macro table for consistency
+        var iter = self.macro_table.iterator();
+        while (iter.next()) |entry| {
+            try eval_compiler.macro_table.put(entry.key_ptr.*, entry.value_ptr.*);
+        }
+
+        var empty_env = Env.init(self.allocator, null);
+        const form_ir = try eval_compiler.compile(form, &empty_env);
+
+        // Wrap in a thunk (lambda with no args) so it returns the value
+        const thunk_ir = try self.builder.lambda(
+            &[_][]const u8{},
+            &[_]Ir.OptionalParam{},
+            &[_]Ir.KeyParam{},
+            null,
+            &[_]Ir.Capture{},
+            form_ir,
+        );
+
+        // Emit to bytecode
+        var emitter = Emitter.initWithHeap(self.allocator, heap);
+        defer emitter.deinit();
+        try emitter.emit(thunk_ir);
+
+        // Get child chunks and main chunk
+        const child_chunks = try emitter.getChildChunks();
+        defer self.allocator.free(child_chunks);
+
+        const chunk_val = try emitter.finalize();
+
+        // Convert Value chunks to *Chunk pointers for VM
+        const chunk_ptrs = try self.allocator.alloc(*Chunk, child_chunks.len);
+        defer self.allocator.free(chunk_ptrs);
+        for (child_chunks, 0..) |cv, i| {
+            chunk_ptrs[i] = cv.toPtr(Chunk);
+        }
+
+        // Set chunk pool and run to get closure
+        vm.setChunkPool(chunk_ptrs);
+        const chunk_ptr = chunk_val.toPtr(Chunk);
+        const closure_val = try vm.run(chunk_ptr);
+
+        if (!closure_val.isClosure()) return error.InvalidSyntax;
+        const closure = closure_val.toPtr(Closure);
+
+        // Call the thunk with no args to get the value
+        const result = try vm.callClosure(closure, 0);
+
+        // Return as literal
+        return try self.builder.lit(result);
     }
 
     // ========================================================================
@@ -7734,22 +8441,11 @@ pub const Compiler = struct {
         dispatch_params: []const []const u8,
         next_method_body: ?*Ir,
     ) anyerror!*Ir {
-        // Count applicable :after methods
-        var after_count: usize = 0;
-        for (after_methods) |after| {
-            if (try self.specializerMatches(after.specializers, primary.specializers)) {
-                after_count += 1;
-            }
-        }
+        // Count :after methods - all will be conditionally run at runtime
+        const after_count: usize = after_methods.len;
 
-        // If no :before and no :after, just return primary call
-        var has_before = false;
-        for (before_methods) |before| {
-            if (try self.specializerMatches(before.specializers, primary.specializers)) {
-                has_before = true;
-                break;
-            }
-        }
+        // Check if we have any :before methods - all will be conditionally run at runtime
+        const has_before = before_methods.len > 0;
 
         // Bind %next-method% to closure or nil
         const nm_name = try self.getNextMethodName();
@@ -7785,10 +8481,31 @@ pub const Compiler = struct {
         try stmts.append(self.allocator, set_next);
 
         // Call applicable :before methods (most specific first)
+        // Generate runtime typep checks for each :before method
         for (before_methods) |before| {
-            const matches = try self.specializerMatches(before.specializers, primary.specializers);
-            if (matches) {
-                try stmts.append(self.allocator, try self.generateMethodCall(before, dispatch_params));
+            // Build condition: (typep arg class) for each specialized parameter
+            var cond: ?*Ir = null;
+            for (before.specializers, 0..) |spec, param_idx| {
+                if (spec.eq(Value.t)) continue; // t matches any
+                if (param_idx >= dispatch_params.len) continue;
+
+                const arg_ir = try self.builder.variable(dispatch_params[param_idx], 0, @intCast(param_idx));
+                const class_ir = try self.builder.lit(spec);
+                const check = try self.builder.typep(arg_ir, class_ir);
+
+                cond = if (cond) |prev| blk: {
+                    const nil_ir = try self.builder.lit(Value.nil);
+                    break :blk try self.builder.ifExpr(prev, check, nil_ir);
+                } else check;
+            }
+
+            // Wrap call in conditional if there are specializers
+            const before_call = try self.generateMethodCall(before, dispatch_params);
+            if (cond) |c| {
+                const nil_ir = try self.builder.lit(Value.nil);
+                try stmts.append(self.allocator, try self.builder.ifExpr(c, before_call, nil_ir));
+            } else {
+                try stmts.append(self.allocator, before_call);
             }
         }
 
@@ -7804,12 +8521,34 @@ pub const Compiler = struct {
 
             // Generate after calls at depth 0 - let doesn't create a new lambda scope
             // The params are still at depth=0, indices 0..n-1
+            // Runtime typep checks for :after methods (least specific first)
             var k = after_methods.len;
             while (k > 0) {
                 k -= 1;
                 const after = after_methods[k];
-                if (try self.specializerMatches(after.specializers, primary.specializers)) {
-                    try let_body.append(self.allocator, try self.generateMethodCall(after, dispatch_params));
+
+                // Build runtime type check condition
+                var cond: ?*Ir = null;
+                for (after.specializers, 0..) |spec, param_idx| {
+                    if (spec.eq(Value.t)) continue;
+                    if (param_idx >= dispatch_params.len) continue;
+
+                    const arg_ir = try self.builder.variable(dispatch_params[param_idx], 0, @intCast(param_idx));
+                    const class_ir = try self.builder.lit(spec);
+                    const check = try self.builder.typep(arg_ir, class_ir);
+
+                    cond = if (cond) |prev| blk: {
+                        const nil_ir = try self.builder.lit(Value.nil);
+                        break :blk try self.builder.ifExpr(prev, check, nil_ir);
+                    } else check;
+                }
+
+                const after_call = try self.generateMethodCall(after, dispatch_params);
+                if (cond) |c| {
+                    const nil_ir = try self.builder.lit(Value.nil);
+                    try let_body.append(self.allocator, try self.builder.ifExpr(c, after_call, nil_ir));
+                } else {
+                    try let_body.append(self.allocator, after_call);
                 }
             }
 
@@ -9134,7 +9873,7 @@ pub const Compiler = struct {
         method_qualifiers, method_specializers, method_function,
         generic_function_methods, generic_function_lambda_list, generic_function_name,
         // Vector
-        vec_ref, vec_len, vec_fill_ptr, vec_push, vec_push_ext, vec_pop, vec_adjust,
+        vec_ref, vec_len, vec_fill_ptr, vec_set_fill_ptr, vec_set_adjustable, vec_push, vec_push_ext, vec_pop, vec_adjust,
         // Box
         make_box, box_ref, box_set,
         // String
@@ -9142,10 +9881,10 @@ pub const Compiler = struct {
         // I/O
         print, princ, terpri, write_char, random, random_seed,
         // Symbol
-        intern, unintern, sym_name, copy_symbol, makunbound, set_sym_val, type_of, error_user, boundp, fboundp, symbol_value, symbol_function, typep,
+        intern, unintern, sym_name, copy_symbol, makunbound, set_sym_val, type_of, error_user, boundp, fboundp, symbol_value, symbol_function, typep, subtypep,
         // Character
         char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p,
-        read_char, peek_char, unread_char,
+        read_char, peek_char, unread_char, listen, upgraded_complex_part_type,
         // Read/eval
         read, read_from_string, load, eval, gensym, macroexpand, macroexpand_1,
         // String/number conversion
@@ -9153,19 +9892,20 @@ pub const Compiler = struct {
         // Bitwise
         logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length,
         // File I/O
-        read_file, write_file, delete_file, rename_file, probe_file, file_write_date,
+        read_file, write_file, delete_file, rename_file, probe_file, file_write_date, file_author, file_string_length,
         // Time
         get_universal_time, get_internal_real_time, get_internal_run_time,
         get_decoded_time, decode_universal_time, encode_universal_time,
         // Environment
         room, lisp_implementation_type, lisp_implementation_version, software_type, machine_type,
-        machine_instance, machine_version, software_version, short_site_name, long_site_name, user_homedir_pathname,
+        machine_instance, machine_version, software_version, short_site_name, long_site_name, user_homedir_pathname, make_pathname,
         // String construction
         make_string, list_to_string, string_upcase, string_downcase,
         // Numeric
         abs, zerop, plusp, minusp, evenp, oddp,
         // Math
         sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round,
+        decode_float, integer_decode_float, float_radix, float_digits,
         // Numeric types
         rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize,
         // Properties
@@ -9173,12 +9913,15 @@ pub const Compiler = struct {
         // Hash tables
         hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash,
         // Streams
-        streamp, input_stream_p, output_stream_p, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream,
+        streamp, input_stream_p, output_stream_p, open_stream_p, interactive_stream_p, stream_element_type, stream_external_format, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream,
+        // Compound streams
+        broadcast_stream_streams, concatenated_stream_streams, echo_stream_input_stream, echo_stream_output_stream, synonym_stream_symbol, two_way_stream_input_stream, two_way_stream_output_stream, make_synonym_stream, make_echo_stream, make_two_way_stream, make_broadcast_stream_list, make_concatenated_stream_list, disassemble, read_char_stream, peek_char_stream, open_file, close_stream,
         // Pathnames
         pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version, truename, ensure_directories_exist,
         pathname, parse_namestring, namestring, merge_pathnames,
+        directory_namestring, file_namestring, host_namestring, wild_pathname_p,
         // Packages
-        package_symbols_table, package_exports_table, package_name, package_nicknames, package_use_list, package_used_by_list, package_shadowing_symbols, packagep,
+        package_symbols_table, package_exports_table, package_symbols_list, package_exports_list, package_name, package_nicknames, package_use_list, package_used_by_list, package_shadowing_symbols, packagep, symbol_package, list_all_packages, find_package, delete_package, pkg_import, pkg_unexport, pkg_shadow, pkg_shadowing_import, pkg_unuse_package, pkg_unintern, pkg_find_symbol, pkg_find_all_symbols, pkg_make_package, pkg_rename_package, apropos_list, read_char_no_hang, compute_restarts, restart_name, directory, pathname_match_p, enough_namestring,
         // Class/slot introspection
         find_symbol, find_class, class_name, class_direct_superclasses, class_precedence_list, class_direct_slots, class_slots,
         slot_definition_name, slot_definition_initform, slot_definition_initargs, slot_definition_readers, slot_definition_writers, slot_definition_allocation, slot_definition_type,
@@ -9212,6 +9955,8 @@ pub const Compiler = struct {
         .{ .field = "char-code", .tag = .char_code },
         .{ .field = "code-char", .tag = .code_char },
         .{ .field = "unread-char", .tag = .unread_char },
+        .{ .field = "listen", .tag = .listen },
+        .{ .field = "upgraded-complex-part-type", .tag = .upgraded_complex_part_type },
         .{ .field = "read-from-string", .tag = .read_from_string },
         .{ .field = "load", .tag = .load },
         .{ .field = "eval", .tag = .eval },
@@ -9245,6 +9990,10 @@ pub const Compiler = struct {
         .{ .field = "atanh", .tag = .atanh },
         .{ .field = "exp", .tag = .exp },
         .{ .field = "log", .tag = .log },
+        .{ .field = "decode-float", .tag = .decode_float },
+        .{ .field = "integer-decode-float", .tag = .integer_decode_float },
+        .{ .field = "float-radix", .tag = .float_radix },
+        .{ .field = "float-digits", .tag = .float_digits },
         .{ .field = "vector-length", .tag = .vec_len },
         .{ .field = "%fill-pointer", .tag = .vec_fill_ptr },
         .{ .field = "%vector-pop", .tag = .vec_pop },
@@ -9267,6 +10016,7 @@ pub const Compiler = struct {
         .{ .field = "delete-file", .tag = .delete_file },
         .{ .field = "probe-file", .tag = .probe_file },
         .{ .field = "file-write-date", .tag = .file_write_date },
+        .{ .field = "file-author", .tag = .file_author },
         .{ .field = "list-to-string", .tag = .list_to_string },
         .{ .field = "string-upcase", .tag = .string_upcase },
         .{ .field = "string-downcase", .tag = .string_downcase },
@@ -9288,7 +10038,27 @@ pub const Compiler = struct {
         .{ .field = "streamp", .tag = .streamp },
         .{ .field = "input-stream-p", .tag = .input_stream_p },
         .{ .field = "output-stream-p", .tag = .output_stream_p },
+        .{ .field = "open-stream-p", .tag = .open_stream_p },
+        .{ .field = "interactive-stream-p", .tag = .interactive_stream_p },
+        .{ .field = "stream-element-type", .tag = .stream_element_type },
+        .{ .field = "stream-external-format", .tag = .stream_external_format },
         .{ .field = "make-string-input-stream", .tag = .make_string_input_stream },
+        // Compound stream accessors
+        .{ .field = "broadcast-stream-streams", .tag = .broadcast_stream_streams },
+        .{ .field = "concatenated-stream-streams", .tag = .concatenated_stream_streams },
+        .{ .field = "echo-stream-input-stream", .tag = .echo_stream_input_stream },
+        .{ .field = "echo-stream-output-stream", .tag = .echo_stream_output_stream },
+        .{ .field = "synonym-stream-symbol", .tag = .synonym_stream_symbol },
+        .{ .field = "two-way-stream-input-stream", .tag = .two_way_stream_input_stream },
+        .{ .field = "two-way-stream-output-stream", .tag = .two_way_stream_output_stream },
+        // Compound stream constructors (simple cases)
+        .{ .field = "%make-synonym-stream", .tag = .make_synonym_stream },
+        .{ .field = "%make-broadcast-stream-list", .tag = .make_broadcast_stream_list },
+        .{ .field = "%make-concatenated-stream-list", .tag = .make_concatenated_stream_list },
+        .{ .field = "%disassemble", .tag = .disassemble },
+        .{ .field = "%read-char-from-stream", .tag = .read_char_stream },
+        .{ .field = "%peek-char-from-stream", .tag = .peek_char_stream },
+        .{ .field = "%close-stream", .tag = .close_stream },
         .{ .field = "get-output-stream-string", .tag = .get_output_stream_string },
         .{ .field = "pathname-host", .tag = .pathname_host },
         .{ .field = "pathname-device", .tag = .pathname_device },
@@ -9301,15 +10071,30 @@ pub const Compiler = struct {
         .{ .field = "pathname", .tag = .pathname },
         .{ .field = "parse-namestring", .tag = .parse_namestring },
         .{ .field = "namestring", .tag = .namestring },
+        .{ .field = "directory-namestring", .tag = .directory_namestring },
+        .{ .field = "file-namestring", .tag = .file_namestring },
+        .{ .field = "host-namestring", .tag = .host_namestring },
+        .{ .field = "wild-pathname-p", .tag = .wild_pathname_p },
         .{ .field = "decode-universal-time", .tag = .decode_universal_time },
         .{ .field = "package-symbols-table", .tag = .package_symbols_table },
         .{ .field = "package-exports-table", .tag = .package_exports_table },
+        .{ .field = "%package-symbols-list", .tag = .package_symbols_list },
+        .{ .field = "%package-exports-list", .tag = .package_exports_list },
         .{ .field = "package-name", .tag = .package_name },
         .{ .field = "package-nicknames", .tag = .package_nicknames },
         .{ .field = "package-use-list", .tag = .package_use_list },
         .{ .field = "package-used-by-list", .tag = .package_used_by_list },
         .{ .field = "package-shadowing-symbols", .tag = .package_shadowing_symbols },
         .{ .field = "packagep", .tag = .packagep },
+        .{ .field = "symbol-package", .tag = .symbol_package },
+        .{ .field = "find-package", .tag = .find_package },
+        .{ .field = "delete-package", .tag = .delete_package },
+        .{ .field = "find-all-symbols", .tag = .pkg_find_all_symbols },
+        .{ .field = "apropos-list", .tag = .apropos_list },
+        .{ .field = "read-char-no-hang", .tag = .read_char_no_hang },
+        .{ .field = "restart-name", .tag = .restart_name },
+        .{ .field = "directory", .tag = .directory },
+        .{ .field = "enough-namestring", .tag = .enough_namestring },
         .{ .field = "random", .tag = .random },
         .{ .field = "random-seed", .tag = .random_seed },
         .{ .field = "method-qualifiers", .tag = .method_qualifiers },
@@ -9346,14 +10131,18 @@ pub const Compiler = struct {
         .{ .field = "char<", .tag = .char_lt },
         .{ .field = "char>", .tag = .char_gt },
         .{ .field = "typep", .tag = .typep },
+        .{ .field = "subtypep", .tag = .subtypep },
         .{ .field = "unintern", .tag = .unintern },
         .{ .field = "find-symbol", .tag = .find_symbol },
         .{ .field = "copy-symbol", .tag = .copy_symbol },
+        .{ .field = "file-string-length", .tag = .file_string_length },
         .{ .field = "set", .tag = .set_sym_val },
         .{ .field = "get", .tag = .get },
         .{ .field = "remprop", .tag = .remprop },
         .{ .field = "svref", .tag = .vec_ref },
         .{ .field = "%vector-push", .tag = .vec_push },
+        .{ .field = "%set-fill-pointer", .tag = .vec_set_fill_ptr },
+        .{ .field = "%set-adjustable", .tag = .vec_set_adjustable },
         .{ .field = "string-concat", .tag = .str_concat },
         .{ .field = "string=", .tag = .str_eq },
         .{ .field = "string<", .tag = .str_lt },
@@ -9376,6 +10165,17 @@ pub const Compiler = struct {
         .{ .field = "make-complex", .tag = .make_complex },
         .{ .field = "write-to-stream", .tag = .write_to_stream },
         .{ .field = "merge-pathnames", .tag = .merge_pathnames },
+        .{ .field = "%import", .tag = .pkg_import },
+        .{ .field = "%unexport", .tag = .pkg_unexport },
+        .{ .field = "%shadow", .tag = .pkg_shadow },
+        .{ .field = "%shadowing-import", .tag = .pkg_shadowing_import },
+        .{ .field = "%unuse-package", .tag = .pkg_unuse_package },
+        .{ .field = "%unintern", .tag = .pkg_unintern },
+        .{ .field = "%find-symbol", .tag = .pkg_find_symbol },
+        .{ .field = "pathname-match-p", .tag = .pathname_match_p },
+        .{ .field = "%make-echo-stream", .tag = .make_echo_stream },
+        .{ .field = "%make-two-way-stream", .tag = .make_two_way_stream },
+        .{ .field = "%open-file", .tag = .open_file },
     };
 
     /// Dispatch entry for ternary primitives
@@ -9385,13 +10185,15 @@ pub const Compiler = struct {
         .{ .field = "%vector-push-extend", .tag = .vec_push_ext },
         .{ .field = "%adjust-array", .tag = .vec_adjust },
         .{ .field = "set-dispatch-macro-character", .tag = .set_dispatch_macro_character },
+        .{ .field = "%make-package", .tag = .pkg_make_package },
+        .{ .field = "%rename-package", .tag = .pkg_rename_package },
     };
 
     /// Dispatch entry for nullary primitives
     const NullaryEntry = struct { field: []const u8, tag: PrimTag };
     const nullary_dispatch = [_]NullaryEntry{
-        .{ .field = "read-char", .tag = .read_char },
-        .{ .field = "peek-char", .tag = .peek_char },
+        .{ .field = "%read-char", .tag = .read_char },
+        .{ .field = "%peek-char", .tag = .peek_char },
         .{ .field = "read", .tag = .read },
         .{ .field = "terpri", .tag = .terpri },
         .{ .field = "make-string-output-stream", .tag = .make_string_output_stream },
@@ -9410,6 +10212,8 @@ pub const Compiler = struct {
         .{ .field = "short-site-name", .tag = .short_site_name },
         .{ .field = "long-site-name", .tag = .long_site_name },
         .{ .field = "user-homedir-pathname", .tag = .user_homedir_pathname },
+        .{ .field = "list-all-packages", .tag = .list_all_packages },
+        .{ .field = "compute-restarts", .tag = .compute_restarts },
     };
 
     /// Composed accessor patterns (c[ad]+r)
@@ -9492,6 +10296,8 @@ pub const Compiler = struct {
         if (s == b.count.raw) return self.compileCountWithTest(args, env);
         if (s == b.remove.raw) return self.compileRemoveWithTest(args, env);
         if (s == b.list.raw) return self.compileListPrim(args, env);
+        if (s == b.@"%make-broadcast-stream".raw) return self.compileBroadcastStream(args, env);
+        if (s == b.@"%make-concatenated-stream".raw) return self.compileConcatenatedStream(args, env);
         if (s == b.@"class-of".raw) return self.compileClassOf(args, env);
         if (s == b.floor.raw) return self.compileFloorCeilRound(args, env, .floor);
         if (s == b.ceiling.raw) return self.compileFloorCeilRound(args, env, .ceiling);
@@ -9512,6 +10318,8 @@ pub const Compiler = struct {
         if (s == b.subseq.raw) return self.compileSubseq(args, env);
         if (s == b.concatenate.raw) return self.compileConcatenate(args, env);
         if (s == b.format.raw) return self.compileFormat(args, env);
+        if (s == b.@"encode-universal-time".raw) return self.compileEncodeUniversalTime(args, env);
+        if (s == b.@"%make-pathname".raw) return self.compileMakePathname(args, env);
         if (s == b.@"set-macro-character".raw) return self.compileSetMacroCharacter(args, env);
         if (s == b.@"make-hash-table".raw) return self.compileMakeHash(args);
         if (s == b.gethash.raw) return self.compileGethash(args, env);
@@ -9563,6 +10371,17 @@ pub const Compiler = struct {
             node.* = .{ .write_line = .{ .left = stream_ir, .right = text_ir } };
             return node;
         }
+        if (s == b.@"%write-string".raw) {
+            if (!args.isCons()) return error.InvalidSyntax;
+            const cons1 = args.toPtr(Cons);
+            const stream_ir = try self.compile(cons1.car, env);
+            if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+            const cons2 = cons1.cdr.toPtr(Cons);
+            const text_ir = try self.compile(cons2.car, env);
+            const node = try self.allocator.create(Ir);
+            node.* = .{ .write_string = .{ .left = stream_ir, .right = text_ir } };
+            return node;
+        }
         if (s == b.@"%read-byte".raw) {
             if (!args.isCons()) return error.InvalidSyntax;
             const cons1 = args.toPtr(Cons);
@@ -9612,6 +10431,22 @@ pub const Compiler = struct {
             const stream_ir = try self.compile(cons1.car, env);
             const node = try self.allocator.create(Ir);
             node.* = .{ .force_output = .{ .operand = stream_ir } };
+            return node;
+        }
+        if (s == b.@"%clear-input".raw) {
+            if (!args.isCons()) return error.InvalidSyntax;
+            const cons1 = args.toPtr(Cons);
+            const stream_ir = try self.compile(cons1.car, env);
+            const node = try self.allocator.create(Ir);
+            node.* = .{ .clear_input = .{ .operand = stream_ir } };
+            return node;
+        }
+        if (s == b.@"%clear-output".raw) {
+            if (!args.isCons()) return error.InvalidSyntax;
+            const cons1 = args.toPtr(Cons);
+            const stream_ir = try self.compile(cons1.car, env);
+            const node = try self.allocator.create(Ir);
+            node.* = .{ .clear_output = .{ .operand = stream_ir } };
             return node;
         }
 
@@ -9748,6 +10583,7 @@ pub const Compiler = struct {
             .char_lt => try self.builder.charLt(left, right),
             .char_gt => try self.builder.charGt(left, right),
             .typep => try self.builder.typep(left, right),
+            .subtypep => try self.builder.subtypep(left, right),
             .append => try self.builder.append(left, right),
             .nth => blk: {
                 const node = try self.allocator.create(Ir);
@@ -9802,6 +10638,11 @@ pub const Compiler = struct {
                 node.* = .{ .copy_symbol = .{ .left = left, .right = right } };
                 break :blk node;
             },
+            .file_string_length => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .file_string_length = .{ .left = left, .right = right } };
+                break :blk node;
+            },
             .set_sym_val => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .set_sym_val = .{ .left = left, .right = right } };
@@ -9811,6 +10652,71 @@ pub const Compiler = struct {
             .merge_pathnames => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .merge_pathnames = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .pkg_import => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pkg_import = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .pkg_unexport => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pkg_unexport = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .pkg_shadow => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pkg_shadow = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .pkg_shadowing_import => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pkg_shadowing_import = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .pkg_unuse_package => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pkg_unuse_package = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .pkg_unintern => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pkg_unintern = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .pkg_find_symbol => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pkg_find_symbol = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .vec_set_fill_ptr => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .vec_set_fill_ptr = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .vec_set_adjustable => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .vec_set_adjustable = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .vec_push => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .vec_push = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .make_echo_stream => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .make_echo_stream = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .make_two_way_stream => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .make_two_way_stream = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .open_file => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .open_file = .{ .left = left, .right = right } };
                 break :blk node;
             },
             else => return error.InvalidSyntax,
@@ -9834,6 +10740,16 @@ pub const Compiler = struct {
             .put => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .put = .{ .first = first, .second = second, .third = third } };
+                break :blk node;
+            },
+            .vec_push_ext => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .vec_push_ext = .{ .first = first, .second = second, .third = third } };
+                break :blk node;
+            },
+            .vec_adjust => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .vec_adjust = .{ .first = first, .second = second, .third = third } };
                 break :blk node;
             },
             else => error.InvalidSyntax,
@@ -9961,6 +10877,7 @@ pub const Compiler = struct {
             .delete_file => try self.builder.deleteFile(operand),
             .probe_file => try self.builder.probeFile(operand),
             .file_write_date => try self.builder.fileWriteDate(operand),
+            .file_author => try self.builder.fileAuthor(operand),
             .list_to_string => try self.builder.listToString(operand),
             .string_upcase => try self.builder.stringUpcase(operand),
             .string_downcase => try self.builder.stringDowncase(operand),
@@ -10016,6 +10933,12 @@ pub const Compiler = struct {
             .char_code => try self.builder.charCode(operand),
             .code_char => try self.builder.codeChar(operand),
             .unread_char => try self.builder.unreadChar(operand),
+            .listen => try self.builder.listen(operand),
+            .upgraded_complex_part_type => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .upgraded_complex_part_type = .{ .operand = operand } };
+                break :blk node;
+            },
             .load => try self.builder.load(operand),
             .read_from_string => try self.builder.readFromString(operand),
             .eval => try self.builder.eval(operand),
@@ -10086,6 +11009,21 @@ pub const Compiler = struct {
                 break :blk node;
             },
             .hashtablep => try self.builder.hashtablep(operand),
+            .packagep => try self.builder.packagep(operand),
+            .symbol_package => try self.builder.symbolPackage(operand),
+            .package_name => try self.builder.packageName(operand),
+            .package_nicknames => try self.builder.packageNicknames(operand),
+            .package_use_list => try self.builder.packageUseList(operand),
+            .package_used_by_list => try self.builder.packageUsedByList(operand),
+            .package_shadowing_symbols => try self.builder.packageShadowingSymbols(operand),
+            .find_package => try self.builder.findPackage(operand),
+            .delete_package => try self.builder.deletePackage(operand),
+            .pkg_find_all_symbols => try self.builder.findAllSymbols(operand),
+            .apropos_list => try self.builder.aproposList(operand),
+            .read_char_no_hang => try self.builder.readCharNoHang(operand),
+            .restart_name => try self.builder.restartName(operand),
+            .directory => try self.builder.directory(operand),
+            .enough_namestring => try self.builder.enoughNamestring(operand),
             .hash_clear => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .hash_clear = .{ .operand = operand } };
@@ -10114,6 +11052,10 @@ pub const Compiler = struct {
             .streamp => try self.builder.streamp(operand),
             .input_stream_p => try self.builder.inputStreamP(operand),
             .output_stream_p => try self.builder.outputStreamP(operand),
+            .open_stream_p => try self.builder.openStreamP(operand),
+            .interactive_stream_p => try self.builder.interactiveStreamP(operand),
+            .stream_element_type => try self.builder.streamElementType(operand),
+            .stream_external_format => try self.builder.streamExternalFormat(operand),
             .make_string_input_stream => try self.builder.makeStringInputStream(operand),
             .get_output_stream_string => try self.builder.getOutputStreamString(operand),
             .pathname_host => blk: {
@@ -10169,6 +11111,26 @@ pub const Compiler = struct {
             .namestring => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .namestring = .{ .operand = operand } };
+                break :blk node;
+            },
+            .directory_namestring => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .directory_namestring = .{ .operand = operand } };
+                break :blk node;
+            },
+            .file_namestring => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .file_namestring = .{ .operand = operand } };
+                break :blk node;
+            },
+            .host_namestring => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .host_namestring = .{ .operand = operand } };
+                break :blk node;
+            },
+            .wild_pathname_p => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .wild_pathname_p = .{ .operand = operand } };
                 break :blk node;
             },
             .decode_universal_time => blk: {
@@ -10241,6 +11203,127 @@ pub const Compiler = struct {
                 node.* = .{ .slot_definition_type = .{ .operand = operand } };
                 break :blk node;
             },
+            .vec_fill_ptr => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .vec_fill_ptr = .{ .operand = operand } };
+                break :blk node;
+            },
+            .vec_pop => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .vec_pop = .{ .operand = operand } };
+                break :blk node;
+            },
+            .decode_float => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .decode_float = .{ .operand = operand } };
+                break :blk node;
+            },
+            .integer_decode_float => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .integer_decode_float = .{ .operand = operand } };
+                break :blk node;
+            },
+            .float_radix => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .float_radix = .{ .operand = operand } };
+                break :blk node;
+            },
+            .float_digits => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .float_digits = .{ .operand = operand } };
+                break :blk node;
+            },
+            // Compound stream accessors
+            .broadcast_stream_streams => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .broadcast_stream_streams = .{ .operand = operand } };
+                break :blk node;
+            },
+            .concatenated_stream_streams => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .concatenated_stream_streams = .{ .operand = operand } };
+                break :blk node;
+            },
+            .echo_stream_input_stream => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .echo_stream_input_stream = .{ .operand = operand } };
+                break :blk node;
+            },
+            .echo_stream_output_stream => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .echo_stream_output_stream = .{ .operand = operand } };
+                break :blk node;
+            },
+            .synonym_stream_symbol => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .synonym_stream_symbol = .{ .operand = operand } };
+                break :blk node;
+            },
+            .two_way_stream_input_stream => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .two_way_stream_input_stream = .{ .operand = operand } };
+                break :blk node;
+            },
+            .two_way_stream_output_stream => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .two_way_stream_output_stream = .{ .operand = operand } };
+                break :blk node;
+            },
+            .make_synonym_stream => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .make_synonym_stream = .{ .operand = operand } };
+                break :blk node;
+            },
+            .make_broadcast_stream_list => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .make_broadcast_stream_list = .{ .operand = operand } };
+                break :blk node;
+            },
+            .make_concatenated_stream_list => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .make_concatenated_stream_list = .{ .operand = operand } };
+                break :blk node;
+            },
+            .disassemble => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .disassemble = .{ .operand = operand } };
+                break :blk node;
+            },
+            .read_char_stream => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .read_char_stream = .{ .operand = operand } };
+                break :blk node;
+            },
+            .peek_char_stream => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .peek_char_stream = .{ .operand = operand } };
+                break :blk node;
+            },
+            .close_stream => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .close_stream = .{ .operand = operand } };
+                break :blk node;
+            },
+            .package_symbols_table => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .package_symbols_table = .{ .operand = operand } };
+                break :blk node;
+            },
+            .package_exports_table => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .package_exports_table = .{ .operand = operand } };
+                break :blk node;
+            },
+            .package_symbols_list => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .package_symbols_list = .{ .operand = operand } };
+                break :blk node;
+            },
+            .package_exports_list => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .package_exports_list = .{ .operand = operand } };
+                break :blk node;
+            },
             else => return error.InvalidSyntax,
         };
     }
@@ -10297,6 +11380,8 @@ pub const Compiler = struct {
             .short_site_name => try self.builder.shortSiteName(),
             .long_site_name => try self.builder.longSiteName(),
             .user_homedir_pathname => try self.builder.userHomedirPathname(),
+            .list_all_packages => try self.builder.listAllPackages(),
+            .compute_restarts => try self.builder.computeRestarts(),
             else => return error.InvalidSyntax,
         };
     }
@@ -10315,6 +11400,40 @@ pub const Compiler = struct {
         }
 
         return try self.builder.list(elements.items);
+    }
+
+    fn compileBroadcastStream(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        var streams = std.ArrayList(*const Ir){};
+        defer streams.deinit(self.allocator);
+
+        var current = args;
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            const stream_ir = try self.compile(cons.car, env);
+            try streams.append(self.allocator, stream_ir);
+            current = cons.cdr;
+        }
+
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .make_broadcast_stream = try self.allocator.dupe(*const Ir, streams.items) };
+        return node;
+    }
+
+    fn compileConcatenatedStream(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        var streams = std.ArrayList(*const Ir){};
+        defer streams.deinit(self.allocator);
+
+        var current = args;
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            const stream_ir = try self.compile(cons.car, env);
+            try streams.append(self.allocator, stream_ir);
+            current = cons.cdr;
+        }
+
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .make_concatenated_stream = try self.allocator.dupe(*const Ir, streams.items) };
+        return node;
     }
 
     fn compileSubstring(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -10445,6 +11564,81 @@ pub const Compiler = struct {
         }
 
         return try self.builder.format(dest_ir, control_ir, arg_list.items);
+    }
+
+    fn compileEncodeUniversalTime(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        // (encode-universal-time second minute hour date month year [zone])
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const second_ir = try self.compile(cons1.car, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const minute_ir = try self.compile(cons2.car, env);
+
+        if (!cons2.cdr.isCons()) return error.InvalidSyntax;
+        const cons3 = cons2.cdr.toPtr(Cons);
+        const hour_ir = try self.compile(cons3.car, env);
+
+        if (!cons3.cdr.isCons()) return error.InvalidSyntax;
+        const cons4 = cons3.cdr.toPtr(Cons);
+        const date_ir = try self.compile(cons4.car, env);
+
+        if (!cons4.cdr.isCons()) return error.InvalidSyntax;
+        const cons5 = cons4.cdr.toPtr(Cons);
+        const month_ir = try self.compile(cons5.car, env);
+
+        if (!cons5.cdr.isCons()) return error.InvalidSyntax;
+        const cons6 = cons5.cdr.toPtr(Cons);
+        const year_ir = try self.compile(cons6.car, env);
+
+        // Optional zone argument
+        var zone_ir: ?*const Ir = null;
+        if (cons6.cdr.isCons()) {
+            const cons7 = cons6.cdr.toPtr(Cons);
+            zone_ir = try self.compile(cons7.car, env);
+        }
+
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .encode_universal_time = .{
+            .second = second_ir,
+            .minute = minute_ir,
+            .hour = hour_ir,
+            .date = date_ir,
+            .month = month_ir,
+            .year = year_ir,
+            .zone = zone_ir,
+        } };
+        return node;
+    }
+
+    fn compileMakePathname(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        // (%make-pathname host device directory name type version)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const host_ir = try self.compile(cons1.car, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const device_ir = try self.compile(cons2.car, env);
+
+        if (!cons2.cdr.isCons()) return error.InvalidSyntax;
+        const cons3 = cons2.cdr.toPtr(Cons);
+        const directory_ir = try self.compile(cons3.car, env);
+
+        if (!cons3.cdr.isCons()) return error.InvalidSyntax;
+        const cons4 = cons3.cdr.toPtr(Cons);
+        const name_ir = try self.compile(cons4.car, env);
+
+        if (!cons4.cdr.isCons()) return error.InvalidSyntax;
+        const cons5 = cons4.cdr.toPtr(Cons);
+        const type_ir = try self.compile(cons5.car, env);
+
+        if (!cons5.cdr.isCons()) return error.InvalidSyntax;
+        const cons6 = cons5.cdr.toPtr(Cons);
+        const version_ir = try self.compile(cons6.car, env);
+
+        return try self.builder.makePathname(host_ir, device_ir, directory_ir, name_ir, type_ir, version_ir);
     }
 
     fn compileMakeHash(self: *Compiler, args: Value) anyerror!*Ir {

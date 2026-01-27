@@ -235,7 +235,7 @@ pub fn classOf(heap: *Heap, args: Value) !Value {
 
     // Built-in types: lookup class from registry
     const type_name = switch (obj.typeKind()) {
-        .nil, .t => "symbol",
+        .nil, .t, .unbound => "symbol",
         .fixnum => "fixnum",
         .float => "float",
         .char => "character",

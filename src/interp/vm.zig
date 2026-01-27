@@ -10,6 +10,7 @@ comptime {
 const std = @import("std");
 const builtin = @import("builtin");
 const bytecode = @import("../bytecode/bytecode.zig");
+const disasm = @import("../bytecode/disasm.zig");
 const opcodes = @import("../bytecode/opcodes.zig");
 const Op = bytecode.Op;
 const Chunk = bytecode.Chunk;
@@ -1554,6 +1555,36 @@ pub const Vm = struct {
                 vec.set(idx, val);
                 try self.push(val); // Return the value that was set
             },
+            .elt_set => {
+                // Polymorphic: set element in vector or list
+                const val = try self.pop();
+                const idx_val = try self.pop();
+                const seq_val = try self.pop();
+                if (!idx_val.isFixnum()) return error.TypeMismatch;
+                const idx_signed = idx_val.toFixnum();
+                if (idx_signed < 0) return error.TypeMismatch;
+                const idx: usize = @intCast(idx_signed);
+
+                if (seq_val.isVector()) {
+                    const vec = seq_val.toPtr(runtime.Vector);
+                    if (idx >= vec.length) return error.TypeMismatch;
+                    vec.set(idx, val);
+                    try self.push(val);
+                } else if (seq_val.isCons() or seq_val.isNil()) {
+                    // For lists, use nthcdr then rplaca
+                    var list = seq_val;
+                    var i: usize = 0;
+                    while (i < idx) : (i += 1) {
+                        if (!list.isCons()) return error.TypeMismatch;
+                        list = list.toPtr(runtime.Cons).cdr;
+                    }
+                    if (!list.isCons()) return error.TypeMismatch;
+                    list.toPtr(runtime.Cons).car = val;
+                    try self.push(val);
+                } else {
+                    return error.TypeMismatch;
+                }
+            },
             .vec_len => {
                 const vec_val = try self.pop();
                 if (!vec_val.isVector()) return error.TypeMismatch;
@@ -1592,6 +1623,21 @@ pub const Vm = struct {
                 const vec_val = try self.pop();
                 const result = primitives.vector.vectorPop(vec_val);
                 try self.push(result);
+            },
+
+            .vec_set_fill_ptr => {
+                const fp_val = try self.pop();
+                const vec_val = try self.pop();
+                if (!fp_val.isFixnum()) return error.TypeMismatch;
+                const ok = primitives.vector.setFillPointer(vec_val, fp_val.toFixnum());
+                try self.push(if (ok) Value.t else Value.nil);
+            },
+
+            .vec_set_adjustable => {
+                const bool_val = try self.pop();
+                const vec_val = try self.pop();
+                const ok = primitives.vector.setAdjustable(vec_val, !bool_val.isNil());
+                try self.push(if (ok) Value.t else Value.nil);
             },
 
             .vec_adjust => {
@@ -2176,6 +2222,13 @@ pub const Vm = struct {
                 const timestamp = try io.fileWriteDate(path_str.bytes());
                 try self.push(Value.makeFixnum(timestamp));
             },
+            .file_author => {
+                const path_val = try self.pop();
+                // Accept string or pathname
+                if (!path_val.isString() and !path_val.isPathname()) return error.TypeMismatch;
+                // Unix-like systems don't track file author, return nil
+                try self.push(Value.nil);
+            },
             .get_universal_time => {
                 const timestamp = io.getUniversalTime();
                 try self.push(Value.makeFixnum(timestamp));
@@ -2219,6 +2272,39 @@ pub const Vm = struct {
                 self.secondary_values[6] = if (dt.daylight_p) Value.t else Value.nil;
                 self.secondary_values[7] = Value.makeFixnum(dt.zone);
                 self.secondary_values_count = 8;
+            },
+            .encode_universal_time => {
+                const argc = self.readU8();
+                // Pop args in reverse: year, month, date, hour, minute, second, [zone]
+                var zone: ?i64 = null;
+                if (argc == 7) {
+                    const zone_val = try self.pop();
+                    if (zone_val.isFixnum()) {
+                        zone = zone_val.toFixnum();
+                    }
+                }
+                const year_val = try self.pop();
+                const month_val = try self.pop();
+                const date_val = try self.pop();
+                const hour_val = try self.pop();
+                const minute_val = try self.pop();
+                const second_val = try self.pop();
+                if (!second_val.isFixnum() or !minute_val.isFixnum() or
+                    !hour_val.isFixnum() or !date_val.isFixnum() or
+                    !month_val.isFixnum() or !year_val.isFixnum())
+                {
+                    return error.TypeMismatch;
+                }
+                const ut = io.encodeUniversalTime(
+                    second_val.toFixnum(),
+                    minute_val.toFixnum(),
+                    hour_val.toFixnum(),
+                    date_val.toFixnum(),
+                    month_val.toFixnum(),
+                    year_val.toFixnum(),
+                    zone,
+                );
+                try self.push(Value.makeFixnum(ut));
             },
             .room => {
                 // Print memory statistics
@@ -3027,6 +3113,277 @@ pub const Vm = struct {
                 const val = try self.pop();
                 try self.push(if (val.isHashTable()) Value.t else Value.nil);
             },
+            .packagep => {
+                const val = try self.pop();
+                try self.push(if (val.isPackage()) Value.t else Value.nil);
+            },
+            .symbol_package => {
+                const val = try self.pop();
+                // Handle special symbols nil and t
+                if (val.isNil() or val.isT()) {
+                    // nil and t are in the CL package
+                    const cl_name = try self.heap.allocBaseString("CL");
+                    if (self.heap.findLispPackage(cl_name)) |pkg| {
+                        try self.push(pkg);
+                    } else {
+                        try self.push(Value.nil);
+                    }
+                } else if (val.isSymbol()) {
+                    const sym = val.toPtr(Symbol);
+                    const pkg_ptr = sym.reserved;
+                    if (pkg_ptr != 0) {
+                        // Get the Zig package struct
+                        const zig_pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
+                        // Look up the Lisp package object by name
+                        const name_val = try self.heap.allocBaseString(zig_pkg.name);
+                        if (self.heap.findLispPackage(name_val)) |pkg| {
+                            try self.push(pkg);
+                        } else {
+                            try self.push(Value.nil);
+                        }
+                    } else {
+                        try self.push(Value.nil);
+                    }
+                } else {
+                    return error.TypeMismatch;
+                }
+            },
+            .package_name => {
+                const pkg = try self.pop();
+                const result = try primitives.package.packageName(pkg);
+                try self.push(result);
+            },
+            .package_nicknames => {
+                const pkg = try self.pop();
+                const result = try primitives.package.packageNicknames(pkg);
+                try self.push(result);
+            },
+            .package_use_list => {
+                const pkg = try self.pop();
+                const result = try primitives.package.packageUseList(pkg);
+                try self.push(result);
+            },
+            .package_used_by_list => {
+                const pkg = try self.pop();
+                const result = try primitives.package.packageUsedByList(self.heap, pkg);
+                try self.push(result);
+            },
+            .package_shadowing_symbols => {
+                const pkg = try self.pop();
+                const result = try primitives.package.packageShadowingSymbols(pkg);
+                try self.push(result);
+            },
+            .list_all_packages => {
+                const result = try primitives.package.listAllPackages(self.heap);
+                try self.push(result);
+            },
+            .compute_restarts => {
+                // Build list of active restart names from restart stack
+                var result = Value.nil;
+                var i: usize = self.restart_sp;
+                while (i > 0) {
+                    i -= 1;
+                    const restart_sym = self.restart_stack[i].name;
+                    result = try self.heap.allocCons(restart_sym, result);
+                }
+                try self.push(result);
+            },
+            .restart_name => {
+                // In our simplified implementation, restarts are just symbols
+                const restart = try self.pop();
+                // Return the symbol itself as the name
+                try self.push(restart);
+            },
+            .directory => {
+                const pathname = try self.pop();
+                const result = try io.listDirectory(self.heap, pathname);
+                try self.push(result);
+            },
+            .pathname_match_p => {
+                const wildcard = try self.pop();
+                const pathname = try self.pop();
+                const result = try io.pathnameMatchP(pathname, wildcard);
+                try self.push(result);
+            },
+            .enough_namestring => {
+                // enough-namestring returns shortest namestring to identify pathname
+                // In our simplified implementation, returns full namestring
+                const pn_val = try self.pop();
+                if (!pn_val.isPathname()) return error.TypeMismatch;
+
+                const pn = pn_val.toPtr(runtime.Pathname);
+
+                var result = std.ArrayList(u8){};
+                defer result.deinit(self.allocator);
+
+                // Process directory
+                if (pn.directory != Value.nil) {
+                    var dir_list = pn.directory;
+                    if (dir_list.isCons()) {
+                        const first = dir_list.toPtr(runtime.Cons).car;
+                        if (first.raw == self.builtins.kw_absolute.raw) {
+                            try result.append(self.allocator, '/');
+                            dir_list = dir_list.toPtr(runtime.Cons).cdr;
+                        } else if (first.raw == self.builtins.kw_relative.raw) {
+                            dir_list = dir_list.toPtr(runtime.Cons).cdr;
+                        }
+                    }
+                    while (dir_list != Value.nil) {
+                        if (!dir_list.isCons()) break;
+                        const cons = dir_list.toPtr(runtime.Cons);
+                        const component = cons.car;
+                        if (component.isString()) {
+                            const comp_str = component.toPtr(runtime.String);
+                            try result.appendSlice(self.allocator, comp_str.bytes());
+                            try result.append(self.allocator, '/');
+                        }
+                        dir_list = cons.cdr;
+                    }
+                }
+
+                // Add name
+                if (pn.name != Value.nil and pn.name.isString()) {
+                    const name_str = pn.name.toPtr(runtime.String);
+                    try result.appendSlice(self.allocator, name_str.bytes());
+                }
+
+                // Add type (extension)
+                if (pn.type != Value.nil and pn.type.isString()) {
+                    try result.append(self.allocator, '.');
+                    const type_str = pn.type.toPtr(runtime.String);
+                    try result.appendSlice(self.allocator, type_str.bytes());
+                }
+
+                const str = try self.heap.allocBaseString(result.items);
+                try self.push(str);
+            },
+            .decode_float => {
+                const val = try self.pop();
+                const result = try arith.decodeFloat(self.heap, val);
+                try self.push(result);
+            },
+            .integer_decode_float => {
+                const val = try self.pop();
+                const result = try arith.integerDecodeFloat(self.heap, val);
+                try self.push(result);
+            },
+            .float_radix => {
+                const val = try self.pop();
+                const result = try arith.floatRadix(val);
+                try self.push(result);
+            },
+            .float_digits => {
+                const val = try self.pop();
+                const result = try arith.floatDigits(val);
+                try self.push(result);
+            },
+            .find_package => {
+                const name = try self.pop();
+                if (primitives.package.findPackage(self.heap, name)) |pkg| {
+                    try self.push(pkg);
+                } else {
+                    try self.push(Value.nil);
+                }
+            },
+            .delete_package => {
+                const pkg = try self.pop();
+                const deleted = try primitives.package.deletePackage(self.heap, pkg);
+                try self.push(if (deleted) Value.t else Value.nil);
+            },
+            .pkg_import => {
+                const pkg = try self.pop();
+                const symbols = try self.pop();
+                try primitives.package.importSymbols(self.heap, symbols, pkg);
+                try self.push(Value.t);
+            },
+            .pkg_unexport => {
+                const pkg = try self.pop();
+                const symbols = try self.pop();
+                try primitives.package.unexportSymbols(self.heap, symbols, pkg);
+                try self.push(Value.t);
+            },
+            .pkg_shadow => {
+                const pkg = try self.pop();
+                const names = try self.pop();
+                try primitives.package.shadowSymbols(self.heap, names, pkg);
+                try self.push(Value.t);
+            },
+            .pkg_shadowing_import => {
+                const pkg = try self.pop();
+                const symbols = try self.pop();
+                try primitives.package.shadowingImport(self.heap, symbols, pkg);
+                try self.push(Value.t);
+            },
+            .pkg_unuse_package => {
+                const pkg = try self.pop();
+                const packages = try self.pop();
+                try primitives.package.unusePackage(self.heap, packages, pkg);
+                try self.push(Value.t);
+            },
+            .pkg_unintern => {
+                const pkg = try self.pop();
+                const symbol = try self.pop();
+                const removed = try primitives.package.uninternSymbol(self.heap, symbol, pkg);
+                try self.push(if (removed) Value.t else Value.nil);
+            },
+            .pkg_find_symbol => {
+                const pkg = try self.pop();
+                const name = try self.pop();
+                const result = try primitives.package.findSymbol(self.heap, name, pkg);
+                // Returns (symbol . (status . nil)), push symbol then status
+                if (result.isCons()) {
+                    const c1 = result.toPtr(runtime.Cons);
+                    try self.push(c1.car); // symbol
+                    if (c1.cdr.isCons()) {
+                        const c2 = c1.cdr.toPtr(runtime.Cons);
+                        try self.push(c2.car); // status
+                    } else {
+                        try self.push(Value.nil);
+                    }
+                } else {
+                    try self.push(Value.nil);
+                    try self.push(Value.nil);
+                }
+            },
+            .pkg_find_all_symbols => {
+                const name = try self.pop();
+                const result = try primitives.package.findAllSymbols(self.heap, name);
+                try self.push(result);
+            },
+            .apropos_list => {
+                const substring = try self.pop();
+                const result = try primitives.package.aproposSymbols(self.heap, substring);
+                try self.push(result);
+            },
+            .read_char_no_hang => {
+                const stream = try self.pop();
+                const result = try io.readCharNoHang(stream);
+                try self.push(result);
+            },
+            .pkg_make_package => {
+                const use_list = try self.pop();
+                const nicknames = try self.pop();
+                const name = try self.pop();
+                const result = try primitives.package.makePackage(
+                    self.heap,
+                    name,
+                    if (nicknames.isNil()) null else nicknames,
+                    if (use_list.isNil()) null else use_list,
+                );
+                try self.push(result);
+            },
+            .pkg_rename_package => {
+                const new_nicknames = try self.pop();
+                const new_name = try self.pop();
+                const pkg = try self.pop();
+                const result = try primitives.package.renamePackage(
+                    self.heap,
+                    pkg,
+                    new_name,
+                    if (new_nicknames.isNil()) null else new_nicknames,
+                );
+                try self.push(result);
+            },
             .hash_clear => {
                 const ht_val = try self.pop();
                 if (!ht_val.isHashTable()) return error.TypeMismatch;
@@ -3166,6 +3523,210 @@ pub const Vm = struct {
                     try self.push(if (stream.isOutput()) Value.t else Value.nil);
                 }
             },
+            .open_stream_p => {
+                const val = try self.pop();
+                if (!val.isStream()) {
+                    try self.push(Value.nil);
+                } else {
+                    const stream = val.toPtr(runtime.Stream);
+                    try self.push(if (!stream.isClosed()) Value.t else Value.nil);
+                }
+            },
+            .interactive_stream_p => {
+                const val = try self.pop();
+                if (!val.isStream()) {
+                    try self.push(Value.nil);
+                } else {
+                    const stream = val.toPtr(runtime.Stream);
+                    // stdin, stdout, stderr are interactive
+                    const is_interactive = stream.stream_type == .stdin or
+                        stream.stream_type == .stdout or
+                        stream.stream_type == .stderr;
+                    try self.push(if (is_interactive) Value.t else Value.nil);
+                }
+            },
+            .stream_element_type => {
+                const val = try self.pop();
+                if (!val.isStream()) return error.TypeMismatch;
+                // Our streams are character streams
+                try self.push(try self.heap.intern("character"));
+            },
+            .stream_external_format => {
+                const val = try self.pop();
+                if (!val.isStream()) return error.TypeMismatch;
+                // Return :default as external format
+                try self.push(try self.heap.internKeyword("default"));
+            },
+            .make_broadcast_stream => {
+                // Pop count streams from stack, create broadcast stream
+                const count = self.chunk.code[self.ip];
+                self.ip += 1;
+                var streams_list = Value.nil;
+                // Build list in reverse order (stack order)
+                var i: usize = 0;
+                while (i < count) : (i += 1) {
+                    const stream = try self.pop();
+                    if (!stream.isStream()) return error.TypeMismatch;
+                    streams_list = try self.heap.allocCons(stream, streams_list);
+                }
+                const result = try self.heap.allocBroadcastStream(streams_list);
+                try self.push(result);
+            },
+            .make_concatenated_stream => {
+                // Pop count streams from stack, create concatenated stream
+                const count = self.chunk.code[self.ip];
+                self.ip += 1;
+                var streams_list = Value.nil;
+                // Build list in reverse order (stack order)
+                var i: usize = 0;
+                while (i < count) : (i += 1) {
+                    const stream = try self.pop();
+                    if (!stream.isStream()) return error.TypeMismatch;
+                    streams_list = try self.heap.allocCons(stream, streams_list);
+                }
+                const result = try self.heap.allocConcatenatedStream(streams_list);
+                try self.push(result);
+            },
+            .make_echo_stream => {
+                const output_stream = try self.pop();
+                const input_stream = try self.pop();
+                if (!input_stream.isStream() or !output_stream.isStream()) return error.TypeMismatch;
+                const result = try self.heap.allocEchoStream(input_stream, output_stream);
+                try self.push(result);
+            },
+            .make_synonym_stream => {
+                const symbol = try self.pop();
+                if (!symbol.isSymbol()) return error.TypeMismatch;
+                const result = try self.heap.allocSynonymStream(symbol);
+                try self.push(result);
+            },
+            .make_two_way_stream => {
+                const output_stream = try self.pop();
+                const input_stream = try self.pop();
+                if (!input_stream.isStream() or !output_stream.isStream()) return error.TypeMismatch;
+                const result = try self.heap.allocTwoWayStream(input_stream, output_stream);
+                try self.push(result);
+            },
+            .broadcast_stream_streams => {
+                const stream_val = try self.pop();
+                if (!stream_val.isStream()) return error.TypeMismatch;
+                const stream = stream_val.toPtr(runtime.Stream);
+                if (stream.stream_type != .broadcast) return error.TypeMismatch;
+                try self.push(stream.source_value); // the list of streams
+            },
+            .concatenated_stream_streams => {
+                const stream_val = try self.pop();
+                if (!stream_val.isStream()) return error.TypeMismatch;
+                const stream = stream_val.toPtr(runtime.Stream);
+                if (stream.stream_type != .concatenated) return error.TypeMismatch;
+                try self.push(stream.source_value); // the list of streams
+            },
+            .echo_stream_input_stream => {
+                const stream_val = try self.pop();
+                if (!stream_val.isStream()) return error.TypeMismatch;
+                const stream = stream_val.toPtr(runtime.Stream);
+                if (stream.stream_type != .echo) return error.TypeMismatch;
+                // source_value is (input . output)
+                const pair = stream.source_value.toPtr(runtime.Cons);
+                try self.push(pair.car);
+            },
+            .echo_stream_output_stream => {
+                const stream_val = try self.pop();
+                if (!stream_val.isStream()) return error.TypeMismatch;
+                const stream = stream_val.toPtr(runtime.Stream);
+                if (stream.stream_type != .echo) return error.TypeMismatch;
+                // source_value is (input . output)
+                const pair = stream.source_value.toPtr(runtime.Cons);
+                try self.push(pair.cdr);
+            },
+            .synonym_stream_symbol => {
+                const stream_val = try self.pop();
+                if (!stream_val.isStream()) return error.TypeMismatch;
+                const stream = stream_val.toPtr(runtime.Stream);
+                if (stream.stream_type != .synonym) return error.TypeMismatch;
+                try self.push(stream.source_value); // the symbol
+            },
+            .two_way_stream_input_stream => {
+                const stream_val = try self.pop();
+                if (!stream_val.isStream()) return error.TypeMismatch;
+                const stream = stream_val.toPtr(runtime.Stream);
+                if (stream.stream_type != .two_way) return error.TypeMismatch;
+                // source_value is (input . output)
+                const pair = stream.source_value.toPtr(runtime.Cons);
+                try self.push(pair.car);
+            },
+            .two_way_stream_output_stream => {
+                const stream_val = try self.pop();
+                if (!stream_val.isStream()) return error.TypeMismatch;
+                const stream = stream_val.toPtr(runtime.Stream);
+                if (stream.stream_type != .two_way) return error.TypeMismatch;
+                // source_value is (input . output)
+                const pair = stream.source_value.toPtr(runtime.Cons);
+                try self.push(pair.cdr);
+            },
+            .make_broadcast_stream_list => {
+                // Pop list of streams, create broadcast stream
+                const streams_list = try self.pop();
+                // Validate all elements are streams
+                var cursor = streams_list;
+                while (cursor.isCons()) {
+                    const cons = cursor.toPtr(runtime.Cons);
+                    if (!cons.car.isStream()) return error.TypeMismatch;
+                    cursor = cons.cdr;
+                }
+                const result = try self.heap.allocBroadcastStream(streams_list);
+                try self.push(result);
+            },
+            .make_concatenated_stream_list => {
+                // Pop list of streams, create concatenated stream
+                const streams_list = try self.pop();
+                // Validate all elements are streams
+                var cursor = streams_list;
+                while (cursor.isCons()) {
+                    const cons = cursor.toPtr(runtime.Cons);
+                    if (!cons.car.isStream()) return error.TypeMismatch;
+                    cursor = cons.cdr;
+                }
+                const result = try self.heap.allocConcatenatedStream(streams_list);
+                try self.push(result);
+            },
+            .disassemble => {
+                const func_val = try self.pop();
+                if (!func_val.isClosure()) return error.TypeMismatch;
+                const closure = func_val.toPtr(runtime.Closure);
+                // Get the chunk from the closure's code field
+                if (!closure.code.isChunk()) return error.TypeMismatch;
+                const chunk = closure.code.toPtr(runtime.Chunk);
+                // Write disassembly to stdout using runtime variant
+                var buf: [4096]u8 = undefined;
+                const stdout = std.fs.File.stdout();
+                var bw = stdout.writer(&buf);
+                const writer = &bw.interface;
+                disasm.disassembleRuntime(chunk, writer) catch {};
+                writer.flush() catch {};
+                try self.push(Value.nil);
+            },
+            .read_char_stream => {
+                const stream = try self.pop();
+                const result = try io.readChar(stream, null, null);
+                try self.push(result);
+            },
+            .peek_char_stream => {
+                const stream = try self.pop();
+                const result = try io.peekChar(null, stream);
+                try self.push(result);
+            },
+            .open_file => {
+                const direction = try self.pop();
+                const filename = try self.pop();
+                const result = try io.openFile(self.heap, filename, direction, null, null);
+                try self.push(result);
+            },
+            .close_stream => {
+                const stream = try self.pop();
+                try io.closeStream(stream, null);
+                try self.push(Value.nil);
+            },
             .make_string_input_stream => {
                 const str = try self.pop();
                 if (!str.isString()) return error.TypeMismatch;
@@ -3237,6 +3798,16 @@ pub const Vm = struct {
                 const result = try primitives.package.packageExports(pkg);
                 try self.push(result);
             },
+            .package_symbols_list => {
+                const pkg_name = try self.pop();
+                const result = try primitives.package.packageSymbolsList(self.heap, pkg_name);
+                try self.push(result);
+            },
+            .package_exports_list => {
+                const pkg_name = try self.pop();
+                const result = try primitives.package.packageExportsList(self.heap, pkg_name);
+                try self.push(result);
+            },
             .unintern => {
                 const pkg = try self.pop();
                 const sym = try self.pop();
@@ -3271,6 +3842,13 @@ pub const Vm = struct {
                 const text_val = try self.pop();
                 const stream_val = try self.pop();
                 const result = try primitives.stream.primWriteLine(self.heap, &[_]Value{ stream_val, text_val });
+                try self.push(result);
+            },
+
+            .write_string => {
+                const text_val = try self.pop();
+                const stream_val = try self.pop();
+                const result = try primitives.stream.primWriteString(self.heap, &[_]Value{ text_val, stream_val });
                 try self.push(result);
             },
 
@@ -3309,6 +3887,22 @@ pub const Vm = struct {
                 const stream_val = try self.pop();
                 const result = try primitives.stream.primForceOutput(self.heap, &[_]Value{stream_val});
                 try self.push(result);
+            },
+
+            .clear_input => {
+                const stream_val = try self.pop();
+                // Clear input is a no-op since we don't buffer input at the Lisp level
+                // Accept nil or a stream, return nil
+                if (!stream_val.isNil() and !stream_val.isStream()) return error.TypeMismatch;
+                try self.push(Value.nil);
+            },
+
+            .clear_output => {
+                const stream_val = try self.pop();
+                // Clear output is a no-op since we don't buffer output at the Lisp level
+                // Accept nil or a stream, return nil
+                if (!stream_val.isNil() and !stream_val.isStream()) return error.TypeMismatch;
+                try self.push(Value.nil);
             },
 
             .sleep => {
@@ -3708,6 +4302,30 @@ pub const Vm = struct {
                 // Create string from result
                 const result_str = try self.allocString(result.items);
                 try self.push(result_str);
+            },
+
+            .directory_namestring => {
+                const pn_val = try self.pop();
+                const result = try primitives.pathname.directoryNamestring(self.allocator, self.heap, pn_val);
+                try self.push(result);
+            },
+
+            .file_namestring => {
+                const pn_val = try self.pop();
+                const result = try primitives.pathname.fileNamestring(self.allocator, self.heap, pn_val);
+                try self.push(result);
+            },
+
+            .host_namestring => {
+                const pn_val = try self.pop();
+                const result = try primitives.pathname.hostNamestring(self.allocator, self.heap, pn_val);
+                try self.push(result);
+            },
+
+            .wild_pathname_p => {
+                const pn_val = try self.pop();
+                const result = primitives.pathname.wildPathnameP(pn_val, null);
+                try self.push(if (result) Value.t else Value.nil);
             },
 
             .merge_pathnames => {
@@ -4187,6 +4805,32 @@ pub const Vm = struct {
                 try self.push(Value.nil);
             },
 
+            .listen => {
+                const stream_val = try self.pop();
+                // Accept nil or a stream
+                if (!stream_val.isNil() and !stream_val.isStream()) return error.TypeMismatch;
+                // For now, always return nil (no non-blocking I/O support)
+                // A proper implementation would check if input is available
+                try self.push(Value.nil);
+            },
+
+            .upgraded_complex_part_type => {
+                _ = try self.pop(); // typespec (ignored)
+                // Our complex numbers use double-float for both parts
+                try self.push(try self.heap.intern("real"));
+            },
+
+            .file_string_length => {
+                const string_val = try self.pop();
+                const stream_val = try self.pop();
+                // Accept nil or stream for first arg
+                if (!stream_val.isNil() and !stream_val.isStream()) return error.TypeMismatch;
+                if (!string_val.isString()) return error.TypeMismatch;
+                const str = string_val.toPtr(runtime.String);
+                // Return byte length of string (assuming 1 byte per char for external format)
+                try self.push(Value.makeFixnum(@intCast(str.bytes().len)));
+            },
+
             .boundp => {
                 const val = try self.pop();
                 if (!val.isSymbol()) return error.TypeMismatch;
@@ -4287,6 +4931,13 @@ pub const Vm = struct {
                 const obj = try self.pop();
                 const result = primitives.typep(self.heap, obj, type_spec) catch false;
                 try self.push(if (result) Value.t else Value.nil);
+            },
+
+            .subtypep => {
+                const type2 = try self.pop();
+                const type1 = try self.pop();
+                const result = try primitives.subtypep(self.heap, type1, type2);
+                try self.push(result);
             },
 
             // Numeric predicates
@@ -5463,6 +6114,7 @@ pub const Vm = struct {
         switch (val.typeKind()) {
             .nil => result.appendSlice(self.allocator, "nil") catch return error.OutOfMemory,
             .t => result.appendSlice(self.allocator, "t") catch return error.OutOfMemory,
+            .unbound => result.appendSlice(self.allocator, "#<unbound>") catch return error.OutOfMemory,
             .fixnum => {
                 var buf: [32]u8 = undefined;
                 const num_str = std.fmt.bufPrint(&buf, "{d}", .{val.toFixnum()}) catch return error.OutOfMemory;
@@ -6350,7 +7002,7 @@ fn hashValueWithTest(val: Value, test_type: runtime.HashTest) u64 {
         .equal => {
             // equal: content-based hashing
             return switch (val.typeKind()) {
-                .nil, .t, .fixnum, .char => fnvHashU64(val.raw),
+                .nil, .t, .unbound, .fixnum, .char => fnvHashU64(val.raw),
                 .float => fnvHashU64(normalizeFloatForHash(val.toFloat())),
                 .symbol => fnvHash(val.toPtr(runtime.Symbol).getName()),
                 .keyword => fnvHash(val.toPtr(runtime.Keyword).getName()),

@@ -124,6 +124,9 @@ pub fn findAllSymbols(heap: *Heap, name: Value) !Value {
     else
         return error.TypeError;
 
+    // Create a lookup symbol for hash table comparison
+    const lookup_sym = try heap.allocSymbol(name_str);
+
     var result = Value.nil;
     var it = heap.packages.valueIterator();
     while (it.next()) |zig_pkg| {
@@ -133,9 +136,57 @@ pub fn findAllSymbols(heap: *Heap, name: Value) !Value {
 
             const sym_table = p.symbols;
             if (sym_table.isNil()) continue;
-            const ht = sym_table.toPtr(objects.HashTable);
-            if (hashTableLookup(heap, ht, name_str)) |sym| {
-                result = try heap.allocCons(sym, result);
+            // Use the sym_table Value directly (not converting to HashTable ptr)
+            const found = hashTableLookup(sym_table, lookup_sym);
+            if (found.raw != Value.nil.raw) {
+                result = try heap.allocCons(found, result);
+            }
+        }
+    }
+    return result;
+}
+
+/// Find all symbols whose name contains the given substring
+pub fn aproposSymbols(heap: *Heap, substring: Value) !Value {
+    const substr = if (substring.isString())
+        substring.toPtr(objects.String).bytes()
+    else if (substring.isSymbol())
+        substring.toPtr(objects.Symbol).getName()
+    else
+        return error.TypeError;
+
+    var result = Value.nil;
+    var seen = std.AutoHashMap(u64, void).init(heap.backing_allocator);
+    defer seen.deinit();
+
+    // Iterate over all registered Lisp packages
+    var it = heap.packages.valueIterator();
+    while (it.next()) |zig_pkg| {
+        const name_val = heap.allocBaseString(zig_pkg.*.name) catch continue;
+        const pkg_opt = heap.findLispPackage(name_val);
+        if (pkg_opt == null) continue;
+        const pkg = pkg_opt.?.toPtr(objects.Package);
+
+        // Check internal symbols
+        if (pkg.symbols.raw != Value.nil.raw) {
+            const ht = pkg.symbols.toPtr(objects.HashTable);
+            var i: usize = 0;
+            while (i < ht.capacity) : (i += 1) {
+                const entry = &ht.entries[i];
+                if (entry.key.raw == objects.HashTable.EMPTY.raw or
+                    entry.key.raw == objects.HashTable.DELETED.raw) continue;
+                if (!entry.key.isSymbol()) continue;
+
+                // Check if name contains substring
+                const sym = entry.key.toPtr(objects.Symbol);
+                const sym_name = sym.getName();
+                if (std.mem.indexOf(u8, sym_name, substr) != null) {
+                    // Avoid duplicates
+                    if (seen.get(entry.key.raw) == null) {
+                        try seen.put(entry.key.raw, {});
+                        result = try heap.allocCons(entry.key, result);
+                    }
+                }
             }
         }
     }
@@ -150,6 +201,74 @@ pub fn listAllPackages(heap: *Heap) !Value {
         const name_val = try heap.allocBaseString(zig_pkg.*.name);
         if (heap.findLispPackage(name_val)) |pkg_val| {
             result = try heap.allocCons(pkg_val, result);
+        }
+    }
+    return result;
+}
+
+/// Get all symbols in a package (from native SymbolTable)
+/// Takes package name string, keyword, symbol, or Lisp package object
+pub fn packageSymbolsList(heap: *Heap, pkg_val: Value) !Value {
+    const pkg_name = if (pkg_val.isPackage()) blk: {
+        // Extract name from Lisp package object
+        const p = pkg_val.toPtr(objects.Package);
+        if (p.name.isSymbol()) {
+            break :blk p.name.toPtr(objects.Symbol).getName();
+        } else if (p.name.isString()) {
+            break :blk p.name.toPtr(objects.String).bytes();
+        }
+        return error.TypeError;
+    } else if (pkg_val.isString())
+        pkg_val.toPtr(objects.String).bytes()
+    else if (pkg_val.isSymbol())
+        pkg_val.toPtr(objects.Symbol).getName()
+    else if (pkg_val.isKeyword())
+        pkg_val.toPtr(objects.Keyword).getName()
+    else
+        return error.TypeError;
+
+    // Find native package
+    const native_pkg = heap.findPackage(pkg_name) orelse return Value.nil;
+
+    // Iterate over native SymbolTable
+    var result = Value.nil;
+    var it = native_pkg.symbols.iterator();
+    while (it.next()) |entry| {
+        result = try heap.allocCons(entry.value_ptr.*, result);
+    }
+    return result;
+}
+
+/// Get all exported symbols in a package (from native Package)
+/// Takes package name string, keyword, symbol, or Lisp package object
+pub fn packageExportsList(heap: *Heap, pkg_val: Value) !Value {
+    const pkg_name = if (pkg_val.isPackage()) blk: {
+        const p = pkg_val.toPtr(objects.Package);
+        if (p.name.isSymbol()) {
+            break :blk p.name.toPtr(objects.Symbol).getName();
+        } else if (p.name.isString()) {
+            break :blk p.name.toPtr(objects.String).bytes();
+        }
+        return error.TypeError;
+    } else if (pkg_val.isString())
+        pkg_val.toPtr(objects.String).bytes()
+    else if (pkg_val.isSymbol())
+        pkg_val.toPtr(objects.Symbol).getName()
+    else if (pkg_val.isKeyword())
+        pkg_val.toPtr(objects.Keyword).getName()
+    else
+        return error.TypeError;
+
+    // Find native package
+    const native_pkg = heap.findPackage(pkg_name) orelse return Value.nil;
+
+    // Iterate over exports hash map
+    var result = Value.nil;
+    var it = native_pkg.exports.keyIterator();
+    while (it.next()) |export_name| {
+        // Look up the symbol by name
+        if (native_pkg.symbols.get(export_name.*)) |sym| {
+            result = try heap.allocCons(sym, result);
         }
     }
     return result;

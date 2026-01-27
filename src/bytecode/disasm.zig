@@ -78,6 +78,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .nilp,
         .vec_ref,
         .vec_set,
+        .elt_set,
         .vec_len,
         .slot_value,
         .set_slot_value,
@@ -136,17 +137,53 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .get_dispatch_macro_character,
         .read_line,
         .write_line,
+        .write_string,
         .read_byte,
         .write_byte,
         .file_position,
         .file_length,
         .finish_output,
         .force_output,
+        .clear_input,
+        .clear_output,
         .sleep,
         .delete_file,
         .rename_file,
         .probe_file,
         .file_write_date,
+        .file_author,
+        .file_string_length,
+        .packagep,
+        .symbol_package,
+        .package_name,
+        .package_nicknames,
+        .package_use_list,
+        .package_used_by_list,
+        .package_shadowing_symbols,
+        .list_all_packages,
+        .find_package,
+        .delete_package,
+        .pkg_import,
+        .pkg_unexport,
+        .pkg_shadow,
+        .pkg_shadowing_import,
+        .pkg_unuse_package,
+        .pkg_unintern,
+        .pkg_find_symbol,
+        .pkg_find_all_symbols,
+        .pkg_make_package,
+        .pkg_rename_package,
+        .apropos_list,
+        .read_char_no_hang,
+        .compute_restarts,
+        .restart_name,
+        .directory,
+        .pathname_match_p,
+        .enough_namestring,
+        .decode_float,
+        .integer_decode_float,
+        .float_radix,
+        .float_digits,
         .get_universal_time,
         .get_internal_real_time,
         .get_internal_run_time,
@@ -213,11 +250,14 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .read_char,
         .peek_char,
         .unread_char,
+        .listen,
+        .upgraded_complex_part_type,
         .boundp,
         .fboundp,
         .symbol_value,
         .symbol_function,
         .typep,
+        .subtypep,
         .abs,
         .zerop,
         .plusp,
@@ -308,6 +348,14 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .pathname,
         .parse_namestring,
         .namestring,
+        .directory_namestring,
+        .file_namestring,
+        .host_namestring,
+        .wild_pathname_p,
+        .open_stream_p,
+        .interactive_stream_p,
+        .stream_element_type,
+        .stream_external_format,
         .merge_pathnames,
         .pathname_host,
         .pathname_device,
@@ -319,6 +367,8 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .ensure_directories_exist,
         .package_symbols_table,
         .package_exports_table,
+        .package_symbols_list,
+        .package_exports_list,
         .find_symbol,
         .push_progv,
         .pop_progv,
@@ -326,14 +376,34 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .vec_push,
         .vec_push_ext,
         .vec_pop,
+        .vec_set_fill_ptr,
+        .vec_set_adjustable,
         .vec_adjust,
+        // Compound stream opcodes (no operand)
+        .make_echo_stream,
+        .make_synonym_stream,
+        .make_two_way_stream,
+        .make_broadcast_stream_list,
+        .make_concatenated_stream_list,
+        .broadcast_stream_streams,
+        .concatenated_stream_streams,
+        .echo_stream_input_stream,
+        .echo_stream_output_stream,
+        .synonym_stream_symbol,
+        .two_way_stream_input_stream,
+        .two_way_stream_output_stream,
+        .disassemble,
+        .read_char_stream,
+        .peek_char_stream,
+        .open_file,
+        .close_stream,
         => {
             try writer.print("{s}\n", .{op.name()});
             return offset + 1;
         },
 
         // 1 byte operand
-        .load_local, .store_local, .load_capture, .call, .tail_call, .make_list, .make_vec_n, .values, .mv_bind, .format, .enter_scope, .exit_scope, .pop_restarts, .open, .make_array, .aref, .aset, .make_pathname => {
+        .load_local, .store_local, .load_capture, .call, .tail_call, .make_list, .make_vec_n, .values, .mv_bind, .format, .enter_scope, .exit_scope, .pop_restarts, .open, .make_array, .aref, .aset, .make_pathname, .encode_universal_time, .make_broadcast_stream, .make_concatenated_stream => {
             const operand = chunk.readU8(offset + 1);
             try writer.print("{s} {d}\n", .{ op.name(), operand });
             return offset + 2;
@@ -395,6 +465,52 @@ pub fn disassembleToString(allocator: std.mem.Allocator, chunk: *const Chunk) ![
 
     try disassemble(chunk, list.writer(allocator));
     return list.toOwnedSlice(allocator);
+}
+
+/// Disassemble a runtime chunk (different struct layout)
+pub fn disassembleRuntime(chunk: *const @import("../runtime/objects.zig").Chunk, writer: anytype) !void {
+    try writer.print("; Function: <anonymous>\n", .{});
+    try writer.print("; Arity: {d}, Locals: {d}\n", .{ chunk.arity, chunk.num_locals });
+    try writer.writeAll("; Constants:\n");
+
+    const constants = chunk.getConstants();
+    for (constants, 0..) |c, i| {
+        try writer.print(";   [{d}] = 0x{x:0>16}\n", .{ i, c.raw });
+    }
+
+    try writer.writeAll("; Code:\n");
+
+    const code = chunk.getCode();
+    var offset: usize = 0;
+    while (offset < code.len) {
+        offset = try disassembleInstructionRuntime(chunk, offset, writer);
+    }
+}
+
+fn disassembleInstructionRuntime(chunk: *const @import("../runtime/objects.zig").Chunk, offset: usize, writer: anytype) !usize {
+    try writer.print("{d:0>4}  ", .{offset});
+
+    const code = chunk.getCode();
+    const opcode_byte = code[offset];
+    const op = std.meta.intToEnum(Op, opcode_byte) catch {
+        try writer.print("??? (0x{x:0>2})\n", .{opcode_byte});
+        return offset + 1;
+    };
+
+    // Simplified: just print opcode name and advance by operand size
+    const size = op.operandSize();
+    if (size == 0) {
+        try writer.print("{s}\n", .{op.name()});
+        return offset + 1;
+    } else {
+        try writer.print("{s}", .{op.name()});
+        for (0..size) |i| {
+            const b = if (offset + 1 + i < code.len) code[offset + 1 + i] else 0;
+            try writer.print(" {d}", .{b});
+        }
+        try writer.writeAll("\n");
+        return offset + 1 + size;
+    }
 }
 
 // ============================================================================

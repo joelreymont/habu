@@ -269,6 +269,28 @@ pub const Heap = struct {
         // Create Lisp class registry
         heap.lisp_classes = try heap.allocHashTable(128, .eql);
 
+        // Create Lisp-visible Package objects for CL and CL-USER
+        {
+            // COMMON-LISP package
+            const cl_name = try heap.allocBaseString("COMMON-LISP");
+            const cl_nickname = try heap.allocBaseString("CL");
+            const cl_nicknames = try heap.allocCons(cl_nickname, Value.nil);
+            const cl_pkg = try heap.allocPackage(cl_name, cl_nicknames, Value.nil, true);
+            try heap.putLispPackage(cl_name, cl_pkg);
+            try heap.putLispPackage(cl_nickname, cl_pkg);
+
+            // CL-USER package (uses CL)
+            const cl_user_name = try heap.allocBaseString("CL-USER");
+            const cl_user_uses = try heap.allocCons(cl_pkg, Value.nil);
+            const cl_user_pkg = try heap.allocPackage(cl_user_name, Value.nil, cl_user_uses, false);
+            try heap.putLispPackage(cl_user_name, cl_user_pkg);
+
+            // KEYWORD package
+            const kw_name = try heap.allocBaseString("KEYWORD");
+            const kw_pkg = try heap.allocPackage(kw_name, Value.nil, Value.nil, true);
+            try heap.putLispPackage(kw_name, kw_pkg);
+        }
+
         // Create COMMON-LISP package first so metaclasses are interned in CL
         heap.cl_package = Package.init(allocator, "COMMON-LISP") catch return error.OutOfMemory;
         heap.cl_package.?.auto_export = true; // All CL symbols are exported
@@ -506,6 +528,146 @@ pub const Heap = struct {
             .data_ptr = 0,
             .length = 0,
             .file_fd = fd,
+        };
+        return Value.makeStream(stream);
+    }
+
+    /// Allocate stdin stream
+    pub fn allocStdin(self: *Heap) error{OutOfMemory}!Value {
+        const stream = try self.alloc(objects.Stream);
+        stream.* = .{
+            .kind = .stream,
+            .direction = .input,
+            .stream_type = .stdin,
+            .closed = false,
+            .position = 0,
+            .data_ptr = 0,
+            .length = 0,
+            .file_fd = 0, // stdin fd
+        };
+        return Value.makeStream(stream);
+    }
+
+    /// Allocate stdout stream
+    pub fn allocStdout(self: *Heap) error{OutOfMemory}!Value {
+        const stream = try self.alloc(objects.Stream);
+        stream.* = .{
+            .kind = .stream,
+            .direction = .output,
+            .stream_type = .stdout,
+            .closed = false,
+            .position = 0,
+            .data_ptr = 0,
+            .length = 0,
+            .file_fd = 1, // stdout fd
+        };
+        return Value.makeStream(stream);
+    }
+
+    /// Allocate stderr stream
+    pub fn allocStderr(self: *Heap) error{OutOfMemory}!Value {
+        const stream = try self.alloc(objects.Stream);
+        stream.* = .{
+            .kind = .stream,
+            .direction = .output,
+            .stream_type = .stderr,
+            .closed = false,
+            .position = 0,
+            .data_ptr = 0,
+            .length = 0,
+            .file_fd = 2, // stderr fd
+        };
+        return Value.makeStream(stream);
+    }
+
+    /// Allocate a broadcast stream (writes to multiple streams)
+    /// streams_list is a list of output streams
+    pub fn allocBroadcastStream(self: *Heap, streams_list: Value) error{OutOfMemory}!Value {
+        const stream = try self.alloc(objects.Stream);
+        stream.* = .{
+            .kind = .stream,
+            .direction = .output,
+            .stream_type = .broadcast,
+            .closed = false,
+            .position = 0,
+            .data_ptr = 0,
+            .length = 0,
+            .file_fd = -1,
+            .source_value = streams_list, // list of streams
+        };
+        return Value.makeStream(stream);
+    }
+
+    /// Allocate a concatenated stream (reads from sequence of streams)
+    /// streams_list is a list of input streams
+    pub fn allocConcatenatedStream(self: *Heap, streams_list: Value) error{OutOfMemory}!Value {
+        const stream = try self.alloc(objects.Stream);
+        stream.* = .{
+            .kind = .stream,
+            .direction = .input,
+            .stream_type = .concatenated,
+            .closed = false,
+            .position = 0,
+            .data_ptr = 0,
+            .length = 0,
+            .file_fd = -1,
+            .source_value = streams_list, // list of streams
+        };
+        return Value.makeStream(stream);
+    }
+
+    /// Allocate an echo stream (reads from input, echoes to output)
+    /// components is a cons cell: (input-stream . output-stream)
+    pub fn allocEchoStream(self: *Heap, input: Value, output: Value) error{OutOfMemory}!Value {
+        const components = try self.allocCons(input, output);
+        const stream = try self.alloc(objects.Stream);
+        stream.* = .{
+            .kind = .stream,
+            .direction = .input, // primarily an input stream
+            .stream_type = .echo,
+            .closed = false,
+            .position = 0,
+            .data_ptr = 0,
+            .length = 0,
+            .file_fd = -1,
+            .source_value = components,
+        };
+        return Value.makeStream(stream);
+    }
+
+    /// Allocate a synonym stream (delegates to symbol's value)
+    /// symbol_val is the symbol whose value is the target stream
+    pub fn allocSynonymStream(self: *Heap, symbol_val: Value) error{OutOfMemory}!Value {
+        const stream = try self.alloc(objects.Stream);
+        stream.* = .{
+            .kind = .stream,
+            .direction = .input, // direction determined dynamically
+            .stream_type = .synonym,
+            .closed = false,
+            .position = 0,
+            .data_ptr = 0,
+            .length = 0,
+            .file_fd = -1,
+            .source_value = symbol_val, // the symbol
+        };
+        return Value.makeStream(stream);
+    }
+
+    /// Allocate a two-way stream (bidirectional: input + output)
+    /// components is a cons cell: (input-stream . output-stream)
+    pub fn allocTwoWayStream(self: *Heap, input: Value, output: Value) error{OutOfMemory}!Value {
+        const components = try self.allocCons(input, output);
+        const stream = try self.alloc(objects.Stream);
+        stream.* = .{
+            .kind = .stream,
+            .direction = .input, // can be used for both
+            .stream_type = .two_way,
+            .closed = false,
+            .position = 0,
+            .data_ptr = 0,
+            .length = 0,
+            .file_fd = -1,
+            .source_value = components,
         };
         return Value.makeStream(stream);
     }
