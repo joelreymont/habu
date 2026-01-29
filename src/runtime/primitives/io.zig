@@ -1696,11 +1696,11 @@ pub fn filePosition(heap: *Heap, stream: Value, pos: ?Value) !Value {
         // Set position
         const p = pos.?;
         const new_pos: i64 = if (p.isKeyword()) blk: {
-            const kw = p.toPtr(objects.Keyword);
-            const name = kw.getName();
-            if (std.mem.eql(u8, name, "start")) {
+            const kw_start = try heap.internKeyword("start");
+            const kw_end = try heap.internKeyword("end");
+            if (p.raw == kw_start.raw) {
                 break :blk 0;
-            } else if (std.mem.eql(u8, name, "end")) {
+            } else if (p.raw == kw_end.raw) {
                 break :blk -1;
             } else {
                 return error.InvalidArgument;
@@ -1730,7 +1730,6 @@ pub fn filePosition(heap: *Heap, stream: Value, pos: ?Value) !Value {
             else => return error.NotImplemented,
         }
     }
-    _ = heap;
 }
 
 /// Open a file stream
