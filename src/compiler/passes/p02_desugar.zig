@@ -44,17 +44,6 @@ pub const Desugarer = struct {
         unless,
     };
 
-    /// Comptime lookup table for sugar forms
-    const sugar_forms = std.StaticStringMap(Form).initComptime(.{
-        .{ "LET*", .@"let*" },
-        .{ "COND", .cond },
-        .{ "AND", .@"and" },
-        .{ "OR", .@"or" },
-        .{ "DEFUN", .defun },
-        .{ "WHEN", .when },
-        .{ "UNLESS", .unless },
-    });
-
     pub fn init(allocator: std.mem.Allocator, heap: *Heap, builtins: *const builtins_mod.BuiltinSymbols) Desugarer {
         return .{
             .allocator = allocator,
@@ -86,15 +75,13 @@ pub const Desugarer = struct {
 
         // Check if head is a symbol
         if (head.isSymbol()) {
-            const name = head.toPtr(Symbol).getName();
-
             // Skip quote forms - don't desugar inside quotes
-            if (std.mem.eql(u8, name, "QUOTE") or std.mem.eql(u8, name, "QUASIQUOTE")) {
+            if (head.raw == self.builtins.sym_quote.raw or head.raw == self.builtins.sym_quasiquote.raw) {
                 return expr;
             }
 
             // Check if head is a sugar form
-            if (sugar_forms.get(name)) |form| {
+            if (self.sugarForm(head)) |form| {
                 return switch (form) {
                     .@"let*" => self.desugarLetStar(tail),
                     .cond => self.desugarCond(tail),
@@ -126,6 +113,18 @@ pub const Desugarer = struct {
         }
 
         return try self.heap.allocCons(desugared_car, desugared_cdr);
+    }
+
+    fn sugarForm(self: *Desugarer, head: Value) ?Form {
+        const b = self.builtins;
+        if (head.raw == b.sym_let_star.raw) return .@"let*";
+        if (head.raw == b.sym_cond.raw) return .cond;
+        if (head.raw == b.sym_and.raw) return .@"and";
+        if (head.raw == b.sym_or.raw) return .@"or";
+        if (head.raw == b.sym_defun.raw) return .defun;
+        if (head.raw == b.sym_when.raw) return .when;
+        if (head.raw == b.sym_unless.raw) return .unless;
+        return null;
     }
 
     /// (let* ((a 1) (b 2)) body) → (let ((a 1)) (let ((b 2)) body))

@@ -7,8 +7,10 @@ pub const BuiltinSymbols = struct {
     // Control flow
     sym_if: Value,
     sym_let: Value,
+    sym_let_star: Value,
     sym_lambda: Value,
     sym_quote: Value,
+    sym_quasiquote: Value,
     sym_defun: Value,
     sym_defmacro: Value,
     sym_setq: Value,
@@ -84,8 +86,10 @@ pub const BuiltinSymbols = struct {
             // Control flow
             .sym_if = try heap.intern("if"),
             .sym_let = try heap.intern("let"),
+            .sym_let_star = try heap.intern("let*"),
             .sym_lambda = try heap.intern("lambda"),
             .sym_quote = try heap.intern("quote"),
+            .sym_quasiquote = try heap.intern("quasiquote"),
             .sym_defun = try heap.intern("defun"),
             .sym_defmacro = try heap.intern("defmacro"),
             .sym_setq = try heap.intern("setq"),
