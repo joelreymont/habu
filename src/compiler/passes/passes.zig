@@ -76,7 +76,7 @@ pub fn runFullPipeline(
     const expanded = try expander.expand(expr);
 
     // p02: Desugar
-    const vm_ptr = vm orelse return error.InvalidInput;
+    const vm_ptr = if (vm) |val| val else return error.InvalidInput;
     var desugarer = desugar.Desugarer.init(allocator, heap, &vm_ptr.builtins);
     const desugared = try desugarer.desugar(expanded);
 
