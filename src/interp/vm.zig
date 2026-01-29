@@ -5361,12 +5361,12 @@ pub const Vm = struct {
                             if (val.isCharacter()) {
                                 const cp = val.toCharacter();
                                 if (cp < 128) {
-                                    result.append(self.allocator, @intCast(cp)) catch return error.OutOfMemory;
+                                    try result.append(self.allocator, @intCast(cp));
                                 } else {
                                     // UTF-8 encode
                                     var buf: [4]u8 = undefined;
-                                    const len = std.unicode.utf8Encode(cp, &buf) catch 0;
-                                    result.appendSlice(self.allocator, buf[0..len]) catch return error.OutOfMemory;
+                                    const len = try std.unicode.utf8Encode(cp, &buf);
+                                    try result.appendSlice(self.allocator, buf[0..len]);
                                 }
                             }
                             arg_idx += 1;
@@ -5375,13 +5375,13 @@ pub const Vm = struct {
                     },
                     '%' => {
                         // Newline
-                        result.append(self.allocator, '\n') catch return error.OutOfMemory;
+                        try result.append(self.allocator, '\n');
                         i += 2;
                     },
                     '&' => {
                         // Fresh line - newline only if not at start of line
                         if (result.items.len > 0 and result.items[result.items.len - 1] != '\n') {
-                            result.append(self.allocator, '\n') catch return error.OutOfMemory;
+                            try result.append(self.allocator, '\n');
                         }
                         i += 2;
                     },
@@ -5403,11 +5403,17 @@ pub const Vm = struct {
                             const param_str = fmt[param_start .. i + 1];
                             if (std.mem.indexOf(u8, param_str, ",")) |comma_pos| {
                                 // Both mincol and colinc
-                                mincol = std.fmt.parseInt(usize, param_str[0..comma_pos], 10) catch 1;
-                                colinc = std.fmt.parseInt(usize, param_str[comma_pos + 1 ..], 10) catch 1;
+                                if (comma_pos > 0) {
+                                    mincol = try std.fmt.parseInt(usize, param_str[0..comma_pos], 10);
+                                }
+                                if (comma_pos + 1 < param_str.len) {
+                                    colinc = try std.fmt.parseInt(usize, param_str[comma_pos + 1 ..], 10);
+                                }
                             } else {
                                 // Just mincol
-                                mincol = std.fmt.parseInt(usize, param_str, 10) catch 1;
+                                if (param_str.len > 0) {
+                                    mincol = try std.fmt.parseInt(usize, param_str, 10);
+                                }
                             }
                         }
 
@@ -5432,14 +5438,14 @@ pub const Vm = struct {
                         const spaces_needed = if (target_col > col) target_col - col else 0;
                         var space_idx: usize = 0;
                         while (space_idx < spaces_needed) : (space_idx += 1) {
-                            result.append(self.allocator, ' ') catch return error.OutOfMemory;
+                            try result.append(self.allocator, ' ');
                         }
 
                         i = j;
                     },
                     '~' => {
                         // Literal tilde
-                        result.append(self.allocator, '~') catch return error.OutOfMemory;
+                        try result.append(self.allocator, '~');
                         i += 2;
                     },
                     '*' => {
@@ -5455,7 +5461,9 @@ pub const Vm = struct {
 
                         if (param_start < i + 1) {
                             const param_str = fmt[param_start .. i + 1];
-                            skip_count = std.fmt.parseInt(usize, param_str, 10) catch 1;
+                            if (param_str.len > 0) {
+                                skip_count = try std.fmt.parseInt(usize, param_str, 10);
+                            }
                         }
 
                         // Skip forward
@@ -5482,7 +5490,7 @@ pub const Vm = struct {
                             }
 
                             if (should_plural) {
-                                result.append(self.allocator, 's') catch return error.OutOfMemory;
+                                try result.append(self.allocator, 's');
                             }
 
                             arg_idx += 1;
@@ -5526,10 +5534,10 @@ pub const Vm = struct {
                         while (j < body.len) {
                             if (body[j] == '~' and j + 1 < body.len) {
                                 // Handle nested directives (simplified - just copy for now)
-                                result.append(self.allocator, body[j]) catch return error.OutOfMemory;
+                                try result.append(self.allocator, body[j]);
                                 j += 1;
                             } else {
-                                result.append(self.allocator, body[j]) catch return error.OutOfMemory;
+                                try result.append(self.allocator, body[j]);
                                 j += 1;
                             }
                         }
@@ -5637,7 +5645,7 @@ pub const Vm = struct {
                                         if (clause_depth > 0) clause_depth -= 1;
                                         j += 2;
                                     } else if (body[j + 1] == ';' and clause_depth == 0) {
-                                        clauses.append(self.allocator, body[clause_start..j]) catch return error.OutOfMemory;
+                                        try clauses.append(self.allocator, body[clause_start..j]);
                                         clause_start = j + 2;
                                         j += 2;
                                     } else {
@@ -5647,7 +5655,7 @@ pub const Vm = struct {
                                     j += 1;
                                 }
                             }
-                            clauses.append(self.allocator, body[clause_start..]) catch return error.OutOfMemory;
+                            try clauses.append(self.allocator, body[clause_start..]);
                             // Get selector for boolean conditional
                             if (arg_idx < args.len) {
                                 const selector = args[arg_idx];
@@ -5655,7 +5663,7 @@ pub const Vm = struct {
                                 // nil = clause 0, non-nil = clause 1
                                 const clause_idx: usize = if (selector.isNil()) 0 else 1;
                                 if (clause_idx < clauses.items.len) {
-                                    result.appendSlice(self.allocator, clauses.items[clause_idx]) catch return error.OutOfMemory;
+                                    try result.appendSlice(self.allocator, clauses.items[clause_idx]);
                                 }
                             }
                             i = end + 2;
@@ -5706,7 +5714,7 @@ pub const Vm = struct {
                                     if (clause_depth > 0) clause_depth -= 1;
                                     j += 2;
                                 } else if (body[j + 1] == ';' and clause_depth == 0) {
-                                    clauses.append(self.allocator, body[clause_start..j]) catch return error.OutOfMemory;
+                                    try clauses.append(self.allocator, body[clause_start..j]);
                                     clause_start = j + 2;
                                     j += 2;
                                 } else {
@@ -5716,7 +5724,7 @@ pub const Vm = struct {
                                 j += 1;
                             }
                         }
-                        clauses.append(self.allocator, body[clause_start..]) catch return error.OutOfMemory;
+                        try clauses.append(self.allocator, body[clause_start..]);
                         // Get selector
                         if (arg_idx < args.len) {
                             const selector = args[arg_idx];
@@ -5733,7 +5741,7 @@ pub const Vm = struct {
                             if (clause_idx < clauses.items.len) {
                                 // Append the selected clause text directly
                                 // (for full CL compat, would need recursive format processing)
-                                result.appendSlice(self.allocator, clauses.items[clause_idx]) catch return error.OutOfMemory;
+                                try result.appendSlice(self.allocator, clauses.items[clause_idx]);
                             }
                         }
                         i = end + 2;
@@ -5848,7 +5856,7 @@ pub const Vm = struct {
                                     if (seg_depth > 0) seg_depth -= 1;
                                     j += 2;
                                 } else if (body[j + 1] == ';' and seg_depth == 0) {
-                                    segments.append(self.allocator, body[seg_start..j]) catch return error.OutOfMemory;
+                                    try segments.append(self.allocator, body[seg_start..j]);
                                     seg_start = j + 2;
                                     j += 2;
                                 } else {
@@ -5858,7 +5866,7 @@ pub const Vm = struct {
                                 j += 1;
                             }
                         }
-                        segments.append(self.allocator, body[seg_start..]) catch return error.OutOfMemory;
+                        try segments.append(self.allocator, body[seg_start..]);
 
                         // Process segments recursively
                         var seg_texts = std.ArrayList([]const u8){};
@@ -5896,20 +5904,20 @@ pub const Vm = struct {
                                                 const val = args[arg_idx];
                                                 if (val.isFixnum()) {
                                                     var buf: [32]u8 = undefined;
-                                                    const num_str = std.fmt.bufPrint(&buf, "{d}", .{val.toFixnum()}) catch return error.OutOfMemory;
-                                                    seg_result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
+                                                    const num_str = try std.fmt.bufPrint(&buf, "{d}", .{val.toFixnum()});
+                                                    try seg_result.appendSlice(self.allocator, num_str);
                                                 }
                                                 arg_idx += 1;
                                             }
                                             seg_idx += 2;
                                         },
                                         else => {
-                                            seg_result.append(self.allocator, seg[seg_idx]) catch return error.OutOfMemory;
+                                            try seg_result.append(self.allocator, seg[seg_idx]);
                                             seg_idx += 1;
                                         },
                                     }
                                 } else {
-                                    seg_result.append(self.allocator, seg[seg_idx]) catch return error.OutOfMemory;
+                                    try seg_result.append(self.allocator, seg[seg_idx]);
                                     seg_idx += 1;
                                 }
                             }
@@ -5937,26 +5945,26 @@ pub const Vm = struct {
                                 const right_pad = pad_total - left_pad;
                                 var k: usize = 0;
                                 while (k < left_pad) : (k += 1) {
-                                    result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                                    try result.append(self.allocator, padchar);
                                 }
-                                result.appendSlice(self.allocator, seg_texts.items[0]) catch return error.OutOfMemory;
+                                try result.appendSlice(self.allocator, seg_texts.items[0]);
                                 k = 0;
                                 while (k < right_pad) : (k += 1) {
-                                    result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                                    try result.append(self.allocator, padchar);
                                 }
                             } else if (at) {
                                 // Right justify
                                 var k: usize = 0;
                                 while (k < pad_total) : (k += 1) {
-                                    result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                                    try result.append(self.allocator, padchar);
                                 }
-                                result.appendSlice(self.allocator, seg_texts.items[0]) catch return error.OutOfMemory;
+                                try result.appendSlice(self.allocator, seg_texts.items[0]);
                             } else {
                                 // Left justify
-                                result.appendSlice(self.allocator, seg_texts.items[0]) catch return error.OutOfMemory;
+                                try result.appendSlice(self.allocator, seg_texts.items[0]);
                                 var k: usize = 0;
                                 while (k < pad_total) : (k += 1) {
-                                    result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                                    try result.append(self.allocator, padchar);
                                 }
                             }
                         } else {
@@ -5964,7 +5972,7 @@ pub const Vm = struct {
                             const n_gaps = seg_texts.items.len - 1 + @intFromBool(colon) + @intFromBool(at);
                             if (n_gaps == 0) {
                                 for (seg_texts.items) |s| {
-                                    result.appendSlice(self.allocator, s) catch return error.OutOfMemory;
+                                    try result.appendSlice(self.allocator, s);
                                 }
                             } else {
                                 const pad_per_gap = pad_total / n_gaps;
@@ -5977,18 +5985,18 @@ pub const Vm = struct {
                                     const this_pad = pad_per_gap + @intFromBool(gap_idx < extra_pads);
                                     var k: usize = 0;
                                     while (k < this_pad + minpad) : (k += 1) {
-                                        result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                                        try result.append(self.allocator, padchar);
                                     }
                                     gap_idx += 1;
                                 }
 
                                 for (seg_texts.items, 0..) |s, idx| {
-                                    result.appendSlice(self.allocator, s) catch return error.OutOfMemory;
+                                    try result.appendSlice(self.allocator, s);
                                     if (idx < seg_texts.items.len - 1) {
                                         const this_pad = pad_per_gap + @intFromBool(gap_idx < extra_pads);
                                         var k: usize = 0;
                                         while (k < this_pad + minpad) : (k += 1) {
-                                            result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                                            try result.append(self.allocator, padchar);
                                         }
                                         gap_idx += 1;
                                     }
@@ -5999,7 +6007,7 @@ pub const Vm = struct {
                                     const this_pad = pad_per_gap + @intFromBool(gap_idx < extra_pads);
                                     var k: usize = 0;
                                     while (k < this_pad + minpad) : (k += 1) {
-                                        result.append(self.allocator, padchar) catch return error.OutOfMemory;
+                                        try result.append(self.allocator, padchar);
                                     }
                                 }
                             }
@@ -6009,12 +6017,12 @@ pub const Vm = struct {
                     },
                     else => {
                         // Unknown directive, output as-is
-                        result.append(self.allocator, fmt[i]) catch return error.OutOfMemory;
+                        try result.append(self.allocator, fmt[i]);
                         i += 1;
                     },
                 }
             } else {
-                result.append(self.allocator, fmt[i]) catch return error.OutOfMemory;
+                try result.append(self.allocator, fmt[i]);
                 i += 1;
             }
         }
@@ -6029,76 +6037,76 @@ pub const Vm = struct {
             var buf: [4096]u8 = undefined;
             var file_writer = stdout_file.writer(&buf);
             const w = &file_writer.interface;
-            w.writeAll(result.items) catch return error.OutOfMemory;
-            w.flush() catch return error.OutOfMemory;
+            try w.writeAll(result.items);
+            try w.flush();
             return Value.nil;
         }
     }
 
     fn formatValueAesthetic(self: *Vm, val: Value, result: *std.ArrayList(u8)) Error!void {
         switch (val.typeKind()) {
-            .nil => result.appendSlice(self.allocator, "nil") catch return error.OutOfMemory,
-            .t => result.appendSlice(self.allocator, "t") catch return error.OutOfMemory,
-            .unbound => result.appendSlice(self.allocator, "#<unbound>") catch return error.OutOfMemory,
+            .nil => try result.appendSlice(self.allocator, "nil"),
+            .t => try result.appendSlice(self.allocator, "t"),
+            .unbound => try result.appendSlice(self.allocator, "#<unbound>"),
             .fixnum => {
                 var buf: [32]u8 = undefined;
-                const num_str = std.fmt.bufPrint(&buf, "{d}", .{val.toFixnum()}) catch return error.OutOfMemory;
-                result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
+                const num_str = try std.fmt.bufPrint(&buf, "{d}", .{val.toFixnum()});
+                try result.appendSlice(self.allocator, num_str);
             },
             .float => {
                 var buf: [64]u8 = undefined;
-                const num_str = std.fmt.bufPrint(&buf, "{d}", .{val.toFloat()}) catch return error.OutOfMemory;
-                result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
+                const num_str = try std.fmt.bufPrint(&buf, "{d}", .{val.toFloat()});
+                try result.appendSlice(self.allocator, num_str);
             },
             .char => {
                 const cp = val.toCharacter();
                 if (cp < 128) {
-                    result.append(self.allocator, @as(u8, @intCast(cp))) catch return error.OutOfMemory;
+                    try result.append(self.allocator, @as(u8, @intCast(cp)));
                 }
             },
-            .string, .string32 => result.appendSlice(self.allocator, val.toPtr(runtime.String).bytes()) catch return error.OutOfMemory,
-            .symbol => result.appendSlice(self.allocator, val.toPtr(Symbol).getName()) catch return error.OutOfMemory,
+            .string, .string32 => try result.appendSlice(self.allocator, val.toPtr(runtime.String).bytes()),
+            .symbol => try result.appendSlice(self.allocator, val.toPtr(Symbol).getName()),
             .keyword => {
-                result.append(self.allocator, ':') catch return error.OutOfMemory;
-                result.appendSlice(self.allocator, val.toPtr(runtime.Keyword).getName()) catch return error.OutOfMemory;
+                try result.append(self.allocator, ':');
+                try result.appendSlice(self.allocator, val.toPtr(runtime.Keyword).getName());
             },
             .cons => try self.formatListAesthetic(val, result),
-            .closure => result.appendSlice(self.allocator, "#<closure>") catch return error.OutOfMemory,
-            .vector => result.appendSlice(self.allocator, "#<vector>") catch return error.OutOfMemory,
-            .hashtable => result.appendSlice(self.allocator, "#<hash-table>") catch return error.OutOfMemory,
+            .closure => try result.appendSlice(self.allocator, "#<closure>"),
+            .vector => try result.appendSlice(self.allocator, "#<vector>"),
+            .hashtable => try result.appendSlice(self.allocator, "#<hash-table>"),
             .rational => {
                 const rat = val.toPtr(runtime.Rational);
                 var buf: [64]u8 = undefined;
-                const num_str = std.fmt.bufPrint(&buf, "{d}/{d}", .{ rat.numerator, rat.denominator }) catch return error.OutOfMemory;
-                result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
+                const num_str = try std.fmt.bufPrint(&buf, "{d}/{d}", .{ rat.numerator, rat.denominator });
+                try result.appendSlice(self.allocator, num_str);
             },
             .complex => {
                 const cplx = val.toPtr(runtime.Complex);
                 var buf: [128]u8 = undefined;
-                const cplx_str = std.fmt.bufPrint(&buf, "#C({d} {d})", .{ cplx.real, cplx.imag }) catch return error.OutOfMemory;
-                result.appendSlice(self.allocator, cplx_str) catch return error.OutOfMemory;
+                const cplx_str = try std.fmt.bufPrint(&buf, "#C({d} {d})", .{ cplx.real, cplx.imag });
+                try result.appendSlice(self.allocator, cplx_str);
             },
-            .stream => result.appendSlice(self.allocator, "#<stream>") catch return error.OutOfMemory,
-            .bignum => result.appendSlice(self.allocator, "#<bignum>") catch return error.OutOfMemory,
-            .array => result.appendSlice(self.allocator, "#<array>") catch return error.OutOfMemory,
-            .pathname => result.appendSlice(self.allocator, "#<pathname>") catch return error.OutOfMemory,
-            .package => result.appendSlice(self.allocator, "#<package>") catch return error.OutOfMemory,
-            .chunk => result.appendSlice(self.allocator, "#<chunk>") catch return error.OutOfMemory,
-            .condition => result.appendSlice(self.allocator, "#<condition>") catch return error.OutOfMemory,
-            .class => result.appendSlice(self.allocator, "#<class>") catch return error.OutOfMemory,
-            .slotdef => result.appendSlice(self.allocator, "#<slot-definition>") catch return error.OutOfMemory,
-            .generic_function => result.appendSlice(self.allocator, "#<generic-function>") catch return error.OutOfMemory,
-            .method => result.appendSlice(self.allocator, "#<method>") catch return error.OutOfMemory,
+            .stream => try result.appendSlice(self.allocator, "#<stream>"),
+            .bignum => try result.appendSlice(self.allocator, "#<bignum>"),
+            .array => try result.appendSlice(self.allocator, "#<array>"),
+            .pathname => try result.appendSlice(self.allocator, "#<pathname>"),
+            .package => try result.appendSlice(self.allocator, "#<package>"),
+            .chunk => try result.appendSlice(self.allocator, "#<chunk>"),
+            .condition => try result.appendSlice(self.allocator, "#<condition>"),
+            .class => try result.appendSlice(self.allocator, "#<class>"),
+            .slotdef => try result.appendSlice(self.allocator, "#<slot-definition>"),
+            .generic_function => try result.appendSlice(self.allocator, "#<generic-function>"),
+            .method => try result.appendSlice(self.allocator, "#<method>"),
         }
     }
 
     fn formatValueStandard(self: *Vm, val: Value, result: *std.ArrayList(u8)) Error!void {
         if (val.isString()) {
             // Strings get quoted
-            result.append(self.allocator, '"') catch return error.OutOfMemory;
+            try result.append(self.allocator, '"');
             const str = val.toPtr(runtime.String);
-            result.appendSlice(self.allocator, str.bytes()) catch return error.OutOfMemory;
-            result.append(self.allocator, '"') catch return error.OutOfMemory;
+            try result.appendSlice(self.allocator, str.bytes());
+            try result.append(self.allocator, '"');
         } else {
             // Everything else same as aesthetic
             try self.formatValueAesthetic(val, result);
@@ -6117,16 +6125,16 @@ pub const Vm = struct {
             else => unreachable,
         };
         const num_str = if (n >= 0)
-            std.fmt.bufPrint(&buf, spec, .{@as(u64, @intCast(n))}) catch return error.OutOfMemory
+            try std.fmt.bufPrint(&buf, spec, .{@as(u64, @intCast(n))})
         else
-            std.fmt.bufPrint(&buf, "-" ++ spec, .{@as(u64, @intCast(-n))}) catch return error.OutOfMemory;
-        result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
+            try std.fmt.bufPrint(&buf, "-" ++ spec, .{@as(u64, @intCast(-n))});
+        try result.appendSlice(self.allocator, num_str);
     }
 
     const MAX_FORMAT_DEPTH = 1000;
 
     fn formatListAesthetic(self: *Vm, val: Value, result: *std.ArrayList(u8)) Error!void {
-        result.append(self.allocator, '(') catch return error.OutOfMemory;
+        try result.append(self.allocator, '(');
         var current = val;
         var first = true;
         var depth: usize = 0;
@@ -6134,20 +6142,20 @@ pub const Vm = struct {
             // Prevent infinite loop on circular lists
             depth += 1;
             if (depth > MAX_FORMAT_DEPTH) {
-                result.appendSlice(self.allocator, "...") catch return error.OutOfMemory;
+                try result.appendSlice(self.allocator, "...");
                 break;
             }
-            if (!first) result.append(self.allocator, ' ') catch return error.OutOfMemory;
+            if (!first) try result.append(self.allocator, ' ');
             first = false;
             const cons = current.toPtr(runtime.Cons);
             try self.formatValueAesthetic(cons.car, result);
             current = cons.cdr;
         }
         if (!current.isNil() and depth <= MAX_FORMAT_DEPTH) {
-            result.appendSlice(self.allocator, " . ") catch return error.OutOfMemory;
+            try result.appendSlice(self.allocator, " . ");
             try self.formatValueAesthetic(current, result);
         }
-        result.append(self.allocator, ')') catch return error.OutOfMemory;
+        try result.append(self.allocator, ')');
     }
 
     /// Format iteration: process body for each element of a list
@@ -6181,17 +6189,17 @@ pub const Vm = struct {
                         'D', 'd' => {
                             if (elem.isFixnum()) {
                                 var buf: [32]u8 = undefined;
-                                const num_str = std.fmt.bufPrint(&buf, "{d}", .{elem.toFixnum()}) catch return error.OutOfMemory;
-                                result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
+                                const num_str = try std.fmt.bufPrint(&buf, "{d}", .{elem.toFixnum()});
+                                try result.appendSlice(self.allocator, num_str);
                             }
                             i += 2;
                         },
                         '%' => {
-                            result.append(self.allocator, '\n') catch return error.OutOfMemory;
+                            try result.append(self.allocator, '\n');
                             i += 2;
                         },
                         '~' => {
-                            result.append(self.allocator, '~') catch return error.OutOfMemory;
+                            try result.append(self.allocator, '~');
                             i += 2;
                         },
                         '^' => {
@@ -6202,12 +6210,12 @@ pub const Vm = struct {
                             i += 2;
                         },
                         else => {
-                            result.append(self.allocator, body[i]) catch return error.OutOfMemory;
+                            try result.append(self.allocator, body[i]);
                             i += 1;
                         },
                     }
                 } else {
-                    result.append(self.allocator, body[i]) catch return error.OutOfMemory;
+                    try result.append(self.allocator, body[i]);
                     i += 1;
                 }
             }
