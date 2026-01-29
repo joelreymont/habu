@@ -232,7 +232,7 @@ pub fn parseNamestring(allocator: std.mem.Allocator, heap: *Heap, str: Value) !V
         } else if (std.mem.eql(u8, ver_part, "*") or std.ascii.eqlIgnoreCase(ver_part, "wild")) {
             version = try heap.internKeyword("wild");
         } else {
-            const ver_num = std.fmt.parseInt(i64, ver_part, 10) catch return error.InvalidArgument;
+            const ver_num = try std.fmt.parseInt(i64, ver_part, 10);
             version = Value.makeFixnum(ver_num);
         }
     }
@@ -632,7 +632,7 @@ test "parseNamestring version parsing" {
     try testing.expect(std.mem.eql(u8, p_wild.version.toPtr(objects.Keyword).getName(), "WILD"));
 
     const s_bad = try heap.allocBaseString("foo.lisp;abc");
-    try testing.expectError(error.InvalidArgument, parseNamestring(testing.allocator, &heap, s_bad));
+    try testing.expectError(error.InvalidCharacter, parseNamestring(testing.allocator, &heap, s_bad));
 
     const s_empty = try heap.allocBaseString("foo.lisp;");
     try testing.expectError(error.InvalidArgument, parseNamestring(testing.allocator, &heap, s_empty));
