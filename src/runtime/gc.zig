@@ -15,8 +15,7 @@ const std = @import("std");
 const Value = @import("value.zig").Value;
 const Tag = @import("value.zig").Tag;
 const objects = @import("objects.zig");
-const Heap = @import("heap.zig").Heap;
-const ALIGNMENT = @import("heap.zig").ALIGNMENT;
+const heap_mod = @import("heap.zig");
 
 /// Work item: object to scan
 const WorkItem = struct {
@@ -28,7 +27,7 @@ const builtin = @import("builtin");
 
 /// Garbage collector state
 pub const GC = struct {
-    heap: *Heap,
+    heap: *heap_mod.Heap,
     /// Allocator for work list
     allocator: std.mem.Allocator,
     /// Work list of objects to scan (preallocated, reused across collections)
@@ -39,7 +38,7 @@ pub const GC = struct {
     gc_in_progress: if (builtin.mode == .Debug) bool else void,
 
     /// Initialize GC with heap
-    pub fn init(allocator: std.mem.Allocator, heap: *Heap) GC {
+    pub fn init(allocator: std.mem.Allocator, heap: *heap_mod.Heap) GC {
         return .{
             .heap = heap,
             .allocator = allocator,
@@ -132,7 +131,7 @@ pub const GC = struct {
     /// Finalize unreachable objects that hold resources (e.g., file handles)
     /// This walks the from-space and closes any open streams that weren't copied
     /// old_alloc_ptr: the alloc_ptr value BEFORE swapSpaces was called
-    fn finalizeUnreachable(self: *GC, old_alloc_ptr: [*]align(ALIGNMENT) u8) void {
+    fn finalizeUnreachable(self: *GC, old_alloc_ptr: [*]align(heap_mod.ALIGNMENT) u8) void {
         const old_start = @intFromPtr(self.heap.to_start);
         const old_end = @intFromPtr(old_alloc_ptr);
 
@@ -164,8 +163,8 @@ pub const GC = struct {
         }
 
         if (stream.stream_type == .string and stream.direction == .output and stream.data_ptr != 0) {
-            const buf: *std.ArrayList(u8) = @ptrFromInt(stream.data_ptr);
-            buf.deinit(self.heap.backing_allocator);
+            const buf: *heap_mod.OutputBuffer = @ptrFromInt(stream.data_ptr);
+            buf.list.deinit(buf.allocator);
             self.heap.backing_allocator.destroy(buf);
             stream.data_ptr = 0;
             stream.length = 0;
@@ -175,7 +174,7 @@ pub const GC = struct {
     }
 
     /// Copy a value to to-space if needed
-    fn copyValue(self: *GC, val: Value, alloc_ptr: *[*]align(ALIGNMENT) u8) !Value {
+    fn copyValue(self: *GC, val: Value, alloc_ptr: *[*]align(heap_mod.ALIGNMENT) u8) !Value {
         // Immediates don't need copying: nil, fixnums, floats, characters
         if (val.isNil() or val.isFixnum() or val.isFloat() or val.isCharacter()) {
             return val;
@@ -214,7 +213,7 @@ pub const GC = struct {
         // Copy object to to-space
         const tag = val.getTag();
         const size = objects.objectSize(val);
-        const aligned_size = std.mem.alignForward(usize, size, ALIGNMENT);
+        const aligned_size = std.mem.alignForward(usize, size, heap_mod.ALIGNMENT);
 
         // Copy bytes
         const dest: [*]u8 = @ptrCast(alloc_ptr.*);
@@ -342,7 +341,7 @@ pub const GC = struct {
     }
 
     /// Scan an object and copy its referenced values
-    fn scanObject(self: *GC, addr: usize, tag: Tag, alloc_ptr: *[*]align(ALIGNMENT) u8) !void {
+    fn scanObject(self: *GC, addr: usize, tag: Tag, alloc_ptr: *[*]align(heap_mod.ALIGNMENT) u8) !void {
         switch (tag) {
             .cons => {
                 // Scan car and cdr
@@ -624,7 +623,7 @@ pub const RootSet = struct {
 test "gc init" {
     const testing = std.testing;
 
-    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     var gc_inst = GC.init(testing.allocator, &heap);
@@ -634,7 +633,7 @@ test "gc init" {
 test "gc collect empty" {
     const testing = std.testing;
 
-    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     // Use heap.collectGarbage which handles internal roots (lisp_packages)
@@ -648,7 +647,7 @@ test "gc collect empty" {
 test "gc collect with cons" {
     const testing = std.testing;
 
-    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     // Allocate a cons cell
@@ -680,7 +679,7 @@ test "gc collect with cons" {
 test "gc collect with nested cons" {
     const testing = std.testing;
 
-    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     // Build (1 . (2 . (3 . nil)))
@@ -713,7 +712,7 @@ test "gc collect with nested cons" {
 test "gc finalizes unreachable file streams" {
     const testing = std.testing;
 
-    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     const tmp_path = "/tmp/habu_gc_test_stream.txt";
@@ -759,7 +758,7 @@ test "gc finalizes unreachable file streams" {
 test "gc finalizer path coverage" {
     const testing = std.testing;
 
-    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     // Test that finalizeUnreachable visits stream objects
@@ -781,7 +780,7 @@ test "gc finalizer path coverage" {
 test "package gc correctness" {
     const testing = std.testing;
 
-    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     // Create package

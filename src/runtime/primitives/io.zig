@@ -6,7 +6,7 @@ const std = @import("std");
 const fs = std.fs;
 const Value = @import("../value.zig").Value;
 const objects = @import("../objects.zig");
-const Heap = @import("../heap.zig").Heap;
+const heap_mod = @import("../heap.zig");
 const builtins_mod = @import("../builtins.zig");
 
 const IO_BUF = 4096;
@@ -190,7 +190,7 @@ pub fn sysNewline() !void {
 }
 
 /// Read a line from stdin (allocates in heap)
-pub fn sysReadLine(heap: *Heap) !Value {
+pub fn sysReadLine(heap: *heap_mod.Heap) !Value {
     const stdin_file = fs.File.stdin();
     var read_buf: [IO_BUF]u8 = undefined;
     var file_reader = stdin_file.reader(&read_buf);
@@ -461,6 +461,7 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
                 .echo => "echo",
                 .synonym => "synonym",
                 .two_way => "two-way",
+                .byte => "byte",
             };
             try w.print("#<{s}-{s}-stream>", .{ kind, dir });
         },
@@ -509,7 +510,7 @@ pub fn writeValueToBuffer(val: Value, w: anytype) !void {
 }
 
 /// Convert value to string (write-to-string primitive)
-pub fn writeToString(heap: *Heap, val: Value) !Value {
+pub fn writeToString(heap: *heap_mod.Heap, val: Value) !Value {
     var buf = std.ArrayList(u8){};
     const w = buf.writer(heap.backing_allocator);
     try printValueTo(val, w.any());
@@ -653,6 +654,7 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
                 .echo => "echo",
                 .synonym => "synonym",
                 .two_way => "two-way",
+                .byte => "byte",
             };
             try w.print("#<{s}-{s}-stream>", .{ kind, dir });
         },
@@ -699,20 +701,98 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
 // CL Output Primitives
 // ============================================================================
 
+const StreamSink = struct {
+    stream: Value,
+
+    pub fn writeAll(self: *const StreamSink, bytes: []const u8) !void {
+        try writeBytesToStream(self.stream, bytes);
+    }
+
+    pub fn writeByte(self: *const StreamSink, byte: u8) !void {
+        var buf: [1]u8 = .{byte};
+        try writeBytesToStream(self.stream, buf[0..]);
+    }
+
+    fn writeAny(ctx: *const anyopaque, bytes: []const u8) anyerror!usize {
+        const self: *const StreamSink = @ptrCast(@alignCast(ctx));
+        try self.writeAll(bytes);
+        return bytes.len;
+    }
+
+    pub fn print(self: *const StreamSink, comptime fmt: []const u8, args: anytype) !void {
+        const w = std.io.AnyWriter{ .context = self, .writeFn = writeAny };
+        try w.print(fmt, args);
+    }
+
+    pub fn flush(self: *const StreamSink) !void {
+        try finishOutput(self.stream);
+    }
+};
+
+fn writeBytesToStream(stream: Value, bytes: []const u8) !void {
+    if (!stream.isStream()) return error.TypeError;
+    const s = stream.toPtr(objects.Stream);
+    if (s.direction != .output) return error.TypeError;
+
+    switch (s.stream_type) {
+        .string => {
+            if (s.data_ptr == 0) return error.StreamClosed;
+            const buf: *heap_mod.OutputBuffer = @ptrFromInt(s.data_ptr);
+            try buf.list.appendSlice(buf.allocator, bytes);
+        },
+        .file, .stdout, .stderr => {
+            const fd: std.posix.fd_t = @intCast(s.file_fd);
+            _ = try std.posix.write(fd, bytes);
+        },
+        .broadcast => {
+            var list = s.source_value;
+            while (list.isCons()) {
+                const cons = list.toPtr(objects.Cons);
+                try writeBytesToStream(cons.car, bytes);
+                list = cons.cdr;
+            }
+            if (!list.isNil()) return error.InvalidArgument;
+        },
+        .synonym, .echo, .two_way => return error.NotImplemented,
+        .stdin, .concatenated => return error.TypeError,
+        .byte => return error.NotImplemented,
+    }
+}
+
+fn withOutputWriter(stream: Value, buf: *[IO_BUF]u8, val: Value, f: anytype) !void {
+    if (stream.isNil()) {
+        const stdout_file = fs.File.stdout();
+        var file_writer = stdout_file.writer(buf);
+        const w = &file_writer.interface;
+        try f(w, val);
+        try w.flush();
+        return;
+    }
+    if (!stream.isStream()) return error.TypeError;
+    var stream_writer = StreamSink{ .stream = stream };
+    const w = &stream_writer;
+    try f(w, val);
+    try w.flush();
+}
+
+fn writeImpl(w: anytype, val: Value) !void {
+    try printValueTo(val, w);
+}
+
+fn printImpl(w: anytype, val: Value) !void {
+    try w.writeByte('\n');
+    try printValueTo(val, w);
+    try w.writeByte(' ');
+}
+
 /// write object &optional stream - output with *print-escape* = t (readable)
 pub fn write(val: Value, stream: Value) !Value {
-    _ = stream; // TODO: handle stream parameter
     const old_escape = print_escape;
     defer print_escape = old_escape;
     print_escape = true;
 
-    const stdout_file = fs.File.stdout();
     var buf: [IO_BUF]u8 = undefined;
-    var file_writer = stdout_file.writer(&buf);
-    const w = &file_writer.interface;
-
-    try printValueTo(val, w);
-    try w.flush();
+    try withOutputWriter(stream, &buf, val, writeImpl);
     return val;
 }
 
@@ -723,38 +803,22 @@ pub fn prin1(val: Value, stream: Value) !Value {
 
 /// princ object &optional stream - output with *print-escape* = nil (no escaping)
 pub fn princ(val: Value, stream: Value) !Value {
-    _ = stream; // TODO: handle stream parameter
     const old_escape = print_escape;
     defer print_escape = old_escape;
     print_escape = false;
 
-    const stdout_file = fs.File.stdout();
     var buf: [IO_BUF]u8 = undefined;
-    var file_writer = stdout_file.writer(&buf);
-    const w = &file_writer.interface;
-
-    try printValueTo(val, w);
-    try w.flush();
+    try withOutputWriter(stream, &buf, val, writeImpl);
     return val;
 }
 
 /// print object &optional stream - output newline, prin1, space, returns object
 pub fn print(val: Value, stream: Value) !Value {
-    _ = stream; // TODO: handle stream parameter
-    const stdout_file = fs.File.stdout();
-    var buf: [IO_BUF]u8 = undefined;
-    var file_writer = stdout_file.writer(&buf);
-    const w = &file_writer.interface;
-
-    try w.writeByte('\n');
-
     const old_escape = print_escape;
     defer print_escape = old_escape;
     print_escape = true;
-
-    try printValueTo(val, w);
-    try w.writeByte(' ');
-    try w.flush();
+    var buf: [IO_BUF]u8 = undefined;
+    try withOutputWriter(stream, &buf, val, printImpl);
     return val;
 }
 
@@ -773,7 +837,7 @@ pub fn setPrintEscape(val: Value) void {
 }
 
 /// Get *print-case* value
-pub fn getPrintCase(heap: *Heap) !Value {
+pub fn getPrintCase(heap: *heap_mod.Heap) !Value {
     return switch (print_case) {
         .upcase => try heap.internKeyword("UPCASE"),
         .downcase => try heap.internKeyword("DOWNCASE"),
@@ -855,7 +919,7 @@ pub fn sysExit(code: i64) noreturn {
 }
 
 /// Read entire file contents (allocates in heap)
-pub fn readFile(heap: *Heap, path: []const u8) !Value {
+pub fn readFile(heap: *heap_mod.Heap, path: []const u8) !Value {
     const file = try fs.openFileAbsolute(path, .{});
     defer file.close();
 
@@ -1122,6 +1186,32 @@ test "write bytes" {
     _ = sysWriteBytes;
 }
 
+test "write/princ/print respect stream argument" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const stream = try makeStringOutputStream(&heap);
+
+    _ = try write(Value.makeFixnum(42), stream);
+    const out1 = try getOutputStreamString(&heap, stream);
+    try testing.expect(std.mem.eql(u8, out1.toPtr(objects.String).bytes(), "42"));
+
+    try clearOutput(stream);
+    const hello = try heap.allocBaseString("hi");
+    _ = try princ(hello, stream);
+    const out2 = try getOutputStreamString(&heap, stream);
+    try testing.expect(std.mem.eql(u8, out2.toPtr(objects.String).bytes(), "hi"));
+
+    try clearOutput(stream);
+    _ = try print(Value.makeFixnum(7), stream);
+    const out3 = try getOutputStreamString(&heap, stream);
+    try testing.expect(std.mem.eql(u8, out3.toPtr(objects.String).bytes(), "\n7 "));
+
+    try closeStream(stream, null);
+}
+
 test "*print-escape* flag" {
     const testing = std.testing;
 
@@ -1147,7 +1237,7 @@ test "*print-case* flag" {
     // Default is upcase
     try testing.expect(print_case == .upcase);
 
-    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     const builtins = try builtins_mod.BuiltinSymbols.init(&heap);
 
@@ -1173,7 +1263,7 @@ test "*print-case* flag" {
 test "symbol printing with *print-case*" {
     const testing = std.testing;
 
-    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     _ = try heap.intern("TeSt");
     _ = try heap.intern("TeSt");
@@ -1307,7 +1397,7 @@ pub fn outputStreamP(stream: Value) bool {
 pub fn interactiveStreamP(stream: Value) bool {
     if (!stream.isStream()) return false;
     const s = stream.toPtr(objects.Stream);
-    if (s.stream_type != .file) return false;
+    if (s.stream_type != .file and s.stream_type != .stdin and s.stream_type != .stdout and s.stream_type != .stderr) return false;
     const fd: std.posix.fd_t = @intCast(s.file_fd);
     return std.posix.isatty(fd);
 }
@@ -1320,12 +1410,13 @@ pub fn openStreamP(stream: Value) bool {
 }
 
 /// Get stream element type
-pub fn streamElementType(heap: *Heap, stream: Value) !Value {
+pub fn streamElementType(heap: *heap_mod.Heap, stream: Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
     return switch (s.stream_type) {
-        .string, .file => heap.intern("character"),
-        .byte => heap.intern("unsigned-byte"),
+        .string, .file, .stdin, .stdout, .stderr => try heap.intern("character"),
+        .byte => try heap.intern("unsigned-byte"),
+        .broadcast, .concatenated, .echo, .synonym, .two_way => error.NotImplemented,
     };
 }
 
@@ -1336,17 +1427,18 @@ pub fn fileLength(stream: Value) !Value {
 
     switch (s.stream_type) {
         .string => return Value.makeFixnum(@intCast(s.length)),
-        .file => {
+        .file, .stdin, .stdout, .stderr => {
             const fd: std.posix.fd_t = @intCast(s.file_fd);
             const stat = try std.posix.fstat(fd);
             return Value.makeFixnum(@intCast(stat.size));
         },
         .byte => return error.NotImplemented,
+        .broadcast, .concatenated, .echo, .synonym, .two_way => return error.NotImplemented,
     }
 }
 
 /// Create a string input stream
-pub fn makeStringInputStream(heap: *Heap, str: Value, start: ?Value, end: ?Value) !Value {
+pub fn makeStringInputStream(heap: *heap_mod.Heap, str: Value, start: ?Value, end: ?Value) !Value {
     _ = start;
     _ = end;
     if (!str.isString()) return error.TypeError;
@@ -1354,18 +1446,18 @@ pub fn makeStringInputStream(heap: *Heap, str: Value, start: ?Value, end: ?Value
 }
 
 /// Create a string output stream
-pub fn makeStringOutputStream(heap: *Heap) !Value {
+pub fn makeStringOutputStream(heap: *heap_mod.Heap) !Value {
     return try heap.allocStringOutputStream();
 }
 
 /// Get the accumulated string from an output stream
-pub fn getOutputStreamString(heap: *Heap, stream: Value) !Value {
+pub fn getOutputStreamString(heap: *heap_mod.Heap, stream: Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
     if (s.direction != .output or s.stream_type != .string) return error.TypeError;
     if (s.data_ptr == 0) return error.StreamClosed;
-    const buf: *std.ArrayList(u8) = @ptrFromInt(s.data_ptr);
-    return try heap.allocBaseString(buf.items);
+    const buf: *heap_mod.OutputBuffer = @ptrFromInt(s.data_ptr);
+    return try heap.allocBaseString(buf.list.items);
 }
 
 /// Read one character from stream
@@ -1384,14 +1476,16 @@ pub fn readChar(stream: Value, eof_error: ?Value, eof_value: ?Value) !Value {
             s.position += 1;
             return Value.makeFixnum(@intCast(ch));
         },
-        .file => {
+        .file, .stdin => {
             var buf: [1]u8 = undefined;
             const fd: std.posix.fd_t = @intCast(s.file_fd);
             const n = try std.posix.read(fd, &buf);
             if (n == 0) return Value.nil;
             return Value.makeFixnum(@intCast(buf[0]));
         },
-        else => return error.NotImplemented,
+        .concatenated, .echo, .synonym, .two_way => return error.NotImplemented,
+        .broadcast, .stdout, .stderr => return error.TypeError,
+        .byte => return error.NotImplemented,
     }
 }
 
@@ -1417,7 +1511,7 @@ pub fn peekChar(peek_type: ?Value, stream: Value) !Value {
             const data: [*]u8 = @ptrFromInt(s.data_ptr);
             return Value.makeFixnum(@intCast(data[s.position]));
         },
-        .file => {
+        .file, .stdin => {
             var buf: [1]u8 = undefined;
             const fd: std.posix.fd_t = @intCast(s.file_fd);
             const n = try std.posix.read(fd, &buf);
@@ -1425,7 +1519,9 @@ pub fn peekChar(peek_type: ?Value, stream: Value) !Value {
             try std.posix.lseek_CUR(fd, -1);
             return Value.makeFixnum(@intCast(buf[0]));
         },
-        else => return error.NotImplemented,
+        .concatenated, .echo, .synonym, .two_way => return error.NotImplemented,
+        .broadcast, .stdout, .stderr => return error.TypeError,
+        .byte => return error.NotImplemented,
     }
 }
 
@@ -1439,13 +1535,15 @@ pub fn listen(stream: Value) !Value {
         .string => {
             return if (s.data_ptr == 0 or s.position >= s.length) Value.nil else Value.t;
         },
-        .file => {
+        .file, .stdin => {
             const fd: std.posix.fd_t = @intCast(s.file_fd);
             var pollfd = [_]std.posix.pollfd{.{ .fd = fd, .events = std.posix.POLL.IN, .revents = 0 }};
             const ready = try std.posix.poll(&pollfd, 0);
             return if (ready > 0) Value.t else Value.nil;
         },
         .byte => return error.NotImplemented,
+        .broadcast, .stdout, .stderr => return error.TypeError,
+        .concatenated, .echo, .synonym, .two_way => return error.NotImplemented,
     }
 }
 
@@ -1483,33 +1581,20 @@ pub fn readCharNoHang(stream: Value) !Value {
             // TODO: Implement proper delegation to underlying streams
             return Value.nil;
         },
+        .byte => return error.NotImplemented,
     }
 }
 
 /// Write one character to stream
 pub fn writeChar(char: Value, stream: Value) !void {
     if (!char.isFixnum()) return error.TypeError;
-    if (!stream.isStream()) return error.TypeError;
-    const s = stream.toPtr(objects.Stream);
-    if (s.direction != .output) return error.TypeError;
-
     const ch: u8 = @intCast(char.toFixnum());
-    switch (s.stream_type) {
-        .string => {
-            if (s.data_ptr == 0) return error.StreamClosed;
-            const buf: *std.ArrayList(u8) = @ptrFromInt(s.data_ptr);
-            try buf.append(ch);
-        },
-        .file => {
-            const fd: std.posix.fd_t = @intCast(s.file_fd);
-            _ = try std.posix.write(fd, &[_]u8{ch});
-        },
-        .byte => return error.NotImplemented,
-    }
+    var buf: [1]u8 = .{ch};
+    try writeBytesToStream(stream, buf[0..]);
 }
 
 /// Read a line from stream
-pub fn readLine(heap: *Heap, stream: Value) !Value {
+pub fn readLine(heap: *heap_mod.Heap, stream: Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
     if (s.direction != .input) return error.TypeError;
@@ -1525,7 +1610,7 @@ pub fn readLine(heap: *Heap, stream: Value) !Value {
             s.position = if (i < s.length) i + 1 else i;
             return try heap.allocBaseString(line);
         },
-        .file => {
+        .file, .stdin => {
             var buf: [LINE_BUF]u8 = undefined;
             var len: usize = 0;
             const fd: std.posix.fd_t = @intCast(s.file_fd);
@@ -1540,31 +1625,39 @@ pub fn readLine(heap: *Heap, stream: Value) !Value {
             return try heap.allocBaseString(buf[0..len]);
         },
         .byte => return error.NotImplemented,
+        .broadcast, .stdout, .stderr => return error.TypeError,
+        .concatenated, .echo, .synonym, .two_way => return error.NotImplemented,
     }
 }
 
 /// Write a string to stream
 pub fn writeString(str: Value, stream: Value, start: ?Value, end: ?Value) !void {
-    _ = start;
-    _ = end;
     if (!str.isString()) return error.TypeError;
-    if (!stream.isStream()) return error.TypeError;
-    const s = stream.toPtr(objects.Stream);
-    if (s.direction != .output) return error.TypeError;
-
     const string = str.toPtr(objects.String);
-    switch (s.stream_type) {
-        .string => {
-            if (s.data_ptr == 0) return error.StreamClosed;
-            const buf: *std.ArrayList(u8) = @ptrFromInt(s.data_ptr);
-            try buf.appendSlice(string.bytes());
-        },
-        .file => {
-            const fd: std.posix.fd_t = @intCast(s.file_fd);
-            _ = try std.posix.write(fd, string.bytes());
-        },
-        .byte => return error.NotImplemented,
+    const bytes = string.bytes();
+
+    var start_idx: usize = 0;
+    if (start) |s| {
+        if (!s.isFixnum()) return error.TypeError;
+        if (std.math.cast(usize, s.toFixnum())) |idx| {
+            start_idx = idx;
+        } else {
+            return error.InvalidArgument;
+        }
     }
+
+    var end_idx: usize = bytes.len;
+    if (end) |e| {
+        if (!e.isFixnum()) return error.TypeError;
+        if (std.math.cast(usize, e.toFixnum())) |idx| {
+            end_idx = idx;
+        } else {
+            return error.InvalidArgument;
+        }
+    }
+
+    if (start_idx > end_idx or end_idx > bytes.len) return error.InvalidArgument;
+    try writeBytesToStream(stream, bytes[start_idx..end_idx]);
 }
 
 /// Write a string followed by newline
@@ -1581,11 +1674,22 @@ pub fn finishOutput(stream: Value) !void {
 
     switch (s.stream_type) {
         .string => {}, // No-op for string streams
-        .file => {
+        .file, .stdout, .stderr => {
             const fd: std.posix.fd_t = @intCast(s.file_fd);
             try std.posix.fsync(fd);
         },
+        .broadcast => {
+            var list = s.source_value;
+            while (list.isCons()) {
+                const cons = list.toPtr(objects.Cons);
+                try finishOutput(cons.car);
+                list = cons.cdr;
+            }
+            if (!list.isNil()) return error.InvalidArgument;
+        },
         .byte => return error.NotImplemented,
+        .stdin, .concatenated => return error.TypeError,
+        .echo, .synonym, .two_way => return error.NotImplemented,
     }
 }
 
@@ -1597,11 +1701,22 @@ pub fn forceOutput(stream: Value) !void {
 
     switch (s.stream_type) {
         .string => {}, // No-op for string streams
-        .file => {
+        .file, .stdout, .stderr => {
             const fd: std.posix.fd_t = @intCast(s.file_fd);
             _ = fd; // Force flush already happens on write
         },
+        .broadcast => {
+            var list = s.source_value;
+            while (list.isCons()) {
+                const cons = list.toPtr(objects.Cons);
+                try forceOutput(cons.car);
+                list = cons.cdr;
+            }
+            if (!list.isNil()) return error.InvalidArgument;
+        },
         .byte => return error.NotImplemented,
+        .stdin, .concatenated => return error.TypeError,
+        .echo, .synonym, .two_way => return error.NotImplemented,
     }
 }
 
@@ -1614,11 +1729,22 @@ pub fn clearOutput(stream: Value) !void {
     switch (s.stream_type) {
         .string => {
             if (s.data_ptr == 0) return error.StreamClosed;
-            const buf: *std.ArrayList(u8) = @ptrFromInt(s.data_ptr);
-            buf.clearRetainingCapacity();
+            const buf: *heap_mod.OutputBuffer = @ptrFromInt(s.data_ptr);
+            buf.list.clearRetainingCapacity();
         },
-        .file => {}, // Can't clear OS buffer
+        .file, .stdout, .stderr => {}, // Can't clear OS buffer
+        .broadcast => {
+            var list = s.source_value;
+            while (list.isCons()) {
+                const cons = list.toPtr(objects.Cons);
+                try clearOutput(cons.car);
+                list = cons.cdr;
+            }
+            if (!list.isNil()) return error.InvalidArgument;
+        },
         .byte => return error.NotImplemented,
+        .stdin, .concatenated => return error.TypeError,
+        .echo, .synonym, .two_way => return error.NotImplemented,
     }
 }
 
@@ -1632,7 +1758,7 @@ pub fn clearInput(stream: Value) !void {
         .string => {
             s.position = s.length;
         },
-        .file => {
+        .file, .stdin => {
             const fd: std.posix.fd_t = @intCast(s.file_fd);
             var pollfd = [_]std.posix.pollfd{.{ .fd = fd, .events = std.posix.POLL.IN, .revents = 0 }};
             while (true) {
@@ -1644,6 +1770,8 @@ pub fn clearInput(stream: Value) !void {
             }
         },
         .byte => return error.NotImplemented,
+        .broadcast, .stdout, .stderr => return error.TypeError,
+        .concatenated, .echo, .synonym, .two_way => return error.NotImplemented,
     }
 }
 
@@ -1661,23 +1789,26 @@ pub fn freshLine(stream: Value) !Value {
     switch (s.stream_type) {
         .string => {
             if (s.data_ptr == 0) return error.StreamClosed;
-            const buf: *std.ArrayList(u8) = @ptrFromInt(s.data_ptr);
-            if (buf.items.len == 0 or buf.items[buf.items.len - 1] == '\n') {
+            const buf: *heap_mod.OutputBuffer = @ptrFromInt(s.data_ptr);
+            if (buf.list.items.len == 0 or buf.list.items[buf.list.items.len - 1] == '\n') {
                 return Value.nil;
             }
-            try buf.append('\n');
+            try buf.list.append(buf.allocator, '\n');
             return Value.t;
         },
-        .file => {
+        .file, .stdout, .stderr => {
             try writeChar(Value.makeFixnum('\n'), stream);
             return Value.t;
         },
         .byte => return error.NotImplemented,
+        .broadcast => return error.NotImplemented,
+        .stdin, .concatenated => return error.TypeError,
+        .echo, .synonym, .two_way => return error.NotImplemented,
     }
 }
 
 /// Get/set file position
-pub fn filePosition(heap: *Heap, stream: Value, pos: ?Value) !Value {
+pub fn filePosition(heap: *heap_mod.Heap, stream: Value, pos: ?Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
 
@@ -1685,7 +1816,7 @@ pub fn filePosition(heap: *Heap, stream: Value, pos: ?Value) !Value {
         // Get current position
         switch (s.stream_type) {
             .string => return Value.makeFixnum(@intCast(s.position)),
-            .file => {
+            .file, .stdin, .stdout, .stderr => {
                 const fd: std.posix.fd_t = @intCast(s.file_fd);
                 const cur = try std.posix.lseek_CUR_get(fd);
                 return Value.makeFixnum(@intCast(cur));
@@ -1718,7 +1849,7 @@ pub fn filePosition(heap: *Heap, stream: Value, pos: ?Value) !Value {
                 }
                 return Value.t;
             },
-            .file => {
+            .file, .stdin, .stdout, .stderr => {
                 const fd: std.posix.fd_t = @intCast(s.file_fd);
                 if (new_pos == -1) {
                     try std.posix.lseek_END(fd, 0);
@@ -1733,7 +1864,7 @@ pub fn filePosition(heap: *Heap, stream: Value, pos: ?Value) !Value {
 }
 
 /// Open a file stream
-pub fn openFile(heap: *Heap, filename: Value, direction: ?Value, if_exists: ?Value, if_does_not_exist: ?Value) !Value {
+pub fn openFile(heap: *heap_mod.Heap, filename: Value, direction: ?Value, if_exists: ?Value, if_does_not_exist: ?Value) !Value {
     _ = if_exists;
     _ = if_does_not_exist;
     if (!filename.isString()) return error.TypeError;
@@ -1762,15 +1893,27 @@ pub fn closeStream(stream: Value, abort: ?Value) !void {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
 
+    if (s.closed) return;
+
     if (s.stream_type == .file and s.file_fd >= 0) {
         const fd: std.posix.fd_t = @intCast(s.file_fd);
         std.posix.close(fd);
         s.file_fd = -1;
     }
+
+    if (s.stream_type == .string and s.direction == .output and s.data_ptr != 0) {
+        const buf: *heap_mod.OutputBuffer = @ptrFromInt(s.data_ptr);
+        buf.list.deinit(buf.allocator);
+        buf.allocator.destroy(buf);
+        s.data_ptr = 0;
+        s.length = 0;
+    }
+
+    s.closed = true;
 }
 
 /// List files in a directory matching pathname
-pub fn listDirectory(heap: *Heap, pathname: Value) !Value {
+pub fn listDirectory(heap: *heap_mod.Heap, pathname: Value) !Value {
     // Get path string from pathname or string
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
     const path_str = if (pathname.isString())

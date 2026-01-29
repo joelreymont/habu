@@ -343,6 +343,7 @@ pub const StreamType = enum(u8) {
     echo = 7, // echoes input to output
     synonym = 8, // delegates to symbol's value
     two_way = 9, // bidirectional: input + output
+    byte = 10, // byte streams (not yet implemented)
 };
 
 /// Stream object for I/O operations

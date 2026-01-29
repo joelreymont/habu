@@ -2,6 +2,7 @@
 const std = @import("std");
 const Value = @import("../value.zig").Value;
 const Heap = @import("../heap.zig").Heap;
+const io = @import("io.zig");
 const Vector = @import("../objects.zig").Vector;
 const String = @import("../objects.zig").String;
 const String32 = @import("../objects.zig").String32;
@@ -50,21 +51,7 @@ pub fn primClose(_: *Heap, args: []const Value) !Value {
 
     const stream_val = args[0];
     if (!stream_val.isStream()) return error.InvalidArgument;
-
-    const stream = stream_val.toPtr(Stream);
-
-    // Don't double-close
-    if (stream.closed) return Value.t;
-
-    // Close file if it's a file stream
-    if (stream.stream_type == .file and stream.file_fd >= 0) {
-        const file = std.fs.File{ .handle = stream.file_fd };
-        file.close();
-    }
-
-    // Mark as closed
-    stream.closed = true;
-
+    try io.closeStream(stream_val, null);
     return Value.t;
 }
 

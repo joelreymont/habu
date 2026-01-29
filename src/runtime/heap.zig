@@ -59,6 +59,11 @@ pub const UpperName = struct {
     owned: ?[]u8,
 };
 
+pub const OutputBuffer = struct {
+    list: std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+};
+
 pub fn upperNameAlloc(allocator: std.mem.Allocator, name: []const u8, buf: []u8) !UpperName {
     if (name.len <= buf.len) {
         for (name, 0..) |c, i| {
@@ -552,8 +557,11 @@ pub const Heap = struct {
 
     /// Allocate a string output stream
     pub fn allocStringOutputStream(self: *Heap) error{OutOfMemory}!Value {
-        const buf = try self.backing_allocator.create(std.ArrayList(u8));
-        buf.* = std.ArrayList(u8){};
+        const buf = try self.backing_allocator.create(OutputBuffer);
+        buf.* = .{
+            .list = std.ArrayList(u8){},
+            .allocator = self.backing_allocator,
+        };
 
         const stream = try self.alloc(objects.Stream);
         stream.* = .{
