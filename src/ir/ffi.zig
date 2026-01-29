@@ -16,6 +16,7 @@ pub const FfiError = error{
     TypeMismatch,
     NullPointer,
     OutOfMemory,
+    Overflow,
     InvalidArgCount,
 };
 
@@ -70,20 +71,20 @@ pub fn toZig(comptime T: type, val: Value, heap: *Heap) FfiError!T {
 }
 
 /// Convert Zig type to Habu Value
-pub fn fromZig(comptime T: type, val: T, heap: *Heap) FfiError!Value {
-    return switch (@typeInfo(T)) {
-        .int => Value.makeFixnum(@intCast(val)),
-        .float => Value.makeFloat(@floatCast(val)),
-        .bool => if (val) Value.t else Value.nil,
-        .pointer => |ptr| {
-            if (ptr.size == .slice and ptr.child == u8) {
-                // []const u8 - create string
-                return heap.allocBaseString(val) catch return FfiError.OutOfMemory;
-            } else if (ptr.child == Value) {
-                return val.*;
-            }
-            return FfiError.TypeMismatch;
-        },
+    pub fn fromZig(comptime T: type, val: T, heap: *Heap) FfiError!Value {
+        return switch (@typeInfo(T)) {
+            .int => Value.makeFixnum(@intCast(val)),
+            .float => Value.makeFloat(@floatCast(val)),
+            .bool => if (val) Value.t else Value.nil,
+            .pointer => |ptr| {
+                if (ptr.size == .slice and ptr.child == u8) {
+                    // []const u8 - create string
+                    return try heap.allocBaseString(val);
+                } else if (ptr.child == Value) {
+                    return val.*;
+                }
+                return FfiError.TypeMismatch;
+            },
         .optional => |opt| {
             if (val) |v| {
                 return try fromZig(opt.child, v, heap);
@@ -94,10 +95,10 @@ pub fn fromZig(comptime T: type, val: T, heap: *Heap) FfiError!Value {
         .@"struct" => |s| {
             var result = Value.nil;
             inline for (s.fields) |field| {
-                const field_name = try heap.allocBaseString(field.name) catch return FfiError.OutOfMemory;
+                const field_name = try heap.allocBaseString(field.name);
                 const field_val = try fromZig(field.type, @field(val, field.name), heap);
-                const pair = try heap.allocCons(field_name, field_val) catch return FfiError.OutOfMemory;
-                result = try heap.allocCons(pair, result) catch return FfiError.OutOfMemory;
+                const pair = try heap.allocCons(field_name, field_val);
+                result = try heap.allocCons(pair, result);
             }
             return result;
         },
@@ -113,7 +114,7 @@ pub fn FfiFunc(comptime func: anytype) type {
 
     return struct {
         /// Call the wrapped function with Habu arguments
-        pub fn call(args: []const Value, heap: *Heap) FfiError!Value {
+        pub fn call(args: []const Value, heap: *Heap) !Value {
             if (args.len != ParamTypes.len) {
                 return FfiError.InvalidArgCount;
             }
@@ -129,7 +130,7 @@ pub fn FfiFunc(comptime func: anytype) type {
 
             // Handle error unions
             const actual_result = if (@typeInfo(ReturnType) == .error_union)
-                result catch return FfiError.TypeMismatch
+                try result
             else
                 result;
 
@@ -147,7 +148,7 @@ pub fn FfiFunc(comptime func: anytype) type {
 /// Native function table entry
 pub const NativeFunc = struct {
     name: []const u8,
-    func: *const fn ([]const Value, *Heap) FfiError!Value,
+    func: *const fn ([]const Value, *Heap) anyerror!Value,
     arity: u8,
 };
 
@@ -183,7 +184,7 @@ pub const NativeRegistry = struct {
     }
 
     /// Call a native function by name
-    pub fn call(self: *NativeRegistry, name: []const u8, args: []const Value, heap: *Heap) FfiError!Value {
+    pub fn call(self: *NativeRegistry, name: []const u8, args: []const Value, heap: *Heap) anyerror!Value {
         const func = self.get(name) orelse return FfiError.TypeMismatch;
         if (args.len != func.arity) return FfiError.InvalidArgCount;
         return func.func(args, heap);
