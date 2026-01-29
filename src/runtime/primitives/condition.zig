@@ -14,6 +14,8 @@ pub fn makeCondition(heap: *Heap, args: []const Value) !Value {
     if (!type_sym.isSymbol()) return error.TypeError;
 
     // Parse initargs for :format-control and :format-arguments
+    const kw_format_control = try heap.internKeyword("format-control");
+    const kw_format_args = try heap.internKeyword("format-arguments");
     var format_control = Value.nil;
     var format_args = Value.nil;
 
@@ -24,12 +26,9 @@ pub fn makeCondition(heap: *Heap, args: []const Value) !Value {
 
         if (!key.isKeyword()) continue;
 
-        const kw = key.toPtr(runtime.Keyword);
-        const kw_name = kw.getName();
-
-        if (std.mem.eql(u8, kw_name, "format-control")) {
+        if (key.eq(kw_format_control)) {
             format_control = val;
-        } else if (std.mem.eql(u8, kw_name, "format-arguments")) {
+        } else if (key.eq(kw_format_args)) {
             format_args = val;
         }
     }
