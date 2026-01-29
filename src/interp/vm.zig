@@ -2180,7 +2180,7 @@ pub const Vm = struct {
                 try self.push(Value.makeFixnum(timestamp));
             },
             .get_internal_run_time => {
-                const timestamp = io.getInternalRunTime();
+                const timestamp = try io.getInternalRunTime();
                 try self.push(Value.makeFixnum(timestamp));
             },
             .get_decoded_time => {

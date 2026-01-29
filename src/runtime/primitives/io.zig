@@ -966,10 +966,8 @@ pub fn getInternalRealTime() i64 {
 }
 
 /// Get internal run time (process CPU time in microseconds)
-pub fn getInternalRunTime() i64 {
-    const ts = std.posix.clock_gettime(.PROCESS_CPUTIME_ID) catch {
-        return std.time.microTimestamp();
-    };
+pub fn getInternalRunTime() !i64 {
+    const ts = try std.posix.clock_gettime(.PROCESS_CPUTIME_ID);
     return @as(i64, ts.sec) * 1_000_000 + @divTrunc(@as(i64, ts.nsec), 1000);
 }
 
@@ -1916,6 +1914,9 @@ test "time functions" {
 
     // Should have elapsed at least 10ms
     try testing.expect(after >= before + 10);
+
+    const run_time = try getInternalRunTime();
+    try testing.expect(run_time >= 0);
 }
 
 test "fileExists and probeFile" {
