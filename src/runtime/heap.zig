@@ -222,6 +222,8 @@ pub const Heap = struct {
     /// Dispatch macro readtable for #X dispatch
     /// Maps dispatch char (u8) to sub-char table (HashMap(u8, Value))
     dispatch_readtable: std.AutoHashMapUnmanaged(u8, std.AutoHashMapUnmanaged(u8, Value)),
+    /// Streams allocated in heap (for finalization)
+    stream_list: std.ArrayList(*objects.Stream),
 
     pub const ReadtableEntry = struct {
         function: Value,
@@ -280,6 +282,7 @@ pub const Heap = struct {
             .class_metadata = .{},
             .readtable = .{},
             .dispatch_readtable = .{},
+            .stream_list = std.ArrayList(*objects.Stream){},
         };
 
         // Create Lisp package registry
@@ -360,6 +363,7 @@ pub const Heap = struct {
             sub_table.deinit(self.backing_allocator);
         }
         self.dispatch_readtable.deinit(self.backing_allocator);
+        self.stream_list.deinit(self.backing_allocator);
         self.backing_allocator.free(self.memory);
     }
 
@@ -409,6 +413,10 @@ pub const Heap = struct {
         return @ptrCast(@alignCast(ptr));
     }
 
+    fn trackStream(self: *Heap, stream: *objects.Stream) !void {
+        try self.stream_list.append(self.backing_allocator, stream);
+    }
+
     /// Allocate a cons cell
     pub fn allocCons(self: *Heap, car: Value, cdr: Value) error{OutOfMemory}!Value {
         const cons = try self.alloc(objects.Cons);
@@ -441,6 +449,7 @@ pub const Heap = struct {
     pub fn allocStream(self: *Heap, direction: objects.StreamDirection, stream_type: objects.StreamType, file_fd: i32) error{OutOfMemory}!Value {
         const stream = try self.alloc(objects.Stream);
         stream.* = objects.Stream.make(direction, stream_type, file_fd);
+        try self.trackStream(stream);
         return Value.makeStream(stream);
     }
 
@@ -486,6 +495,7 @@ pub const Heap = struct {
             .file_fd = -1,
             .source_value = str,
         };
+        try self.trackStream(stream);
         return Value.makeStream(stream);
     }
 
@@ -505,6 +515,7 @@ pub const Heap = struct {
             .length = 0,
             .file_fd = -1,
         };
+        try self.trackStream(stream);
         return Value.makeStream(stream);
     }
 
@@ -521,6 +532,7 @@ pub const Heap = struct {
             .length = 0,
             .file_fd = fd,
         };
+        try self.trackStream(stream);
         return Value.makeStream(stream);
     }
 
@@ -537,6 +549,7 @@ pub const Heap = struct {
             .length = 0,
             .file_fd = fd,
         };
+        try self.trackStream(stream);
         return Value.makeStream(stream);
     }
 
