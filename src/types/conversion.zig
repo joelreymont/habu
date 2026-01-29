@@ -231,8 +231,8 @@ pub const TypeConverter = struct {
                     if (!try self.typeEqual(r1.base_type, r2.base_type, ctx)) return false;
 
                     // Both predicates must be present
-                    const p1 = r1.predicate orelse return false;
-                    const p2 = r2.predicate orelse return false;
+                    const p1 = if (r1.predicate) |val| val else return false;
+                    const p2 = if (r2.predicate) |val| val else return false;
 
                     // Predicates must be convertible (term equality)
                     // Cast opaque pointers to Term pointers
@@ -356,8 +356,8 @@ pub const TypeConverter = struct {
                         if (!try self.isSubtype(r1.base_type, r2.base_type)) return false;
 
                         // Both predicates must be present for SMT checking
-                        const p1 = r1.predicate orelse return false;
-                        const p2 = r2.predicate orelse return false;
+                        const p1 = if (r1.predicate) |val| val else return false;
+                        const p2 = if (r2.predicate) |val| val else return false;
 
                         // Now check predicates with SMT: P => Q
                         const pred1: *const Term = @ptrCast(@alignCast(p1));

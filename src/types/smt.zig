@@ -257,7 +257,7 @@ pub const SmtContext = struct {
         if (!c.Z3_model_eval(self.ctx, model, ast, true, &result)) {
             return null;
         }
-        const r = result orelse return null;
+        const r = if (result) |val| val else return null;
         var val: i64 = 0;
         if (c.Z3_get_numeral_int64(self.ctx, r, &val)) {
             return val;
@@ -271,7 +271,7 @@ pub const SmtContext = struct {
         if (!c.Z3_model_eval(self.ctx, model, ast, true, &result)) {
             return null;
         }
-        const r = result orelse return null;
+        const r = if (result) |val| val else return null;
         var val: u64 = 0;
         if (c.Z3_get_numeral_uint64(self.ctx, r, &val)) {
             return val;

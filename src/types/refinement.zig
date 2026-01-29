@@ -57,7 +57,7 @@ pub const RefinementChecker = struct {
         try self.var_map.put(var_name, z3_var);
 
         // Translate predicate to Z3
-        const z3_pred = self.translateTerm(predicate) orelse return .unknown;
+        const z3_pred = if (self.translateTerm(predicate)) |val| val else return .unknown;
 
         // Check if P is satisfiable
         self.smt_ctx.assert_(z3_pred);
@@ -89,8 +89,8 @@ pub const RefinementChecker = struct {
         try self.var_map.put(var_name, z3_var);
 
         // Translate both predicates
-        const z3_sub = self.translateTerm(sub_pred) orelse return .unknown;
-        const z3_super = self.translateTerm(super_pred) orelse return .unknown;
+        const z3_sub = if (self.translateTerm(sub_pred)) |val| val else return .unknown;
+        const z3_super = if (self.translateTerm(super_pred)) |val| val else return .unknown;
 
         // Check P => Q
         return self.smt_ctx.checkImplication(z3_sub, z3_super);
@@ -114,8 +114,8 @@ pub const RefinementChecker = struct {
         const z3_var = self.smt_ctx.mkIntVar(@ptrCast(&name_buf));
         try self.var_map.put(var_name, z3_var);
 
-        const z3_p1 = self.translateTerm(pred1) orelse return .unknown;
-        const z3_p2 = self.translateTerm(pred2) orelse return .unknown;
+        const z3_p1 = if (self.translateTerm(pred1)) |val| val else return .unknown;
+        const z3_p2 = if (self.translateTerm(pred2)) |val| val else return .unknown;
 
         return self.smt_ctx.checkEquivalent(z3_p1, z3_p2);
     }
@@ -142,8 +142,8 @@ pub const RefinementChecker = struct {
 
             // Binary operations
             .binop => |op| {
-                const left = self.translateTerm(op.left) orelse return null;
-                const right = self.translateTerm(op.right) orelse return null;
+                const left = if (self.translateTerm(op.left)) |val| val else return null;
+                const right = if (self.translateTerm(op.right)) |val| val else return null;
 
                 return switch (op.op) {
                     .add => self.smt_ctx.mkAdd(left, right),
@@ -158,7 +158,7 @@ pub const RefinementChecker = struct {
 
             // Unary operations
             .unop => |op| {
-                const operand = self.translateTerm(op.operand) orelse return null;
+                const operand = if (self.translateTerm(op.operand)) |val| val else return null;
 
                 return switch (op.op) {
                     .neg => self.smt_ctx.mkNeg(operand),
@@ -168,8 +168,8 @@ pub const RefinementChecker = struct {
 
             // Comparisons
             .cmp => |op| {
-                const left = self.translateTerm(op.left) orelse return null;
-                const right = self.translateTerm(op.right) orelse return null;
+                const left = if (self.translateTerm(op.left)) |val| val else return null;
+                const right = if (self.translateTerm(op.right)) |val| val else return null;
 
                 return switch (op.op) {
                     .lt => self.smt_ctx.mkLt(left, right),
@@ -189,7 +189,7 @@ pub const RefinementChecker = struct {
             .builtin => |b| switch (b.func) {
                 .null => {
                     if (b.args.len != 1) return null;
-                    const arg = self.translateTerm(b.args[0]) orelse return null;
+                    const arg = if (self.translateTerm(b.args[0])) |val| val else return null;
                     const nil = self.smt_ctx.mkIntConst(0);
                     return self.smt_ctx.mkEq(arg, nil);
                 },
