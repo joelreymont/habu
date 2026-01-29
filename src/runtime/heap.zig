@@ -1156,122 +1156,37 @@ pub const Heap = struct {
         return Value.makePathname(pn);
     }
 
+    fn packageKey(self: *Heap, name: Value) error{OutOfMemory, TypeError}!Value {
+        return switch (name.typeKind()) {
+            .string => try self.internKeyword(name.toPtr(objects.String).bytes()),
+            .symbol => try self.internKeyword(name.toPtr(objects.Symbol).getName()),
+            .keyword => name,
+            else => error.TypeError,
+        };
+    }
+
     /// Find a Lisp-level package by name
-    pub fn findLispPackage(self: *Heap, name: Value) ?Value {
-        if (!name.isString() and !name.isSymbol()) return null;
+    pub fn findLispPackage(self: *Heap, name: Value) error{OutOfMemory, TypeError}!?Value {
         if (self.lisp_packages.raw == Value.nil.raw) return null;
         const ht = self.lisp_packages.toPtr(objects.HashTable);
-
-        const name_str = if (name.isString())
-            name.toPtr(objects.String).bytes()
-        else if (name.isSymbol())
-            name.toPtr(objects.Symbol).getName()
-        else
-            return null;
-
-        var i: usize = 0;
-        while (i < ht.capacity) : (i += 1) {
-            const e = &ht.entries[i];
-            if (e.key.raw == objects.HashTable.EMPTY.raw or e.key.raw == objects.HashTable.DELETED.raw) continue;
-
-            const key_str = if (e.key.isString())
-                e.key.toPtr(objects.String).bytes()
-            else if (e.key.isSymbol())
-                e.key.toPtr(objects.Symbol).getName()
-            else
-                continue;
-
-            if (std.mem.eql(u8, key_str, name_str)) return e.value;
-        }
-        return null;
+        const key = try self.packageKey(name);
+        return ht.get(self, key);
     }
 
     /// Register a Lisp package
     pub fn putLispPackage(self: *Heap, name: Value, pkg: Value) !void {
         if (self.lisp_packages.raw == Value.nil.raw) return error.RegistryNotInitialized;
         const ht = self.lisp_packages.toPtr(objects.HashTable);
-
-        const name_str = if (name.isString())
-            name.toPtr(objects.String).bytes()
-        else if (name.isSymbol())
-            name.toPtr(objects.Symbol).getName()
-        else
-            return error.TypeError;
-
-        const hash = name.raw;
-        var idx = hash % ht.capacity;
-        var i: usize = 0;
-        while (i < ht.capacity) : (i += 1) {
-            const e = &ht.entries[idx];
-            const is_empty = e.key.raw == objects.HashTable.EMPTY.raw;
-            const is_deleted = e.key.raw == objects.HashTable.DELETED.raw;
-
-            if (is_empty or is_deleted) {
-                e.key = name;
-                e.value = pkg;
-                ht.count += 1;
-                return;
-            }
-
-            // Check for existing key with same string content
-            const key_str = if (e.key.isString())
-                e.key.toPtr(objects.String).bytes()
-            else if (e.key.isSymbol())
-                e.key.toPtr(objects.Symbol).getName()
-            else {
-                idx = (idx + 1) % ht.capacity;
-                continue;
-            };
-
-            if (std.mem.eql(u8, key_str, name_str)) {
-                e.key = name;
-                e.value = pkg;
-                return;
-            }
-
-            idx = (idx + 1) % ht.capacity;
-        }
-        return error.HashTableFull;
+        const key = try self.packageKey(name);
+        try ht.put(key, pkg);
     }
 
     /// Remove a Lisp package by name string
     pub fn removeLispPackage(self: *Heap, name: Value) !bool {
         if (self.lisp_packages.raw == Value.nil.raw) return false;
         const ht = self.lisp_packages.toPtr(objects.HashTable);
-
-        const name_str = if (name.isString())
-            name.toPtr(objects.String).bytes()
-        else if (name.isSymbol())
-            name.toPtr(objects.Symbol).getName()
-        else
-            return error.TypeError;
-
-        const hash = name.raw;
-        var idx = hash % ht.capacity;
-        var i: usize = 0;
-        while (i < ht.capacity) : (i += 1) {
-            const e = &ht.entries[idx];
-            if (e.key.raw == objects.HashTable.EMPTY.raw) return false;
-            if (e.key.raw != objects.HashTable.DELETED.raw) {
-                const key_str = if (e.key.isString())
-                    e.key.toPtr(objects.String).bytes()
-                else if (e.key.isSymbol())
-                    e.key.toPtr(objects.Symbol).getName()
-                else {
-                    idx = (idx + 1) % ht.capacity;
-                    continue;
-                };
-
-                if (std.mem.eql(u8, key_str, name_str)) {
-                    e.key = objects.HashTable.DELETED;
-                    e.value = Value.nil;
-                    ht.count -= 1;
-                    return true;
-                }
-            }
-            idx = (idx + 1) % ht.capacity;
-        }
-        return false;
+        const key = try self.packageKey(name);
+        return ht.remove(key);
     }
 
     /// Register a class in the global class registry

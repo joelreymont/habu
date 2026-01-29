@@ -81,8 +81,8 @@ pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value
 }
 
 /// Find a package by name or nickname
-pub fn findPackage(heap: *Heap, name: Value) ?Value {
-    return heap.findLispPackage(name);
+pub fn findPackage(heap: *Heap, name: Value) error{OutOfMemory, TypeError}!?Value {
+    return try heap.findLispPackage(name);
 }
 
 /// Get package name
@@ -114,7 +114,7 @@ pub fn packageUsedByList(heap: *Heap, pkg: Value) !Value {
     var it = heap.packages.valueIterator();
     while (it.next()) |zig_pkg| {
         const name_val = try heap.allocBaseString(zig_pkg.*.name);
-        if (heap.findLispPackage(name_val)) |pkg_val| {
+        if (try heap.findLispPackage(name_val)) |pkg_val| {
             const p = pkg_val.toPtr(objects.Package);
             var use_curr = p.use_list;
             while (!use_curr.isNil()) {
@@ -162,7 +162,7 @@ pub fn findAllSymbols(heap: *Heap, name: Value) !Value {
     var it = heap.packages.valueIterator();
     while (it.next()) |zig_pkg| {
         const name_val = try heap.allocBaseString(zig_pkg.*.name);
-        if (heap.findLispPackage(name_val)) |pkg_val| {
+        if (try heap.findLispPackage(name_val)) |pkg_val| {
             const p = pkg_val.toPtr(objects.Package);
 
             const sym_table = p.symbols;
@@ -189,7 +189,7 @@ pub fn aproposSymbols(heap: *Heap, substring: Value) !Value {
     var it = heap.packages.valueIterator();
     while (it.next()) |zig_pkg| {
         const name_val = try heap.allocBaseString(zig_pkg.*.name);
-        const pkg_opt = heap.findLispPackage(name_val);
+        const pkg_opt = try heap.findLispPackage(name_val);
         if (pkg_opt == null) continue;
         const pkg = pkg_opt.?.toPtr(objects.Package);
 
@@ -225,7 +225,7 @@ pub fn listAllPackages(heap: *Heap) !Value {
     var it = heap.packages.valueIterator();
     while (it.next()) |zig_pkg| {
         const name_val = try heap.allocBaseString(zig_pkg.*.name);
-        if (heap.findLispPackage(name_val)) |pkg_val| {
+        if (try heap.findLispPackage(name_val)) |pkg_val| {
             result = try heap.allocCons(pkg_val, result);
         }
     }
@@ -872,6 +872,24 @@ test "package creation and lookup" {
     try testing.expect(pkg_name.raw == name.raw);
 }
 
+test "findPackage accepts symbol and string designators" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const name = try heap.allocBaseString("TEST-DESIGNATOR");
+    const pkg = try makePackage(&heap, name, null, null);
+
+    const sym = try heap.intern("TEST-DESIGNATOR");
+    const found_sym = try findPackage(&heap, sym);
+    try testing.expect(found_sym != null);
+    try testing.expect(found_sym.?.eq(pkg));
+
+    const found_str = try findPackage(&heap, name);
+    try testing.expect(found_str != null);
+    try testing.expect(found_str.?.eq(pkg));
+}
+
 test "intern and find symbol" {
     const testing = std.testing;
     var heap = try Heap.init(testing.allocator, .{});
@@ -1034,13 +1052,13 @@ test "delete-package removes from system" {
     const pkg = try makePackage(&heap, name, null, null);
     try testing.expect(pkg.isPackage());
 
-    const found1 = findPackage(&heap, name);
+    const found1 = try findPackage(&heap, name);
     try testing.expect(found1 != null);
 
     const removed = try deletePackage(&heap, pkg);
     try testing.expect(removed);
 
-    const found2 = findPackage(&heap, name);
+    const found2 = try findPackage(&heap, name);
     try testing.expect(found2 == null);
 }
 
@@ -1054,12 +1072,12 @@ test "delete-package removes nicknames" {
     const nicks = try heap.allocCons(nick1, Value.nil);
     const pkg = try makePackage(&heap, name, nicks, null);
 
-    const found_by_nick = findPackage(&heap, nick1);
+    const found_by_nick = try findPackage(&heap, nick1);
     try testing.expect(found_by_nick != null);
 
     _ = try deletePackage(&heap, pkg);
 
-    const after_del = findPackage(&heap, nick1);
+    const after_del = try findPackage(&heap, nick1);
     try testing.expect(after_del == null);
 }
 
@@ -1075,10 +1093,10 @@ test "rename-package updates name" {
     const renamed = try renamePackage(&heap, pkg, new_name, null);
     try testing.expect(renamed.raw == pkg.raw);
 
-    const found_old = findPackage(&heap, old_name);
+    const found_old = try findPackage(&heap, old_name);
     try testing.expect(found_old == null);
 
-    const found_new = findPackage(&heap, new_name);
+    const found_new = try findPackage(&heap, new_name);
     try testing.expect(found_new != null);
     try testing.expect(found_new.?.raw == pkg.raw);
 }
@@ -1098,10 +1116,10 @@ test "rename-package updates nicknames" {
     const new_nicks = try heap.allocCons(new_nick, Value.nil);
     _ = try renamePackage(&heap, pkg, new_name, new_nicks);
 
-    const found_old_nick = findPackage(&heap, old_nick);
+    const found_old_nick = try findPackage(&heap, old_nick);
     try testing.expect(found_old_nick == null);
 
-    const found_new_nick = findPackage(&heap, new_nick);
+    const found_new_nick = try findPackage(&heap, new_nick);
     try testing.expect(found_new_nick != null);
     try testing.expect(found_new_nick.?.raw == pkg.raw);
 }

@@ -3071,7 +3071,7 @@ pub const Vm = struct {
                 if (val.isNil() or val.isT()) {
                     // nil and t are in the CL package
                     const cl_name = try self.heap.allocBaseString("CL");
-                    if (self.heap.findLispPackage(cl_name)) |pkg| {
+                    if (try self.heap.findLispPackage(cl_name)) |pkg| {
                         try self.push(pkg);
                     } else {
                         try self.push(Value.nil);
@@ -3084,7 +3084,7 @@ pub const Vm = struct {
                         const zig_pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
                         // Look up the Lisp package object by name
                         const name_val = try self.heap.allocBaseString(zig_pkg.name);
-                        if (self.heap.findLispPackage(name_val)) |pkg| {
+                        if (try self.heap.findLispPackage(name_val)) |pkg| {
                             try self.push(pkg);
                         } else {
                             try self.push(Value.nil);
@@ -3227,7 +3227,7 @@ pub const Vm = struct {
             },
             .find_package => {
                 const name = try self.pop();
-                if (primitives.package.findPackage(self.heap, name)) |pkg| {
+                if (try primitives.package.findPackage(self.heap, name)) |pkg| {
                     try self.push(pkg);
                 } else {
                     try self.push(Value.nil);
