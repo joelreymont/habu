@@ -11,67 +11,8 @@ const Keyword = objects.Keyword;
 const Class = objects.Class;
 const GenericFunction = objects.GenericFunction;
 
-const QualName = struct {
-    slice: []const u8,
-    owned: bool,
-};
-
-fn makeQualifiedName(
-    allocator: std.mem.Allocator,
-    buf: *[256]u8,
-    prefix: []const u8,
-    name: []const u8,
-) error{ OutOfMemory, Overflow }!QualName {
-    const total_len = try std.math.add(usize, prefix.len, name.len);
-    if (total_len <= buf.len) {
-        @memcpy(buf[0..prefix.len], prefix);
-        @memcpy(buf[prefix.len..][0..name.len], name);
-        return .{ .slice = buf[0..total_len], .owned = false };
-    }
-    const slice = try std.fmt.allocPrint(allocator, "{s}{s}", .{ prefix, name });
-    return .{ .slice = slice, .owned = true };
-}
-
-fn makePkgQualifiedName(
-    allocator: std.mem.Allocator,
-    buf: *[256]u8,
-    pkg: []const u8,
-    name: []const u8,
-) error{ OutOfMemory, Overflow }!QualName {
-    const pkg_len = try std.math.add(usize, pkg.len, 1);
-    const total_len = try std.math.add(usize, pkg_len, name.len);
-    if (total_len <= buf.len) {
-        @memcpy(buf[0..pkg.len], pkg);
-        buf[pkg.len] = ':';
-        @memcpy(buf[pkg_len..][0..name.len], name);
-        return .{ .slice = buf[0..total_len], .owned = false };
-    }
-    const slice = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ pkg, name });
-    return .{ .slice = slice, .owned = true };
-}
-
-fn lookupClassMetadata(
-    heap: *Heap,
-    class_sym: *const Symbol,
-) error{ OutOfMemory, Overflow }!?[]const []const u8 {
-    const class_name = class_sym.getName();
-    var qual_buf: [256]u8 = undefined;
-
-    const sym_pkg_ptr = @as(?*heap_mod.Package, @ptrFromInt(class_sym.reserved));
-    if (sym_pkg_ptr) |pkg| {
-        const qualified = try makePkgQualifiedName(heap.backing_allocator, &qual_buf, pkg.name, class_name);
-        defer if (qualified.owned) heap.backing_allocator.free(qualified.slice);
-        if (heap.class_metadata.get(qualified.slice)) |names| return names;
-    }
-
-    const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
-    for (prefixes) |prefix| {
-        const qualified = try makeQualifiedName(heap.backing_allocator, &qual_buf, prefix, class_name);
-        defer if (qualified.owned) heap.backing_allocator.free(qualified.slice);
-        if (heap.class_metadata.get(qualified.slice)) |names| return names;
-    }
-
-    return null;
+fn lookupClassMetadata(heap: *Heap, class_val: Value) ?[]const Value {
+    return heap.class_metadata.get(class_val);
 }
 
 /// make-instance: (make-instance 'class-name :slot1 val1 :slot2 val2 ...)
@@ -151,7 +92,7 @@ pub fn slotValue(heap: *Heap, args: Value) !Value {
     }
 
     if (!slot_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_name = slot_name_val.toPtr(Symbol).getName();
+    const slot_name = slot_name_val;
 
     // Instance format: #(class-name slot1-val slot2-val ...)
     const vec = obj.toPtr(Vector);
@@ -159,11 +100,10 @@ pub fn slotValue(heap: *Heap, args: Value) !Value {
 
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const class_sym = class_name_val.toPtr(Symbol);
-    const slot_names = if (try lookupClassMetadata(heap, class_sym)) |val| val else return error.InvalidArgument;
+    const slot_names = lookupClassMetadata(heap, class_name_val) orelse return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
-        if (std.mem.eql(u8, name, slot_name)) {
+        if (name.eq(slot_name)) {
             // Slot index in vector is idx+1 (since data[0] is class name)
             const vec_idx = idx + 1;
             if (vec_idx >= vec.length) return error.InvalidArgument;
@@ -200,7 +140,7 @@ pub fn setSlotValue(heap: *Heap, args: Value) !Value {
     }
 
     if (!slot_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_name = slot_name_val.toPtr(Symbol).getName();
+    const slot_name = slot_name_val;
 
     // Get the value to set
     if (!cons2.cdr.isCons()) return error.InvalidArgument;
@@ -213,11 +153,10 @@ pub fn setSlotValue(heap: *Heap, args: Value) !Value {
 
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const class_sym = class_name_val.toPtr(Symbol);
-    const slot_names = if (try lookupClassMetadata(heap, class_sym)) |val| val else return error.InvalidArgument;
+    const slot_names = lookupClassMetadata(heap, class_name_val) orelse return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
-        if (std.mem.eql(u8, name, slot_name)) {
+        if (name.eq(slot_name)) {
             // Slot index in vector is idx+1 (since data[0] is class name)
             const vec_idx = idx + 1;
             if (vec_idx >= vec.length) return error.InvalidArgument;
@@ -319,18 +258,17 @@ pub fn slotExistsP(heap: *Heap, args: Value) !Value {
     }
 
     if (!slot_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_name = slot_name_val.toPtr(Symbol).getName();
+    const slot_name = slot_name_val;
 
     const vec = obj.toPtr(Vector);
     if (vec.length == 0) return Value.nil;
 
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return Value.nil;
-    const class_sym = class_name_val.toPtr(Symbol);
-    const slot_names = if (try lookupClassMetadata(heap, class_sym)) |val| val else return Value.nil;
+    const slot_names = lookupClassMetadata(heap, class_name_val) orelse return Value.nil;
 
     for (slot_names) |name| {
-        if (std.mem.eql(u8, name, slot_name)) {
+        if (name.eq(slot_name)) {
             return Value.t;
         }
     }
@@ -359,18 +297,17 @@ pub fn slotBoundp(heap: *Heap, args: Value) !Value {
     }
 
     if (!slot_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_name = slot_name_val.toPtr(Symbol).getName();
+    const slot_name = slot_name_val;
 
     const vec = obj.toPtr(Vector);
     if (vec.length == 0) return error.InvalidArgument;
 
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const class_sym = class_name_val.toPtr(Symbol);
-    const slot_names = if (try lookupClassMetadata(heap, class_sym)) |val| val else return error.InvalidArgument;
+    const slot_names = lookupClassMetadata(heap, class_name_val) orelse return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
-        if (std.mem.eql(u8, name, slot_name)) {
+        if (name.eq(slot_name)) {
             const vec_idx = idx + 1;
             if (vec_idx >= vec.length) return error.InvalidArgument;
             const val = vec.data[vec_idx];
@@ -406,18 +343,17 @@ pub fn slotMakunbound(heap: *Heap, args: Value) !Value {
     }
 
     if (!slot_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_name = slot_name_val.toPtr(Symbol).getName();
+    const slot_name = slot_name_val;
 
     const vec = obj.toPtr(Vector);
     if (vec.length == 0) return error.InvalidArgument;
 
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const class_sym = class_name_val.toPtr(Symbol);
-    const slot_names = if (try lookupClassMetadata(heap, class_sym)) |val| val else return error.InvalidArgument;
+    const slot_names = lookupClassMetadata(heap, class_name_val) orelse return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
-        if (std.mem.eql(u8, name, slot_name)) {
+        if (name.eq(slot_name)) {
             const vec_idx = idx + 1;
             if (vec_idx >= vec.length) return error.InvalidArgument;
             vec.data[vec_idx] = Value.unbound;
@@ -794,4 +730,29 @@ test "classp returns t for class and nil for non-class" {
     const non_class_args = try heap.allocCons(Value.makeFixnum(1), Value.nil);
     const non_class_res = try classp(&heap, non_class_args);
     try testing.expect(non_class_res.isNil());
+}
+
+test "slot-value uses symbol metadata" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const class_sym = try heap.intern("FOO-CLASS");
+    const slot_sym = try heap.intern("BAR");
+
+    const slot_names = try heap.backing_allocator.alloc(Value, 1);
+    slot_names[0] = slot_sym;
+    try heap.class_metadata.put(heap.backing_allocator, class_sym, slot_names);
+
+    const vec = try heap.allocVector(2, 2);
+    const vec_obj = vec.toPtr(Vector);
+    vec_obj.data[0] = class_sym;
+    vec_obj.data[1] = Value.makeFixnum(42);
+
+    const args_tail = try heap.allocCons(slot_sym, Value.nil);
+    const args = try heap.allocCons(vec, args_tail);
+    const res = try slotValue(&heap, args);
+    try testing.expect(res.isFixnum());
+    try testing.expectEqual(@as(i64, 42), res.toFixnum());
 }

@@ -6353,6 +6353,7 @@ pub const Compiler = struct {
                 const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
                 try slot_specs.append(self.allocator, .{
                     .name = slot_name,
+                    .sym = slot_spec,
                     .field_type = &types.t_any,
                     .initargs = std.ArrayList(Value){},
                     .readers = std.ArrayList(Value){},
@@ -6374,6 +6375,7 @@ pub const Compiler = struct {
                 const field_type = if (self.parseTypeExpr(type_expr)) |val| val else return error.InvalidSyntax;
                 try slot_specs.append(self.allocator, .{
                     .name = slot_name,
+                    .sym = spec_cons.car,
                     .field_type = field_type,
                     .initargs = std.ArrayList(Value){},
                     .readers = std.ArrayList(Value){},
@@ -6450,6 +6452,7 @@ pub const Compiler = struct {
     /// Slot specification with name, type, and optional init form
     const SlotSpec = struct {
         name: []const u8,
+        sym: Value = Value.nil,
         field_type: *const types.Type,
         type_sym: Value = Value.t, // Runtime type symbol (default T = any)
         initform: ?Value = null,
@@ -7387,6 +7390,7 @@ pub const Compiler = struct {
                             for (parent_spec.writers.items) |w| try inherited_writers.append(self.allocator, w);
                             try slot_specs.append(self.allocator, .{
                                 .name = inherited_name,
+                                .sym = parent_spec.sym,
                                 .field_type = parent_spec.field_type,
                                 .initform = parent_spec.initform,
                                 .initargs = inherited_initargs,
@@ -7436,6 +7440,7 @@ pub const Compiler = struct {
                 const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
                 try slot_specs.append(self.allocator, .{
                     .name = slot_name,
+                    .sym = slot_spec,
                     .field_type = &types.t_any,
                     .initargs = std.ArrayList(Value){},
                     .readers = std.ArrayList(Value){},
@@ -7541,6 +7546,7 @@ pub const Compiler = struct {
 
                 try slot_specs.append(self.allocator, .{
                     .name = slot_name,
+                    .sym = spec_cons.car,
                     .field_type = field_type,
                     .type_sym = type_sym,
                     .initform = initform,
@@ -7575,6 +7581,7 @@ pub const Compiler = struct {
             const writers_slice = try self.globals.allocator.dupe(Value, spec.writers.items);
             persistent_specs[i] = .{
                 .name = try self.globals.allocator.dupe(u8, spec.name),
+                .sym = spec.sym,
                 .field_type = spec.field_type,
                 .initform = spec.initform,
                 .initargs = std.ArrayList(Value).fromOwnedSlice(initargs_slice),
@@ -7589,12 +7596,12 @@ pub const Compiler = struct {
 
         // Also store in heap for runtime slot-value lookup
         {
-            const heap_slot_names = try heap.backing_allocator.alloc([]const u8, slot_specs.items.len);
+            const heap_slot_names = try heap.backing_allocator.alloc(Value, slot_specs.items.len);
             for (slot_specs.items, 0..) |spec, i| {
-                heap_slot_names[i] = try heap.backing_allocator.dupe(u8, spec.name);
+                if (!spec.sym.isSymbol()) return error.InvalidSyntax;
+                heap_slot_names[i] = spec.sym;
             }
-            const heap_class_name = try heap.backing_allocator.dupe(u8, class_name);
-            try heap.class_metadata.put(heap.backing_allocator, heap_class_name, heap_slot_names);
+            try heap.class_metadata.put(heap.backing_allocator, name_val, heap_slot_names);
         }
 
         // Allocate Class object and compute CPL, then register in class registry

@@ -253,8 +253,8 @@ pub const Heap = struct {
     built_in_class: Value,
     structure_class: Value,
     /// Class metadata for CLOS slot-value lookup
-    /// Maps class name to slot names array
-    class_metadata: std.StringHashMapUnmanaged([]const []const u8),
+    /// Maps class symbol to slot symbol array
+    class_metadata: std.AutoHashMapUnmanaged(Value, []const Value),
     /// Readtable for reader macros
     /// Maps character (u8) to macro function and flags
     readtable: std.AutoHashMapUnmanaged(u8, ReadtableEntry),
@@ -397,13 +397,9 @@ pub const Heap = struct {
             self.backing_allocator.free(entry.key_ptr.*);
         }
         self.package_aliases.deinit(self.backing_allocator);
-        // Free class_metadata keys and slot name arrays
+        // Free class_metadata slot arrays
         var class_iter = self.class_metadata.iterator();
         while (class_iter.next()) |entry| {
-            self.backing_allocator.free(entry.key_ptr.*);
-            for (entry.value_ptr.*) |slot_name| {
-                self.backing_allocator.free(slot_name);
-            }
             self.backing_allocator.free(entry.value_ptr.*);
         }
         self.class_metadata.deinit(self.backing_allocator);
