@@ -1802,7 +1802,7 @@ pub const Compiler = struct {
 
         // If there's a return type, check body against it
         if (return_type) |ret_type_val| {
-            const expected_type = self.parseTypeExpr(ret_type_val) orelse return;
+            const expected_type = if (self.parseTypeExpr(ret_type_val)) |val| val else return;
             self.bi_checker.check(body_ir, expected_type, &ctx) catch {
                 // Type error - already recorded in bi_checker.errors
             };
@@ -2510,8 +2510,8 @@ pub const Compiler = struct {
 
     /// Expand a macro by calling its expander function with the arguments
     fn expandMacro(self: *Compiler, macro_def: Value, args: Value, whole_form: Value, vm: *Vm) !Value {
-        const heap = self.heap orelse return error.InvalidSyntax;
-        const b = self.builtins orelse return error.InvalidSyntax;
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+        const b = if (self.builtins) |val| val else return error.InvalidSyntax;
 
         // macro_def is ((params...) body...)
         // Transform destructured params before creating lambda
@@ -2784,7 +2784,7 @@ pub const Compiler = struct {
             const param_item = param_cons.car;
 
             if (param_item.isSymbolLike()) {
-                const b = self.builtins orelse return error.UninitializedBuiltins;
+                const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
 
                 // Check for &rest/&body keyword (use symbol identity)
                 if (param_item.raw == b.@"&rest".raw or param_item.raw == b.@"&body".raw) {
@@ -3054,7 +3054,7 @@ pub const Compiler = struct {
 
     /// Create a type assertion IR node for a given type symbol or complex type
     fn makeTypeAssertionSym(self: *Compiler, expr_ir: *Ir, type_sym: Value) !?*Ir {
-        const b = self.builtins orelse return error.UninitializedBuiltins;
+        const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
 
         // Handle simple type symbols by identity
         if (type_sym.isSymbol()) {
@@ -3163,7 +3163,7 @@ pub const Compiler = struct {
 
             // Check for special forms that introduce bindings
             if (head.isSymbol()) {
-                const b = self.builtins orelse return;
+                const b = if (self.builtins) |val| val else return;
 
                 if (head.raw == b.lambda.raw or head.raw == b.@"fn".raw) {
                     // Lambda creates new scope - handled recursively by compileLambda
@@ -3273,7 +3273,7 @@ pub const Compiler = struct {
         if (!expr.isCons()) return;
 
         // Builtins required for symbol identity comparison
-        const b = self.builtins orelse return;
+        const b = if (self.builtins) |val| val else return;
 
         const cons = expr.toPtr(Cons);
         const head = cons.car;
@@ -3406,7 +3406,7 @@ pub const Compiler = struct {
 
         // Handle quote specially - don't look inside
         if (cons.car.isSymbol()) {
-            const b = self.builtins orelse return;
+            const b = if (self.builtins) |val| val else return;
             const head = cons.car;
             if (head.raw == b.quote.raw) return;
 
@@ -3846,7 +3846,7 @@ pub const Compiler = struct {
         const is_default = blk: {
             // t is magic value, else is interned symbol
             if (test_expr.raw == Value.t.raw) break :blk true;
-            const b = self.builtins orelse return error.UninitializedBuiltins;
+            const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
             if (test_expr.raw == b.@"else".raw) break :blk true;
             break :blk false;
         };
@@ -4091,7 +4091,7 @@ pub const Compiler = struct {
                 // Symbol macro expands to compound form - apply setf to expansion
                 if (expansion.isCons()) {
                     // Rebuild (setf expanded-place value) and recompile
-                    const heap = self.heap orelse return error.InvalidSyntax;
+                    const heap = if (self.heap) |val| val else return error.InvalidSyntax;
                     const new_args = try heap.allocCons(expansion, cons1.cdr);
                     return self.compileSetf(new_args, env);
                 }
@@ -4138,7 +4138,7 @@ pub const Compiler = struct {
             const place_args = place_cons.cdr;
 
             if (head.isSymbol()) {
-                const b = self.builtins orelse return error.InvalidSyntax;
+                const b = if (self.builtins) |val| val else return error.InvalidSyntax;
                 const h = head.raw;
 
                 // (setf (car x) val) -> (rplaca x val)
@@ -4201,7 +4201,7 @@ pub const Compiler = struct {
                 // (setf (aref array idx...) val) -> (%aset array idx... val)
                 if (h == b.aref.raw) {
                     // Build args for compileAset: (array sub1 sub2 ... val)
-                    const heap = self.heap orelse return error.InvalidSyntax;
+                    const heap = if (self.heap) |val| val else return error.InvalidSyntax;
                     // Append value_expr to place_args
                     var aset_args = place_args;
                     var last: ?*Cons = null;
@@ -4409,7 +4409,7 @@ pub const Compiler = struct {
     /// Create a lambda wrapper for a primitive function reference
     /// Returns null if sym is not a known primitive
     fn compilePrimitiveFunctionRef(self: *Compiler, sym: Value) anyerror!?*Ir {
-        const b = self.builtins orelse return null;
+        const b = if (self.builtins) |val| val else return null;
         const s = sym.raw;
 
         // Binary primitives: (lambda (a b) (prim a b))
@@ -4675,7 +4675,7 @@ pub const Compiler = struct {
 
         // Check for (unquote x) - evaluate x (use symbol identity)
         if (head.isSymbol()) {
-            const b = self.builtins orelse return error.UninitializedBuiltins;
+            const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
             if (head.raw == b.unquote.raw) {
                 // (unquote x) -> compile x
                 if (!cons.cdr.isCons()) return error.InvalidSyntax;
@@ -4715,7 +4715,7 @@ pub const Compiler = struct {
         if (head.isCons()) {
             const head_cons = head.toPtr(Cons);
             if (head_cons.car.isSymbol()) {
-                const b = self.builtins orelse return error.UninitializedBuiltins;
+                const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
                 if (head_cons.car.raw == b.@"unquote-splicing".raw) {
                     // (,@x ...) -> (append x (quasiquote-list ...))
                     if (!head_cons.cdr.isCons()) return error.InvalidSyntax;
@@ -5410,7 +5410,7 @@ pub const Compiler = struct {
             // Check for -> arrow (use symbol identity)
             if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
             const arrow_cons = spec_cons.cdr.toPtr(Cons);
-            const b = self.builtins orelse return error.UninitializedBuiltins;
+            const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
             if (arrow_cons.car.raw != b.@"->".raw) return error.InvalidSyntax;
 
             // Get return type (symbol or complex type like (or T1 T2))
@@ -5438,7 +5438,7 @@ pub const Compiler = struct {
 
     /// Build cons list from slice
     fn listFromSlice(self: *Compiler, items: []const Value) !Value {
-        const heap = self.heap orelse return error.InvalidSyntax;
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
         var result = Value.nil;
         var i = items.len;
         while (i > 0) {
@@ -5451,8 +5451,8 @@ pub const Compiler = struct {
     /// Transform destructured params: ((a b) &body c) -> (g123 &body c) + wrap body
     /// Returns ((new-params...) wrapped-body...)
     pub fn transformDestructuredParams(self: *Compiler, lambda_args: Value) !Value {
-        const heap = self.heap orelse return error.InvalidSyntax;
-        const b = self.builtins orelse return error.UninitializedBuiltins;
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+        const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
 
         // lambda_args is ((params...) body...)
         const args_cons = lambda_args.toPtr(Cons);
@@ -5838,7 +5838,7 @@ pub const Compiler = struct {
             const item = cons.car;
 
             if (item.isSymbol()) {
-                const b = self.builtins orelse return error.UninitializedBuiltins;
+                const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
 
                 // Check for lambda-list keywords
                 if (item.raw == b.@"&optional".raw) {
@@ -6092,8 +6092,8 @@ pub const Compiler = struct {
         // read-only-p is optional and ignored in our implementation
 
         // Need VM to evaluate at compile time
-        const vm = self.vm orelse return error.InvalidSyntax;
-        const heap = self.heap orelse return error.InvalidSyntax;
+        const vm = if (self.vm) |val| val else return error.InvalidSyntax;
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
 
         // Compile the form
         var eval_compiler = Compiler.initWithHeap(self.allocator, vm) catch
@@ -6159,7 +6159,7 @@ pub const Compiler = struct {
     /// Compile defpackage: (defpackage "name" (:use "other-pkg") (:export "sym1" "sym2"))
     /// Creates a new package with the given name
     fn compileDefpackage(self: *Compiler, args: Value) anyerror!*Ir {
-        const heap = self.heap orelse return error.InvalidSyntax;
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
         if (!args.isCons()) return error.InvalidSyntax;
 
         const cons1 = args.toPtr(Cons);
@@ -6197,7 +6197,7 @@ pub const Compiler = struct {
                         var use_list = opt_list.cdr;
                         while (use_list.isCons()) {
                             const use_cons = use_list.toPtr(Cons);
-                            const use_pkg_name = self.getStringOrSymbolName(use_cons.car) orelse return error.InvalidSyntax;
+                            const use_pkg_name = if (self.getStringOrSymbolName(use_cons.car)) |val| val else return error.InvalidSyntax;
                             const use_pkg = try heap.findOrCreatePackage(use_pkg_name);
                             pkg.usePackage(use_pkg) catch |e| return e;
                             use_list = use_cons.cdr;
@@ -6207,7 +6207,7 @@ pub const Compiler = struct {
                         var export_list = opt_list.cdr;
                         while (export_list.isCons()) {
                             const export_cons = export_list.toPtr(Cons);
-                            const export_name = self.getStringOrSymbolName(export_cons.car) orelse return error.InvalidSyntax;
+                            const export_name = if (self.getStringOrSymbolName(export_cons.car)) |val| val else return error.InvalidSyntax;
                             pkg.exportSymbol(export_name) catch |e| return e;
                             export_list = export_cons.cdr;
                         }
@@ -6224,11 +6224,11 @@ pub const Compiler = struct {
     /// Compile in-package: (in-package "name")
     /// Switches the current package
     fn compileInPackage(self: *Compiler, args: Value) anyerror!*Ir {
-        const heap = self.heap orelse return error.InvalidSyntax;
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
         if (!args.isCons()) return error.InvalidSyntax;
 
         const cons1 = args.toPtr(Cons);
-        const pkg_name = self.getStringOrSymbolName(cons1.car) orelse return error.InvalidSyntax;
+        const pkg_name = if (self.getStringOrSymbolName(cons1.car)) |val| val else return error.InvalidSyntax;
 
         // Find or create the package and set it as current
         const pkg = try heap.findOrCreatePackage(pkg_name);
@@ -6241,13 +6241,13 @@ pub const Compiler = struct {
     /// Compile export: (export 'sym1 'sym2 ...)
     /// Exports symbols from the current package
     fn compileExport(self: *Compiler, args: Value) anyerror!*Ir {
-        const heap = self.heap orelse return error.InvalidSyntax;
-        const pkg = heap.current_package orelse return error.InvalidSyntax;
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+        const pkg = if (heap.current_package) |val| val else return error.InvalidSyntax;
 
         var syms = args;
         while (syms.isCons()) {
             const cons = syms.toPtr(Cons);
-            const sym_name = self.getStringOrSymbolName(cons.car) orelse return error.InvalidSyntax;
+            const sym_name = if (self.getStringOrSymbolName(cons.car)) |val| val else return error.InvalidSyntax;
             pkg.exportSymbol(sym_name) catch |e| return e;
             syms = cons.cdr;
         }
@@ -6258,14 +6258,14 @@ pub const Compiler = struct {
     /// Compile use-package: (use-package "pkg")
     /// Makes another package's exports available in current package
     fn compileUsePackage(self: *Compiler, args: Value) anyerror!*Ir {
-        const heap = self.heap orelse return error.InvalidSyntax;
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
         if (!args.isCons()) return error.InvalidSyntax;
 
-        const pkg = heap.current_package orelse return error.InvalidSyntax;
+        const pkg = if (heap.current_package) |val| val else return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
-        const other_name = self.getStringOrSymbolName(cons1.car) orelse return error.InvalidSyntax;
+        const other_name = if (self.getStringOrSymbolName(cons1.car)) |val| val else return error.InvalidSyntax;
 
-        const other_pkg = heap.findPackage(other_name) orelse return error.InvalidSyntax;
+        const other_pkg = if (heap.findPackage(other_name)) |val| val else return error.InvalidSyntax;
         pkg.usePackage(other_pkg) catch |e| return e;
 
         return try self.builder.lit(Value.t);
@@ -6302,8 +6302,8 @@ pub const Compiler = struct {
 
     /// Build qualified name from plain name using current package
     fn qualifyName(self: *Compiler, name: []const u8, buf: []u8) ![]const u8 {
-        const heap = self.heap orelse return name;
-        const pkg = heap.current_package orelse return name;
+        const heap = if (self.heap) |val| val else return name;
+        const pkg = if (heap.current_package) |val| val else return name;
         const pkg_name = pkg.name;
         // Format as PKG:NAME
         const result = try std.fmt.bufPrint(buf, "{s}:{s}", .{ pkg_name, name });
@@ -6328,7 +6328,7 @@ pub const Compiler = struct {
     /// Runtime representation: #(name slot1-val slot2-val ...)
     /// Registers struct type with type system for occurrence typing and type checking
     fn compileDefstruct(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        const heap = self.heap orelse return error.InvalidSyntax;
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
 
         // Parse: (name slot1 slot2 ...)
         if (!args.isCons()) return error.InvalidSyntax;
@@ -6371,7 +6371,7 @@ pub const Compiler = struct {
                 const type_expr = type_cons.car;
 
                 // Parse type expression (supports compound types like (list fixnum))
-                const field_type = self.parseTypeExpr(type_expr) orelse return error.InvalidSyntax;
+                const field_type = if (self.parseTypeExpr(type_expr)) |val| val else return error.InvalidSyntax;
                 try slot_specs.append(self.allocator, .{
                     .name = slot_name,
                     .field_type = field_type,
@@ -6551,7 +6551,7 @@ pub const Compiler = struct {
             const slot_name_sym = try heap.intern(spec.name);
 
             // Convert allocation to keyword
-            const b = self.builtins orelse return error.UninitializedBuiltins;
+            const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
             const allocation_kw = if (spec.allocation == .class) b.kw_class else b.kw_instance;
 
             slot_def.* = .{
@@ -6685,7 +6685,7 @@ pub const Compiler = struct {
 
     /// Parse type symbol to Type pointer using symbol identity
     fn parseTypeSym(self: *Compiler, type_sym: Value) ?*const types.Type {
-        const b = self.builtins orelse return null;
+        const b = if (self.builtins) |val| val else return null;
 
         // Type symbol table - match by Value.raw identity
         const entries = [_]struct { sym: Value, ty: *const types.Type }{
@@ -6736,7 +6736,7 @@ pub const Compiler = struct {
 
         if (!head.isSymbol()) return null;
 
-        const b = self.builtins orelse return null;
+        const b = if (self.builtins) |val| val else return null;
 
         // (union T1 T2 ...) or (or T1 T2 ...) - union type
         if (head.raw == b.ty_union.raw or head.raw == b.ty_or.raw) {
@@ -6814,7 +6814,7 @@ pub const Compiler = struct {
         var current = args;
         while (current.isCons()) {
             const c = current.toPtr(Cons);
-            const t = self.parseTypeExpr(c.car) orelse return null;
+            const t = if (self.parseTypeExpr(c.car)) |val| val else return null;
             type_list.append(self.allocator, t) catch {
                 return null;
             };
@@ -6835,7 +6835,7 @@ pub const Compiler = struct {
         var current = args;
         while (current.isCons()) {
             const c = current.toPtr(Cons);
-            const t = self.parseTypeExpr(c.car) orelse return null;
+            const t = if (self.parseTypeExpr(c.car)) |val| val else return null;
             type_list.append(self.allocator, t) catch {
                 return null;
             };
@@ -6852,7 +6852,7 @@ pub const Compiler = struct {
     fn parseNotType(self: *Compiler, args: Value) ?*const types.Type {
         if (!args.isCons()) return null;
         const c = args.toPtr(Cons);
-        const inner = self.parseTypeExpr(c.car) orelse return null;
+        const inner = if (self.parseTypeExpr(c.car)) |val| val else return null;
         return self.type_checker.builder.makeNot(inner) catch null;
     }
 
@@ -6872,7 +6872,7 @@ pub const Compiler = struct {
                 var domain = c.car;
                 while (domain.isCons()) {
                     const dc = domain.toPtr(Cons);
-                    const t = self.parseTypeExpr(dc.car) orelse return null;
+                    const t = if (self.parseTypeExpr(dc.car)) |val| val else return null;
                     all_types.append(self.allocator, t) catch {
                         return null;
                     };
@@ -6880,7 +6880,7 @@ pub const Compiler = struct {
                 }
             } else {
                 // Single type
-                const t = self.parseTypeExpr(c.car) orelse return null;
+                const t = if (self.parseTypeExpr(c.car)) |val| val else return null;
                 all_types.append(self.allocator, t) catch {
                     return null;
                 };
@@ -6901,7 +6901,7 @@ pub const Compiler = struct {
     fn parseListType(self: *Compiler, args: Value) ?*const types.Type {
         if (!args.isCons()) return &types.t_list_any;
         const c = args.toPtr(Cons);
-        const elem = self.parseTypeExpr(c.car) orelse return null;
+        const elem = if (self.parseTypeExpr(c.car)) |val| val else return null;
         return self.type_checker.builder.makeList(elem) catch null;
     }
 
@@ -6909,7 +6909,7 @@ pub const Compiler = struct {
     fn parseVecType(self: *Compiler, args: Value) ?*const types.Type {
         if (!args.isCons()) return &types.t_vector;
         const c = args.toPtr(Cons);
-        const elem = self.parseTypeExpr(c.car) orelse return null;
+        const elem = if (self.parseTypeExpr(c.car)) |val| val else return null;
 
         // Check for (vec T N) - sized vector
         if (c.cdr.isCons()) {
@@ -6928,7 +6928,7 @@ pub const Compiler = struct {
     fn parseNonNilType(self: *Compiler, args: Value) ?*const types.Type {
         if (!args.isCons()) return null;
         const c = args.toPtr(Cons);
-        const inner = self.parseTypeExpr(c.car) orelse return null;
+        const inner = if (self.parseTypeExpr(c.car)) |val| val else return null;
         return self.type_checker.builder.makeNonNil(inner) catch null;
     }
 
@@ -6952,7 +6952,7 @@ pub const Compiler = struct {
         // Skip the colon if present
         var type_expr = rest1.car;
         if (rest1.car.isSymbol()) {
-            const b = self.builtins orelse return null;
+            const b = if (self.builtins) |val| val else return null;
             if (rest1.car.eq(b.kw_colon)) {
                 // Next is the actual type
                 if (!rest1.cdr.isCons()) return null;
@@ -6960,12 +6960,12 @@ pub const Compiler = struct {
             }
         }
 
-        const param_type = self.parseTypeExpr(type_expr) orelse return null;
+        const param_type = if (self.parseTypeExpr(type_expr)) |val| val else return null;
 
         // Second element is the return type B
         if (!c1.cdr.isCons()) return null;
         const c2 = c1.cdr.toPtr(Cons);
-        const return_type = self.parseTypeExpr(c2.car) orelse return null;
+        const return_type = if (self.parseTypeExpr(c2.car)) |val| val else return null;
 
         return self.type_checker.builder.makePi(param_name, param_type, return_type, .many) catch null;
     }
@@ -6986,18 +6986,18 @@ pub const Compiler = struct {
         const rest1 = binding.cdr.toPtr(Cons);
         var type_expr = rest1.car;
         if (rest1.car.isSymbol()) {
-            const b = self.builtins orelse return null;
+            const b = if (self.builtins) |val| val else return null;
             if (rest1.car.eq(b.kw_colon)) {
                 if (!rest1.cdr.isCons()) return null;
                 type_expr = rest1.cdr.toPtr(Cons).car;
             }
         }
 
-        const first_type = self.parseTypeExpr(type_expr) orelse return null;
+        const first_type = if (self.parseTypeExpr(type_expr)) |val| val else return null;
 
         if (!c1.cdr.isCons()) return null;
         const c2 = c1.cdr.toPtr(Cons);
-        const second_type = self.parseTypeExpr(c2.car) orelse return null;
+        const second_type = if (self.parseTypeExpr(c2.car)) |val| val else return null;
 
         return self.type_checker.builder.makeSigma(first_name, first_type, second_type) catch null;
     }
@@ -7009,7 +7009,7 @@ pub const Compiler = struct {
         const c1 = args.toPtr(Cons);
 
         // Base type T
-        const base_type = self.parseTypeExpr(c1.car) orelse return null;
+        const base_type = if (self.parseTypeExpr(c1.car)) |val| val else return null;
 
         if (!c1.cdr.isCons()) return null;
         const c2 = c1.cdr.toPtr(Cons);
@@ -7074,7 +7074,7 @@ pub const Compiler = struct {
         } else if (c.car.isCons()) {
             // Parse arg types: (type1 type2 ...)
             var arg_list = c.car;
-            const b = self.builtins orelse return null;
+            const b = if (self.builtins) |val| val else return null;
             while (arg_list.isCons()) {
                 const ac = arg_list.toPtr(Cons);
                 // Skip lambda list markers
@@ -7087,13 +7087,13 @@ pub const Compiler = struct {
                         continue;
                     }
                 }
-                const arg_type = self.parseTypeExpr(ac.car) orelse return null;
+                const arg_type = if (self.parseTypeExpr(ac.car)) |val| val else return null;
                 try domain_types.append(self.allocator, arg_type);
                 arg_list = ac.cdr;
             }
         } else {
             // First arg is a single type (not a list)
-            const arg_type = self.parseTypeExpr(c.car) orelse return null;
+            const arg_type = if (self.parseTypeExpr(c.car)) |val| val else return null;
             try domain_types.append(self.allocator, arg_type);
         }
 
@@ -7336,7 +7336,7 @@ pub const Compiler = struct {
     /// Generates: class predicate, constructor (via make-instance), slot accessors
     /// Runtime representation: #('class-name slot1-val slot2-val ...)
     fn compileDefclass(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        const heap = self.heap orelse return error.InvalidSyntax;
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
 
         // Parse: (name (superclasses...) (slot1 slot2 ...) ...)
         if (!args.isCons()) return error.InvalidSyntax;
@@ -7462,7 +7462,7 @@ pub const Compiler = struct {
                     const opt_key = opt_cons.car;
 
                     if (opt_key.isKeyword()) {
-                        const b = self.builtins orelse return error.UninitializedBuiltins;
+                        const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
 
                         if (opt_key.eq(b.kw_type)) {
                             // type keyword - next element is the type
@@ -7685,7 +7685,7 @@ pub const Compiler = struct {
         const class_sym = class_name_expr.toPtr(Symbol);
         const class_name = class_sym.getName();
 
-        const slot_specs = try self.lookupClassMetadataBySymbol(class_sym) orelse return error.InvalidSyntax;
+        const slot_specs = if (try self.lookupClassMetadataBySymbol(class_sym)) |val| val else return error.InvalidSyntax;
 
         // Parse keyword arguments and build positional args array
         const slot_values = try self.allocator.alloc(?*Ir, slot_specs.len);
@@ -7739,7 +7739,8 @@ pub const Compiler = struct {
             }
         }
 
-        const ctor_ref = try self.builder.globalRef(ctor_name, self.globals.lookup(ctor_name) orelse return error.InvalidSyntax);
+        const ctor_idx = if (self.globals.lookup(ctor_name)) |val| val else return error.InvalidSyntax;
+        const ctor_ref = try self.builder.globalRef(ctor_name, ctor_idx);
         return try self.builder.call(ctor_ref, call_args);
     }
 
@@ -7923,7 +7924,7 @@ pub const Compiler = struct {
 
         // Check if second element is a qualifier keyword
         if (rest.car.isKeyword()) {
-            const builtins = self.builtins orelse return error.CompilerNotInitialized;
+            const builtins = if (self.builtins) |val| val else return error.CompilerNotInitialized;
             if (rest.car.eq(builtins.kw_before)) {
                 qualifier = .before;
             } else if (rest.car.eq(builtins.kw_after)) {
@@ -7948,7 +7949,7 @@ pub const Compiler = struct {
         var specializers = std.ArrayList(Value){};
         defer specializers.deinit(self.allocator);
 
-        const heap = self.heap orelse return error.CompilerNotInitialized;
+        const heap = if (self.heap) |val| val else return error.CompilerNotInitialized;
 
         var params = lambda_list;
         while (params.isCons()) {
@@ -8105,7 +8106,7 @@ pub const Compiler = struct {
         const dispatcher = try self.generateMethodDispatcher(gen_name, gop.value_ptr.*, dispatch_params_copy);
 
         // Build qualifiers list for Method object (e.g., (:before) or nil for primary)
-        const builtins = self.builtins orelse return error.CompilerNotInitialized;
+        const builtins = if (self.builtins) |val| val else return error.CompilerNotInitialized;
         const qualifiers_list: Value = switch (qualifier) {
             .primary => Value.nil,
             .before => try heap.allocCons(builtins.kw_before, Value.nil),
@@ -8163,7 +8164,7 @@ pub const Compiler = struct {
             return try self.builder.progn(defs);
         } else {
             // GF already exists - just update its dispatcher
-            const global_idx = self.globals.lookup(gen_name) orelse return error.UnboundGenericFunction;
+            const global_idx = if (self.globals.lookup(gen_name)) |val| val else return error.UnboundGenericFunction;
             const gf_ir = try self.builder.globalRef(gen_name, global_idx);
             const gf_ir2 = try self.builder.globalRef(gen_name, global_idx);
             const add_method_ir = try self.builder.addMethod(gf_ir, make_method_ir);
@@ -8660,11 +8661,11 @@ pub const Compiler = struct {
     /// Compare two class specializers using CPL
     /// Returns .more_specific if class_a is a subclass of class_b
     fn compareClassSpecificity(self: *Compiler, class_a: Value, class_b: Value) !SpecificityOrder {
-        const heap = self.heap orelse return .equal;
+        const heap = if (self.heap) |val| val else return .equal;
 
         // Look up both classes
-        const a_class = self.lookupClass(heap, class_a) orelse return .equal;
-        const b_class = self.lookupClass(heap, class_b) orelse return .equal;
+        const a_class = if (self.lookupClass(heap, class_a)) |val| val else return .equal;
+        const b_class = if (self.lookupClass(heap, class_b)) |val| val else return .equal;
 
         // Check if class_b appears in class_a's CPL (meaning a is a subclass of b)
         if (self.classInCpl(a_class, class_b)) return .more_specific;
@@ -8763,7 +8764,7 @@ pub const Compiler = struct {
 
         // Look up the method function by name (direct global lookup, not symbol interning)
         // Method function names are synthetic (e.g., "foo$p$fixnum") and don't use package qualification
-        const func_idx = self.globals.lookup(function_name) orelse return error.UnboundMethodFunction;
+        const func_idx = if (self.globals.lookup(function_name)) |val| val else return error.UnboundMethodFunction;
         const func_val_ir = try self.builder.globalRef(function_name, func_idx);
 
         // Call the method function
@@ -9113,7 +9114,7 @@ pub const Compiler = struct {
 
             // Check for wildcard (use symbol identity)
             if (pattern.isSymbol()) {
-                const b = self.builtins orelse return error.UninitializedBuiltins;
+                const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
                 if (pattern.raw == b._.raw) {
                     has_wildcard = true;
                     break;
@@ -9179,7 +9180,7 @@ pub const Compiler = struct {
 
         // Check for wildcard pattern: _ (use symbol identity)
         if (pattern.isSymbol()) {
-            const b = self.builtins orelse return error.UninitializedBuiltins;
+            const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
             if (pattern.raw == b._.raw) {
                 // Wildcard - compile body as progn
                 return self.compileProgn(body_list, env);
@@ -9348,7 +9349,7 @@ pub const Compiler = struct {
 
         if (!spec_name.isSymbol()) return error.InvalidSyntax;
 
-        const heap = self.heap orelse return error.InvalidSyntax;
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
 
         // Use global_decls instead of per-scope decl_env
         // Match declaration spec by symbol identity
@@ -9470,7 +9471,7 @@ pub const Compiler = struct {
 
         if (!spec_name.isSymbol()) return error.InvalidSyntax;
 
-        const heap = self.heap orelse return error.InvalidSyntax;
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
 
         // Match declaration spec by symbol identity
         const type_sym = try heap.intern("type");
@@ -9566,7 +9567,7 @@ pub const Compiler = struct {
         // Unwrap quote if present
         const decl_spec = if (quoted.isCons()) blk: {
             const q = quoted.toPtr(Cons);
-            const heap = self.heap orelse return error.InvalidSyntax;
+            const heap = if (self.heap) |val| val else return error.InvalidSyntax;
             const quote_sym = try heap.intern("quote");
             if (q.car.eq(quote_sym) and q.cdr.isCons()) {
                 break :blk q.cdr.toPtr(Cons).car;
@@ -9584,7 +9585,7 @@ pub const Compiler = struct {
 
     /// Compile a simple type check for a single type symbol (uses symbol identity)
     fn compileSimpleTypeCheckSym(self: *Compiler, type_sym: Value, expr_ir: *const Ir) anyerror!*Ir {
-        const b = self.builtins orelse return error.UninitializedBuiltins;
+        const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
         // Dispatch by symbol identity (no string comparison)
         if (type_sym.raw == b.ty_fixnum.raw) return self.builder.assertFixnum(expr_ir);
         if (type_sym.raw == b.cons.raw) return self.builder.assertCons(expr_ir);
@@ -9603,7 +9604,7 @@ pub const Compiler = struct {
         const cons = type_spec.toPtr(Cons);
         if (!cons.car.isSymbol()) return error.InvalidSyntax;
 
-        const b = self.builtins orelse return error.UninitializedBuiltins;
+        const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
         const head = cons.car;
 
         // Dispatch by symbol identity
@@ -9639,7 +9640,7 @@ pub const Compiler = struct {
     /// Compile (or type1 type2 ...) check
     /// Expands to: check_list if (or cons nil), else check each type
     fn compileOrTypeCheck(self: *Compiler, type_list: Value, expr_ir: *const Ir) anyerror!*Ir {
-        const b = self.builtins orelse return error.InvalidSyntax;
+        const b = if (self.builtins) |val| val else return error.InvalidSyntax;
 
         // Collect type symbols (symbol Values or nil for "nil" type)
         var type_syms = std.ArrayList(Value){};
@@ -9755,7 +9756,7 @@ pub const Compiler = struct {
 
     /// Check if a Type matches a type symbol (using pointer comparison)
     fn typeMatchesSym(self: *Compiler, ty: *const Type, type_sym: Value) bool {
-        const b = self.builtins orelse return false;
+        const b = if (self.builtins) |val| val else return false;
 
         // Table mapping type symbols to type pointers
         const TypeMapping = struct { sym: Value, ty: *const Type };
@@ -9833,7 +9834,7 @@ pub const Compiler = struct {
     }
 
     fn filterDeclares(self: *Compiler, exprs: Value) !Value {
-        const heap = self.heap orelse return exprs;
+        const heap = if (self.heap) |val| val else return exprs;
         const declare_sym = try heap.intern("declare");
 
         var filtered = std.ArrayList(Value){};
@@ -10267,7 +10268,7 @@ pub const Compiler = struct {
 
     fn compilePrimitive(self: *Compiler, sym: Value, args: Value, env: *const Env) anyerror!*Ir {
         const s = sym.raw;
-        const b = self.builtins orelse return error.InvalidSyntax;
+        const b = if (self.builtins) |val| val else return error.InvalidSyntax;
 
         // Variadic arithmetic (+, -, *, /)
         if (s == b.@"+".raw) return self.compileVariadicArith(args, env, .add, 0);
@@ -10848,7 +10849,7 @@ pub const Compiler = struct {
 
             if (is_print) {
                 // print also needs a newline - create concat with newline
-                const heap = self.heap orelse return error.UninitializedBuiltins;
+                const heap = if (self.heap) |val| val else return error.UninitializedBuiltins;
                 const newline_ir = try self.builder.lit(try heap.allocBaseString("\n"));
                 const with_newline = try self.builder.strConcat(str_ir, newline_ir);
                 return try self.builder.writeToStream(with_newline, stream_ir);
@@ -11514,7 +11515,7 @@ pub const Compiler = struct {
         // (concatenate 'list list1 list2 ...)
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
-        const b = self.builtins orelse return error.InvalidSyntax;
+        const b = if (self.builtins) |val| val else return error.InvalidSyntax;
 
         // First arg should be a quoted type: (quote string) or (quote list)
         var type_sym: Value = undefined;
@@ -12194,7 +12195,7 @@ pub const Compiler = struct {
         var dims_val = cons1.car;
 
         // If dims_val is (quote (2 3)), unwrap it
-        const b = self.builtins orelse return error.InvalidSyntax;
+        const b = if (self.builtins) |val| val else return error.InvalidSyntax;
         if (dims_val.isCons()) {
             const quote_cons = dims_val.toPtr(Cons);
             if (quote_cons.car.raw == b.quote.raw and quote_cons.cdr.isCons()) {
