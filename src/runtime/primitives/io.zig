@@ -737,7 +737,7 @@ fn writeBytesToStream(stream: Value, bytes: []const u8) !void {
     switch (s.stream_type) {
         .string => {
             if (s.data_ptr == 0) return error.StreamClosed;
-            const buf: *heap_mod.OutputBuffer = @ptrFromInt(s.data_ptr);
+            const buf: *objects.OutputBuffer = @ptrFromInt(s.data_ptr);
             try buf.list.appendSlice(buf.allocator, bytes);
         },
         .file, .stdout, .stderr => {
@@ -1456,7 +1456,7 @@ pub fn getOutputStreamString(heap: *heap_mod.Heap, stream: Value) !Value {
     const s = stream.toPtr(objects.Stream);
     if (s.direction != .output or s.stream_type != .string) return error.TypeError;
     if (s.data_ptr == 0) return error.StreamClosed;
-    const buf: *heap_mod.OutputBuffer = @ptrFromInt(s.data_ptr);
+    const buf: *objects.OutputBuffer = @ptrFromInt(s.data_ptr);
     return try heap.allocBaseString(buf.list.items);
 }
 
@@ -1729,7 +1729,7 @@ pub fn clearOutput(stream: Value) !void {
     switch (s.stream_type) {
         .string => {
             if (s.data_ptr == 0) return error.StreamClosed;
-            const buf: *heap_mod.OutputBuffer = @ptrFromInt(s.data_ptr);
+            const buf: *objects.OutputBuffer = @ptrFromInt(s.data_ptr);
             buf.list.clearRetainingCapacity();
         },
         .file, .stdout, .stderr => {}, // Can't clear OS buffer
@@ -1789,7 +1789,7 @@ pub fn freshLine(stream: Value) !Value {
     switch (s.stream_type) {
         .string => {
             if (s.data_ptr == 0) return error.StreamClosed;
-            const buf: *heap_mod.OutputBuffer = @ptrFromInt(s.data_ptr);
+            const buf: *objects.OutputBuffer = @ptrFromInt(s.data_ptr);
             if (buf.list.items.len == 0 or buf.list.items[buf.list.items.len - 1] == '\n') {
                 return Value.nil;
             }
@@ -1892,24 +1892,7 @@ pub fn closeStream(stream: Value, abort: ?Value) !void {
     _ = abort;
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
-
-    if (s.closed) return;
-
-    if (s.stream_type == .file and s.file_fd >= 0) {
-        const fd: std.posix.fd_t = @intCast(s.file_fd);
-        std.posix.close(fd);
-        s.file_fd = -1;
-    }
-
-    if (s.stream_type == .string and s.direction == .output and s.data_ptr != 0) {
-        const buf: *heap_mod.OutputBuffer = @ptrFromInt(s.data_ptr);
-        buf.list.deinit(buf.allocator);
-        buf.allocator.destroy(buf);
-        s.data_ptr = 0;
-        s.length = 0;
-    }
-
-    s.closed = true;
+    s.finalize();
 }
 
 /// List files in a directory matching pathname

@@ -346,6 +346,12 @@ pub const StreamType = enum(u8) {
     byte = 10, // byte streams (not yet implemented)
 };
 
+/// Buffer backing for string output streams
+pub const OutputBuffer = struct {
+    list: std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+};
+
 /// Stream object for I/O operations
 pub const Stream = extern struct {
     kind: BoxedKind, // Must be first - discriminator (= .stream)
@@ -378,6 +384,26 @@ pub const Stream = extern struct {
 
     pub fn isClosed(self: *const Stream) bool {
         return self.closed;
+    }
+
+    pub fn finalize(self: *Stream) void {
+        if (self.closed) return;
+
+        if (self.stream_type == .file and self.file_fd >= 0) {
+            std.posix.close(@intCast(self.file_fd));
+            self.file_fd = -1;
+        }
+
+        if (self.stream_type == .string and self.direction == .output and self.data_ptr != 0) {
+            const buf: *OutputBuffer = @ptrFromInt(self.data_ptr);
+            buf.list.deinit(buf.allocator);
+            buf.allocator.destroy(buf);
+            self.data_ptr = 0;
+            self.length = 0;
+            self.position = 0;
+        }
+
+        self.closed = true;
     }
 
     pub fn make(direction: StreamDirection, stream_type: StreamType, file_fd: i32) Stream {

@@ -147,30 +147,13 @@ pub const GC = struct {
                     self.heap.stream_list.items[i] = @ptrFromInt(new_addr);
                     i += 1;
                 } else {
-                    self.finalizeStream(stream);
+                    stream.finalize();
                     _ = self.heap.stream_list.swapRemove(i);
                 }
             } else {
                 i += 1;
             }
         }
-    }
-
-    fn finalizeStream(self: *GC, stream: *objects.Stream) void {
-        if (stream.stream_type == .file and stream.file_fd >= 0) {
-            std.posix.close(@intCast(stream.file_fd));
-            stream.file_fd = -1;
-        }
-
-        if (stream.stream_type == .string and stream.direction == .output and stream.data_ptr != 0) {
-            const buf: *heap_mod.OutputBuffer = @ptrFromInt(stream.data_ptr);
-            buf.list.deinit(buf.allocator);
-            self.heap.backing_allocator.destroy(buf);
-            stream.data_ptr = 0;
-            stream.length = 0;
-        }
-
-        stream.closed = true;
     }
 
     /// Copy a value to to-space if needed

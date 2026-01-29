@@ -59,11 +59,6 @@ pub const UpperName = struct {
     owned: ?[]u8,
 };
 
-pub const OutputBuffer = struct {
-    list: std.ArrayList(u8),
-    allocator: std.mem.Allocator,
-};
-
 pub fn upperNameAlloc(allocator: std.mem.Allocator, name: []const u8, buf: []u8) !UpperName {
     if (name.len <= buf.len) {
         for (name, 0..) |c, i| {
@@ -419,6 +414,9 @@ pub const Heap = struct {
             sub_table.deinit(self.backing_allocator);
         }
         self.dispatch_readtable.deinit(self.backing_allocator);
+        for (self.stream_list.items) |stream| {
+            stream.finalize();
+        }
         self.stream_list.deinit(self.backing_allocator);
         self.backing_allocator.free(self.memory);
     }
@@ -557,7 +555,7 @@ pub const Heap = struct {
 
     /// Allocate a string output stream
     pub fn allocStringOutputStream(self: *Heap) error{OutOfMemory}!Value {
-        const buf = try self.backing_allocator.create(OutputBuffer);
+        const buf = try self.backing_allocator.create(objects.OutputBuffer);
         buf.* = .{
             .list = std.ArrayList(u8){},
             .allocator = self.backing_allocator,
@@ -1771,6 +1769,14 @@ test "heap init and deinit" {
     try testing.expectEqual(@as(usize, 512 * 1024), heap.space_size);
     // lisp_packages hash table is allocated during init
     try testing.expect(heap.bytesUsed() > 0);
+}
+
+test "heap deinit finalizes output streams" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    _ = try heap.allocStringOutputStream();
+    heap.deinit();
 }
 
 test "heap findPackage handles CL alias" {
