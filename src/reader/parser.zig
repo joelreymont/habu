@@ -18,6 +18,7 @@ pub const Error = error{
     UnexpectedToken,
     UnterminatedList,
     InvalidNumber,
+    InvalidCharacter,
     VectorTooLarge,
     InvalidStruct,
     TooManySlots,
@@ -401,11 +402,11 @@ pub const Parser = struct {
                 'o', 'O' => 8,
                 else => return error.InvalidNumber,
             };
-            const n = std.fmt.parseInt(i64, digits, radix) catch return error.InvalidNumber;
+            const n = try std.fmt.parseInt(i64, digits, radix);
             return Value.makeFixnum(n);
         }
 
-        const n = std.fmt.parseInt(i64, text, 10) catch return error.InvalidNumber;
+        const n = try std.fmt.parseInt(i64, text, 10);
         return Value.makeFixnum(n);
     }
 
@@ -422,7 +423,7 @@ pub const Parser = struct {
 
         // Try u128 first (covers up to ~38 decimal digits)
         if (digits.len <= 38) {
-            const n = std.fmt.parseUnsigned(u128, digits, 10) catch return error.InvalidNumber;
+            const n = try std.fmt.parseUnsigned(u128, digits, 10);
 
             // Allocate bignum
             const bn = try self.heap.alloc(objects.Bignum);
@@ -456,7 +457,7 @@ pub const Parser = struct {
         const text = self.current.text;
         self.advance();
 
-        const f = std.fmt.parseFloat(f64, text) catch return error.InvalidNumber;
+        const f = try std.fmt.parseFloat(f64, text);
         return Value.makeFloat(f);
     }
 
@@ -469,8 +470,8 @@ pub const Parser = struct {
         const num_str = text[0..slash_pos];
         const den_str = text[slash_pos + 1 ..];
 
-        const num = std.fmt.parseInt(i64, num_str, 10) catch return error.InvalidNumber;
-        const den = std.fmt.parseInt(i64, den_str, 10) catch return error.InvalidNumber;
+        const num = try std.fmt.parseInt(i64, num_str, 10);
+        const den = try std.fmt.parseInt(i64, den_str, 10);
 
         return primitives.rational.makeRational(self.heap, num, den);
     }
@@ -683,7 +684,7 @@ pub const Parser = struct {
         if (char_part.len >= 2 and (char_part[0] == 'u' or char_part[0] == 'U')) {
             var hex_part = char_part[1..];
             if (hex_part.len > 0 and hex_part[0] == '+') hex_part = hex_part[1..];
-            const codepoint = std.fmt.parseInt(u21, hex_part, 16) catch return error.UnexpectedToken;
+            const codepoint = try std.fmt.parseInt(u21, hex_part, 16);
             return Value.makeCharacter(codepoint);
         }
 

@@ -774,6 +774,8 @@ pub const Repl = struct {
                     error.UnexpectedToken => .parse_unexpected_token,
                     error.UnterminatedList => .parse_unterminated_list,
                     error.InvalidNumber => .parse_invalid_number,
+                    error.InvalidCharacter => .parse_invalid_number,
+                    error.Overflow => .parse_invalid_number,
                     else => .other,
                 },
                 .line = loc.line,
