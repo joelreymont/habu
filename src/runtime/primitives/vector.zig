@@ -100,16 +100,16 @@ pub fn arrayTotalSize(val: Value) i64 {
 }
 
 /// Convert subscripts to linear row-major index (public API)
-pub fn arrayRowMajorIndex(val: Value, subscripts: []const u64) ?i64 {
+pub fn arrayRowMajorIndex(val: Value, subscripts: []const u64) error{Overflow}!?i64 {
     if (!val.isArray()) return null;
     const arr = val.toPtr(objects.Array);
-    const idx = calculateRowMajorIndex(arr, subscripts) orelse return null;
+    const idx = try calculateRowMajorIndex(arr, subscripts) orelse return null;
     return @intCast(idx);
 }
 
 /// Calculate row-major index from subscripts
 /// For a 3x4 array: subscripts [i,j] -> index i*4 + j
-fn calculateRowMajorIndex(arr: *const objects.Array, subscripts: []const u64) ?usize {
+fn calculateRowMajorIndex(arr: *const objects.Array, subscripts: []const u64) error{Overflow}!?usize {
     if (subscripts.len != arr.rank) return null;
 
     var index: usize = 0;
@@ -125,9 +125,9 @@ fn calculateRowMajorIndex(arr: *const objects.Array, subscripts: []const u64) ?u
         // Bounds check
         if (sub >= dim) return null;
 
-        const offset = std.math.mul(usize, @as(usize, @intCast(sub)), multiplier) catch return null;
-        index = std.math.add(usize, index, offset) catch return null;
-        multiplier = std.math.mul(usize, multiplier, @intCast(dim)) catch return null;
+        const offset = try std.math.mul(usize, @as(usize, @intCast(sub)), multiplier);
+        index = try std.math.add(usize, index, offset);
+        multiplier = try std.math.mul(usize, multiplier, @intCast(dim));
     }
 
     return index;
@@ -145,22 +145,22 @@ pub fn rowMajorAref(val: Value, linear_idx: i64) ?Value {
 
 /// Get array element using row-major indexing
 /// subscripts must match array rank
-pub fn arrayRef(val: Value, subscripts: []const u64) ?Value {
+pub fn arrayRef(val: Value, subscripts: []const u64) error{Overflow}!?Value {
     if (!val.isArray()) return null;
     const arr = val.toPtr(objects.Array);
 
-    const index = calculateRowMajorIndex(arr, subscripts) orelse return null;
+    const index = try calculateRowMajorIndex(arr, subscripts) orelse return null;
     const data: [*]Value = @ptrFromInt(arr.data_ptr);
 
     return data[index];
 }
 
 /// Set array element using row-major indexing
-pub fn arraySet(val: Value, subscripts: []const u64, new_val: Value) bool {
+pub fn arraySet(val: Value, subscripts: []const u64, new_val: Value) error{Overflow}!bool {
     if (!val.isArray()) return false;
     const arr = val.toPtr(objects.Array);
 
-    const index = calculateRowMajorIndex(arr, subscripts) orelse return false;
+    const index = try calculateRowMajorIndex(arr, subscripts) orelse return false;
     const data: [*]Value = @ptrFromInt(arr.data_ptr);
 
     data[index] = new_val;
