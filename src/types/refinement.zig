@@ -75,7 +75,7 @@ pub const RefinementChecker = struct {
         sub_pred: *const Term,
         super_pred: *const Term,
         var_name: []const u8,
-    ) RefineResult {
+    ) !RefineResult {
         self.smt_ctx.reset();
         self.var_map.clearRetainingCapacity();
 
@@ -86,7 +86,7 @@ pub const RefinementChecker = struct {
         name_buf[var_name.len] = 0;
 
         const z3_var = self.smt_ctx.mkIntVar(@ptrCast(&name_buf));
-        self.var_map.put(var_name, z3_var) catch return .unknown;
+        try self.var_map.put(var_name, z3_var);
 
         // Translate both predicates
         const z3_sub = self.translateTerm(sub_pred) orelse return .unknown;
@@ -102,7 +102,7 @@ pub const RefinementChecker = struct {
         pred1: *const Term,
         pred2: *const Term,
         var_name: []const u8,
-    ) RefineResult {
+    ) !RefineResult {
         self.smt_ctx.reset();
         self.var_map.clearRetainingCapacity();
 
@@ -112,7 +112,7 @@ pub const RefinementChecker = struct {
         name_buf[var_name.len] = 0;
 
         const z3_var = self.smt_ctx.mkIntVar(@ptrCast(&name_buf));
-        self.var_map.put(var_name, z3_var) catch return .unknown;
+        try self.var_map.put(var_name, z3_var);
 
         const z3_p1 = self.translateTerm(pred1) orelse return .unknown;
         const z3_p2 = self.translateTerm(pred2) orelse return .unknown;
@@ -261,7 +261,7 @@ test "refinement subtyping valid" {
     const gt_zero = try builder.cmp(.gt, x, zero);
     const ge_zero = try builder.cmp(.ge, x, zero);
 
-    const result = checker.checkSubtype(gt_zero, ge_zero, "x");
+    const result = try checker.checkSubtype(gt_zero, ge_zero, "x");
     try std.testing.expect(result == .valid);
 }
 
@@ -279,7 +279,7 @@ test "refinement subtyping invalid" {
     const gt_zero = try builder.cmp(.gt, x, zero);
     const ge_zero = try builder.cmp(.ge, x, zero);
 
-    const result = checker.checkSubtype(ge_zero, gt_zero, "x");
+    const result = try checker.checkSubtype(ge_zero, gt_zero, "x");
     try std.testing.expect(result == .invalid);
 }
 
@@ -298,7 +298,7 @@ test "refinement equivalence" {
     const gt_zero = try builder.cmp(.gt, x, zero);
     const ge_one = try builder.cmp(.ge, x, one);
 
-    const result = checker.checkEquivalent(gt_zero, ge_one, "x");
+    const result = try checker.checkEquivalent(gt_zero, ge_one, "x");
     try std.testing.expect(result == .valid);
 }
 
@@ -318,6 +318,47 @@ test "refinement with arithmetic" {
     const pred1 = try builder.cmp(.gt, x_plus_1, one);
     const pred2 = try builder.cmp(.ge, x, zero);
 
-    const result = checker.checkSubtype(pred1, pred2, "x");
+    const result = try checker.checkSubtype(pred1, pred2, "x");
     try std.testing.expect(result == .valid);
+}
+
+test "refinement checker propagates alloc failure" {
+    const FailAlloc = struct {
+        const Self = @This();
+
+        fn alloc(_: *anyopaque, _: usize, _: std.mem.Alignment, _: usize) ?[*]u8 {
+            return null;
+        }
+        fn resize(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize, _: usize) bool {
+            return false;
+        }
+        fn remap(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize, _: usize) ?[*]u8 {
+            return null;
+        }
+        fn free(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize) void {}
+
+        const vtable = std.mem.Allocator.VTable{
+            .alloc = alloc,
+            .resize = resize,
+            .remap = remap,
+            .free = free,
+        };
+
+        fn allocator(self: *Self) std.mem.Allocator {
+            return .{ .ptr = self, .vtable = &vtable };
+        }
+    };
+
+    var failing = FailAlloc{};
+    var checker = RefinementChecker.init(failing.allocator());
+    defer checker.deinit();
+
+    var builder = term_mod.TermBuilder.init(std.testing.allocator);
+    defer builder.deinit();
+
+    const x = try builder.varByName("x");
+    const zero = try builder.fixnum(0);
+    const pred = try builder.cmp(.gt, x, zero);
+
+    try std.testing.expectError(error.OutOfMemory, checker.checkSubtype(pred, pred, "x"));
 }

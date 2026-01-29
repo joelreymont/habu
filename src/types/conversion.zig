@@ -367,7 +367,7 @@ pub const TypeConverter = struct {
                         const var_name = r1.predicate_var;
 
                         const ref_checker = self.getRefChecker();
-                        const result = ref_checker.checkSubtype(pred1, pred2, var_name);
+                        const result = try ref_checker.checkSubtype(pred1, pred2, var_name);
 
                         return result == .valid;
                     },
