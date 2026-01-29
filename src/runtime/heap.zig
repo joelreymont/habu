@@ -297,11 +297,6 @@ pub const Heap = struct {
         const cl_key = try allocator.dupe(u8, "COMMON-LISP");
         errdefer allocator.free(cl_key);
         heap.packages.put(allocator, cl_key, heap.cl_package.?) catch return error.OutOfMemory;
-        // Also register as "CL" alias (shared package pointer, separate key)
-        const cl_alias_key = try allocator.dupe(u8, "CL");
-        errdefer allocator.free(cl_alias_key);
-        heap.packages.put(allocator, cl_alias_key, heap.cl_package.?) catch return error.OutOfMemory;
-
         // Create CL-USER package (uses CL)
         heap.cl_user_package = Package.init(allocator, "CL-USER") catch return error.OutOfMemory;
         heap.cl_user_package.?.usePackage(heap.cl_package.?) catch return error.OutOfMemory;
@@ -323,15 +318,10 @@ pub const Heap = struct {
     pub fn deinit(self: *Heap) void {
         self.symbols.deinit();
         self.keywords.deinit();
-        // Free all packages (dedup since CL is alias for COMMON-LISP)
-        var seen = std.AutoHashMap(*Package, void).init(self.backing_allocator);
-        defer seen.deinit();
+        // Free all packages
         var pkg_iter = self.packages.iterator();
         while (pkg_iter.next()) |entry| {
-            if (!seen.contains(entry.value_ptr.*)) {
-                seen.put(entry.value_ptr.*, {}) catch {};
-                entry.value_ptr.*.deinit();
-            }
+            entry.value_ptr.*.deinit();
             self.backing_allocator.free(entry.key_ptr.*);
         }
         self.packages.deinit(self.backing_allocator);
@@ -1275,11 +1265,17 @@ pub const Heap = struct {
 
     /// Find a package by name
     pub fn findPackage(self: *Heap, name: []const u8) ?*Package {
+        if (self.cl_package) |pkg| {
+            if (std.mem.eql(u8, name, "CL")) return pkg;
+        }
         return self.packages.get(name);
     }
 
     /// Create or find a package
     pub fn findOrCreatePackage(self: *Heap, name: []const u8) error{OutOfMemory}!*Package {
+        if (self.cl_package) |pkg| {
+            if (std.mem.eql(u8, name, "CL")) return pkg;
+        }
         if (self.packages.get(name)) |existing| {
             return existing;
         }
@@ -1694,6 +1690,17 @@ test "heap init and deinit" {
     try testing.expectEqual(@as(usize, 512 * 1024), heap.space_size);
     // lisp_packages hash table is allocated during init
     try testing.expect(heap.bytesUsed() > 0);
+}
+
+test "heap findPackage handles CL alias" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const pkg = heap.findPackage("CL");
+    try testing.expect(pkg != null);
+    try testing.expect(pkg.? == heap.cl_package.?);
 }
 
 test "heap alloc cons" {
