@@ -76,7 +76,7 @@ pub const Parser = struct {
     pub fn parseAll(self: *Parser, allocator: std.mem.Allocator, results: *std.ArrayList(Value)) Error!void {
         while (self.current.kind != .eof) {
             const expr = try self.parseExpr();
-            results.append(allocator, expr) catch return error.OutOfMemory;
+            try results.append(allocator, expr);
         }
     }
 
@@ -815,6 +815,28 @@ test "parse nil" {
 
     const val = try parser.parse();
     try testing.expect(val.isNil());
+}
+
+test "parse all expressions" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    var parser = Parser.init(testing.allocator, &heap, "42 nil (1 2)", &vm.builtins);
+    defer parser.deinit();
+
+    var results = std.ArrayList(Value){};
+    defer results.deinit(testing.allocator);
+
+    try parser.parseAll(testing.allocator, &results);
+
+    try testing.expectEqual(@as(usize, 3), results.items.len);
+    try testing.expect(results.items[0].isFixnum());
+    try testing.expectEqual(@as(i64, 42), results.items[0].toFixnum());
+    try testing.expect(results.items[1].isNil());
+    try testing.expect(results.items[2].isCons());
 }
 
 test "parse empty list" {
