@@ -160,7 +160,7 @@ pub fn slotValue(heap: *Heap, args: Value) !Value {
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
     const class_sym = class_name_val.toPtr(Symbol);
-    const slot_names = try lookupClassMetadata(heap, class_sym) orelse return error.InvalidArgument;
+    const slot_names = if (try lookupClassMetadata(heap, class_sym)) |val| val else return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (std.mem.eql(u8, name, slot_name)) {
@@ -214,7 +214,7 @@ pub fn setSlotValue(heap: *Heap, args: Value) !Value {
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
     const class_sym = class_name_val.toPtr(Symbol);
-    const slot_names = try lookupClassMetadata(heap, class_sym) orelse return error.InvalidArgument;
+    const slot_names = if (try lookupClassMetadata(heap, class_sym)) |val| val else return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (std.mem.eql(u8, name, slot_name)) {
@@ -294,7 +294,7 @@ pub fn classOf(heap: *Heap, args: Value) !Value {
         .method => unreachable, // handled above
     };
 
-    const type_sym = (try heap.internInPackage("CL", type_name)) orelse return error.InvalidArgument;
+    const type_sym = if ((try heap.internInPackage("CL", type_name))) |val| val else return error.InvalidArgument;
     return heap.findLispClass(type_sym) orelse error.InvalidArgument;
 }
 
@@ -327,7 +327,7 @@ pub fn slotExistsP(heap: *Heap, args: Value) !Value {
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return Value.nil;
     const class_sym = class_name_val.toPtr(Symbol);
-    const slot_names = try lookupClassMetadata(heap, class_sym) orelse return Value.nil;
+    const slot_names = if (try lookupClassMetadata(heap, class_sym)) |val| val else return Value.nil;
 
     for (slot_names) |name| {
         if (std.mem.eql(u8, name, slot_name)) {
@@ -367,7 +367,7 @@ pub fn slotBoundp(heap: *Heap, args: Value) !Value {
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
     const class_sym = class_name_val.toPtr(Symbol);
-    const slot_names = try lookupClassMetadata(heap, class_sym) orelse return error.InvalidArgument;
+    const slot_names = if (try lookupClassMetadata(heap, class_sym)) |val| val else return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (std.mem.eql(u8, name, slot_name)) {
@@ -414,7 +414,7 @@ pub fn slotMakunbound(heap: *Heap, args: Value) !Value {
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
     const class_sym = class_name_val.toPtr(Symbol);
-    const slot_names = try lookupClassMetadata(heap, class_sym) orelse return error.InvalidArgument;
+    const slot_names = if (try lookupClassMetadata(heap, class_sym)) |val| val else return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (std.mem.eql(u8, name, slot_name)) {

@@ -22,7 +22,7 @@ pub fn macroFunction(heap: *Heap, compiler: ?*const Compiler, sym: Value) Error!
     _ = heap;
     if (!sym.isSymbol()) return error.InvalidArgument;
 
-    const compiler_ptr = compiler orelse return Value.nil;
+    const compiler_ptr = if (compiler) |val| val else return Value.nil;
 
     // Lookup in macro_table using symbol as key
     if (compiler_ptr.macro_table.get(sym)) |_| {

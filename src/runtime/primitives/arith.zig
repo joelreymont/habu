@@ -622,7 +622,7 @@ pub fn sqrt_val(a: Value) Error!Value {
     const af = try toNumber(a);
     if (af < 0) {
         const complex_mod = @import("complex.zig");
-        const heap = @import("../heap.zig").threadLocalHeap() orelse return error.OutOfMemory;
+        const heap = if (@import("../heap.zig").threadLocalHeap()) |val| val else return error.OutOfMemory;
         return complex_mod.makeComplex(heap, 0.0, @sqrt(-af));
     }
     return Value.makeFloat(@sqrt(af));

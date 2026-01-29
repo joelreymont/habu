@@ -228,7 +228,7 @@ pub fn packageSymbolsList(heap: *Heap, pkg_val: Value) !Value {
         return error.TypeError;
 
     // Find native package
-    const native_pkg = heap.findPackage(pkg_name) orelse return Value.nil;
+    const native_pkg = if (heap.findPackage(pkg_name)) |val| val else return Value.nil;
 
     // Iterate over native SymbolTable
     var result = Value.nil;
@@ -260,7 +260,7 @@ pub fn packageExportsList(heap: *Heap, pkg_val: Value) !Value {
         return error.TypeError;
 
     // Find native package
-    const native_pkg = heap.findPackage(pkg_name) orelse return Value.nil;
+    const native_pkg = if (heap.findPackage(pkg_name)) |val| val else return Value.nil;
 
     // Iterate over exports hash map
     var result = Value.nil;

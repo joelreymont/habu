@@ -368,7 +368,7 @@ pub fn hostNamestring(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Va
 /// Get user's home directory as a pathname
 pub fn userHomedirPathname(allocator: std.mem.Allocator, heap: *Heap) !Value {
     _ = allocator;
-    const home = std.posix.getenv("HOME") orelse return Value.nil;
+    const home = if (std.posix.getenv("HOME")) |val| val else return Value.nil;
     if (home.len == 0) return Value.nil;
 
     // Parse the home directory path into a pathname object

@@ -90,7 +90,7 @@ pub fn gentemp(heap: *Heap, prefix: ?Value, package: ?Value) !Value {
         }
     } else "T";
 
-    const pkg = heap.current_package orelse return error.InvalidArgument;
+    const pkg = if (heap.current_package) |val| val else return error.InvalidArgument;
     var buf: [256]u8 = undefined;
     var attempt: u64 = 0;
     while (true) : (attempt += 1) {

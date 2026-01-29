@@ -103,7 +103,7 @@ pub fn arrayTotalSize(val: Value) i64 {
 pub fn arrayRowMajorIndex(val: Value, subscripts: []const u64) error{Overflow}!?i64 {
     if (!val.isArray()) return null;
     const arr = val.toPtr(objects.Array);
-    const idx = try calculateRowMajorIndex(arr, subscripts) orelse return null;
+    const idx = if (try calculateRowMajorIndex(arr, subscripts)) |idx_val| idx_val else return null;
     return @intCast(idx);
 }
 
@@ -149,7 +149,7 @@ pub fn arrayRef(val: Value, subscripts: []const u64) error{Overflow}!?Value {
     if (!val.isArray()) return null;
     const arr = val.toPtr(objects.Array);
 
-    const index = try calculateRowMajorIndex(arr, subscripts) orelse return null;
+    const index = if (try calculateRowMajorIndex(arr, subscripts)) |idx_val| idx_val else return null;
     const data: [*]Value = @ptrFromInt(arr.data_ptr);
 
     return data[index];
@@ -160,7 +160,7 @@ pub fn arraySet(val: Value, subscripts: []const u64, new_val: Value) error{Overf
     if (!val.isArray()) return false;
     const arr = val.toPtr(objects.Array);
 
-    const index = try calculateRowMajorIndex(arr, subscripts) orelse return false;
+    const index = if (try calculateRowMajorIndex(arr, subscripts)) |idx_val| idx_val else return false;
     const data: [*]Value = @ptrFromInt(arr.data_ptr);
 
     data[index] = new_val;
@@ -318,7 +318,7 @@ pub fn vectorSlice(val: Value) ?[]Value {
 pub fn fillPointer(val: Value) ?i64 {
     if (!val.isVector()) return null;
     const vec = val.toPtr(objects.Vector);
-    const fp = vec.getFillPointer() orelse return null;
+    const fp = if (vec.getFillPointer()) |fp_val| fp_val else return null;
     return @intCast(fp);
 }
 
