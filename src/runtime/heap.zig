@@ -92,31 +92,49 @@ pub const Package = struct {
         self.allocator.destroy(self);
     }
 
-    pub fn intern(self: *Package, heap: *Heap, name: []const u8) error{OutOfMemory}!Value {
-        // Upcase name per CL spec
-        var upper_buf: [256]u8 = undefined;
-        const upper_name = if (name.len <= upper_buf.len) blk: {
+    fn upperName(name: []const u8, buf: *[256]u8) []const u8 {
+        if (name.len <= buf.len) {
             for (name, 0..) |c, i| {
-                upper_buf[i] = std.ascii.toUpper(c);
+                buf[i] = std.ascii.toUpper(c);
             }
-            break :blk upper_buf[0..name.len];
-        } else name;
+            return buf[0..name.len];
+        }
+        return name;
+    }
 
-        // Magic symbols: T and NIL
-        if (std.mem.eql(u8, upper_name, "T")) return Value.t;
-        if (std.mem.eql(u8, upper_name, "NIL")) return Value.nil;
-
-        // Check own symbols first
+    fn findAccessibleUpper(self: *Package, upper_name: []const u8) ?Value {
         if (self.symbols.get(upper_name)) |existing| {
             return existing;
         }
-        // Check used packages for exported symbols
         for (self.use_list.items) |used_pkg| {
             if (used_pkg.exports.contains(upper_name) or used_pkg.auto_export) {
                 if (used_pkg.symbols.get(upper_name)) |sym| {
                     return sym;
                 }
             }
+        }
+        return null;
+    }
+
+    pub fn findAccessible(self: *Package, name: []const u8) ?Value {
+        var upper_buf: [256]u8 = undefined;
+        const upper_name = upperName(name, &upper_buf);
+        if (std.mem.eql(u8, upper_name, "T")) return Value.t;
+        if (std.mem.eql(u8, upper_name, "NIL")) return Value.nil;
+        return self.findAccessibleUpper(upper_name);
+    }
+
+    pub fn intern(self: *Package, heap: *Heap, name: []const u8) error{OutOfMemory}!Value {
+        // Upcase name per CL spec
+        var upper_buf: [256]u8 = undefined;
+        const upper_name = upperName(name, &upper_buf);
+
+        // Magic symbols: T and NIL
+        if (std.mem.eql(u8, upper_name, "T")) return Value.t;
+        if (std.mem.eql(u8, upper_name, "NIL")) return Value.nil;
+
+        if (self.findAccessibleUpper(upper_name)) |existing| {
+            return existing;
         }
         // Allocate new symbol in this package (already upcased in allocSymbol)
         const sym = try heap.allocSymbol(upper_name);

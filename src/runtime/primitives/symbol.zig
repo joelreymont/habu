@@ -7,6 +7,21 @@ const Value = @import("../value.zig").Value;
 const Heap = @import("../heap.zig").Heap;
 const objects = @import("../objects.zig");
 
+const NameBuf = struct {
+    name: []const u8,
+    owned: bool,
+};
+
+fn formatName(allocator: std.mem.Allocator, prefix: []const u8, count: u64, buf: *[256]u8) !NameBuf {
+    const needed = std.fmt.count("{s}{d}", .{ prefix, count });
+    if (needed <= buf.len) {
+        const name = try std.fmt.bufPrint(buf, "{s}{d}", .{ prefix, count });
+        return .{ .name = name, .owned = false };
+    }
+    const name = try std.fmt.allocPrint(allocator, "{s}{d}", .{ prefix, count });
+    return .{ .name = name, .owned = true };
+}
+
 /// Generate a unique uninterned symbol (gensym)
 /// Returns a new uninterned symbol with name prefix + counter
 pub fn gensym(heap: *Heap, prefix: ?Value) !Value {
@@ -27,9 +42,10 @@ pub fn gensym(heap: *Heap, prefix: ?Value) !Value {
     } else "G";
 
     var buf: [256]u8 = undefined;
-    const name = std.fmt.bufPrint(&buf, "{s}{d}", .{ prefix_str, count }) catch "GENSYM";
+    const name_info = try formatName(heap.backing_allocator, prefix_str, count, &buf);
+    defer if (name_info.owned) heap.backing_allocator.free(name_info.name);
 
-    return try heap.allocSymbol(name);
+    return try heap.allocSymbol(name_info.name);
 }
 
 /// Create uninterned symbol with given name
@@ -74,19 +90,22 @@ pub fn gentemp(heap: *Heap, prefix: ?Value, package: ?Value) !Value {
         }
     } else "T";
 
+    const pkg = heap.current_package orelse return error.InvalidArgument;
     var buf: [256]u8 = undefined;
-    var attempt: usize = 0;
-    while (attempt < 1000) : (attempt += 1) {
-        const name = std.fmt.bufPrint(&buf, "{s}{d}", .{ prefix_str, count + attempt }) catch "TEMP";
-        const sym = heap.intern(name);
-        const sym_ptr = sym.toPtr(objects.Symbol);
-        if (sym_ptr.value.isNil() and sym_ptr.function.isNil()) {
-            counter.* = count + attempt + 1;
+    var attempt: u64 = 0;
+    while (true) : (attempt += 1) {
+        const name_count = count + attempt;
+        if (name_count < count) return error.OutOfMemory;
+        const name_info = try formatName(heap.backing_allocator, prefix_str, name_count, &buf);
+        {
+            defer if (name_info.owned) heap.backing_allocator.free(name_info.name);
+
+            if (pkg.findAccessible(name_info.name) != null) continue;
+            const sym = try pkg.intern(heap, name_info.name);
+            counter.* = name_count + 1;
             return sym;
         }
     }
-
-    return error.OutOfMemory;
 }
 
 /// Get symbol's home package
@@ -136,6 +155,44 @@ pub fn boundp(sym: Value) bool {
     if (!sym.isSymbol()) return false;
     const s = sym.toPtr(objects.Symbol);
     return !s.value.isNil();
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "gensym uses full prefix for long names" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    var prefix_buf: [300]u8 = undefined;
+    for (&prefix_buf) |*b| b.* = 'A';
+    const prefix_str = prefix_buf[0..];
+    const prefix_val = try heap.allocBaseString(prefix_str);
+
+    const sym1 = try gensym(&heap, prefix_val);
+    const sym2 = try gensym(&heap, prefix_val);
+
+    const name1 = sym1.toPtr(objects.Symbol).getName();
+    const name2 = sym2.toPtr(objects.Symbol).getName();
+
+    try testing.expect(std.mem.startsWith(u8, name1, prefix_str));
+    try testing.expect(std.mem.startsWith(u8, name2, prefix_str));
+    try testing.expect(!std.mem.eql(u8, name1, name2));
+}
+
+test "gentemp skips existing symbol names" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    _ = try heap.intern("T0");
+    const sym = try gentemp(&heap, null, null);
+    const name = sym.toPtr(objects.Symbol).getName();
+    try testing.expect(!std.mem.eql(u8, name, "T0"));
 }
 
 /// Test if symbol has function binding
