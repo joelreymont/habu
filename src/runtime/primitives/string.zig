@@ -131,14 +131,14 @@ pub fn stringGe(a: Value, b: Value) bool {
 }
 
 /// Concatenate two strings
-pub fn stringConcat(heap: *Heap, a: Value, b: Value) error{OutOfMemory}!Value {
+pub fn stringConcat(heap: *Heap, a: Value, b: Value) error{OutOfMemory, Overflow}!Value {
     if (!a.isString() or !b.isString()) return Value.nil;
 
     const str_a = a.toPtr(objects.String);
     const str_b = b.toPtr(objects.String);
 
     // Use checked addition to prevent overflow
-    const new_len = std.math.add(usize, str_a.length, str_b.length) catch return error.OutOfMemory;
+    const new_len = try std.math.add(usize, str_a.length, str_b.length);
     const aligned_len = std.mem.alignForward(usize, new_len, 8);
     const total_size = @sizeOf(objects.String) + aligned_len;
 
@@ -291,6 +291,18 @@ test "string concat" {
 
     try testing.expect(bytes != null);
     try testing.expectEqualStrings("hello world", bytes.?);
+}
+
+test "string concat non-string" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const str = try heap.allocBaseString("hello");
+    const result = try stringConcat(&heap, str, Value.makeFixnum(1));
+
+    try testing.expect(result.isNil());
 }
 
 test "substring" {
