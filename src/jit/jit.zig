@@ -230,11 +230,11 @@ pub const Jit = struct {
                     .{ .addr = 0 }, // Placeholder
                 }) catch return error.PatchFailed;
 
-                self.pending_jumps.append(self.allocator, .{
+                try self.pending_jumps.append(self.allocator, .{
                     .code_offset = code_offset,
                     .target_bc_offset = target_bc,
                     .hole_type = .rel26,
-                }) catch return error.OutOfMemory;
+                });
             },
 
             .jmp_nil => {
@@ -247,11 +247,11 @@ pub const Jit = struct {
                     .{ .addr = 0 },
                 }) catch return error.PatchFailed;
 
-                self.pending_jumps.append(self.allocator, .{
+                try self.pending_jumps.append(self.allocator, .{
                     .code_offset = code_offset,
                     .target_bc_offset = target_bc,
                     .hole_type = .rel19,
-                }) catch return error.OutOfMemory;
+                });
             },
 
             .jmp_not_nil => {
@@ -264,11 +264,11 @@ pub const Jit = struct {
                     .{ .addr = 0 },
                 }) catch return error.PatchFailed;
 
-                self.pending_jumps.append(self.allocator, .{
+                try self.pending_jumps.append(self.allocator, .{
                     .code_offset = code_offset,
                     .target_bc_offset = target_bc,
                     .hole_type = .rel19,
-                }) catch return error.OutOfMemory;
+                });
             },
 
             .car => {
