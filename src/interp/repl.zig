@@ -1217,15 +1217,8 @@ pub const Repl = struct {
         const cons = expr.toPtr(Cons);
         if (!cons.car.isSymbol()) return false;
 
-        if (self.compiler.builtins) |b| {
-            return cons.car.raw == b.defmacro.raw;
-        }
-        // Builtins not yet initialized - check by string as fallback
-        if (cons.car.isSymbol()) {
-            const sym = cons.car.toPtr(Symbol);
-            return std.mem.eql(u8, sym.getName(), "defmacro");
-        }
-        return false;
+        const b = self.compiler.builtins.?;
+        return cons.car.raw == b.defmacro.raw;
     }
 
     /// Check if expression is (in-package ...)
@@ -1243,11 +1236,8 @@ pub const Repl = struct {
         const cons = expr.toPtr(Cons);
         if (!cons.car.isSymbol()) return false;
 
-        if (self.compiler.builtins) |b| {
-            return cons.car.raw == b.defpackage.raw;
-        }
-        const sym = cons.car.toPtr(Symbol);
-        return std.mem.eql(u8, sym.getName(), "defpackage");
+        const b = self.compiler.builtins.?;
+        return cons.car.raw == b.defpackage.raw;
     }
 
     /// Handle defmacro: compile the macro body and store the closure
@@ -1355,12 +1345,8 @@ pub const Repl = struct {
         const cons = expr.toPtr(Cons);
         if (!cons.car.isSymbol()) return false;
 
-        if (self.compiler.builtins) |b| {
-            return cons.car.raw == b.@"eval-when".raw;
-        }
-        // Builtins not yet initialized - check by string as fallback
-        const sym = cons.car.toPtr(Symbol);
-        return std.mem.eql(u8, sym.getName(), "eval-when");
+        const b = self.compiler.builtins.?;
+        return cons.car.raw == b.@"eval-when".raw;
     }
 
     /// Handle eval-when: evaluate at compile time if :compile-toplevel
@@ -1385,24 +1371,13 @@ pub const Repl = struct {
             const situation = sit_cons.car;
 
             if (situation.isKeyword()) {
-                if (self.compiler.builtins) |b| {
-                    // Use keyword identity comparison
-                    if (situation.raw == b.@"kw_compile-toplevel".raw) {
-                        compile_toplevel = true;
-                    } else if (situation.raw == b.kw_execute.raw or
-                        situation.raw == b.@"kw_load-toplevel".raw)
-                    {
-                        execute = true;
-                    }
-                } else {
-                    // Fallback to string comparison if builtins not initialized
-                    const kw = situation.toPtr(runtime.Keyword);
-                    const kw_name = kw.getName();
-                    if (std.mem.eql(u8, kw_name, "compile-toplevel")) {
-                        compile_toplevel = true;
-                    } else if (std.mem.eql(u8, kw_name, "execute") or std.mem.eql(u8, kw_name, "load-toplevel")) {
-                        execute = true;
-                    }
+                const b = self.compiler.builtins.?;
+                if (situation.raw == b.@"kw_compile-toplevel".raw) {
+                    compile_toplevel = true;
+                } else if (situation.raw == b.kw_execute.raw or
+                    situation.raw == b.@"kw_load-toplevel".raw)
+                {
+                    execute = true;
                 }
             }
             sit = sit_cons.cdr;
@@ -1583,14 +1558,8 @@ pub const Repl = struct {
 
         // Check if head is a macro or special form
         if (head.isSymbol()) {
-            const sym = head.toPtr(Symbol);
-            const name = sym.getName();
-
             // Handle eval-when during macro expansion (using symbol identity)
-            const is_eval_when = if (self.compiler.builtins) |b|
-                head.raw == b.@"eval-when".raw
-            else
-                std.mem.eql(u8, name, "eval-when");
+            const is_eval_when = head.raw == self.compiler.builtins.?.@"eval-when".raw;
 
             if (is_eval_when) {
                 // Use arena for compile-time evaluation
