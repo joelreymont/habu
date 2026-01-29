@@ -441,7 +441,7 @@ test "desugar - atom passthrough" {
 
     // Nil passes through
     const result_nil = try desugarer.desugar(Value.nil);
-    try testing.expectEqual(Value.nil, result_nil);
+    try testing.expect(result_nil.isNil());
 
     // t passes through
     const result_t = try desugarer.desugar(Value.t);
