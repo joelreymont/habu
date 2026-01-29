@@ -434,7 +434,7 @@ pub const GraphColorAlloc = struct {
 
     /// Merge node a into node b
     fn mergeNodes(self: *GraphColorAlloc, a: Reg, b: Reg) !void {
-        const node_a = &(self.nodes[a] orelse return error.InvalidState);
+        const node_a = if (self.nodes[a]) |*node| node else return error.InvalidState;
         if (self.nodes[b] == null) return error.InvalidState;
 
         // Transfer edges from a to b
@@ -471,8 +471,8 @@ pub const GraphColorAlloc = struct {
 
     /// Simplify: remove a low-degree non-move-related node
     fn simplify(self: *GraphColorAlloc) !void {
-        const vreg = self.simplify_worklist.pop() orelse return;
-        const node = &(self.nodes[vreg] orelse return);
+        const vreg = if (self.simplify_worklist.pop()) |val| val else return;
+        const node = if (self.nodes[vreg]) |*node| node else return;
 
         node.on_stack = true;
         try self.select_stack.append(self.allocator, vreg);
@@ -487,7 +487,7 @@ pub const GraphColorAlloc = struct {
 
     /// Decrement degree and potentially move to simplify worklist
     fn decrementDegree(self: *GraphColorAlloc, vreg: Reg) !void {
-        const node = &(self.nodes[vreg] orelse return);
+        const node = if (self.nodes[vreg]) |*node| node else return;
         if (node.on_stack) return;
 
         if (node.degree > 0) {
@@ -515,8 +515,8 @@ pub const GraphColorAlloc = struct {
 
     /// Freeze: give up on coalescing a low-degree move-related node
     fn freeze(self: *GraphColorAlloc) !void {
-        const vreg = self.freeze_worklist.pop() orelse return;
-        const node = &(self.nodes[vreg] orelse return);
+        const vreg = if (self.freeze_worklist.pop()) |val| val else return;
+        const node = if (self.nodes[vreg]) |*node| node else return;
 
         node.move_related = false;
         try self.simplify_worklist.append(self.allocator, vreg);
@@ -531,7 +531,7 @@ pub const GraphColorAlloc = struct {
         var best_ratio: f32 = std.math.floatMax(f32);
 
         for (self.spill_worklist.items, 0..) |vreg, i| {
-            const node = &(self.nodes[vreg] orelse continue);
+            const node = if (self.nodes[vreg]) |*node| node else continue;
             const degree = if (node.degree == 0) 1 else node.degree;
             const ratio = @as(f32, @floatFromInt(node.spill_cost)) / @as(f32, @floatFromInt(degree));
             if (ratio < best_ratio) {
@@ -541,7 +541,7 @@ pub const GraphColorAlloc = struct {
         }
 
         const vreg = self.spill_worklist.swapRemove(best_idx);
-        const node = &(self.nodes[vreg] orelse return);
+        const node = if (self.nodes[vreg]) |*node| node else return;
 
         // Optimistically try to color it; if we can't, it becomes an actual spill
         node.on_stack = true;
@@ -555,7 +555,7 @@ pub const GraphColorAlloc = struct {
     /// Assign colors (physical registers) to nodes
     fn assignColors(self: *GraphColorAlloc) !void {
         while (self.select_stack.pop()) |vreg| {
-            const node = &(self.nodes[vreg] orelse continue);
+            const node = if (self.nodes[vreg]) |*node| node else continue;
 
             // Find colors used by neighbors
             var used_colors = std.StaticBitSet(32).initEmpty();
