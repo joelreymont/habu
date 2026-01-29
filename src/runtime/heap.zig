@@ -694,10 +694,10 @@ pub const Heap = struct {
     }
 
     /// Allocate a vector with given capacity
-    pub fn allocVector(self: *Heap, length: usize, capacity: usize) error{OutOfMemory}!Value {
+    pub fn allocVector(self: *Heap, length: usize, capacity: usize) error{OutOfMemory, Overflow}!Value {
         // Allocate header + data array together
-        const data_size = std.math.mul(usize, capacity, @sizeOf(Value)) catch return error.OutOfMemory;
-        const total_size = std.math.add(usize, @sizeOf(objects.Vector), data_size) catch return error.OutOfMemory;
+        const data_size = try std.math.mul(usize, capacity, @sizeOf(Value));
+        const total_size = try std.math.add(usize, @sizeOf(objects.Vector), data_size);
 
         const ptr = try self.allocRaw(total_size);
         const vec: *objects.Vector = @ptrCast(@alignCast(ptr));
@@ -721,19 +721,19 @@ pub const Heap = struct {
     }
 
     /// Allocate a multi-dimensional array
-    pub fn allocArray(self: *Heap, dimensions: []const u64) error{OutOfMemory}!Value {
+    pub fn allocArray(self: *Heap, dimensions: []const u64) error{OutOfMemory, Overflow}!Value {
         if (dimensions.len == 0 or dimensions.len > 8) return error.OutOfMemory;
 
         // Calculate total size (product of all dimensions)
         var total_size: u64 = 1;
         for (dimensions) |dim| {
-            total_size = std.math.mul(u64, total_size, dim) catch return error.OutOfMemory;
+            total_size = try std.math.mul(u64, total_size, dim);
         }
 
         // Allocate header + data array together
-        const data_size = std.math.mul(u64, total_size, @sizeOf(Value)) catch return error.OutOfMemory;
+        const data_size = try std.math.mul(u64, total_size, @sizeOf(Value));
         const header_size = @sizeOf(objects.Array);
-        const alloc_size = std.math.add(u64, header_size, data_size) catch return error.OutOfMemory;
+        const alloc_size = try std.math.add(u64, header_size, data_size);
 
         const ptr = try self.allocRaw(alloc_size);
         const arr: *objects.Array = @ptrCast(@alignCast(ptr));

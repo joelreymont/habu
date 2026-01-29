@@ -9,17 +9,17 @@ const objects = @import("../objects.zig");
 const Heap = @import("../heap.zig").Heap;
 
 /// Create a new vector
-pub fn makeVector(heap: *Heap, length: usize) error{OutOfMemory}!Value {
+pub fn makeVector(heap: *Heap, length: usize) error{OutOfMemory, Overflow}!Value {
     return try heap.allocVector(length, length);
 }
 
 /// Create a vector with specified capacity
-pub fn makeVectorWithCapacity(heap: *Heap, length: usize, capacity: usize) error{OutOfMemory}!Value {
+pub fn makeVectorWithCapacity(heap: *Heap, length: usize, capacity: usize) error{OutOfMemory, Overflow}!Value {
     return try heap.allocVector(length, capacity);
 }
 
 /// Create a vector initialized with a fill value
-pub fn makeVectorFill(heap: *Heap, length: usize, fill_value: Value) error{OutOfMemory}!Value {
+pub fn makeVectorFill(heap: *Heap, length: usize, fill_value: Value) error{OutOfMemory, Overflow}!Value {
     const vec = try makeVector(heap, length);
     const vec_obj = vec.toPtr(objects.Vector);
 
@@ -33,12 +33,12 @@ pub fn makeVectorFill(heap: *Heap, length: usize, fill_value: Value) error{OutOf
 /// Create a multi-dimensional array
 /// For 1D: makeArray(heap, &[_]u64{10})
 /// For 2D: makeArray(heap, &[_]u64{3, 4})
-pub fn makeArray(heap: *Heap, dimensions: []const u64) error{OutOfMemory}!Value {
+pub fn makeArray(heap: *Heap, dimensions: []const u64) error{OutOfMemory, Overflow}!Value {
     return try heap.allocArray(dimensions);
 }
 
 /// Create an array with initial fill value
-pub fn makeArrayFill(heap: *Heap, dimensions: []const u64, fill_value: Value) error{OutOfMemory}!Value {
+pub fn makeArrayFill(heap: *Heap, dimensions: []const u64, fill_value: Value) error{OutOfMemory, Overflow}!Value {
     const arr = try makeArray(heap, dimensions);
     const arr_obj = arr.toPtr(objects.Array);
     const data: [*]Value = @ptrFromInt(arr_obj.data_ptr);
@@ -58,7 +58,7 @@ pub fn arrayRank(val: Value) i64 {
 }
 
 /// Get array dimensions as a list of fixnums
-pub fn arrayDimensions(heap: *Heap, val: Value) error{OutOfMemory}!Value {
+pub fn arrayDimensions(heap: *Heap, val: Value) error{OutOfMemory, Overflow}!Value {
     if (!val.isArray()) return Value.nil;
     const arr = val.toPtr(objects.Array);
 
@@ -471,7 +471,7 @@ pub fn vectorFill(val: Value, fill_value: Value) bool {
 }
 
 /// Copy vector
-pub fn vectorCopy(heap: *Heap, val: Value) error{OutOfMemory}!Value {
+pub fn vectorCopy(heap: *Heap, val: Value) error{OutOfMemory, Overflow}!Value {
     if (!val.isVector()) return Value.nil;
     const src = val.toPtr(objects.Vector);
 
@@ -484,7 +484,7 @@ pub fn vectorCopy(heap: *Heap, val: Value) error{OutOfMemory}!Value {
 }
 
 /// Create vector from list
-pub fn listToVector(heap: *Heap, list_val: Value) error{OutOfMemory}!Value {
+pub fn listToVector(heap: *Heap, list_val: Value) error{OutOfMemory, Overflow}!Value {
     const list_prim = @import("list.zig");
 
     // Count elements
@@ -507,7 +507,7 @@ pub fn listToVector(heap: *Heap, list_val: Value) error{OutOfMemory}!Value {
 }
 
 /// Convert vector to list
-pub fn vectorToList(heap: *Heap, val: Value) error{OutOfMemory}!Value {
+pub fn vectorToList(heap: *Heap, val: Value) error{OutOfMemory, Overflow}!Value {
     if (!val.isVector()) return Value.nil;
     const vec = val.toPtr(objects.Vector);
 
@@ -887,6 +887,16 @@ test "make vector" {
     for (0..5) |i| {
         try testing.expect(vectorRef(vec, i).isNil());
     }
+}
+
+test "make vector overflow" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const cap = std.math.maxInt(usize) / @sizeOf(Value) + 1;
+    try testing.expectError(error.Overflow, makeVectorWithCapacity(&heap, 0, cap));
 }
 
 test "vector ref and set" {

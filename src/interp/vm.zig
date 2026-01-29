@@ -427,10 +427,13 @@ pub const Vm = struct {
     }
 
     /// Allocate a vector, running GC if needed
-    pub fn allocVector(self: *Vm, length: usize, capacity: usize) error{OutOfMemory}!Value {
-        return self.heap.allocVector(length, capacity) catch {
-            _ = try self.collectGarbage();
-            return try self.heap.allocVector(length, capacity);
+    pub fn allocVector(self: *Vm, length: usize, capacity: usize) error{OutOfMemory, Overflow}!Value {
+        return self.heap.allocVector(length, capacity) catch |err| switch (err) {
+            error.OutOfMemory => {
+                _ = try self.collectGarbage();
+                return try self.heap.allocVector(length, capacity);
+            },
+            error.Overflow => return error.Overflow,
         };
     }
 
