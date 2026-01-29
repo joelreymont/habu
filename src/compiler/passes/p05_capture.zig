@@ -77,8 +77,7 @@ pub const CaptureAnalyzer = struct {
 
             .define => |d| {
                 const analyzed_value = try self.analyzeNode(d.value);
-                return self.builder.define(d.name, d.index, analyzed_value) catch
-                    return error.OutOfMemory;
+                return try self.builder.define(d.name, d.index, analyzed_value);
             },
 
             .let => |l| {
@@ -88,18 +87,15 @@ pub const CaptureAnalyzer = struct {
 
                 for (l.bindings) |b| {
                     const analyzed_val = try self.analyzeNode(b.value);
-                    analyzed_bindings.append(self.allocator, .{ .name = b.name, .value = analyzed_val, .index = b.index }) catch
-                        return error.OutOfMemory;
+                    try analyzed_bindings.append(self.allocator, .{ .name = b.name, .value = analyzed_val, .index = b.index });
                 }
 
                 // Analyze body
                 const analyzed_body = try self.analyzeNode(l.body);
 
-                const bindings_slice = self.allocator.dupe(Ir.Binding, analyzed_bindings.items) catch
-                    return error.OutOfMemory;
+                const bindings_slice = try self.allocator.dupe(Ir.Binding, analyzed_bindings.items);
 
-                return self.builder.letExpr(bindings_slice, analyzed_body) catch
-                    return error.OutOfMemory;
+                return try self.builder.letExpr(bindings_slice, analyzed_body);
             },
 
             .lambda => |lam| {
@@ -114,25 +110,23 @@ pub const CaptureAnalyzer = struct {
                 const analyzed_body = try self.analyzeNode(lam.body);
 
                 // Get captures
-                const captures = capture_set.toSlice() catch
-                    return error.OutOfMemory;
+                const captures = try capture_set.toSlice();
 
-                return self.builder.lambda(
+                return try self.builder.lambda(
                     lam.params,
                     lam.optional_params,
                     lam.key_params,
                     lam.rest_param,
                     captures,
                     analyzed_body,
-                ) catch return error.OutOfMemory;
+                );
             },
 
             .@"if" => |i| {
                 const cond = try self.analyzeNode(i.cond);
                 const then_br = try self.analyzeNode(i.then_branch);
                 const else_br = try self.analyzeNode(i.else_branch);
-                return self.builder.ifExpr(cond, then_br, else_br) catch
-                    return error.OutOfMemory;
+                return try self.builder.ifExpr(cond, then_br, else_br);
             },
 
             .progn => |exprs| {
@@ -140,17 +134,16 @@ pub const CaptureAnalyzer = struct {
                 defer analyzed.deinit(self.allocator);
                 for (exprs) |e| {
                     const r = try self.analyzeNode(e);
-                    analyzed.append(self.allocator, r) catch return error.OutOfMemory;
+                    try analyzed.append(self.allocator, r);
                 }
-                const slice = self.allocator.dupe(*const Ir, analyzed.items) catch
-                    return error.OutOfMemory;
-                return self.builder.progn(slice) catch return error.OutOfMemory;
+                const slice = try self.allocator.dupe(*const Ir, analyzed.items);
+                return try self.builder.progn(slice);
             },
 
             .loop => |w| {
                 const cond = try self.analyzeNode(w.cond);
                 const body = try self.analyzeNode(w.body);
-                return self.builder.loop(cond, body) catch return error.OutOfMemory;
+                return try self.builder.loop(cond, body);
             },
 
             .call => |c| {
@@ -159,18 +152,17 @@ pub const CaptureAnalyzer = struct {
                 defer analyzed_args.deinit(self.allocator);
                 for (c.args) |a| {
                     const r = try self.analyzeNode(a);
-                    analyzed_args.append(self.allocator, r) catch return error.OutOfMemory;
+                    try analyzed_args.append(self.allocator, r);
                 }
-                const args_slice = self.allocator.dupe(*const Ir, analyzed_args.items) catch
-                    return error.OutOfMemory;
-                return self.builder.call(func, args_slice) catch return error.OutOfMemory;
+                const args_slice = try self.allocator.dupe(*const Ir, analyzed_args.items);
+                return try self.builder.call(func, args_slice);
             },
 
             // Binary operations
             .add, .sub, .mul, .div, .mod, .eq, .lt, .gt, .le, .ge, .num_eq, .cons => |b| {
                 const left = try self.analyzeNode(b.left);
                 const right = try self.analyzeNode(b.right);
-                const result = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const result = try self.allocator.create(Ir);
                 result.* = node.*;
                 switch (result.*) {
                     inline .add, .sub, .mul, .div, .mod, .eq, .lt, .gt, .le, .ge, .num_eq, .cons => |*bin| {
@@ -185,7 +177,7 @@ pub const CaptureAnalyzer = struct {
             // Unary operations
             .car, .cdr, .consp, .symbolp, .numberp, .stringp, .vectorp, .not, .nilp => |u| {
                 const operand = try self.analyzeNode(u.operand);
-                const result = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const result = try self.allocator.create(Ir);
                 result.* = node.*;
                 switch (result.*) {
                     inline .car, .cdr, .consp, .symbolp, .numberp, .stringp, .vectorp, .not, .nilp => |*un| {
@@ -274,7 +266,7 @@ pub const CaptureAnalyzer = struct {
 
     /// Copy a node (for nodes that don't need modification)
     fn copyNode(self: *CaptureAnalyzer, node: *const Ir) Error!*Ir {
-        const copy = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const copy = try self.allocator.create(Ir);
         copy.* = node.*;
         return copy;
     }
@@ -331,4 +323,27 @@ test "capture - variable from outer scope" {
     try testing.expectEqualStrings("y", analyzed.lambda.captures[0].name);
     try testing.expectEqual(@as(u16, 1), analyzed.lambda.captures[0].depth);
     try testing.expectEqual(@as(u16, 0), analyzed.lambda.captures[0].index);
+}
+
+test "capture - call captures args" {
+    const testing = std.testing;
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var builder = IrBuilder.init(alloc);
+    const var_f = try builder.variable("f", 0, 0);
+    const var_y = try builder.variable("y", 1, 0);
+    const args = try alloc.dupe(*const Ir, &.{ var_y });
+    const call = try builder.call(var_f, args);
+    const params: []const []const u8 = &.{};
+    const lam = try builder.lambda(params, &.{}, &.{}, null, &.{}, call);
+
+    const analyzed = try capture(alloc, lam);
+
+    try testing.expectEqual(Ir.lambda, std.meta.activeTag(analyzed.*));
+    try testing.expectEqual(Ir.call, std.meta.activeTag(analyzed.lambda.body.*));
+    try testing.expectEqual(@as(usize, 1), analyzed.lambda.captures.len);
+    try testing.expectEqualStrings("y", analyzed.lambda.captures[0].name);
 }
