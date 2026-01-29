@@ -1217,24 +1217,26 @@ pub const Vm = struct {
 
             .list_length => {
                 const seq = try self.pop();
-                if (seq.isNil()) {
-                    try self.push(Value.makeFixnum(0));
-                } else if (seq.isCons()) {
-                    var len: i64 = 0;
-                    var curr = seq;
-                    while (curr.isCons()) {
-                        len += 1;
-                        curr = curr.toPtr(Cons).cdr;
-                    }
-                    try self.push(Value.makeFixnum(len));
-                } else if (seq.isVector()) {
-                    const vec = seq.toPtr(runtime.Vector);
-                    try self.push(Value.makeFixnum(@intCast(vec.length)));
-                } else if (seq.isString()) {
-                    const str = seq.toPtr(runtime.String);
-                    try self.push(Value.makeFixnum(@intCast(str.length)));
-                } else {
-                    return error.TypeMismatch;
+                switch (seq.typeKind()) {
+                    .nil => try self.push(Value.makeFixnum(0)),
+                    .cons => {
+                        var len: i64 = 0;
+                        var curr = seq;
+                        while (curr.isCons()) {
+                            len += 1;
+                            curr = curr.toPtr(Cons).cdr;
+                        }
+                        try self.push(Value.makeFixnum(len));
+                    },
+                    .vector => {
+                        const vec = seq.toPtr(runtime.Vector);
+                        try self.push(Value.makeFixnum(@intCast(vec.length)));
+                    },
+                    .string => {
+                        const str = seq.toPtr(runtime.String);
+                        try self.push(Value.makeFixnum(@intCast(str.length)));
+                    },
+                    else => return error.TypeMismatch,
                 }
             },
 
