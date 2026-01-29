@@ -422,13 +422,8 @@ pub const BiChecker = struct {
                 try self.check(args[0], p.param_type, ctx);
 
                 // Substitute argument into return type: B[x := a]
-                const arg_term = self.irToTerm(args[0]) catch {
-                    // If we can't convert to term, just return body unchanged
-                    return p.body;
-                };
-                const result_ty = self.substituteInType(p.body, p.param_name, arg_term) catch {
-                    return p.body;
-                };
+                const arg_term = try self.irToTerm(args[0]);
+                const result_ty = try self.substituteInType(p.body, p.param_name, arg_term);
 
                 // Handle remaining arguments if this is a curried function
                 if (args.len > 1) {
@@ -469,13 +464,11 @@ pub const BiChecker = struct {
         const else_ty = try self.infer(else_branch, ctx);
 
         // If types are equal, return that type
-        if (self.converter.convertible(then_ty, else_ty) catch false) {
-            return then_ty;
-        }
+        if (try self.converter.convertible(then_ty, else_ty)) return then_ty;
 
         // Otherwise, return union type
         const types_arr = [_]*const Type{ then_ty, else_ty };
-        return self.type_builder.makeOr(&types_arr) catch &type_mod.t_any;
+        return try self.type_builder.makeOr(&types_arr);
     }
 
     /// Infer type of let binding
@@ -603,7 +596,7 @@ pub const BiChecker = struct {
                 const inferred = try self.infer(expr, ctx);
 
                 // Check if inferred type is subtype of expected
-                const is_subtype = self.converter.isSubtype(inferred, expected) catch false;
+                const is_subtype = try self.converter.isSubtype(inferred, expected);
                 if (!is_subtype) {
                     try self.reportMismatch("Type mismatch", expected, inferred);
                     return error.TypeError;
@@ -865,6 +858,7 @@ pub const TypeError = struct {
 
 pub const CheckError = error{
     TypeError,
+    FuelExhausted,
     OutOfMemory,
 };
 
@@ -874,20 +868,20 @@ pub const CheckError = error{
 
 test "infer literal types" {
     const testing = std.testing;
-    const allocator = testing.allocator;
+    const test_alloc = testing.allocator;
     const Vm = @import("../interp/vm.zig").Vm;
     const Heap = @import("../runtime/heap.zig").Heap;
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(test_alloc, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
-    var vm = try Vm.init(allocator, &heap);
-    var checker = BiChecker.init(allocator, &vm.builtins);
+    var vm = try Vm.init(test_alloc, &heap);
+    var checker = BiChecker.init(test_alloc, &vm.builtins);
     defer checker.deinit();
 
-    var ctx = TypingCtx.init(allocator);
+    var ctx = TypingCtx.init(test_alloc);
     defer ctx.deinit();
 
     // Create a fixnum literal IR node
-    const ir_alloc = allocator;
+    const ir_alloc = test_alloc;
     const lit_node = try ir_alloc.create(Ir);
     defer ir_alloc.destroy(lit_node);
     lit_node.* = .{ .lit = Value.makeFixnum(21) }; // Creates tagged fixnum
@@ -899,9 +893,9 @@ test "infer literal types" {
 
 test "context binding and lookup" {
     const testing = std.testing;
-    const allocator = testing.allocator;
+    const test_alloc = testing.allocator;
 
-    var ctx = TypingCtx.init(allocator);
+    var ctx = TypingCtx.init(test_alloc);
     defer ctx.deinit();
 
     try ctx.bind("x", &type_mod.t_fixnum, .many);
@@ -1274,4 +1268,67 @@ test "one-quantity variable in linear context" {
 
     const ty = try checker.infer(var_node, &ctx);
     try testing.expectEqual(&type_mod.t_any, ty);
+}
+
+test "infer if propagates allocation failure" {
+    const testing = std.testing;
+    const test_alloc = testing.allocator;
+    const Vm = @import("../interp/vm.zig").Vm;
+    const Heap = @import("../runtime/heap.zig").Heap;
+
+    var heap = try Heap.init(test_alloc, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var vm = try Vm.init(test_alloc, &heap);
+
+    const FailAlloc = struct {
+        const Self = @This();
+
+        fn alloc(_: *anyopaque, _: usize, _: std.mem.Alignment, _: usize) ?[*]u8 {
+            return null;
+        }
+        fn resize(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize, _: usize) bool {
+            return false;
+        }
+        fn remap(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize, _: usize) ?[*]u8 {
+            return null;
+        }
+        fn free(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize) void {}
+
+        const vtable = std.mem.Allocator.VTable{
+            .alloc = alloc,
+            .resize = resize,
+            .remap = remap,
+            .free = free,
+        };
+
+        fn allocator(self: *Self) std.mem.Allocator {
+            return .{ .ptr = self, .vtable = &vtable };
+        }
+    };
+
+    var failing = FailAlloc{};
+    var checker = BiChecker.init(failing.allocator(), &vm.builtins);
+    defer checker.deinit();
+
+    var ctx = TypingCtx.init(test_alloc);
+    defer ctx.deinit();
+
+    const cond = try test_alloc.create(Ir);
+    defer test_alloc.destroy(cond);
+    cond.* = .{ .lit = Value.t };
+
+    const then_node = try test_alloc.create(Ir);
+    defer test_alloc.destroy(then_node);
+    then_node.* = .{ .lit = Value.makeFixnum(1) };
+
+    const str_val = try heap.allocBaseString("x");
+    const else_node = try test_alloc.create(Ir);
+    defer test_alloc.destroy(else_node);
+    else_node.* = .{ .lit = str_val };
+
+    const if_node = try test_alloc.create(Ir);
+    defer test_alloc.destroy(if_node);
+    if_node.* = .{ .@"if" = .{ .cond = cond, .then_branch = then_node, .else_branch = else_node } };
+
+    try testing.expectError(error.OutOfMemory, checker.infer(if_node, &ctx));
 }
