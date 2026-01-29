@@ -1313,8 +1313,7 @@ pub const Heap = struct {
         }
 
         const sym = try self.allocSymbol(upper_name);
-        const persistent_name = try self.backing_allocator.dupe(u8, upper_name);
-        try self.symbols.put(persistent_name, sym);
+        try self.symbols.put(upper_name, sym);
         return sym;
     }
 
@@ -1776,6 +1775,18 @@ test "heap intern handles t and nil in packages" {
     const nil_pkg = try pkg.intern(&heap, "nil");
     try testing.expectEqual(@as(u64, Value.t.raw), t_pkg.raw);
     try testing.expectEqual(@as(u64, Value.nil.raw), nil_pkg.raw);
+}
+
+test "heap intern fallback uses symbol table" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    heap.current_package = null;
+    defer heap.deinit();
+
+    const sym1 = try heap.intern("foo");
+    const sym2 = try heap.intern("FOO");
+    try testing.expectEqual(@as(u64, sym1.raw), sym2.raw);
 }
 
 test "heap alloc cons" {
