@@ -1077,7 +1077,7 @@ pub const Emitter = struct {
         else
             self.max_local_idx;
 
-        const heap = self.heap orelse return error.NoHeap;
+        const heap = if (self.heap) |val| val else return error.NoHeap;
 
         // Convert constant pool from u64 to Value
         const const_values = try self.allocator.alloc(Value, self.constants.items.len);
@@ -1571,7 +1571,7 @@ pub const Emitter = struct {
         try self.emitOp(.vec_ref);
 
         // Push struct name symbol as constant
-        const heap = self.heap orelse return error.NoHeap;
+        const heap = if (self.heap) |val| val else return error.NoHeap;
         const name_sym = try heap.intern(struct_name);
         const const_idx = try self.addConstant(name_sym.raw);
         try self.emitOp(.push_const);
@@ -1598,7 +1598,7 @@ pub const Emitter = struct {
 
     fn emitBlock(self: *Emitter, b: anytype) Error!void {
         // Intern block name and add to constant pool
-        const heap = self.heap orelse return error.OutOfMemory;
+        const heap = if (self.heap) |val| val else return error.OutOfMemory;
         const name_sym = try heap.intern(b.name);
         const name_idx = try self.addConstant(name_sym.raw);
 
@@ -1681,7 +1681,7 @@ pub const Emitter = struct {
 
         // Block not in current chunk or crosses unwind-protect
         // Emit runtime return_from opcode for proper cleanup handling
-        const heap = self.heap orelse return error.OutOfMemory;
+        const heap = if (self.heap) |val| val else return error.OutOfMemory;
         const name_sym = try heap.intern(r.name);
         const name_idx = try self.addConstant(name_sym.raw);
         try self.emitOp(.return_from);
@@ -2391,7 +2391,7 @@ pub const Emitter = struct {
         try self.emit(ao.operand);
 
         // 2. Build a list from the type_symbols and add to constant pool
-        const heap = self.heap orelse return error.NoHeap;
+        const heap = if (self.heap) |val| val else return error.NoHeap;
         var type_list = Value.nil;
         var i = ao.type_symbols.len;
         while (i > 0) {
