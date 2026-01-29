@@ -1143,8 +1143,8 @@ pub const Emitter = struct {
         }
 
         const idx: u16 = @intCast(self.constants.items.len);
-        self.constants.append(self.allocator, val) catch return error.OutOfMemory;
-        self.constant_map.put(val, idx) catch return error.OutOfMemory;
+        try self.constants.append(self.allocator, val);
+        try self.constant_map.put(val, idx);
         return idx;
     }
 
@@ -1456,7 +1456,7 @@ pub const Emitter = struct {
 
         // Store chunk Value in child_chunks, get its index
         const chunk_idx: u16 = @intCast(self.child_chunks.items.len);
-        self.child_chunks.append(self.allocator, chunk_val) catch return error.OutOfMemory;
+        try self.child_chunks.append(self.allocator, chunk_val);
 
         // Emit captures (if any)
         for (lam.captures) |cap| {
@@ -1615,7 +1615,7 @@ pub const Emitter = struct {
                 .pending_exits = std.ArrayList(usize){},
             },
         };
-        self.control_stack.append(self.allocator, entry) catch return error.OutOfMemory;
+        try self.control_stack.append(self.allocator, entry);
 
         // Emit body
         try self.emit(b.body);
@@ -1701,7 +1701,7 @@ pub const Emitter = struct {
         const entry = ControlEntry{
             .unwind_protect = .{ .cleanup = u.cleanup },
         };
-        self.control_stack.append(self.allocator, entry) catch return error.OutOfMemory;
+        try self.control_stack.append(self.allocator, entry);
 
         // Emit push_unwind with forward jump to cleanup code
         const unwind_jump = try self.emitJump(.push_unwind);
@@ -1858,7 +1858,7 @@ pub const Emitter = struct {
         const restart_count = rc.restarts.len;
 
         // Track where each restart handler will be
-        const handler_jumps = self.allocator.alloc(usize, restart_count) catch return error.OutOfMemory;
+        const handler_jumps = try self.allocator.alloc(usize, restart_count);
         defer self.allocator.free(handler_jumps);
 
         // Emit push_restart for each restart (name on stack, then push_restart offset)
@@ -1882,7 +1882,7 @@ pub const Emitter = struct {
         try self.emitI16(0);
 
         // Track jumps from handlers to end
-        const end_jumps = self.allocator.alloc(usize, restart_count) catch return error.OutOfMemory;
+        const end_jumps = try self.allocator.alloc(usize, restart_count);
         defer self.allocator.free(end_jumps);
 
         // Emit each handler
@@ -1950,7 +1950,7 @@ pub const Emitter = struct {
 
     fn emitTagbody(self: *Emitter, tb: anytype) Error!void {
         // Allocate offset array for tags
-        const tag_offsets = self.allocator.alloc(usize, tb.tags.len) catch return error.OutOfMemory;
+        const tag_offsets = try self.allocator.alloc(usize, tb.tags.len);
         @memset(tag_offsets, 0);
 
         // Push tagbody entry onto control stack
@@ -1961,7 +1961,7 @@ pub const Emitter = struct {
                 .pending_jumps = std.ArrayList(PendingGoJump){},
             },
         };
-        self.control_stack.append(self.allocator, entry) catch return error.OutOfMemory;
+        try self.control_stack.append(self.allocator, entry);
 
         // Emit segments, recording tag positions
         // segments[0] = code before first tag
@@ -2023,10 +2023,10 @@ pub const Emitter = struct {
                             } else {
                                 // Forward jump - record for later patching
                                 const jump_loc = try self.emitJump(.jmp);
-                                tbe.pending_jumps.append(self.allocator, .{
+                                try tbe.pending_jumps.append(self.allocator, .{
                                     .tag_idx = tag_idx,
                                     .jump_loc = jump_loc,
-                                }) catch return error.OutOfMemory;
+                                });
                             }
                             return;
                         }
@@ -2514,6 +2514,26 @@ test "emit literal fixnum" {
     try testing.expectEqual(@as(u8, @truncate(push_i32_opcode >> 8)), emitter.code.items[1]);
     // 42 in little-endian i32 starts at index 2
     try testing.expectEqual(@as(u8, 42), emitter.code.items[2]);
+}
+
+test "emit constant dedupe" {
+    const testing = std.testing;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var emitter = Emitter.init(allocator);
+    defer emitter.deinit();
+
+    const builder = ir.IrBuilder.init(allocator);
+    const big = Value.makeFixnum(@as(i64, 1) << 40);
+    const lit1 = try builder.lit(big);
+    const lit2 = try builder.lit(big);
+    const exprs = [_]*const ir.Ir{ lit1, lit2 };
+    const node = try builder.progn(&exprs);
+
+    try emitter.emit(node);
+    try testing.expectEqual(@as(usize, 1), emitter.constants.items.len);
 }
 
 test "emit add" {
