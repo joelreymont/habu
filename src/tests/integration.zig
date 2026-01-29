@@ -36,7 +36,7 @@ fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Valu
     var comp_vm = try Vm.init(arena_alloc, heap);
 
     // Parse
-    var parser = Parser.init(arena_alloc, heap, source, &comp_vm.builtins);
+    var parser = try Parser.init(arena_alloc, heap, source, &comp_vm.builtins);
     defer parser.deinit();
 
     const expr = try parser.parse();

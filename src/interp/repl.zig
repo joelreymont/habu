@@ -452,7 +452,7 @@ pub const Repl = struct {
         const arena_alloc = arena.allocator();
 
         // Parse
-        var parser = Parser.init(arena_alloc, self.heap, source, &self.vm.builtins);
+        var parser = try Parser.init(arena_alloc, self.heap, source, &self.vm.builtins);
         var expr = try parser.parse();
 
         // Check for defmacro - handle specially like main eval
@@ -764,7 +764,7 @@ pub const Repl = struct {
         const arena_alloc = arena.allocator();
 
         // Parse
-        var parser = Parser.init(arena_alloc, self.heap, source, &self.vm.builtins);
+        var parser = try Parser.init(arena_alloc, self.heap, source, &self.vm.builtins);
         defer parser.deinit();
 
         var expr = parser.parse() catch |err| {
@@ -1753,7 +1753,7 @@ pub const Repl = struct {
     /// Show the inferred type of an expression
     fn showType(self: *Repl, expr_str: []const u8, writer: anytype) !void {
         // Parse expression
-        var parser = @import("../reader/parser.zig").Parser.init(self.allocator, self.heap, expr_str, &self.vm.builtins);
+        var parser = try @import("../reader/parser.zig").Parser.init(self.allocator, self.heap, expr_str, &self.vm.builtins);
         const expr = parser.parse() catch {
             try writer.writeAll("Parse error\n");
             return;

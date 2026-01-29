@@ -4656,7 +4656,7 @@ pub const Vm = struct {
                 };
 
                 // Parse the S-expression
-                var parser = Parser.init(self.allocator, self.heap, buffer[0..len], &self.builtins);
+                var parser = try Parser.init(self.allocator, self.heap, buffer[0..len], &self.builtins);
                 const result = parser.parse() catch {
                     try self.push(Value.nil);
                     return;
@@ -4688,7 +4688,7 @@ pub const Vm = struct {
                 if (!str_val.isString()) return error.TypeMismatch;
 
                 const str = str_val.toPtr(String);
-                var parser = Parser.init(self.allocator, self.heap, str.bytes(), &self.builtins);
+                var parser = try Parser.init(self.allocator, self.heap, str.bytes(), &self.builtins);
                 defer parser.deinit();
                 const result = parser.parse() catch {
                     try self.push(Value.nil);
