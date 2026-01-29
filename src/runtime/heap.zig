@@ -474,6 +474,17 @@ pub const Heap = struct {
         return Value.makeCons(cons);
     }
 
+    /// Build a list from a slice (preserves order)
+    pub fn listFromSlice(self: *Heap, items: []const Value) error{OutOfMemory}!Value {
+        var list = Value.nil;
+        var i = items.len;
+        while (i > 0) {
+            i -= 1;
+            list = try self.allocCons(items[i], list);
+        }
+        return list;
+    }
+
     /// Allocate a rational number
     pub fn allocRational(self: *Heap, num: i64, den: i64) error{OutOfMemory}!Value {
         const rat = try self.alloc(objects.Rational);

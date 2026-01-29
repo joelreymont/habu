@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("../runtime.zig");
+const io = @import("io.zig");
 const Value = runtime.Value;
 const Heap = runtime.Heap;
 
@@ -45,23 +46,25 @@ pub fn warn(heap: *Heap, args: []const Value) !Value {
     const rest = if (args.len > 1) args[1..] else &[_]Value{};
 
     // Create warning condition
-    const condition = if (datum.isString())
-        try heap.allocCondition(
+    const condition = switch (datum.typeKind()) {
+        .string => try heap.allocCondition(
             try heap.intern("simple-warning"),
             datum,
             try heap.listFromSlice(rest),
-        )
-    else if (datum.isSymbol())
-        try makeCondition(heap, args)
-    else
-        datum;
+        ),
+        .symbol => try makeCondition(heap, args),
+        else => datum,
+    };
 
     // Signal the warning (default handler prints it)
     // TODO: implement proper handler dispatch
-    const writer = std.fs.File.stdout().writer();
+    var out_buf: [4096]u8 = undefined;
+    var file_writer = std.fs.File.stderr().writer(&out_buf);
+    const writer = &file_writer.interface;
     try writer.print("WARNING: ", .{});
-    try heap.print(writer, condition);
+    try io.writeValueToBuffer(condition, writer);
     try writer.print("\n", .{});
+    try writer.flush();
 
     return Value.nil;
 }
@@ -138,13 +141,16 @@ pub fn restartName(heap: *Heap, args: []const Value) !Value {
 /// break: Enter debugger with continue restart
 /// (break &optional format-control &rest format-arguments)
 pub fn @"break"(heap: *Heap, args: []const Value) !Value {
-    const writer = std.fs.File.stdout().writer();
+    _ = heap;
+    var out_buf: [4096]u8 = undefined;
+    var file_writer = std.fs.File.stderr().writer(&out_buf);
+    const writer = &file_writer.interface;
 
     if (args.len > 0) {
         const format_control = args[0];
         if (format_control.isString()) {
             try writer.print("BREAK: ", .{});
-            try heap.print(writer, format_control);
+            try io.writeValueToBuffer(format_control, writer);
             try writer.print("\n", .{});
         }
     } else {
@@ -153,6 +159,26 @@ pub fn @"break"(heap: *Heap, args: []const Value) !Value {
 
     // TODO: implement proper debugger with continue restart
     try writer.print("Continue restart available (not yet implemented)\n", .{});
+    try writer.flush();
 
     return Value.nil;
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "warn accepts string and symbol datum" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const msg = try heap.allocBaseString("oops");
+    const args1 = [_]Value{msg};
+    _ = try warn(&heap, &args1);
+
+    const sym = try heap.intern("oops");
+    const args2 = [_]Value{sym};
+    _ = try warn(&heap, &args2);
 }
