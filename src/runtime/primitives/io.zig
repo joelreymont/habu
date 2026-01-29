@@ -899,9 +899,13 @@ pub fn writeFile(path: []const u8, content: Value) !void {
 }
 
 /// Check if file exists
-pub fn fileExists(path: []const u8) bool {
-    fs.accessAbsolute(path, .{}) catch return false;
-    return true;
+pub fn fileExists(path: []const u8) !bool {
+    if (fs.accessAbsolute(path, .{})) |_| {
+        return true;
+    } else |err| switch (err) {
+        error.FileNotFound => return false,
+        else => return err,
+    }
 }
 
 /// Get file size
@@ -925,9 +929,13 @@ pub fn renameFile(old_path: []const u8, new_path: []const u8) !void {
 
 /// Probe file (check if exists)
 /// Returns true if file exists, false otherwise
-pub fn probeFile(path: []const u8) bool {
-    _ = fs.accessAbsolute(path, .{}) catch return false;
-    return true;
+pub fn probeFile(path: []const u8) !bool {
+    if (fs.accessAbsolute(path, .{})) |_| {
+        return true;
+    } else |err| switch (err) {
+        error.FileNotFound => return false,
+        else => return err,
+    }
 }
 
 /// Get file write date (modification time) as Universal Time
@@ -1908,4 +1916,28 @@ test "time functions" {
 
     // Should have elapsed at least 10ms
     try testing.expect(after >= before + 10);
+}
+
+test "fileExists and probeFile" {
+    const testing = std.testing;
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const tmp_path = try tmp.parent_dir.realpathAlloc(testing.allocator, &tmp.sub_path);
+    defer testing.allocator.free(tmp_path);
+
+    const file_name = "exists.txt";
+    const file = try tmp.dir.createFile(file_name, .{});
+    file.close();
+
+    const exists_path = try std.fs.path.join(testing.allocator, &.{ tmp_path, file_name });
+    defer testing.allocator.free(exists_path);
+    try testing.expect(try fileExists(exists_path));
+    try testing.expect(try probeFile(exists_path));
+
+    const missing_path = try std.fs.path.join(testing.allocator, &.{ tmp_path, "missing.txt" });
+    defer testing.allocator.free(missing_path);
+    try testing.expect(!(try fileExists(missing_path)));
+    try testing.expect(!(try probeFile(missing_path)));
 }

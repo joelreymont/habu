@@ -2150,7 +2150,7 @@ pub const Vm = struct {
                 const path_val = try self.pop();
                 if (!path_val.isString()) return error.TypeMismatch;
                 const path_str = path_val.toPtr(String);
-                if (io.probeFile(path_str.bytes())) {
+                if (try io.probeFile(path_str.bytes())) {
                     // Return the path as truename
                     try self.push(path_val);
                 } else {
