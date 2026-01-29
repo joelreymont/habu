@@ -11,6 +11,69 @@ const Keyword = objects.Keyword;
 const Class = objects.Class;
 const GenericFunction = objects.GenericFunction;
 
+const QualName = struct {
+    slice: []const u8,
+    owned: bool,
+};
+
+fn makeQualifiedName(
+    allocator: std.mem.Allocator,
+    buf: *[256]u8,
+    prefix: []const u8,
+    name: []const u8,
+) error{ OutOfMemory, Overflow }!QualName {
+    const total_len = try std.math.add(usize, prefix.len, name.len);
+    if (total_len <= buf.len) {
+        @memcpy(buf[0..prefix.len], prefix);
+        @memcpy(buf[prefix.len..][0..name.len], name);
+        return .{ .slice = buf[0..total_len], .owned = false };
+    }
+    const slice = try std.fmt.allocPrint(allocator, "{s}{s}", .{ prefix, name });
+    return .{ .slice = slice, .owned = true };
+}
+
+fn makePkgQualifiedName(
+    allocator: std.mem.Allocator,
+    buf: *[256]u8,
+    pkg: []const u8,
+    name: []const u8,
+) error{ OutOfMemory, Overflow }!QualName {
+    const pkg_len = try std.math.add(usize, pkg.len, 1);
+    const total_len = try std.math.add(usize, pkg_len, name.len);
+    if (total_len <= buf.len) {
+        @memcpy(buf[0..pkg.len], pkg);
+        buf[pkg.len] = ':';
+        @memcpy(buf[pkg_len..][0..name.len], name);
+        return .{ .slice = buf[0..total_len], .owned = false };
+    }
+    const slice = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ pkg, name });
+    return .{ .slice = slice, .owned = true };
+}
+
+fn lookupClassMetadata(
+    heap: *Heap,
+    class_sym: *const Symbol,
+) error{ OutOfMemory, Overflow }!?[]const []const u8 {
+    const class_name = class_sym.getName();
+    var qual_buf: [256]u8 = undefined;
+
+    const sym_pkg_ptr = @as(?*heap_mod.Package, @ptrFromInt(class_sym.reserved));
+    if (sym_pkg_ptr) |pkg| {
+        const qualified = try makePkgQualifiedName(heap.backing_allocator, &qual_buf, pkg.name, class_name);
+        defer if (qualified.owned) heap.backing_allocator.free(qualified.slice);
+        if (heap.class_metadata.get(qualified.slice)) |names| return names;
+    }
+
+    const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
+    for (prefixes) |prefix| {
+        const qualified = try makeQualifiedName(heap.backing_allocator, &qual_buf, prefix, class_name);
+        defer if (qualified.owned) heap.backing_allocator.free(qualified.slice);
+        if (heap.class_metadata.get(qualified.slice)) |names| return names;
+    }
+
+    return null;
+}
+
 /// make-instance: (make-instance 'class-name :slot1 val1 :slot2 val2 ...)
 /// Creates an instance of a class by allocating a vector #('class-name slot1-val slot2-val ...)
 /// For now, this is a simplified version that requires slots to be provided in definition order
@@ -97,27 +160,7 @@ pub fn slotValue(heap: *Heap, args: Value) !Value {
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
     const class_sym = class_name_val.toPtr(Symbol);
-    const class_name = class_sym.getName();
-
-    // Get package from symbol
-    const sym_pkg_ptr = @as(?*heap_mod.Package, @ptrFromInt(class_sym.reserved));
-    var qual_buf: [256]u8 = undefined;
-    const qualified_class_name = if (sym_pkg_ptr) |pkg| blk: {
-        const qn = std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, class_name }) catch return error.InvalidArgument;
-        break :blk qn;
-    } else class_name;
-
-    // Look up class metadata to find slot index
-    // Try qualified name first, then common package prefixes as fallback
-    const slot_names = heap.class_metadata.get(qualified_class_name) orelse blk: {
-        // Try common package prefixes
-        const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
-        for (prefixes) |prefix| {
-            const try_name = std.fmt.bufPrint(&qual_buf, "{s}{s}", .{ prefix, class_name }) catch continue;
-            if (heap.class_metadata.get(try_name)) |names| break :blk names;
-        }
-        return error.InvalidArgument;
-    };
+    const slot_names = try lookupClassMetadata(heap, class_sym) orelse return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (std.mem.eql(u8, name, slot_name)) {
@@ -171,27 +214,7 @@ pub fn setSlotValue(heap: *Heap, args: Value) !Value {
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
     const class_sym = class_name_val.toPtr(Symbol);
-    const class_name = class_sym.getName();
-
-    // Get package from symbol
-    const sym_pkg_ptr = @as(?*heap_mod.Package, @ptrFromInt(class_sym.reserved));
-    var qual_buf: [256]u8 = undefined;
-    const qualified_class_name = if (sym_pkg_ptr) |pkg| blk: {
-        const qn = std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, class_name }) catch return error.InvalidArgument;
-        break :blk qn;
-    } else class_name;
-
-    // Look up class metadata to find slot index
-    // Try qualified name first, then common package prefixes as fallback
-    const slot_names = heap.class_metadata.get(qualified_class_name) orelse blk: {
-        // Try common package prefixes
-        const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
-        for (prefixes) |prefix| {
-            const try_name = std.fmt.bufPrint(&qual_buf, "{s}{s}", .{ prefix, class_name }) catch continue;
-            if (heap.class_metadata.get(try_name)) |names| break :blk names;
-        }
-        return error.InvalidArgument;
-    };
+    const slot_names = try lookupClassMetadata(heap, class_sym) orelse return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (std.mem.eql(u8, name, slot_name)) {
@@ -304,23 +327,7 @@ pub fn slotExistsP(heap: *Heap, args: Value) !Value {
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return Value.nil;
     const class_sym = class_name_val.toPtr(Symbol);
-    const class_name = class_sym.getName();
-
-    const sym_pkg_ptr = @as(?*heap_mod.Package, @ptrFromInt(class_sym.reserved));
-    var qual_buf: [256]u8 = undefined;
-    const qualified_class_name = if (sym_pkg_ptr) |pkg| blk: {
-        const qn = std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, class_name }) catch return error.InvalidArgument;
-        break :blk qn;
-    } else class_name;
-
-    const slot_names = heap.class_metadata.get(qualified_class_name) orelse blk: {
-        const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
-        for (prefixes) |prefix| {
-            const try_name = std.fmt.bufPrint(&qual_buf, "{s}{s}", .{ prefix, class_name }) catch continue;
-            if (heap.class_metadata.get(try_name)) |names| break :blk names;
-        }
-        return Value.nil;
-    };
+    const slot_names = try lookupClassMetadata(heap, class_sym) orelse return Value.nil;
 
     for (slot_names) |name| {
         if (std.mem.eql(u8, name, slot_name)) {
@@ -360,23 +367,7 @@ pub fn slotBoundp(heap: *Heap, args: Value) !Value {
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
     const class_sym = class_name_val.toPtr(Symbol);
-    const class_name = class_sym.getName();
-
-    const sym_pkg_ptr = @as(?*heap_mod.Package, @ptrFromInt(class_sym.reserved));
-    var qual_buf: [256]u8 = undefined;
-    const qualified_class_name = if (sym_pkg_ptr) |pkg| blk: {
-        const qn = std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, class_name }) catch return error.InvalidArgument;
-        break :blk qn;
-    } else class_name;
-
-    const slot_names = heap.class_metadata.get(qualified_class_name) orelse blk: {
-        const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
-        for (prefixes) |prefix| {
-            const try_name = std.fmt.bufPrint(&qual_buf, "{s}{s}", .{ prefix, class_name }) catch continue;
-            if (heap.class_metadata.get(try_name)) |names| break :blk names;
-        }
-        return error.InvalidArgument;
-    };
+    const slot_names = try lookupClassMetadata(heap, class_sym) orelse return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (std.mem.eql(u8, name, slot_name)) {
@@ -423,23 +414,7 @@ pub fn slotMakunbound(heap: *Heap, args: Value) !Value {
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
     const class_sym = class_name_val.toPtr(Symbol);
-    const class_name = class_sym.getName();
-
-    const sym_pkg_ptr = @as(?*heap_mod.Package, @ptrFromInt(class_sym.reserved));
-    var qual_buf: [256]u8 = undefined;
-    const qualified_class_name = if (sym_pkg_ptr) |pkg| blk: {
-        const qn = std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, class_name }) catch return error.InvalidArgument;
-        break :blk qn;
-    } else class_name;
-
-    const slot_names = heap.class_metadata.get(qualified_class_name) orelse blk: {
-        const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
-        for (prefixes) |prefix| {
-            const try_name = std.fmt.bufPrint(&qual_buf, "{s}{s}", .{ prefix, class_name }) catch continue;
-            if (heap.class_metadata.get(try_name)) |names| break :blk names;
-        }
-        return error.InvalidArgument;
-    };
+    const slot_names = try lookupClassMetadata(heap, class_sym) orelse return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (std.mem.eql(u8, name, slot_name)) {
