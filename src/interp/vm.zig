@@ -2653,6 +2653,10 @@ pub const Vm = struct {
 
                 // Get value to check
                 const val = try self.peek(0);
+                const val_kind = val.typeKind();
+                const is_list = val_kind == .nil or val_kind == .cons;
+                const is_atom = val_kind != .cons;
+                const is_non_nil = val_kind != .nil;
 
                 // Check if value matches any type in the list
                 var matched = false;
@@ -2660,43 +2664,32 @@ pub const Vm = struct {
                 while (current.isCons()) {
                     const cons = current.toPtr(Cons);
                     const type_sym = cons.car;
-                    // Compare by symbol identity, then check value type
-                    if (type_sym.eq(self.type_syms.fixnum) and val.isFixnum()) {
+                    const kind_match = switch (val_kind) {
+                        .fixnum => type_sym.eq(self.type_syms.fixnum),
+                        .cons => type_sym.eq(self.type_syms.cons),
+                        .symbol => type_sym.eq(self.type_syms.symbol),
+                        .string => type_sym.eq(self.type_syms.string),
+                        .vector => type_sym.eq(self.type_syms.vector),
+                        .closure => type_sym.eq(self.type_syms.closure),
+                        .keyword => type_sym.eq(self.type_syms.keyword),
+                        .nil => type_sym.eq(self.type_syms.nil),
+                        else => false,
+                    };
+                    if (kind_match) {
                         matched = true;
                         break;
-                    } else if (type_sym.eq(self.type_syms.cons) and val.isCons()) {
+                    }
+                    if (type_sym.eq(self.type_syms.list) and is_list) {
                         matched = true;
                         break;
-                    } else if (type_sym.eq(self.type_syms.symbol) and val.isSymbol()) {
+                    }
+                    if (type_sym.eq(self.type_syms.atom) and is_atom) {
                         matched = true;
                         break;
-                    } else if (type_sym.eq(self.type_syms.string) and val.isString()) {
+                    }
+                    if (type_sym.eq(self.type_syms.t) and is_non_nil) {
                         matched = true;
                         break;
-                    } else if (type_sym.eq(self.type_syms.vector) and val.isVector()) {
-                        matched = true;
-                        break;
-                    } else if (type_sym.eq(self.type_syms.closure) and val.isClosure()) {
-                        matched = true;
-                        break;
-                    } else if (type_sym.eq(self.type_syms.keyword) and val.isKeyword()) {
-                        matched = true;
-                        break;
-                    } else if (type_sym.eq(self.type_syms.nil) and val.isNil()) {
-                        matched = true;
-                        break;
-                    } else if (type_sym.eq(self.type_syms.list) and (val.isNil() or val.isCons())) {
-                        matched = true;
-                        break;
-                    } else if (type_sym.eq(self.type_syms.atom) and !val.isCons()) {
-                        matched = true;
-                        break;
-                    } else if (type_sym.eq(self.type_syms.t)) {
-                        // t matches everything except nil
-                        if (!val.isNil()) {
-                            matched = true;
-                            break;
-                        }
                     }
                     current = cons.cdr;
                 }
