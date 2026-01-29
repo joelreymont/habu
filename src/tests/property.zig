@@ -56,12 +56,6 @@ fn eval(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {
     return vm.run(chunk_val.toPtr(Chunk));
 }
 
-/// Format expression for evaluation
-fn fmt(comptime format: []const u8, args: anytype) []const u8 {
-    var buf: [1024]u8 = undefined;
-    return std.fmt.bufPrint(&buf, format, args) catch unreachable;
-}
-
 // ============================================================================
 // Arithmetic Properties
 // ============================================================================
@@ -80,8 +74,8 @@ test "property: addition is commutative" {
 
         var buf1: [64]u8 = undefined;
         var buf2: [64]u8 = undefined;
-        const expr1 = std.fmt.bufPrint(&buf1, "(+ {d} {d})", .{ a, b }) catch unreachable;
-        const expr2 = std.fmt.bufPrint(&buf2, "(+ {d} {d})", .{ b, a }) catch unreachable;
+        const expr1 = try std.fmt.bufPrint(&buf1, "(+ {d} {d})", .{ a, b });
+        const expr2 = try std.fmt.bufPrint(&buf2, "(+ {d} {d})", .{ b, a });
 
         const r1 = try eval(allocator, &heap, expr1);
         const r2 = try eval(allocator, &heap, expr2);
@@ -104,8 +98,8 @@ test "property: multiplication is commutative" {
 
         var buf1: [64]u8 = undefined;
         var buf2: [64]u8 = undefined;
-        const expr1 = std.fmt.bufPrint(&buf1, "(* {d} {d})", .{ a, b }) catch unreachable;
-        const expr2 = std.fmt.bufPrint(&buf2, "(* {d} {d})", .{ b, a }) catch unreachable;
+        const expr1 = try std.fmt.bufPrint(&buf1, "(* {d} {d})", .{ a, b });
+        const expr2 = try std.fmt.bufPrint(&buf2, "(* {d} {d})", .{ b, a });
 
         const r1 = try eval(allocator, &heap, expr1);
         const r2 = try eval(allocator, &heap, expr2);
@@ -126,7 +120,7 @@ test "property: addition identity" {
         const n = random.intRangeAtMost(i32, -10000, 10000);
 
         var buf: [64]u8 = undefined;
-        const expr = std.fmt.bufPrint(&buf, "(+ {d} 0)", .{n}) catch unreachable;
+        const expr = try std.fmt.bufPrint(&buf, "(+ {d} 0)", .{n});
 
         const result = try eval(allocator, &heap, expr);
         try testing.expectEqual(@as(i64, n), result.toFixnum());
@@ -145,7 +139,7 @@ test "property: multiplication identity" {
         const n = random.intRangeAtMost(i32, -10000, 10000);
 
         var buf: [64]u8 = undefined;
-        const expr = std.fmt.bufPrint(&buf, "(* {d} 1)", .{n}) catch unreachable;
+        const expr = try std.fmt.bufPrint(&buf, "(* {d} 1)", .{n});
 
         const result = try eval(allocator, &heap, expr);
         try testing.expectEqual(@as(i64, n), result.toFixnum());
@@ -165,7 +159,7 @@ test "property: subtraction is inverse of addition" {
         const b = random.intRangeAtMost(i32, -1000, 1000);
 
         var buf: [64]u8 = undefined;
-        const expr = std.fmt.bufPrint(&buf, "(- (+ {d} {d}) {d})", .{ a, b, b }) catch unreachable;
+        const expr = try std.fmt.bufPrint(&buf, "(- (+ {d} {d}) {d})", .{ a, b, b });
 
         const result = try eval(allocator, &heap, expr);
         try testing.expectEqual(@as(i64, a), result.toFixnum());
@@ -189,7 +183,7 @@ test "property: car of cons returns first element" {
         const b = random.intRangeAtMost(i32, -10000, 10000);
 
         var buf: [64]u8 = undefined;
-        const expr = std.fmt.bufPrint(&buf, "(car (cons {d} {d}))", .{ a, b }) catch unreachable;
+        const expr = try std.fmt.bufPrint(&buf, "(car (cons {d} {d}))", .{ a, b });
 
         const result = try eval(allocator, &heap, expr);
         try testing.expectEqual(@as(i64, a), result.toFixnum());
@@ -209,7 +203,7 @@ test "property: cdr of cons returns second element" {
         const b = random.intRangeAtMost(i32, -10000, 10000);
 
         var buf: [64]u8 = undefined;
-        const expr = std.fmt.bufPrint(&buf, "(cdr (cons {d} {d}))", .{ a, b }) catch unreachable;
+        const expr = try std.fmt.bufPrint(&buf, "(cdr (cons {d} {d}))", .{ a, b });
 
         const result = try eval(allocator, &heap, expr);
         try testing.expectEqual(@as(i64, b), result.toFixnum());
@@ -233,7 +227,7 @@ test "property: length of list equals element count" {
 
     for (test_cases) |tc| {
         var buf: [128]u8 = undefined;
-        const expr = std.fmt.bufPrint(&buf, "(length {s})", .{tc.expr}) catch unreachable;
+        const expr = try std.fmt.bufPrint(&buf, "(length {s})", .{tc.expr});
 
         const result = try eval(allocator, &heap, expr);
         try testing.expectEqual(tc.len, result.toFixnum());
@@ -257,8 +251,8 @@ test "property: reverse of reverse is identity" {
         // Compare (car (reverse (reverse list))) with (car list)
         var buf1: [128]u8 = undefined;
         var buf2: [128]u8 = undefined;
-        const expr1 = std.fmt.bufPrint(&buf1, "(reverse (reverse {s}))", .{list}) catch unreachable;
-        const expr2 = std.fmt.bufPrint(&buf2, "{s}", .{list}) catch unreachable;
+        const expr1 = try std.fmt.bufPrint(&buf1, "(reverse (reverse {s}))", .{list});
+        const expr2 = try std.fmt.bufPrint(&buf2, "{s}", .{list});
 
         const r1 = try eval(allocator, &heap, expr1);
         const r2 = try eval(allocator, &heap, expr2);
@@ -266,8 +260,8 @@ test "property: reverse of reverse is identity" {
         // Both should have same length
         var len_buf1: [128]u8 = undefined;
         var len_buf2: [128]u8 = undefined;
-        const len_expr1 = std.fmt.bufPrint(&len_buf1, "(length (reverse (reverse {s})))", .{list}) catch unreachable;
-        const len_expr2 = std.fmt.bufPrint(&len_buf2, "(length {s})", .{list}) catch unreachable;
+        const len_expr1 = try std.fmt.bufPrint(&len_buf1, "(length (reverse (reverse {s})))", .{list});
+        const len_expr2 = try std.fmt.bufPrint(&len_buf2, "(length {s})", .{list});
 
         const len1 = try eval(allocator, &heap, len_expr1);
         const len2 = try eval(allocator, &heap, len_expr2);
@@ -277,8 +271,8 @@ test "property: reverse of reverse is identity" {
         if (!r1.isNil() and !r2.isNil()) {
             var car_buf1: [128]u8 = undefined;
             var car_buf2: [128]u8 = undefined;
-            const car_expr1 = std.fmt.bufPrint(&car_buf1, "(car (reverse (reverse {s})))", .{list}) catch unreachable;
-            const car_expr2 = std.fmt.bufPrint(&car_buf2, "(car {s})", .{list}) catch unreachable;
+            const car_expr1 = try std.fmt.bufPrint(&car_buf1, "(car (reverse (reverse {s})))", .{list});
+            const car_expr2 = try std.fmt.bufPrint(&car_buf2, "(car {s})", .{list});
 
             const car1 = try eval(allocator, &heap, car_expr1);
             const car2 = try eval(allocator, &heap, car_expr2);
@@ -300,10 +294,10 @@ test "property: append nil is identity" {
 
     for (test_lists) |list| {
         var buf: [128]u8 = undefined;
-        const expr = std.fmt.bufPrint(&buf, "(length (append {s} nil))", .{list}) catch unreachable;
+        const expr = try std.fmt.bufPrint(&buf, "(length (append {s} nil))", .{list});
 
         var len_buf: [128]u8 = undefined;
-        const len_expr = std.fmt.bufPrint(&len_buf, "(length {s})", .{list}) catch unreachable;
+        const len_expr = try std.fmt.bufPrint(&len_buf, "(length {s})", .{list});
 
         const r1 = try eval(allocator, &heap, expr);
         const r2 = try eval(allocator, &heap, len_expr);
@@ -337,7 +331,7 @@ test "property: type predicates are mutually exclusive for atoms" {
 
         for (predicates) |pred| {
             var buf: [128]u8 = undefined;
-            const expr = std.fmt.bufPrint(&buf, "({s} {s})", .{ pred, tc.val }) catch unreachable;
+            const expr = try std.fmt.bufPrint(&buf, "({s} {s})", .{ pred, tc.val });
 
             const result = try eval(allocator, &heap, expr);
             if (!result.isNil()) {
@@ -370,8 +364,8 @@ test "property: less-than is anti-symmetric" {
 
         var buf1: [64]u8 = undefined;
         var buf2: [64]u8 = undefined;
-        const expr1 = std.fmt.bufPrint(&buf1, "(< {d} {d})", .{ a, b }) catch unreachable;
-        const expr2 = std.fmt.bufPrint(&buf2, "(< {d} {d})", .{ b, a }) catch unreachable;
+        const expr1 = try std.fmt.bufPrint(&buf1, "(< {d} {d})", .{ a, b });
+        const expr2 = try std.fmt.bufPrint(&buf2, "(< {d} {d})", .{ b, a });
 
         const r1 = try eval(allocator, &heap, expr1);
         const r2 = try eval(allocator, &heap, expr2);
@@ -395,7 +389,7 @@ test "property: equality is reflexive" {
         const n = random.intRangeAtMost(i32, -10000, 10000);
 
         var buf: [64]u8 = undefined;
-        const expr = std.fmt.bufPrint(&buf, "(= {d} {d})", .{ n, n }) catch unreachable;
+        const expr = try std.fmt.bufPrint(&buf, "(= {d} {d})", .{ n, n });
 
         const result = try eval(allocator, &heap, expr);
         try testing.expect(!result.isNil());
@@ -419,7 +413,7 @@ test "property: lambda captures free variables" {
 
         var buf: [256]u8 = undefined;
         // Create adder using funcall
-        const expr = std.fmt.bufPrint(&buf, "(let ((n {d})) (+ 10 n))", .{n}) catch unreachable;
+        const expr = try std.fmt.bufPrint(&buf, "(let ((n {d})) (+ 10 n))", .{n});
 
         const result = try eval(allocator, &heap, expr);
         try testing.expectEqual(@as(i64, 10 + n), result.toFixnum());
@@ -445,7 +439,7 @@ test "property: vector literal length" {
 
     for (test_cases) |tc| {
         var buf: [128]u8 = undefined;
-        const expr = std.fmt.bufPrint(&buf, "(vector-length {s})", .{tc.expr}) catch unreachable;
+        const expr = try std.fmt.bufPrint(&buf, "(vector-length {s})", .{tc.expr});
 
         const result = try eval(allocator, &heap, expr);
         try testing.expectEqual(tc.len, result.toFixnum());
