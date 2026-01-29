@@ -7,6 +7,7 @@ const fs = std.fs;
 const Value = @import("../value.zig").Value;
 const objects = @import("../objects.zig");
 const Heap = @import("../heap.zig").Heap;
+const builtins_mod = @import("../builtins.zig");
 
 const IO_BUF = 4096;
 const LINE_BUF = 1024;
@@ -781,15 +782,13 @@ pub fn getPrintCase(heap: *Heap) !Value {
 }
 
 /// Set *print-case* value
-pub fn setPrintCase(_: *Heap, val: Value) !void {
+pub fn setPrintCase(builtins: *const builtins_mod.BuiltinSymbols, val: Value) !void {
     if (!val.isKeyword()) return error.TypeError;
-    const kw = val.toPtr(objects.Keyword);
-    const name = kw.getName();
-    if (std.mem.eql(u8, name, "UPCASE")) {
+    if (val.eq(builtins.kw_upcase)) {
         print_case = .upcase;
-    } else if (std.mem.eql(u8, name, "DOWNCASE")) {
+    } else if (val.eq(builtins.kw_downcase)) {
         print_case = .downcase;
-    } else if (std.mem.eql(u8, name, "CAPITALIZE")) {
+    } else if (val.eq(builtins.kw_capitalize)) {
         print_case = .capitalize;
     } else {
         return error.InvalidPrintCase;
@@ -1144,6 +1143,7 @@ test "*print-case* flag" {
 
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
+    const builtins = try builtins_mod.BuiltinSymbols.init(&heap);
 
     // Test getPrintCase
     const upcase_kw = try getPrintCase(&heap);
@@ -1151,15 +1151,13 @@ test "*print-case* flag" {
     try testing.expect(std.mem.eql(u8, upcase_kw.toPtr(objects.Keyword).getName(), "UPCASE"));
 
     // Test setPrintCase to downcase
-    const downcase_kw = try heap.internKeyword("DOWNCASE");
-    try setPrintCase(&heap, downcase_kw);
+    try setPrintCase(&builtins, builtins.kw_downcase);
     try testing.expect(print_case == .downcase);
     const downcase_result = try getPrintCase(&heap);
     try testing.expect(std.mem.eql(u8, downcase_result.toPtr(objects.Keyword).getName(), "DOWNCASE"));
 
     // Test capitalize
-    const capitalize_kw = try heap.internKeyword("CAPITALIZE");
-    try setPrintCase(&heap, capitalize_kw);
+    try setPrintCase(&builtins, builtins.kw_capitalize);
     try testing.expect(print_case == .capitalize);
 
     // Reset to default

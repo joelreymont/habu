@@ -544,7 +544,7 @@ pub const Vm = struct {
             }
             if (env.lookup("*print-case*")) |case_idx| {
                 if (idx == case_idx) {
-                    try io.setPrintCase(self.heap, val);
+                    try io.setPrintCase(&self.builtins, val);
                     return;
                 }
             }
