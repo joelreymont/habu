@@ -7416,11 +7416,14 @@ pub const Compiler = struct {
                 // Simple slot: `x`
                 const slot_name_raw = slot_spec.toPtr(Symbol).getName();
                 const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
+                var initargs = std.ArrayList(Value){};
+                const default_initarg = try heap.internKeyword(slot_name_raw);
+                try initargs.append(self.allocator, default_initarg);
                 try slot_specs.append(self.allocator, .{
                     .name = slot_name,
                     .sym = slot_spec,
                     .field_type = &types.t_any,
-                    .initargs = std.ArrayList(Value){},
+                    .initargs = initargs,
                     .readers = std.ArrayList(Value){},
                     .writers = std.ArrayList(Value){},
                 });
@@ -7484,6 +7487,7 @@ pub const Compiler = struct {
                         } else if (opt_key.eq(b.kw_initarg)) {
                             if (opt_cons.cdr.isCons()) {
                                 const initarg_cons = opt_cons.cdr.toPtr(Cons);
+                                if (!initarg_cons.car.isKeyword()) return error.InvalidSyntax;
                                 try initargs.append(self.allocator, initarg_cons.car);
                                 opts = initarg_cons.cdr;
                                 continue;
@@ -7520,6 +7524,11 @@ pub const Compiler = struct {
                     } else {
                         break;
                     }
+                }
+
+                if (initargs.items.len == 0) {
+                    const default_initarg = try heap.internKeyword(slot_name_raw);
+                    try initargs.append(self.allocator, default_initarg);
                 }
 
                 try slot_specs.append(self.allocator, .{
@@ -7682,21 +7691,23 @@ pub const Compiler = struct {
             const kw = kw_cons.car;
 
             if (!kw.isKeyword()) return error.InvalidSyntax;
-            const kw_name = kw.toPtr(runtime.Keyword).getName();
 
             // Get value (next element after keyword)
             if (!kw_cons.cdr.isCons()) return error.InvalidSyntax;
             const val_cons = kw_cons.cdr.toPtr(Cons);
             const value_ir = try self.compile(val_cons.car, env);
 
-            // Find matching slot and store value
-            // String comparison needed: slot spec names are raw strings from defclass parsing,
-            // not interned symbols
+            // Find matching slot by initarg keyword identity
+            var matched = false;
             for (slot_specs, 0..) |spec, i| {
-                if (std.mem.eql(u8, kw_name, spec.name)) {
-                    slot_values[i] = value_ir;
-                    break;
+                for (spec.initargs.items) |initarg| {
+                    if (kw.eq(initarg)) {
+                        slot_values[i] = value_ir;
+                        matched = true;
+                        break;
+                    }
                 }
+                if (matched) break;
             }
 
             // Move to next keyword-value pair

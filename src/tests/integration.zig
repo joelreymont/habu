@@ -2077,6 +2077,22 @@ test "slot-definition-initargs" {
     try testing.expect(cons.car.isKeyword());
 }
 
+test "make-instance initarg matches keyword" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass test-class () (my-slot))");
+    _ = try repl.eval("(defvar obj (make-instance 'test-class :my-slot 7))");
+    const result = try repl.eval("(slot-value obj 'my-slot)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 7), result.toFixnum());
+}
+
 test "slot-definition-readers and writers" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
