@@ -77,7 +77,7 @@ pub fn packageUsedByList(heap: *Heap, pkg: Value) !Value {
     var result = Value.nil;
     var it = heap.packages.valueIterator();
     while (it.next()) |zig_pkg| {
-        const name_val = heap.allocBaseString(zig_pkg.*.name) catch continue;
+        const name_val = try heap.allocBaseString(zig_pkg.*.name);
         if (heap.findLispPackage(name_val)) |pkg_val| {
             const p = pkg_val.toPtr(objects.Package);
             var use_curr = p.use_list;
@@ -130,7 +130,7 @@ pub fn findAllSymbols(heap: *Heap, name: Value) !Value {
     var result = Value.nil;
     var it = heap.packages.valueIterator();
     while (it.next()) |zig_pkg| {
-        const name_val = heap.allocBaseString(zig_pkg.*.name) catch continue;
+        const name_val = try heap.allocBaseString(zig_pkg.*.name);
         if (heap.findLispPackage(name_val)) |pkg_val| {
             const p = pkg_val.toPtr(objects.Package);
 
@@ -162,7 +162,7 @@ pub fn aproposSymbols(heap: *Heap, substring: Value) !Value {
     // Iterate over all registered Lisp packages
     var it = heap.packages.valueIterator();
     while (it.next()) |zig_pkg| {
-        const name_val = heap.allocBaseString(zig_pkg.*.name) catch continue;
+        const name_val = try heap.allocBaseString(zig_pkg.*.name);
         const pkg_opt = heap.findLispPackage(name_val);
         if (pkg_opt == null) continue;
         const pkg = pkg_opt.?.toPtr(objects.Package);
