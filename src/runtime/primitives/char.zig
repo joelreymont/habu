@@ -7,7 +7,7 @@ const Value = @import("../value.zig").Value;
 const Heap = @import("../heap.zig").Heap;
 const objects = @import("../objects.zig");
 
-pub const Error = error{ TypeMismatch, OutOfMemory, OutOfRange };
+pub const Error = error{ TypeMismatch, OutOfMemory, OutOfRange, Overflow };
 
 /// Get character code (ASCII/Unicode value) from character
 pub fn charCode(val: Value) Error!Value {

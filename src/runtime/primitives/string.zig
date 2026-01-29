@@ -42,7 +42,7 @@ pub fn stringBytes(val: Value) ?[]const u8 {
 }
 
 /// Get symbol name as string value
-pub fn symbolName(heap: *Heap, val: Value) error{OutOfMemory}!Value {
+pub fn symbolName(heap: *Heap, val: Value) error{OutOfMemory, Overflow}!Value {
     // Handle special symbols nil and t
     if (val.isNil()) {
         return try heap.allocBaseString("nil");
@@ -159,7 +159,7 @@ pub fn stringConcat(heap: *Heap, a: Value, b: Value) error{OutOfMemory, Overflow
 }
 
 /// Create substring
-pub fn substring(heap: *Heap, val: Value, start: usize, end: usize) error{OutOfMemory}!Value {
+pub fn substring(heap: *Heap, val: Value, start: usize, end: usize) error{OutOfMemory, Overflow}!Value {
     if (!val.isString()) return Value.nil;
 
     const str = val.toPtr(objects.String);
@@ -170,7 +170,7 @@ pub fn substring(heap: *Heap, val: Value, start: usize, end: usize) error{OutOfM
 }
 
 /// Convert string to uppercase
-pub fn stringUpcase(heap: *Heap, val: Value) error{OutOfMemory}!Value {
+pub fn stringUpcase(heap: *Heap, val: Value) error{OutOfMemory, Overflow}!Value {
     if (!val.isString()) return Value.nil;
 
     const str = val.toPtr(objects.String);
@@ -187,7 +187,7 @@ pub fn stringUpcase(heap: *Heap, val: Value) error{OutOfMemory}!Value {
 }
 
 /// Convert string to lowercase
-pub fn stringDowncase(heap: *Heap, val: Value) error{OutOfMemory}!Value {
+pub fn stringDowncase(heap: *Heap, val: Value) error{OutOfMemory, Overflow}!Value {
     if (!val.isString()) return Value.nil;
 
     const str = val.toPtr(objects.String);
@@ -204,7 +204,7 @@ pub fn stringDowncase(heap: *Heap, val: Value) error{OutOfMemory}!Value {
 }
 
 /// Get keyword name as string
-pub fn keywordName(heap: *Heap, val: Value) error{OutOfMemory}!Value {
+pub fn keywordName(heap: *Heap, val: Value) error{OutOfMemory, Overflow}!Value {
     if (!val.isKeyword()) return Value.nil;
     const kw = val.toPtr(objects.Keyword);
     const name_bytes = kw.getName();
@@ -224,7 +224,7 @@ pub fn keywordp(val: Value) bool {
 }
 
 /// Create string of given size filled with character
-pub fn makeString(heap: *Heap, size: usize, char: u8) error{OutOfMemory}!Value {
+pub fn makeString(heap: *Heap, size: usize, char: u8) error{OutOfMemory, Overflow}!Value {
     const str_val = try heap.allocStringUninitialized(size);
     const str = str_val.toPtr(objects.String);
     @memset(str.data[0..size], char);

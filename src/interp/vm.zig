@@ -438,10 +438,13 @@ pub const Vm = struct {
     }
 
     /// Allocate a string, running GC if needed
-    pub fn allocString(self: *Vm, data: []const u8) error{OutOfMemory}!Value {
-        return self.heap.allocBaseString(data) catch {
-            _ = try self.collectGarbage();
-            return try self.heap.allocBaseString(data);
+    pub fn allocString(self: *Vm, data: []const u8) error{OutOfMemory, Overflow}!Value {
+        return self.heap.allocBaseString(data) catch |err| switch (err) {
+            error.OutOfMemory => {
+                _ = try self.collectGarbage();
+                return try self.heap.allocBaseString(data);
+            },
+            error.Overflow => return error.Overflow,
         };
     }
 

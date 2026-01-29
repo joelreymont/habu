@@ -763,9 +763,9 @@ pub const Heap = struct {
     }
 
     /// Allocate a string (copies the bytes)
-    pub fn allocBaseString(self: *Heap, bytes: []const u8) error{OutOfMemory}!Value {
+    pub fn allocBaseString(self: *Heap, bytes: []const u8) error{OutOfMemory, Overflow}!Value {
         const aligned_len = std.mem.alignForward(usize, bytes.len, 8);
-        const total_size = std.math.add(usize, @sizeOf(objects.String), aligned_len) catch return error.OutOfMemory;
+        const total_size = try std.math.add(usize, @sizeOf(objects.String), aligned_len);
 
         const ptr = try self.allocRaw(total_size);
         const str: *objects.String = @ptrCast(@alignCast(ptr));
@@ -1761,6 +1761,18 @@ test "heap alloc string" {
 
     const ptr = str.toPtr(objects.String);
     try testing.expectEqualStrings("hello", ptr.bytes());
+}
+
+test "heap alloc string oom" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const big = try testing.allocator.alloc(u8, heap.space_size);
+    defer testing.allocator.free(big);
+
+    try testing.expectError(error.OutOfMemory, heap.allocBaseString(big));
 }
 
 test "heap alloc vector" {
