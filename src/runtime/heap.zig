@@ -67,15 +67,41 @@ pub const Package = struct {
     auto_export: bool,
 
     pub fn init(allocator: std.mem.Allocator, name: []const u8) !*Package {
-        const pkg = try allocator.create(Package);
+        const Stage = enum { none, name, pkg, ready };
+        var stage: Stage = .none;
+        var pkg: *Package = undefined;
+        var name_copy: []u8 = undefined;
+
+        defer switch (stage) {
+            .none => {},
+            .name => allocator.free(name_copy),
+            .pkg => {
+                allocator.destroy(pkg);
+                allocator.free(name_copy);
+            },
+            .ready => pkg.deinit(),
+        };
+
+        name_copy = try allocator.dupe(u8, name);
+        stage = .name;
+
+        pkg = try allocator.create(Package);
+        stage = .pkg;
+
         pkg.* = .{
-            .name = try allocator.dupe(u8, name),
+            .name = name_copy,
             .symbols = SymbolTable.init(allocator),
             .use_list = std.ArrayList(*Package){},
             .exports = .{},
             .allocator = allocator,
             .auto_export = false,
         };
+        stage = .ready;
+
+        try pkg.symbols.put("T", Value.t);
+        try pkg.symbols.put("NIL", Value.nil);
+
+        stage = .none;
         return pkg;
     }
 
@@ -119,8 +145,6 @@ pub const Package = struct {
     pub fn findAccessible(self: *Package, name: []const u8) ?Value {
         var upper_buf: [256]u8 = undefined;
         const upper_name = upperName(name, &upper_buf);
-        if (std.mem.eql(u8, upper_name, "T")) return Value.t;
-        if (std.mem.eql(u8, upper_name, "NIL")) return Value.nil;
         return self.findAccessibleUpper(upper_name);
     }
 
@@ -128,10 +152,6 @@ pub const Package = struct {
         // Upcase name per CL spec
         var upper_buf: [256]u8 = undefined;
         const upper_name = upperName(name, &upper_buf);
-
-        // Magic symbols: T and NIL
-        if (std.mem.eql(u8, upper_name, "T")) return Value.t;
-        if (std.mem.eql(u8, upper_name, "NIL")) return Value.nil;
 
         if (self.findAccessibleUpper(upper_name)) |existing| {
             return existing;
@@ -193,6 +213,8 @@ pub const Heap = struct {
     keywords: SymbolTable,
     /// Package registry (Zig packages for symbol interning)
     packages: std.StringHashMapUnmanaged(*Package),
+    /// Package nicknames (alias -> package)
+    package_aliases: std.StringHashMapUnmanaged(*Package),
     /// Current package for symbol interning
     current_package: ?*Package,
     /// The COMMON-LISP package (primitives)
@@ -268,6 +290,7 @@ pub const Heap = struct {
             .symbols = SymbolTable.init(allocator),
             .keywords = SymbolTable.init(allocator),
             .packages = .{},
+            .package_aliases = .{},
             .current_package = null,
             .cl_package = null,
             .cl_user_package = null,
@@ -284,6 +307,9 @@ pub const Heap = struct {
             .dispatch_readtable = .{},
             .stream_list = std.ArrayList(*objects.Stream){},
         };
+
+        try heap.symbols.put("T", Value.t);
+        try heap.symbols.put("NIL", Value.nil);
 
         // Create Lisp package registry
         heap.lisp_packages = try heap.allocHashTable(16, .eql);
@@ -318,6 +344,9 @@ pub const Heap = struct {
         const cl_key = try allocator.dupe(u8, "COMMON-LISP");
         errdefer allocator.free(cl_key);
         try heap.packages.put(allocator, cl_key, heap.cl_package.?);
+        const cl_alias_key = try allocator.dupe(u8, "CL");
+        errdefer allocator.free(cl_alias_key);
+        try heap.package_aliases.put(allocator, cl_alias_key, heap.cl_package.?);
         // Create CL-USER package (uses CL)
         heap.cl_user_package = try Package.init(allocator, "CL-USER");
         try heap.cl_user_package.?.usePackage(heap.cl_package.?);
@@ -346,6 +375,11 @@ pub const Heap = struct {
             self.backing_allocator.free(entry.key_ptr.*);
         }
         self.packages.deinit(self.backing_allocator);
+        var alias_iter = self.package_aliases.iterator();
+        while (alias_iter.next()) |entry| {
+            self.backing_allocator.free(entry.key_ptr.*);
+        }
+        self.package_aliases.deinit(self.backing_allocator);
         // Free class_metadata keys and slot name arrays
         var class_iter = self.class_metadata.iterator();
         while (class_iter.next()) |entry| {
@@ -1268,10 +1302,6 @@ pub const Heap = struct {
             break :blk upper_buf[0..name.len];
         } else name;
 
-        // Magic symbols: T and NIL
-        if (std.mem.eql(u8, upper_name, "T")) return Value.t;
-        if (std.mem.eql(u8, upper_name, "NIL")) return Value.nil;
-
         // Use current package if available
         if (self.current_package) |pkg| {
             return pkg.intern(self, upper_name);
@@ -1296,20 +1326,16 @@ pub const Heap = struct {
 
     /// Find a package by name
     pub fn findPackage(self: *Heap, name: []const u8) ?*Package {
-        if (self.cl_package) |pkg| {
-            if (std.mem.eql(u8, name, "CL")) return pkg;
+        if (self.packages.get(name)) |pkg| {
+            return pkg;
         }
-        return self.packages.get(name);
+        return self.package_aliases.get(name);
     }
 
     /// Create or find a package
     pub fn findOrCreatePackage(self: *Heap, name: []const u8) error{OutOfMemory}!*Package {
-        if (self.cl_package) |pkg| {
-            if (std.mem.eql(u8, name, "CL")) return pkg;
-        }
-        if (self.packages.get(name)) |existing| {
-            return existing;
-        }
+        if (self.packages.get(name)) |existing| return existing;
+        if (self.package_aliases.get(name)) |alias| return alias;
         const pkg = try Package.init(self.backing_allocator, name);
         errdefer pkg.deinit();
         const key = try self.backing_allocator.dupe(u8, name);
@@ -1732,6 +1758,24 @@ test "heap findPackage handles CL alias" {
     const pkg = heap.findPackage("CL");
     try testing.expect(pkg != null);
     try testing.expect(pkg.? == heap.cl_package.?);
+}
+
+test "heap intern handles t and nil in packages" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const t_sym = try heap.intern("t");
+    const nil_sym = try heap.intern("nil");
+    try testing.expectEqual(@as(u64, Value.t.raw), t_sym.raw);
+    try testing.expectEqual(@as(u64, Value.nil.raw), nil_sym.raw);
+
+    const pkg = try heap.findOrCreatePackage("FOO");
+    const t_pkg = try pkg.intern(&heap, "t");
+    const nil_pkg = try pkg.intern(&heap, "nil");
+    try testing.expectEqual(@as(u64, Value.t.raw), t_pkg.raw);
+    try testing.expectEqual(@as(u64, Value.nil.raw), nil_pkg.raw);
 }
 
 test "heap alloc cons" {
