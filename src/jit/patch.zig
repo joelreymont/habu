@@ -77,7 +77,7 @@ pub fn patchStencil(
     const start = buffer.pos;
 
     // Copy stencil code
-    const dest = buffer.reserve(stencil.code.len) catch return error.OutOfMemory;
+    const dest = try buffer.reserve(stencil.code.len);
     @memcpy(dest, stencil.code);
 
     // Apply patches
