@@ -19,6 +19,11 @@ pub const Error = error{
     UnterminatedList,
     InvalidNumber,
     InvalidCharacter,
+    Utf8InvalidStartByte,
+    Utf8ExpectedContinuation,
+    Utf8OverlongEncoding,
+    Utf8EncodesSurrogateHalf,
+    Utf8CodepointTooLarge,
     VectorTooLarge,
     InvalidStruct,
     TooManySlots,
@@ -523,6 +528,7 @@ pub const Parser = struct {
                     has_unicode = true;
                     // \uXXXX or \UXXXXXXXX
                     const hex_digits = if (next == 'u') @as(usize, 4) else @as(usize, 8);
+                    if (i + 2 + hex_digits > text.len) return error.UnexpectedToken;
                     i += 2 + hex_digits;
                 } else {
                     i += 2;
@@ -530,7 +536,8 @@ pub const Parser = struct {
                 out_len += 1;
             } else {
                 // Decode UTF-8 to count codepoints
-                const cp_len = std.unicode.utf8ByteSequenceLength(text[i]) catch 1;
+                const cp_len = try std.unicode.utf8ByteSequenceLength(text[i]);
+                if (i + cp_len > text.len) return error.UnexpectedToken;
                 i += cp_len;
                 out_len += 1;
             }
@@ -556,17 +563,17 @@ pub const Parser = struct {
                     '0' => 0,
                     'u' => blk: {
                         // \uXXXX - 4 hex digits
-                        if (i + 6 > text.len) break :blk @as(u32, 'u');
+                        if (i + 6 > text.len) return error.UnexpectedToken;
                         const hex = text[i + 2 .. i + 6];
-                        const cp = std.fmt.parseInt(u32, hex, 16) catch break :blk @as(u32, 'u');
+                        const cp = try std.fmt.parseInt(u32, hex, 16);
                         i += 4; // Extra advance (base +2 below)
                         break :blk cp;
                     },
                     'U' => blk: {
                         // \UXXXXXXXX - 8 hex digits
-                        if (i + 10 > text.len) break :blk @as(u32, 'U');
+                        if (i + 10 > text.len) return error.UnexpectedToken;
                         const hex = text[i + 2 .. i + 10];
-                        const cp = std.fmt.parseInt(u32, hex, 16) catch break :blk @as(u32, 'U');
+                        const cp = try std.fmt.parseInt(u32, hex, 16);
                         i += 8; // Extra advance
                         break :blk cp;
                     },
@@ -576,13 +583,9 @@ pub const Parser = struct {
                 i += 2;
             } else {
                 // Decode UTF-8 codepoint
-                const cp_len = std.unicode.utf8ByteSequenceLength(text[i]) catch {
-                    buffer[out_idx] = @as(u32, text[i]);
-                    out_idx += 1;
-                    i += 1;
-                    continue;
-                };
-                const cp = std.unicode.utf8Decode(text[i .. i + cp_len]) catch @as(u32, text[i]);
+                const cp_len = try std.unicode.utf8ByteSequenceLength(text[i]);
+                if (i + cp_len > text.len) return error.UnexpectedToken;
+                const cp = try std.unicode.utf8Decode(text[i .. i + cp_len]);
                 buffer[out_idx] = cp;
                 out_idx += 1;
                 i += cp_len;
