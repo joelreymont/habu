@@ -614,7 +614,7 @@ test "listof contract check" {
     const listof_any = try compiler.compile(&types.t_list_any);
 
     // Create a heap for allocating cons cells
-    var heap = Heap.init(testing.allocator, .{ .total_size = 1024 * 64 }) catch unreachable;
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 64 });
     defer heap.deinit();
 
     // Test: empty list (nil) passes
@@ -624,19 +624,19 @@ test "listof contract check" {
     };
 
     // Nil is valid for listof
-    const nil_result = check(Value.nil.raw, listof_any, blame);
-    try testing.expectEqual(Value.nil.raw, nil_result catch unreachable);
+    const nil_result = try check(Value.nil.raw, listof_any, blame);
+    try testing.expectEqual(Value.nil.raw, nil_result);
 
     // Build a list: (1 2 3)
     const fixnum3 = Value.makeFixnum(3);
-    const pair3 = heap.allocCons(fixnum3, Value.nil) catch unreachable;
+    const pair3 = try heap.allocCons(fixnum3, Value.nil);
     const fixnum2 = Value.makeFixnum(2);
-    const pair2 = heap.allocCons(fixnum2, pair3) catch unreachable;
+    const pair2 = try heap.allocCons(fixnum2, pair3);
     const fixnum1 = Value.makeFixnum(1);
-    const pair1 = heap.allocCons(fixnum1, pair2) catch unreachable;
+    const pair1 = try heap.allocCons(fixnum1, pair2);
 
     // For now just test that list traversal doesn't crash
     // (since t_list_any uses isAny which always passes)
-    const list_result = check(pair1.raw, listof_any, blame);
-    try testing.expectEqual(pair1.raw, list_result catch unreachable);
+    const list_result = try check(pair1.raw, listof_any, blame);
+    try testing.expectEqual(pair1.raw, list_result);
 }
