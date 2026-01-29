@@ -313,17 +313,17 @@ pub const Heap = struct {
         }
 
         // Create COMMON-LISP package first so metaclasses are interned in CL
-        heap.cl_package = Package.init(allocator, "COMMON-LISP") catch return error.OutOfMemory;
+        heap.cl_package = try Package.init(allocator, "COMMON-LISP");
         heap.cl_package.?.auto_export = true; // All CL symbols are exported
         const cl_key = try allocator.dupe(u8, "COMMON-LISP");
         errdefer allocator.free(cl_key);
-        heap.packages.put(allocator, cl_key, heap.cl_package.?) catch return error.OutOfMemory;
+        try heap.packages.put(allocator, cl_key, heap.cl_package.?);
         // Create CL-USER package (uses CL)
-        heap.cl_user_package = Package.init(allocator, "CL-USER") catch return error.OutOfMemory;
-        heap.cl_user_package.?.usePackage(heap.cl_package.?) catch return error.OutOfMemory;
+        heap.cl_user_package = try Package.init(allocator, "CL-USER");
+        try heap.cl_user_package.?.usePackage(heap.cl_package.?);
         const cl_user_key = try allocator.dupe(u8, "CL-USER");
         errdefer allocator.free(cl_user_key);
-        heap.packages.put(allocator, cl_user_key, heap.cl_user_package.?) catch return error.OutOfMemory;
+        try heap.packages.put(allocator, cl_user_key, heap.cl_user_package.?);
 
         // Start in CL package so primitives get interned there
         // VM will switch to CL-USER after primitive registration
@@ -1410,18 +1410,18 @@ pub const Heap = struct {
         defer all_roots.deinit(self.backing_allocator);
 
         // Add external roots
-        all_roots.appendSlice(self.backing_allocator, external_roots) catch return error.OutOfMemory;
+        try all_roots.appendSlice(self.backing_allocator, external_roots);
 
         // Add symbol table values (the Values need to be updated after GC)
         var sym_it = self.symbols.map.valueIterator();
         while (sym_it.next()) |v| {
-            all_roots.append(self.backing_allocator, v.*) catch return error.OutOfMemory;
+            try all_roots.append(self.backing_allocator, v.*);
         }
 
         // Add keyword table values
         var kw_it = self.keywords.map.valueIterator();
         while (kw_it.next()) |v| {
-            all_roots.append(self.backing_allocator, v.*) catch return error.OutOfMemory;
+            try all_roots.append(self.backing_allocator, v.*);
         }
 
         // Add package symbol table values
@@ -1429,14 +1429,14 @@ pub const Heap = struct {
         while (pkg_it.next()) |pkg| {
             var pkg_sym_it = pkg.*.symbols.map.valueIterator();
             while (pkg_sym_it.next()) |v| {
-                all_roots.append(self.backing_allocator, v.*) catch return error.OutOfMemory;
+                try all_roots.append(self.backing_allocator, v.*);
             }
         }
 
         // Add readtable function values
         var rt_it = self.readtable.valueIterator();
         while (rt_it.next()) |entry| {
-            all_roots.append(self.backing_allocator, entry.function) catch return error.OutOfMemory;
+            try all_roots.append(self.backing_allocator, entry.function);
         }
 
         // Add dispatch readtable function values
@@ -1444,33 +1444,33 @@ pub const Heap = struct {
         while (drt_it.next()) |sub_table| {
             var sub_it = sub_table.valueIterator();
             while (sub_it.next()) |fn_val| {
-                all_roots.append(self.backing_allocator, fn_val.*) catch return error.OutOfMemory;
+                try all_roots.append(self.backing_allocator, fn_val.*);
             }
         }
 
         // Add Lisp package registry
         if (self.lisp_packages.raw != Value.nil.raw) {
-            all_roots.append(self.backing_allocator, self.lisp_packages) catch return error.OutOfMemory;
+            try all_roots.append(self.backing_allocator, self.lisp_packages);
         }
         if (self.lisp_classes.raw != Value.nil.raw) {
-            all_roots.append(self.backing_allocator, self.lisp_classes) catch return error.OutOfMemory;
+            try all_roots.append(self.backing_allocator, self.lisp_classes);
         }
 
         // Add metaclass roots
         if (self.standard_class.raw != Value.nil.raw) {
-            all_roots.append(self.backing_allocator, self.standard_class) catch return error.OutOfMemory;
+            try all_roots.append(self.backing_allocator, self.standard_class);
         }
         if (self.built_in_class.raw != Value.nil.raw) {
-            all_roots.append(self.backing_allocator, self.built_in_class) catch return error.OutOfMemory;
+            try all_roots.append(self.backing_allocator, self.built_in_class);
         }
         if (self.structure_class.raw != Value.nil.raw) {
-            all_roots.append(self.backing_allocator, self.structure_class) catch return error.OutOfMemory;
+            try all_roots.append(self.backing_allocator, self.structure_class);
         }
 
         // Run GC
         var gc = GC.init(self.backing_allocator, self);
         defer gc.deinit();
-        _ = gc.collect(all_roots.items) catch return error.OutOfMemory;
+        _ = try gc.collect(all_roots.items);
 
         // Update symbol table with new locations
         const sym_count = self.symbols.map.count();
