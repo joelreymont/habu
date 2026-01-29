@@ -554,7 +554,7 @@ fn emitInst(e: *Emitter, inst: Inst, reg_map: ?regalloc.RegisterMap, runtime: ?R
             try e.emit(ARM64.mov(PHYS.x0, rs1));
             try e.emit(ARM64.mov(PHYS.x1, rs2));
             // Call runtime: heap.allocCons(car, cdr)
-            const rt = runtime orelse return error.MissingRuntimeSymbol;
+            const rt = if (runtime) |val| val else return error.MissingRuntimeSymbol;
             try e.emitCallAbs(rt.cons);
             // Move result from x0 to dest
             if (rd != PHYS.x0) {

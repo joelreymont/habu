@@ -185,7 +185,7 @@ pub const NativeRegistry = struct {
 
     /// Call a native function by name
     pub fn call(self: *NativeRegistry, name: []const u8, args: []const Value, heap: *Heap) anyerror!Value {
-        const func = self.get(name) orelse return FfiError.TypeMismatch;
+        const func = if (self.get(name)) |val| val else return FfiError.TypeMismatch;
         if (args.len != func.arity) return FfiError.InvalidArgCount;
         return func.func(args, heap);
     }

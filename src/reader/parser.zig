@@ -471,7 +471,7 @@ pub const Parser = struct {
         self.advance();
 
         // Split on '/'
-        const slash_pos = std.mem.indexOf(u8, text, "/") orelse return error.InvalidNumber;
+        const slash_pos = if (std.mem.indexOf(u8, text, "/")) |val| val else return error.InvalidNumber;
         const num_str = text[0..slash_pos];
         const den_str = text[slash_pos + 1 ..];
 

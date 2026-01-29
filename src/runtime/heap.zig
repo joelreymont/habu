@@ -1290,7 +1290,7 @@ pub const Heap = struct {
 
     /// Intern a symbol in a specific package by name
     pub fn internInPackage(self: *Heap, pkg_name: []const u8, sym_name: []const u8) !?Value {
-        const pkg = self.findPackage(pkg_name) orelse return null;
+        const pkg = if (self.findPackage(pkg_name)) |val| val else return null;
         return try pkg.intern(self, sym_name);
     }
 
