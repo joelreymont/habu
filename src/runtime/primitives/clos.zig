@@ -282,7 +282,7 @@ pub fn slotExistsP(heap: *Heap, args: Value) !Value {
     const cons1 = args.toPtr(Cons);
     const obj = cons1.car;
 
-    if (!obj.isVector()) return Value.t();
+    if (!obj.isVector()) return Value.t;
 
     if (!cons1.cdr.isCons()) return error.InvalidArgument;
     const cons2 = cons1.cdr.toPtr(Cons);
@@ -299,10 +299,10 @@ pub fn slotExistsP(heap: *Heap, args: Value) !Value {
     const slot_name = slot_name_val.toPtr(Symbol).getName();
 
     const vec = obj.toPtr(Vector);
-    if (vec.length == 0) return Value.nil();
+    if (vec.length == 0) return Value.nil;
 
     const class_name_val = vec.data[0];
-    if (!class_name_val.isSymbol()) return Value.nil();
+    if (!class_name_val.isSymbol()) return Value.nil;
     const class_sym = class_name_val.toPtr(Symbol);
     const class_name = class_sym.getName();
 
@@ -319,16 +319,16 @@ pub fn slotExistsP(heap: *Heap, args: Value) !Value {
             const try_name = std.fmt.bufPrint(&qual_buf, "{s}{s}", .{ prefix, class_name }) catch continue;
             if (heap.class_metadata.get(try_name)) |names| break :blk names;
         }
-        return Value.nil();
+        return Value.nil;
     };
 
     for (slot_names) |name| {
         if (std.mem.eql(u8, name, slot_name)) {
-            return Value.t();
+            return Value.t;
         }
     }
 
-    return Value.nil();
+    return Value.nil;
 }
 
 /// slot-boundp: (slot-boundp obj 'slot-name)
@@ -468,7 +468,7 @@ pub fn classp(heap: *Heap, args: Value) !Value {
     if (!args.isCons()) return error.InvalidArgument;
     const cons = args.toPtr(Cons);
     const obj = cons.car;
-    return if (obj.isClass()) Value.t() else Value.nil();
+    return if (obj.isClass()) Value.t else Value.nil;
 }
 
 /// find-class: (find-class name)
@@ -800,4 +800,23 @@ pub fn methodFunction(_: *Heap, args: Value) !Value {
     const method = method_val.toPtr(objects.Method);
 
     return method.function;
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "classp returns t for class and nil for non-class" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const class_args = try heap.allocCons(heap.standard_class, Value.nil);
+    const class_res = try classp(&heap, class_args);
+    try testing.expect(class_res.isT());
+
+    const non_class_args = try heap.allocCons(Value.makeFixnum(1), Value.nil);
+    const non_class_res = try classp(&heap, non_class_args);
+    try testing.expect(non_class_res.isNil());
 }
