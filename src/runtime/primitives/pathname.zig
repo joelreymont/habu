@@ -224,18 +224,17 @@ pub fn parseNamestring(allocator: std.mem.Allocator, heap: *Heap, str: Value) !V
     // Find version
     if (std.mem.lastIndexOf(u8, remainder, ";")) |ver_idx| {
         const ver_part = remainder[ver_idx + 1 ..];
-        if (std.mem.eql(u8, ver_part, "newest")) {
+        if (ver_part.len == 0) return error.InvalidArgument;
+        if (std.ascii.eqlIgnoreCase(ver_part, "newest")) {
             version = try heap.internKeyword("newest");
-        } else if (std.mem.eql(u8, ver_part, "unspecific")) {
+        } else if (std.ascii.eqlIgnoreCase(ver_part, "unspecific")) {
             version = try heap.internKeyword("unspecific");
+        } else if (std.mem.eql(u8, ver_part, "*") or std.ascii.eqlIgnoreCase(ver_part, "wild")) {
+            version = try heap.internKeyword("wild");
         } else {
-            const ver_num = std.fmt.parseInt(i64, ver_part, 10) catch 0;
+            const ver_num = std.fmt.parseInt(i64, ver_part, 10) catch return error.InvalidArgument;
             version = Value.makeFixnum(ver_num);
         }
-        // Continue parsing name.type before version
-        i = remainder.len - (remainder.len - ver_idx);
-    } else {
-        i = remainder.len;
     }
 
     const name_type_part = if (std.mem.lastIndexOf(u8, remainder, ";")) |v|
@@ -602,4 +601,39 @@ fn dirHasWildcard(dir: Value) bool {
     }
 
     return false;
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "parseNamestring version parsing" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const s_num = try heap.allocBaseString("foo.lisp;42");
+    const pn_num = try parseNamestring(testing.allocator, &heap, s_num);
+    const p_num = pn_num.toPtr(Pathname);
+    try testing.expect(p_num.version.isFixnum());
+    try testing.expectEqual(@as(i64, 42), p_num.version.toFixnum());
+
+    const s_newest = try heap.allocBaseString("foo.lisp;NEWEST");
+    const pn_newest = try parseNamestring(testing.allocator, &heap, s_newest);
+    const p_newest = pn_newest.toPtr(Pathname);
+    try testing.expect(p_newest.version.isKeyword());
+    try testing.expect(std.mem.eql(u8, p_newest.version.toPtr(objects.Keyword).getName(), "NEWEST"));
+
+    const s_wild = try heap.allocBaseString("foo.lisp;*");
+    const pn_wild = try parseNamestring(testing.allocator, &heap, s_wild);
+    const p_wild = pn_wild.toPtr(Pathname);
+    try testing.expect(p_wild.version.isKeyword());
+    try testing.expect(std.mem.eql(u8, p_wild.version.toPtr(objects.Keyword).getName(), "WILD"));
+
+    const s_bad = try heap.allocBaseString("foo.lisp;abc");
+    try testing.expectError(error.InvalidArgument, parseNamestring(testing.allocator, &heap, s_bad));
+
+    const s_empty = try heap.allocBaseString("foo.lisp;");
+    try testing.expectError(error.InvalidArgument, parseNamestring(testing.allocator, &heap, s_empty));
 }
