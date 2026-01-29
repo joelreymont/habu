@@ -7088,7 +7088,7 @@ test "vm push and return" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
@@ -7119,7 +7119,7 @@ test "vm arithmetic" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
@@ -7154,7 +7154,7 @@ test "vm cons car cdr" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
@@ -7188,7 +7188,7 @@ test "vm conditional" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
@@ -7223,7 +7223,7 @@ test "vm locals" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
@@ -7256,7 +7256,7 @@ test "vm hash table" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
@@ -7297,7 +7297,7 @@ test "vm hash table count and remove" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
