@@ -7271,6 +7271,62 @@ pub const Compiler = struct {
         return result;
     }
 
+    const QualName = struct {
+        slice: []const u8,
+        owned: bool,
+    };
+
+    fn makeQualifiedName(self: *Compiler, buf: *[256]u8, prefix: []const u8, name: []const u8) error{ OutOfMemory, Overflow }!QualName {
+        const total_len = try std.math.add(usize, prefix.len, name.len);
+        if (total_len <= buf.len) {
+            @memcpy(buf[0..prefix.len], prefix);
+            @memcpy(buf[prefix.len..][0..name.len], name);
+            return .{ .slice = buf[0..total_len], .owned = false };
+        }
+        const slice = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ prefix, name });
+        return .{ .slice = slice, .owned = true };
+    }
+
+    fn makePkgQualifiedName(self: *Compiler, buf: *[256]u8, pkg: []const u8, name: []const u8) error{ OutOfMemory, Overflow }!QualName {
+        const pkg_len = try std.math.add(usize, pkg.len, 1);
+        const total_len = try std.math.add(usize, pkg_len, name.len);
+        if (total_len <= buf.len) {
+            @memcpy(buf[0..pkg.len], pkg);
+            buf[pkg.len] = ':';
+            @memcpy(buf[pkg_len..][0..name.len], name);
+            return .{ .slice = buf[0..total_len], .owned = false };
+        }
+        const slice = try std.fmt.allocPrint(self.allocator, "{s}:{s}", .{ pkg, name });
+        return .{ .slice = slice, .owned = true };
+    }
+
+    fn lookupClassMetadataByName(self: *Compiler, class_name: []const u8) error{ OutOfMemory, Overflow }!?[]const SlotSpec {
+        if (self.class_metadata.get(class_name)) |specs| return specs;
+
+        var qual_buf: [256]u8 = undefined;
+        const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
+        for (prefixes) |prefix| {
+            const qualified = try self.makeQualifiedName(&qual_buf, prefix, class_name);
+            defer if (qualified.owned) self.allocator.free(qualified.slice);
+            if (self.class_metadata.get(qualified.slice)) |specs| return specs;
+        }
+
+        return null;
+    }
+
+    fn lookupClassMetadataBySymbol(self: *Compiler, class_sym: *const Symbol) error{ OutOfMemory, Overflow }!?[]const SlotSpec {
+        const class_name = class_sym.getName();
+        const sym_pkg_ptr = @as(?*runtime.heap.Package, @ptrFromInt(class_sym.reserved));
+        if (sym_pkg_ptr) |pkg| {
+            var qual_buf: [256]u8 = undefined;
+            const qualified = try self.makePkgQualifiedName(&qual_buf, pkg.name, class_name);
+            defer if (qualified.owned) self.allocator.free(qualified.slice);
+            if (self.class_metadata.get(qualified.slice)) |specs| return specs;
+        }
+
+        return try self.lookupClassMetadataByName(class_name);
+    }
+
     // ========================================================================
     // CLOS Support: defclass, make-instance, slot-value
     // ========================================================================
@@ -7317,17 +7373,7 @@ pub const Compiler = struct {
                 if (super_name_val.isSymbol()) {
                     const super_name = super_name_val.toPtr(Symbol).getName();
 
-                    // Look up superclass metadata - try unqualified first, then with package prefixes
-                    const parent_specs = self.class_metadata.get(super_name) orelse blk: {
-                        // Try with common package prefixes
-                        var qual_buf: [256]u8 = undefined;
-                        const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
-                        for (prefixes) |prefix| {
-                            const try_name = std.fmt.bufPrint(&qual_buf, "{s}{s}", .{ prefix, super_name }) catch continue;
-                            if (self.class_metadata.get(try_name)) |specs| break :blk specs;
-                        }
-                        break :blk null;
-                    };
+                    const parent_specs = try self.lookupClassMetadataByName(super_name);
 
                     if (parent_specs) |specs| {
                         // Inherit slots from parent
@@ -7639,24 +7685,7 @@ pub const Compiler = struct {
         const class_sym = class_name_expr.toPtr(Symbol);
         const class_name = class_sym.getName();
 
-        // Get package from symbol
-        const sym_pkg_ptr = @as(?*runtime.heap.Package, @ptrFromInt(class_sym.reserved));
-        var class_qual_buf: [256]u8 = undefined;
-        const qualified_class_name = if (sym_pkg_ptr) |pkg| blk: {
-            const qn = try std.fmt.bufPrint(&class_qual_buf, "{s}:{s}", .{ pkg.name, class_name });
-            break :blk qn;
-        } else class_name;
-
-        // Look up class metadata to get slot order
-        // Try qualified name first, then with common package prefixes as fallback
-        const slot_specs = self.class_metadata.get(qualified_class_name) orelse blk: {
-            const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
-            for (prefixes) |prefix| {
-                const try_name = std.fmt.bufPrint(&class_qual_buf, "{s}{s}", .{ prefix, class_name }) catch continue;
-                if (self.class_metadata.get(try_name)) |specs| break :blk specs;
-            }
-            return error.InvalidSyntax;
-        };
+        const slot_specs = try self.lookupClassMetadataBySymbol(class_sym) orelse return error.InvalidSyntax;
 
         // Parse keyword arguments and build positional args array
         const slot_values = try self.allocator.alloc(?*Ir, slot_specs.len);
