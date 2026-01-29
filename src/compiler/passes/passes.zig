@@ -78,9 +78,7 @@ pub fn runFullPipeline(
     // p02: Desugar
     const vm_ptr = vm orelse return error.InvalidInput;
     var desugarer = desugar.Desugarer.init(allocator, heap, &vm_ptr.builtins);
-    const desugared = desugarer.desugar(expanded) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-    };
+    const desugared = try desugarer.desugar(expanded);
 
     // p03-p05: Frontend (lift→resolve→capture)
     const ir = try runFrontendPipeline(allocator, heap, globals, desugared);

@@ -56,12 +56,12 @@ pub const Desugarer = struct {
     /// Generate a unique symbol name for temporary bindings
     fn gensym(self: *Desugarer) Error!Value {
         var buf: [32]u8 = undefined;
-        const name = std.fmt.bufPrint(&buf, "#g{d}", .{self.gensym_counter}) catch return error.OutOfMemory;
+        const name = try std.fmt.bufPrint(&buf, "#g{d}", .{self.gensym_counter});
         self.gensym_counter += 1;
         return self.heap.intern(name);
     }
 
-    pub const Error = error{OutOfMemory};
+    pub const Error = error{OutOfMemory, NoSpaceLeft};
 
     /// Main entry point - desugar an expression recursively
     pub fn desugar(self: *Desugarer, expr: Value) Error!Value {
@@ -487,6 +487,52 @@ test "desugar - or single" {
     const single_or = try heap.allocCons(or_sym, try heap.allocCons(x, Value.nil));
     const result = try desugarer.desugar(single_or);
     try testing.expectEqual(x.raw, result.raw);
+}
+
+test "desugar - or gensym" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const Vm = @import("../../interp/vm.zig").Vm;
+    var vm = try Vm.init(testing.allocator, &heap);
+    var desugarer = Desugarer.init(testing.allocator, &heap, &vm.builtins);
+
+    const or_sym = try heap.intern("or");
+    const a = Value.makeFixnum(1);
+    const b = Value.makeFixnum(2);
+    const or_expr = try heap.allocCons(or_sym, try heap.allocCons(a, try heap.allocCons(b, Value.nil)));
+    const result = try desugarer.desugar(or_expr);
+
+    try testing.expect(result.isCons());
+    const result_cons = result.toPtr(Cons);
+    const let_sym = try heap.intern("let");
+    try testing.expectEqual(let_sym.raw, result_cons.car.raw);
+
+    const let_tail = result_cons.cdr.toPtr(Cons);
+    const bindings = let_tail.car.toPtr(Cons);
+    const binding = bindings.car.toPtr(Cons);
+    const temp_sym = binding.car;
+    try testing.expect(temp_sym.isSymbol());
+    try testing.expectEqualStrings("#G0", temp_sym.toPtr(Symbol).getName());
+
+    const body_list = let_tail.cdr.toPtr(Cons);
+    const if_expr = body_list.car;
+    const if_cons = if_expr.toPtr(Cons);
+    const if_sym = try heap.intern("if");
+    try testing.expectEqual(if_sym.raw, if_cons.car.raw);
+
+    const cond_cons = if_cons.cdr.toPtr(Cons);
+    const cond = cond_cons.car;
+    const then_cons = cond_cons.cdr.toPtr(Cons);
+    const then_val = then_cons.car;
+    const else_cons = then_cons.cdr.toPtr(Cons);
+    const else_val = else_cons.car;
+
+    try testing.expectEqual(temp_sym.raw, cond.raw);
+    try testing.expectEqual(temp_sym.raw, then_val.raw);
+    try testing.expectEqual(b.raw, else_val.raw);
 }
 
 test "desugar - defun" {
