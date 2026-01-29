@@ -409,7 +409,7 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
             const s32 = val.toPtr(objects.String32);
             var utf8_buf: [4]u8 = undefined;
             for (s32.codepoints()) |cp| {
-                const len = std.unicode.utf8Encode(@intCast(cp), &utf8_buf) catch continue;
+                const len = try std.unicode.utf8Encode(@intCast(cp), &utf8_buf);
                 try w.writeAll(utf8_buf[0..len]);
             }
         },
@@ -599,7 +599,7 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
             const s32 = val.toPtr(objects.String32);
             var utf8_buf: [4]u8 = undefined;
             for (s32.codepoints()) |cp| {
-                const len = std.unicode.utf8Encode(@intCast(cp), &utf8_buf) catch continue;
+                const len = try std.unicode.utf8Encode(@intCast(cp), &utf8_buf);
                 try w.writeAll(utf8_buf[0..len]);
             }
             try w.writeByte('"');
