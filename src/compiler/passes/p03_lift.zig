@@ -126,54 +126,15 @@ pub const Lifter = struct {
 
     /// Lift an S-expression to IR
     pub fn lift(self: *Lifter, expr: Value) Error!*Ir {
-        // Nil
-        if (expr.isNil()) {
-            return self.builder.lit(Value.nil) catch return error.OutOfMemory;
-        }
-
-        // Fixnum
-        if (expr.isFixnum()) {
-            return self.builder.lit(expr) catch return error.OutOfMemory;
-        }
-
-        // Float
-        if (expr.isFloat()) {
-            return self.builder.lit(expr) catch return error.OutOfMemory;
-        }
-
-        // Character
-        if (expr.isCharacter()) {
-            return self.builder.lit(expr) catch return error.OutOfMemory;
-        }
-
-        // T
-        if (expr.eq(Value.t)) {
-            return self.builder.lit(Value.t) catch return error.OutOfMemory;
-        }
-
-        // String
-        if (expr.isString()) {
-            return self.builder.lit(expr) catch return error.OutOfMemory;
-        }
-
-        // Keyword
-        if (expr.isKeyword()) {
-            return self.builder.lit(expr) catch return error.OutOfMemory;
-        }
-
-        // Symbol - create unresolved variable reference
-        if (expr.isSymbol()) {
-            const name = expr.toPtr(Symbol).getName();
-            return self.builder.variable(name, UNRESOLVED, UNRESOLVED) catch
-                return error.OutOfMemory;
-        }
-
-        // List - dispatch on head
-        if (expr.isCons()) {
-            return self.liftList(expr);
-        }
-
-        return error.InvalidSyntax;
+        return switch (expr.typeKind()) {
+            .symbol => blk: {
+                const name = expr.toPtr(Symbol).getName();
+                break :blk try self.builder.variable(name, UNRESOLVED, UNRESOLVED);
+            },
+            .cons => self.liftList(expr),
+            .unbound => error.InvalidSyntax,
+            else => try self.builder.lit(expr),
+        };
     }
 
     /// Lift a list expression
@@ -357,8 +318,7 @@ pub const Lifter = struct {
         const cons2 = cons1.cdr.toPtr(Cons);
         const val_ir = try self.lift(cons2.car);
 
-        return self.builder.set(name, UNRESOLVED, UNRESOLVED, val_ir) catch
-            return error.OutOfMemory;
+        return try self.builder.set(name, UNRESOLVED, UNRESOLVED, val_ir);
     }
 
     /// Lift (progn expr...)
@@ -369,7 +329,7 @@ pub const Lifter = struct {
     /// Lift body expressions into progn
     fn liftBody(self: *Lifter, exprs: Value) Error!*Ir {
         if (exprs.isNil()) {
-            return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+            return try self.builder.lit(Value.nil);
         }
 
         if (!exprs.isCons()) {
@@ -383,7 +343,7 @@ pub const Lifter = struct {
         while (e.isCons()) {
             const e_cons = e.toPtr(Cons);
             const ir = try self.lift(e_cons.car);
-            body_list.append(self.allocator, ir) catch return error.OutOfMemory;
+            try body_list.append(self.allocator, ir);
             e = e_cons.cdr;
         }
 
@@ -391,10 +351,9 @@ pub const Lifter = struct {
             return @constCast(body_list.items[0]);
         }
 
-        const body_slice = self.allocator.dupe(*const Ir, body_list.items) catch
-            return error.OutOfMemory;
+        const body_slice = try self.allocator.dupe(*const Ir, body_list.items);
 
-        return self.builder.progn(body_slice) catch return error.OutOfMemory;
+        return try self.builder.progn(body_slice);
     }
 
     /// Lift (while cond body...)
@@ -405,8 +364,7 @@ pub const Lifter = struct {
         const cond_ir = try self.lift(cons1.car);
         const body_ir = try self.liftBody(cons1.cdr);
 
-        return self.builder.loop(cond_ir, body_ir) catch
-            return error.OutOfMemory;
+        return try self.builder.loop(cond_ir, body_ir);
     }
 
     /// Lift (quote expr)
@@ -418,11 +376,11 @@ pub const Lifter = struct {
 
         if (quoted.isSymbol()) {
             const name = quoted.toPtr(Symbol).getName();
-            return self.builder.quoteSym(name) catch return error.OutOfMemory;
+            return try self.builder.quoteSym(name);
         }
 
         // For complex quoted data, create a lit node
-        return self.builder.lit(quoted) catch return error.OutOfMemory;
+        return try self.builder.lit(quoted);
     }
 
     /// Lift binary operation
@@ -436,7 +394,7 @@ pub const Lifter = struct {
         const cons2 = cons1.cdr.toPtr(Cons);
         const right_ir = try self.lift(cons2.car);
 
-        const result = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const result = try self.allocator.create(Ir);
         result.* = @unionInit(Ir, @tagName(op), .{ .left = left_ir, .right = right_ir });
         return result;
     }
@@ -448,7 +406,7 @@ pub const Lifter = struct {
         const cons1 = args.toPtr(Cons);
         const operand_ir = try self.lift(cons1.car);
 
-        const result = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const result = try self.allocator.create(Ir);
         result.* = @unionInit(Ir, @tagName(op), .{ .operand = operand_ir });
         return result;
     }
@@ -456,7 +414,7 @@ pub const Lifter = struct {
     /// Lift (list a b c...) -> (cons a (cons b (cons c nil)))
     fn liftListForm(self: *Lifter, args: Value) Error!*Ir {
         if (args.isNil()) {
-            return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+            return try self.builder.lit(Value.nil);
         }
 
         if (!args.isCons()) return error.InvalidSyntax;
@@ -465,7 +423,7 @@ pub const Lifter = struct {
         const head_ir = try self.lift(cons.car);
         const tail_ir = try self.liftListForm(cons.cdr);
 
-        const result = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const result = try self.allocator.create(Ir);
         result.* = .{ .cons = .{ .left = head_ir, .right = tail_ir } };
         return result;
     }
@@ -485,14 +443,13 @@ pub const Lifter = struct {
         while (a.isCons()) {
             const a_cons = a.toPtr(Cons);
             const arg_ir = try self.lift(a_cons.car);
-            arg_list.append(self.allocator, arg_ir) catch return error.OutOfMemory;
+            try arg_list.append(self.allocator, arg_ir);
             a = a_cons.cdr;
         }
 
-        const args_slice = self.allocator.dupe(*const Ir, arg_list.items) catch
-            return error.OutOfMemory;
+        const args_slice = try self.allocator.dupe(*const Ir, arg_list.items);
 
-        return self.builder.call(func_ir, args_slice) catch return error.OutOfMemory;
+        return try self.builder.call(func_ir, args_slice);
     }
 };
 
@@ -540,4 +497,21 @@ test "lift - variable" {
     try testing.expectEqualStrings("X", result.@"var".name);
     try testing.expectEqual(UNRESOLVED, result.@"var".depth);
     try testing.expectEqual(UNRESOLVED, result.@"var".index);
+}
+
+test "lift - vector literal" {
+    const testing = std.testing;
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var heap = try Heap.init(alloc, .{});
+    defer heap.deinit();
+
+    const vec = try heap.allocVector(1, 1);
+    const result = try lift(alloc, &heap, vec);
+
+    try testing.expectEqual(Ir.lit, std.meta.activeTag(result.*));
+    try testing.expectEqual(vec.raw, result.lit.raw);
 }
