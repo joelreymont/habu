@@ -49,6 +49,14 @@ pub const SymbolTable = struct {
         try self.map.put(self.allocator, key, sym);
     }
 
+    pub fn remove(self: *SymbolTable, name: []const u8) bool {
+        if (self.map.fetchRemove(name)) |removed| {
+            self.allocator.free(removed.key);
+            return true;
+        }
+        return false;
+    }
+
     pub fn iterator(self: *const SymbolTable) std.StringHashMapUnmanaged(Value).Iterator {
         return self.map.iterator();
     }
@@ -142,7 +150,7 @@ pub const Package = struct {
         self.allocator.destroy(self);
     }
 
-    fn findAccessibleUpper(self: *Package, upper_name: []const u8) ?Value {
+    pub fn findAccessibleUpper(self: *Package, upper_name: []const u8) ?Value {
         if (self.symbols.get(upper_name)) |existing| {
             return existing;
         }
