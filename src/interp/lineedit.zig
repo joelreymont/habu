@@ -83,12 +83,23 @@ pub const LineEditor = struct {
 
     fn disableRawMode(self: *LineEditor) !void {
         if (self.raw_mode_enabled) {
-            const orig = self.orig_termios orelse unreachable;
+            const orig = if (self.orig_termios) |val| val else return error.MissingTermios;
             try posix.tcsetattr(std.posix.STDIN_FILENO, .FLUSH, orig);
             self.orig_termios = null;
             self.raw_mode_enabled = false;
         }
     }
+
+test "lineedit disableRawMode requires saved termios" {
+    const testing = std.testing;
+
+    var le = LineEditor.init(testing.allocator);
+    defer le.deinit();
+
+    le.raw_mode_enabled = true;
+    le.orig_termios = null;
+    try testing.expectError(error.MissingTermios, le.disableRawMode());
+}
 
     fn refreshLine(self: *LineEditor, writer: anytype) !void {
         // Move to beginning of line, clear, print prompt and buffer
