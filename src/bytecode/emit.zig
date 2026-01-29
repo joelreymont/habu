@@ -1184,26 +1184,27 @@ pub const Emitter = struct {
     // ========================================================================
 
     fn emitLiteral(self: *Emitter, val: Value) Error!void {
-        if (val.isNil()) {
-            try self.emitOp(.push_nil);
-        } else if (val.eq(Value.t)) {
-            try self.emitOp(.push_t);
-        } else if (val.isFixnum()) {
-            const n = val.toFixnum();
-            if (n >= std.math.minInt(i32) and n <= std.math.maxInt(i32)) {
-                try self.emitOp(.push_i32);
-                try self.emitI32(@intCast(n));
-            } else {
-                // Large fixnum - use constant pool
+        switch (val.typeKind()) {
+            .nil => try self.emitOp(.push_nil),
+            .t => try self.emitOp(.push_t),
+            .fixnum => {
+                const n = val.toFixnum();
+                if (n >= std.math.minInt(i32) and n <= std.math.maxInt(i32)) {
+                    try self.emitOp(.push_i32);
+                    try self.emitI32(@intCast(n));
+                } else {
+                    // Large fixnum - use constant pool
+                    const idx = try self.addConstant(val.raw);
+                    try self.emitOp(.push_const);
+                    try self.emitU16(idx);
+                }
+            },
+            else => {
+                // Other values go in constant pool
                 const idx = try self.addConstant(val.raw);
                 try self.emitOp(.push_const);
                 try self.emitU16(idx);
-            }
-        } else {
-            // Other values go in constant pool
-            const idx = try self.addConstant(val.raw);
-            try self.emitOp(.push_const);
-            try self.emitU16(idx);
+            },
         }
     }
 
@@ -2478,6 +2479,21 @@ test "emit literal nil" {
 
     try emitter.emit(node);
     try testing.expectEqual(@as(u8, @intFromEnum(Op.push_nil)), emitter.code.items[0]);
+}
+
+test "emit literal t" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var emitter = Emitter.init(allocator);
+    defer emitter.deinit();
+
+    const builder = ir.IrBuilder.init(allocator);
+    const node = try builder.lit(Value.t);
+    defer allocator.destroy(node);
+
+    try emitter.emit(node);
+    try testing.expectEqual(@as(u8, @intFromEnum(Op.push_t)), emitter.code.items[0]);
 }
 
 test "emit literal fixnum" {
