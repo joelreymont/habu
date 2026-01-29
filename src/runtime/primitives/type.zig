@@ -2,6 +2,156 @@ const std = @import("std");
 const Value = @import("../value.zig").Value;
 const Heap = @import("../heap.zig").Heap;
 
+pub const TypeSymbols = struct {
+    cons: Value,
+    symbol: Value,
+    null: Value,
+    boolean: Value,
+    integer: Value,
+    fixnum: Value,
+    bignum: Value,
+    float: Value,
+    real: Value,
+    rational: Value,
+    ratio: Value,
+    number: Value,
+    complex: Value,
+    character: Value,
+    string: Value,
+    vector: Value,
+    array: Value,
+    list: Value,
+    sequence: Value,
+    function: Value,
+    compiled_function: Value,
+    closure: Value,
+    keyword: Value,
+    hash_table: Value,
+    stream: Value,
+    pathname: Value,
+    package: Value,
+    atom: Value,
+    base_char: Value,
+    standard_char: Value,
+    extended_char: Value,
+    base_string: Value,
+    simple_string: Value,
+    simple_base_string: Value,
+    simple_vector: Value,
+    simple_array: Value,
+    bit_vector: Value,
+    simple_bit_vector: Value,
+    single_float: Value,
+    double_float: Value,
+    short_float: Value,
+    long_float: Value,
+    class: Value,
+    standard_class: Value,
+    built_in_class: Value,
+    structure_class: Value,
+    generic_function: Value,
+    standard_generic_function: Value,
+    method: Value,
+    standard_method: Value,
+    standard_object: Value,
+    structure_object: Value,
+    file_stream: Value,
+    string_stream: Value,
+    random_state: Value,
+    restart: Value,
+    method_combination: Value,
+    values: Value,
+    @"or": Value,
+    @"and": Value,
+    @"not": Value,
+    satisfies: Value,
+    star: Value,
+    eql: Value,
+    member: Value,
+    mod: Value,
+    signed_byte: Value,
+    unsigned_byte: Value,
+    t: Value,
+    nil: Value,
+    unbound: Value,
+
+    pub fn init(heap: *Heap) !TypeSymbols {
+        return .{
+            .cons = try heap.intern("cons"),
+            .symbol = try heap.intern("symbol"),
+            .null = try heap.intern("null"),
+            .boolean = try heap.intern("boolean"),
+            .integer = try heap.intern("integer"),
+            .fixnum = try heap.intern("fixnum"),
+            .bignum = try heap.intern("bignum"),
+            .float = try heap.intern("float"),
+            .real = try heap.intern("real"),
+            .rational = try heap.intern("rational"),
+            .ratio = try heap.intern("ratio"),
+            .number = try heap.intern("number"),
+            .complex = try heap.intern("complex"),
+            .character = try heap.intern("character"),
+            .string = try heap.intern("string"),
+            .vector = try heap.intern("vector"),
+            .array = try heap.intern("array"),
+            .list = try heap.intern("list"),
+            .sequence = try heap.intern("sequence"),
+            .function = try heap.intern("function"),
+            .compiled_function = try heap.intern("compiled-function"),
+            .closure = try heap.intern("closure"),
+            .keyword = try heap.intern("keyword"),
+            .hash_table = try heap.intern("hash-table"),
+            .stream = try heap.intern("stream"),
+            .pathname = try heap.intern("pathname"),
+            .package = try heap.intern("package"),
+            .atom = try heap.intern("atom"),
+            .base_char = try heap.intern("base-char"),
+            .standard_char = try heap.intern("standard-char"),
+            .extended_char = try heap.intern("extended-char"),
+            .base_string = try heap.intern("base-string"),
+            .simple_string = try heap.intern("simple-string"),
+            .simple_base_string = try heap.intern("simple-base-string"),
+            .simple_vector = try heap.intern("simple-vector"),
+            .simple_array = try heap.intern("simple-array"),
+            .bit_vector = try heap.intern("bit-vector"),
+            .simple_bit_vector = try heap.intern("simple-bit-vector"),
+            .single_float = try heap.intern("single-float"),
+            .double_float = try heap.intern("double-float"),
+            .short_float = try heap.intern("short-float"),
+            .long_float = try heap.intern("long-float"),
+            .class = try heap.intern("class"),
+            .standard_class = try heap.intern("standard-class"),
+            .built_in_class = try heap.intern("built-in-class"),
+            .structure_class = try heap.intern("structure-class"),
+            .generic_function = try heap.intern("generic-function"),
+            .standard_generic_function = try heap.intern("standard-generic-function"),
+            .method = try heap.intern("method"),
+            .standard_method = try heap.intern("standard-method"),
+            .standard_object = try heap.intern("standard-object"),
+            .structure_object = try heap.intern("structure-object"),
+            .file_stream = try heap.intern("file-stream"),
+            .string_stream = try heap.intern("string-stream"),
+            .random_state = try heap.intern("random-state"),
+            .restart = try heap.intern("restart"),
+            .method_combination = try heap.intern("method-combination"),
+            .values = try heap.intern("values"),
+            .@"or" = try heap.intern("or"),
+            .@"and" = try heap.intern("and"),
+            .@"not" = try heap.intern("not"),
+            .satisfies = try heap.intern("satisfies"),
+            .star = try heap.intern("*"),
+            .eql = try heap.intern("eql"),
+            .member = try heap.intern("member"),
+            .mod = try heap.intern("mod"),
+            .signed_byte = try heap.intern("signed-byte"),
+            .unsigned_byte = try heap.intern("unsigned-byte"),
+            .t = try heap.intern("t"),
+            .nil = try heap.intern("nil"),
+            .unbound = try heap.intern("%unbound%"),
+        };
+    }
+};
+
 /// Check if two values are eql (eq for most types, numeric for numbers)
 fn valueEql(a: Value, b: Value) bool {
     if (a.raw == b.raw) return true;
@@ -15,82 +165,82 @@ fn valueEql(a: Value, b: Value) bool {
     return false;
 }
 
-pub fn typep(heap: *Heap, obj: Value, type_spec: Value) !bool {
+pub fn typep(heap: *Heap, syms: *const TypeSymbols, obj: Value, type_spec: Value) !bool {
     if (type_spec.isT()) return true;
     if (type_spec.isNil()) return false;
 
     if (type_spec.isSymbol() or type_spec.isT() or type_spec.isNil()) {
         const sym = type_spec;
 
-        if (sym.eq(try heap.intern("cons"))) return obj.isCons();
-        if (sym.eq(try heap.intern("symbol"))) return obj.isSymbolLike();
-        if (sym.eq(try heap.intern("null"))) return obj.isNil();
-        if (sym.eq(try heap.intern("boolean"))) return obj.isNil() or obj.isT();
-        if (sym.eq(try heap.intern("integer"))) return obj.isFixnum() or obj.isBignum();
-        if (sym.eq(try heap.intern("fixnum"))) return obj.isFixnum();
-        if (sym.eq(try heap.intern("bignum"))) return obj.isBignum();
-        if (sym.eq(try heap.intern("float"))) return obj.isFloat();
-        if (sym.eq(try heap.intern("real"))) return obj.isFixnum() or obj.isBignum() or obj.isFloat() or obj.isRational();
-        if (sym.eq(try heap.intern("rational"))) return obj.isFixnum() or obj.isBignum() or obj.isRational();
-        if (sym.eq(try heap.intern("ratio"))) return obj.isRational();
-        if (sym.eq(try heap.intern("number"))) return obj.isFixnum() or obj.isBignum() or obj.isFloat() or obj.isRational() or obj.isComplex();
-        if (sym.eq(try heap.intern("complex"))) return obj.isComplex();
-        if (sym.eq(try heap.intern("character"))) return obj.isCharacter();
-        if (sym.eq(try heap.intern("string"))) return obj.isString();
-        if (sym.eq(try heap.intern("vector"))) return obj.isVector();
-        if (sym.eq(try heap.intern("array"))) return obj.isArray() or obj.isVector() or obj.isString();
-        if (sym.eq(try heap.intern("list"))) return obj.isNil() or obj.isCons();
-        if (sym.eq(try heap.intern("sequence"))) return obj.isNil() or obj.isCons() or obj.isVector() or obj.isString();
-        if (sym.eq(try heap.intern("function"))) return obj.isClosure() or obj.isChunk();
-        if (sym.eq(try heap.intern("compiled-function"))) return obj.isChunk();
-        if (sym.eq(try heap.intern("keyword"))) return obj.isKeyword();
-        if (sym.eq(try heap.intern("hash-table"))) return obj.isHashTable();
-        if (sym.eq(try heap.intern("stream"))) return obj.isStream();
-        if (sym.eq(try heap.intern("pathname"))) return obj.isPathname();
-        if (sym.eq(try heap.intern("package"))) return obj.isPackage();
-        if (sym.eq(try heap.intern("atom"))) return !obj.isCons();
-        if (sym.eq(try heap.intern("base-char"))) return obj.isCharacter();
-        if (sym.eq(try heap.intern("standard-char"))) return obj.isCharacter();
-        if (sym.eq(try heap.intern("extended-char"))) return false; // no extended chars
-        if (sym.eq(try heap.intern("base-string"))) return obj.isString();
-        if (sym.eq(try heap.intern("simple-string"))) return obj.isString();
-        if (sym.eq(try heap.intern("simple-base-string"))) return obj.isString();
-        if (sym.eq(try heap.intern("simple-vector"))) return obj.isVector();
-        if (sym.eq(try heap.intern("simple-array"))) return obj.isVector() or obj.isString() or obj.isArray();
-        if (sym.eq(try heap.intern("bit-vector"))) return obj.isVector();
-        if (sym.eq(try heap.intern("simple-bit-vector"))) return obj.isVector();
-        if (sym.eq(try heap.intern("single-float"))) return obj.isFloat();
-        if (sym.eq(try heap.intern("double-float"))) return obj.isFloat();
-        if (sym.eq(try heap.intern("short-float"))) return obj.isFloat();
-        if (sym.eq(try heap.intern("long-float"))) return obj.isFloat();
-        if (sym.eq(try heap.intern("class"))) return obj.isClass();
-        if (sym.eq(try heap.intern("standard-class"))) return obj.isClass();
-        if (sym.eq(try heap.intern("built-in-class"))) return obj.isClass();
-        if (sym.eq(try heap.intern("structure-class"))) return obj.isClass();
-        if (sym.eq(try heap.intern("generic-function"))) return obj.isGenericFunction();
-        if (sym.eq(try heap.intern("standard-generic-function"))) return obj.isGenericFunction();
-        if (sym.eq(try heap.intern("method"))) return obj.isMethod();
-        if (sym.eq(try heap.intern("standard-method"))) return obj.isMethod();
-        if (sym.eq(try heap.intern("standard-object"))) return obj.isVector(); // instances are vectors
-        if (sym.eq(try heap.intern("structure-object"))) return obj.isVector(); // structs are vectors
-        if (sym.eq(try heap.intern("file-stream"))) {
+        if (sym.eq(syms.cons)) return obj.isCons();
+        if (sym.eq(syms.symbol)) return obj.isSymbolLike();
+        if (sym.eq(syms.null)) return obj.isNil();
+        if (sym.eq(syms.boolean)) return obj.isNil() or obj.isT();
+        if (sym.eq(syms.integer)) return obj.isFixnum() or obj.isBignum();
+        if (sym.eq(syms.fixnum)) return obj.isFixnum();
+        if (sym.eq(syms.bignum)) return obj.isBignum();
+        if (sym.eq(syms.float)) return obj.isFloat();
+        if (sym.eq(syms.real)) return obj.isFixnum() or obj.isBignum() or obj.isFloat() or obj.isRational();
+        if (sym.eq(syms.rational)) return obj.isFixnum() or obj.isBignum() or obj.isRational();
+        if (sym.eq(syms.ratio)) return obj.isRational();
+        if (sym.eq(syms.number)) return obj.isFixnum() or obj.isBignum() or obj.isFloat() or obj.isRational() or obj.isComplex();
+        if (sym.eq(syms.complex)) return obj.isComplex();
+        if (sym.eq(syms.character)) return obj.isCharacter();
+        if (sym.eq(syms.string)) return obj.isString();
+        if (sym.eq(syms.vector)) return obj.isVector();
+        if (sym.eq(syms.array)) return obj.isArray() or obj.isVector() or obj.isString();
+        if (sym.eq(syms.list)) return obj.isNil() or obj.isCons();
+        if (sym.eq(syms.sequence)) return obj.isNil() or obj.isCons() or obj.isVector() or obj.isString();
+        if (sym.eq(syms.function)) return obj.isClosure() or obj.isChunk();
+        if (sym.eq(syms.compiled_function)) return obj.isChunk();
+        if (sym.eq(syms.keyword)) return obj.isKeyword();
+        if (sym.eq(syms.hash_table)) return obj.isHashTable();
+        if (sym.eq(syms.stream)) return obj.isStream();
+        if (sym.eq(syms.pathname)) return obj.isPathname();
+        if (sym.eq(syms.package)) return obj.isPackage();
+        if (sym.eq(syms.atom)) return !obj.isCons();
+        if (sym.eq(syms.base_char)) return obj.isCharacter();
+        if (sym.eq(syms.standard_char)) return obj.isCharacter();
+        if (sym.eq(syms.extended_char)) return false; // no extended chars
+        if (sym.eq(syms.base_string)) return obj.isString();
+        if (sym.eq(syms.simple_string)) return obj.isString();
+        if (sym.eq(syms.simple_base_string)) return obj.isString();
+        if (sym.eq(syms.simple_vector)) return obj.isVector();
+        if (sym.eq(syms.simple_array)) return obj.isVector() or obj.isString() or obj.isArray();
+        if (sym.eq(syms.bit_vector)) return obj.isVector();
+        if (sym.eq(syms.simple_bit_vector)) return obj.isVector();
+        if (sym.eq(syms.single_float)) return obj.isFloat();
+        if (sym.eq(syms.double_float)) return obj.isFloat();
+        if (sym.eq(syms.short_float)) return obj.isFloat();
+        if (sym.eq(syms.long_float)) return obj.isFloat();
+        if (sym.eq(syms.class)) return obj.isClass();
+        if (sym.eq(syms.standard_class)) return obj.isClass();
+        if (sym.eq(syms.built_in_class)) return obj.isClass();
+        if (sym.eq(syms.structure_class)) return obj.isClass();
+        if (sym.eq(syms.generic_function)) return obj.isGenericFunction();
+        if (sym.eq(syms.standard_generic_function)) return obj.isGenericFunction();
+        if (sym.eq(syms.method)) return obj.isMethod();
+        if (sym.eq(syms.standard_method)) return obj.isMethod();
+        if (sym.eq(syms.standard_object)) return obj.isVector(); // instances are vectors
+        if (sym.eq(syms.structure_object)) return obj.isVector(); // structs are vectors
+        if (sym.eq(syms.file_stream)) {
             if (!obj.isStream()) return false;
             const stream = obj.toPtr(@import("../objects.zig").Stream);
             return stream.stream_type != .string;
         }
-        if (sym.eq(try heap.intern("string-stream"))) {
+        if (sym.eq(syms.string_stream)) {
             if (!obj.isStream()) return false;
             const stream = obj.toPtr(@import("../objects.zig").Stream);
             return stream.stream_type == .string;
         }
         // random-state is implemented as an integer in Habu
-        if (sym.eq(try heap.intern("random-state"))) return obj.isFixnum();
+        if (sym.eq(syms.random_state)) return obj.isFixnum();
         // restart objects aren't first-class - always false for typep
-        if (sym.eq(try heap.intern("restart"))) return false;
+        if (sym.eq(syms.restart)) return false;
         // method-combination isn't implemented as separate type
-        if (sym.eq(try heap.intern("method-combination"))) return false;
+        if (sym.eq(syms.method_combination)) return false;
         // values is a type specifier for multiple return values, not for typep
-        if (sym.eq(try heap.intern("values"))) return false;
+        if (sym.eq(syms.values)) return false;
 
         // Check if it's a class name (instance type check)
         if (obj.isVector()) {
@@ -127,41 +277,41 @@ pub fn typep(heap: *Heap, obj: Value, type_spec: Value) !bool {
     if (type_spec.isCons()) {
         const head = type_spec.toPtr(@import("../objects.zig").Cons).car;
 
-        if (head.eq(try heap.intern("or"))) {
+        if (head.eq(syms.@"or")) {
             var rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
             while (rest.isCons()) {
                 const spec = rest.toPtr(@import("../objects.zig").Cons).car;
-                if (try typep(heap, obj, spec)) return true;
+                if (try typep(heap, syms, obj, spec)) return true;
                 rest = rest.toPtr(@import("../objects.zig").Cons).cdr;
             }
             return false;
         }
 
         // (and t1 t2 ...) - intersection type
-        if (head.eq(try heap.intern("and"))) {
+        if (head.eq(syms.@"and")) {
             var rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
             while (rest.isCons()) {
                 const spec = rest.toPtr(@import("../objects.zig").Cons).car;
-                if (!try typep(heap, obj, spec)) return false;
+                if (!try typep(heap, syms, obj, spec)) return false;
                 rest = rest.toPtr(@import("../objects.zig").Cons).cdr;
             }
             return true;
         }
 
-        if (head.eq(try heap.intern("not"))) {
+        if (head.eq(syms.@"not")) {
             const inner = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
             if (!inner.isCons()) return error.InvalidTypeSpecifier;
-            return !try typep(heap, obj, inner.toPtr(@import("../objects.zig").Cons).car);
+            return !try typep(heap, syms, obj, inner.toPtr(@import("../objects.zig").Cons).car);
         }
 
-        if (head.eq(try heap.intern("satisfies"))) {
+        if (head.eq(syms.satisfies)) {
             // (satisfies predicate-fn) - requires runtime evaluation
             // For now, conservatively return true (any value might satisfy)
             // Proper checking requires VM integration for predicate call
             return true;
         }
 
-        if (head.eq(try heap.intern("integer"))) {
+        if (head.eq(syms.integer)) {
             if (!obj.isFixnum() and !obj.isBignum()) return false;
             const rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
             if (rest.isNil()) return true;
@@ -173,14 +323,14 @@ pub fn typep(heap: *Heap, obj: Value, type_spec: Value) !bool {
 
             const val = if (obj.isFixnum()) obj.toFixnum() else return true;
 
-            const low_ok = if (low.eq(try heap.intern("*")))
+            const low_ok = if (low.eq(syms.star))
                 true
             else if (low.isFixnum())
                 val >= low.toFixnum()
             else
                 return error.InvalidTypeSpecifier;
 
-            const high_ok = if (high.eq(try heap.intern("*")))
+            const high_ok = if (high.eq(syms.star))
                 true
             else if (high.isFixnum())
                 val <= high.toFixnum()
@@ -191,7 +341,7 @@ pub fn typep(heap: *Heap, obj: Value, type_spec: Value) !bool {
         }
 
         // (eql value) - singleton type
-        if (head.eq(try heap.intern("eql"))) {
+        if (head.eq(syms.eql)) {
             const rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
             if (!rest.isCons()) return error.InvalidTypeSpecifier;
             const expected = rest.toPtr(@import("../objects.zig").Cons).car;
@@ -199,7 +349,7 @@ pub fn typep(heap: *Heap, obj: Value, type_spec: Value) !bool {
         }
 
         // (member value...) - enumeration type
-        if (head.eq(try heap.intern("member"))) {
+        if (head.eq(syms.member)) {
             var rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
             while (rest.isCons()) {
                 const item = rest.toPtr(@import("../objects.zig").Cons).car;
@@ -210,7 +360,7 @@ pub fn typep(heap: *Heap, obj: Value, type_spec: Value) !bool {
         }
 
         // (mod n) - integers from 0 to n-1
-        if (head.eq(try heap.intern("mod"))) {
+        if (head.eq(syms.mod)) {
             if (!obj.isFixnum() and !obj.isBignum()) return false;
             const rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
             if (!rest.isCons()) return error.InvalidTypeSpecifier;
@@ -222,7 +372,7 @@ pub fn typep(heap: *Heap, obj: Value, type_spec: Value) !bool {
         }
 
         // (signed-byte n) - signed integers in n bits
-        if (head.eq(try heap.intern("signed-byte"))) {
+        if (head.eq(syms.signed_byte)) {
             if (!obj.isFixnum() and !obj.isBignum()) return false;
             const rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
             if (!rest.isCons()) return error.InvalidTypeSpecifier;
@@ -237,7 +387,7 @@ pub fn typep(heap: *Heap, obj: Value, type_spec: Value) !bool {
         }
 
         // (unsigned-byte n) - unsigned integers in n bits
-        if (head.eq(try heap.intern("unsigned-byte"))) {
+        if (head.eq(syms.unsigned_byte)) {
             if (!obj.isFixnum() and !obj.isBignum()) return false;
             const rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
             if (!rest.isCons()) return error.InvalidTypeSpecifier;
@@ -252,7 +402,7 @@ pub fn typep(heap: *Heap, obj: Value, type_spec: Value) !bool {
         }
 
         // (values type...) - multiple values type specifier, not for typep
-        if (head.eq(try heap.intern("values"))) {
+        if (head.eq(syms.values)) {
             // values type is for declarations, not runtime typep
             return false;
         }
@@ -526,30 +676,32 @@ test "typep basic types" {
     const testing = std.testing;
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
+    var syms = try TypeSymbols.init(&heap);
 
     const fixnum = Value.makeFixnum(42);
-    try testing.expect(try typep(&heap, fixnum, try heap.intern("integer")));
-    try testing.expect(try typep(&heap, fixnum, try heap.intern("fixnum")));
-    try testing.expect(!try typep(&heap, fixnum, try heap.intern("string")));
+    try testing.expect(try typep(&heap, &syms, fixnum, try heap.intern("integer")));
+    try testing.expect(try typep(&heap, &syms, fixnum, try heap.intern("fixnum")));
+    try testing.expect(!try typep(&heap, &syms, fixnum, try heap.intern("string")));
 
     const str = try heap.allocBaseString("test");
-    try testing.expect(try typep(&heap, str, try heap.intern("string")));
-    try testing.expect(!try typep(&heap, str, try heap.intern("integer")));
+    try testing.expect(try typep(&heap, &syms, str, try heap.intern("string")));
+    try testing.expect(!try typep(&heap, &syms, str, try heap.intern("integer")));
 
     const consval = try heap.allocCons(Value.makeFixnum(1), Value.nil);
-    try testing.expect(try typep(&heap, consval, try heap.intern("cons")));
-    try testing.expect(try typep(&heap, consval, try heap.intern("list")));
+    try testing.expect(try typep(&heap, &syms, consval, try heap.intern("cons")));
+    try testing.expect(try typep(&heap, &syms, consval, try heap.intern("list")));
 
-    try testing.expect(try typep(&heap, Value.nil, try heap.intern("null")));
-    try testing.expect(try typep(&heap, Value.nil, try heap.intern("list")));
-    try testing.expect(try typep(&heap, Value.t, Value.t));
-    try testing.expect(!try typep(&heap, Value.t, Value.nil));
+    try testing.expect(try typep(&heap, &syms, Value.nil, try heap.intern("null")));
+    try testing.expect(try typep(&heap, &syms, Value.nil, try heap.intern("list")));
+    try testing.expect(try typep(&heap, &syms, Value.t, Value.t));
+    try testing.expect(!try typep(&heap, &syms, Value.t, Value.nil));
 }
 
 test "typep compound types" {
     const testing = std.testing;
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
+    var syms = try TypeSymbols.init(&heap);
 
     const fixnum = Value.makeFixnum(42);
 
@@ -560,10 +712,10 @@ test "typep compound types" {
             try heap.allocCons(try heap.intern("string"), Value.nil),
         ),
     );
-    try testing.expect(try typep(&heap, fixnum, or_spec));
+    try testing.expect(try typep(&heap, &syms, fixnum, or_spec));
 
     const str = try heap.allocBaseString("test");
-    try testing.expect(try typep(&heap, str, or_spec));
+    try testing.expect(try typep(&heap, &syms, str, or_spec));
 
     const not_spec = try heap.allocCons(
         try heap.intern("not"),
@@ -576,14 +728,15 @@ test "typep compound types" {
             try heap.allocCons(not_spec, Value.nil),
         ),
     );
-    try testing.expect(try typep(&heap, fixnum, and_spec));
-    try testing.expect(!try typep(&heap, str, and_spec));
+    try testing.expect(try typep(&heap, &syms, fixnum, and_spec));
+    try testing.expect(!try typep(&heap, &syms, str, and_spec));
 }
 
 test "typep integer range" {
     const testing = std.testing;
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
+    var syms = try TypeSymbols.init(&heap);
 
     const range_spec = try heap.allocCons(
         try heap.intern("integer"),
@@ -593,11 +746,11 @@ test "typep integer range" {
         ),
     );
 
-    try testing.expect(try typep(&heap, Value.makeFixnum(50), range_spec));
-    try testing.expect(try typep(&heap, Value.makeFixnum(0), range_spec));
-    try testing.expect(try typep(&heap, Value.makeFixnum(100), range_spec));
-    try testing.expect(!try typep(&heap, Value.makeFixnum(101), range_spec));
-    try testing.expect(!try typep(&heap, Value.makeFixnum(-1), range_spec));
+    try testing.expect(try typep(&heap, &syms, Value.makeFixnum(50), range_spec));
+    try testing.expect(try typep(&heap, &syms, Value.makeFixnum(0), range_spec));
+    try testing.expect(try typep(&heap, &syms, Value.makeFixnum(100), range_spec));
+    try testing.expect(!try typep(&heap, &syms, Value.makeFixnum(101), range_spec));
+    try testing.expect(!try typep(&heap, &syms, Value.makeFixnum(-1), range_spec));
 }
 
 test "typeOf basic types" {

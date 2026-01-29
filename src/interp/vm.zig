@@ -26,6 +26,7 @@ const io = @import("../runtime/primitives/io.zig");
 const stringPrims = @import("../runtime/primitives/string.zig");
 const char_primitives = @import("../runtime/primitives/char.zig");
 const hash_prims = @import("../runtime/primitives/hash.zig");
+const type_mod = @import("../runtime/primitives/type.zig");
 const HashTable = runtime.HashTable;
 const Vector = runtime.Vector;
 const compiler = @import("../compiler/compiler.zig");
@@ -293,51 +294,7 @@ pub const Vm = struct {
     builtins: BuiltinSymbols,
 
     /// Pre-interned type symbols for runtime type dispatch
-    type_syms: TypeSymbols,
-
-    /// Type symbols for runtime typep dispatch
-    const TypeSymbols = struct {
-        fixnum: Value,
-        number: Value, // CL alias for numeric types
-        cons: Value,
-        symbol: Value,
-        string: Value,
-        vector: Value,
-        closure: Value,
-        function: Value,
-        keyword: Value,
-        character: Value,
-        @"hash-table": Value,
-        nil: Value,
-        null: Value,
-        list: Value,
-        atom: Value,
-        t: Value,
-        unbound: Value,
-
-        fn init(heap: *Heap) !TypeSymbols {
-            const unbound_val = try heap.intern("%unbound%");
-            return .{
-                .fixnum = try heap.intern("fixnum"),
-                .number = try heap.intern("number"),
-                .cons = try heap.intern("cons"),
-                .symbol = try heap.intern("symbol"),
-                .string = try heap.intern("string"),
-                .vector = try heap.intern("vector"),
-                .closure = try heap.intern("closure"),
-                .function = try heap.intern("function"),
-                .keyword = try heap.intern("keyword"),
-                .character = try heap.intern("character"),
-                .@"hash-table" = try heap.intern("hash-table"),
-                .nil = try heap.intern("nil"),
-                .null = try heap.intern("null"),
-                .list = try heap.intern("list"),
-                .atom = try heap.intern("atom"),
-                .t = try heap.intern("t"),
-                .unbound = unbound_val,
-            };
-        }
-    };
+    type_syms: type_mod.TypeSymbols,
 
     const STACK_SIZE = 4096;
     const MAX_SECONDARY_VALUES = 20;
@@ -405,7 +362,7 @@ pub const Vm = struct {
             .current_closure = null,
             .current_argc = 0,
             .builtins = try BuiltinSymbols.init(heap),
-            .type_syms = try TypeSymbols.init(heap),
+            .type_syms = try type_mod.TypeSymbols.init(heap),
         };
         // Initialize globals to nil
         for (&vm.globals) |*g| {
@@ -4914,7 +4871,7 @@ pub const Vm = struct {
             .typep => {
                 const type_spec = try self.pop();
                 const obj = try self.pop();
-                const result = primitives.typep(self.heap, obj, type_spec) catch false;
+                const result = primitives.typep(self.heap, &self.type_syms, obj, type_spec) catch false;
                 try self.push(if (result) Value.t else Value.nil);
             },
 
