@@ -196,23 +196,22 @@ pub fn sysReadLine(heap: *heap_mod.Heap) !Value {
     var file_reader = stdin_file.reader(&read_buf);
     const reader = &file_reader.interface;
 
-    var line_buf: [LINE_BUF]u8 = undefined;
-    var line_len: usize = 0;
+    var line = std.ArrayList(u8){};
+    defer line.deinit(heap.backing_allocator);
+    var read_any = false;
 
-    while (line_len < line_buf.len) {
+    while (true) {
         const byte = reader.takeByte() catch |err| switch (err) {
             error.EndOfStream => break,
             else => return err,
         };
-
+        read_any = true;
         if (byte == '\n') break;
-        line_buf[line_len] = byte;
-        line_len += 1;
+        try line.append(heap.backing_allocator, byte);
     }
 
-    if (line_len == 0) return Value.nil;
-
-    return try heap.allocBaseString(line_buf[0..line_len]);
+    if (!read_any and line.items.len == 0) return Value.nil;
+    return try heap.allocBaseString(line.items);
 }
 
 /// Read a single character from stdin
@@ -1654,18 +1653,23 @@ pub fn readLine(heap: *heap_mod.Heap, stream: Value) !Value {
             return try heap.allocBaseString(line);
         },
         .file, .stdin => {
-            var buf: [LINE_BUF]u8 = undefined;
-            var len: usize = 0;
-            const fd: std.posix.fd_t = @intCast(s.file_fd);
-            while (len < LINE_BUF) {
+            var line = std.ArrayList(u8){};
+            defer line.deinit(heap.backing_allocator);
+            const fd: std.posix.fd_t = if (s.stream_type == .stdin)
+                std.posix.STDIN_FILENO
+            else
+                @intCast(s.file_fd);
+            var read_any = false;
+            while (true) {
                 var ch: [1]u8 = undefined;
                 const n = try std.posix.read(fd, &ch);
                 if (n == 0) break;
+                read_any = true;
                 if (ch[0] == '\n') break;
-                buf[len] = ch[0];
-                len += 1;
+                try line.append(heap.backing_allocator, ch[0]);
             }
-            return try heap.allocBaseString(buf[0..len]);
+            if (!read_any and line.items.len == 0) return Value.nil;
+            return try heap.allocBaseString(line.items);
         },
         .byte => return error.NotImplemented,
         .broadcast, .stdout, .stderr => return error.TypeError,
@@ -2115,4 +2119,33 @@ test "fileExists and probeFile" {
     defer testing.allocator.free(missing_path);
     try testing.expect(!(try fileExists(missing_path)));
     try testing.expect(!(try probeFile(missing_path)));
+}
+
+test "readLine handles long file lines" {
+    const testing = std.testing;
+    var heap = try heap_mod.Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const file_name = "long-line.txt";
+    const line_len: usize = LINE_BUF + 10;
+    const buf = try testing.allocator.alloc(u8, line_len + 1);
+    defer testing.allocator.free(buf);
+    @memset(buf[0..line_len], 'a');
+    buf[line_len] = '\n';
+
+    {
+        const file = try tmp.dir.createFile(file_name, .{});
+        defer file.close();
+        try file.writeAll(buf);
+    }
+
+    const file = try tmp.dir.openFile(file_name, .{});
+    const stream = try heap.allocFileInputStream(@intCast(file.handle));
+    const line_val = try readLine(&heap, stream);
+    try testing.expect(line_val.isString());
+    const line = line_val.toPtr(objects.String);
+    try testing.expectEqual(line_len, @as(usize, @intCast(line.length)));
 }
