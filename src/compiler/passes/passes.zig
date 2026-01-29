@@ -87,7 +87,7 @@ pub fn runFullPipeline(
     const typed_ir = try runNanoPipeline(allocator, &vm_ptr.builtins, ir);
 
     // p09: Emit bytecode
-    const emit_result = emit.emit(allocator, heap, typed_ir) catch return error.EmitFailed;
+    const emit_result = try emit.emit(allocator, heap, typed_ir);
     return emit_result.output;
 }
 
