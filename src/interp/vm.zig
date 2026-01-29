@@ -3728,12 +3728,12 @@ pub const Vm = struct {
             },
             .truename => {
                 const path = try self.pop();
-                const result = try primitives.pathname.truename(self.allocator, self.heap, path);
+                const result = try primitives.pathname.truename(self.allocator, self.heap, &self.builtins, path);
                 try self.push(result);
             },
             .ensure_directories_exist => {
                 const path = try self.pop();
-                const result = try primitives.pathname.ensureDirectoriesExist(self.allocator, self.heap, path);
+                const result = try primitives.pathname.ensureDirectoriesExist(self.allocator, self.heap, &self.builtins, path);
                 try self.push(result.pathname);
             },
             .package_symbols_table => {
@@ -4254,7 +4254,7 @@ pub const Vm = struct {
 
             .directory_namestring => {
                 const pn_val = try self.pop();
-                const result = try primitives.pathname.directoryNamestring(self.allocator, self.heap, pn_val);
+                const result = try primitives.pathname.directoryNamestring(self.allocator, self.heap, &self.builtins, pn_val);
                 try self.push(result);
             },
 
@@ -4272,7 +4272,7 @@ pub const Vm = struct {
 
             .wild_pathname_p => {
                 const pn_val = try self.pop();
-                const result = primitives.pathname.wildPathnameP(pn_val, null);
+                const result = primitives.pathname.wildPathnameP(&self.builtins, pn_val, null);
                 try self.push(if (result) Value.t else Value.nil);
             },
 

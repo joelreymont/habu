@@ -2,6 +2,7 @@ const std = @import("std");
 const runtime = @import("../runtime.zig");
 const Value = runtime.Value;
 const Heap = runtime.Heap;
+const BuiltinSymbols = @import("../builtins.zig").BuiltinSymbols;
 const objects = @import("../objects.zig");
 const Pathname = objects.Pathname;
 
@@ -75,7 +76,7 @@ pub fn pathname(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
 }
 
 /// Convert pathname to namestring
-pub fn namestring(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
+pub fn namestring(allocator: std.mem.Allocator, heap: *Heap, builtins: *const BuiltinSymbols, val: Value) !Value {
     _ = allocator;
     if (!val.isPathname()) return error.TypeMismatch;
     const p = val.toPtr(Pathname);
@@ -104,11 +105,8 @@ pub fn namestring(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value 
         dir = dir.cdr();
 
         // :absolute starts with /, :relative has no prefix
-        if (first.isKeyword()) {
-            const kw = first.toPtr(objects.Keyword);
-            if (std.ascii.eqlIgnoreCase(kw.getName(), "absolute")) {
-                try writer.writeByte('/');
-            }
+        if (first.raw == builtins.kw_absolute.raw) {
+            try writer.writeByte('/');
         }
 
         while (!dir.isNil()) {
@@ -284,7 +282,7 @@ pub fn mergePathnames(
 
 /// Get directory portion as a string
 /// Returns the directory component of a pathname as a namestring
-pub fn directoryNamestring(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
+pub fn directoryNamestring(allocator: std.mem.Allocator, heap: *Heap, builtins: *const BuiltinSymbols, val: Value) !Value {
     if (!val.isPathname()) return error.TypeMismatch;
     const p = val.toPtr(Pathname);
 
@@ -298,11 +296,8 @@ pub fn directoryNamestring(allocator: std.mem.Allocator, heap: *Heap, val: Value
         const first = dir.toPtr(objects.Cons).car;
         dir = dir.toPtr(objects.Cons).cdr;
 
-        if (first.isKeyword()) {
-            const kw = first.toPtr(objects.Keyword);
-            if (std.ascii.eqlIgnoreCase(kw.getName(), "absolute")) {
-                try writer.writeByte('/');
-            }
+        if (first.raw == builtins.kw_absolute.raw) {
+            try writer.writeByte('/');
         }
 
         while (!dir.isNil() and dir.isCons()) {
@@ -404,12 +399,12 @@ pub fn userHomedirPathname(allocator: std.mem.Allocator, heap: *Heap) !Value {
 
 /// Get the canonical (truename) of a pathname
 /// Returns the resolved absolute path, or nil if file doesn't exist
-pub fn truename(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
+pub fn truename(allocator: std.mem.Allocator, heap: *Heap, builtins: *const BuiltinSymbols, val: Value) !Value {
     // Get the namestring from the pathname or string
     const needs_free = val.isPathname();
     const path_str = if (val.isPathname()) blk: {
         const pn = val.toPtr(Pathname);
-        break :blk try pathnameToString(allocator, pn);
+        break :blk try pathnameToString(allocator, builtins, pn);
     } else if (val.isString()) blk: {
         const s = val.toPtr(objects.String);
         break :blk s.bytes();
@@ -430,7 +425,12 @@ pub fn truename(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
 
 /// Ensure directories exist for a pathname
 /// Creates any missing directories, returns pathname
-pub fn ensureDirectoriesExist(allocator: std.mem.Allocator, heap: *Heap, val: Value) !struct { pathname: Value, created: bool } {
+pub fn ensureDirectoriesExist(
+    allocator: std.mem.Allocator,
+    heap: *Heap,
+    builtins: *const BuiltinSymbols,
+    val: Value,
+) !struct { pathname: Value, created: bool } {
     _ = heap;
     // Get the pathname
     const pn = if (val.isPathname())
@@ -441,7 +441,7 @@ pub fn ensureDirectoriesExist(allocator: std.mem.Allocator, heap: *Heap, val: Va
         return error.TypeMismatch;
 
     // Get the directory string
-    const path_str = try pathnameToString(allocator, pn);
+    const path_str = try pathnameToString(allocator, builtins, pn);
     defer allocator.free(path_str);
 
     // Find the directory portion (everything up to the last /)
@@ -467,7 +467,7 @@ pub fn ensureDirectoriesExist(allocator: std.mem.Allocator, heap: *Heap, val: Va
 }
 
 /// Helper to convert pathname to string path
-fn pathnameToString(allocator: std.mem.Allocator, pn: *const Pathname) ![]const u8 {
+fn pathnameToString(allocator: std.mem.Allocator, builtins: *const BuiltinSymbols, pn: *const Pathname) ![]const u8 {
     var buf = std.ArrayList(u8){};
     defer buf.deinit(allocator);
     const writer = buf.writer(allocator);
@@ -481,13 +481,8 @@ fn pathnameToString(allocator: std.mem.Allocator, pn: *const Pathname) ![]const 
             const cons = dir.toPtr(objects.Cons);
             const part = cons.car;
 
-            if (part.isKeyword()) {
-                // :absolute or :relative
-                const kw = part.toPtr(objects.Keyword);
-                if (std.ascii.eqlIgnoreCase(kw.getName(), "absolute")) {
-                    try writer.writeByte('/');
-                }
-                // :relative means start with nothing
+            if (part.raw == builtins.kw_absolute.raw) {
+                try writer.writeByte('/');
             } else if (part.isString()) {
                 if (!first_component) try writer.writeByte('/');
                 const s = part.toPtr(objects.String);
@@ -520,42 +515,35 @@ fn pathnameToString(allocator: std.mem.Allocator, pn: *const Pathname) ![]const 
 
 /// Check if pathname contains wildcards
 /// Returns T if any component contains :wild or wildcard characters
-pub fn wildPathnameP(val: Value, field_key: ?Value) bool {
+pub fn wildPathnameP(builtins: *const BuiltinSymbols, val: Value, field_key: ?Value) bool {
     if (!val.isPathname()) return false;
     const p = val.toPtr(Pathname);
 
     // If field-key specified, only check that component
     if (field_key) |key| {
-        if (key.isKeyword()) {
-            const kw = key.toPtr(objects.Keyword);
-            const name = kw.getName();
-            if (std.ascii.eqlIgnoreCase(name, "host")) return hasWildcard(p.host);
-            if (std.ascii.eqlIgnoreCase(name, "device")) return hasWildcard(p.device);
-            if (std.ascii.eqlIgnoreCase(name, "directory")) return dirHasWildcard(p.directory);
-            if (std.ascii.eqlIgnoreCase(name, "name")) return hasWildcard(p.name);
-            if (std.ascii.eqlIgnoreCase(name, "type")) return hasWildcard(p.type);
-            if (std.ascii.eqlIgnoreCase(name, "version")) return hasWildcard(p.version);
-        }
+        if (key.raw == builtins.kw_host.raw) return hasWildcard(builtins, p.host);
+        if (key.raw == builtins.kw_device.raw) return hasWildcard(builtins, p.device);
+        if (key.raw == builtins.kw_directory.raw) return dirHasWildcard(builtins, p.directory);
+        if (key.raw == builtins.kw_name.raw) return hasWildcard(builtins, p.name);
+        if (key.raw == builtins.kw_type.raw) return hasWildcard(builtins, p.type);
+        if (key.raw == builtins.kw_version.raw) return hasWildcard(builtins, p.version);
         return false;
     }
 
     // Check all components
-    return hasWildcard(p.host) or
-        hasWildcard(p.device) or
-        dirHasWildcard(p.directory) or
-        hasWildcard(p.name) or
-        hasWildcard(p.type) or
-        hasWildcard(p.version);
+    return hasWildcard(builtins, p.host) or
+        hasWildcard(builtins, p.device) or
+        dirHasWildcard(builtins, p.directory) or
+        hasWildcard(builtins, p.name) or
+        hasWildcard(builtins, p.type) or
+        hasWildcard(builtins, p.version);
 }
 
-fn hasWildcard(val: Value) bool {
+fn hasWildcard(builtins: *const BuiltinSymbols, val: Value) bool {
     if (val.isNil()) return false;
 
     // :wild keyword indicates wildcard
-    if (val.isKeyword()) {
-        const kw = val.toPtr(objects.Keyword);
-        return std.ascii.eqlIgnoreCase(kw.getName(), "wild");
-    }
+    if (val.raw == builtins.kw_wild.raw) return true;
 
     // String containing * or ? is wild
     if (val.isString()) {
@@ -569,14 +557,11 @@ fn hasWildcard(val: Value) bool {
     return false;
 }
 
-fn dirHasWildcard(dir: Value) bool {
+fn dirHasWildcard(builtins: *const BuiltinSymbols, dir: Value) bool {
     if (dir.isNil()) return false;
 
     // :wild keyword
-    if (dir.isKeyword()) {
-        const kw = dir.toPtr(objects.Keyword);
-        return std.ascii.eqlIgnoreCase(kw.getName(), "wild");
-    }
+    if (dir.raw == builtins.kw_wild.raw) return true;
 
     // Check each element of directory list
     var list = dir;
@@ -585,15 +570,9 @@ fn dirHasWildcard(dir: Value) bool {
         const elem = cons.car;
 
         // :wild-inferiors means ** (recursive wildcard)
-        if (elem.isKeyword()) {
-            const kw = elem.toPtr(objects.Keyword);
-            const name = kw.getName();
-            if (std.ascii.eqlIgnoreCase(name, "wild") or
-                std.ascii.eqlIgnoreCase(name, "wild-inferiors"))
-            {
-                return true;
-            }
-        } else if (hasWildcard(elem)) {
+        if (elem.raw == builtins.kw_wild.raw or elem.raw == builtins.kw_wild_inferiors.raw) {
+            return true;
+        } else if (hasWildcard(builtins, elem)) {
             return true;
         }
 

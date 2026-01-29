@@ -74,12 +74,20 @@ pub const BuiltinSymbols = struct {
     // Keywords
     kw_absolute: Value,
     kw_relative: Value,
+    kw_host: Value,
+    kw_device: Value,
+    kw_directory: Value,
+    kw_name: Value,
+    kw_type: Value,
+    kw_version: Value,
     kw_read: Value,
     kw_write: Value,
     kw_append: Value,
     kw_upcase: Value,
     kw_downcase: Value,
     kw_capitalize: Value,
+    kw_wild: Value,
+    kw_wild_inferiors: Value,
 
     pub fn init(heap: *Heap) !BuiltinSymbols {
         return BuiltinSymbols{
@@ -153,12 +161,20 @@ pub const BuiltinSymbols = struct {
             // Keywords
             .kw_absolute = try heap.internKeyword("absolute"),
             .kw_relative = try heap.internKeyword("relative"),
+            .kw_host = try heap.internKeyword("host"),
+            .kw_device = try heap.internKeyword("device"),
+            .kw_directory = try heap.internKeyword("directory"),
+            .kw_name = try heap.internKeyword("name"),
+            .kw_type = try heap.internKeyword("type"),
+            .kw_version = try heap.internKeyword("version"),
             .kw_read = try heap.internKeyword("read"),
             .kw_write = try heap.internKeyword("write"),
             .kw_append = try heap.internKeyword("append"),
             .kw_upcase = try heap.internKeyword("upcase"),
             .kw_downcase = try heap.internKeyword("downcase"),
             .kw_capitalize = try heap.internKeyword("capitalize"),
+            .kw_wild = try heap.internKeyword("wild"),
+            .kw_wild_inferiors = try heap.internKeyword("wild-inferiors"),
         };
     }
 };
