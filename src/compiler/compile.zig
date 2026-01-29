@@ -1777,7 +1777,7 @@ pub const Compiler = struct {
         typed_params: []const TypedParam,
         return_type: ?Value,
         body_ir: *const Ir,
-    ) void {
+    ) anyerror!void {
         // Build typing context with parameter types
         var ctx = TypingCtx.init(self.allocator);
         defer ctx.deinit();
@@ -1786,31 +1786,21 @@ pub const Compiler = struct {
         for (typed_params) |tp| {
             if (tp.type_sym) |type_sym| {
                 // Parse type from symbol
-                const param_type = self.parseTypeExpr(type_sym) orelse &types.t_any;
-                ctx.bind(tp.name, param_type, .many) catch |err| {
-                    std.log.warn("Failed to bind parameter {s}: {}", .{ tp.name, err });
-                    continue;
-                };
+                const param_type = (try self.parseTypeExpr(type_sym)) orelse &types.t_any;
+                try ctx.bind(tp.name, param_type, .many);
             } else {
                 // Untyped parameter - bind as any
-                ctx.bind(tp.name, &types.t_any, .many) catch |err| {
-                    std.log.warn("Failed to bind parameter {s}: {}", .{ tp.name, err });
-                    continue;
-                };
+                try ctx.bind(tp.name, &types.t_any, .many);
             }
         }
 
         // If there's a return type, check body against it
         if (return_type) |ret_type_val| {
-            const expected_type = if (self.parseTypeExpr(ret_type_val)) |val| val else return;
-            self.bi_checker.check(body_ir, expected_type, &ctx) catch {
-                // Type error - already recorded in bi_checker.errors
-            };
+            const expected_type = (try self.parseTypeExpr(ret_type_val)) orelse return error.InvalidSyntax;
+            try self.bi_checker.check(body_ir, expected_type, &ctx);
         } else {
             // No return type specified - just infer (validates internal consistency)
-            _ = self.bi_checker.infer(body_ir, &ctx) catch {
-                // Type error - already recorded in bi_checker.errors
-            };
+            _ = try self.bi_checker.infer(body_ir, &ctx);
         }
     }
 
@@ -2981,7 +2971,7 @@ pub const Compiler = struct {
 
         // Bidirectional type checking (when enabled)
         if (self.type_checking_enabled) {
-            self.checkLambdaTypes(typed_params.items, return_type, body_ir);
+            try self.checkLambdaTypes(typed_params.items, return_type, body_ir);
         }
 
         // Prepend type assertions for typed parameters
@@ -6372,7 +6362,7 @@ pub const Compiler = struct {
                 const type_expr = type_cons.car;
 
                 // Parse type expression (supports compound types like (list fixnum))
-                const field_type = if (self.parseTypeExpr(type_expr)) |val| val else return error.InvalidSyntax;
+                const field_type = (try self.parseTypeExpr(type_expr)) orelse return error.InvalidSyntax;
                 try slot_specs.append(self.allocator, .{
                     .name = slot_name,
                     .sym = spec_cons.car,
@@ -6725,7 +6715,7 @@ pub const Compiler = struct {
     /// - Pi: (pi (x : A) B) dependent function
     /// - Sigma: (sigma (x : A) B) dependent pair
     /// - Refine: (refine T x P) refinement type
-    pub fn parseTypeExpr(self: *Compiler, type_expr: Value) ?*const types.Type {
+    pub fn parseTypeExpr(self: *Compiler, type_expr: Value) anyerror!?*const types.Type {
         // Simple symbol case
         if (type_expr.isSymbol()) {
             return self.parseTypeSym(type_expr);
@@ -6743,124 +6733,120 @@ pub const Compiler = struct {
 
         // (union T1 T2 ...) or (or T1 T2 ...) - union type
         if (head.raw == b.ty_union.raw or head.raw == b.ty_or.raw) {
-            return self.parseOrType(cons.cdr);
+            return try self.parseOrType(cons.cdr);
         }
 
         // (and T1 T2 ...) - intersection type
         if (head.raw == b.ty_and.raw) {
-            return self.parseAndType(cons.cdr);
+            return try self.parseAndType(cons.cdr);
         }
 
         // (not T) - negation type
         if (head.raw == b.ty_not.raw) {
-            return self.parseNotType(cons.cdr);
+            return try self.parseNotType(cons.cdr);
         }
 
         // (-> (A B) C) or (-> A B ... C) - function type
         if (head.raw == b.@"->".raw) {
-            return self.parseArrowType(cons.cdr);
+            return try self.parseArrowType(cons.cdr);
         }
 
         // (list T) - list type
         if (head.raw == b.ty_list.raw) {
-            return self.parseListType(cons.cdr);
+            return try self.parseListType(cons.cdr);
         }
 
         // (vec T) or (vec T N) - vector type
         if (head.raw == b.ty_vec.raw) {
-            return self.parseVecType(cons.cdr);
+            return try self.parseVecType(cons.cdr);
         }
 
         // (non-nil T) - non-nil type
         if (head.raw == b.@"ty_non-nil".raw) {
-            return self.parseNonNilType(cons.cdr);
+            return try self.parseNonNilType(cons.cdr);
         }
 
         // (pi (x : A) B) - dependent function type
         if (head.raw == b.ty_pi.raw) {
-            return self.parsePiType(cons.cdr);
+            return try self.parsePiType(cons.cdr);
         }
 
         // (sigma (x : A) B) - dependent pair type
         if (head.raw == b.ty_sigma.raw) {
-            return self.parseSigmaType(cons.cdr);
+            return try self.parseSigmaType(cons.cdr);
         }
 
         // (refine T x P) - refinement type
         if (head.raw == b.ty_refine.raw) {
-            return self.parseRefineType(cons.cdr);
+            return try self.parseRefineType(cons.cdr);
         }
 
         // (member obj1 obj2 ...) - member type
         if (head.raw == b.ty_member.raw) {
-            return self.parseMemberType(cons.cdr);
+            return try self.parseMemberType(cons.cdr);
         }
 
         // (eql obj) - eql type
         if (head.raw == b.ty_eql.raw) {
-            return self.parseEqlType(cons.cdr);
+            return try self.parseEqlType(cons.cdr);
         }
 
         // (function (arg-types...) return-type) - CL-style function type
         if (head.raw == b.ty_function.raw) {
-            return self.parseFunctionType(cons.cdr) catch null;
+            return try self.parseFunctionType(cons.cdr);
         }
 
         return null;
     }
 
     /// Parse (or T1 T2 ...)
-    fn parseOrType(self: *Compiler, args: Value) ?*const types.Type {
+    fn parseOrType(self: *Compiler, args: Value) anyerror!?*const types.Type {
         var type_list = std.ArrayList(*const types.Type){};
         defer type_list.deinit(self.allocator);
 
         var current = args;
         while (current.isCons()) {
             const c = current.toPtr(Cons);
-            const t = if (self.parseTypeExpr(c.car)) |val| val else return null;
-            type_list.append(self.allocator, t) catch {
-                return null;
-            };
+            const t = (try self.parseTypeExpr(c.car)) orelse return null;
+            try type_list.append(self.allocator, t);
             current = c.cdr;
         }
 
         if (type_list.items.len == 0) return null;
         if (type_list.items.len == 1) return type_list.items[0];
 
-        return self.type_checker.builder.makeOr(type_list.items) catch null;
+        return try self.type_checker.builder.makeOr(type_list.items);
     }
 
     /// Parse (and T1 T2 ...)
-    fn parseAndType(self: *Compiler, args: Value) ?*const types.Type {
+    fn parseAndType(self: *Compiler, args: Value) anyerror!?*const types.Type {
         var type_list = std.ArrayList(*const types.Type){};
         defer type_list.deinit(self.allocator);
 
         var current = args;
         while (current.isCons()) {
             const c = current.toPtr(Cons);
-            const t = if (self.parseTypeExpr(c.car)) |val| val else return null;
-            type_list.append(self.allocator, t) catch {
-                return null;
-            };
+            const t = (try self.parseTypeExpr(c.car)) orelse return null;
+            try type_list.append(self.allocator, t);
             current = c.cdr;
         }
 
         if (type_list.items.len == 0) return null;
         if (type_list.items.len == 1) return type_list.items[0];
 
-        return self.type_checker.builder.makeAnd(type_list.items) catch null;
+        return try self.type_checker.builder.makeAnd(type_list.items);
     }
 
     /// Parse (not T)
-    fn parseNotType(self: *Compiler, args: Value) ?*const types.Type {
+    fn parseNotType(self: *Compiler, args: Value) anyerror!?*const types.Type {
         if (!args.isCons()) return null;
         const c = args.toPtr(Cons);
-        const inner = if (self.parseTypeExpr(c.car)) |val| val else return null;
-        return self.type_checker.builder.makeNot(inner) catch null;
+        const inner = (try self.parseTypeExpr(c.car)) orelse return null;
+        return try self.type_checker.builder.makeNot(inner);
     }
 
     /// Parse (-> (A B) C) or (-> A B ... C) function type
-    fn parseArrowType(self: *Compiler, args: Value) ?*const types.Type {
+    fn parseArrowType(self: *Compiler, args: Value) anyerror!?*const types.Type {
         if (!args.isCons()) return null;
 
         var all_types = std.ArrayList(*const types.Type){};
@@ -6875,18 +6861,14 @@ pub const Compiler = struct {
                 var domain = c.car;
                 while (domain.isCons()) {
                     const dc = domain.toPtr(Cons);
-                    const t = if (self.parseTypeExpr(dc.car)) |val| val else return null;
-                    all_types.append(self.allocator, t) catch {
-                        return null;
-                    };
+                    const t = (try self.parseTypeExpr(dc.car)) orelse return null;
+                    try all_types.append(self.allocator, t);
                     domain = dc.cdr;
                 }
             } else {
                 // Single type
-                const t = if (self.parseTypeExpr(c.car)) |val| val else return null;
-                all_types.append(self.allocator, t) catch {
-                    return null;
-                };
+                const t = (try self.parseTypeExpr(c.car)) orelse return null;
+                try all_types.append(self.allocator, t);
             }
             current = c.cdr;
         }
@@ -6897,46 +6879,44 @@ pub const Compiler = struct {
         const return_type = all_types.items[all_types.items.len - 1];
         const domain = all_types.items[0 .. all_types.items.len - 1];
 
-        return self.type_checker.builder.makeArrow(domain, return_type) catch null;
+        return try self.type_checker.builder.makeArrow(domain, return_type);
     }
 
     /// Parse (list T)
-    fn parseListType(self: *Compiler, args: Value) ?*const types.Type {
+    fn parseListType(self: *Compiler, args: Value) anyerror!?*const types.Type {
         if (!args.isCons()) return &types.t_list_any;
         const c = args.toPtr(Cons);
-        const elem = if (self.parseTypeExpr(c.car)) |val| val else return null;
-        return self.type_checker.builder.makeList(elem) catch null;
+        const elem = (try self.parseTypeExpr(c.car)) orelse return null;
+        return try self.type_checker.builder.makeList(elem);
     }
 
     /// Parse (vec T) or (vec T N) - sized vectors use type_app
-    fn parseVecType(self: *Compiler, args: Value) ?*const types.Type {
+    fn parseVecType(self: *Compiler, args: Value) anyerror!?*const types.Type {
         if (!args.isCons()) return &types.t_vector;
         const c = args.toPtr(Cons);
-        const elem = if (self.parseTypeExpr(c.car)) |val| val else return null;
+        const elem = (try self.parseTypeExpr(c.car)) orelse return null;
 
         // Check for (vec T N) - sized vector
         if (c.cdr.isCons()) {
             const rest = c.cdr.toPtr(Cons);
             const size_term: *const anyopaque = @ptrCast(&rest.car);
-            const vec_t = self.type_checker.builder.makeVec(elem, null) catch {
-                return null;
-            };
-            return self.type_checker.builder.makeTypeApp(vec_t, size_term) catch null;
+            const vec_t = try self.type_checker.builder.makeVec(elem, null);
+            return try self.type_checker.builder.makeTypeApp(vec_t, size_term);
         }
 
-        return self.type_checker.builder.makeVec(elem, null) catch null;
+        return try self.type_checker.builder.makeVec(elem, null);
     }
 
     /// Parse (non-nil T)
-    fn parseNonNilType(self: *Compiler, args: Value) ?*const types.Type {
+    fn parseNonNilType(self: *Compiler, args: Value) anyerror!?*const types.Type {
         if (!args.isCons()) return null;
         const c = args.toPtr(Cons);
-        const inner = if (self.parseTypeExpr(c.car)) |val| val else return null;
-        return self.type_checker.builder.makeNonNil(inner) catch null;
+        const inner = (try self.parseTypeExpr(c.car)) orelse return null;
+        return try self.type_checker.builder.makeNonNil(inner);
     }
 
     /// Parse (pi (x : A) B) dependent function type
-    fn parsePiType(self: *Compiler, args: Value) ?*const types.Type {
+    fn parsePiType(self: *Compiler, args: Value) anyerror!?*const types.Type {
         // (pi (x : A) B) -> args = ((x : A) B)
         if (!args.isCons()) return null;
         const c1 = args.toPtr(Cons);
@@ -6963,18 +6943,18 @@ pub const Compiler = struct {
             }
         }
 
-        const param_type = if (self.parseTypeExpr(type_expr)) |val| val else return null;
+        const param_type = (try self.parseTypeExpr(type_expr)) orelse return null;
 
         // Second element is the return type B
         if (!c1.cdr.isCons()) return null;
         const c2 = c1.cdr.toPtr(Cons);
-        const return_type = if (self.parseTypeExpr(c2.car)) |val| val else return null;
+        const return_type = (try self.parseTypeExpr(c2.car)) orelse return null;
 
-        return self.type_checker.builder.makePi(param_name, param_type, return_type, .many) catch null;
+        return try self.type_checker.builder.makePi(param_name, param_type, return_type, .many);
     }
 
     /// Parse (sigma (x : A) B) dependent pair type
-    fn parseSigmaType(self: *Compiler, args: Value) ?*const types.Type {
+    fn parseSigmaType(self: *Compiler, args: Value) anyerror!?*const types.Type {
         // Similar structure to pi
         if (!args.isCons()) return null;
         const c1 = args.toPtr(Cons);
@@ -6996,23 +6976,23 @@ pub const Compiler = struct {
             }
         }
 
-        const first_type = if (self.parseTypeExpr(type_expr)) |val| val else return null;
+        const first_type = (try self.parseTypeExpr(type_expr)) orelse return null;
 
         if (!c1.cdr.isCons()) return null;
         const c2 = c1.cdr.toPtr(Cons);
-        const second_type = if (self.parseTypeExpr(c2.car)) |val| val else return null;
+        const second_type = (try self.parseTypeExpr(c2.car)) orelse return null;
 
-        return self.type_checker.builder.makeSigma(first_name, first_type, second_type) catch null;
+        return try self.type_checker.builder.makeSigma(first_name, first_type, second_type);
     }
 
     /// Parse (refine T x P) refinement type
-    fn parseRefineType(self: *Compiler, args: Value) ?*const types.Type {
+    fn parseRefineType(self: *Compiler, args: Value) anyerror!?*const types.Type {
         // (refine T x P) -> args = (T x P)
         if (!args.isCons()) return null;
         const c1 = args.toPtr(Cons);
 
         // Base type T
-        const base_type = if (self.parseTypeExpr(c1.car)) |val| val else return null;
+        const base_type = (try self.parseTypeExpr(c1.car)) orelse return null;
 
         if (!c1.cdr.isCons()) return null;
         const c2 = c1.cdr.toPtr(Cons);
@@ -7030,10 +7010,10 @@ pub const Compiler = struct {
         _ = predicate; // Predicate parsing would go here
 
         // For now, create refinement with null predicate (will be enhanced later)
-        return self.type_checker.builder.makeRefinement(base_type, var_name, null) catch null;
+        return try self.type_checker.builder.makeRefinement(base_type, var_name, null);
     }
 
-    fn parseMemberType(self: *Compiler, args: Value) ?*const types.Type {
+    fn parseMemberType(self: *Compiler, args: Value) anyerror!?*const types.Type {
         var obj_list = std.ArrayList(*const anyopaque){};
         defer obj_list.deinit(self.allocator);
 
@@ -7041,23 +7021,19 @@ pub const Compiler = struct {
         while (current.isCons()) {
             const c = current.toPtr(Cons);
             const val = @as(*const Value, @ptrCast(&c.car));
-            obj_list.append(self.allocator, @as(*const anyopaque, @ptrCast(val))) catch {
-                return null;
-            };
+            try obj_list.append(self.allocator, @as(*const anyopaque, @ptrCast(val)));
             current = c.cdr;
         }
 
         if (obj_list.items.len == 0) return null;
-        return self.type_checker.builder.makeMember(obj_list.items) catch {
-            return null;
-        };
+        return try self.type_checker.builder.makeMember(obj_list.items);
     }
 
-    fn parseEqlType(self: *Compiler, args: Value) ?*const types.Type {
+    fn parseEqlType(self: *Compiler, args: Value) anyerror!?*const types.Type {
         if (!args.isCons()) return null;
         const c = args.toPtr(Cons);
         const val = @as(*const Value, @ptrCast(&c.car));
-        return self.type_checker.builder.makeEql(@as(*const anyopaque, @ptrCast(val))) catch null;
+        return try self.type_checker.builder.makeEql(@as(*const anyopaque, @ptrCast(val)));
     }
 
     /// Parse (function (arg-types...) return-type) - CL-style function type
@@ -7090,20 +7066,20 @@ pub const Compiler = struct {
                         continue;
                     }
                 }
-                const arg_type = if (self.parseTypeExpr(ac.car)) |val| val else return null;
+                const arg_type = (try self.parseTypeExpr(ac.car)) orelse return null;
                 try domain_types.append(self.allocator, arg_type);
                 arg_list = ac.cdr;
             }
         } else {
             // First arg is a single type (not a list)
-            const arg_type = if (self.parseTypeExpr(c.car)) |val| val else return null;
+            const arg_type = (try self.parseTypeExpr(c.car)) orelse return null;
             try domain_types.append(self.allocator, arg_type);
         }
 
         // Second arg is return type (defaults to any if not specified)
         const return_type = if (c.cdr.isCons()) blk: {
             const rc = c.cdr.toPtr(Cons);
-            break :blk self.parseTypeExpr(rc.car) orelse &types.t_any;
+            break :blk (try self.parseTypeExpr(rc.car)) orelse &types.t_any;
         } else &types.t_any;
 
         return try self.type_checker.builder.makeArrow(domain_types.items, return_type);
@@ -7474,7 +7450,7 @@ pub const Compiler = struct {
                             if (opt_cons.cdr.isCons()) {
                                 const type_cons = opt_cons.cdr.toPtr(Cons);
                                 type_sym = type_cons.car; // Store the type expression as runtime value
-                                if (self.parseTypeExpr(type_cons.car)) |ty| {
+                                if (try self.parseTypeExpr(type_cons.car)) |ty| {
                                     field_type = ty;
                                 }
                                 opts = type_cons.cdr;
@@ -9735,7 +9711,7 @@ pub const Compiler = struct {
         );
 
         // Parse base type for type info (optional)
-        const base_type = self.parseTypeExpr(base_type_spec);
+        const base_type = try self.parseTypeExpr(base_type_spec);
 
         // Generate assert_refine IR node
         return self.builder.assertRefine(expr_ir, predicate_lambda, base_type);
@@ -12731,7 +12707,7 @@ test "BiChecker integration - checkLambdaTypes with correct types" {
     const typed_params = [_]Compiler.TypedParam{};
 
     // Check with no return type - should succeed (just infers)
-    compiler.checkLambdaTypes(&typed_params, null, body);
+    try compiler.checkLambdaTypes(&typed_params, null, body);
 
     // No errors expected
     try testing.expect(!compiler.hasBiCheckErrors());
@@ -12756,12 +12732,11 @@ test "BiChecker integration - checkLambdaTypes with type mismatch" {
     const typed_params = [_]Compiler.TypedParam{};
 
     // Expect string return type (but body returns fixnum)
-    // Note: We need a Value for the type symbol, so we'll test this differently
-    // For now, just test that checking works without crashing
-    compiler.checkLambdaTypes(&typed_params, null, body);
+    const string_sym = try heap.intern("string");
+    try testing.expectError(error.TypeError, compiler.checkLambdaTypes(&typed_params, string_sym, body));
 
-    // BiChecker should have been invoked
-    try testing.expect(!compiler.hasBiCheckErrors());
+    // BiChecker should have recorded an error
+    try testing.expect(compiler.hasBiCheckErrors());
 }
 
 test "declare - type declaration" {
