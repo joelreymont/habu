@@ -106,7 +106,7 @@ pub fn compile(
     // Step 3: Generate native code
     switch (config.target) {
         .arm64 => {
-            const code = arm64.generate(allocator, reg_func, reg_map) catch {
+            const code = arm64.generate(allocator, reg_func, reg_map, null) catch {
                 return PipelineError.CodegenFailed;
             };
 

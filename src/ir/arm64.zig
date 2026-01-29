@@ -99,8 +99,21 @@ pub const ARM64 = struct {
 
     /// MOVZ Xd, #imm16
     pub fn movz(rd: PhysReg, imm16: u16) u32 {
+        return movzShift(rd, imm16, 0);
+    }
+
+    /// MOVZ Xd, #imm16, LSL #shift
+    pub fn movzShift(rd: PhysReg, imm16: u16, shift: u6) u32 {
         // 110100101 hw imm16 Rd
-        return 0xD2800000 | (@as(u32, imm16) << 5) | reg(rd);
+        const hw: u2 = @intCast(shift / 16);
+        return 0xD2800000 | (@as(u32, hw) << 21) | (@as(u32, imm16) << 5) | reg(rd);
+    }
+
+    /// MOVK Xd, #imm16, LSL #shift
+    pub fn movk(rd: PhysReg, imm16: u16, shift: u6) u32 {
+        // 111100101 hw imm16 Rd
+        const hw: u2 = @intCast(shift / 16);
+        return 0xF2800000 | (@as(u32, hw) << 21) | (@as(u32, imm16) << 5) | reg(rd);
     }
 
     /// MOVN Xd, #imm16 (for negative values)
@@ -306,6 +319,16 @@ pub const Emitter = struct {
         }
     }
 
+    /// Emit an absolute call via movz/movk + blr
+    pub fn emitCallAbs(self: *Emitter, target: usize) !void {
+        const addr: u64 = @intCast(target);
+        try self.emit(ARM64.movzShift(PHYS.x16, @truncate(addr), 0));
+        try self.emit(ARM64.movk(PHYS.x16, @truncate(addr >> 16), 16));
+        try self.emit(ARM64.movk(PHYS.x16, @truncate(addr >> 32), 32));
+        try self.emit(ARM64.movk(PHYS.x16, @truncate(addr >> 48), 48));
+        try self.emit(ARM64.blr(PHYS.x16));
+    }
+
     /// Get generated code as bytes
     pub fn getCode(self: *Emitter) []const u8 {
         const ptr: [*]const u8 = @ptrCast(self.code.items.ptr);
@@ -347,9 +370,18 @@ fn mapReg(vreg: Reg, reg_map: ?regalloc.RegisterMap) PhysReg {
     return @intCast(vreg % 26); // 26 allocatable registers (x0-x15, x19-x28)
 }
 
+pub const RuntimeFns = struct {
+    cons: usize,
+};
+
 /// Generate ARM64 code from register IR function
 /// If reg_map is provided, uses physical registers; otherwise uses virtual registers
-pub fn generate(allocator: std.mem.Allocator, func: Function, reg_map: ?regalloc.RegisterMap) ![]const u8 {
+pub fn generate(
+    allocator: std.mem.Allocator,
+    func: Function,
+    reg_map: ?regalloc.RegisterMap,
+    runtime: ?RuntimeFns,
+) ![]const u8 {
     var emitter = Emitter.init(allocator);
     defer emitter.deinit();
 
@@ -362,20 +394,20 @@ pub fn generate(allocator: std.mem.Allocator, func: Function, reg_map: ?regalloc
 
     // Emit each instruction
     for (func.code) |inst| {
-        try emitInst(&emitter, inst, reg_map);
+        try emitInst(&emitter, inst, reg_map, runtime);
     }
 
     // Patch branches
     emitter.patchBranches();
 
-    // Return owned copy of code
+    // Return owned copy of code and patch call relocs
     return try allocator.dupe(u8, emitter.getCode());
 }
 
 /// Emit a single IR instruction as ARM64
 /// Uses reg_map to translate virtual registers to physical registers
 /// Handles spilled registers by inserting load/store around operations
-fn emitInst(e: *Emitter, inst: Inst, reg_map: ?regalloc.RegisterMap) !void {
+fn emitInst(e: *Emitter, inst: Inst, reg_map: ?regalloc.RegisterMap, runtime: ?RuntimeFns) !void {
     // Check if operands are spilled
     const dest_spilled = if (reg_map) |map| map.isSpilled(inst.dest) else false;
     const src1_spilled = if (reg_map) |map| map.isSpilled(inst.src1) else false;
@@ -522,8 +554,8 @@ fn emitInst(e: *Emitter, inst: Inst, reg_map: ?regalloc.RegisterMap) !void {
             try e.emit(ARM64.mov(PHYS.x0, rs1));
             try e.emit(ARM64.mov(PHYS.x1, rs2));
             // Call runtime: heap.allocCons(car, cdr)
-            // Assumes runtime_cons address in constant pool
-            try e.emit(ARM64.bl(0)); // TODO: patch with runtime_cons offset
+            const rt = runtime orelse return error.MissingRuntimeSymbol;
+            try e.emitCallAbs(rt.cons);
             // Move result from x0 to dest
             if (rd != PHYS.x0) {
                 try e.emit(ARM64.mov(rd, PHYS.x0));
@@ -606,11 +638,62 @@ test "simple function codegen" {
     defer testing.allocator.free(func.code);
     defer testing.allocator.free(func.constants);
 
-    const code = try generate(testing.allocator, func, null);
+    const code = try generate(testing.allocator, func, null, null);
     defer testing.allocator.free(code);
 
     // Should have: prologue (2) + addi (1) + ret setup (0, already in x0) + epilogue (2)
     // But our simple codegen doesn't emit prologue/epilogue per-instruction
     // Just checking we got some code
     try testing.expect(code.len > 0);
+}
+
+test "cons call patch" {
+    const testing = std.testing;
+
+    const Dummy = struct {
+        fn runtimeCons() callconv(.c) void {}
+    };
+
+    var builder = instruction.Builder.init(testing.allocator);
+    defer builder.deinit();
+
+    // cons into x0 from x1/x2
+    try builder.emitCons(0, 1, 2);
+    try builder.emit(Inst.r(.ret, 0, 0, 0));
+
+    const func = try builder.build("cons", 2, 0);
+    defer testing.allocator.free(func.code);
+    defer testing.allocator.free(func.constants);
+
+    const runtime = RuntimeFns{ .cons = @intFromPtr(&Dummy.runtimeCons) };
+    const code = try generate(testing.allocator, func, null, runtime);
+    defer testing.allocator.free(code);
+
+    const blr_inst = ARM64.blr(PHYS.x16);
+    var blr_idx: ?usize = null;
+    var i: usize = 0;
+    while (i + 4 <= code.len) : (i += 4) {
+        const inst = std.mem.readInt(u32, code[i..][0..4], .little);
+        if (inst == blr_inst) {
+            blr_idx = i / 4;
+            break;
+        }
+    }
+    try testing.expect(blr_idx != null);
+    const idx = blr_idx.?;
+    try testing.expect(idx >= 4);
+
+    var addr: u64 = 0;
+    var j: usize = idx - 4;
+    while (j < idx) : (j += 1) {
+        const inst = std.mem.readInt(u32, code[j * 4 ..][0..4], .little);
+        const opcode = inst & 0xFF800000;
+        try testing.expect(opcode == 0xD2800000 or opcode == 0xF2800000);
+
+        const imm16: u64 = @intCast((inst >> 5) & 0xFFFF);
+        const hw: u6 = @intCast((inst >> 21) & 0x3);
+        const shift: u6 = @intCast(hw * 16);
+        addr |= imm16 << shift;
+    }
+    try testing.expectEqual(@as(u64, @intCast(runtime.cons)), addr);
 }
