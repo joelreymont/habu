@@ -39,7 +39,6 @@ pub const LineEditor = struct {
     }
 
     pub fn deinit(self: *LineEditor) void {
-        self.disableRawMode();
         for (self.history.items) |entry| {
             self.allocator.free(entry);
         }
@@ -82,11 +81,11 @@ pub const LineEditor = struct {
         self.raw_mode_enabled = true;
     }
 
-    fn disableRawMode(self: *LineEditor) void {
+    fn disableRawMode(self: *LineEditor) !void {
         if (self.raw_mode_enabled) {
-            if (self.orig_termios) |orig| {
-                posix.tcsetattr(std.posix.STDIN_FILENO, .FLUSH, orig) catch {};
-            }
+            const orig = self.orig_termios orelse unreachable;
+            try posix.tcsetattr(std.posix.STDIN_FILENO, .FLUSH, orig);
+            self.orig_termios = null;
             self.raw_mode_enabled = false;
         }
     }
@@ -218,11 +217,10 @@ pub const LineEditor = struct {
         self.pos = 0;
         self.history_idx = self.history.items.len;
 
-        // Try to enable raw mode
-        self.enableRawMode() catch {
-            // Fallback to simple line reading
+        if (!std.posix.isatty(std.posix.STDIN_FILENO)) {
             return self.readlineSimple(prompt);
-        };
+        }
+        try self.enableRawMode();
 
         const stdin = std.fs.File{ .handle = std.posix.STDIN_FILENO };
         const stdout = std.fs.File{ .handle = std.posix.STDOUT_FILENO };
@@ -230,76 +228,106 @@ pub const LineEditor = struct {
         var writer = stdout.writer(&out_buf);
         const w = &writer.interface;
 
+        const raw_result = self.readlineRaw(stdin, w);
+        if (self.disableRawMode()) |_| {} else |err| return err;
+        if (raw_result) |val| return val else |err| return err;
+    }
+
+    /// Simple fallback readline without editing
+    fn readlineSimple(self: *LineEditor, prompt: []const u8) !?[]const u8 {
+        const stdout = std.fs.File{ .handle = std.posix.STDOUT_FILENO };
+        const stdin = std.fs.File{ .handle = std.posix.STDIN_FILENO };
+
+        var out_buf: [256]u8 = undefined;
+        var writer = stdout.writer(&out_buf);
+        try writer.interface.writeAll(prompt);
+        try writer.interface.flush();
+
+        // Use self.buf instead of a local array so the slice remains valid
+        self.len = 0;
+        while (self.len < self.buf.len) {
+            var byte: [1]u8 = undefined;
+            const n = try stdin.read(&byte);
+            if (n == 0) return null;
+            if (byte[0] == '\n') break;
+            self.buf[self.len] = byte[0];
+            self.len += 1;
+        }
+        if (self.len == 0) return "";
+        return self.buf[0..self.len];
+    }
+
+    fn readlineRaw(self: *LineEditor, stdin: std.fs.File, writer: anytype) !?[]const u8 {
         // Print prompt
-        try w.writeAll(prompt);
-        try w.flush();
+        try writer.writeAll(self.prompt);
+        try writer.flush();
 
         while (true) {
             var c: [1]u8 = undefined;
-            const n = stdin.read(&c) catch return null;
+            const n = try stdin.read(&c);
             if (n == 0) return null;
 
             switch (c[0]) {
                 13 => { // Enter
-                    try w.writeAll("\r\n");
-                    try w.flush();
+                    try writer.writeAll("\r\n");
+                    try writer.flush();
                     const result = self.buf[0..self.len];
                     try self.addToHistory(result);
                     return result;
                 },
                 127, 8 => { // Backspace
                     self.deleteCharBackward();
-                    try self.refreshLine(w);
-                    try w.flush();
+                    try self.refreshLine(writer);
+                    try writer.flush();
                 },
                 4 => { // Ctrl-D
                     if (self.len == 0) {
-                        try w.writeAll("\r\n");
-                        try w.flush();
+                        try writer.writeAll("\r\n");
+                        try writer.flush();
                         return null;
                     }
                 },
                 1 => { // Ctrl-A - beginning of line
                     self.pos = 0;
-                    try self.refreshLine(w);
-                    try w.flush();
+                    try self.refreshLine(writer);
+                    try writer.flush();
                 },
                 5 => { // Ctrl-E - end of line
                     self.pos = self.len;
-                    try self.refreshLine(w);
-                    try w.flush();
+                    try self.refreshLine(writer);
+                    try writer.flush();
                 },
                 11 => { // Ctrl-K - kill to end
                     self.killToEnd();
-                    try self.refreshLine(w);
-                    try w.flush();
+                    try self.refreshLine(writer);
+                    try writer.flush();
                 },
                 21 => { // Ctrl-U - kill to beginning
                     self.killToBeginning();
-                    try self.refreshLine(w);
-                    try w.flush();
+                    try self.refreshLine(writer);
+                    try writer.flush();
                 },
                 23 => { // Ctrl-W - kill word backward
                     self.killWordBackward();
-                    try self.refreshLine(w);
-                    try w.flush();
+                    try self.refreshLine(writer);
+                    try writer.flush();
                 },
                 12 => { // Ctrl-L - clear screen
-                    try w.writeAll("\x1b[2J\x1b[H");
-                    try self.refreshLine(w);
-                    try w.flush();
+                    try writer.writeAll("\x1b[2J\x1b[H");
+                    try self.refreshLine(writer);
+                    try writer.flush();
                 },
                 27 => { // Escape sequence
                     var seq: [3]u8 = undefined;
-                    const n1 = stdin.read(seq[0..1]) catch return null;
+                    const n1 = try stdin.read(seq[0..1]);
                     if (n1 == 0) return null;
-                    const n2 = stdin.read(seq[1..2]) catch return null;
+                    const n2 = try stdin.read(seq[1..2]);
                     if (n2 == 0) return null;
 
                     if (seq[0] == '[') {
                         if (seq[1] >= '0' and seq[1] <= '9') {
                             // Extended escape like Delete key
-                            const n3 = stdin.read(seq[2..3]) catch return null;
+                            const n3 = try stdin.read(seq[2..3]);
                             if (n3 == 0) return null;
                             if (seq[1] == '3' and seq[2] == '~') {
                                 self.deleteCharForward();
@@ -319,42 +347,18 @@ pub const LineEditor = struct {
                                 else => {},
                             }
                         }
-                        try self.refreshLine(w);
-                        try w.flush();
+                        try self.refreshLine(writer);
+                        try writer.flush();
                     }
                 },
                 else => {
                     if (c[0] >= 32 and c[0] < 127) {
                         self.insertChar(c[0]);
-                        try self.refreshLine(w);
-                        try w.flush();
+                        try self.refreshLine(writer);
+                        try writer.flush();
                     }
                 },
             }
         }
-    }
-
-    /// Simple fallback readline without editing
-    fn readlineSimple(self: *LineEditor, prompt: []const u8) !?[]const u8 {
-        const stdout = std.fs.File{ .handle = std.posix.STDOUT_FILENO };
-        const stdin = std.fs.File{ .handle = std.posix.STDIN_FILENO };
-
-        var out_buf: [256]u8 = undefined;
-        var writer = stdout.writer(&out_buf);
-        try writer.interface.writeAll(prompt);
-        try writer.interface.flush();
-
-        // Use self.buf instead of a local array so the slice remains valid
-        self.len = 0;
-        while (self.len < self.buf.len) {
-            var byte: [1]u8 = undefined;
-            const n = stdin.read(&byte) catch return null;
-            if (n == 0) return null;
-            if (byte[0] == '\n') break;
-            self.buf[self.len] = byte[0];
-            self.len += 1;
-        }
-        if (self.len == 0) return "";
-        return self.buf[0..self.len];
     }
 };
