@@ -14,7 +14,7 @@ test "loop simple iteration" {
     const config = repl_mod.Config{};
     var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
     defer r.deinit();
-    r.wireGlobalEnv();
+    try r.wireGlobalEnv();
 
     const code =
         \\(define sum 0)
@@ -36,7 +36,7 @@ test "loop collect" {
     const config = repl_mod.Config{};
     var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
     defer r.deinit();
-    r.wireGlobalEnv();
+    try r.wireGlobalEnv();
 
     const code =
         \\(loop for i from 1 to 5
@@ -58,7 +58,7 @@ test "loop append" {
     const config = repl_mod.Config{};
     var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
     defer r.deinit();
-    r.wireGlobalEnv();
+    try r.wireGlobalEnv();
 
     const code =
         \\(loop for i from 1 to 3
@@ -77,7 +77,7 @@ test "loop sum" {
     const config = repl_mod.Config{};
     var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
     defer r.deinit();
-    r.wireGlobalEnv();
+    try r.wireGlobalEnv();
 
     const code =
         \\(loop for i from 1 to 10
@@ -97,7 +97,7 @@ test "loop count" {
     const config = repl_mod.Config{};
     var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
     defer r.deinit();
-    r.wireGlobalEnv();
+    try r.wireGlobalEnv();
 
     const code =
         \\(loop for i from 1 to 10
@@ -117,7 +117,7 @@ test "loop maximize" {
     const config = repl_mod.Config{};
     var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
     defer r.deinit();
-    r.wireGlobalEnv();
+    try r.wireGlobalEnv();
 
     const code =
         \\(loop for i in '(3 7 2 9 4)
@@ -137,7 +137,7 @@ test "loop minimize" {
     const config = repl_mod.Config{};
     var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
     defer r.deinit();
-    r.wireGlobalEnv();
+    try r.wireGlobalEnv();
 
     const code =
         \\(loop for i in '(3 7 2 9 4)
@@ -157,7 +157,7 @@ test "loop when conditional" {
     const config = repl_mod.Config{};
     var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
     defer r.deinit();
-    r.wireGlobalEnv();
+    try r.wireGlobalEnv();
 
     const code =
         \\(loop for i from 1 to 10
@@ -180,7 +180,7 @@ test "loop unless conditional" {
     const config = repl_mod.Config{};
     var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
     defer r.deinit();
-    r.wireGlobalEnv();
+    try r.wireGlobalEnv();
 
     const code =
         \\(loop for i from 1 to 5
@@ -203,7 +203,7 @@ test "loop on list iteration" {
     const config = repl_mod.Config{};
     var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
     defer r.deinit();
-    r.wireGlobalEnv();
+    try r.wireGlobalEnv();
 
     const code =
         \\(loop for x on '(1 2 3)
@@ -222,7 +222,7 @@ test "loop with multiple variables" {
     const config = repl_mod.Config{};
     var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
     defer r.deinit();
-    r.wireGlobalEnv();
+    try r.wireGlobalEnv();
 
     const code =
         \\(loop for i from 1 to 3
@@ -245,7 +245,7 @@ test "loop with by modifier" {
     const config = repl_mod.Config{};
     var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
     defer r.deinit();
-    r.wireGlobalEnv();
+    try r.wireGlobalEnv();
 
     const code =
         \\(loop for i from 0 to 10 by 2
@@ -267,7 +267,7 @@ test "loop always termination" {
     const config = repl_mod.Config{};
     var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
     defer r.deinit();
-    r.wireGlobalEnv();
+    try r.wireGlobalEnv();
 
     const code =
         \\(loop for i from 1 to 5
@@ -286,7 +286,7 @@ test "loop never termination" {
     const config = repl_mod.Config{};
     var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
     defer r.deinit();
-    r.wireGlobalEnv();
+    try r.wireGlobalEnv();
 
     const code =
         \\(loop for i from 1 to 5
@@ -305,7 +305,7 @@ test "loop thereis termination" {
     const config = repl_mod.Config{};
     var r = try repl_mod.Repl.init(testing.allocator, &heap, config);
     defer r.deinit();
-    r.wireGlobalEnv();
+    try r.wireGlobalEnv();
 
     const code =
         \\(loop for i from 1 to 10

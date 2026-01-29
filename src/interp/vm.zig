@@ -33,22 +33,7 @@ const GlobalEnv = compiler.GlobalEnv;
 const Parser = @import("../reader/parser.zig").Parser;
 const BuiltinSymbols = @import("../runtime/builtins.zig").BuiltinSymbols;
 
-pub const Error = error{
-    StackOverflow,
-    StackUnderflow,
-    TypeMismatch,
-    DivisionByZero,
-    InvalidOpcode,
-    InvalidConstant,
-    InvalidArgument,
-    OutOfMemory,
-    Halt,
-    UnhandledThrow,
-    UnboundSymbol,
-    UserError,
-    RestartNotFound,
-    NoMatchingBlock,
-};
+pub const Error = anyerror;
 
 /// Catch frame for exception handling
 pub const CatchFrame = struct {
@@ -5256,25 +5241,8 @@ pub const Vm = struct {
         return self.mapError(err);
     }
 
-    fn mapError(self: *Vm, err: anyerror) Error {
-        _ = self;
-        return switch (err) {
-            error.StackOverflow => error.StackOverflow,
-            error.StackUnderflow => error.StackUnderflow,
-            error.TypeMismatch => error.TypeMismatch,
-            error.DivisionByZero => error.DivisionByZero,
-            error.InvalidOpcode => error.InvalidOpcode,
-            error.InvalidConstant => error.InvalidConstant,
-            error.InvalidArgument => error.InvalidArgument,
-            error.OutOfMemory => error.OutOfMemory,
-            error.Halt => error.Halt,
-            error.UnhandledThrow => error.UnhandledThrow,
-            error.UnboundSymbol => error.UnboundSymbol,
-            error.UserError => error.UserError,
-            error.RestartNotFound => error.RestartNotFound,
-            error.NoMatchingBlock => error.NoMatchingBlock,
-            else => error.UserError,
-        };
+    fn mapError(_: *Vm, err: anyerror) Error {
+        return err;
     }
 
     fn doInvokeRestart(self: *Vm, name: Value, value: Value) Error!void {

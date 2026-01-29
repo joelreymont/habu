@@ -56,15 +56,7 @@ fn patchChunkIndices(chunk: *runtime.objects.Chunk, base: u16) void {
     }
 }
 
-pub const ReplError = error{
-    ParseError,
-    CompileError,
-    EmitError,
-    RuntimeError,
-    IoError,
-    OutOfMemory,
-    MacroExpansionTooDeep,
-};
+pub const ReplError = anyerror;
 
 /// REPL configuration
 pub const Config = struct {
@@ -111,7 +103,7 @@ pub const Repl = struct {
     }
 
     /// Wire up VM to compiler's global environment. Must be called after init.
-    pub fn wireGlobalEnv(self: *Repl) void {
+    pub fn wireGlobalEnv(self: *Repl) !void {
         self.vm.setGlobalEnv(&self.compiler.globals);
         // Set up load callback
         self.vm.setLoadCallback(&loadCallback, @ptrCast(self));
@@ -125,11 +117,11 @@ pub const Repl = struct {
         // Set VM on compiler for macro expansion
         self.compiler.setVm(&self.vm);
         // Create *features* list
-        self.createFeaturesGlobal() catch {};
+        try self.createFeaturesGlobal();
         // Create print control globals
-        self.createPrintGlobals() catch {};
+        try self.createPrintGlobals();
         // Create standard stream globals
-        self.createStreamGlobals() catch {};
+        try self.createStreamGlobals();
     }
 
     /// Helper to set a global and update num_globals
@@ -190,33 +182,25 @@ pub const Repl = struct {
     /// Callback for (load "filename") from VM
     fn loadCallback(filename: []const u8, context: *anyopaque) vm_mod.Error!Value {
         const self: *Repl = @ptrCast(@alignCast(context));
-        return self.loadFileValue(filename) catch {
-            return vm_mod.Error.InvalidArgument;
-        };
+        return self.loadFileValue(filename);
     }
 
     /// Callback for (eval expr) from VM
     fn evalCallback(expr: Value, context: *anyopaque) vm_mod.Error!Value {
         const self: *Repl = @ptrCast(@alignCast(context));
-        return self.evalExpression(expr) catch {
-            return vm_mod.Error.InvalidArgument;
-        };
+        return self.evalExpression(expr);
     }
 
     /// Callback for (macroexpand expr) from VM
     fn macroexpandCallback(expr: Value, context: *anyopaque) vm_mod.Error!Value {
         const self: *Repl = @ptrCast(@alignCast(context));
-        return self.expandMacros(expr) catch {
-            return vm_mod.Error.InvalidArgument;
-        };
+        return self.expandMacros(expr);
     }
 
     /// Callback for (macroexpand-1 expr) from VM
     fn macroexpand1Callback(expr: Value, context: *anyopaque) vm_mod.Error!Value {
         const self: *Repl = @ptrCast(@alignCast(context));
-        return self.expandMacrosOnce(expr) catch {
-            return vm_mod.Error.InvalidArgument;
-        };
+        return self.expandMacrosOnce(expr);
     }
 
     /// Callback for (fboundp sym) from VM - checks if symbol has a function binding
@@ -270,35 +254,26 @@ pub const Repl = struct {
         const saved_allocator = self.compiler.allocator;
         self.compiler.builder = ir.IrBuilder.init(arena_alloc);
         self.compiler.allocator = arena_alloc;
+        defer {
+            self.compiler.builder = saved_builder;
+            self.compiler.allocator = saved_allocator;
+        }
 
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
         const ir_node = self.compiler.compile(expr, &env) catch |err| {
-            self.compiler.builder = saved_builder;
-            self.compiler.allocator = saved_allocator;
             std.debug.print("Compile error: {}\n", .{err});
-            return error.CompileError;
+            return err;
         };
-        self.compiler.builder = saved_builder;
-        self.compiler.allocator = saved_allocator;
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
-        emitter.emit(ir_node) catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
-        const chunk = emitter.finalize() catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
-        const child_chunks = emitter.getChildChunks() catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
+        defer emitter.deinit();
+        try emitter.emit(ir_node);
+        const chunk = try emitter.finalize();
+        const child_chunks = try emitter.getChildChunks();
         defer self.allocator.free(child_chunks);
-        emitter.deinit();
 
         // Record base before appending
         const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
@@ -315,7 +290,7 @@ pub const Repl = struct {
         }
 
         // Use a separate VM to avoid stack issues
-        var nested_vm = Vm.init(self.allocator, self.heap) catch return error.RuntimeError;
+        var nested_vm = try Vm.init(self.allocator, self.heap);
         nested_vm.setGlobalEnv(&self.compiler.globals);
         nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
@@ -339,9 +314,7 @@ pub const Repl = struct {
 
         // Execute
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        const result = nested_vm.run(chunk_ptr) catch {
-            return error.RuntimeError;
-        };
+        const result = try nested_vm.run(chunk_ptr);
 
         // Copy back any new globals
         for (nested_vm.globals, 0..) |g, i| {
@@ -357,14 +330,10 @@ pub const Repl = struct {
     /// Load a file and return the last value (for (load ...) primitive)
     /// Uses a separate VM to avoid recursive execution issues
     fn loadFileValue(self: *Repl, path: []const u8) !Value {
-        const file = std.fs.cwd().openFile(path, .{}) catch {
-            return error.IoError;
-        };
+        const file = try std.fs.cwd().openFile(path, .{});
         defer file.close();
 
-        const content = file.readToEndAlloc(self.allocator, 1024 * 1024) catch {
-            return error.IoError;
-        };
+        const content = try file.readToEndAlloc(self.allocator, 1024 * 1024);
         defer self.allocator.free(content);
 
         // Evaluate all expressions using a fresh VM, return last value
@@ -377,7 +346,7 @@ pub const Repl = struct {
         var last_value = Value.nil;
 
         // Create a temporary VM for nested evaluation
-        var nested_vm = Vm.init(self.allocator, self.heap) catch return error.OutOfMemory;
+        var nested_vm = try Vm.init(self.allocator, self.heap);
         nested_vm.setGlobalEnv(&self.compiler.globals);
         nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
@@ -456,8 +425,12 @@ pub const Repl = struct {
             if (expr_slice.len > 0) {
                 // Use evalWithVm for the nested VM
                 last_value = self.evalWithVm(expr_slice, &nested_vm) catch |err| {
-                    std.debug.print("Error at pos {}: {} - {s}\n", .{ pos, err, expr_slice[0..@min(80, expr_slice.len)] });
-                    continue;
+                    std.debug.print("Error at pos {}: {s} - {s}\n", .{
+                        pos,
+                        @errorName(err),
+                        expr_slice[0..@min(80, expr_slice.len)],
+                    });
+                    return err;
                 };
             }
         }
@@ -480,9 +453,7 @@ pub const Repl = struct {
 
         // Parse
         var parser = Parser.init(arena_alloc, self.heap, source, &self.vm.builtins);
-        var expr = parser.parse() catch {
-            return error.ParseError;
-        };
+        var expr = try parser.parse();
 
         // Check for defmacro - handle specially like main eval
         if (self.isDefmacro(expr)) {
@@ -491,7 +462,7 @@ pub const Repl = struct {
 
         // Check for eval-when - compile-time evaluation
         if (self.isEvalWhen(expr)) {
-            const result = self.handleEvalWhen(expr, arena_alloc) catch return error.CompileError;
+            const result = try self.handleEvalWhen(expr, arena_alloc);
             // If eval-when returned nil (only :compile-toplevel), we're done
             if (result.isNil()) return Value.nil;
             // Otherwise compile the returned progn for runtime
@@ -501,7 +472,7 @@ pub const Repl = struct {
         // Expand macros
         expr = self.expandMacros(expr) catch |err| {
             std.debug.print("Macro expansion error: {}\n", .{err});
-            return error.CompileError;
+            return err;
         };
 
         // Desugar (let* → let, cond → if, etc.)
@@ -512,35 +483,26 @@ pub const Repl = struct {
         const saved_allocator = self.compiler.allocator;
         self.compiler.builder = IrBuilder.init(arena_alloc);
         self.compiler.allocator = arena_alloc;
+        defer {
+            self.compiler.builder = saved_builder;
+            self.compiler.allocator = saved_allocator;
+        }
 
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
         const ir_node = self.compiler.compile(expr, &env) catch |err| {
-            self.compiler.builder = saved_builder;
-            self.compiler.allocator = saved_allocator;
             std.debug.print("Compile error: {}\n", .{err});
-            return error.CompileError;
+            return err;
         };
-        self.compiler.builder = saved_builder;
-        self.compiler.allocator = saved_allocator;
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
-        emitter.emit(ir_node) catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
-        const chunk = emitter.finalize() catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
-        const child_chunks = emitter.getChildChunks() catch {
-            emitter.deinit();
-            return error.OutOfMemory;
-        };
+        defer emitter.deinit();
+        try emitter.emit(ir_node);
+        const chunk = try emitter.finalize();
+        const child_chunks = try emitter.getChildChunks();
         defer self.allocator.free(child_chunks);
-        emitter.deinit();
 
         // Record base before appending
         const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
@@ -567,10 +529,7 @@ pub const Repl = struct {
         }
         vm.setChunkPool(chunk_ptrs.items);
 
-        const result = vm.run(chunk_ptr) catch {
-            return error.RuntimeError;
-        };
-        return result;
+        return try vm.run(chunk_ptr);
     }
 
     pub fn deinit(self: *Repl) void {
@@ -583,9 +542,7 @@ pub const Repl = struct {
     /// Run nanopass pipeline on IR, returning transformed IR
     /// Pipeline: annotate → infer → erase
     fn runPipeline(self: *Repl, ir_node: *const Ir) !*const Ir {
-        return passes.runNanoPipeline(self.allocator, &self.vm.builtins, ir_node) catch |err| {
-            return err;
-        };
+        return try passes.runNanoPipeline(self.allocator, &self.vm.builtins, ir_node);
     }
 
     /// Run the REPL loop with File-based I/O
@@ -605,16 +562,16 @@ pub const Repl = struct {
             const prompt = if (input_buf.items.len == 0) self.config.prompt else self.config.cont_prompt;
 
             // Read line with editing
-            const line = self.line_editor.readline(prompt) catch {
+            const line = self.line_editor.readline(prompt) catch |err| {
                 // Error reading - try to eval what we have and exit
                 if (input_buf.items.len > 0) {
-                    self.evalPrint(input_buf.items, writer) catch {};
+                    try self.evalPrint(input_buf.items, writer);
                 }
-                return;
+                return err;
             } orelse {
                 // EOF (Ctrl-D on empty line)
                 if (input_buf.items.len > 0) {
-                    self.evalPrint(input_buf.items, writer) catch {};
+                    try self.evalPrint(input_buf.items, writer);
                 }
                 return;
             };
@@ -655,7 +612,7 @@ pub const Repl = struct {
             // Parens balanced - evaluate
             const trimmed_input = std.mem.trim(u8, input_buf.items, " \t\r\n");
             if (trimmed_input.len > 0) {
-                self.evalPrint(trimmed_input, writer) catch {};
+                try self.evalPrint(trimmed_input, writer);
                 try writer.flush();
             }
             input_buf.clearRetainingCapacity();
@@ -823,7 +780,7 @@ pub const Repl = struct {
                 .column = loc.column,
                 .text = loc.text,
             };
-            return error.ParseError;
+            return err;
         };
 
         // Check for defmacro
@@ -833,17 +790,12 @@ pub const Repl = struct {
 
         // Check for defpackage/in-package - these need to execute immediately
         if (self.isDefpackage(expr) or self.isInPackage(expr)) {
-            return self.evalPackageForm(expr, arena_alloc) catch |err| {
-                return switch (err) {
-                    error.OutOfMemory => error.OutOfMemory,
-                    else => error.CompileError,
-                };
-            };
+            return try self.evalPackageForm(expr, arena_alloc);
         }
 
         // Check for eval-when - compile-time evaluation
         if (self.isEvalWhen(expr)) {
-            const result = self.handleEvalWhen(expr, arena_alloc) catch return error.CompileError;
+            const result = try self.handleEvalWhen(expr, arena_alloc);
             if (result.isNil()) return Value.nil;
             expr = result;
         }
@@ -851,7 +803,7 @@ pub const Repl = struct {
         // Expand macros before compilation
         expr = self.expandMacros(expr) catch |err| {
             std.debug.print("expandMacros error: {}\n", .{err});
-            return error.CompileError;
+            return err;
         };
 
         // Desugar (let* → let, cond → if, etc.)
@@ -863,39 +815,31 @@ pub const Repl = struct {
         const saved_allocator = self.compiler.allocator;
         self.compiler.builder = IrBuilder.init(arena_alloc);
         self.compiler.allocator = arena_alloc;
+        defer {
+            self.compiler.builder = saved_builder;
+            self.compiler.allocator = saved_allocator;
+        }
 
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
         const ir_node = self.compiler.compile(expr, &env) catch |err| {
-            self.compiler.builder = saved_builder;
-            self.compiler.allocator = saved_allocator;
             err_info.* = .{
                 .kind = if (err == error.UnboundVariable) .compile_unbound_variable else .compile_invalid_syntax,
                 .line = 1,
                 .column = 1,
                 .text = "",
             };
-            return error.CompileError;
+            return err;
         };
-        self.compiler.builder = saved_builder;
-        self.compiler.allocator = saved_allocator;
 
         // Emit bytecode (with heap for symbol interning)
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
+        defer emitter.deinit();
 
-        emitter.emit(ir_node) catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
-        const chunk = emitter.finalize() catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
-        const child_chunks = emitter.getChildChunks() catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
+        try emitter.emit(ir_node);
+        const chunk = try emitter.finalize();
+        const child_chunks = try emitter.getChildChunks();
 
         // Record base before appending
         const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
@@ -914,7 +858,6 @@ pub const Repl = struct {
 
         // Free child chunk array (now owned by persistent storage)
         self.allocator.free(child_chunks);
-        emitter.deinit();
 
         // Set chunk pool with base offset
         var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
@@ -932,7 +875,7 @@ pub const Repl = struct {
                 .column = 1,
                 .text = "",
             };
-            return error.RuntimeError;
+            return err;
         };
         return result;
     }
@@ -983,7 +926,7 @@ pub const Repl = struct {
                 const s32 = val.toPtr(runtime.String32);
                 var utf8_buf: [4]u8 = undefined;
                 for (s32.codepoints()) |cp| {
-                    const len = std.unicode.utf8Encode(@intCast(cp), &utf8_buf) catch continue;
+                    const len = try std.unicode.utf8Encode(@intCast(cp), &utf8_buf);
                     try writer.writeAll(utf8_buf[0..len]);
                 }
                 try writer.writeByte('"');
@@ -1155,13 +1098,13 @@ pub const Repl = struct {
     fn loadFile(self: *Repl, path: []const u8, writer: anytype) !void {
         const file = std.fs.cwd().openFile(path, .{}) catch |err| {
             try writer.print("Cannot open '{s}': {s}\n", .{ path, @errorName(err) });
-            return error.IoError;
+            return err;
         };
         defer file.close();
 
         const content = file.readToEndAlloc(self.allocator, 1024 * 1024) catch |err| {
             try writer.print("Cannot read '{s}': {s}\n", .{ path, @errorName(err) });
-            return error.IoError;
+            return err;
         };
         defer self.allocator.free(content);
 
@@ -1197,7 +1140,7 @@ pub const Repl = struct {
             const start = pos;
             const end = self.findExprEnd(content, pos) catch |err| {
                 try writer.print("Parse error at position {d}: {s}\n", .{ pos, @errorName(err) });
-                return error.ParseError;
+                return err;
             };
 
             if (end > start) {
@@ -1324,8 +1267,7 @@ pub const Repl = struct {
         if (!rest2.isCons()) return error.CompileError;
 
         // Transform destructured params before building lambda
-        const transformed_rest2 = self.compiler.transformDestructuredParams(rest2) catch
-            return error.CompileError;
+        const transformed_rest2 = try self.compiler.transformDestructuredParams(rest2);
 
         // Build (lambda (args...) body...) to evaluate
         const lambda_sym = try self.heap.intern("lambda");
@@ -1341,38 +1283,26 @@ pub const Repl = struct {
         const saved_allocator = self.compiler.allocator;
         self.compiler.builder = IrBuilder.init(arena_alloc);
         self.compiler.allocator = arena_alloc;
+        defer {
+            self.compiler.builder = saved_builder;
+            self.compiler.allocator = saved_allocator;
+        }
 
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
         const ir_node = self.compiler.compile(expanded_lambda, &env) catch |err| {
-            self.compiler.builder = saved_builder;
-            self.compiler.allocator = saved_allocator;
             std.debug.print("Compile error: {s}\n", .{@errorName(err)});
-            return switch (err) {
-                error.OutOfMemory => error.OutOfMemory,
-                else => error.CompileError,
-            };
+            return err;
         };
-        self.compiler.builder = saved_builder;
-        self.compiler.allocator = saved_allocator;
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
-        emitter.emit(ir_node) catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
-        const chunk = emitter.finalize() catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
-        const child_chunks = emitter.getChildChunks() catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
+        defer emitter.deinit();
+        try emitter.emit(ir_node);
+        const chunk = try emitter.finalize();
+        const child_chunks = try emitter.getChildChunks();
         defer self.allocator.free(child_chunks);
-        emitter.deinit();
 
         // Record base before appending
         const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
@@ -1391,7 +1321,7 @@ pub const Repl = struct {
 
         // Use a separate VM to avoid corrupting the main VM's state
         // (handleDefmacro may be called during a load from within the main VM)
-        var macro_vm = Vm.init(self.allocator, self.heap) catch return error.RuntimeError;
+        var macro_vm = try Vm.init(self.allocator, self.heap);
         macro_vm.setGlobalEnv(&self.compiler.globals);
 
         var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
@@ -1409,16 +1339,14 @@ pub const Repl = struct {
         macro_vm.num_globals = source_vm.num_globals;
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        const closure = macro_vm.run(chunk_ptr) catch {
-            return error.RuntimeError;
-        };
+        const closure = try macro_vm.run(chunk_ptr);
 
         if (!closure.isClosure()) return error.CompileError;
 
         // Store the closure in REPL macro table for pre-compilation macro expansion
         // Store the AST in Compiler macro table for compile-time expansion
-        self.macros.put(name, closure) catch return error.CompileError;
-        self.compiler.macro_table.put(cons2.car, transformed_rest2) catch return error.CompileError;
+        try self.macros.put(name, closure);
+        try self.compiler.macro_table.put(cons2.car, transformed_rest2);
 
         // Return the macro name as a symbol
         return cons2.car;
@@ -1514,12 +1442,7 @@ pub const Repl = struct {
 
         // Check for defpackage/in-package - these need to execute immediately
         if (self.isDefpackage(expr) or self.isInPackage(expr)) {
-            return self.evalPackageForm(expr, arena_alloc) catch |err| {
-                return switch (err) {
-                    error.OutOfMemory => error.OutOfMemory,
-                    else => error.CompileError,
-                };
-            };
+            return try self.evalPackageForm(expr, arena_alloc);
         }
 
         // Check for nested eval-when
@@ -1528,7 +1451,7 @@ pub const Repl = struct {
         }
 
         // Expand macros
-        expr = self.expandMacros(expr) catch return error.CompileError;
+        expr = try self.expandMacros(expr);
 
         // Desugar (let* → let, cond → if, etc.)
         expr = try self.desugarExpr(expr);
@@ -1538,47 +1461,32 @@ pub const Repl = struct {
         const saved_allocator = self.compiler.allocator;
         self.compiler.builder = IrBuilder.init(arena_alloc);
         self.compiler.allocator = arena_alloc;
+        defer {
+            self.compiler.builder = saved_builder;
+            self.compiler.allocator = saved_allocator;
+        }
 
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
         const ir_node = self.compiler.compile(expr, &env) catch |err| {
-            self.compiler.builder = saved_builder;
-            self.compiler.allocator = saved_allocator;
             std.debug.print("Compile error: {s}\n", .{@errorName(err)});
-            return switch (err) {
-                error.OutOfMemory => error.OutOfMemory,
-                else => error.CompileError,
-            };
+            return err;
         };
-        self.compiler.builder = saved_builder;
-        self.compiler.allocator = saved_allocator;
 
         // Run pipeline passes (typecheck, erasure)
         const final_ir = self.runPipeline(ir_node) catch |err| {
             std.debug.print("Pipeline error: {s}\n", .{@errorName(err)});
-            return switch (err) {
-                error.OutOfMemory => error.OutOfMemory,
-                else => error.CompileError,
-            };
+            return err;
         };
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
-        emitter.emit(final_ir) catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
-        const chunk = emitter.finalize() catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
-        const child_chunks = emitter.getChildChunks() catch {
-            emitter.deinit();
-            return error.EmitError;
-        };
+        defer emitter.deinit();
+        try emitter.emit(final_ir);
+        const chunk = try emitter.finalize();
+        const child_chunks = try emitter.getChildChunks();
         defer self.allocator.free(child_chunks);
-        emitter.deinit();
 
         // Record base before appending
         const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
@@ -1594,7 +1502,7 @@ pub const Repl = struct {
         }
 
         // Use a separate VM to avoid corrupting the main VM's state
-        var eval_vm = Vm.init(self.allocator, self.heap) catch return error.RuntimeError;
+        var eval_vm = try Vm.init(self.allocator, self.heap);
         eval_vm.setGlobalEnv(&self.compiler.globals);
 
         var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
@@ -1623,7 +1531,7 @@ pub const Repl = struct {
         defer self.current_vm = saved_current_vm;
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        const result = eval_vm.run(chunk_ptr) catch return error.RuntimeError;
+        const result = try eval_vm.run(chunk_ptr);
 
         // Copy back any new globals to the original source
         for (eval_vm.globals, 0..) |g, i| {
@@ -1639,7 +1547,7 @@ pub const Repl = struct {
     /// Desugar an expression (let* → let, cond → if, etc.)
     fn desugarExpr(self: *Repl, expr: Value) ReplError!Value {
         var desugarer = passes.Desugarer.init(self.allocator, self.heap, &self.vm.builtins);
-        return desugarer.desugar(expr) catch return error.CompileError;
+        return try desugarer.desugar(expr);
     }
 
     /// Expand macros in an expression (recursive)
@@ -1696,7 +1604,7 @@ pub const Repl = struct {
                 defer arena.deinit();
                 const arena_alloc = arena.allocator();
 
-                const result = self.handleEvalWhen(expr, arena_alloc) catch return error.CompileError;
+                const result = try self.handleEvalWhen(expr, arena_alloc);
                 // If eval-when returned a progn (has :execute), expand it too
                 if (!result.isNil()) {
                     return self.expandMacrosWithDepth(result, depth + 1);
@@ -1825,7 +1733,7 @@ pub const Repl = struct {
         const chunk = try self.heap.allocChunk(code_buf[0..code_len], constants.items, 0, 0, 0, false, 0);
 
         // Use a separate VM to avoid corrupting the current VM state
-        var macro_vm = Vm.init(self.allocator, self.heap) catch return error.RuntimeError;
+        var macro_vm = try Vm.init(self.allocator, self.heap);
         macro_vm.setGlobalEnv(&self.compiler.globals);
         macro_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         macro_vm.setEvalCallback(&evalCallback, @ptrCast(self));
@@ -1847,9 +1755,7 @@ pub const Repl = struct {
         macro_vm.setChunkPool(chunk_ptrs.items);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        return macro_vm.run(chunk_ptr) catch {
-            return error.RuntimeError;
-        };
+        return try macro_vm.run(chunk_ptr);
     }
 
     /// Handle package forms (defpackage/in-package) - execute them immediately
@@ -2061,4 +1967,14 @@ test "eval type predicate" {
 
     const result2 = try evalString(allocator, &heap, "(null nil)");
     try testing.expect(result2.eq(Value.t));
+}
+
+test "eval parse error propagates" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    try testing.expectError(error.UnterminatedList, evalString(allocator, &heap, "("));
 }

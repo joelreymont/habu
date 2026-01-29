@@ -35,12 +35,12 @@ pub fn main() !void {
     // Run REPL
     var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
-    repl.wireGlobalEnv();
+    try repl.wireGlobalEnv();
 
     // Auto-load stdlib.habu
     repl.loadFilePublic("lib/stdlib.habu", writer) catch |err| {
         try writer.print("; Warning: Could not load lib/stdlib.habu: {s}\n", .{@errorName(err)});
-        if (err == error.IoError) {
+        if (err == error.FileNotFound) {
             try writer.print("; Hint: Run from project root directory\n", .{});
         }
     };
