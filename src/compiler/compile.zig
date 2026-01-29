@@ -1588,6 +1588,7 @@ pub const Compiler = struct {
     /// ADT variant definition
     pub const Variant = struct {
         name: []const u8,
+        sym: Value,
         fields: []const []const u8,
     };
 
@@ -8878,6 +8879,7 @@ pub const Compiler = struct {
 
         return .{
             .name = name,
+            .sym = cons1.car,
             .fields = try fields.toOwnedSlice(self.allocator),
         };
     }
@@ -9083,15 +9085,15 @@ pub const Compiler = struct {
         const clauses = cons1.cdr;
 
         // Exhaustiveness checking: collect variant names from clauses
-        try self.checkMatchExhaustiveness(clauses);
+        _ = try self.checkMatchExhaustiveness(clauses);
 
         return self.compileMatchClauses(scrutinee, clauses, env);
     }
 
     /// Check if match covers all variants of the ADT (warning only, doesn't fail)
-    fn checkMatchExhaustiveness(self: *Compiler, clauses: Value) !void {
+    fn checkMatchExhaustiveness(self: *Compiler, clauses: Value) !?usize {
         var has_wildcard = false;
-        var covered = std.StringHashMap(void).init(self.allocator);
+        var covered = std.AutoHashMap(Value, void).init(self.allocator);
         defer covered.deinit();
 
         // Scan clauses to find variant names and wildcards
@@ -9121,26 +9123,24 @@ pub const Compiler = struct {
             if (pattern.isCons()) {
                 const variant_cons = pattern.toPtr(Cons);
                 if (variant_cons.car.isSymbol()) {
-                    const variant_name = variant_cons.car.toPtr(Symbol).getName();
-                    covered.put(variant_name, {}) catch {};
+                    covered.put(variant_cons.car, {}) catch {};
                 }
             }
 
             current = clause_cons.cdr;
         }
 
-        if (has_wildcard) return; // Wildcard covers everything
+        if (has_wildcard) return null; // Wildcard covers everything
 
         // Find the ADT type from the first variant
         var type_variants: ?[]const Variant = null;
         var iter = covered.keyIterator();
-        while (iter.next()) |variant_name| {
+        while (iter.next()) |variant_sym| {
             // Search all defined types for this variant
             var type_iter = self.defined_types.iterator();
             while (type_iter.next()) |entry| {
-                // String comparison needed: variant names are raw strings from defdata parsing
                 for (entry.value_ptr.*) |v| {
-                    if (std.mem.eql(u8, v.name, variant_name.*)) {
+                    if (v.sym.eq(variant_sym.*)) {
                         type_variants = entry.value_ptr.*;
                         break;
                     }
@@ -9153,11 +9153,13 @@ pub const Compiler = struct {
         if (type_variants) |variants| {
             // Check which variants are missing
             for (variants) |v| {
-                if (!covered.contains(v.name)) {
+                if (!covered.contains(v.sym)) {
                     std.log.warn("match: missing case for variant '{s}'", .{v.name});
                 }
             }
+            return variants.len;
         }
+        return null;
     }
 
     fn compileMatchClauses(self: *Compiler, scrutinee: *const Ir, clauses: Value, env: *const Env) anyerror!*Ir {
@@ -12750,6 +12752,44 @@ test "BiChecker integration - checkLambdaTypes with type mismatch" {
 
     // BiChecker should have recorded an error
     try testing.expect(compiler.hasBiCheckErrors());
+}
+
+test "match exhaustiveness uses variant symbol identity" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    _ = try heap.findOrCreatePackage("PKG1");
+    _ = try heap.findOrCreatePackage("PKG2");
+    const sym1 = (try heap.internInPackage("PKG1", "V")).?;
+    const sym2 = (try heap.internInPackage("PKG2", "V")).?;
+
+    const variants = try compiler.allocator.alloc(Compiler.Variant, 1);
+    variants[0] = .{ .name = "V", .sym = sym1, .fields = &.{} };
+    try compiler.defined_types.put("T", variants);
+
+    const pattern_other = try heap.allocCons(sym2, Value.nil);
+    const body_other = try heap.allocCons(Value.makeFixnum(1), Value.nil);
+    const clause_other = try heap.allocCons(pattern_other, body_other);
+    const clauses_other = try heap.allocCons(clause_other, Value.nil);
+    const found_other = try compiler.checkMatchExhaustiveness(clauses_other);
+    try testing.expect(found_other == null);
+
+    const pattern_ok = try heap.allocCons(sym1, Value.nil);
+    const body_ok = try heap.allocCons(Value.makeFixnum(1), Value.nil);
+    const clause_ok = try heap.allocCons(pattern_ok, body_ok);
+    const clauses_ok = try heap.allocCons(clause_ok, Value.nil);
+    const found_ok = try compiler.checkMatchExhaustiveness(clauses_ok);
+    try testing.expectEqual(@as(?usize, 1), found_ok);
+
+    _ = compiler.defined_types.remove("T");
+    compiler.allocator.free(variants);
 }
 
 test "declare - type declaration" {
