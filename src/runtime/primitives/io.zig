@@ -738,7 +738,17 @@ fn writeBytesToStream(stream: Value, bytes: []const u8) !void {
         .string => {
             if (s.data_ptr == 0) return error.StreamClosed;
             const buf: *objects.OutputBuffer = @ptrFromInt(s.data_ptr);
-            try buf.list.appendSlice(buf.allocator, bytes);
+            const pos = std.math.cast(usize, s.position) orelse return error.InvalidArgument;
+            if (pos > buf.list.items.len) return error.InvalidArgument;
+            const end_pos = try std.math.add(usize, pos, bytes.len);
+            if (end_pos > buf.list.items.len) {
+                try buf.list.resize(buf.allocator, end_pos);
+            }
+            if (bytes.len != 0) {
+                @memcpy(buf.list.items[pos..][0..bytes.len], bytes);
+            }
+            s.position = @intCast(end_pos);
+            s.length = @intCast(buf.list.items.len);
         },
         .file, .stdout, .stderr => {
             const fd: std.posix.fd_t = @intCast(s.file_fd);
@@ -1208,6 +1218,39 @@ test "write/princ/print respect stream argument" {
     _ = try print(Value.makeFixnum(7), stream);
     const out3 = try getOutputStreamString(&heap, stream);
     try testing.expect(std.mem.eql(u8, out3.toPtr(objects.String).bytes(), "\n7 "));
+
+    try closeStream(stream, null);
+}
+
+test "string output stream length and position" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const stream = try makeStringOutputStream(&heap);
+    const hello = try heap.allocBaseString("abc");
+    try writeString(hello, stream, null, null);
+
+    const len_val = try fileLength(stream);
+    try testing.expect(len_val.isFixnum());
+    try testing.expectEqual(@as(i64, 3), len_val.toFixnum());
+
+    const pos_val = try filePosition(&heap, stream, null);
+    try testing.expect(pos_val.isFixnum());
+    try testing.expectEqual(@as(i64, 3), pos_val.toFixnum());
+
+    _ = try filePosition(&heap, stream, Value.makeFixnum(1));
+    try writeChar(Value.makeFixnum('Z'), stream);
+
+    const out = try getOutputStreamString(&heap, stream);
+    try testing.expect(std.mem.eql(u8, out.toPtr(objects.String).bytes(), "aZc"));
+
+    try clearOutput(stream);
+    const len_zero = try fileLength(stream);
+    try testing.expectEqual(@as(i64, 0), len_zero.toFixnum());
+    const pos_zero = try filePosition(&heap, stream, null);
+    try testing.expectEqual(@as(i64, 0), pos_zero.toFixnum());
 
     try closeStream(stream, null);
 }
@@ -1731,6 +1774,8 @@ pub fn clearOutput(stream: Value) !void {
             if (s.data_ptr == 0) return error.StreamClosed;
             const buf: *objects.OutputBuffer = @ptrFromInt(s.data_ptr);
             buf.list.clearRetainingCapacity();
+            s.position = 0;
+            s.length = 0;
         },
         .file, .stdout, .stderr => {}, // Can't clear OS buffer
         .broadcast => {
@@ -1790,10 +1835,12 @@ pub fn freshLine(stream: Value) !Value {
         .string => {
             if (s.data_ptr == 0) return error.StreamClosed;
             const buf: *objects.OutputBuffer = @ptrFromInt(s.data_ptr);
-            if (buf.list.items.len == 0 or buf.list.items[buf.list.items.len - 1] == '\n') {
+            const pos = std.math.cast(usize, s.position) orelse return error.InvalidArgument;
+            if (pos > buf.list.items.len) return error.InvalidArgument;
+            if (pos == 0 or buf.list.items[pos - 1] == '\n') {
                 return Value.nil;
             }
-            try buf.list.append(buf.allocator, '\n');
+            try writeBytesToStream(stream, "\n");
             return Value.t;
         },
         .file, .stdout, .stderr => {
@@ -1843,7 +1890,9 @@ pub fn filePosition(heap: *heap_mod.Heap, stream: Value, pos: ?Value) !Value {
                 if (new_pos == -1) {
                     s.position = s.length;
                 } else if (new_pos >= 0) {
-                    s.position = @intCast(new_pos);
+                    const upos = std.math.cast(u64, new_pos) orelse return error.InvalidArgument;
+                    if (upos > s.length) return error.InvalidArgument;
+                    s.position = upos;
                 } else {
                     return error.InvalidArgument;
                 }
