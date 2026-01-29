@@ -1829,20 +1829,20 @@ pub fn listDirectory(heap: *Heap, pathname: Value) !Value {
 
     // Open directory
     var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| {
-        switch (err) {
-            error.FileNotFound, error.NotDir => return Value.nil,
-            else => return error.FileError,
-        }
+        return switch (err) {
+            error.FileNotFound, error.NotDir => Value.nil,
+            else => err,
+        };
     };
     defer dir.close();
 
     // Build list of pathnames
     var result = Value.nil;
     var iter = dir.iterate();
-    while (iter.next() catch return error.FileError) |entry| {
+    while (try iter.next()) |entry| {
         // Build full path
         var full_path_buf: [std.fs.max_path_bytes]u8 = undefined;
-        const full_path = std.fmt.bufPrint(&full_path_buf, "{s}/{s}", .{ dir_path, entry.name }) catch continue;
+        const full_path = try std.fmt.bufPrint(&full_path_buf, "{s}/{s}", .{ dir_path, entry.name });
 
         // Parse path into pathname components
         const name_str = try heap.allocBaseString(std.fs.path.stem(entry.name));
