@@ -16,10 +16,13 @@ const Value = runtime.Value;
 pub const JitError = error{
     OutOfMemory,
     UnsupportedOpcode,
-    PatchFailed,
     CodeTooLarge,
     InvalidConstantIndex,
     BranchOutOfRange,
+    InvalidJumpTarget,
+    OffsetTooLarge,
+    InvalidHoleType,
+    InsufficientPatchValues,
 };
 
 /// JIT-compiled function
@@ -91,16 +94,16 @@ pub const Jit = struct {
         switch (op) {
             .push_nil => {
                 // Load nil (0) into x0
-                _ = patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = Value.nil.raw },
-                }) catch return error.PatchFailed;
+                });
             },
 
             .push_t => {
                 // Load t (tagged fixnum 1) into x0
-                _ = patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = Value.t.raw },
-                }) catch return error.PatchFailed;
+                });
             },
 
             .push_i32 => {
@@ -108,115 +111,91 @@ pub const Jit = struct {
                 bc_offset.* += 4;
                 // Create tagged fixnum
                 const tagged = Value.makeFixnum(val);
-                _ = patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = tagged.raw },
-                }) catch return error.PatchFailed;
+                });
             },
 
             .push_const => {
                 const idx = chunk.readU16(bc_offset.*);
                 bc_offset.* += 2;
                 if (idx >= chunk.getConstants().len) return error.InvalidConstantIndex;
-                _ = patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = chunk.getConstants()[idx].raw },
-                }) catch return error.PatchFailed;
+                });
             },
 
             .add => {
                 // Pop x1 from stack, add with x0
-                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
-                _ = patch.patchStencil(&self.code_buffer, stencils.add_fixnum, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.add_fixnum, &[_]patch.PatchValue{});
             },
 
             .sub => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
-                _ = patch.patchStencil(&self.code_buffer, stencils.sub_fixnum, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.sub_fixnum, &[_]patch.PatchValue{});
             },
 
             .mul => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
-                _ = patch.patchStencil(&self.code_buffer, stencils.mul_fixnum, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.mul_fixnum, &[_]patch.PatchValue{});
             },
 
             .neg => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.neg_fixnum, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.neg_fixnum, &[_]patch.PatchValue{});
             },
 
             .eq => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
-                _ = patch.patchStencil(&self.code_buffer, stencils.eq_stencil, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.eq_stencil, &[_]patch.PatchValue{});
             },
 
             .lt => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
-                _ = patch.patchStencil(&self.code_buffer, stencils.lt_stencil, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.lt_stencil, &[_]patch.PatchValue{});
             },
 
             .gt => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
-                _ = patch.patchStencil(&self.code_buffer, stencils.gt_stencil, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.gt_stencil, &[_]patch.PatchValue{});
             },
 
             .le => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
-                _ = patch.patchStencil(&self.code_buffer, stencils.le_stencil, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.le_stencil, &[_]patch.PatchValue{});
             },
 
             .ge => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
-                _ = patch.patchStencil(&self.code_buffer, stencils.ge_stencil, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.ge_stencil, &[_]patch.PatchValue{});
             },
 
             .not => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.not_stencil, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.not_stencil, &[_]patch.PatchValue{});
             },
 
             .nilp => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.nilp_stencil, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.nilp_stencil, &[_]patch.PatchValue{});
             },
 
             .numberp => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.fixnump_stencil, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.fixnump_stencil, &[_]patch.PatchValue{});
             },
 
             .dup => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.dup_stencil, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.dup_stencil, &[_]patch.PatchValue{});
             },
 
             .pop => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
             },
 
             .swap => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.swap_stencil, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.swap_stencil, &[_]patch.PatchValue{});
             },
 
             .ret => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.ret_stencil, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.ret_stencil, &[_]patch.PatchValue{});
             },
 
             .jmp => {
@@ -226,9 +205,9 @@ pub const Jit = struct {
 
                 // Record pending jump
                 const code_offset = self.code_buffer.pos;
-                _ = patch.patchStencil(&self.code_buffer, stencils.branch_stencil, &[_]patch.PatchValue{
+                _ = try patch.patchStencil(&self.code_buffer, stencils.branch_stencil, &[_]patch.PatchValue{
                     .{ .addr = 0 }, // Placeholder
-                }) catch return error.PatchFailed;
+                });
 
                 try self.pending_jumps.append(self.allocator, .{
                     .code_offset = code_offset,
@@ -243,9 +222,9 @@ pub const Jit = struct {
                 const target_bc = @as(usize, @intCast(@as(i32, @intCast(bc_offset.*)) + offset));
 
                 const code_offset = self.code_buffer.pos;
-                _ = patch.patchStencil(&self.code_buffer, stencils.branch_nil, &[_]patch.PatchValue{
+                _ = try patch.patchStencil(&self.code_buffer, stencils.branch_nil, &[_]patch.PatchValue{
                     .{ .addr = 0 },
-                }) catch return error.PatchFailed;
+                });
 
                 try self.pending_jumps.append(self.allocator, .{
                     .code_offset = code_offset,
@@ -260,9 +239,9 @@ pub const Jit = struct {
                 const target_bc = @as(usize, @intCast(@as(i32, @intCast(bc_offset.*)) + offset));
 
                 const code_offset = self.code_buffer.pos;
-                _ = patch.patchStencil(&self.code_buffer, stencils.branch_not_nil, &[_]patch.PatchValue{
+                _ = try patch.patchStencil(&self.code_buffer, stencils.branch_not_nil, &[_]patch.PatchValue{
                     .{ .addr = 0 },
-                }) catch return error.PatchFailed;
+                });
 
                 try self.pending_jumps.append(self.allocator, .{
                     .code_offset = code_offset,
@@ -272,13 +251,11 @@ pub const Jit = struct {
             },
 
             .car => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.car_stencil, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.car_stencil, &[_]patch.PatchValue{});
             },
 
             .cdr => {
-                _ = patch.patchStencil(&self.code_buffer, stencils.cdr_stencil, &[_]patch.PatchValue{}) catch
-                    return error.PatchFailed;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.cdr_stencil, &[_]patch.PatchValue{});
             },
 
             // Skip operands for unsupported ops
@@ -310,7 +287,7 @@ pub const Jit = struct {
     fn patchPendingJumps(self: *Jit) JitError!void {
         for (self.pending_jumps.items) |jump| {
             const target_code_addr = self.labels.get(jump.target_bc_offset) orelse
-                return error.PatchFailed;
+                return error.InvalidJumpTarget;
 
             const code_slice = self.code_buffer.memory[jump.code_offset..];
             const inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + jump.code_offset;
@@ -334,7 +311,7 @@ pub const Jit = struct {
                     inst = (inst & 0xFF00001F) | ((word_offset & 0x7FFFF) << 5);
                     std.mem.writeInt(u32, code_slice[0..4], inst, .little);
                 },
-                else => return error.PatchFailed,
+                else => return error.InvalidHoleType,
             }
         }
     }
