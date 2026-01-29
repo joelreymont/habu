@@ -54,6 +54,30 @@ pub const SymbolTable = struct {
     }
 };
 
+pub const UpperName = struct {
+    slice: []const u8,
+    owned: ?[]u8,
+};
+
+pub fn upperNameAlloc(allocator: std.mem.Allocator, name: []const u8, buf: []u8) !UpperName {
+    if (name.len <= buf.len) {
+        for (name, 0..) |c, i| {
+            buf[i] = std.ascii.toUpper(c);
+        }
+        return .{ .slice = buf[0..name.len], .owned = null };
+    }
+
+    const out = try allocator.alloc(u8, name.len);
+    for (name, 0..) |c, i| {
+        out[i] = std.ascii.toUpper(c);
+    }
+    return .{ .slice = out, .owned = out };
+}
+
+pub fn freeUpperName(allocator: std.mem.Allocator, upper: UpperName) void {
+    if (upper.owned) |mem| allocator.free(mem);
+}
+
 /// Package: a namespace for symbols
 pub const Package = struct {
     name: []const u8,
@@ -118,16 +142,6 @@ pub const Package = struct {
         self.allocator.destroy(self);
     }
 
-    fn upperName(name: []const u8, buf: *[256]u8) []const u8 {
-        if (name.len <= buf.len) {
-            for (name, 0..) |c, i| {
-                buf[i] = std.ascii.toUpper(c);
-            }
-            return buf[0..name.len];
-        }
-        return name;
-    }
-
     fn findAccessibleUpper(self: *Package, upper_name: []const u8) ?Value {
         if (self.symbols.get(upper_name)) |existing| {
             return existing;
@@ -142,16 +156,19 @@ pub const Package = struct {
         return null;
     }
 
-    pub fn findAccessible(self: *Package, name: []const u8) ?Value {
+    pub fn findAccessible(self: *Package, name: []const u8) error{OutOfMemory}!?Value {
         var upper_buf: [256]u8 = undefined;
-        const upper_name = upperName(name, &upper_buf);
-        return self.findAccessibleUpper(upper_name);
+        const upper = try upperNameAlloc(self.allocator, name, upper_buf[0..]);
+        defer freeUpperName(self.allocator, upper);
+        return self.findAccessibleUpper(upper.slice);
     }
 
     pub fn intern(self: *Package, heap: *Heap, name: []const u8) error{OutOfMemory}!Value {
         // Upcase name per CL spec
         var upper_buf: [256]u8 = undefined;
-        const upper_name = upperName(name, &upper_buf);
+        const upper = try upperNameAlloc(self.allocator, name, upper_buf[0..]);
+        defer freeUpperName(self.allocator, upper);
+        const upper_name = upper.slice;
 
         if (self.findAccessibleUpper(upper_name)) |existing| {
             return existing;
@@ -1293,19 +1310,16 @@ pub const Heap = struct {
     /// Returns existing symbol if already interned, otherwise creates new one
     /// Uses current package if available, otherwise legacy global table
     pub fn intern(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
-        // Upcase name per CL spec
-        var upper_buf: [256]u8 = undefined;
-        const upper_name = if (name.len <= upper_buf.len) blk: {
-            for (name, 0..) |c, i| {
-                upper_buf[i] = std.ascii.toUpper(c);
-            }
-            break :blk upper_buf[0..name.len];
-        } else name;
-
         // Use current package if available
         if (self.current_package) |pkg| {
-            return pkg.intern(self, upper_name);
+            return pkg.intern(self, name);
         }
+
+        // Upcase name per CL spec
+        var upper_buf: [256]u8 = undefined;
+        const upper = try upperNameAlloc(self.backing_allocator, name, upper_buf[0..]);
+        defer freeUpperName(self.backing_allocator, upper);
+        const upper_name = upper.slice;
 
         // Fallback to legacy global table
         if (self.symbols.get(upper_name)) |existing| {
@@ -1390,12 +1404,9 @@ pub const Heap = struct {
     pub fn internKeyword(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
         // Upcase name per CL spec
         var upper_buf: [256]u8 = undefined;
-        const upper_name = if (name.len <= upper_buf.len) blk: {
-            for (name, 0..) |c, i| {
-                upper_buf[i] = std.ascii.toUpper(c);
-            }
-            break :blk upper_buf[0..name.len];
-        } else name;
+        const upper = try upperNameAlloc(self.backing_allocator, name, upper_buf[0..]);
+        defer freeUpperName(self.backing_allocator, upper);
+        const upper_name = upper.slice;
 
         // Check for existing keyword with upcased name
         if (self.keywords.get(upper_name)) |existing| {
@@ -1737,6 +1748,12 @@ pub const Heap = struct {
 // Tests
 // ============================================================================
 
+fn fillLowercase(buf: []u8) void {
+    for (buf) |*b| {
+        b.* = 'a';
+    }
+}
+
 test "heap init and deinit" {
     const testing = std.testing;
 
@@ -1787,6 +1804,40 @@ test "heap intern fallback uses symbol table" {
     const sym1 = try heap.intern("foo");
     const sym2 = try heap.intern("FOO");
     try testing.expectEqual(@as(u64, sym1.raw), sym2.raw);
+}
+
+test "heap intern uppercases long names" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var name_buf: [300]u8 = undefined;
+    fillLowercase(name_buf[0..]);
+
+    const sym = try heap.intern(name_buf[0..]);
+    const sym_name = sym.toPtr(objects.Symbol).getName();
+    try testing.expectEqual(@as(usize, name_buf.len), sym_name.len);
+    for (sym_name) |c| {
+        try testing.expect(c == 'A');
+    }
+}
+
+test "heap internKeyword uppercases long names" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var name_buf: [300]u8 = undefined;
+    fillLowercase(name_buf[0..]);
+
+    const kw = try heap.internKeyword(name_buf[0..]);
+    const kw_name = kw.toPtr(objects.Keyword).getName();
+    try testing.expectEqual(@as(usize, name_buf.len), kw_name.len);
+    for (kw_name) |c| {
+        try testing.expect(c == 'A');
+    }
 }
 
 test "heap alloc cons" {

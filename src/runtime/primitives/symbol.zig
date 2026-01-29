@@ -100,7 +100,7 @@ pub fn gentemp(heap: *Heap, prefix: ?Value, package: ?Value) !Value {
         {
             defer if (name_info.owned) heap.backing_allocator.free(name_info.name);
 
-            if (pkg.findAccessible(name_info.name) != null) continue;
+            if (try pkg.findAccessible(name_info.name) != null) continue;
             const sym = try pkg.intern(heap, name_info.name);
             counter.* = name_count + 1;
             return sym;

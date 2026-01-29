@@ -641,14 +641,10 @@ pub const Parser = struct {
     fn internSymbolInPackage(self: *Parser, pkg_name: []const u8, sym_name: []const u8) Error!Value {
         // Uppercase package name for CL-spec case-insensitivity
         var upper_buf: [128]u8 = undefined;
-        const upper_name = if (pkg_name.len <= upper_buf.len) blk: {
-            for (pkg_name, 0..) |c, i| {
-                upper_buf[i] = std.ascii.toUpper(c);
-            }
-            break :blk upper_buf[0..pkg_name.len];
-        } else pkg_name; // Fallback for very long names
+        const upper = try runtime.upperNameAlloc(self.alloc, pkg_name, upper_buf[0..]);
+        defer runtime.freeUpperName(self.alloc, upper);
         // Find or create the package
-        const pkg = try self.heap.findOrCreatePackage(upper_name);
+        const pkg = try self.heap.findOrCreatePackage(upper.slice);
         return try pkg.intern(self.heap, sym_name);
     }
 
