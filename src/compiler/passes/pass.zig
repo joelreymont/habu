@@ -16,6 +16,7 @@ pub const PassError = error{
     TypeError,
     InvalidIr,
     SyntaxError,
+    FuelExhausted,
 };
 
 /// Diagnostic from a pass

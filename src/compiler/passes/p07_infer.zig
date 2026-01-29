@@ -29,9 +29,10 @@ pub fn infer(allocator: std.mem.Allocator, builtins: *const builtins_mod.Builtin
     defer checker.deinit();
 
     // Infer type for the underlying IR
-    const inferred_ty = checker.infer(input.ir, &ctx) catch {
-        // Type error - return unchanged on error
-        return PassResult(*const TypedIr).unchanged(input);
+    const inferred_ty = checker.infer(input.ir, &ctx) catch |err| switch (err) {
+        error.TypeError => return error.TypeError,
+        error.FuelExhausted => return error.FuelExhausted,
+        error.OutOfMemory => return error.OutOfMemory,
     };
 
     // If type changed, create new TypedIr with populated type
@@ -69,4 +70,19 @@ test "infer pass - literal" {
 
     try testing.expect(result.modified);
     try testing.expect(result.output.ty != null);
+}
+
+test "infer pass propagates type error" {
+    const testing = std.testing;
+    const Vm = @import("../../interp/vm.zig").Vm;
+    const Heap = @import("../../runtime/heap.zig").Heap;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var vm = try Vm.init(testing.allocator, &heap);
+
+    const var_ir = Ir{ .@"var" = .{ .name = "x", .depth = 0, .index = 0 } };
+    const typed = TypedIr.init(&var_ir);
+
+    try testing.expectError(error.TypeError, infer(testing.allocator, &vm.builtins, &typed));
 }
