@@ -104,7 +104,7 @@ pub fn runFrontendPipeline(
     expr: Value,
 ) FrontendError!*const Ir {
     // Pass 1: Lift (Value → Ir with unresolved vars)
-    var lifter = lift.Lifter.init(allocator, heap) catch return error.OutOfMemory;
+    var lifter = try lift.Lifter.init(allocator, heap);
     const lifted_ir = lifter.lift(expr) catch |err| switch (err) {
         error.InvalidSyntax => return error.InvalidSyntax,
         error.InvalidLambda => return error.InvalidLambda,
@@ -195,6 +195,24 @@ pub const Resolver = resolve.Resolver;
 pub const Scope = resolve.Scope;
 pub const GlobalRegistry = resolve.GlobalRegistry;
 pub const CaptureAnalyzer = capture.CaptureAnalyzer;
+
+test "runFrontendPipeline - literal" {
+    const testing = std.testing;
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var globals = resolve.GlobalRegistry.init(allocator);
+    defer globals.deinit();
+
+    const expr = Value.makeFixnum(42);
+    const ir = try runFrontendPipeline(allocator, &heap, &globals, expr);
+    try testing.expectEqual(Ir.lit, std.meta.activeTag(ir.*));
+}
 
 test "runFullPipeline - simple literal" {
     const testing = std.testing;
