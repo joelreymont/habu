@@ -30,14 +30,10 @@ pub fn gensym(heap: *Heap, prefix: ?Value) !Value {
     counter.* = count + 1;
 
     const prefix_str = if (prefix) |p| blk: {
-        if (p.isString()) {
-            const s = p.toPtr(objects.String);
-            break :blk s.bytes();
-        } else if (p.isSymbol()) {
-            const sym = p.toPtr(objects.Symbol);
-            break :blk sym.getName();
-        } else {
-            break :blk "G";
+        switch (p.typeKind()) {
+            .string => break :blk p.toPtr(objects.String).bytes(),
+            .symbol => break :blk p.toPtr(objects.Symbol).getName(),
+            else => break :blk "G",
         }
     } else "G";
 
@@ -79,14 +75,10 @@ pub fn gentemp(heap: *Heap, prefix: ?Value, package: ?Value) !Value {
     counter.* = count + 1;
 
     const prefix_str = if (prefix) |p| blk: {
-        if (p.isString()) {
-            const s = p.toPtr(objects.String);
-            break :blk s.bytes();
-        } else if (p.isSymbol()) {
-            const sym_ptr = p.toPtr(objects.Symbol);
-            break :blk sym_ptr.getName();
-        } else {
-            break :blk "T";
+        switch (p.typeKind()) {
+            .string => break :blk p.toPtr(objects.String).bytes(),
+            .symbol => break :blk p.toPtr(objects.Symbol).getName(),
+            else => break :blk "T",
         }
     } else "T";
 
@@ -193,6 +185,18 @@ test "gentemp skips existing symbol names" {
     const sym = try gentemp(&heap, null, null);
     const name = sym.toPtr(objects.Symbol).getName();
     try testing.expect(!std.mem.eql(u8, name, "T0"));
+}
+
+test "gensym accepts symbol prefix" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const prefix_sym = try heap.intern("PRE");
+    const sym = try gensym(&heap, prefix_sym);
+    const name = sym.toPtr(objects.Symbol).getName();
+    try testing.expect(std.mem.startsWith(u8, name, "PRE"));
 }
 
 /// Test if symbol has function binding
