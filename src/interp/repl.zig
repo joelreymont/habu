@@ -80,8 +80,8 @@ pub const Repl = struct {
     compiler: Compiler,
     /// Persistent chunk storage for closures - GC-managed Values
     persistent_chunks: std.ArrayList(Value),
-    /// Macro definitions: name -> closure
-    macros: std.StringHashMap(Value),
+    /// Macro definitions: symbol -> closure
+    macros: std.AutoHashMap(Value, Value),
     /// Line editor for interactive input
     line_editor: LineEditor,
     /// Current VM being used (for nested loads)
@@ -96,7 +96,7 @@ pub const Repl = struct {
             .config = config,
             .compiler = try Compiler.initWithHeap(allocator, &vm),
             .persistent_chunks = std.ArrayList(Value){},
-            .macros = std.StringHashMap(Value).init(allocator),
+            .macros = std.AutoHashMap(Value, Value).init(allocator),
             .line_editor = LineEditor.init(allocator),
             .current_vm = null,
         };
@@ -222,8 +222,8 @@ pub const Repl = struct {
             }
         };
 
-        // Check if it's a macro (try both names)
-        if (self.macros.contains(qual_name) or self.macros.contains(local_name)) {
+        // Check if it's a macro
+        if (self.macros.contains(sym)) {
             std.debug.print("  -> macro found\n", .{});
             return true;
         }
@@ -1260,9 +1260,6 @@ pub const Repl = struct {
 
         const cons2 = rest1.toPtr(Cons);
         if (!cons2.car.isSymbol()) return error.CompileError;
-        const name_sym = cons2.car.toPtr(Symbol);
-        const name = name_sym.getName();
-
         const rest2 = cons2.cdr;
         if (!rest2.isCons()) return error.CompileError;
 
@@ -1345,7 +1342,7 @@ pub const Repl = struct {
 
         // Store the closure in REPL macro table for pre-compilation macro expansion
         // Store the AST in Compiler macro table for compile-time expansion
-        try self.macros.put(name, closure);
+        try self.macros.put(cons2.car, closure);
         try self.compiler.macro_table.put(cons2.car, transformed_rest2);
 
         // Return the macro name as a symbol
@@ -1565,10 +1562,7 @@ pub const Repl = struct {
 
         // Check if head is a macro
         if (head.isSymbol()) {
-            const sym = head.toPtr(Symbol);
-            const name = sym.getName();
-
-            if (self.macros.get(name)) |macro_closure| {
+            if (self.macros.get(head)) |macro_closure| {
                 // Expand macro once and return without recursive expansion
                 return try self.callMacro(macro_closure, cons.cdr);
             }
@@ -1636,7 +1630,7 @@ pub const Repl = struct {
                 }
             }
 
-            if (self.macros.get(name)) |macro_closure| {
+            if (self.macros.get(head)) |macro_closure| {
                 // Expand macro: call the closure with the args
                 const expansion = try self.callMacro(macro_closure, cons.cdr);
                 // Recursively expand the result
