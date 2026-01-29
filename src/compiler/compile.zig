@@ -1356,12 +1356,12 @@ pub const TypedIr = struct {
 
 /// Set of variable names that need boxing (mutable + captured)
 pub const BoxingSet = struct {
-    names: std.StringHashMap(void),
+    names: std.AutoHashMap(Value, void),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) BoxingSet {
         return .{
-            .names = std.StringHashMap(void).init(allocator),
+            .names = std.AutoHashMap(Value, void).init(allocator),
             .allocator = allocator,
         };
     }
@@ -1370,12 +1370,12 @@ pub const BoxingSet = struct {
         self.names.deinit();
     }
 
-    pub fn add(self: *BoxingSet, name: []const u8) !void {
-        try self.names.put(name, {});
+    pub fn add(self: *BoxingSet, sym: Value) !void {
+        try self.names.put(sym, {});
     }
 
-    pub fn contains(self: *const BoxingSet, name: []const u8) bool {
-        return self.names.contains(name);
+    pub fn contains(self: *const BoxingSet, sym: Value) bool {
+        return self.names.contains(sym);
     }
 };
 
@@ -2113,7 +2113,8 @@ pub const Compiler = struct {
                 return self.compileWithTail(expansion, env, in_tail);
             }
 
-            const sym = expr.toPtr(Symbol);
+            const sym_val = expr;
+            const sym = sym_val.toPtr(Symbol);
             const name = sym.getName();
 
             if (env.lookup(name)) |binding| {
@@ -2122,7 +2123,7 @@ pub const Compiler = struct {
 
                 // If this variable is boxed, wrap with box-ref
                 if (self.boxed_vars) |bv| {
-                    if (bv.contains(name)) {
+                    if (bv.contains(sym_val)) {
                         const box_ref = try self.allocator.create(Ir);
                         box_ref.* = .{ .box_ref = .{ .operand = var_ir } };
                         return box_ref;
@@ -3229,21 +3230,21 @@ pub const Compiler = struct {
 
     /// Find variables that need boxing: both mutated via set! AND captured by a lambda
     /// This pre-scans a let body to determine which bindings need automatic boxing
-    fn findBoxedVars(self: *Compiler, body: Value, binding_names: []const []const u8, result: *BoxingSet) error{OutOfMemory}!void {
-        var mutated = std.StringHashMap(void).init(self.allocator);
+    fn findBoxedVars(self: *Compiler, body: Value, binding_syms: []const Value, result: *BoxingSet) error{OutOfMemory}!void {
+        var mutated = std.AutoHashMap(Value, void).init(self.allocator);
         defer mutated.deinit();
 
-        var captured = std.StringHashMap(void).init(self.allocator);
+        var captured = std.AutoHashMap(Value, void).init(self.allocator);
         defer captured.deinit();
 
         // Collect mutations and captures from body
-        try self.collectMutationsAndCaptures(body, binding_names, &mutated, &captured);
+        try self.collectMutationsAndCaptures(body, binding_syms, &mutated, &captured);
 
         // Intersection: names that are both mutated AND captured need boxing
         var iter = mutated.keyIterator();
-        while (iter.next()) |name| {
-            if (captured.contains(name.*)) {
-                try result.add(name.*);
+        while (iter.next()) |sym| {
+            if (captured.contains(sym.*)) {
+                try result.add(sym.*);
             }
         }
     }
@@ -3252,9 +3253,9 @@ pub const Compiler = struct {
     fn collectMutationsAndCaptures(
         self: *Compiler,
         expr: Value,
-        binding_names: []const []const u8,
-        mutated: *std.StringHashMap(void),
-        captured: *std.StringHashMap(void),
+        binding_syms: []const Value,
+        mutated: *std.AutoHashMap(Value, void),
+        captured: *std.AutoHashMap(Value, void),
     ) error{OutOfMemory}!void {
         if (expr.isNil() or expr.isFixnum() or expr.isBignum() or expr.isString() or expr.isString32() or expr.isKeyword() or expr.isCharacter() or expr.isVector()) {
             return;
@@ -3275,14 +3276,11 @@ pub const Compiler = struct {
                 if (tail.isCons()) {
                     const set_cons = tail.toPtr(Cons);
                     if (set_cons.car.isSymbol()) {
-                        const var_sym = set_cons.car.toPtr(Symbol);
-                        const var_name = var_sym.getName();
+                        const var_sym = set_cons.car;
                         // Check if this is one of our bindings
-                        // String comparison needed: binding_names is []const []const u8 (raw strings from lambda list parse)
-                        // NOT interned symbols, so pointer equality won't work
-                        for (binding_names) |bn| {
-                            if (std.mem.eql(u8, var_name, bn)) {
-                                try mutated.put(var_name, {});
+                        for (binding_syms) |bn| {
+                            if (var_sym.eq(bn)) {
+                                try mutated.put(var_sym, {});
                                 break;
                             }
                         }
@@ -3290,7 +3288,7 @@ pub const Compiler = struct {
                     // Recurse into the value expression
                     if (set_cons.cdr.isCons()) {
                         const val_cons = set_cons.cdr.toPtr(Cons);
-                        try self.collectMutationsAndCaptures(val_cons.car, binding_names, mutated, captured);
+                        try self.collectMutationsAndCaptures(val_cons.car, binding_syms, mutated, captured);
                     }
                 }
                 return;
@@ -3299,12 +3297,12 @@ pub const Compiler = struct {
             // Check for (lambda ...) - collect free vars that are our bindings
             // AND mutations inside the lambda body
             if (head.raw == b.lambda.raw or head.raw == b.@"fn".raw) {
-                try self.collectLambdaCaptures(tail, binding_names, captured);
+                try self.collectLambdaCaptures(tail, binding_syms, captured);
                 // Also look for mutations inside the lambda body
                 if (tail.isCons()) {
                     const lam_cons = tail.toPtr(Cons);
                     // Skip params, recurse into body
-                    try self.collectMutationsAndCapturesInList(lam_cons.cdr, binding_names, mutated, captured);
+                    try self.collectMutationsAndCapturesInList(lam_cons.cdr, binding_syms, mutated, captured);
                 }
                 return;
             }
@@ -3316,27 +3314,27 @@ pub const Compiler = struct {
         }
 
         // Recurse into all elements of the list
-        try self.collectMutationsAndCaptures(head, binding_names, mutated, captured);
-        try self.collectMutationsAndCapturesInList(tail, binding_names, mutated, captured);
+        try self.collectMutationsAndCaptures(head, binding_syms, mutated, captured);
+        try self.collectMutationsAndCapturesInList(tail, binding_syms, mutated, captured);
     }
 
     fn collectMutationsAndCapturesInList(
         self: *Compiler,
         list: Value,
-        binding_names: []const []const u8,
-        mutated: *std.StringHashMap(void),
-        captured: *std.StringHashMap(void),
+        binding_syms: []const Value,
+        mutated: *std.AutoHashMap(Value, void),
+        captured: *std.AutoHashMap(Value, void),
     ) error{OutOfMemory}!void {
         var current = list;
         while (current.isCons()) {
             const cons = current.toPtr(Cons);
-            try self.collectMutationsAndCaptures(cons.car, binding_names, mutated, captured);
+            try self.collectMutationsAndCaptures(cons.car, binding_syms, mutated, captured);
             current = cons.cdr;
         }
     }
 
     /// Collect which of our bindings are captured by a lambda
-    fn collectLambdaCaptures(self: *Compiler, lambda_args: Value, binding_names: []const []const u8, captured: *std.StringHashMap(void)) error{OutOfMemory}!void {
+    fn collectLambdaCaptures(self: *Compiler, lambda_args: Value, binding_syms: []const Value, captured: *std.AutoHashMap(Value, void)) error{OutOfMemory}!void {
         if (!lambda_args.isCons()) return;
 
         const args_cons = lambda_args.toPtr(Cons);
@@ -3344,45 +3342,42 @@ pub const Compiler = struct {
         const body = args_cons.cdr;
 
         // Get lambda parameter names to exclude from captures
-        var dispatch_params = std.StringHashMap(void).init(self.allocator);
+        var dispatch_params = std.AutoHashMap(Value, void).init(self.allocator);
         defer dispatch_params.deinit();
 
         var param_list = params_expr;
         while (param_list.isCons()) {
             const param_cons = param_list.toPtr(Cons);
             if (param_cons.car.isSymbol()) {
-                const param_sym = param_cons.car.toPtr(Symbol);
-                try dispatch_params.put(param_sym.getName(), {});
+                const param_sym = param_cons.car;
+                try dispatch_params.put(param_sym, {});
             }
             param_list = param_cons.cdr;
         }
 
         // Find free variable references in body that are our bindings
-        try self.collectFreeVarRefs(body, binding_names, &dispatch_params, captured);
+        try self.collectFreeVarRefs(body, binding_syms, &dispatch_params, captured);
     }
 
     /// Find references to binding names in expression (excluding params)
     fn collectFreeVarRefs(
         self: *Compiler,
         expr: Value,
-        binding_names: []const []const u8,
-        params: *std.StringHashMap(void),
-        captured: *std.StringHashMap(void),
+        binding_syms: []const Value,
+        params: *std.AutoHashMap(Value, void),
+        captured: *std.AutoHashMap(Value, void),
     ) error{OutOfMemory}!void {
         if (expr.isNil() or expr.isFixnum() or expr.isBignum() or expr.isString() or expr.isString32() or expr.isKeyword() or expr.isCharacter() or expr.isVector()) {
             return;
         }
 
         if (expr.isSymbol()) {
-            const sym = expr.toPtr(Symbol);
-            const name = sym.getName();
+            const sym = expr;
             // If it's not a param and is one of our bindings, it's captured
-            if (!params.contains(name)) {
-                // String comparison needed: binding_names is []const []const u8 (raw strings from lambda list parse)
-                // NOT interned symbols, so pointer equality won't work
-                for (binding_names) |bn| {
-                    if (std.mem.eql(u8, name, bn)) {
-                        try captured.put(name, {});
+            if (!params.contains(sym)) {
+                for (binding_syms) |bn| {
+                    if (sym.eq(bn)) {
+                        try captured.put(sym, {});
                         break;
                     }
                 }
@@ -3408,7 +3403,7 @@ pub const Compiler = struct {
                     const lam_body = lam_cons.cdr;
 
                     // Collect nested lambda params
-                    var nested_params = std.StringHashMap(void).init(self.allocator);
+                    var nested_params = std.AutoHashMap(Value, void).init(self.allocator);
                     defer nested_params.deinit();
 
                     // Copy existing params
@@ -3422,34 +3417,34 @@ pub const Compiler = struct {
                     while (pl.isCons()) {
                         const pc = pl.toPtr(Cons);
                         if (pc.car.isSymbol()) {
-                            const ps = pc.car.toPtr(Symbol);
-                            try nested_params.put(ps.getName(), {});
+                            const ps = pc.car;
+                            try nested_params.put(ps, {});
                         }
                         pl = pc.cdr;
                     }
 
                     // Recurse with extended params
-                    try self.collectFreeVarRefsInList(lam_body, binding_names, &nested_params, captured);
+                    try self.collectFreeVarRefsInList(lam_body, binding_syms, &nested_params, captured);
                 }
                 return;
             }
         }
 
-        try self.collectFreeVarRefs(cons.car, binding_names, params, captured);
-        try self.collectFreeVarRefsInList(cons.cdr, binding_names, params, captured);
+        try self.collectFreeVarRefs(cons.car, binding_syms, params, captured);
+        try self.collectFreeVarRefsInList(cons.cdr, binding_syms, params, captured);
     }
 
     fn collectFreeVarRefsInList(
         self: *Compiler,
         list: Value,
-        binding_names: []const []const u8,
-        params: *std.StringHashMap(void),
-        captured: *std.StringHashMap(void),
+        binding_syms: []const Value,
+        params: *std.AutoHashMap(Value, void),
+        captured: *std.AutoHashMap(Value, void),
     ) error{OutOfMemory}!void {
         var current = list;
         while (current.isCons()) {
             const cons = current.toPtr(Cons);
-            try self.collectFreeVarRefs(cons.car, binding_names, params, captured);
+            try self.collectFreeVarRefs(cons.car, binding_syms, params, captured);
             current = cons.cdr;
         }
     }
@@ -3469,6 +3464,8 @@ pub const Compiler = struct {
         // First pass: collect binding names for boxing analysis
         var binding_names = std.ArrayList([]const u8){};
         defer binding_names.deinit(self.allocator);
+        var binding_syms = std.ArrayList(Value){};
+        defer binding_syms.deinit(self.allocator);
 
         var binding_list = bindings_expr;
         while (binding_list.isCons()) {
@@ -3479,7 +3476,9 @@ pub const Compiler = struct {
             const b = binding.toPtr(Cons);
 
             if (!b.car.isSymbolLike()) return error.InvalidLet;
-            try binding_names.append(self.allocator, b.car.getSymbolName());
+            const name_raw = b.car.getSymbolName();
+            try binding_names.append(self.allocator, name_raw);
+            try binding_syms.append(self.allocator, b.car);
 
             binding_list = binding_cons.cdr;
         }
@@ -3492,7 +3491,7 @@ pub const Compiler = struct {
             boxed.deinit();
             self.allocator.destroy(boxed);
         }
-        try self.findBoxedVars(body_exprs, binding_names.items, boxed);
+        try self.findBoxedVars(body_exprs, binding_syms.items, boxed);
 
         // Create let_env first so we can get indices for each binding
         var let_env = Env.initLet(self.allocator, env);
@@ -3523,6 +3522,7 @@ pub const Compiler = struct {
 
             const b = binding.toPtr(Cons);
             const name = binding_names.items[name_idx];
+            const sym = binding_syms.items[name_idx];
 
             // Get the already-assigned index
             const index = let_env.bindings.get(name).?;
@@ -3547,7 +3547,7 @@ pub const Compiler = struct {
             }
 
             // If this variable needs boxing, wrap value in make-box
-            if (boxed.contains(name)) {
+            if (boxed.contains(sym)) {
                 const box_ir = try self.allocator.create(Ir);
                 box_ir.* = .{ .make_box = .{ .operand = val_ir } };
                 val_ir = box_ir;
@@ -4026,7 +4026,8 @@ pub const Compiler = struct {
 
         const cons1 = args.toPtr(Cons);
         if (!cons1.car.isSymbol()) return error.InvalidSet;
-        const var_sym = cons1.car.toPtr(Symbol);
+        const var_val = cons1.car;
+        const var_sym = var_val.toPtr(Symbol);
         const local_name = var_sym.getName();
 
         if (!cons1.cdr.isCons()) return error.InvalidSet;
@@ -4037,7 +4038,7 @@ pub const Compiler = struct {
         if (env.lookup(local_name)) |binding| {
             // If this variable is boxed, use box-set! instead
             if (self.boxed_vars) |bv| {
-                if (bv.contains(local_name)) {
+                if (bv.contains(var_val)) {
                     // Compile (box-set! var val) instead of (set! var val)
                     const var_ir = self.builder.variable(local_name, binding.depth, binding.index) catch
                         return error.OutOfMemory;
@@ -4087,14 +4088,15 @@ pub const Compiler = struct {
                 }
                 // Symbol macro expands to simple symbol - use setq on that symbol
                 if (expansion.isSymbol()) {
-                    const exp_sym = expansion.toPtr(Symbol);
+                    const exp_val = expansion;
+                    const exp_sym = exp_val.toPtr(Symbol);
                     const exp_name = exp_sym.getName();
                     const val_ir = try self.compile(value_expr, env);
 
                     // Check local environment
                     if (env.lookup(exp_name)) |binding| {
                         if (self.boxed_vars) |bv| {
-                            if (bv.contains(exp_name)) {
+                            if (bv.contains(exp_val)) {
                                 const var_ir = self.builder.variable(exp_name, binding.depth, binding.index) catch
                                     return error.OutOfMemory;
                                 const box_set = try self.allocator.create(Ir);
