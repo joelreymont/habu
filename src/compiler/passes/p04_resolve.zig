@@ -169,14 +169,12 @@ pub const Resolver = struct {
 
                 // Look up in scope
                 if (scope.lookup(v.name)) |binding| {
-                    return self.builder.variable(v.name, binding.depth, binding.index) catch
-                        return error.OutOfMemory;
+                    return try self.builder.variable(v.name, binding.depth, binding.index);
                 }
 
                 // Check globals
                 if (self.globals.lookup(v.name)) |idx| {
-                    return self.builder.globalRef(v.name, idx) catch
-                        return error.OutOfMemory;
+                    return try self.builder.globalRef(v.name, idx);
                 }
 
                 return error.UnboundVariable;
@@ -187,20 +185,17 @@ pub const Resolver = struct {
 
                 if (s.depth != UNRESOLVED) {
                     // Already resolved
-                    return self.builder.set(s.name, s.depth, s.index, resolved_value) catch
-                        return error.OutOfMemory;
+                    return try self.builder.set(s.name, s.depth, s.index, resolved_value);
                 }
 
                 // Look up in scope
                 if (scope.lookup(s.name)) |binding| {
-                    return self.builder.set(s.name, binding.depth, binding.index, resolved_value) catch
-                        return error.OutOfMemory;
+                    return try self.builder.set(s.name, binding.depth, binding.index, resolved_value);
                 }
 
                 // Check globals - use set with special depth marker
                 if (self.globals.lookup(s.name)) |idx| {
-                    return self.builder.set(s.name, UNRESOLVED, idx, resolved_value) catch
-                        return error.OutOfMemory;
+                    return try self.builder.set(s.name, UNRESOLVED, idx, resolved_value);
                 }
 
                 return error.UnboundVariable;
@@ -216,8 +211,7 @@ pub const Resolver = struct {
                     d.index;
 
                 const resolved_value = try self.resolveInScope(d.value, scope);
-                return self.builder.define(d.name, idx, resolved_value) catch
-                    return error.OutOfMemory;
+                return try self.builder.define(d.name, idx, resolved_value);
             },
 
             .let => |l| {
@@ -275,22 +269,21 @@ pub const Resolver = struct {
                 const resolved_body = try self.resolveInScope(lam.body, &lambda_scope);
 
                 // Keep empty captures - will be filled by p05_capture
-                return self.builder.lambda(
+                return try self.builder.lambda(
                     lam.params,
                     lam.optional_params,
                     lam.key_params,
                     lam.rest_param,
                     lam.captures,
                     resolved_body,
-                ) catch return error.OutOfMemory;
+                );
             },
 
             .@"if" => |i| {
                 const cond = try self.resolveInScope(i.cond, scope);
                 const then_br = try self.resolveInScope(i.then_branch, scope);
                 const else_br = try self.resolveInScope(i.else_branch, scope);
-                return self.builder.ifExpr(cond, then_br, else_br) catch
-                    return error.OutOfMemory;
+                return try self.builder.ifExpr(cond, then_br, else_br);
             },
 
             .progn => |exprs| {
@@ -298,17 +291,16 @@ pub const Resolver = struct {
                 defer resolved.deinit(self.allocator);
                 for (exprs) |e| {
                     const r = try self.resolveInScope(e, scope);
-                    resolved.append(self.allocator, r) catch return error.OutOfMemory;
+                    try resolved.append(self.allocator, r);
                 }
-                const slice = self.allocator.dupe(*const Ir, resolved.items) catch
-                    return error.OutOfMemory;
-                return self.builder.progn(slice) catch return error.OutOfMemory;
+                const slice = try self.allocator.dupe(*const Ir, resolved.items);
+                return try self.builder.progn(slice);
             },
 
             .loop => |w| {
                 const cond = try self.resolveInScope(w.cond, scope);
                 const body = try self.resolveInScope(w.body, scope);
-                return self.builder.loop(cond, body) catch return error.OutOfMemory;
+                return try self.builder.loop(cond, body);
             },
 
             .call => |c| {
@@ -317,18 +309,17 @@ pub const Resolver = struct {
                 defer resolved_args.deinit(self.allocator);
                 for (c.args) |a| {
                     const r = try self.resolveInScope(a, scope);
-                    resolved_args.append(self.allocator, r) catch return error.OutOfMemory;
+                    try resolved_args.append(self.allocator, r);
                 }
-                const args_slice = self.allocator.dupe(*const Ir, resolved_args.items) catch
-                    return error.OutOfMemory;
-                return self.builder.call(func, args_slice) catch return error.OutOfMemory;
+                const args_slice = try self.allocator.dupe(*const Ir, resolved_args.items);
+                return try self.builder.call(func, args_slice);
             },
 
             // Binary operations
             .add, .sub, .mul, .div, .mod, .eq, .lt, .gt, .le, .ge, .num_eq, .cons => |b| {
                 const left = try self.resolveInScope(b.left, scope);
                 const right = try self.resolveInScope(b.right, scope);
-                const result = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const result = try self.allocator.create(Ir);
                 result.* = node.*;
                 switch (result.*) {
                     inline .add, .sub, .mul, .div, .mod, .eq, .lt, .gt, .le, .ge, .num_eq, .cons => |*bin| {
@@ -343,7 +334,7 @@ pub const Resolver = struct {
             // Unary operations
             .car, .cdr, .consp, .symbolp, .numberp, .stringp, .vectorp, .not, .nilp => |u| {
                 const operand = try self.resolveInScope(u.operand, scope);
-                const result = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const result = try self.allocator.create(Ir);
                 result.* = node.*;
                 switch (result.*) {
                     inline .car, .cdr, .consp, .symbolp, .numberp, .stringp, .vectorp, .not, .nilp => |*un| {
@@ -360,7 +351,7 @@ pub const Resolver = struct {
 
     /// Copy a node (for nodes that don't need modification)
     fn copyNode(self: *Resolver, node: *const Ir) Error!*Ir {
-        const copy = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const copy = try self.allocator.create(Ir);
         copy.* = node.*;
         return copy;
     }
@@ -425,4 +416,37 @@ test "resolve - global definition" {
 
     try testing.expectEqual(Ir.define, std.meta.activeTag(resolved.*));
     try testing.expectEqual(@as(u16, 0), resolved.define.index);
+}
+
+test "resolve - call args" {
+    const testing = std.testing;
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var builder = IrBuilder.init(alloc);
+    const lit1 = try builder.lit(@import("../../runtime/value.zig").Value.makeFixnum(1));
+    const lit2 = try builder.lit(@import("../../runtime/value.zig").Value.makeFixnum(2));
+    const var_f = try builder.variable("f", UNRESOLVED, UNRESOLVED);
+    const var_x = try builder.variable("x", UNRESOLVED, UNRESOLVED);
+    const args = try alloc.dupe(*const Ir, &.{ var_x, lit2 });
+    const call_ir = try builder.call(var_f, args);
+    const bindings = try alloc.dupe(Ir.Binding, &.{
+        .{ .name = "x", .value = lit1, .index = 0 },
+    });
+    const let_ir = try builder.letExpr(bindings, call_ir);
+
+    var globals = GlobalRegistry.init(alloc);
+    defer globals.deinit();
+    _ = try globals.define("f");
+
+    const resolved = try resolve(alloc, &globals, let_ir);
+
+    try testing.expectEqual(Ir.let, std.meta.activeTag(resolved.*));
+    try testing.expectEqual(Ir.call, std.meta.activeTag(resolved.let.body.*));
+    try testing.expectEqual(Ir.global_ref, std.meta.activeTag(resolved.let.body.call.func.*));
+    try testing.expectEqual(Ir.@"var", std.meta.activeTag(resolved.let.body.call.args[0].*));
+    try testing.expectEqual(@as(u16, 0), resolved.let.body.call.args[0].@"var".depth);
+    try testing.expectEqual(@as(u16, 0), resolved.let.body.call.args[0].@"var".index);
 }
