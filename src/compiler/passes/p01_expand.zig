@@ -102,11 +102,11 @@ pub const Expander = struct {
         const body = body_cons.car;
 
         // Build lambda: (lambda (params) body)
-        const sym_lambda = self.heap.intern("lambda") catch return error.OutOfMemory;
-        const params_list = self.heap.allocCons(params, Value.nil) catch return error.OutOfMemory;
-        const body_list_val = self.heap.allocCons(body, Value.nil) catch return error.OutOfMemory;
-        const lambda_body = self.heap.allocCons(params_list, body_list_val) catch return error.OutOfMemory;
-        const lambda_expr = self.heap.allocCons(sym_lambda, lambda_body) catch return error.OutOfMemory;
+        const sym_lambda = try self.heap.intern("lambda");
+        const params_list = try self.heap.allocCons(params, Value.nil);
+        const body_list_val = try self.heap.allocCons(body, Value.nil);
+        const lambda_body = try self.heap.allocCons(params_list, body_list_val);
+        const lambda_expr = try self.heap.allocCons(sym_lambda, lambda_body);
 
         // Compile lambda to bytecode
         const compiler_mod = @import("../../compiler/compiler.zig");
@@ -146,8 +146,6 @@ pub const Expander = struct {
         if (!body.isCons()) {
             // If body is a symbol, check if it's a parameter
             if (body.isSymbol()) {
-                const body_name = body.toPtr(Symbol).getName();
-
                 // Find matching param
                 var p = params;
                 var a = args;
@@ -155,12 +153,7 @@ pub const Expander = struct {
                     const param_cons = p.toPtr(Cons);
                     const arg_cons = a.toPtr(Cons);
 
-                    if (param_cons.car.isSymbol()) {
-                        const param_name = param_cons.car.toPtr(Symbol).getName();
-                        if (std.mem.eql(u8, body_name, param_name)) {
-                            return arg_cons.car;
-                        }
-                    }
+                    if (param_cons.car.raw == body.raw) return arg_cons.car;
 
                     p = param_cons.cdr;
                     a = arg_cons.cdr;
