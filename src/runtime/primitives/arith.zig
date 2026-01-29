@@ -875,9 +875,13 @@ pub fn ceil_val(_: *Heap, x: Value, y: Value) Error!Value {
     const divisor = y.toFixnum();
     if (divisor == 0) return error.DivisionByZero;
 
-    // divCeil: smallest integer not less than dividend/divisor
-    const q = std.math.divCeil(i64, dividend, divisor) catch return error.TypeMismatch;
-    return Value.makeFixnum(q);
+    // minInt / -1 overflows
+    if (dividend == std.math.minInt(i64) and divisor == -1) return error.TypeMismatch;
+
+    const q = @divTrunc(dividend, divisor);
+    const r = @rem(dividend, divisor);
+    const needs_inc = r != 0 and ((r > 0) == (divisor > 0));
+    return Value.makeFixnum(if (needs_inc) q + 1 else q);
 }
 
 /// Truncate: integer part of x/y toward zero
