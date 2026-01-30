@@ -1877,17 +1877,21 @@ pub fn filePosition(heap: *heap_mod.Heap, stream: Value, pos: ?Value) !Value {
     } else {
         // Set position
         const p = pos.?;
-        const new_pos: i64 = if (p.isKeyword()) blk: {
-            const kw_start = try heap.internKeyword("start");
-            const kw_end = try heap.internKeyword("end");
-            if (p.raw == kw_start.raw) {
-                break :blk 0;
-            } else if (p.raw == kw_end.raw) {
-                break :blk -1;
-            } else {
-                return error.InvalidArgument;
-            }
-        } else if (p.isFixnum()) p.toFixnum() else return error.TypeError;
+        const new_pos: i64 = switch (p.typeKind()) {
+            .keyword => blk: {
+                const kw_start = try heap.internKeyword("start");
+                const kw_end = try heap.internKeyword("end");
+                if (p.raw == kw_start.raw) {
+                    break :blk 0;
+                } else if (p.raw == kw_end.raw) {
+                    break :blk -1;
+                } else {
+                    return error.InvalidArgument;
+                }
+            },
+            .fixnum => p.toFixnum(),
+            else => return error.TypeError,
+        };
 
         switch (s.stream_type) {
             .string => {
@@ -1952,47 +1956,48 @@ pub fn closeStream(stream: Value, abort: ?Value) !void {
 pub fn listDirectory(heap: *heap_mod.Heap, pathname: Value) !Value {
     // Get path string from pathname or string
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const path_str = if (pathname.isString())
-        pathname.toPtr(objects.String).bytes()
-    else if (pathname.isPathname()) blk: {
-        // Build namestring from pathname components
-        const pn = pathname.toPtr(objects.Pathname);
-        var len: usize = 0;
+    const path_str = switch (pathname.typeKind()) {
+        .string => pathname.toPtr(objects.String).bytes(),
+        .pathname => blk: {
+            // Build namestring from pathname components
+            const pn = pathname.toPtr(objects.Pathname);
+            var len: usize = 0;
 
-        // Add directory
-        if (pn.directory.isCons()) {
-            var dir = pn.directory;
-            while (dir.isCons()) {
-                const cons = dir.toPtr(objects.Cons);
-                if (cons.car.isString()) {
-                    const s = cons.car.toPtr(objects.String).bytes();
-                    if (len > 0 and len < path_buf.len) {
-                        path_buf[len] = '/';
-                        len += 1;
+            // Add directory
+            if (pn.directory.isCons()) {
+                var dir = pn.directory;
+                while (dir.isCons()) {
+                    const cons = dir.toPtr(objects.Cons);
+                    if (cons.car.isString()) {
+                        const s = cons.car.toPtr(objects.String).bytes();
+                        if (len > 0 and len < path_buf.len) {
+                            path_buf[len] = '/';
+                            len += 1;
+                        }
+                        const copy_len = @min(s.len, path_buf.len - len);
+                        @memcpy(path_buf[len..][0..copy_len], s[0..copy_len]);
+                        len += copy_len;
                     }
-                    const copy_len = @min(s.len, path_buf.len - len);
-                    @memcpy(path_buf[len..][0..copy_len], s[0..copy_len]);
-                    len += copy_len;
+                    dir = cons.cdr;
                 }
-                dir = cons.cdr;
             }
-        }
 
-        // Add name
-        if (pn.name.isString()) {
-            const s = pn.name.toPtr(objects.String).bytes();
-            if (len > 0 and len < path_buf.len) {
-                path_buf[len] = '/';
-                len += 1;
+            // Add name
+            if (pn.name.isString()) {
+                const s = pn.name.toPtr(objects.String).bytes();
+                if (len > 0 and len < path_buf.len) {
+                    path_buf[len] = '/';
+                    len += 1;
+                }
+                const copy_len = @min(s.len, path_buf.len - len);
+                @memcpy(path_buf[len..][0..copy_len], s[0..copy_len]);
+                len += copy_len;
             }
-            const copy_len = @min(s.len, path_buf.len - len);
-            @memcpy(path_buf[len..][0..copy_len], s[0..copy_len]);
-            len += copy_len;
-        }
 
-        break :blk path_buf[0..len];
-    } else
-        return error.TypeError;
+            break :blk path_buf[0..len];
+        },
+        else => return error.TypeError,
+    };
 
     // Handle wildcards - for now, just list all files in directory
     // Strip trailing wildcard if present
@@ -2049,23 +2054,25 @@ pub fn listDirectory(heap: *heap_mod.Heap, pathname: Value) !Value {
 /// Check if pathname matches wildcard pattern
 pub fn pathnameMatchP(pathname: Value, wildcard: Value) !Value {
     // Get path strings
-    const pn_str = if (pathname.isString())
-        pathname.toPtr(objects.String).bytes()
-    else if (pathname.isPathname()) blk: {
-        const pn = pathname.toPtr(objects.Pathname);
-        if (pn.name.isString()) break :blk pn.name.toPtr(objects.String).bytes();
-        break :blk "";
-    } else
-        return error.TypeError;
+    const pn_str = switch (pathname.typeKind()) {
+        .string => pathname.toPtr(objects.String).bytes(),
+        .pathname => blk: {
+            const pn = pathname.toPtr(objects.Pathname);
+            if (pn.name.isString()) break :blk pn.name.toPtr(objects.String).bytes();
+            break :blk "";
+        },
+        else => return error.TypeError,
+    };
 
-    const wild_str = if (wildcard.isString())
-        wildcard.toPtr(objects.String).bytes()
-    else if (wildcard.isPathname()) blk: {
-        const wc = wildcard.toPtr(objects.Pathname);
-        if (wc.name.isString()) break :blk wc.name.toPtr(objects.String).bytes();
-        break :blk "*";
-    } else
-        return error.TypeError;
+    const wild_str = switch (wildcard.typeKind()) {
+        .string => wildcard.toPtr(objects.String).bytes(),
+        .pathname => blk: {
+            const wc = wildcard.toPtr(objects.Pathname);
+            if (wc.name.isString()) break :blk wc.name.toPtr(objects.String).bytes();
+            break :blk "*";
+        },
+        else => return error.TypeError,
+    };
 
     // Simple wildcard matching: * matches anything
     if (std.mem.eql(u8, wild_str, "*")) return Value.t;
@@ -2119,6 +2126,30 @@ test "fileExists and probeFile" {
     defer testing.allocator.free(missing_path);
     try testing.expect(!(try fileExists(missing_path)));
     try testing.expect(!(try probeFile(missing_path)));
+}
+
+test "pathnameMatchP matches string and pathname" {
+    const testing = std.testing;
+    var heap = try heap_mod.Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const name = try heap.allocBaseString("foo");
+    const pn = try heap.allocPathname(Value.nil, Value.nil, Value.nil, name, Value.nil, Value.nil);
+
+    const res1 = try pathnameMatchP(pn, name);
+    try testing.expect(res1.isT());
+
+    const star = try heap.allocBaseString("*");
+    const res2 = try pathnameMatchP(pn, star);
+    try testing.expect(res2.isT());
+
+    const no = try heap.allocBaseString("bar");
+    const res3 = try pathnameMatchP(pn, no);
+    try testing.expect(res3.isNil());
+
+    const wild_pn = try heap.allocPathname(Value.nil, Value.nil, Value.nil, name, Value.nil, Value.nil);
+    const res4 = try pathnameMatchP(pn, wild_pn);
+    try testing.expect(res4.isT());
 }
 
 test "readLine handles long file lines" {
