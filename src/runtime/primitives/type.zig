@@ -323,19 +323,17 @@ pub fn typep(heap: *Heap, syms: *const TypeSymbols, obj: Value, type_spec: Value
 
             const val = if (obj.isFixnum()) obj.toFixnum() else return true;
 
-            const low_ok = if (low.eq(syms.star))
-                true
-            else if (low.isFixnum())
-                val >= low.toFixnum()
-            else
-                return error.InvalidTypeSpecifier;
+            const low_ok = switch (low.typeKind()) {
+                .symbol => if (low.eq(syms.star)) true else return error.InvalidTypeSpecifier,
+                .fixnum => val >= low.toFixnum(),
+                else => return error.InvalidTypeSpecifier,
+            };
 
-            const high_ok = if (high.eq(syms.star))
-                true
-            else if (high.isFixnum())
-                val <= high.toFixnum()
-            else
-                return error.InvalidTypeSpecifier;
+            const high_ok = switch (high.typeKind()) {
+                .symbol => if (high.eq(syms.star)) true else return error.InvalidTypeSpecifier,
+                .fixnum => val <= high.toFixnum(),
+                else => return error.InvalidTypeSpecifier,
+            };
 
             return low_ok and high_ok;
         }
@@ -751,6 +749,15 @@ test "typep integer range" {
     try testing.expect(try typep(&heap, &syms, Value.makeFixnum(100), range_spec));
     try testing.expect(!try typep(&heap, &syms, Value.makeFixnum(101), range_spec));
     try testing.expect(!try typep(&heap, &syms, Value.makeFixnum(-1), range_spec));
+
+    const bad_range = try heap.allocCons(
+        try heap.intern("integer"),
+        try heap.allocCons(
+            try heap.intern("foo"),
+            try heap.allocCons(Value.makeFixnum(10), Value.nil),
+        ),
+    );
+    try testing.expectError(error.InvalidTypeSpecifier, typep(&heap, &syms, Value.makeFixnum(5), bad_range));
 }
 
 test "typeOf basic types" {
