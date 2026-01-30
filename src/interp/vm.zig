@@ -1150,22 +1150,18 @@ pub const Vm = struct {
             },
             .car => {
                 const pair = try self.pop();
-                if (pair.isNil()) {
-                    try self.push(Value.nil); // CL: (car nil) => nil
-                } else if (pair.isCons()) {
-                    try self.push(pair.toPtr(Cons).car);
-                } else {
-                    return error.TypeMismatch;
+                switch (pair.typeKind()) {
+                    .nil => try self.push(Value.nil), // CL: (car nil) => nil
+                    .cons => try self.push(pair.toPtr(Cons).car),
+                    else => return error.TypeMismatch,
                 }
             },
             .cdr => {
                 const pair = try self.pop();
-                if (pair.isNil()) {
-                    try self.push(Value.nil); // CL: (cdr nil) => nil
-                } else if (pair.isCons()) {
-                    try self.push(pair.toPtr(Cons).cdr);
-                } else {
-                    return error.TypeMismatch;
+                switch (pair.typeKind()) {
+                    .nil => try self.push(Value.nil), // CL: (cdr nil) => nil
+                    .cons => try self.push(pair.toPtr(Cons).cdr),
+                    else => return error.TypeMismatch,
                 }
             },
             .make_list => {
@@ -1187,31 +1183,31 @@ pub const Vm = struct {
                 const list2 = try self.pop();
                 const list1 = try self.pop();
                 // Append list1 to list2: (append '(a b) '(c d)) -> (a b c d)
-                if (list1.isNil()) {
-                    try self.push(list2);
-                } else if (!list1.isCons()) {
-                    return error.TypeMismatch;
-                } else {
-                    // Single-pass copy: build copy of list1, link tail to list2
-                    var head: ?Value = null;
-                    var tail: ?*Cons = null;
-                    var curr = list1;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        const new_cell = try self.allocCons(c.car, Value.nil);
-                        if (tail) |t| {
-                            t.cdr = new_cell;
-                        } else {
-                            head = new_cell;
+                switch (list1.typeKind()) {
+                    .nil => try self.push(list2),
+                    .cons => {
+                        // Single-pass copy: build copy of list1, link tail to list2
+                        var head: ?Value = null;
+                        var tail: ?*Cons = null;
+                        var curr = list1;
+                        while (curr.isCons()) {
+                            const c = curr.toPtr(Cons);
+                            const new_cell = try self.allocCons(c.car, Value.nil);
+                            if (tail) |t| {
+                                t.cdr = new_cell;
+                            } else {
+                                head = new_cell;
+                            }
+                            tail = new_cell.toPtr(Cons);
+                            curr = c.cdr;
                         }
-                        tail = new_cell.toPtr(Cons);
-                        curr = c.cdr;
-                    }
-                    // Link tail to list2
-                    if (tail) |t| {
-                        t.cdr = list2;
-                    }
-                    try self.push(head orelse list2);
+                        // Link tail to list2
+                        if (tail) |t| {
+                            t.cdr = list2;
+                        }
+                        try self.push(head orelse list2);
+                    },
+                    else => return error.TypeMismatch,
                 }
             },
 
@@ -1314,20 +1310,20 @@ pub const Vm = struct {
 
             .list_last => {
                 const list = try self.pop();
-                if (list.isNil()) {
-                    try self.push(Value.nil);
-                } else if (!list.isCons()) {
-                    return error.TypeMismatch;
-                } else {
-                    var curr = list;
-                    while (curr.isCons()) {
-                        const c = curr.toPtr(Cons);
-                        if (!c.cdr.isCons()) {
-                            try self.push(curr);
-                            break;
+                switch (list.typeKind()) {
+                    .nil => try self.push(Value.nil),
+                    .cons => {
+                        var curr = list;
+                        while (curr.isCons()) {
+                            const c = curr.toPtr(Cons);
+                            if (!c.cdr.isCons()) {
+                                try self.push(curr);
+                                break;
+                            }
+                            curr = c.cdr;
                         }
-                        curr = c.cdr;
-                    }
+                    },
+                    else => return error.TypeMismatch,
                 }
             },
 
@@ -1515,24 +1511,26 @@ pub const Vm = struct {
                 if (idx_signed < 0) return error.TypeMismatch;
                 const idx: usize = @intCast(idx_signed);
 
-                if (seq_val.isVector()) {
-                    const vec = seq_val.toPtr(runtime.Vector);
-                    if (idx >= vec.length) return error.TypeMismatch;
-                    vec.set(idx, val);
-                    try self.push(val);
-                } else if (seq_val.isCons() or seq_val.isNil()) {
-                    // For lists, use nthcdr then rplaca
-                    var list = seq_val;
-                    var i: usize = 0;
-                    while (i < idx) : (i += 1) {
+                switch (seq_val.typeKind()) {
+                    .vector => {
+                        const vec = seq_val.toPtr(runtime.Vector);
+                        if (idx >= vec.length) return error.TypeMismatch;
+                        vec.set(idx, val);
+                        try self.push(val);
+                    },
+                    .cons, .nil => {
+                        // For lists, use nthcdr then rplaca
+                        var list = seq_val;
+                        var i: usize = 0;
+                        while (i < idx) : (i += 1) {
+                            if (!list.isCons()) return error.TypeMismatch;
+                            list = list.toPtr(runtime.Cons).cdr;
+                        }
                         if (!list.isCons()) return error.TypeMismatch;
-                        list = list.toPtr(runtime.Cons).cdr;
-                    }
-                    if (!list.isCons()) return error.TypeMismatch;
-                    list.toPtr(runtime.Cons).car = val;
-                    try self.push(val);
-                } else {
-                    return error.TypeMismatch;
+                        list.toPtr(runtime.Cons).car = val;
+                        try self.push(val);
+                    },
+                    else => return error.TypeMismatch,
                 }
             },
             .vec_len => {
@@ -2950,31 +2948,33 @@ pub const Vm = struct {
                 // Pop a list from stack, return its elements as multiple values
                 const list = try self.pop();
 
-                if (list.isNil()) {
-                    // Empty list -> return nil with no secondary values
-                    self.secondary_values_count = 0;
-                    try self.push(Value.nil);
-                } else if (list.isCons()) {
-                    // Walk the list, extract elements
-                    var first = Value.nil;
-                    var count: usize = 0;
-                    var current = list;
+                switch (list.typeKind()) {
+                    .nil => {
+                        // Empty list -> return nil with no secondary values
+                        self.secondary_values_count = 0;
+                        try self.push(Value.nil);
+                    },
+                    .cons => {
+                        // Walk the list, extract elements
+                        var first = Value.nil;
+                        var count: usize = 0;
+                        var current = list;
 
-                    while (current.isCons()) {
-                        const cons = current.toPtr(runtime.Cons);
-                        if (count == 0) {
-                            first = cons.car;
-                        } else if (count - 1 < self.secondary_values.len) {
-                            self.secondary_values[count - 1] = cons.car;
+                        while (current.isCons()) {
+                            const cons = current.toPtr(runtime.Cons);
+                            if (count == 0) {
+                                first = cons.car;
+                            } else if (count - 1 < self.secondary_values.len) {
+                                self.secondary_values[count - 1] = cons.car;
+                            }
+                            count += 1;
+                            current = cons.cdr;
                         }
-                        count += 1;
-                        current = cons.cdr;
-                    }
 
-                    self.secondary_values_count = if (count > 1) count - 1 else 0;
-                    try self.push(first);
-                } else {
-                    return error.TypeMismatch;
+                        self.secondary_values_count = if (count > 1) count - 1 else 0;
+                        try self.push(first);
+                    },
+                    else => return error.TypeMismatch,
                 }
             },
 
@@ -3066,32 +3066,34 @@ pub const Vm = struct {
             .symbol_package => {
                 const val = try self.pop();
                 // Handle special symbols nil and t
-                if (val.isNil() or val.isT()) {
-                    // nil and t are in the CL package
-                    const cl_name = try self.heap.allocBaseString("CL");
-                    if (try self.heap.findLispPackage(cl_name)) |pkg| {
-                        try self.push(pkg);
-                    } else {
-                        try self.push(Value.nil);
-                    }
-                } else if (val.isSymbol()) {
-                    const sym = val.toPtr(Symbol);
-                    const pkg_ptr = sym.reserved;
-                    if (pkg_ptr != 0) {
-                        // Get the Zig package struct
-                        const zig_pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
-                        // Look up the Lisp package object by name
-                        const name_val = try self.heap.allocBaseString(zig_pkg.name);
-                        if (try self.heap.findLispPackage(name_val)) |pkg| {
+                switch (val.typeKind()) {
+                    .nil, .t => {
+                        // nil and t are in the CL package
+                        const cl_name = try self.heap.allocBaseString("CL");
+                        if (try self.heap.findLispPackage(cl_name)) |pkg| {
                             try self.push(pkg);
                         } else {
                             try self.push(Value.nil);
                         }
-                    } else {
-                        try self.push(Value.nil);
-                    }
-                } else {
-                    return error.TypeMismatch;
+                    },
+                    .symbol => {
+                        const sym = val.toPtr(Symbol);
+                        const pkg_ptr = sym.reserved;
+                        if (pkg_ptr != 0) {
+                            // Get the Zig package struct
+                            const zig_pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
+                            // Look up the Lisp package object by name
+                            const name_val = try self.heap.allocBaseString(zig_pkg.name);
+                            if (try self.heap.findLispPackage(name_val)) |pkg| {
+                                try self.push(pkg);
+                            } else {
+                                try self.push(Value.nil);
+                            }
+                        } else {
+                            try self.push(Value.nil);
+                        }
+                    },
+                    else => return error.TypeMismatch,
                 }
             },
             .package_name => {
@@ -3933,37 +3935,40 @@ pub const Vm = struct {
                 // Pop array or vector
                 const arr_val = try self.pop();
 
-                // Handle vectors (1D case)
-                if (arr_val.isVector() and sub_count == 1) {
-                    const vec = arr_val.toPtr(Vector);
-                    const idx: usize = @intCast(subscripts[0]);
-                    if (idx >= vec.length) return error.TypeMismatch;
-                    try self.push(vec.get(idx));
-                } else if (arr_val.isArray()) {
-                    const arr = arr_val.toPtr(runtime.Array);
+                switch (arr_val.typeKind()) {
+                    .vector => {
+                        // Handle vectors (1D case)
+                        if (sub_count != 1) return error.TypeMismatch;
+                        const vec = arr_val.toPtr(Vector);
+                        const idx: usize = @intCast(subscripts[0]);
+                        if (idx >= vec.length) return error.TypeMismatch;
+                        try self.push(vec.get(idx));
+                    },
+                    .array => {
+                        const arr = arr_val.toPtr(runtime.Array);
 
-                    // Verify rank matches
-                    if (arr.rank != sub_count) return error.TypeMismatch;
+                        // Verify rank matches
+                        if (arr.rank != sub_count) return error.TypeMismatch;
 
-                    // Calculate linear index using row-major order
-                    var index: u64 = 0;
-                    for (0..sub_count) |k| {
-                        // Bounds check
-                        if (subscripts[k] >= arr.dimensions[k]) return error.TypeMismatch;
+                        // Calculate linear index using row-major order
+                        var index: u64 = 0;
+                        for (0..sub_count) |k| {
+                            // Bounds check
+                            if (subscripts[k] >= arr.dimensions[k]) return error.TypeMismatch;
 
-                        // Calculate stride (product of remaining dimensions)
-                        var stride: u64 = 1;
-                        for (k + 1..sub_count) |m| {
-                            stride *= arr.dimensions[m];
+                            // Calculate stride (product of remaining dimensions)
+                            var stride: u64 = 1;
+                            for (k + 1..sub_count) |m| {
+                                stride *= arr.dimensions[m];
+                            }
+                            index += subscripts[k] * stride;
                         }
-                        index += subscripts[k] * stride;
-                    }
 
-                    // Access element
-                    const data: [*]Value = @ptrFromInt(arr.data_ptr);
-                    try self.push(data[index]);
-                } else {
-                    return error.TypeMismatch;
+                        // Access element
+                        const data: [*]Value = @ptrFromInt(arr.data_ptr);
+                        try self.push(data[index]);
+                    },
+                    else => return error.TypeMismatch,
                 }
             },
 
@@ -3989,41 +3994,44 @@ pub const Vm = struct {
                 // Pop array or vector
                 const arr_val = try self.pop();
 
-                // Handle vectors (1D case)
-                if (arr_val.isVector() and sub_count == 1) {
-                    const vec = arr_val.toPtr(Vector);
-                    const idx: usize = @intCast(subscripts[0]);
-                    if (idx >= vec.length) return error.TypeMismatch;
-                    vec.set(idx, new_val);
-                    try self.push(new_val);
-                } else if (arr_val.isArray()) {
-                    const arr = arr_val.toPtr(runtime.Array);
+                switch (arr_val.typeKind()) {
+                    .vector => {
+                        // Handle vectors (1D case)
+                        if (sub_count != 1) return error.TypeMismatch;
+                        const vec = arr_val.toPtr(Vector);
+                        const idx: usize = @intCast(subscripts[0]);
+                        if (idx >= vec.length) return error.TypeMismatch;
+                        vec.set(idx, new_val);
+                        try self.push(new_val);
+                    },
+                    .array => {
+                        const arr = arr_val.toPtr(runtime.Array);
 
-                    // Verify rank matches
-                    if (arr.rank != sub_count) return error.TypeMismatch;
+                        // Verify rank matches
+                        if (arr.rank != sub_count) return error.TypeMismatch;
 
-                    // Calculate linear index using row-major order
-                    var index: u64 = 0;
-                    for (0..sub_count) |k| {
-                        // Bounds check
-                        if (subscripts[k] >= arr.dimensions[k]) return error.TypeMismatch;
+                        // Calculate linear index using row-major order
+                        var index: u64 = 0;
+                        for (0..sub_count) |k| {
+                            // Bounds check
+                            if (subscripts[k] >= arr.dimensions[k]) return error.TypeMismatch;
 
-                        // Calculate stride (product of remaining dimensions)
-                        var stride: u64 = 1;
-                        for (k + 1..sub_count) |m| {
-                            stride *= arr.dimensions[m];
+                            // Calculate stride (product of remaining dimensions)
+                            var stride: u64 = 1;
+                            for (k + 1..sub_count) |m| {
+                                stride *= arr.dimensions[m];
+                            }
+                            index += subscripts[k] * stride;
                         }
-                        index += subscripts[k] * stride;
-                    }
 
-                    // Set element
-                    const data: [*]Value = @ptrFromInt(arr.data_ptr);
-                    data[index] = new_val;
+                        // Set element
+                        const data: [*]Value = @ptrFromInt(arr.data_ptr);
+                        data[index] = new_val;
 
-                    // Return the value (Common Lisp setf semantics)
-                    try self.push(new_val);
-                } else {
-                    return error.TypeMismatch;
+                        // Return the value (Common Lisp setf semantics)
+                        try self.push(new_val);
+                    },
+                    else => return error.TypeMismatch,
                 }
             },
 
@@ -4844,39 +4852,38 @@ pub const Vm = struct {
             .symbol_value, .symbol_function => {
                 const val = try self.pop();
                 // Handle magic symbols nil and t
-                if (val.isNil()) {
-                    try self.push(Value.nil);
-                } else if (val.isT()) {
-                    try self.push(Value.t);
-                } else if (val.isSymbol()) {
-                    const sym = val.toPtr(Symbol);
-                    const local_name = sym.getName();
-                    // Build qualified name using symbol's package
-                    var qual_buf: [512]u8 = undefined;
-                    const qual_name = blk: {
-                        const pkg_ptr = sym.reserved;
-                        if (pkg_ptr != 0) {
-                            const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
-                            break :blk std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
-                        } else {
-                            // No package - use local name as is, or try CL-USER fallback
-                            break :blk local_name;
-                        }
-                    };
-                    // Look up symbol in global environment
-                    if (self.global_env) |env| {
-                        // Try qualified name first, then local name
-                        const idx = env.lookup(qual_name) orelse env.lookup(local_name);
-                        if (idx) |i| {
-                            try self.push(self.globals[i]);
+                switch (val.typeKind()) {
+                    .nil => try self.push(Value.nil),
+                    .t => try self.push(Value.t),
+                    .symbol => {
+                        const sym = val.toPtr(Symbol);
+                        const local_name = sym.getName();
+                        // Build qualified name using symbol's package
+                        var qual_buf: [512]u8 = undefined;
+                        const qual_name = blk: {
+                            const pkg_ptr = sym.reserved;
+                            if (pkg_ptr != 0) {
+                                const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
+                                break :blk std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
+                            } else {
+                                // No package - use local name as is, or try CL-USER fallback
+                                break :blk local_name;
+                            }
+                        };
+                        // Look up symbol in global environment
+                        if (self.global_env) |env| {
+                            // Try qualified name first, then local name
+                            const idx = env.lookup(qual_name) orelse env.lookup(local_name);
+                            if (idx) |i| {
+                                try self.push(self.globals[i]);
+                            } else {
+                                return error.UnboundSymbol;
+                            }
                         } else {
                             return error.UnboundSymbol;
                         }
-                    } else {
-                        return error.UnboundSymbol;
-                    }
-                } else {
-                    return error.TypeMismatch;
+                    },
+                    else => return error.TypeMismatch,
                 }
             },
 
@@ -5742,13 +5749,17 @@ pub const Vm = struct {
                             const selector = args[arg_idx];
                             arg_idx += 1;
                             var clause_idx: usize = 0;
-                            if (selector.isFixnum()) {
-                                const n = selector.toFixnum();
-                                if (n >= 0) clause_idx = @intCast(n);
-                            } else if (selector.isNil()) {
-                                clause_idx = 0; // For ~:[false~;true~], nil selects first
-                            } else {
-                                clause_idx = 1; // Non-nil selects second (for boolean conditional)
+                            switch (selector.typeKind()) {
+                                .fixnum => {
+                                    const n = selector.toFixnum();
+                                    if (n >= 0) clause_idx = @intCast(n);
+                                },
+                                .nil => {
+                                    clause_idx = 0; // For ~:[false~;true~], nil selects first
+                                },
+                                else => {
+                                    clause_idx = 1; // Non-nil selects second (for boolean conditional)
+                                },
                             }
                             if (clause_idx < clauses.items.len) {
                                 // Append the selected clause text directly
@@ -6541,6 +6552,22 @@ pub const Vm = struct {
         return self.stack[self.sp - 1 - distance];
     }
 
+    fn strCharCode(item: Value) ?u8 {
+        switch (item.typeKind()) {
+            .char => {
+                const cp = item.toCharacter();
+                if (cp > 255) return null;
+                return @intCast(cp);
+            },
+            .fixnum => {
+                const n = item.toFixnum();
+                if (n < 0 or n > 255) return null;
+                return @intCast(n);
+            },
+            else => return null,
+        }
+    }
+
     /// Position search for lists, strings, and vectors
     fn positionInSeq(self: *Vm, item: Value, seq: Value, cmp: runtime.HashTest) Error!Value {
         _ = self;
@@ -6548,18 +6575,7 @@ pub const Vm = struct {
         if (seq.isString()) {
             const str_obj = seq.toPtr(runtime.String);
             const str_bytes = str_obj.bytes();
-            var char_code: u8 = undefined;
-            if (item.isCharacter()) {
-                const cp = item.toCharacter();
-                if (cp > 255) return Value.nil; // Non-ASCII char not in string
-                char_code = @intCast(cp);
-            } else if (item.isFixnum()) {
-                const n = item.toFixnum();
-                if (n < 0 or n > 255) return Value.nil;
-                char_code = @intCast(n);
-            } else {
-                return Value.nil;
-            }
+            const char_code = strCharCode(item) orelse return Value.nil;
             for (str_bytes, 0..) |c, i| {
                 if (c == char_code) {
                     return Value.makeFixnum(@intCast(i));
@@ -6599,18 +6615,7 @@ pub const Vm = struct {
         if (seq.isString()) {
             const str_obj = seq.toPtr(runtime.String);
             const str_bytes = str_obj.bytes();
-            var char_code: u8 = undefined;
-            if (item.isCharacter()) {
-                const cp = item.toCharacter();
-                if (cp > 255) return Value.nil;
-                char_code = @intCast(cp);
-            } else if (item.isFixnum()) {
-                const n = item.toFixnum();
-                if (n < 0 or n > 255) return Value.nil;
-                char_code = @intCast(n);
-            } else {
-                return Value.nil;
-            }
+            const char_code = strCharCode(item) orelse return Value.nil;
             for (str_bytes) |c| {
                 if (c == char_code) {
                     return item; // Return the item found
@@ -6648,18 +6653,7 @@ pub const Vm = struct {
         if (seq.isString()) {
             const str_obj = seq.toPtr(runtime.String);
             const str_bytes = str_obj.bytes();
-            var char_code: u8 = undefined;
-            if (item.isCharacter()) {
-                const cp = item.toCharacter();
-                if (cp > 255) return Value.makeFixnum(0);
-                char_code = @intCast(cp);
-            } else if (item.isFixnum()) {
-                const n = item.toFixnum();
-                if (n < 0 or n > 255) return Value.makeFixnum(0);
-                char_code = @intCast(n);
-            } else {
-                return Value.makeFixnum(0);
-            }
+            const char_code = strCharCode(item) orelse return Value.makeFixnum(0);
             var n: i64 = 0;
             for (str_bytes) |c| {
                 if (c == char_code) {
@@ -6863,29 +6857,32 @@ fn valueEqualWithDepth(a: Value, b: Value, depth: usize) bool {
     if (tag_a != tag_b) return false;
 
     // Both are pointers of same type
-    if (a.isCons()) {
-        // Recursively compare car and cdr
-        const cons_a = a.toPtr(Cons);
-        const cons_b = b.toPtr(Cons);
-        return valueEqualWithDepth(cons_a.car, cons_b.car, depth + 1) and
-            valueEqualWithDepth(cons_a.cdr, cons_b.cdr, depth + 1);
-    } else if (a.isString()) {
-        // Compare strings character by character
-        const str_a = a.toPtr(String);
-        const str_b = b.toPtr(String);
-        return std.mem.eql(u8, str_a.bytes(), str_b.bytes());
-    } else if (a.isVector()) {
-        // Compare vectors element by element
-        const vec_a = a.toPtr(Vector);
-        const vec_b = b.toPtr(Vector);
-        if (vec_a.length != vec_b.length) return false;
-        for (vec_a.items(), vec_b.items()) |ea, eb| {
-            if (!valueEqualWithDepth(ea, eb, depth + 1)) return false;
-        }
-        return true;
+    switch (a.typeKind()) {
+        .cons => {
+            // Recursively compare car and cdr
+            const cons_a = a.toPtr(Cons);
+            const cons_b = b.toPtr(Cons);
+            return valueEqualWithDepth(cons_a.car, cons_b.car, depth + 1) and
+                valueEqualWithDepth(cons_a.cdr, cons_b.cdr, depth + 1);
+        },
+        .string => {
+            // Compare strings character by character
+            const str_a = a.toPtr(String);
+            const str_b = b.toPtr(String);
+            return std.mem.eql(u8, str_a.bytes(), str_b.bytes());
+        },
+        .vector => {
+            // Compare vectors element by element
+            const vec_a = a.toPtr(Vector);
+            const vec_b = b.toPtr(Vector);
+            if (vec_a.length != vec_b.length) return false;
+            for (vec_a.items(), vec_b.items()) |ea, eb| {
+                if (!valueEqualWithDepth(ea, eb, depth + 1)) return false;
+            }
+            return true;
+        },
+        else => return false,
     }
-    // Symbols, closures, keywords: use eq
-    return false;
 }
 
 // ============================================================================
@@ -7324,6 +7321,435 @@ test "vm cons car cdr" {
 
     const result = try vm.run(&chunk);
     try testing.expectEqual(@as(i64, 1), result.toFixnum());
+}
+
+test "vm list last" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const code = [_]u8{
+        0x02, 0x00, 1, 0, 0, 0, // push_i32 1
+        0x02, 0x00, 2, 0, 0, 0, // push_i32 2
+        0x02, 0x00, 3, 0, 0, 0, // push_i32 3
+        0x43, 0x00, 3, // make_list 3
+        0x48, 0x00, // list_last
+        0x41, 0x00, // car
+        0x92, 0x00, // ret
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const result = try vm.run(&chunk);
+    try testing.expectEqual(@as(i64, 3), result.toFixnum());
+}
+
+test "vm elt_set list" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const make_list_op: u16 = @intFromEnum(Op.make_list);
+    const list_nth_op: u16 = @intFromEnum(Op.list_nth);
+    const elt_set_op: u16 = @intFromEnum(Op.elt_set);
+    const pop_op: u16 = @intFromEnum(Op.pop);
+
+    const code = [_]u8{
+        0x02, 0x00, 1, 0, 0, 0, // push_i32 1
+        0x02, 0x00, 2, 0, 0, 0, // push_i32 2
+        0x02, 0x00, 3, 0, 0, 0, // push_i32 3
+        @truncate(make_list_op & 0xFF), @truncate(make_list_op >> 8), 3, // make_list 3
+        0x11, 0x00, 0, // store_local 0
+        0x10, 0x00, 0, // load_local 0
+        0x02, 0x00, 1, 0, 0, 0, // push_i32 1 (index)
+        0x02, 0x00, 99, 0, 0, 0, // push_i32 99 (value)
+        @truncate(elt_set_op & 0xFF), @truncate(elt_set_op >> 8),
+        @truncate(pop_op & 0xFF), @truncate(pop_op >> 8),
+        0x02, 0x00, 1, 0, 0, 0, // push_i32 1 (index)
+        0x10, 0x00, 0, // load_local 0
+        @truncate(list_nth_op & 0xFF), @truncate(list_nth_op >> 8),
+        0x92, 0x00, // ret
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 1,
+    };
+
+    const result = try vm.run(&chunk);
+    try testing.expectEqual(@as(i64, 99), result.toFixnum());
+}
+
+test "vm symbol_package nil" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const push_nil_op: u16 = @intFromEnum(Op.push_nil);
+    const symbol_package_op: u16 = @intFromEnum(Op.symbol_package);
+    const package_name_op: u16 = @intFromEnum(Op.package_name);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+
+    const code = [_]u8{
+        @truncate(push_nil_op & 0xFF), @truncate(push_nil_op >> 8),
+        @truncate(symbol_package_op & 0xFF), @truncate(symbol_package_op >> 8),
+        @truncate(package_name_op & 0xFF), @truncate(package_name_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const result = try vm.run(&chunk);
+    try testing.expect(result.isString());
+    try testing.expectEqualStrings("COMMON-LISP", result.toPtr(runtime.String).bytes());
+}
+
+test "vm aref aset vector" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const make_vec_n_op: u16 = @intFromEnum(Op.make_vec_n);
+    const aref_op: u16 = @intFromEnum(Op.aref);
+    const aset_op: u16 = @intFromEnum(Op.aset);
+    const pop_op: u16 = @intFromEnum(Op.pop);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+
+    const code = [_]u8{
+        0x02, 0x00, 1, 0, 0, 0, // push_i32 1
+        0x02, 0x00, 2, 0, 0, 0, // push_i32 2
+        0x02, 0x00, 3, 0, 0, 0, // push_i32 3
+        @truncate(make_vec_n_op & 0xFF), @truncate(make_vec_n_op >> 8), 3, // make_vec_n 3
+        0x11, 0x00, 0, // store_local 0
+        0x10, 0x00, 0, // load_local 0
+        0x02, 0x00, 1, 0, 0, 0, // push_i32 1 (index)
+        0x02, 0x00, 99, 0, 0, 0, // push_i32 99 (value)
+        @truncate(aset_op & 0xFF), @truncate(aset_op >> 8), 1, // aset sub_count=1
+        @truncate(pop_op & 0xFF), @truncate(pop_op >> 8),
+        0x10, 0x00, 0, // load_local 0
+        0x02, 0x00, 1, 0, 0, 0, // push_i32 1 (index)
+        @truncate(aref_op & 0xFF), @truncate(aref_op >> 8), 1, // aref sub_count=1
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 1,
+    };
+
+    const result = try vm.run(&chunk);
+    try testing.expectEqual(@as(i64, 99), result.toFixnum());
+}
+
+test "vm symbol_value specials" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const push_nil_op: u16 = @intFromEnum(Op.push_nil);
+    const push_t_op: u16 = @intFromEnum(Op.push_t);
+    const symbol_value_op: u16 = @intFromEnum(Op.symbol_value);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+
+    const code_nil = [_]u8{
+        @truncate(push_nil_op & 0xFF), @truncate(push_nil_op >> 8),
+        @truncate(symbol_value_op & 0xFF), @truncate(symbol_value_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk_nil = Chunk{
+        .code = @constCast(&code_nil),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code_nil.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const res_nil = try vm.run(&chunk_nil);
+    try testing.expect(res_nil.isNil());
+
+    const code_t = [_]u8{
+        @truncate(push_t_op & 0xFF), @truncate(push_t_op >> 8),
+        @truncate(symbol_value_op & 0xFF), @truncate(symbol_value_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk_t = Chunk{
+        .code = @constCast(&code_t),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code_t.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const res_t = try vm.run(&chunk_t);
+    try testing.expect(res_t.isT());
+}
+
+test "vm format selector" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const push_nil_op: u16 = @intFromEnum(Op.push_nil);
+    const push_const_op: u16 = @intFromEnum(Op.push_const);
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const format_op: u16 = @intFromEnum(Op.format);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+
+    const control = try heap.allocBaseString("~[no~;yes~]");
+    const consts = [_]Value{control};
+
+    const code_nil = [_]u8{
+        @truncate(push_nil_op & 0xFF), @truncate(push_nil_op >> 8),
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
+        @truncate(push_nil_op & 0xFF), @truncate(push_nil_op >> 8),
+        @truncate(format_op & 0xFF), @truncate(format_op >> 8), 1,
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk_nil = Chunk{
+        .code = @constCast(&code_nil),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = consts.len,
+        .code_len = code_nil.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const res_nil = try vm.run(&chunk_nil);
+    try testing.expect(res_nil.isString());
+    try testing.expectEqualStrings("no", res_nil.toPtr(runtime.String).bytes());
+
+    const code_one = [_]u8{
+        @truncate(push_nil_op & 0xFF), @truncate(push_nil_op >> 8),
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 1, 0, 0, 0,
+        @truncate(format_op & 0xFF), @truncate(format_op >> 8), 1,
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk_one = Chunk{
+        .code = @constCast(&code_one),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = consts.len,
+        .code_len = code_one.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const res_one = try vm.run(&chunk_one);
+    try testing.expect(res_one.isString());
+    try testing.expectEqualStrings("yes", res_one.toPtr(runtime.String).bytes());
+}
+
+test "vm list_position count string" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const push_const_op: u16 = @intFromEnum(Op.push_const);
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const code_char_op: u16 = @intFromEnum(Op.code_char);
+    const list_position_op: u16 = @intFromEnum(Op.list_position);
+    const list_count_op: u16 = @intFromEnum(Op.list_count);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+
+    const str = try heap.allocBaseString("abca");
+    const consts = [_]Value{str};
+
+    const code_pos = [_]u8{
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 98, 0, 0, 0,
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
+        @truncate(list_position_op & 0xFF), @truncate(list_position_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk_pos = Chunk{
+        .code = @constCast(&code_pos),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = consts.len,
+        .code_len = code_pos.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const res_pos = try vm.run(&chunk_pos);
+    try testing.expectEqual(@as(i64, 1), res_pos.toFixnum());
+
+    const code_count = [_]u8{
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 97, 0, 0, 0,
+        @truncate(code_char_op & 0xFF), @truncate(code_char_op >> 8),
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
+        @truncate(list_count_op & 0xFF), @truncate(list_count_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk_count = Chunk{
+        .code = @constCast(&code_count),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = consts.len,
+        .code_len = code_count.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const res_count = try vm.run(&chunk_count);
+    try testing.expectEqual(@as(i64, 2), res_count.toFixnum());
+}
+
+test "vm equal vector string" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const push_const_op: u16 = @intFromEnum(Op.push_const);
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const make_vec_n_op: u16 = @intFromEnum(Op.make_vec_n);
+    const store_local_op: u16 = @intFromEnum(Op.store_local);
+    const load_local_op: u16 = @intFromEnum(Op.load_local);
+    const equal_op: u16 = @intFromEnum(Op.equal);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+
+    const code_vec = [_]u8{
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 1, 0, 0, 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 2, 0, 0, 0,
+        @truncate(make_vec_n_op & 0xFF), @truncate(make_vec_n_op >> 8), 2,
+        @truncate(store_local_op & 0xFF), @truncate(store_local_op >> 8), 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 1, 0, 0, 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 2, 0, 0, 0,
+        @truncate(make_vec_n_op & 0xFF), @truncate(make_vec_n_op >> 8), 2,
+        @truncate(load_local_op & 0xFF), @truncate(load_local_op >> 8), 0,
+        @truncate(equal_op & 0xFF), @truncate(equal_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk_vec = Chunk{
+        .code = @constCast(&code_vec),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code_vec.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 1,
+    };
+
+    const res_vec = try vm.run(&chunk_vec);
+    try testing.expect(res_vec.isT());
+
+    const str_a = try heap.allocBaseString("hi");
+    const str_b = try heap.allocBaseString("hi");
+    const consts = [_]Value{ str_a, str_b };
+
+    const code_str = [_]u8{
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 1, 0,
+        @truncate(equal_op & 0xFF), @truncate(equal_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk_str = Chunk{
+        .code = @constCast(&code_str),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = consts.len,
+        .code_len = code_str.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const res_str = try vm.run(&chunk_str);
+    try testing.expect(res_str.isT());
 }
 
 test "vm conditional" {
