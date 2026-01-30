@@ -372,7 +372,7 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
                 try w.writeByte(@as(u8, @intCast(cp)));
             } else {
                 var utf8_buf: [4]u8 = undefined;
-                const len = std.unicode.utf8Encode(@intCast(cp), &utf8_buf) catch 0;
+                const len = try std.unicode.utf8Encode(@intCast(cp), &utf8_buf);
                 try w.writeAll(utf8_buf[0..len]);
             }
         },
@@ -1147,17 +1147,17 @@ pub fn encodeUniversalTime(
 }
 
 /// Print memory usage statistics
-pub fn room(allocations: usize, bytes_allocated: usize, gc_count: usize, bytes_copied: usize) void {
+pub fn room(allocations: usize, bytes_allocated: usize, gc_count: usize, bytes_copied: usize) !void {
     const stdout_file = fs.File.stdout();
     var buf: [IO_BUF]u8 = undefined;
     var file_writer = stdout_file.writer(&buf);
     const w = &file_writer.interface;
-    w.print("; Memory usage:\n", .{}) catch {};
-    w.print(";   Allocations: {d}\n", .{allocations}) catch {};
-    w.print(";   Bytes allocated: {d}\n", .{bytes_allocated}) catch {};
-    w.print(";   GC collections: {d}\n", .{gc_count}) catch {};
-    w.print(";   Bytes copied (last GC): {d}\n", .{bytes_copied}) catch {};
-    w.flush() catch {};
+    try w.print("; Memory usage:\n", .{});
+    try w.print(";   Allocations: {d}\n", .{allocations});
+    try w.print(";   Bytes allocated: {d}\n", .{bytes_allocated});
+    try w.print(";   GC collections: {d}\n", .{gc_count});
+    try w.print(";   Bytes copied (last GC): {d}\n", .{bytes_copied});
+    try w.flush();
 }
 
 /// Get current time in milliseconds
@@ -2179,4 +2179,15 @@ test "readLine handles long file lines" {
     try testing.expect(line_val.isString());
     const line = line_val.toPtr(objects.String);
     try testing.expectEqual(line_len, @as(usize, @intCast(line.length)));
+}
+
+test "princValueTo reports invalid unicode" {
+    const testing = std.testing;
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(testing.allocator);
+
+    const w = buf.writer(testing.allocator);
+    const val = Value.makeCharacter(0xD800);
+    try testing.expectError(error.Utf8CannotEncodeSurrogateHalf, princValueTo(val, w.any(), 0));
 }

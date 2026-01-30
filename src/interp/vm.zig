@@ -2262,7 +2262,7 @@ pub const Vm = struct {
             .room => {
                 // Print memory statistics
                 const stats = self.heap.stats;
-                io.room(stats.allocations, stats.bytes_allocated, stats.gc_count, stats.bytes_copied);
+                try io.room(stats.allocations, stats.bytes_allocated, stats.gc_count, stats.bytes_copied);
                 try self.push(Value.nil);
             },
             .lisp_implementation_type => {
