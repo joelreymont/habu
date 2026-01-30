@@ -1804,7 +1804,11 @@ pub const Vm = struct {
                 if (idx_signed < 0) return error.TypeMismatch;
                 const idx: usize = @intCast(idx_signed);
                 if (idx >= str.length) return error.TypeMismatch;
-                const char_int = if (char_val.isFixnum()) char_val.toFixnum() else if (char_val.isCharacter()) @as(i64, @intCast(char_val.toCharacter())) else return error.TypeMismatch;
+                const char_int = switch (char_val.typeKind()) {
+                    .fixnum => char_val.toFixnum(),
+                    .char => @as(i64, @intCast(char_val.toCharacter())),
+                    else => return error.TypeMismatch,
+                };
                 if (char_int < 0 or char_int > 255) return error.TypeMismatch;
                 str.mutableBytes()[idx] = @intCast(char_int);
                 try self.push(str_val);
@@ -3386,8 +3390,16 @@ pub const Vm = struct {
             .make_complex => {
                 const imag = try self.pop();
                 const real = try self.pop();
-                const real_f = if (real.isFloat()) real.toFloat() else if (real.isFixnum()) @as(f64, @floatFromInt(real.toFixnum())) else return error.TypeMismatch;
-                const imag_f = if (imag.isFloat()) imag.toFloat() else if (imag.isFixnum()) @as(f64, @floatFromInt(imag.toFixnum())) else return error.TypeMismatch;
+                const real_f = switch (real.typeKind()) {
+                    .float => real.toFloat(),
+                    .fixnum => @as(f64, @floatFromInt(real.toFixnum())),
+                    else => return error.TypeMismatch,
+                };
+                const imag_f = switch (imag.typeKind()) {
+                    .float => imag.toFloat(),
+                    .fixnum => @as(f64, @floatFromInt(imag.toFixnum())),
+                    else => return error.TypeMismatch,
+                };
                 const cplx = try self.heap.allocComplex(real_f, imag_f);
                 try self.push(cplx);
             },
@@ -7157,6 +7169,50 @@ test "vm arithmetic" {
 
     const result = try vm.run(&chunk);
     try testing.expectEqual(@as(i64, 30), result.toFixnum());
+}
+
+test "vm make_complex" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const consts = [_]Value{
+        Value.makeFloat(1.5),
+    };
+
+    const push_const_op: u16 = @intFromEnum(Op.push_const);
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const make_complex_op: u16 = @intFromEnum(Op.make_complex);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+
+    const code = [_]u8{
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0,                       0,
+        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),   2,                       0, 0, 0,
+        @truncate(make_complex_op & 0xFF), @truncate(make_complex_op >> 8),
+        @truncate(ret_op & 0xFF),        @truncate(ret_op >> 8),
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = consts.len,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const result = try vm.run(&chunk);
+    try testing.expect(result.typeKind() == .complex);
+    const cplx = result.toPtr(runtime.Complex);
+    try testing.expectApproxEqAbs(@as(f64, 1.5), cplx.real, 0.0001);
+    try testing.expectApproxEqAbs(@as(f64, 2.0), cplx.imag, 0.0001);
 }
 
 test "vm cons car cdr" {
