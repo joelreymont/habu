@@ -1749,10 +1749,8 @@ pub const Repl = struct {
     fn showType(self: *Repl, expr_str: []const u8, writer: anytype) !void {
         // Parse expression
         var parser = try @import("../reader/parser.zig").Parser.init(self.allocator, self.heap, expr_str, &self.vm.builtins);
-        const expr = parser.parse() catch {
-            try writer.writeAll("Parse error\n");
-            return;
-        };
+        defer parser.deinit();
+        const expr = try parser.parse();
         if (expr.isNil()) {
             try writer.writeAll("Empty expression\n");
             return;
@@ -1937,4 +1935,20 @@ test "eval parse error propagates" {
     defer heap.deinit();
 
     try testing.expectError(error.UnterminatedList, evalString(allocator, &heap, "("));
+}
+
+test "showType parse error propagates" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(allocator);
+
+    try testing.expectError(error.UnterminatedList, repl.showType("(", buf.writer(allocator)));
 }
