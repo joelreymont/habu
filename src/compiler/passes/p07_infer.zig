@@ -29,11 +29,7 @@ pub fn infer(allocator: std.mem.Allocator, builtins: *const builtins_mod.Builtin
     defer checker.deinit();
 
     // Infer type for the underlying IR
-    const inferred_ty = checker.infer(input.ir, &ctx) catch |err| switch (err) {
-        error.TypeError => return error.TypeError,
-        error.FuelExhausted => return error.FuelExhausted,
-        error.OutOfMemory => return error.OutOfMemory,
-    };
+    const inferred_ty = try checker.infer(input.ir, &ctx);
 
     // If type changed, create new TypedIr with populated type
     if (input.ty == null or input.ty.? != inferred_ty) {

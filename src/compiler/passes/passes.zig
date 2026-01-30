@@ -105,24 +105,13 @@ pub fn runFrontendPipeline(
 ) FrontendError!*const Ir {
     // Pass 1: Lift (Value → Ir with unresolved vars)
     var lifter = try lift.Lifter.init(allocator, heap);
-    const lifted_ir = lifter.lift(expr) catch |err| switch (err) {
-        error.InvalidSyntax => return error.InvalidSyntax,
-        error.InvalidLambda => return error.InvalidLambda,
-        error.InvalidLet => return error.InvalidLet,
-        error.InvalidIf => return error.InvalidIf,
-        error.OutOfMemory => return error.OutOfMemory,
-    };
+    const lifted_ir = try lifter.lift(expr);
 
     // Pass 2: Resolve (fill depth/index)
-    const resolved_ir = resolve.resolve(allocator, globals, lifted_ir) catch |err| switch (err) {
-        error.UnboundVariable => return error.UnboundVariable,
-        error.OutOfMemory => return error.OutOfMemory,
-    };
+    const resolved_ir = try resolve.resolve(allocator, globals, lifted_ir);
 
     // Pass 3: Capture (identify free variables)
-    const captured_ir = capture.capture(allocator, resolved_ir) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-    };
+    const captured_ir = try capture.capture(allocator, resolved_ir);
 
     return captured_ir;
 }
@@ -212,6 +201,24 @@ test "runFrontendPipeline - literal" {
     const expr = Value.makeFixnum(42);
     const ir = try runFrontendPipeline(allocator, &heap, &globals, expr);
     try testing.expectEqual(Ir.lit, std.meta.activeTag(ir.*));
+}
+
+test "runFrontendPipeline - invalid syntax" {
+    const testing = std.testing;
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var globals = resolve.GlobalRegistry.init(allocator);
+    defer globals.deinit();
+
+    const lambda_sym = try heap.intern("lambda");
+    const bad = try heap.allocCons(lambda_sym, Value.makeFixnum(1));
+    try testing.expectError(error.InvalidLambda, runFrontendPipeline(allocator, &heap, &globals, bad));
 }
 
 test "runFullPipeline - simple literal" {
