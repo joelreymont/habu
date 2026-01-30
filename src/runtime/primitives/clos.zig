@@ -100,7 +100,7 @@ pub fn slotValue(heap: *Heap, args: Value) !Value {
 
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_names = lookupClassMetadata(heap, class_name_val) orelse return error.InvalidArgument;
+    const slot_names = if (lookupClassMetadata(heap, class_name_val)) |names| names else return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (name.eq(slot_name)) {
@@ -153,7 +153,7 @@ pub fn setSlotValue(heap: *Heap, args: Value) !Value {
 
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_names = lookupClassMetadata(heap, class_name_val) orelse return error.InvalidArgument;
+    const slot_names = if (lookupClassMetadata(heap, class_name_val)) |names| names else return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (name.eq(slot_name)) {
@@ -304,7 +304,7 @@ pub fn slotBoundp(heap: *Heap, args: Value) !Value {
 
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_names = lookupClassMetadata(heap, class_name_val) orelse return error.InvalidArgument;
+    const slot_names = if (lookupClassMetadata(heap, class_name_val)) |names| names else return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (name.eq(slot_name)) {
@@ -350,7 +350,7 @@ pub fn slotMakunbound(heap: *Heap, args: Value) !Value {
 
     const class_name_val = vec.data[0];
     if (!class_name_val.isSymbol()) return error.InvalidArgument;
-    const slot_names = lookupClassMetadata(heap, class_name_val) orelse return error.InvalidArgument;
+    const slot_names = if (lookupClassMetadata(heap, class_name_val)) |names| names else return error.InvalidArgument;
 
     for (slot_names, 0..) |name, idx| {
         if (name.eq(slot_name)) {
@@ -755,4 +755,23 @@ test "slot-value uses symbol metadata" {
     const res = try slotValue(&heap, args);
     try testing.expect(res.isFixnum());
     try testing.expectEqual(@as(i64, 42), res.toFixnum());
+}
+
+test "slot-value errors without class metadata" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const class_sym = try heap.intern("NO-CLASS");
+    const slot_sym = try heap.intern("SLOT");
+
+    const vec = try heap.allocVector(2, 2);
+    const vec_obj = vec.toPtr(Vector);
+    vec_obj.data[0] = class_sym;
+    vec_obj.data[1] = Value.makeFixnum(1);
+
+    const args_tail = try heap.allocCons(slot_sym, Value.nil);
+    const args = try heap.allocCons(vec, args_tail);
+    try testing.expectError(error.InvalidArgument, slotValue(&heap, args));
 }

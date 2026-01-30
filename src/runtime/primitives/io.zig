@@ -737,7 +737,7 @@ fn writeBytesToStream(stream: Value, bytes: []const u8) !void {
         .string => {
             if (s.data_ptr == 0) return error.StreamClosed;
             const buf: *objects.OutputBuffer = @ptrFromInt(s.data_ptr);
-            const pos = std.math.cast(usize, s.position) orelse return error.InvalidArgument;
+            const pos = if (std.math.cast(usize, s.position)) |val| val else return error.InvalidArgument;
             if (pos > buf.list.items.len) return error.InvalidArgument;
             const end_pos = try std.math.add(usize, pos, bytes.len);
             if (end_pos > buf.list.items.len) {
@@ -1839,7 +1839,7 @@ pub fn freshLine(stream: Value) !Value {
         .string => {
             if (s.data_ptr == 0) return error.StreamClosed;
             const buf: *objects.OutputBuffer = @ptrFromInt(s.data_ptr);
-            const pos = std.math.cast(usize, s.position) orelse return error.InvalidArgument;
+            const pos = if (std.math.cast(usize, s.position)) |val| val else return error.InvalidArgument;
             if (pos > buf.list.items.len) return error.InvalidArgument;
             if (pos == 0 or buf.list.items[pos - 1] == '\n') {
                 return Value.nil;
@@ -1898,7 +1898,7 @@ pub fn filePosition(heap: *heap_mod.Heap, stream: Value, pos: ?Value) !Value {
                 if (new_pos == -1) {
                     s.position = s.length;
                 } else if (new_pos >= 0) {
-                    const upos = std.math.cast(u64, new_pos) orelse return error.InvalidArgument;
+                    const upos = if (std.math.cast(u64, new_pos)) |val| val else return error.InvalidArgument;
                     if (upos > s.length) return error.InvalidArgument;
                     s.position = upos;
                 } else {

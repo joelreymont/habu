@@ -48,7 +48,7 @@ fn packageNameFromValue(pkg_val: Value) ![]const u8 {
 fn resolvePkg(heap: *Heap, designator: Value) !Value {
     return switch (designator.typeKind()) {
         .package => designator,
-        .symbol, .string, .keyword => (try heap.findLispPackage(designator)) orelse return error.InvalidPackage,
+        .symbol, .string, .keyword => if (try heap.findLispPackage(designator)) |pkg| pkg else return error.InvalidPackage,
         else => error.TypeError,
     };
 }
@@ -104,7 +104,7 @@ fn nativePkgFor(heap: *Heap, pkg: Value) !*heap_mod.Package {
     if (!pkg.isPackage()) return error.TypeError;
     const p = pkg.toPtr(objects.Package);
     const pkg_name = try packageNameBytes(p);
-    return heap.findPackage(pkg_name) orelse return error.InvalidPackage;
+    return if (heap.findPackage(pkg_name)) |found| found else return error.InvalidPackage;
 }
 
 fn nativeUseHas(list: []const *heap_mod.Package, pkg: *heap_mod.Package) bool {
@@ -923,7 +923,7 @@ pub fn deletePackage(heap: *Heap, pkg: Value) !bool {
 
     const p = pkg.toPtr(objects.Package);
     const pkg_name = try packageNameBytes(p);
-    const native_pkg = heap.findPackage(pkg_name) orelse return error.InvalidPackage;
+    const native_pkg = if (heap.findPackage(pkg_name)) |found| found else return error.InvalidPackage;
     const rm_list = try heap.allocCons(pkg, Value.nil);
 
     if (heap.lisp_packages.raw != Value.nil.raw) {
@@ -1487,4 +1487,14 @@ test "makePackage rejects existing nickname" {
     try testing.expectError(error.PackageExists, makePackage(&heap, foo, nick_list, null));
     const found = try heap.findLispPackage(foo);
     try testing.expect(found == null);
+}
+
+test "resolvePkg invalid package" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const name = try heap.allocBaseString("MISSING");
+    try testing.expectError(error.InvalidPackage, resolvePkg(&heap, name));
 }
