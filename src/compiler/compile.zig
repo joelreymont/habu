@@ -2017,15 +2017,13 @@ pub const Compiler = struct {
 
         if (pred_info) |info| {
             // In then-branch, the variable has the narrowed type
-            then_occ.narrowed.put(info.var_name, info.narrowed_type) catch
-                return error.OutOfMemory;
+            try then_occ.narrowed.put(info.var_name, info.narrowed_type);
         }
 
         // Copy existing narrowings
         var occ_iter = occ.narrowed.iterator();
         while (occ_iter.next()) |entry| {
-            then_occ.narrowed.put(entry.key_ptr.*, entry.value_ptr.*) catch
-                return error.OutOfMemory;
+            try then_occ.narrowed.put(entry.key_ptr.*, entry.value_ptr.*);
         }
 
         const then_ir = try self.compileTyped(then_expr, env, type_env, &then_occ);
@@ -2033,8 +2031,7 @@ pub const Compiler = struct {
         // Compile else-branch (could narrow to complement type)
         const else_ir = try self.compileTyped(else_expr, env, type_env, occ);
 
-        const if_ir = self.builder.ifExpr(test_ir, then_ir.ir, else_ir.ir) catch
-            return error.OutOfMemory;
+        const if_ir = try self.builder.ifExpr(test_ir, then_ir.ir, else_ir.ir);
 
         // Result type is union of branch types (simplified to any for now)
         return .{ .ir = if_ir, .ty = &types.t_any };
@@ -2120,8 +2117,7 @@ pub const Compiler = struct {
             const name = sym.getName();
 
             if (env.lookup(name)) |binding| {
-                const var_ir = self.builder.variable(name, binding.depth, binding.index) catch
-                    return error.OutOfMemory;
+                const var_ir = try self.builder.variable(name, binding.depth, binding.index);
 
                 // If this variable is boxed, wrap with box-ref
                 if (self.boxed_vars) |bv| {
@@ -2579,8 +2575,7 @@ pub const Compiler = struct {
         const lambda_list = try heap.allocCons(lambda_sym, params_body);
 
         // Compile the lambda to get a closure
-        var macro_compiler = Compiler.initWithHeap(self.allocator, vm) catch
-            return error.OutOfMemory;
+        var macro_compiler = try Compiler.initWithHeap(self.allocator, vm);
         defer macro_compiler.deinit();
         // Share macro table so nested macros (like prog1) work in macro bodies
         var iter = self.macro_table.iterator();
@@ -2694,8 +2689,7 @@ pub const Compiler = struct {
                 // Create occurrence context for then-branch
                 var then_occ = OccurrenceCtx.init(self.allocator);
                 defer then_occ.deinit();
-                then_occ.narrowed.put(info.var_name, info.narrowed_type) catch
-                    return error.OutOfMemory;
+                try then_occ.narrowed.put(info.var_name, info.narrowed_type);
 
                 // Save and restore outer occ context
                 const saved_occ = self.occ;
@@ -2715,8 +2709,7 @@ pub const Compiler = struct {
                     // Create occurrence context for else-branch
                     var else_occ = OccurrenceCtx.init(self.allocator);
                     defer else_occ.deinit();
-                    else_occ.narrowed.put(info.var_name, else_ty) catch
-                        return error.OutOfMemory;
+                    try else_occ.narrowed.put(info.var_name, else_ty);
 
                     // Save and restore outer occ context
                     const saved_occ = self.occ;
@@ -2954,8 +2947,7 @@ pub const Compiler = struct {
         var capture_set = CaptureSet.init(self.allocator);
         defer capture_set.deinit();
 
-        self.collectFreeVars(filtered_body, &lambda_env, &capture_set) catch
-            return error.OutOfMemory;
+        try self.collectFreeVars(filtered_body, &lambda_env, &capture_set);
 
         // Compile body (implicit progn) - body is in tail position
         var body_ir = try self.compileBodyWithTail(filtered_body, &lambda_env, true);
@@ -2981,11 +2973,9 @@ pub const Compiler = struct {
 
             if (type_sym_to_check) |type_sym| {
                 const binding = lambda_env.lookup(param_name) orelse continue;
-                const var_ir = self.builder.variable(param_name, binding.depth, binding.index) catch
-                    return error.OutOfMemory;
+                const var_ir = try self.builder.variable(param_name, binding.depth, binding.index);
 
-                const assert_ir = self.makeTypeAssertionSym(var_ir, type_sym) catch
-                    return error.InvalidSyntax;
+                const assert_ir = try self.makeTypeAssertionSym(var_ir, type_sym);
                 if (assert_ir) |assert_node| {
                     try assertions.append(self.allocator, assert_node);
                 }
@@ -2995,42 +2985,34 @@ pub const Compiler = struct {
         // If we have assertions, wrap body in progn with assertions first
         if (assertions.items.len > 0) {
             try assertions.append(self.allocator, body_ir);
-            const items = self.allocator.dupe(*const Ir, assertions.items) catch
-                return error.OutOfMemory;
+            const items = try self.allocator.dupe(*const Ir, assertions.items);
             body_ir = try self.builder.progn(items);
         }
 
         // Wrap body in return type assertion if specified
         if (return_type) |ret_type_sym| {
-            const assert_ir = self.makeTypeAssertionSym(body_ir, ret_type_sym) catch
-                return error.InvalidSyntax;
+            const assert_ir = try self.makeTypeAssertionSym(body_ir, ret_type_sym);
             if (assert_ir) |wrapped| {
                 body_ir = wrapped;
             }
         }
 
         // Convert captures to slice
-        const captures = self.allocator.dupe(Ir.Capture, capture_set.captures.items) catch
-            return error.OutOfMemory;
+        const captures = try self.allocator.dupe(Ir.Capture, capture_set.captures.items);
 
         // Copy optional params
-        const opt_params = self.allocator.dupe(Ir.OptionalParam, optional_params.items) catch
-            return error.OutOfMemory;
+        const opt_params = try self.allocator.dupe(Ir.OptionalParam, optional_params.items);
 
         // Copy key params
-        const kp_params = self.allocator.dupe(Ir.KeyParam, key_params.items) catch
-            return error.OutOfMemory;
+        const kp_params = try self.allocator.dupe(Ir.KeyParam, key_params.items);
 
         // If we have aux bindings, wrap body in a let
         if (aux_bindings.items.len > 0) {
-            const aux_slice = self.allocator.dupe(Ir.Binding, aux_bindings.items) catch
-                return error.OutOfMemory;
+            const aux_slice = try self.allocator.dupe(Ir.Binding, aux_bindings.items);
             body_ir = try self.builder.letExpr(aux_slice, body_ir);
         }
 
-        const result = self.builder.lambda(params.items, opt_params, kp_params, rest_param, captures, body_ir) catch
-            return error.OutOfMemory;
-        return result;
+        return try self.builder.lambda(params.items, opt_params, kp_params, rest_param, captures, body_ir);
     }
 
     /// Create a type assertion IR node for a given type symbol or complex type
@@ -3531,8 +3513,7 @@ pub const Compiler = struct {
             }
 
             if (type_sym_to_check) |type_sym| {
-                const assert_ir = self.makeTypeAssertionSym(val_ir, type_sym) catch
-                    return error.InvalidSyntax;
+                const assert_ir = try self.makeTypeAssertionSym(val_ir, type_sym);
                 if (assert_ir) |wrapped| {
                     val_ir = wrapped;
                 }
@@ -3545,8 +3526,7 @@ pub const Compiler = struct {
                 val_ir = box_ir;
             }
 
-            bindings.append(self.allocator, .{ .name = name, .value = val_ir, .index = index }) catch
-                return error.OutOfMemory;
+            try bindings.append(self.allocator, .{ .name = name, .value = val_ir, .index = index });
 
             binding_list = binding_cons.cdr;
         }
@@ -3677,8 +3657,7 @@ pub const Compiler = struct {
             if (!f.cdr.isCons()) return error.InvalidLet;
             const lambda_ir = try self.compileLambda(f.cdr, env);
 
-            bindings.append(self.allocator, .{ .name = name, .value = lambda_ir, .index = index }) catch
-                return error.OutOfMemory;
+            try bindings.append(self.allocator, .{ .name = name, .value = lambda_ir, .index = index });
 
             binding_list = binding_cons.cdr;
         }
@@ -4042,15 +4021,13 @@ pub const Compiler = struct {
             if (self.boxed_vars) |bv| {
                 if (bv.contains(var_val)) {
                     // Compile (box-set! var val) instead of (set! var val)
-                    const var_ir = self.builder.variable(local_name, binding.depth, binding.index) catch
-                        return error.OutOfMemory;
+                    const var_ir = try self.builder.variable(local_name, binding.depth, binding.index);
                     const box_set = try self.allocator.create(Ir);
                     box_set.* = .{ .box_set = .{ .left = var_ir, .right = val_ir } };
                     return box_set;
                 }
             }
-            return self.builder.set(local_name, binding.depth, binding.index, val_ir) catch
-                return error.OutOfMemory;
+            return try self.builder.set(local_name, binding.depth, binding.index, val_ir);
         }
 
         // Check globals - use qualified name for package-aware lookup
@@ -4061,8 +4038,7 @@ pub const Compiler = struct {
 
         if (self.globals.lookup(global_name)) |idx| {
             // Re-define the global with the new value
-            return self.builder.define(global_name, idx, val_ir) catch
-                return error.OutOfMemory;
+            return try self.builder.define(global_name, idx, val_ir);
         }
 
         return error.UnboundVariable;
@@ -4101,15 +4077,13 @@ pub const Compiler = struct {
                     if (env.lookup(exp_name)) |binding| {
                         if (self.boxed_vars) |bv| {
                             if (bv.contains(exp_val)) {
-                                const var_ir = self.builder.variable(exp_name, binding.depth, binding.index) catch
-                                    return error.OutOfMemory;
+                                const var_ir = try self.builder.variable(exp_name, binding.depth, binding.index);
                                 const box_set = try self.allocator.create(Ir);
                                 box_set.* = .{ .box_set = .{ .left = var_ir, .right = val_ir } };
                                 return box_set;
                             }
                         }
-                        return self.builder.set(exp_name, binding.depth, binding.index, val_ir) catch
-                            return error.OutOfMemory;
+                        return try self.builder.set(exp_name, binding.depth, binding.index, val_ir);
                     }
 
                     // Check globals
@@ -4118,8 +4092,7 @@ pub const Compiler = struct {
                     defer if (q.owned) self.allocator.free(q.name);
                     const global_name = q.name;
                     if (self.globals.lookup(global_name)) |idx| {
-                        return self.builder.define(global_name, idx, val_ir) catch
-                            return error.OutOfMemory;
+                        return try self.builder.define(global_name, idx, val_ir);
                     }
                     return error.UnboundVariable;
                 }
@@ -4449,8 +4422,7 @@ pub const Compiler = struct {
         const b_ref = try self.builder.variable("b", 0, 1);
         const prim_call = try buildFn(self.builder, a_ref, b_ref);
         const params = [_][]const u8{ "a", "b" };
-        return self.builder.lambda(&params, &.{}, &.{}, null, &.{}, prim_call) catch
-            return error.OutOfMemory;
+        return try self.builder.lambda(&params, &.{}, &.{}, null, &.{}, prim_call);
     }
 
     fn makeUnaryWrapper(self: *Compiler, buildFn: *const fn (IrBuilder, *const Ir) std.mem.Allocator.Error!*Ir) anyerror!*Ir {
@@ -4458,8 +4430,7 @@ pub const Compiler = struct {
         const a_ref = try self.builder.variable("a", 0, 0);
         const prim_call = try buildFn(self.builder, a_ref);
         const params = [_][]const u8{"a"};
-        return self.builder.lambda(&params, &.{}, &.{}, null, &.{}, prim_call) catch
-            return error.OutOfMemory;
+        return try self.builder.lambda(&params, &.{}, &.{}, null, &.{}, prim_call);
     }
 
     fn makeVariadicAddWrapper(self: *Compiler) anyerror!*Ir {
@@ -4551,8 +4522,7 @@ pub const Compiler = struct {
         // Outer if: (if (null args) 0 <inner>)
         const outer_if = try b.ifExpr(null_args, zero, inner_if);
 
-        return self.builder.lambda(&.{}, &.{}, &.{}, "args", &.{}, outer_if) catch
-            return error.OutOfMemory;
+        return try self.builder.lambda(&.{}, &.{}, &.{}, "args", &.{}, outer_if);
     }
 
     fn makeVariadicDivWrapper(self: *Compiler) anyerror!*Ir {
@@ -4604,8 +4574,7 @@ pub const Compiler = struct {
         const inner_if = try b.ifExpr(null_cdr, recip_result, acc_let);
         const outer_if = try b.ifExpr(null_args, one, inner_if);
 
-        return self.builder.lambda(&.{}, &.{}, &.{}, "args", &.{}, outer_if) catch
-            return error.OutOfMemory;
+        return try self.builder.lambda(&.{}, &.{}, &.{}, "args", &.{}, outer_if);
     }
 
     /// Helper to build a simple fold wrapper for + and *
@@ -4641,8 +4610,7 @@ pub const Compiler = struct {
         const init_val = try b.lit(Value.makeFixnum(identity));
         const let_node = try b.let1("acc", 1, init_val, let_body);
 
-        return self.builder.lambda(&.{}, &.{}, &.{}, "args", &.{}, let_node) catch
-            return error.OutOfMemory;
+        return try self.builder.lambda(&.{}, &.{}, &.{}, "args", &.{}, let_node);
     }
 
     /// Compile quasiquote (backquote)
@@ -6113,8 +6081,7 @@ pub const Compiler = struct {
         const heap = if (self.heap) |val| val else return error.InvalidSyntax;
 
         // Compile the form
-        var eval_compiler = Compiler.initWithHeap(self.allocator, vm) catch
-            return error.OutOfMemory;
+        var eval_compiler = try Compiler.initWithHeap(self.allocator, vm);
         defer eval_compiler.deinit();
 
         // Copy macro table for consistency
@@ -9855,8 +9822,7 @@ pub const Compiler = struct {
         }
 
         // Convert to const slice for progn
-        const items = self.allocator.dupe(*const Ir, expr_list.items) catch
-            return error.OutOfMemory;
+        const items = try self.allocator.dupe(*const Ir, expr_list.items);
         const result = try self.builder.progn(items);
         // DEBUG: verify progn was created with all items
         std.debug.assert(std.meta.activeTag(result.*) == .progn);
@@ -12504,8 +12470,7 @@ pub const Compiler = struct {
         }
 
         // Convert to const slice
-        const items = self.allocator.dupe(*const Ir, args.items) catch
-            return error.OutOfMemory;
+        const items = try self.allocator.dupe(*const Ir, args.items);
 
         if (in_tail) {
             return try self.builder.tailcall(func_ir, items);
@@ -12519,13 +12484,12 @@ pub const Compiler = struct {
     // ========================================================================
 
     /// Type inference error types
-    pub const InferError = error{
-        TypeMismatch,
-        ArityMismatch,
-        InfiniteType,
-        OutOfMemory,
-        InferenceFailed,
-    };
+pub const InferError = error{
+    TypeMismatch,
+    ArityMismatch,
+    InfiniteType,
+    OutOfMemory,
+};
 
     /// Run type inference on an IR tree
     /// Returns the inferred type, or an error with a descriptive message
@@ -12539,22 +12503,10 @@ pub const Compiler = struct {
         defer type_env.deinit();
 
         // Infer types and collect constraints
-        const inferred = ctx.infer(ir_node, &type_env) catch |err| {
-            return switch (err) {
-                error.OutOfMemory => error.OutOfMemory,
-                else => error.InferenceFailed,
-            };
-        };
+        const inferred = try ctx.infer(ir_node, &type_env);
 
         // Solve constraints via unification
-        ctx.solve() catch |err| {
-            return switch (err) {
-                error.TypeMismatch => error.TypeMismatch,
-                error.ArityMismatch => error.ArityMismatch,
-                error.InfiniteType => error.InfiniteType,
-                error.OutOfMemory => error.OutOfMemory,
-            };
-        };
+        try ctx.solve();
 
         // Return the resolved type
         return ctx.resolve(inferred);
@@ -12707,6 +12659,30 @@ test "compile invalid if" {
     const expr = try heap.allocCons(if_sym, Value.nil);
 
     try testing.expectError(error.InvalidIf, compiler.compile(expr, &env));
+}
+
+test "typeInfer type mismatch" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var builder = IrBuilder.init(arena_alloc);
+    const str_val = try heap.allocBaseString("hi");
+    const lit_str = try builder.lit(str_val);
+    const lit_num = try builder.lit(Value.makeFixnum(1));
+    const add_ir = try builder.add(lit_str, lit_num);
+
+    try testing.expectError(error.TypeMismatch, compiler.typeInfer(add_ir));
 }
 
 test "compile setf long name" {
