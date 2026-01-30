@@ -204,8 +204,7 @@ pub const Lifter = struct {
         const then_ir = try self.lift(then_expr);
         const else_ir = try self.lift(else_expr);
 
-        return self.builder.ifExpr(cond_ir, then_ir, else_ir) catch
-            return error.OutOfMemory;
+        return try self.builder.ifExpr(cond_ir, then_ir, else_ir);
     }
 
     /// Lift (let ((x 1) (y 2)) body...)
@@ -236,8 +235,7 @@ pub const Lifter = struct {
             const val_cons = bind_cons.cdr.toPtr(Cons);
             const val_ir = try self.lift(val_cons.car);
 
-            bindings.append(self.allocator, .{ .name = name, .value = val_ir, .index = idx }) catch
-                return error.OutOfMemory;
+            try bindings.append(self.allocator, .{ .name = name, .value = val_ir, .index = idx });
             idx += 1;
 
             b = b_cons.cdr;
@@ -246,11 +244,9 @@ pub const Lifter = struct {
         // Parse body
         const body_ir = try self.liftBody(body_exprs);
 
-        const bindings_slice = self.allocator.dupe(Ir.Binding, bindings.items) catch
-            return error.OutOfMemory;
+        const bindings_slice = try self.allocator.dupe(Ir.Binding, bindings.items);
 
-        return self.builder.letExpr(bindings_slice, body_ir) catch
-            return error.OutOfMemory;
+        return try self.builder.letExpr(bindings_slice, body_ir);
     }
 
     /// Lift (lambda (params...) body...)
@@ -269,24 +265,21 @@ pub const Lifter = struct {
         while (p.isCons()) {
             const p_cons = p.toPtr(Cons);
             if (!p_cons.car.isSymbol()) return error.InvalidLambda;
-            params.append(self.allocator, p_cons.car.toPtr(Symbol).getName()) catch
-                return error.OutOfMemory;
+            try params.append(self.allocator, p_cons.car.toPtr(Symbol).getName());
             p = p_cons.cdr;
         }
 
         // Parse body
         const body_ir = try self.liftBody(body_exprs);
 
-        const params_slice = self.allocator.dupe([]const u8, params.items) catch
-            return error.OutOfMemory;
+        const params_slice = try self.allocator.dupe([]const u8, params.items);
 
         // Empty captures - will be filled by p05_capture
         const empty_captures: []const Ir.Capture = &.{};
         const empty_opt: []const Ir.OptionalParam = &.{};
         const empty_key: []const Ir.KeyParam = &.{};
 
-        return self.builder.lambda(params_slice, empty_opt, empty_key, null, empty_captures, body_ir) catch
-            return error.OutOfMemory;
+        return try self.builder.lambda(params_slice, empty_opt, empty_key, null, empty_captures, body_ir);
     }
 
     /// Lift (define name value)
@@ -302,8 +295,7 @@ pub const Lifter = struct {
         const val_ir = try self.lift(cons2.car);
 
         // Use UNRESOLVED index - will be filled by resolve pass or global registry
-        return self.builder.define(name, UNRESOLVED, val_ir) catch
-            return error.OutOfMemory;
+        return try self.builder.define(name, UNRESOLVED, val_ir);
     }
 
     /// Lift (setq name value)
@@ -514,4 +506,35 @@ test "lift - vector literal" {
 
     try testing.expectEqual(Ir.lit, std.meta.activeTag(result.*));
     try testing.expectEqual(vec.raw, result.lit.raw);
+}
+
+test "lift - let binding" {
+    const testing = std.testing;
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var heap = try Heap.init(alloc, .{});
+    defer heap.deinit();
+
+    const let_sym = try heap.intern("let");
+    const x_sym = try heap.intern("x");
+    const one = Value.makeFixnum(1);
+
+    const bind = try heap.allocCons(x_sym, try heap.allocCons(one, Value.nil));
+    const bindings = try heap.allocCons(bind, Value.nil);
+    const body = try heap.allocCons(x_sym, Value.nil);
+    const args = try heap.allocCons(bindings, body);
+    const expr = try heap.allocCons(let_sym, args);
+
+    const result = try lift(alloc, &heap, expr);
+    try testing.expectEqual(Ir.let, std.meta.activeTag(result.*));
+    try testing.expectEqual(@as(usize, 1), result.let.bindings.len);
+    const b = result.let.bindings[0];
+    try testing.expectEqualStrings("X", b.name);
+    try testing.expect(b.value.* == .lit);
+    try testing.expectEqual(@as(i64, 1), b.value.lit.toFixnum());
+    try testing.expect(result.let.body.* == .@"var");
+    try testing.expectEqualStrings("X", result.let.body.@"var".name);
 }

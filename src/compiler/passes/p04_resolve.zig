@@ -226,18 +226,15 @@ pub const Resolver = struct {
                 for (l.bindings) |b| {
                     const resolved_val = try self.resolveInScope(b.value, scope);
                     const idx = try let_scope.bind(b.name);
-                    resolved_bindings.append(self.allocator, .{ .name = b.name, .value = resolved_val, .index = idx }) catch
-                        return error.OutOfMemory;
+                    try resolved_bindings.append(self.allocator, .{ .name = b.name, .value = resolved_val, .index = idx });
                 }
 
                 // Resolve body in let scope
                 const resolved_body = try self.resolveInScope(l.body, &let_scope);
 
-                const bindings_slice = self.allocator.dupe(Ir.Binding, resolved_bindings.items) catch
-                    return error.OutOfMemory;
+                const bindings_slice = try self.allocator.dupe(Ir.Binding, resolved_bindings.items);
 
-                return self.builder.letExpr(bindings_slice, resolved_body) catch
-                    return error.OutOfMemory;
+                return try self.builder.letExpr(bindings_slice, resolved_body);
             },
 
             .lambda => |lam| {
