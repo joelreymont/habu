@@ -16,11 +16,9 @@ const regalloc = @import("regalloc.zig");
 const GraphColorAlloc = regalloc.GraphColorAlloc;
 const arm64 = @import("arm64.zig");
 
-pub const PipelineError = error{
-    OutOfMemory,
-    LoweringFailed,
-    AllocationFailed,
-    CodegenFailed,
+pub const PipelineError = lower.LowerError || error{
+    InvalidState,
+    MissingRuntimeSymbol,
     UnsupportedTarget,
 };
 
@@ -64,9 +62,7 @@ pub fn compile(
     var lowerer = Lowerer.init(allocator);
     defer lowerer.deinit();
 
-    const reg_func = lowerer.lowerFunction(name, params, body) catch {
-        return PipelineError.LoweringFailed;
-    };
+    const reg_func = try lowerer.lowerFunction(name, params, body);
     defer allocator.free(reg_func.code);
     defer allocator.free(reg_func.constants);
 
@@ -87,12 +83,7 @@ pub fn compile(
     defer reg_alloc.deinit();
 
     var reg_map: ?regalloc.RegisterMap = null;
-    reg_alloc.allocate(reg_func) catch |err| {
-        // Non-fatal: we can still generate code with virtual registers
-        if (config.debug) {
-            std.debug.print("Register allocation failed: {}, using virtual registers\n", .{err});
-        }
-    };
+    try reg_alloc.allocate(reg_func);
 
     // Extract register map if allocation succeeded
     if (reg_alloc.node_count > 0) {
@@ -106,9 +97,7 @@ pub fn compile(
     // Step 3: Generate native code
     switch (config.target) {
         .arm64 => {
-            const code = arm64.generate(allocator, reg_func, reg_map, null) catch {
-                return PipelineError.CodegenFailed;
-            };
+            const code = try arm64.generate(allocator, reg_func, reg_map, null);
 
             return .{
                 .code = code,
@@ -148,17 +137,10 @@ test "pipeline simple function" {
     const add = Ir{ .add = .{ .left = &var_x, .right = &lit1 } };
 
     const params = [_][]const u8{"x"};
-    const result = compile(testing.allocator, "add-one", &params, &add, .{ .debug = false });
-
-    if (result) |compiled| {
-        var compiled_mut = compiled;
-        defer compiled_mut.deinit(testing.allocator);
-        try testing.expect(compiled.code.len > 0);
-        try testing.expectEqualStrings("add-one", compiled.name);
-    } else |err| {
-        // OK if codegen not fully implemented yet
-        try testing.expect(err == PipelineError.CodegenFailed or err == PipelineError.AllocationFailed);
-    }
+    var compiled = try compile(testing.allocator, "add-one", &params, &add, .{ .debug = false });
+    defer compiled.deinit(testing.allocator);
+    try testing.expect(compiled.code.len > 0);
+    try testing.expectEqualStrings("add-one", compiled.name);
 }
 
 test "pipeline if expression" {
@@ -173,13 +155,7 @@ test "pipeline if expression" {
     const if_expr = Ir{ .@"if" = .{ .cond = &cmp, .then_branch = &neg, .else_branch = &var_x } };
 
     const params = [_][]const u8{"x"};
-    const result = compile(testing.allocator, "abs", &params, &if_expr, .{});
-
-    if (result) |compiled| {
-        var compiled_mut = compiled;
-        defer compiled_mut.deinit(testing.allocator);
-        try testing.expect(compiled.code.len > 0);
-    } else |_| {
-        // OK if not fully implemented
-    }
+    var compiled = try compile(testing.allocator, "abs", &params, &if_expr, .{});
+    defer compiled.deinit(testing.allocator);
+    try testing.expect(compiled.code.len > 0);
 }

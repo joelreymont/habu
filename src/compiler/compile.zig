@@ -1798,7 +1798,7 @@ pub const Compiler = struct {
 
         // If there's a return type, check body against it
         if (return_type) |ret_type_val| {
-            const expected_type = (try self.parseTypeExpr(ret_type_val)) orelse return error.InvalidSyntax;
+            const expected_type = if (try self.parseTypeExpr(ret_type_val)) |ty| ty else return error.InvalidSyntax;
             try self.bi_checker.check(body_ir, expected_type, &ctx);
         } else {
             // No return type specified - just infer (validates internal consistency)
@@ -2796,7 +2796,7 @@ pub const Compiler = struct {
                         // Next element is the rest parameter name
                         if (!param_cons.cdr.isCons()) return error.InvalidLambda;
                         const rest_cons = param_cons.cdr.toPtr(Cons);
-                        const rest_name = symLikeName(rest_cons.car) orelse return error.InvalidLambda;
+                        const rest_name = if (symLikeName(rest_cons.car)) |name| name else return error.InvalidLambda;
                         rest_param = rest_name;
                         break; // &rest must be last
                     }
@@ -2827,7 +2827,7 @@ pub const Compiler = struct {
                         continue;
                     }
 
-                    const name = symLikeName(param_item) orelse return error.InvalidLambda;
+                    const name = if (symLikeName(param_item)) |sym_name| sym_name else return error.InvalidLambda;
 
                     if (in_aux) {
                         // Aux variable with nil default
@@ -2859,7 +2859,7 @@ pub const Compiler = struct {
                 },
                 .cons => {
                     const typed = param_item.toPtr(Cons);
-                    const name = symLikeName(typed.car) orelse return error.InvalidLambda;
+                    const name = if (symLikeName(typed.car)) |sym_name| sym_name else return error.InvalidLambda;
 
                     if (in_aux) {
                         // Aux variable: (name init-expr)
@@ -2916,7 +2916,7 @@ pub const Compiler = struct {
 
         // Also check for rest parameter via dotted list: (a b . rest)
         if (rest_param == null and !param_list.isNil()) {
-            rest_param = symLikeName(param_list) orelse return error.InvalidLambda;
+            rest_param = if (symLikeName(param_list)) |sym_name| sym_name else return error.InvalidLambda;
         }
 
         // Create new environment with parameters
@@ -4309,9 +4309,8 @@ pub const Compiler = struct {
                 const func_name = func_sym.getName();
 
                 // Build "(setf func-name)" and look it up
-                var setf_buf: [512]u8 = undefined;
-                const setf_name = std.fmt.bufPrint(&setf_buf, "(setf {s})", .{func_name}) catch
-                    return error.InvalidSyntax;
+                const setf_name = try std.fmt.allocPrint(self.allocator, "(setf {s})", .{func_name});
+                defer self.allocator.free(setf_name);
 
                 // Try unqualified first, then qualified
                 var setf_idx: ?u16 = self.globals.lookup(setf_name);
@@ -6371,7 +6370,7 @@ pub const Compiler = struct {
                     const type_expr = type_cons.car;
 
                     // Parse type expression (supports compound types like (list fixnum))
-                    const field_type = (try self.parseTypeExpr(type_expr)) orelse return error.InvalidSyntax;
+                    const field_type = if (try self.parseTypeExpr(type_expr)) |ty| ty else return error.InvalidSyntax;
                     try slot_specs.append(self.allocator, .{
                         .name = slot_name,
                         .sym = spec_cons.car,
@@ -12657,6 +12656,69 @@ test "compile lambda params" {
     try testing.expect(result.lambda.key_params.len == 0);
     try testing.expect(result.lambda.rest_param != null);
     try testing.expectEqualStrings("R", result.lambda.rest_param.?);
+}
+
+test "compile lambda invalid param" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const lambda_sym = try heap.intern("lambda");
+    const params = try heap.allocCons(Value.makeFixnum(1), Value.nil);
+    const body = try heap.allocCons(Value.makeFixnum(2), Value.nil);
+    const lambda_args = try heap.allocCons(params, body);
+    const expr = try heap.allocCons(lambda_sym, lambda_args);
+
+    try testing.expectError(error.InvalidLambda, compiler.compile(expr, &env));
+}
+
+test "compile setf long name" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var name_buf: [600]u8 = undefined;
+    @memset(&name_buf, 'a');
+    const long_sym = try heap.intern(name_buf[0..]);
+
+    const setf_name = try std.fmt.allocPrint(arena_alloc, "(setf {s})", .{long_sym.toPtr(Symbol).getName()});
+    _ = try compiler.globals.define(setf_name);
+
+    const setf_sym = try heap.intern("setf");
+    const x_sym = try heap.intern("x");
+    const place = try heap.allocCons(long_sym, try heap.allocCons(x_sym, Value.nil));
+    const args = try heap.allocCons(place, try heap.allocCons(Value.makeFixnum(1), Value.nil));
+    const expr = try heap.allocCons(setf_sym, args);
+
+    const result = try compiler.compile(expr, &env);
+    defer arena_alloc.destroy(result);
+    try testing.expectEqual(Ir.call, std.meta.activeTag(result.*));
 }
 
 test "compile block return-from names" {
