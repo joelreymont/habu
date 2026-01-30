@@ -918,28 +918,79 @@ pub const Heap = struct {
         return Value.makeString32(s32);
     }
 
+    const DecStatus = enum { ok, invalid, incomplete };
+    const DecRes = struct {
+        status: DecStatus,
+        len: usize,
+        cp: u32,
+    };
+
+    fn decUtf8(bytes: []const u8, i: usize) DecRes {
+        const b0 = bytes[i];
+        if (b0 < 0x80) {
+            return .{ .status = .ok, .len = 1, .cp = b0 };
+        }
+        if (b0 < 0xC2) {
+            return .{ .status = .invalid, .len = 1, .cp = 0 };
+        }
+        if (b0 < 0xE0) {
+            if (i + 1 >= bytes.len) return .{ .status = .incomplete, .len = 1, .cp = 0 };
+            const b1 = bytes[i + 1];
+            if ((b1 & 0xC0) != 0x80) return .{ .status = .invalid, .len = 1, .cp = 0 };
+            const cp = (@as(u32, b0 & 0x1F) << 6) | @as(u32, b1 & 0x3F);
+            return .{ .status = .ok, .len = 2, .cp = cp };
+        }
+        if (b0 < 0xF0) {
+            if (i + 2 >= bytes.len) return .{ .status = .incomplete, .len = 1, .cp = 0 };
+            const b1 = bytes[i + 1];
+            const b2 = bytes[i + 2];
+            if ((b1 & 0xC0) != 0x80 or (b2 & 0xC0) != 0x80) return .{ .status = .invalid, .len = 1, .cp = 0 };
+            if (b0 == 0xE0 and b1 < 0xA0) return .{ .status = .invalid, .len = 1, .cp = 0 };
+            if (b0 == 0xED and b1 >= 0xA0) return .{ .status = .invalid, .len = 1, .cp = 0 };
+            const cp = (@as(u32, b0 & 0x0F) << 12) | (@as(u32, b1 & 0x3F) << 6) | @as(u32, b2 & 0x3F);
+            return .{ .status = .ok, .len = 3, .cp = cp };
+        }
+        if (b0 < 0xF5) {
+            if (i + 3 >= bytes.len) return .{ .status = .incomplete, .len = 1, .cp = 0 };
+            const b1 = bytes[i + 1];
+            const b2 = bytes[i + 2];
+            const b3 = bytes[i + 3];
+            if ((b1 & 0xC0) != 0x80 or (b2 & 0xC0) != 0x80 or (b3 & 0xC0) != 0x80) {
+                return .{ .status = .invalid, .len = 1, .cp = 0 };
+            }
+            if (b0 == 0xF0 and b1 < 0x90) return .{ .status = .invalid, .len = 1, .cp = 0 };
+            if (b0 == 0xF4 and b1 >= 0x90) return .{ .status = .invalid, .len = 1, .cp = 0 };
+            const cp = (@as(u32, b0 & 0x07) << 18) |
+                (@as(u32, b1 & 0x3F) << 12) |
+                (@as(u32, b2 & 0x3F) << 6) |
+                @as(u32, b3 & 0x3F);
+            return .{ .status = .ok, .len = 4, .cp = cp };
+        }
+
+        return .{ .status = .invalid, .len = 1, .cp = 0 };
+    }
+
     /// Allocate a String32 from UTF-8 bytes, replacing invalid sequences with U+FFFD
     pub fn allocString32FromUtf8(self: *Heap, bytes: []const u8) error{ OutOfMemory, Overflow }!Value {
         // First pass: count codepoints
         var count: usize = 0;
         var i: usize = 0;
         while (i < bytes.len) {
-            const cp_len = std.unicode.utf8ByteSequenceLength(bytes[i]) catch {
-                count += 1; // Replacement character
-                i += 1;
-                continue;
-            };
-            if (i + cp_len > bytes.len) {
-                count += 1; // Incomplete sequence, replacement character
-                break;
+            const dec = decUtf8(bytes, i);
+            switch (dec.status) {
+                .ok => {
+                    count += 1;
+                    i += dec.len;
+                },
+                .invalid => {
+                    count += 1;
+                    i += 1;
+                },
+                .incomplete => {
+                    count += 1;
+                    break;
+                },
             }
-            _ = std.unicode.utf8Decode(bytes[i..][0..cp_len]) catch {
-                count += 1; // Invalid sequence, replacement character
-                i += 1;
-                continue;
-            };
-            count += 1;
-            i += cp_len;
         }
 
         // Allocate String32
@@ -957,26 +1008,24 @@ pub const Heap = struct {
         var out_idx: usize = 0;
         i = 0;
         while (i < bytes.len) {
-            const cp_len = std.unicode.utf8ByteSequenceLength(bytes[i]) catch {
-                data_ptr[out_idx] = 0xFFFD; // Replacement character
-                out_idx += 1;
-                i += 1;
-                continue;
-            };
-            if (i + cp_len > bytes.len) {
-                data_ptr[out_idx] = 0xFFFD; // Incomplete sequence
-                out_idx += 1;
-                break;
+            const dec = decUtf8(bytes, i);
+            switch (dec.status) {
+                .ok => {
+                    data_ptr[out_idx] = dec.cp;
+                    out_idx += 1;
+                    i += dec.len;
+                },
+                .invalid => {
+                    data_ptr[out_idx] = 0xFFFD;
+                    out_idx += 1;
+                    i += 1;
+                },
+                .incomplete => {
+                    data_ptr[out_idx] = 0xFFFD;
+                    out_idx += 1;
+                    break;
+                },
             }
-            const cp = std.unicode.utf8Decode(bytes[i..][0..cp_len]) catch {
-                data_ptr[out_idx] = 0xFFFD; // Invalid sequence
-                out_idx += 1;
-                i += 1;
-                continue;
-            };
-            data_ptr[out_idx] = cp;
-            out_idx += 1;
-            i += cp_len;
         }
 
         s32.* = .{
@@ -1818,6 +1867,23 @@ test "heap alloc string" {
 
     const ptr = str.toPtr(objects.String);
     try testing.expectEqualStrings("hello", ptr.bytes());
+}
+
+test "heap alloc string32 from utf8 replaces invalid" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const bytes = [_]u8{ 0xC2, 0x20, 'A' };
+    const str = try heap.allocString32FromUtf8(&bytes);
+    try testing.expect(str.isString32());
+
+    const ptr = str.toPtr(objects.String32);
+    try testing.expectEqual(@as(u32, 3), ptr.length);
+    try testing.expectEqual(@as(u32, 0xFFFD), ptr.data[0]);
+    try testing.expectEqual(@as(u32, 0x20), ptr.data[1]);
+    try testing.expectEqual(@as(u32, 'A'), ptr.data[2]);
 }
 
 test "heap alloc string oom" {
