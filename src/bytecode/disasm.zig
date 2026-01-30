@@ -30,10 +30,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
     try writer.print("{d:0>4}  ", .{offset});
 
     const opcode_byte = chunk.code[offset];
-    const op = std.meta.intToEnum(Op, opcode_byte) catch {
-        try writer.print("??? (0x{x:0>2})\n", .{opcode_byte});
-        return offset + 1;
-    };
+    const op = try std.meta.intToEnum(Op, opcode_byte);
 
     return switch (op) {
         // No operand
@@ -492,10 +489,7 @@ fn disassembleInstructionRuntime(chunk: *const @import("../runtime/objects.zig")
 
     const code = chunk.getCode();
     const opcode_byte = code[offset];
-    const op = std.meta.intToEnum(Op, opcode_byte) catch {
-        try writer.print("??? (0x{x:0>2})\n", .{opcode_byte});
-        return offset + 1;
-    };
+    const op = try std.meta.intToEnum(Op, opcode_byte);
 
     // Simplified: just print opcode name and advance by operand size
     const size = op.operandSize();
@@ -546,6 +540,26 @@ test "disassemble simple" {
     try testing.expect(std.mem.indexOf(u8, result, "push_t") != null);
     try testing.expect(std.mem.indexOf(u8, result, "cons") != null);
     try testing.expect(std.mem.indexOf(u8, result, "ret") != null);
+}
+
+test "disassemble invalid opcode errors" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const code = [_]u8{0x08};
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .constants = &[_]u64{},
+        .arity = 0,
+        .optional_count = 0,
+        .key_count = 0,
+        .has_rest = false,
+        .num_locals = 0,
+        .name = "bad",
+    };
+
+    try testing.expectError(error.InvalidEnumTag, disassembleToString(allocator, &chunk));
 }
 
 test "disassemble with operands" {
