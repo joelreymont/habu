@@ -2472,37 +2472,32 @@ pub const Vm = struct {
             },
             .sym_name => {
                 const sym_val = try self.pop();
-                // Handle magic symbols nil and t
-                if (sym_val.isNil()) {
-                    const name_str = try self.allocString("nil");
-                    try self.push(name_str);
-                } else if (sym_val.isT()) {
-                    const name_str = try self.allocString("t");
-                    try self.push(name_str);
-                } else if (sym_val.isSymbol()) {
-                    const sym = sym_val.toPtr(Symbol);
-                    const name_str = try self.allocString(sym.getName());
-                    try self.push(name_str);
-                } else {
-                    return error.TypeMismatch;
-                }
+                const name_str = switch (sym_val.typeKind()) {
+                    .nil => try self.allocString("nil"),
+                    .t => try self.allocString("t"),
+                    .symbol => blk: {
+                        const sym = sym_val.toPtr(Symbol);
+                        break :blk try self.allocString(sym.getName());
+                    },
+                    else => return error.TypeMismatch,
+                };
+                try self.push(name_str);
             },
             .copy_symbol => {
                 const copy_props = try self.pop();
                 const sym_val = try self.pop();
+                const sym_kind = sym_val.typeKind();
                 // Get the symbol name
-                const name = if (sym_val.isNil())
-                    "nil"
-                else if (sym_val.isT())
-                    "t"
-                else if (sym_val.isSymbol())
-                    sym_val.toPtr(Symbol).getName()
-                else
-                    return error.TypeMismatch;
+                const name = switch (sym_kind) {
+                    .nil => "nil",
+                    .t => "t",
+                    .symbol => sym_val.toPtr(Symbol).getName(),
+                    else => return error.TypeMismatch,
+                };
                 // Create new uninterned symbol
                 const new_sym = try self.heap.allocSymbol(name);
                 // Copy properties if requested (only plist is stored in Symbol)
-                if (!copy_props.isNil() and sym_val.isSymbol()) {
+                if (!copy_props.isNil() and sym_kind == .symbol) {
                     const orig = sym_val.toPtr(Symbol);
                     const new = new_sym.toPtr(Symbol);
                     // Copy plist
@@ -2514,72 +2509,76 @@ pub const Vm = struct {
             },
             .makunbound => {
                 const sym_val = try self.pop();
-                if (sym_val.isNil() or sym_val.isT()) {
-                    // nil and t cannot be made unbound
-                    return error.InvalidArgument;
-                } else if (sym_val.isSymbol()) {
-                    const sym = sym_val.toPtr(Symbol);
-                    const local_name = sym.getName();
-                    // Build qualified name using symbol's package
-                    var qual_buf: [512]u8 = undefined;
-                    const qual_name = blk: {
-                        const pkg_ptr = sym.reserved;
-                        if (pkg_ptr != 0) {
-                            const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
-                            break :blk std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
-                        } else {
-                            break :blk local_name;
-                        }
-                    };
-                    // Look up symbol in global environment (qualified or local)
-                    if (self.global_env) |env| {
-                        const idx = env.lookup(qual_name) orelse env.lookup(local_name);
-                        if (idx) |i| {
-                            if (i < MAX_GLOBALS) {
-                                self.globals[i] = Value.unbound;
+                switch (sym_val.typeKind()) {
+                    .nil, .t => {
+                        // nil and t cannot be made unbound
+                        return error.InvalidArgument;
+                    },
+                    .symbol => {
+                        const sym = sym_val.toPtr(Symbol);
+                        const local_name = sym.getName();
+                        // Build qualified name using symbol's package
+                        var qual_buf: [512]u8 = undefined;
+                        const qual_name = blk: {
+                            const pkg_ptr = sym.reserved;
+                            if (pkg_ptr != 0) {
+                                const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
+                                break :blk std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
+                            } else {
+                                break :blk local_name;
+                            }
+                        };
+                        // Look up symbol in global environment (qualified or local)
+                        if (self.global_env) |env| {
+                            const idx = env.lookup(qual_name) orelse env.lookup(local_name);
+                            if (idx) |i| {
+                                if (i < MAX_GLOBALS) {
+                                    self.globals[i] = Value.unbound;
+                                }
                             }
                         }
-                    }
-                    try self.push(sym_val);
-                } else {
-                    return error.TypeMismatch;
+                        try self.push(sym_val);
+                    },
+                    else => return error.TypeMismatch,
                 }
             },
             .set_sym_val => {
                 const val = try self.pop();
                 const sym_val = try self.pop();
-                if (sym_val.isNil() or sym_val.isT()) {
-                    // nil and t cannot be set
-                    return error.InvalidArgument;
-                } else if (sym_val.isSymbol()) {
-                    const sym = sym_val.toPtr(Symbol);
-                    const local_name = sym.getName();
-                    // Build qualified name using symbol's package
-                    var qual_buf: [512]u8 = undefined;
-                    const qual_name = blk: {
-                        const pkg_ptr = sym.reserved;
-                        if (pkg_ptr != 0) {
-                            const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
-                            break :blk std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
-                        } else {
-                            break :blk local_name;
-                        }
-                    };
-                    // Look up symbol in global environment (qualified or local)
-                    if (self.global_env) |env| {
-                        const idx = env.lookup(qual_name) orelse env.lookup(local_name);
-                        if (idx) |i| {
-                            if (i < MAX_GLOBALS) {
-                                self.globals[i] = val;
-                                if (i >= self.num_globals) {
-                                    self.num_globals = i + 1;
+                switch (sym_val.typeKind()) {
+                    .nil, .t => {
+                        // nil and t cannot be set
+                        return error.InvalidArgument;
+                    },
+                    .symbol => {
+                        const sym = sym_val.toPtr(Symbol);
+                        const local_name = sym.getName();
+                        // Build qualified name using symbol's package
+                        var qual_buf: [512]u8 = undefined;
+                        const qual_name = blk: {
+                            const pkg_ptr = sym.reserved;
+                            if (pkg_ptr != 0) {
+                                const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
+                                break :blk std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
+                            } else {
+                                break :blk local_name;
+                            }
+                        };
+                        // Look up symbol in global environment (qualified or local)
+                        if (self.global_env) |env| {
+                            const idx = env.lookup(qual_name) orelse env.lookup(local_name);
+                            if (idx) |i| {
+                                if (i < MAX_GLOBALS) {
+                                    self.globals[i] = val;
+                                    if (i >= self.num_globals) {
+                                        self.num_globals = i + 1;
+                                    }
                                 }
                             }
                         }
-                    }
-                    try self.push(val);
-                } else {
-                    return error.TypeMismatch;
+                        try self.push(val);
+                    },
+                    else => return error.TypeMismatch,
                 }
             },
             .type_of => {
@@ -7213,6 +7212,84 @@ test "vm make_complex" {
     const cplx = result.toPtr(runtime.Complex);
     try testing.expectApproxEqAbs(@as(f64, 1.5), cplx.real, 0.0001);
     try testing.expectApproxEqAbs(@as(f64, 2.0), cplx.imag, 0.0001);
+}
+
+test "vm sym_name" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const push_nil_op: u16 = @intFromEnum(Op.push_nil);
+    const push_t_op: u16 = @intFromEnum(Op.push_t);
+    const push_const_op: u16 = @intFromEnum(Op.push_const);
+    const sym_name_op: u16 = @intFromEnum(Op.sym_name);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+
+    const code_nil = [_]u8{
+        @truncate(push_nil_op & 0xFF), @truncate(push_nil_op >> 8),
+        @truncate(sym_name_op & 0xFF), @truncate(sym_name_op >> 8),
+        @truncate(ret_op & 0xFF),      @truncate(ret_op >> 8),
+    };
+    const chunk_nil = Chunk{
+        .code = @constCast(&code_nil),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code_nil.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+    const res_nil = try vm.run(&chunk_nil);
+    try testing.expect(res_nil.isString());
+    try testing.expectEqualStrings("nil", res_nil.toPtr(runtime.String).bytes());
+
+    const code_t = [_]u8{
+        @truncate(push_t_op & 0xFF), @truncate(push_t_op >> 8),
+        @truncate(sym_name_op & 0xFF), @truncate(sym_name_op >> 8),
+        @truncate(ret_op & 0xFF),    @truncate(ret_op >> 8),
+    };
+    const chunk_t = Chunk{
+        .code = @constCast(&code_t),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code_t.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+    const res_t = try vm.run(&chunk_t);
+    try testing.expect(res_t.isString());
+    try testing.expectEqualStrings("t", res_t.toPtr(runtime.String).bytes());
+
+    const sym = try heap.intern("foo");
+    const consts = [_]Value{sym};
+    const code_sym = [_]u8{
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
+        @truncate(sym_name_op & 0xFF),   @truncate(sym_name_op >> 8),
+        @truncate(ret_op & 0xFF),        @truncate(ret_op >> 8),
+    };
+    const chunk_sym = Chunk{
+        .code = @constCast(&code_sym),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = consts.len,
+        .code_len = code_sym.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+    const res_sym = try vm.run(&chunk_sym);
+    try testing.expect(res_sym.isString());
+    try testing.expectEqualStrings("FOO", res_sym.toPtr(runtime.String).bytes());
 }
 
 test "vm cons car cdr" {
