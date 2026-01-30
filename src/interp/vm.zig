@@ -5257,7 +5257,7 @@ pub const Vm = struct {
         // Call body function
         if (!body_fn.isClosure()) return error.TypeMismatch;
         const closure = body_fn.toPtr(runtime.Closure);
-        _ = self.callClosure(closure, 0) catch |e| return @errorCast(e);
+        _ = try self.callClosure(closure, 0);
 
         // Pop handlers
         self.handler_sp = depth_before;

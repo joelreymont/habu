@@ -6211,7 +6211,7 @@ pub const Compiler = struct {
                             const use_cons = use_list.toPtr(Cons);
                             const use_pkg_name = if (self.getStringOrSymbolName(use_cons.car)) |val| val else return error.InvalidSyntax;
                             const use_pkg = try heap.findOrCreatePackage(use_pkg_name);
-                            pkg.usePackage(use_pkg) catch |e| return e;
+                            try pkg.usePackage(use_pkg);
                             use_list = use_cons.cdr;
                         }
                     } else if (kw.raw == b.kw_export.raw) {
@@ -6220,7 +6220,7 @@ pub const Compiler = struct {
                         while (export_list.isCons()) {
                             const export_cons = export_list.toPtr(Cons);
                             const export_name = if (self.getStringOrSymbolName(export_cons.car)) |val| val else return error.InvalidSyntax;
-                            pkg.exportSymbol(export_name) catch |e| return e;
+                            try pkg.exportSymbol(export_name);
                             export_list = export_cons.cdr;
                         }
                     }
@@ -6260,7 +6260,7 @@ pub const Compiler = struct {
         while (syms.isCons()) {
             const cons = syms.toPtr(Cons);
             const sym_name = if (self.getStringOrSymbolName(cons.car)) |val| val else return error.InvalidSyntax;
-            pkg.exportSymbol(sym_name) catch |e| return e;
+            try pkg.exportSymbol(sym_name);
             syms = cons.cdr;
         }
 
@@ -6278,7 +6278,7 @@ pub const Compiler = struct {
         const other_name = if (self.getStringOrSymbolName(cons1.car)) |val| val else return error.InvalidSyntax;
 
         const other_pkg = if (heap.findPackage(other_name)) |val| val else return error.InvalidSyntax;
-        pkg.usePackage(other_pkg) catch |e| return e;
+        try pkg.usePackage(other_pkg);
 
         return try self.builder.lit(Value.t);
     }
@@ -6333,7 +6333,7 @@ pub const Compiler = struct {
         if (!name_val.isSymbol()) return error.InvalidSyntax;
         // Dupe struct name to avoid dangling pointer if heap moves
         const struct_name_raw = name_val.toPtr(Symbol).getName();
-        const struct_name = self.allocator.dupe(u8, struct_name_raw) catch |e| return e;
+        const struct_name = try self.allocator.dupe(u8, struct_name_raw);
 
         // Collect slot specs: either `slot` or `(slot type)`
         var slot_specs = std.ArrayList(SlotSpec){};
@@ -6347,7 +6347,7 @@ pub const Compiler = struct {
                 .symbol => {
                     // Simple slot: `x` -> type is any
                     const slot_name_raw = slot_spec.toPtr(Symbol).getName();
-                    const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
+                    const slot_name = try self.allocator.dupe(u8, slot_name_raw);
                     try slot_specs.append(self.allocator, .{
                         .name = slot_name,
                         .sym = slot_spec,
@@ -6362,7 +6362,7 @@ pub const Compiler = struct {
                     const spec_cons = slot_spec.toPtr(Cons);
                     if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
                     const slot_name_raw = spec_cons.car.toPtr(Symbol).getName();
-                    const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
+                    const slot_name = try self.allocator.dupe(u8, slot_name_raw);
 
                     // Get type from second element (can be symbol or compound type expr)
                     if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
@@ -6394,8 +6394,8 @@ pub const Compiler = struct {
             };
         }
         var type_builder = types.TypeBuilder.init(self.allocator);
-        const struct_type = type_builder.makeStruct(struct_name, struct_fields) catch |e| return e;
-        self.registerStructType(struct_name, struct_type) catch |e| return e;
+        const struct_type = try type_builder.makeStruct(struct_name, struct_fields);
+        try self.registerStructType(struct_name, struct_type);
 
         // Extract slot names for constructor params
         var slot_names = try self.allocator.alloc([]const u8, slot_specs.items.len);
@@ -6427,8 +6427,8 @@ pub const Compiler = struct {
 
         // Register predicate for occurrence typing
         // Use globals.allocator for persistence across expressions (arena gets freed)
-        const persistent_pred_name = self.globals.allocator.dupe(u8, pred_name) catch |e| return e;
-        self.struct_predicates.put(persistent_pred_name, struct_type) catch |e| return e;
+        const persistent_pred_name = try self.globals.allocator.dupe(u8, pred_name);
+        try self.struct_predicates.put(persistent_pred_name, struct_type);
 
         // 4. Copier: (defun copy-name (obj) (copy-seq obj))
         const copy_name = try self.concatStrings("copy-", struct_name);
@@ -6656,14 +6656,14 @@ pub const Compiler = struct {
             body_ir = try self.builder.progn(progn_items);
         }
 
-        const lambda_ir = self.builder.lambda(
+        const lambda_ir = try self.builder.lambda(
             slot_names,
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
             null,
             &[_]Ir.Capture{},
             body_ir,
-        ) catch |e| return e;
+        );
 
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
@@ -7142,14 +7142,14 @@ pub const Compiler = struct {
         const body_ir = try self.builder.ifExpr(type_check, vecref_ir, error_call);
 
         // Lambda with 1 param named "obj"
-        const lambda_ir = self.builder.lambda(
+        const lambda_ir = try self.builder.lambda(
             &[_][]const u8{"obj"},
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
             null,
             &[_]Ir.Capture{},
             body_ir,
-        ) catch |e| return e;
+        );
 
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
@@ -7185,14 +7185,14 @@ pub const Compiler = struct {
 
         const body_ir = try self.builder.ifExpr(type_check, setf_ir, error_call);
 
-        const lambda_ir = self.builder.lambda(
+        const lambda_ir = try self.builder.lambda(
             &[_][]const u8{ "val", "obj" },
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
             null,
             &[_]Ir.Capture{},
             body_ir,
-        ) catch |e| return e;
+        );
 
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
@@ -7217,14 +7217,14 @@ pub const Compiler = struct {
         const nil_ir = try self.builder.lit(Value.nil);
         const body_ir = try self.builder.ifExpr(vectorp_ir, eq_ir, nil_ir);
 
-        const lambda_ir = self.builder.lambda(
+        const lambda_ir = try self.builder.lambda(
             &[_][]const u8{"obj"},
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
             null,
             &[_]Ir.Capture{},
             body_ir,
-        ) catch |e| return e;
+        );
 
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
@@ -7243,14 +7243,14 @@ pub const Compiler = struct {
         // Identity - proper copy needs opcode slot or multi-byte opcodes
         const obj_ref = try self.builder.variable("obj", 0, 0);
 
-        const lambda_ir = self.builder.lambda(
+        const lambda_ir = try self.builder.lambda(
             &[_][]const u8{"obj"},
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
             null,
             &[_]Ir.Capture{},
             obj_ref,
-        ) catch |e| return e;
+        );
 
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
@@ -7346,7 +7346,7 @@ pub const Compiler = struct {
         if (!name_val.isSymbol()) return error.InvalidSyntax;
 
         const class_name_raw = name_val.toPtr(Symbol).getName();
-        const class_name = self.allocator.dupe(u8, class_name_raw) catch |e| return e;
+        const class_name = try self.allocator.dupe(u8, class_name_raw);
 
         // Parse superclasses (second arg) and inherit their slots
         if (!cons1.cdr.isCons()) return error.InvalidSyntax;
@@ -7440,7 +7440,7 @@ pub const Compiler = struct {
                 .symbol => {
                     // Simple slot: `x`
                     const slot_name_raw = slot_spec.toPtr(Symbol).getName();
-                    const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
+                    const slot_name = try self.allocator.dupe(u8, slot_name_raw);
                     var initargs = std.ArrayList(Value){};
                     const default_initarg = try heap.internKeyword(slot_name_raw);
                     try initargs.append(self.allocator, default_initarg);
@@ -7458,7 +7458,7 @@ pub const Compiler = struct {
                     const spec_cons = slot_spec.toPtr(Cons);
                     if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
                     const slot_name_raw = spec_cons.car.toPtr(Symbol).getName();
-                    const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
+                    const slot_name = try self.allocator.dupe(u8, slot_name_raw);
 
                 // Extract slot options
                 var field_type: *const types.Type = &types.t_any;
@@ -7583,8 +7583,8 @@ pub const Compiler = struct {
             };
         }
         var type_builder = types.TypeBuilder.init(self.allocator);
-        const class_type = type_builder.makeStruct(class_name, class_fields) catch |e| return e;
-        self.registerStructType(class_name, class_type) catch |e| return e;
+        const class_type = try type_builder.makeStruct(class_name, class_fields);
+        try self.registerStructType(class_name, class_type);
 
         // Store class metadata for compilation (compiler-side with initforms)
         const persistent_specs = try self.globals.allocator.alloc(SlotSpec, slot_specs.items.len);
@@ -9740,7 +9740,7 @@ pub const Compiler = struct {
         // We need to compile the predicate in an environment where x is bound
         var pred_env = Env.init(self.allocator, null);
         defer pred_env.deinit();
-        _ = pred_env.bind(var_name) catch |e| return e;
+        _ = try pred_env.bind(var_name);
 
         const predicate_body = try self.compile(predicate_expr, &pred_env);
         const dispatch_params = try self.allocator.alloc([]const u8, 1);
@@ -12469,7 +12469,7 @@ pub const Compiler = struct {
         if (func_expr.isSymbol() and self.struct_predicates.count() > 0) {
             // Copy name to avoid dangling pointer if heap moves
             const sym_name_raw = func_expr.toPtr(Symbol).getName();
-            const sym_name = self.allocator.dupe(u8, sym_name_raw) catch |e| return e;
+            const sym_name = try self.allocator.dupe(u8, sym_name_raw);
             defer self.allocator.free(sym_name);
             if (self.struct_predicates.get(sym_name)) |struct_type| {
                 // This is a struct predicate call - generate struct_p IR
