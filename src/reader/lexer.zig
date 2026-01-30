@@ -273,17 +273,28 @@ pub const Lexer = struct {
         // Integer: check if it fits in fixnum range
         // Fixnums are 63-bit signed (bit 0 is tag), so range is -(2^62) to 2^62-1
         const text = self.source[start_pos..self.pos];
-        const max_fixnum: i64 = (1 << 62) - 1; // 4611686018427387903
+        const max_fixnum: u64 = (@as(u64, 1) << 62) - 1; // 4611686018427387903
+        const min_fixnum_abs: u64 = max_fixnum + 1; // -2^62
 
-        // Try parsing as i64 first
-        const parsed = std.fmt.parseInt(i64, text, 10) catch {
-            // Overflow - it's a bignum
-            return self.makeToken(.bignum);
-        };
+        var idx: usize = 0;
+        var negative = false;
+        if (text.len > 0 and (text[0] == '-' or text[0] == '+')) {
+            negative = text[0] == '-';
+            idx = 1;
+        }
 
-        // Check if it fits in fixnum range
-        if (parsed > max_fixnum or parsed < -(1 << 62)) {
-            return self.makeToken(.bignum);
+        const limit: u64 = if (negative) min_fixnum_abs else max_fixnum;
+        var value: u64 = 0;
+        while (idx < text.len) : (idx += 1) {
+            const c = text[idx];
+            if (!isDigit(c)) break;
+            const digit: u64 = @intCast(c - '0');
+            const limit_div10 = limit / 10;
+            const limit_mod10 = limit % 10;
+            if (value > limit_div10 or (value == limit_div10 and digit > limit_mod10)) {
+                return self.makeToken(.bignum);
+            }
+            value = value * 10 + digit;
         }
 
         return self.makeToken(.number);
@@ -564,6 +575,17 @@ test "lex numbers" {
     const t3 = lexer.next();
     try testing.expectEqual(TokenKind.number, t3.kind);
     try testing.expectEqualStrings("+67", t3.text);
+}
+
+test "lex bignum range" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("4611686018427387903 4611686018427387904 -4611686018427387904 -4611686018427387905");
+
+    try testing.expectEqual(TokenKind.number, lexer.next().kind);
+    try testing.expectEqual(TokenKind.bignum, lexer.next().kind);
+    try testing.expectEqual(TokenKind.number, lexer.next().kind);
+    try testing.expectEqual(TokenKind.bignum, lexer.next().kind);
 }
 
 test "lex symbols" {
