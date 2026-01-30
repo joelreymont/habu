@@ -237,7 +237,8 @@ pub const Normalizer = struct {
 
             // Builtins - evaluate if possible
             .builtin => |b| {
-                return self.evalBuiltin(b.func, b.args, env) catch t;
+                const reduced = try self.evalBuiltin(b.func, b.args, env);
+                return if (reduced) |term| term else t;
             },
 
             // Annotations - normalize the inner term
@@ -513,15 +514,15 @@ pub const Normalizer = struct {
         };
     }
 
-    fn evalBuiltin(self: *Normalizer, func: Builtin, args: []const *const Term, env: *const NormEnv) !*const Term {
+    fn evalBuiltin(self: *Normalizer, func: Builtin, args: []const *const Term, env: *const NormEnv) !?*const Term {
         _ = env;
         _ = self;
         _ = args;
 
         // Builtin evaluation would require runtime value inspection
-        // For now, return error to indicate it can't be reduced
+        // For now, return null to indicate it can't be reduced
         return switch (func) {
-            .length, .null, .consp, .car, .cdr, .vectorp, .vector_length, .vector_ref => error.CannotReduce,
+            .length, .null, .consp, .car, .cdr, .vectorp, .vector_length, .vector_ref => null,
         };
     }
 };
@@ -530,7 +531,6 @@ pub const NormError = error{
     FuelExhausted,
     TypeError,
     DivisionByZero,
-    CannotReduce,
     OutOfMemory,
 };
 
@@ -552,6 +552,25 @@ test "normalize literal" {
 
     const result = try normalizer.whnf(five, &env);
     try testing.expect(result == five); // Literals are already normalized
+}
+
+test "whnf builtin returns original when not reducible" {
+    const testing = std.testing;
+
+    var normalizer = Normalizer.init(testing.allocator);
+    defer normalizer.deinit();
+    var env = NormEnv.init(testing.allocator);
+    defer env.deinit();
+
+    var builder = TermBuilder.init(testing.allocator);
+    defer builder.deinit();
+
+    const xs = try builder.varByName("xs");
+    const args = [_]*const Term{xs};
+    const len_call = try builder.builtin(.length, &args);
+
+    const result = try normalizer.whnf(len_call, &env);
+    try testing.expect(result == len_call);
 }
 
 test "normalize arithmetic" {

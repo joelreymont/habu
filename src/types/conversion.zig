@@ -244,7 +244,7 @@ pub const TypeConverter = struct {
 
                     return self.normalizer.convertible(pred1, pred2, &env) catch |err| switch (err) {
                         error.FuelExhausted => return error.FuelExhausted,
-                        error.TypeError, error.DivisionByZero, error.CannotReduce => false,
+                        error.TypeError, error.DivisionByZero => false,
                         error.OutOfMemory => return error.OutOfMemory,
                     };
                 },
@@ -275,7 +275,7 @@ pub const TypeConverter = struct {
 
                     return self.normalizer.convertible(arg1, arg2, &env) catch |err| switch (err) {
                         error.FuelExhausted => return error.FuelExhausted,
-                        error.TypeError, error.DivisionByZero, error.CannotReduce => false,
+                        error.TypeError, error.DivisionByZero => false,
                         error.OutOfMemory => return error.OutOfMemory,
                     };
                 },
