@@ -228,16 +228,15 @@ pub const Parser = struct {
     }
 
     fn toReal(val: Value) Error!f64 {
-        if (val.isFixnum()) {
-            return @floatFromInt(val.toFixnum());
-        } else if (val.isFloat()) {
-            return val.toFloat();
-        } else if (val.isRational()) {
-            const rat = val.toPtr(objects.Rational);
-            return @as(f64, @floatFromInt(rat.numerator)) / @as(f64, @floatFromInt(rat.denominator));
-        } else {
-            return error.TypeMismatch;
-        }
+        return switch (val.typeKind()) {
+            .fixnum => @floatFromInt(val.toFixnum()),
+            .float => val.toFloat(),
+            .rational => blk: {
+                const rat = val.toPtr(objects.Rational);
+                break :blk @as(f64, @floatFromInt(rat.numerator)) / @as(f64, @floatFromInt(rat.denominator));
+            },
+            else => error.TypeMismatch,
+        };
     }
 
     fn parseStruct(self: *Parser) Error!Value {
@@ -1277,6 +1276,11 @@ test "parse #C complex number" {
     const c4 = val4.toPtr(objects.Complex);
     try testing.expectApproxEqAbs(@as(f64, 0.5), c4.real, 0.0001);
     try testing.expectApproxEqAbs(@as(f64, 0.3333), c4.imag, 0.0001);
+
+    // #C("x" 1) is invalid
+    var parser_bad = try Parser.init(testing.allocator, &heap, "#C(\"x\" 1)", &vm.builtins);
+    defer parser_bad.deinit();
+    try testing.expectError(error.TypeMismatch, parser_bad.parse());
 }
 
 test "parse #* bit vector" {
