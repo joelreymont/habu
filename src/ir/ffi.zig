@@ -34,12 +34,11 @@ pub fn toZig(comptime T: type, val: Value, heap: *Heap) FfiError!T {
             }
         },
         .float => {
-            if (val.isFixnum()) {
-                return @floatFromInt(val.toFixnum());
-            } else if (val.isFloat()) {
-                return @floatCast(val.toFloat());
-            }
-            return FfiError.TypeMismatch;
+            return switch (val.typeKind()) {
+                .fixnum => @floatFromInt(val.toFixnum()),
+                .float => @floatCast(val.toFloat()),
+                else => FfiError.TypeMismatch,
+            };
         },
         .bool => {
             return !val.isNil();
@@ -47,14 +46,17 @@ pub fn toZig(comptime T: type, val: Value, heap: *Heap) FfiError!T {
         .pointer => |ptr| {
             if (ptr.size == .slice and ptr.child == u8) {
                 // []const u8 - string
-                if (val.isString()) {
-                    const str = val.toPtr(objects.String);
-                    return str.bytes();
-                } else if (val.isSymbol()) {
-                    const sym = val.toPtr(objects.Symbol);
-                    return sym.getName();
+                switch (val.typeKind()) {
+                    .string => {
+                        const str = val.toPtr(objects.String);
+                        return str.bytes();
+                    },
+                    .symbol => {
+                        const sym = val.toPtr(objects.Symbol);
+                        return sym.getName();
+                    },
+                    else => return FfiError.TypeMismatch,
                 }
-                return FfiError.TypeMismatch;
             } else if (ptr.child == Value) {
                 // *Value - pass through
                 return @ptrCast(@alignCast(val.toPtr(anyopaque)));
@@ -247,6 +249,20 @@ test "toZig fixnum" {
     try testing.expectEqual(@as(i64, 42), result);
 }
 
+test "toZig float" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const fix = Value.makeFixnum(3);
+    const fix_f = try toZig(f64, fix, &heap);
+    try testing.expectEqual(@as(f64, 3.0), fix_f);
+
+    const flt = Value.makeFloat(1.5);
+    const flt_f = try toZig(f64, flt, &heap);
+    try testing.expectEqual(@as(f64, 1.5), flt_f);
+}
+
 test "toZig bool" {
     const testing = std.testing;
     var heap = try Heap.init(testing.allocator, .{});
@@ -265,6 +281,10 @@ test "toZig string" {
     const str = try heap.allocBaseString("hello");
     const result = try toZig([]const u8, str, &heap);
     try testing.expectEqualStrings("hello", result);
+
+    const sym = try heap.intern("hello");
+    const sym_result = try toZig([]const u8, sym, &heap);
+    try testing.expectEqualStrings("HELLO", sym_result);
 }
 
 test "fromZig fixnum" {
