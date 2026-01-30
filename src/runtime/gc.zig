@@ -699,7 +699,6 @@ test "gc finalizes unreachable file streams" {
     defer heap.deinit();
 
     const tmp_path = "/tmp/habu_gc_test_stream.txt";
-    defer std.fs.deleteFileAbsolute(tmp_path) catch {};
 
     // Create and write to a file
     {
@@ -736,6 +735,7 @@ test "gc finalizes unreachable file streams" {
 
     // File descriptor should be closed by finalizer
     // We can't directly verify the FD is closed, but we tested the finalization path
+    try std.fs.deleteFileAbsolute(tmp_path);
 }
 
 test "gc finalizer path coverage" {

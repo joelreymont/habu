@@ -1164,7 +1164,7 @@ pub const Heap = struct {
         return Value.makePathname(pn);
     }
 
-    fn packageKey(self: *Heap, name: Value) error{OutOfMemory, TypeError}!Value {
+    pub fn packageKey(self: *Heap, name: Value) error{OutOfMemory, TypeError}!Value {
         return switch (name.typeKind()) {
             .string => try self.internKeyword(name.toPtr(objects.String).bytes()),
             .symbol => try self.internKeyword(name.toPtr(objects.Symbol).getName()),
@@ -1194,6 +1194,13 @@ pub const Heap = struct {
         if (self.lisp_packages.raw == Value.nil.raw) return false;
         const ht = self.lisp_packages.toPtr(objects.HashTable);
         const key = try self.packageKey(name);
+        return ht.remove(key);
+    }
+
+    /// Remove a Lisp package by precomputed key
+    pub fn removeLispPackageKey(self: *Heap, key: Value) bool {
+        if (self.lisp_packages.raw == Value.nil.raw) return false;
+        const ht = self.lisp_packages.toPtr(objects.HashTable);
         return ht.remove(key);
     }
 

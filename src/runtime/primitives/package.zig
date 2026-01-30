@@ -201,8 +201,11 @@ pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value
     };
 
     const pkg_val = Value.makePtr(pkg, .boxed);
+    const name_key = try heap.packageKey(name);
     try heap.putLispPackage(name, pkg_val);
-    errdefer _ = heap.removeLispPackage(name) catch {};
+    errdefer {
+        _ = heap.removeLispPackageKey(name_key);
+    }
 
     // Register nicknames
     if (nicknames) |nns| {
@@ -210,8 +213,11 @@ pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value
         while (!nicks.isNil()) {
             if (!nicks.isCons()) break;
             const nick = nicks.toPtr(Cons).car;
+            const nick_key = try heap.packageKey(nick);
             try heap.putLispPackage(nick, pkg_val);
-            errdefer _ = heap.removeLispPackage(nick) catch {};
+            errdefer {
+                _ = heap.removeLispPackageKey(nick_key);
+            }
             const nick_name = try nameBytes(nick);
             const alias_key = try heap.backing_allocator.dupe(u8, nick_name);
             errdefer heap.backing_allocator.free(alias_key);
@@ -1463,4 +1469,22 @@ test "packageSymbolsList accepts keyword name" {
     }
     try testing.expect(found_t);
     try testing.expect(found_nil);
+}
+
+test "makePackage rejects existing nickname" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const bar = try heap.allocBaseString("bar");
+    _ = try makePackage(&heap, bar, null, null);
+
+    const foo = try heap.allocBaseString("foo");
+    const nick = try heap.allocBaseString("bar");
+    const nick_list = try heap.allocCons(nick, Value.nil);
+
+    try testing.expectError(error.PackageExists, makePackage(&heap, foo, nick_list, null));
+    const found = try heap.findLispPackage(foo);
+    try testing.expect(found == null);
 }
