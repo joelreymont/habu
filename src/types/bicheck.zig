@@ -858,6 +858,7 @@ pub const TypeError = struct {
 
 pub const CheckError = error{
     TypeError,
+    DivisionByZero,
     FuelExhausted,
     OutOfMemory,
 };

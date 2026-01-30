@@ -14,6 +14,7 @@ pub const PassError = error{
     OutOfMemory,
     PassFailed,
     TypeError,
+    DivisionByZero,
     InvalidIr,
     SyntaxError,
     FuelExhausted,

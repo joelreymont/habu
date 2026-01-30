@@ -242,11 +242,7 @@ pub const TypeConverter = struct {
                     var env = NormEnv.init(self.allocator);
                     defer env.deinit();
 
-                    return self.normalizer.convertible(pred1, pred2, &env) catch |err| switch (err) {
-                        error.FuelExhausted => return error.FuelExhausted,
-                        error.TypeError, error.DivisionByZero => false,
-                        error.OutOfMemory => return error.OutOfMemory,
-                    };
+                    return try self.normalizer.convertible(pred1, pred2, &env);
                 },
                 else => false,
             },
@@ -273,11 +269,7 @@ pub const TypeConverter = struct {
                     var env = NormEnv.init(self.allocator);
                     defer env.deinit();
 
-                    return self.normalizer.convertible(arg1, arg2, &env) catch |err| switch (err) {
-                        error.FuelExhausted => return error.FuelExhausted,
-                        error.TypeError, error.DivisionByZero => false,
-                        error.OutOfMemory => return error.OutOfMemory,
-                    };
+                    return try self.normalizer.convertible(arg1, arg2, &env);
                 },
                 else => false,
             },
@@ -435,6 +427,8 @@ const AlphaCtx = struct {
 
 pub const ConversionError = error{
     FuelExhausted,
+    TypeError,
+    DivisionByZero,
     OutOfMemory,
 };
 
@@ -473,6 +467,29 @@ test "list type conversion" {
     var converter = TypeConverter.init(allocator);
 
     try testing.expect(try converter.convertible(&type_mod.t_list_any, &type_mod.t_list_any));
+}
+
+test "convertible propagates term errors" {
+    const testing = std.testing;
+
+    var converter = TypeConverter.init(testing.allocator);
+    defer converter.deinit();
+
+    var type_builder = type_mod.TypeBuilder.init(testing.allocator);
+    defer type_builder.deinit();
+
+    var term_builder = term_mod.TermBuilder.init(testing.allocator);
+    defer term_builder.deinit();
+
+    const nil_lit = try term_builder.literal(0);
+    const one = try term_builder.fixnum(1);
+    const bad_pred = try term_builder.binop(term_mod.BinOp.add, nil_lit, one);
+    const pred_ptr: *const anyopaque = @ptrCast(bad_pred);
+
+    const refine1 = try type_builder.makeRefinement(&type_mod.t_fixnum, "x", pred_ptr);
+    const refine2 = try type_builder.makeRefinement(&type_mod.t_fixnum, "x", pred_ptr);
+
+    try testing.expectError(error.TypeError, converter.convertible(refine1, refine2));
 }
 
 test "pi type alpha equivalence" {
