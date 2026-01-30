@@ -131,18 +131,20 @@ pub fn readChunks(allocator: std.mem.Allocator, path: []const u8) ![]Chunk {
     const chunks = try allocator.alloc(Chunk, chunk_count);
     errdefer allocator.free(chunks);
 
+    var loaded: usize = 0;
+    errdefer {
+        for (chunks[0..loaded]) |*prev_chunk| {
+            allocator.free(prev_chunk.code);
+            allocator.free(prev_chunk.constants);
+            allocator.free(prev_chunk.name);
+        }
+        allocator.free(chunks);
+    }
+
     // Read each chunk
-    for (chunks, 0..) |*chunk, i| {
-        chunk.* = readChunkData(reader, allocator) catch |err| {
-            // Free previously allocated chunks on error
-            for (chunks[0..i]) |*prev_chunk| {
-                allocator.free(prev_chunk.code);
-                allocator.free(prev_chunk.constants);
-                allocator.free(prev_chunk.name);
-            }
-            allocator.free(chunks);
-            return err;
-        };
+    for (chunks) |*chunk| {
+        chunk.* = try readChunkData(reader, allocator);
+        loaded += 1;
     }
 
     return chunks;
@@ -197,4 +199,29 @@ pub fn freeChunks(allocator: std.mem.Allocator, chunks: []Chunk) void {
         allocator.free(chunk.name);
     }
     allocator.free(chunks);
+}
+
+test "readChunks truncated file" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const filename = "bad.fasl";
+    {
+        const file = try tmp.dir.createFile(filename, .{});
+        defer file.close();
+
+        var writer = file.writer();
+        try writer.writeAll(MAGIC);
+        try writer.writeInt(u32, VERSION, .little);
+        try writer.writeInt(u32, 1, .little);
+        try writer.writeInt(u32, 1, .little); // code_len, but no code bytes written
+    }
+
+    const path = try tmp.dir.realpathAlloc(allocator, filename);
+    defer allocator.free(path);
+
+    try testing.expectError(error.EndOfStream, readChunks(allocator, path));
 }
