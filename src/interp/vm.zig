@@ -16,6 +16,7 @@ const Op = bytecode.Op;
 const Chunk = bytecode.Chunk;
 const runtime = @import("../runtime/runtime.zig");
 const primitives = @import("../runtime/primitives/primitives.zig");
+const qual_name = @import("../runtime/qual_name.zig");
 const Value = runtime.Value;
 const Heap = runtime.Heap;
 const Cons = runtime.Cons;
@@ -278,7 +279,7 @@ pub const Vm = struct {
     macroexpand_1_context: ?*anyopaque,
 
     /// Callback for fboundp - checks if symbol is a function (macro, primitive, or defun)
-    fboundp_callback: ?*const fn (Value, *anyopaque) bool,
+    fboundp_callback: ?*const fn (Value, *anyopaque) Error!bool,
     fboundp_context: ?*anyopaque,
 
     /// Counter for gensym
@@ -413,7 +414,7 @@ pub const Vm = struct {
     }
 
     /// Set the fboundp callback for checking function bindings
-    pub fn setFboundpCallback(self: *Vm, callback: *const fn (Value, *anyopaque) bool, context: *anyopaque) void {
+    pub fn setFboundpCallback(self: *Vm, callback: *const fn (Value, *anyopaque) Error!bool, context: *anyopaque) void {
         self.fboundp_callback = callback;
         self.fboundp_context = context;
     }
@@ -2517,18 +2518,12 @@ pub const Vm = struct {
                         const local_name = sym.getName();
                         // Build qualified name using symbol's package
                         var qual_buf: [512]u8 = undefined;
-                        const qual_name = blk: {
-                            const pkg_ptr = sym.reserved;
-                            if (pkg_ptr != 0) {
-                                const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
-                                break :blk std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
-                            } else {
-                                break :blk local_name;
-                            }
-                        };
+                        const q = try qual_name.qualSym(self.allocator, sym, &qual_buf);
+                        defer if (q.owned) self.allocator.free(q.name);
+                        const qname = q.name;
                         // Look up symbol in global environment (qualified or local)
                         if (self.global_env) |env| {
-                            const idx = env.lookup(qual_name) orelse env.lookup(local_name);
+                            const idx = env.lookup(qname) orelse env.lookup(local_name);
                             if (idx) |i| {
                                 if (i < MAX_GLOBALS) {
                                     self.globals[i] = Value.unbound;
@@ -2553,18 +2548,12 @@ pub const Vm = struct {
                         const local_name = sym.getName();
                         // Build qualified name using symbol's package
                         var qual_buf: [512]u8 = undefined;
-                        const qual_name = blk: {
-                            const pkg_ptr = sym.reserved;
-                            if (pkg_ptr != 0) {
-                                const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
-                                break :blk std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
-                            } else {
-                                break :blk local_name;
-                            }
-                        };
+                        const q = try qual_name.qualSym(self.allocator, sym, &qual_buf);
+                        defer if (q.owned) self.allocator.free(q.name);
+                        const qname = q.name;
                         // Look up symbol in global environment (qualified or local)
                         if (self.global_env) |env| {
-                            const idx = env.lookup(qual_name) orelse env.lookup(local_name);
+                            const idx = env.lookup(qname) orelse env.lookup(local_name);
                             if (idx) |i| {
                                 if (i < MAX_GLOBALS) {
                                     self.globals[i] = val;
@@ -3658,8 +3647,8 @@ pub const Vm = struct {
                 const stdout = std.fs.File.stdout();
                 var bw = stdout.writer(&buf);
                 const writer = &bw.interface;
-                disasm.disassembleRuntime(chunk, writer) catch {};
-                writer.flush() catch {};
+                try disasm.disassembleRuntime(chunk, writer);
+                try writer.flush();
                 try self.push(Value.nil);
             },
             .read_char_stream => {
@@ -4644,7 +4633,7 @@ pub const Vm = struct {
             },
 
             .read_char => {
-                const ch = io.sysReadChar() catch -1;
+                const ch = try io.sysReadChar();
                 if (ch < 0) {
                     try self.push(Value.makeFixnum(-1));
                 } else {
@@ -4652,7 +4641,7 @@ pub const Vm = struct {
                 }
             },
             .peek_char => {
-                const ch = io.sysPeekChar() catch -1;
+                const ch = try io.sysPeekChar();
                 if (ch < 0) {
                     try self.push(Value.makeFixnum(-1));
                 } else {
@@ -4663,18 +4652,17 @@ pub const Vm = struct {
             .read => {
                 // Read a complete S-expression from stdin
                 var buffer: [4096]u8 = undefined;
-                const len = io.sysReadSexp(&buffer) catch {
-                    // EOF or error - return nil
-                    try self.push(Value.nil);
-                    return;
+                const len = io.sysReadSexp(&buffer) catch |err| switch (err) {
+                    error.EndOfStream => {
+                        try self.push(Value.nil);
+                        return;
+                    },
+                    else => return err,
                 };
 
                 // Parse the S-expression
                 var parser = try Parser.init(self.allocator, self.heap, buffer[0..len], &self.builtins);
-                const result = parser.parse() catch {
-                    try self.push(Value.nil);
-                    return;
-                };
+                const result = try parser.parse();
                 try self.push(result);
             },
 
@@ -4704,10 +4692,7 @@ pub const Vm = struct {
                 const str = str_val.toPtr(String);
                 var parser = try Parser.init(self.allocator, self.heap, str.bytes(), &self.builtins);
                 defer parser.deinit();
-                const result = parser.parse() catch {
-                    try self.push(Value.nil);
-                    return;
-                };
+                const result = try parser.parse();
                 try self.push(result);
             },
 
@@ -4800,18 +4785,12 @@ pub const Vm = struct {
                 const local_name = sym.getName();
                 // Build qualified name using symbol's package
                 var qual_buf: [512]u8 = undefined;
-                const qual_name = blk: {
-                    const pkg_ptr = sym.reserved;
-                    if (pkg_ptr != 0) {
-                        const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
-                        break :blk std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
-                    } else {
-                        break :blk local_name;
-                    }
-                };
+                const q = try qual_name.qualSym(self.allocator, sym, &qual_buf);
+                defer if (q.owned) self.allocator.free(q.name);
+                const qname = q.name;
                 // Check if symbol exists in global environment and is not unbound
                 const is_bound = if (self.global_env) |env| blk: {
-                    const idx = env.lookup(qual_name) orelse env.lookup(local_name);
+                    const idx = env.lookup(qname) orelse env.lookup(local_name);
                     if (idx) |i| {
                         if (i < MAX_GLOBALS) {
                             // Check if value is unbound marker
@@ -4828,23 +4807,17 @@ pub const Vm = struct {
                 if (!val.isSymbol()) return error.TypeMismatch;
                 // Use callback to check for function binding (macro, primitive, or defun)
                 const is_fbound = if (self.fboundp_callback) |cb|
-                    cb(val, self.fboundp_context.?)
+                    try cb(val, self.fboundp_context.?)
                 else if (self.global_env) |env| blk: {
                     const sym = val.toPtr(Symbol);
                     const local_name = sym.getName();
                     // Build qualified name using symbol's package
                     var qbuf: [512]u8 = undefined;
-                    const qual_name = inner: {
-                        const pkg_ptr = sym.reserved;
-                        if (pkg_ptr != 0) {
-                            const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
-                            break :inner std.fmt.bufPrint(&qbuf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
-                        } else {
-                            break :inner local_name;
-                        }
-                    };
+                    const q = try qual_name.qualSym(self.allocator, sym, &qbuf);
+                    defer if (q.owned) self.allocator.free(q.name);
+                    const qname = q.name;
                     // Check qualified name first, then local name
-                    break :blk (env.lookup(qual_name) orelse env.lookup(local_name)) != null;
+                    break :blk (env.lookup(qname) orelse env.lookup(local_name)) != null;
                 } else false;
                 try self.push(if (is_fbound) Value.t else Value.nil);
             },
@@ -4860,20 +4833,13 @@ pub const Vm = struct {
                         const local_name = sym.getName();
                         // Build qualified name using symbol's package
                         var qual_buf: [512]u8 = undefined;
-                        const qual_name = blk: {
-                            const pkg_ptr = sym.reserved;
-                            if (pkg_ptr != 0) {
-                                const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
-                                break :blk std.fmt.bufPrint(&qual_buf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
-                            } else {
-                                // No package - use local name as is, or try CL-USER fallback
-                                break :blk local_name;
-                            }
-                        };
+                        const q = try qual_name.qualSym(self.allocator, sym, &qual_buf);
+                        defer if (q.owned) self.allocator.free(q.name);
+                        const qname = q.name;
                         // Look up symbol in global environment
                         if (self.global_env) |env| {
                             // Try qualified name first, then local name
-                            const idx = env.lookup(qual_name) orelse env.lookup(local_name);
+                            const idx = env.lookup(qname) orelse env.lookup(local_name);
                             if (idx) |i| {
                                 try self.push(self.globals[i]);
                             } else {
@@ -4890,7 +4856,7 @@ pub const Vm = struct {
             .typep => {
                 const type_spec = try self.pop();
                 const obj = try self.pop();
-                const result = primitives.typep(self.heap, &self.type_syms, obj, type_spec) catch false;
+                const result = try primitives.typep(self.heap, &self.type_syms, obj, type_spec);
                 try self.push(if (result) Value.t else Value.nil);
             },
 
@@ -7903,4 +7869,32 @@ test "vm hash table count and remove" {
 
     const result = try vm.run(&chunk);
     try testing.expectEqual(@as(i64, 2), result.toFixnum());
+}
+
+test "vm read_from_string propagates parse errors" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const bad = try heap.allocBaseString("(");
+    try vm.push(bad);
+    try testing.expectError(error.UnterminatedList, vm.executeOp(.read_from_string));
+}
+
+test "vm typep propagates invalid type spec" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    try vm.push(Value.makeFixnum(1));
+    try vm.push(Value.makeFixnum(2));
+    try testing.expectError(error.InvalidTypeSpecifier, vm.executeOp(.typep));
 }

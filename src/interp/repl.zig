@@ -23,6 +23,7 @@ const disasm = bytecode.disasm;
 const vm_mod = @import("vm.zig");
 const Vm = vm_mod.Vm;
 const runtime = @import("../runtime/runtime.zig");
+const qual_name = @import("../runtime/qual_name.zig");
 const Value = runtime.Value;
 const Heap = runtime.Heap;
 const Cons = runtime.Cons;
@@ -139,8 +140,8 @@ pub const Repl = struct {
         _ = try self.heap.internInPackage("COMMON-LISP", sym_name);
         // Define global with qualified name
         var buf: [256]u8 = undefined;
-        const qual_name = try std.fmt.bufPrint(&buf, "COMMON-LISP:{s}", .{sym_name});
-        try self.setGlobal(qual_name, value);
+        const qname = try std.fmt.bufPrint(&buf, "COMMON-LISP:{s}", .{sym_name});
+        try self.setGlobal(qname, value);
     }
 
     fn createFeaturesGlobal(self: *Repl) !void {
@@ -204,7 +205,7 @@ pub const Repl = struct {
     }
 
     /// Callback for (fboundp sym) from VM - checks if symbol has a function binding
-    fn fboundpCallback(sym: Value, context: *anyopaque) bool {
+    fn fboundpCallback(sym: Value, context: *anyopaque) vm_mod.Error!bool {
         const self: *Repl = @ptrCast(@alignCast(context));
         if (!sym.isSymbol()) return false;
         const s = sym.toPtr(Symbol);
@@ -212,15 +213,9 @@ pub const Repl = struct {
 
         // Build qualified name using symbol's package
         var qbuf: [512]u8 = undefined;
-        const qual_name = blk: {
-            const pkg_ptr = s.reserved;
-            if (pkg_ptr != 0) {
-                const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
-                break :blk std.fmt.bufPrint(&qbuf, "{s}:{s}", .{ pkg.name, local_name }) catch local_name;
-            } else {
-                break :blk local_name;
-            }
-        };
+        const q = try qual_name.qualSym(self.allocator, s, &qbuf);
+        defer if (q.owned) self.allocator.free(q.name);
+        const qname = q.name;
 
         // Check if it's a macro
         if (self.macros.contains(sym)) {
@@ -228,7 +223,7 @@ pub const Repl = struct {
             return true;
         }
         // Check if it's a user-defined function (try both names)
-        const in_qual = self.compiler.globals.lookup(qual_name) != null;
+        const in_qual = self.compiler.globals.lookup(qname) != null;
         const in_local = self.compiler.globals.lookup(local_name) != null;
         std.debug.print("  -> globals: qual={}, local={}\n", .{ in_qual, in_local });
         if (in_qual or in_local) return true;
