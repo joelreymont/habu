@@ -81,10 +81,10 @@ pub fn runFullPipeline(
     const desugared = try desugarer.desugar(expanded);
 
     // p03-p05: Frontend (lift→resolve→capture)
-    const ir = try runFrontendPipeline(allocator, heap, globals, desugared);
+    const ir_node = try runFrontendPipeline(allocator, heap, globals, desugared);
 
     // p06-p08: Type pipeline (annotate→infer→erase)
-    const typed_ir = try runNanoPipeline(allocator, &vm_ptr.builtins, ir);
+    const typed_ir = try runNanoPipeline(allocator, &vm_ptr.builtins, ir_node);
 
     // p09: Emit bytecode
     const emit_result = try emit.emit(allocator, heap, typed_ir);
@@ -102,7 +102,7 @@ pub fn runFrontendPipeline(
     heap: *Heap,
     globals: *resolve.GlobalRegistry,
     expr: Value,
-) FrontendError!*const Ir {
+) FrontendError!*const ir.Ir {
     // Pass 1: Lift (Value → Ir with unresolved vars)
     var lifter = try lift.Lifter.init(allocator, heap);
     const lifted_ir = try lifter.lift(expr);
@@ -131,30 +131,21 @@ pub const FrontendError = error{
 ///
 /// Uses page_allocator for intermediate TypedIr nodes since they're
 /// temporary and don't need to be tracked for leak detection.
-pub fn runNanoPipeline(allocator: std.mem.Allocator, builtins: *const @import("../../runtime/builtins.zig").BuiltinSymbols, ir: *const Ir) PassError!*const Ir {
+pub fn runNanoPipeline(allocator: std.mem.Allocator, builtins: *const builtins_mod.BuiltinSymbols, ir_node: *const ir.Ir) PassError!*const ir.Ir {
     // Use page_allocator for intermediate TypedIr (not tracked for leaks)
     const typed_alloc = std.heap.page_allocator;
 
     // Pass 1: Annotate (Ir → TypedIr)
-    const annotate_result = annotate.annotate(typed_alloc, ir) catch |err| {
-        std.debug.print("Annotate pass failed: {}\n", .{err});
-        return err;
-    };
+    const annotate_result = try annotate.annotate(typed_alloc, ir_node);
     const typed_ir = annotate_result.output;
 
     // Pass 2: Infer (TypedIr → TypedIr)
-    const infer_result = infer.infer(typed_alloc, builtins, typed_ir) catch |err| {
-        std.debug.print("Infer pass failed: {}\n", .{err});
-        return err;
-    };
+    const infer_result = try infer.infer(typed_alloc, builtins, typed_ir);
     const inferred_ir = infer_result.output;
 
     // Pass 3: Erase (TypedIr → Ir)
     // Use original allocator for final Ir output
-    const erase_result = erase.erase(allocator, inferred_ir) catch |err| {
-        std.debug.print("Erase pass failed: {}\n", .{err});
-        return err;
-    };
+    const erase_result = try erase.erase(allocator, inferred_ir);
 
     return erase_result.output;
 }
@@ -166,8 +157,9 @@ pub fn createPipeline(allocator: std.mem.Allocator) IrPipeline {
 }
 
 const std = @import("std");
-const Ir = @import("../ir.zig").Ir;
+const ir = @import("../ir.zig");
 const Heap = @import("../../runtime/heap.zig").Heap;
+const builtins_mod = @import("../../runtime/builtins.zig");
 const Value = @import("../../runtime/value.zig").Value;
 const Vm = @import("../../interp/vm.zig").Vm;
 const Chunk = @import("../../bytecode/bytecode.zig").Chunk;
@@ -199,8 +191,8 @@ test "runFrontendPipeline - literal" {
     defer globals.deinit();
 
     const expr = Value.makeFixnum(42);
-    const ir = try runFrontendPipeline(allocator, &heap, &globals, expr);
-    try testing.expectEqual(Ir.lit, std.meta.activeTag(ir.*));
+    const ir_node = try runFrontendPipeline(allocator, &heap, &globals, expr);
+    try testing.expectEqual(ir.Ir.lit, std.meta.activeTag(ir_node.*));
 }
 
 test "runFrontendPipeline - invalid syntax" {
@@ -219,6 +211,25 @@ test "runFrontendPipeline - invalid syntax" {
     const lambda_sym = try heap.intern("lambda");
     const bad = try heap.allocCons(lambda_sym, Value.makeFixnum(1));
     try testing.expectError(error.InvalidLambda, runFrontendPipeline(allocator, &heap, &globals, bad));
+}
+
+test "runNanoPipeline - type error propagates" {
+    const testing = std.testing;
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var heap = try Heap.init(arena_alloc, .{});
+    defer heap.deinit();
+
+    const builtins = try builtins_mod.BuiltinSymbols.init(&heap);
+
+    var builder = ir.IrBuilder.init(arena_alloc);
+    const lit = try builder.lit(Value.makeFixnum(1));
+    const car_ir = try builder.car(lit);
+
+    try testing.expectError(error.TypeError, runNanoPipeline(arena_alloc, &builtins, car_ir));
 }
 
 test "runFullPipeline - simple literal" {
