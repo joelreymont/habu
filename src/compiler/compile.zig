@@ -2042,7 +2042,8 @@ pub const Compiler = struct {
 
     /// Compile a single expression
     pub fn compile(self: *Compiler, expr: Value, env: *const Env) anyerror!*Ir {
-        const result = self.compileWithTail(expr, env, false) catch |err| {
+        const result = self.compileWithTail(expr, env, false);
+        return if (result) |node| node else |err| {
             std.debug.print("COMPILE FAILED with {}\n", .{err});
             if (expr.isCons()) {
                 const cons = expr.toPtr(Cons);
@@ -2053,7 +2054,6 @@ pub const Compiler = struct {
             }
             return err;
         };
-        return result;
     }
 
     /// Compile with tail position tracking
@@ -12683,6 +12683,30 @@ test "compile lambda invalid param" {
     const expr = try heap.allocCons(lambda_sym, lambda_args);
 
     try testing.expectError(error.InvalidLambda, compiler.compile(expr, &env));
+}
+
+test "compile invalid if" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const if_sym = try heap.intern("if");
+    const expr = try heap.allocCons(if_sym, Value.nil);
+
+    try testing.expectError(error.InvalidIf, compiler.compile(expr, &env));
 }
 
 test "compile setf long name" {
