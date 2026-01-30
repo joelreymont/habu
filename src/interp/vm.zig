@@ -451,9 +451,12 @@ pub const Vm = struct {
 
     /// Allocate an uninitialized string, running GC if needed
     pub fn allocStringUninitialized(self: *Vm, length: usize) error{ OutOfMemory, Overflow }!Value {
-        return self.heap.allocStringUninitialized(length) catch {
-            _ = try self.collectGarbage();
-            return try self.heap.allocStringUninitialized(length);
+        return self.heap.allocStringUninitialized(length) catch |err| switch (err) {
+            error.OutOfMemory => {
+                _ = try self.collectGarbage();
+                return try self.heap.allocStringUninitialized(length);
+            },
+            error.Overflow => return error.Overflow,
         };
     }
 
@@ -467,9 +470,12 @@ pub const Vm = struct {
 
     /// Allocate a closure, running GC if needed
     pub fn allocClosureWithGC(self: *Vm, code: Value, arity: u32, captures: []const Value) error{ OutOfMemory, Overflow }!Value {
-        return self.heap.allocClosure(code, arity, captures) catch {
-            _ = try self.collectGarbage();
-            return try self.heap.allocClosure(code, arity, captures);
+        return self.heap.allocClosure(code, arity, captures) catch |err| switch (err) {
+            error.OutOfMemory => {
+                _ = try self.collectGarbage();
+                return try self.heap.allocClosure(code, arity, captures);
+            },
+            error.Overflow => return error.Overflow,
         };
     }
 
@@ -2029,10 +2035,7 @@ pub const Vm = struct {
                 // Convert value to string representation
                 var buf: [256]u8 = undefined;
                 var fbs = std.io.fixedBufferStream(&buf);
-                io.writeValueToBuffer(val, fbs.writer().any()) catch {
-                    try self.push(Value.nil);
-                    return;
-                };
+                try io.writeValueToBuffer(val, fbs.writer().any());
                 const written = fbs.getWritten();
                 const result = try self.allocString(written);
                 try self.push(result);
@@ -7897,4 +7900,21 @@ test "vm typep propagates invalid type spec" {
     try vm.push(Value.makeFixnum(1));
     try vm.push(Value.makeFixnum(2));
     try testing.expectError(error.InvalidTypeSpecifier, vm.executeOp(.typep));
+}
+
+test "vm write_to_string propagates buffer errors" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    var bytes: [300]u8 = undefined;
+    @memset(&bytes, 'a');
+    const str = try heap.allocBaseString(&bytes);
+    try vm.push(str);
+
+    try testing.expectError(error.NoSpaceLeft, vm.executeOp(.write_to_string));
 }
