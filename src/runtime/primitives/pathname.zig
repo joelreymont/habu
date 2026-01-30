@@ -82,8 +82,8 @@ pub fn namestring(allocator: std.mem.Allocator, heap: *Heap, builtins: *const Bu
     const p = val.toPtr(Pathname);
 
     var buf = std.ArrayList(u8){};
-    defer buf.deinit(heap.allocator);
-    const writer = buf.writer(heap.allocator);
+    defer buf.deinit(heap.backing_allocator);
+    const writer = buf.writer(heap.backing_allocator);
 
     // host://device/directory/name.type;version format
     if (!p.host.isNil()) {
@@ -101,8 +101,9 @@ pub fn namestring(allocator: std.mem.Allocator, heap: *Heap, builtins: *const Bu
     // directory - list like (:absolute "foo" "bar") or (:relative "baz")
     if (!p.directory.isNil() and p.directory.isCons()) {
         var dir = p.directory;
-        const first = dir.car();
-        dir = dir.cdr();
+        const first_cons = dir.toPtr(objects.Cons);
+        const first = first_cons.car;
+        dir = first_cons.cdr;
 
         // :absolute starts with /, :relative has no prefix
         if (first.raw == builtins.kw_absolute.raw) {
@@ -110,11 +111,13 @@ pub fn namestring(allocator: std.mem.Allocator, heap: *Heap, builtins: *const Bu
         }
 
         while (!dir.isNil()) {
-            const component = dir.car();
+            if (!dir.isCons()) break;
+            const cons = dir.toPtr(objects.Cons);
+            const component = cons.car;
             if (component.isString()) {
                 const comp_str = component.toPtr(objects.String);
                 try writer.writeAll(comp_str.bytes());
-                dir = dir.cdr();
+                dir = cons.cdr;
                 if (!dir.isNil()) try writer.writeByte('/');
             } else break;
         }
@@ -136,11 +139,13 @@ pub fn namestring(allocator: std.mem.Allocator, heap: *Heap, builtins: *const Bu
 
     if (!p.version.isNil()) {
         try writer.writeByte(';');
-        if (p.version.isKeyword()) {
-            const kw = p.version.toPtr(objects.Keyword);
-            try writer.writeAll(kw.getName());
-        } else if (p.version.isFixnum()) {
-            try writer.print("{d}", .{p.version.toFixnum()});
+        switch (p.version.typeKind()) {
+            .keyword => {
+                const kw = p.version.toPtr(objects.Keyword);
+                try writer.writeAll(kw.getName());
+            },
+            .fixnum => try writer.print("{d}", .{p.version.toFixnum()}),
+            else => {},
         }
     }
 
@@ -401,14 +406,19 @@ pub fn userHomedirPathname(allocator: std.mem.Allocator, heap: *Heap) !Value {
 /// Returns the resolved absolute path, or nil if file doesn't exist
 pub fn truename(allocator: std.mem.Allocator, heap: *Heap, builtins: *const BuiltinSymbols, val: Value) !Value {
     // Get the namestring from the pathname or string
-    const needs_free = val.isPathname();
-    const path_str = if (val.isPathname()) blk: {
-        const pn = val.toPtr(Pathname);
-        break :blk try pathnameToString(allocator, builtins, pn);
-    } else if (val.isString()) blk: {
-        const s = val.toPtr(objects.String);
-        break :blk s.bytes();
-    } else return error.TypeMismatch;
+    var needs_free = false;
+    const path_str = switch (val.typeKind()) {
+        .pathname => blk: {
+            const pn = val.toPtr(Pathname);
+            needs_free = true;
+            break :blk try pathnameToString(allocator, builtins, pn);
+        },
+        .string => blk: {
+            const s = val.toPtr(objects.String);
+            break :blk s.bytes();
+        },
+        else => return error.TypeMismatch,
+    };
     defer if (needs_free) allocator.free(path_str);
 
     // Use realpath to get the canonical path
@@ -433,12 +443,11 @@ pub fn ensureDirectoriesExist(
 ) !struct { pathname: Value, created: bool } {
     _ = heap;
     // Get the pathname
-    const pn = if (val.isPathname())
-        val.toPtr(Pathname)
-    else if (val.isString())
-        return error.TypeMismatch // Need to parse first
-    else
-        return error.TypeMismatch;
+    const pn = switch (val.typeKind()) {
+        .pathname => val.toPtr(Pathname),
+        .string => return error.TypeMismatch, // Need to parse first
+        else => return error.TypeMismatch,
+    };
 
     // Get the directory string
     const path_str = try pathnameToString(allocator, builtins, pn);
@@ -481,13 +490,19 @@ fn pathnameToString(allocator: std.mem.Allocator, builtins: *const BuiltinSymbol
             const cons = dir.toPtr(objects.Cons);
             const part = cons.car;
 
-            if (part.raw == builtins.kw_absolute.raw) {
-                try writer.writeByte('/');
-            } else if (part.isString()) {
-                if (!first_component) try writer.writeByte('/');
-                const s = part.toPtr(objects.String);
-                try writer.writeAll(s.bytes());
-                first_component = false;
+            switch (part.typeKind()) {
+                .keyword => {
+                    if (part.raw == builtins.kw_absolute.raw) {
+                        try writer.writeByte('/');
+                    }
+                },
+                .string => {
+                    if (!first_component) try writer.writeByte('/');
+                    const s = part.toPtr(objects.String);
+                    try writer.writeAll(s.bytes());
+                    first_component = false;
+                },
+                else => {},
             }
 
             dir = cons.cdr;
@@ -615,4 +630,26 @@ test "parseNamestring version parsing" {
 
     const s_empty = try heap.allocBaseString("foo.lisp;");
     try testing.expectError(error.InvalidArgument, parseNamestring(testing.allocator, &heap, s_empty));
+}
+
+test "namestring version formatting" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+    const builtins = try BuiltinSymbols.init(&heap);
+
+    const name = try heap.allocBaseString("foo");
+    const ty = try heap.allocBaseString("lisp");
+
+    const pn_num = try heap.allocPathname(Value.nil, Value.nil, Value.nil, name, ty, Value.makeFixnum(42));
+    const ns_num = try namestring(testing.allocator, &heap, &builtins, pn_num);
+    try testing.expect(ns_num.isString());
+    try testing.expect(std.mem.eql(u8, ns_num.toPtr(objects.String).bytes(), "foo.lisp;42"));
+
+    const newest = try heap.internKeyword("NEWEST");
+    const pn_kw = try heap.allocPathname(Value.nil, Value.nil, Value.nil, name, ty, newest);
+    const ns_kw = try namestring(testing.allocator, &heap, &builtins, pn_kw);
+    try testing.expect(ns_kw.isString());
+    try testing.expect(std.mem.eql(u8, ns_kw.toPtr(objects.String).bytes(), "foo.lisp;NEWEST"));
 }
