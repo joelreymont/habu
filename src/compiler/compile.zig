@@ -23,6 +23,7 @@ const Symbol = runtime.Symbol;
 const Heap = runtime.Heap;
 const Closure = runtime.Closure;
 const primitives = runtime.primitives;
+const qual_name = @import("../runtime/qual_name.zig");
 const types = @import("../types/types.zig");
 const Type = types.Type;
 const TypeEnv = types.TypeEnv;
@@ -2134,14 +2135,16 @@ pub const Compiler = struct {
             }
             // Check globals - use qualified name if symbol has package
             var qual_buf: [256]u8 = undefined;
-            const qual_name = self.getQualifiedName(sym, &qual_buf) catch sym.getName();
+            const q = try self.getQualifiedName(sym, &qual_buf);
+            defer if (q.owned) self.allocator.free(q.name);
+            const qname = q.name;
             // Allow forward references: allocate slot if not found
             // Runtime will check if still undefined when accessed
-            const maybe_idx = self.globals.lookup(qual_name);
+            const maybe_idx = self.globals.lookup(qname);
             const idx = maybe_idx orelse blk: {
-                break :blk try self.globals.define(qual_name);
+                break :blk try self.globals.define(qname);
             };
-            const ref = try self.builder.globalRef(qual_name, idx);
+            const ref = try self.builder.globalRef(qname, idx);
             return ref;
         }
 
@@ -3598,7 +3601,9 @@ pub const Compiler = struct {
 
             // Use qualified name for globals (package-aware)
             var qual_buf: [256]u8 = undefined;
-            const name = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
+            const q = try self.getQualifiedName(name_sym, &qual_buf);
+            defer if (q.owned) self.allocator.free(q.name);
+            const name = try self.allocator.dupe(u8, q.name);
 
             if (!b.cdr.isCons()) return error.InvalidLet;
             const val_cons = b.cdr.toPtr(Cons);
@@ -3621,6 +3626,9 @@ pub const Compiler = struct {
             const val_ir = try self.compile(val_expr, env);
             const define_ir = try self.builder.define(name, idx, val_ir);
             try exprs.append(self.allocator, define_ir);
+        }
+        for (names.items) |name| {
+            self.allocator.free(name);
         }
 
         // Compile body (in tail position if letrec is)
@@ -3714,7 +3722,9 @@ pub const Compiler = struct {
 
             // Use qualified name for globals (package-aware)
             var qual_buf: [256]u8 = undefined;
-            const name = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
+            const q = try self.getQualifiedName(name_sym, &qual_buf);
+            defer if (q.owned) self.allocator.free(q.name);
+            const name = try self.allocator.dupe(u8, q.name);
 
             // Pre-register global for recursive visibility
             const idx = try self.globals.define(name);
@@ -3736,6 +3746,9 @@ pub const Compiler = struct {
             const lambda_ir = try self.compileLambda(largs, env);
             const define_ir = try self.builder.define(name, idx, lambda_ir);
             try exprs.append(self.allocator, define_ir);
+        }
+        for (names.items) |name| {
+            self.allocator.free(name);
         }
 
         // Compile body
@@ -4042,7 +4055,9 @@ pub const Compiler = struct {
 
         // Check globals - use qualified name for package-aware lookup
         var qual_buf: [256]u8 = undefined;
-        const global_name = self.getQualifiedName(var_sym, &qual_buf) catch local_name;
+        const q = try self.getQualifiedName(var_sym, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        const global_name = q.name;
 
         if (self.globals.lookup(global_name)) |idx| {
             // Re-define the global with the new value
@@ -4099,7 +4114,9 @@ pub const Compiler = struct {
 
                     // Check globals
                     var qual_buf: [256]u8 = undefined;
-                    const global_name = self.getQualifiedName(exp_sym, &qual_buf) catch exp_name;
+                    const q = try self.getQualifiedName(exp_sym, &qual_buf);
+                    defer if (q.owned) self.allocator.free(q.name);
+                    const global_name = q.name;
                     if (self.globals.lookup(global_name)) |idx| {
                         return self.builder.define(global_name, idx, val_ir) catch
                             return error.OutOfMemory;
@@ -4301,8 +4318,9 @@ pub const Compiler = struct {
                 if (setf_idx == null) {
                     // Try with package qualification
                     var qual_buf: [512]u8 = undefined;
-                    const qual_setf_name = self.qualifyName(setf_name, &qual_buf) catch setf_name;
-                    setf_idx = self.globals.lookup(qual_setf_name);
+                    const q = try self.qualifyName(setf_name, &qual_buf);
+                    defer if (q.owned) self.allocator.free(q.name);
+                    setf_idx = self.globals.lookup(q.name);
                 }
 
                 // Check if setf function exists in globals
@@ -5353,7 +5371,9 @@ pub const Compiler = struct {
 
         // Use qualified name for globals (package-aware)
         var qual_buf: [256]u8 = undefined;
-        const name = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
+        const q = try self.getQualifiedName(name_sym, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        const name = q.name;
 
         // Pre-register global for recursive definitions
         const idx = try self.globals.define(name);
@@ -5407,7 +5427,9 @@ pub const Compiler = struct {
         // Pre-register the global so recursive calls work
         // Use qualified name for consistency
         var qual_buf: [256]u8 = undefined;
-        const name = self.getQualifiedName(name_sym_saved, &qual_buf) catch name_sym_saved.getName();
+        const q = try self.getQualifiedName(name_sym_saved, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        const name = q.name;
         const idx = try self.globals.define(name);
 
         // Rest is (params...) body...
@@ -6273,31 +6295,15 @@ pub const Compiler = struct {
     }
 
     /// Get qualified name for a symbol (PKG:NAME or just NAME if no package)
-    fn getQualifiedName(self: *Compiler, sym: *const Symbol, buf: []u8) ![]const u8 {
-        _ = self;
-        const pkg_ptr = sym.reserved;
-        if (pkg_ptr == 0) {
-            // No package - just return name
-            return sym.getName();
-        }
-        // Get package from pointer - Package is in heap module
-        const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
-        const pkg_name = pkg.name;
-        const sym_name = sym.getName();
-
-        // Format as PKG:NAME
-        const result = try std.fmt.bufPrint(buf, "{s}:{s}", .{ pkg_name, sym_name });
-        return result;
+    fn getQualifiedName(self: *Compiler, sym: *const Symbol, buf: []u8) !qual_name.QualName {
+        return qual_name.qualSym(self.allocator, sym, buf);
     }
 
     /// Build qualified name from plain name using current package
-    fn qualifyName(self: *Compiler, name: []const u8, buf: []u8) ![]const u8 {
-        const heap = if (self.heap) |val| val else return name;
-        const pkg = if (heap.current_package) |val| val else return name;
-        const pkg_name = pkg.name;
-        // Format as PKG:NAME
-        const result = try std.fmt.bufPrint(buf, "{s}:{s}", .{ pkg_name, name });
-        return result;
+    fn qualifyName(self: *Compiler, name: []const u8, buf: []u8) !qual_name.QualName {
+        const heap = if (self.heap) |val| val else return .{ .name = name, .owned = false };
+        const pkg = if (heap.current_package) |val| val else return .{ .name = name, .owned = false };
+        return qual_name.qualName(self.allocator, pkg.name, name, buf);
     }
 
     /// Get qualified name for %next-method% (must match how symbol is interned)
@@ -6305,8 +6311,9 @@ pub const Compiler = struct {
         const nm_base = "%next-method%";
         var buf: [256]u8 = undefined;
         const qual = try self.qualifyName(nm_base, &buf);
+        if (qual.owned) return qual.name;
         // Dupe to allocator since buf is stack-local
-        return try self.allocator.dupe(u8, qual);
+        return try self.allocator.dupe(u8, qual.name);
     }
 
     // ========================================================================
@@ -6605,8 +6612,10 @@ pub const Compiler = struct {
         _ = env;
         // Qualify the constructor name with current package
         var qual_buf: [512]u8 = undefined;
-        const qualified_name = self.qualifyName(make_name, &qual_buf) catch make_name;
-        const global_idx = self.globals.define(qualified_name) catch |e| return e;
+        const q = try self.qualifyName(make_name, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        const qualified_name = q.name;
+        const global_idx = try self.globals.define(qualified_name);
 
         // Extract just the names for lambda params
         const slot_names = try self.allocator.alloc([]const u8, slots.len);
@@ -7099,8 +7108,10 @@ pub const Compiler = struct {
     fn generateStructAccessor(self: *Compiler, heap: *Heap, accessor_name: []const u8, struct_name: []const u8, slot_idx: usize) anyerror!*Ir {
         // Qualify the accessor name with current package
         var qual_buf: [512]u8 = undefined;
-        const qualified_name = self.qualifyName(accessor_name, &qual_buf) catch accessor_name;
-        const global_idx = self.globals.define(qualified_name) catch |e| return e;
+        const q = try self.qualifyName(accessor_name, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        const qualified_name = q.name;
+        const global_idx = try self.globals.define(qualified_name);
 
         // Variable reference for obj parameter
         const obj_ref = try self.builder.variable("obj", 0, 0);
@@ -7147,8 +7158,10 @@ pub const Compiler = struct {
     /// Generate writer: (lambda (val obj) (if type-check (setf (vec-ref obj idx) val) (error)))
     fn generateStructWriter(self: *Compiler, heap: *Heap, writer_name: []const u8, struct_name: []const u8, slot_idx: usize) anyerror!*Ir {
         var qual_buf: [512]u8 = undefined;
-        const qualified_name = self.qualifyName(writer_name, &qual_buf) catch writer_name;
-        const global_idx = self.globals.define(qualified_name) catch |e| return e;
+        const q = try self.qualifyName(writer_name, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        const qualified_name = q.name;
+        const global_idx = try self.globals.define(qualified_name);
 
         const obj_ref = try self.builder.variable("obj", 0, 1);
         const vectorp_ir = try self.builder.vectorp(obj_ref);
@@ -7189,8 +7202,10 @@ pub const Compiler = struct {
     fn generateStructPredicate(self: *Compiler, heap: *Heap, pred_name: []const u8, struct_name: []const u8) anyerror!*Ir {
         // Qualify the predicate name with current package
         var qual_buf: [512]u8 = undefined;
-        const qualified_name = self.qualifyName(pred_name, &qual_buf) catch pred_name;
-        const global_idx = self.globals.define(qualified_name) catch |e| return e;
+        const q = try self.qualifyName(pred_name, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        const qualified_name = q.name;
+        const global_idx = try self.globals.define(qualified_name);
 
         // Body: (if (vectorp obj) (eq (vec-ref obj 0) 'name) nil)
         const obj_ref = try self.builder.variable("obj", 0, 0);
@@ -7221,8 +7236,10 @@ pub const Compiler = struct {
     fn generateStructCopier(self: *Compiler, copy_name: []const u8) anyerror!*Ir {
         // Qualify the copier name with current package
         var qual_buf: [512]u8 = undefined;
-        const qualified_name = self.qualifyName(copy_name, &qual_buf) catch copy_name;
-        const global_idx = self.globals.define(qualified_name) catch |e| return e;
+        const q = try self.qualifyName(copy_name, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        const qualified_name = q.name;
+        const global_idx = try self.globals.define(qualified_name);
 
         // Identity - proper copy needs opcode slot or multi-byte opcodes
         const obj_ref = try self.builder.variable("obj", 0, 0);
@@ -7587,8 +7604,9 @@ pub const Compiler = struct {
             };
         }
         var qual_buf: [256]u8 = undefined;
-        const qualified_class_name = try self.qualifyName(class_name, &qual_buf);
-        const persistent_class_name = try self.globals.allocator.dupe(u8, qualified_class_name);
+        const q = try self.qualifyName(class_name, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        const persistent_class_name = try self.globals.allocator.dupe(u8, q.name);
         try self.class_metadata.put(persistent_class_name, persistent_specs);
 
         // Also store in heap for runtime slot-value lookup
@@ -7628,9 +7646,10 @@ pub const Compiler = struct {
 
         // Register predicate for occurrence typing (use qualified name to match globals table)
         var pred_qual_buf: [512]u8 = undefined;
-        const qualified_pred_name = self.qualifyName(pred_name, &pred_qual_buf) catch pred_name;
-        const persistent_pred_name = self.globals.allocator.dupe(u8, qualified_pred_name) catch |e| return e;
-        self.struct_predicates.put(persistent_pred_name, class_type) catch |e| return e;
+        const q_pred = try self.qualifyName(pred_name, &pred_qual_buf);
+        defer if (q_pred.owned) self.allocator.free(q_pred.name);
+        const persistent_pred_name = try self.globals.allocator.dupe(u8, q_pred.name);
+        try self.struct_predicates.put(persistent_pred_name, class_type);
 
         // 3. Default accessors: (defun class-name-slot (obj) (if (class-name-p obj) (aref obj N+1) (error)))
         for (slot_specs.items, 0..) |spec, i| {
@@ -7729,7 +7748,9 @@ pub const Compiler = struct {
 
         // Qualify the constructor name with current package
         var qual_buf: [512]u8 = undefined;
-        const ctor_name = try self.qualifyName(ctor_name_plain, &qual_buf);
+        const q = try self.qualifyName(ctor_name_plain, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        const ctor_name = q.name;
 
         const call_args = try self.allocator.alloc(*Ir, slot_specs.len);
         for (slot_values, 0..) |maybe_val, i| {
@@ -7888,7 +7909,9 @@ pub const Compiler = struct {
         if (!name_val.isSymbol()) return error.InvalidSyntax;
         const name_sym = name_val.toPtr(Symbol);
         var qual_buf: [256]u8 = undefined;
-        const gen_name_tmp = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
+        const q = try self.getQualifiedName(name_sym, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        const gen_name_tmp = q.name;
         const gen_name = try self.allocator.dupe(u8, gen_name_tmp);
 
         // Parse lambda-list
@@ -7921,7 +7944,9 @@ pub const Compiler = struct {
         if (!name_val.isSymbol()) return error.InvalidSyntax;
         const name_sym = name_val.toPtr(Symbol);
         var qual_buf: [256]u8 = undefined;
-        const gen_name_tmp = self.getQualifiedName(name_sym, &qual_buf) catch name_sym.getName();
+        const q = try self.getQualifiedName(name_sym, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        const gen_name_tmp = q.name;
 
         // Check for method qualifier (:before, :after, :around)
         if (!cons1.cdr.isCons()) return error.InvalidSyntax;
@@ -9132,7 +9157,7 @@ pub const Compiler = struct {
             if (pattern.isCons()) {
                 const variant_cons = pattern.toPtr(Cons);
                 if (variant_cons.car.isSymbol()) {
-                    covered.put(variant_cons.car, {}) catch {};
+                    try covered.put(variant_cons.car, {});
                 }
             }
 
@@ -13798,4 +13823,35 @@ test "compile defmethod specialized param" {
     const method_def = ir_def.progn[1];
     try testing.expect(method_def.* == .define);
     try testing.expectEqualStrings("FOO$p$BAR", method_def.define.name);
+}
+
+test "compiler qualifyName allocates for long names" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    const long_pkg = "THIS-IS-A-VERY-LONG-PACKAGE-NAME";
+    const pkg = try heap.findOrCreatePackage(long_pkg);
+    heap.setCurrentPackage(pkg);
+
+    var buf: [4]u8 = undefined;
+    const q = try compiler.qualifyName("FOO", &buf);
+    defer if (q.owned) compiler.allocator.free(q.name);
+
+    const expected = try std.fmt.allocPrint(allocator, "{s}:FOO", .{pkg.name});
+    defer allocator.free(expected);
+
+    try testing.expect(q.owned);
+    try testing.expectEqualStrings(expected, q.name);
 }
