@@ -1312,6 +1312,7 @@ pub const Emitter = struct {
             Emitter.initWithHeap(self.allocator, h)
         else
             Emitter.init(self.allocator);
+        defer lambda_emitter.deinit();
 
         const arity: u8 = @intCast(lam.params.len);
         const optional_count: u8 = @intCast(lam.optional_params.len);
@@ -1347,10 +1348,7 @@ pub const Emitter = struct {
 
             // Emit default value and store to slot
             if (opt_param.default) |default_ir| {
-                lambda_emitter.emit(default_ir) catch {
-                    lambda_emitter.deinit();
-                    return error.InvalidIr;
-                };
+                try lambda_emitter.emit(default_ir);
             } else {
                 try lambda_emitter.emitOp(.push_nil);
             }
@@ -1367,14 +1365,8 @@ pub const Emitter = struct {
 
             // Add keyword to constant pool for find_key opcode
             if (lambda_emitter.heap) |heap| {
-                const kw = heap.internKeyword(key_param.keyword) catch {
-                    lambda_emitter.deinit();
-                    return error.OutOfMemory;
-                };
-                const kw_idx = lambda_emitter.addConstant(kw.raw) catch {
-                    lambda_emitter.deinit();
-                    return error.TooManyConstants;
-                };
+                const kw = try heap.internKeyword(key_param.keyword);
+                const kw_idx = try lambda_emitter.addConstant(kw.raw);
 
                 // Emit find_key which pushes (found_flag, value)
                 try lambda_emitter.emitOp(.find_key);
@@ -1401,10 +1393,7 @@ pub const Emitter = struct {
 
                 // Emit default value and store to slot
                 if (key_param.default) |default_ir| {
-                    lambda_emitter.emit(default_ir) catch {
-                        lambda_emitter.deinit();
-                        return error.InvalidIr;
-                    };
+                    try lambda_emitter.emit(default_ir);
                 } else {
                     try lambda_emitter.emitOp(.push_nil);
                 }
@@ -1416,10 +1405,7 @@ pub const Emitter = struct {
             } else {
                 // No heap - just initialize to nil or default
                 if (key_param.default) |default_ir| {
-                    lambda_emitter.emit(default_ir) catch {
-                        lambda_emitter.deinit();
-                        return error.InvalidIr;
-                    };
+                    try lambda_emitter.emit(default_ir);
                 } else {
                     try lambda_emitter.emitOp(.push_nil);
                 }
@@ -1429,16 +1415,10 @@ pub const Emitter = struct {
         }
 
         // Emit body
-        lambda_emitter.emit(lam.body) catch {
-            lambda_emitter.deinit();
-            return error.InvalidIr;
-        };
+        try lambda_emitter.emit(lam.body);
 
         // Finalize lambda chunk (GC Value)
-        const chunk_val = lambda_emitter.finalize() catch {
-            lambda_emitter.deinit();
-            return error.OutOfMemory;
-        };
+        const chunk_val = try lambda_emitter.finalize();
         const chunk = chunk_val.toPtr(Chunk);
 
         // Patch lambda's make_closure indices to account for parent's existing child_chunks
@@ -1452,7 +1432,6 @@ pub const Emitter = struct {
 
         // Collect any child chunks from the lambda
         try self.child_chunks.appendSlice(self.allocator, lambda_emitter.child_chunks.items);
-        lambda_emitter.deinit();
 
         // Store chunk Value in child_chunks, get its index
         const chunk_idx: u16 = @intCast(self.child_chunks.items.len);
@@ -2619,4 +2598,56 @@ test "finalize adds return" {
     const ret_opcode: u16 = @intFromEnum(Op.ret);
     try testing.expectEqual(@as(u8, @truncate(ret_opcode & 0xFF)), code[code.len - 2]);
     try testing.expectEqual(@as(u8, @truncate(ret_opcode >> 8)), code[code.len - 1]);
+}
+
+test "emit lambda key params" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var emitter = Emitter.initWithHeap(allocator, &heap);
+    defer emitter.deinit();
+
+    const builder = ir.IrBuilder.init(allocator);
+    const body = try builder.lit(Value.nil);
+
+    const key_params = [_]ir.Ir.KeyParam{
+        .{ .keyword = "foo", .name = "foo", .default = null },
+    };
+    const lam = try builder.lambda(&[_][]const u8{}, &[_]ir.Ir.OptionalParam{}, &key_params, null, &[_]ir.Ir.Capture{}, body);
+
+    try emitter.emit(lam);
+
+    try testing.expectEqual(@as(usize, 1), emitter.child_chunks.items.len);
+    const chunk = emitter.child_chunks.items[0].toPtr(Chunk);
+    const code = chunk.getCode();
+
+    const op_val: u16 = @intFromEnum(Op.find_key);
+    const lo: u8 = @truncate(op_val & 0xFF);
+    const hi: u8 = @truncate(op_val >> 8);
+    var found = false;
+    var i: usize = 0;
+    while (i + 1 < code.len) : (i += 1) {
+        if (code[i] == lo and code[i + 1] == hi) {
+            found = true;
+            break;
+        }
+    }
+    try testing.expect(found);
+
+    const kw = try heap.internKeyword("foo");
+    const consts = chunk.getConstants();
+    var kw_found = false;
+    for (consts) |c| {
+        if (c.raw == kw.raw) {
+            kw_found = true;
+            break;
+        }
+    }
+    try testing.expect(kw_found);
 }
