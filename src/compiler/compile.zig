@@ -2733,6 +2733,15 @@ pub const Compiler = struct {
         return self.compileLambdaCore(args, env, null);
     }
 
+    fn symLikeName(val: Value) ?[]const u8 {
+        return switch (val.typeKind()) {
+            .symbol => val.toPtr(Symbol).getName(),
+            .t => "t",
+            .nil => "nil",
+            else => null,
+        };
+    }
+
     fn compileLambdaCore(self: *Compiler, args: Value, env: *const Env, return_type: ?Value) anyerror!*Ir {
         // (lambda (params...) body)
         // Params can be: symbol for untyped, (symbol type) for typed
@@ -2775,142 +2784,128 @@ pub const Compiler = struct {
             const param_cons = param_list.toPtr(Cons);
             const param_item = param_cons.car;
 
-            if (param_item.isSymbolLike()) {
-                const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
+            switch (param_item.typeKind()) {
+                .symbol, .t, .nil => {
+                    const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
 
-                // Check for &rest/&body keyword (use symbol identity)
-                if (param_item.raw == b.@"&rest".raw or param_item.raw == b.@"&body".raw) {
-                    // Next element is the rest parameter name
-                    if (!param_cons.cdr.isCons()) return error.InvalidLambda;
-                    const rest_cons = param_cons.cdr.toPtr(Cons);
-                    if (!rest_cons.car.isSymbolLike()) return error.InvalidLambda;
-                    rest_param = if (rest_cons.car.isSymbol())
-                        rest_cons.car.toPtr(Symbol).getName()
-                    else if (rest_cons.car.isT())
-                        "t"
-                    else
-                        "nil";
-                    break; // &rest must be last
-                }
-
-                // Check for &optional keyword (use symbol identity)
-                if (param_item.raw == b.@"&optional".raw) {
-                    in_optional = true;
-                    in_key = false;
-                    param_list = param_cons.cdr;
-                    continue;
-                }
-
-                // Check for &key keyword (use symbol identity)
-                if (param_item.raw == b.@"&key".raw) {
-                    in_key = true;
-                    in_optional = false;
-                    in_aux = false;
-                    param_list = param_cons.cdr;
-                    continue;
-                }
-
-                // Check for &aux keyword (use symbol identity)
-                if (param_item.raw == b.@"&aux".raw) {
-                    in_aux = true;
-                    in_key = false;
-                    in_optional = false;
-                    param_list = param_cons.cdr;
-                    continue;
-                }
-
-                const name = if (param_item.isSymbol())
-                    param_item.toPtr(Symbol).getName()
-                else if (param_item.isT())
-                    "t"
-                else
-                    "nil";
-
-                if (in_aux) {
-                    // Aux variable with nil default
-                    const nil_ir = try self.builder.lit(Value.nil);
-                    const idx: u16 = @intCast(aux_bindings.items.len);
-                    try aux_bindings.append(self.allocator, .{
-                        .name = name,
-                        .value = nil_ir,
-                        .index = idx,
-                    });
-                } else if (in_key) {
-                    // Key parameter with nil default, keyword = name
-                    try key_params.append(self.allocator, .{
-                        .keyword = name,
-                        .name = name,
-                        .default = null,
-                    });
-                } else if (in_optional) {
-                    // Optional parameter with nil default
-                    try optional_params.append(self.allocator, .{
-                        .name = name,
-                        .default = null,
-                    });
-                } else {
-                    // Untyped parameter: just a symbol
-                    try params.append(self.allocator, name);
-                    try typed_params.append(self.allocator, .{ .name = name, .type_sym = null });
-                }
-            } else if (param_item.isCons()) {
-                const typed = param_item.toPtr(Cons);
-                if (!typed.car.isSymbolLike()) return error.InvalidLambda;
-                const name = if (typed.car.isSymbol())
-                    typed.car.toPtr(Symbol).getName()
-                else if (typed.car.isT())
-                    "t"
-                else
-                    "nil";
-
-                if (in_aux) {
-                    // Aux variable: (name init-expr)
-                    // Compile init in parent env (not lambda env)
-                    var init_ir: *const Ir = try self.builder.lit(Value.nil);
-                    if (typed.cdr.isCons()) {
-                        const init_cons = typed.cdr.toPtr(Cons);
-                        init_ir = try self.compile(init_cons.car, env);
+                    // Check for &rest/&body keyword (use symbol identity)
+                    if (param_item.raw == b.@"&rest".raw or param_item.raw == b.@"&body".raw) {
+                        // Next element is the rest parameter name
+                        if (!param_cons.cdr.isCons()) return error.InvalidLambda;
+                        const rest_cons = param_cons.cdr.toPtr(Cons);
+                        const rest_name = symLikeName(rest_cons.car) orelse return error.InvalidLambda;
+                        rest_param = rest_name;
+                        break; // &rest must be last
                     }
-                    const idx: u16 = @intCast(aux_bindings.items.len);
-                    try aux_bindings.append(self.allocator, .{
-                        .name = name,
-                        .value = init_ir,
-                        .index = idx,
-                    });
-                } else if (in_key) {
-                    // Key parameter: (name default-expr) or just name
-                    // Compile default in parent env (not lambda env)
-                    var default_ir: ?*const Ir = null;
-                    if (typed.cdr.isCons()) {
-                        const default_cons = typed.cdr.toPtr(Cons);
-                        default_ir = try self.compile(default_cons.car, env);
+
+                    // Check for &optional keyword (use symbol identity)
+                    if (param_item.raw == b.@"&optional".raw) {
+                        in_optional = true;
+                        in_key = false;
+                        param_list = param_cons.cdr;
+                        continue;
                     }
-                    try key_params.append(self.allocator, .{
-                        .keyword = name,
-                        .name = name,
-                        .default = default_ir,
-                    });
-                } else if (in_optional) {
-                    // Optional parameter: (name default-expr)
-                    // Compile default in parent env (not lambda env)
-                    var default_ir: ?*const Ir = null;
-                    if (typed.cdr.isCons()) {
-                        const default_cons = typed.cdr.toPtr(Cons);
-                        default_ir = try self.compile(default_cons.car, env);
+
+                    // Check for &key keyword (use symbol identity)
+                    if (param_item.raw == b.@"&key".raw) {
+                        in_key = true;
+                        in_optional = false;
+                        in_aux = false;
+                        param_list = param_cons.cdr;
+                        continue;
                     }
-                    try optional_params.append(self.allocator, .{
-                        .name = name,
-                        .default = default_ir,
-                    });
-                } else {
-                    // Typed parameter: (name type-expr)
-                    if (!typed.cdr.isCons()) return error.InvalidLambda;
-                    const type_val = typed.cdr.toPtr(Cons).car;
-                    try params.append(self.allocator, name);
-                    try typed_params.append(self.allocator, .{ .name = name, .type_sym = type_val });
-                }
-            } else {
-                return error.InvalidLambda;
+
+                    // Check for &aux keyword (use symbol identity)
+                    if (param_item.raw == b.@"&aux".raw) {
+                        in_aux = true;
+                        in_key = false;
+                        in_optional = false;
+                        param_list = param_cons.cdr;
+                        continue;
+                    }
+
+                    const name = symLikeName(param_item) orelse return error.InvalidLambda;
+
+                    if (in_aux) {
+                        // Aux variable with nil default
+                        const nil_ir = try self.builder.lit(Value.nil);
+                        const idx: u16 = @intCast(aux_bindings.items.len);
+                        try aux_bindings.append(self.allocator, .{
+                            .name = name,
+                            .value = nil_ir,
+                            .index = idx,
+                        });
+                    } else if (in_key) {
+                        // Key parameter with nil default, keyword = name
+                        try key_params.append(self.allocator, .{
+                            .keyword = name,
+                            .name = name,
+                            .default = null,
+                        });
+                    } else if (in_optional) {
+                        // Optional parameter with nil default
+                        try optional_params.append(self.allocator, .{
+                            .name = name,
+                            .default = null,
+                        });
+                    } else {
+                        // Untyped parameter: just a symbol
+                        try params.append(self.allocator, name);
+                        try typed_params.append(self.allocator, .{ .name = name, .type_sym = null });
+                    }
+                },
+                .cons => {
+                    const typed = param_item.toPtr(Cons);
+                    const name = symLikeName(typed.car) orelse return error.InvalidLambda;
+
+                    if (in_aux) {
+                        // Aux variable: (name init-expr)
+                        // Compile init in parent env (not lambda env)
+                        var init_ir: *const Ir = try self.builder.lit(Value.nil);
+                        if (typed.cdr.isCons()) {
+                            const init_cons = typed.cdr.toPtr(Cons);
+                            init_ir = try self.compile(init_cons.car, env);
+                        }
+                        const idx: u16 = @intCast(aux_bindings.items.len);
+                        try aux_bindings.append(self.allocator, .{
+                            .name = name,
+                            .value = init_ir,
+                            .index = idx,
+                        });
+                    } else if (in_key) {
+                        // Key parameter: (name default-expr) or just name
+                        // Compile default in parent env (not lambda env)
+                        var default_ir: ?*const Ir = null;
+                        if (typed.cdr.isCons()) {
+                            const default_cons = typed.cdr.toPtr(Cons);
+                            default_ir = try self.compile(default_cons.car, env);
+                        }
+                        try key_params.append(self.allocator, .{
+                            .keyword = name,
+                            .name = name,
+                            .default = default_ir,
+                        });
+                    } else if (in_optional) {
+                        // Optional parameter: (name default-expr)
+                        // Compile default in parent env (not lambda env)
+                        var default_ir: ?*const Ir = null;
+                        if (typed.cdr.isCons()) {
+                            const default_cons = typed.cdr.toPtr(Cons);
+                            default_ir = try self.compile(default_cons.car, env);
+                        }
+                        try optional_params.append(self.allocator, .{
+                            .name = name,
+                            .default = default_ir,
+                        });
+                    } else {
+                        // Typed parameter: (name type-expr)
+                        if (!typed.cdr.isCons()) return error.InvalidLambda;
+                        const type_val = typed.cdr.toPtr(Cons).car;
+                        try params.append(self.allocator, name);
+                        try typed_params.append(self.allocator, .{ .name = name, .type_sym = type_val });
+                    }
+                },
+                else => return error.InvalidLambda,
             }
 
             param_list = param_cons.cdr;
@@ -2918,16 +2913,7 @@ pub const Compiler = struct {
 
         // Also check for rest parameter via dotted list: (a b . rest)
         if (rest_param == null and !param_list.isNil()) {
-            if (param_list.isSymbolLike()) {
-                rest_param = if (param_list.isSymbol())
-                    param_list.toPtr(Symbol).getName()
-                else if (param_list.isT())
-                    "t"
-                else
-                    "nil";
-            } else {
-                return error.InvalidLambda;
-            }
+            rest_param = symLikeName(param_list) orelse return error.InvalidLambda;
         }
 
         // Create new environment with parameters
@@ -3083,14 +3069,16 @@ pub const Compiler = struct {
                 while (current.isCons()) {
                     const c = current.toPtr(Cons);
                     // Each alternative is a type symbol or nil
-                    if (c.car.isSymbol()) {
-                        try alts.append(self.allocator, c.car);
-                    } else if (c.car.isNil()) {
-                        // nil in type position - use the interned nil symbol
-                        try alts.append(self.allocator, b.ty_nil);
-                    } else {
-                        // Nested complex type - not yet supported
-                        return error.InvalidSyntax;
+                    switch (c.car.typeKind()) {
+                        .symbol => try alts.append(self.allocator, c.car),
+                        .nil => {
+                            // nil in type position - use the interned nil symbol
+                            try alts.append(self.allocator, b.ty_nil);
+                        },
+                        else => {
+                            // Nested complex type - not yet supported
+                            return error.InvalidSyntax;
+                        },
                     }
                     current = c.cdr;
                 }
@@ -4766,12 +4754,11 @@ pub const Compiler = struct {
         if (!args.isCons()) return error.InvalidSyntax;
 
         const cons = args.toPtr(Cons);
-        const name = if (cons.car.isNil())
-            "nil" // nil block name (used by dolist/dotimes)
-        else if (cons.car.isSymbol())
-            cons.car.toPtr(Symbol).getName()
-        else
-            return error.InvalidSyntax;
+        const name = switch (cons.car.typeKind()) {
+            .nil => "nil", // nil block name (used by dolist/dotimes)
+            .symbol => cons.car.toPtr(Symbol).getName(),
+            else => return error.InvalidSyntax,
+        };
 
         // Compile body
         const body_ir = try self.compileBodyWithTail(cons.cdr, env, in_tail);
@@ -4784,12 +4771,11 @@ pub const Compiler = struct {
         if (!args.isCons()) return error.InvalidSyntax;
 
         const cons = args.toPtr(Cons);
-        const name = if (cons.car.isNil())
-            "nil"
-        else if (cons.car.isSymbol())
-            cons.car.toPtr(Symbol).getName()
-        else
-            return error.InvalidSyntax;
+        const name = switch (cons.car.typeKind()) {
+            .nil => "nil",
+            .symbol => cons.car.toPtr(Symbol).getName(),
+            else => return error.InvalidSyntax,
+        };
 
         // Get value (defaults to nil if not provided)
         const value = if (cons.cdr.isCons())
@@ -5391,29 +5377,31 @@ pub const Compiler = struct {
         var name_sym_saved: *const Symbol = undefined;
         var return_type: ?Value = null;
 
-        if (name_spec.isSymbol()) {
-            // Simple: (defun name ...)
-            name_sym_saved = name_spec.toPtr(Symbol);
-        } else if (name_spec.isCons()) {
-            // Typed: (defun (name -> type) ...)
-            const spec_cons = name_spec.toPtr(Cons);
-            if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
-            name_sym_saved = spec_cons.car.toPtr(Symbol);
+        switch (name_spec.typeKind()) {
+            .symbol => {
+                // Simple: (defun name ...)
+                name_sym_saved = name_spec.toPtr(Symbol);
+            },
+            .cons => {
+                // Typed: (defun (name -> type) ...)
+                const spec_cons = name_spec.toPtr(Cons);
+                if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
+                name_sym_saved = spec_cons.car.toPtr(Symbol);
 
-            // Check for -> arrow (use symbol identity)
-            if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
-            const arrow_cons = spec_cons.cdr.toPtr(Cons);
-            const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
-            if (arrow_cons.car.raw != b.@"->".raw) return error.InvalidSyntax;
+                // Check for -> arrow (use symbol identity)
+                if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
+                const arrow_cons = spec_cons.cdr.toPtr(Cons);
+                const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
+                if (arrow_cons.car.raw != b.@"->".raw) return error.InvalidSyntax;
 
-            // Get return type (symbol or complex type like (or T1 T2))
-            if (!arrow_cons.cdr.isCons()) return error.InvalidSyntax;
-            const type_cons = arrow_cons.cdr.toPtr(Cons);
-            // Accept symbol or cons (complex type expression)
-            if (!type_cons.car.isSymbol() and !type_cons.car.isCons()) return error.InvalidSyntax;
-            return_type = type_cons.car;
-        } else {
-            return error.InvalidSyntax;
+                // Get return type (symbol or complex type like (or T1 T2))
+                if (!arrow_cons.cdr.isCons()) return error.InvalidSyntax;
+                const type_cons = arrow_cons.cdr.toPtr(Cons);
+                // Accept symbol or cons (complex type expression)
+                if (!type_cons.car.isSymbol() and !type_cons.car.isCons()) return error.InvalidSyntax;
+                return_type = type_cons.car;
+            },
+            else => return error.InvalidSyntax,
         }
 
         // Pre-register the global so recursive calls work
@@ -5485,22 +5473,32 @@ pub const Compiler = struct {
             } else if (param.eq(b.@"&whole") or param.eq(b.@"&environment")) {
                 // &whole and &environment are handled in expandMacro - keep as-is
                 try new_params.append(self.allocator, param);
-            } else if (param.isCons() and !in_optional and !in_rest and !in_key) {
-                // Check if this is destructured (car is cons) or typed (car is symbol)
-                const param_cons = param.toPtr(Cons);
-                if (param_cons.car.isCons()) {
-                    // Destructured param: ((a b)) - car is cons
-                    const g = try prims.gensym(heap, null);
-                    try new_params.append(self.allocator, g);
-                    try bindings.append(self.allocator, param);
-                    try bindings.append(self.allocator, g);
-                } else {
-                    // Typed param: (x fixnum) - car is symbol, keep as-is
-                    try new_params.append(self.allocator, param);
-                }
             } else {
-                // Normal param or &optional/&key param with default: keep as-is
-                try new_params.append(self.allocator, param);
+                switch (param.typeKind()) {
+                    .cons => {
+                        if (!in_optional and !in_rest and !in_key) {
+                            // Check if this is destructured (car is cons) or typed (car is symbol)
+                            const param_cons = param.toPtr(Cons);
+                            if (param_cons.car.isCons()) {
+                                // Destructured param: ((a b)) - car is cons
+                                const g = try prims.gensym(heap, null);
+                                try new_params.append(self.allocator, g);
+                                try bindings.append(self.allocator, param);
+                                try bindings.append(self.allocator, g);
+                            } else {
+                                // Typed param: (x fixnum) - car is symbol, keep as-is
+                                try new_params.append(self.allocator, param);
+                            }
+                        } else {
+                            // Normal param or &optional/&key param with default: keep as-is
+                            try new_params.append(self.allocator, param);
+                        }
+                    },
+                    else => {
+                        // Normal param or &optional/&key param with default: keep as-is
+                        try new_params.append(self.allocator, param);
+                    },
+                }
             }
 
             p = p_cons.cdr;
@@ -5763,28 +5761,31 @@ pub const Compiler = struct {
     }
 
     fn genDestructBindingsRec(self: *Compiler, pattern: Value, expr_ir: *const Ir, bindings: *std.ArrayList(Binding)) !void {
-        if (pattern.isSymbol()) {
-            // Simple var binding
-            const sym = pattern.toPtr(Symbol);
-            try bindings.append(self.allocator, .{
-                .name = sym.getName(),
-                .init = expr_ir,
-            });
-        } else if (pattern.isCons()) {
-            // Recursive destructuring (car pattern) (cdr pattern)
-            const p = pattern.toPtr(Cons);
-            const car_pat = p.car;
-            const cdr_pat = p.cdr;
+        switch (pattern.typeKind()) {
+            .symbol => {
+                // Simple var binding
+                const sym = pattern.toPtr(Symbol);
+                try bindings.append(self.allocator, .{
+                    .name = sym.getName(),
+                    .init = expr_ir,
+                });
+            },
+            .cons => {
+                // Recursive destructuring (car pattern) (cdr pattern)
+                const p = pattern.toPtr(Cons);
+                const car_pat = p.car;
+                const cdr_pat = p.cdr;
 
-            // car binding
-            const car_ir = try self.builder.car(expr_ir);
-            try self.genDestructBindingsRec(car_pat, car_ir, bindings);
+                // car binding
+                const car_ir = try self.builder.car(expr_ir);
+                try self.genDestructBindingsRec(car_pat, car_ir, bindings);
 
-            // cdr binding
-            const cdr_ir = try self.builder.cdr(expr_ir);
-            try self.genDestructBindingsRec(cdr_pat, cdr_ir, bindings);
+                // cdr binding
+                const cdr_ir = try self.builder.cdr(expr_ir);
+                try self.genDestructBindingsRec(cdr_pat, cdr_ir, bindings);
+            },
+            else => {}, // nil or unsupported patterns: ignore
         }
-        // nil pattern: ignore
     }
 
     /// Destructuring parameter tree node for defmacro
@@ -5830,7 +5831,8 @@ pub const Compiler = struct {
             const cons = param_list.toPtr(Cons);
             const item = cons.car;
 
-            if (item.isSymbol()) {
+            switch (item.typeKind()) {
+                .symbol => {
                 const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
 
                 // Check for lambda-list keywords
@@ -5892,7 +5894,8 @@ pub const Compiler = struct {
                         .keyword = null,
                     });
                 }
-            } else if (item.isCons()) {
+                },
+                .cons => {
                 const nested = item.toPtr(Cons);
 
                 if (in_optional or in_key) {
@@ -5933,8 +5936,8 @@ pub const Compiler = struct {
                         .keyword = null,
                     });
                 }
-            } else {
-                return error.InvalidSyntax;
+                },
+                else => return error.InvalidSyntax,
             }
 
             param_list = cons.cdr;
@@ -6159,16 +6162,11 @@ pub const Compiler = struct {
         const pkg_name_val = cons1.car;
 
         // Get package name from string or symbol
-        var pkg_name: []const u8 = undefined;
-        if (pkg_name_val.isString()) {
-            const str = pkg_name_val.toPtr(runtime.String);
-            pkg_name = str.bytes();
-        } else if (pkg_name_val.isSymbol()) {
-            const sym = pkg_name_val.toPtr(Symbol);
-            pkg_name = sym.getName();
-        } else {
-            return error.InvalidSyntax;
-        }
+        const pkg_name = switch (pkg_name_val.typeKind()) {
+            .string => pkg_name_val.toPtr(runtime.String).bytes(),
+            .symbol => pkg_name_val.toPtr(Symbol).getName(),
+            else => return error.InvalidSyntax,
+        };
 
         // Create or find the package
         const pkg = try heap.findOrCreatePackage(pkg_name);
@@ -6267,12 +6265,11 @@ pub const Compiler = struct {
     /// Helper to get string from a string or symbol value
     fn getStringOrSymbolName(self: *Compiler, val: Value) ?[]const u8 {
         _ = self;
-        if (val.isString()) {
-            return val.toPtr(runtime.String).bytes();
-        } else if (val.isSymbol()) {
-            return val.toPtr(Symbol).getName();
-        }
-        return null;
+        return switch (val.typeKind()) {
+            .string => val.toPtr(runtime.String).bytes(),
+            .symbol => val.toPtr(Symbol).getName(),
+            else => null,
+        };
     }
 
     /// Get qualified name for a symbol (PKG:NAME or just NAME if no package)
@@ -6340,42 +6337,44 @@ pub const Compiler = struct {
             const c = rest.toPtr(Cons);
             const slot_spec = c.car;
 
-            if (slot_spec.isSymbol()) {
-                // Simple slot: `x` -> type is any
-                const slot_name_raw = slot_spec.toPtr(Symbol).getName();
-                const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
-                try slot_specs.append(self.allocator, .{
-                    .name = slot_name,
-                    .sym = slot_spec,
-                    .field_type = &types.t_any,
-                    .initargs = std.ArrayList(Value){},
-                    .readers = std.ArrayList(Value){},
-                    .writers = std.ArrayList(Value){},
-                });
-            } else if (slot_spec.isCons()) {
-                // Typed slot: `(x fixnum)` -> parse name and type
-                const spec_cons = slot_spec.toPtr(Cons);
-                if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
-                const slot_name_raw = spec_cons.car.toPtr(Symbol).getName();
-                const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
+            switch (slot_spec.typeKind()) {
+                .symbol => {
+                    // Simple slot: `x` -> type is any
+                    const slot_name_raw = slot_spec.toPtr(Symbol).getName();
+                    const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
+                    try slot_specs.append(self.allocator, .{
+                        .name = slot_name,
+                        .sym = slot_spec,
+                        .field_type = &types.t_any,
+                        .initargs = std.ArrayList(Value){},
+                        .readers = std.ArrayList(Value){},
+                        .writers = std.ArrayList(Value){},
+                    });
+                },
+                .cons => {
+                    // Typed slot: `(x fixnum)` -> parse name and type
+                    const spec_cons = slot_spec.toPtr(Cons);
+                    if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
+                    const slot_name_raw = spec_cons.car.toPtr(Symbol).getName();
+                    const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
 
-                // Get type from second element (can be symbol or compound type expr)
-                if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
-                const type_cons = spec_cons.cdr.toPtr(Cons);
-                const type_expr = type_cons.car;
+                    // Get type from second element (can be symbol or compound type expr)
+                    if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
+                    const type_cons = spec_cons.cdr.toPtr(Cons);
+                    const type_expr = type_cons.car;
 
-                // Parse type expression (supports compound types like (list fixnum))
-                const field_type = (try self.parseTypeExpr(type_expr)) orelse return error.InvalidSyntax;
-                try slot_specs.append(self.allocator, .{
-                    .name = slot_name,
-                    .sym = spec_cons.car,
-                    .field_type = field_type,
-                    .initargs = std.ArrayList(Value){},
-                    .readers = std.ArrayList(Value){},
-                    .writers = std.ArrayList(Value){},
-                });
-            } else {
-                return error.InvalidSyntax;
+                    // Parse type expression (supports compound types like (list fixnum))
+                    const field_type = (try self.parseTypeExpr(type_expr)) orelse return error.InvalidSyntax;
+                    try slot_specs.append(self.allocator, .{
+                        .name = slot_name,
+                        .sym = spec_cons.car,
+                        .field_type = field_type,
+                        .initargs = std.ArrayList(Value){},
+                        .readers = std.ArrayList(Value){},
+                        .writers = std.ArrayList(Value){},
+                    });
+                },
+                else => return error.InvalidSyntax,
             }
             rest = c.cdr;
         }
@@ -7051,32 +7050,36 @@ pub const Compiler = struct {
         defer domain_types.deinit(self.allocator);
 
         // First arg is the arg type list (possibly empty)
-        if (c.car.isNil()) {
-            // No args: (function () return-type)
-        } else if (c.car.isCons()) {
-            // Parse arg types: (type1 type2 ...)
-            var arg_list = c.car;
-            const b = if (self.builtins) |val| val else return null;
-            while (arg_list.isCons()) {
-                const ac = arg_list.toPtr(Cons);
-                // Skip lambda list markers
-                if (ac.car.isSymbol()) {
-                    if (ac.car.raw == b.@"&optional".raw or
-                        ac.car.raw == b.@"&rest".raw or
-                        ac.car.raw == b.@"&key".raw)
-                    {
-                        arg_list = ac.cdr;
-                        continue;
+        switch (c.car.typeKind()) {
+            .nil => {
+                // No args: (function () return-type)
+            },
+            .cons => {
+                // Parse arg types: (type1 type2 ...)
+                var arg_list = c.car;
+                const b = if (self.builtins) |val| val else return null;
+                while (arg_list.isCons()) {
+                    const ac = arg_list.toPtr(Cons);
+                    // Skip lambda list markers
+                    if (ac.car.isSymbol()) {
+                        if (ac.car.raw == b.@"&optional".raw or
+                            ac.car.raw == b.@"&rest".raw or
+                            ac.car.raw == b.@"&key".raw)
+                        {
+                            arg_list = ac.cdr;
+                            continue;
+                        }
                     }
+                    const arg_type = (try self.parseTypeExpr(ac.car)) orelse return null;
+                    try domain_types.append(self.allocator, arg_type);
+                    arg_list = ac.cdr;
                 }
-                const arg_type = (try self.parseTypeExpr(ac.car)) orelse return null;
+            },
+            else => {
+                // First arg is a single type (not a list)
+                const arg_type = (try self.parseTypeExpr(c.car)) orelse return null;
                 try domain_types.append(self.allocator, arg_type);
-                arg_list = ac.cdr;
-            }
-        } else {
-            // First arg is a single type (not a list)
-            const arg_type = (try self.parseTypeExpr(c.car)) orelse return null;
-            try domain_types.append(self.allocator, arg_type);
+            },
         }
 
         // Second arg is return type (defaults to any if not specified)
@@ -7395,16 +7398,20 @@ pub const Compiler = struct {
             const first = rest.toPtr(Cons);
             // If next element is nil, first could be the slot list
             if (first.cdr.isNil()) {
-                if (first.car.isNil()) {
-                    // Empty slot list: (defclass name (supers) ())
-                    rest = Value.nil;
-                } else if (first.car.isCons()) {
-                    // Check if first element looks like a slots list (list of symbols/lists)
-                    const inner = first.car.toPtr(Cons);
-                    if (inner.car.isSymbol() or inner.car.isCons()) {
-                        // CL standard: unwrap the outer list
-                        rest = first.car;
-                    }
+                switch (first.car.typeKind()) {
+                    .nil => {
+                        // Empty slot list: (defclass name (supers) ())
+                        rest = Value.nil;
+                    },
+                    .cons => {
+                        // Check if first element looks like a slots list (list of symbols/lists)
+                        const inner = first.car.toPtr(Cons);
+                        if (inner.car.isSymbol() or inner.car.isCons()) {
+                            // CL standard: unwrap the outer list
+                            rest = first.car;
+                        }
+                    },
+                    else => {},
                 }
             }
         }
@@ -7413,27 +7420,29 @@ pub const Compiler = struct {
             const c = rest.toPtr(Cons);
             const slot_spec = c.car;
 
-            if (slot_spec.isSymbol()) {
-                // Simple slot: `x`
-                const slot_name_raw = slot_spec.toPtr(Symbol).getName();
-                const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
-                var initargs = std.ArrayList(Value){};
-                const default_initarg = try heap.internKeyword(slot_name_raw);
-                try initargs.append(self.allocator, default_initarg);
-                try slot_specs.append(self.allocator, .{
-                    .name = slot_name,
-                    .sym = slot_spec,
-                    .field_type = &types.t_any,
-                    .initargs = initargs,
-                    .readers = std.ArrayList(Value){},
-                    .writers = std.ArrayList(Value){},
-                });
-            } else if (slot_spec.isCons()) {
-                // Slot with options: (name :initform expr :type type ...)
-                const spec_cons = slot_spec.toPtr(Cons);
-                if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
-                const slot_name_raw = spec_cons.car.toPtr(Symbol).getName();
-                const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
+            switch (slot_spec.typeKind()) {
+                .symbol => {
+                    // Simple slot: `x`
+                    const slot_name_raw = slot_spec.toPtr(Symbol).getName();
+                    const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
+                    var initargs = std.ArrayList(Value){};
+                    const default_initarg = try heap.internKeyword(slot_name_raw);
+                    try initargs.append(self.allocator, default_initarg);
+                    try slot_specs.append(self.allocator, .{
+                        .name = slot_name,
+                        .sym = slot_spec,
+                        .field_type = &types.t_any,
+                        .initargs = initargs,
+                        .readers = std.ArrayList(Value){},
+                        .writers = std.ArrayList(Value){},
+                    });
+                },
+                .cons => {
+                    // Slot with options: (name :initform expr :type type ...)
+                    const spec_cons = slot_spec.toPtr(Cons);
+                    if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
+                    const slot_name_raw = spec_cons.car.toPtr(Symbol).getName();
+                    const slot_name = self.allocator.dupe(u8, slot_name_raw) catch |e| return e;
 
                 // Extract slot options
                 var field_type: *const types.Type = &types.t_any;
@@ -7532,19 +7541,19 @@ pub const Compiler = struct {
                     try initargs.append(self.allocator, default_initarg);
                 }
 
-                try slot_specs.append(self.allocator, .{
-                    .name = slot_name,
-                    .sym = spec_cons.car,
-                    .field_type = field_type,
-                    .type_sym = type_sym,
-                    .initform = initform,
-                    .allocation = allocation,
-                    .initargs = initargs,
-                    .readers = readers,
-                    .writers = writers,
-                });
-            } else {
-                return error.InvalidSyntax;
+                    try slot_specs.append(self.allocator, .{
+                        .name = slot_name,
+                        .sym = spec_cons.car,
+                        .field_type = field_type,
+                        .type_sym = type_sym,
+                        .initform = initform,
+                        .allocation = allocation,
+                        .initargs = initargs,
+                        .readers = readers,
+                        .writers = writers,
+                    });
+                },
+                else => return error.InvalidSyntax,
             }
             rest = c.cdr;
         }
@@ -7953,32 +7962,34 @@ pub const Compiler = struct {
             const param_cons = params.toPtr(Cons);
             const param = param_cons.car;
 
-            if (param.isSymbol()) {
-                // Unspecialized parameter
-                const param_name = param.toPtr(Symbol).getName();
-                try dispatch_params.append(self.allocator, try self.allocator.dupe(u8, param_name));
-                try specializers.append(self.allocator, Value.t); // t = any type
-            } else if (param.isCons()) {
-                // Specialized parameter: (param-name class-name)
-                const spec_cons = param.toPtr(Cons);
-                if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
-                const param_name = spec_cons.car.toPtr(Symbol).getName();
-                try dispatch_params.append(self.allocator, try self.allocator.dupe(u8, param_name));
+            switch (param.typeKind()) {
+                .symbol => {
+                    // Unspecialized parameter
+                    const param_name = param.toPtr(Symbol).getName();
+                    try dispatch_params.append(self.allocator, try self.allocator.dupe(u8, param_name));
+                    try specializers.append(self.allocator, Value.t); // t = any type
+                },
+                .cons => {
+                    // Specialized parameter: (param-name class-name)
+                    const spec_cons = param.toPtr(Cons);
+                    if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
+                    const param_name = spec_cons.car.toPtr(Symbol).getName();
+                    try dispatch_params.append(self.allocator, try self.allocator.dupe(u8, param_name));
 
-                if (spec_cons.cdr.isCons()) {
-                    const class_cons = spec_cons.cdr.toPtr(Cons);
-                    if (class_cons.car.isSymbol()) {
-                        // Intern the class name symbol
-                        const class_name = class_cons.car.toPtr(Symbol).getName();
-                        try specializers.append(self.allocator, try heap.intern(class_name));
+                    if (spec_cons.cdr.isCons()) {
+                        const class_cons = spec_cons.cdr.toPtr(Cons);
+                        if (class_cons.car.isSymbol()) {
+                            // Intern the class name symbol
+                            const class_name = class_cons.car.toPtr(Symbol).getName();
+                            try specializers.append(self.allocator, try heap.intern(class_name));
+                        } else {
+                            try specializers.append(self.allocator, Value.t);
+                        }
                     } else {
                         try specializers.append(self.allocator, Value.t);
                     }
-                } else {
-                    try specializers.append(self.allocator, Value.t);
-                }
-            } else {
-                return error.InvalidSyntax;
+                },
+                else => return error.InvalidSyntax,
             }
 
             params = param_cons.cdr;
@@ -8043,12 +8054,10 @@ pub const Compiler = struct {
         };
         const spec_str = if (specializers.items.len > 0) blk: {
             const spec_val = specializers.items[0];
-            if (spec_val.eq(Value.t)) {
-                break :blk "t";
-            } else if (spec_val.isSymbol()) {
-                break :blk spec_val.toPtr(Symbol).getName();
-            } else {
-                break :blk "t";
+            switch (spec_val.typeKind()) {
+                .t => break :blk "t",
+                .symbol => break :blk spec_val.toPtr(Symbol).getName(),
+                else => break :blk "t",
             }
         } else "t";
         const simple_name = name_sym.getName();
@@ -9647,13 +9656,13 @@ pub const Compiler = struct {
         var list = type_list;
         while (list.isCons()) {
             const c = list.toPtr(Cons);
-            if (c.car.isSymbol()) {
-                try type_syms.append(self.allocator, c.car);
-            } else if (c.car.isNil()) {
-                // nil value in type position means the nil type symbol
-                try type_syms.append(self.allocator, b.ty_nil);
-            } else {
-                return error.InvalidSyntax;
+            switch (c.car.typeKind()) {
+                .symbol => try type_syms.append(self.allocator, c.car),
+                .nil => {
+                    // nil value in type position means the nil type symbol
+                    try type_syms.append(self.allocator, b.ty_nil);
+                },
+                else => return error.InvalidSyntax,
             }
             list = c.cdr;
         }
@@ -12580,6 +12589,155 @@ test "compile nil" {
     allocator.destroy(result);
 }
 
+test "compile lambda params" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    // (lambda (a (b fixnum) &rest r) a)
+    const lambda_sym = try heap.intern("lambda");
+    const a_sym = try heap.intern("a");
+    const b_sym = try heap.intern("b");
+    const fixnum_sym = try heap.intern("fixnum");
+    const rest_kw = try heap.intern("&rest");
+    const r_sym = try heap.intern("r");
+
+    const b_typed = try heap.allocCons(b_sym, try heap.allocCons(fixnum_sym, Value.nil));
+    const params = try heap.allocCons(a_sym, try heap.allocCons(b_typed, try heap.allocCons(rest_kw, try heap.allocCons(r_sym, Value.nil))));
+    const body = try heap.allocCons(a_sym, Value.nil);
+    const lambda_args = try heap.allocCons(params, body);
+    const expr = try heap.allocCons(lambda_sym, lambda_args);
+
+    const result = try compiler.compile(expr, &env);
+    defer arena_alloc.destroy(result);
+
+    try testing.expectEqual(Ir.lambda, std.meta.activeTag(result.*));
+    try testing.expectEqual(@as(usize, 2), result.lambda.params.len);
+    try testing.expectEqualStrings("A", result.lambda.params[0]);
+    try testing.expectEqualStrings("B", result.lambda.params[1]);
+    try testing.expect(result.lambda.optional_params.len == 0);
+    try testing.expect(result.lambda.key_params.len == 0);
+    try testing.expect(result.lambda.rest_param != null);
+    try testing.expectEqualStrings("R", result.lambda.rest_param.?);
+}
+
+test "compile block return-from names" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const block_sym = try heap.intern("block");
+    const return_from_sym = try heap.intern("return-from");
+
+    // (block nil (return-from nil 1))
+    const ret_args_nil = try heap.allocCons(Value.nil, try heap.allocCons(Value.makeFixnum(1), Value.nil));
+    const ret_form_nil = try heap.allocCons(return_from_sym, ret_args_nil);
+    const body_nil = try heap.allocCons(ret_form_nil, Value.nil);
+    const block_args_nil = try heap.allocCons(Value.nil, body_nil);
+    const expr_nil = try heap.allocCons(block_sym, block_args_nil);
+
+    const ir_nil = try compiler.compile(expr_nil, &env);
+    defer arena_alloc.destroy(ir_nil);
+    try testing.expectEqual(Ir.block, std.meta.activeTag(ir_nil.*));
+    try testing.expectEqualStrings("nil", ir_nil.block.name);
+    try testing.expect(ir_nil.block.body.* == .return_from);
+    try testing.expectEqualStrings("nil", ir_nil.block.body.return_from.name);
+
+    // (block foo (return-from foo 2))
+    const foo_sym = try heap.intern("foo");
+    const ret_args_sym = try heap.allocCons(foo_sym, try heap.allocCons(Value.makeFixnum(2), Value.nil));
+    const ret_form_sym = try heap.allocCons(return_from_sym, ret_args_sym);
+    const body_sym = try heap.allocCons(ret_form_sym, Value.nil);
+    const block_args_sym = try heap.allocCons(foo_sym, body_sym);
+    const expr_sym = try heap.allocCons(block_sym, block_args_sym);
+
+    const ir_sym = try compiler.compile(expr_sym, &env);
+    defer arena_alloc.destroy(ir_sym);
+    try testing.expectEqual(Ir.block, std.meta.activeTag(ir_sym.*));
+    try testing.expectEqualStrings("FOO", ir_sym.block.name);
+    try testing.expect(ir_sym.block.body.* == .return_from);
+    try testing.expectEqualStrings("FOO", ir_sym.block.body.return_from.name);
+}
+
+test "compile or type assertions" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    const lambda_sym = try heap.intern("lambda");
+    const the_sym = try heap.intern("the");
+    const or_sym = try heap.intern("or");
+    const fixnum_sym = try heap.intern("fixnum");
+    const x_sym = try heap.intern("x");
+
+    // (lambda ((x (or fixnum nil))) x)
+    const or_list_param = try heap.allocCons(or_sym, try heap.allocCons(fixnum_sym, try heap.allocCons(Value.nil, Value.nil)));
+    const typed_param = try heap.allocCons(x_sym, try heap.allocCons(or_list_param, Value.nil));
+    const params = try heap.allocCons(typed_param, Value.nil);
+    const body = try heap.allocCons(x_sym, Value.nil);
+    const lambda_args = try heap.allocCons(params, body);
+    const lambda_expr = try heap.allocCons(lambda_sym, lambda_args);
+
+    var env_lambda = Env.init(arena_alloc, null);
+    defer env_lambda.deinit();
+
+    const ir_lambda = try compiler.compile(lambda_expr, &env_lambda);
+    defer arena_alloc.destroy(ir_lambda);
+    try testing.expectEqual(Ir.lambda, std.meta.activeTag(ir_lambda.*));
+    try testing.expect(ir_lambda.lambda.body.* == .progn);
+    try testing.expectEqual(@as(usize, 2), ir_lambda.lambda.body.progn.len);
+    try testing.expect(ir_lambda.lambda.body.progn[0].* == .assert_or);
+
+    // (the (or fixnum nil) x)
+    const or_list_the = try heap.allocCons(or_sym, try heap.allocCons(fixnum_sym, try heap.allocCons(Value.nil, Value.nil)));
+    const the_args = try heap.allocCons(or_list_the, try heap.allocCons(x_sym, Value.nil));
+    const the_expr = try heap.allocCons(the_sym, the_args);
+
+    var env_the = Env.init(arena_alloc, null);
+    defer env_the.deinit();
+    _ = try env_the.bind(x_sym.toPtr(Symbol).getName());
+
+    const ir_the = try compiler.compile(the_expr, &env_the);
+    defer arena_alloc.destroy(ir_the);
+    try testing.expect(ir_the.* == .assert_or);
+}
+
 test "env lookup" {
     const testing = std.testing;
     const allocator = testing.allocator;
@@ -13331,4 +13489,313 @@ test "defmacro with destructured params" {
     const stored_cons = stored.toPtr(Cons);
     const stored_params = stored_cons.car;
     try testing.expect(stored_params.isCons());
+}
+
+test "transformDestructuredParams nested" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    // (((a b) c) c)
+    const a_sym = try heap.intern("a");
+    const b_sym = try heap.intern("b");
+    const c_sym = try heap.intern("c");
+    const nested = try heap.allocCons(a_sym, try heap.allocCons(b_sym, Value.nil));
+    const destruct_param = try heap.allocCons(nested, Value.nil);
+    const params = try heap.allocCons(destruct_param, try heap.allocCons(c_sym, Value.nil));
+    const body = try heap.allocCons(c_sym, Value.nil);
+    const lambda_args = try heap.allocCons(params, body);
+
+    const transformed = try compiler.transformDestructuredParams(lambda_args);
+    try testing.expect(transformed.isCons());
+
+    const trans_cons = transformed.toPtr(Cons);
+    const new_params = trans_cons.car;
+    const wrapped_body = trans_cons.cdr;
+
+    // New params: (g c)
+    try testing.expect(new_params.isCons());
+    const new_params_cons = new_params.toPtr(Cons);
+    const g_sym = new_params_cons.car;
+    try testing.expect(g_sym.isSymbol());
+    const g_name = g_sym.toPtr(Symbol).getName();
+    try testing.expect(g_name.len > 0);
+    try testing.expectEqual(@as(u8, 'G'), g_name[0]);
+    try testing.expect(new_params_cons.cdr.isCons());
+    try testing.expect(new_params_cons.cdr.toPtr(Cons).car.eq(c_sym));
+
+    // Wrapped body starts with (destructuring-bind pattern g ...)
+    try testing.expect(wrapped_body.isCons());
+    const wrapped_cons = wrapped_body.toPtr(Cons);
+    const db_form = wrapped_cons.car;
+    try testing.expect(db_form.isCons());
+    const db_cons = db_form.toPtr(Cons);
+    try testing.expect(db_cons.car.isSymbol());
+    try testing.expectEqualStrings("DESTRUCTURING-BIND", db_cons.car.toPtr(Symbol).getName());
+
+    const db_args = db_cons.cdr.toPtr(Cons);
+    const pattern = db_args.car;
+    try testing.expect(pattern.isCons());
+    const pattern_cons = pattern.toPtr(Cons);
+    try testing.expect(pattern_cons.car.isCons());
+    const inner = pattern_cons.car.toPtr(Cons);
+    try testing.expect(inner.car.eq(a_sym));
+    try testing.expect(inner.cdr.isCons());
+    try testing.expect(inner.cdr.toPtr(Cons).car.eq(b_sym));
+
+    const g_arg = db_args.cdr.toPtr(Cons).car;
+    try testing.expect(g_arg.eq(g_sym));
+}
+
+test "genDestructBindings nested" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    const a_sym = try heap.intern("a");
+    const b_sym = try heap.intern("b");
+    const pattern = try heap.allocCons(a_sym, try heap.allocCons(b_sym, Value.nil));
+
+    var bindings = try compiler.genDestructBindings(pattern, 0);
+    defer bindings.deinit(arena_alloc);
+
+    try testing.expectEqual(@as(usize, 2), bindings.items.len);
+    try testing.expectEqualStrings("A", bindings.items[0].name);
+    try testing.expectEqualStrings("B", bindings.items[1].name);
+    try testing.expect(bindings.items[0].init.* == .car);
+    try testing.expect(bindings.items[1].init.* == .car);
+}
+
+test "compile defun typed name" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const defun_sym = try heap.intern("defun");
+    const foo_sym = try heap.intern("foo");
+    const arrow_sym = try heap.intern("->");
+    const fixnum_sym = try heap.intern("fixnum");
+    const x_sym = try heap.intern("x");
+
+    const name_spec = try heap.allocCons(foo_sym, try heap.allocCons(arrow_sym, try heap.allocCons(fixnum_sym, Value.nil)));
+    const params = try heap.allocCons(x_sym, Value.nil);
+    const body = try heap.allocCons(x_sym, Value.nil);
+    const defun_args = try heap.allocCons(name_spec, try heap.allocCons(params, body));
+    const expr = try heap.allocCons(defun_sym, defun_args);
+
+    const ir_def = try compiler.compile(expr, &env);
+    defer arena_alloc.destroy(ir_def);
+
+    try testing.expectEqual(Ir.define, std.meta.activeTag(ir_def.*));
+    try testing.expectEqualStrings("CL-USER:FOO", ir_def.define.name);
+    try testing.expect(ir_def.define.value.* == .lambda);
+    try testing.expect(ir_def.define.value.lambda.body.* == .assert_fixnum);
+}
+
+test "compile defpackage names" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    const pkg_str = try heap.allocBaseString("foo");
+    const args_str = try heap.allocCons(pkg_str, Value.nil);
+    const ir_str = try compiler.compileDefpackage(args_str);
+    defer arena_alloc.destroy(ir_str);
+
+    try testing.expect(ir_str.* == .lit);
+    try testing.expect(ir_str.lit.isSymbol());
+    try testing.expectEqualStrings("FOO", ir_str.lit.toPtr(Symbol).getName());
+
+    const bar_sym = try heap.intern("bar");
+    const args_sym = try heap.allocCons(bar_sym, Value.nil);
+    const ir_sym = try compiler.compileDefpackage(args_sym);
+    defer arena_alloc.destroy(ir_sym);
+
+    try testing.expect(ir_sym.* == .lit);
+    try testing.expect(ir_sym.lit.isSymbol());
+    try testing.expectEqualStrings("BAR", ir_sym.lit.toPtr(Symbol).getName());
+}
+
+test "parseTypeExpr function type" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    const function_sym = try heap.intern("function");
+    const fixnum_sym = try heap.intern("fixnum");
+
+    // (function (fixnum) fixnum)
+    const arg_list = try heap.allocCons(fixnum_sym, Value.nil);
+    const args = try heap.allocCons(arg_list, try heap.allocCons(fixnum_sym, Value.nil));
+    const type_expr = try heap.allocCons(function_sym, args);
+
+    const ty1 = try compiler.parseTypeExpr(type_expr);
+    try testing.expect(ty1 != null);
+    try testing.expect(std.meta.activeTag(ty1.?.*) == .arrow);
+
+    // (function () fixnum)
+    const args_nil = try heap.allocCons(Value.nil, try heap.allocCons(fixnum_sym, Value.nil));
+    const type_expr2 = try heap.allocCons(function_sym, args_nil);
+
+    const ty2 = try compiler.parseTypeExpr(type_expr2);
+    try testing.expect(ty2 != null);
+    try testing.expect(std.meta.activeTag(ty2.?.*) == .arrow);
+}
+
+test "compile defstruct typed slot" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const foo_sym = try heap.intern("foo");
+    const bar_sym = try heap.intern("bar");
+    const fixnum_sym = try heap.intern("fixnum");
+
+    const slot_spec = try heap.allocCons(bar_sym, try heap.allocCons(fixnum_sym, Value.nil));
+    const args = try heap.allocCons(foo_sym, try heap.allocCons(slot_spec, Value.nil));
+
+    const ir_def = try compiler.compileDefstruct(args, &env);
+    defer arena_alloc.destroy(ir_def);
+
+    try testing.expectEqual(Ir.progn, std.meta.activeTag(ir_def.*));
+    try testing.expect(ir_def.progn.len > 0);
+    const last = ir_def.progn[ir_def.progn.len - 1];
+    try testing.expect(last.* == .lit);
+    try testing.expect(last.lit.eq(foo_sym));
+}
+
+test "compile defclass slot list" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const class_sym = try heap.intern("foo");
+    const bar_sym = try heap.intern("bar");
+
+    const slot_spec = try heap.allocCons(bar_sym, Value.nil);
+    const slot_list = try heap.allocCons(slot_spec, Value.nil);
+    const args = try heap.allocCons(class_sym, try heap.allocCons(Value.nil, try heap.allocCons(slot_list, Value.nil)));
+
+    const ir_def = try compiler.compileDefclass(args, &env);
+    defer arena_alloc.destroy(ir_def);
+
+    try testing.expectEqual(Ir.progn, std.meta.activeTag(ir_def.*));
+    try testing.expect(ir_def.progn.len > 0);
+    const last = ir_def.progn[ir_def.progn.len - 1];
+    try testing.expect(last.* == .lit);
+    try testing.expect(last.lit.eq(class_sym));
+}
+
+test "compile defmethod specialized param" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const defmethod_sym = try heap.intern("defmethod");
+    const foo_sym = try heap.intern("foo");
+    const x_sym = try heap.intern("x");
+    const bar_sym = try heap.intern("bar");
+
+    const spec_param = try heap.allocCons(x_sym, try heap.allocCons(bar_sym, Value.nil));
+    const lambda_list = try heap.allocCons(spec_param, Value.nil);
+    const body = try heap.allocCons(x_sym, Value.nil);
+    const args = try heap.allocCons(foo_sym, try heap.allocCons(lambda_list, body));
+    const expr = try heap.allocCons(defmethod_sym, args);
+
+    const ir_def = try compiler.compile(expr, &env);
+    defer arena_alloc.destroy(ir_def);
+
+    try testing.expect(ir_def.* == .progn);
+    try testing.expect(ir_def.progn.len >= 2);
+    const method_def = ir_def.progn[1];
+    try testing.expect(method_def.* == .define);
+    try testing.expectEqualStrings("FOO$p$BAR", method_def.define.name);
 }
