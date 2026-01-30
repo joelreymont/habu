@@ -556,21 +556,22 @@ pub const Value = packed struct {
         _: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
-        if (self.isNil()) {
-            try writer.writeAll("nil");
-        } else if (self.isFixnum()) {
-            try writer.print("{d}", .{self.toFixnum()});
-        } else if (self.isCharacter()) {
-            const cp = self.toCharacter();
-            if (cp < 128) {
-                try writer.print("#\\{c}", .{@as(u8, @intCast(cp))});
-            } else {
-                try writer.print("#\\U+{X:0>4}", .{cp});
-            }
-        } else {
-            const tag = self.getTag();
-            const addr = self.toPtrAddr();
-            try writer.print("<{s} @{x}>", .{ @tagName(tag), addr });
+        switch (self.typeKind()) {
+            .nil => try writer.writeAll("nil"),
+            .fixnum => try writer.print("{d}", .{self.toFixnum()}),
+            .char => {
+                const cp = self.toCharacter();
+                if (cp < 128) {
+                    try writer.print("#\\{c}", .{@as(u8, @intCast(cp))});
+                } else {
+                    try writer.print("#\\U+{X:0>4}", .{cp});
+                }
+            },
+            else => {
+                const tag = self.getTag();
+                const addr = self.toPtrAddr();
+                try writer.print("<{s} @{x}>", .{ @tagName(tag), addr });
+            },
         }
     }
 };
@@ -586,6 +587,24 @@ test "nil" {
     try testing.expect(!Value.nil.isFixnum());
     try testing.expect(!Value.nil.isPointer());
     try testing.expect(!Value.nil.isTruthy());
+}
+
+test "format basics" {
+    const testing = std.testing;
+    var buf: [64]u8 = undefined;
+
+    var s_nil_stream = std.io.fixedBufferStream(&buf);
+    try Value.nil.format("", .{}, s_nil_stream.writer());
+    try testing.expect(std.mem.eql(u8, s_nil_stream.getWritten(), "nil"));
+
+    var s_fix_stream = std.io.fixedBufferStream(&buf);
+    try Value.makeFixnum(42).format("", .{}, s_fix_stream.writer());
+    try testing.expect(std.mem.eql(u8, s_fix_stream.getWritten(), "42"));
+
+    var s_ch_stream = std.io.fixedBufferStream(&buf);
+    const ch = Value.makeCharacter(@as(u21, 'a'));
+    try ch.format("", .{}, s_ch_stream.writer());
+    try testing.expect(std.mem.eql(u8, s_ch_stream.getWritten(), "#\\a"));
 }
 
 test "fixnum" {
