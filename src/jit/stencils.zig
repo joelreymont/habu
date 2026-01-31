@@ -314,9 +314,9 @@ pub const cons_stencil = Stencil{
 pub const car_stencil = Stencil{
     .name = "car",
     .code = &(
-        // Clear tag bits: x0 = x0 & ~0xF (pointer mask)
-        inst_bytes(and_not_bit0(X0, X0)) ++ // clears bit0
-            inst_bytes(0xD27E0000 | @as(u32, X0)) ++ // AND x0, x0, #~0xE (clear bits 1-3)
+        // Clear tag bits: x0 = (x0 >> 4) << 4
+        inst_bytes(lsr_imm(X0, X0, 4)) ++
+            inst_bytes(lsl_imm(X0, X0, 4)) ++
             // Load car: x0 = [x0]
             inst_bytes(0xF9400000 | @as(u32, X0) | (@as(u32, X0) << 5)) // LDR x0, [x0]
     ),
@@ -328,9 +328,9 @@ pub const car_stencil = Stencil{
 pub const cdr_stencil = Stencil{
     .name = "cdr",
     .code = &(
-        // Clear tag bits
-        inst_bytes(and_not_bit0(X0, X0)) ++
-            inst_bytes(0xD27E0000 | @as(u32, X0)) ++
+        // Clear tag bits: x0 = (x0 >> 4) << 4
+        inst_bytes(lsr_imm(X0, X0, 4)) ++
+            inst_bytes(lsl_imm(X0, X0, 4)) ++
             // Load cdr: x0 = [x0 + 8]
             inst_bytes(0xF9400400 | @as(u32, X0) | (@as(u32, X0) << 5)) // LDR x0, [x0, #8]
     ),
