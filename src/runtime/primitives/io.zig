@@ -468,7 +468,11 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
         },
         .stream => {
             const stream = val.toPtr(objects.Stream);
-            const dir = if (stream.direction == .input) "input" else "output";
+            const dir = switch (stream.direction) {
+                .input => "input",
+                .output => "output",
+                .io => "io",
+            };
             const kind = switch (stream.stream_type) {
                 .string => "string",
                 .file => "file",
@@ -661,7 +665,11 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
         },
         .stream => {
             const stream = val.toPtr(objects.Stream);
-            const dir = if (stream.direction == .input) "input" else "output";
+            const dir = switch (stream.direction) {
+                .input => "input",
+                .output => "output",
+                .io => "io",
+            };
             const kind = switch (stream.stream_type) {
                 .string => "string",
                 .file => "file",
@@ -751,7 +759,7 @@ const StreamSink = struct {
 fn writeBytesToStream(stream: Value, bytes: []const u8) !void {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
-    if (s.direction != .output) return error.TypeError;
+    if (!s.isOutput()) return error.TypeError;
 
     switch (s.stream_type) {
         .string => {
@@ -1509,6 +1517,25 @@ test "*print-array* flag" {
     print_array = true;
 }
 
+test "io direction is input and output" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const file = try tmp.dir.createFile("io-dir.txt", .{ .read = true, .truncate = true });
+    defer file.close();
+    const dup_fd = try std.posix.dup(file.handle);
+    const stream = try heap.allocStream(.io, .file, @intCast(dup_fd));
+
+    try testing.expect(inputStreamP(stream));
+    try testing.expect(outputStreamP(stream));
+    try closeStream(stream, null);
+}
+
 /// Check if value is a stream
 pub fn streamp(val: Value) bool {
     return val.isStream();
@@ -1518,14 +1545,14 @@ pub fn streamp(val: Value) bool {
 pub fn inputStreamP(stream: Value) bool {
     if (!stream.isStream()) return false;
     const s = stream.toPtr(objects.Stream);
-    return s.direction == .input;
+    return s.isInput();
 }
 
 /// Check if stream is output stream
 pub fn outputStreamP(stream: Value) bool {
     if (!stream.isStream()) return false;
     const s = stream.toPtr(objects.Stream);
-    return s.direction == .output;
+    return s.isOutput();
 }
 
 /// Check if stream is interactive (tty)
@@ -1589,7 +1616,7 @@ pub fn makeStringOutputStream(heap: *heap_mod.Heap) !Value {
 pub fn getOutputStreamString(heap: *heap_mod.Heap, stream: Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
-    if (s.direction != .output or s.stream_type != .string) return error.TypeError;
+    if (!s.isOutput() or s.stream_type != .string) return error.TypeError;
     if (s.data_ptr == 0) return error.StreamClosed;
     const buf: *objects.OutputBuffer = @ptrFromInt(s.data_ptr);
     return try heap.allocBaseString(buf.list.items);
@@ -1617,7 +1644,7 @@ pub fn readChar(stream: Value, eof_error: ?Value, eof_value: ?Value) !Value {
     _ = eof_value;
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
-    if (s.direction != .input) return error.TypeError;
+    if (!s.isInput()) return error.TypeError;
     if (s.closed) return error.StreamClosed;
     if (takePushback(s)) |ch| return Value.makeFixnum(@intCast(ch));
 
@@ -1649,7 +1676,7 @@ pub fn unreadChar(char: Value, stream: Value) !void {
     if (!char.isCharacter()) return error.TypeError;
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
-    if (s.direction != .input) return error.TypeError;
+    if (!s.isInput()) return error.TypeError;
     if (s.closed) return error.StreamClosed;
     const cp = char.toCharacter();
     if (cp > 0xFF) return error.InvalidArgument;
@@ -1675,7 +1702,7 @@ pub fn peekChar(peek_type: ?Value, stream: Value) !Value {
     _ = peek_type;
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
-    if (s.direction != .input) return error.TypeError;
+    if (!s.isInput()) return error.TypeError;
     if (s.closed) return error.StreamClosed;
     if (hasPushback(s)) return Value.makeFixnum(@intCast(s.pushback_char));
 
@@ -1705,7 +1732,7 @@ pub fn peekChar(peek_type: ?Value, stream: Value) !Value {
 pub fn listen(stream: Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
-    if (s.direction != .input) return error.TypeError;
+    if (!s.isInput()) return error.TypeError;
     if (s.closed) return error.StreamClosed;
 
     switch (s.stream_type) {
@@ -1731,7 +1758,7 @@ pub fn listen(stream: Value) !Value {
 pub fn readCharNoHang(stream: Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
-    if (s.direction != .input) return error.TypeError;
+    if (!s.isInput()) return error.TypeError;
     if (s.closed) return error.StreamClosed;
     if (takePushback(s)) |ch| return Value.makeCharacter(ch);
 
@@ -1781,7 +1808,7 @@ pub fn writeChar(char: Value, stream: Value) !void {
 pub fn readLine(heap: *heap_mod.Heap, stream: Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
-    if (s.direction != .input) return error.TypeError;
+    if (!s.isInput()) return error.TypeError;
 
     switch (s.stream_type) {
         .string => {
@@ -1864,7 +1891,7 @@ pub fn writeLine(str: Value, stream: Value) !void {
 pub fn finishOutput(stream: Value) !void {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
-    if (s.direction != .output) return error.TypeError;
+    if (!s.isOutput()) return error.TypeError;
 
     switch (s.stream_type) {
         .string => {}, // No-op for string streams
@@ -1891,7 +1918,7 @@ pub fn finishOutput(stream: Value) !void {
 pub fn forceOutput(stream: Value) !void {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
-    if (s.direction != .output) return error.TypeError;
+    if (!s.isOutput()) return error.TypeError;
 
     switch (s.stream_type) {
         .string => {}, // No-op for string streams
@@ -1918,7 +1945,7 @@ pub fn forceOutput(stream: Value) !void {
 pub fn clearOutput(stream: Value) !void {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
-    if (s.direction != .output) return error.TypeError;
+    if (!s.isOutput()) return error.TypeError;
 
     switch (s.stream_type) {
         .string => {
@@ -1948,7 +1975,7 @@ pub fn clearOutput(stream: Value) !void {
 pub fn clearInput(stream: Value) !void {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
-    if (s.direction != .input) return error.TypeError;
+    if (!s.isInput()) return error.TypeError;
 
     switch (s.stream_type) {
         .string => {
@@ -1980,7 +2007,7 @@ pub fn terpri(stream: Value) !void {
 pub fn freshLine(stream: Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
-    if (s.direction != .output) return error.TypeError;
+    if (!s.isOutput()) return error.TypeError;
 
     switch (s.stream_type) {
         .string => {
@@ -2017,7 +2044,7 @@ pub fn filePosition(heap: *heap_mod.Heap, stream: Value, pos: ?Value) !Value {
             .file, .stdin, .stdout, .stderr => {
                 const fd: std.posix.fd_t = @intCast(s.file_fd);
                 const cur = try std.posix.lseek_CUR_get(fd);
-                const adj = if (s.direction == .input and hasPushback(s) and cur > 0) cur - 1 else cur;
+                const adj = if (s.isInput() and hasPushback(s) and cur > 0) cur - 1 else cur;
                 return Value.makeFixnum(@intCast(adj));
             },
             else => return error.NotImplemented,

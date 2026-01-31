@@ -64,7 +64,7 @@ pub fn primReadLine(heap: *Heap, args: []const Value) !Value {
     const stream = stream_val.toPtr(Stream);
 
     if (stream.closed) return error.StreamClosed;
-    if (stream.direction != .input) return error.NotInputStreamError;
+    if (!stream.isInput()) return error.NotInputStreamError;
     if (stream.stream_type != .file) return error.InvalidArgument;
 
     const file = std.fs.File{ .handle = stream.file_fd };
@@ -166,7 +166,7 @@ pub fn primWriteLine(heap: *Heap, args: []const Value) !Value {
     const line_str = line_val.toPtr(String);
 
     if (stream.closed) return error.StreamClosed;
-    if (stream.direction != .output) return error.NotOutputStreamError;
+    if (!stream.isOutput()) return error.NotOutputStreamError;
     if (stream.stream_type != .file) return error.InvalidArgument;
 
     const file = std.fs.File{ .handle = stream.file_fd };
@@ -188,7 +188,7 @@ pub fn primReadChar(heap: *Heap, args: []const Value) !Value {
     const stream = stream_val.toPtr(Stream);
 
     if (stream.closed) return error.StreamClosed;
-    if (stream.direction != .input) return error.NotInputStreamError;
+    if (!stream.isInput()) return error.NotInputStreamError;
     if (stream.stream_type != .file) return error.InvalidArgument;
 
     const file = std.fs.File{ .handle = stream.file_fd };
@@ -213,7 +213,7 @@ pub fn primWriteChar(heap: *Heap, args: []const Value) !Value {
     const stream = stream_val.toPtr(Stream);
 
     if (stream.closed) return error.StreamClosed;
-    if (stream.direction != .output) return error.NotOutputStreamError;
+    if (!stream.isOutput()) return error.NotOutputStreamError;
     if (stream.stream_type != .file) return error.InvalidArgument;
 
     const file = std.fs.File{ .handle = stream.file_fd };
@@ -235,7 +235,7 @@ pub fn primReadByte(heap: *Heap, args: []const Value) !Value {
     const stream = stream_val.toPtr(Stream);
 
     if (stream.closed) return error.StreamClosed;
-    if (stream.direction != .input) return error.NotInputStreamError;
+    if (!stream.isInput()) return error.NotInputStreamError;
     if (stream.stream_type != .file) return error.InvalidArgument;
 
     const file = std.fs.File{ .handle = stream.file_fd };
@@ -260,7 +260,7 @@ pub fn primWriteByte(heap: *Heap, args: []const Value) !Value {
     const stream = stream_val.toPtr(Stream);
 
     if (stream.closed) return error.StreamClosed;
-    if (stream.direction != .output) return error.NotOutputStreamError;
+    if (!stream.isOutput()) return error.NotOutputStreamError;
     if (stream.stream_type != .file) return error.InvalidArgument;
 
     const file = std.fs.File{ .handle = stream.file_fd };
@@ -320,7 +320,7 @@ pub fn primFinishOutput(heap: *Heap, args: []const Value) !Value {
     const stream = stream_val.toPtr(Stream);
 
     if (stream.closed) return error.StreamClosed;
-    if (stream.direction != .output) return error.NotOutputStreamError;
+    if (!stream.isOutput()) return error.NotOutputStreamError;
     if (stream.stream_type != .file) return error.InvalidArgument;
 
     const file = std.fs.File{ .handle = stream.file_fd };
@@ -339,7 +339,7 @@ pub fn primForceOutput(heap: *Heap, args: []const Value) !Value {
     const stream = stream_val.toPtr(Stream);
 
     if (stream.closed) return error.StreamClosed;
-    if (stream.direction != .output) return error.NotOutputStreamError;
+    if (!stream.isOutput()) return error.NotOutputStreamError;
     if (stream.stream_type != .file) return error.InvalidArgument;
 
     const file = std.fs.File{ .handle = stream.file_fd };
@@ -361,7 +361,7 @@ pub fn primWriteString(heap: *Heap, args: []const Value) !Value {
     const stream = stream_val.toPtr(Stream);
 
     if (stream.closed) return error.StreamClosed;
-    if (stream.direction != .output) return error.NotOutputStreamError;
+    if (!stream.isOutput()) return error.NotOutputStreamError;
 
     // Convert to UTF-8 bytes for output
     if (str_val.isString()) {
@@ -443,7 +443,7 @@ pub fn primGetOutputStreamString(heap: *Heap, args: []const Value) !Value {
 
     const stream = stream_val.toPtr(Stream);
 
-    if (stream.stream_type != .string or stream.direction != .output) {
+    if (stream.stream_type != .string or !stream.isOutput()) {
         return error.InvalidArgument;
     }
 

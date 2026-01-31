@@ -328,6 +328,7 @@ pub const BoxedKind = enum(u64) {
 pub const StreamDirection = enum(u8) {
     input = 0,
     output = 1,
+    io = 2,
 };
 
 /// Stream type
@@ -375,11 +376,11 @@ pub const Stream = extern struct {
     source_value: Value = Value.nil,
 
     pub fn isInput(self: *const Stream) bool {
-        return self.direction == .input;
+        return self.direction == .input or self.direction == .io;
     }
 
     pub fn isOutput(self: *const Stream) bool {
-        return self.direction == .output;
+        return self.direction == .output or self.direction == .io;
     }
 
     pub fn isClosed(self: *const Stream) bool {

@@ -959,7 +959,11 @@ pub const Repl = struct {
             },
             .stream => {
                 const stream = val.toPtr(runtime.Stream);
-                const dir = if (stream.direction == .input) "input" else "output";
+                const dir = switch (stream.direction) {
+                    .input => "input",
+                    .output => "output",
+                    .io => "io",
+                };
                 const kind = switch (stream.stream_type) {
                     .string => "string",
                     .file => "file",
