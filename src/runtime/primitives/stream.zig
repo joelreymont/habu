@@ -74,9 +74,7 @@ pub fn primReadLine(heap: *Heap, args: []const Value) !Value {
     var index: usize = 0;
     while (index < buffer.len) {
         var byte: [1]u8 = undefined;
-        const bytes_read = file.read(&byte) catch |err| switch (err) {
-            else => return err,
-        };
+        const bytes_read = try file.read(&byte);
         if (bytes_read == 0) {
             // EOF
             if (index == 0) return Value.nil;
@@ -88,6 +86,28 @@ pub fn primReadLine(heap: *Heap, args: []const Value) !Value {
     }
 
     return try heap.allocBaseString(buffer[0..index]);
+}
+
+test "primReadLine returns nil on EOF" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        const file = try tmp.dir.createFile("empty.txt", .{});
+        defer file.close();
+    }
+
+    const file = try tmp.dir.openFile("empty.txt", .{});
+    defer file.close();
+    const dup_fd = try std.posix.dup(file.handle);
+    const stream = try heap.allocFileInputStream(@intCast(dup_fd));
+    const res = try primReadLine(&heap, &.{stream});
+    try testing.expect(res.isNil());
 }
 
 pub fn primWriteLine(heap: *Heap, args: []const Value) !Value {
