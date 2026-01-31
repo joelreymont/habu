@@ -4,6 +4,14 @@
 //! Handles ARM64 instruction encoding for immediates and branches.
 
 const std = @import("std");
+const builtin = @import("builtin");
+const darwin = if (builtin.os.tag == .macos)
+    @cImport({
+        @cInclude("pthread.h");
+        @cInclude("libkern/OSCacheControl.h");
+    })
+else
+    struct {};
 const stencils = @import("stencils.zig");
 const Stencil = stencils.Stencil;
 const Hole = stencils.Hole;
@@ -19,25 +27,27 @@ pub const PatchError = error{
 /// Executable memory allocator for JIT code
 pub const CodeBuffer = struct {
     /// Raw memory (mmap'd with execute permission on real systems)
-    memory: []u8,
+    memory: []align(std.heap.page_size_min) u8,
     /// Current write position
     pos: usize,
-    /// Allocator used
-    allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator, size: usize) !CodeBuffer {
-        // Allocate memory
-        // In production, this would use mmap with PROT_READ | PROT_WRITE | PROT_EXEC
-        const memory = try allocator.alloc(u8, size);
+        _ = allocator;
+        const len = std.mem.alignForward(usize, size, std.heap.page_size_min);
+        var flags: std.posix.MAP = .{ .TYPE = .PRIVATE, .ANONYMOUS = true };
+        if (@hasField(@TypeOf(flags), "JIT")) {
+            flags.JIT = true;
+        }
+        const prot: u32 = std.posix.PROT.READ | std.posix.PROT.WRITE | std.posix.PROT.EXEC;
+        const memory = try std.posix.mmap(null, len, prot, flags, -1, 0);
         return .{
             .memory = memory,
             .pos = 0,
-            .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *CodeBuffer) void {
-        self.allocator.free(self.memory);
+        std.posix.munmap(self.memory);
     }
 
     /// Get current write position as function pointer
@@ -58,6 +68,8 @@ pub const CodeBuffer = struct {
     /// Write bytes directly
     pub fn write(self: *CodeBuffer, bytes: []const u8) !void {
         const dest = try self.reserve(bytes.len);
+        jitWriteProtect(false);
+        defer jitWriteProtect(true);
         @memcpy(dest, bytes);
     }
 
@@ -77,6 +89,8 @@ pub fn patchStencil(
     const start = buffer.pos;
 
     // Copy stencil code
+    jitWriteProtect(false);
+    defer jitWriteProtect(true);
     const dest = try buffer.reserve(stencil.code.len);
     @memcpy(dest, stencil.code);
 
@@ -86,6 +100,8 @@ pub fn patchStencil(
         const value = values[i];
         try applyPatch(dest, hole, value, start, buffer);
     }
+
+    flushIcache(dest.ptr, dest.len);
 
     return start;
 }
@@ -237,6 +253,20 @@ fn patchRel14(code: []u8, offset: u32) void {
     // Clear and set offset field (bits 5-18)
     inst = (inst & 0xFFF8001F) | ((offset & 0x3FFF) << 5);
     std.mem.writeInt(u32, code[0..4], inst, .little);
+}
+
+fn flushIcache(ptr: [*]u8, len: usize) void {
+    if (builtin.os.tag == .macos) {
+        darwin.sys_icache_invalidate(ptr, len);
+    } else {
+        std.atomic.compilerFence(.SeqCst);
+    }
+}
+
+fn jitWriteProtect(enable: bool) void {
+    if (builtin.os.tag == .macos) {
+        darwin.pthread_jit_write_protect_np(@intFromBool(enable));
+    }
 }
 
 // ============================================================================
