@@ -75,8 +75,7 @@ pub const Jit = struct {
         const code = chunk.getCode();
         while (bc_offset < code.len) {
             // Record label for this bytecode offset
-            self.labels.put(bc_offset, self.code_buffer.pos) catch
-                return error.OutOfMemory;
+            try self.labels.put(bc_offset, self.code_buffer.pos);
 
             const op: Op = @enumFromInt(code[bc_offset]);
             bc_offset += 1;
@@ -360,4 +359,5 @@ test "jit compile simple" {
 
     // Verify function was compiled (on ARM64, we could call it)
     try testing.expect(@intFromPtr(fn_ptr) != 0);
+    try testing.expect(jit.labels.count() > 0);
 }
