@@ -813,6 +813,7 @@ pub const Vm = struct {
     pub fn callClosure(self: *Vm, closure: *const runtime.Closure, argc: u8) anyerror!Value {
         // Save state - will be restored on both success and error
         const saved_state = State.save(self);
+        defer saved_state.restore(self);
 
         // Set up to execute the closure's chunk directly (like vm.run)
         const closure_chunk: *const Chunk = closure.code.toPtr(Chunk);
@@ -826,10 +827,7 @@ pub const Vm = struct {
         self.sp = argc;
         // If closure needs more locals, push nil for them
         while (self.sp < closure_chunk.num_locals) {
-            self.push(Value.nil) catch |err| {
-                saved_state.restore(self);
-                return err;
-            };
+            try self.push(Value.nil);
         }
 
         // Store closure and argc for load_capture/load_argc when fp=0
@@ -837,13 +835,7 @@ pub const Vm = struct {
         self.current_argc = argc;
 
         // Execute until return
-        const result = self.execute() catch |err| {
-            saved_state.restore(self);
-            return err;
-        };
-
-        saved_state.restore(self);
-        return result;
+        return try self.execute();
     }
 
     /// Run a chunk to completion
@@ -7096,6 +7088,32 @@ test "vm push and return" {
     };
 
     const result = try vm.run(&chunk);
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "vm callClosure runs and restores" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const push_op: u16 = @intFromEnum(Op.push_i32);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(push_op & 0xFF), @truncate(push_op >> 8),
+        42, 0, 0, 0,
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk_val = try heap.allocChunk(&code, &.{}, 0, 0, 0, false, 0);
+    const closure_val = try heap.allocClosure(chunk_val, 0, &.{});
+    const closure = closure_val.toPtr(runtime.Closure);
+
+    const result = try vm.callClosure(closure, 0);
+    try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
