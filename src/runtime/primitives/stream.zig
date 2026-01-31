@@ -73,15 +73,25 @@ pub fn primReadLine(heap: *Heap, args: []const Value) !Value {
     var buffer: [4096]u8 = undefined;
     var index: usize = 0;
     while (index < buffer.len) {
-        var byte: [1]u8 = undefined;
-        const bytes_read = try file.read(&byte);
-        if (bytes_read == 0) {
-            // EOF
+        const byte_opt: ?u8 = if (stream.pushback_char != 0xFF) blk: {
+            const ch = stream.pushback_char;
+            stream.pushback_char = 0xFF;
+            break :blk ch;
+        } else blk: {
+            var byte: [1]u8 = undefined;
+            const bytes_read = try file.read(&byte);
+            if (bytes_read == 0) break :blk null;
+            break :blk byte[0];
+        };
+
+        if (byte_opt == null) {
             if (index == 0) return Value.nil;
             break;
         }
-        if (byte[0] == '\n') break;
-        buffer[index] = byte[0];
+
+        const byte = byte_opt.?;
+        if (byte == '\n') break;
+        buffer[index] = byte;
         index += 1;
     }
 
@@ -108,6 +118,38 @@ test "primReadLine returns nil on EOF" {
     const stream = try heap.allocFileInputStream(@intCast(dup_fd));
     const res = try primReadLine(&heap, &.{stream});
     try testing.expect(res.isNil());
+}
+
+test "primReadLine honors unread-char for file streams" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        const file = try tmp.dir.createFile("pushback.txt", .{ .read = true, .truncate = true });
+        defer file.close();
+        try file.writeAll("ab\nc");
+    }
+
+    const file = try tmp.dir.openFile("pushback.txt", .{});
+    defer file.close();
+    const dup_fd = try std.posix.dup(file.handle);
+    const stream = try heap.allocFileInputStream(@intCast(dup_fd));
+
+    const first = try io.readChar(stream, null, null);
+    try io.unreadChar(Value.makeCharacter(@intCast(first.toFixnum())), stream);
+
+    const line1 = try primReadLine(&heap, &.{stream});
+    try testing.expect(line1.isString());
+    try testing.expect(std.mem.eql(u8, line1.toPtr(String).bytes(), "ab"));
+
+    const line2 = try primReadLine(&heap, &.{stream});
+    try testing.expect(line2.isString());
+    try testing.expect(std.mem.eql(u8, line2.toPtr(String).bytes(), "c"));
 }
 
 pub fn primWriteLine(heap: *Heap, args: []const Value) !Value {
