@@ -326,7 +326,9 @@ pub const Parser = struct {
 
         // Build dims argument based on rank
         const rank_val: ?usize = if (rank) |r| blk: {
-            const ur = std.math.cast(usize, r) orelse return error.InvalidArray;
+            const ur_opt = std.math.cast(usize, r);
+            if (ur_opt == null) return error.InvalidArray;
+            const ur = ur_opt.?;
             if (ur == 0) return error.InvalidArray;
             break :blk ur;
         } else null;
@@ -1321,6 +1323,32 @@ test "parse #2A array" {
     const d2 = d1.cdr.toPtr(objects.Cons);
     try testing.expectEqual(@as(i64, 2), d2.car.toFixnum());
     try testing.expect(d2.cdr.isNil());
+}
+
+test "parse #0A array" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+
+    var parser = try Parser.init(testing.allocator, &heap, "#0A()", &vm.builtins);
+    defer parser.deinit();
+
+    const result = try parser.parse();
+    try testing.expect(result.isCons());
+
+    const cons = result.toPtr(objects.Cons);
+    const sym = cons.car.toPtr(objects.Symbol);
+    try testing.expectEqualStrings("MAKE-ARRAY", sym.getName());
+
+    const args = cons.cdr;
+    try testing.expect(args.isCons());
+    const args_cons = args.toPtr(objects.Cons);
+    const dims = args_cons.car;
+    try testing.expectEqual(@as(i64, 0), dims.toFixnum());
+    try testing.expect(args_cons.cdr.isNil());
 }
 
 test "parse #2A ragged errors" {
