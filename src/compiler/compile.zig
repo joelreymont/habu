@@ -33,6 +33,8 @@ const BiChecker = types.BiChecker;
 const TypingCtx = types.TypingCtx;
 const vm_mod = @import("../interp/vm.zig");
 const Vm = vm_mod.Vm;
+const reader = @import("../reader/reader.zig");
+const Parser = reader.Parser;
 const bytecode = @import("../bytecode/bytecode.zig");
 const Emitter = bytecode.Emitter;
 const Chunk = bytecode.Chunk;
@@ -13916,4 +13918,74 @@ test "compiler qualifyName allocates for long names" {
 
     try testing.expect(q.owned);
     try testing.expectEqualStrings(expected, q.name);
+}
+
+test "parser resolves list symbol to builtin" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    var parser = try Parser.init(allocator, &heap, "(list 1 2)", &vm.builtins);
+    defer parser.deinit();
+
+    const expr = try parser.parse();
+    try testing.expect(expr.isCons());
+    const head = expr.toPtr(Cons).car;
+    try testing.expect(head.isSymbol());
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+    const b = compiler.builtins.?;
+    try testing.expectEqual(b.list.raw, head.raw);
+}
+
+test "compile list and listen use intrinsic IR" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    {
+        var env = Env.init(arena_alloc, null);
+        defer env.deinit();
+
+        var parser = try Parser.init(arena_alloc, &heap, "(list 1 2)", &vm.builtins);
+        defer parser.deinit();
+        const expr = try parser.parse();
+        const ir_node = try compiler.compile(expr, &env);
+        const is_list = switch (ir_node.*) {
+            .list => true,
+            else => false,
+        };
+        try testing.expect(is_list);
+    }
+
+    {
+        var env = Env.init(arena_alloc, null);
+        defer env.deinit();
+
+        var parser = try Parser.init(arena_alloc, &heap, "(listen (make-string-input-stream \"a\"))", &vm.builtins);
+        defer parser.deinit();
+        const expr = try parser.parse();
+        const ir_node = try compiler.compile(expr, &env);
+        const is_listen = switch (ir_node.*) {
+            .listen => true,
+            else => false,
+        };
+        try testing.expect(is_listen);
+    }
 }
