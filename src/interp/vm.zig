@@ -4655,13 +4655,11 @@ pub const Vm = struct {
             .read => {
                 // Read a complete S-expression from stdin
                 var buffer: [4096]u8 = undefined;
-                const len = io.sysReadSexp(&buffer) catch |err| switch (err) {
-                    error.EndOfStream => {
-                        try self.push(Value.nil);
-                        return;
-                    },
-                    else => return err,
-                };
+                const len = try io.sysReadSexp(&buffer);
+                if (len == 0) {
+                    try self.push(Value.nil);
+                    return;
+                }
 
                 // Parse the S-expression
                 var parser = try Parser.init(self.allocator, self.heap, buffer[0..len], &self.builtins);

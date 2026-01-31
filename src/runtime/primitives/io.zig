@@ -189,6 +189,30 @@ pub fn sysNewline() !void {
     try sysWriteChar('\n');
 }
 
+fn readByteMaybe(reader: anytype) !?u8 {
+    const ReaderT = @TypeOf(reader);
+    const TargetT = switch (@typeInfo(ReaderT)) {
+        .pointer => |ptr| ptr.child,
+        else => ReaderT,
+    };
+
+    if (@hasDecl(TargetT, "takeByte")) {
+        return if (reader.takeByte()) |byte| byte else |err| switch (err) {
+            error.EndOfStream => null,
+            else => return err,
+        };
+    }
+
+    if (@hasDecl(TargetT, "read")) {
+        var byte: [1]u8 = undefined;
+        const count = try reader.read(&byte);
+        if (count == 0) return null;
+        return byte[0];
+    }
+
+    @compileError("readByteMaybe requires reader.takeByte or reader.read");
+}
+
 /// Read a line from stdin (allocates in heap)
 pub fn sysReadLine(heap: *heap_mod.Heap) !Value {
     const stdin_file = fs.File.stdin();
@@ -201,10 +225,9 @@ pub fn sysReadLine(heap: *heap_mod.Heap) !Value {
     var read_any = false;
 
     while (true) {
-        const byte = reader.takeByte() catch |err| switch (err) {
-            error.EndOfStream => break,
-            else => return err,
-        };
+        const byte_opt = try readByteMaybe(reader);
+        if (byte_opt == null) break;
+        const byte = byte_opt.?;
         read_any = true;
         if (byte == '\n') break;
         try line.append(heap.backing_allocator, byte);
@@ -227,12 +250,9 @@ pub fn sysReadChar() !i64 {
     var file_reader = stdin_file.reader(&read_buf);
     const reader = &file_reader.interface;
 
-    const byte = reader.takeByte() catch |err| switch (err) {
-        error.EndOfStream => return -1,
-        else => return err,
-    };
-
-    return @intCast(byte);
+    const byte_opt = try readByteMaybe(reader);
+    if (byte_opt == null) return -1;
+    return @intCast(byte_opt.?);
 }
 
 /// Peek at next character without consuming it
@@ -248,11 +268,9 @@ pub fn sysPeekChar() !i64 {
     var file_reader = stdin_file.reader(&read_buf);
     const reader = &file_reader.interface;
 
-    const byte = reader.takeByte() catch |err| switch (err) {
-        error.EndOfStream => return -1,
-        else => return err,
-    };
-
+    const byte_opt = try readByteMaybe(reader);
+    if (byte_opt == null) return -1;
+    const byte = byte_opt.?;
     pushback_char = byte;
     return @intCast(byte);
 }
@@ -278,13 +296,12 @@ pub fn sysReadSexp(buffer: []u8) !usize {
 
     while (len < buffer.len) {
         // Check pushback buffer first
-        const byte: u8 = if (pushback_char) |ch| blk: {
+        const byte_opt: ?u8 = if (pushback_char) |ch| blk: {
             pushback_char = null;
             break :blk ch;
-        } else reader.takeByte() catch |err| switch (err) {
-            error.EndOfStream => break,
-            else => return err,
-        };
+        } else try readByteMaybe(reader);
+        if (byte_opt == null) break;
+        const byte = byte_opt.?;
 
         buffer[len] = byte;
         len += 1;
@@ -2179,6 +2196,23 @@ test "readLine handles long file lines" {
     try testing.expect(line_val.isString());
     const line = line_val.toPtr(objects.String);
     try testing.expectEqual(line_len, @as(usize, @intCast(line.length)));
+}
+
+test "readByteMaybe handles EOF" {
+    const testing = std.testing;
+
+    var empty_buf: [0]u8 = .{};
+    var empty_stream = std.io.fixedBufferStream(&empty_buf);
+    const empty_reader = empty_stream.reader();
+    try testing.expect((try readByteMaybe(empty_reader)) == null);
+
+    var one_buf = [_]u8{'x'};
+    var one_stream = std.io.fixedBufferStream(&one_buf);
+    const one_reader = one_stream.reader();
+    const b1 = try readByteMaybe(one_reader);
+    try testing.expect(b1 != null and b1.? == 'x');
+    const b2 = try readByteMaybe(one_reader);
+    try testing.expect(b2 == null);
 }
 
 test "princValueTo reports invalid unicode" {
