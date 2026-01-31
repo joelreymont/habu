@@ -425,7 +425,7 @@ pub fn truename(allocator: std.mem.Allocator, heap: *Heap, builtins: *const Buil
     var buf: [std.fs.max_path_bytes]u8 = undefined;
     const real_path = std.posix.realpath(path_str, &buf) catch |err| switch (err) {
         error.FileNotFound => return Value.nil,
-        else => return error.FileError,
+        else => return err,
     };
 
     // Parse the real path into a pathname
@@ -467,12 +467,11 @@ pub fn ensureDirectoriesExist(
     const dir_path = path_str[0..dir_end];
 
     // Create directories
-    std.fs.cwd().makePath(dir_path) catch |err| switch (err) {
-        error.PathAlreadyExists => return .{ .pathname = val, .created = false },
-        else => return error.FileError,
+    const status = try std.fs.cwd().makePathStatus(dir_path);
+    return .{
+        .pathname = val,
+        .created = status == .created,
     };
-
-    return .{ .pathname = val, .created = true };
 }
 
 /// Helper to convert pathname to string path
@@ -652,4 +651,29 @@ test "namestring version formatting" {
     const ns_kw = try namestring(testing.allocator, &heap, &builtins, pn_kw);
     try testing.expect(ns_kw.isString());
     try testing.expect(std.mem.eql(u8, ns_kw.toPtr(objects.String).bytes(), "foo.lisp;NEWEST"));
+}
+
+test "ensureDirectoriesExist reports created" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+    const builtins = try BuiltinSymbols.init(&heap);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const subdir = "a/b";
+    var base_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const base_path = try tmp.dir.realpath(".", &base_buf);
+    const full_path = try std.fmt.allocPrint(testing.allocator, "{s}/{s}", .{ base_path, subdir });
+    defer testing.allocator.free(full_path);
+
+    const path_str = try heap.allocBaseString(full_path);
+    const pn = try parseNamestring(testing.allocator, &heap, path_str);
+    const res1 = try ensureDirectoriesExist(testing.allocator, &heap, &builtins, pn);
+    try testing.expect(res1.created);
+
+    const res2 = try ensureDirectoriesExist(testing.allocator, &heap, &builtins, pn);
+    try testing.expect(!res2.created);
 }
