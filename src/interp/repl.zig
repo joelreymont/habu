@@ -556,13 +556,11 @@ pub const Repl = struct {
             const prompt = if (input_buf.items.len == 0) self.config.prompt else self.config.cont_prompt;
 
             // Read line with editing
-            const line = self.line_editor.readline(prompt) catch |err| {
-                // Error reading - try to eval what we have and exit
-                if (input_buf.items.len > 0) {
-                    try self.evalPrint(input_buf.items, writer);
-                }
-                return err;
-            } orelse {
+            const line = (try self.handleReadlineResult(
+                self.line_editor.readline(prompt),
+                &input_buf,
+                writer,
+            )) orelse {
                 // EOF (Ctrl-D on empty line)
                 if (input_buf.items.len > 0) {
                     try self.evalPrint(input_buf.items, writer);
@@ -611,6 +609,20 @@ pub const Repl = struct {
             }
             input_buf.clearRetainingCapacity();
         }
+    }
+
+    fn handleReadlineResult(
+        self: *Repl,
+        result: anyerror!?[]const u8,
+        input_buf: *std.ArrayList(u8),
+        writer: anytype,
+    ) !?[]const u8 {
+        return if (result) |line| line else |err| {
+            if (input_buf.items.len > 0) {
+                try self.evalPrint(input_buf.items, writer);
+            }
+            return err;
+        };
     }
 
     /// Count paren balance: positive = open parens, negative = too many close parens
@@ -951,6 +963,7 @@ pub const Repl = struct {
                     .stdin => "stdin",
                     .stdout => "stdout",
                     .stderr => "stderr",
+                    .byte => "byte",
                     .broadcast => "broadcast",
                     .concatenated => "concatenated",
                     .echo => "echo",
@@ -1918,6 +1931,30 @@ test "showType reports compile error" {
         saw_err = true;
     }
     try testing.expect(saw_err);
+}
+
+test "handleReadlineResult evals buffered input on error" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    var out_buf: [256]u8 = undefined;
+    var out_stream = std.io.fixedBufferStream(&out_buf);
+
+    var input_buf = std.ArrayList(u8){};
+    defer input_buf.deinit(allocator);
+    try input_buf.appendSlice(allocator, "42");
+
+    const ReadErr = error{ReadFailed};
+    try testing.expectError(ReadErr.ReadFailed, repl.handleReadlineResult(ReadErr.ReadFailed, &input_buf, out_stream.writer()));
+
+    const written = out_buf[0..out_stream.pos];
+    try testing.expect(std.mem.indexOf(u8, written, "42") != null);
 }
 test "eval cons" {
     const testing = std.testing;
