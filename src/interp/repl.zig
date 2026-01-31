@@ -416,14 +416,16 @@ pub const Repl = struct {
             const expr_slice = content[expr_start..pos];
             if (expr_slice.len > 0) {
                 // Use evalWithVm for the nested VM
-                last_value = self.evalWithVm(expr_slice, &nested_vm) catch |err| {
+                if (self.evalWithVm(expr_slice, &nested_vm)) |value| {
+                    last_value = value;
+                } else |err| {
                     std.debug.print("Error at pos {}: {s} - {s}\n", .{
                         pos,
                         @errorName(err),
                         expr_slice[0..@min(80, expr_slice.len)],
                     });
                     return err;
-                };
+                }
             }
         }
 
@@ -462,7 +464,7 @@ pub const Repl = struct {
         }
 
         // Expand macros
-        expr = self.expandMacros(expr) catch |err| {
+        expr = if (self.expandMacros(expr)) |expanded| expanded else |err| {
             std.debug.print("Macro expansion error: {}\n", .{err});
             return err;
         };
@@ -483,7 +485,7 @@ pub const Repl = struct {
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
-        const ir_node = self.compiler.compile(expr, &env) catch |err| {
+        const ir_node = if (self.compiler.compile(expr, &env)) |node| node else |err| {
             std.debug.print("Compile error: {}\n", .{err});
             return err;
         };
@@ -683,7 +685,7 @@ pub const Repl = struct {
     /// Evaluate a string and print the result, with nice error messages
     pub fn evalPrint(self: *Repl, source: []const u8, writer: anytype) !void {
         var err_info: ?ErrorInfo = null;
-        const result = self.evalCapturingError(source, &err_info) catch |err| {
+        const result = if (self.evalCapturingError(source, &err_info)) |value| value else |err| {
             if (err_info) |info| {
                 try self.printDiagnostic(source, info, writer);
             } else {
@@ -759,7 +761,7 @@ pub const Repl = struct {
         var parser = try Parser.init(arena_alloc, self.heap, source, &self.vm.builtins);
         defer parser.deinit();
 
-        var expr = parser.parse() catch |err| {
+        var expr = if (parser.parse()) |parsed| parsed else |err| {
             const loc = parser.getErrorLocation();
             err_info.* = .{
                 .kind = switch (err) {
@@ -795,7 +797,7 @@ pub const Repl = struct {
         }
 
         // Expand macros before compilation
-        expr = self.expandMacros(expr) catch |err| {
+        expr = if (self.expandMacros(expr)) |expanded| expanded else |err| {
             std.debug.print("expandMacros error: {}\n", .{err});
             return err;
         };
@@ -817,7 +819,7 @@ pub const Repl = struct {
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
-        const ir_node = self.compiler.compile(expr, &env) catch |err| {
+        const ir_node = if (self.compiler.compile(expr, &env)) |node| node else |err| {
             err_info.* = .{
                 .kind = if (err == error.UnboundVariable) .compile_unbound_variable else .compile_invalid_syntax,
                 .line = 1,
@@ -862,7 +864,7 @@ pub const Repl = struct {
         }
         self.vm.setChunkPool(chunk_ptrs.items);
 
-        const result = self.vm.run(chunk.toPtr(runtime.objects.Chunk)) catch |err| {
+        const result = if (self.vm.run(chunk.toPtr(runtime.objects.Chunk))) |value| value else |err| {
             err_info.* = .{
                 .kind = if (err == error.UserError) .runtime_user_error else .runtime_type_mismatch,
                 .line = 1,
@@ -1861,6 +1863,26 @@ test "eval nested arithmetic" {
 
     const result = try evalString(allocator, &heap, "(+ (* 3 4) (- 10 5))");
     try testing.expectEqual(@as(i64, 17), result.toFixnum());
+}
+
+test "eval parse error sets error info" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    var info: ?Repl.ErrorInfo = null;
+    try testing.expectError(error.UnterminatedList, repl.evalCapturingError("(", &info));
+    try testing.expect(info != null);
+    if (info) |got| {
+        try testing.expectEqual(Repl.ErrorKind.parse_unterminated_list, got.kind);
+        try testing.expectEqual(@as(u32, 1), got.line);
+    try testing.expect(got.column >= 1);
+    }
 }
 
 test "eval cons" {
