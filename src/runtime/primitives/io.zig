@@ -225,7 +225,10 @@ pub fn sysReadLine(heap: *heap_mod.Heap) !Value {
     var read_any = false;
 
     while (true) {
-        const byte_opt = try readByteMaybe(reader);
+        const byte_opt: ?u8 = if (pushback_char) |ch| blk: {
+            pushback_char = null;
+            break :blk ch;
+        } else try readByteMaybe(reader);
         if (byte_opt == null) break;
         const byte = byte_opt.?;
         read_any = true;
@@ -2407,6 +2410,20 @@ test "readLine returns empty string after newline pushback" {
     const line2 = try readLine(&heap, stream);
     try testing.expect(line2.isString());
     try testing.expect(std.mem.eql(u8, line2.toPtr(objects.String).bytes(), "X"));
+}
+
+test "sysReadLine returns empty string after newline pushback" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    pushback_char = '\n';
+    defer pushback_char = null;
+
+    const line = try sysReadLine(&heap);
+    try testing.expect(line.isString());
+    try testing.expect(line.toPtr(objects.String).bytes().len == 0);
 }
 
 test "readByteMaybe handles EOF" {
