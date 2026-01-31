@@ -2029,7 +2029,7 @@ pub fn listDirectory(heap: *heap_mod.Heap, pathname: Value) !Value {
     }
 
     // Open directory
-    var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| {
+    var dir = if (std.fs.cwd().openDir(dir_path, .{ .iterate = true })) |opened| opened else |err| {
         return switch (err) {
             error.FileNotFound, error.NotDir => Value.nil,
             else => err,
@@ -2143,6 +2143,25 @@ test "fileExists and probeFile" {
     defer testing.allocator.free(missing_path);
     try testing.expect(!(try fileExists(missing_path)));
     try testing.expect(!(try probeFile(missing_path)));
+}
+
+test "listDirectory missing dir returns nil" {
+    const testing = std.testing;
+    var heap = try heap_mod.Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const tmp_path = try tmp.parent_dir.realpathAlloc(testing.allocator, &tmp.sub_path);
+    defer testing.allocator.free(tmp_path);
+
+    const missing_path = try std.fs.path.join(testing.allocator, &.{ tmp_path, "nope-nope" });
+    defer testing.allocator.free(missing_path);
+
+    const missing_val = try heap.allocBaseString(missing_path);
+    const res = try listDirectory(&heap, missing_val);
+    try testing.expect(res.isNil());
 }
 
 test "pathnameMatchP matches string and pathname" {
