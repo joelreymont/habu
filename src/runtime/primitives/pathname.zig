@@ -423,7 +423,7 @@ pub fn truename(allocator: std.mem.Allocator, heap: *Heap, builtins: *const Buil
 
     // Use realpath to get the canonical path
     var buf: [std.fs.max_path_bytes]u8 = undefined;
-    const real_path = std.posix.realpath(path_str, &buf) catch |err| switch (err) {
+    const real_path = if (std.posix.realpath(path_str, &buf)) |resolved| resolved else |err| switch (err) {
         error.FileNotFound => return Value.nil,
         else => return err,
     };
@@ -676,4 +676,24 @@ test "ensureDirectoriesExist reports created" {
 
     const res2 = try ensureDirectoriesExist(testing.allocator, &heap, &builtins, pn);
     try testing.expect(!res2.created);
+}
+
+test "truename missing path returns nil" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+    const builtins = try BuiltinSymbols.init(&heap);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var base_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const base_path = try tmp.dir.realpath(".", &base_buf);
+    const missing_path = try std.fmt.allocPrint(testing.allocator, "{s}/nope-nope", .{base_path});
+    defer testing.allocator.free(missing_path);
+
+    const path_val = try heap.allocBaseString(missing_path);
+    const res = try truename(testing.allocator, &heap, &builtins, path_val);
+    try testing.expect(res.isNil());
 }
