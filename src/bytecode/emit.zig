@@ -1640,8 +1640,7 @@ pub const Emitter = struct {
                         // Found target block in same chunk with no unwind-protect between
                         // Use compile-time jump
                         const jump_loc = try self.emitJump(.jmp);
-                        blk.pending_exits.append(self.allocator, jump_loc) catch
-                            return error.OutOfMemory;
+                        try blk.pending_exits.append(self.allocator, jump_loc);
                         return;
                     }
                     // Not our target block, keep searching
@@ -2650,4 +2649,27 @@ test "emit lambda key params" {
         }
     }
     try testing.expect(kw_found);
+}
+
+test "emit block return-from patches" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var emitter = Emitter.initWithHeap(allocator, &heap);
+    defer emitter.deinit();
+
+    const builder = ir.IrBuilder.init(allocator);
+    const val = try builder.lit(Value.makeFixnum(7));
+    const ret = try builder.returnFrom("blk", val);
+    const blk = try builder.block("blk", ret);
+
+    try emitter.emit(blk);
+    _ = try emitter.finalize();
+    try testing.expect(emitter.code.items.len > 0);
 }
