@@ -257,10 +257,7 @@ pub const Repl = struct {
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
-        const ir_node = self.compiler.compile(expr, &env) catch |err| {
-            std.debug.print("Compile error: {}\n", .{err});
-            return err;
-        };
+        const ir_node = try self.compiler.compile(expr, &env);
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
@@ -1935,6 +1932,16 @@ test "eval parse error propagates" {
     defer heap.deinit();
 
     try testing.expectError(error.UnterminatedList, evalString(allocator, &heap, "("));
+}
+
+test "eval compile error propagates" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    try testing.expectError(error.InvalidLambda, evalString(allocator, &heap, "(lambda 1)"));
 }
 
 test "showType parse error propagates" {
