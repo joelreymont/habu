@@ -153,8 +153,8 @@ pub fn check(value: u64, contract: *const Contract, blame: Blame) !u64 {
             return try check(v1, a.right, blame);
         },
         .@"or" => |o| {
-            return check(value, o.left, blame) catch
-                check(value, o.right, blame);
+            const left = check(value, o.left, blame);
+            return if (left) |ok| ok else |_| try check(value, o.right, blame);
         },
         .not => |n| {
             if (check(value, n, blame)) |_| {
@@ -601,6 +601,27 @@ test "contract check" {
     // Check fails for non-fixnum
     const err_result = check(0, fixnum_ctc, blame); // nil
     try testing.expectError(error.ContractViolation, err_result);
+}
+
+test "or contract checks right branch" {
+    const testing = std.testing;
+
+    var compiler = ContractCompiler.init(testing.allocator);
+    defer compiler.deinit();
+    const fixnum_ctc = try compiler.compile(&types.t_fixnum);
+    const nil_ctc = try compiler.compile(&types.t_nil);
+
+    const alloc = compiler.arena.allocator();
+    const or_ctc = try alloc.create(Contract);
+    or_ctc.* = .{ .@"or" = .{ .left = fixnum_ctc, .right = nil_ctc } };
+
+    const blame = Blame{
+        .positive = .{ .name = "test" },
+        .negative = .{ .name = "test" },
+    };
+
+    const result = try check(0, or_ctc, blame);
+    try testing.expectEqual(@as(u64, 0), result);
 }
 
 test "listof contract check" {
