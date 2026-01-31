@@ -139,6 +139,18 @@ fn cbnz_placeholder(rn: u5) u32 {
     return 0xB5000000 | @as(u32, rn); // CBNZ with offset 0
 }
 
+/// Encode STP (pre-index): STP Xt1, Xt2, [Xn, #imm7*8]!
+fn stp_pre(rt1: u5, rt2: u5, rn: u5, offset: i7) u32 {
+    const imm: u32 = @bitCast(@as(i32, offset) & 0x7F);
+    return 0xA9800000 | (imm << 15) | (@as(u32, rt2) << 10) | (@as(u32, rn) << 5) | rt1;
+}
+
+/// Encode LDP (post-index): LDP Xt1, Xt2, [Xn], #imm7*8
+fn ldp_post(rt1: u5, rt2: u5, rn: u5, offset: i7) u32 {
+    const imm: u32 = @bitCast(@as(i32, offset) & 0x7F);
+    return 0xA8C00000 | (imm << 15) | (@as(u32, rt2) << 10) | (@as(u32, rn) << 5) | rt1;
+}
+
 /// Convert u32 instruction to bytes (little-endian)
 fn inst_bytes(inst: u32) [4]u8 {
     return @bitCast(inst);
@@ -164,7 +176,10 @@ const X1: u5 = 1; // temp/arg
 const X2: u5 = 2; // temp/arg
 const X9: u5 = 9; // scratch
 const X10: u5 = 10; // scratch
+const X19: u5 = 19; // stack pointer
+const X20: u5 = 20; // frame pointer
 const X30: u5 = 30; // link register
+const SP: u5 = 31; // stack pointer
 
 // ============================================================================
 // Stencil Definitions
@@ -221,6 +236,24 @@ pub const sub_fixnum = Stencil{
 pub const ret_stencil = Stencil{
     .name = "ret",
     .code = &inst_bytes(ret()),
+    .holes = &[_]Hole{},
+};
+
+/// Function prologue: save x19/x20, set x19 = arg0 (stack pointer)
+pub const prologue_stencil = Stencil{
+    .name = "prologue",
+    .code = &(
+        inst_bytes(stp_pre(X19, X20, SP, -2)) ++
+            inst_bytes(add_imm(X19, X0, 0))),
+    .holes = &[_]Hole{},
+};
+
+/// Function epilogue: restore x19/x20, return
+pub const epilogue_stencil = Stencil{
+    .name = "epilogue",
+    .code = &(
+        inst_bytes(ldp_post(X19, X20, SP, 2)) ++
+            inst_bytes(ret())),
     .holes = &[_]Hole{},
 };
 
@@ -420,8 +453,6 @@ pub const ge_stencil = Stencil{
 
 /// Stack push: store x0 to stack and advance sp
 /// Uses x19 as stack pointer (callee-saved)
-const X19: u5 = 19;
-
 pub const stack_push = Stencil{
     .name = "stack_push",
     .code = &(
@@ -472,8 +503,6 @@ pub const swap_stencil = Stencil{
 
 /// Load local variable (using x20 as frame pointer)
 /// Hole: imm32 for offset
-const X20: u5 = 20;
-
 pub const load_local = Stencil{
     .name = "load_local",
     .code = &(
@@ -558,6 +587,8 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 4), push_t_stencil.code.len);
     try testing.expectEqual(@as(usize, 4), stack_push.code.len);
     try testing.expectEqual(@as(usize, 4), stack_pop.code.len);
+    try testing.expectEqual(@as(usize, 8), prologue_stencil.code.len);
+    try testing.expectEqual(@as(usize, 8), epilogue_stencil.code.len);
 
     // Comparison stencils (4 instructions each)
     try testing.expectEqual(@as(usize, 16), eq_stencil.code.len);

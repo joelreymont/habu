@@ -26,7 +26,7 @@ pub const JitError = error{
 };
 
 /// JIT-compiled function
-pub const JitFn = *const fn () callconv(.c) u64;
+pub const JitFn = *const fn ([*]Value) callconv(.c) u64;
 
 /// JIT compiler state
 pub const Jit = struct {
@@ -70,6 +70,8 @@ pub const Jit = struct {
         self.fn_start = self.code_buffer.pos;
         self.labels.clearRetainingCapacity();
         self.pending_jumps.clearRetainingCapacity();
+
+        _ = try patch.patchStencil(&self.code_buffer, stencils.prologue_stencil, &[_]patch.PatchValue{});
 
         var bc_offset: usize = 0;
         const code = chunk.getCode();
@@ -194,7 +196,7 @@ pub const Jit = struct {
             },
 
             .ret => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.ret_stencil, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.epilogue_stencil, &[_]patch.PatchValue{});
             },
 
             .jmp => {
