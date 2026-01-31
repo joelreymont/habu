@@ -26,6 +26,7 @@ pub const Error = error{
     Utf8CodepointTooLarge,
     VectorTooLarge,
     InvalidStruct,
+    InvalidArray,
     TooManySlots,
     OutOfMemory,
     TypeMismatch,
@@ -324,10 +325,12 @@ pub const Parser = struct {
         const initial_contents_kw = try self.internKeyword("initial-contents");
 
         // Build dims argument based on rank
-        const dims_arg = if (rank) |r|
-            Value.makeFixnum(r)
-        else
-            try self.inferArrayDims(contents);
+        const rank_val: ?usize = if (rank) |r| blk: {
+            const ur = std.math.cast(usize, r) orelse return error.InvalidArray;
+            if (ur == 0) return error.InvalidArray;
+            break :blk ur;
+        } else null;
+        const dims_arg = try self.inferArrayDims(contents, rank_val);
 
         // Build argument list: (dims :initial-contents contents)
         const kw_pair = try self.heap.allocCons(initial_contents_kw, try self.heap.allocCons(contents, Value.nil));
@@ -336,21 +339,110 @@ pub const Parser = struct {
         return try self.heap.allocCons(make_array_sym, args);
     }
 
-    fn inferArrayDims(self: *Parser, contents: Value) Error!Value {
-        _ = self;
-        // Infer dimensions from nested list structure
-        // For now, return rank 1 (simple case)
-        // TODO: implement full dimension inference for nested arrays
-        if (contents.isCons()) {
-            var len: i64 = 0;
-            var current = contents;
-            while (current.isCons()) {
-                len += 1;
-                current = current.toPtr(objects.Cons).cdr;
-            }
-            return Value.makeFixnum(len);
+    fn inferArrayDims(self: *Parser, contents: Value, rank: ?usize) Error!Value {
+        const dims = try self.inferDims(contents, rank);
+        if (rank) |r| {
+            const len = try dimsLen(dims);
+            if (len != r) return error.InvalidArray;
         }
-        return Value.makeFixnum(0);
+        return dims;
+    }
+
+    fn inferDims(self: *Parser, contents: Value, rank: ?usize) Error!Value {
+        if (contents.isNil()) {
+            if (rank) |r| {
+                return try self.zeroDims(r);
+            }
+            return try self.heap.allocCons(Value.makeFixnum(0), Value.nil);
+        }
+        if (!contents.isCons()) return error.InvalidArray;
+
+        var len: i64 = 0;
+        var current = contents;
+        while (current.isCons()) {
+            const cons = current.toPtr(objects.Cons);
+            len += 1;
+            current = cons.cdr;
+        }
+        if (!current.isNil()) return error.InvalidArray;
+
+        var nested = false;
+        if (rank) |r| {
+            if (r == 0) return error.InvalidArray;
+            nested = r > 1;
+            var cur = contents;
+            while (cur.isCons()) {
+                const cons = cur.toPtr(objects.Cons);
+                const elem = cons.car;
+                if (nested) {
+                    if (!elem.isCons() and !elem.isNil()) return error.InvalidArray;
+                } else {
+                    if (elem.isCons()) return error.InvalidArray;
+                }
+                cur = cons.cdr;
+            }
+        } else {
+            var cur = contents;
+            while (cur.isCons()) {
+                const cons = cur.toPtr(objects.Cons);
+                if (cons.car.isCons()) {
+                    nested = true;
+                    break;
+                }
+                cur = cons.cdr;
+            }
+        }
+
+        if (!nested) {
+            return try self.heap.allocCons(Value.makeFixnum(len), Value.nil);
+        }
+
+        const next_rank = if (rank) |r| r - 1 else null;
+        const first = contents.toPtr(objects.Cons).car;
+        const sub_dims = try self.inferDims(first, next_rank);
+        var rest = contents.toPtr(objects.Cons).cdr;
+        while (rest.isCons()) {
+            const cons = rest.toPtr(objects.Cons);
+            const elem_dims = try self.inferDims(cons.car, next_rank);
+            if (!dimsEq(sub_dims, elem_dims)) return error.InvalidArray;
+            rest = cons.cdr;
+        }
+
+        return try self.heap.allocCons(Value.makeFixnum(len), sub_dims);
+    }
+
+    fn dimsLen(dims: Value) Error!usize {
+        var len: usize = 0;
+        var current = dims;
+        while (current.isCons()) {
+            len += 1;
+            current = current.toPtr(objects.Cons).cdr;
+        }
+        if (!current.isNil()) return error.InvalidArray;
+        return len;
+    }
+
+    fn dimsEq(a: Value, b: Value) bool {
+        var cur_a = a;
+        var cur_b = b;
+        while (cur_a.isCons() and cur_b.isCons()) {
+            const a_cons = cur_a.toPtr(objects.Cons);
+            const b_cons = cur_b.toPtr(objects.Cons);
+            if (!a_cons.car.isFixnum() or !b_cons.car.isFixnum()) return false;
+            if (a_cons.car.toFixnum() != b_cons.car.toFixnum()) return false;
+            cur_a = a_cons.cdr;
+            cur_b = b_cons.cdr;
+        }
+        return cur_a.isNil() and cur_b.isNil();
+    }
+
+    fn zeroDims(self: *Parser, rank: usize) Error!Value {
+        var dims = Value.nil;
+        var i: usize = 0;
+        while (i < rank) : (i += 1) {
+            dims = try self.heap.allocCons(Value.makeFixnum(0), dims);
+        }
+        return dims;
     }
 
     fn parseBitVector(self: *Parser) Error!Value {
@@ -1174,7 +1266,7 @@ test "parse #A array" {
 
     var vm = try Vm.init(testing.allocator, &heap);
 
-    // #A((1 2 3)) -> (make-array dims :initial-contents (1 2 3))
+    // #A((1 2 3)) -> (make-array (1 3) :initial-contents (1 2 3))
     var parser = try Parser.init(testing.allocator, &heap, "#A((1 2 3))", &vm.builtins);
     defer parser.deinit();
 
@@ -1184,6 +1276,18 @@ test "parse #A array" {
     const cons = result.toPtr(objects.Cons);
     const sym = cons.car.toPtr(objects.Symbol);
     try testing.expectEqualStrings("MAKE-ARRAY", sym.getName());
+
+    const args = cons.cdr;
+    try testing.expect(args.isCons());
+    const args_cons = args.toPtr(objects.Cons);
+    const dims = args_cons.car;
+    try testing.expect(dims.isCons());
+    const d1 = dims.toPtr(objects.Cons);
+    try testing.expectEqual(@as(i64, 1), d1.car.toFixnum());
+    try testing.expect(d1.cdr.isCons());
+    const d2 = d1.cdr.toPtr(objects.Cons);
+    try testing.expectEqual(@as(i64, 3), d2.car.toFixnum());
+    try testing.expect(d2.cdr.isNil());
 }
 
 test "parse #2A array" {
@@ -1194,7 +1298,7 @@ test "parse #2A array" {
 
     var vm = try Vm.init(testing.allocator, &heap);
 
-    // #2A((1 2) (3 4)) -> (make-array 2 :initial-contents ((1 2) (3 4)))
+    // #2A((1 2) (3 4)) -> (make-array (2 2) :initial-contents ((1 2) (3 4)))
     var parser = try Parser.init(testing.allocator, &heap, "#2A((1 2) (3 4))", &vm.builtins);
     defer parser.deinit();
 
@@ -1205,12 +1309,32 @@ test "parse #2A array" {
     const sym = cons.car.toPtr(objects.Symbol);
     try testing.expectEqualStrings("MAKE-ARRAY", sym.getName());
 
-    // Check rank argument is 2
+    // Check dims argument is (2 2)
     const args = cons.cdr;
     try testing.expect(args.isCons());
     const args_cons = args.toPtr(objects.Cons);
-    try testing.expect(args_cons.car.isFixnum());
-    try testing.expectEqual(@as(i64, 2), args_cons.car.toFixnum());
+    const dims = args_cons.car;
+    try testing.expect(dims.isCons());
+    const d1 = dims.toPtr(objects.Cons);
+    try testing.expectEqual(@as(i64, 2), d1.car.toFixnum());
+    try testing.expect(d1.cdr.isCons());
+    const d2 = d1.cdr.toPtr(objects.Cons);
+    try testing.expectEqual(@as(i64, 2), d2.car.toFixnum());
+    try testing.expect(d2.cdr.isNil());
+}
+
+test "parse #2A ragged errors" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+
+    var parser = try Parser.init(testing.allocator, &heap, "#2A((1 2) (3))", &vm.builtins);
+    defer parser.deinit();
+
+    try testing.expectError(error.InvalidArray, parser.parse());
 }
 
 test "parse #P pathname" {
