@@ -1276,7 +1276,7 @@ pub const Repl = struct {
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
-        const ir_node = self.compiler.compile(expanded_lambda, &env) catch |err| {
+        const ir_node = if (self.compiler.compile(expanded_lambda, &env)) |node| node else |err| {
             std.debug.print("Compile error: {s}\n", .{@errorName(err)});
             return err;
         };
@@ -1439,13 +1439,13 @@ pub const Repl = struct {
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
-        const ir_node = self.compiler.compile(expr, &env) catch |err| {
+        const ir_node = if (self.compiler.compile(expr, &env)) |node| node else |err| {
             std.debug.print("Compile error: {s}\n", .{@errorName(err)});
             return err;
         };
 
         // Run pipeline passes (typecheck, erasure)
-        const final_ir = self.runPipeline(ir_node) catch |err| {
+        const final_ir = if (self.runPipeline(ir_node)) |node| node else |err| {
             std.debug.print("Pipeline error: {s}\n", .{@errorName(err)});
             return err;
         };
@@ -1772,19 +1772,19 @@ pub const Repl = struct {
         defer env.deinit();
 
         // Compile to IR
-        const ir_node = self.compiler.compile(expr, &env) catch |err| {
+        const ir_node = if (self.compiler.compile(expr, &env)) |node| node else |err| {
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
             try writer.print("Compile error: {s}\n", .{@errorName(err)});
-            return;
+            return err;
         };
         self.compiler.builder = saved_builder;
         self.compiler.allocator = saved_allocator;
 
         // Run type inference
-        const inferred = self.compiler.typeInfer(ir_node) catch |err| {
+        const inferred = if (self.compiler.typeInfer(ir_node)) |ty| ty else |err| {
             try writer.print("Type inference failed: {s}\n", .{@errorName(err)});
-            return;
+            return err;
         };
 
         // Print the inferred type using custom format method
@@ -1899,6 +1899,25 @@ test "loadFilePublic missing file errors" {
     var buf: [1024]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
     try testing.expectError(error.FileNotFound, repl.loadFilePublic("nope-nope.habu", stream.writer()));
+}
+
+test "showType reports compile error" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    var buf: [1024]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    var saw_err = false;
+    if (repl.showType("(if)", stream.writer())) |_| {} else |_| {
+        saw_err = true;
+    }
+    try testing.expect(saw_err);
 }
 test "eval cons" {
     const testing = std.testing;
