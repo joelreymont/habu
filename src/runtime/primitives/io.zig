@@ -2112,7 +2112,7 @@ pub fn openFile(heap: *heap_mod.Heap, filename: Value, direction: ?Value, if_exi
         return try heap.allocFileOutputStream(fd);
     } else if (dir.eq(kw_io)) {
         const fd = try std.posix.open(fname.bytes(), .{ .ACCMODE = .RDWR, .CREAT = true }, 0o644);
-        return try heap.allocFileOutputStream(fd);
+        return try heap.allocStream(.io, .file, fd);
     } else {
         const fd = try std.posix.open(fname.bytes(), .{ .ACCMODE = .RDONLY }, 0);
         return try heap.allocFileInputStream(fd);
@@ -2373,6 +2373,36 @@ test "readLine handles long file lines" {
     try testing.expect(line_val.isString());
     const line = line_val.toPtr(objects.String);
     try testing.expectEqual(line_len, @as(usize, @intCast(line.length)));
+}
+
+test "openFile :io supports read and write" {
+    const testing = std.testing;
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("io.txt", .{ .read = true, .truncate = true });
+        defer file.close();
+        try file.writeAll("a");
+    }
+
+    const path = try tmp.dir.realpathAlloc(testing.allocator, "io.txt");
+    defer testing.allocator.free(path);
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const name_val = try heap.allocBaseString(path);
+    const kw_io = try heap.internKeyword("io");
+    const stream = try openFile(&heap, name_val, kw_io, null, null);
+
+    try writeChar(Value.makeFixnum('Z'), stream);
+    _ = try filePosition(&heap, stream, Value.makeFixnum(0));
+    const ch = try readChar(stream, null, null);
+    try testing.expectEqual(@as(i64, 'Z'), ch.toFixnum());
+
+    try closeStream(stream, null);
 }
 
 test "readLine honors unread-char for file streams" {

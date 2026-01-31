@@ -27,17 +27,20 @@ pub fn primOpen(heap: *Heap, args: []const Value, builtins: *const BuiltinSymbol
     // Parse mode keyword using identity: :read, :write, :append
     const is_read = mode_val.raw == builtins.kw_read.raw;
     const is_write = mode_val.raw == builtins.kw_write.raw;
+    const is_io = mode_val.raw == builtins.kw_io.raw;
     const is_append = mode_val.raw == builtins.kw_append.raw;
 
-    if (!is_read and !is_write and !is_append) return error.InvalidArgument;
+    if (!is_read and !is_write and !is_io and !is_append) return error.InvalidArgument;
 
-    const direction: StreamDirection = if (is_read) .input else .output;
+    const direction: StreamDirection = if (is_read) .input else if (is_io) .io else .output;
 
     // Open the file with appropriate flags
     const file = if (is_read)
         try std.fs.cwd().openFile(path, .{ .mode = .read_only })
     else if (is_append)
         try std.fs.cwd().createFile(path, .{ .truncate = false })
+    else if (is_io)
+        try std.fs.cwd().createFile(path, .{ .truncate = false, .read = true })
     else
         try std.fs.cwd().createFile(path, .{ .truncate = true });
 
@@ -150,6 +153,38 @@ test "primReadLine honors unread-char for file streams" {
     const line2 = try primReadLine(&heap, &.{stream});
     try testing.expect(line2.isString());
     try testing.expect(std.mem.eql(u8, line2.toPtr(String).bytes(), "c"));
+}
+
+test "primOpen supports :io" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    var builtins = try BuiltinSymbols.init(&heap);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        const file = try tmp.dir.createFile("io-open.txt", .{ .read = true, .truncate = true });
+        defer file.close();
+        try file.writeAll("a");
+    }
+
+    const path = try tmp.dir.realpathAlloc(testing.allocator, "io-open.txt");
+    defer testing.allocator.free(path);
+    const path_val = try heap.allocBaseString(path);
+
+    const stream_val = try primOpen(&heap, &.{ path_val, builtins.kw_io }, &builtins);
+    try testing.expect(stream_val.isStream());
+
+    try io.writeChar(Value.makeFixnum('Q'), stream_val);
+    _ = try io.filePosition(&heap, stream_val, Value.makeFixnum(0));
+    const ch = try io.readChar(stream_val, null, null);
+    try testing.expectEqual(@as(i64, 'Q'), ch.toFixnum());
+
+    try io.closeStream(stream_val, null);
 }
 
 pub fn primWriteLine(heap: *Heap, args: []const Value) !Value {
