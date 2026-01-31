@@ -4630,7 +4630,7 @@ pub const Vm = struct {
             .read_char => {
                 const ch = try io.sysReadChar();
                 if (ch < 0) {
-                    try self.push(Value.makeFixnum(-1));
+                    try self.push(Value.nil);
                 } else {
                     try self.push(Value.makeCharacter(@intCast(ch)));
                 }
@@ -4638,7 +4638,7 @@ pub const Vm = struct {
             .peek_char => {
                 const ch = try io.sysPeekChar();
                 if (ch < 0) {
-                    try self.push(Value.makeFixnum(-1));
+                    try self.push(Value.nil);
                 } else {
                     try self.push(Value.makeCharacter(@intCast(ch)));
                 }
@@ -4749,9 +4749,12 @@ pub const Vm = struct {
                 const stream_val = try self.pop();
                 // Accept nil or a stream
                 if (!stream_val.isNil() and !stream_val.isStream()) return error.TypeMismatch;
-                // For now, always return nil (no non-blocking I/O support)
-                // A proper implementation would check if input is available
-                try self.push(Value.nil);
+                if (stream_val.isNil()) {
+                    try self.push(Value.nil);
+                } else {
+                    const result = try io.listen(stream_val);
+                    try self.push(result);
+                }
             },
 
             .upgraded_complex_part_type => {

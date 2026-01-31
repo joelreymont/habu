@@ -2323,3 +2323,77 @@ test "metaclass: class-of returns metaclass for Class objects" {
     const result = try runtime.clos.classOf(&heap, args);
     try testing.expect(result.eq(heap.standard_class));
 }
+
+test "read-char and peek-char from stream" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap,
+        "(let ((s (make-string-input-stream \"ab\"))) (list (%peek-char-from-stream s) (%read-char-from-stream s) (%read-char-from-stream s) (%read-char-from-stream s)))");
+
+    try testing.expect(result.isCons());
+    const cons1 = result.toPtr(Cons);
+    try testing.expect(cons1.car.isFixnum());
+    try testing.expectEqual(@as(i64, 'a'), cons1.car.toFixnum());
+
+    try testing.expect(cons1.cdr.isCons());
+    const cons2 = cons1.cdr.toPtr(Cons);
+    try testing.expect(cons2.car.isFixnum());
+    try testing.expectEqual(@as(i64, 'a'), cons2.car.toFixnum());
+
+    try testing.expect(cons2.cdr.isCons());
+    const cons3 = cons2.cdr.toPtr(Cons);
+    try testing.expect(cons3.car.isFixnum());
+    try testing.expectEqual(@as(i64, 'b'), cons3.car.toFixnum());
+
+    try testing.expect(cons3.cdr.isCons());
+    const cons4 = cons3.cdr.toPtr(Cons);
+    try testing.expect(cons4.car.isNil());
+    try testing.expect(cons4.cdr.isNil());
+}
+
+test "read-char-no-hang from stream" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap,
+        "(let ((s (make-string-input-stream \"a\"))) (list (read-char-no-hang s) (read-char-no-hang s)))");
+
+    try testing.expect(result.isCons());
+    const cons1 = result.toPtr(Cons);
+    try testing.expect(cons1.car.isCharacter());
+    try testing.expectEqual(@as(u21, 'a'), cons1.car.toCharacter());
+
+    try testing.expect(cons1.cdr.isCons());
+    const cons2 = cons1.cdr.toPtr(Cons);
+    try testing.expect(cons2.car.isNil());
+    try testing.expect(cons2.cdr.isNil());
+}
+
+test "listen reports input availability on stream" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap,
+        "(let ((s (make-string-input-stream \"a\"))) (list (listen s) (%read-char-from-stream s) (listen s)))");
+
+    try testing.expect(result.isCons());
+    const cons1 = result.toPtr(Cons);
+    try testing.expect(cons1.car.eq(Value.t));
+
+    try testing.expect(cons1.cdr.isCons());
+    const cons2 = cons1.cdr.toPtr(Cons);
+    try testing.expect(cons2.car.isFixnum());
+    try testing.expectEqual(@as(i64, 'a'), cons2.car.toFixnum());
+
+    try testing.expect(cons2.cdr.isCons());
+    const cons3 = cons2.cdr.toPtr(Cons);
+    try testing.expect(cons3.car.isNil());
+    try testing.expect(cons3.cdr.isNil());
+}

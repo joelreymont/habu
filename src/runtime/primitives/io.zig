@@ -1271,6 +1271,79 @@ test "string output stream length and position" {
     try closeStream(stream, null);
 }
 
+test "read-char-no-hang returns character for string stream" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const str = try heap.allocBaseString("a");
+    const stream = try makeStringInputStream(&heap, str, null, null);
+
+    const first = try readCharNoHang(stream);
+    try testing.expect(first.isCharacter());
+    try testing.expectEqual(@as(u21, 'a'), first.toCharacter());
+
+    const second = try readCharNoHang(stream);
+    try testing.expect(second.isNil());
+}
+
+test "peek-char keeps file position" {
+    const testing = std.testing;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("peek.txt", .{ .read = true, .truncate = true });
+        defer file.close();
+        try file.writeAll("ab");
+    }
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const fd = try std.posix.openat(tmp.dir.fd, "peek.txt", .{ .ACCMODE = .RDONLY }, 0);
+    const stream = try heap.allocFileInputStream(fd);
+
+    const peek = try peekChar(null, stream);
+    try testing.expect(peek.isFixnum());
+    try testing.expectEqual(@as(i64, 'a'), peek.toFixnum());
+
+    const pos = try filePosition(&heap, stream, null);
+    try testing.expect(pos.isFixnum());
+    try testing.expectEqual(@as(i64, 0), pos.toFixnum());
+}
+
+test "unread-char replays file byte" {
+    const testing = std.testing;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("unread.txt", .{ .read = true, .truncate = true });
+        defer file.close();
+        try file.writeAll("ab");
+    }
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const fd = try std.posix.openat(tmp.dir.fd, "unread.txt", .{ .ACCMODE = .RDONLY }, 0);
+    const stream = try heap.allocFileInputStream(fd);
+
+    const first = try readChar(stream, null, null);
+    try testing.expect(first.isFixnum());
+    try testing.expectEqual(@as(i64, 'a'), first.toFixnum());
+
+    try unreadChar(Value.makeCharacter(@intCast(first.toFixnum())), stream);
+
+    const again = try readChar(stream, null, null);
+    try testing.expect(again.isFixnum());
+    try testing.expectEqual(@as(i64, 'a'), again.toFixnum());
+}
+
 test "*print-escape* flag" {
     const testing = std.testing;
 
@@ -1519,6 +1592,22 @@ pub fn getOutputStreamString(heap: *heap_mod.Heap, stream: Value) !Value {
     return try heap.allocBaseString(buf.list.items);
 }
 
+fn hasPushback(s: *const objects.Stream) bool {
+    return s.pushback_char != 0xFF;
+}
+
+fn takePushback(s: *objects.Stream) ?u8 {
+    if (s.pushback_char == 0xFF) return null;
+    const ch = s.pushback_char;
+    s.pushback_char = 0xFF;
+    return ch;
+}
+
+fn setPushback(s: *objects.Stream, ch: u8) !void {
+    if (s.pushback_char != 0xFF) return error.InvalidArgument;
+    s.pushback_char = ch;
+}
+
 /// Read one character from stream
 pub fn readChar(stream: Value, eof_error: ?Value, eof_value: ?Value) !Value {
     _ = eof_error;
@@ -1526,16 +1615,20 @@ pub fn readChar(stream: Value, eof_error: ?Value, eof_value: ?Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
     if (s.direction != .input) return error.TypeError;
+    if (s.closed) return error.StreamClosed;
+    if (takePushback(s)) |ch| return Value.makeFixnum(@intCast(ch));
 
     switch (s.stream_type) {
         .string => {
-            if (s.data_ptr == 0 or s.position >= s.length) return Value.nil;
+            if (s.data_ptr == 0) return error.StreamClosed;
+            if (s.position >= s.length) return Value.nil;
             const data: [*]u8 = @ptrFromInt(s.data_ptr);
             const ch = data[s.position];
             s.position += 1;
             return Value.makeFixnum(@intCast(ch));
         },
         .file, .stdin => {
+            if (s.file_fd < 0) return error.StreamClosed;
             var buf: [1]u8 = undefined;
             const fd: std.posix.fd_t = @intCast(s.file_fd);
             const n = try std.posix.read(fd, &buf);
@@ -1550,11 +1643,28 @@ pub fn readChar(stream: Value, eof_error: ?Value, eof_value: ?Value) !Value {
 
 /// Push a character back to stream
 pub fn unreadChar(char: Value, stream: Value) !void {
-    if (!char.isFixnum()) return error.TypeError;
+    if (!char.isCharacter()) return error.TypeError;
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
     if (s.direction != .input) return error.TypeError;
-    if (s.position > 0) s.position -= 1;
+    if (s.closed) return error.StreamClosed;
+    const cp = char.toCharacter();
+    if (cp > 0xFF) return error.InvalidArgument;
+
+    switch (s.stream_type) {
+        .string => {
+            if (s.data_ptr == 0) return error.StreamClosed;
+            const pos = if (std.math.cast(usize, s.position)) |val| val else return error.InvalidArgument;
+            if (pos == 0) return error.InvalidArgument;
+            const data: [*]u8 = @ptrFromInt(s.data_ptr);
+            if (data[pos - 1] != @as(u8, @intCast(cp))) return error.InvalidArgument;
+            s.position -= 1;
+        },
+        .file, .stdin => try setPushback(s, @intCast(cp)),
+        .concatenated, .echo, .synonym, .two_way => return error.NotImplemented,
+        .broadcast, .stdout, .stderr => return error.TypeError,
+        .byte => return error.NotImplemented,
+    }
 }
 
 /// Peek at next character without consuming
@@ -1563,19 +1673,23 @@ pub fn peekChar(peek_type: ?Value, stream: Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
     if (s.direction != .input) return error.TypeError;
+    if (s.closed) return error.StreamClosed;
+    if (hasPushback(s)) return Value.makeFixnum(@intCast(s.pushback_char));
 
     switch (s.stream_type) {
         .string => {
-            if (s.data_ptr == 0 or s.position >= s.length) return Value.nil;
+            if (s.data_ptr == 0) return error.StreamClosed;
+            if (s.position >= s.length) return Value.nil;
             const data: [*]u8 = @ptrFromInt(s.data_ptr);
             return Value.makeFixnum(@intCast(data[s.position]));
         },
         .file, .stdin => {
+            if (s.file_fd < 0) return error.StreamClosed;
             var buf: [1]u8 = undefined;
             const fd: std.posix.fd_t = @intCast(s.file_fd);
             const n = try std.posix.read(fd, &buf);
             if (n == 0) return Value.nil;
-            try std.posix.lseek_CUR(fd, -1);
+            try setPushback(s, buf[0]);
             return Value.makeFixnum(@intCast(buf[0]));
         },
         .concatenated, .echo, .synonym, .two_way => return error.NotImplemented,
@@ -1589,12 +1703,16 @@ pub fn listen(stream: Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
     if (s.direction != .input) return error.TypeError;
+    if (s.closed) return error.StreamClosed;
 
     switch (s.stream_type) {
         .string => {
-            return if (s.data_ptr == 0 or s.position >= s.length) Value.nil else Value.t;
+            if (s.data_ptr == 0) return error.StreamClosed;
+            if (hasPushback(s)) return Value.t;
+            return if (s.position >= s.length) Value.nil else Value.t;
         },
         .file, .stdin => {
+            if (hasPushback(s)) return Value.t;
             const fd: std.posix.fd_t = @intCast(s.file_fd);
             var pollfd = [_]std.posix.pollfd{.{ .fd = fd, .events = std.posix.POLL.IN, .revents = 0 }};
             const ready = try std.posix.poll(&pollfd, 0);
@@ -1611,16 +1729,20 @@ pub fn readCharNoHang(stream: Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
     if (s.direction != .input) return error.TypeError;
+    if (s.closed) return error.StreamClosed;
+    if (takePushback(s)) |ch| return Value.makeCharacter(ch);
 
     switch (s.stream_type) {
         .string => {
-            if (s.data_ptr == 0 or s.position >= s.length) return Value.nil;
+            if (s.data_ptr == 0) return error.StreamClosed;
+            if (s.position >= s.length) return Value.nil;
             const data: [*]u8 = @ptrFromInt(s.data_ptr);
             const ch = data[s.position];
             s.position += 1;
-            return Value.makeFixnum(@intCast(ch));
+            return Value.makeCharacter(ch);
         },
         .file, .stdin => {
+            if (s.file_fd < 0) return error.StreamClosed;
             const fd: std.posix.fd_t = if (s.stream_type == .stdin)
                 std.posix.STDIN_FILENO
             else
@@ -1887,7 +2009,8 @@ pub fn filePosition(heap: *heap_mod.Heap, stream: Value, pos: ?Value) !Value {
             .file, .stdin, .stdout, .stderr => {
                 const fd: std.posix.fd_t = @intCast(s.file_fd);
                 const cur = try std.posix.lseek_CUR_get(fd);
-                return Value.makeFixnum(@intCast(cur));
+                const adj = if (s.direction == .input and hasPushback(s) and cur > 0) cur - 1 else cur;
+                return Value.makeFixnum(@intCast(adj));
             },
             else => return error.NotImplemented,
         }
