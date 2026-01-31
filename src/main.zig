@@ -38,12 +38,14 @@ pub fn main() !void {
     try repl.wireGlobalEnv();
 
     // Auto-load stdlib.habu
-    repl.loadFilePublic("lib/stdlib.habu", writer) catch |err| {
+    if (repl.loadFilePublic("lib/stdlib.habu", writer)) |_| {} else |err| {
         try writer.print("; Warning: Could not load lib/stdlib.habu: {s}\n", .{@errorName(err)});
         if (err == error.FileNotFound) {
             try writer.print("; Hint: Run from project root directory\n", .{});
         }
-    };
+        try writer.flush();
+        return err;
+    }
     try writer.flush();
 
     // Load files from command line arguments
@@ -52,9 +54,11 @@ pub fn main() !void {
 
     const has_files = args.len > 1;
     for (args[1..]) |arg| {
-        repl.loadFilePublic(arg, writer) catch |err| {
+        if (repl.loadFilePublic(arg, writer)) |_| {} else |err| {
             try writer.print("Error loading {s}: {s}\n", .{ arg, @errorName(err) });
-        };
+            try writer.flush();
+            return err;
+        }
         try writer.flush();
     }
 

@@ -1066,14 +1066,16 @@ pub const Repl = struct {
                 try writer.print("Disassembly: {s}\n", .{if (self.config.show_disasm) "on" else "off"});
             },
             2 => { // :l
-                self.loadFile(match.arg, writer) catch |err| {
+                if (self.loadFile(match.arg, writer)) |_| {} else |err| {
                     try writer.print("Load error: {s}\n", .{@errorName(err)});
-                };
+                    return err;
+                }
             },
             3 => { // :t
-                self.showType(match.arg, writer) catch |err| {
+                if (self.showType(match.arg, writer)) |_| {} else |err| {
                     try writer.print("Type error: {s}\n", .{@errorName(err)});
-                };
+                    return err;
+                }
             },
             4 => { // :h
                 try writer.writeAll("Commands:\n");
@@ -1092,13 +1094,13 @@ pub const Repl = struct {
 
     /// Load and evaluate a file
     fn loadFile(self: *Repl, path: []const u8, writer: anytype) !void {
-        const file = std.fs.cwd().openFile(path, .{}) catch |err| {
+        const file = if (std.fs.cwd().openFile(path, .{})) |opened| opened else |err| {
             try writer.print("Cannot open '{s}': {s}\n", .{ path, @errorName(err) });
             return err;
         };
         defer file.close();
 
-        const content = file.readToEndAlloc(self.allocator, 1024 * 1024) catch |err| {
+        const content = if (file.readToEndAlloc(self.allocator, 1024 * 1024)) |buf| buf else |err| {
             try writer.print("Cannot read '{s}': {s}\n", .{ path, @errorName(err) });
             return err;
         };
@@ -1134,18 +1136,18 @@ pub const Repl = struct {
 
             // Find end of expression (simple approach: match parens)
             const start = pos;
-            const end = self.findExprEnd(content, pos) catch |err| {
+            const end = if (self.findExprEnd(content, pos)) |value| value else |err| {
                 try writer.print("Parse error at position {d}: {s}\n", .{ pos, @errorName(err) });
                 return err;
             };
 
             if (end > start) {
                 const expr = content[start..end];
-                _ = self.eval(expr) catch |err| {
+                if (self.eval(expr)) |_| {} else |err| {
                     try writer.print("Error evaluating expression at position {d}: {s}\n", .{ start, @errorName(err) });
                     try writer.print("Expression: {s}\n", .{expr[0..@min(100, expr.len)]});
                     return err;
-                };
+                }
                 pos = end;
             } else {
                 break;
@@ -1864,7 +1866,6 @@ test "eval nested arithmetic" {
     const result = try evalString(allocator, &heap, "(+ (* 3 4) (- 10 5))");
     try testing.expectEqual(@as(i64, 17), result.toFixnum());
 }
-
 test "eval parse error sets error info" {
     const testing = std.testing;
     const allocator = testing.allocator;
@@ -1881,10 +1882,24 @@ test "eval parse error sets error info" {
     if (info) |got| {
         try testing.expectEqual(Repl.ErrorKind.parse_unterminated_list, got.kind);
         try testing.expectEqual(@as(u32, 1), got.line);
-    try testing.expect(got.column >= 1);
+        try testing.expect(got.column >= 1);
     }
 }
 
+test "loadFilePublic missing file errors" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    var buf: [1024]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try testing.expectError(error.FileNotFound, repl.loadFilePublic("nope-nope.habu", stream.writer()));
+}
 test "eval cons" {
     const testing = std.testing;
     const allocator = testing.allocator;
