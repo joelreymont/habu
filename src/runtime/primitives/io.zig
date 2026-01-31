@@ -1799,6 +1799,11 @@ pub fn readLine(heap: *heap_mod.Heap, stream: Value) !Value {
             else
                 @intCast(s.file_fd);
             var read_any = false;
+            if (takePushback(s)) |ch| {
+                if (ch == '\n') return try heap.allocBaseString("");
+                try line.append(heap.backing_allocator, ch);
+                read_any = true;
+            }
             while (true) {
                 var ch: [1]u8 = undefined;
                 const n = try std.posix.read(fd, &ch);
@@ -2338,6 +2343,70 @@ test "readLine handles long file lines" {
     try testing.expect(line_val.isString());
     const line = line_val.toPtr(objects.String);
     try testing.expectEqual(line_len, @as(usize, @intCast(line.length)));
+}
+
+test "readLine honors unread-char for file streams" {
+    const testing = std.testing;
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("pushback.txt", .{ .read = true, .truncate = true });
+        defer file.close();
+        try file.writeAll("ab\nc");
+    }
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const file = try tmp.dir.openFile("pushback.txt", .{});
+    defer file.close();
+    const dup_fd = try std.posix.dup(file.handle);
+    const stream = try heap.allocFileInputStream(@intCast(dup_fd));
+
+    const first = try readChar(stream, null, null);
+    try unreadChar(Value.makeCharacter(@intCast(first.toFixnum())), stream);
+
+    const line1 = try readLine(&heap, stream);
+    try testing.expect(line1.isString());
+    try testing.expect(std.mem.eql(u8, line1.toPtr(objects.String).bytes(), "ab"));
+
+    const line2 = try readLine(&heap, stream);
+    try testing.expect(line2.isString());
+    try testing.expect(std.mem.eql(u8, line2.toPtr(objects.String).bytes(), "c"));
+}
+
+test "readLine returns empty string after newline pushback" {
+    const testing = std.testing;
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("pushback-nl.txt", .{ .read = true, .truncate = true });
+        defer file.close();
+        try file.writeAll("\nX");
+    }
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const file = try tmp.dir.openFile("pushback-nl.txt", .{});
+    defer file.close();
+    const dup_fd = try std.posix.dup(file.handle);
+    const stream = try heap.allocFileInputStream(@intCast(dup_fd));
+
+    const first = try readChar(stream, null, null);
+    try unreadChar(Value.makeCharacter(@intCast(first.toFixnum())), stream);
+
+    const line1 = try readLine(&heap, stream);
+    try testing.expect(line1.isString());
+    try testing.expect(line1.toPtr(objects.String).bytes().len == 0);
+
+    const line2 = try readLine(&heap, stream);
+    try testing.expect(line2.isString());
+    try testing.expect(std.mem.eql(u8, line2.toPtr(objects.String).bytes(), "X"));
 }
 
 test "readByteMaybe handles EOF" {
