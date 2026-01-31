@@ -421,7 +421,7 @@ pub const Vm = struct {
 
     /// Allocate a cons cell, running GC if needed
     pub fn allocCons(self: *Vm, car: Value, cdr: Value) error{OutOfMemory}!Value {
-        return self.heap.allocCons(car, cdr) catch {
+        return if (self.heap.allocCons(car, cdr)) |val| val else |_| {
             _ = try self.collectGarbage();
             return try self.heap.allocCons(car, cdr);
         };
@@ -429,7 +429,7 @@ pub const Vm = struct {
 
     /// Allocate a vector, running GC if needed
     pub fn allocVector(self: *Vm, length: usize, capacity: usize) error{OutOfMemory, Overflow}!Value {
-        return self.heap.allocVector(length, capacity) catch |err| switch (err) {
+        return if (self.heap.allocVector(length, capacity)) |val| val else |err| switch (err) {
             error.OutOfMemory => {
                 _ = try self.collectGarbage();
                 return try self.heap.allocVector(length, capacity);
@@ -440,7 +440,7 @@ pub const Vm = struct {
 
     /// Allocate a string, running GC if needed
     pub fn allocString(self: *Vm, data: []const u8) error{OutOfMemory, Overflow}!Value {
-        return self.heap.allocBaseString(data) catch |err| switch (err) {
+        return if (self.heap.allocBaseString(data)) |val| val else |err| switch (err) {
             error.OutOfMemory => {
                 _ = try self.collectGarbage();
                 return try self.heap.allocBaseString(data);
@@ -451,7 +451,7 @@ pub const Vm = struct {
 
     /// Allocate an uninitialized string, running GC if needed
     pub fn allocStringUninitialized(self: *Vm, length: usize) error{ OutOfMemory, Overflow }!Value {
-        return self.heap.allocStringUninitialized(length) catch |err| switch (err) {
+        return if (self.heap.allocStringUninitialized(length)) |val| val else |err| switch (err) {
             error.OutOfMemory => {
                 _ = try self.collectGarbage();
                 return try self.heap.allocStringUninitialized(length);
@@ -462,7 +462,7 @@ pub const Vm = struct {
 
     /// Allocate a symbol (uninterned), running GC if needed
     pub fn allocSymbol(self: *Vm, name: []const u8) error{OutOfMemory}!Value {
-        return self.heap.allocSymbol(name) catch {
+        return if (self.heap.allocSymbol(name)) |val| val else |_| {
             _ = try self.collectGarbage();
             return try self.heap.allocSymbol(name);
         };
@@ -470,7 +470,7 @@ pub const Vm = struct {
 
     /// Allocate a closure, running GC if needed
     pub fn allocClosureWithGC(self: *Vm, code: Value, arity: u32, captures: []const Value) error{ OutOfMemory, Overflow }!Value {
-        return self.heap.allocClosure(code, arity, captures) catch |err| switch (err) {
+        return if (self.heap.allocClosure(code, arity, captures)) |val| val else |err| switch (err) {
             error.OutOfMemory => {
                 _ = try self.collectGarbage();
                 return try self.heap.allocClosure(code, arity, captures);
@@ -481,7 +481,7 @@ pub const Vm = struct {
 
     /// Allocate a hash table, running GC if needed
     pub fn allocHashTable(self: *Vm, capacity: usize, test_type: runtime.HashTest) error{OutOfMemory}!Value {
-        return self.heap.allocHashTable(capacity, test_type) catch {
+        return if (self.heap.allocHashTable(capacity, test_type)) |val| val else |_| {
             _ = try self.collectGarbage();
             return try self.heap.allocHashTable(capacity, test_type);
         };
@@ -489,7 +489,7 @@ pub const Vm = struct {
 
     /// Intern a symbol, running GC if needed
     pub fn intern(self: *Vm, name: []const u8) error{OutOfMemory}!Value {
-        return self.heap.intern(name) catch {
+        return if (self.heap.intern(name)) |val| val else |_| {
             _ = try self.collectGarbage();
             return try self.heap.intern(name);
         };
@@ -862,14 +862,14 @@ pub const Vm = struct {
             const op = self.readOp();
 
             // Execute opcode with error handling
-            self.executeOp(op) catch |err| {
+            if (self.executeOp(op)) |_| {} else |err| {
                 if (err == error.Halt) {
                     // Program terminated - return result from stack
                     std.debug.assert(self.sp > 0);
                     return try self.pop();
                 }
                 return self.doError(err);
-            };
+            }
         }
     }
 
@@ -7115,6 +7115,19 @@ test "vm callClosure runs and restores" {
     const result = try vm.callClosure(closure, 0);
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "vm allocVector propagates overflow" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const huge = std.math.maxInt(usize);
+    try testing.expectError(error.Overflow, vm.allocVector(1, huge));
 }
 
 test "vm arithmetic" {
