@@ -177,11 +177,11 @@ pub fn nameChar(_: *Heap, name: Value) Error!Value {
     const str = name.toPtr(objects.String);
     const bytes = str.bytes();
 
-    if (std.mem.eql(u8, bytes, "Space")) return Value.makeCharacter(' ');
-    if (std.mem.eql(u8, bytes, "Newline")) return Value.makeCharacter('\n');
-    if (std.mem.eql(u8, bytes, "Tab")) return Value.makeCharacter('\t');
-    if (std.mem.eql(u8, bytes, "Return")) return Value.makeCharacter('\r');
-    if (std.mem.eql(u8, bytes, "Null")) return Value.makeCharacter(0);
+    if (std.ascii.eqlIgnoreCase(bytes, "Space")) return Value.makeCharacter(' ');
+    if (std.ascii.eqlIgnoreCase(bytes, "Newline")) return Value.makeCharacter('\n');
+    if (std.ascii.eqlIgnoreCase(bytes, "Tab")) return Value.makeCharacter('\t');
+    if (std.ascii.eqlIgnoreCase(bytes, "Return")) return Value.makeCharacter('\r');
+    if (std.ascii.eqlIgnoreCase(bytes, "Null")) return Value.makeCharacter(0);
 
     return Value.nil;
 }
@@ -312,8 +312,16 @@ test "char names" {
     const ch_back = try nameChar(&heap, name);
     try testing.expectEqual(space.raw, ch_back.raw);
 
+    const lower_space = try heap.allocBaseString("space");
+    const lower_ch = try nameChar(&heap, lower_space);
+    try testing.expectEqual(space.raw, lower_ch.raw);
+
     const newline = Value.makeCharacter('\n');
     const nl_name = try charName(&heap, newline);
     const nl_str = nl_name.toPtr(objects.String);
     try testing.expect(std.mem.eql(u8, nl_str.bytes(), "Newline"));
+
+    const upper_nl = try heap.allocBaseString("NEWLINE");
+    const upper_ch = try nameChar(&heap, upper_nl);
+    try testing.expectEqual(newline.raw, upper_ch.raw);
 }
