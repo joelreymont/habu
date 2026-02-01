@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const stencils = @import("stencils.zig");
+const Stencil = stencils.Stencil;
 const patch = @import("patch.zig");
 const ctx = @import("ctx.zig");
 const rt = @import("rt.zig");
@@ -132,31 +133,25 @@ pub const Jit = struct {
             },
 
             .add => {
-                // Pop x1 from stack, add with x0
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.add_fixnum, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitBinaryArith(stencils.add_fixnum, @intFromPtr(&rt.add));
             },
 
             .sub => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.sub_fixnum, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitBinaryArith(stencils.sub_fixnum, @intFromPtr(&rt.sub));
             },
 
             .mul => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.mul_fixnum, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitBinaryArith(stencils.mul_fixnum, @intFromPtr(&rt.mul));
             },
 
             .neg => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.neg_fixnum, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+            },
+
+            .div => {
+                try self.emitBinaryCall(@intFromPtr(&rt.div));
             },
 
             .eq => {
@@ -343,6 +338,56 @@ pub const Jit = struct {
         });
     }
 
+    fn emitGuardFixnumX0(self: *Jit) JitError!usize {
+        const start = self.code_buffer.pos;
+        _ = try patch.patchStencil(&self.code_buffer, stencils.guard_fixnum_x0, &[_]patch.PatchValue{});
+        return start + 4;
+    }
+
+    fn emitGuardFixnumX1(self: *Jit) JitError!usize {
+        const start = self.code_buffer.pos;
+        _ = try patch.patchStencil(&self.code_buffer, stencils.guard_fixnum_x1, &[_]patch.PatchValue{});
+        return start + 4;
+    }
+
+    fn emitBinaryCall(self: *Jit, addr: usize) JitError!void {
+        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+        try self.emitCallBinary(addr);
+        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+    }
+
+    fn emitBinaryArith(self: *Jit, fast: Stencil, slow_addr: usize) JitError!void {
+        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+
+        const guard_x0_branch = try self.emitGuardFixnumX0();
+        const guard_x1_branch = try self.emitGuardFixnumX1();
+
+        _ = try patch.patchStencil(&self.code_buffer, fast, &[_]patch.PatchValue{});
+
+        const fast_branch_offset = self.code_buffer.pos;
+        const fast_inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + fast_branch_offset;
+        _ = try patch.patchStencil(&self.code_buffer, stencils.branch_stencil, &[_]patch.PatchValue{
+            .{ .addr = fast_inst_addr },
+        });
+
+        const slow_code_offset = self.code_buffer.pos;
+        const slow_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + slow_code_offset;
+        try self.emitCallBinary(slow_addr);
+
+        const end_code_offset = self.code_buffer.pos;
+        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+        const end_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + end_code_offset;
+
+        patch.jitWriteProtect(false);
+        defer patch.jitWriteProtect(true);
+        try self.patchBranch(guard_x0_branch, slow_target_addr, .rel19);
+        try self.patchBranch(guard_x1_branch, slow_target_addr, .rel19);
+        try self.patchBranch(fast_branch_offset, end_target_addr, .rel26);
+        patch.flushIcache(self.code_buffer.memory.ptr, self.code_buffer.pos);
+    }
+
     fn patchPendingJumps(self: *Jit) JitError!void {
         patch.jitWriteProtect(false);
         defer patch.jitWriteProtect(true);
@@ -351,35 +396,34 @@ pub const Jit = struct {
             const target_code_addr = self.labels.get(jump.target_bc_offset) orelse
                 return error.InvalidJumpTarget;
 
-            const code_slice = self.code_buffer.memory[jump.code_offset..];
-            const inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + jump.code_offset;
             const target_addr = @intFromPtr(self.code_buffer.memory.ptr) + target_code_addr;
-
-            const offset = @as(i64, @intCast(target_addr)) - @as(i64, @intCast(inst_addr));
-            const word_offset_i64 = @divTrunc(offset, 4);
-
-            switch (jump.hole_type) {
-                .rel26 => {
-                    if (word_offset_i64 < -(1 << 25) or word_offset_i64 >= (1 << 25)) return error.BranchOutOfRange;
-                    const word_offset_i32: i32 = @intCast(word_offset_i64);
-                    const word_offset: u32 = @bitCast(word_offset_i32);
-                    var inst = std.mem.readInt(u32, code_slice[0..4], .little);
-                    inst = (inst & 0xFC000000) | (word_offset & 0x03FFFFFF);
-                    std.mem.writeInt(u32, code_slice[0..4], inst, .little);
-                },
-                .rel19 => {
-                    if (word_offset_i64 < -(1 << 18) or word_offset_i64 >= (1 << 18)) return error.BranchOutOfRange;
-                    const word_offset_i32: i32 = @intCast(word_offset_i64);
-                    const word_offset: u32 = @bitCast(word_offset_i32);
-                    var inst = std.mem.readInt(u32, code_slice[0..4], .little);
-                    inst = (inst & 0xFF00001F) | ((word_offset & 0x7FFFF) << 5);
-                    std.mem.writeInt(u32, code_slice[0..4], inst, .little);
-                },
-                else => return error.InvalidHoleType,
-            }
+            try self.patchBranch(jump.code_offset, target_addr, jump.hole_type);
         }
 
         patch.flushIcache(self.code_buffer.memory.ptr, self.code_buffer.pos);
+    }
+
+    fn patchBranch(self: *Jit, code_offset: usize, target_addr: usize, hole_type: stencils.HoleType) JitError!void {
+        const inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + code_offset;
+        const offset = @as(i64, @intCast(target_addr)) - @as(i64, @intCast(inst_addr));
+        const word_offset_i64 = @divTrunc(offset, 4);
+        const code_slice = self.code_buffer.memory[code_offset..];
+
+        switch (hole_type) {
+            .rel26 => {
+                if (word_offset_i64 < -(1 << 25) or word_offset_i64 >= (1 << 25)) return error.BranchOutOfRange;
+                const word_offset_i32: i32 = @intCast(word_offset_i64);
+                const word_offset: u32 = @bitCast(word_offset_i32);
+                patch.patchRel26(code_slice, word_offset);
+            },
+            .rel19 => {
+                if (word_offset_i64 < -(1 << 18) or word_offset_i64 >= (1 << 18)) return error.BranchOutOfRange;
+                const word_offset_i32: i32 = @intCast(word_offset_i64);
+                const word_offset: u32 = @bitCast(word_offset_i32);
+                patch.patchRel19(code_slice, word_offset);
+            },
+            else => return error.InvalidHoleType,
+        }
     }
 };
 
@@ -520,6 +564,54 @@ test "jit compile numberp" {
         stencils.load_imm64.code.len +
         stencils.stack_push.code.len +
         stencils.stack_pop.code.len +
+        stencils.mov_x1_x0.code.len +
+        stencils.mov_x0_x22.code.len +
+        stencils.call_abs.code.len +
+        stencils.stack_push.code.len +
+        stencils.stack_pop.code.len +
+        stencils.epilogue_stencil.code.len;
+    try testing.expectEqual(expected_len, jit.code_buffer.pos);
+}
+
+test "jit compile add" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const code = [_]u8{
+        @intFromEnum(Op.push_i32), 1, 0, 0, 0,
+        @intFromEnum(Op.push_i32), 2, 0, 0, 0,
+        @intFromEnum(Op.add),
+        @intFromEnum(Op.ret),
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    _ = try jit.compile(&chunk);
+
+    const expected_len =
+        stencils.prologue_stencil.code.len +
+        stencils.load_imm64.code.len + stencils.stack_push.code.len +
+        stencils.load_imm64.code.len + stencils.stack_push.code.len +
+        stencils.stack_pop_x1.code.len +
+        stencils.stack_pop.code.len +
+        stencils.guard_fixnum_x0.code.len +
+        stencils.guard_fixnum_x1.code.len +
+        stencils.add_fixnum.code.len +
+        stencils.branch_stencil.code.len +
+        stencils.mov_x2_x1.code.len +
         stencils.mov_x1_x0.code.len +
         stencils.mov_x0_x22.code.len +
         stencils.call_abs.code.len +

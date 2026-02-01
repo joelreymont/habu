@@ -543,6 +543,28 @@ pub const mov_x0_x22 = Stencil{
     .holes = &[_]Hole{},
 };
 
+/// Guard: branch if x0 is not fixnum (bit0 == 0)
+pub const guard_fixnum_x0 = Stencil{
+    .name = "guard_fixnum_x0",
+    .code = &(
+        // TST x0, #1
+        inst_bytes(0xF240001F) ++
+            // B.EQ <target>
+            inst_bytes(0x54000000)),
+    .holes = &[_]Hole{},
+};
+
+/// Guard: branch if x1 is not fixnum (bit0 == 0)
+pub const guard_fixnum_x1 = Stencil{
+    .name = "guard_fixnum_x1",
+    .code = &(
+        // TST x1, #1
+        inst_bytes(0xF240003F) ++
+            // B.EQ <target>
+            inst_bytes(0x54000000)),
+    .holes = &[_]Hole{},
+};
+
 /// Dup: push x0 without popping
 pub const dup_stencil = Stencil{
     .name = "dup",
@@ -663,6 +685,8 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 4), mov_x1_x0.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x2_x1.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x0_x22.code.len);
+    try testing.expectEqual(@as(usize, 8), guard_fixnum_x0.code.len);
+    try testing.expectEqual(@as(usize, 8), guard_fixnum_x1.code.len);
 
     // Comparison stencils (4 instructions each)
     try testing.expectEqual(@as(usize, 16), eq_stencil.code.len);

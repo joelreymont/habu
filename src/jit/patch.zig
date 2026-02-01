@@ -239,7 +239,7 @@ fn patchImm32(code: []u8, imm: u32) PatchError!void {
 }
 
 /// Patch 26-bit relative branch offset (BL, B)
-fn patchRel26(code: []u8, offset: u32) void {
+pub fn patchRel26(code: []u8, offset: u32) void {
     var inst: u32 = std.mem.readInt(u32, code[0..4], .little);
     // Clear and set offset field (bits 0-25)
     inst = (inst & 0xFC000000) | (offset & 0x03FFFFFF);
@@ -247,7 +247,7 @@ fn patchRel26(code: []u8, offset: u32) void {
 }
 
 /// Patch 19-bit relative branch offset (CBZ, CBNZ, B.cond)
-fn patchRel19(code: []u8, offset: u32) void {
+pub fn patchRel19(code: []u8, offset: u32) void {
     var inst: u32 = std.mem.readInt(u32, code[0..4], .little);
     // Clear and set offset field (bits 5-23)
     inst = (inst & 0xFF00001F) | ((offset & 0x7FFFF) << 5);
