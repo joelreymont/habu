@@ -836,6 +836,49 @@ test "jit compile locals" {
     try testing.expectEqual(expected_len, jit.code_buffer.pos);
 }
 
+test "jit compile push_const" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const push_const_op: u16 = @intFromEnum(Op.push_const);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8),
+        0, 0,
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+    const consts = [_]Value{Value.makeFixnum(7)};
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = consts.len,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    _ = try jit.compile(&chunk);
+
+    const expected_len =
+        stencils.prologue_stencil.code.len +
+        stencils.load_const.code.len +
+        stencils.stack_push.code.len +
+        stencils.stack_pop.code.len +
+        stencils.epilogue_stencil.code.len;
+    try testing.expectEqual(expected_len, jit.code_buffer.pos);
+
+    const load_off = stencils.prologue_stencil.code.len;
+    const inst = std.mem.readInt(u32, jit.code_buffer.memory[load_off .. load_off + 4], .little);
+    const rn: u32 = (inst >> 5) & 0x1F;
+    try testing.expectEqual(@as(u32, 20), rn);
+}
+
 test "jit vm parity add" {
     if (builtin.cpu.arch != .aarch64) return;
 

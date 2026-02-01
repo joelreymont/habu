@@ -482,7 +482,7 @@ pub const push_nil_stencil = Stencil{
 /// Push t (Value.t = 0x2) onto accumulator
 pub const push_t_stencil = Stencil{
     .name = "push_t",
-    .code = &inst_bytes(0xD2800000), // MOV x0, #0
+    .code = &inst_bytes(0xD2800040), // MOV x0, #2
     .holes = &[_]Hole{},
 };
 
@@ -742,7 +742,15 @@ pub const load_local = Stencil{
 };
 
 /// Load constant from const_pool (x20)
-pub const load_const = load_local;
+pub const load_const = Stencil{
+    .name = "load_const",
+    .code = &(
+        // LDR x0, [x20, #offset] - offset patched
+        inst_bytes(0xF9400280)), // Base LDR with x20
+    .holes = &[_]Hole{
+        .{ .offset = 0, .hole_type = .imm32, .name = "offset" },
+    },
+};
 
 /// Store to local variable
 pub const store_local = Stencil{
@@ -833,6 +841,8 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 4), clear_retbuf_err.code.len);
     try testing.expectEqual(@as(usize, 8), guard_fixnum_x0.code.len);
     try testing.expectEqual(@as(usize, 8), guard_fixnum_x1.code.len);
+    try testing.expectEqual(@as(usize, 4), load_local.code.len);
+    try testing.expectEqual(@as(usize, 4), load_const.code.len);
 
     // Comparison stencils (4 instructions each)
     try testing.expectEqual(@as(usize, 16), eq_stencil.code.len);
@@ -859,6 +869,9 @@ test "instruction encoding" {
 
     // MOVZ X0, #0 should encode to 0xD2800000
     try testing.expectEqual(@as(u32, 0xD2800000), movz(0, 0, 0));
+
+    // push_t should encode MOV X0, #2
+    try testing.expectEqualSlices(u8, &inst_bytes(0xD2800040), push_t_stencil.code);
 
     // RET should encode to 0xD65F03C0
     try testing.expectEqual(@as(u32, 0xD65F03C0), ret());
