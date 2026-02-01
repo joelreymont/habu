@@ -119,6 +119,11 @@ fn ret() u32 {
     return 0xD65F03C0; // RET X30
 }
 
+/// Encode BLR instruction
+fn blr(rn: u5) u32 {
+    return 0xD63F0000 | (@as(u32, rn) << 5);
+}
+
 /// Encode BL instruction with placeholder offset
 fn bl_placeholder() u32 {
     return 0x94000000; // BL with offset 0 (to be patched)
@@ -176,8 +181,11 @@ const X1: u5 = 1; // temp/arg
 const X2: u5 = 2; // temp/arg
 const X9: u5 = 9; // scratch
 const X10: u5 = 10; // scratch
+const X16: u5 = 16; // scratch
 const X19: u5 = 19; // stack pointer
 const X20: u5 = 20; // const_pool base
+const X21: u5 = 21; // saved scratch
+const X22: u5 = 22; // ctx pointer
 const X29: u5 = 29; // fp
 const X30: u5 = 30; // link register
 const SP: u5 = 31; // stack pointer
@@ -240,25 +248,29 @@ pub const ret_stencil = Stencil{
     .holes = &[_]Hole{},
 };
 
-/// Function prologue: save lr, save x19/x20, load sp/const_pool from ctx
+/// Function prologue: save lr, save regs, load sp/const_pool from ctx
 pub const prologue_stencil = Stencil{
     .name = "prologue",
     .code = &(
         inst_bytes(stp_pre(X29, X30, SP, -2)) ++
             inst_bytes(add_imm(X29, SP, 0)) ++
             inst_bytes(stp_pre(X19, X20, SP, -2)) ++
-            // LDR x19, [x0, #0] (ctx.sp)
-            inst_bytes(0xF9400013) ++
-            // LDR x20, [x0, #8] (ctx.const_pool)
-            inst_bytes(0xF9400414)),
+            inst_bytes(stp_pre(X21, X22, SP, -2)) ++
+            // MOV x22, x0 (ctx)
+            inst_bytes(add_imm(X22, X0, 0)) ++
+            // LDR x19, [x22, #0] (ctx.sp)
+            inst_bytes(0xF94002D3) ++
+            // LDR x20, [x22, #8] (ctx.const_pool)
+            inst_bytes(0xF94006D4)),
     .holes = &[_]Hole{},
 };
 
-/// Function epilogue: restore x19/x20/lr, return
+/// Function epilogue: restore regs, return
 pub const epilogue_stencil = Stencil{
     .name = "epilogue",
     .code = &(
-        inst_bytes(ldp_post(X19, X20, SP, 2)) ++
+        inst_bytes(ldp_post(X21, X22, SP, 2)) ++
+            inst_bytes(ldp_post(X19, X20, SP, 2)) ++
             inst_bytes(ldp_post(X29, X30, SP, 2)) ++
             inst_bytes(ret())),
     .holes = &[_]Hole{},
@@ -274,6 +286,20 @@ pub const call_stencil = Stencil{
     },
 };
 
+/// Call absolute address via BLR
+/// Holes: imm64 at offset 0
+pub const call_abs = Stencil{
+    .name = "call_abs",
+    .code = &(
+        inst_bytes(movz(X16, 0, 0)) ++
+            inst_bytes(movk(X16, 0, 16)) ++
+            inst_bytes(movk(X16, 0, 32)) ++
+            inst_bytes(movk(X16, 0, 48)) ++
+            inst_bytes(blr(X16))),
+    .holes = &[_]Hole{
+        .{ .offset = 0, .hole_type = .imm64, .name = "target" },
+    },
+};
 /// Unconditional branch
 /// Holes: rel26 at offset 0
 pub const branch_stencil = Stencil{
@@ -611,8 +637,8 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 4), stack_push_x1.code.len);
     try testing.expectEqual(@as(usize, 4), stack_pop.code.len);
     try testing.expectEqual(@as(usize, 16), swap_stencil.code.len);
-    try testing.expectEqual(@as(usize, 20), prologue_stencil.code.len);
-    try testing.expectEqual(@as(usize, 12), epilogue_stencil.code.len);
+    try testing.expectEqual(@as(usize, 28), prologue_stencil.code.len);
+    try testing.expectEqual(@as(usize, 16), epilogue_stencil.code.len);
 
     // Comparison stencils (4 instructions each)
     try testing.expectEqual(@as(usize, 16), eq_stencil.code.len);
@@ -625,6 +651,9 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 16), not_stencil.code.len);
     try testing.expectEqual(@as(usize, 16), nilp_stencil.code.len);
     try testing.expectEqual(@as(usize, 16), fixnump_stencil.code.len);
+
+    // Call stencils
+    try testing.expectEqual(@as(usize, 20), call_abs.code.len);
 }
 
 test "instruction encoding" {

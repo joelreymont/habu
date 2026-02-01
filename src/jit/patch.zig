@@ -311,6 +311,26 @@ test "patch imm64" {
     try testing.expectEqual(@as(u32, 0xDEF0), imm0);
 }
 
+fn dummyCall(_: usize) callconv(.c) void {}
+
+test "patch call abs" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var buffer = try CodeBuffer.init(allocator, 4096);
+    defer buffer.deinit();
+
+    const target = @intFromPtr(&dummyCall);
+    _ = try patchStencil(&buffer, stencils.call_abs, &[_]PatchValue{
+        .{ .imm64 = target },
+    });
+
+    const inst0 = std.mem.readInt(u32, buffer.memory[0..4], .little);
+    const imm0 = (inst0 >> 5) & 0xFFFF;
+    const imm0_expected: u16 = @truncate(target);
+    try testing.expectEqual(@as(u32, imm0_expected), imm0);
+}
+
 test "patch imm32" {
     const testing = std.testing;
     const allocator = testing.allocator;

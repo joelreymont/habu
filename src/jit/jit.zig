@@ -30,6 +30,9 @@ pub const JitError = error{
 pub const JitContext = extern struct {
     sp: [*]Value,
     const_pool: [*]Value,
+    heap: *runtime.Heap,
+    err: u32,
+    _pad: u32 = 0,
 };
 
 /// JIT-compiled function
