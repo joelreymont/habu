@@ -231,8 +231,9 @@ pub const Jit = struct {
 
                 // Record pending jump
                 const code_offset = self.code_buffer.pos;
+                const inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + code_offset;
                 _ = try patch.patchStencil(&self.code_buffer, stencils.branch_stencil, &[_]patch.PatchValue{
-                    .{ .addr = 0 }, // Placeholder
+                    .{ .addr = inst_addr }, // Placeholder
                 });
 
                 try self.pending_jumps.append(self.allocator, .{
@@ -249,8 +250,9 @@ pub const Jit = struct {
 
                 _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 const code_offset = self.code_buffer.pos;
+                const inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + code_offset;
                 _ = try patch.patchStencil(&self.code_buffer, stencils.branch_nil, &[_]patch.PatchValue{
-                    .{ .addr = 0 },
+                    .{ .addr = inst_addr },
                 });
 
                 try self.pending_jumps.append(self.allocator, .{
@@ -267,8 +269,9 @@ pub const Jit = struct {
 
                 _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 const code_offset = self.code_buffer.pos;
+                const inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + code_offset;
                 _ = try patch.patchStencil(&self.code_buffer, stencils.branch_not_nil, &[_]patch.PatchValue{
-                    .{ .addr = 0 },
+                    .{ .addr = inst_addr },
                 });
 
                 try self.pending_jumps.append(self.allocator, .{
@@ -317,6 +320,9 @@ pub const Jit = struct {
     }
 
     fn patchPendingJumps(self: *Jit) JitError!void {
+        patch.jitWriteProtect(false);
+        defer patch.jitWriteProtect(true);
+
         for (self.pending_jumps.items) |jump| {
             const target_code_addr = self.labels.get(jump.target_bc_offset) orelse
                 return error.InvalidJumpTarget;
@@ -346,6 +352,8 @@ pub const Jit = struct {
                 else => return error.InvalidHoleType,
             }
         }
+
+        patch.flushIcache(self.code_buffer.memory.ptr, self.code_buffer.pos);
     }
 };
 
@@ -397,6 +405,40 @@ test "jit compile simple" {
         stencils.prologue_stencil.code.len +
         stencils.load_imm64.code.len +
         stencils.stack_push.code.len +
+        stencils.stack_pop.code.len +
+        stencils.epilogue_stencil.code.len;
+    try testing.expectEqual(expected_len, jit.code_buffer.pos);
+}
+
+test "jit compile jump" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const code = [_]u8{
+        @intFromEnum(Op.jmp), 0, 0,
+        @intFromEnum(Op.ret),
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    _ = try jit.compile(&chunk);
+
+    const expected_len =
+        stencils.prologue_stencil.code.len +
+        stencils.branch_stencil.code.len +
         stencils.stack_pop.code.len +
         stencils.epilogue_stencil.code.len;
     try testing.expectEqual(expected_len, jit.code_buffer.pos);

@@ -255,7 +255,7 @@ fn patchRel14(code: []u8, offset: u32) void {
     std.mem.writeInt(u32, code[0..4], inst, .little);
 }
 
-fn flushIcache(ptr: [*]u8, len: usize) void {
+pub fn flushIcache(ptr: [*]u8, len: usize) void {
     if (builtin.os.tag == .macos) {
         darwin.sys_icache_invalidate(ptr, len);
     } else {
@@ -263,7 +263,7 @@ fn flushIcache(ptr: [*]u8, len: usize) void {
     }
 }
 
-fn jitWriteProtect(enable: bool) void {
+pub fn jitWriteProtect(enable: bool) void {
     if (builtin.os.tag == .macos) {
         darwin.pthread_jit_write_protect_np(@intFromBool(enable));
     }
