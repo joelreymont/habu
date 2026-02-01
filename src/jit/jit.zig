@@ -216,10 +216,7 @@ pub const Jit = struct {
             },
 
             .swap => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push_x1, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.swap_stencil, &[_]patch.PatchValue{});
             },
 
             .ret => {

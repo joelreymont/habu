@@ -502,12 +502,14 @@ pub const dup_stencil = Stencil{
 pub const swap_stencil = Stencil{
     .name = "swap",
     .code = &(
-        // LDR x9, [x19, #-8] (peek second value)
-        inst_bytes(0xF85F8269) ++
-            // STR x0, [x19, #-8] (store top to second position)
-            inst_bytes(0xF81F8260) ++
-            // MOV x0, x9
-            inst_bytes(0xAA0903E0)),
+        // LDR x1, [x19, #-8]! (pop top)
+        inst_bytes(0xF85F8661) ++
+            // LDR x0, [x19, #-8]! (pop next)
+            inst_bytes(0xF85F8660) ++
+            // STR x1, [x19], #8 (push former top)
+            inst_bytes(0xF8008661) ++
+            // STR x0, [x19], #8 (push former next)
+            inst_bytes(0xF8008660)),
     .holes = &[_]Hole{},
 };
 
@@ -598,6 +600,7 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 4), stack_push.code.len);
     try testing.expectEqual(@as(usize, 4), stack_push_x1.code.len);
     try testing.expectEqual(@as(usize, 4), stack_pop.code.len);
+    try testing.expectEqual(@as(usize, 16), swap_stencil.code.len);
     try testing.expectEqual(@as(usize, 8), prologue_stencil.code.len);
     try testing.expectEqual(@as(usize, 8), epilogue_stencil.code.len);
 
