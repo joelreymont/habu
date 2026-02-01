@@ -6514,19 +6514,19 @@ pub const Vm = struct {
         return self.stack[self.sp - 1 - distance];
     }
 
-    fn strCharCode(item: Value) ?u8 {
+    fn strCharCode(item: Value) Error!u8 {
         switch (item.typeKind()) {
             .char => {
                 const cp = item.toCharacter();
-                if (cp > 255) return null;
+                if (cp > 255) return error.InvalidArgument;
                 return @intCast(cp);
             },
             .fixnum => {
                 const n = item.toFixnum();
-                if (n < 0 or n > 255) return null;
+                if (n < 0 or n > 255) return error.InvalidArgument;
                 return @intCast(n);
             },
-            else => return null,
+            else => return error.InvalidArgument,
         }
     }
 
@@ -6537,9 +6537,11 @@ pub const Vm = struct {
         if (seq.isString()) {
             const str_obj = seq.toPtr(runtime.String);
             const str_bytes = str_obj.bytes();
-            const char_code = strCharCode(item) orelse return Value.nil;
+            const char_code = try strCharCode(item);
+            const needle = Value.makeCharacter(@intCast(char_code));
             for (str_bytes, 0..) |c, i| {
-                if (c == char_code) {
+                const elem = Value.makeCharacter(@intCast(c));
+                if (hashKeyEqualWithTest(needle, elem, cmp)) {
                     return Value.makeFixnum(@intCast(i));
                 }
             }
@@ -6577,10 +6579,12 @@ pub const Vm = struct {
         if (seq.isString()) {
             const str_obj = seq.toPtr(runtime.String);
             const str_bytes = str_obj.bytes();
-            const char_code = strCharCode(item) orelse return Value.nil;
+            const char_code = try strCharCode(item);
+            const needle = Value.makeCharacter(@intCast(char_code));
             for (str_bytes) |c| {
-                if (c == char_code) {
-                    return item; // Return the item found
+                const elem = Value.makeCharacter(@intCast(c));
+                if (hashKeyEqualWithTest(needle, elem, cmp)) {
+                    return elem;
                 }
             }
             return Value.nil;
@@ -6615,10 +6619,12 @@ pub const Vm = struct {
         if (seq.isString()) {
             const str_obj = seq.toPtr(runtime.String);
             const str_bytes = str_obj.bytes();
-            const char_code = strCharCode(item) orelse return Value.makeFixnum(0);
+            const char_code = try strCharCode(item);
+            const needle = Value.makeCharacter(@intCast(char_code));
             var n: i64 = 0;
             for (str_bytes) |c| {
-                if (c == char_code) {
+                const elem = Value.makeCharacter(@intCast(c));
+                if (hashKeyEqualWithTest(needle, elem, cmp)) {
                     n += 1;
                 }
             }
@@ -7679,6 +7685,86 @@ test "vm list_position count string" {
 
     const res_count = try vm.run(&chunk_count);
     try testing.expectEqual(@as(i64, 2), res_count.toFixnum());
+}
+
+test "vm list_find string returns character" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const push_const_op: u16 = @intFromEnum(Op.push_const);
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const list_find_op: u16 = @intFromEnum(Op.list_find);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+
+    const str = try heap.allocBaseString("abca");
+    const consts = [_]Value{str};
+
+    const code = [_]u8{
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 97, 0, 0, 0,
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
+        @truncate(list_find_op & 0xFF), @truncate(list_find_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = consts.len,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const res = try vm.run(&chunk);
+    try testing.expect(res.isCharacter());
+    try testing.expectEqual(@as(u21, 97), res.toCharacter());
+}
+
+test "vm list_position string invalid item errors" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const push_const_op: u16 = @intFromEnum(Op.push_const);
+    const list_position_op: u16 = @intFromEnum(Op.list_position);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+
+    const item_str = try heap.allocBaseString("x");
+    const seq_str = try heap.allocBaseString("abca");
+    const consts = [_]Value{ item_str, seq_str };
+
+    const code = [_]u8{
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 1, 0,
+        @truncate(list_position_op & 0xFF), @truncate(list_position_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = consts.len,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    try testing.expectError(error.InvalidArgument, vm.run(&chunk));
 }
 
 test "vm equal vector string" {
