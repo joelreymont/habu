@@ -522,6 +522,27 @@ pub const stack_pop_x1 = Stencil{
     .holes = &[_]Hole{},
 };
 
+/// Move x1 <- x0
+pub const mov_x1_x0 = Stencil{
+    .name = "mov_x1_x0",
+    .code = &inst_bytes(add_imm(X1, X0, 0)),
+    .holes = &[_]Hole{},
+};
+
+/// Move x2 <- x1
+pub const mov_x2_x1 = Stencil{
+    .name = "mov_x2_x1",
+    .code = &inst_bytes(add_imm(X2, X1, 0)),
+    .holes = &[_]Hole{},
+};
+
+/// Move x0 <- x22 (ctx)
+pub const mov_x0_x22 = Stencil{
+    .name = "mov_x0_x22",
+    .code = &inst_bytes(add_imm(X0, X22, 0)),
+    .holes = &[_]Hole{},
+};
+
 /// Dup: push x0 without popping
 pub const dup_stencil = Stencil{
     .name = "dup",
@@ -639,6 +660,9 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 16), swap_stencil.code.len);
     try testing.expectEqual(@as(usize, 28), prologue_stencil.code.len);
     try testing.expectEqual(@as(usize, 16), epilogue_stencil.code.len);
+    try testing.expectEqual(@as(usize, 4), mov_x1_x0.code.len);
+    try testing.expectEqual(@as(usize, 4), mov_x2_x1.code.len);
+    try testing.expectEqual(@as(usize, 4), mov_x0_x22.code.len);
 
     // Comparison stencils (4 instructions each)
     try testing.expectEqual(@as(usize, 16), eq_stencil.code.len);

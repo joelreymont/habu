@@ -7,6 +7,8 @@
 const std = @import("std");
 const stencils = @import("stencils.zig");
 const patch = @import("patch.zig");
+const ctx = @import("ctx.zig");
+const rt = @import("rt.zig");
 const bytecode = @import("../bytecode/bytecode.zig");
 const Op = bytecode.Op;
 const Chunk = bytecode.Chunk;
@@ -27,13 +29,7 @@ pub const JitError = error{
 };
 
 /// JIT runtime context
-pub const JitContext = extern struct {
-    sp: [*]Value,
-    const_pool: [*]Value,
-    heap: *runtime.Heap,
-    err: u32,
-    _pad: u32 = 0,
-};
+pub const JitContext = ctx.JitContext;
 
 /// JIT-compiled function
 pub const JitFn = *const fn (*JitContext) callconv(.c) u64;
@@ -212,7 +208,7 @@ pub const Jit = struct {
 
             .numberp => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.fixnump_stencil, &[_]patch.PatchValue{});
+                try self.emitCallUnary(@intFromPtr(&rt.numberp));
                 _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
@@ -328,6 +324,23 @@ pub const Jit = struct {
 
             else => return error.UnsupportedOpcode,
         }
+    }
+
+    fn emitCallUnary(self: *Jit, addr: usize) JitError!void {
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x1_x0, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x0_x22, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.call_abs, &[_]patch.PatchValue{
+            .{ .imm64 = addr },
+        });
+    }
+
+    fn emitCallBinary(self: *Jit, addr: usize) JitError!void {
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x2_x1, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x1_x0, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x0_x22, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.call_abs, &[_]patch.PatchValue{
+            .{ .imm64 = addr },
+        });
     }
 
     fn patchPendingJumps(self: *Jit) JitError!void {
@@ -473,4 +486,45 @@ test "jit branch range check" {
     });
 
     try testing.expectError(error.BranchOutOfRange, jit.patchPendingJumps());
+}
+
+test "jit compile numberp" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const code = [_]u8{
+        @intFromEnum(Op.push_i32), 1, 0, 0, 0,
+        @intFromEnum(Op.numberp),
+        @intFromEnum(Op.ret),
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    _ = try jit.compile(&chunk);
+
+    const expected_len =
+        stencils.prologue_stencil.code.len +
+        stencils.load_imm64.code.len +
+        stencils.stack_push.code.len +
+        stencils.stack_pop.code.len +
+        stencils.mov_x1_x0.code.len +
+        stencils.mov_x0_x22.code.len +
+        stencils.call_abs.code.len +
+        stencils.stack_push.code.len +
+        stencils.stack_pop.code.len +
+        stencils.epilogue_stencil.code.len;
+    try testing.expectEqual(expected_len, jit.code_buffer.pos);
 }

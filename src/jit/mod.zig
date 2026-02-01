@@ -6,6 +6,8 @@
 pub const stencils = @import("stencils.zig");
 pub const patch = @import("patch.zig");
 pub const jit = @import("jit.zig");
+pub const ctx = @import("ctx.zig");
+pub const rt = @import("rt.zig");
 
 pub const Jit = jit.Jit;
 pub const JitFn = jit.JitFn;
@@ -16,4 +18,6 @@ test {
     _ = stencils;
     _ = patch;
     _ = jit;
+    _ = ctx;
+    _ = rt;
 }
