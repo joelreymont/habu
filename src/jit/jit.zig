@@ -375,8 +375,9 @@ pub const Jit = struct {
     fn emitCallUnary(self: *Jit, addr: usize) JitError!void {
         _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x2_x0, &[_]patch.PatchValue{});
         _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x1_x22, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.store_ctx_sp, &[_]patch.PatchValue{});
         _ = try patch.patchStencil(&self.code_buffer, stencils.clear_retbuf_err, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x0_x21, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.load_err_trace, &[_]patch.PatchValue{});
         _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x8_x21, &[_]patch.PatchValue{});
         _ = try patch.patchStencil(&self.code_buffer, stencils.call_abs, &[_]patch.PatchValue{
             .{ .imm64 = addr },
@@ -388,8 +389,9 @@ pub const Jit = struct {
         _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x3_x1, &[_]patch.PatchValue{});
         _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x2_x0, &[_]patch.PatchValue{});
         _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x1_x22, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.store_ctx_sp, &[_]patch.PatchValue{});
         _ = try patch.patchStencil(&self.code_buffer, stencils.clear_retbuf_err, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x0_x21, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.load_err_trace, &[_]patch.PatchValue{});
         _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x8_x21, &[_]patch.PatchValue{});
         _ = try patch.patchStencil(&self.code_buffer, stencils.call_abs, &[_]patch.PatchValue{
             .{ .imm64 = addr },
@@ -764,8 +766,9 @@ test "jit compile numberp" {
         stencils.stack_pop.code.len +
         stencils.mov_x2_x0.code.len +
         stencils.mov_x1_x22.code.len +
+        stencils.store_ctx_sp.code.len +
         stencils.clear_retbuf_err.code.len +
-        stencils.mov_x0_x21.code.len +
+        stencils.load_err_trace.code.len +
         stencils.mov_x8_x21.code.len +
         stencils.call_abs.code.len +
         stencils.runtime_check.code.len +
@@ -825,8 +828,9 @@ test "jit compile add" {
         stencils.mov_x3_x1.code.len +
         stencils.mov_x2_x0.code.len +
         stencils.mov_x1_x22.code.len +
+        stencils.store_ctx_sp.code.len +
         stencils.clear_retbuf_err.code.len +
-        stencils.mov_x0_x21.code.len +
+        stencils.load_err_trace.code.len +
         stencils.mov_x8_x21.code.len +
         stencils.call_abs.code.len +
         stencils.runtime_check.code.len +
@@ -982,6 +986,8 @@ test "jit vm parity add" {
 
     const fn_ptr = try jit.compile(&chunk);
     var stack_buf: [32]Value = undefined;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
     var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
     var ctx_val = ctx.JitContext{
         .sp = stack_buf[0..].ptr,
@@ -992,6 +998,7 @@ test "jit vm parity add" {
         .ret_buf = &ret_buf,
         .err = 0,
         .const_count = consts.len,
+        .err_trace = &trace,
     };
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
@@ -1040,6 +1047,8 @@ test "jit vm parity numberp" {
 
     const fn_ptr = try jit.compile(&chunk);
     var stack_buf: [32]Value = undefined;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
     var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
     var ctx_val = ctx.JitContext{
         .sp = stack_buf[0..].ptr,
@@ -1050,6 +1059,7 @@ test "jit vm parity numberp" {
         .ret_buf = &ret_buf,
         .err = 0,
         .const_count = consts.len,
+        .err_trace = &trace,
     };
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
@@ -1100,6 +1110,8 @@ test "jit vm parity lt" {
 
     const fn_ptr = try jit.compile(&chunk);
     var stack_buf: [32]Value = undefined;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
     var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
     var ctx_val = ctx.JitContext{
         .sp = stack_buf[0..].ptr,
@@ -1110,6 +1122,7 @@ test "jit vm parity lt" {
         .ret_buf = &ret_buf,
         .err = 0,
         .const_count = consts.len,
+        .err_trace = &trace,
     };
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
@@ -1160,6 +1173,8 @@ test "jit vm parity lt float" {
 
     const fn_ptr = try jit.compile(&chunk);
     var stack_buf: [32]Value = undefined;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
     var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
     var ctx_val = ctx.JitContext{
         .sp = stack_buf[0..].ptr,
@@ -1170,12 +1185,85 @@ test "jit vm parity lt float" {
         .ret_buf = &ret_buf,
         .err = 0,
         .const_count = consts.len,
+        .err_trace = &trace,
     };
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
 
     try testing.expectEqual(vm_res.raw, jit_res.raw);
     try testing.expectEqual(@as(u16, 0), ctx_val.err);
+}
+
+test "jit gc roots preserve stack" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try runtime.Heap.init(allocator, .{ .total_size = 128 * 1024 });
+    defer heap.deinit();
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const obj = try heap.allocBaseString("keep");
+    const big1 = try heap.allocBignum(1 << 62);
+    const big2 = try heap.allocBignum(1 << 62);
+
+    while (true) {
+        const res = heap.allocCons(Value.nil, Value.nil);
+        if (res) |_| {} else |err| switch (err) {
+            error.OutOfMemory => break,
+        }
+    }
+
+    const push_const_op: u16 = @intFromEnum(Op.push_const);
+    const add_op: u16 = @intFromEnum(Op.add);
+    const swap_op: u16 = @intFromEnum(Op.swap);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const consts = [_]Value{ obj, big1, big2 };
+    const code = [_]u8{
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 1, 0,
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 2, 0,
+        @truncate(add_op & 0xFF), @truncate(add_op >> 8),
+        @truncate(swap_op & 0xFF), @truncate(swap_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = consts.len,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const fn_ptr = try jit.compile(&chunk);
+    var stack_buf: [32]Value = undefined;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var ctx_val = ctx.JitContext{
+        .sp = stack_buf[0..].ptr,
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .frame_base = stack_buf[0..].ptr,
+        .stack_end = stack_buf[stack_buf.len..].ptr,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+        .const_count = consts.len,
+        .err_trace = &trace,
+    };
+    const jit_raw = fn_ptr(&ctx_val);
+    const jit_res = Value{ .raw = jit_raw };
+
+    try testing.expectEqual(@as(u16, 0), ctx_val.err);
+    try testing.expect(jit_res.isString());
+    try testing.expectEqualStrings("keep", jit_res.toPtr(runtime.String).bytes());
 }
 
 test "jit stack overflow sets err" {
@@ -1223,6 +1311,8 @@ test "jit stack overflow sets err" {
 
     const fn_ptr = try jit.compile(&chunk);
     var stack_buf: [4]Value = undefined;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
     var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
     var ctx_val = ctx.JitContext{
         .sp = stack_buf[0..].ptr,
@@ -1233,6 +1323,7 @@ test "jit stack overflow sets err" {
         .ret_buf = &ret_buf,
         .err = 0,
         .const_count = consts.len,
+        .err_trace = &trace,
     };
 
     const jit_raw = fn_ptr(&ctx_val);

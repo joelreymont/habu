@@ -2,6 +2,7 @@
 
 const runtime = @import("../runtime/runtime.zig");
 const Value = runtime.Value;
+const std = @import("std");
 
 pub const JitContext = extern struct {
     sp: [*]Value,
@@ -13,6 +14,7 @@ pub const JitContext = extern struct {
     err: u16,
     _pad: [6]u8 = .{0} ** 6,
     const_count: usize = 0,
+    err_trace: *std.builtin.StackTrace,
 };
 
 pub const RetBuf = extern struct {
@@ -33,6 +35,9 @@ comptime {
     }
     if (@offsetOf(JitContext, "const_count") != 56) {
         @compileError("JitContext.const_count offset mismatch");
+    }
+    if (@offsetOf(JitContext, "err_trace") != 64) {
+        @compileError("JitContext.err_trace offset mismatch");
     }
     if (@sizeOf(RetBuf) != 16) {
         @compileError("RetBuf size mismatch");

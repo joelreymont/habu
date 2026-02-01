@@ -105,6 +105,8 @@ test "rt add returns error union" {
     defer heap.deinit();
 
     var dummy = [_]Value{Value.nil};
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
     var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
     var c = ctx.JitContext{
         .sp = &dummy,
@@ -115,6 +117,7 @@ test "rt add returns error union" {
         .ret_buf = &ret_buf,
         .err = 0,
         .const_count = 0,
+        .err_trace = &trace,
     };
 
     try testing.expectError(error.TypeMismatch, add(&c, Value.nil, Value.nil));
@@ -131,6 +134,8 @@ test "rt neg returns error union" {
     defer heap.deinit();
 
     var dummy = [_]Value{Value.nil};
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
     var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
     var c = ctx.JitContext{
         .sp = &dummy,
@@ -141,6 +146,7 @@ test "rt neg returns error union" {
         .ret_buf = &ret_buf,
         .err = 0,
         .const_count = 0,
+        .err_trace = &trace,
     };
 
     try testing.expectError(error.TypeMismatch, neg(&c, Value.nil));

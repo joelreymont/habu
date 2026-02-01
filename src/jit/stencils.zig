@@ -229,6 +229,10 @@ const X21: u5 = 21; // ret_buf pointer
 const X22: u5 = 22; // ctx pointer
 const X23: u5 = 23; // frame base
 const X24: u5 = 24; // saved scratch
+const X25: u5 = 25; // callee-saved
+const X26: u5 = 26; // callee-saved
+const X27: u5 = 27; // callee-saved
+const X28: u5 = 28; // callee-saved
 const X29: u5 = 29; // fp
 const X30: u5 = 30; // link register
 const XZR: u5 = 31; // zero register
@@ -300,6 +304,8 @@ pub const prologue_stencil = Stencil{
             inst_bytes(stp_pre(X19, X20, SP, -2)) ++
             inst_bytes(stp_pre(X21, X22, SP, -2)) ++
             inst_bytes(stp_pre(X23, X24, SP, -2)) ++
+            inst_bytes(stp_pre(X25, X26, SP, -2)) ++
+            inst_bytes(stp_pre(X27, X28, SP, -2)) ++
             // MOV x22, x0 (ctx)
             inst_bytes(add_imm(X22, X0, 0)) ++
             // LDR x19, [x22, #0] (ctx.sp)
@@ -321,7 +327,9 @@ pub const prologue_stencil = Stencil{
 pub const epilogue_stencil = Stencil{
     .name = "epilogue",
     .code = &(
-        inst_bytes(ldp_post(X23, X24, SP, 2)) ++
+        inst_bytes(ldp_post(X27, X28, SP, 2)) ++
+            inst_bytes(ldp_post(X25, X26, SP, 2)) ++
+            inst_bytes(ldp_post(X23, X24, SP, 2)) ++
             inst_bytes(ldp_post(X21, X22, SP, 2)) ++
             inst_bytes(ldp_post(X19, X20, SP, 2)) ++
             inst_bytes(ldp_post(X29, X30, SP, 2)) ++
@@ -677,10 +685,24 @@ pub const mov_x1_x22 = Stencil{
     .holes = &[_]Hole{},
 };
 
+/// Store ctx.sp <- x19
+pub const store_ctx_sp = Stencil{
+    .name = "store_ctx_sp",
+    .code = &inst_bytes(0xF90002D3), // STR x19, [x22, #0]
+    .holes = &[_]Hole{},
+};
+
 /// Move x0 <- x21 (ret_buf)
 pub const mov_x0_x21 = Stencil{
     .name = "mov_x0_x21",
     .code = &inst_bytes(add_imm(X0, X21, 0)),
+    .holes = &[_]Hole{},
+};
+
+/// Load error return trace pointer into x0
+pub const load_err_trace = Stencil{
+    .name = "load_err_trace",
+    .code = &inst_bytes(0xF94022C0), // LDR x0, [x22, #64]
     .holes = &[_]Hole{},
 };
 
@@ -866,15 +888,17 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 16), stack_push_x1.code.len);
     try testing.expectEqual(@as(usize, 16), stack_pop.code.len);
     try testing.expectEqual(@as(usize, 16), swap_stencil.code.len);
-    try testing.expectEqual(@as(usize, 48), prologue_stencil.code.len);
-    try testing.expectEqual(@as(usize, 20), epilogue_stencil.code.len);
+    try testing.expectEqual(@as(usize, 56), prologue_stencil.code.len);
+    try testing.expectEqual(@as(usize, 28), epilogue_stencil.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x1_x0.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x2_x0.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x2_x1.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x3_x1.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x0_x22.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x1_x22.code.len);
+    try testing.expectEqual(@as(usize, 4), store_ctx_sp.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x0_x21.code.len);
+    try testing.expectEqual(@as(usize, 4), load_err_trace.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x8_x21.code.len);
     try testing.expectEqual(@as(usize, 4), clear_retbuf_err.code.len);
     try testing.expectEqual(@as(usize, 8), guard_fixnum_x0.code.len);
