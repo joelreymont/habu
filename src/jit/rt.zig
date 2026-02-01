@@ -7,88 +7,75 @@ const arith = @import("../runtime/primitives/arith.zig");
 const Value = runtime.Value;
 const std = @import("std");
 
-pub const Err = enum(u32) {
-    ok = 0,
-    type_mismatch = 1,
-    div_zero = 2,
-    out_of_memory = 3,
-    invalid_argument = 4,
-};
-
-fn setOk(c: *ctx.JitContext) void {
-    c.err = @intFromEnum(Err.ok);
+pub fn add(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
+    return try arith.add(c.heap, a, b);
 }
 
-fn setArithErr(c: *ctx.JitContext, err: arith.Error) void {
-    c.err = @intFromEnum(switch (err) {
-        error.TypeMismatch => Err.type_mismatch,
-        error.DivisionByZero => Err.div_zero,
-        error.OutOfMemory => Err.out_of_memory,
-        error.InvalidArgument => Err.invalid_argument,
-    });
+pub fn sub(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
+    return try arith.sub(c.heap, a, b);
 }
 
-pub fn add(c: *ctx.JitContext, a: Value, b: Value) callconv(.c) Value {
-    const res = arith.add(c.heap, a, b) catch |err| {
-        setArithErr(c, err);
-        return Value.nil;
-    };
-    setOk(c);
-    return res;
+pub fn mul(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
+    return try arith.mul(c.heap, a, b);
 }
 
-pub fn sub(c: *ctx.JitContext, a: Value, b: Value) callconv(.c) Value {
-    const res = arith.sub(c.heap, a, b) catch |err| {
-        setArithErr(c, err);
-        return Value.nil;
-    };
-    setOk(c);
-    return res;
+pub fn div(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
+    return try arith.div(c.heap, a, b);
 }
 
-pub fn mul(c: *ctx.JitContext, a: Value, b: Value) callconv(.c) Value {
-    const res = arith.mul(c.heap, a, b) catch |err| {
-        setArithErr(c, err);
-        return Value.nil;
-    };
-    setOk(c);
-    return res;
+pub fn neg(c: *ctx.JitContext, a: Value) arith.Error!Value {
+    _ = c;
+    return try arith.negate(a);
 }
 
-pub fn div(c: *ctx.JitContext, a: Value, b: Value) callconv(.c) Value {
-    const res = arith.div(c.heap, a, b) catch |err| {
-        setArithErr(c, err);
-        return Value.nil;
-    };
-    setOk(c);
-    return res;
-}
-
-pub fn numberp(c: *ctx.JitContext, a: Value) callconv(.c) Value {
-    setOk(c);
+pub fn numberp(c: *ctx.JitContext, a: Value) arith.Error!Value {
+    _ = c;
     return if (a.isNumber()) Value.t else Value.nil;
 }
 
-test "rt add sets err" {
+test "rt add returns error union" {
     const testing = std.testing;
 
     var heap = try runtime.Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
     var dummy = [_]Value{Value.nil};
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
     var c = ctx.JitContext{
         .sp = &dummy,
         .const_pool = &dummy,
         .frame_base = &dummy,
         .heap = &heap,
+        .ret_buf = &ret_buf,
         .err = 0,
     };
 
-    _ = add(&c, Value.nil, Value.nil);
-    try testing.expectEqual(@intFromEnum(Err.type_mismatch), c.err);
+    try testing.expectError(error.TypeMismatch, add(&c, Value.nil, Value.nil));
 
-    const res = add(&c, Value.makeFixnum(1), Value.makeFixnum(2));
-    try testing.expectEqual(@intFromEnum(Err.ok), c.err);
+    const res = try add(&c, Value.makeFixnum(1), Value.makeFixnum(2));
     try testing.expect(res.isFixnum());
     try testing.expectEqual(@as(i64, 3), res.toFixnum());
+}
+
+test "rt neg returns error union" {
+    const testing = std.testing;
+
+    var heap = try runtime.Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    var dummy = [_]Value{Value.nil};
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var c = ctx.JitContext{
+        .sp = &dummy,
+        .const_pool = &dummy,
+        .frame_base = &dummy,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+    };
+
+    try testing.expectError(error.TypeMismatch, neg(&c, Value.nil));
+    const res = try neg(&c, Value.makeFixnum(5));
+    try testing.expect(res.isFixnum());
+    try testing.expectEqual(@as(i64, -5), res.toFixnum());
 }

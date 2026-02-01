@@ -48,6 +48,8 @@ pub const Jit = struct {
     labels: std.AutoHashMap(usize, usize),
     /// Pending forward jumps to patch
     pending_jumps: std.ArrayList(PendingJump),
+    /// Pending runtime error branches to patch
+    err_branches: std.ArrayList(usize),
 
     const PendingJump = struct {
         /// Offset in code buffer where jump instruction is
@@ -65,6 +67,7 @@ pub const Jit = struct {
             .fn_start = 0,
             .labels = std.AutoHashMap(usize, usize).init(allocator),
             .pending_jumps = std.ArrayList(PendingJump){},
+            .err_branches = std.ArrayList(usize){},
         };
     }
 
@@ -72,6 +75,7 @@ pub const Jit = struct {
         self.code_buffer.deinit();
         self.labels.deinit();
         self.pending_jumps.deinit(self.allocator);
+        self.err_branches.deinit(self.allocator);
     }
 
     /// Compile a bytecode chunk to native code
@@ -79,6 +83,7 @@ pub const Jit = struct {
         self.fn_start = self.code_buffer.pos;
         self.labels.clearRetainingCapacity();
         self.pending_jumps.clearRetainingCapacity();
+        self.err_branches.clearRetainingCapacity();
 
         _ = try patch.patchStencil(&self.code_buffer, stencils.prologue_stencil, &[_]patch.PatchValue{});
 
@@ -97,6 +102,8 @@ pub const Jit = struct {
 
         // Patch forward jumps
         try self.patchPendingJumps();
+        // Emit error handler and patch runtime error branches
+        try self.emitErrorHandler();
 
         return self.code_buffer.getFnPtr(JitFn, self.fn_start);
     }
@@ -144,13 +151,11 @@ pub const Jit = struct {
             },
 
             .mul => {
-                try self.emitBinaryArith(stencils.mul_fixnum, @intFromPtr(&rt.mul));
+                try self.emitBinaryMul(@intFromPtr(&rt.mul));
             },
 
             .neg => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.neg_fixnum, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitUnaryNeg(@intFromPtr(&rt.neg));
             },
 
             .div => {
@@ -344,21 +349,36 @@ pub const Jit = struct {
         }
     }
 
+    fn emitRuntimeCheck(self: *Jit) JitError!void {
+        const start = try patch.patchStencil(&self.code_buffer, stencils.runtime_check, &[_]patch.PatchValue{});
+        const branch_offset = start + stencils.runtime_check_branch_offset;
+        try self.err_branches.append(self.allocator, branch_offset);
+    }
+
+    // Zig error-union ABI uses an sret pointer; pass ret_buf in x0 and x8 and shift args by one.
     fn emitCallUnary(self: *Jit, addr: usize) JitError!void {
-        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x1_x0, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x0_x22, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x2_x0, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x1_x22, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.clear_retbuf_err, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x0_x21, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x8_x21, &[_]patch.PatchValue{});
         _ = try patch.patchStencil(&self.code_buffer, stencils.call_abs, &[_]patch.PatchValue{
             .{ .imm64 = addr },
         });
+        try self.emitRuntimeCheck();
     }
 
     fn emitCallBinary(self: *Jit, addr: usize) JitError!void {
-        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x2_x1, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x1_x0, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x0_x22, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x3_x1, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x2_x0, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x1_x22, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.clear_retbuf_err, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x0_x21, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x8_x21, &[_]patch.PatchValue{});
         _ = try patch.patchStencil(&self.code_buffer, stencils.call_abs, &[_]patch.PatchValue{
             .{ .imm64 = addr },
         });
+        try self.emitRuntimeCheck();
     }
 
     fn emitGuardFixnumX0(self: *Jit) JitError!usize {
@@ -371,6 +391,16 @@ pub const Jit = struct {
         const start = self.code_buffer.pos;
         _ = try patch.patchStencil(&self.code_buffer, stencils.guard_fixnum_x1, &[_]patch.PatchValue{});
         return start + 4;
+    }
+
+    fn emitMulOverflowCheck(self: *Jit) JitError!usize {
+        const start = try patch.patchStencil(&self.code_buffer, stencils.mul_overflow_check, &[_]patch.PatchValue{});
+        return start + stencils.mul_overflow_check_branch_offset;
+    }
+
+    fn emitFixnumRangeCheck(self: *Jit) JitError!usize {
+        const start = try patch.patchStencil(&self.code_buffer, stencils.fixnum_range_check, &[_]patch.PatchValue{});
+        return start + stencils.fixnum_range_check_branch_offset;
     }
 
     fn emitBinaryCall(self: *Jit, addr: usize) JitError!void {
@@ -388,6 +418,7 @@ pub const Jit = struct {
         const guard_x1_branch = try self.emitGuardFixnumX1();
 
         _ = try patch.patchStencil(&self.code_buffer, fast, &[_]patch.PatchValue{});
+        const range_branch = try self.emitFixnumRangeCheck();
 
         const fast_branch_offset = self.code_buffer.pos;
         const fast_inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + fast_branch_offset;
@@ -407,6 +438,72 @@ pub const Jit = struct {
         defer patch.jitWriteProtect(true);
         try self.patchBranch(guard_x0_branch, slow_target_addr, .rel19);
         try self.patchBranch(guard_x1_branch, slow_target_addr, .rel19);
+        try self.patchBranch(range_branch, slow_target_addr, .rel19);
+        try self.patchBranch(fast_branch_offset, end_target_addr, .rel26);
+        patch.flushIcache(self.code_buffer.memory.ptr, self.code_buffer.pos);
+    }
+
+    fn emitBinaryMul(self: *Jit, slow_addr: usize) JitError!void {
+        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+
+        const guard_x0_branch = try self.emitGuardFixnumX0();
+        const guard_x1_branch = try self.emitGuardFixnumX1();
+
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mul_fixnum, &[_]patch.PatchValue{});
+        const overflow_branch = try self.emitMulOverflowCheck();
+        const range_branch = try self.emitFixnumRangeCheck();
+
+        const fast_branch_offset = self.code_buffer.pos;
+        const fast_inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + fast_branch_offset;
+        _ = try patch.patchStencil(&self.code_buffer, stencils.branch_stencil, &[_]patch.PatchValue{
+            .{ .addr = fast_inst_addr },
+        });
+
+        const slow_code_offset = self.code_buffer.pos;
+        const slow_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + slow_code_offset;
+        try self.emitCallBinary(slow_addr);
+
+        const end_code_offset = self.code_buffer.pos;
+        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+        const end_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + end_code_offset;
+
+        patch.jitWriteProtect(false);
+        defer patch.jitWriteProtect(true);
+        try self.patchBranch(guard_x0_branch, slow_target_addr, .rel19);
+        try self.patchBranch(guard_x1_branch, slow_target_addr, .rel19);
+        try self.patchBranch(overflow_branch, slow_target_addr, .rel19);
+        try self.patchBranch(range_branch, slow_target_addr, .rel19);
+        try self.patchBranch(fast_branch_offset, end_target_addr, .rel26);
+        patch.flushIcache(self.code_buffer.memory.ptr, self.code_buffer.pos);
+    }
+
+    fn emitUnaryNeg(self: *Jit, slow_addr: usize) JitError!void {
+        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+
+        const guard_x0_branch = try self.emitGuardFixnumX0();
+
+        _ = try patch.patchStencil(&self.code_buffer, stencils.neg_fixnum, &[_]patch.PatchValue{});
+        const range_branch = try self.emitFixnumRangeCheck();
+
+        const fast_branch_offset = self.code_buffer.pos;
+        const fast_inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + fast_branch_offset;
+        _ = try patch.patchStencil(&self.code_buffer, stencils.branch_stencil, &[_]patch.PatchValue{
+            .{ .addr = fast_inst_addr },
+        });
+
+        const slow_code_offset = self.code_buffer.pos;
+        const slow_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + slow_code_offset;
+        try self.emitCallUnary(slow_addr);
+
+        const end_code_offset = self.code_buffer.pos;
+        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+        const end_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + end_code_offset;
+
+        patch.jitWriteProtect(false);
+        defer patch.jitWriteProtect(true);
+        try self.patchBranch(guard_x0_branch, slow_target_addr, .rel19);
+        try self.patchBranch(range_branch, slow_target_addr, .rel19);
         try self.patchBranch(fast_branch_offset, end_target_addr, .rel26);
         patch.flushIcache(self.code_buffer.memory.ptr, self.code_buffer.pos);
     }
@@ -423,6 +520,23 @@ pub const Jit = struct {
             try self.patchBranch(jump.code_offset, target_addr, jump.hole_type);
         }
 
+        patch.flushIcache(self.code_buffer.memory.ptr, self.code_buffer.pos);
+    }
+
+    fn emitErrorHandler(self: *Jit) JitError!void {
+        if (self.err_branches.items.len == 0) return;
+
+        const handler_offset = self.code_buffer.pos;
+        _ = try patch.patchStencil(&self.code_buffer, stencils.store_err, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.push_nil_stencil, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.epilogue_stencil, &[_]patch.PatchValue{});
+
+        const handler_addr = @intFromPtr(self.code_buffer.memory.ptr) + handler_offset;
+        patch.jitWriteProtect(false);
+        defer patch.jitWriteProtect(true);
+        for (self.err_branches.items) |branch_offset| {
+            try self.patchBranch(branch_offset, handler_addr, .rel19);
+        }
         patch.flushIcache(self.code_buffer.memory.ptr, self.code_buffer.pos);
     }
 
@@ -597,11 +711,18 @@ test "jit compile numberp" {
         stencils.load_imm64.code.len +
         stencils.stack_push.code.len +
         stencils.stack_pop.code.len +
-        stencils.mov_x1_x0.code.len +
-        stencils.mov_x0_x22.code.len +
+        stencils.mov_x2_x0.code.len +
+        stencils.mov_x1_x22.code.len +
+        stencils.clear_retbuf_err.code.len +
+        stencils.mov_x0_x21.code.len +
+        stencils.mov_x8_x21.code.len +
         stencils.call_abs.code.len +
+        stencils.runtime_check.code.len +
         stencils.stack_push.code.len +
         stencils.stack_pop.code.len +
+        stencils.epilogue_stencil.code.len +
+        stencils.store_err.code.len +
+        stencils.push_nil_stencil.code.len +
         stencils.epilogue_stencil.code.len;
     try testing.expectEqual(expected_len, jit.code_buffer.pos);
 }
@@ -648,13 +769,21 @@ test "jit compile add" {
         stencils.guard_fixnum_x0.code.len +
         stencils.guard_fixnum_x1.code.len +
         stencils.add_fixnum.code.len +
+        stencils.fixnum_range_check.code.len +
         stencils.branch_stencil.code.len +
-        stencils.mov_x2_x1.code.len +
-        stencils.mov_x1_x0.code.len +
-        stencils.mov_x0_x22.code.len +
+        stencils.mov_x3_x1.code.len +
+        stencils.mov_x2_x0.code.len +
+        stencils.mov_x1_x22.code.len +
+        stencils.clear_retbuf_err.code.len +
+        stencils.mov_x0_x21.code.len +
+        stencils.mov_x8_x21.code.len +
         stencils.call_abs.code.len +
+        stencils.runtime_check.code.len +
         stencils.stack_push.code.len +
         stencils.stack_pop.code.len +
+        stencils.epilogue_stencil.code.len +
+        stencils.store_err.code.len +
+        stencils.push_nil_stencil.code.len +
         stencils.epilogue_stencil.code.len;
     try testing.expectEqual(expected_len, jit.code_buffer.pos);
 }
@@ -749,18 +878,20 @@ test "jit vm parity add" {
 
     const fn_ptr = try jit.compile(&chunk);
     var stack_buf: [32]Value = undefined;
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
     var ctx_val = ctx.JitContext{
         .sp = stack_buf[0..].ptr,
         .const_pool = @ptrCast(@constCast(&consts)),
         .frame_base = stack_buf[0..].ptr,
         .heap = &heap,
+        .ret_buf = &ret_buf,
         .err = 0,
     };
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
 
     try testing.expect(vm_res.eq(jit_res));
-    try testing.expectEqual(@intFromEnum(rt.Err.ok), ctx_val.err);
+    try testing.expectEqual(@as(u16, 0), ctx_val.err);
 }
 
 test "jit vm parity numberp" {
@@ -803,16 +934,18 @@ test "jit vm parity numberp" {
 
     const fn_ptr = try jit.compile(&chunk);
     var stack_buf: [32]Value = undefined;
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
     var ctx_val = ctx.JitContext{
         .sp = stack_buf[0..].ptr,
         .const_pool = @ptrCast(@constCast(&consts)),
         .frame_base = stack_buf[0..].ptr,
         .heap = &heap,
+        .ret_buf = &ret_buf,
         .err = 0,
     };
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
 
     try testing.expect(vm_res.eq(jit_res));
-    try testing.expectEqual(@intFromEnum(rt.Err.ok), ctx_val.err);
+    try testing.expectEqual(@as(u16, 0), ctx_val.err);
 }

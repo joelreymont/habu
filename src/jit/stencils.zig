@@ -92,6 +92,12 @@ fn lsr_imm(rd: u5, rn: u5, shift: u6) u32 {
     return 0xD340FC00 | (@as(u32, shift) << 16) | (@as(u32, rn) << 5) | rd;
 }
 
+/// Encode ASR immediate: ASR Xd, Xn, #shift
+fn asr_imm(rd: u5, rn: u5, shift: u6) u32 {
+    // SBFM Xd, Xn, #shift, #63
+    return 0x9340FC00 | (@as(u32, shift) << 16) | (@as(u32, rn) << 5) | rd;
+}
+
 /// Encode LSL immediate: LSL Xd, Xn, #shift
 fn lsl_imm(rd: u5, rn: u5, shift: u6) u32 {
     // UBFM Xd, Xn, #(-shift mod 64), #(63-shift)
@@ -112,6 +118,16 @@ fn and_not_bit0(rd: u5, rn: u5) u32 {
     // AND Xd, Xn, #~1 = AND Xd, Xn, #0xFFFFFFFFFFFFFFFE
     // N=1, immr=1, imms=62 encodes this mask
     return 0x92407C00 | (@as(u32, rn) << 5) | rd;
+}
+
+/// Encode MUL instruction: MUL Xd, Xn, Xm
+fn mul_reg(rd: u5, rn: u5, rm: u5) u32 {
+    return 0x9B007C00 | (@as(u32, rm) << 16) | (@as(u32, rn) << 5) | rd;
+}
+
+/// Encode SMULH instruction: SMULH Xd, Xn, Xm
+fn smulh_reg(rd: u5, rn: u5, rm: u5) u32 {
+    return 0x9B407C00 | (@as(u32, rm) << 16) | (@as(u32, rn) << 5) | rd;
 }
 
 /// Encode RET instruction
@@ -139,9 +155,19 @@ fn cbz_placeholder(rn: u5) u32 {
     return 0xB4000000 | @as(u32, rn); // CBZ with offset 0
 }
 
-/// Encode CBNZ: CBNZ Xn, offset (branch if not zero)
+/// Encode CBZ (32-bit): CBZ Wn, offset
+fn cbz_w_placeholder(rn: u5) u32 {
+    return 0x34000000 | @as(u32, rn); // CBZ Wn with offset 0
+}
+
+/// Encode CBNZ: CBNZ Xn, offset
 fn cbnz_placeholder(rn: u5) u32 {
     return 0xB5000000 | @as(u32, rn); // CBNZ with offset 0
+}
+
+/// Encode CBNZ (32-bit): CBNZ Wn, offset
+fn cbnz_w_placeholder(rn: u5) u32 {
+    return 0x35000000 | @as(u32, rn); // CBNZ Wn with offset 0
 }
 
 /// Encode STP (pre-index): STP Xt1, Xt2, [Xn, #imm7*8]!
@@ -179,17 +205,23 @@ fn inst_bytes(inst: u32) [4]u8 {
 const X0: u5 = 0; // accumulator
 const X1: u5 = 1; // temp/arg
 const X2: u5 = 2; // temp/arg
+const X3: u5 = 3; // temp/arg
+const X8: u5 = 8; // sret mirror
 const X9: u5 = 9; // scratch
 const X10: u5 = 10; // scratch
+const X11: u5 = 11; // scratch
+const X12: u5 = 12; // scratch
+const X13: u5 = 13; // scratch
 const X16: u5 = 16; // scratch
 const X19: u5 = 19; // stack pointer
 const X20: u5 = 20; // const_pool base
-const X21: u5 = 21; // saved scratch
+const X21: u5 = 21; // ret_buf pointer
 const X22: u5 = 22; // ctx pointer
 const X23: u5 = 23; // frame base
 const X24: u5 = 24; // saved scratch
 const X29: u5 = 29; // fp
 const X30: u5 = 30; // link register
+const XZR: u5 = 31; // zero register
 const SP: u5 = 31; // stack pointer
 
 // ============================================================================
@@ -209,37 +241,30 @@ pub const load_imm64 = Stencil{
     },
 };
 
-/// Add two fixnums: x0 = x0 + x1 (preserving tag)
+/// Add two fixnums: x9 = (x0 + x1) untagged
 /// Both inputs are tagged fixnums (bit0=1)
-/// Result: untag both, add, retag
 pub const add_fixnum = Stencil{
-    .name = "add_fixnum",
+    .name = "add_fixnum_raw",
     .code = &(
-        // Untag x0: x9 = x0 >> 1
-        inst_bytes(lsr_imm(X9, X0, 1)) ++
-            // Untag x1: x10 = x1 >> 1
-            inst_bytes(lsr_imm(X10, X1, 1)) ++
-            // Add: x0 = x9 + x10
-            inst_bytes(add_reg(X0, X9, X10)) ++
-            // Retag: x0 = (x0 << 1) | 1
-            inst_bytes(lsl_imm(X0, X0, 1)) ++
-            inst_bytes(orr_imm_bit0(X0, X0))),
+        // Untag x0: x9 = x0 >> 1 (arith)
+        inst_bytes(asr_imm(X9, X0, 1)) ++
+            // Untag x1: x10 = x1 >> 1 (arith)
+            inst_bytes(asr_imm(X10, X1, 1)) ++
+            // Add: x9 = x9 + x10
+            inst_bytes(add_reg(X9, X9, X10))),
     .holes = &[_]Hole{},
 };
 
-/// Subtract two fixnums: x0 = x0 - x1 (preserving tag)
+/// Subtract two fixnums: x9 = (x0 - x1) untagged
 pub const sub_fixnum = Stencil{
-    .name = "sub_fixnum",
+    .name = "sub_fixnum_raw",
     .code = &(
-        // Untag x0: x9 = x0 >> 1
-        inst_bytes(lsr_imm(X9, X0, 1)) ++
-            // Untag x1: x10 = x1 >> 1
-            inst_bytes(lsr_imm(X10, X1, 1)) ++
-            // Sub: x0 = x9 - x10
-            inst_bytes(sub_reg(X0, X9, X10)) ++
-            // Retag: x0 = (x0 << 1) | 1
-            inst_bytes(lsl_imm(X0, X0, 1)) ++
-            inst_bytes(orr_imm_bit0(X0, X0))),
+        // Untag x0: x9 = x0 >> 1 (arith)
+        inst_bytes(asr_imm(X9, X0, 1)) ++
+            // Untag x1: x10 = x1 >> 1 (arith)
+            inst_bytes(asr_imm(X10, X1, 1)) ++
+            // Sub: x9 = x9 - x10
+            inst_bytes(sub_reg(X9, X9, X10))),
     .holes = &[_]Hole{},
 };
 
@@ -250,7 +275,7 @@ pub const ret_stencil = Stencil{
     .holes = &[_]Hole{},
 };
 
-/// Function prologue: save lr, save regs, load sp/const_pool/frame_base from ctx
+/// Function prologue: save lr, save regs, load sp/const_pool/frame_base/ret_buf from ctx
 pub const prologue_stencil = Stencil{
     .name = "prologue",
     .code = &(
@@ -266,7 +291,11 @@ pub const prologue_stencil = Stencil{
             // LDR x20, [x22, #8] (ctx.const_pool)
             inst_bytes(0xF94006D4) ++
             // LDR x23, [x22, #16] (ctx.frame_base)
-            inst_bytes(0xF9400AD7)),
+            inst_bytes(0xF9400AD7) ++
+            // LDR x21, [x22, #32] (ctx.ret_buf)
+            inst_bytes(0xF94012D5) ++
+            // STRH wzr, [x22, #40] (clear ctx.err)
+            inst_bytes(0x790052DF)),
     .holes = &[_]Hole{},
 };
 
@@ -376,35 +405,72 @@ pub const cdr_stencil = Stencil{
     .holes = &[_]Hole{},
 };
 
-/// Multiply two fixnums: x0 = x0 * x1 (preserving tag)
+/// Multiply two fixnums: x9 = low(x0 * x1) untagged, x11 = high
 pub const mul_fixnum = Stencil{
-    .name = "mul_fixnum",
+    .name = "mul_fixnum_raw",
     .code = &(
-        // Untag x0: x9 = x0 >> 1
-        inst_bytes(lsr_imm(X9, X0, 1)) ++
-            // Untag x1: x10 = x1 >> 1
-            inst_bytes(lsr_imm(X10, X1, 1)) ++
-            // Multiply: x0 = x9 * x10 (using MUL)
-            inst_bytes(0x9B0A7D20) ++ // MUL x0, x9, x10
-            // Retag: x0 = (x0 << 1) | 1
-            inst_bytes(lsl_imm(X0, X0, 1)) ++
-            inst_bytes(orr_imm_bit0(X0, X0))),
+        // Untag x0: x9 = x0 >> 1 (arith)
+        inst_bytes(asr_imm(X9, X0, 1)) ++
+            // Untag x1: x10 = x1 >> 1 (arith)
+            inst_bytes(asr_imm(X10, X1, 1)) ++
+            // High half: x11 = smulh(x9, x10)
+            inst_bytes(smulh_reg(X11, X9, X10)) ++
+            // Low half: x9 = x9 * x10
+            inst_bytes(mul_reg(X9, X9, X10))),
     .holes = &[_]Hole{},
 };
 
-/// Negate fixnum: x0 = -x0 (preserving tag)
+/// Negate fixnum: x9 = -x0 untagged
 pub const neg_fixnum = Stencil{
-    .name = "neg_fixnum",
+    .name = "neg_fixnum_raw",
     .code = &(
-        // Untag: x9 = x0 >> 1
-        inst_bytes(lsr_imm(X9, X0, 1)) ++
-            // Negate: x0 = 0 - x9 (using SUB from XZR)
-            inst_bytes(0xCB0903E0) ++ // SUB x0, xzr, x9
-            // Retag: x0 = (x0 << 1) | 1
-            inst_bytes(lsl_imm(X0, X0, 1)) ++
+        // Untag: x9 = x0 >> 1 (arith)
+        inst_bytes(asr_imm(X9, X0, 1)) ++
+            // Negate: x9 = 0 - x9
+            inst_bytes(sub_reg(X9, XZR, X9))),
+    .holes = &[_]Hole{},
+};
+
+/// Check mul overflow: branch to slow if high != sign(low)
+/// Uses x9 (low), x11 (high), x12 temp
+pub const mul_overflow_check = Stencil{
+    .name = "mul_overflow_check",
+    .code = &(
+        // ASR x12, x9, #63 (sign of low)
+        inst_bytes(asr_imm(X12, X9, 63)) ++
+            // SUB x12, x11, x12
+            inst_bytes(sub_reg(X12, X11, X12)) ++
+            // CBNZ x12, <slow>
+            inst_bytes(cbnz_placeholder(X12))),
+    .holes = &[_]Hole{},
+};
+pub const mul_overflow_check_branch_offset: usize = 8;
+
+/// Check fixnum range for untagged x9, tag into x0 if ok
+/// Branches to slow path if out of range.
+pub const fixnum_range_check = Stencil{
+    .name = "fixnum_range_check",
+    .code = &(
+        // ASR x11, x9, #62
+        inst_bytes(asr_imm(X11, X9, 62)) ++
+            // CMP x11, #0
+            inst_bytes(0xF100017F) ++
+            // CSET w12, EQ
+            inst_bytes(0x1A9F17EC) ++
+            // CMP x11, #-1
+            inst_bytes(0xB100057F) ++
+            // CSET w13, EQ
+            inst_bytes(0x1A9F17ED) ++
+            // ORR w12, w12, w13
+            inst_bytes(0x2A0D018C) ++
+            // CBZ w12, <slow>
+            inst_bytes(cbz_w_placeholder(X12)) ++
+            // Tag: x0 = (x9 << 1) | 1
+            inst_bytes(lsl_imm(X0, X9, 1)) ++
             inst_bytes(orr_imm_bit0(X0, X0))),
     .holes = &[_]Hole{},
 };
+pub const fixnum_range_check_branch_offset: usize = 24;
 
 /// Push nil (zero) onto accumulator
 pub const push_nil_stencil = Stencil{
@@ -413,10 +479,10 @@ pub const push_nil_stencil = Stencil{
     .holes = &[_]Hole{},
 };
 
-/// Push t (fixnum 1 = 0x3) onto accumulator
+/// Push t (Value.t = 0x2) onto accumulator
 pub const push_t_stencil = Stencil{
     .name = "push_t",
-    .code = &inst_bytes(0xD2800060), // MOV x0, #3
+    .code = &inst_bytes(0xD2800000), // MOV x0, #0
     .holes = &[_]Hole{},
 };
 
@@ -535,6 +601,13 @@ pub const mov_x1_x0 = Stencil{
     .holes = &[_]Hole{},
 };
 
+/// Move x2 <- x0
+pub const mov_x2_x0 = Stencil{
+    .name = "mov_x2_x0",
+    .code = &inst_bytes(add_imm(X2, X0, 0)),
+    .holes = &[_]Hole{},
+};
+
 /// Move x2 <- x1
 pub const mov_x2_x1 = Stencil{
     .name = "mov_x2_x1",
@@ -542,10 +615,71 @@ pub const mov_x2_x1 = Stencil{
     .holes = &[_]Hole{},
 };
 
+/// Move x3 <- x1
+pub const mov_x3_x1 = Stencil{
+    .name = "mov_x3_x1",
+    .code = &inst_bytes(add_imm(X3, X1, 0)),
+    .holes = &[_]Hole{},
+};
+
 /// Move x0 <- x22 (ctx)
 pub const mov_x0_x22 = Stencil{
     .name = "mov_x0_x22",
     .code = &inst_bytes(add_imm(X0, X22, 0)),
+    .holes = &[_]Hole{},
+};
+
+/// Move x1 <- x22 (ctx)
+pub const mov_x1_x22 = Stencil{
+    .name = "mov_x1_x22",
+    .code = &inst_bytes(add_imm(X1, X22, 0)),
+    .holes = &[_]Hole{},
+};
+
+/// Move x0 <- x21 (ret_buf)
+pub const mov_x0_x21 = Stencil{
+    .name = "mov_x0_x21",
+    .code = &inst_bytes(add_imm(X0, X21, 0)),
+    .holes = &[_]Hole{},
+};
+
+/// Move x8 <- x21 (ret_buf)
+pub const mov_x8_x21 = Stencil{
+    .name = "mov_x8_x21",
+    .code = &inst_bytes(add_imm(X8, X21, 0)),
+    .holes = &[_]Hole{},
+};
+
+/// Clear ret_buf.err (write zero)
+pub const clear_retbuf_err = Stencil{
+    .name = "clear_retbuf_err",
+    .code = &(
+        // STRH wzr, [x21, #8]
+        inst_bytes(0x790012BF)),
+    .holes = &[_]Hole{},
+};
+
+/// Check runtime call error tag in ret_buf and load value
+/// Loads err tag into w9 and branches to err handler if non-zero.
+pub const runtime_check = Stencil{
+    .name = "runtime_check",
+    .code = &(
+        // LDRH w9, [x21, #8]
+        inst_bytes(0x794012A9) ++
+            // CBNZ w9, <err>
+            inst_bytes(cbnz_w_placeholder(X9)) ++
+            // LDR x0, [x21]
+            inst_bytes(0xF94002A0)),
+    .holes = &[_]Hole{},
+};
+pub const runtime_check_branch_offset: usize = 4;
+
+/// Store error tag to ctx.err
+pub const store_err = Stencil{
+    .name = "store_err",
+    .code = &(
+        // STRH w9, [x22, #40]
+        inst_bytes(0x790052C9)),
     .holes = &[_]Hole{},
 };
 
@@ -673,10 +807,10 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 16), load_imm64.code.len);
 
     // Arithmetic stencils (5 instructions each)
-    try testing.expectEqual(@as(usize, 20), add_fixnum.code.len);
-    try testing.expectEqual(@as(usize, 20), sub_fixnum.code.len);
-    try testing.expectEqual(@as(usize, 20), mul_fixnum.code.len);
-    try testing.expectEqual(@as(usize, 16), neg_fixnum.code.len);
+    try testing.expectEqual(@as(usize, 12), add_fixnum.code.len);
+    try testing.expectEqual(@as(usize, 12), sub_fixnum.code.len);
+    try testing.expectEqual(@as(usize, 16), mul_fixnum.code.len);
+    try testing.expectEqual(@as(usize, 8), neg_fixnum.code.len);
 
     // Simple stencils (1 instruction)
     try testing.expectEqual(@as(usize, 4), ret_stencil.code.len);
@@ -686,11 +820,17 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 4), stack_push_x1.code.len);
     try testing.expectEqual(@as(usize, 4), stack_pop.code.len);
     try testing.expectEqual(@as(usize, 16), swap_stencil.code.len);
-    try testing.expectEqual(@as(usize, 36), prologue_stencil.code.len);
+    try testing.expectEqual(@as(usize, 44), prologue_stencil.code.len);
     try testing.expectEqual(@as(usize, 20), epilogue_stencil.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x1_x0.code.len);
+    try testing.expectEqual(@as(usize, 4), mov_x2_x0.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x2_x1.code.len);
+    try testing.expectEqual(@as(usize, 4), mov_x3_x1.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x0_x22.code.len);
+    try testing.expectEqual(@as(usize, 4), mov_x1_x22.code.len);
+    try testing.expectEqual(@as(usize, 4), mov_x0_x21.code.len);
+    try testing.expectEqual(@as(usize, 4), mov_x8_x21.code.len);
+    try testing.expectEqual(@as(usize, 4), clear_retbuf_err.code.len);
     try testing.expectEqual(@as(usize, 8), guard_fixnum_x0.code.len);
     try testing.expectEqual(@as(usize, 8), guard_fixnum_x1.code.len);
 
@@ -705,6 +845,10 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 16), not_stencil.code.len);
     try testing.expectEqual(@as(usize, 16), nilp_stencil.code.len);
     try testing.expectEqual(@as(usize, 16), fixnump_stencil.code.len);
+    try testing.expectEqual(@as(usize, 12), runtime_check.code.len);
+    try testing.expectEqual(@as(usize, 4), store_err.code.len);
+    try testing.expectEqual(@as(usize, 12), mul_overflow_check.code.len);
+    try testing.expectEqual(@as(usize, 36), fixnum_range_check.code.len);
 
     // Call stencils
     try testing.expectEqual(@as(usize, 20), call_abs.code.len);
