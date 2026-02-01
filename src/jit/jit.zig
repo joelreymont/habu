@@ -332,18 +332,20 @@ pub const Jit = struct {
             const target_addr = @intFromPtr(self.code_buffer.memory.ptr) + target_code_addr;
 
             const offset = @as(i64, @intCast(target_addr)) - @as(i64, @intCast(inst_addr));
-            const word_offset_i32 = @as(i32, @intCast(@divTrunc(offset, 4)));
+            const word_offset_i64 = @divTrunc(offset, 4);
 
             switch (jump.hole_type) {
                 .rel26 => {
-                    if (word_offset_i32 < -(1 << 25) or word_offset_i32 >= (1 << 25)) return error.BranchOutOfRange;
+                    if (word_offset_i64 < -(1 << 25) or word_offset_i64 >= (1 << 25)) return error.BranchOutOfRange;
+                    const word_offset_i32: i32 = @intCast(word_offset_i64);
                     const word_offset: u32 = @bitCast(word_offset_i32);
                     var inst = std.mem.readInt(u32, code_slice[0..4], .little);
                     inst = (inst & 0xFC000000) | (word_offset & 0x03FFFFFF);
                     std.mem.writeInt(u32, code_slice[0..4], inst, .little);
                 },
                 .rel19 => {
-                    if (word_offset_i32 < -(1 << 18) or word_offset_i32 >= (1 << 18)) return error.BranchOutOfRange;
+                    if (word_offset_i64 < -(1 << 18) or word_offset_i64 >= (1 << 18)) return error.BranchOutOfRange;
+                    const word_offset_i32: i32 = @intCast(word_offset_i64);
                     const word_offset: u32 = @bitCast(word_offset_i32);
                     var inst = std.mem.readInt(u32, code_slice[0..4], .little);
                     inst = (inst & 0xFF00001F) | ((word_offset & 0x7FFFF) << 5);
@@ -442,4 +444,22 @@ test "jit compile jump" {
         stencils.stack_pop.code.len +
         stencils.epilogue_stencil.code.len;
     try testing.expectEqual(expected_len, jit.code_buffer.pos);
+}
+
+test "jit branch range check" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var jit = try Jit.init(allocator, 4096);
+    defer jit.deinit();
+
+    const big_offset: usize = (@as(usize, 1) << 34) + 4;
+    try jit.labels.put(0, big_offset);
+    try jit.pending_jumps.append(allocator, .{
+        .code_offset = 0,
+        .target_bc_offset = 0,
+        .hole_type = .rel26,
+    });
+
+    try testing.expectError(error.BranchOutOfRange, jit.patchPendingJumps());
 }
