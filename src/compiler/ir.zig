@@ -125,13 +125,13 @@ pub const Ir = union(enum) {
 
     /// Named block: (block name body...)
     block: struct {
-        name: []const u8,
+        name: Value,
         body: *const Ir,
     },
 
     /// Return from block: (return-from name value)
     return_from: struct {
-        name: []const u8,
+        name: Value,
         value: *const Ir,
     },
 
@@ -199,7 +199,7 @@ pub const Ir = union(enum) {
     /// Tags are symbols, forms are expressions
     tagbody: struct {
         /// Tag names (for go targets)
-        tags: []const []const u8,
+        tags: []const Value,
         /// Segments: code between tags (segments.len == tags.len + 1)
         /// segments[0] = code before first tag
         /// segments[i] = code after tags[i-1]
@@ -208,7 +208,7 @@ pub const Ir = union(enum) {
 
     /// Go: (go tag)
     go: struct {
-        tag: []const u8,
+        tag: Value,
     },
 
     /// Multiple values: (values v1 v2 ...)
@@ -1297,13 +1297,13 @@ pub const IrBuilder = struct {
         return node;
     }
 
-    pub fn block(self: IrBuilder, name: []const u8, body: *const Ir) !*Ir {
+    pub fn block(self: IrBuilder, name: Value, body: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .block = .{ .name = name, .body = body } };
         return node;
     }
 
-    pub fn returnFrom(self: IrBuilder, name: []const u8, value: *const Ir) !*Ir {
+    pub fn returnFrom(self: IrBuilder, name: Value, value: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .return_from = .{ .name = name, .value = value } };
         return node;
@@ -1354,15 +1354,15 @@ pub const IrBuilder = struct {
         return node;
     }
 
-    pub fn tagbody(self: IrBuilder, tags: []const []const u8, segments: []const *const Ir) !*Ir {
+    pub fn tagbody(self: IrBuilder, tags: []const Value, segments: []const *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
-        const tags_copy = try self.allocator.dupe([]const u8, tags);
+        const tags_copy = try self.allocator.dupe(Value, tags);
         const segments_copy = try self.allocator.dupe(*const Ir, segments);
         node.* = .{ .tagbody = .{ .tags = tags_copy, .segments = segments_copy } };
         return node;
     }
 
-    pub fn go(self: IrBuilder, tag: []const u8) !*Ir {
+    pub fn go(self: IrBuilder, tag: Value) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .go = .{ .tag = tag } };
         return node;

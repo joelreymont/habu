@@ -27,7 +27,7 @@ pub const Error = error{
 
 /// Block info for tracking named exits
 const BlockInfo = struct {
-    name: []const u8,
+    name: Value,
     /// Pending jump locations to patch when block ends
     pending_exits: std.ArrayList(usize),
 };
@@ -41,7 +41,7 @@ const PendingGoJump = struct {
 /// Unified control stack entry (for blocks, unwind-protects, tagbodies)
 const ControlEntry = union(enum) {
     block: struct {
-        name: []const u8,
+        name: Value,
         pending_exits: std.ArrayList(usize),
     },
     unwind_protect: struct {
@@ -49,7 +49,7 @@ const ControlEntry = union(enum) {
     },
     tagbody: struct {
         /// Tag names
-        tags: []const []const u8,
+        tags: []const Value,
         /// Bytecode offset of each tag (populated during emission)
         tag_offsets: []usize,
         /// Pending go jumps that need patching
@@ -1576,10 +1576,8 @@ pub const Emitter = struct {
     }
 
     fn emitBlock(self: *Emitter, b: anytype) Error!void {
-        // Intern block name and add to constant pool
-        const heap = if (self.heap) |val| val else return error.OutOfMemory;
-        const name_sym = try heap.intern(b.name);
-        const name_idx = try self.addConstant(name_sym.raw);
+        // Add block name to constant pool
+        const name_idx = try self.addConstant(b.name.raw);
 
         // Emit push_block with placeholder offset and name index
         try self.emitOp(.push_block);
@@ -1635,8 +1633,7 @@ pub const Emitter = struct {
             i -= 1;
             switch (self.control_stack.items[i]) {
                 .block => |*blk| {
-                    // String comparison needed: block names are raw strings from IR, not interned symbols
-                    if (std.mem.eql(u8, blk.name, r.name)) {
+                    if (blk.name.raw == r.name.raw) {
                         // Found target block in same chunk with no unwind-protect between
                         // Use compile-time jump
                         const jump_loc = try self.emitJump(.jmp);
@@ -1659,9 +1656,7 @@ pub const Emitter = struct {
 
         // Block not in current chunk or crosses unwind-protect
         // Emit runtime return_from opcode for proper cleanup handling
-        const heap = if (self.heap) |val| val else return error.OutOfMemory;
-        const name_sym = try heap.intern(r.name);
-        const name_idx = try self.addConstant(name_sym.raw);
+        const name_idx = try self.addConstant(r.name.raw);
         try self.emitOp(.return_from);
         try self.emitU16(name_idx);
     }
@@ -1988,10 +1983,9 @@ pub const Emitter = struct {
             i -= 1;
             switch (self.control_stack.items[i]) {
                 .tagbody => |*tbe| {
-                    // String comparison needed: tag names are raw strings from IR, not interned symbols
                     // Search for tag
                     for (tbe.tags, 0..) |tag, tag_idx| {
-                        if (std.mem.eql(u8, tag, g.tag)) {
+                        if (tag.raw == g.tag.raw) {
                             // Found! Check if tag position is known (forward vs backward jump)
                             if (tbe.tag_offsets[tag_idx] != 0) {
                                 // Backward jump - target is known
@@ -2666,8 +2660,9 @@ test "emit block return-from patches" {
 
     const builder = ir.IrBuilder.init(allocator);
     const val = try builder.lit(Value.makeFixnum(7));
-    const ret = try builder.returnFrom("blk", val);
-    const blk = try builder.block("blk", ret);
+    const blk_sym = try heap.intern("blk");
+    const ret = try builder.returnFrom(blk_sym, val);
+    const blk = try builder.block(blk_sym, ret);
 
     try emitter.emit(blk);
     _ = try emitter.finalize();

@@ -4733,7 +4733,7 @@ pub const Compiler = struct {
         const body_ir = try self.compileBody(args, env);
         const loop_ir = try self.builder.loop(test_ir, body_ir);
         // Wrap in nil block for (return ...) support
-        return try self.builder.block("nil", loop_ir);
+        return try self.builder.block(Value.nil, loop_ir);
     }
 
     fn compileBlockWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
@@ -4742,8 +4742,8 @@ pub const Compiler = struct {
 
         const cons = args.toPtr(Cons);
         const name = switch (cons.car.typeKind()) {
-            .nil => "nil", // nil block name (used by dolist/dotimes)
-            .symbol => cons.car.toPtr(Symbol).getName(),
+            .nil => Value.nil, // nil block name (used by dolist/dotimes)
+            .symbol => cons.car,
             else => return error.InvalidSyntax,
         };
 
@@ -4759,8 +4759,8 @@ pub const Compiler = struct {
 
         const cons = args.toPtr(Cons);
         const name = switch (cons.car.typeKind()) {
-            .nil => "nil",
-            .symbol => cons.car.toPtr(Symbol).getName(),
+            .nil => Value.nil,
+            .symbol => cons.car,
             else => return error.InvalidSyntax,
         };
 
@@ -5167,7 +5167,7 @@ pub const Compiler = struct {
     fn compileTagbody(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (tagbody [tag | form]...)
         // Parse body into tags and segments
-        var tags = std.ArrayList([]const u8){};
+        var tags = std.ArrayList(Value){};
         defer tags.deinit(self.allocator);
 
         var segments = std.ArrayList(*const Ir){};
@@ -5189,8 +5189,7 @@ pub const Compiler = struct {
                 try segments.append(self.allocator, segment_ir);
                 current_forms.clearRetainingCapacity();
 
-                const sym = elem.toPtr(Symbol);
-                try tags.append(self.allocator, sym.getName());
+                try tags.append(self.allocator, elem);
             } else {
                 // This is a form - add to current segment
                 try current_forms.append(self.allocator, elem);
@@ -5230,10 +5229,7 @@ pub const Compiler = struct {
         const cons = args.toPtr(Cons);
         if (!cons.car.isSymbol()) return error.InvalidSyntax;
 
-        const sym = cons.car.toPtr(Symbol);
-        const name = sym.getName();
-
-        return try self.builder.go(name);
+        return try self.builder.go(cons.car);
     }
 
     fn compileValues(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -12754,9 +12750,9 @@ test "compile block return-from names" {
     const ir_nil = try compiler.compile(expr_nil, &env);
     defer arena_alloc.destroy(ir_nil);
     try testing.expectEqual(Ir.block, std.meta.activeTag(ir_nil.*));
-    try testing.expectEqualStrings("nil", ir_nil.block.name);
+    try testing.expectEqual(Value.nil.raw, ir_nil.block.name.raw);
     try testing.expect(ir_nil.block.body.* == .return_from);
-    try testing.expectEqualStrings("nil", ir_nil.block.body.return_from.name);
+    try testing.expectEqual(Value.nil.raw, ir_nil.block.body.return_from.name.raw);
 
     // (block foo (return-from foo 2))
     const foo_sym = try heap.intern("foo");
@@ -12769,9 +12765,9 @@ test "compile block return-from names" {
     const ir_sym = try compiler.compile(expr_sym, &env);
     defer arena_alloc.destroy(ir_sym);
     try testing.expectEqual(Ir.block, std.meta.activeTag(ir_sym.*));
-    try testing.expectEqualStrings("FOO", ir_sym.block.name);
+    try testing.expectEqual(foo_sym.raw, ir_sym.block.name.raw);
     try testing.expect(ir_sym.block.body.* == .return_from);
-    try testing.expectEqualStrings("FOO", ir_sym.block.body.return_from.name);
+    try testing.expectEqual(foo_sym.raw, ir_sym.block.body.return_from.name.raw);
 }
 
 test "compile or type assertions" {
