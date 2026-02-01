@@ -32,4 +32,7 @@ comptime {
     if (@offsetOf(RetBuf, "err") != 8) {
         @compileError("RetBuf.err offset mismatch");
     }
+    if (@sizeOf(anyerror) != 2 or @alignOf(anyerror) != 2) {
+        @compileError("anyerror ABI mismatch");
+    }
 }
