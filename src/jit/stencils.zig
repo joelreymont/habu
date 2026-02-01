@@ -512,9 +512,8 @@ pub const eq_stencil = Stencil{
         inst_bytes(0xEB01001F) ++
             // CSET x0, EQ (set to 1 if equal, 0 otherwise)
             inst_bytes(0x9A9F17E0) ++
-            // Convert to tagged: x0 = (x0 << 1) | x0 (gives 0 or 3)
-            inst_bytes(lsl_imm(X9, X0, 1)) ++
-            inst_bytes(orr_imm_bit0(X0, X9))),
+            // Convert to tagged: x0 = x0 << 1 (gives 0 or 2)
+            inst_bytes(lsl_imm(X0, X0, 1))),
     .holes = &[_]Hole{},
 };
 
@@ -525,10 +524,9 @@ pub const lt_stencil = Stencil{
         // CMP x0, x1 (signed compare for tagged fixnums)
         inst_bytes(0xEB01001F) ++
             // CSET x0, LT
-            inst_bytes(0x9A9FB7E0) ++
+            inst_bytes(0x9A9FA7E0) ++
             // Convert to tagged
-            inst_bytes(lsl_imm(X9, X0, 1)) ++
-            inst_bytes(orr_imm_bit0(X0, X9))),
+            inst_bytes(lsl_imm(X0, X0, 1))),
     .holes = &[_]Hole{},
 };
 
@@ -539,10 +537,9 @@ pub const gt_stencil = Stencil{
         // CMP x0, x1
         inst_bytes(0xEB01001F) ++
             // CSET x0, GT
-            inst_bytes(0x9A9FC7E0) ++
+            inst_bytes(0x9A9FD7E0) ++
             // Convert to tagged
-            inst_bytes(lsl_imm(X9, X0, 1)) ++
-            inst_bytes(orr_imm_bit0(X0, X9))),
+            inst_bytes(lsl_imm(X0, X0, 1))),
     .holes = &[_]Hole{},
 };
 
@@ -553,10 +550,9 @@ pub const le_stencil = Stencil{
         // CMP x0, x1
         inst_bytes(0xEB01001F) ++
             // CSET x0, LE
-            inst_bytes(0x9A9FD7E0) ++
+            inst_bytes(0x9A9FC7E0) ++
             // Convert to tagged
-            inst_bytes(lsl_imm(X9, X0, 1)) ++
-            inst_bytes(orr_imm_bit0(X0, X9))),
+            inst_bytes(lsl_imm(X0, X0, 1))),
     .holes = &[_]Hole{},
 };
 
@@ -567,10 +563,9 @@ pub const ge_stencil = Stencil{
         // CMP x0, x1
         inst_bytes(0xEB01001F) ++
             // CSET x0, GE
-            inst_bytes(0x9A9FA7E0) ++
+            inst_bytes(0x9A9FB7E0) ++
             // Convert to tagged
-            inst_bytes(lsl_imm(X9, X0, 1)) ++
-            inst_bytes(orr_imm_bit0(X0, X9))),
+            inst_bytes(lsl_imm(X0, X0, 1))),
     .holes = &[_]Hole{},
 };
 
@@ -817,8 +812,7 @@ pub const not_stencil = Stencil{
         // For now simplified: CMP x0, #0; CSET x0, EQ; convert to tagged
         inst_bytes(0xF100001F) ++ // CMP x0, #0
             inst_bytes(0x9A9F17E0) ++ // CSET x0, EQ
-            inst_bytes(lsl_imm(X9, X0, 1)) ++
-            inst_bytes(orr_imm_bit0(X0, X9))),
+            inst_bytes(lsl_imm(X0, X0, 1))),
     .holes = &[_]Hole{},
 };
 
@@ -831,8 +825,7 @@ pub const fixnump_stencil = Stencil{
             // CSET x0, NE (non-zero = has bit0 set = fixnum)
             inst_bytes(0x9A9F07E0) ++
             // Convert to tagged
-            inst_bytes(lsl_imm(X9, X0, 1)) ++
-            inst_bytes(orr_imm_bit0(X0, X9))),
+            inst_bytes(lsl_imm(X0, X0, 1))),
     .holes = &[_]Hole{},
 };
 
@@ -845,8 +838,7 @@ pub const nilp_stencil = Stencil{
             // CSET x0, EQ
             inst_bytes(0x9A9F17E0) ++
             // Convert to tagged
-            inst_bytes(lsl_imm(X9, X0, 1)) ++
-            inst_bytes(orr_imm_bit0(X0, X9))),
+            inst_bytes(lsl_imm(X0, X0, 1))),
     .holes = &[_]Hole{},
 };
 
@@ -890,17 +882,17 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 4), load_local.code.len);
     try testing.expectEqual(@as(usize, 4), load_const.code.len);
 
-    // Comparison stencils (4 instructions each)
-    try testing.expectEqual(@as(usize, 16), eq_stencil.code.len);
-    try testing.expectEqual(@as(usize, 16), lt_stencil.code.len);
-    try testing.expectEqual(@as(usize, 16), gt_stencil.code.len);
-    try testing.expectEqual(@as(usize, 16), le_stencil.code.len);
-    try testing.expectEqual(@as(usize, 16), ge_stencil.code.len);
+    // Comparison stencils (3 instructions each)
+    try testing.expectEqual(@as(usize, 12), eq_stencil.code.len);
+    try testing.expectEqual(@as(usize, 12), lt_stencil.code.len);
+    try testing.expectEqual(@as(usize, 12), gt_stencil.code.len);
+    try testing.expectEqual(@as(usize, 12), le_stencil.code.len);
+    try testing.expectEqual(@as(usize, 12), ge_stencil.code.len);
 
-    // Type check stencils (4 instructions each)
-    try testing.expectEqual(@as(usize, 16), not_stencil.code.len);
-    try testing.expectEqual(@as(usize, 16), nilp_stencil.code.len);
-    try testing.expectEqual(@as(usize, 16), fixnump_stencil.code.len);
+    // Type check stencils (3 instructions each)
+    try testing.expectEqual(@as(usize, 12), not_stencil.code.len);
+    try testing.expectEqual(@as(usize, 12), nilp_stencil.code.len);
+    try testing.expectEqual(@as(usize, 12), fixnump_stencil.code.len);
     try testing.expectEqual(@as(usize, 12), runtime_check.code.len);
     try testing.expectEqual(@as(usize, 4), store_err.code.len);
     try testing.expectEqual(@as(usize, 12), mul_overflow_check.code.len);

@@ -33,6 +33,26 @@ pub fn numberp(c: *ctx.JitContext, a: Value) arith.Error!Value {
     return if (a.isNumber()) Value.t else Value.nil;
 }
 
+pub fn lt(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
+    _ = c;
+    return if (try arith.lt(a, b)) Value.t else Value.nil;
+}
+
+pub fn gt(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
+    _ = c;
+    return if (try arith.gt(a, b)) Value.t else Value.nil;
+}
+
+pub fn le(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
+    _ = c;
+    return if (try arith.le(a, b)) Value.t else Value.nil;
+}
+
+pub fn ge(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
+    _ = c;
+    return if (try arith.ge(a, b)) Value.t else Value.nil;
+}
+
 test "rt add returns error union" {
     const testing = std.testing;
 

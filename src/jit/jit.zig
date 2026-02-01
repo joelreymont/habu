@@ -174,31 +174,19 @@ pub const Jit = struct {
             },
 
             .lt => {
-                try self.emitStackPopX1();
-                try self.emitStackPop();
-                _ = try patch.patchStencil(&self.code_buffer, stencils.lt_stencil, &[_]patch.PatchValue{});
-                try self.emitStackPush();
+                try self.emitBinaryCompare(stencils.lt_stencil, @intFromPtr(&rt.lt));
             },
 
             .gt => {
-                try self.emitStackPopX1();
-                try self.emitStackPop();
-                _ = try patch.patchStencil(&self.code_buffer, stencils.gt_stencil, &[_]patch.PatchValue{});
-                try self.emitStackPush();
+                try self.emitBinaryCompare(stencils.gt_stencil, @intFromPtr(&rt.gt));
             },
 
             .le => {
-                try self.emitStackPopX1();
-                try self.emitStackPop();
-                _ = try patch.patchStencil(&self.code_buffer, stencils.le_stencil, &[_]patch.PatchValue{});
-                try self.emitStackPush();
+                try self.emitBinaryCompare(stencils.le_stencil, @intFromPtr(&rt.le));
             },
 
             .ge => {
-                try self.emitStackPopX1();
-                try self.emitStackPop();
-                _ = try patch.patchStencil(&self.code_buffer, stencils.ge_stencil, &[_]patch.PatchValue{});
-                try self.emitStackPush();
+                try self.emitBinaryCompare(stencils.ge_stencil, @intFromPtr(&rt.ge));
             },
 
             .not => {
@@ -436,6 +424,35 @@ pub const Jit = struct {
         try self.emitStackPop();
         try self.emitCallBinary(addr);
         try self.emitStackPush();
+    }
+
+    fn emitBinaryCompare(self: *Jit, fast: Stencil, slow_addr: usize) JitError!void {
+        try self.emitStackPopX1();
+        try self.emitStackPop();
+
+        const guard_x0_branch = try self.emitGuardFixnumX0();
+        const guard_x1_branch = try self.emitGuardFixnumX1();
+
+        _ = try patch.patchStencil(&self.code_buffer, fast, &[_]patch.PatchValue{});
+
+        const fast_branch_offset = self.code_buffer.pos;
+        const fast_inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + fast_branch_offset;
+        _ = try patch.patchStencil(&self.code_buffer, stencils.branch_stencil, &[_]patch.PatchValue{
+            .{ .addr = fast_inst_addr },
+        });
+
+        const slow_code_offset = self.code_buffer.pos;
+        const slow_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + slow_code_offset;
+        try self.emitCallBinary(slow_addr);
+
+        const end_code_offset = self.code_buffer.pos;
+        try self.emitStackPush();
+        const end_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + end_code_offset;
+
+        try self.patchBranch(guard_x0_branch, slow_target_addr, .rel19);
+        try self.patchBranch(guard_x1_branch, slow_target_addr, .rel19);
+        try self.patchBranch(fast_branch_offset, end_target_addr, .rel26);
+        patch.flushIcache(self.code_buffer.memory.ptr, self.code_buffer.pos);
     }
 
     fn emitBinaryArith(self: *Jit, fast: Stencil, slow_addr: usize) JitError!void {
@@ -978,8 +995,8 @@ test "jit vm parity add" {
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
 
-    try testing.expect(vm_res.eq(jit_res));
     try testing.expectEqual(@as(u16, 0), ctx_val.err);
+    try testing.expectEqual(vm_res.raw, jit_res.raw);
 }
 
 test "jit vm parity numberp" {
@@ -1035,7 +1052,125 @@ test "jit vm parity numberp" {
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
 
-    try testing.expect(vm_res.eq(jit_res));
+    try testing.expectEqual(vm_res.raw, jit_res.raw);
+    try testing.expectEqual(@as(u16, 0), ctx_val.err);
+}
+
+test "jit vm parity lt" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try runtime.Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(allocator, &heap);
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const lt_op: u16 = @intFromEnum(Op.lt);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        1, 0, 0, 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        2, 0, 0, 0,
+        @truncate(lt_op & 0xFF), @truncate(lt_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+    const consts = [_]Value{};
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const vm_res = try vm.run(&chunk);
+
+    const fn_ptr = try jit.compile(&chunk);
+    var stack_buf: [32]Value = undefined;
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var ctx_val = ctx.JitContext{
+        .sp = stack_buf[0..].ptr,
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .frame_base = stack_buf[0..].ptr,
+        .stack_end = stack_buf[stack_buf.len..].ptr,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+    };
+    const jit_raw = fn_ptr(&ctx_val);
+    const jit_res = Value{ .raw = jit_raw };
+
+    try testing.expectEqual(vm_res.raw, jit_res.raw);
+    try testing.expectEqual(@as(u16, 0), ctx_val.err);
+}
+
+test "jit vm parity lt float" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try runtime.Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(allocator, &heap);
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const push_const_op: u16 = @intFromEnum(Op.push_const);
+    const lt_op: u16 = @intFromEnum(Op.lt);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8),
+        0, 0,
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8),
+        1, 0,
+        @truncate(lt_op & 0xFF), @truncate(lt_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+    const consts = [_]Value{ Value.makeFloat(1.5), Value.makeFloat(2.5) };
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = consts.len,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const vm_res = try vm.run(&chunk);
+
+    const fn_ptr = try jit.compile(&chunk);
+    var stack_buf: [32]Value = undefined;
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var ctx_val = ctx.JitContext{
+        .sp = stack_buf[0..].ptr,
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .frame_base = stack_buf[0..].ptr,
+        .stack_end = stack_buf[stack_buf.len..].ptr,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+    };
+    const jit_raw = fn_ptr(&ctx_val);
+    const jit_res = Value{ .raw = jit_raw };
+
+    try testing.expectEqual(vm_res.raw, jit_res.raw);
     try testing.expectEqual(@as(u16, 0), ctx_val.err);
 }
 
