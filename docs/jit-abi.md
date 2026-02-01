@@ -15,5 +15,14 @@ This JIT calls Zig runtime helpers that return `arith.Error!Value`.
 - Offset 8: `anyerror` tag (u16)
 - Offset 10–15: padding
 
+## JitContext Layout
+- Offset 0: `sp` (Value*)
+- Offset 8: `const_pool` (Value*)
+- Offset 16: `frame_base` (Value*)
+- Offset 24: `stack_end` (Value*)
+- Offset 32: `heap` (Heap*)
+- Offset 40: `ret_buf` (RetBuf*)
+- Offset 48: `err` (u16)
+
 Guards:
 - Compile-time layout assertions in `src/jit/ctx.zig`.

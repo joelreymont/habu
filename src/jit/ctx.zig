@@ -7,6 +7,7 @@ pub const JitContext = extern struct {
     sp: [*]Value,
     const_pool: [*]Value,
     frame_base: [*]Value,
+    stack_end: [*]Value,
     heap: *runtime.Heap,
     ret_buf: *RetBuf,
     err: u16,
@@ -20,10 +21,13 @@ pub const RetBuf = extern struct {
 };
 
 comptime {
-    if (@offsetOf(JitContext, "ret_buf") != 32) {
+    if (@offsetOf(JitContext, "stack_end") != 24) {
+        @compileError("JitContext.stack_end offset mismatch");
+    }
+    if (@offsetOf(JitContext, "ret_buf") != 40) {
         @compileError("JitContext.ret_buf offset mismatch");
     }
-    if (@offsetOf(JitContext, "err") != 40) {
+    if (@offsetOf(JitContext, "err") != 48) {
         @compileError("JitContext.err offset mismatch");
     }
     if (@sizeOf(RetBuf) != 16) {

@@ -116,12 +116,12 @@ pub const Jit = struct {
         switch (op) {
             .push_nil => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.push_nil_stencil, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitStackPush();
             },
 
             .push_t => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.push_t_stencil, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitStackPush();
             },
 
             .push_i32 => {
@@ -132,7 +132,7 @@ pub const Jit = struct {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = tagged.raw },
                 });
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitStackPush();
             },
 
             .push_const => {
@@ -143,7 +143,7 @@ pub const Jit = struct {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_const, &[_]patch.PatchValue{
                     .{ .imm32 = offset_bytes },
                 });
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitStackPush();
             },
 
             .add => {
@@ -167,66 +167,66 @@ pub const Jit = struct {
             },
 
             .eq => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                try self.emitStackPopX1();
+                try self.emitStackPop();
                 _ = try patch.patchStencil(&self.code_buffer, stencils.eq_stencil, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitStackPush();
             },
 
             .lt => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                try self.emitStackPopX1();
+                try self.emitStackPop();
                 _ = try patch.patchStencil(&self.code_buffer, stencils.lt_stencil, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitStackPush();
             },
 
             .gt => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                try self.emitStackPopX1();
+                try self.emitStackPop();
                 _ = try patch.patchStencil(&self.code_buffer, stencils.gt_stencil, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitStackPush();
             },
 
             .le => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                try self.emitStackPopX1();
+                try self.emitStackPop();
                 _ = try patch.patchStencil(&self.code_buffer, stencils.le_stencil, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitStackPush();
             },
 
             .ge => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                try self.emitStackPopX1();
+                try self.emitStackPop();
                 _ = try patch.patchStencil(&self.code_buffer, stencils.ge_stencil, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitStackPush();
             },
 
             .not => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                try self.emitStackPop();
                 _ = try patch.patchStencil(&self.code_buffer, stencils.not_stencil, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitStackPush();
             },
 
             .nilp => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                try self.emitStackPop();
                 _ = try patch.patchStencil(&self.code_buffer, stencils.nilp_stencil, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitStackPush();
             },
 
             .numberp => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                try self.emitStackPop();
                 try self.emitCallUnary(@intFromPtr(&rt.numberp));
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitStackPush();
             },
 
             .dup => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitStackPop();
+                try self.emitStackPush();
+                try self.emitStackPush();
             },
 
             .pop => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                try self.emitStackPop();
             },
 
             .swap => {
@@ -234,7 +234,7 @@ pub const Jit = struct {
             },
 
             .ret => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                try self.emitStackPop();
                 _ = try patch.patchStencil(&self.code_buffer, stencils.epilogue_stencil, &[_]patch.PatchValue{});
             },
 
@@ -262,7 +262,7 @@ pub const Jit = struct {
                 bc_offset.* += 2;
                 const target_bc = @as(usize, @intCast(@as(i32, @intCast(bc_offset.*)) + offset));
 
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                try self.emitStackPop();
                 const code_offset = self.code_buffer.pos;
                 const inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + code_offset;
                 _ = try patch.patchStencil(&self.code_buffer, stencils.branch_nil, &[_]patch.PatchValue{
@@ -281,7 +281,7 @@ pub const Jit = struct {
                 bc_offset.* += 2;
                 const target_bc = @as(usize, @intCast(@as(i32, @intCast(bc_offset.*)) + offset));
 
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                try self.emitStackPop();
                 const code_offset = self.code_buffer.pos;
                 const inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + code_offset;
                 _ = try patch.patchStencil(&self.code_buffer, stencils.branch_not_nil, &[_]patch.PatchValue{
@@ -296,15 +296,15 @@ pub const Jit = struct {
             },
 
             .car => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                try self.emitStackPop();
                 _ = try patch.patchStencil(&self.code_buffer, stencils.car_stencil, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitStackPush();
             },
 
             .cdr => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                try self.emitStackPop();
                 _ = try patch.patchStencil(&self.code_buffer, stencils.cdr_stencil, &[_]patch.PatchValue{});
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitStackPush();
             },
 
             .load_local => {
@@ -314,13 +314,13 @@ pub const Jit = struct {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_local, &[_]patch.PatchValue{
                     .{ .imm32 = offset_bytes },
                 });
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                try self.emitStackPush();
             },
 
             .store_local => {
                 const idx = chunk.readU8(bc_offset.*);
                 bc_offset.* += 1;
-                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                try self.emitStackPop();
                 const offset_bytes: u32 = @as(u32, idx) * @as(u32, @intCast(@sizeOf(Value)));
                 _ = try patch.patchStencil(&self.code_buffer, stencils.store_local, &[_]patch.PatchValue{
                     .{ .imm32 = offset_bytes },
@@ -356,6 +356,30 @@ pub const Jit = struct {
     fn emitRuntimeCheck(self: *Jit) JitError!void {
         const start = try patch.patchStencil(&self.code_buffer, stencils.runtime_check, &[_]patch.PatchValue{});
         const branch_offset = start + stencils.runtime_check_branch_offset;
+        try self.err_branches.append(self.allocator, branch_offset);
+    }
+
+    fn emitStackPush(self: *Jit) JitError!void {
+        const start = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+        const branch_offset = start + stencils.stack_push_branch_offset;
+        try self.err_branches.append(self.allocator, branch_offset);
+    }
+
+    fn emitStackPushX1(self: *Jit) JitError!void {
+        const start = try patch.patchStencil(&self.code_buffer, stencils.stack_push_x1, &[_]patch.PatchValue{});
+        const branch_offset = start + stencils.stack_push_x1_branch_offset;
+        try self.err_branches.append(self.allocator, branch_offset);
+    }
+
+    fn emitStackPop(self: *Jit) JitError!void {
+        const start = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+        const branch_offset = start + stencils.stack_pop_branch_offset;
+        try self.err_branches.append(self.allocator, branch_offset);
+    }
+
+    fn emitStackPopX1(self: *Jit) JitError!void {
+        const start = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+        const branch_offset = start + stencils.stack_pop_x1_branch_offset;
         try self.err_branches.append(self.allocator, branch_offset);
     }
 
@@ -408,15 +432,15 @@ pub const Jit = struct {
     }
 
     fn emitBinaryCall(self: *Jit, addr: usize) JitError!void {
-        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+        try self.emitStackPopX1();
+        try self.emitStackPop();
         try self.emitCallBinary(addr);
-        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+        try self.emitStackPush();
     }
 
     fn emitBinaryArith(self: *Jit, fast: Stencil, slow_addr: usize) JitError!void {
-        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+        try self.emitStackPopX1();
+        try self.emitStackPop();
 
         const guard_x0_branch = try self.emitGuardFixnumX0();
         const guard_x1_branch = try self.emitGuardFixnumX1();
@@ -435,7 +459,7 @@ pub const Jit = struct {
         try self.emitCallBinary(slow_addr);
 
         const end_code_offset = self.code_buffer.pos;
-        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+        try self.emitStackPush();
         const end_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + end_code_offset;
 
         try self.patchBranch(guard_x0_branch, slow_target_addr, .rel19);
@@ -446,8 +470,8 @@ pub const Jit = struct {
     }
 
     fn emitBinaryMul(self: *Jit, slow_addr: usize) JitError!void {
-        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+        try self.emitStackPopX1();
+        try self.emitStackPop();
 
         const guard_x0_branch = try self.emitGuardFixnumX0();
         const guard_x1_branch = try self.emitGuardFixnumX1();
@@ -467,7 +491,7 @@ pub const Jit = struct {
         try self.emitCallBinary(slow_addr);
 
         const end_code_offset = self.code_buffer.pos;
-        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+        try self.emitStackPush();
         const end_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + end_code_offset;
 
         try self.patchBranch(guard_x0_branch, slow_target_addr, .rel19);
@@ -479,7 +503,7 @@ pub const Jit = struct {
     }
 
     fn emitUnaryNeg(self: *Jit, slow_addr: usize) JitError!void {
-        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+        try self.emitStackPop();
 
         const guard_x0_branch = try self.emitGuardFixnumX0();
 
@@ -497,7 +521,7 @@ pub const Jit = struct {
         try self.emitCallUnary(slow_addr);
 
         const end_code_offset = self.code_buffer.pos;
-        _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+        try self.emitStackPush();
         const end_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + end_code_offset;
 
         try self.patchBranch(guard_x0_branch, slow_target_addr, .rel19);
@@ -606,12 +630,17 @@ test "jit compile simple" {
     // Verify function was compiled (on ARM64, we could call it)
     try testing.expect(@intFromPtr(fn_ptr) != 0);
     try testing.expect(jit.labels.count() > 0);
+    const err_len =
+        stencils.store_err.code.len +
+        stencils.push_nil_stencil.code.len +
+        stencils.epilogue_stencil.code.len;
     const expected_len =
         stencils.prologue_stencil.code.len +
         stencils.load_imm64.code.len +
         stencils.stack_push.code.len +
         stencils.stack_pop.code.len +
-        stencils.epilogue_stencil.code.len;
+        stencils.epilogue_stencil.code.len +
+        err_len;
     try testing.expectEqual(expected_len, jit.code_buffer.pos);
 }
 
@@ -644,11 +673,16 @@ test "jit compile jump" {
 
     _ = try jit.compile(&chunk);
 
+    const err_len =
+        stencils.store_err.code.len +
+        stencils.push_nil_stencil.code.len +
+        stencils.epilogue_stencil.code.len;
     const expected_len =
         stencils.prologue_stencil.code.len +
         stencils.branch_stencil.code.len +
         stencils.stack_pop.code.len +
-        stencils.epilogue_stencil.code.len;
+        stencils.epilogue_stencil.code.len +
+        err_len;
     try testing.expectEqual(expected_len, jit.code_buffer.pos);
 
     const branch_off = stencils.prologue_stencil.code.len;
@@ -823,6 +857,10 @@ test "jit compile locals" {
 
     _ = try jit.compile(&chunk);
 
+    const err_len =
+        stencils.store_err.code.len +
+        stencils.push_nil_stencil.code.len +
+        stencils.epilogue_stencil.code.len;
     const expected_len =
         stencils.prologue_stencil.code.len +
         stencils.load_imm64.code.len +
@@ -832,7 +870,8 @@ test "jit compile locals" {
         stencils.load_local.code.len +
         stencils.stack_push.code.len +
         stencils.stack_pop.code.len +
-        stencils.epilogue_stencil.code.len;
+        stencils.epilogue_stencil.code.len +
+        err_len;
     try testing.expectEqual(expected_len, jit.code_buffer.pos);
 }
 
@@ -865,12 +904,17 @@ test "jit compile push_const" {
 
     _ = try jit.compile(&chunk);
 
+    const err_len =
+        stencils.store_err.code.len +
+        stencils.push_nil_stencil.code.len +
+        stencils.epilogue_stencil.code.len;
     const expected_len =
         stencils.prologue_stencil.code.len +
         stencils.load_const.code.len +
         stencils.stack_push.code.len +
         stencils.stack_pop.code.len +
-        stencils.epilogue_stencil.code.len;
+        stencils.epilogue_stencil.code.len +
+        err_len;
     try testing.expectEqual(expected_len, jit.code_buffer.pos);
 
     const load_off = stencils.prologue_stencil.code.len;
@@ -926,6 +970,7 @@ test "jit vm parity add" {
         .sp = stack_buf[0..].ptr,
         .const_pool = @ptrCast(@constCast(&consts)),
         .frame_base = stack_buf[0..].ptr,
+        .stack_end = stack_buf[stack_buf.len..].ptr,
         .heap = &heap,
         .ret_buf = &ret_buf,
         .err = 0,
@@ -982,6 +1027,7 @@ test "jit vm parity numberp" {
         .sp = stack_buf[0..].ptr,
         .const_pool = @ptrCast(@constCast(&consts)),
         .frame_base = stack_buf[0..].ptr,
+        .stack_end = stack_buf[stack_buf.len..].ptr,
         .heap = &heap,
         .ret_buf = &ret_buf,
         .err = 0,
@@ -991,4 +1037,65 @@ test "jit vm parity numberp" {
 
     try testing.expect(vm_res.eq(jit_res));
     try testing.expectEqual(@as(u16, 0), ctx_val.err);
+}
+
+test "jit stack overflow sets err" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try runtime.Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const push_count: usize = 5;
+    var code: [push_count * 6 + 2]u8 = undefined;
+    var idx: usize = 0;
+    var i: usize = 0;
+    while (i < push_count) : (i += 1) {
+        code[idx] = @truncate(push_i32_op & 0xFF);
+        code[idx + 1] = @truncate(push_i32_op >> 8);
+        code[idx + 2] = @truncate(@as(u32, @intCast(i)));
+        code[idx + 3] = 0;
+        code[idx + 4] = 0;
+        code[idx + 5] = 0;
+        idx += 6;
+    }
+    code[idx] = @truncate(ret_op & 0xFF);
+    code[idx + 1] = @truncate(ret_op >> 8);
+
+    const consts = [_]Value{};
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const fn_ptr = try jit.compile(&chunk);
+    var stack_buf: [4]Value = undefined;
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var ctx_val = ctx.JitContext{
+        .sp = stack_buf[0..].ptr,
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .frame_base = stack_buf[0..].ptr,
+        .stack_end = stack_buf[stack_buf.len..].ptr,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+    };
+
+    const jit_raw = fn_ptr(&ctx_val);
+    try testing.expectEqual(Value.nil.raw, jit_raw);
+    try testing.expectEqual(@as(u16, @intFromError(error.StackOverflow)), ctx_val.err);
 }

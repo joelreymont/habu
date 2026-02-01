@@ -76,6 +76,16 @@ fn sub_reg(rd: u5, rn: u5, rm: u5) u32 {
     return 0xCB000000 | (@as(u32, rm) << 16) | (@as(u32, rn) << 5) | rd;
 }
 
+/// Encode CMP instruction: CMP Xn, Xm
+fn cmp_reg(rn: u5, rm: u5) u32 {
+    return 0xEB00001F | (@as(u32, rm) << 16) | (@as(u32, rn) << 5);
+}
+
+/// Encode conditional branch with placeholder offset
+fn b_cond(cond: u4) u32 {
+    return 0x54000000 | @as(u32, cond);
+}
+
 /// Encode ADD immediate: ADD Xd, Xn, #imm12
 fn add_imm(rd: u5, rn: u5, imm12: u12) u32 {
     return 0x91000000 | (@as(u32, imm12) << 10) | (@as(u32, rn) << 5) | rd;
@@ -224,6 +234,12 @@ const X30: u5 = 30; // link register
 const XZR: u5 = 31; // zero register
 const SP: u5 = 31; // stack pointer
 
+const COND_HS: u4 = 0x2; // unsigned >=
+const COND_LS: u4 = 0x9; // unsigned <=
+
+const ERR_STACK_OVERFLOW: u16 = @intFromError(error.StackOverflow);
+const ERR_STACK_UNDERFLOW: u16 = @intFromError(error.StackUnderflow);
+
 // ============================================================================
 // Stencil Definitions
 // ============================================================================
@@ -292,10 +308,12 @@ pub const prologue_stencil = Stencil{
             inst_bytes(0xF94006D4) ++
             // LDR x23, [x22, #16] (ctx.frame_base)
             inst_bytes(0xF9400AD7) ++
-            // LDR x21, [x22, #32] (ctx.ret_buf)
-            inst_bytes(0xF94012D5) ++
-            // STRH wzr, [x22, #40] (clear ctx.err)
-            inst_bytes(0x790052DF)),
+            // LDR x24, [x22, #24] (ctx.stack_end)
+            inst_bytes(0xF9400ED8) ++
+            // LDR x21, [x22, #40] (ctx.ret_buf)
+            inst_bytes(0xF94016D5) ++
+            // STRH wzr, [x22, #48] (clear ctx.err)
+            inst_bytes(0x790062DF)),
     .holes = &[_]Hole{},
 };
 
@@ -561,38 +579,66 @@ pub const ge_stencil = Stencil{
 pub const stack_push = Stencil{
     .name = "stack_push",
     .code = &(
-        // STR x0, [x19], #8 (post-increment)
-        inst_bytes(0xF8008660)),
+        // MOVZ x9, #err
+        inst_bytes(movz(X9, ERR_STACK_OVERFLOW, 0)) ++
+            // CMP x19, x24
+            inst_bytes(cmp_reg(X19, X24)) ++
+            // B.HS <err>
+            inst_bytes(b_cond(COND_HS)) ++
+            // STR x0, [x19], #8 (post-increment)
+            inst_bytes(0xF8008660)),
     .holes = &[_]Hole{},
 };
+pub const stack_push_branch_offset: usize = 8;
 
 /// Stack push: store x1 to stack and advance sp
 /// Uses x19 as stack pointer (callee-saved)
 pub const stack_push_x1 = Stencil{
     .name = "stack_push_x1",
     .code = &(
-        // STR x1, [x19], #8 (post-increment)
-        inst_bytes(0xF8008661)),
+        // MOVZ x9, #err
+        inst_bytes(movz(X9, ERR_STACK_OVERFLOW, 0)) ++
+            // CMP x19, x24
+            inst_bytes(cmp_reg(X19, X24)) ++
+            // B.HS <err>
+            inst_bytes(b_cond(COND_HS)) ++
+            // STR x1, [x19], #8 (post-increment)
+            inst_bytes(0xF8008661)),
     .holes = &[_]Hole{},
 };
+pub const stack_push_x1_branch_offset: usize = 8;
 
 /// Stack pop: load from stack to x0 and decrement sp
 pub const stack_pop = Stencil{
     .name = "stack_pop",
     .code = &(
-        // LDR x0, [x19, #-8]! (pre-decrement)
-        inst_bytes(0xF85F8E60)),
+        // MOVZ x9, #err
+        inst_bytes(movz(X9, ERR_STACK_UNDERFLOW, 0)) ++
+            // CMP x19, x23
+            inst_bytes(cmp_reg(X19, X23)) ++
+            // B.LS <err>
+            inst_bytes(b_cond(COND_LS)) ++
+            // LDR x0, [x19, #-8]! (pre-decrement)
+            inst_bytes(0xF85F8E60)),
     .holes = &[_]Hole{},
 };
+pub const stack_pop_branch_offset: usize = 8;
 
 /// Stack pop to x1 (for binary ops)
 pub const stack_pop_x1 = Stencil{
     .name = "stack_pop_x1",
     .code = &(
-        // LDR x1, [x19, #-8]!
-        inst_bytes(0xF85F8E61)),
+        // MOVZ x9, #err
+        inst_bytes(movz(X9, ERR_STACK_UNDERFLOW, 0)) ++
+            // CMP x19, x23
+            inst_bytes(cmp_reg(X19, X23)) ++
+            // B.LS <err>
+            inst_bytes(b_cond(COND_LS)) ++
+            // LDR x1, [x19, #-8]!
+            inst_bytes(0xF85F8E61)),
     .holes = &[_]Hole{},
 };
+pub const stack_pop_x1_branch_offset: usize = 8;
 
 /// Move x1 <- x0
 pub const mov_x1_x0 = Stencil{
@@ -678,8 +724,8 @@ pub const runtime_check_branch_offset: usize = 4;
 pub const store_err = Stencil{
     .name = "store_err",
     .code = &(
-        // STRH w9, [x22, #40]
-        inst_bytes(0x790052C9)),
+        // STRH w9, [x22, #48]
+        inst_bytes(0x790062C9)),
     .holes = &[_]Hole{},
 };
 
@@ -824,11 +870,11 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 4), ret_stencil.code.len);
     try testing.expectEqual(@as(usize, 4), push_nil_stencil.code.len);
     try testing.expectEqual(@as(usize, 4), push_t_stencil.code.len);
-    try testing.expectEqual(@as(usize, 4), stack_push.code.len);
-    try testing.expectEqual(@as(usize, 4), stack_push_x1.code.len);
-    try testing.expectEqual(@as(usize, 4), stack_pop.code.len);
+    try testing.expectEqual(@as(usize, 16), stack_push.code.len);
+    try testing.expectEqual(@as(usize, 16), stack_push_x1.code.len);
+    try testing.expectEqual(@as(usize, 16), stack_pop.code.len);
     try testing.expectEqual(@as(usize, 16), swap_stencil.code.len);
-    try testing.expectEqual(@as(usize, 44), prologue_stencil.code.len);
+    try testing.expectEqual(@as(usize, 48), prologue_stencil.code.len);
     try testing.expectEqual(@as(usize, 20), epilogue_stencil.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x1_x0.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x2_x0.code.len);
