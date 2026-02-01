@@ -555,6 +555,7 @@ pub const Jit = struct {
             },
             else => return error.InvalidHoleType,
         }
+        patch.flushIcache(self.code_buffer.memory.ptr + code_offset, 4);
     }
 };
 
@@ -649,6 +650,11 @@ test "jit compile jump" {
         stencils.stack_pop.code.len +
         stencils.epilogue_stencil.code.len;
     try testing.expectEqual(expected_len, jit.code_buffer.pos);
+
+    const branch_off = stencils.prologue_stencil.code.len;
+    const inst = std.mem.readInt(u32, jit.code_buffer.memory[branch_off .. branch_off + 4], .little);
+    const word_off = inst & 0x03FFFFFF;
+    try testing.expectEqual(@as(u32, 1), word_off);
 }
 
 test "jit branch range check" {
