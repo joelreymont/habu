@@ -244,7 +244,7 @@ pub fn slotExistsP(heap: *Heap, args: Value) !Value {
     const cons1 = args.toPtr(Cons);
     const obj = cons1.car;
 
-    if (!obj.isVector()) return Value.t;
+    if (!obj.isVector()) return Value.nil;
 
     if (!cons1.cdr.isCons()) return error.InvalidArgument;
     const cons2 = cons1.cdr.toPtr(Cons);
@@ -774,4 +774,17 @@ test "slot-value errors without class metadata" {
     const args_tail = try heap.allocCons(slot_sym, Value.nil);
     const args = try heap.allocCons(vec, args_tail);
     try testing.expectError(error.InvalidArgument, slotValue(&heap, args));
+}
+
+test "slot-exists-p returns nil for non-vector" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const slot_sym = try heap.intern("SLOT");
+    const args_tail = try heap.allocCons(slot_sym, Value.nil);
+    const args = try heap.allocCons(Value.makeFixnum(1), args_tail);
+    const res = try slotExistsP(&heap, args);
+    try testing.expect(res.isNil());
 }
