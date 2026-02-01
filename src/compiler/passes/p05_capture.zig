@@ -22,25 +22,27 @@ pub const Error = error{
 /// CaptureSet - tracks captured variables for a lambda
 const CaptureSet = struct {
     captures: std.ArrayList(Ir.Capture),
+    seen: std.AutoHashMap(u32, void),
     allocator: std.mem.Allocator,
 
     fn init(allocator: std.mem.Allocator) CaptureSet {
         return .{
             .captures = std.ArrayList(Ir.Capture){},
+            .seen = std.AutoHashMap(u32, void).init(allocator),
             .allocator = allocator,
         };
     }
 
     fn deinit(self: *CaptureSet) void {
         self.captures.deinit(self.allocator);
+        self.seen.deinit();
     }
 
     /// Add a capture if not already present
     fn addCapture(self: *CaptureSet, name: []const u8, depth: u16, index: u16) !void {
-        // Check if already captured
-        for (self.captures.items) |cap| {
-            if (std.mem.eql(u8, cap.name, name)) return;
-        }
+        const key: u32 = (@as(u32, depth) << 16) | @as(u32, index);
+        if (self.seen.contains(key)) return;
+        try self.seen.put(key, {});
         try self.captures.append(self.allocator, .{
             .name = name,
             .depth = depth,
@@ -346,4 +348,28 @@ test "capture - call captures args" {
     try testing.expectEqual(Ir.call, std.meta.activeTag(analyzed.lambda.body.*));
     try testing.expectEqual(@as(usize, 1), analyzed.lambda.captures.len);
     try testing.expectEqualStrings("y", analyzed.lambda.captures[0].name);
+}
+
+test "capture - dedupe repeated refs" {
+    const testing = std.testing;
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var builder = IrBuilder.init(alloc);
+    const var_y1 = try builder.variable("y", 1, 0);
+    const var_y2 = try builder.variable("y", 1, 0);
+    const exprs = try alloc.dupe(*const Ir, &.{ var_y1, var_y2 });
+    const body = try builder.progn(exprs);
+    const params: []const []const u8 = &.{};
+    const lam = try builder.lambda(params, &.{}, &.{}, null, &.{}, body);
+
+    const analyzed = try capture(alloc, lam);
+
+    try testing.expectEqual(Ir.lambda, std.meta.activeTag(analyzed.*));
+    try testing.expectEqual(@as(usize, 1), analyzed.lambda.captures.len);
+    try testing.expectEqualStrings("y", analyzed.lambda.captures[0].name);
+    try testing.expectEqual(@as(u16, 1), analyzed.lambda.captures[0].depth);
+    try testing.expectEqual(@as(u16, 0), analyzed.lambda.captures[0].index);
 }
