@@ -23,6 +23,8 @@ pub const PatchError = error{
     InvalidHoleType,
     InvalidImm,
     InsufficientPatchValues,
+    AccessDenied,
+    Unexpected,
 };
 
 /// Executable memory allocator for JIT code
@@ -31,6 +33,8 @@ pub const CodeBuffer = struct {
     memory: []align(std.heap.page_size_min) u8,
     /// Current write position
     pos: usize,
+    /// Whether the buffer is currently writable
+    writable: bool,
 
     pub fn init(allocator: std.mem.Allocator, size: usize) !CodeBuffer {
         _ = allocator;
@@ -39,12 +43,18 @@ pub const CodeBuffer = struct {
         if (@hasField(@TypeOf(flags), "JIT")) {
             flags.JIT = true;
         }
-        const prot: u32 = std.posix.PROT.READ | std.posix.PROT.WRITE | std.posix.PROT.EXEC;
+        const prot: u32 = if (builtin.os.tag == .macos)
+            std.posix.PROT.READ | std.posix.PROT.WRITE | std.posix.PROT.EXEC
+        else
+            std.posix.PROT.READ | std.posix.PROT.WRITE;
         const memory = try std.posix.mmap(null, len, prot, flags, -1, 0);
-        return .{
+        var buffer = CodeBuffer{
             .memory = memory,
             .pos = 0,
+            .writable = false,
         };
+        try buffer.setWritable(true);
+        return buffer;
     }
 
     pub fn deinit(self: *CodeBuffer) void {
@@ -69,9 +79,22 @@ pub const CodeBuffer = struct {
     /// Write bytes directly
     pub fn write(self: *CodeBuffer, bytes: []const u8) !void {
         const dest = try self.reserve(bytes.len);
-        jitWriteProtect(false);
-        defer jitWriteProtect(true);
+        try self.setWritable(true);
         @memcpy(dest, bytes);
+    }
+
+    pub fn setWritable(self: *CodeBuffer, enable: bool) PatchError!void {
+        if (self.writable == enable) return;
+        if (builtin.os.tag == .macos) {
+            darwin.pthread_jit_write_protect_np(@intFromBool(!enable));
+        } else {
+            const prot: u32 = if (enable)
+                std.posix.PROT.READ | std.posix.PROT.WRITE
+            else
+                std.posix.PROT.READ | std.posix.PROT.EXEC;
+            try std.posix.mprotect(self.memory, prot);
+        }
+        self.writable = enable;
     }
 
     /// Get a function pointer to the code at offset
@@ -90,8 +113,7 @@ pub fn patchStencil(
     const start = buffer.pos;
 
     // Copy stencil code
-    jitWriteProtect(false);
-    defer jitWriteProtect(true);
+    try buffer.setWritable(true);
     const dest = try buffer.reserve(stencil.code.len);
     @memcpy(dest, stencil.code);
 
@@ -292,12 +314,6 @@ pub fn flushIcache(ptr: [*]u8, len: usize) void {
             asm volatile ("isb");
         },
         else => std.atomic.compilerFence(.SeqCst),
-    }
-}
-
-pub fn jitWriteProtect(enable: bool) void {
-    if (builtin.os.tag == .macos) {
-        darwin.pthread_jit_write_protect_np(@intFromBool(enable));
     }
 }
 

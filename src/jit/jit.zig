@@ -29,6 +29,8 @@ pub const JitError = error{
     InvalidHoleType,
     InvalidImm,
     InsufficientPatchValues,
+    AccessDenied,
+    Unexpected,
 };
 
 /// JIT runtime context
@@ -84,6 +86,7 @@ pub const Jit = struct {
         self.labels.clearRetainingCapacity();
         self.pending_jumps.clearRetainingCapacity();
         self.err_branches.clearRetainingCapacity();
+        try self.code_buffer.setWritable(true);
 
         _ = try patch.patchStencil(&self.code_buffer, stencils.prologue_stencil, &[_]patch.PatchValue{});
 
@@ -104,6 +107,7 @@ pub const Jit = struct {
         try self.patchPendingJumps();
         // Emit error handler and patch runtime error branches
         try self.emitErrorHandler();
+        try self.code_buffer.setWritable(false);
 
         return self.code_buffer.getFnPtr(JitFn, self.fn_start);
     }
@@ -434,8 +438,6 @@ pub const Jit = struct {
         _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
         const end_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + end_code_offset;
 
-        patch.jitWriteProtect(false);
-        defer patch.jitWriteProtect(true);
         try self.patchBranch(guard_x0_branch, slow_target_addr, .rel19);
         try self.patchBranch(guard_x1_branch, slow_target_addr, .rel19);
         try self.patchBranch(range_branch, slow_target_addr, .rel19);
@@ -468,8 +470,6 @@ pub const Jit = struct {
         _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
         const end_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + end_code_offset;
 
-        patch.jitWriteProtect(false);
-        defer patch.jitWriteProtect(true);
         try self.patchBranch(guard_x0_branch, slow_target_addr, .rel19);
         try self.patchBranch(guard_x1_branch, slow_target_addr, .rel19);
         try self.patchBranch(overflow_branch, slow_target_addr, .rel19);
@@ -500,8 +500,6 @@ pub const Jit = struct {
         _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
         const end_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + end_code_offset;
 
-        patch.jitWriteProtect(false);
-        defer patch.jitWriteProtect(true);
         try self.patchBranch(guard_x0_branch, slow_target_addr, .rel19);
         try self.patchBranch(range_branch, slow_target_addr, .rel19);
         try self.patchBranch(fast_branch_offset, end_target_addr, .rel26);
@@ -509,9 +507,6 @@ pub const Jit = struct {
     }
 
     fn patchPendingJumps(self: *Jit) JitError!void {
-        patch.jitWriteProtect(false);
-        defer patch.jitWriteProtect(true);
-
         for (self.pending_jumps.items) |jump| {
             const target_code_addr = self.labels.get(jump.target_bc_offset) orelse
                 return error.InvalidJumpTarget;
@@ -532,8 +527,6 @@ pub const Jit = struct {
         _ = try patch.patchStencil(&self.code_buffer, stencils.epilogue_stencil, &[_]patch.PatchValue{});
 
         const handler_addr = @intFromPtr(self.code_buffer.memory.ptr) + handler_offset;
-        patch.jitWriteProtect(false);
-        defer patch.jitWriteProtect(true);
         for (self.err_branches.items) |branch_offset| {
             try self.patchBranch(branch_offset, handler_addr, .rel19);
         }
@@ -541,6 +534,7 @@ pub const Jit = struct {
     }
 
     fn patchBranch(self: *Jit, code_offset: usize, target_addr: usize, hole_type: stencils.HoleType) JitError!void {
+        try self.code_buffer.setWritable(true);
         const inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + code_offset;
         const offset = @as(i64, @intCast(target_addr)) - @as(i64, @intCast(inst_addr));
         const word_offset_i64 = @divTrunc(offset, 4);
