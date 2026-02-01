@@ -515,7 +515,7 @@ pub const stack_pop = Stencil{
     .name = "stack_pop",
     .code = &(
         // LDR x0, [x19, #-8]! (pre-decrement)
-        inst_bytes(0xF85F8660)),
+        inst_bytes(0xF85F8E60)),
     .holes = &[_]Hole{},
 };
 
@@ -524,7 +524,7 @@ pub const stack_pop_x1 = Stencil{
     .name = "stack_pop_x1",
     .code = &(
         // LDR x1, [x19, #-8]!
-        inst_bytes(0xF85F8661)),
+        inst_bytes(0xF85F8E61)),
     .holes = &[_]Hole{},
 };
 
@@ -585,9 +585,9 @@ pub const swap_stencil = Stencil{
     .name = "swap",
     .code = &(
         // LDR x1, [x19, #-8]! (pop top)
-        inst_bytes(0xF85F8661) ++
+        inst_bytes(0xF85F8E61) ++
             // LDR x0, [x19, #-8]! (pop next)
-            inst_bytes(0xF85F8660) ++
+            inst_bytes(0xF85F8E60) ++
             // STR x1, [x19], #8 (push former top)
             inst_bytes(0xF8008661) ++
             // STR x0, [x19], #8 (push former next)
