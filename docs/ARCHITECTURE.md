@@ -400,11 +400,18 @@ zig build test     # Run all tests
 ./zig-out/bin/habu # Start REPL
 ```
 
-## Future: JIT Compilation
+## JIT Compilation
 
 ARM64 JIT compiler (in progress):
 - Stencil-based code generation
-- Hot loop detection
-- Deoptimization support
+- Runtime constant pool loads
+- W^X code buffer + icache flush
+- Branch patching
 
-See: `src/jit/`
+Planned:
+- Hot loop detection
+- Deoptimization / OSR hooks
+- Stack maps / GC safepoints
+- Calls, locals, globals, closures
+
+See: `src/jit/`, `docs/cranelift-parity.md`
