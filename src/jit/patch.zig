@@ -263,10 +263,35 @@ fn patchRel14(code: []u8, offset: u32) void {
 }
 
 pub fn flushIcache(ptr: [*]u8, len: usize) void {
+    if (len == 0) return;
     if (builtin.os.tag == .macos) {
         darwin.sys_icache_invalidate(ptr, len);
-    } else {
-        std.atomic.compilerFence(.SeqCst);
+        return;
+    }
+    switch (builtin.cpu.arch) {
+        .aarch64, .aarch64_be => {
+            const line: usize = std.atomic.cacheLineForCpu(builtin.cpu);
+            const start = @intFromPtr(ptr) & ~(@as(usize, line) - 1);
+            const end = @intFromPtr(ptr) + len;
+            var p = start;
+            while (p < end) : (p += line) {
+                asm volatile ("dc cvau, %[addr]"
+                    :
+                    : [addr] "{x0}" (p),
+                    : .{ .memory = true });
+            }
+            asm volatile ("dsb ish");
+            p = start;
+            while (p < end) : (p += line) {
+                asm volatile ("ic ivau, %[addr]"
+                    :
+                    : [addr] "{x0}" (p),
+                    : .{ .memory = true });
+            }
+            asm volatile ("dsb ish");
+            asm volatile ("isb");
+        },
+        else => std.atomic.compilerFence(.SeqCst),
     }
 }
 
