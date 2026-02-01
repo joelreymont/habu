@@ -461,6 +461,16 @@ pub const stack_push = Stencil{
     .holes = &[_]Hole{},
 };
 
+/// Stack push: store x1 to stack and advance sp
+/// Uses x19 as stack pointer (callee-saved)
+pub const stack_push_x1 = Stencil{
+    .name = "stack_push_x1",
+    .code = &(
+        // STR x1, [x19], #8 (post-increment)
+        inst_bytes(0xF8008661)),
+    .holes = &[_]Hole{},
+};
+
 /// Stack pop: load from stack to x0 and decrement sp
 pub const stack_pop = Stencil{
     .name = "stack_pop",
@@ -586,6 +596,7 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 4), push_nil_stencil.code.len);
     try testing.expectEqual(@as(usize, 4), push_t_stencil.code.len);
     try testing.expectEqual(@as(usize, 4), stack_push.code.len);
+    try testing.expectEqual(@as(usize, 4), stack_push_x1.code.len);
     try testing.expectEqual(@as(usize, 4), stack_pop.code.len);
     try testing.expectEqual(@as(usize, 8), prologue_stencil.code.len);
     try testing.expectEqual(@as(usize, 8), epilogue_stencil.code.len);

@@ -94,17 +94,13 @@ pub const Jit = struct {
     fn compileOp(self: *Jit, op: Op, chunk: *const Chunk, bc_offset: *usize) JitError!void {
         switch (op) {
             .push_nil => {
-                // Load nil (0) into x0
-                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
-                    .{ .imm64 = Value.nil.raw },
-                });
+                _ = try patch.patchStencil(&self.code_buffer, stencils.push_nil_stencil, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .push_t => {
-                // Load t (tagged fixnum 1) into x0
-                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
-                    .{ .imm64 = Value.t.raw },
-                });
+                _ = try patch.patchStencil(&self.code_buffer, stencils.push_t_stencil, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .push_i32 => {
@@ -115,6 +111,7 @@ pub const Jit = struct {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = tagged.raw },
                 });
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .push_const => {
@@ -124,67 +121,94 @@ pub const Jit = struct {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = chunk.getConstants()[idx].raw },
                 });
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .add => {
                 // Pop x1 from stack, add with x0
                 _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.add_fixnum, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .sub => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.sub_fixnum, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .mul => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.mul_fixnum, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .neg => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.neg_fixnum, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .eq => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.eq_stencil, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .lt => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.lt_stencil, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .gt => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.gt_stencil, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .le => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.le_stencil, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .ge => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.ge_stencil, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .not => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.not_stencil, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .nilp => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.nilp_stencil, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .numberp => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.fixnump_stencil, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .dup => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.dup_stencil, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .pop => {
@@ -192,10 +216,14 @@ pub const Jit = struct {
             },
 
             .swap => {
-                _ = try patch.patchStencil(&self.code_buffer, stencils.swap_stencil, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push_x1, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .ret => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.epilogue_stencil, &[_]patch.PatchValue{});
             },
 
@@ -222,6 +250,7 @@ pub const Jit = struct {
                 bc_offset.* += 2;
                 const target_bc = @as(usize, @intCast(@as(i32, @intCast(bc_offset.*)) + offset));
 
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 const code_offset = self.code_buffer.pos;
                 _ = try patch.patchStencil(&self.code_buffer, stencils.branch_nil, &[_]patch.PatchValue{
                     .{ .addr = 0 },
@@ -239,6 +268,7 @@ pub const Jit = struct {
                 bc_offset.* += 2;
                 const target_bc = @as(usize, @intCast(@as(i32, @intCast(bc_offset.*)) + offset));
 
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 const code_offset = self.code_buffer.pos;
                 _ = try patch.patchStencil(&self.code_buffer, stencils.branch_not_nil, &[_]patch.PatchValue{
                     .{ .addr = 0 },
@@ -252,11 +282,15 @@ pub const Jit = struct {
             },
 
             .car => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.car_stencil, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             .cdr => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
                 _ = try patch.patchStencil(&self.code_buffer, stencils.cdr_stencil, &[_]patch.PatchValue{});
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
             // Skip operands for unsupported ops
@@ -362,4 +396,11 @@ test "jit compile simple" {
     // Verify function was compiled (on ARM64, we could call it)
     try testing.expect(@intFromPtr(fn_ptr) != 0);
     try testing.expect(jit.labels.count() > 0);
+    const expected_len =
+        stencils.prologue_stencil.code.len +
+        stencils.load_imm64.code.len +
+        stencils.stack_push.code.len +
+        stencils.stack_pop.code.len +
+        stencils.epilogue_stencil.code.len;
+    try testing.expectEqual(expected_len, jit.code_buffer.pos);
 }
