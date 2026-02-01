@@ -1,10 +1,10 @@
 //! Bytecode opcode definitions for Habu VM
 //!
-//! Stack-based bytecode with 1-byte opcode + optional operands.
+//! Stack-based bytecode with 2-byte opcode (u16, little-endian) + optional operands.
 //! Designed for simplicity and portability (WASM target).
 //!
 //! Instruction format:
-//! - Opcode: 1 byte
+//! - Opcode: 2 bytes (little-endian)
 //! - Operand: 0-4 bytes depending on opcode
 //!
 //! Stack convention: (... before -- ... after)

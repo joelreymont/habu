@@ -5,11 +5,13 @@
 //! stencil and patching in the runtime values.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const stencils = @import("stencils.zig");
 const Stencil = stencils.Stencil;
 const patch = @import("patch.zig");
 const ctx = @import("ctx.zig");
 const rt = @import("rt.zig");
+const vm_mod = @import("../interp/vm.zig");
 const bytecode = @import("../bytecode/bytecode.zig");
 const Op = bytecode.Op;
 const Chunk = bytecode.Chunk;
@@ -86,8 +88,9 @@ pub const Jit = struct {
             // Record label for this bytecode offset
             try self.labels.put(bc_offset, self.code_buffer.pos);
 
-            const op: Op = @enumFromInt(code[bc_offset]);
-            bc_offset += 1;
+            const op_raw = chunk.readU16(bc_offset);
+            const op: Op = @enumFromInt(op_raw);
+            bc_offset += 2;
 
             try self.compileOp(op, chunk, &bc_offset);
         }
@@ -469,9 +472,12 @@ test "jit compile simple" {
     defer jit.deinit();
 
     // push_i32 42; ret
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const ret_op: u16 = @intFromEnum(Op.ret);
     const code = [_]u8{
-        @intFromEnum(Op.push_i32), 42, 0, 0, 0,
-        @intFromEnum(Op.ret),
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        42, 0, 0, 0,
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
     };
 
     const chunk = Chunk{
@@ -507,9 +513,12 @@ test "jit compile jump" {
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
 
+    const jmp_op: u16 = @intFromEnum(Op.jmp);
+    const ret_op: u16 = @intFromEnum(Op.ret);
     const code = [_]u8{
-        @intFromEnum(Op.jmp), 0, 0,
-        @intFromEnum(Op.ret),
+        @truncate(jmp_op & 0xFF), @truncate(jmp_op >> 8),
+        0, 0,
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
     };
 
     const chunk = Chunk{
@@ -559,10 +568,14 @@ test "jit compile numberp" {
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
 
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const numberp_op: u16 = @intFromEnum(Op.numberp);
+    const ret_op: u16 = @intFromEnum(Op.ret);
     const code = [_]u8{
-        @intFromEnum(Op.push_i32), 1, 0, 0, 0,
-        @intFromEnum(Op.numberp),
-        @intFromEnum(Op.ret),
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        1, 0, 0, 0,
+        @truncate(numberp_op & 0xFF), @truncate(numberp_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
     };
 
     const chunk = Chunk{
@@ -600,11 +613,16 @@ test "jit compile add" {
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
 
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const add_op: u16 = @intFromEnum(Op.add);
+    const ret_op: u16 = @intFromEnum(Op.ret);
     const code = [_]u8{
-        @intFromEnum(Op.push_i32), 1, 0, 0, 0,
-        @intFromEnum(Op.push_i32), 2, 0, 0, 0,
-        @intFromEnum(Op.add),
-        @intFromEnum(Op.ret),
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        1, 0, 0, 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        2, 0, 0, 0,
+        @truncate(add_op & 0xFF), @truncate(add_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
     };
 
     const chunk = Chunk{
@@ -648,11 +666,18 @@ test "jit compile locals" {
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
 
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const store_local_op: u16 = @intFromEnum(Op.store_local);
+    const load_local_op: u16 = @intFromEnum(Op.load_local);
+    const ret_op: u16 = @intFromEnum(Op.ret);
     const code = [_]u8{
-        @intFromEnum(Op.push_i32), 7, 0, 0, 0,
-        @intFromEnum(Op.store_local), 0,
-        @intFromEnum(Op.load_local), 0,
-        @intFromEnum(Op.ret),
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        7, 0, 0, 0,
+        @truncate(store_local_op & 0xFF), @truncate(store_local_op >> 8),
+        0,
+        @truncate(load_local_op & 0xFF), @truncate(load_local_op >> 8),
+        0,
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
     };
 
     const chunk = Chunk{
@@ -680,4 +705,114 @@ test "jit compile locals" {
         stencils.stack_pop.code.len +
         stencils.epilogue_stencil.code.len;
     try testing.expectEqual(expected_len, jit.code_buffer.pos);
+}
+
+test "jit vm parity add" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try runtime.Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(allocator, &heap);
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const add_op: u16 = @intFromEnum(Op.add);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        1, 0, 0, 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        2, 0, 0, 0,
+        @truncate(add_op & 0xFF), @truncate(add_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+    const consts = [_]Value{};
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const vm_res = try vm.run(&chunk);
+
+    const fn_ptr = try jit.compile(&chunk);
+    var stack_buf: [32]Value = undefined;
+    var ctx_val = ctx.JitContext{
+        .sp = stack_buf[0..].ptr,
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .frame_base = stack_buf[0..].ptr,
+        .heap = &heap,
+        .err = 0,
+    };
+    const jit_raw = fn_ptr(&ctx_val);
+    const jit_res = Value{ .raw = jit_raw };
+
+    try testing.expect(vm_res.eq(jit_res));
+    try testing.expectEqual(@intFromEnum(rt.Err.ok), ctx_val.err);
+}
+
+test "jit vm parity numberp" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try runtime.Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(allocator, &heap);
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const numberp_op: u16 = @intFromEnum(Op.numberp);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        7, 0, 0, 0,
+        @truncate(numberp_op & 0xFF), @truncate(numberp_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+    const consts = [_]Value{};
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const vm_res = try vm.run(&chunk);
+
+    const fn_ptr = try jit.compile(&chunk);
+    var stack_buf: [32]Value = undefined;
+    var ctx_val = ctx.JitContext{
+        .sp = stack_buf[0..].ptr,
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .frame_base = stack_buf[0..].ptr,
+        .heap = &heap,
+        .err = 0,
+    };
+    const jit_raw = fn_ptr(&ctx_val);
+    const jit_res = Value{ .raw = jit_raw };
+
+    try testing.expect(vm_res.eq(jit_res));
+    try testing.expectEqual(@intFromEnum(rt.Err.ok), ctx_val.err);
 }
