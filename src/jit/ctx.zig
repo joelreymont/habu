@@ -12,6 +12,7 @@ pub const JitContext = extern struct {
     ret_buf: *RetBuf,
     err: u16,
     _pad: [6]u8 = .{0} ** 6,
+    const_count: usize = 0,
 };
 
 pub const RetBuf = extern struct {
@@ -29,6 +30,9 @@ comptime {
     }
     if (@offsetOf(JitContext, "err") != 48) {
         @compileError("JitContext.err offset mismatch");
+    }
+    if (@offsetOf(JitContext, "const_count") != 56) {
+        @compileError("JitContext.const_count offset mismatch");
     }
     if (@sizeOf(RetBuf) != 16) {
         @compileError("RetBuf size mismatch");

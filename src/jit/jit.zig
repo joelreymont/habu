@@ -991,6 +991,7 @@ test "jit vm parity add" {
         .heap = &heap,
         .ret_buf = &ret_buf,
         .err = 0,
+        .const_count = consts.len,
     };
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
@@ -1048,6 +1049,7 @@ test "jit vm parity numberp" {
         .heap = &heap,
         .ret_buf = &ret_buf,
         .err = 0,
+        .const_count = consts.len,
     };
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
@@ -1107,6 +1109,7 @@ test "jit vm parity lt" {
         .heap = &heap,
         .ret_buf = &ret_buf,
         .err = 0,
+        .const_count = consts.len,
     };
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
@@ -1166,6 +1169,7 @@ test "jit vm parity lt float" {
         .heap = &heap,
         .ret_buf = &ret_buf,
         .err = 0,
+        .const_count = consts.len,
     };
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
@@ -1228,6 +1232,7 @@ test "jit stack overflow sets err" {
         .heap = &heap,
         .ret_buf = &ret_buf,
         .err = 0,
+        .const_count = consts.len,
     };
 
     const jit_raw = fn_ptr(&ctx_val);

@@ -7,20 +7,65 @@ const arith = @import("../runtime/primitives/arith.zig");
 const Value = runtime.Value;
 const std = @import("std");
 
+const BinaryOp = *const fn (*runtime.Heap, Value, Value) arith.Error!Value;
+
+fn collectJitGarbage(c: *ctx.JitContext, extra: []Value) !void {
+    const heap = c.heap;
+    var roots = std.ArrayList(Value){};
+    defer roots.deinit(heap.backing_allocator);
+
+    const stack_len_bytes = @intFromPtr(c.sp) - @intFromPtr(c.frame_base);
+    const stack_len: usize = @intCast(@divExact(stack_len_bytes, @sizeOf(Value)));
+    const stack_vals = c.frame_base[0..stack_len];
+    try roots.appendSlice(heap.backing_allocator, stack_vals);
+
+    const const_vals = c.const_pool[0..c.const_count];
+    try roots.appendSlice(heap.backing_allocator, const_vals);
+
+    try roots.appendSlice(heap.backing_allocator, extra);
+
+    _ = try heap.collectGarbage(roots.items);
+
+    var idx: usize = 0;
+    for (stack_vals) |*v| {
+        v.* = roots.items[idx];
+        idx += 1;
+    }
+    for (const_vals) |*v| {
+        v.* = roots.items[idx];
+        idx += 1;
+    }
+    for (extra) |*v| {
+        v.* = roots.items[idx];
+        idx += 1;
+    }
+}
+
+fn callBinaryWithGc(c: *ctx.JitContext, a: Value, b: Value, func: BinaryOp) arith.Error!Value {
+    var args = [_]Value{ a, b };
+    return func(c.heap, args[0], args[1]) catch |err| switch (err) {
+        error.OutOfMemory => blk: {
+            try collectJitGarbage(c, &args);
+            break :blk try func(c.heap, args[0], args[1]);
+        },
+        else => return err,
+    };
+}
+
 pub fn add(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
-    return try arith.add(c.heap, a, b);
+    return try callBinaryWithGc(c, a, b, arith.add);
 }
 
 pub fn sub(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
-    return try arith.sub(c.heap, a, b);
+    return try callBinaryWithGc(c, a, b, arith.sub);
 }
 
 pub fn mul(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
-    return try arith.mul(c.heap, a, b);
+    return try callBinaryWithGc(c, a, b, arith.mul);
 }
 
 pub fn div(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
-    return try arith.div(c.heap, a, b);
+    return try callBinaryWithGc(c, a, b, arith.div);
 }
 
 pub fn neg(c: *ctx.JitContext, a: Value) arith.Error!Value {
@@ -69,6 +114,7 @@ test "rt add returns error union" {
         .heap = &heap,
         .ret_buf = &ret_buf,
         .err = 0,
+        .const_count = 0,
     };
 
     try testing.expectError(error.TypeMismatch, add(&c, Value.nil, Value.nil));
@@ -94,6 +140,7 @@ test "rt neg returns error union" {
         .heap = &heap,
         .ret_buf = &ret_buf,
         .err = 0,
+        .const_count = 0,
     };
 
     try testing.expectError(error.TypeMismatch, neg(&c, Value.nil));
