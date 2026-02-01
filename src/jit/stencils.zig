@@ -239,12 +239,15 @@ pub const ret_stencil = Stencil{
     .holes = &[_]Hole{},
 };
 
-/// Function prologue: save x19/x20, set x19 = arg0 (stack pointer)
+/// Function prologue: save x19/x20, load sp/const_pool from ctx
 pub const prologue_stencil = Stencil{
     .name = "prologue",
     .code = &(
         inst_bytes(stp_pre(X19, X20, SP, -2)) ++
-            inst_bytes(add_imm(X19, X0, 0))),
+            // LDR x19, [x0, #0] (ctx.sp)
+            inst_bytes(0xF9400013) ++
+            // LDR x20, [x0, #8] (ctx.const_pool)
+            inst_bytes(0xF9400414)),
     .holes = &[_]Hole{},
 };
 
@@ -525,6 +528,9 @@ pub const load_local = Stencil{
     },
 };
 
+/// Load constant from const_pool (x20)
+pub const load_const = load_local;
+
 /// Store to local variable
 pub const store_local = Stencil{
     .name = "store_local",
@@ -601,7 +607,7 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 4), stack_push_x1.code.len);
     try testing.expectEqual(@as(usize, 4), stack_pop.code.len);
     try testing.expectEqual(@as(usize, 16), swap_stencil.code.len);
-    try testing.expectEqual(@as(usize, 8), prologue_stencil.code.len);
+    try testing.expectEqual(@as(usize, 12), prologue_stencil.code.len);
     try testing.expectEqual(@as(usize, 8), epilogue_stencil.code.len);
 
     // Comparison stencils (4 instructions each)

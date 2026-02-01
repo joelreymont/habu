@@ -26,8 +26,14 @@ pub const JitError = error{
     InsufficientPatchValues,
 };
 
+/// JIT runtime context
+pub const JitContext = extern struct {
+    sp: [*]Value,
+    const_pool: [*]Value,
+};
+
 /// JIT-compiled function
-pub const JitFn = *const fn ([*]Value) callconv(.c) u64;
+pub const JitFn = *const fn (*JitContext) callconv(.c) u64;
 
 /// JIT compiler state
 pub const Jit = struct {
@@ -119,8 +125,9 @@ pub const Jit = struct {
                 const idx = chunk.readU16(bc_offset.*);
                 bc_offset.* += 2;
                 if (idx >= chunk.getConstants().len) return error.InvalidConstantIndex;
-                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
-                    .{ .imm64 = chunk.getConstants()[idx].raw },
+                const offset_bytes: u32 = @as(u32, idx) * @as(u32, @intCast(@sizeOf(Value)));
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_const, &[_]patch.PatchValue{
+                    .{ .imm32 = offset_bytes },
                 });
                 _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
