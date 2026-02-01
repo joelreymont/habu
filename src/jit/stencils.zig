@@ -177,7 +177,8 @@ const X2: u5 = 2; // temp/arg
 const X9: u5 = 9; // scratch
 const X10: u5 = 10; // scratch
 const X19: u5 = 19; // stack pointer
-const X20: u5 = 20; // frame pointer
+const X20: u5 = 20; // const_pool base
+const X29: u5 = 29; // fp
 const X30: u5 = 30; // link register
 const SP: u5 = 31; // stack pointer
 
@@ -239,11 +240,13 @@ pub const ret_stencil = Stencil{
     .holes = &[_]Hole{},
 };
 
-/// Function prologue: save x19/x20, load sp/const_pool from ctx
+/// Function prologue: save lr, save x19/x20, load sp/const_pool from ctx
 pub const prologue_stencil = Stencil{
     .name = "prologue",
     .code = &(
-        inst_bytes(stp_pre(X19, X20, SP, -2)) ++
+        inst_bytes(stp_pre(X29, X30, SP, -2)) ++
+            inst_bytes(add_imm(X29, SP, 0)) ++
+            inst_bytes(stp_pre(X19, X20, SP, -2)) ++
             // LDR x19, [x0, #0] (ctx.sp)
             inst_bytes(0xF9400013) ++
             // LDR x20, [x0, #8] (ctx.const_pool)
@@ -251,11 +254,12 @@ pub const prologue_stencil = Stencil{
     .holes = &[_]Hole{},
 };
 
-/// Function epilogue: restore x19/x20, return
+/// Function epilogue: restore x19/x20/lr, return
 pub const epilogue_stencil = Stencil{
     .name = "epilogue",
     .code = &(
         inst_bytes(ldp_post(X19, X20, SP, 2)) ++
+            inst_bytes(ldp_post(X29, X30, SP, 2)) ++
             inst_bytes(ret())),
     .holes = &[_]Hole{},
 };
@@ -607,8 +611,8 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 4), stack_push_x1.code.len);
     try testing.expectEqual(@as(usize, 4), stack_pop.code.len);
     try testing.expectEqual(@as(usize, 16), swap_stencil.code.len);
-    try testing.expectEqual(@as(usize, 12), prologue_stencil.code.len);
-    try testing.expectEqual(@as(usize, 8), epilogue_stencil.code.len);
+    try testing.expectEqual(@as(usize, 20), prologue_stencil.code.len);
+    try testing.expectEqual(@as(usize, 12), epilogue_stencil.code.len);
 
     // Comparison stencils (4 instructions each)
     try testing.expectEqual(@as(usize, 16), eq_stencil.code.len);
