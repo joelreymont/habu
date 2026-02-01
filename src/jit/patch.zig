@@ -21,6 +21,7 @@ pub const PatchError = error{
     OutOfMemory,
     OffsetTooLarge,
     InvalidHoleType,
+    InvalidImm,
     InsufficientPatchValues,
 };
 
@@ -141,7 +142,7 @@ fn applyPatch(
                 else => return error.InvalidHoleType,
             };
             // Patch 32-bit immediate in instruction
-            patchImm32(code[hole.offset..], imm);
+            try patchImm32(code[hole.offset..], imm);
         },
         .rel26 => {
             const target = switch (value) {
@@ -227,8 +228,14 @@ fn patchMovzMovk(code: []u8, imm: u64) void {
 }
 
 /// Patch 32-bit immediate
-fn patchImm32(code: []u8, imm: u32) void {
-    std.mem.writeInt(u32, code[0..4], imm, .little);
+fn patchImm32(code: []u8, imm: u32) PatchError!void {
+    if ((imm & 0x7) != 0) return error.InvalidImm;
+    const imm12 = imm >> 3;
+    if (imm12 > 0xFFF) return error.InvalidImm;
+
+    var inst: u32 = std.mem.readInt(u32, code[0..4], .little);
+    inst = (inst & 0xFFC003FF) | (@as(u32, imm12) << 10);
+    std.mem.writeInt(u32, code[0..4], inst, .little);
 }
 
 /// Patch 26-bit relative branch offset (BL, B)
@@ -302,6 +309,23 @@ test "patch imm64" {
     const inst0 = std.mem.readInt(u32, buffer.memory[0..4], .little);
     const imm0 = (inst0 >> 5) & 0xFFFF;
     try testing.expectEqual(@as(u32, 0xDEF0), imm0);
+}
+
+test "patch imm32" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var buffer = try CodeBuffer.init(allocator, 4096);
+    defer buffer.deinit();
+
+    const offset_bytes: u32 = 16;
+    _ = try patchStencil(&buffer, stencils.load_local, &[_]PatchValue{
+        .{ .imm32 = offset_bytes },
+    });
+
+    const inst = std.mem.readInt(u32, buffer.memory[0..4], .little);
+    const imm12 = (inst >> 10) & 0xFFF;
+    try testing.expectEqual(@as(u32, offset_bytes >> 3), imm12);
 }
 
 test "patch stencil without holes" {

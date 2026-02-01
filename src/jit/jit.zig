@@ -22,6 +22,7 @@ pub const JitError = error{
     InvalidJumpTarget,
     OffsetTooLarge,
     InvalidHoleType,
+    InvalidImm,
     InsufficientPatchValues,
 };
 
