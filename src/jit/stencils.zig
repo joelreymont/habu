@@ -186,6 +186,8 @@ const X19: u5 = 19; // stack pointer
 const X20: u5 = 20; // const_pool base
 const X21: u5 = 21; // saved scratch
 const X22: u5 = 22; // ctx pointer
+const X23: u5 = 23; // frame base
+const X24: u5 = 24; // saved scratch
 const X29: u5 = 29; // fp
 const X30: u5 = 30; // link register
 const SP: u5 = 31; // stack pointer
@@ -248,7 +250,7 @@ pub const ret_stencil = Stencil{
     .holes = &[_]Hole{},
 };
 
-/// Function prologue: save lr, save regs, load sp/const_pool from ctx
+/// Function prologue: save lr, save regs, load sp/const_pool/frame_base from ctx
 pub const prologue_stencil = Stencil{
     .name = "prologue",
     .code = &(
@@ -256,12 +258,15 @@ pub const prologue_stencil = Stencil{
             inst_bytes(add_imm(X29, SP, 0)) ++
             inst_bytes(stp_pre(X19, X20, SP, -2)) ++
             inst_bytes(stp_pre(X21, X22, SP, -2)) ++
+            inst_bytes(stp_pre(X23, X24, SP, -2)) ++
             // MOV x22, x0 (ctx)
             inst_bytes(add_imm(X22, X0, 0)) ++
             // LDR x19, [x22, #0] (ctx.sp)
             inst_bytes(0xF94002D3) ++
             // LDR x20, [x22, #8] (ctx.const_pool)
-            inst_bytes(0xF94006D4)),
+            inst_bytes(0xF94006D4) ++
+            // LDR x23, [x22, #16] (ctx.frame_base)
+            inst_bytes(0xF9400AD7)),
     .holes = &[_]Hole{},
 };
 
@@ -269,7 +274,8 @@ pub const prologue_stencil = Stencil{
 pub const epilogue_stencil = Stencil{
     .name = "epilogue",
     .code = &(
-        inst_bytes(ldp_post(X21, X22, SP, 2)) ++
+        inst_bytes(ldp_post(X23, X24, SP, 2)) ++
+            inst_bytes(ldp_post(X21, X22, SP, 2)) ++
             inst_bytes(ldp_post(X19, X20, SP, 2)) ++
             inst_bytes(ldp_post(X29, X30, SP, 2)) ++
             inst_bytes(ret())),
@@ -589,13 +595,13 @@ pub const swap_stencil = Stencil{
     .holes = &[_]Hole{},
 };
 
-/// Load local variable (using x20 as frame pointer)
+/// Load local variable (using x23 as frame pointer)
 /// Hole: imm32 for offset
 pub const load_local = Stencil{
     .name = "load_local",
     .code = &(
-        // LDR x0, [x20, #offset] - offset patched
-        inst_bytes(0xF9400280)), // Base LDR with x20
+        // LDR x0, [x23, #offset] - offset patched
+        inst_bytes(0xF94002E0)), // Base LDR with x23
     .holes = &[_]Hole{
         .{ .offset = 0, .hole_type = .imm32, .name = "offset" },
     },
@@ -608,8 +614,8 @@ pub const load_const = load_local;
 pub const store_local = Stencil{
     .name = "store_local",
     .code = &(
-        // STR x0, [x20, #offset]
-        inst_bytes(0xF9000280)),
+        // STR x0, [x23, #offset]
+        inst_bytes(0xF90002E0)),
     .holes = &[_]Hole{
         .{ .offset = 0, .hole_type = .imm32, .name = "offset" },
     },
@@ -680,8 +686,8 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 4), stack_push_x1.code.len);
     try testing.expectEqual(@as(usize, 4), stack_pop.code.len);
     try testing.expectEqual(@as(usize, 16), swap_stencil.code.len);
-    try testing.expectEqual(@as(usize, 28), prologue_stencil.code.len);
-    try testing.expectEqual(@as(usize, 16), epilogue_stencil.code.len);
+    try testing.expectEqual(@as(usize, 36), prologue_stencil.code.len);
+    try testing.expectEqual(@as(usize, 20), epilogue_stencil.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x1_x0.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x2_x1.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x0_x22.code.len);

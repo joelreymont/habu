@@ -295,8 +295,28 @@ pub const Jit = struct {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
             },
 
+            .load_local => {
+                const idx = chunk.readU8(bc_offset.*);
+                bc_offset.* += 1;
+                const offset_bytes: u32 = @as(u32, idx) * @as(u32, @intCast(@sizeOf(Value)));
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_local, &[_]patch.PatchValue{
+                    .{ .imm32 = offset_bytes },
+                });
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_push, &[_]patch.PatchValue{});
+            },
+
+            .store_local => {
+                const idx = chunk.readU8(bc_offset.*);
+                bc_offset.* += 1;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
+                const offset_bytes: u32 = @as(u32, idx) * @as(u32, @intCast(@sizeOf(Value)));
+                _ = try patch.patchStencil(&self.code_buffer, stencils.store_local, &[_]patch.PatchValue{
+                    .{ .imm32 = offset_bytes },
+                });
+            },
+
             // Skip operands for unsupported ops
-            .load_local, .store_local, .load_capture => {
+            .load_capture => {
                 bc_offset.* += 1;
                 return error.UnsupportedOpcode;
             },
@@ -615,6 +635,47 @@ test "jit compile add" {
         stencils.mov_x1_x0.code.len +
         stencils.mov_x0_x22.code.len +
         stencils.call_abs.code.len +
+        stencils.stack_push.code.len +
+        stencils.stack_pop.code.len +
+        stencils.epilogue_stencil.code.len;
+    try testing.expectEqual(expected_len, jit.code_buffer.pos);
+}
+
+test "jit compile locals" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const code = [_]u8{
+        @intFromEnum(Op.push_i32), 7, 0, 0, 0,
+        @intFromEnum(Op.store_local), 0,
+        @intFromEnum(Op.load_local), 0,
+        @intFromEnum(Op.ret),
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 1,
+    };
+
+    _ = try jit.compile(&chunk);
+
+    const expected_len =
+        stencils.prologue_stencil.code.len +
+        stencils.load_imm64.code.len +
+        stencils.stack_push.code.len +
+        stencils.stack_pop.code.len +
+        stencils.store_local.code.len +
+        stencils.load_local.code.len +
         stencils.stack_push.code.len +
         stencils.stack_pop.code.len +
         stencils.epilogue_stencil.code.len;

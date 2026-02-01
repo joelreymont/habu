@@ -79,6 +79,7 @@ test "rt add sets err" {
     var c = ctx.JitContext{
         .sp = &dummy,
         .const_pool = &dummy,
+        .frame_base = &dummy,
         .heap = &heap,
         .err = 0,
     };
