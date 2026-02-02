@@ -83,6 +83,17 @@ fn allocVectorWithGc(c: *ctx.JitContext, len: usize) vm_mod.Error!Value {
     };
 }
 
+fn allocClosureWithGc(c: *ctx.JitContext, code: Value, arity: u32, captures: []Value) vm_mod.Error!Value {
+    return c.heap.allocClosure(code, arity, captures) catch |err| switch (err) {
+        error.OutOfMemory => blk: {
+            try collectJitGarbage(c, captures);
+            break :blk try c.heap.allocClosure(code, arity, captures);
+        },
+        error.Overflow => return error.Overflow,
+        else => return err,
+    };
+}
+
 pub fn add(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
     return try callBinaryWithGc(c, a, b, arith.add);
 }
@@ -197,6 +208,65 @@ pub fn makeVec(c: *ctx.JitContext, _: u8) vm_mod.Error!Value {
     c.frame_base[sp - 2] = vec;
     c.sp = c.frame_base + sp - 1;
     return vec;
+}
+
+pub fn makeClosure(c: *ctx.JitContext, chunk_idx: u16, num_captures: u8) vm_mod.Error!Value {
+    if (num_captures > 64) return error.StackOverflow;
+
+    const sp = stackLen(c);
+    const cap_count: usize = num_captures;
+    if (cap_count > sp) return error.StackUnderflow;
+
+    const abs_idx = c.vm.chunk_base + @as(usize, chunk_idx);
+    if (abs_idx >= c.vm.chunk_pool.len) return error.InvalidConstant;
+    const closure_chunk = c.vm.chunk_pool[abs_idx];
+
+    const start = sp - cap_count;
+    const captures = c.frame_base[start..sp];
+    const chunk_val = Value.makeChunk(closure_chunk);
+    const closure = try allocClosureWithGc(c, chunk_val, closure_chunk.arity, captures);
+
+    c.frame_base[start] = closure;
+    c.sp = c.frame_base + start + 1;
+    return closure;
+}
+
+pub fn loadCapture(c: *ctx.JitContext, idx: u8) vm_mod.Error!Value {
+    const closure = c.vm.current_closure orelse return error.TypeMismatch;
+    if (idx >= closure.num_captures) return error.InvalidConstant;
+    return closure.getCapture(idx);
+}
+
+pub fn loadUpvalue(c: *ctx.JitContext, idx: u8) vm_mod.Error!Value {
+    const closure = c.vm.current_closure orelse return error.TypeMismatch;
+    if (idx >= closure.num_captures) return error.InvalidConstant;
+    return closure.getCapture(idx);
+}
+
+pub fn storeUpvalue(c: *ctx.JitContext, val: Value, idx: u8) vm_mod.Error!Value {
+    const closure = c.vm.current_closure orelse return error.TypeMismatch;
+    if (idx >= closure.num_captures) return error.InvalidConstant;
+    const captures: [*]Value = @constCast(closure.captures);
+    captures[idx] = val;
+    return val;
+}
+
+pub fn loadArgc(c: *ctx.JitContext, _: u8) vm_mod.Error!Value {
+    return Value.makeFixnum(@as(i64, c.vm.current_argc));
+}
+
+pub fn call(c: *ctx.JitContext, argc: u8) vm_mod.Error!Value {
+    const sp = stackLen(c);
+    const argc_usize: usize = argc;
+    if (argc_usize + 1 > sp) return error.StackUnderflow;
+
+    const fn_idx = sp - argc_usize - 1;
+    const fn_val = c.frame_base[fn_idx];
+    const args = c.frame_base[fn_idx + 1 .. fn_idx + 1 + argc_usize];
+    const res = try c.vm.callFromStack(fn_val, args);
+    c.frame_base[fn_idx] = res;
+    c.sp = c.frame_base + fn_idx + 1;
+    return res;
 }
 
 test "rt add returns error union" {

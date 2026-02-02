@@ -37,6 +37,23 @@ const BuiltinSymbols = @import("../runtime/builtins.zig").BuiltinSymbols;
 
 pub const Error = anyerror;
 
+const empty_consts = [_]Value{};
+const halt_code = [_]u8{
+    @truncate(@intFromEnum(Op.halt) & 0xFF),
+    @truncate(@intFromEnum(Op.halt) >> 8),
+};
+const halt_chunk = Chunk{
+    .code = @constCast(&halt_code),
+    .const_pool = @ptrCast(@constCast(&empty_consts)),
+    .const_count = 0,
+    .code_len = halt_code.len,
+    .arity = 0,
+    .opt_count = 0,
+    .key_count = 0,
+    .has_rest = 0,
+    .num_locals = 0,
+};
+
 /// Catch frame for exception handling
 pub const CatchFrame = struct {
     /// Tag value to match against
@@ -136,7 +153,7 @@ const MAX_SCOPES = 256;
 
 /// Saved execution state for nested calls
 /// Used by callClosure to save/restore state atomically
-const State = struct {
+pub const State = struct {
     chunk: *const Chunk,
     ip: usize,
     fp: usize,
@@ -145,7 +162,7 @@ const State = struct {
     chunk_pool: []*Chunk,
     chunk_base: usize,
 
-    fn save(vm: *const Vm) State {
+    pub fn save(vm: *const Vm) State {
         return .{
             .chunk = vm.chunk,
             .ip = vm.ip,
@@ -157,7 +174,7 @@ const State = struct {
         };
     }
 
-    fn restore(self: State, vm: *Vm) void {
+    pub fn restore(self: State, vm: *Vm) void {
         vm.chunk = self.chunk;
         vm.ip = self.ip;
         vm.fp = self.fp;
@@ -849,6 +866,28 @@ pub const Vm = struct {
         self.current_argc = argc;
 
         // Execute until return
+        return try self.execute();
+    }
+
+    /// Call function with arguments provided as a slice
+    pub fn callFromStack(self: *Vm, fn_val: Value, args: []const Value) Error!Value {
+        const saved_state = State.save(self);
+        defer saved_state.restore(self);
+
+        if (args.len + 1 > self.stack.len) return error.StackOverflow;
+        self.stack[0] = fn_val;
+        for (args, 0..) |arg, i| {
+            self.stack[i + 1] = arg;
+        }
+        self.sp = args.len + 1;
+
+        self.chunk = &halt_chunk;
+        self.ip = 0;
+        self.fp = 0;
+        self.scope_sp = 0;
+
+        const argc: u8 = @intCast(args.len);
+        try self.doCall(argc, false);
         return try self.execute();
     }
 
