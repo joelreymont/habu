@@ -10,13 +10,22 @@ const std = @import("std");
 
 const BinaryOp = *const fn (*runtime.Heap, Value, Value) arith.Error!Value;
 
+fn stackLen(c: *ctx.JitContext) usize {
+    const len_bytes = @intFromPtr(c.sp) - @intFromPtr(c.frame_base);
+    return @intCast(@divExact(len_bytes, @sizeOf(Value)));
+}
+
+fn stackCap(c: *ctx.JitContext) usize {
+    const cap_bytes = @intFromPtr(c.stack_end) - @intFromPtr(c.frame_base);
+    return @intCast(@divExact(cap_bytes, @sizeOf(Value)));
+}
+
 fn collectJitGarbage(c: *ctx.JitContext, extra: []Value) !void {
     const heap = c.heap;
     var roots = std.ArrayList(Value){};
     defer roots.deinit(heap.backing_allocator);
 
-    const stack_len_bytes = @intFromPtr(c.sp) - @intFromPtr(c.frame_base);
-    const stack_len: usize = @intCast(@divExact(stack_len_bytes, @sizeOf(Value)));
+    const stack_len = stackLen(c);
     const stack_vals = c.frame_base[0..stack_len];
     try roots.appendSlice(heap.backing_allocator, stack_vals);
 
@@ -48,6 +57,27 @@ fn callBinaryWithGc(c: *ctx.JitContext, a: Value, b: Value, func: BinaryOp) arit
         error.OutOfMemory => blk: {
             try collectJitGarbage(c, &args);
             break :blk try func(c.heap, args[0], args[1]);
+        },
+        else => return err,
+    };
+}
+
+fn allocConsWithGc(c: *ctx.JitContext, car: Value, cdr: Value) vm_mod.Error!Value {
+    var args = [_]Value{ car, cdr };
+    return c.heap.allocCons(args[0], args[1]) catch |err| switch (err) {
+        error.OutOfMemory => blk: {
+            try collectJitGarbage(c, &args);
+            break :blk try c.heap.allocCons(args[0], args[1]);
+        },
+        else => return err,
+    };
+}
+
+fn allocVectorWithGc(c: *ctx.JitContext, len: usize) vm_mod.Error!Value {
+    return c.heap.allocVector(len, len) catch |err| switch (err) {
+        error.OutOfMemory => blk: {
+            try collectJitGarbage(c, &[_]Value{});
+            break :blk try c.heap.allocVector(len, len);
         },
         else => return err,
     };
@@ -106,6 +136,67 @@ pub fn loadGlobal(c: *ctx.JitContext, idx: u16) vm_mod.Error!Value {
 pub fn storeGlobal(c: *ctx.JitContext, val: Value, idx: u16) vm_mod.Error!Value {
     try c.vm.storeGlobal(idx, val);
     return val;
+}
+
+pub fn makeList(c: *ctx.JitContext, count: u8) vm_mod.Error!Value {
+    const sp = stackLen(c);
+    const count_usize: usize = count;
+    if (count_usize > sp) return error.StackUnderflow;
+    if (count_usize == 0 and sp >= stackCap(c)) return error.StackOverflow;
+
+    const start = sp - count_usize;
+    const items = c.frame_base[start..sp];
+    var list = Value.nil;
+    var i: usize = count_usize;
+    while (i > 0) {
+        i -= 1;
+        list = try allocConsWithGc(c, items[i], list);
+    }
+
+    c.frame_base[start] = list;
+    c.sp = c.frame_base + start + 1;
+    return list;
+}
+
+pub fn makeVecN(c: *ctx.JitContext, count: u8) vm_mod.Error!Value {
+    const sp = stackLen(c);
+    const count_usize: usize = count;
+    if (count_usize > sp) return error.StackUnderflow;
+    if (count_usize == 0 and sp >= stackCap(c)) return error.StackOverflow;
+
+    const start = sp - count_usize;
+    const items = c.frame_base[start..sp];
+    const vec = try allocVectorWithGc(c, count_usize);
+    const vec_obj = vec.toPtr(runtime.Vector);
+    for (items, 0..) |item, i| {
+        vec_obj.data[i] = item;
+    }
+
+    c.frame_base[start] = vec;
+    c.sp = c.frame_base + start + 1;
+    return vec;
+}
+
+pub fn makeVec(c: *ctx.JitContext, _: u8) vm_mod.Error!Value {
+    const sp = stackLen(c);
+    if (sp < 2) return error.StackUnderflow;
+
+    const size_val = c.frame_base[sp - 2];
+    const init_val = c.frame_base[sp - 1];
+    if (!size_val.isFixnum()) return error.TypeMismatch;
+    const size_signed = size_val.toFixnum();
+    if (size_signed < 0) return error.TypeMismatch;
+    const size: usize = @intCast(size_signed);
+
+    const vec = try allocVectorWithGc(c, size);
+    const vec_obj = vec.toPtr(runtime.Vector);
+    for (0..size) |i| {
+        vec_obj.data[i] = init_val;
+    }
+
+    c.frame_base[sp - 2] = vec;
+    c.sp = c.frame_base + sp - 1;
+    return vec;
 }
 
 test "rt add returns error union" {

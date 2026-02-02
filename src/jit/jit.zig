@@ -386,12 +386,35 @@ pub const Jit = struct {
                 try self.emitCallBinary(@intFromPtr(&rt.storeGlobal));
             },
             .make_vec => {
+                _ = chunk.readU16(bc_offset.*);
                 bc_offset.* += 2;
-                return error.UnsupportedOpcode;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                    .{ .imm64 = 0 },
+                });
+                try self.emitCallUnary(@intFromPtr(&rt.makeVec));
+                try self.emitLoadCtxSp();
             },
-            .call, .tail_call, .make_list => {
+            .make_vec_n => {
+                const count = chunk.readU8(bc_offset.*);
+                bc_offset.* += 1;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                    .{ .imm64 = @as(u64, count) },
+                });
+                try self.emitCallUnary(@intFromPtr(&rt.makeVecN));
+                try self.emitLoadCtxSp();
+            },
+            .call, .tail_call => {
                 bc_offset.* += 1;
                 return error.UnsupportedOpcode;
+            },
+            .make_list => {
+                const count = chunk.readU8(bc_offset.*);
+                bc_offset.* += 1;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                    .{ .imm64 = @as(u64, count) },
+                });
+                try self.emitCallUnary(@intFromPtr(&rt.makeList));
+                try self.emitLoadCtxSp();
             },
             .make_closure => {
                 bc_offset.* += 3;
@@ -424,6 +447,10 @@ pub const Jit = struct {
         const start = try patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{});
         const branch_offset = start + stencils.stack_pop_branch_offset;
         try self.err_branches.append(self.allocator, branch_offset);
+    }
+
+    fn emitLoadCtxSp(self: *Jit) JitError!void {
+        _ = try patch.patchStencil(&self.code_buffer, stencils.load_ctx_sp, &[_]patch.PatchValue{});
     }
 
     fn emitStackPopX1(self: *Jit) JitError!void {
@@ -672,6 +699,29 @@ pub const Jit = struct {
 // ============================================================================
 // Tests
 // ============================================================================
+
+fn expectListVals(list: Value, expected: []const i64) !void {
+    var cur = list;
+    for (expected) |val| {
+        try std.testing.expect(cur.isCons());
+        const cons = cur.toPtr(runtime.Cons);
+        try std.testing.expect(cons.car.isFixnum());
+        try std.testing.expectEqual(val, cons.car.toFixnum());
+        cur = cons.cdr;
+    }
+    try std.testing.expect(cur.isNil());
+}
+
+fn expectVecVals(vec_val: Value, expected: []const i64) !void {
+    try std.testing.expect(vec_val.isVector());
+    const vec = vec_val.toPtr(runtime.Vector);
+    try std.testing.expectEqual(@as(u64, expected.len), vec.length);
+    for (expected, 0..) |val, i| {
+        const item = vec.data[i];
+        try std.testing.expect(item.isFixnum());
+        try std.testing.expectEqual(val, item.toFixnum());
+    }
+}
 
 test "jit init" {
     const testing = std.testing;
@@ -1389,6 +1439,211 @@ test "jit car non-cons sets err" {
 
     try testing.expect(jit_res.isNil());
     try testing.expectEqual(@intFromError(error.TypeMismatch), ctx_val.err);
+}
+
+test "jit vm parity make_list" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try runtime.Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(allocator, &heap);
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const make_list_op: u16 = @intFromEnum(Op.make_list);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        1, 0, 0, 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        2, 0, 0, 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        3, 0, 0, 0,
+        @truncate(make_list_op & 0xFF), @truncate(make_list_op >> 8),
+        3,
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+    const consts = [_]Value{};
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const vm_res = try vm.run(&chunk);
+
+    const fn_ptr = try jit.compile(&chunk);
+    var stack_buf: [32]Value = undefined;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var ctx_val = ctx.JitContext{
+        .sp = stack_buf[0..].ptr,
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .frame_base = stack_buf[0..].ptr,
+        .stack_end = stack_buf[stack_buf.len..].ptr,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+        .const_count = consts.len,
+        .err_trace = &trace,
+        .vm = &vm,
+    };
+    const jit_raw = fn_ptr(&ctx_val);
+    const jit_res = Value{ .raw = jit_raw };
+
+    const expected = [_]i64{ 1, 2, 3 };
+    try expectListVals(vm_res, &expected);
+    try expectListVals(jit_res, &expected);
+    try testing.expectEqual(@as(u16, 0), ctx_val.err);
+}
+
+test "jit vm parity make_vec_n" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try runtime.Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(allocator, &heap);
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const make_vec_n_op: u16 = @intFromEnum(Op.make_vec_n);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        10, 0, 0, 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        20, 0, 0, 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        30, 0, 0, 0,
+        @truncate(make_vec_n_op & 0xFF), @truncate(make_vec_n_op >> 8),
+        3,
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+    const consts = [_]Value{};
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const vm_res = try vm.run(&chunk);
+
+    const fn_ptr = try jit.compile(&chunk);
+    var stack_buf: [32]Value = undefined;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var ctx_val = ctx.JitContext{
+        .sp = stack_buf[0..].ptr,
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .frame_base = stack_buf[0..].ptr,
+        .stack_end = stack_buf[stack_buf.len..].ptr,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+        .const_count = consts.len,
+        .err_trace = &trace,
+        .vm = &vm,
+    };
+    const jit_raw = fn_ptr(&ctx_val);
+    const jit_res = Value{ .raw = jit_raw };
+
+    const expected = [_]i64{ 10, 20, 30 };
+    try expectVecVals(vm_res, &expected);
+    try expectVecVals(jit_res, &expected);
+    try testing.expectEqual(@as(u16, 0), ctx_val.err);
+}
+
+test "jit vm parity make_vec" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try runtime.Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(allocator, &heap);
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const make_vec_op: u16 = @intFromEnum(Op.make_vec);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        3, 0, 0, 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        7, 0, 0, 0,
+        @truncate(make_vec_op & 0xFF), @truncate(make_vec_op >> 8),
+        0, 0,
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+    const consts = [_]Value{};
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const vm_res = try vm.run(&chunk);
+
+    const fn_ptr = try jit.compile(&chunk);
+    var stack_buf: [32]Value = undefined;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var ctx_val = ctx.JitContext{
+        .sp = stack_buf[0..].ptr,
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .frame_base = stack_buf[0..].ptr,
+        .stack_end = stack_buf[stack_buf.len..].ptr,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+        .const_count = consts.len,
+        .err_trace = &trace,
+        .vm = &vm,
+    };
+    const jit_raw = fn_ptr(&ctx_val);
+    const jit_res = Value{ .raw = jit_raw };
+
+    const expected = [_]i64{ 7, 7, 7 };
+    try expectVecVals(vm_res, &expected);
+    try expectVecVals(jit_res, &expected);
+    try testing.expectEqual(@as(u16, 0), ctx_val.err);
 }
 
 test "jit vm parity lt float" {
