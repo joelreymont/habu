@@ -1,6 +1,7 @@
 //! JIT runtime context
 
 const runtime = @import("../runtime/runtime.zig");
+const vm_mod = @import("../interp/vm.zig");
 const Value = runtime.Value;
 const std = @import("std");
 
@@ -15,6 +16,7 @@ pub const JitContext = extern struct {
     _pad: [6]u8 = .{0} ** 6,
     const_count: usize = 0,
     err_trace: *std.builtin.StackTrace,
+    vm: *vm_mod.Vm,
 };
 
 pub const RetBuf = extern struct {
@@ -38,6 +40,9 @@ comptime {
     }
     if (@offsetOf(JitContext, "err_trace") != 64) {
         @compileError("JitContext.err_trace offset mismatch");
+    }
+    if (@offsetOf(JitContext, "vm") != 72) {
+        @compileError("JitContext.vm offset mismatch");
     }
     if (@sizeOf(RetBuf) != 16) {
         @compileError("RetBuf size mismatch");

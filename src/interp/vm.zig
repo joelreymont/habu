@@ -616,6 +616,20 @@ pub const Vm = struct {
         }
     }
 
+    pub fn loadGlobal(self: *Vm, idx: u16) Error!Value {
+        if (idx >= MAX_GLOBALS) return error.InvalidConstant;
+        return try self.handleSpecialVarLoad(idx);
+    }
+
+    pub fn storeGlobal(self: *Vm, idx: u16, val: Value) Error!void {
+        if (idx >= MAX_GLOBALS) return error.InvalidConstant;
+        self.globals[idx] = val;
+        if (idx >= self.num_globals) {
+            self.num_globals = idx + 1;
+        }
+        try self.handleSpecialVarStore(idx, val);
+    }
+
     pub fn collectGarbage(self: *Vm) !usize {
         // Gather roots from VM state
         var roots = std.ArrayList(Value){};
@@ -1008,19 +1022,13 @@ pub const Vm = struct {
             },
             .load_global => {
                 const idx = self.readU16();
-                if (idx >= MAX_GLOBALS) return error.InvalidConstant;
-                const val = try self.handleSpecialVarLoad(idx);
+                const val = try self.loadGlobal(idx);
                 try self.push(val);
             },
             .store_global => {
                 const idx = self.readU16();
-                if (idx >= MAX_GLOBALS) return error.InvalidConstant;
                 const val = try self.pop();
-                self.globals[idx] = val;
-                if (idx >= self.num_globals) {
-                    self.num_globals = idx + 1;
-                }
-                try self.handleSpecialVarStore(idx, val);
+                try self.storeGlobal(idx, val);
             },
             .load_argc => {
                 // Get argc from current frame, or from current_argc if fp=0 (callClosure)

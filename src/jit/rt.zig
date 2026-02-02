@@ -3,6 +3,7 @@
 const ctx = @import("ctx.zig");
 const runtime = @import("../runtime/runtime.zig");
 const arith = @import("../runtime/primitives/arith.zig");
+const vm_mod = @import("../interp/vm.zig");
 
 const Value = runtime.Value;
 const std = @import("std");
@@ -98,11 +99,22 @@ pub fn ge(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
     return if (try arith.ge(a, b)) Value.t else Value.nil;
 }
 
+pub fn loadGlobal(c: *ctx.JitContext, idx: u16) vm_mod.Error!Value {
+    return try c.vm.loadGlobal(idx);
+}
+
+pub fn storeGlobal(c: *ctx.JitContext, val: Value, idx: u16) vm_mod.Error!Value {
+    try c.vm.storeGlobal(idx, val);
+    return val;
+}
+
 test "rt add returns error union" {
     const testing = std.testing;
 
     var heap = try runtime.Heap.init(testing.allocator, .{});
     defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(testing.allocator, &heap);
 
     var dummy = [_]Value{Value.nil};
     var trace_addrs: [16]usize = undefined;
@@ -118,6 +130,7 @@ test "rt add returns error union" {
         .err = 0,
         .const_count = 0,
         .err_trace = &trace,
+        .vm = &vm,
     };
 
     try testing.expectError(error.TypeMismatch, add(&c, Value.nil, Value.nil));
@@ -133,6 +146,8 @@ test "rt neg returns error union" {
     var heap = try runtime.Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
+    var vm = try vm_mod.Vm.init(testing.allocator, &heap);
+
     var dummy = [_]Value{Value.nil};
     var trace_addrs: [16]usize = undefined;
     var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
@@ -147,6 +162,7 @@ test "rt neg returns error union" {
         .err = 0,
         .const_count = 0,
         .err_trace = &trace,
+        .vm = &vm,
     };
 
     try testing.expectError(error.TypeMismatch, neg(&c, Value.nil));

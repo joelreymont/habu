@@ -324,7 +324,26 @@ pub const Jit = struct {
                 bc_offset.* += 2;
                 return error.UnsupportedOpcode;
             },
-            .load_global, .store_global, .make_vec => {
+            .load_global => {
+                const idx = chunk.readU16(bc_offset.*);
+                bc_offset.* += 2;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                    .{ .imm64 = @as(u64, idx) },
+                });
+                try self.emitCallUnary(@intFromPtr(&rt.loadGlobal));
+                try self.emitStackPush();
+            },
+            .store_global => {
+                const idx = chunk.readU16(bc_offset.*);
+                bc_offset.* += 2;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                    .{ .imm64 = @as(u64, idx) },
+                });
+                _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x1_x0, &[_]patch.PatchValue{});
+                try self.emitStackPop();
+                try self.emitCallBinary(@intFromPtr(&rt.storeGlobal));
+            },
+            .make_vec => {
                 bc_offset.* += 2;
                 return error.UnsupportedOpcode;
             },
@@ -999,6 +1018,7 @@ test "jit vm parity add" {
         .err = 0,
         .const_count = consts.len,
         .err_trace = &trace,
+        .vm = &vm,
     };
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
@@ -1060,6 +1080,7 @@ test "jit vm parity numberp" {
         .err = 0,
         .const_count = consts.len,
         .err_trace = &trace,
+        .vm = &vm,
     };
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
@@ -1123,6 +1144,74 @@ test "jit vm parity lt" {
         .err = 0,
         .const_count = consts.len,
         .err_trace = &trace,
+        .vm = &vm,
+    };
+    const jit_raw = fn_ptr(&ctx_val);
+    const jit_res = Value{ .raw = jit_raw };
+
+    try testing.expectEqual(vm_res.raw, jit_res.raw);
+    try testing.expectEqual(@as(u16, 0), ctx_val.err);
+}
+
+test "jit vm parity global store/load" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try runtime.Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(allocator, &heap);
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const store_global_op: u16 = @intFromEnum(Op.store_global);
+    const load_global_op: u16 = @intFromEnum(Op.load_global);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const idx: u16 = 0;
+    const code = [_]u8{
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        42, 0, 0, 0,
+        @truncate(store_global_op & 0xFF), @truncate(store_global_op >> 8),
+        @truncate(idx & 0xFF), @truncate(idx >> 8),
+        @truncate(load_global_op & 0xFF), @truncate(load_global_op >> 8),
+        @truncate(idx & 0xFF), @truncate(idx >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+    const consts = [_]Value{};
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const vm_res = try vm.run(&chunk);
+
+    const fn_ptr = try jit.compile(&chunk);
+    var stack_buf: [32]Value = undefined;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var ctx_val = ctx.JitContext{
+        .sp = stack_buf[0..].ptr,
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .frame_base = stack_buf[0..].ptr,
+        .stack_end = stack_buf[stack_buf.len..].ptr,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+        .const_count = consts.len,
+        .err_trace = &trace,
+        .vm = &vm,
     };
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
@@ -1186,6 +1275,7 @@ test "jit vm parity lt float" {
         .err = 0,
         .const_count = consts.len,
         .err_trace = &trace,
+        .vm = &vm,
     };
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
@@ -1202,6 +1292,8 @@ test "jit gc roots preserve stack" {
 
     var heap = try runtime.Heap.init(allocator, .{ .total_size = 128 * 1024 });
     defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(allocator, &heap);
 
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
@@ -1257,6 +1349,7 @@ test "jit gc roots preserve stack" {
         .err = 0,
         .const_count = consts.len,
         .err_trace = &trace,
+        .vm = &vm,
     };
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
@@ -1274,6 +1367,8 @@ test "jit stack overflow sets err" {
 
     var heap = try runtime.Heap.init(allocator, .{});
     defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(allocator, &heap);
 
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
@@ -1324,6 +1419,7 @@ test "jit stack overflow sets err" {
         .err = 0,
         .const_count = consts.len,
         .err_trace = &trace,
+        .vm = &vm,
     };
 
     const jit_raw = fn_ptr(&ctx_val);
