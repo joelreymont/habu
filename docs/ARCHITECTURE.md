@@ -407,11 +407,11 @@ ARM64 JIT compiler (in progress):
 - Runtime constant pool loads
 - W^X code buffer + icache flush
 - Branch patching
+- Calls, locals, globals, closures (via runtime helpers)
 
 Planned:
 - Hot loop detection
 - Deoptimization / OSR hooks
 - Stack maps / GC safepoints
-- Calls, locals, globals, closures
 
 See: `src/jit/`, `docs/cranelift-parity.md`
