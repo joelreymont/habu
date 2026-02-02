@@ -1,9 +1,11 @@
 ---
 title: Update parity doc
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-02-02T22:28:22.188194+01:00"
+created-at: "\"\\\"2026-02-02T22:28:22.188194+01:00\\\"\""
+closed-at: "2026-02-02T22:46:39.399316+01:00"
+close-reason: Audit JIT parity notes
 blocks:
   - habu-validate-imm32-patch-ee04f8bb
 ---
