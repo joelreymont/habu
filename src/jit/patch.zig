@@ -160,7 +160,10 @@ fn applyPatch(
         .imm32 => {
             const imm = switch (value) {
                 .imm32 => |v| v,
-                .imm64 => |v| @as(u32, @truncate(v)),
+                .imm64 => |v| blk: {
+                    if (v > std.math.maxInt(u32)) return error.InvalidImm;
+                    break :blk @as(u32, @intCast(v));
+                },
                 else => return error.InvalidHoleType,
             };
             // Patch 32-bit immediate in instruction
@@ -387,6 +390,19 @@ test "patch imm32" {
     const inst = std.mem.readInt(u32, buffer.memory[0..4], .little);
     const imm12 = (inst >> 10) & 0xFFF;
     try testing.expectEqual(@as(u32, offset_bytes >> 3), imm12);
+}
+
+test "patch imm32 rejects overflow" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var buffer = try CodeBuffer.init(allocator, 4096);
+    defer buffer.deinit();
+
+    const big: u64 = @as(u64, std.math.maxInt(u32)) + 1;
+    try testing.expectError(error.InvalidImm, patchStencil(&buffer, stencils.load_local, &[_]PatchValue{
+        .{ .imm64 = big },
+    }));
 }
 
 test "patch stencil without holes" {

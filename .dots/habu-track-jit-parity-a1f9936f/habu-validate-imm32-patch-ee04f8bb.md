@@ -1,9 +1,11 @@
 ---
 title: Validate imm32 patch
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-02-02T22:28:17.927341+01:00"
+created-at: "\"\\\"2026-02-02T22:28:17.927341+01:00\\\"\""
+closed-at: "2026-02-02T22:45:23.314200+01:00"
+close-reason: Reject imm32 overflow + test
 blocks:
   - habu-fix-jit-rollback-1c02296b
 ---
