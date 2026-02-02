@@ -82,7 +82,20 @@ pub const Jit = struct {
 
     /// Compile a bytecode chunk to native code
     pub fn compile(self: *Jit, chunk: *const Chunk) JitError!JitFn {
-        self.fn_start = self.code_buffer.pos;
+        const start_pos = self.code_buffer.pos;
+        var ok = false;
+        defer {
+            if (!ok) {
+                self.code_buffer.pos = start_pos;
+                self.labels.clearRetainingCapacity();
+                self.pending_jumps.clearRetainingCapacity();
+                self.err_branches.clearRetainingCapacity();
+                if (self.code_buffer.setWritable(false)) |_| {} else |err| {
+                    std.debug.panic("jit rollback failed: {s}", .{@errorName(err)});
+                }
+            }
+        }
+        self.fn_start = start_pos;
         self.labels.clearRetainingCapacity();
         self.pending_jumps.clearRetainingCapacity();
         self.err_branches.clearRetainingCapacity();
@@ -109,6 +122,7 @@ pub const Jit = struct {
         try self.emitErrorHandler();
         try self.code_buffer.setWritable(false);
 
+        ok = true;
         return self.code_buffer.getFnPtr(JitFn, self.fn_start);
     }
 
@@ -784,6 +798,36 @@ test "jit init" {
     defer jit.deinit();
 
     try testing.expectEqual(@as(usize, 0), jit.code_buffer.pos);
+}
+
+test "jit compile rollback on error" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const bad_op: u16 = @intFromEnum(Op.math_ext);
+    const code = [_]u8{
+        @truncate(bad_op & 0xFF), @truncate(bad_op >> 8),
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const start_pos = jit.code_buffer.pos;
+    try testing.expectError(error.UnsupportedOpcode, jit.compile(&chunk));
+    try testing.expectEqual(start_pos, jit.code_buffer.pos);
+    try testing.expect(!jit.code_buffer.writable);
 }
 
 test "jit compile simple" {
