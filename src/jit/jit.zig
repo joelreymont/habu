@@ -442,6 +442,13 @@ pub const Jit = struct {
                 try self.emitCallUnary(@intFromPtr(&rt.call));
                 try self.emitLoadCtxSp();
             },
+            .apply => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                    .{ .imm64 = 0 },
+                });
+                try self.emitCallUnary(@intFromPtr(&rt.apply));
+                try self.emitLoadCtxSp();
+            },
             .make_list => {
                 const count = chunk.readU8(bc_offset.*);
                 bc_offset.* += 1;
@@ -1778,6 +1785,101 @@ test "jit vm parity call closure" {
     try testing.expectEqual(@as(i64, 42), vm_res.toFixnum());
     try testing.expect(jit_res.isFixnum());
     try testing.expectEqual(@as(i64, 42), jit_res.toFixnum());
+    try testing.expectEqual(@as(u16, 0), ctx_val.err);
+}
+
+test "jit vm parity apply" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try runtime.Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(allocator, &heap);
+
+    const load_local_op: u16 = @intFromEnum(Op.load_local);
+    const add_op: u16 = @intFromEnum(Op.add);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const closure_code = [_]u8{
+        @truncate(load_local_op & 0xFF), @truncate(load_local_op >> 8), 0,
+        @truncate(load_local_op & 0xFF), @truncate(load_local_op >> 8), 1,
+        @truncate(add_op & 0xFF), @truncate(add_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+    const closure_consts = [_]Value{};
+    var closure_chunk = Chunk{
+        .code = @constCast(&closure_code),
+        .const_pool = @ptrCast(@constCast(&closure_consts)),
+        .const_count = 0,
+        .code_len = closure_code.len,
+        .arity = 2,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 2,
+    };
+    var chunk_pool = [_]*Chunk{ &closure_chunk };
+    vm.chunk_pool = chunk_pool[0..];
+    vm.chunk_base = 0;
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const make_closure_op: u16 = @intFromEnum(Op.make_closure);
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const make_list_op: u16 = @intFromEnum(Op.make_list);
+    const apply_op: u16 = @intFromEnum(Op.apply);
+    const code = [_]u8{
+        @truncate(make_closure_op & 0xFF), @truncate(make_closure_op >> 8),
+        0, 0,
+        0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 1, 0, 0, 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 2, 0, 0, 0,
+        @truncate(make_list_op & 0xFF), @truncate(make_list_op >> 8), 2,
+        @truncate(apply_op & 0xFF), @truncate(apply_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+    const consts = [_]Value{};
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const vm_res = try vm.run(&chunk);
+
+    const fn_ptr = try jit.compile(&chunk);
+    var stack_buf: [32]Value = undefined;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var ctx_val = ctx.JitContext{
+        .sp = stack_buf[0..].ptr,
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .frame_base = stack_buf[0..].ptr,
+        .stack_end = stack_buf[stack_buf.len..].ptr,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+        .const_count = consts.len,
+        .err_trace = &trace,
+        .vm = &vm,
+    };
+    const jit_raw = fn_ptr(&ctx_val);
+    const jit_res = Value{ .raw = jit_raw };
+
+    try testing.expect(vm_res.isFixnum());
+    try testing.expectEqual(@as(i64, 3), vm_res.toFixnum());
+    try testing.expect(jit_res.isFixnum());
+    try testing.expectEqual(@as(i64, 3), jit_res.toFixnum());
     try testing.expectEqual(@as(u16, 0), ctx_val.err);
 }
 

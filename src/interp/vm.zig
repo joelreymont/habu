@@ -914,6 +914,25 @@ pub const Vm = struct {
         return try self.execute();
     }
 
+    /// Apply function with args list provided as a value
+    pub fn applyFromStack(self: *Vm, fn_val: Value, args_list: Value) Error!Value {
+        const saved_state = State.save(self);
+        defer saved_state.restore(self);
+
+        if (self.stack.len < 2) return error.StackOverflow;
+        self.stack[0] = fn_val;
+        self.stack[1] = args_list;
+        self.sp = 2;
+
+        self.chunk = &halt_chunk;
+        self.ip = 0;
+        self.fp = 0;
+        self.scope_sp = 0;
+
+        try self.doApply();
+        return try self.execute();
+    }
+
     /// Run a chunk to completion
     pub fn run(self: *Vm, chunk: *const Chunk) Error!Value {
         self.chunk = chunk;

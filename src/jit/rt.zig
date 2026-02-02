@@ -310,6 +310,28 @@ pub fn call(c: *ctx.JitContext, argc: u8) vm_mod.Error!Value {
     return res;
 }
 
+pub fn apply(c: *ctx.JitContext, _: u8) vm_mod.Error!Value {
+    const sp = stackLen(c);
+    if (sp < 2) return error.StackUnderflow;
+
+    const fn_idx = sp - 2;
+    const fn_val = c.frame_base[fn_idx];
+    const args_list = c.frame_base[sp - 1];
+
+    var jit_roots = try JitRoots.init(c, &[_]Value{});
+    defer jit_roots.deinit();
+
+    c.vm.setExtRoots(jit_roots.roots.items);
+    const apply_res = c.vm.applyFromStack(fn_val, args_list);
+    c.vm.clearExtRoots();
+    jit_roots.writeBack();
+
+    const res = apply_res catch |err| return err;
+    c.frame_base[fn_idx] = res;
+    c.sp = c.frame_base + fn_idx + 1;
+    return res;
+}
+
 test "rt add returns error union" {
     const testing = std.testing;
 
