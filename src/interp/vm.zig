@@ -308,6 +308,9 @@ pub const Vm = struct {
     /// Current argc for load_argc when fp=0 (used by callClosure)
     current_argc: u8,
 
+    /// External GC roots (e.g., JIT stack/consts)
+    ext_roots: []Value,
+
     /// Pre-interned builtin symbols for fast dispatch
     builtins: BuiltinSymbols,
 
@@ -331,7 +334,7 @@ pub const Vm = struct {
             .sp = 0,
             .frames = undefined,
             .fp = 0,
-            .chunk = undefined,
+            .chunk = &halt_chunk,
             .ip = 0,
             .heap = heap,
             .allocator = allocator,
@@ -379,6 +382,7 @@ pub const Vm = struct {
             .gensym_counter = 0,
             .current_closure = null,
             .current_argc = 0,
+            .ext_roots = &[_]Value{},
             .builtins = try BuiltinSymbols.init(heap),
             .type_syms = try type_mod.TypeSymbols.init(heap),
         };
@@ -434,6 +438,14 @@ pub const Vm = struct {
     pub fn setFboundpCallback(self: *Vm, callback: *const fn (Value, *anyopaque) Error!bool, context: *anyopaque) void {
         self.fboundp_callback = callback;
         self.fboundp_context = context;
+    }
+
+    pub fn setExtRoots(self: *Vm, roots: []Value) void {
+        self.ext_roots = roots;
+    }
+
+    pub fn clearExtRoots(self: *Vm) void {
+        self.ext_roots = &[_]Value{};
     }
 
     /// Allocate a cons cell, running GC if needed
@@ -728,6 +740,11 @@ pub const Vm = struct {
             }
         }
 
+        const ext_start = roots.items.len;
+        if (self.ext_roots.len != 0) {
+            try roots.appendSlice(self.allocator, self.ext_roots);
+        }
+
         // Run GC
         const reclaimed = self.heap.collectGarbage(roots.items);
 
@@ -833,6 +850,12 @@ pub const Vm = struct {
             const start = chunk_const_starts.items[chunk_idx];
             for (chunk.getConstants(), 0..) |_, const_idx| {
                 chunk.getConstants()[const_idx] = roots.items[start + const_idx];
+            }
+        }
+
+        if (self.ext_roots.len != 0) {
+            for (self.ext_roots, 0..) |*v, i| {
+                v.* = roots.items[ext_start + i];
             }
         }
 
@@ -8082,4 +8105,39 @@ test "vm write_to_string propagates buffer errors" {
     try vm.push(str);
 
     try testing.expectError(error.NoSpaceLeft, vm.executeOp(.write_to_string));
+}
+
+test "vm collectGarbage updates ext roots" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const empty_chunk = Chunk{
+        .code = @constCast(&[_]u8{}),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = 0,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+    vm.chunk = &empty_chunk;
+
+    var ext = [_]Value{try heap.allocCons(Value.makeFixnum(1), Value.makeFixnum(2))};
+    vm.setExtRoots(ext[0..]);
+    defer vm.clearExtRoots();
+
+    _ = try vm.collectGarbage();
+
+    try testing.expect(ext[0].isCons());
+    const ptr = @intFromPtr(ext[0].toPtr(runtime.Cons));
+    const start = @intFromPtr(heap.from_start);
+    const end = start + heap.space_size;
+    try testing.expect(ptr >= start and ptr < end);
 }

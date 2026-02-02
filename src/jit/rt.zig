@@ -10,6 +10,56 @@ const std = @import("std");
 
 const BinaryOp = *const fn (*runtime.Heap, Value, Value) arith.Error!Value;
 
+const JitRoots = struct {
+    roots: std.ArrayList(Value),
+    stack_vals: []Value,
+    const_vals: []Value,
+    extra: []Value,
+    alloc: std.mem.Allocator,
+
+    fn init(c: *ctx.JitContext, extra: []Value) !JitRoots {
+        const alloc = c.heap.backing_allocator;
+        var roots = std.ArrayList(Value){};
+
+        const stack_len = stackLen(c);
+        const stack_vals = c.frame_base[0..stack_len];
+        try roots.appendSlice(alloc, stack_vals);
+
+        const const_vals = c.const_pool[0..c.const_count];
+        try roots.appendSlice(alloc, const_vals);
+
+        try roots.appendSlice(alloc, extra);
+
+        return .{
+            .roots = roots,
+            .stack_vals = stack_vals,
+            .const_vals = const_vals,
+            .extra = extra,
+            .alloc = alloc,
+        };
+    }
+
+    fn deinit(self: *JitRoots) void {
+        self.roots.deinit(self.alloc);
+    }
+
+    fn writeBack(self: *JitRoots) void {
+        var idx: usize = 0;
+        for (self.stack_vals) |*v| {
+            v.* = self.roots.items[idx];
+            idx += 1;
+        }
+        for (self.const_vals) |*v| {
+            v.* = self.roots.items[idx];
+            idx += 1;
+        }
+        for (self.extra) |*v| {
+            v.* = self.roots.items[idx];
+            idx += 1;
+        }
+    }
+};
+
 fn stackLen(c: *ctx.JitContext) usize {
     const len_bytes = @intFromPtr(c.sp) - @intFromPtr(c.frame_base);
     return @intCast(@divExact(len_bytes, @sizeOf(Value)));
@@ -21,34 +71,16 @@ fn stackCap(c: *ctx.JitContext) usize {
 }
 
 fn collectJitGarbage(c: *ctx.JitContext, extra: []Value) !void {
-    const heap = c.heap;
-    var roots = std.ArrayList(Value){};
-    defer roots.deinit(heap.backing_allocator);
+    var jit_roots = try JitRoots.init(c, extra);
+    defer jit_roots.deinit();
 
-    const stack_len = stackLen(c);
-    const stack_vals = c.frame_base[0..stack_len];
-    try roots.appendSlice(heap.backing_allocator, stack_vals);
-
-    const const_vals = c.const_pool[0..c.const_count];
-    try roots.appendSlice(heap.backing_allocator, const_vals);
-
-    try roots.appendSlice(heap.backing_allocator, extra);
-
-    _ = try heap.collectGarbage(roots.items);
-
-    var idx: usize = 0;
-    for (stack_vals) |*v| {
-        v.* = roots.items[idx];
-        idx += 1;
+    c.vm.setExtRoots(jit_roots.roots.items);
+    defer {
+        c.vm.clearExtRoots();
+        jit_roots.writeBack();
     }
-    for (const_vals) |*v| {
-        v.* = roots.items[idx];
-        idx += 1;
-    }
-    for (extra) |*v| {
-        v.* = roots.items[idx];
-        idx += 1;
-    }
+
+    _ = try c.vm.collectGarbage();
 }
 
 fn callBinaryWithGc(c: *ctx.JitContext, a: Value, b: Value, func: BinaryOp) arith.Error!Value {
@@ -232,19 +264,19 @@ pub fn makeClosure(c: *ctx.JitContext, chunk_idx: u16, num_captures: u8) vm_mod.
 }
 
 pub fn loadCapture(c: *ctx.JitContext, idx: u8) vm_mod.Error!Value {
-    const closure = c.vm.current_closure orelse return error.TypeMismatch;
+    const closure = if (c.vm.current_closure) |cl| cl else return error.TypeMismatch;
     if (idx >= closure.num_captures) return error.InvalidConstant;
     return closure.getCapture(idx);
 }
 
 pub fn loadUpvalue(c: *ctx.JitContext, idx: u8) vm_mod.Error!Value {
-    const closure = c.vm.current_closure orelse return error.TypeMismatch;
+    const closure = if (c.vm.current_closure) |cl| cl else return error.TypeMismatch;
     if (idx >= closure.num_captures) return error.InvalidConstant;
     return closure.getCapture(idx);
 }
 
 pub fn storeUpvalue(c: *ctx.JitContext, val: Value, idx: u8) vm_mod.Error!Value {
-    const closure = c.vm.current_closure orelse return error.TypeMismatch;
+    const closure = if (c.vm.current_closure) |cl| cl else return error.TypeMismatch;
     if (idx >= closure.num_captures) return error.InvalidConstant;
     const captures: [*]Value = @constCast(closure.captures);
     captures[idx] = val;
@@ -263,7 +295,16 @@ pub fn call(c: *ctx.JitContext, argc: u8) vm_mod.Error!Value {
     const fn_idx = sp - argc_usize - 1;
     const fn_val = c.frame_base[fn_idx];
     const args = c.frame_base[fn_idx + 1 .. fn_idx + 1 + argc_usize];
-    const res = try c.vm.callFromStack(fn_val, args);
+
+    var jit_roots = try JitRoots.init(c, &[_]Value{});
+    defer jit_roots.deinit();
+
+    c.vm.setExtRoots(jit_roots.roots.items);
+    const call_res = c.vm.callFromStack(fn_val, args);
+    c.vm.clearExtRoots();
+    jit_roots.writeBack();
+
+    const res = call_res catch |err| return err;
     c.frame_base[fn_idx] = res;
     c.sp = c.frame_base + fn_idx + 1;
     return res;
@@ -330,4 +371,43 @@ test "rt neg returns error union" {
     const res = try neg(&c, Value.makeFixnum(5));
     try testing.expect(res.isFixnum());
     try testing.expectEqual(@as(i64, -5), res.toFixnum());
+}
+
+test "rt gc keeps vm globals" {
+    const testing = std.testing;
+
+    var heap = try runtime.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(testing.allocator, &heap);
+
+    const cons = try heap.allocCons(Value.makeFixnum(1), Value.nil);
+    try vm.storeGlobal(0, cons);
+
+    var stack = [_]Value{Value.nil, Value.nil};
+    const base = stack[0..].ptr;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var c = ctx.JitContext{
+        .sp = base + 1,
+        .const_pool = base,
+        .frame_base = base,
+        .stack_end = base + stack.len,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+        .const_count = 0,
+        .err_trace = &trace,
+        .vm = &vm,
+    };
+
+    try collectJitGarbage(&c, &[_]Value{});
+
+    const global = vm.globals[0];
+    try testing.expect(global.isCons());
+    const ptr = @intFromPtr(global.toPtr(runtime.Cons));
+    const start = @intFromPtr(heap.from_start);
+    const end = start + heap.space_size;
+    try testing.expect(ptr >= start and ptr < end);
 }
