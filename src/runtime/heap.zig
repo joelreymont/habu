@@ -271,6 +271,9 @@ pub const Heap = struct {
     dispatch_readtable: std.AutoHashMapUnmanaged(u8, std.AutoHashMapUnmanaged(u8, Value)),
     /// Streams allocated in heap (for finalization)
     stream_list: std.ArrayList(*objects.Stream),
+    /// Warning handler for warn primitive (optional)
+    warn_handler: ?WarnHandler,
+    warn_ctx: ?*anyopaque,
 
     pub const ReadtableEntry = struct {
         function: Value,
@@ -292,6 +295,8 @@ pub const Heap = struct {
         gc_count: usize = 0,
         bytes_copied: usize = 0,
     };
+
+    pub const WarnHandler = *const fn (Value, ?*anyopaque) anyerror!void;
 
     /// Initialize a new heap
     pub fn init(allocator: std.mem.Allocator, config: Config) !Heap {
@@ -331,6 +336,8 @@ pub const Heap = struct {
             .readtable = .{},
             .dispatch_readtable = .{},
             .stream_list = std.ArrayList(*objects.Stream){},
+            .warn_handler = null,
+            .warn_ctx = null,
         };
 
         try heap.symbols.put("T", Value.t);
@@ -473,6 +480,11 @@ pub const Heap = struct {
 
     fn trackStream(self: *Heap, stream: *objects.Stream) !void {
         try self.stream_list.append(self.backing_allocator, stream);
+    }
+
+    pub fn setWarnHandler(self: *Heap, handler: ?WarnHandler, ctx: ?*anyopaque) void {
+        self.warn_handler = handler;
+        self.warn_ctx = ctx;
     }
 
     /// Allocate a cons cell

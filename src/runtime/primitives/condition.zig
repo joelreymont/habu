@@ -56,6 +56,11 @@ pub fn warn(heap: *Heap, args: []const Value) !Value {
         else => datum,
     };
 
+    if (heap.warn_handler) |handler| {
+        try handler(condition, heap.warn_ctx);
+        return Value.nil;
+    }
+
     // Signal the warning (default handler prints it)
     // TODO: implement proper handler dispatch
     var out_buf: [4096]u8 = undefined;
@@ -174,6 +179,17 @@ test "warn accepts string and symbol datum" {
     var heap = try Heap.init(testing.allocator, .{});
     defer heap.deinit();
 
+    var count: u8 = 0;
+    const handler = struct {
+        fn handle(cond: Value, ctx: ?*anyopaque) !void {
+            if (!cond.isCondition()) return error.TypeError;
+            const count_ptr: *u8 = @ptrCast(@alignCast(ctx.?));
+            count_ptr.* += 1;
+        }
+    }.handle;
+    heap.setWarnHandler(handler, &count);
+    defer heap.setWarnHandler(null, null);
+
     const msg = try heap.allocBaseString("oops");
     const args1 = [_]Value{msg};
     _ = try warn(&heap, &args1);
@@ -181,4 +197,6 @@ test "warn accepts string and symbol datum" {
     const sym = try heap.intern("oops");
     const args2 = [_]Value{sym};
     _ = try warn(&heap, &args2);
+
+    try testing.expectEqual(@as(u8, 2), count);
 }
