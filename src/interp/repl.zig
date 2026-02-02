@@ -465,7 +465,6 @@ pub const Repl = struct {
 
         // Expand macros
         expr = if (self.expandMacros(expr)) |expanded| expanded else |err| {
-            std.debug.print("Macro expansion error: {}\n", .{err});
             return err;
         };
 
@@ -486,7 +485,6 @@ pub const Repl = struct {
         defer env.deinit();
 
         const ir_node = if (self.compiler.compile(expr, &env)) |node| node else |err| {
-            std.debug.print("Compile error: {}\n", .{err});
             return err;
         };
 
@@ -813,7 +811,6 @@ pub const Repl = struct {
 
         // Expand macros before compilation
         expr = if (self.expandMacros(expr)) |expanded| expanded else |err| {
-            std.debug.print("expandMacros error: {}\n", .{err});
             return err;
         };
 

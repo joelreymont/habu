@@ -1587,6 +1587,8 @@ pub const Compiler = struct {
     type_aliases: std.StringHashMap(Value),
     /// Global declaration environment
     global_decls: DeclEnv,
+    /// Diagnostic prints for compile errors
+    diag: bool,
 
     /// ADT variant definition
     pub const Variant = struct {
@@ -1638,6 +1640,7 @@ pub const Compiler = struct {
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
             .type_aliases = std.StringHashMap(Value).init(allocator),
             .global_decls = DeclEnv.create(allocator),
+            .diag = false,
         };
     }
 
@@ -1670,6 +1673,7 @@ pub const Compiler = struct {
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
             .type_aliases = std.StringHashMap(Value).init(allocator),
             .global_decls = DeclEnv.create(allocator),
+            .diag = false,
         };
     }
 
@@ -2043,12 +2047,14 @@ pub const Compiler = struct {
     pub fn compile(self: *Compiler, expr: Value, env: *const Env) anyerror!*Ir {
         const result = self.compileWithTail(expr, env, false);
         return if (result) |node| node else |err| {
-            std.debug.print("COMPILE FAILED with {}\n", .{err});
-            if (expr.isCons()) {
-                const cons = expr.toPtr(Cons);
-                if (cons.car.isSymbol()) {
-                    const sym = cons.car.toPtr(Symbol);
-                    std.debug.print("  Failed form head: {s}\n", .{sym.getName()});
+            if (self.diag) {
+                std.debug.print("COMPILE FAILED with {}\n", .{err});
+                if (expr.isCons()) {
+                    const cons = expr.toPtr(Cons);
+                    if (cons.car.isSymbol()) {
+                        const sym = cons.car.toPtr(Symbol);
+                        std.debug.print("  Failed form head: {s}\n", .{sym.getName()});
+                    }
                 }
             }
             return err;
@@ -2162,7 +2168,9 @@ pub const Compiler = struct {
             return try self.builder.lit(expr);
         }
 
-        std.debug.print("Invalid syntax: typeKind={}, raw=0x{x}\n", .{ expr.typeKind(), expr.raw });
+        if (self.diag) {
+            std.debug.print("Invalid syntax: typeKind={}, raw=0x{x}\n", .{ expr.typeKind(), expr.raw });
+        }
         return error.InvalidSyntax;
     }
 
@@ -3077,11 +3085,15 @@ pub const Compiler = struct {
             }
 
             // Other complex types not yet supported
-            std.debug.print("InvalidSyntax: unknown complex type\n", .{});
+            if (self.diag) {
+                std.debug.print("InvalidSyntax: unknown complex type\n", .{});
+            }
             return error.InvalidSyntax;
         }
 
-        std.debug.print("InvalidSyntax: unknown type\n", .{});
+        if (self.diag) {
+            std.debug.print("InvalidSyntax: unknown type\n", .{});
+        }
         return error.InvalidSyntax;
     }
 
