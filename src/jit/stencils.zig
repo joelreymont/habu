@@ -76,6 +76,11 @@ fn sub_reg(rd: u5, rn: u5, rm: u5) u32 {
     return 0xCB000000 | (@as(u32, rm) << 16) | (@as(u32, rn) << 5) | rd;
 }
 
+/// Encode AND instruction: AND Xd, Xn, Xm
+fn and_reg(rd: u5, rn: u5, rm: u5) u32 {
+    return 0x8A000000 | (@as(u32, rm) << 16) | (@as(u32, rn) << 5) | rd;
+}
+
 /// Encode CMP instruction: CMP Xn, Xm
 fn cmp_reg(rn: u5, rm: u5) u32 {
     return 0xEB00001F | (@as(u32, rm) << 16) | (@as(u32, rn) << 5);
@@ -243,6 +248,7 @@ const COND_LS: u4 = 0x9; // unsigned <=
 
 const ERR_STACK_OVERFLOW: u16 = @intFromError(error.StackOverflow);
 const ERR_STACK_UNDERFLOW: u16 = @intFromError(error.StackUnderflow);
+const ERR_TYPE_MISMATCH: u16 = @intFromError(error.TypeMismatch);
 
 // ============================================================================
 // Stencil Definitions
@@ -768,6 +774,22 @@ pub const guard_fixnum_x1 = Stencil{
     .holes = &[_]Hole{},
 };
 
+/// Guard: branch if x0 is not a cons (tag bits set)
+pub const guard_cons_x0 = Stencil{
+    .name = "guard_cons_x0",
+    .code = &(
+        // MOVZ x10, #0xF
+        inst_bytes(movz(X10, 0xF, 0)) ++
+            // AND x10, x0, x10
+            inst_bytes(and_reg(X10, X0, X10)) ++
+            // MOVZ x9, #err
+            inst_bytes(movz(X9, ERR_TYPE_MISMATCH, 0)) ++
+            // CBNZ x10, <err>
+            inst_bytes(cbnz_placeholder(X10))),
+    .holes = &[_]Hole{},
+};
+pub const guard_cons_x0_branch_offset: usize = 12;
+
 /// Dup: push x0 without popping
 pub const dup_stencil = Stencil{
     .name = "dup",
@@ -903,6 +925,7 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 4), clear_retbuf_err.code.len);
     try testing.expectEqual(@as(usize, 8), guard_fixnum_x0.code.len);
     try testing.expectEqual(@as(usize, 8), guard_fixnum_x1.code.len);
+    try testing.expectEqual(@as(usize, 16), guard_cons_x0.code.len);
     try testing.expectEqual(@as(usize, 4), load_local.code.len);
     try testing.expectEqual(@as(usize, 4), load_const.code.len);
 

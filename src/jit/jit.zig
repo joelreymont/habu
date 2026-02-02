@@ -285,14 +285,56 @@ pub const Jit = struct {
 
             .car => {
                 try self.emitStackPop();
+                const nil_branch_offset = self.code_buffer.pos;
+                const nil_inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + nil_branch_offset;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.branch_nil, &[_]patch.PatchValue{
+                    .{ .addr = nil_inst_addr },
+                });
+
+                try self.emitGuardConsX0();
+
                 _ = try patch.patchStencil(&self.code_buffer, stencils.car_stencil, &[_]patch.PatchValue{});
+
+                const fast_branch_offset = self.code_buffer.pos;
+                const fast_inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + fast_branch_offset;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.branch_stencil, &[_]patch.PatchValue{
+                    .{ .addr = fast_inst_addr },
+                });
+
+                const end_code_offset = self.code_buffer.pos;
                 try self.emitStackPush();
+                const end_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + end_code_offset;
+
+                try self.patchBranch(nil_branch_offset, end_target_addr, .rel19);
+                try self.patchBranch(fast_branch_offset, end_target_addr, .rel26);
+                patch.flushIcache(self.code_buffer.memory.ptr, self.code_buffer.pos);
             },
 
             .cdr => {
                 try self.emitStackPop();
+                const nil_branch_offset = self.code_buffer.pos;
+                const nil_inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + nil_branch_offset;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.branch_nil, &[_]patch.PatchValue{
+                    .{ .addr = nil_inst_addr },
+                });
+
+                try self.emitGuardConsX0();
+
                 _ = try patch.patchStencil(&self.code_buffer, stencils.cdr_stencil, &[_]patch.PatchValue{});
+
+                const fast_branch_offset = self.code_buffer.pos;
+                const fast_inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + fast_branch_offset;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.branch_stencil, &[_]patch.PatchValue{
+                    .{ .addr = fast_inst_addr },
+                });
+
+                const end_code_offset = self.code_buffer.pos;
                 try self.emitStackPush();
+                const end_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + end_code_offset;
+
+                try self.patchBranch(nil_branch_offset, end_target_addr, .rel19);
+                try self.patchBranch(fast_branch_offset, end_target_addr, .rel26);
+                patch.flushIcache(self.code_buffer.memory.ptr, self.code_buffer.pos);
             },
 
             .load_local => {
@@ -428,6 +470,12 @@ pub const Jit = struct {
         const start = self.code_buffer.pos;
         _ = try patch.patchStencil(&self.code_buffer, stencils.guard_fixnum_x1, &[_]patch.PatchValue{});
         return start + 4;
+    }
+
+    fn emitGuardConsX0(self: *Jit) JitError!void {
+        const start = try patch.patchStencil(&self.code_buffer, stencils.guard_cons_x0, &[_]patch.PatchValue{});
+        const branch_offset = start + stencils.guard_cons_x0_branch_offset;
+        try self.err_branches.append(self.allocator, branch_offset);
     }
 
     fn emitMulOverflowCheck(self: *Jit) JitError!usize {
@@ -1218,6 +1266,129 @@ test "jit vm parity global store/load" {
 
     try testing.expectEqual(vm_res.raw, jit_res.raw);
     try testing.expectEqual(@as(u16, 0), ctx_val.err);
+}
+
+test "jit car nil returns nil" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try runtime.Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(allocator, &heap);
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const push_nil_op: u16 = @intFromEnum(Op.push_nil);
+    const car_op: u16 = @intFromEnum(Op.car);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(push_nil_op & 0xFF), @truncate(push_nil_op >> 8),
+        @truncate(car_op & 0xFF), @truncate(car_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+    const consts = [_]Value{};
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const vm_res = try vm.run(&chunk);
+
+    const fn_ptr = try jit.compile(&chunk);
+    var stack_buf: [32]Value = undefined;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var ctx_val = ctx.JitContext{
+        .sp = stack_buf[0..].ptr,
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .frame_base = stack_buf[0..].ptr,
+        .stack_end = stack_buf[stack_buf.len..].ptr,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+        .const_count = consts.len,
+        .err_trace = &trace,
+        .vm = &vm,
+    };
+    const jit_raw = fn_ptr(&ctx_val);
+    const jit_res = Value{ .raw = jit_raw };
+
+    try testing.expectEqual(vm_res.raw, jit_res.raw);
+    try testing.expectEqual(@as(u16, 0), ctx_val.err);
+}
+
+test "jit car non-cons sets err" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try runtime.Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(allocator, &heap);
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const car_op: u16 = @intFromEnum(Op.car);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        1, 0, 0, 0,
+        @truncate(car_op & 0xFF), @truncate(car_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+    const consts = [_]Value{};
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    try testing.expectError(error.TypeMismatch, vm.run(&chunk));
+
+    const fn_ptr = try jit.compile(&chunk);
+    var stack_buf: [32]Value = undefined;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var ctx_val = ctx.JitContext{
+        .sp = stack_buf[0..].ptr,
+        .const_pool = @ptrCast(@constCast(&consts)),
+        .frame_base = stack_buf[0..].ptr,
+        .stack_end = stack_buf[stack_buf.len..].ptr,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+        .const_count = consts.len,
+        .err_trace = &trace,
+        .vm = &vm,
+    };
+    const jit_raw = fn_ptr(&ctx_val);
+    const jit_res = Value{ .raw = jit_raw };
+
+    try testing.expect(jit_res.isNil());
+    try testing.expectEqual(@intFromError(error.TypeMismatch), ctx_val.err);
 }
 
 test "jit vm parity lt float" {
