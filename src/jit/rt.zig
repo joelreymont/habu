@@ -225,16 +225,16 @@ pub fn makeVec(c: *ctx.JitContext, _: u8) vm_mod.Error!Value {
     if (sp < 2) return error.StackUnderflow;
 
     const size_val = c.frame_base[sp - 2];
-    const init_val = c.frame_base[sp - 1];
     if (!size_val.isFixnum()) return error.TypeMismatch;
     const size_signed = size_val.toFixnum();
     if (size_signed < 0) return error.TypeMismatch;
     const size: usize = @intCast(size_signed);
 
     const vec = try allocVectorWithGc(c, size);
+    const init_val_post = c.frame_base[sp - 1];
     const vec_obj = vec.toPtr(runtime.Vector);
     for (0..size) |i| {
-        vec_obj.data[i] = init_val;
+        vec_obj.data[i] = init_val_post;
     }
 
     c.frame_base[sp - 2] = vec;
@@ -407,6 +407,56 @@ test "rt gc keeps vm globals" {
     const global = vm.globals[0];
     try testing.expect(global.isCons());
     const ptr = @intFromPtr(global.toPtr(runtime.Cons));
+    const start = @intFromPtr(heap.from_start);
+    const end = start + heap.space_size;
+    try testing.expect(ptr >= start and ptr < end);
+}
+
+test "rt makeVec reloads init after gc" {
+    const testing = std.testing;
+
+    var heap = try runtime.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(testing.allocator, &heap);
+
+    const init_cons = try heap.allocCons(Value.makeFixnum(7), Value.nil);
+    while (true) {
+        _ = heap.allocCons(Value.nil, Value.nil) catch |err| switch (err) {
+            error.OutOfMemory => break,
+        };
+    }
+
+    var stack = [_]Value{
+        Value.makeFixnum(1),
+        init_cons,
+        Value.nil,
+    };
+    const base = stack[0..].ptr;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var c = ctx.JitContext{
+        .sp = base + 2,
+        .const_pool = base,
+        .frame_base = base,
+        .stack_end = base + stack.len,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+        .const_count = 0,
+        .err_trace = &trace,
+        .vm = &vm,
+    };
+
+    const from_before = heap.from_start;
+    const vec = try makeVec(&c, 0);
+    try testing.expect(@intFromPtr(heap.from_start) != @intFromPtr(from_before));
+
+    const vec_obj = vec.toPtr(runtime.Vector);
+    const elem = vec_obj.data[0];
+    try testing.expect(elem.isCons());
+    const ptr = @intFromPtr(elem.toPtr(runtime.Cons));
     const start = @intFromPtr(heap.from_start);
     const end = start + heap.space_size;
     try testing.expect(ptr >= start and ptr < end);
