@@ -23,9 +23,10 @@ pub fn qualName(allocator: ?std.mem.Allocator, pkg: []const u8, local: []const u
 }
 
 pub fn qualSym(allocator: ?std.mem.Allocator, sym: *const objects.Symbol, buf: []u8) !QualName {
-    const pkg_ptr = sym.reserved;
-    if (pkg_ptr == 0) return .{ .name = sym.getName(), .owned = false };
-    const pkg: *const heap_mod.Package = @ptrFromInt(pkg_ptr);
+    const pkg_bits = sym.reserved;
+    // Symbol.reserved is either a *Package pointer (low-bit 0) or an uninterned uid (low-bit 1).
+    if (pkg_bits == 0 or (pkg_bits & 1) != 0) return .{ .name = sym.getName(), .owned = false };
+    const pkg: *const heap_mod.Package = @ptrFromInt(pkg_bits);
     return qualName(allocator, pkg.name, sym.getName(), buf);
 }
 

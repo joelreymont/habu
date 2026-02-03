@@ -1,9 +1,11 @@
 ---
 title: Fix compiler env keys
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-02-03T10:40:32.454471+01:00"
+created-at: "\"2026-02-03T10:40:32.454471+01:00\""
+closed-at: "2026-02-03T15:04:25.782724+01:00"
+close-reason: Key env by symbol identity (pkg/uid); fix captures; add tests
 blocks:
   - habu-fix-macro-chunk-5f196625
 ---

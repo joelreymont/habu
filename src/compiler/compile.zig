@@ -1269,9 +1269,37 @@ pub const Builtins = struct {
 };
 
 /// Lexical environment for variable resolution
+const VarKey = struct {
+    /// Pointer to home package (Zig Package), 0 for uninterned or compiler temps.
+    pkg_ptr: usize,
+    /// Uninterned stable id, 0 for interned symbols and compiler temps.
+    uid: u64,
+    /// Symbol name (owned for uid==0 keys; empty for uid!=0 keys).
+    name: []const u8,
+};
+
+const VarKeyCtx = struct {
+    pub fn hash(_: VarKeyCtx, key: VarKey) u64 {
+        var h = std.hash.Wyhash.hash(0, std.mem.asBytes(&key.pkg_ptr));
+        h = std.hash.Wyhash.hash(h, std.mem.asBytes(&key.uid));
+        return std.hash.Wyhash.hash(h, key.name);
+    }
+
+    pub fn eql(_: VarKeyCtx, a: VarKey, b: VarKey) bool {
+        return a.pkg_ptr == b.pkg_ptr and a.uid == b.uid and std.mem.eql(u8, a.name, b.name);
+    }
+};
+
+const VarMap = std.HashMap(VarKey, u16, VarKeyCtx, std.hash_map.default_max_load_percentage);
+
 pub const Env = struct {
+    pub const Binding = struct {
+        depth: u16,
+        index: u16,
+    };
+
     /// Variable bindings at this level
-    bindings: std.StringHashMap(u16),
+    bindings: VarMap,
     /// Parent environment (for closures)
     parent: ?*const Env,
     /// Depth from root (0 = top level)
@@ -1286,7 +1314,7 @@ pub const Env = struct {
     /// Create a new frame environment (for lambda)
     pub fn init(allocator: std.mem.Allocator, parent: ?*const Env) Env {
         return .{
-            .bindings = std.StringHashMap(u16).init(allocator),
+            .bindings = VarMap.init(allocator),
             .parent = parent,
             .depth = if (parent) |p| p.depth + 1 else 0,
             .new_frame = true,
@@ -1298,7 +1326,7 @@ pub const Env = struct {
     /// Create a same-frame environment (for let)
     pub fn initLet(allocator: std.mem.Allocator, parent: *const Env) Env {
         return .{
-            .bindings = std.StringHashMap(u16).init(allocator),
+            .bindings = VarMap.init(allocator),
             .parent = parent,
             .depth = parent.depth, // Same depth - same frame
             .new_frame = false,
@@ -1308,6 +1336,11 @@ pub const Env = struct {
     }
 
     pub fn deinit(self: *Env) void {
+        var it = self.bindings.keyIterator();
+        while (it.next()) |key| {
+            // Only uid==0 keys allocate name storage.
+            if (key.uid == 0) self.allocator.free(key.name);
+        }
         self.bindings.deinit();
     }
 
@@ -1323,21 +1356,63 @@ pub const Env = struct {
         return self.base_index + own_count;
     }
 
-    /// Add a binding, returns the absolute index
-    pub fn bind(self: *Env, name: []const u8) !u16 {
+    fn keyFromSym(sym_val: Value) ?VarKey {
+        if (sym_val.typeKind() != .symbol) return null;
+        const sym = sym_val.toPtr(Symbol);
+        const bits: u64 = sym.reserved;
+        if (bits != 0 and (bits & 1) == 0) {
+            return .{
+                .pkg_ptr = @intCast(bits),
+                .uid = 0,
+                .name = sym.getName(),
+            };
+        }
+        if ((bits & 1) != 0) {
+            return .{
+                .pkg_ptr = 0,
+                .uid = bits >> 1,
+                .name = "",
+            };
+        }
+        // Legacy/unannotated symbol: treat as temp name key.
+        return .{
+            .pkg_ptr = 0,
+            .uid = 0,
+            .name = sym.getName(),
+        };
+    }
+
+    fn keyOwnedFromSym(allocator: std.mem.Allocator, sym_val: Value) error{OutOfMemory}!VarKey {
+        const k = keyFromSym(sym_val) orelse return error.OutOfMemory;
+        if (k.uid != 0) return .{ .pkg_ptr = 0, .uid = k.uid, .name = "" };
+        const name_copy = try allocator.dupe(u8, k.name);
+        return .{ .pkg_ptr = k.pkg_ptr, .uid = 0, .name = name_copy };
+    }
+
+    /// Add a binding for a symbol, returns the absolute index
+    pub fn bindSym(self: *Env, sym_val: Value) error{OutOfMemory}!u16 {
         const local_index: u16 = @intCast(self.bindings.count());
         const abs_index = self.base_index + local_index;
-        try self.bindings.put(name, abs_index);
+        const key = try keyOwnedFromSym(self.allocator, sym_val);
+        try self.bindings.put(key, abs_index);
         return abs_index;
     }
 
-    /// Look up a variable, returns (depth, index) or null
-    pub fn lookup(self: *const Env, name: []const u8) ?struct { depth: u16, index: u16 } {
-        if (self.bindings.get(name)) |index| {
+    /// Add a binding for a compiler-generated name, returns the absolute index
+    pub fn bindName(self: *Env, name: []const u8) error{OutOfMemory}!u16 {
+        const local_index: u16 = @intCast(self.bindings.count());
+        const abs_index = self.base_index + local_index;
+        const name_copy = try self.allocator.dupe(u8, name);
+        try self.bindings.put(.{ .pkg_ptr = 0, .uid = 0, .name = name_copy }, abs_index);
+        return abs_index;
+    }
+
+    fn lookupKey(self: *const Env, key: VarKey) ?Binding {
+        if (self.bindings.get(key)) |index| {
             return .{ .depth = 0, .index = index };
         }
         if (self.parent) |parent| {
-            if (parent.lookup(name)) |result| {
+            if (parent.lookupKey(key)) |result| {
                 if (self.new_frame) {
                     // Cross frame boundary - increment depth
                     return .{ .depth = result.depth + 1, .index = result.index };
@@ -1348,6 +1423,17 @@ pub const Env = struct {
             }
         }
         return null;
+    }
+
+    /// Look up a symbol variable, returns (depth, index) or null
+    pub fn lookupSym(self: *const Env, sym_val: Value) ?Binding {
+        const key = keyFromSym(sym_val) orelse return null;
+        return self.lookupKey(key);
+    }
+
+    /// Look up a compiler-generated name, returns (depth, index) or null
+    pub fn lookupName(self: *const Env, name: []const u8) ?Binding {
+        return self.lookupKey(.{ .pkg_ptr = 0, .uid = 0, .name = name });
     }
 };
 
@@ -1387,13 +1473,13 @@ pub const CaptureSet = struct {
     /// Free variables that need to be captured
     captures: std.ArrayList(Ir.Capture),
     /// Fast deduplication lookup
-    seen: std.StringHashMap(void),
+    seen: std.AutoHashMap(u32, void),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) CaptureSet {
         return .{
             .captures = std.ArrayList(Ir.Capture){},
-            .seen = std.StringHashMap(void).init(allocator),
+            .seen = std.AutoHashMap(u32, void).init(allocator),
             .allocator = allocator,
         };
     }
@@ -1405,10 +1491,12 @@ pub const CaptureSet = struct {
 
     /// Add a capture if not already present
     pub fn addCapture(self: *CaptureSet, name: []const u8, depth: u16, index: u16) !void {
-        const gop = try self.seen.getOrPut(name);
+        const key: u32 = (@as(u32, depth) << 16) | @as(u32, index);
+        const gop = try self.seen.getOrPut(key);
         if (gop.found_existing) return;
+        const name_copy = try self.allocator.dupe(u8, name);
         try self.captures.append(self.allocator, .{
-            .name = name,
+            .name = name_copy,
             .depth = depth,
             .index = index,
         });
@@ -1616,6 +1704,8 @@ pub const Compiler = struct {
     pub const TypedParam = struct {
         name: []const u8,
         type_sym: ?Value, // null for untyped, otherwise the type symbol
+        /// Local slot index in the lambda frame
+        idx: u16,
     };
 
     pub fn init(allocator: std.mem.Allocator, vm: *Vm) Compiler {
@@ -2124,7 +2214,7 @@ pub const Compiler = struct {
             const sym = sym_val.toPtr(Symbol);
             const name = sym.getName();
 
-            if (env.lookup(name)) |binding| {
+            if (env.lookupSym(sym_val)) |binding| {
                 const var_ir = try self.builder.variable(name, binding.depth, binding.index);
 
                 // If this variable is boxed, wrap with box-ref
@@ -2807,6 +2897,11 @@ pub const Compiler = struct {
         var aux_bindings = std.ArrayList(Ir.Binding){};
         defer aux_bindings.deinit(self.allocator);
 
+        // Bind params as we parse to preserve symbol identity (package) and avoid
+        // stashing GC-movable pointers into auxiliary arrays/maps.
+        var lambda_env = Env.init(self.allocator, env);
+        defer lambda_env.deinit();
+
         var rest_param: ?[]const u8 = null;
         var in_optional = false;
         var in_key = false;
@@ -2825,8 +2920,14 @@ pub const Compiler = struct {
                         // Next element is the rest parameter name
                         if (!param_cons.cdr.isCons()) return error.InvalidLambda;
                         const rest_cons = param_cons.cdr.toPtr(Cons);
-                        const rest_name = if (symLikeName(rest_cons.car)) |name| name else return error.InvalidLambda;
+                        const rest_name_raw = if (symLikeName(rest_cons.car)) |name| name else return error.InvalidLambda;
+                        const rest_name = try self.allocator.dupe(u8, rest_name_raw);
                         rest_param = rest_name;
+                        if (rest_cons.car.typeKind() == .symbol) {
+                            _ = try lambda_env.bindSym(rest_cons.car);
+                        } else {
+                            _ = try lambda_env.bindName(rest_name);
+                        }
                         break; // &rest must be last
                     }
 
@@ -2856,7 +2957,8 @@ pub const Compiler = struct {
                         continue;
                     }
 
-                    const name = if (symLikeName(param_item)) |sym_name| sym_name else return error.InvalidLambda;
+                    const name_raw = if (symLikeName(param_item)) |sym_name| sym_name else return error.InvalidLambda;
+                    const name = try self.allocator.dupe(u8, name_raw);
 
                     if (in_aux) {
                         // Aux variable with nil default
@@ -2867,6 +2969,11 @@ pub const Compiler = struct {
                             .value = nil_ir,
                             .index = idx,
                         });
+                        if (param_item.typeKind() == .symbol) {
+                            _ = try lambda_env.bindSym(param_item);
+                        } else {
+                            _ = try lambda_env.bindName(name);
+                        }
                     } else if (in_key) {
                         // Key parameter with nil default, keyword = name
                         try key_params.append(self.allocator, .{
@@ -2874,21 +2981,36 @@ pub const Compiler = struct {
                             .name = name,
                             .default = null,
                         });
+                        if (param_item.typeKind() == .symbol) {
+                            _ = try lambda_env.bindSym(param_item);
+                        } else {
+                            _ = try lambda_env.bindName(name);
+                        }
                     } else if (in_optional) {
                         // Optional parameter with nil default
                         try optional_params.append(self.allocator, .{
                             .name = name,
                             .default = null,
                         });
+                        if (param_item.typeKind() == .symbol) {
+                            _ = try lambda_env.bindSym(param_item);
+                        } else {
+                            _ = try lambda_env.bindName(name);
+                        }
                     } else {
                         // Untyped parameter: just a symbol
+                        const idx = if (param_item.typeKind() == .symbol)
+                            try lambda_env.bindSym(param_item)
+                        else
+                            try lambda_env.bindName(name);
                         try params.append(self.allocator, name);
-                        try typed_params.append(self.allocator, .{ .name = name, .type_sym = null });
+                        try typed_params.append(self.allocator, .{ .name = name, .type_sym = null, .idx = idx });
                     }
                 },
                 .cons => {
                     const typed = param_item.toPtr(Cons);
-                    const name = if (symLikeName(typed.car)) |sym_name| sym_name else return error.InvalidLambda;
+                    const name_raw = if (symLikeName(typed.car)) |sym_name| sym_name else return error.InvalidLambda;
+                    const name = try self.allocator.dupe(u8, name_raw);
 
                     if (in_aux) {
                         // Aux variable: (name init-expr)
@@ -2904,6 +3026,11 @@ pub const Compiler = struct {
                             .value = init_ir,
                             .index = idx,
                         });
+                        if (typed.car.typeKind() == .symbol) {
+                            _ = try lambda_env.bindSym(typed.car);
+                        } else {
+                            _ = try lambda_env.bindName(name);
+                        }
                     } else if (in_key) {
                         // Key parameter: (name default-expr) or just name
                         // Compile default in parent env (not lambda env)
@@ -2917,6 +3044,11 @@ pub const Compiler = struct {
                             .name = name,
                             .default = default_ir,
                         });
+                        if (typed.car.typeKind() == .symbol) {
+                            _ = try lambda_env.bindSym(typed.car);
+                        } else {
+                            _ = try lambda_env.bindName(name);
+                        }
                     } else if (in_optional) {
                         // Optional parameter: (name default-expr)
                         // Compile default in parent env (not lambda env)
@@ -2929,12 +3061,21 @@ pub const Compiler = struct {
                             .name = name,
                             .default = default_ir,
                         });
+                        if (typed.car.typeKind() == .symbol) {
+                            _ = try lambda_env.bindSym(typed.car);
+                        } else {
+                            _ = try lambda_env.bindName(name);
+                        }
                     } else {
                         // Typed parameter: (name type-expr)
                         if (!typed.cdr.isCons()) return error.InvalidLambda;
                         const type_val = typed.cdr.toPtr(Cons).car;
+                        const idx = if (typed.car.typeKind() == .symbol)
+                            try lambda_env.bindSym(typed.car)
+                        else
+                            try lambda_env.bindName(name);
                         try params.append(self.allocator, name);
-                        try typed_params.append(self.allocator, .{ .name = name, .type_sym = type_val });
+                        try typed_params.append(self.allocator, .{ .name = name, .type_sym = type_val, .idx = idx });
                     }
                 },
                 else => return error.InvalidLambda,
@@ -2945,35 +3086,14 @@ pub const Compiler = struct {
 
         // Also check for rest parameter via dotted list: (a b . rest)
         if (rest_param == null and !param_list.isNil()) {
-            rest_param = if (symLikeName(param_list)) |sym_name| sym_name else return error.InvalidLambda;
-        }
-
-        // Create new environment with parameters
-        var lambda_env = Env.init(self.allocator, env);
-        defer lambda_env.deinit();
-
-        for (params.items) |param| {
-            _ = try lambda_env.bind(param);
-        }
-
-        // Bind optional parameters
-        for (optional_params.items) |op| {
-            _ = try lambda_env.bind(op.name);
-        }
-
-        // Bind key parameters
-        for (key_params.items) |kp| {
-            _ = try lambda_env.bind(kp.name);
-        }
-
-        // Bind rest parameter if present
-        if (rest_param) |rp| {
-            _ = try lambda_env.bind(rp);
-        }
-
-        // Bind aux variables
-        for (aux_bindings.items) |ab| {
-            _ = try lambda_env.bind(ab.name);
+            const rest_name_raw = if (symLikeName(param_list)) |sym_name| sym_name else return error.InvalidLambda;
+            const rest_name = try self.allocator.dupe(u8, rest_name_raw);
+            rest_param = rest_name;
+            if (param_list.typeKind() == .symbol) {
+                _ = try lambda_env.bindSym(param_list);
+            } else {
+                _ = try lambda_env.bindName(rest_name);
+            }
         }
 
         // Filter out declare forms from body
@@ -3008,8 +3128,7 @@ pub const Compiler = struct {
             }
 
             if (type_sym_to_check) |type_sym| {
-                const binding = lambda_env.lookup(param_name) orelse continue;
-                const var_ir = try self.builder.variable(param_name, binding.depth, binding.index);
+                const var_ir = try self.builder.variable(param_name, 0, tp.idx);
 
                 const assert_ir = try self.makeTypeAssertionSym(var_ir, type_sym);
                 if (assert_ir) |assert_node| {
@@ -3133,12 +3252,9 @@ pub const Compiler = struct {
             const sym = expr.toPtr(Symbol);
             const name = sym.getName();
 
-            // Check if bound in current scope (including same-frame let environments)
-            var check_env: ?*const Env = env;
-            while (check_env) |e| {
-                if (e.bindings.get(name) != null) return; // Bound locally, not a free var
-                if (e.new_frame) break; // Stop at frame boundary
-                check_env = e.parent;
+            // If bound in this lambda frame (including same-frame let envs), it's not free.
+            if (env.lookupSym(expr)) |binding| {
+                if (binding.depth == 0) return;
             }
 
             // Find the lambda frame (the nearest new_frame environment)
@@ -3151,7 +3267,7 @@ pub const Compiler = struct {
             // Look up from the lambda's parent to get correct capture depth
             if (lambda_env) |le| {
                 if (le.parent) |lambda_parent| {
-                    if (lambda_parent.lookup(name)) |binding| {
+                    if (lambda_parent.lookupSym(expr)) |binding| {
                         // This is a free variable - needs to be captured
                         // Store depth from lambda's parent perspective for correct loading
                         try captures.addCapture(name, binding.depth, binding.index);
@@ -3208,8 +3324,7 @@ pub const Compiler = struct {
                             if (binding.isCons()) {
                                 const binding_pair = binding.toPtr(Cons);
                                 if (binding_pair.car.isSymbol()) {
-                                    const bname_sym = binding_pair.car.toPtr(Symbol);
-                                    _ = try let_env.bind(bname_sym.getName());
+                                    _ = try let_env.bindSym(binding_pair.car);
                                 }
                             }
                             binding_list = binding_cons.cdr;
@@ -3491,7 +3606,8 @@ pub const Compiler = struct {
 
             if (!b.car.isSymbolLike()) return error.InvalidLet;
             const name_raw = b.car.getSymbolName();
-            try binding_names.append(self.allocator, name_raw);
+            const name_copy = try self.allocator.dupe(u8, name_raw);
+            try binding_names.append(self.allocator, name_copy);
             try binding_syms.append(self.allocator, b.car);
 
             binding_list = binding_cons.cdr;
@@ -3514,8 +3630,13 @@ pub const Compiler = struct {
         // First, reserve ALL slots by binding all names (so nested exprs like 'or' know
         // to use higher indices). This fixes a bug where (or ...) in a let binding
         // would reuse slot 0, overwriting earlier bindings.
-        for (binding_names.items) |name| {
-            _ = try let_env.bind(name);
+        for (binding_syms.items, 0..) |sym, i| {
+            const name = binding_names.items[i];
+            if (sym.typeKind() == .symbol) {
+                _ = try let_env.bindSym(sym);
+            } else {
+                _ = try let_env.bindName(name);
+            }
         }
 
         // Create a slot-reserving environment for compiling value expressions.
@@ -3539,7 +3660,14 @@ pub const Compiler = struct {
             const sym = binding_syms.items[name_idx];
 
             // Get the already-assigned index
-            const index = let_env.bindings.get(name).?;
+            const index = blk: {
+                if (sym.typeKind() == .symbol) {
+                    const found = let_env.lookupSym(sym) orelse return error.InvalidLet;
+                    break :blk found.index;
+                }
+                const found = let_env.lookupName(name) orelse return error.InvalidLet;
+                break :blk found.index;
+            };
 
             // Get value expression - compile in value_env (has reserved slots)
             if (!b.cdr.isCons()) return error.InvalidLet;
@@ -3688,10 +3816,10 @@ pub const Compiler = struct {
 
             if (!f.car.isSymbol()) return error.InvalidLet;
             const name_sym = f.car.toPtr(Symbol);
-            const name = name_sym.getName();
+            const name = try self.allocator.dupe(u8, name_sym.getName());
 
             // Get index from env
-            const index = try flet_env.bind(name);
+            const index = try flet_env.bindSym(f.car);
 
             // Build lambda from rest: ((params) body...) -> compile as lambda
             if (!f.cdr.isCons()) return error.InvalidLet;
@@ -3810,7 +3938,8 @@ pub const Compiler = struct {
         const b = binding.toPtr(Cons);
 
         if (!b.car.isSymbolLike()) return error.InvalidLet;
-        const name = b.car.getSymbolName();
+        const name_raw = b.car.getSymbolName();
+        const name = try self.allocator.dupe(u8, name_raw);
 
         if (!b.cdr.isCons()) return error.InvalidLet;
         const val_cons = b.cdr.toPtr(Cons);
@@ -3818,7 +3947,10 @@ pub const Compiler = struct {
         // Create extended environment first to get binding index
         var let_env = Env.initLet(self.allocator, env);
         defer let_env.deinit();
-        const index = try let_env.bind(name);
+        const index = if (b.car.typeKind() == .symbol)
+            try let_env.bindSym(b.car)
+        else
+            try let_env.bindName(name);
 
         // Compile value in current environment
         const val_ir = try self.compile(val_cons.car, env);
@@ -3960,7 +4092,7 @@ pub const Compiler = struct {
         const tmp_name = "__or_tmp";
         var tmp_env = Env.initLet(self.allocator, env);
         defer tmp_env.deinit();
-        const tmp_idx = try tmp_env.bind(tmp_name);
+        const tmp_idx = try tmp_env.bindName(tmp_name);
 
         const bindings = try self.allocator.alloc(ir.Ir.Binding, 1);
         bindings[0] = .{ .name = tmp_name, .value = first_ir, .index = tmp_idx };
@@ -4056,7 +4188,7 @@ pub const Compiler = struct {
         const val_ir = try self.compile(cons2.car, env);
 
         // First check local environment
-        if (env.lookup(local_name)) |binding| {
+        if (env.lookupSym(var_val)) |binding| {
             // If this variable is boxed, use box-set! instead
             if (self.boxed_vars) |bv| {
                 if (bv.contains(var_val)) {
@@ -4078,11 +4210,11 @@ pub const Compiler = struct {
 
         if (self.globals.lookup(global_name)) |idx| {
             // Re-define the global with the new value
-            return try self.builder.define(global_name, idx, val_ir);
-        }
+                return try self.builder.define(global_name, idx, val_ir);
+            }
 
-        return error.UnboundVariable;
-    }
+            return error.UnboundVariable;
+        }
 
     /// Compile setf special form: (setf place value)
     /// Handles symbol macros, compound places like (car x), (slot-value obj 'slot), etc.
@@ -4114,7 +4246,7 @@ pub const Compiler = struct {
                     const val_ir = try self.compile(value_expr, env);
 
                     // Check local environment
-                    if (env.lookup(exp_name)) |binding| {
+                    if (env.lookupSym(exp_val)) |binding| {
                         if (self.boxed_vars) |bv| {
                             if (bv.contains(exp_val)) {
                                 const var_ir = try self.builder.variable(exp_name, binding.depth, binding.index);
@@ -5083,7 +5215,7 @@ pub const Compiler = struct {
         // This is where the caught value will be stored
         var handler_env = Env.initLet(self.allocator, env);
         defer handler_env.deinit();
-        const cond_idx = try handler_env.bind(cond_name);
+        const cond_idx = try handler_env.bindName(cond_name);
 
         // Build handler dispatch as nested if/progn:
         // (if (eq (car cond) 'type1)
@@ -5156,11 +5288,13 @@ pub const Compiler = struct {
         const body = rest.cdr;
 
         // Get variable name from lambda list
+        var var_sym: ?Value = null;
         var var_name: []const u8 = "_"; // default if no variable
         if (lambda_list.isCons()) {
             const ll_cons = lambda_list.toPtr(Cons);
             if (ll_cons.car.isSymbol()) {
-                var_name = ll_cons.car.toPtr(runtime.Symbol).getName();
+                var_sym = ll_cons.car;
+                var_name = try self.allocator.dupe(u8, ll_cons.car.toPtr(runtime.Symbol).getName());
             }
         }
 
@@ -5172,7 +5306,10 @@ pub const Compiler = struct {
         // Create environment with binding
         var inner_env = Env.initLet(self.allocator, env);
         defer inner_env.deinit();
-        const var_idx = try inner_env.bind(var_name);
+        const var_idx = if (var_sym) |s|
+            try inner_env.bindSym(s)
+        else
+            try inner_env.bindName(var_name);
 
         // Compile body
         const body_ir = try self.compileBodyWithTail(body, &inner_env, in_tail);
@@ -5299,6 +5436,11 @@ pub const Compiler = struct {
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
 
+        // Create environment with bindings for vars (body scope).
+        // Expr is compiled in the outer env per CL semantics.
+        var let_env = Env.initLet(self.allocator, env);
+        defer let_env.deinit();
+
         // Parse variable list
         var vars = std.ArrayList([]const u8){};
         defer vars.deinit(self.allocator);
@@ -5307,8 +5449,11 @@ pub const Compiler = struct {
         while (var_list.isCons()) {
             const var_cons = var_list.toPtr(Cons);
             if (!var_cons.car.isSymbol()) return error.InvalidSyntax;
-            const sym = var_cons.car.toPtr(Symbol);
-            try vars.append(self.allocator, sym.getName());
+            const sym_val = var_cons.car;
+            const sym = sym_val.toPtr(Symbol);
+            const name_copy = try self.allocator.dupe(u8, sym.getName());
+            try vars.append(self.allocator, name_copy);
+            _ = try let_env.bindSym(sym_val);
             var_list = var_cons.cdr;
         }
 
@@ -5317,14 +5462,6 @@ pub const Compiler = struct {
 
         // Compile the expression that produces multiple values
         const expr_ir = try self.compile(cons2.car, env);
-
-        // Create environment with bindings for vars
-        var let_env = Env.initLet(self.allocator, env);
-        defer let_env.deinit();
-
-        for (vars.items) |var_name| {
-            _ = try let_env.bind(var_name);
-        }
 
         // Compile body forms
         const body_ir = try self.compileBody(cons2.cdr, &let_env);
@@ -5725,36 +5862,38 @@ pub const Compiler = struct {
         const expr_ir = try self.compile(expr, env);
 
         // Create temp var for expr result
-        var temp_env = Env.init(self.allocator, env);
+        const temp_name = "#destruct-temp";
+        var temp_env = Env.initLet(self.allocator, env);
         defer temp_env.deinit();
-        const temp_idx = try temp_env.bind("#destruct-temp");
+        const temp_idx = try temp_env.bindName(temp_name);
 
         // Generate bindings from pattern, using temp var
-        const bindings = try self.genDestructBindings(pattern, temp_idx);
+        const bindings = try self.genDestructBindings(pattern, temp_name, temp_idx);
 
         // Compile body with all bindings in scope
-        var body_env = Env.init(self.allocator, &temp_env);
+        var body_env = Env.initLet(self.allocator, &temp_env);
         defer body_env.deinit();
-        for (bindings.items) |binding| {
-            _ = try body_env.bind(binding.name);
-        }
-
-        const body_ir = try self.compileProgn(body, &body_env);
-
-        // Build nested let: (let ((temp expr)) (let ((a ...) (b ...)) body))
-        // Convert bindings to Ir.Binding
         var ir_bindings = try self.allocator.alloc(Ir.Binding, bindings.items.len);
         defer self.allocator.free(ir_bindings);
         for (bindings.items, 0..) |b, i| {
-            ir_bindings[i] = .{ .name = b.name, .index = @intCast(i), .value = b.init };
+            const idx = try body_env.bindSym(b.sym);
+            ir_bindings[i] = .{ .name = b.name, .index = idx, .value = b.init };
         }
+        const body_ir = try self.compileProgn(body, &body_env);
 
+        // Build nested let: (let ((temp expr)) (let ((a ...) (b ...)) body))
         const inner_let = try self.builder.letExpr(ir_bindings, body_ir);
 
         // Outer let binds temp
-        const temp_binding = [_]Ir.Binding{.{ .name = "#destruct-temp", .index = temp_idx, .value = expr_ir }};
+        const temp_binding = [_]Ir.Binding{.{ .name = temp_name, .index = temp_idx, .value = expr_ir }};
         return try self.builder.letExpr(&temp_binding, inner_let);
     }
+
+    const PatBinding = struct {
+        sym: Value,
+        name: []const u8,
+        init: *const Ir,
+    };
 
     const Binding = struct {
         name: []const u8,
@@ -5775,23 +5914,26 @@ pub const Compiler = struct {
 
     /// Generate bindings from destructuring pattern
     /// temp_idx is the variable index of the temp var holding the expr result
-    fn genDestructBindings(self: *Compiler, pattern: Value, temp_idx: u16) !std.ArrayList(Binding) {
-        var bindings = std.ArrayList(Binding){};
+    fn genDestructBindings(self: *Compiler, pattern: Value, temp_name: []const u8, temp_idx: u16) !std.ArrayList(PatBinding) {
+        var bindings = std.ArrayList(PatBinding){};
         errdefer bindings.deinit(self.allocator);
 
         // Start with a var reference to the temp (depth=0 since it's in same scope)
-        const temp_ir = try self.builder.variable("#destruct-temp", 0, temp_idx);
+        const temp_ir = try self.builder.variable(temp_name, 0, temp_idx);
         try self.genDestructBindingsRec(pattern, temp_ir, &bindings);
         return bindings;
     }
 
-    fn genDestructBindingsRec(self: *Compiler, pattern: Value, expr_ir: *const Ir, bindings: *std.ArrayList(Binding)) !void {
+    fn genDestructBindingsRec(self: *Compiler, pattern: Value, expr_ir: *const Ir, bindings: *std.ArrayList(PatBinding)) !void {
         switch (pattern.typeKind()) {
             .symbol => {
                 // Simple var binding
-                const sym = pattern.toPtr(Symbol);
+                const sym_val = pattern;
+                const sym = sym_val.toPtr(Symbol);
+                const name_copy = try self.allocator.dupe(u8, sym.getName());
                 try bindings.append(self.allocator, .{
-                    .name = sym.getName(),
+                    .sym = sym_val,
+                    .name = name_copy,
                     .init = expr_ir,
                 });
             },
@@ -7346,8 +7488,9 @@ pub const Compiler = struct {
 
     fn lookupClassMetadataBySymbol(self: *Compiler, class_sym: *const Symbol) error{ OutOfMemory, Overflow }!?[]const SlotSpec {
         const class_name = class_sym.getName();
-        const sym_pkg_ptr = @as(?*runtime.heap.Package, @ptrFromInt(class_sym.reserved));
-        if (sym_pkg_ptr) |pkg| {
+        const pkg_bits: u64 = class_sym.reserved;
+        if (pkg_bits != 0 and (pkg_bits & 1) == 0) {
+            const pkg: *const runtime.heap.Package = @ptrFromInt(pkg_bits);
             var qual_buf: [256]u8 = undefined;
             const qualified = try self.makePkgQualifiedName(&qual_buf, pkg.name, class_name);
             defer if (qualified.owned) self.allocator.free(qualified.slice);
@@ -8010,6 +8153,10 @@ pub const Compiler = struct {
 
         const heap = if (self.heap) |val| val else return error.CompilerNotInitialized;
 
+        // Lambda environment with method parameters (bind while parsing).
+        var lambda_env = Env.init(self.allocator, env);
+        defer lambda_env.deinit();
+
         var params = lambda_list;
         while (params.isCons()) {
             const param_cons = params.toPtr(Cons);
@@ -8020,6 +8167,7 @@ pub const Compiler = struct {
                     // Unspecialized parameter
                     const param_name = param.toPtr(Symbol).getName();
                     try dispatch_params.append(self.allocator, try self.allocator.dupe(u8, param_name));
+                    _ = try lambda_env.bindSym(param);
                     try specializers.append(self.allocator, Value.t); // t = any type
                 },
                 .cons => {
@@ -8028,6 +8176,7 @@ pub const Compiler = struct {
                     if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
                     const param_name = spec_cons.car.toPtr(Symbol).getName();
                     try dispatch_params.append(self.allocator, try self.allocator.dupe(u8, param_name));
+                    _ = try lambda_env.bindSym(spec_cons.car);
 
                     if (spec_cons.cdr.isCons()) {
                         const class_cons = spec_cons.cdr.toPtr(Cons);
@@ -8046,14 +8195,6 @@ pub const Compiler = struct {
             }
 
             params = param_cons.cdr;
-        }
-
-        // Create lambda environment with method parameters
-        var lambda_env = Env.init(self.allocator, env);
-        defer lambda_env.deinit();
-
-        for (dispatch_params.items) |param| {
-            _ = try lambda_env.bind(param);
         }
 
         // Save param names for call-next-method before compiling body
@@ -8260,7 +8401,7 @@ pub const Compiler = struct {
             if (self.method_params) |params| {
                 for (params, 0..) |param_name, idx| {
                     // Look up param in environment to get correct depth/index
-                    if (env.lookup(param_name)) |binding| {
+                    if (env.lookupName(param_name)) |binding| {
                         const var_ir = try self.builder.variable(param_name, binding.depth, binding.index);
                         try arg_irs.append(self.allocator, var_ir);
                     } else {
@@ -8300,7 +8441,7 @@ pub const Compiler = struct {
         // Add original method args
         if (self.method_params) |params| {
             for (params, 0..) |param_name, idx| {
-                if (env.lookup(param_name)) |binding| {
+                if (env.lookupName(param_name)) |binding| {
                     const var_ir = try self.builder.variable(param_name, binding.depth, binding.index);
                     try no_next_args.append(self.allocator, var_ir);
                 } else {
@@ -9253,14 +9394,20 @@ pub const Compiler = struct {
         if (!variant_cons.car.isSymbol()) return error.InvalidSyntax;
         const variant_name = variant_cons.car.toPtr(Symbol).getName();
 
+        const Field = struct {
+            sym: Value,
+            name: []const u8,
+        };
         // Collect field bindings
-        var field_names = std.ArrayList([]const u8){};
+        var fields = std.ArrayList(Field){};
+        defer fields.deinit(self.allocator);
         var field_current = variant_cons.cdr;
         while (field_current.isCons()) {
             const fc = field_current.toPtr(Cons);
             if (!fc.car.isSymbol()) return error.InvalidSyntax;
-            const field_name = fc.car.toPtr(Symbol).getName();
-            try field_names.append(self.allocator, field_name);
+            const field_sym = fc.car;
+            const field_name = try self.allocator.dupe(u8, field_sym.toPtr(Symbol).getName());
+            try fields.append(self.allocator, .{ .sym = field_sym, .name = field_name });
             field_current = fc.cdr;
         }
 
@@ -9291,15 +9438,15 @@ pub const Compiler = struct {
         defer let_env.deinit();
 
         // Build then branch: (let ((f1 (aref scrutinee 1)) (f2 (aref scrutinee 2)) ...) body...)
-        var bindings = try self.allocator.alloc(Ir.Binding, field_names.items.len);
-        for (field_names.items, 0..) |field_name, i| {
+        var bindings = try self.allocator.alloc(Ir.Binding, fields.items.len);
+        for (fields.items, 0..) |field, i| {
             const idx_lit = try self.builder.lit(Value.makeFixnum(@intCast(i + 1)));
             const field_aref = try self.allocator.create(Ir);
             field_aref.* = .{ .vec_ref = .{ .left = scrutinee, .right = idx_lit } };
 
-            const binding_idx = try let_env.bind(field_name);
+            const binding_idx = try let_env.bindSym(field.sym);
             bindings[i] = .{
-                .name = field_name,
+                .name = field.name,
                 .value = field_aref,
                 .index = binding_idx,
             };
@@ -9769,7 +9916,7 @@ pub const Compiler = struct {
         // We need to compile the predicate in an environment where x is bound
         var pred_env = Env.init(self.allocator, null);
         defer pred_env.deinit();
-        _ = try pred_env.bind(var_name);
+        _ = try pred_env.bindSym(c2.car);
 
         const predicate_body = try self.compile(predicate_expr, &pred_env);
         const dispatch_params = try self.allocator.alloc([]const u8, 1);
@@ -12880,7 +13027,7 @@ test "compile or type assertions" {
 
     var env_the = Env.init(arena_alloc, null);
     defer env_the.deinit();
-    _ = try env_the.bind(x_sym.toPtr(Symbol).getName());
+    _ = try env_the.bindSym(x_sym);
 
     const ir_the = try compiler.compile(the_expr, &env_the);
     defer arena_alloc.destroy(ir_the);
@@ -12893,27 +13040,83 @@ test "env lookup" {
 
     var outer = Env.init(allocator, null);
     defer outer.deinit();
-    _ = try outer.bind("x");
-    _ = try outer.bind("y");
+    _ = try outer.bindName("x");
+    _ = try outer.bindName("y");
 
     var inner = Env.init(allocator, &outer);
     defer inner.deinit();
-    _ = try inner.bind("z");
+    _ = try inner.bindName("z");
 
     // z is at depth 0, index 0
-    const z_lookup = inner.lookup("z");
+    const z_lookup = inner.lookupName("z");
     try testing.expect(z_lookup != null);
     try testing.expectEqual(@as(u16, 0), z_lookup.?.depth);
     try testing.expectEqual(@as(u16, 0), z_lookup.?.index);
 
     // x is at depth 1, index 0
-    const x_lookup = inner.lookup("x");
+    const x_lookup = inner.lookupName("x");
     try testing.expect(x_lookup != null);
     try testing.expectEqual(@as(u16, 1), x_lookup.?.depth);
     try testing.expectEqual(@as(u16, 0), x_lookup.?.index);
 
     // w doesn't exist
-    try testing.expect(inner.lookup("w") == null);
+    try testing.expect(inner.lookupName("w") == null);
+}
+
+test "env lookup distinguishes package symbols" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    const pkg1 = try heap.findOrCreatePackage("PKG1");
+    const pkg2 = try heap.findOrCreatePackage("PKG2");
+    const x1 = try pkg1.intern(&heap, "x");
+    const x2 = try pkg2.intern(&heap, "x");
+    try testing.expect(x1.raw != x2.raw);
+
+    var env = Env.init(allocator, null);
+    defer env.deinit();
+
+    const idx1 = try env.bindSym(x1);
+    const idx2 = try env.bindSym(x2);
+    try testing.expect(idx1 != idx2);
+
+    const b1_opt = env.lookupSym(x1);
+    const b2_opt = env.lookupSym(x2);
+    try testing.expect(b1_opt != null);
+    try testing.expect(b2_opt != null);
+    const b1 = b1_opt.?;
+    const b2 = b2_opt.?;
+    try testing.expectEqual(@as(u16, 0), b1.depth);
+    try testing.expectEqual(idx1, b1.index);
+    try testing.expectEqual(@as(u16, 0), b2.depth);
+    try testing.expectEqual(idx2, b2.index);
+}
+
+test "env shadowing uses symbol identity" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    const pkg = try heap.findOrCreatePackage("PKG");
+    const x = try pkg.intern(&heap, "x");
+
+    var outer = Env.init(allocator, null);
+    defer outer.deinit();
+    _ = try outer.bindSym(x);
+
+    var inner = Env.init(allocator, &outer);
+    defer inner.deinit();
+    const inner_idx = try inner.bindSym(x);
+
+    const b_opt = inner.lookupSym(x);
+    try testing.expect(b_opt != null);
+    const b = b_opt.?;
+    try testing.expectEqual(@as(u16, 0), b.depth);
+    try testing.expectEqual(inner_idx, b.index);
 }
 
 test "type inference for literals" {
@@ -13780,7 +13983,7 @@ test "genDestructBindings nested" {
     const b_sym = try heap.intern("b");
     const pattern = try heap.allocCons(a_sym, try heap.allocCons(b_sym, Value.nil));
 
-    var bindings = try compiler.genDestructBindings(pattern, 0);
+    var bindings = try compiler.genDestructBindings(pattern, "#destruct-temp", 0);
     defer bindings.deinit(arena_alloc);
 
     try testing.expectEqual(@as(usize, 2), bindings.items.len);

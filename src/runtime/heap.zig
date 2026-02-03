@@ -250,6 +250,8 @@ pub const Heap = struct {
     gensym_counter: u64,
     /// Gentemp counter for temporary symbol generation
     gentemp_counter: u64,
+    /// Unique id counter for uninterned symbols (stored in Symbol.reserved with low-bit tag)
+    sym_uid_counter: u64,
     /// The KEYWORD package
     keyword_package: ?*Package,
     /// Lisp-level package registry (hash table: name -> Package Value)
@@ -330,6 +332,7 @@ pub const Heap = struct {
             .cl_user_package = null,
             .gensym_counter = 0,
             .gentemp_counter = 0,
+            .sym_uid_counter = 1,
             .keyword_package = null,
             .lisp_packages = Value.nil,
             .lisp_classes = Value.nil,
@@ -1190,11 +1193,18 @@ pub const Heap = struct {
 
         @memcpy(name_ptr[0..name.len], name);
 
+        // Uninterned symbols get a stable id in reserved (low-bit tagged).
+        // Interned symbols overwrite reserved with a *Package pointer later.
+        const uid = self.sym_uid_counter;
+        if (uid == 0 or uid > (std.math.maxInt(u64) >> 1)) return error.OutOfMemory;
+        self.sym_uid_counter = uid + 1;
+        const reserved_uid = (uid << 1) | 1;
+
         sym.* = .{
             .name_len = name.len,
             .name_ptr = name_ptr,
             .plist = Value.nil,
-            .reserved = 0,
+            .reserved = reserved_uid,
         };
 
         return Value.makeSymbol(sym);

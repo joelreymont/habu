@@ -3373,10 +3373,10 @@ pub const Vm = struct {
                     },
                     .symbol => {
                         const sym = val.toPtr(Symbol);
-                        const pkg_ptr = sym.reserved;
-                        if (pkg_ptr != 0) {
+                        const pkg_bits = sym.reserved;
+                        if (pkg_bits != 0 and (pkg_bits & 1) == 0) {
                             // Get the Zig package struct
-                            const zig_pkg: *const runtime.heap.Package = @ptrFromInt(pkg_ptr);
+                            const zig_pkg: *const runtime.heap.Package = @ptrFromInt(pkg_bits);
                             // Look up the Lisp package object by name
                             const name_val = try self.heap.allocBaseString(zig_pkg.name);
                             if (try self.heap.findLispPackage(name_val)) |pkg| {
