@@ -185,6 +185,26 @@ pub fn keywordp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
     return if (a.isKeyword()) Value.t else Value.nil;
 }
 
+pub fn characterp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (a.isCharacter()) Value.t else Value.nil;
+}
+
+pub fn floatp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (a.isFloat()) Value.t else Value.nil;
+}
+
+pub fn listp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (a.isNil() or a.isCons()) Value.t else Value.nil;
+}
+
+pub fn atom(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (!a.isCons()) Value.t else Value.nil;
+}
+
 pub fn listLength(c: *ctx.JitContext, seq: Value) vm_mod.Error!Value {
     _ = c;
     switch (seq.typeKind()) {
