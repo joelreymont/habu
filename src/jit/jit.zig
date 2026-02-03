@@ -651,6 +651,37 @@ pub const Jit = struct {
                 try self.emitCallUnary(@intFromPtr(&rt.vecLen));
                 try self.emitStackPush();
             },
+            .vec_fill_ptr => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.vecFillPtr));
+                try self.emitStackPush();
+            },
+            .vec_push => {
+                try self.emitBinaryCall(@intFromPtr(&rt.vecPush));
+            },
+            .vec_push_ext => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                    .{ .imm64 = 0 },
+                });
+                try self.emitCallUnary(@intFromPtr(&rt.vecPushExt));
+            },
+            .vec_pop => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.vecPop));
+                try self.emitStackPush();
+            },
+            .vec_set_fill_ptr => {
+                try self.emitBinaryCall(@intFromPtr(&rt.vecSetFillPtr));
+            },
+            .vec_set_adjustable => {
+                try self.emitBinaryCall(@intFromPtr(&rt.vecSetAdjustable));
+            },
+            .vec_adjust => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                    .{ .imm64 = 0 },
+                });
+                try self.emitCallUnary(@intFromPtr(&rt.vecAdjust));
+            },
             .call, .tail_call => {
                 const argc = chunk.readU8(bc_offset.*);
                 bc_offset.* += 1;

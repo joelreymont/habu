@@ -4,6 +4,7 @@ const ctx = @import("ctx.zig");
 const runtime = @import("../runtime/runtime.zig");
 const arith = @import("../runtime/primitives/arith.zig");
 const char_prims = @import("../runtime/primitives/char.zig");
+const vec_prims = @import("../runtime/primitives/vector.zig");
 const vm_mod = @import("../interp/vm.zig");
 
 const Value = runtime.Value;
@@ -685,6 +686,90 @@ pub fn vecLen(c: *ctx.JitContext, vec_val: Value) vm_mod.Error!Value {
     if (!vec_val.isVector()) return error.TypeMismatch;
     const vec = vec_val.toPtr(runtime.Vector);
     return Value.makeFixnum(@intCast(vec.length));
+}
+
+pub fn vecFillPtr(c: *ctx.JitContext, vec_val: Value) vm_mod.Error!Value {
+    _ = c;
+    if (!vec_val.isVector()) return error.TypeMismatch;
+    if (vec_prims.fillPointer(vec_val)) |fp| {
+        return Value.makeFixnum(fp);
+    }
+    return Value.nil;
+}
+
+pub fn vecPush(c: *ctx.JitContext, vec_val: Value, elem: Value) vm_mod.Error!Value {
+    _ = c;
+    const result = vec_prims.vectorPush(vec_val, elem);
+    return Value.makeFixnum(result);
+}
+
+pub fn vecPushExt(c: *ctx.JitContext, _: u8) vm_mod.Error!Value {
+    const sp = stackLen(c);
+    if (sp < 3) return error.StackUnderflow;
+
+    const ext_val = c.frame_base[sp - 1];
+    const elem = c.frame_base[sp - 2];
+    const vec_val = c.frame_base[sp - 3];
+    if (!ext_val.isFixnum()) return error.TypeMismatch;
+
+    var args = [_]Value{ vec_val, elem, ext_val };
+    const ext: u64 = @intCast(ext_val.toFixnum());
+    const result = vec_prims.vectorPushExtend(c.heap, args[0], args[1], ext) catch |err| switch (err) {
+        error.OutOfMemory => blk: {
+            try collectJitGarbage(c, &args);
+            const ext_retry: u64 = @intCast(args[2].toFixnum());
+            break :blk try vec_prims.vectorPushExtend(c.heap, args[0], args[1], ext_retry);
+        },
+        else => return err,
+    };
+
+    const res_val = Value.makeFixnum(result);
+    c.frame_base[sp - 3] = res_val;
+    c.sp = c.frame_base + sp - 2;
+    return res_val;
+}
+
+pub fn vecPop(c: *ctx.JitContext, vec_val: Value) vm_mod.Error!Value {
+    _ = c;
+    return vec_prims.vectorPop(vec_val);
+}
+
+pub fn vecSetFillPtr(c: *ctx.JitContext, vec_val: Value, fp_val: Value) vm_mod.Error!Value {
+    _ = c;
+    if (!fp_val.isFixnum()) return error.TypeMismatch;
+    const ok = vec_prims.setFillPointer(vec_val, fp_val.toFixnum());
+    return if (ok) Value.t else Value.nil;
+}
+
+pub fn vecSetAdjustable(c: *ctx.JitContext, vec_val: Value, bool_val: Value) vm_mod.Error!Value {
+    _ = c;
+    const ok = vec_prims.setAdjustable(vec_val, !bool_val.isNil());
+    return if (ok) Value.t else Value.nil;
+}
+
+pub fn vecAdjust(c: *ctx.JitContext, _: u8) vm_mod.Error!Value {
+    const sp = stackLen(c);
+    if (sp < 3) return error.StackUnderflow;
+
+    const fill_val = c.frame_base[sp - 1];
+    const size_val = c.frame_base[sp - 2];
+    const vec_val = c.frame_base[sp - 3];
+    if (!size_val.isFixnum()) return error.TypeMismatch;
+
+    var args = [_]Value{ vec_val, size_val, fill_val };
+    const new_size: u64 = @intCast(size_val.toFixnum());
+    const result = vec_prims.adjustArray(c.heap, args[0], new_size, args[2]) catch |err| switch (err) {
+        error.OutOfMemory => blk: {
+            try collectJitGarbage(c, &args);
+            const new_size_retry: u64 = @intCast(args[1].toFixnum());
+            break :blk try vec_prims.adjustArray(c.heap, args[0], new_size_retry, args[2]);
+        },
+        else => return err,
+    };
+
+    c.frame_base[sp - 3] = result;
+    c.sp = c.frame_base + sp - 2;
+    return result;
 }
 
 pub fn makeClosure(c: *ctx.JitContext, chunk_idx: u16, num_captures: u8) vm_mod.Error!Value {
