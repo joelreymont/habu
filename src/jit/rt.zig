@@ -280,6 +280,46 @@ pub fn assocEqual(c: *ctx.JitContext, key: Value, alist: Value) vm_mod.Error!Val
     return Value.nil;
 }
 
+pub fn listFind(c: *ctx.JitContext, item: Value, seq: Value) vm_mod.Error!Value {
+    return try c.vm.findInSeq(item, seq, .eql);
+}
+
+pub fn listFindEq(c: *ctx.JitContext, item: Value, seq: Value) vm_mod.Error!Value {
+    return try c.vm.findInSeq(item, seq, .eq);
+}
+
+pub fn listFindEqual(c: *ctx.JitContext, item: Value, seq: Value) vm_mod.Error!Value {
+    return try c.vm.findInSeq(item, seq, .equal);
+}
+
+pub fn listPosition(c: *ctx.JitContext, item: Value, seq: Value) vm_mod.Error!Value {
+    return try c.vm.positionInSeq(item, seq, .eql);
+}
+
+pub fn listCount(c: *ctx.JitContext, item: Value, seq: Value) vm_mod.Error!Value {
+    return try c.vm.countInSeq(item, seq, .eql);
+}
+
+pub fn listCountEq(c: *ctx.JitContext, item: Value, seq: Value) vm_mod.Error!Value {
+    return try c.vm.countInSeq(item, seq, .eq);
+}
+
+pub fn listCountEqual(c: *ctx.JitContext, item: Value, seq: Value) vm_mod.Error!Value {
+    return try c.vm.countInSeq(item, seq, .equal);
+}
+
+pub fn listRemove(c: *ctx.JitContext, item: Value, seq: Value) vm_mod.Error!Value {
+    return try c.vm.listRemoveWithTest(item, seq, .eql);
+}
+
+pub fn listRemoveEq(c: *ctx.JitContext, item: Value, seq: Value) vm_mod.Error!Value {
+    return try c.vm.listRemoveWithTest(item, seq, .eq);
+}
+
+pub fn listRemoveEqual(c: *ctx.JitContext, item: Value, seq: Value) vm_mod.Error!Value {
+    return try c.vm.listRemoveWithTest(item, seq, .equal);
+}
+
 pub fn listLength(c: *ctx.JitContext, seq: Value) vm_mod.Error!Value {
     _ = c;
     switch (seq.typeKind()) {

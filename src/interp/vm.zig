@@ -6899,7 +6899,7 @@ pub const Vm = struct {
     }
 
     /// Position search for lists, strings, and vectors
-    fn positionInSeq(self: *Vm, item: Value, seq: Value, cmp: runtime.HashTest) Error!Value {
+    pub fn positionInSeq(self: *Vm, item: Value, seq: Value, cmp: runtime.HashTest) Error!Value {
         _ = self;
         // String: item should be a character or fixnum (char code)
         if (seq.isString()) {
@@ -6941,7 +6941,7 @@ pub const Vm = struct {
     }
 
     /// Find search for lists, strings, and vectors
-    fn findInSeq(self: *Vm, item: Value, seq: Value, cmp: runtime.HashTest) Error!Value {
+    pub fn findInSeq(self: *Vm, item: Value, seq: Value, cmp: runtime.HashTest) Error!Value {
         _ = self;
         // String: item should be a character or fixnum (char code)
         if (seq.isString()) {
@@ -6981,7 +6981,7 @@ pub const Vm = struct {
     }
 
     /// Count occurrences for lists, strings, and vectors
-    fn countInSeq(self: *Vm, item: Value, seq: Value, cmp: runtime.HashTest) Error!Value {
+    pub fn countInSeq(self: *Vm, item: Value, seq: Value, cmp: runtime.HashTest) Error!Value {
         _ = self;
         // String: item should be a character or fixnum (char code)
         if (seq.isString()) {
@@ -7023,7 +7023,7 @@ pub const Vm = struct {
         return Value.makeFixnum(n);
     }
 
-    fn listRemoveWithTest(self: *Vm, item: Value, seq: Value, test_type: runtime.HashTest) Error!Value {
+    pub fn listRemoveWithTest(self: *Vm, item: Value, seq: Value, test_type: runtime.HashTest) Error!Value {
         const saved_sp = self.sp;
         errdefer self.sp = saved_sp;
 

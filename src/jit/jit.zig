@@ -302,6 +302,36 @@ pub const Jit = struct {
             .assoc_equal => {
                 try self.emitBinaryCall(@intFromPtr(&rt.assocEqual));
             },
+            .list_find => {
+                try self.emitBinaryCall(@intFromPtr(&rt.listFind));
+            },
+            .list_find_eq => {
+                try self.emitBinaryCall(@intFromPtr(&rt.listFindEq));
+            },
+            .list_find_equal => {
+                try self.emitBinaryCall(@intFromPtr(&rt.listFindEqual));
+            },
+            .list_position => {
+                try self.emitBinaryCall(@intFromPtr(&rt.listPosition));
+            },
+            .list_count => {
+                try self.emitBinaryCall(@intFromPtr(&rt.listCount));
+            },
+            .list_count_eq => {
+                try self.emitBinaryCall(@intFromPtr(&rt.listCountEq));
+            },
+            .list_count_equal => {
+                try self.emitBinaryCall(@intFromPtr(&rt.listCountEqual));
+            },
+            .list_remove => {
+                try self.emitBinaryCall(@intFromPtr(&rt.listRemove));
+            },
+            .list_remove_eq => {
+                try self.emitBinaryCall(@intFromPtr(&rt.listRemoveEq));
+            },
+            .list_remove_equal => {
+                try self.emitBinaryCall(@intFromPtr(&rt.listRemoveEqual));
+            },
 
             .list_reverse => {
                 try self.emitStackPop();
