@@ -1,5 +1,8 @@
 ; Habu Standard Library
 
+; Define stdlib in COMMON-LISP, then return to CL-USER.
+(in-package "COMMON-LISP")
+
 ; Core list utilities - must be early (needed by macros)
 (defun map (f lst)
   (if (null lst)
@@ -5143,3 +5146,5 @@
   "Establish restart bindings"
   (declare (ignore bindings))
   `(progn ,@body))
+
+(in-package "CL-USER")
