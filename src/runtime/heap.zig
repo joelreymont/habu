@@ -1945,6 +1945,22 @@ test "heap alloc string" {
     try testing.expectEqualStrings("hello", ptr.bytes());
 }
 
+test "gc forwarding ignores string length 14 header" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const bytes = "abcdefghijklmn"; // 14 bytes; matches forwarding tag bits
+    const str = try heap.allocBaseString(bytes);
+    var roots = [_]Value{str};
+    _ = try heap.collectGarbage(roots[0..]);
+
+    const moved = roots[0];
+    try testing.expect(moved.isString());
+    try testing.expectEqualStrings(bytes, moved.toPtr(objects.String).bytes());
+}
+
 test "heap alloc string32 from utf8 replaces invalid" {
     const testing = std.testing;
 

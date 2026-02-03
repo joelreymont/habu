@@ -161,12 +161,18 @@ pub const GC = struct {
                 const first_word: *Value = @ptrFromInt(addr);
                 if (first_word.isForwarding()) {
                     const new_addr = first_word.toPtrAddr();
-                    self.heap.stream_list.items[i] = @ptrFromInt(new_addr);
-                    i += 1;
-                } else {
-                    stream.finalize();
-                    _ = self.heap.stream_list.swapRemove(i);
+                    const new_start = @intFromPtr(self.heap.from_start);
+                    const new_end = @intFromPtr(self.heap.from_end);
+                    // Forwarding pointers must point into the new from-space.
+                    if (new_addr >= new_start and new_addr < new_end) {
+                        self.heap.stream_list.items[i] = @ptrFromInt(new_addr);
+                        i += 1;
+                        continue;
+                    }
                 }
+
+                stream.finalize();
+                _ = self.heap.stream_list.swapRemove(i);
             } else {
                 i += 1;
             }
@@ -205,9 +211,17 @@ pub const GC = struct {
         // Check if already has forwarding pointer
         const first_word: *Value = @ptrFromInt(obj_addr);
         if (first_word.isForwarding()) {
-            // Already copied, return new address with original tag
+            // Already copied, return new address with original tag.
+            //
+            // NOTE: Many Habu objects do not have a Value header word (e.g. strings start with
+            // length). Those header words can coincidentally look like a forwarding Value, so we
+            // validate that the forwarding target lands in to-space.
             const new_addr = first_word.toPtrAddr();
-            return .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) };
+            const to_start = @intFromPtr(self.heap.to_start);
+            const to_end = to_start + self.heap.space_size;
+            if (new_addr >= to_start and new_addr < to_end) {
+                return .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) };
+            }
         }
 
         // Copy object to to-space
