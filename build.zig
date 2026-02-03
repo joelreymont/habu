@@ -92,4 +92,34 @@ pub fn build(b: *std.Build) void {
     }
     const bench_step = b.step("bench", "Run GC benchmark (bench/gc.zig --help)");
     bench_step.dependOn(&bench_run_cmd.step);
+
+    // VM microbench
+    const vm_bench = b.addExecutable(.{
+        .name = "vm_bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/vm.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    vm_bench.root_module.addImport("habu", b.createModule(.{
+        .root_source_file = b.path("src/lib.zig"),
+        .target = target,
+        .optimize = optimize,
+    }));
+    // Z3 is required by src/types/smt.zig (imported via src/lib.zig).
+    vm_bench.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
+    vm_bench.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
+    vm_bench.root_module.linkSystemLibrary("z3", .{});
+    vm_bench.root_module.linkSystemLibrary("c", .{});
+
+    b.installArtifact(vm_bench);
+
+    const vm_bench_run_cmd = b.addRunArtifact(vm_bench);
+    vm_bench_run_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        vm_bench_run_cmd.addArgs(args);
+    }
+    const vm_bench_step = b.step("bench-vm", "Run VM microbench");
+    vm_bench_step.dependOn(&vm_bench_run_cmd.step);
 }

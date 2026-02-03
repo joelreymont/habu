@@ -1,9 +1,11 @@
 ---
 title: [MED] Add VM interpreter microbench
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-02-03T12:45:01.431143+01:00"
+created-at: "\"\\\"2026-02-03T12:45:01.431143+01:00\\\"\""
+closed-at: "2026-02-03T18:45:19.197701+01:00"
+close-reason: Add VM microbench + bench-vm step
 blocks:
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625
