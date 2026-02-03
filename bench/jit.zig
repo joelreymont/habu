@@ -185,6 +185,7 @@ pub fn main() !void {
     try w.print("  vm:  {d:.3} Mops/s\n", .{common.opsPerSec(vm_bench.ops, vm_bench.ns) / 1e6});
     try w.print("  jit: {d:.3} Mops/s (steady)\n", .{common.opsPerSec(jit_steady.ops, jit_steady.ns) / 1e6});
     try w.print("  compile: {d} ns (n={d}, fail={d})\n", .{ st.compile_ns, st.compile_n, st.fail_n });
+    try w.print("  code: {d} bytes\n", .{st.code_bytes});
     try w.print("  speedup: {d:.3}x\n", .{speedup});
     try w.flush();
 }
