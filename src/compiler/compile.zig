@@ -8878,22 +8878,8 @@ pub const Compiler = struct {
     /// Look up a class by name in the class registry
     fn lookupClass(self: *Compiler, heap: *Heap, class_name: Value) ?*runtime.Class {
         _ = self;
-        if (heap.lisp_classes.raw == Value.nil.raw) return null;
-        const ht = heap.lisp_classes.toPtr(runtime.HashTable);
-
-        const hash = class_name.raw;
-        var idx = hash % ht.capacity;
-        var i: usize = 0;
-        while (i < ht.capacity) : (i += 1) {
-            const e = &ht.entries[idx];
-            if (e.key.raw == runtime.HashTable.EMPTY.raw) break;
-            if (e.key.raw == class_name.raw) {
-                if (e.value.isClass()) return e.value.toPtr(runtime.Class);
-                return null;
-            }
-            idx = (idx + 1) % ht.capacity;
-        }
-        return null;
+        const val = heap.findLispClass(class_name) orelse return null;
+        return if (val.isClass()) val.toPtr(runtime.Class) else null;
     }
 
     /// Check if target_class (a class name symbol) appears in class's CPL

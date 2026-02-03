@@ -211,7 +211,15 @@ pub fn hashValue(val: Value) u64 {
             const h2 = hashValue(c.cdr);
             break :blk h1 *% 31 +% h2;
         },
-        .symbol, .keyword => val.raw,
+        .symbol => blk: {
+            const s = val.toPtr(objects.Symbol);
+            var h: u64 = 0;
+            for (s.getName()) |b| {
+                h = h *% 31 +% b;
+            }
+            break :blk h;
+        },
+        .keyword => val.toPtr(objects.Keyword).hash,
         .string => blk: {
             const s = val.toPtr(objects.String);
             var h: u64 = 0;

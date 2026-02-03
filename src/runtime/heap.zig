@@ -1296,7 +1296,7 @@ pub const Heap = struct {
         if (self.lisp_classes.raw == Value.nil.raw) return error.RegistryNotInitialized;
         const ht = self.lisp_classes.toPtr(objects.HashTable);
 
-        const hash = name.raw;
+        const hash = @import("primitives/hash.zig").hashValue(name);
         var idx = hash % ht.capacity;
         var i: usize = 0;
         while (i < ht.capacity) : (i += 1) {
@@ -1322,7 +1322,7 @@ pub const Heap = struct {
         if (self.lisp_classes.raw == Value.nil.raw) return null;
         const ht = self.lisp_classes.toPtr(objects.HashTable);
 
-        const hash = name.raw;
+        const hash = @import("primitives/hash.zig").hashValue(name);
         var idx = hash % ht.capacity;
         var i: usize = 0;
         while (i < ht.capacity) : (i += 1) {

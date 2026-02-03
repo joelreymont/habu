@@ -389,20 +389,7 @@ pub fn findClass(heap: *Heap, args: Value) !Value {
     const c = args.toPtr(Cons);
     const name = c.car;
     if (!name.isSymbol()) return error.TypeError;
-
-    if (heap.lisp_classes.raw == Value.nil.raw) return Value.nil;
-    const ht = heap.lisp_classes.toPtr(objects.HashTable);
-
-    const hash = name.raw;
-    var idx = hash % ht.capacity;
-    var i: usize = 0;
-    while (i < ht.capacity) : (i += 1) {
-        const e = &ht.entries[idx];
-        if (e.key.raw == objects.HashTable.EMPTY.raw) break;
-        if (e.key.raw == name.raw) return e.value;
-        idx = (idx + 1) % ht.capacity;
-    }
-    return Value.nil;
+    return heap.findLispClass(name) orelse Value.nil;
 }
 
 /// class-name: (class-name class)
