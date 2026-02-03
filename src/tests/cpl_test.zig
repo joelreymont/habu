@@ -10,22 +10,20 @@ test "C3 linearization - single parent" {
     const class_a = try heap.intern("A");
     const class_b = try heap.intern("B");
 
-    const get_cpl = struct {
-        fn f(c: Value) []const Value {
-            const static = struct {
-                var a_cpl: [1]Value = undefined;
-                var initialized = false;
-            };
-            if (!static.initialized) {
-                static.a_cpl[0] = c;
-                static.initialized = true;
-            }
-            return &static.a_cpl;
+    const a_cpl = try heap.allocCons(class_a, Value.nil);
+    const Ctx = struct {
+        class_a: Value,
+        a_cpl: Value,
+        fn getCpl(ctx_ptr: *anyopaque, cls: Value) Value {
+            const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+            if (cls.eq(ctx.class_a)) return ctx.a_cpl;
+            return Value.nil;
         }
-    }.f;
+    };
+    var ctx = Ctx{ .class_a = class_a, .a_cpl = a_cpl };
 
     const direct_supers = [_]Value{class_a};
-    const cpl = try objects.computeCpl(std.testing.allocator, class_b, &direct_supers, &get_cpl);
+    const cpl = try objects.computeCpl(std.testing.allocator, class_b, &direct_supers, &ctx, &Ctx.getCpl);
     defer std.testing.allocator.free(cpl);
 
     try std.testing.expectEqual(@as(usize, 2), cpl.len);
@@ -43,33 +41,35 @@ test "C3 linearization - diamond" {
     const c = try heap.intern("C");
 
     const Ctx = struct {
-        o_cpl: [1]Value,
-        a_cpl: [2]Value,
-        b_cpl: [2]Value,
-        fn getCpl(self: *const @This(), cls: Value) []const Value {
-            if (cls.eq(self.o_cpl[0])) return &self.o_cpl;
-            if (cls.eq(self.a_cpl[0])) return &self.a_cpl;
-            if (cls.eq(self.b_cpl[0])) return &self.b_cpl;
-            unreachable;
+        o: Value,
+        a: Value,
+        b: Value,
+        o_cpl: Value,
+        a_cpl: Value,
+        b_cpl: Value,
+        fn getCpl(ctx_ptr: *anyopaque, cls: Value) Value {
+            const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+            if (cls.eq(ctx.o)) return ctx.o_cpl;
+            if (cls.eq(ctx.a)) return ctx.a_cpl;
+            if (cls.eq(ctx.b)) return ctx.b_cpl;
+            return Value.nil;
         }
     };
 
+    const o_cpl = try heap.allocCons(o, Value.nil);
+    const a_cpl = try heap.allocCons(a, o_cpl);
+    const b_cpl = try heap.allocCons(b, o_cpl);
     var ctx = Ctx{
-        .o_cpl = .{o},
-        .a_cpl = .{ a, o },
-        .b_cpl = .{ b, o },
+        .o = o,
+        .a = a,
+        .b = b,
+        .o_cpl = o_cpl,
+        .a_cpl = a_cpl,
+        .b_cpl = b_cpl,
     };
-
-    const static = struct {
-        var ctx_ptr: *Ctx = undefined;
-        fn getCpl(cls: Value) []const Value {
-            return ctx_ptr.getCpl(cls);
-        }
-    };
-    static.ctx_ptr = &ctx;
 
     const direct_supers = [_]Value{ a, b };
-    const cpl = try objects.computeCpl(std.testing.allocator, c, &direct_supers, &static.getCpl);
+    const cpl = try objects.computeCpl(std.testing.allocator, c, &direct_supers, &ctx, &Ctx.getCpl);
     defer std.testing.allocator.free(cpl);
 
     try std.testing.expectEqual(@as(usize, 4), cpl.len);

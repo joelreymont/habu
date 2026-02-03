@@ -48,6 +48,7 @@ pub const Error = error{
     InvalidLet,
     InvalidIf,
     InvalidSet,
+    UndefinedClass,
     OutOfMemory,
     NoSpaceLeft, // Buffer overflow in name generation
     UninitializedBuiltins, // Builtins not set when required
@@ -6637,8 +6638,6 @@ pub const Compiler = struct {
         const objects = @import("../runtime/objects.zig");
 
         // Convert superclasses list to array and resolve symbols to Class objects
-        var supers = std.ArrayList(Value){};
-        defer supers.deinit(self.allocator);
         var direct_supers_classes = std.ArrayList(Value){};
         defer direct_supers_classes.deinit(self.allocator);
 
@@ -6646,13 +6645,12 @@ pub const Compiler = struct {
         while (super_list.isCons()) {
             const cons = super_list.toPtr(Cons);
             const super_sym = cons.car;
-            try supers.append(self.allocator, super_sym);
+            if (!super_sym.isSymbol()) return error.InvalidSyntax;
             // Resolve symbol to Class object for direct_supers
             if (heap.findLispClass(super_sym)) |class_val| {
                 try direct_supers_classes.append(self.allocator, class_val);
             } else {
-                // Superclass not found - this is an error in standard CL
-                // For now, just skip it
+                return error.UndefinedClass;
             }
             super_list = cons.cdr;
         }
@@ -6665,30 +6663,37 @@ pub const Compiler = struct {
             direct_supers_list = try heap.allocCons(direct_supers_classes.items[ds_i], direct_supers_list);
         }
 
-        // Compute CPL
+        // Allocate Class object early so CPL can refer to it
+        const class_ptr = try heap.alloc(objects.Class);
+        const class_val = Value.makeClass(class_ptr);
+        class_ptr.* = .{
+            .kind = .class,
+            .name = name,
+            .direct_supers = direct_supers_list,
+            .cpl = Value.nil,
+            .direct_slots = Value.nil,
+            .slots = Value.nil,
+            .metaclass = heap.standard_class,
+            .num_shared = 0,
+            .shared_slots = undefined,
+        };
+
+        // Compute CPL (using class objects)
         const cpl = try objects.computeCpl(
             heap.backing_allocator,
-            name,
-            supers.items,
+            class_val,
+            direct_supers_classes.items,
+            heap,
             getCpl,
         );
         defer heap.backing_allocator.free(cpl);
 
-        // Convert CPL array to list, resolving symbols to Class objects
-        // Note: The current class won't be in the registry yet, so we'll add it separately
+        // Convert CPL array to list of class objects
         var cpl_list = Value.nil;
         var i = cpl.len;
         while (i > 0) {
             i -= 1;
-            const cpl_sym = cpl[i];
-            // Try to resolve to Class object
-            if (heap.findLispClass(cpl_sym)) |class_val| {
-                cpl_list = try heap.allocCons(class_val, cpl_list);
-            } else {
-                // Symbol not yet registered (might be the current class being defined)
-                // We'll patch this later when the class is registered
-                cpl_list = try heap.allocCons(cpl_sym, cpl_list);
-            }
+            cpl_list = try heap.allocCons(cpl[i], cpl_list);
         }
 
         // Create SlotDefinition objects
@@ -6741,41 +6746,30 @@ pub const Compiler = struct {
             direct_slots_list = try heap.allocCons(Value.makeSlotDef(slot_def), direct_slots_list);
         }
 
-        // Allocate Class object
-        const class_ptr = try heap.alloc(objects.Class);
-        const class_val = Value.makeClass(class_ptr);
-
-        // The CPL's first element should be the class itself, but it was built with symbols.
-        // Replace the first element (the class's own name) with the actual class object.
-        // Also check if any remaining CPL elements can be resolved to Class objects.
-        var final_cpl_list = cpl_list;
-        if (cpl_list.isCons()) {
-            const cpl_cons = cpl_list.toPtr(Cons);
-            // The first element is the class name symbol - replace with class object
-            // Keep the rest of the list (which may have resolved Class objects)
-            final_cpl_list = try heap.allocCons(class_val, cpl_cons.cdr);
-        }
-
-        class_ptr.* = .{
-            .kind = .class,
-            .name = name,
-            .direct_supers = direct_supers_list,
-            .cpl = final_cpl_list,
-            .direct_slots = direct_slots_list,
-            .slots = direct_slots_list, // TODO: merge with inherited slots
-            .metaclass = heap.standard_class,
-            .num_shared = 0,
-            .shared_slots = undefined,
-        };
+        class_ptr.direct_supers = direct_supers_list;
+        class_ptr.cpl = cpl_list;
+        class_ptr.direct_slots = direct_slots_list;
+        class_ptr.slots = direct_slots_list; // TODO: merge with inherited slots
 
         return class_val;
     }
 
     /// Get CPL for a class (used by computeCpl)
-    fn getCpl(class: Value) []const Value {
-        _ = class;
-        // TODO: Look up class in registry and return its CPL
-        return &.{};
+    fn getCpl(ctx: *anyopaque, class_val: Value) Value {
+        const heap: *Heap = @ptrCast(@alignCast(ctx));
+        var cls = class_val;
+        if (!cls.isClass()) {
+            if (cls.isSymbol()) {
+                if (heap.findLispClass(cls)) |found| {
+                    cls = found;
+                } else {
+                    return Value.nil;
+                }
+            } else {
+                return Value.nil;
+            }
+        }
+        return cls.toPtr(runtime.Class).cpl;
     }
 
     /// Generate constructor: creates a closure that takes args, checks types, returns vector

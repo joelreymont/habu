@@ -46,7 +46,13 @@ pub fn isMoreSpecific(m1_specs: []const Value, m2_specs: []const Value, arg_clas
 
 /// C3 linearization: compute class precedence list
 /// L[C(B1...BN)] = C + merge(L[B1]...L[BN], B1...BN)
-pub fn computeCpl(allocator: std.mem.Allocator, class: Value, direct_supers: []const Value, get_cpl: *const fn (Value) []const Value) ![]Value {
+pub fn computeCpl(
+    allocator: std.mem.Allocator,
+    class: Value,
+    direct_supers: []const Value,
+    ctx: *anyopaque,
+    get_cpl: *const fn (*anyopaque, Value) Value,
+) ![]Value {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const tmp = arena.allocator();
@@ -60,7 +66,12 @@ pub fn computeCpl(allocator: std.mem.Allocator, class: Value, direct_supers: []c
 
     for (direct_supers) |sup| {
         var parent_cpl = std.ArrayList(Value){};
-        for (get_cpl(sup)) |c| try parent_cpl.append(tmp, c);
+        var cpl_list = get_cpl(ctx, sup);
+        while (cpl_list.isCons()) {
+            const cons = cpl_list.toPtr(Cons);
+            try parent_cpl.append(tmp, cons.car);
+            cpl_list = cons.cdr;
+        }
         try lists.append(tmp, parent_cpl);
     }
 

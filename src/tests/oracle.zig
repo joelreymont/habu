@@ -8,6 +8,8 @@ const testing = std.testing;
 
 const runtime = @import("../runtime/runtime.zig");
 const Heap = runtime.Heap;
+const Cons = runtime.Cons;
+const Symbol = runtime.Symbol;
 const harness = @import("../testing/harness.zig");
 
 // ============================================================================
@@ -126,6 +128,42 @@ test "oracle: conditional evaluation" {
         const result = try harness.eval(allocator, &heap, tc.expr);
         try testing.expectEqual(tc.expected, result.toFixnum());
     }
+}
+
+test "oracle: defclass CPL includes transitive supers" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+
+    const expr =
+        \\(progn
+        \\  (defclass A () ())
+        \\  (defclass B (A) ())
+        \\  (defclass C (B) ())
+        \\  (list
+        \\    (class-name (car (class-precedence-list (find-class 'C))))
+        \\    (class-name (car (cdr (class-precedence-list (find-class 'C)))))
+        \\    (class-name (car (cdr (cdr (class-precedence-list (find-class 'C))))))))
+    ;
+
+    const result = try harness.eval(allocator, &heap, expr);
+    try testing.expect(result.isCons());
+
+    const first = result.toPtr(Cons).car;
+    try testing.expect(first.isSymbol());
+    try testing.expectEqualStrings("C", first.toPtr(Symbol).getName());
+
+    const rest1 = result.toPtr(Cons).cdr;
+    try testing.expect(rest1.isCons());
+    const second = rest1.toPtr(Cons).car;
+    try testing.expect(second.isSymbol());
+    try testing.expectEqualStrings("B", second.toPtr(Symbol).getName());
+
+    const rest2 = rest1.toPtr(Cons).cdr;
+    try testing.expect(rest2.isCons());
+    const third = rest2.toPtr(Cons).car;
+    try testing.expect(third.isSymbol());
+    try testing.expectEqualStrings("A", third.toPtr(Symbol).getName());
 }
 
 test "oracle: list construction" {
