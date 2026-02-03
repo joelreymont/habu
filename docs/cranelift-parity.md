@@ -26,7 +26,7 @@ This matrix tracks "Cranelift-class" JIT backend capabilities. Each row has:
 | Runtime | Stack maps / GC safepoints | no | n/a | n/a | n/a | GC via helpers with explicit root arrays; no stack maps or compiler-inserted safepoints. Design: `docs/stack-maps.md`. |
 | Runtime | Relocations | no | n/a | n/a | n/a | Compile-time patching only; no relocation records or code movement. |
 | Runtime | Deopt / OSR hooks | no | n/a | n/a | n/a | Typically handled by the embedding runtime. |
-| Runtime | Tiering / profiling hooks | partial | `src/tests/jit_parity.zig`: test "parity: vm vs jit (hand-picked)" | n/a | aarch64 | Hot-count threshold JIT tiering exists; no hot-loop detection/profiling yet. |
+| Runtime | Tiering / profiling hooks | partial | `src/tests/jit_tiering.zig`: test "jit tiering hot threshold" | n/a | aarch64 | Hot-count threshold JIT tiering exists; no hot-loop detection/profiling yet. |
 | Debug | DWARF / debug info | no | n/a | n/a | n/a | No debug info emitted. |
 | ISA | Multi-ISA backend | no | n/a | n/a | n/a | AArch64 only. |
 | Memory | W^X / icache management | yes | `src/jit/patch.zig`: test "code buffer" | n/a | aarch64 | macOS MAP_JIT + write-protect; non-mac uses mprotect; aarch64 icache flush. |
