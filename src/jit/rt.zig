@@ -205,6 +205,17 @@ pub fn atom(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
     return if (!a.isCons()) Value.t else Value.nil;
 }
 
+pub fn listMember(c: *ctx.JitContext, item: Value, list: Value) vm_mod.Error!Value {
+    _ = c;
+    var curr = list;
+    while (curr.isCons()) {
+        const cell = curr.toPtr(runtime.Cons);
+        if (cell.car.raw == item.raw) return curr;
+        curr = cell.cdr;
+    }
+    return Value.nil;
+}
+
 pub fn listLength(c: *ctx.JitContext, seq: Value) vm_mod.Error!Value {
     _ = c;
     switch (seq.typeKind()) {

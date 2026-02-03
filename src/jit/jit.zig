@@ -284,6 +284,9 @@ pub const Jit = struct {
                 try self.emitCallUnary(@intFromPtr(&rt.listLength));
                 try self.emitStackPush();
             },
+            .list_member => {
+                try self.emitBinaryCall(@intFromPtr(&rt.listMember));
+            },
 
             .list_reverse => {
                 try self.emitStackPop();
