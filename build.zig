@@ -152,4 +152,24 @@ pub fn build(b: *std.Build) void {
     }
     const jit_bench_step = b.step("bench-jit", "Run JIT microbench");
     jit_bench_step.dependOn(&jit_bench_run_cmd.step);
+
+    // Bench regression checks (runs gc_bench/vm_bench/jit_bench)
+    const bench_check = b.addExecutable(.{
+        .name = "bench_check",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/check.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    b.installArtifact(bench_check);
+
+    const bench_check_run_cmd = b.addRunArtifact(bench_check);
+    bench_check_run_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        bench_check_run_cmd.addArgs(args);
+    }
+
+    const bench_check_step = b.step("bench-check", "Run bench regression checks");
+    bench_check_step.dependOn(&bench_check_run_cmd.step);
 }

@@ -1,9 +1,11 @@
 ---
 title: Bench harness
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-02-03T13:28:54.134464+01:00"
+created-at: "\"\\\"2026-02-03T13:28:54.134464+01:00\\\"\""
+closed-at: "2026-02-03T21:08:17.454285+01:00"
+close-reason: Add bench-check regression harness
 blocks:
   - habu-med-add-jit-b402aeb1
   - habu-fix-macro-chunk-5f196625

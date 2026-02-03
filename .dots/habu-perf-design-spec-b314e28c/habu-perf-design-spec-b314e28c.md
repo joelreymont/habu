@@ -5,6 +5,7 @@ priority: 2
 issue-type: task
 created-at: "2026-02-03T12:44:17.305934+01:00"
 blocks:
+  - habu-parity-tests-9be195f5
   - habu-bench-harness-f817afd6
   - habu-med-add-jit-b402aeb1
   - habu-low-stack-maps-1d094863
