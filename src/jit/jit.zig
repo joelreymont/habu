@@ -1168,6 +1168,7 @@ test "jit vm parity add" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
@@ -1232,6 +1233,7 @@ test "jit vm parity numberp" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
@@ -1294,6 +1296,7 @@ test "jit vm parity lt" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
@@ -1358,6 +1361,7 @@ test "jit vm parity global store/load" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
@@ -1425,6 +1429,7 @@ test "jit car nil returns nil" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
@@ -1486,6 +1491,7 @@ test "jit car non-cons sets err" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
@@ -1548,6 +1554,7 @@ test "jit vm parity make_list" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
@@ -1617,6 +1624,7 @@ test "jit vm parity make_vec_n" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
@@ -1686,6 +1694,7 @@ test "jit vm parity make_vec" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
@@ -1753,6 +1762,7 @@ test "jit vm parity call closure" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const push_i32_op: u16 = @intFromEnum(Op.push_i32);
     const ret_op: u16 = @intFromEnum(Op.ret);
@@ -1842,6 +1852,7 @@ test "jit vm parity apply" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const load_local_op: u16 = @intFromEnum(Op.load_local);
     const add_op: u16 = @intFromEnum(Op.add);
@@ -1937,6 +1948,7 @@ test "jit vm parity lt float" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
@@ -2001,6 +2013,7 @@ test "jit gc roots preserve stack" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();
@@ -2076,6 +2089,7 @@ test "jit stack overflow sets err" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var jit = try Jit.init(allocator, 1024 * 1024);
     defer jit.deinit();

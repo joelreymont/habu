@@ -437,6 +437,7 @@ test "desugar - atom passthrough" {
 
     const Vm = @import("../../interp/vm.zig").Vm;
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var desugarer = Desugarer.init(testing.allocator, &heap, &vm.builtins);
 
     // Nil passes through
@@ -461,6 +462,7 @@ test "desugar - and" {
 
     const Vm = @import("../../interp/vm.zig").Vm;
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var desugarer = Desugarer.init(testing.allocator, &heap, &vm.builtins);
 
     // (and) → t
@@ -479,6 +481,7 @@ test "desugar - or single" {
 
     const Vm = @import("../../interp/vm.zig").Vm;
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var desugarer = Desugarer.init(testing.allocator, &heap, &vm.builtins);
 
     // (or x) → x
@@ -497,6 +500,7 @@ test "desugar - or gensym" {
 
     const Vm = @import("../../interp/vm.zig").Vm;
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var desugarer = Desugarer.init(testing.allocator, &heap, &vm.builtins);
 
     const or_sym = try heap.intern("or");
@@ -543,6 +547,7 @@ test "desugar - defun" {
 
     const Vm = @import("../../interp/vm.zig").Vm;
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var desugarer = Desugarer.init(testing.allocator, &heap, &vm.builtins);
 
     // (defun square (x) (* x x)) → (define square (lambda (x) (* x x)))

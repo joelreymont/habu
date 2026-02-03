@@ -34,6 +34,7 @@ fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Valu
 
     // Compile (with heap for symbol interning)
     var comp_vm = try Vm.init(arena_alloc, heap);
+    defer comp_vm.deinit();
 
     // Parse
     var parser = try Parser.init(arena_alloc, heap, source, &comp_vm.builtins);
@@ -56,6 +57,7 @@ fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Valu
 
     // Run - use main allocator for VM stack
     var vm = try Vm.init(allocator, heap);
+    defer vm.deinit();
     return vm.run(chunk_val.toPtr(Chunk));
 }
 

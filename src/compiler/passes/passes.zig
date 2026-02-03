@@ -250,6 +250,7 @@ test "runFullPipeline - simple literal" {
     defer globals.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     // Test: simple literal
     const expr = Value.makeFixnum(42);

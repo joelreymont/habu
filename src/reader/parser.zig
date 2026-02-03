@@ -871,6 +871,7 @@ test "parse number" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var parser = try Parser.init(testing.allocator, &heap, "42", &vm.builtins);
     defer parser.deinit();
 
@@ -886,6 +887,7 @@ test "parse negative number" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var parser = try Parser.init(testing.allocator, &heap, "-123", &vm.builtins);
     defer parser.deinit();
 
@@ -901,6 +903,7 @@ test "parse nil" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var parser = try Parser.init(testing.allocator, &heap, "nil", &vm.builtins);
     defer parser.deinit();
 
@@ -915,6 +918,7 @@ test "parse all expressions" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var parser = try Parser.init(testing.allocator, &heap, "42 nil (1 2)", &vm.builtins);
     defer parser.deinit();
 
@@ -937,6 +941,7 @@ test "parse empty list" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var parser = try Parser.init(testing.allocator, &heap, "()", &vm.builtins);
     defer parser.deinit();
 
@@ -951,6 +956,7 @@ test "parse simple list" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var parser = try Parser.init(testing.allocator, &heap, "(1 2 3)", &vm.builtins);
     defer parser.deinit();
 
@@ -971,6 +977,7 @@ test "parse dotted pair" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var parser = try Parser.init(testing.allocator, &heap, "(1 . 2)", &vm.builtins);
     defer parser.deinit();
 
@@ -989,6 +996,7 @@ test "parse nested list" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var parser = try Parser.init(testing.allocator, &heap, "((1 2) (3 4))", &vm.builtins);
     defer parser.deinit();
 
@@ -1008,6 +1016,7 @@ test "parse string" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var parser = try Parser.init(testing.allocator, &heap, "\"hello\"", &vm.builtins);
     defer parser.deinit();
 
@@ -1025,6 +1034,7 @@ test "parse symbol" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var parser = try Parser.init(testing.allocator, &heap, "foo", &vm.builtins);
     defer parser.deinit();
 
@@ -1042,6 +1052,7 @@ test "parse keyword" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var parser = try Parser.init(testing.allocator, &heap, ":test", &vm.builtins);
     defer parser.deinit();
 
@@ -1059,6 +1070,7 @@ test "parse quote" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var parser = try Parser.init(testing.allocator, &heap, "'foo", &vm.builtins);
     defer parser.deinit();
 
@@ -1080,6 +1092,7 @@ test "symbol interning" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var parser = try Parser.init(testing.allocator, &heap, "foo foo", &vm.builtins);
     defer parser.deinit();
 
@@ -1097,6 +1110,7 @@ test "parse expression" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var parser = try Parser.init(testing.allocator, &heap, "(+ 1 2)", &vm.builtins);
     defer parser.deinit();
 
@@ -1121,6 +1135,7 @@ test "parse hex number" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     // #x20 = 32
     var parser1 = try Parser.init(testing.allocator, &heap, "#x20", &vm.builtins);
@@ -1155,6 +1170,7 @@ test "parse binary number" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     // #b101 = 5
     var parser1 = try Parser.init(testing.allocator, &heap, "#b101", &vm.builtins);
@@ -1183,6 +1199,7 @@ test "parse 21 parameter lambda" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
     var parser = try Parser.init(testing.allocator, &heap, "(lambda (a b c d e f g h i j k l m n o p q r s t u) u)", &vm.builtins);
     defer parser.deinit();
 
@@ -1214,6 +1231,7 @@ test "parse #S struct" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     // #S(point :x 10 :y 20) -> (make-struct 'point :x 10 :y 20)
     var parser = try Parser.init(testing.allocator, &heap, "#S(point :x 10 :y 20)", &vm.builtins);
@@ -1248,6 +1266,7 @@ test "parse #S empty struct" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     var parser = try Parser.init(testing.allocator, &heap, "#S(empty)", &vm.builtins);
     defer parser.deinit();
@@ -1267,6 +1286,7 @@ test "parse #A array" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     // #A((1 2 3)) -> (make-array (1 3) :initial-contents (1 2 3))
     var parser = try Parser.init(testing.allocator, &heap, "#A((1 2 3))", &vm.builtins);
@@ -1299,6 +1319,7 @@ test "parse #2A array" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     // #2A((1 2) (3 4)) -> (make-array (2 2) :initial-contents ((1 2) (3 4)))
     var parser = try Parser.init(testing.allocator, &heap, "#2A((1 2) (3 4))", &vm.builtins);
@@ -1332,6 +1353,7 @@ test "parse #0A array" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     var parser = try Parser.init(testing.allocator, &heap, "#0A()", &vm.builtins);
     defer parser.deinit();
@@ -1358,6 +1380,7 @@ test "parse #2A ragged errors" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     var parser = try Parser.init(testing.allocator, &heap, "#2A((1 2) (3))", &vm.builtins);
     defer parser.deinit();
@@ -1372,6 +1395,7 @@ test "parse #P pathname" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     // #P"/path/to/file" -> (parse-namestring "/path/to/file")
     var parser = try Parser.init(testing.allocator, &heap, "#P\"/path/to/file\"", &vm.builtins);
@@ -1392,6 +1416,7 @@ test "parse #C complex number" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     // #C(3 4) = 3+4i
     var parser1 = try Parser.init(testing.allocator, &heap, "#C(3 4)", &vm.builtins);
@@ -1442,6 +1467,7 @@ test "parse #* bit vector" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     // #*101010 -> vector of 6 bits
     var parser1 = try Parser.init(testing.allocator, &heap, "#*101010", &vm.builtins);
@@ -1482,6 +1508,7 @@ test "parse octal number" {
     defer heap.deinit();
 
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     // #o77 = 63
     var parser1 = try Parser.init(testing.allocator, &heap, "#o77", &vm.builtins);

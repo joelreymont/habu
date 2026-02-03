@@ -57,6 +57,7 @@ test "infer pass - literal" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     const lit = Ir{ .lit = Value.makeFixnum(42) };
     const typed = TypedIr.init(&lit);
@@ -76,6 +77,7 @@ test "infer pass propagates type error" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     const var_ir = Ir{ .@"var" = .{ .name = "x", .depth = 0, .index = 0 } };
     const typed = TypedIr.init(&var_ir);

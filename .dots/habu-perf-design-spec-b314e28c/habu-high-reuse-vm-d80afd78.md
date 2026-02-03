@@ -1,9 +1,11 @@
 ---
 title: [HIGH] Reuse VM GC root buffer
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-03T12:44:42.462219+01:00"
+created-at: "\"2026-02-03T12:44:42.462219+01:00\""
+closed-at: "2026-02-03T15:38:09.906512+01:00"
+close-reason: Reuse VM GC roots buffer
 blocks:
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625

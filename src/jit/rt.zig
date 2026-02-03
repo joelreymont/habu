@@ -339,6 +339,7 @@ test "rt add returns error union" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     var dummy = [_]Value{Value.nil};
     var trace_addrs: [16]usize = undefined;
@@ -371,6 +372,7 @@ test "rt neg returns error union" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     var dummy = [_]Value{Value.nil};
     var trace_addrs: [16]usize = undefined;
@@ -402,6 +404,7 @@ test "rt gc keeps vm globals" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     const cons = try heap.allocCons(Value.makeFixnum(1), Value.nil);
     try vm.storeGlobal(0, cons);
@@ -441,6 +444,7 @@ test "rt makeVec reloads init after gc" {
     defer heap.deinit();
 
     var vm = try vm_mod.Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
 
     const init_cons = try heap.allocCons(Value.makeFixnum(7), Value.nil);
     while (true) {

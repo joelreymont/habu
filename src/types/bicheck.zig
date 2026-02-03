@@ -875,6 +875,7 @@ test "infer literal types" {
     var heap = try Heap.init(test_alloc, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     var vm = try Vm.init(test_alloc, &heap);
+    defer vm.deinit();
     var checker = BiChecker.init(test_alloc, &vm.builtins);
     defer checker.deinit();
 
@@ -937,6 +938,7 @@ test "infer variable" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
     var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
@@ -965,6 +967,7 @@ test "check lambda against pi type" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
     var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
@@ -1009,6 +1012,7 @@ test "substitution in type" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
     var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
@@ -1037,6 +1041,7 @@ test "substitution preserves unchanged types" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
     var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
@@ -1058,6 +1063,7 @@ test "substitution with shadowing" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
     var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
@@ -1085,6 +1091,7 @@ test "check cons against sigma type" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
     var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
@@ -1121,6 +1128,7 @@ test "infer car from sigma type" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
     var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
@@ -1155,6 +1163,7 @@ test "infer cdr from sigma type" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
     var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
@@ -1189,6 +1198,7 @@ test "infer car from list type" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
     var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
@@ -1223,6 +1233,7 @@ test "zero-quantity variable cannot be used at runtime" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
     var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
@@ -1254,6 +1265,7 @@ test "one-quantity variable in linear context" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
     var checker = BiChecker.init(allocator, &vm.builtins);
     defer checker.deinit();
 
@@ -1280,6 +1292,7 @@ test "infer if propagates allocation failure" {
     var heap = try Heap.init(test_alloc, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
     var vm = try Vm.init(test_alloc, &heap);
+    defer vm.deinit();
 
     const FailAlloc = struct {
         const Self = @This();

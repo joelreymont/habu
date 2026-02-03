@@ -38,6 +38,7 @@ fn eval(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {
     const arena_alloc = arena.allocator();
 
     var comp_vm = try Vm.init(arena_alloc, heap);
+    defer comp_vm.deinit();
 
     var parser = try Parser.init(arena_alloc, heap, source, &comp_vm.builtins);
     defer parser.deinit();
@@ -53,6 +54,7 @@ fn eval(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {
     const chunk_val = try emitter.finalize();
 
     var vm = try Vm.init(allocator, heap);
+    defer vm.deinit();
     return vm.run(chunk_val.toPtr(Chunk));
 }
 

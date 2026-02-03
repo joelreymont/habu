@@ -12739,6 +12739,7 @@ test "compile fixnum" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -12760,6 +12761,7 @@ test "compile nil" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -12781,6 +12783,7 @@ test "compile lambda params" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -12826,6 +12829,7 @@ test "compile lambda invalid param" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -12853,6 +12857,7 @@ test "compile invalid if" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -12877,6 +12882,7 @@ test "typeInfer type mismatch" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -12901,6 +12907,7 @@ test "compile setf long name" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -12937,6 +12944,7 @@ test "compile block return-from names" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -12988,6 +12996,7 @@ test "compile or type assertions" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -13126,6 +13135,7 @@ test "type inference for literals" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13201,6 +13211,7 @@ test "BiChecker integration - type checking enabled" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13220,6 +13231,7 @@ test "BiChecker integration - checkLambdaTypes with correct types" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13245,6 +13257,7 @@ test "BiChecker integration - checkLambdaTypes with type mismatch" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13271,6 +13284,7 @@ test "match exhaustiveness uses variant symbol identity" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13309,6 +13323,7 @@ test "declare - type declaration" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13349,6 +13364,7 @@ test "declare - ignore declaration" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13382,6 +13398,7 @@ test "declare - multiple declaration specs" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13425,6 +13442,7 @@ test "parseDestructParams - simple parameters" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13460,6 +13478,7 @@ test "parseDestructParams - nested lists" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13497,6 +13516,7 @@ test "parseDestructParams - optional parameters" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13538,6 +13558,7 @@ test "parseDestructParams - rest parameter" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13572,6 +13593,7 @@ test "parseDestructParams - key parameters" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13610,6 +13632,7 @@ test "parseDestructParams - complex nested with keywords" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13650,6 +13673,7 @@ test "genDestructCode - simple parameters" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13705,6 +13729,7 @@ test "genDestructCode - nested parameters" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13757,6 +13782,7 @@ test "genDestructCode - rest parameter" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13809,6 +13835,7 @@ test "defmacro with destructured params" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13850,6 +13877,7 @@ test "macro expansion restores VM chunk_pool" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
     const start_pool_len = vm.chunk_pool.len;
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
@@ -13881,6 +13909,7 @@ test "load-time-value restores VM chunk_pool" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
     const start_pool_len = vm.chunk_pool.len;
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
@@ -13909,6 +13938,7 @@ test "transformDestructuredParams nested" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var compiler = try Compiler.initWithHeap(allocator, &vm);
     defer compiler.deinit();
@@ -13971,6 +14001,7 @@ test "genDestructBindings nested" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -14000,6 +14031,7 @@ test "compile defun typed name" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -14039,6 +14071,7 @@ test "compile defpackage names" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -14073,6 +14106,7 @@ test "parseTypeExpr function type" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -14109,6 +14143,7 @@ test "compile defstruct typed slot" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -14144,6 +14179,7 @@ test "compile defclass slot list" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -14179,6 +14215,7 @@ test "compile defmethod specialized param" {
     var heap = try Heap.init(allocator, .{});
     defer heap.deinit();
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -14219,6 +14256,7 @@ test "compiler qualifyName allocates for long names" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -14250,6 +14288,7 @@ test "parser resolves list symbol to builtin" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var parser = try Parser.init(allocator, &heap, "(list 1 2)", &vm.builtins);
     defer parser.deinit();
@@ -14273,6 +14312,7 @@ test "compile list and listen use intrinsic IR" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();

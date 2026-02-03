@@ -208,6 +208,9 @@ pub const Vm = struct {
     /// Allocator
     allocator: std.mem.Allocator,
 
+    /// Reusable buffer for building GC root slices.
+    gc_roots: std.ArrayList(Value),
+
     /// Global variables (indexed by constant pool index)
     globals: [MAX_GLOBALS]Value,
     /// Number of defined globals
@@ -350,6 +353,7 @@ pub const Vm = struct {
             .ip = 0,
             .heap = heap,
             .allocator = allocator,
+            .gc_roots = std.ArrayList(Value){},
             .globals = undefined,
             .num_globals = 0,
             .current_package = Value.nil,
@@ -405,6 +409,10 @@ pub const Vm = struct {
             g.* = Value.nil;
         }
         return vm;
+    }
+
+    pub fn deinit(self: *Vm) void {
+        self.gc_roots.deinit(self.allocator);
     }
 
     /// Set the chunk pool for closures with a base offset (deprecated)
@@ -724,8 +732,33 @@ pub const Vm = struct {
     }
 
     fn collectGarbageExtra(self: *Vm, extra_roots: []Value) !usize {
-        var roots = std.ArrayList(Value){};
-        defer roots.deinit(self.allocator);
+        self.gc_roots.clearRetainingCapacity();
+        var roots = &self.gc_roots;
+
+        // Pre-reserve to avoid allocator churn while building the roots slice.
+        const cap_need: usize = self.sp +
+            self.num_globals +
+            self.catch_sp * 2 +
+            self.unwind_sp +
+            self.block_sp * 2 +
+            self.restart_sp * 2 +
+            self.progv_sp +
+            self.handler_sp * 2 +
+            // Worst-case: every frame has a closure.
+            self.fp +
+            (if (self.current_closure != null) @as(usize, 1) else 0) +
+            // pending_throw_{tag,value} + pending_block_{name,value}
+            4 +
+            // current_package
+            1 +
+            self.secondary_values_count +
+            self.saved_chunk_sp +
+            // current chunk + frame chunks
+            (1 + self.fp) +
+            self.chunk_pool.len +
+            self.ext_roots.len +
+            extra_roots.len;
+        try roots.ensureTotalCapacity(self.allocator, cap_need);
 
         // Stack values
         const stack_start = roots.items.len;
@@ -7370,6 +7403,7 @@ test "vm push and return" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const code = [_]u8{
         0x02, 0x00, // push_i32
@@ -7401,6 +7435,7 @@ test "vm callClosure runs and restores" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const push_op: u16 = @intFromEnum(Op.push_i32);
     const ret_op: u16 = @intFromEnum(Op.ret);
@@ -7427,6 +7462,7 @@ test "vm allocVector propagates overflow" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const huge = std.math.maxInt(usize);
     try testing.expectError(error.Overflow, vm.allocVector(1, huge));
@@ -7440,6 +7476,7 @@ test "vm arithmetic" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     // (+ 10 20) = 30
     const push_i32_op: u16 = @intFromEnum(Op.push_i32);
@@ -7475,6 +7512,7 @@ test "vm make_complex" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const consts = [_]Value{
         Value.makeFloat(1.5),
@@ -7519,6 +7557,7 @@ test "vm sym_name" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const push_nil_op: u16 = @intFromEnum(Op.push_nil);
     const push_t_op: u16 = @intFromEnum(Op.push_t);
@@ -7597,6 +7636,7 @@ test "vm cons car cdr" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     // (car (cons 1 2)) = 1
     const code = [_]u8{
@@ -7631,6 +7671,7 @@ test "vm list last" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const code = [_]u8{
         0x02, 0x00, 1, 0, 0, 0, // push_i32 1
@@ -7666,6 +7707,7 @@ test "vm elt_set list" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const make_list_op: u16 = @intFromEnum(Op.make_list);
     const list_nth_op: u16 = @intFromEnum(Op.list_nth);
@@ -7713,6 +7755,7 @@ test "vm symbol_package nil" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const push_nil_op: u16 = @intFromEnum(Op.push_nil);
     const symbol_package_op: u16 = @intFromEnum(Op.symbol_package);
@@ -7751,6 +7794,7 @@ test "vm aref aset vector" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const make_vec_n_op: u16 = @intFromEnum(Op.make_vec_n);
     const aref_op: u16 = @intFromEnum(Op.aref);
@@ -7799,6 +7843,7 @@ test "vm symbol_value specials" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const push_nil_op: u16 = @intFromEnum(Op.push_nil);
     const push_t_op: u16 = @intFromEnum(Op.push_t);
@@ -7856,6 +7901,7 @@ test "vm format selector" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const push_nil_op: u16 = @intFromEnum(Op.push_nil);
     const push_const_op: u16 = @intFromEnum(Op.push_const);
@@ -7923,6 +7969,7 @@ test "vm list_position count string" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const push_const_op: u16 = @intFromEnum(Op.push_const);
     const push_i32_op: u16 = @intFromEnum(Op.push_i32);
@@ -7988,6 +8035,7 @@ test "vm list_find string returns character" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const push_const_op: u16 = @intFromEnum(Op.push_const);
     const push_i32_op: u16 = @intFromEnum(Op.push_i32);
@@ -8029,6 +8077,7 @@ test "vm list_position string invalid item errors" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const push_const_op: u16 = @intFromEnum(Op.push_const);
     const list_position_op: u16 = @intFromEnum(Op.list_position);
@@ -8068,6 +8117,7 @@ test "vm equal vector string" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const push_const_op: u16 = @intFromEnum(Op.push_const);
     const push_i32_op: u16 = @intFromEnum(Op.push_i32);
@@ -8140,6 +8190,7 @@ test "vm conditional" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     // (if nil 1 2) = 2
     const code = [_]u8{
@@ -8175,6 +8226,7 @@ test "vm locals" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     // Store 42 in local 0, load it back
     const code = [_]u8{
@@ -8208,6 +8260,7 @@ test "vm hash table" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     // Create hash table, set key 42 to value 100, get key 42
     // Use local 0 to store ht
@@ -8249,6 +8302,7 @@ test "vm hash table count and remove" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     // Create hash table, set 2 keys, get count
     const code = [_]u8{
@@ -8293,6 +8347,7 @@ test "vm read_from_string propagates parse errors" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const bad = try heap.allocBaseString("(");
     try vm.push(bad);
@@ -8307,6 +8362,7 @@ test "vm typep propagates invalid type spec" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     try vm.push(Value.makeFixnum(1));
     try vm.push(Value.makeFixnum(2));
@@ -8321,6 +8377,7 @@ test "vm write_to_string propagates buffer errors" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var bytes: [300]u8 = undefined;
     @memset(&bytes, 'a');
@@ -8338,6 +8395,7 @@ test "vm collectGarbage relocates chunk pointers" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const empty_code = [_]u8{};
     const no_consts = [_]Value{};
@@ -8446,6 +8504,7 @@ test "vm collectGarbage updates ext roots" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const empty_chunk = Chunk{
         .code = @constCast(&[_]u8{}),
@@ -8473,6 +8532,24 @@ test "vm collectGarbage updates ext roots" {
     try testing.expect(ptr >= start and ptr < end);
 }
 
+test "vm collectGarbage reuses gc_roots buffer" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    _ = try vm.collectGarbage();
+    const cap1 = vm.gc_roots.capacity;
+    try testing.expect(cap1 > 0);
+
+    _ = try vm.collectGarbage();
+    try testing.expectEqual(cap1, vm.gc_roots.capacity);
+}
+
 test "vm allocCons roots args across GC" {
     const testing = std.testing;
     const allocator = testing.allocator;
@@ -8481,6 +8558,7 @@ test "vm allocCons roots args across GC" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const a = try heap.allocCons(Value.makeFixnum(1), Value.nil);
     const b = try heap.allocCons(Value.makeFixnum(2), Value.nil);
@@ -8528,6 +8606,7 @@ test "vm allocClosureWithGC roots code and captures across GC" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     const empty_code = [_]u8{};
     const no_consts = [_]Value{};
@@ -8586,6 +8665,7 @@ test "vm list_reverse survives GC" {
     defer heap.deinit();
 
     var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
 
     var items: [200]Value = undefined;
     for (0..items.len) |i| {

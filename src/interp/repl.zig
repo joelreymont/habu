@@ -299,6 +299,7 @@ pub const Repl = struct {
 
         // Use a separate VM to avoid stack issues
         var nested_vm = try Vm.init(self.allocator, self.heap);
+        defer nested_vm.deinit();
         nested_vm.setGlobalEnv(&self.compiler.globals);
         nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
@@ -350,6 +351,7 @@ pub const Repl = struct {
 
         // Create a temporary VM for nested evaluation
         var nested_vm = try Vm.init(self.allocator, self.heap);
+        defer nested_vm.deinit();
         nested_vm.setGlobalEnv(&self.compiler.globals);
         nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
@@ -532,6 +534,7 @@ pub const Repl = struct {
     }
 
     pub fn deinit(self: *Repl) void {
+        self.vm.deinit();
         self.line_editor.deinit();
         self.compiler.deinit();
         self.chunk_pool.deinit(self.allocator);
@@ -1326,6 +1329,7 @@ pub const Repl = struct {
         // Use a separate VM to avoid corrupting the main VM's state
         // (handleDefmacro may be called during a load from within the main VM)
         var macro_vm = try Vm.init(self.allocator, self.heap);
+        defer macro_vm.deinit();
         macro_vm.setGlobalEnv(&self.compiler.globals);
 
         self.syncChunkPools(&macro_vm);
@@ -1488,6 +1492,7 @@ pub const Repl = struct {
 
         // Use a separate VM to avoid corrupting the main VM's state
         var eval_vm = try Vm.init(self.allocator, self.heap);
+        defer eval_vm.deinit();
         eval_vm.setGlobalEnv(&self.compiler.globals);
 
         self.syncChunkPools(&eval_vm);
@@ -1705,6 +1710,7 @@ pub const Repl = struct {
 
         // Use a separate VM to avoid corrupting the current VM state
         var macro_vm = try Vm.init(self.allocator, self.heap);
+        defer macro_vm.deinit();
         macro_vm.setGlobalEnv(&self.compiler.globals);
         macro_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         macro_vm.setEvalCallback(&evalCallback, @ptrCast(self));
