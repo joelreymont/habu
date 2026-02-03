@@ -5,7 +5,39 @@
 const std = @import("std");
 const opcodes = @import("opcodes.zig");
 const Op = opcodes.Op;
-const Chunk = opcodes.Chunk;
+
+/// Disasm-only chunk shape for tests and standalone bytecode dumps.
+/// Runtime uses `runtime.objects.Chunk` (see disassembleRuntime).
+const Chunk = struct {
+    code: []u8,
+    constants: []u64,
+    arity: u8,
+    optional_count: u8,
+    key_count: u8,
+    has_rest: bool,
+    num_locals: u8,
+    name: []const u8,
+
+    pub fn readU8(self: *const Chunk, offset: usize) u8 {
+        return self.code[offset];
+    }
+
+    pub fn readU16(self: *const Chunk, offset: usize) u16 {
+        return @as(u16, self.code[offset]) |
+            (@as(u16, self.code[offset + 1]) << 8);
+    }
+
+    pub fn readI16(self: *const Chunk, offset: usize) i16 {
+        return @bitCast(self.readU16(offset));
+    }
+
+    pub fn readI32(self: *const Chunk, offset: usize) i32 {
+        return @bitCast(@as(u32, self.code[offset]) |
+            (@as(u32, self.code[offset + 1]) << 8) |
+            (@as(u32, self.code[offset + 2]) << 16) |
+            (@as(u32, self.code[offset + 3]) << 24));
+    }
+};
 
 /// Disassemble a chunk to a writer
 pub fn disassemble(chunk: *const Chunk, writer: anytype) !void {

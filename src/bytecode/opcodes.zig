@@ -2156,48 +2156,6 @@ pub const Op = enum(u16) {
     }
 };
 
-/// Bytecode chunk - compiled function
-pub const Chunk = struct {
-    /// Bytecode instructions
-    code: []u8,
-    /// Constant pool (mutable for GC relocation)
-    constants: []u64, // Values stored as raw u64
-
-    /// Arity (number of required parameters)
-    arity: u8,
-    /// Number of optional parameters
-    optional_count: u8,
-    /// Number of keyword parameters
-    key_count: u8,
-    /// Whether function accepts rest parameter
-    has_rest: bool,
-    /// Number of local variables
-    num_locals: u8,
-    /// Function name (for debugging)
-    name: []const u8,
-
-    /// Read operand at offset
-    pub fn readU8(self: *const Chunk, offset: usize) u8 {
-        return self.code[offset];
-    }
-
-    pub fn readU16(self: *const Chunk, offset: usize) u16 {
-        return @as(u16, self.code[offset]) |
-            (@as(u16, self.code[offset + 1]) << 8);
-    }
-
-    pub fn readI16(self: *const Chunk, offset: usize) i16 {
-        return @bitCast(self.readU16(offset));
-    }
-
-    pub fn readI32(self: *const Chunk, offset: usize) i32 {
-        return @bitCast(@as(u32, self.code[offset]) |
-            (@as(u32, self.code[offset + 1]) << 8) |
-            (@as(u32, self.code[offset + 2]) << 16) |
-            (@as(u32, self.code[offset + 3]) << 24));
-    }
-};
-
 // ============================================================================
 // Tests
 // ============================================================================
@@ -2218,24 +2176,4 @@ test "opcode names" {
     try testing.expectEqualStrings("push_nil", Op.push_nil.name());
     try testing.expectEqualStrings("add", Op.add.name());
     try testing.expectEqualStrings("call", Op.call.name());
-}
-
-test "chunk read" {
-    const testing = std.testing;
-
-    const code = [_]u8{ 0x12, 0x34, 0x56, 0x78 };
-    const chunk = Chunk{
-        .code = @constCast(&code),
-        .constants = &[_]u64{},
-        .arity = 0,
-        .optional_count = 0,
-        .key_count = 0,
-        .has_rest = false,
-        .num_locals = 0,
-        .name = "test",
-    };
-
-    try testing.expectEqual(@as(u8, 0x12), chunk.readU8(0));
-    try testing.expectEqual(@as(u16, 0x3412), chunk.readU16(0)); // Little endian
-    try testing.expectEqual(@as(i32, 0x78563412), chunk.readI32(0));
 }
