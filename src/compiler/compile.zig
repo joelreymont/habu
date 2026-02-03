@@ -10853,6 +10853,26 @@ pub const Compiler = struct {
                 node.* = .{ .str_eq = .{ .left = left, .right = right } };
                 break :blk node;
             },
+            .str_lt => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .str_lt = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .str_gt => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .str_gt = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .str_le => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .str_le = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .str_ge => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .str_ge = .{ .left = left, .right = right } };
+                break :blk node;
+            },
             .str_concat => try self.builder.strConcat(left, right),
             .char_eq => try self.builder.charEq(left, right),
             .char_lt => try self.builder.charLt(left, right),

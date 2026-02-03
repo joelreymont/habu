@@ -280,6 +280,101 @@ pub fn randomSeed(c: *ctx.JitContext, seed: Value) vm_mod.Error!Value {
     return try arith.randomSeed(&c.vm.prng, &c.vm.prng_seeded, seed);
 }
 
+pub fn strRef(c: *ctx.JitContext, str_val: Value, idx_val: Value) vm_mod.Error!Value {
+    _ = c;
+    if (!str_val.isString() or !idx_val.isFixnum()) return error.TypeMismatch;
+    const str = str_val.toPtr(runtime.String);
+    const idx_signed = idx_val.toFixnum();
+    if (idx_signed < 0) return error.TypeMismatch;
+    const idx: usize = @intCast(idx_signed);
+    if (idx >= str.length) return error.TypeMismatch;
+    return Value.makeFixnum(str.bytes()[idx]);
+}
+
+pub fn strLen(c: *ctx.JitContext, str_val: Value) vm_mod.Error!Value {
+    _ = c;
+    if (!str_val.isString()) return error.TypeMismatch;
+    const str = str_val.toPtr(runtime.String);
+    return Value.makeFixnum(@intCast(str.length));
+}
+
+pub fn strSet(c: *ctx.JitContext, _: u8) vm_mod.Error!Value {
+    const sp = stackLen(c);
+    if (sp < 3) return error.StackUnderflow;
+
+    const char_val = c.frame_base[sp - 1];
+    const idx_val = c.frame_base[sp - 2];
+    const str_val = c.frame_base[sp - 3];
+    if (!str_val.isString() or !idx_val.isFixnum()) return error.TypeMismatch;
+    const str = str_val.toPtr(runtime.String);
+    const idx_signed = idx_val.toFixnum();
+    if (idx_signed < 0) return error.TypeMismatch;
+    const idx: usize = @intCast(idx_signed);
+    if (idx >= str.length) return error.TypeMismatch;
+    const char_int = switch (char_val.typeKind()) {
+        .fixnum => char_val.toFixnum(),
+        .char => @as(i64, @intCast(char_val.toCharacter())),
+        else => return error.TypeMismatch,
+    };
+    if (char_int < 0 or char_int > 255) return error.TypeMismatch;
+    str.mutableBytes()[idx] = @intCast(char_int);
+
+    c.frame_base[sp - 3] = str_val;
+    c.sp = c.frame_base + sp - 2;
+    return str_val;
+}
+
+pub fn strConcat(c: *ctx.JitContext, s1: Value, s2: Value) vm_mod.Error!Value {
+    if (!s1.isString() or !s2.isString()) return error.TypeMismatch;
+    var args = [_]Value{ s1, s2 };
+    var len1: usize = s1.toPtr(runtime.String).length;
+    var len2: usize = s2.toPtr(runtime.String).length;
+    var new_len = try std.math.add(usize, len1, len2);
+
+    const result = c.heap.allocStringUninitialized(new_len) catch |err| switch (err) {
+        error.OutOfMemory => blk: {
+            try collectJitGarbage(c, &args);
+            len1 = args[0].toPtr(runtime.String).length;
+            len2 = args[1].toPtr(runtime.String).length;
+            new_len = try std.math.add(usize, len1, len2);
+            break :blk try c.heap.allocStringUninitialized(new_len);
+        },
+        else => return err,
+    };
+
+    const dest = result.toPtr(runtime.String).mutableBytes();
+    const str1 = args[0].toPtr(runtime.String);
+    const str2 = args[1].toPtr(runtime.String);
+    @memcpy(dest[0..len1], str1.bytes());
+    @memcpy(dest[len1..new_len], str2.bytes());
+    return result;
+}
+
+pub fn strEq(c: *ctx.JitContext, a: Value, b: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (str_prims.stringEqual(a, b)) Value.t else Value.nil;
+}
+
+pub fn strLt(c: *ctx.JitContext, a: Value, b: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (str_prims.stringLt(a, b)) Value.t else Value.nil;
+}
+
+pub fn strGt(c: *ctx.JitContext, a: Value, b: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (str_prims.stringGt(a, b)) Value.t else Value.nil;
+}
+
+pub fn strLe(c: *ctx.JitContext, a: Value, b: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (str_prims.stringLe(a, b)) Value.t else Value.nil;
+}
+
+pub fn strGe(c: *ctx.JitContext, a: Value, b: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (str_prims.stringGe(a, b)) Value.t else Value.nil;
+}
+
 pub fn listp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
     _ = c;
     return if (a.isNil() or a.isCons()) Value.t else Value.nil;

@@ -333,6 +333,38 @@ pub const Jit = struct {
                 try self.emitCallUnary(@intFromPtr(&rt.stringDowncase));
                 try self.emitStackPush();
             },
+            .str_ref => {
+                try self.emitBinaryCall(@intFromPtr(&rt.strRef));
+            },
+            .str_len => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.strLen));
+                try self.emitStackPush();
+            },
+            .str_set => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                    .{ .imm64 = 0 },
+                });
+                try self.emitCallUnary(@intFromPtr(&rt.strSet));
+            },
+            .str_concat => {
+                try self.emitBinaryCall(@intFromPtr(&rt.strConcat));
+            },
+            .str_eq => {
+                try self.emitBinaryCall(@intFromPtr(&rt.strEq));
+            },
+            .str_lt => {
+                try self.emitBinaryCall(@intFromPtr(&rt.strLt));
+            },
+            .str_gt => {
+                try self.emitBinaryCall(@intFromPtr(&rt.strGt));
+            },
+            .str_le => {
+                try self.emitBinaryCall(@intFromPtr(&rt.strLe));
+            },
+            .str_ge => {
+                try self.emitBinaryCall(@intFromPtr(&rt.strGe));
+            },
             .random => {
                 try self.emitStackPop();
                 try self.emitCallUnary(@intFromPtr(&rt.random));
