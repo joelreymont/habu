@@ -228,6 +228,8 @@ pub const Heap = struct {
     from_end: [*]u8,
     /// GC threshold in bytes
     gc_threshold: usize,
+    /// Reusable buffer for building GC root slices.
+    gc_roots: std.ArrayList(Value),
     /// Backing allocator (for the memory buffer itself)
     backing_allocator: std.mem.Allocator,
     /// Statistics
@@ -321,6 +323,7 @@ pub const Heap = struct {
             .alloc_ptr = from_start,
             .from_end = memory.ptr + space_size,
             .gc_threshold = @intFromFloat(@as(f32, @floatFromInt(space_size)) * config.gc_threshold),
+            .gc_roots = std.ArrayList(Value){},
             .backing_allocator = allocator,
             .stats = .{},
             .symbols = SymbolTable.init(allocator),
@@ -444,6 +447,7 @@ pub const Heap = struct {
             stream.finalize();
         }
         self.stream_list.deinit(self.backing_allocator);
+        self.gc_roots.deinit(self.backing_allocator);
         self.backing_allocator.free(self.memory);
     }
 
@@ -1468,8 +1472,8 @@ pub const Heap = struct {
         const before = self.bytesUsed();
 
         // Build root set: external roots + interned symbol/keyword values
-        var all_roots = std.ArrayList(Value){};
-        defer all_roots.deinit(self.backing_allocator);
+        self.gc_roots.clearRetainingCapacity();
+        var all_roots = &self.gc_roots;
 
         // Add external roots
         try all_roots.appendSlice(self.backing_allocator, external_roots);
@@ -1812,6 +1816,21 @@ test "heap init and deinit" {
     try testing.expectEqual(@as(usize, 512 * 1024), heap.space_size);
     // lisp_packages hash table is allocated during init
     try testing.expect(heap.bytesUsed() > 0);
+}
+
+test "heap collectGarbage reuses gc_roots buffer" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var roots = [_]Value{};
+    _ = try heap.collectGarbage(&roots);
+    const cap1 = heap.gc_roots.capacity;
+    try testing.expect(cap1 > 0);
+
+    _ = try heap.collectGarbage(&roots);
+    try testing.expectEqual(cap1, heap.gc_roots.capacity);
 }
 
 test "heap deinit finalizes output streams" {

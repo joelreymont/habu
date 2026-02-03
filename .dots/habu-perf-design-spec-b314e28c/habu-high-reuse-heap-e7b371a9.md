@@ -1,9 +1,11 @@
 ---
 title: [HIGH] Reuse heap GC roots buffer
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-03T12:44:49.070036+01:00"
+created-at: "\"2026-02-03T12:44:49.070036+01:00\""
+closed-at: "2026-02-03T15:28:54.080094+01:00"
+close-reason: Reuse heap GC roots buffer
 blocks:
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625
