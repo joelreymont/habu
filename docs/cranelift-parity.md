@@ -23,7 +23,7 @@ This matrix tracks "Cranelift-class" JIT backend capabilities. Each row has:
 | Frontend | SSA IR | no | n/a | n/a | n/a | JIT lowers bytecode directly. |
 | Codegen | Register allocation | no | n/a | n/a | n/a | Fixed register assignment today. |
 | Codegen | Calling convention support | partial | n/a | n/a | aarch64 | C-ABI entry; helper calls use Zig error-union ABI; closures dispatch via rt.call/apply (no native ABI lowering). |
-| Runtime | Stack maps / GC safepoints | no | n/a | n/a | n/a | GC via helpers with explicit root arrays; no stack maps or compiler-inserted safepoints. |
+| Runtime | Stack maps / GC safepoints | no | n/a | n/a | n/a | GC via helpers with explicit root arrays; no stack maps or compiler-inserted safepoints. Design: `docs/stack-maps.md`. |
 | Runtime | Relocations | no | n/a | n/a | n/a | Compile-time patching only; no relocation records or code movement. |
 | Runtime | Deopt / OSR hooks | no | n/a | n/a | n/a | Typically handled by the embedding runtime. |
 | Runtime | Tiering / profiling hooks | no | n/a | n/a | n/a | No hot-loop detection yet. |

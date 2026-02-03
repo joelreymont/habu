@@ -5,6 +5,8 @@ priority: 1
 issue-type: task
 created-at: "2026-02-03T13:28:59.018294+01:00"
 blocks:
+  - habu-perf-design-spec-b314e28c
+  - habu-low-stack-maps-1d094863
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625
   - habu-fix-compiler-env-aec7d63b

@@ -1,9 +1,11 @@
 ---
 title: [LOW] Stack maps + safepoint design
-status: open
+status: closed
 priority: 3
 issue-type: task
-created-at: "2026-02-03T12:45:25.105164+01:00"
+created-at: "\"\\\"2026-02-03T12:45:25.105164+01:00\\\"\""
+closed-at: "2026-02-03T19:06:27.306178+01:00"
+close-reason: Add stack maps + safepoint design doc
 blocks:
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625

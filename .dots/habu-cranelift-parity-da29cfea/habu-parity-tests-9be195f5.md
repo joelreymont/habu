@@ -5,6 +5,7 @@ priority: 1
 issue-type: task
 created-at: "2026-02-03T13:28:48.533075+01:00"
 blocks:
+  - habu-med-add-jit-b402aeb1
   - habu-parity-criteria-7a3bc74d
   - habu-fix-macro-chunk-5f196625
   - habu-fix-compiler-env-aec7d63b
