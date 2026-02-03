@@ -77,11 +77,19 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    gc_bench.root_module.addImport("runtime", b.createModule(.{
+        .root_source_file = b.path("src/runtime/runtime.zig"),
+        .target = target,
+        .optimize = optimize,
+    }));
 
     b.installArtifact(gc_bench);
 
     const bench_run_cmd = b.addRunArtifact(gc_bench);
     bench_run_cmd.step.dependOn(b.getInstallStep());
-    const bench_step = b.step("bench", "Run GC benchmark");
+    if (b.args) |args| {
+        bench_run_cmd.addArgs(args);
+    }
+    const bench_step = b.step("bench", "Run GC benchmark (bench/gc.zig --help)");
     bench_step.dependOn(&bench_run_cmd.step);
 }

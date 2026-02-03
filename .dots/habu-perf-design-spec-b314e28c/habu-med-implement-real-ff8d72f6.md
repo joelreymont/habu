@@ -1,9 +1,11 @@
 ---
 title: [MED] Implement real GC benchmark
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-02-03T12:44:55.099981+01:00"
+created-at: "\"\\\"2026-02-03T12:44:55.099981+01:00\\\"\""
+closed-at: "2026-02-03T18:13:31.539572+01:00"
+close-reason: Implemented real GC bench w/ avg+p95, bytes_copied/live_bytes + --json; wired bench args; zig build test
 blocks:
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625

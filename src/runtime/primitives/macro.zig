@@ -7,8 +7,6 @@ const Heap = runtime.Heap;
 const Cons = runtime.Cons;
 const Symbol = runtime.Symbol;
 const BuiltinSymbols = @import("../builtins.zig").BuiltinSymbols;
-const compiler_mod = @import("../../compiler/compiler.zig");
-const Compiler = compiler_mod.Compiler;
 
 pub const Error = error{
     InvalidArgument,
@@ -18,29 +16,18 @@ pub const Error = error{
 
 /// macro-function: get macro expansion function
 /// (macro-function symbol) -> function or nil
-pub fn macroFunction(heap: *Heap, compiler: ?*const Compiler, sym: Value) Error!Value {
+pub fn macroFunction(heap: *Heap, sym: Value) Error!Value {
     _ = heap;
     if (!sym.isSymbol()) return error.InvalidArgument;
-
-    const compiler_ptr = if (compiler) |val| val else return Value.nil;
-
-    // Lookup in macro_table using symbol as key
-    if (compiler_ptr.macro_table.get(sym)) |_| {
-        // Return the macro definition as-is (it's the lambda args)
-        // In a full implementation, we'd return a closure
-        // For now, return t to indicate it's a macro
-        return Value.t;
-    }
-
+    // Macro expansion lives above the runtime (compiler/REPL); runtime-only build returns NIL.
     return Value.nil;
 }
 
 /// macroexpand: expand macro call once
 /// (macroexpand form) -> expanded-form, expanded-p
 /// Returns two values: the expanded form and whether expansion occurred
-pub fn macroexpand(heap: *Heap, compiler: ?*Compiler, form: Value) Error!Value {
+pub fn macroexpand(heap: *Heap, form: Value) Error!Value {
     _ = heap;
-    _ = compiler;
     // TODO: Implement actual macro expansion
     // For now, return the form unchanged
     // This requires integration with the compiler's expandMacro
@@ -49,9 +36,8 @@ pub fn macroexpand(heap: *Heap, compiler: ?*Compiler, form: Value) Error!Value {
 
 /// macroexpand-1: expand macro call repeatedly until not a macro
 /// (macroexpand-1 form) -> expanded-form, expanded-p
-pub fn macroexpand1(heap: *Heap, compiler: ?*Compiler, form: Value) Error!Value {
+pub fn macroexpand1(heap: *Heap, form: Value) Error!Value {
     _ = heap;
-    _ = compiler;
     // TODO: Implement recursive macro expansion
     return form;
 }
