@@ -1,9 +1,11 @@
 ---
 title: Fix VM GC chunks
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-02-03T10:40:04.234971+01:00"
+closed-at: "2026-02-03T11:35:13.533261+01:00"
+close-reason: Root chunk ptrs; update post-GC; add test
 blocks:
   - habu-fix-gc-scan-26c89ff5
 ---
