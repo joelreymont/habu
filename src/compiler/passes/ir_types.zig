@@ -8,7 +8,9 @@
 //! - Chunk: Bytecode
 
 const std = @import("std");
-const Ir = @import("../ir.zig").Ir;
+const ir_mod = @import("../ir.zig");
+const Ir = ir_mod.Ir;
+const IrBuilder = ir_mod.IrBuilder;
 const type_adt = @import("../../types/type.zig");
 const Type = type_adt.Type;
 pub const Quantity = type_adt.Quantity;
@@ -112,9 +114,11 @@ pub const TypedIrBuilder = struct {
                 try children.append(self.allocator, try self.buildTree(l.body));
             },
             .@"if" => |i| {
-                try children.append(self.allocator, try self.buildTree(i.cond));
-                try children.append(self.allocator, try self.buildTree(i.then_branch));
-                try children.append(self.allocator, try self.buildTree(i.else_branch));
+                const cond = try self.buildTree(i.cond);
+                const then_branch = try self.buildTree(i.then_branch);
+                const else_branch = try self.buildTree(i.else_branch);
+                const items = [_]*const TypedIr{ cond, then_branch, else_branch };
+                try children.appendSlice(self.allocator, &items);
             },
             .progn => |exprs| {
                 for (exprs) |e| {
@@ -122,8 +126,10 @@ pub const TypedIrBuilder = struct {
                 }
             },
             .loop => |l| {
-                try children.append(self.allocator, try self.buildTree(l.cond));
-                try children.append(self.allocator, try self.buildTree(l.body));
+                const cond = try self.buildTree(l.cond);
+                const body = try self.buildTree(l.body);
+                const items = [_]*const TypedIr{ cond, body };
+                try children.appendSlice(self.allocator, &items);
             },
             .block => |b| {
                 try children.append(self.allocator, try self.buildTree(b.body));
@@ -138,12 +144,16 @@ pub const TypedIrBuilder = struct {
                 }
             },
             .add, .sub, .mul, .div, .mod => |binop| {
-                try children.append(self.allocator, try self.buildTree(binop.left));
-                try children.append(self.allocator, try self.buildTree(binop.right));
+                const left = try self.buildTree(binop.left);
+                const right = try self.buildTree(binop.right);
+                const items = [_]*const TypedIr{ left, right };
+                try children.appendSlice(self.allocator, &items);
             },
             .eq, .lt, .gt, .le, .ge, .num_eq => |cmp| {
-                try children.append(self.allocator, try self.buildTree(cmp.left));
-                try children.append(self.allocator, try self.buildTree(cmp.right));
+                const left = try self.buildTree(cmp.left);
+                const right = try self.buildTree(cmp.right);
+                const items = [_]*const TypedIr{ left, right };
+                try children.appendSlice(self.allocator, &items);
             },
             else => {
                 // For other node types, we'd need to handle them specifically
@@ -221,4 +231,33 @@ test "TypedIr isErased" {
     const typed_zero = try builder.wrapTyped(&lit, &t_fixnum, .zero);
     defer testing.allocator.destroy(@constCast(typed_zero));
     try testing.expect(typed_zero.isErased());
+}
+
+test "TypedIr buildTree children counts" {
+    const testing = std.testing;
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var ir_builder = IrBuilder.init(alloc);
+    const lit1 = try ir_builder.lit(Value.makeFixnum(1));
+    const lit2 = try ir_builder.lit(Value.makeFixnum(2));
+    const lit3 = try ir_builder.lit(Value.makeFixnum(3));
+
+    const if_ir = try ir_builder.ifExpr(lit1, lit2, lit3);
+    const loop_ir = try ir_builder.loop(lit1, lit2);
+    const add_ir = try ir_builder.add(lit1, lit2);
+    const eq_ir = try ir_builder.eq(lit1, lit2);
+
+    var typed_builder = TypedIrBuilder.init(alloc);
+    const typed_if = try typed_builder.buildTree(if_ir);
+    const typed_loop = try typed_builder.buildTree(loop_ir);
+    const typed_add = try typed_builder.buildTree(add_ir);
+    const typed_eq = try typed_builder.buildTree(eq_ir);
+
+    try testing.expectEqual(@as(usize, 3), typed_if.children.len);
+    try testing.expectEqual(@as(usize, 2), typed_loop.children.len);
+    try testing.expectEqual(@as(usize, 2), typed_add.children.len);
+    try testing.expectEqual(@as(usize, 2), typed_eq.children.len);
 }
