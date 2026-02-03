@@ -19,30 +19,49 @@ pub fn dump(writer: anytype, f: *const ir.Func) !void {
             } else {
                 try writer.writeAll("  ");
             }
-            try dumpInst(writer, f.inst(inst_id));
+            try dumpInst(writer, f, inst_id);
             try writer.writeAll("\n");
         }
     }
 }
 
-fn dumpInst(writer: anytype, inst: *const ir.Inst) !void {
+fn dumpArgs(writer: anytype, f: *const ir.Func, off: u32, len: u16) !void {
+    try writer.writeAll("(");
+    const start: usize = @intCast(off);
+    const end = start + @as(usize, len);
+    for (f.args.items[start..end], 0..) |v, i| {
+        if (i != 0) try writer.writeAll(", ");
+        try writer.print("v{}", .{@intFromEnum(v)});
+    }
+    try writer.writeAll(")");
+}
+
+fn dumpInst(writer: anytype, f: *const ir.Func, inst_id: ir.InstId) !void {
+    const inst = f.inst(inst_id);
     switch (inst.*) {
         .iconst => |c| try writer.print("iconst {s} {}", .{ @tagName(c.ty), c.imm }),
         .uconst => |c| try writer.print("uconst {s} {}", .{ @tagName(c.ty), c.imm }),
         .fconst => |x| try writer.print("fconst {}", .{x}),
         .un => |u| try writer.print("{s} {s} v{}", .{ @tagName(u.op), @tagName(u.ty), @intFromEnum(u.x) }),
         .bin => |b| try writer.print("{s} {s} v{}, v{}", .{ @tagName(b.op), @tagName(b.ty), @intFromEnum(b.lhs), @intFromEnum(b.rhs) }),
-        .call => |c| try writer.print("call {s} v{} (+{}:{})", .{ @tagName(c.ty), @intFromEnum(c.callee), c.arg_off, c.arg_len }),
-        .br => |br| try writer.print("br b{} (+{}:{})", .{@intFromEnum(br.target), br.arg_off, br.arg_len}),
-        .br_if => |br_if| try writer.print("br_if v{} b{}(+{}:{}) b{}(+{}:{})", .{
-            @intFromEnum(br_if.cond),
-            @intFromEnum(br_if.then_blk),
-            br_if.then_arg_off,
-            br_if.then_arg_len,
-            @intFromEnum(br_if.else_blk),
-            br_if.else_arg_off,
-            br_if.else_arg_len,
-        }),
+        .safepoint => |sp| {
+            try writer.writeAll("safepoint ");
+            try dumpArgs(writer, f, sp.arg_off, sp.arg_len);
+        },
+        .call => |c| {
+            try writer.print("call {s} v{} ", .{ @tagName(c.ty), @intFromEnum(c.callee) });
+            try dumpArgs(writer, f, c.arg_off, c.arg_len);
+        },
+        .br => |br| {
+            try writer.print("br b{} ", .{@intFromEnum(br.target)});
+            try dumpArgs(writer, f, br.arg_off, br.arg_len);
+        },
+        .br_if => |br_if| {
+            try writer.print("br_if v{} b{} ", .{ @intFromEnum(br_if.cond), @intFromEnum(br_if.then_blk) });
+            try dumpArgs(writer, f, br_if.then_arg_off, br_if.then_arg_len);
+            try writer.print(" b{} ", .{@intFromEnum(br_if.else_blk)});
+            try dumpArgs(writer, f, br_if.else_arg_off, br_if.else_arg_len);
+        },
         .ret => |r| if (r.val) |v| {
             try writer.print("ret v{}", .{@intFromEnum(v)});
         } else {

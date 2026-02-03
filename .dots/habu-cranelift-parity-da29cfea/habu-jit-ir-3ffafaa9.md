@@ -1,9 +1,11 @@
 ---
 title: JIT IR
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-03T13:28:59.018294+01:00"
+created-at: "\"\\\"2026-02-03T13:28:59.018294+01:00\\\"\""
+closed-at: "2026-02-03T21:33:33.099700+01:00"
+close-reason: Add safepoints to JIT SSA IR
 blocks:
   - habu-perf-design-spec-b314e28c
   - habu-low-stack-maps-1d094863

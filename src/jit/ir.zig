@@ -48,6 +48,8 @@ pub const Inst = union(enum) {
     fconst: f64,
     un: struct { op: UnOp, ty: Ty, x: ValueId },
     bin: struct { op: BinOp, ty: Ty, lhs: ValueId, rhs: ValueId },
+    /// GC safepoint with live tagged Values listed in Func.args[arg_off..arg_off+arg_len).
+    safepoint: struct { arg_off: u32, arg_len: u16 },
     call: struct { ty: Ty, callee: ValueId, arg_off: u32, arg_len: u16 },
     br: struct { target: BlockId, arg_off: u32, arg_len: u16 },
     br_if: struct {
@@ -286,6 +288,14 @@ pub const Func = struct {
                 .arg_off = a.off,
                 .arg_len = a.len,
             } }, ty)).?;
+        }
+
+        pub fn safepoint(self: *Builder, live: []const ValueId) !void {
+            const a = try self.f.pushArgs(live);
+            _ = try self.f.addInst(self.blk, .{ .safepoint = .{
+                .arg_off = a.off,
+                .arg_len = a.len,
+            } }, .void);
         }
 
         pub fn br(self: *Builder, target: BlockId, args: []const ValueId) !void {
