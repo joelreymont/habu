@@ -462,11 +462,23 @@ pub const Vm = struct {
         self.ext_roots = &[_]Value{};
     }
 
+    fn bytesInHeap(self: *const Vm, bytes: []const u8) bool {
+        if (bytes.len == 0) return false;
+        const heap_start = @intFromPtr(self.heap.memory.ptr);
+        const heap_end = heap_start + self.heap.memory.len;
+        const start = @intFromPtr(bytes.ptr);
+        if (start < heap_start or start >= heap_end) return false;
+        const end = start + bytes.len;
+        if (end < start) return false; // overflow
+        return end <= heap_end;
+    }
+
     /// Allocate a cons cell, running GC if needed
     pub fn allocCons(self: *Vm, car: Value, cdr: Value) error{OutOfMemory}!Value {
         return if (self.heap.allocCons(car, cdr)) |val| val else |_| {
-            _ = try self.collectGarbage();
-            return try self.heap.allocCons(car, cdr);
+            var roots = [_]Value{ car, cdr };
+            _ = try self.collectGarbageExtra(roots[0..]);
+            return try self.heap.allocCons(roots[0], roots[1]);
         };
     }
 
@@ -485,8 +497,17 @@ pub const Vm = struct {
     pub fn allocString(self: *Vm, data: []const u8) error{OutOfMemory, Overflow}!Value {
         return if (self.heap.allocBaseString(data)) |val| val else |err| switch (err) {
             error.OutOfMemory => {
+                var tmp: ?[]u8 = null;
+                defer if (tmp) |b| self.allocator.free(b);
+                var stable = data;
+                if (self.bytesInHeap(data)) {
+                    const copy = try self.allocator.alloc(u8, data.len);
+                    @memcpy(copy, data);
+                    tmp = copy;
+                    stable = copy;
+                }
                 _ = try self.collectGarbage();
-                return try self.heap.allocBaseString(data);
+                return try self.heap.allocBaseString(stable);
             },
             error.Overflow => return error.Overflow,
         };
@@ -506,17 +527,32 @@ pub const Vm = struct {
     /// Allocate a symbol (uninterned), running GC if needed
     pub fn allocSymbol(self: *Vm, name: []const u8) error{OutOfMemory}!Value {
         return if (self.heap.allocSymbol(name)) |val| val else |_| {
+            var tmp: ?[]u8 = null;
+            defer if (tmp) |b| self.allocator.free(b);
+            var stable = name;
+            if (self.bytesInHeap(name)) {
+                const copy = try self.allocator.alloc(u8, name.len);
+                @memcpy(copy, name);
+                tmp = copy;
+                stable = copy;
+            }
             _ = try self.collectGarbage();
-            return try self.heap.allocSymbol(name);
+            return try self.heap.allocSymbol(stable);
         };
     }
 
     /// Allocate a closure, running GC if needed
-    pub fn allocClosureWithGC(self: *Vm, code: Value, arity: u32, captures: []const Value) error{ OutOfMemory, Overflow }!Value {
+    pub fn allocClosureWithGC(self: *Vm, code: Value, arity: u32, captures: []Value) error{ OutOfMemory, Overflow }!Value {
         return if (self.heap.allocClosure(code, arity, captures)) |val| val else |err| switch (err) {
             error.OutOfMemory => {
-                _ = try self.collectGarbage();
-                return try self.heap.allocClosure(code, arity, captures);
+                if (captures.len > 64) return error.Overflow;
+                var roots_buf: [65]Value = undefined;
+                roots_buf[0] = code;
+                @memcpy(roots_buf[1 .. 1 + captures.len], captures);
+                const roots = roots_buf[0 .. 1 + captures.len];
+                _ = try self.collectGarbageExtra(roots);
+                @memcpy(captures, roots[1..]);
+                return try self.heap.allocClosure(roots[0], arity, captures);
             },
             error.Overflow => return error.Overflow,
         };
@@ -533,8 +569,17 @@ pub const Vm = struct {
     /// Intern a symbol, running GC if needed
     pub fn intern(self: *Vm, name: []const u8) error{OutOfMemory}!Value {
         return if (self.heap.intern(name)) |val| val else |_| {
+            var tmp: ?[]u8 = null;
+            defer if (tmp) |b| self.allocator.free(b);
+            var stable = name;
+            if (self.bytesInHeap(name)) {
+                const copy = try self.allocator.alloc(u8, name.len);
+                @memcpy(copy, name);
+                tmp = copy;
+                stable = copy;
+            }
             _ = try self.collectGarbage();
-            return try self.heap.intern(name);
+            return try self.heap.intern(stable);
         };
     }
 
@@ -1369,32 +1414,50 @@ pub const Vm = struct {
                 try self.push(list);
             },
             .append_lists => {
-                const list2 = try self.pop();
-                const list1 = try self.pop();
+                if (self.sp < 2) return error.StackUnderflow;
+                const list1_idx = self.sp - 2;
+                const list2_idx = self.sp - 1;
+                const list1 = self.stack[list1_idx];
                 // Append list1 to list2: (append '(a b) '(c d)) -> (a b c d)
                 switch (list1.typeKind()) {
-                    .nil => try self.push(list2),
+                    .nil => {
+                        const list2 = self.stack[list2_idx];
+                        self.sp -= 2;
+                        try self.push(list2);
+                    },
                     .cons => {
                         // Single-pass copy: build copy of list1, link tail to list2
-                        var head: ?Value = null;
-                        var tail: ?*Cons = null;
-                        var curr = list1;
-                        while (curr.isCons()) {
-                            const c = curr.toPtr(Cons);
-                            const new_cell = try self.allocCons(c.car, Value.nil);
-                            if (tail) |t| {
-                                t.cdr = new_cell;
+                        try self.push(Value.nil); // head
+                        try self.push(Value.nil); // tail
+                        const head_idx = self.sp - 2;
+                        const tail_idx = self.sp - 1;
+
+                        while (self.stack[list1_idx].isCons()) {
+                            const curr_val = self.stack[list1_idx];
+                            const c = curr_val.toPtr(Cons);
+                            const car = c.car;
+                            const next = c.cdr;
+                            self.stack[list1_idx] = next; // root across allocCons GC
+
+                            const new_cell = try self.allocCons(car, Value.nil);
+                            const tail_val = self.stack[tail_idx];
+                            if (tail_val.isCons()) {
+                                tail_val.toPtr(Cons).cdr = new_cell;
                             } else {
-                                head = new_cell;
+                                self.stack[head_idx] = new_cell;
                             }
-                            tail = new_cell.toPtr(Cons);
-                            curr = c.cdr;
+                            self.stack[tail_idx] = new_cell;
                         }
-                        // Link tail to list2
-                        if (tail) |t| {
-                            t.cdr = list2;
+                        if (self.stack[list1_idx] != Value.nil) return error.TypeMismatch;
+
+                        const list2 = self.stack[list2_idx];
+                        const tail_val = self.stack[tail_idx];
+                        if (tail_val.isCons()) {
+                            tail_val.toPtr(Cons).cdr = list2;
                         }
-                        try self.push(head orelse list2);
+                        const result = self.stack[head_idx];
+                        self.sp = list1_idx;
+                        try self.push(if (result.isNil()) list2 else result);
                     },
                     else => return error.TypeMismatch,
                 }
@@ -1426,15 +1489,26 @@ pub const Vm = struct {
             },
 
             .list_reverse => {
-                const list = try self.pop();
-                var reversed = Value.nil;
-                var curr = list;
-                while (curr.isCons()) {
-                    const c = curr.toPtr(Cons);
-                    reversed = try self.allocCons(c.car, reversed);
-                    curr = c.cdr;
+                if (self.sp < 1) return error.StackUnderflow;
+                const list_idx = self.sp - 1;
+                try self.push(Value.nil); // reversed
+                const rev_idx = self.sp - 1;
+
+                while (self.stack[list_idx].isCons()) {
+                    const curr_val = self.stack[list_idx];
+                    const c = curr_val.toPtr(Cons);
+                    const car = c.car;
+                    const next = c.cdr;
+                    self.stack[list_idx] = next; // root across allocCons GC
+
+                    const rev = self.stack[rev_idx];
+                    self.stack[rev_idx] = try self.allocCons(car, rev);
                 }
-                try self.push(reversed);
+                if (self.stack[list_idx] != Value.nil) return error.TypeMismatch;
+
+                const result = self.stack[rev_idx];
+                self.sp = list_idx;
+                try self.push(result);
             },
 
             .list_nth => {
@@ -1640,18 +1714,22 @@ pub const Vm = struct {
             // Vector operations
             .make_vec => {
                 _ = self.readU16(); // Size operand (unused, size from stack)
-                const init_val = try self.pop();
-                const size_val = try self.pop();
+                if (self.sp < 2) return error.StackUnderflow;
+                const init_idx = self.sp - 1;
+                const size_idx = self.sp - 2;
+                const size_val = self.stack[size_idx];
                 if (!size_val.isFixnum()) return error.TypeMismatch;
                 const size_signed = size_val.toFixnum();
                 if (size_signed < 0) return error.TypeMismatch;
                 const size: usize = @intCast(size_signed);
                 const vec = try self.allocVector(size, size);
                 // Fill with init value (nil or specified)
+                const init_val = self.stack[init_idx];
                 const vec_obj = vec.toPtr(Vector);
                 for (0..size) |i| {
                     vec_obj.data[i] = init_val;
                 }
+                self.sp -= 2;
                 try self.push(vec);
             },
             .make_vec_n => {
@@ -1939,11 +2017,13 @@ pub const Vm = struct {
 
             // Box operations (mutable cells for closures)
             .make_box => {
-                const val = try self.pop();
+                if (self.sp < 1) return error.StackUnderflow;
                 // Allocate a 1-element vector as a box
                 const box = try self.allocVector(1, 1);
+                const val = self.stack[self.sp - 1];
                 const vec = box.toPtr(runtime.Vector);
                 vec.set(0, val);
+                self.sp -= 1;
                 try self.push(box);
             },
             .box_ref => {
@@ -2001,18 +2081,24 @@ pub const Vm = struct {
                 try self.push(str_val);
             },
             .str_concat => {
-                const s2 = try self.pop();
-                const s1 = try self.pop();
+                if (self.sp < 2) return error.StackUnderflow;
+                const s2_idx = self.sp - 1;
+                const s1_idx = self.sp - 2;
+                const s2 = self.stack[s2_idx];
+                const s1 = self.stack[s1_idx];
                 if (!s1.isString() or !s2.isString()) return error.TypeMismatch;
-                const str1 = s1.toPtr(runtime.String);
-                const str2 = s2.toPtr(runtime.String);
                 // Allocate new string with combined length
-                const new_len = str1.length + str2.length;
+                const len1 = s1.toPtr(runtime.String).length;
+                const len2 = s2.toPtr(runtime.String).length;
+                const new_len = try std.math.add(usize, len1, len2);
                 const result = try self.allocStringUninitialized(new_len);
                 const result_str = result.toPtr(runtime.String);
                 const dest = result_str.mutableBytes();
-                @memcpy(dest[0..str1.length], str1.bytes());
-                @memcpy(dest[str1.length..new_len], str2.bytes());
+                const str1 = self.stack[s1_idx].toPtr(runtime.String);
+                const str2 = self.stack[s2_idx].toPtr(runtime.String);
+                @memcpy(dest[0..len1], str1.bytes());
+                @memcpy(dest[len1..new_len], str2.bytes());
+                self.sp -= 2;
                 try self.push(result);
             },
 
@@ -2082,23 +2168,18 @@ pub const Vm = struct {
                 if (abs_idx >= self.chunk_pool.len) return error.InvalidConstant;
                 const closure_chunk = self.chunk_pool[abs_idx];
 
-                // Collect captures from stack
-                var captures: [64]Value = undefined;
                 if (num_captures > 64) return error.StackOverflow;
-                var i: usize = num_captures;
-                while (i > 0) {
-                    i -= 1;
-                    captures[i] = try self.pop();
-                }
+                if (num_captures > self.sp) return error.StackUnderflow;
+                const cap_start = self.sp - num_captures;
 
                 // Create closure - wrap chunk pointer in a Value
                 const chunk_val = Value.makeChunk(closure_chunk);
                 const closure = try self.allocClosureWithGC(
                     chunk_val,
                     closure_chunk.arity,
-                    captures[0..num_captures],
+                    self.stack[cap_start..self.sp],
                 );
-
+                self.sp = cap_start;
                 try self.push(closure);
             },
 
@@ -2569,7 +2650,9 @@ pub const Vm = struct {
                 }
             },
             .list_to_string => {
-                const list_val = try self.pop();
+                if (self.sp < 1) return error.StackUnderflow;
+                const list_idx = self.sp - 1;
+                const list_val = self.stack[list_idx];
                 // Count length first
                 var len: usize = 0;
                 var p = list_val;
@@ -2578,14 +2661,14 @@ pub const Vm = struct {
                     const c = p.toPtr(Cons);
                     // Accept either characters or fixnums (char codes)
                     if (!c.car.isCharacter() and !c.car.isFixnum()) return error.TypeMismatch;
-                    len += 1;
+                    len = try std.math.add(usize, len, 1);
                     p = c.cdr;
                 }
                 // Allocate and fill
                 const str = try self.allocStringUninitialized(len);
                 const str_obj = str.toPtr(String);
                 var i: usize = 0;
-                p = list_val;
+                p = self.stack[list_idx];
                 while (p != Value.nil) {
                     const c = p.toPtr(Cons);
                     const cp: i64 = if (c.car.isCharacter())
@@ -2598,30 +2681,41 @@ pub const Vm = struct {
                     i += 1;
                     p = c.cdr;
                 }
+                self.sp -= 1;
                 try self.push(str);
             },
             .string_upcase => {
-                const str_val = try self.pop();
+                if (self.sp < 1) return error.StackUnderflow;
+                const str_idx = self.sp - 1;
+                const str_val = self.stack[str_idx];
                 if (!str_val.isString()) return error.TypeMismatch;
-                const src = str_val.toPtr(String);
-                const src_bytes = src.bytes();
-                const result = try self.allocStringUninitialized(src_bytes.len);
+                const src_len = str_val.toPtr(String).length;
+                const result = try self.allocStringUninitialized(src_len);
                 const dst = result.toPtr(String);
+                const src = self.stack[str_idx].toPtr(String);
+                const src_bytes = src.bytes();
+                std.debug.assert(src_bytes.len == src_len);
                 for (src_bytes, 0..) |c, i| {
                     dst.data[i] = std.ascii.toUpper(c);
                 }
+                self.sp -= 1;
                 try self.push(result);
             },
             .string_downcase => {
-                const str_val = try self.pop();
+                if (self.sp < 1) return error.StackUnderflow;
+                const str_idx = self.sp - 1;
+                const str_val = self.stack[str_idx];
                 if (!str_val.isString()) return error.TypeMismatch;
-                const src = str_val.toPtr(String);
-                const src_bytes = src.bytes();
-                const result = try self.allocStringUninitialized(src_bytes.len);
+                const src_len = str_val.toPtr(String).length;
+                const result = try self.allocStringUninitialized(src_len);
                 const dst = result.toPtr(String);
+                const src = self.stack[str_idx].toPtr(String);
+                const src_bytes = src.bytes();
+                std.debug.assert(src_bytes.len == src_len);
                 for (src_bytes, 0..) |c, i| {
                     dst.data[i] = std.ascii.toLower(c);
                 }
+                self.sp -= 1;
                 try self.push(result);
             },
             .random => {
@@ -3193,21 +3287,48 @@ pub const Vm = struct {
                 try self.push(result);
             },
             .hash_set => {
-                const value = try self.pop();
-                const key = try self.pop();
-                const ht_val = try self.pop();
-                if (!ht_val.isHashTable()) return error.TypeMismatch;
-                const ht = ht_val.toPtr(HashTable);
+                if (self.sp < 3) return error.StackUnderflow;
+                const ht_idx = self.sp - 3;
+                const key_idx = self.sp - 2;
+                const val_idx = self.sp - 1;
+                if (!self.stack[ht_idx].isHashTable()) return error.TypeMismatch;
+
+                var ht = self.stack[ht_idx].toPtr(HashTable);
+                const key = self.stack[key_idx];
+                const value = self.stack[val_idx];
 
                 // Try to insert, resize if needed
                 if (!hashTableSet(ht, key, value)) {
-                    // Resize in place - updates ht's entries pointer
-                    try hashTableResizeInPlace(self, ht);
+                    // Allocate the new hash table first (may GC)
+                    const new_cap_u64 = ht.capacity * 2;
+                    if (new_cap_u64 < ht.capacity) return error.Overflow;
+                    const new_cap: usize = @intCast(new_cap_u64);
+                    const test_type = ht.test_type;
+                    const new_ht_val = try self.allocHashTable(new_cap, test_type);
+
+                    // Re-acquire old ht pointer after potential GC
+                    ht = self.stack[ht_idx].toPtr(HashTable);
+                    const new_ht = new_ht_val.toPtr(HashTable);
+
+                    // Copy all entries from old to new
+                    for (ht.getEntries()) |entry| {
+                        if (!HashTable.isEmpty(entry) and !HashTable.isDeleted(entry)) {
+                            _ = hashTableSet(new_ht, entry.key, entry.value);
+                        }
+                    }
+
+                    // Update original hash table to use new entries
+                    ht.entries = new_ht.entries;
+                    ht.capacity = new_ht.capacity;
+
                     // Now insert should succeed
-                    _ = hashTableSet(ht, key, value);
+                    _ = hashTableSet(ht, self.stack[key_idx], self.stack[val_idx]);
                 }
+
                 // Only push the value (CL setf gethash semantics)
-                try self.push(value);
+                const result = self.stack[val_idx];
+                self.sp -= 3;
+                try self.push(result);
             },
             .hash_rem => {
                 const key = try self.pop();
@@ -3526,32 +3647,39 @@ pub const Vm = struct {
                 try self.push(sym);
             },
             .hash_keys => {
-                const ht_val = try self.pop();
-                if (!ht_val.isHashTable()) return error.TypeMismatch;
-                const ht = ht_val.toPtr(HashTable);
+                if (self.sp < 1) return error.StackUnderflow;
+                const ht_idx = self.sp - 1;
+                if (!self.stack[ht_idx].isHashTable()) return error.TypeMismatch;
+                const cap = self.stack[ht_idx].toPtr(HashTable).capacity;
                 // Build list of keys from hash table entries
                 var result = Value.nil;
-                const entries = ht.getEntries();
-                for (entries) |entry| {
-                    if (!HashTable.isAvailable(entry)) {
-                        result = try self.allocCons(entry.key, result);
-                    }
+                var i: u64 = 0;
+                while (i < cap) : (i += 1) {
+                    const ht = self.stack[ht_idx].toPtr(HashTable);
+                    const entry = ht.getEntries()[@intCast(i)];
+                    if (HashTable.isAvailable(entry)) continue;
+                    result = try self.allocCons(entry.key, result);
                 }
+                self.sp -= 1;
                 try self.push(result);
             },
             .hash_alist => {
-                const ht_val = try self.pop();
-                if (!ht_val.isHashTable()) return error.TypeMismatch;
-                const ht = ht_val.toPtr(HashTable);
+                if (self.sp < 1) return error.StackUnderflow;
+                const ht_idx = self.sp - 1;
+                if (!self.stack[ht_idx].isHashTable()) return error.TypeMismatch;
+                const cap = self.stack[ht_idx].toPtr(HashTable).capacity;
                 // Build alist of (key . value) pairs from hash table entries
                 var result = Value.nil;
-                const entries = ht.getEntries();
-                for (entries) |entry| {
-                    if (!HashTable.isAvailable(entry)) {
-                        const pair = try self.allocCons(entry.key, entry.value);
-                        result = try self.allocCons(pair, result);
-                    }
+                var i: u64 = 0;
+                while (i < cap) : (i += 1) {
+                    const ht = self.stack[ht_idx].toPtr(HashTable);
+                    const entry = ht.getEntries()[@intCast(i)];
+                    if (HashTable.isAvailable(entry)) continue;
+
+                    const pair = try self.allocCons(entry.key, entry.value);
+                    result = try self.allocCons(pair, result);
                 }
+                self.sp -= 1;
                 try self.push(result);
             },
             .rationalp => {
@@ -4233,13 +4361,17 @@ pub const Vm = struct {
                 if (!arr_val.isArray()) return error.TypeMismatch;
 
                 const arr = arr_val.toPtr(runtime.Array);
+                const rank = arr.rank;
+                var dims: [8]u64 = undefined;
+                for (0..rank) |i| dims[i] = arr.dimensions[i];
 
                 // Build list of dimensions from right to left
                 var result = Value.nil;
-                var i: usize = arr.rank;
+                var i: usize = rank;
                 while (i > 0) {
                     i -= 1;
-                    const dim: i64 = @intCast(arr.dimensions[i]);
+                    if (dims[i] > std.math.maxInt(i64)) return error.Overflow;
+                    const dim: i64 = @intCast(dims[i]);
                     result = try self.allocCons(Value.makeFixnum(dim), result);
                 }
 
@@ -4703,70 +4835,19 @@ pub const Vm = struct {
             },
 
             .list_remove => {
-                // remove with eql test (default) - builds new list
                 const seq = try self.pop();
                 const item = try self.pop();
-                var result = Value.nil;
-                var tail_val = Value.nil;
-                var curr = seq;
-                while (curr.isCons()) {
-                    const c = curr.toPtr(Cons);
-                    if (!hashKeyEqualWithTest(c.car, item, .eql)) {
-                        const new_cons = try self.allocCons(c.car, Value.nil);
-                        if (tail_val.isCons()) {
-                            tail_val.toPtr(Cons).cdr = new_cons;
-                        } else {
-                            result = new_cons;
-                        }
-                        tail_val = new_cons;
-                    }
-                    curr = c.cdr;
-                }
-                try self.push(result);
+                try self.push(try self.listRemoveWithTest(item, seq, .eql));
             },
             .list_remove_eq => {
-                // remove with eq test (identity) - builds new list
                 const seq = try self.pop();
                 const item = try self.pop();
-                var result = Value.nil;
-                var tail_val = Value.nil;
-                var curr = seq;
-                while (curr.isCons()) {
-                    const c = curr.toPtr(Cons);
-                    if (c.car.raw != item.raw) {
-                        const new_cons = try self.allocCons(c.car, Value.nil);
-                        if (tail_val.isCons()) {
-                            tail_val.toPtr(Cons).cdr = new_cons;
-                        } else {
-                            result = new_cons;
-                        }
-                        tail_val = new_cons;
-                    }
-                    curr = c.cdr;
-                }
-                try self.push(result);
+                try self.push(try self.listRemoveWithTest(item, seq, .eq));
             },
             .list_remove_equal => {
-                // remove with equal test (structural) - builds new list
                 const seq = try self.pop();
                 const item = try self.pop();
-                var result = Value.nil;
-                var tail_val = Value.nil;
-                var curr = seq;
-                while (curr.isCons()) {
-                    const c = curr.toPtr(Cons);
-                    if (!hashKeyEqualWithTest(c.car, item, .equal)) {
-                        const new_cons = try self.allocCons(c.car, Value.nil);
-                        if (tail_val.isCons()) {
-                            tail_val.toPtr(Cons).cdr = new_cons;
-                        } else {
-                            result = new_cons;
-                        }
-                        tail_val = new_cons;
-                    }
-                    curr = c.cdr;
-                }
-                try self.push(result);
+                try self.push(try self.listRemoveWithTest(item, seq, .equal));
             },
 
             .equal => {
@@ -6845,6 +6926,48 @@ pub const Vm = struct {
         return Value.makeFixnum(n);
     }
 
+    fn listRemoveWithTest(self: *Vm, item: Value, seq: Value, test_type: runtime.HashTest) Error!Value {
+        const saved_sp = self.sp;
+        errdefer self.sp = saved_sp;
+
+        if (self.sp + 4 > STACK_SIZE) return error.StackOverflow;
+        const item_idx = self.sp;
+        const seq_idx = self.sp + 1;
+        const result_idx = self.sp + 2;
+        const tail_idx = self.sp + 3;
+
+        self.stack[item_idx] = item;
+        self.stack[seq_idx] = seq;
+        self.stack[result_idx] = Value.nil;
+        self.stack[tail_idx] = Value.nil;
+        self.sp += 4;
+
+        while (self.stack[seq_idx].isCons()) {
+            const curr_val = self.stack[seq_idx];
+            const c = curr_val.toPtr(Cons);
+            const car = c.car;
+            const next = c.cdr;
+            self.stack[seq_idx] = next; // root across allocCons GC
+
+            if (hashKeyEqualWithTest(car, self.stack[item_idx], test_type)) continue;
+
+            const new_cons = try self.allocCons(car, Value.nil);
+            const tail_val = self.stack[tail_idx];
+            if (tail_val.isCons()) {
+                tail_val.toPtr(Cons).cdr = new_cons;
+            } else {
+                self.stack[result_idx] = new_cons;
+            }
+            self.stack[tail_idx] = new_cons;
+        }
+
+        if (self.stack[seq_idx] != Value.nil) return error.TypeMismatch;
+
+        const result = self.stack[result_idx];
+        self.sp = saved_sp;
+        return result;
+    }
+
     // ========================================================================
     // Bytecode reading
     // ========================================================================
@@ -7155,26 +7278,6 @@ fn hashTableGet(ht: *HashTable, key: Value) Value {
         idx = (idx + 1) & mask; // Linear probe
     }
     return Value.nil; // Table full and key not found
-}
-
-/// Resize hash table in place by updating its entries pointer
-fn hashTableResizeInPlace(vm: *Vm, ht: *HashTable) Error!void {
-    const new_capacity = ht.capacity * 2;
-    // Preserve the test_type from the original hash table
-    const new_ht_val = try vm.allocHashTable(new_capacity, ht.test_type);
-    const new_ht = new_ht_val.toPtr(HashTable);
-
-    // Copy all entries from old to new
-    for (ht.getEntries()) |entry| {
-        if (!HashTable.isEmpty(entry) and !HashTable.isDeleted(entry)) {
-            _ = hashTableSet(new_ht, entry.key, entry.value);
-        }
-    }
-
-    // Update original hash table to use new entries
-    ht.entries = new_ht.entries;
-    ht.capacity = new_ht.capacity;
-    // count stays the same (new_ht.count would be same as ht.count)
 }
 
 /// Set value in hash table (insert or update)
@@ -8368,4 +8471,150 @@ test "vm collectGarbage updates ext roots" {
     const start = @intFromPtr(heap.from_start);
     const end = start + heap.space_size;
     try testing.expect(ptr >= start and ptr < end);
+}
+
+test "vm allocCons roots args across GC" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const a = try heap.allocCons(Value.makeFixnum(1), Value.nil);
+    const b = try heap.allocCons(Value.makeFixnum(2), Value.nil);
+    const a_ptr_old = @intFromPtr(a.toPtr(runtime.Cons));
+    const b_ptr_old = @intFromPtr(b.toPtr(runtime.Cons));
+
+    const gc_before = heap.stats.gc_count;
+
+    const cons_size = @sizeOf(runtime.Cons);
+    while (true) {
+        const used = @intFromPtr(heap.alloc_ptr) - @intFromPtr(heap.from_start);
+        const rem = heap.space_size - used;
+        if (rem < cons_size) break;
+        _ = try heap.allocCons(Value.nil, Value.nil);
+    }
+
+    const outer = try vm.allocCons(a, b);
+    try testing.expect(heap.stats.gc_count > gc_before);
+
+    const outer_cons = outer.toPtr(runtime.Cons);
+    try testing.expect(outer_cons.car.isCons());
+    try testing.expect(outer_cons.cdr.isCons());
+
+    const start = @intFromPtr(heap.from_start);
+    const end = start + heap.space_size;
+
+    const car_ptr = @intFromPtr(outer_cons.car.toPtr(runtime.Cons));
+    const cdr_ptr = @intFromPtr(outer_cons.cdr.toPtr(runtime.Cons));
+    try testing.expect(car_ptr >= start and car_ptr < end);
+    try testing.expect(cdr_ptr >= start and cdr_ptr < end);
+    try testing.expect(car_ptr != a_ptr_old);
+    try testing.expect(cdr_ptr != b_ptr_old);
+
+    const car_cons = outer_cons.car.toPtr(runtime.Cons);
+    const cdr_cons = outer_cons.cdr.toPtr(runtime.Cons);
+    try testing.expect(car_cons.car.raw == Value.makeFixnum(1).raw);
+    try testing.expect(cdr_cons.car.raw == Value.makeFixnum(2).raw);
+}
+
+test "vm allocClosureWithGC roots code and captures across GC" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const empty_code = [_]u8{};
+    const no_consts = [_]Value{};
+    const code = try heap.allocChunk(&empty_code, &no_consts, 0, 0, 0, false, 0);
+    const code_ptr_old = @intFromPtr(code.toPtr(Chunk));
+
+    const cap0 = try heap.allocCons(Value.makeFixnum(7), Value.nil);
+    const cap1 = try heap.allocCons(Value.makeFixnum(9), Value.nil);
+    const cap0_ptr_old = @intFromPtr(cap0.toPtr(runtime.Cons));
+    const cap1_ptr_old = @intFromPtr(cap1.toPtr(runtime.Cons));
+
+    var captures = [_]Value{ cap0, cap1 };
+    const closure_bytes = std.mem.alignForward(usize, @sizeOf(runtime.Closure) + captures.len * @sizeOf(Value), 16);
+    const gc_before = heap.stats.gc_count;
+
+    while (true) {
+        const used = @intFromPtr(heap.alloc_ptr) - @intFromPtr(heap.from_start);
+        const rem = heap.space_size - used;
+        if (rem < closure_bytes) break;
+        _ = try heap.allocCons(Value.nil, Value.nil);
+    }
+
+    const clo_val = try vm.allocClosureWithGC(code, 0, captures[0..]);
+    try testing.expect(heap.stats.gc_count > gc_before);
+    try testing.expect(clo_val.isClosure());
+
+    const start = @intFromPtr(heap.from_start);
+    const end = start + heap.space_size;
+
+    const clo = clo_val.toPtr(runtime.Closure);
+    const code_ptr_new = @intFromPtr(clo.code.toPtr(Chunk));
+    try testing.expect(code_ptr_new >= start and code_ptr_new < end);
+    try testing.expect(code_ptr_new != code_ptr_old);
+
+    const got0 = clo.getCapture(0);
+    const got1 = clo.getCapture(1);
+    try testing.expect(got0.isCons());
+    try testing.expect(got1.isCons());
+
+    const got0_ptr = @intFromPtr(got0.toPtr(runtime.Cons));
+    const got1_ptr = @intFromPtr(got1.toPtr(runtime.Cons));
+    try testing.expect(got0_ptr >= start and got0_ptr < end);
+    try testing.expect(got1_ptr >= start and got1_ptr < end);
+    try testing.expect(got0_ptr != cap0_ptr_old);
+    try testing.expect(got1_ptr != cap1_ptr_old);
+
+    try testing.expect(got0.toPtr(runtime.Cons).car.raw == Value.makeFixnum(7).raw);
+    try testing.expect(got1.toPtr(runtime.Cons).car.raw == Value.makeFixnum(9).raw);
+}
+
+test "vm list_reverse survives GC" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    var items: [200]Value = undefined;
+    for (0..items.len) |i| {
+        items[i] = Value.makeFixnum(@intCast(i));
+    }
+    const list = try heap.listFromSlice(&items);
+    try vm.push(list);
+
+    const cons_size = @sizeOf(runtime.Cons);
+    while (true) {
+        const used = @intFromPtr(heap.alloc_ptr) - @intFromPtr(heap.from_start);
+        const rem = heap.space_size - used;
+        if (rem < cons_size) break;
+        _ = try heap.allocCons(Value.nil, Value.nil);
+    }
+
+    const gc_before = heap.stats.gc_count;
+    try vm.executeOp(.list_reverse);
+    try testing.expect(heap.stats.gc_count > gc_before);
+
+    const result = try vm.pop();
+    var curr = result;
+    var expect_n: i64 = 199;
+    while (curr.isCons()) {
+        const c = curr.toPtr(runtime.Cons);
+        try testing.expect(c.car.raw == Value.makeFixnum(expect_n).raw);
+        curr = c.cdr;
+        expect_n -= 1;
+    }
+    try testing.expect(curr.isNil());
+    try testing.expect(expect_n == -1);
 }
