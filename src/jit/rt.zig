@@ -476,6 +476,16 @@ pub fn rplacd(c: *ctx.JitContext, cons_val: Value, new_cdr: Value) vm_mod.Error!
     return new_cdr;
 }
 
+pub fn eql(c: *ctx.JitContext, a: Value, b: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (vm_mod.hashKeyEqualWithTest(a, b, .eql)) Value.t else Value.nil;
+}
+
+pub fn equal(c: *ctx.JitContext, a: Value, b: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (vm_mod.hashKeyEqualWithTest(a, b, .equal)) Value.t else Value.nil;
+}
+
 pub fn lt(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
     _ = c;
     return if (try arith.lt(a, b)) Value.t else Value.nil;

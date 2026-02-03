@@ -190,6 +190,12 @@ pub const Jit = struct {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.eq_stencil, &[_]patch.PatchValue{});
                 try self.emitStackPush();
             },
+            .equal => {
+                try self.emitBinaryCall(@intFromPtr(&rt.equal));
+            },
+            .eql => {
+                try self.emitBinaryCall(@intFromPtr(&rt.eql));
+            },
 
             .lt => {
                 try self.emitBinaryCompare(stencils.lt_stencil, @intFromPtr(&rt.lt));

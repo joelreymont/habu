@@ -47,6 +47,8 @@ test "parity: vm vs jit (hand-picked)" {
         "(mod 10 3)",
         "(= 1 1)",
         "(= 1 2)",
+        "(eql 0.0 -0.0)",
+        "(equal (list 1 2) (list 1 2))",
         "(not nil)",
         "(not t)",
         "(null nil)",
