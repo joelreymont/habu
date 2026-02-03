@@ -1,9 +1,11 @@
 ---
 title: Fix VM alloc rooting
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-03T10:40:11.183832+01:00"
+created-at: "\"\\\"2026-02-03T10:40:11.183832+01:00\\\"\""
+closed-at: "2026-02-03T12:32:57.544317+01:00"
+close-reason: Root VM alloc args across GC
 blocks:
   - habu-fix-vm-gc-00648d03
 ---
