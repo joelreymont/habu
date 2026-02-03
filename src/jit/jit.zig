@@ -287,8 +287,20 @@ pub const Jit = struct {
             .list_member => {
                 try self.emitBinaryCall(@intFromPtr(&rt.listMember));
             },
+            .list_member_eql => {
+                try self.emitBinaryCall(@intFromPtr(&rt.listMemberEql));
+            },
+            .list_member_equal => {
+                try self.emitBinaryCall(@intFromPtr(&rt.listMemberEqual));
+            },
             .assoc => {
                 try self.emitBinaryCall(@intFromPtr(&rt.assoc));
+            },
+            .assoc_eql => {
+                try self.emitBinaryCall(@intFromPtr(&rt.assocEql));
+            },
+            .assoc_equal => {
+                try self.emitBinaryCall(@intFromPtr(&rt.assocEqual));
             },
 
             .list_reverse => {

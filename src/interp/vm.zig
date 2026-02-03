@@ -7335,7 +7335,7 @@ fn hashValueWithTest(val: Value, test_type: runtime.HashTest) u64 {
 }
 
 /// Check if two Values are equal for hash table purposes
-fn hashKeyEqualWithTest(a: Value, b: Value, test_type: runtime.HashTest) bool {
+pub fn hashKeyEqualWithTest(a: Value, b: Value, test_type: runtime.HashTest) bool {
     switch (test_type) {
         .eq => {
             // eq: pure identity comparison

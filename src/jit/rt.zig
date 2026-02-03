@@ -216,6 +216,28 @@ pub fn listMember(c: *ctx.JitContext, item: Value, list: Value) vm_mod.Error!Val
     return Value.nil;
 }
 
+pub fn listMemberEql(c: *ctx.JitContext, item: Value, list: Value) vm_mod.Error!Value {
+    _ = c;
+    var curr = list;
+    while (curr.isCons()) {
+        const cell = curr.toPtr(runtime.Cons);
+        if (vm_mod.hashKeyEqualWithTest(cell.car, item, .eql)) return curr;
+        curr = cell.cdr;
+    }
+    return Value.nil;
+}
+
+pub fn listMemberEqual(c: *ctx.JitContext, item: Value, list: Value) vm_mod.Error!Value {
+    _ = c;
+    var curr = list;
+    while (curr.isCons()) {
+        const cell = curr.toPtr(runtime.Cons);
+        if (vm_mod.hashKeyEqualWithTest(cell.car, item, .equal)) return curr;
+        curr = cell.cdr;
+    }
+    return Value.nil;
+}
+
 pub fn assoc(c: *ctx.JitContext, key: Value, alist: Value) vm_mod.Error!Value {
     _ = c;
     var curr = alist;
@@ -224,6 +246,34 @@ pub fn assoc(c: *ctx.JitContext, key: Value, alist: Value) vm_mod.Error!Value {
         if (cell.car.isCons()) {
             const pair = cell.car.toPtr(runtime.Cons);
             if (pair.car.raw == key.raw) return cell.car;
+        }
+        curr = cell.cdr;
+    }
+    return Value.nil;
+}
+
+pub fn assocEql(c: *ctx.JitContext, key: Value, alist: Value) vm_mod.Error!Value {
+    _ = c;
+    var curr = alist;
+    while (curr.isCons()) {
+        const cell = curr.toPtr(runtime.Cons);
+        if (cell.car.isCons()) {
+            const pair = cell.car.toPtr(runtime.Cons);
+            if (vm_mod.hashKeyEqualWithTest(pair.car, key, .eql)) return cell.car;
+        }
+        curr = cell.cdr;
+    }
+    return Value.nil;
+}
+
+pub fn assocEqual(c: *ctx.JitContext, key: Value, alist: Value) vm_mod.Error!Value {
+    _ = c;
+    var curr = alist;
+    while (curr.isCons()) {
+        const cell = curr.toPtr(runtime.Cons);
+        if (cell.car.isCons()) {
+            const pair = cell.car.toPtr(runtime.Cons);
+            if (vm_mod.hashKeyEqualWithTest(pair.car, key, .equal)) return cell.car;
         }
         curr = cell.cdr;
     }
