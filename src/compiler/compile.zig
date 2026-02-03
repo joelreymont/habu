@@ -13889,6 +13889,42 @@ test "macro expansion restores VM chunk_pool" {
     _ = try vm.collectGarbage();
 }
 
+test "macro expansion restores VM global_env" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var other_env = GlobalEnv.init(allocator);
+    defer other_env.deinit();
+    vm.setGlobalEnv(&other_env);
+    const saved_env = vm.global_env;
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    errdefer compiler.deinit();
+
+    var env = Env.init(allocator, null);
+    defer env.deinit();
+
+    const m_sym = try heap.intern("m");
+    const body = try heap.allocCons(Value.makeFixnum(42), Value.nil);
+    const macro_def = try heap.allocCons(Value.nil, body);
+    try compiler.macro_table.put(m_sym, macro_def);
+
+    const call_expr = try heap.allocCons(m_sym, Value.nil);
+    const ir_node = try compiler.compile(call_expr, &env);
+    try testing.expectEqual(Ir.lit, std.meta.activeTag(ir_node.*));
+    try testing.expectEqual(@as(i64, 42), ir_node.lit.toFixnum());
+    allocator.destroy(ir_node);
+
+    compiler.deinit();
+    try testing.expect(vm.global_env == saved_env);
+    _ = try vm.collectGarbage();
+}
+
 test "load-time-value restores VM chunk_pool" {
     const testing = std.testing;
     const allocator = testing.allocator;
