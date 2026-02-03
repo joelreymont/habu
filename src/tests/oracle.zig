@@ -166,6 +166,34 @@ test "oracle: defclass CPL includes transitive supers" {
     try testing.expectEqualStrings("A", third.toPtr(Symbol).getName());
 }
 
+test "oracle: class-slots includes inherited slots" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+
+    const expr =
+        \\(progn
+        \\  (defclass A () (X))
+        \\  (defclass B (A) (Y))
+        \\  (list
+        \\    (slot-definition-name (car (class-slots (find-class 'B))))
+        \\    (slot-definition-name (car (cdr (class-slots (find-class 'B)))))))
+    ;
+
+    const result = try harness.eval(allocator, &heap, expr);
+    try testing.expect(result.isCons());
+
+    const first = result.toPtr(Cons).car;
+    try testing.expect(first.isSymbol());
+    try testing.expectEqualStrings("Y", first.toPtr(Symbol).getName());
+
+    const rest1 = result.toPtr(Cons).cdr;
+    try testing.expect(rest1.isCons());
+    const second = rest1.toPtr(Cons).car;
+    try testing.expect(second.isSymbol());
+    try testing.expectEqualStrings("X", second.toPtr(Symbol).getName());
+}
+
 test "oracle: list construction" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });

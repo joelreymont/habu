@@ -6631,6 +6631,7 @@ pub const Compiler = struct {
         initargs: std.ArrayList(Value),
         readers: std.ArrayList(Value),
         writers: std.ArrayList(Value),
+        is_direct: bool = false,
     };
 
     /// Allocate Class object and compute CPL
@@ -6697,8 +6698,10 @@ pub const Compiler = struct {
         }
 
         // Create SlotDefinition objects
-        var direct_slots_list = Value.nil;
+        var direct_slots = std.ArrayList(Value){};
+        defer direct_slots.deinit(self.allocator);
         for (slot_specs) |spec| {
+            if (!spec.is_direct) continue;
             const slot_def = try heap.alloc(objects.SlotDefinition);
 
             // Convert initargs ArrayList to list
@@ -6743,13 +6746,64 @@ pub const Compiler = struct {
                 .slot_type = spec.type_sym,
             };
 
-            direct_slots_list = try heap.allocCons(Value.makeSlotDef(slot_def), direct_slots_list);
+            try direct_slots.append(self.allocator, Value.makeSlotDef(slot_def));
+        }
+
+        // Preserve slot order as declared
+        var direct_slots_list = Value.nil;
+        var ds_rev = direct_slots.items.len;
+        while (ds_rev > 0) {
+            ds_rev -= 1;
+            direct_slots_list = try heap.allocCons(direct_slots.items[ds_rev], direct_slots_list);
+        }
+
+        // Merge inherited slots in CPL order (skip duplicates by name)
+        var seen = std.AutoHashMapUnmanaged(Value, void){};
+        defer seen.deinit(self.allocator);
+        var all_slots = std.ArrayList(Value){};
+        defer all_slots.deinit(self.allocator);
+
+        for (direct_slots.items) |slot_val| {
+            if (!slot_val.isSlotDefinition()) return error.InvalidSyntax;
+            const name_sym = slot_val.toPtr(objects.SlotDefinition).name;
+            try seen.put(self.allocator, name_sym, {});
+            try all_slots.append(self.allocator, slot_val);
+        }
+
+        var cpl_tail = cpl_list;
+        if (cpl_tail.isCons()) {
+            cpl_tail = cpl_tail.toPtr(Cons).cdr;
+        }
+        while (cpl_tail.isCons()) {
+            const cpl_cons = cpl_tail.toPtr(Cons);
+            const super_val = cpl_cons.car;
+            if (!super_val.isClass()) return error.InvalidSyntax;
+            var super_slots = super_val.toPtr(runtime.Class).direct_slots;
+            while (super_slots.isCons()) {
+                const slot_cons = super_slots.toPtr(Cons);
+                const slot_val = slot_cons.car;
+                if (!slot_val.isSlotDefinition()) return error.InvalidSyntax;
+                const name_sym = slot_val.toPtr(objects.SlotDefinition).name;
+                if (!seen.contains(name_sym)) {
+                    try seen.put(self.allocator, name_sym, {});
+                    try all_slots.append(self.allocator, slot_val);
+                }
+                super_slots = slot_cons.cdr;
+            }
+            cpl_tail = cpl_cons.cdr;
+        }
+
+        var slots_list = Value.nil;
+        var slots_rev = all_slots.items.len;
+        while (slots_rev > 0) {
+            slots_rev -= 1;
+            slots_list = try heap.allocCons(all_slots.items[slots_rev], slots_list);
         }
 
         class_ptr.direct_supers = direct_supers_list;
         class_ptr.cpl = cpl_list;
         class_ptr.direct_slots = direct_slots_list;
-        class_ptr.slots = direct_slots_list; // TODO: merge with inherited slots
+        class_ptr.slots = slots_list;
 
         return class_val;
     }
@@ -7561,6 +7615,7 @@ pub const Compiler = struct {
                                 .initargs = inherited_initargs,
                                 .readers = inherited_readers,
                                 .writers = inherited_writers,
+                                .is_direct = false,
                             });
                         }
                     }
@@ -7618,6 +7673,7 @@ pub const Compiler = struct {
                         .initargs = initargs,
                         .readers = std.ArrayList(Value){},
                         .writers = std.ArrayList(Value){},
+                        .is_direct = true,
                     });
                 },
                 .cons => {
@@ -7734,6 +7790,7 @@ pub const Compiler = struct {
                         .initargs = initargs,
                         .readers = readers,
                         .writers = writers,
+                        .is_direct = true,
                     });
                 },
                 else => return error.InvalidSyntax,
@@ -7767,6 +7824,7 @@ pub const Compiler = struct {
                 .initargs = std.ArrayList(Value).fromOwnedSlice(initargs_slice),
                 .readers = std.ArrayList(Value).fromOwnedSlice(readers_slice),
                 .writers = std.ArrayList(Value).fromOwnedSlice(writers_slice),
+                .is_direct = spec.is_direct,
             };
         }
         var qual_buf: [256]u8 = undefined;
