@@ -73,6 +73,8 @@ test "parity: vm vs jit (hand-picked)" {
         "(char-downcase #\\A)",
         "(digit-char-p #\\7)",
         "(alpha-char-p #\\Z)",
+        "(string-upcase \"aBc\")",
+        "(string-downcase \"AbC\")",
         "(floatp 1.5)",
         "(listp nil)",
         "(listp (cons 1 2))",

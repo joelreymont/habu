@@ -4,6 +4,7 @@ const ctx = @import("ctx.zig");
 const runtime = @import("../runtime/runtime.zig");
 const arith = @import("../runtime/primitives/arith.zig");
 const char_prims = @import("../runtime/primitives/char.zig");
+const str_prims = @import("../runtime/primitives/string.zig");
 const vec_prims = @import("../runtime/primitives/vector.zig");
 const vm_mod = @import("../interp/vm.zig");
 
@@ -245,6 +246,30 @@ pub fn digitCharP(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
 pub fn alphaCharP(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
     _ = c;
     return char_prims.alphap(val);
+}
+
+pub fn stringUpcase(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
+    if (!val.isString()) return error.TypeMismatch;
+    var args = [_]Value{ val };
+    return str_prims.stringUpcase(c.heap, args[0]) catch |err| switch (err) {
+        error.OutOfMemory => blk: {
+            try collectJitGarbage(c, &args);
+            break :blk try str_prims.stringUpcase(c.heap, args[0]);
+        },
+        else => return err,
+    };
+}
+
+pub fn stringDowncase(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
+    if (!val.isString()) return error.TypeMismatch;
+    var args = [_]Value{ val };
+    return str_prims.stringDowncase(c.heap, args[0]) catch |err| switch (err) {
+        error.OutOfMemory => blk: {
+            try collectJitGarbage(c, &args);
+            break :blk try str_prims.stringDowncase(c.heap, args[0]);
+        },
+        else => return err,
+    };
 }
 
 pub fn listp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {

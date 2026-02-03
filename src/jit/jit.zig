@@ -323,6 +323,16 @@ pub const Jit = struct {
                 try self.emitCallUnary(@intFromPtr(&rt.alphaCharP));
                 try self.emitStackPush();
             },
+            .string_upcase => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.stringUpcase));
+                try self.emitStackPush();
+            },
+            .string_downcase => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.stringDowncase));
+                try self.emitStackPush();
+            },
 
             .list_length => {
                 try self.emitStackPop();
