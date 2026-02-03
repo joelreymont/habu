@@ -241,6 +241,10 @@ pub const Jit = struct {
                 try self.emitStackPush();
             },
 
+            .append_lists => {
+                try self.emitBinaryCall(@intFromPtr(&rt.appendLists));
+            },
+
             .list_nth => {
                 try self.emitBinaryCall(@intFromPtr(&rt.listNth));
             },

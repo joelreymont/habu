@@ -57,6 +57,7 @@ test "parity: vm vs jit (hand-picked)" {
         "(length (make-vector 3 7))",
         "(length \"abc\")",
         "(reverse (list 1 2 3))",
+        "(append (list 1 2) (list 3 4))",
         "(nth 1 (list 7 8 9))",
         "(nthcdr 2 (list 1 2 3 4))",
         "(let ((x (cons 1 2))) (rplaca x 9) (car x))",

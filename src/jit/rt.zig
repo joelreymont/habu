@@ -213,6 +213,59 @@ pub fn listReverse(c: *ctx.JitContext, list: Value) vm_mod.Error!Value {
     return res;
 }
 
+pub fn appendLists(c: *ctx.JitContext, list1: Value, list2_in: Value) vm_mod.Error!Value {
+    var list2 = list2_in;
+    switch (list1.typeKind()) {
+        .nil => return list2,
+        .cons => {},
+        else => return error.TypeMismatch,
+    }
+
+    var curr = list1;
+    var head = Value.nil;
+    var tail = Value.nil;
+    var roots = [_]Value{ curr, list2, head, tail };
+
+    while (curr.isCons()) {
+        var cell = curr.toPtr(runtime.Cons);
+        var car = cell.car;
+        var next = cell.cdr;
+        roots[0] = curr;
+        roots[1] = list2;
+        roots[2] = head;
+        roots[3] = tail;
+
+        const new_cell = c.heap.allocCons(car, Value.nil) catch |err| switch (err) {
+            error.OutOfMemory => blk: {
+                try collectJitGarbage(c, &roots);
+                curr = roots[0];
+                list2 = roots[1];
+                head = roots[2];
+                tail = roots[3];
+                cell = curr.toPtr(runtime.Cons);
+                car = cell.car;
+                next = cell.cdr;
+                break :blk try c.heap.allocCons(car, Value.nil);
+            },
+            else => return err,
+        };
+
+        if (tail.isCons()) {
+            tail.toPtr(runtime.Cons).cdr = new_cell;
+        } else {
+            head = new_cell;
+        }
+        tail = new_cell;
+        curr = next;
+    }
+    if (!curr.isNil()) return error.TypeMismatch;
+
+    if (tail.isCons()) {
+        tail.toPtr(runtime.Cons).cdr = list2;
+    }
+    return if (head.isNil()) list2 else head;
+}
+
 pub fn listNth(c: *ctx.JitContext, n_val: Value, list: Value) vm_mod.Error!Value {
     _ = c;
     if (!n_val.isFixnum()) return error.TypeMismatch;
