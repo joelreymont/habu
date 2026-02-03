@@ -1,9 +1,9 @@
 ---
 title: Parity tests
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-02-03T13:28:48.533075+01:00"
+created-at: "\"2026-02-03T13:28:48.533075+01:00\""
 blocks:
   - habu-bench-harness-f817afd6
   - habu-med-add-jit-b402aeb1

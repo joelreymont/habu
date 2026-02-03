@@ -7,49 +7,8 @@ const std = @import("std");
 const testing = std.testing;
 
 const runtime = @import("../runtime/runtime.zig");
-const Value = runtime.Value;
 const Heap = runtime.Heap;
-const Chunk = runtime.Chunk;
-
-const reader = @import("../reader/reader.zig");
-const Parser = reader.Parser;
-
-const compiler = @import("../compiler/compiler.zig");
-const Compiler = compiler.Compiler;
-const Env = compiler.Env;
-
-const bytecode = @import("../bytecode/bytecode.zig");
-const Emitter = bytecode.Emitter;
-
-const interp = @import("../interp/interp.zig");
-const Vm = interp.Vm;
-
-/// Evaluate a Habu expression
-fn eval(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    const arena_alloc = arena.allocator();
-
-    var comp_vm = try Vm.init(arena_alloc, heap);
-    defer comp_vm.deinit();
-
-    var parser = try Parser.init(arena_alloc, heap, source, &comp_vm.builtins);
-    defer parser.deinit();
-    const expr = try parser.parse();
-    var comp = try Compiler.initWithHeap(arena_alloc, &comp_vm);
-    defer comp.deinit();
-    var env = Env.init(arena_alloc, null);
-    defer env.deinit();
-    const ir_node = try comp.compile(expr, &env);
-
-    var emitter = Emitter.initWithHeap(arena_alloc, heap);
-    try emitter.emit(ir_node);
-    const chunk_val = try emitter.finalize();
-
-    var vm = try Vm.init(allocator, heap);
-    defer vm.deinit();
-    return vm.run(chunk_val.toPtr(Chunk));
-}
+const harness = @import("../testing/harness.zig");
 
 // ============================================================================
 // Oracle Tests - Self-Contained Expressions
@@ -63,7 +22,7 @@ test "oracle: nested let scoping" {
     // Test proper lexical scoping with nested lets
     const expr = "(let ((x 10)) (let ((y 20)) (let ((x 5)) (+ x y))))";
 
-    const result = try eval(allocator, &heap, expr);
+    const result = try harness.eval(allocator, &heap, expr);
     // Inner x shadows outer x, so x=5, y=20, result=25
     try testing.expectEqual(@as(i64, 25), result.toFixnum());
 }
@@ -83,13 +42,13 @@ test "oracle: arithmetic expressions" {
     };
 
     for (test_cases) |tc| {
-        const result = try eval(allocator, &heap, tc.expr);
+        const result = try harness.eval(allocator, &heap, tc.expr);
         try testing.expectEqual(tc.expected, result.toFixnum());
     }
 
     // Test division returns rational
     {
-        const result = try eval(allocator, &heap, "(/ (+ 100 50) 3)");
+        const result = try harness.eval(allocator, &heap, "(/ (+ 100 50) 3)");
         try testing.expect(result.typeKind() == .rational);
         const rat = result.toPtr(runtime.objects.Rational);
         try testing.expectEqual(@as(i64, 50), rat.numerator);
@@ -110,7 +69,7 @@ test "oracle: list length after operations" {
     };
 
     for (test_cases) |tc| {
-        const result = try eval(allocator, &heap, tc.expr);
+        const result = try harness.eval(allocator, &heap, tc.expr);
         try testing.expectEqual(tc.expected, result.toFixnum());
     }
 }
@@ -130,7 +89,7 @@ test "oracle: comparison operators" {
     };
 
     for (truthy_cases) |expr| {
-        const result = try eval(allocator, &heap, expr);
+        const result = try harness.eval(allocator, &heap, expr);
         try testing.expect(!result.isNil());
     }
 
@@ -143,7 +102,7 @@ test "oracle: comparison operators" {
     };
 
     for (falsy_cases) |expr| {
-        const result = try eval(allocator, &heap, expr);
+        const result = try harness.eval(allocator, &heap, expr);
         try testing.expect(result.isNil());
     }
 }
@@ -164,7 +123,7 @@ test "oracle: conditional evaluation" {
     };
 
     for (test_cases) |tc| {
-        const result = try eval(allocator, &heap, tc.expr);
+        const result = try harness.eval(allocator, &heap, tc.expr);
         try testing.expectEqual(tc.expected, result.toFixnum());
     }
 }
@@ -185,7 +144,7 @@ test "oracle: list construction" {
     };
 
     for (test_cases) |tc| {
-        const result = try eval(allocator, &heap, tc.expr);
+        const result = try harness.eval(allocator, &heap, tc.expr);
         try testing.expectEqual(tc.expected, result.toFixnum());
     }
 }
@@ -202,7 +161,7 @@ test "oracle: let bindings" {
     };
 
     for (test_cases) |tc| {
-        const result = try eval(allocator, &heap, tc.expr);
+        const result = try harness.eval(allocator, &heap, tc.expr);
         try testing.expectEqual(tc.expected, result.toFixnum());
     }
 }
@@ -214,21 +173,21 @@ test "oracle: null and equality" {
 
     // null checks
     {
-        const result = try eval(allocator, &heap, "(null nil)");
+        const result = try harness.eval(allocator, &heap, "(null nil)");
         try testing.expect(!result.isNil()); // null nil => t
     }
     {
-        const result = try eval(allocator, &heap, "(null (list 1))");
+        const result = try harness.eval(allocator, &heap, "(null (list 1))");
         try testing.expect(result.isNil()); // null (list 1) => nil
     }
 
     // eq checks
     {
-        const result = try eval(allocator, &heap, "(eq nil nil)");
+        const result = try harness.eval(allocator, &heap, "(eq nil nil)");
         try testing.expect(!result.isNil());
     }
     {
-        const result = try eval(allocator, &heap, "(eq t t)");
+        const result = try harness.eval(allocator, &heap, "(eq t t)");
         try testing.expect(!result.isNil());
     }
 }

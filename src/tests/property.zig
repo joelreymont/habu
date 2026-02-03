@@ -10,53 +10,11 @@ const std = @import("std");
 const testing = std.testing;
 
 const runtime = @import("../runtime/runtime.zig");
-const Value = runtime.Value;
 const Heap = runtime.Heap;
-const Cons = runtime.Cons;
-const Chunk = runtime.Chunk;
-
-const reader = @import("../reader/reader.zig");
-const Parser = reader.Parser;
-
-const compiler = @import("../compiler/compiler.zig");
-const Compiler = compiler.Compiler;
-const Env = compiler.Env;
-
-const bytecode = @import("../bytecode/bytecode.zig");
-const Emitter = bytecode.Emitter;
-
-const interp = @import("../interp/interp.zig");
-const Vm = interp.Vm;
+const harness = @import("../testing/harness.zig");
 
 /// PRNG for property tests
 const Rng = std.Random.DefaultPrng;
-
-/// Evaluate a Habu expression
-fn eval(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    const arena_alloc = arena.allocator();
-
-    var comp_vm = try Vm.init(arena_alloc, heap);
-    defer comp_vm.deinit();
-
-    var parser = try Parser.init(arena_alloc, heap, source, &comp_vm.builtins);
-    defer parser.deinit();
-    const expr = try parser.parse();
-    var comp = try Compiler.initWithHeap(arena_alloc, &comp_vm);
-    defer comp.deinit();
-    var env = Env.init(arena_alloc, null);
-    defer env.deinit();
-    const ir_node = try comp.compile(expr, &env);
-
-    var emitter = Emitter.initWithHeap(arena_alloc, heap);
-    try emitter.emit(ir_node);
-    const chunk_val = try emitter.finalize();
-
-    var vm = try Vm.init(allocator, heap);
-    defer vm.deinit();
-    return vm.run(chunk_val.toPtr(Chunk));
-}
 
 // ============================================================================
 // Arithmetic Properties
@@ -79,8 +37,8 @@ test "property: addition is commutative" {
         const expr1 = try std.fmt.bufPrint(&buf1, "(+ {d} {d})", .{ a, b });
         const expr2 = try std.fmt.bufPrint(&buf2, "(+ {d} {d})", .{ b, a });
 
-        const r1 = try eval(allocator, &heap, expr1);
-        const r2 = try eval(allocator, &heap, expr2);
+        const r1 = try harness.eval(allocator, &heap, expr1);
+        const r2 = try harness.eval(allocator, &heap, expr2);
 
         try testing.expectEqual(r1.toFixnum(), r2.toFixnum());
     }
@@ -103,8 +61,8 @@ test "property: multiplication is commutative" {
         const expr1 = try std.fmt.bufPrint(&buf1, "(* {d} {d})", .{ a, b });
         const expr2 = try std.fmt.bufPrint(&buf2, "(* {d} {d})", .{ b, a });
 
-        const r1 = try eval(allocator, &heap, expr1);
-        const r2 = try eval(allocator, &heap, expr2);
+        const r1 = try harness.eval(allocator, &heap, expr1);
+        const r2 = try harness.eval(allocator, &heap, expr2);
 
         try testing.expectEqual(r1.toFixnum(), r2.toFixnum());
     }
@@ -124,7 +82,7 @@ test "property: addition identity" {
         var buf: [64]u8 = undefined;
         const expr = try std.fmt.bufPrint(&buf, "(+ {d} 0)", .{n});
 
-        const result = try eval(allocator, &heap, expr);
+        const result = try harness.eval(allocator, &heap, expr);
         try testing.expectEqual(@as(i64, n), result.toFixnum());
     }
 }
@@ -143,7 +101,7 @@ test "property: multiplication identity" {
         var buf: [64]u8 = undefined;
         const expr = try std.fmt.bufPrint(&buf, "(* {d} 1)", .{n});
 
-        const result = try eval(allocator, &heap, expr);
+        const result = try harness.eval(allocator, &heap, expr);
         try testing.expectEqual(@as(i64, n), result.toFixnum());
     }
 }
@@ -163,7 +121,7 @@ test "property: subtraction is inverse of addition" {
         var buf: [64]u8 = undefined;
         const expr = try std.fmt.bufPrint(&buf, "(- (+ {d} {d}) {d})", .{ a, b, b });
 
-        const result = try eval(allocator, &heap, expr);
+        const result = try harness.eval(allocator, &heap, expr);
         try testing.expectEqual(@as(i64, a), result.toFixnum());
     }
 }
@@ -187,7 +145,7 @@ test "property: car of cons returns first element" {
         var buf: [64]u8 = undefined;
         const expr = try std.fmt.bufPrint(&buf, "(car (cons {d} {d}))", .{ a, b });
 
-        const result = try eval(allocator, &heap, expr);
+        const result = try harness.eval(allocator, &heap, expr);
         try testing.expectEqual(@as(i64, a), result.toFixnum());
     }
 }
@@ -207,7 +165,7 @@ test "property: cdr of cons returns second element" {
         var buf: [64]u8 = undefined;
         const expr = try std.fmt.bufPrint(&buf, "(cdr (cons {d} {d}))", .{ a, b });
 
-        const result = try eval(allocator, &heap, expr);
+        const result = try harness.eval(allocator, &heap, expr);
         try testing.expectEqual(@as(i64, b), result.toFixnum());
     }
 }
@@ -231,7 +189,7 @@ test "property: length of list equals element count" {
         var buf: [128]u8 = undefined;
         const expr = try std.fmt.bufPrint(&buf, "(length {s})", .{tc.expr});
 
-        const result = try eval(allocator, &heap, expr);
+        const result = try harness.eval(allocator, &heap, expr);
         try testing.expectEqual(tc.len, result.toFixnum());
     }
 }
@@ -256,8 +214,8 @@ test "property: reverse of reverse is identity" {
         const expr1 = try std.fmt.bufPrint(&buf1, "(reverse (reverse {s}))", .{list});
         const expr2 = try std.fmt.bufPrint(&buf2, "{s}", .{list});
 
-        const r1 = try eval(allocator, &heap, expr1);
-        const r2 = try eval(allocator, &heap, expr2);
+        const r1 = try harness.eval(allocator, &heap, expr1);
+        const r2 = try harness.eval(allocator, &heap, expr2);
 
         // Both should have same length
         var len_buf1: [128]u8 = undefined;
@@ -265,8 +223,8 @@ test "property: reverse of reverse is identity" {
         const len_expr1 = try std.fmt.bufPrint(&len_buf1, "(length (reverse (reverse {s})))", .{list});
         const len_expr2 = try std.fmt.bufPrint(&len_buf2, "(length {s})", .{list});
 
-        const len1 = try eval(allocator, &heap, len_expr1);
-        const len2 = try eval(allocator, &heap, len_expr2);
+        const len1 = try harness.eval(allocator, &heap, len_expr1);
+        const len2 = try harness.eval(allocator, &heap, len_expr2);
         try testing.expectEqual(len1.toFixnum(), len2.toFixnum());
 
         // If non-empty, first elements should match
@@ -276,8 +234,8 @@ test "property: reverse of reverse is identity" {
             const car_expr1 = try std.fmt.bufPrint(&car_buf1, "(car (reverse (reverse {s})))", .{list});
             const car_expr2 = try std.fmt.bufPrint(&car_buf2, "(car {s})", .{list});
 
-            const car1 = try eval(allocator, &heap, car_expr1);
-            const car2 = try eval(allocator, &heap, car_expr2);
+            const car1 = try harness.eval(allocator, &heap, car_expr1);
+            const car2 = try harness.eval(allocator, &heap, car_expr2);
             try testing.expectEqual(car1.toFixnum(), car2.toFixnum());
         }
     }
@@ -301,8 +259,8 @@ test "property: append nil is identity" {
         var len_buf: [128]u8 = undefined;
         const len_expr = try std.fmt.bufPrint(&len_buf, "(length {s})", .{list});
 
-        const r1 = try eval(allocator, &heap, expr);
-        const r2 = try eval(allocator, &heap, len_expr);
+        const r1 = try harness.eval(allocator, &heap, expr);
+        const r2 = try harness.eval(allocator, &heap, len_expr);
         try testing.expectEqual(r1.toFixnum(), r2.toFixnum());
     }
 }
@@ -335,7 +293,7 @@ test "property: type predicates are mutually exclusive for atoms" {
             var buf: [128]u8 = undefined;
             const expr = try std.fmt.bufPrint(&buf, "({s} {s})", .{ pred, tc.val });
 
-            const result = try eval(allocator, &heap, expr);
+            const result = try harness.eval(allocator, &heap, expr);
             if (!result.isNil()) {
                 true_count += 1;
             }
@@ -369,8 +327,8 @@ test "property: less-than is anti-symmetric" {
         const expr1 = try std.fmt.bufPrint(&buf1, "(< {d} {d})", .{ a, b });
         const expr2 = try std.fmt.bufPrint(&buf2, "(< {d} {d})", .{ b, a });
 
-        const r1 = try eval(allocator, &heap, expr1);
-        const r2 = try eval(allocator, &heap, expr2);
+        const r1 = try harness.eval(allocator, &heap, expr1);
+        const r2 = try harness.eval(allocator, &heap, expr2);
 
         // If a < b, then NOT (b < a)
         if (!r1.isNil()) {
@@ -393,7 +351,7 @@ test "property: equality is reflexive" {
         var buf: [64]u8 = undefined;
         const expr = try std.fmt.bufPrint(&buf, "(= {d} {d})", .{ n, n });
 
-        const result = try eval(allocator, &heap, expr);
+        const result = try harness.eval(allocator, &heap, expr);
         try testing.expect(!result.isNil());
     }
 }
@@ -417,7 +375,7 @@ test "property: lambda captures free variables" {
         // Create adder using funcall
         const expr = try std.fmt.bufPrint(&buf, "(let ((n {d})) (+ 10 n))", .{n});
 
-        const result = try eval(allocator, &heap, expr);
+        const result = try harness.eval(allocator, &heap, expr);
         try testing.expectEqual(@as(i64, 10 + n), result.toFixnum());
     }
 }
@@ -443,7 +401,7 @@ test "property: vector literal length" {
         var buf: [128]u8 = undefined;
         const expr = try std.fmt.bufPrint(&buf, "(vector-length {s})", .{tc.expr});
 
-        const result = try eval(allocator, &heap, expr);
+        const result = try harness.eval(allocator, &heap, expr);
         try testing.expectEqual(tc.len, result.toFixnum());
     }
 }
@@ -462,7 +420,7 @@ test "property: vector-ref returns correct element" {
     };
 
     for (test_cases) |tc| {
-        const result = try eval(allocator, &heap, tc.expr);
+        const result = try harness.eval(allocator, &heap, tc.expr);
         try testing.expectEqual(tc.expected, result.toFixnum());
     }
 }
