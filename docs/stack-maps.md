@@ -170,3 +170,23 @@ The second approach is acceptable only if the constant pool memory is owned by t
 - Teach runtime helper paths to enumerate roots using stack maps (no temporary arrays).
 - Add JIT-vs-VM differential tests that include GC-triggering programs.
 
+## Implementation Checklist
+
+1. **Metadata structures**
+   - Add `CodeInfo` (code base, size, safepoint table).
+   - Add `SafepointTable` mapping `pc_offset -> RootMap`.
+   - Define `RootMap` encoding: sorted offsets, base id.
+
+2. **JIT emission**
+   - Mark safepoints at helper calls that can allocate.
+   - Spill live `Value`s to stack slots at safepoints.
+   - Record `pc_offset` and root slots for each safepoint.
+
+3. **Runtime lookup**
+   - Create `JitRegistry` in `Vm` with PC->CodeInfo lookup.
+   - At GC entry, locate active safepoint using return address.
+   - Enumerate root slots into a `RootSet`.
+
+4. **Validation + tests**
+   - Unit test encode/decode of `RootMap`.
+   - GC regression: JIT code triggers GC and preserves live values.
