@@ -1,9 +1,11 @@
 ---
 title: Fix REPL chunk roots
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-02-03T10:40:19.794376+01:00"
+created-at: "\"\\\"2026-02-03T10:40:19.794376+01:00\\\"\""
+closed-at: "2026-02-03T13:45:14.662261+01:00"
+close-reason: Use persistent chunk pool pointers
 blocks:
   - habu-fix-vm-alloc-3f1b80f5
 ---

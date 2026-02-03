@@ -79,8 +79,8 @@ pub const Repl = struct {
     config: Config,
     /// Persistent compiler for global definitions
     compiler: Compiler,
-    /// Persistent chunk storage for closures - GC-managed Values
-    persistent_chunks: std.ArrayList(Value),
+    /// Persistent chunk pool for closures (GC updates pointers in-place via Vm.chunk_pool roots)
+    chunk_pool: std.ArrayList(*runtime.objects.Chunk),
     /// Macro definitions: symbol -> closure
     macros: std.AutoHashMap(Value, Value),
     /// Line editor for interactive input
@@ -96,11 +96,26 @@ pub const Repl = struct {
             .vm = vm,
             .config = config,
             .compiler = try Compiler.initWithHeap(allocator, &vm),
-            .persistent_chunks = std.ArrayList(Value){},
+            .chunk_pool = std.ArrayList(*runtime.objects.Chunk){},
             .macros = std.AutoHashMap(Value, Value).init(allocator),
             .line_editor = LineEditor.init(allocator),
             .current_vm = null,
         };
+    }
+
+    fn syncChunkPools(self: *Repl, vm: *Vm) void {
+        const pool = self.chunk_pool.items;
+        // Keep the main VM in sync even when evaluating via nested VMs.
+        self.vm.setChunkPool(pool);
+        if (vm != &self.vm) {
+            vm.setChunkPool(pool);
+        }
+        // If we are inside a nested load/eval, ensure that VM also sees the new slice.
+        if (self.current_vm) |cur| {
+            if (cur != &self.vm and cur != vm) {
+                cur.setChunkPool(pool);
+            }
+        }
     }
 
     /// Wire up VM to compiler's global environment. Must be called after init.
@@ -268,7 +283,7 @@ pub const Repl = struct {
         defer self.allocator.free(child_chunks);
 
         // Record base before appending
-        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
+        const chunk_base: u16 = @intCast(self.chunk_pool.items.len);
 
         // Patch child chunks to use absolute indices
         for (child_chunks) |c| {
@@ -277,8 +292,9 @@ pub const Repl = struct {
         }
 
         // Store child chunks for closures
+        try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
         for (child_chunks) |c| {
-            try self.persistent_chunks.append(self.allocator, c);
+            self.chunk_pool.appendAssumeCapacity(c.toPtr(runtime.objects.Chunk));
         }
 
         // Use a separate VM to avoid stack issues
@@ -297,12 +313,7 @@ pub const Repl = struct {
         nested_vm.num_globals = self.vm.num_globals;
 
         // Set up chunk pool for closures with base offset
-        var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
-        defer chunk_ptrs.deinit(self.allocator);
-        for (self.persistent_chunks.items) |chunk_val| {
-            chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
-        }
-        nested_vm.setChunkPool(chunk_ptrs.items);
+        self.syncChunkPools(&nested_vm);
 
         // Execute
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
@@ -497,7 +508,7 @@ pub const Repl = struct {
         defer self.allocator.free(child_chunks);
 
         // Record base before appending
-        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
+        const chunk_base: u16 = @intCast(self.chunk_pool.items.len);
 
         // Patch child chunks to use absolute indices
         for (child_chunks) |child_chunk| {
@@ -505,8 +516,9 @@ pub const Repl = struct {
         }
 
         // Store chunks persistently
+        try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
         for (child_chunks) |child_chunk| {
-            try self.persistent_chunks.append(self.allocator, child_chunk);
+            self.chunk_pool.appendAssumeCapacity(child_chunk.toPtr(runtime.objects.Chunk));
         }
 
         // Patch main chunk to use absolute chunk indices
@@ -514,12 +526,7 @@ pub const Repl = struct {
         patchChunkIndices(chunk_ptr, chunk_base);
 
         // Set chunk pool and run with base offset
-        var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
-        defer chunk_ptrs.deinit(self.allocator);
-        for (self.persistent_chunks.items) |chunk_val| {
-            chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
-        }
-        vm.setChunkPool(chunk_ptrs.items);
+        self.syncChunkPools(vm);
 
         return try vm.run(chunk_ptr);
     }
@@ -527,7 +534,7 @@ pub const Repl = struct {
     pub fn deinit(self: *Repl) void {
         self.line_editor.deinit();
         self.compiler.deinit();
-        self.persistent_chunks.deinit(self.allocator);
+        self.chunk_pool.deinit(self.allocator);
         self.macros.deinit();
     }
 
@@ -850,7 +857,7 @@ pub const Repl = struct {
         const child_chunks = try emitter.getChildChunks();
 
         // Record base before appending
-        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
+        const chunk_base: u16 = @intCast(self.chunk_pool.items.len);
 
         // Patch wrapper chunk AND child chunks to use absolute indices
         const wrapper_chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
@@ -860,21 +867,15 @@ pub const Repl = struct {
         }
 
         // Store child chunks persistently (closures need them beyond this eval)
+        try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
         for (child_chunks) |c| {
-            try self.persistent_chunks.append(self.allocator, c);
+            self.chunk_pool.appendAssumeCapacity(c.toPtr(runtime.objects.Chunk));
         }
 
         // Free child chunk array (now owned by persistent storage)
         self.allocator.free(child_chunks);
 
-        // Set chunk pool with base offset
-        var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
-        defer chunk_ptrs.deinit(self.allocator);
-        for (self.persistent_chunks.items) |chunk_val| {
-            const chunk_ptr = chunk_val.toPtr(runtime.objects.Chunk);
-            chunk_ptrs.appendAssumeCapacity(chunk_ptr);
-        }
-        self.vm.setChunkPool(chunk_ptrs.items);
+        self.syncChunkPools(&self.vm);
 
         const result = if (self.vm.run(chunk.toPtr(runtime.objects.Chunk))) |value| value else |err| {
             err_info.* = .{
@@ -1307,7 +1308,7 @@ pub const Repl = struct {
         defer self.allocator.free(child_chunks);
 
         // Record base before appending
-        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
+        const chunk_base: u16 = @intCast(self.chunk_pool.items.len);
 
         // Patch wrapper chunk AND child chunks to use absolute indices
         const wrapper_chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
@@ -1317,8 +1318,9 @@ pub const Repl = struct {
         }
 
         // Add child chunks
+        try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
         for (child_chunks) |c| {
-            try self.persistent_chunks.append(self.allocator, c);
+            self.chunk_pool.appendAssumeCapacity(c.toPtr(runtime.objects.Chunk));
         }
 
         // Use a separate VM to avoid corrupting the main VM's state
@@ -1326,12 +1328,7 @@ pub const Repl = struct {
         var macro_vm = try Vm.init(self.allocator, self.heap);
         macro_vm.setGlobalEnv(&self.compiler.globals);
 
-        var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
-        defer chunk_ptrs.deinit(self.allocator);
-        for (self.persistent_chunks.items) |chunk_val| {
-            chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
-        }
-        macro_vm.setChunkPool(chunk_ptrs.items);
+        self.syncChunkPools(&macro_vm);
 
         // Copy globals from current context
         const source_vm = self.current_vm orelse &self.vm;
@@ -1476,7 +1473,7 @@ pub const Repl = struct {
         defer self.allocator.free(child_chunks);
 
         // Record base before appending
-        const chunk_base: u16 = @intCast(self.persistent_chunks.items.len);
+        const chunk_base: u16 = @intCast(self.chunk_pool.items.len);
 
         // Patch child chunks to use absolute indices
         for (child_chunks) |c| {
@@ -1484,20 +1481,16 @@ pub const Repl = struct {
         }
 
         // Add child chunks
+        try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
         for (child_chunks) |c| {
-            try self.persistent_chunks.append(self.allocator, c);
+            self.chunk_pool.appendAssumeCapacity(c.toPtr(runtime.objects.Chunk));
         }
 
         // Use a separate VM to avoid corrupting the main VM's state
         var eval_vm = try Vm.init(self.allocator, self.heap);
         eval_vm.setGlobalEnv(&self.compiler.globals);
 
-        var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
-        defer chunk_ptrs.deinit(self.allocator);
-        for (self.persistent_chunks.items) |chunk_val| {
-            chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
-        }
-        eval_vm.setChunkPool(chunk_ptrs.items);
+        self.syncChunkPools(&eval_vm);
 
         eval_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         eval_vm.setEvalCallback(&evalCallback, @ptrCast(self));
@@ -1725,12 +1718,7 @@ pub const Repl = struct {
         }
         macro_vm.num_globals = source_vm.num_globals;
 
-        var chunk_ptrs = try std.ArrayList(*runtime.objects.Chunk).initCapacity(self.allocator, self.persistent_chunks.items.len);
-        defer chunk_ptrs.deinit(self.allocator);
-        for (self.persistent_chunks.items) |chunk_val| {
-            chunk_ptrs.appendAssumeCapacity(chunk_val.toPtr(runtime.objects.Chunk));
-        }
-        macro_vm.setChunkPool(chunk_ptrs.items);
+        self.syncChunkPools(&macro_vm);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         return try macro_vm.run(chunk_ptr);
@@ -2055,4 +2043,26 @@ test "showType parse error propagates" {
     defer buf.deinit(allocator);
 
     try testing.expectError(error.UnterminatedList, repl.showType("(", buf.writer(allocator)));
+}
+
+test "repl chunk pool survives GC between evals" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval("(define mk (lambda (x) (lambda () x)))");
+
+    // Regress: GC between evals used to see a dangling chunk_pool slice.
+    _ = try repl.vm.collectGarbage();
+
+    _ = try repl.eval("(define f (mk 42))");
+    const result = try repl.eval("(f)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
