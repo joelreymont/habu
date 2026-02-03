@@ -170,6 +170,11 @@ pub fn ge(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
     return if (try arith.ge(a, b)) Value.t else Value.nil;
 }
 
+pub fn numEq(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
+    _ = c;
+    return if (arith.numEq(a, b)) Value.t else Value.nil;
+}
+
 pub fn loadGlobal(c: *ctx.JitContext, idx: u16) vm_mod.Error!Value {
     return try c.vm.loadGlobal(idx);
 }

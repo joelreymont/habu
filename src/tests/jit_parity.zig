@@ -44,6 +44,8 @@ test "parity: vm vs jit (hand-picked)" {
         "(+ 1 2)",
         "(- 10 3)",
         "(* 6 7)",
+        "(= 1 1)",
+        "(= 1 2)",
         "(if (numberp 1) 42 0)",
         "(let ((x 10) (y 20)) (+ x y))",
         "(cons 1 2)",

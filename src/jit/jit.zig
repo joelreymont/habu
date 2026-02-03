@@ -203,6 +203,10 @@ pub const Jit = struct {
                 try self.emitBinaryCompare(stencils.ge_stencil, @intFromPtr(&rt.ge));
             },
 
+            .num_eq => {
+                try self.emitBinaryCompare(stencils.eq_stencil, @intFromPtr(&rt.numEq));
+            },
+
             .not => {
                 try self.emitStackPop();
                 _ = try patch.patchStencil(&self.code_buffer, stencils.not_stencil, &[_]patch.PatchValue{});
