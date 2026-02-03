@@ -47,6 +47,7 @@ const JitJson = struct {
         steady: JitBench,
         compile_ns: u64,
         compile_n: u64,
+        code_bytes: u64,
         fail_n: u64,
     },
     speedup: f64,
@@ -58,6 +59,7 @@ const Opts = struct {
     // JIT bench thresholds
     min_jit_speedup: f64 = 2.0,
     max_jit_compile_ms: f64 = 200.0,
+    max_jit_code_bytes: u64 = 1_000_000,
     // GC bench thresholds
     max_gc_p95_ms: f64 = 200.0,
     json: bool = false,
@@ -68,13 +70,17 @@ fn usage(w: anytype) !void {
         \\Bench regression checks
         \\
         \\Usage:
-        \\  zig build bench-check -- [--min-fix-mops N] [--min-jit-speedup N] [--max-jit-compile-ms N] [--max-gc-p95-ms N] [--json]
+        \\  zig build bench-check -- [--min-fix-mops N] [--min-jit-speedup N] [--max-jit-compile-ms N] [--max-jit-code-bytes N] [--max-gc-p95-ms N] [--json]
         \\
     );
 }
 
 fn parseF64(arg: []const u8) !f64 {
     return try std.fmt.parseFloat(f64, arg);
+}
+
+fn parseU64(arg: []const u8) !u64 {
+    return try std.fmt.parseInt(u64, arg, 10);
 }
 
 fn parseArgs() !Opts {
@@ -96,6 +102,8 @@ fn parseArgs() !Opts {
             opts.min_jit_speedup = try parseF64(arg["--min-jit-speedup=".len..]);
         } else if (std.mem.startsWith(u8, arg, "--max-jit-compile-ms=")) {
             opts.max_jit_compile_ms = try parseF64(arg["--max-jit-compile-ms=".len..]);
+        } else if (std.mem.startsWith(u8, arg, "--max-jit-code-bytes=")) {
+            opts.max_jit_code_bytes = try parseU64(arg["--max-jit-code-bytes=".len..]);
         } else if (std.mem.startsWith(u8, arg, "--max-gc-p95-ms=")) {
             opts.max_gc_p95_ms = try parseF64(arg["--max-gc-p95-ms=".len..]);
         } else {
@@ -106,6 +114,7 @@ fn parseArgs() !Opts {
     if (opts.min_fix_mops <= 0.0) return error.InvalidArgs;
     if (opts.min_jit_speedup <= 0.0) return error.InvalidArgs;
     if (opts.max_jit_compile_ms <= 0.0) return error.InvalidArgs;
+    if (opts.max_jit_code_bytes == 0) return error.InvalidArgs;
     if (opts.max_gc_p95_ms <= 0.0) return error.InvalidArgs;
     return opts;
 }
@@ -201,6 +210,9 @@ pub fn main() !void {
         @as(f64, @floatFromInt(jit.jit.compile_n))) / 1e6;
     if (compile_ms > opts.max_jit_compile_ms) {
         try fail("jit compile {d:.3}ms > {d:.3}ms", .{ compile_ms, opts.max_jit_compile_ms });
+    }
+    if (jit.jit.code_bytes > opts.max_jit_code_bytes) {
+        try fail("jit code_bytes {d} > {d}", .{ jit.jit.code_bytes, opts.max_jit_code_bytes });
     }
     if (jit.speedup < opts.min_jit_speedup) try fail("jit speedup {d:.3}x < {d:.3}x", .{ jit.speedup, opts.min_jit_speedup });
 
