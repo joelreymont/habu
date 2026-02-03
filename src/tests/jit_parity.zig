@@ -55,6 +55,8 @@ test "parity: vm vs jit (hand-picked)" {
         "(numberp 'x)",
         "(consp (cons 1 2))",
         "(symbolp 'x)",
+        "(symbolp nil)",
+        "(symbolp t)",
         "(stringp \"a\")",
         "(vectorp (make-vector 1 0))",
         "(keywordp :a)",

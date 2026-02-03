@@ -162,7 +162,7 @@ pub fn consp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
 
 pub fn symbolp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
     _ = c;
-    return if (a.isSymbol()) Value.t else Value.nil;
+    return if (a.isSymbolLike()) Value.t else Value.nil;
 }
 
 pub fn stringp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
