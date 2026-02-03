@@ -140,6 +140,11 @@ pub fn div(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
     return try callBinaryWithGc(c, a, b, arith.div);
 }
 
+pub fn mod(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
+    _ = c;
+    return try arith.mod(a, b);
+}
+
 pub fn neg(c: *ctx.JitContext, a: Value) arith.Error!Value {
     _ = c;
     return try arith.negate(a);

@@ -180,6 +180,10 @@ pub const Jit = struct {
                 try self.emitBinaryCall(@intFromPtr(&rt.div));
             },
 
+            .mod => {
+                try self.emitBinaryCall(@intFromPtr(&rt.mod));
+            },
+
             .eq => {
                 try self.emitStackPopX1();
                 try self.emitStackPop();

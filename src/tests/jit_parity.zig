@@ -44,6 +44,7 @@ test "parity: vm vs jit (hand-picked)" {
         "(+ 1 2)",
         "(- 10 3)",
         "(* 6 7)",
+        "(mod 10 3)",
         "(= 1 1)",
         "(= 1 2)",
         "(if (numberp 1) 42 0)",
