@@ -7,6 +7,7 @@ created-at: "2026-02-03T12:44:17.305934+01:00"
 blocks:
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625
+  - habu-fix-compiler-env-aec7d63b
 ---
 
 Context: repo-wide perf+design+ANSI CL parity review. Evidence: src/interp/vm.zig:726 (VM GC roots alloc); src/runtime/heap.zig:1461 (heap GC roots alloc); src/runtime/gc.zig:120 (work_list peak bug); bench/gc.zig:1 (placeholder bench); docs/cranelift-parity.md:1 (JIT gaps); docs/cl-symbols.md:5 + 886 (audit counts + stubs). Goal: add measurement harness + close perf/correctness gaps; keep dots blocked until habu-fix-repl-chunk-dd041c71.
