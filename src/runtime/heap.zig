@@ -1476,10 +1476,21 @@ pub const Heap = struct {
     /// Run garbage collection with external roots (from VM stack, globals, etc.)
     /// Returns bytes reclaimed (space_used_before - space_used_after)
     pub fn collectGarbage(self: *Heap, external_roots: []Value) !usize {
+        var ranges = [_]roots_mod.RootRange{.{ .ptr = external_roots.ptr, .len = external_roots.len }};
+        return try self.collectGarbageRootSet(.{
+            .ranges = ranges[0..],
+            .slots = &[_]*Value{},
+        });
+    }
+
+    /// Run garbage collection with a precise external root set (ranges + slots).
+    /// Internal heap roots (symbols, packages, readtables, etc.) are always included.
+    pub fn collectGarbageRootSet(self: *Heap, external_roots: roots_mod.RootSet) !usize {
         const before = self.bytesUsed();
 
         // Internal roots are tracked by slot address; external roots are passed as a range.
         self.gc_slots.clearRetainingCapacity();
+        try self.gc_slots.appendSlice(self.backing_allocator, external_roots.slots);
 
         // Add symbol table values.
         var sym_it = self.symbols.map.valueIterator();
@@ -1550,9 +1561,8 @@ pub const Heap = struct {
         // Run GC
         var gc = GC.init(self.backing_allocator, self);
         defer gc.deinit();
-        var ranges = [_]roots_mod.RootRange{.{ .ptr = external_roots.ptr, .len = external_roots.len }};
         _ = try gc.collectRootSet(.{
-            .ranges = ranges[0..],
+            .ranges = external_roots.ranges,
             .slots = self.gc_slots.items,
         });
 
@@ -1724,6 +1734,40 @@ test "heap collectGarbage reuses gc_slots buffer" {
 
     _ = try heap.collectGarbage(&roots);
     try testing.expectEqual(cap1, heap.gc_slots.capacity);
+}
+
+test "heap collectGarbageRootSet updates multi-range" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var r0 = [_]Value{try heap.allocCons(Value.makeFixnum(1), Value.nil)};
+    var r1 = [_]Value{try heap.allocCons(Value.makeFixnum(2), Value.nil)};
+    const raw0 = r0[0].raw;
+    const raw1 = r1[0].raw;
+
+    var ranges = [_]roots_mod.RootRange{
+        .{ .ptr = r0[0..].ptr, .len = r0.len },
+        .{ .ptr = r1[0..].ptr, .len = r1.len },
+    };
+    _ = try heap.collectGarbageRootSet(.{
+        .ranges = ranges[0..],
+        .slots = &[_]*Value{},
+    });
+
+    try testing.expect(r0[0].isCons());
+    try testing.expect(r1[0].isCons());
+    try testing.expect(r0[0].raw != raw0);
+    try testing.expect(r1[0].raw != raw1);
+
+    const c0 = r0[0].toPtr(objects.Cons);
+    try testing.expectEqual(@as(i64, 1), c0.car.toFixnum());
+    try testing.expect(c0.cdr.isNil());
+
+    const c1 = r1[0].toPtr(objects.Cons);
+    try testing.expectEqual(@as(i64, 2), c1.car.toFixnum());
+    try testing.expect(c1.cdr.isNil());
 }
 
 test "heap deinit finalizes output streams" {
