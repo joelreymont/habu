@@ -229,6 +229,12 @@ pub const Jit = struct {
                 try self.emitStackPush();
             },
 
+            .list_length => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.listLength));
+                try self.emitStackPush();
+            },
+
             .dup => {
                 try self.emitStackPop();
                 try self.emitStackPush();

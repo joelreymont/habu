@@ -155,6 +155,32 @@ pub fn numberp(c: *ctx.JitContext, a: Value) arith.Error!Value {
     return if (a.isNumber()) Value.t else Value.nil;
 }
 
+pub fn listLength(c: *ctx.JitContext, seq: Value) vm_mod.Error!Value {
+    _ = c;
+    switch (seq.typeKind()) {
+        .nil => return Value.makeFixnum(0),
+        .cons => {
+            var len: i64 = 0;
+            var curr = seq;
+            while (curr.isCons()) {
+                len += 1;
+                curr = curr.toPtr(runtime.Cons).cdr;
+            }
+            if (!curr.isNil()) return error.TypeMismatch;
+            return Value.makeFixnum(len);
+        },
+        .vector => {
+            const vec = seq.toPtr(runtime.Vector);
+            return Value.makeFixnum(@intCast(vec.length));
+        },
+        .string => {
+            const str = seq.toPtr(runtime.String);
+            return Value.makeFixnum(@intCast(str.length));
+        },
+        else => return error.TypeMismatch,
+    }
+}
+
 pub fn lt(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
     _ = c;
     return if (try arith.lt(a, b)) Value.t else Value.nil;
