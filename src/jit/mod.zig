@@ -8,6 +8,9 @@ pub const patch = @import("patch.zig");
 pub const jit = @import("jit.zig");
 pub const ctx = @import("ctx.zig");
 pub const rt = @import("rt.zig");
+pub const ir = @import("ir.zig");
+pub const verify = @import("verify.zig");
+pub const print = @import("print.zig");
 
 pub const Jit = jit.Jit;
 pub const JitFn = jit.JitFn;
@@ -20,4 +23,7 @@ test {
     _ = jit;
     _ = ctx;
     _ = rt;
+    _ = ir;
+    _ = verify;
+    _ = print;
 }

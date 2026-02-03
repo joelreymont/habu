@@ -1,9 +1,11 @@
 ---
 title: IR skeleton
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-03T13:29:05.961130+01:00"
+created-at: "\"\\\"2026-02-03T13:29:05.961130+01:00\\\"\""
+closed-at: "2026-02-03T16:28:44.664603+01:00"
+close-reason: Add SSA IR skeleton + verifier
 blocks:
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625
