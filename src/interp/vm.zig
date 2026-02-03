@@ -483,10 +483,12 @@ pub const Vm = struct {
 
     /// Allocate a cons cell, running GC if needed
     pub fn allocCons(self: *Vm, car: Value, cdr: Value) error{OutOfMemory}!Value {
-        return if (self.heap.allocCons(car, cdr)) |val| val else |_| {
-            var roots = [_]Value{ car, cdr };
-            _ = try self.collectGarbageExtra(roots[0..]);
-            return try self.heap.allocCons(roots[0], roots[1]);
+        return if (self.heap.allocCons(car, cdr)) |val| val else |err| switch (err) {
+            error.OutOfMemory => {
+                var roots = [_]Value{ car, cdr };
+                _ = try self.collectGarbageExtra(roots[0..]);
+                return try self.heap.allocCons(roots[0], roots[1]);
+            },
         };
     }
 
@@ -1704,38 +1706,32 @@ pub const Vm = struct {
                 try self.push(if (a.isKeyword()) Value.t else Value.nil);
             },
             .method_qualifiers => {
-                const method_val = try self.pop();
-                const args = try self.heap.allocCons(method_val, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.methodQualifiers(self.heap, args);
                 try self.push(result);
             },
             .method_specializers => {
-                const method_val = try self.pop();
-                const args = try self.heap.allocCons(method_val, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.methodSpecializers(self.heap, args);
                 try self.push(result);
             },
             .method_function => {
-                const method_val = try self.pop();
-                const args = try self.heap.allocCons(method_val, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.methodFunction(self.heap, args);
                 try self.push(result);
             },
             .generic_function_methods => {
-                const gf_val = try self.pop();
-                const args = try self.heap.allocCons(gf_val, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.genericFunctionMethods(self.heap, args);
                 try self.push(result);
             },
             .generic_function_lambda_list => {
-                const gf_val = try self.pop();
-                const args = try self.heap.allocCons(gf_val, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.genericFunctionLambdaList(self.heap, args);
                 try self.push(result);
             },
             .generic_function_name => {
-                const gf_val = try self.pop();
-                const args = try self.heap.allocCons(gf_val, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.genericFunctionName(self.heap, args);
                 try self.push(result);
             },
@@ -1900,118 +1896,93 @@ pub const Vm = struct {
 
             // CLOS operations
             .slot_value => {
-                const slot_name_val = try self.pop();
-                const obj = try self.pop();
-                const args = try self.heap.allocCons(obj, try self.heap.allocCons(slot_name_val, Value.nil));
+                const args = try self.popArgs(2);
                 const result = try primitives.slotValue(self.heap, args);
                 try self.push(result);
             },
 
             .set_slot_value => {
-                const value = try self.pop();
-                const slot_name_val = try self.pop();
-                const obj = try self.pop();
-                const args = try self.heap.allocCons(obj, try self.heap.allocCons(slot_name_val, try self.heap.allocCons(value, Value.nil)));
+                const args = try self.popArgs(3);
                 const result = try primitives.clos.setSlotValue(self.heap, args);
                 try self.push(result);
             },
             .class_of => {
-                const obj = try self.pop();
-                const args = try self.heap.allocCons(obj, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.classOf(self.heap, args);
                 try self.push(result);
             },
             .find_class => {
-                const name = try self.pop();
-                const args = try self.heap.allocCons(name, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.findClass(self.heap, args);
                 try self.push(result);
             },
             .class_name => {
-                const class_val = try self.pop();
-                const args = try self.heap.allocCons(class_val, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.className(self.heap, args);
                 try self.push(result);
             },
             .class_direct_superclasses => {
-                const class_val = try self.pop();
-                const args = try self.heap.allocCons(class_val, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.classDirectSuperclasses(self.heap, args);
                 try self.push(result);
             },
             .class_precedence_list => {
-                const class_val = try self.pop();
-                const args = try self.heap.allocCons(class_val, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.classPrecedenceList(self.heap, args);
                 try self.push(result);
             },
             .class_direct_slots => {
-                const class_val = try self.pop();
-                const args = try self.heap.allocCons(class_val, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.classDirectSlots(self.heap, args);
                 try self.push(result);
             },
             .class_slots => {
-                const class_val = try self.pop();
-                const args = try self.heap.allocCons(class_val, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.classSlots(self.heap, args);
                 try self.push(result);
             },
             .slot_definition_name => {
-                const slot_def = try self.pop();
-                const args = try self.heap.allocCons(slot_def, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.slotDefinitionName(self.heap, args);
                 try self.push(result);
             },
             .slot_definition_initform => {
-                const slot_def = try self.pop();
-                const args = try self.heap.allocCons(slot_def, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.slotDefinitionInitform(self.heap, args);
                 try self.push(result);
             },
             .slot_definition_initargs => {
-                const slot_def = try self.pop();
-                const args = try self.heap.allocCons(slot_def, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.slotDefinitionInitargs(self.heap, args);
                 try self.push(result);
             },
             .slot_definition_readers => {
-                const slot_def = try self.pop();
-                const args = try self.heap.allocCons(slot_def, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.slotDefinitionReaders(self.heap, args);
                 try self.push(result);
             },
             .slot_definition_writers => {
-                const slot_def = try self.pop();
-                const args = try self.heap.allocCons(slot_def, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.slotDefinitionWriters(self.heap, args);
                 try self.push(result);
             },
             .slot_definition_allocation => {
-                const slot_def = try self.pop();
-                const args = try self.heap.allocCons(slot_def, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.slotDefinitionAllocation(self.heap, args);
                 try self.push(result);
             },
             .slot_definition_type => {
-                const slot_def = try self.pop();
-                const args = try self.heap.allocCons(slot_def, Value.nil);
+                const args = try self.popArgs(1);
                 const result = try primitives.slotDefinitionType(self.heap, args);
                 try self.push(result);
             },
             .make_generic_function => {
-                const lambda_list = try self.pop();
-                const name = try self.pop();
-                const args = try self.heap.allocCons(name, try self.heap.allocCons(lambda_list, Value.nil));
+                const args = try self.popArgs(2);
                 const result = try primitives.makeGenericFunction(self.heap, args);
                 try self.push(result);
             },
             .make_method => {
-                const function = try self.pop();
-                const lambda_list = try self.pop();
-                const specializers = try self.pop();
-                const qualifiers = try self.pop();
-                const args = try self.heap.allocCons(qualifiers, try self.heap.allocCons(specializers, try self.heap.allocCons(lambda_list, try self.heap.allocCons(function, Value.nil))));
+                const args = try self.popArgs(4);
                 const result = try primitives.makeMethod(self.heap, args);
                 try self.push(result);
             },
@@ -2024,9 +1995,7 @@ pub const Vm = struct {
                 try self.push(gf_val);
             },
             .add_method => {
-                const method_val = try self.pop();
-                const gf_val = try self.pop();
-                const args = try self.heap.allocCons(gf_val, try self.heap.allocCons(method_val, Value.nil));
+                const args = try self.popArgs(2);
                 const result = try primitives.addMethod(self.heap, args);
                 try self.push(result);
             },
@@ -2034,16 +2003,12 @@ pub const Vm = struct {
                 try self.push(Value.unbound);
             },
             .slot_boundp => {
-                const slot_name_val = try self.pop();
-                const obj = try self.pop();
-                const args = try self.heap.allocCons(obj, try self.heap.allocCons(slot_name_val, Value.nil));
+                const args = try self.popArgs(2);
                 const result = try primitives.slotBoundp(self.heap, args);
                 try self.push(result);
             },
             .slot_makunbound => {
-                const slot_name_val = try self.pop();
-                const obj = try self.pop();
-                const args = try self.heap.allocCons(obj, try self.heap.allocCons(slot_name_val, Value.nil));
+                const args = try self.popArgs(2);
                 const result = try primitives.slotMakunbound(self.heap, args);
                 try self.push(result);
             },
@@ -3460,7 +3425,7 @@ pub const Vm = struct {
                 while (i > 0) {
                     i -= 1;
                     const restart_sym = self.restart_stack[i].name;
-                    result = try self.heap.allocCons(restart_sym, result);
+                    result = try self.allocCons(restart_sym, result);
                 }
                 try self.push(result);
             },
@@ -3858,7 +3823,7 @@ pub const Vm = struct {
                 while (i < count) : (i += 1) {
                     const stream = try self.pop();
                     if (!stream.isStream()) return error.TypeMismatch;
-                    streams_list = try self.heap.allocCons(stream, streams_list);
+                    streams_list = try self.allocCons(stream, streams_list);
                 }
                 const result = try self.heap.allocBroadcastStream(streams_list);
                 try self.push(result);
@@ -3873,7 +3838,7 @@ pub const Vm = struct {
                 while (i < count) : (i += 1) {
                     const stream = try self.pop();
                     if (!stream.isStream()) return error.TypeMismatch;
-                    streams_list = try self.heap.allocCons(stream, streams_list);
+                    streams_list = try self.allocCons(stream, streams_list);
                 }
                 const result = try self.heap.allocConcatenatedStream(streams_list);
                 try self.push(result);
@@ -6813,6 +6778,16 @@ pub const Vm = struct {
         return self.stack[self.sp];
     }
 
+    fn popArgs(self: *Vm, n: usize) Error!Value {
+        var args = Value.nil;
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            const v = try self.pop();
+            args = try self.allocCons(v, args);
+        }
+        return args;
+    }
+
     fn peek(self: *Vm, distance: usize) Error!Value {
         if (distance >= self.sp) return error.StackUnderflow;
         return self.stack[self.sp - 1 - distance];
@@ -7425,6 +7400,49 @@ test "vm push and return" {
 
     const result = try vm.run(&chunk);
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "vm class_of builds args list with GC" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    // Fill from-space with unreachable garbage so op-args consing must GC.
+    while (true) {
+        _ = heap.allocCons(Value.nil, Value.nil) catch |err| switch (err) {
+            error.OutOfMemory => break,
+        };
+    }
+
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const class_of_op: u16 = @intFromEnum(Op.class_of);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        42, 0, 0, 0,
+        @truncate(class_of_op & 0xFF), @truncate(class_of_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const result = try vm.run(&chunk);
+    try testing.expect(result.isClass());
 }
 
 test "vm callClosure runs and restores" {

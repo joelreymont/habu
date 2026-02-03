@@ -1,9 +1,11 @@
 ---
 title: [MED] Remove heap.allocCons in op args
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-02-03T12:45:13.330741+01:00"
+created-at: "\"\\\"2026-02-03T12:45:13.330741+01:00\\\"\""
+closed-at: "2026-02-03T17:13:08.817388+01:00"
+close-reason: GC-safe consing for op args; add regression
 blocks:
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625
