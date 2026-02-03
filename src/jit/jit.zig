@@ -436,7 +436,6 @@ pub const Jit = struct {
                     .{ .imm64 = 0 },
                 });
                 try self.emitCallUnary(@intFromPtr(&rt.makeVec));
-                try self.emitLoadCtxSp();
             },
             .make_vec_n => {
                 const count = chunk.readU8(bc_offset.*);
@@ -445,7 +444,6 @@ pub const Jit = struct {
                     .{ .imm64 = @as(u64, count) },
                 });
                 try self.emitCallUnary(@intFromPtr(&rt.makeVecN));
-                try self.emitLoadCtxSp();
             },
             .call, .tail_call => {
                 const argc = chunk.readU8(bc_offset.*);
@@ -454,14 +452,12 @@ pub const Jit = struct {
                     .{ .imm64 = @as(u64, argc) },
                 });
                 try self.emitCallUnary(@intFromPtr(&rt.call));
-                try self.emitLoadCtxSp();
             },
             .apply => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = 0 },
                 });
                 try self.emitCallUnary(@intFromPtr(&rt.apply));
-                try self.emitLoadCtxSp();
             },
             .make_list => {
                 const count = chunk.readU8(bc_offset.*);
@@ -470,7 +466,6 @@ pub const Jit = struct {
                     .{ .imm64 = @as(u64, count) },
                 });
                 try self.emitCallUnary(@intFromPtr(&rt.makeList));
-                try self.emitLoadCtxSp();
             },
             .make_closure => {
                 const chunk_idx = chunk.readU16(bc_offset.*);
@@ -485,7 +480,6 @@ pub const Jit = struct {
                     .{ .imm64 = @as(u64, chunk_idx) },
                 });
                 try self.emitCallBinary(@intFromPtr(&rt.makeClosure));
-                try self.emitLoadCtxSp();
             },
 
             else => return error.UnsupportedOpcode,
@@ -537,6 +531,8 @@ pub const Jit = struct {
         _ = try patch.patchStencil(&self.code_buffer, stencils.call_abs, &[_]patch.PatchValue{
             .{ .imm64 = addr },
         });
+        // Runtime calls may trigger GC; refresh ctx-derived state.
+        try self.emitLoadCtxSp();
         try self.emitRuntimeCheck();
     }
 
@@ -551,6 +547,8 @@ pub const Jit = struct {
         _ = try patch.patchStencil(&self.code_buffer, stencils.call_abs, &[_]patch.PatchValue{
             .{ .imm64 = addr },
         });
+        // Runtime calls may trigger GC; refresh ctx-derived state.
+        try self.emitLoadCtxSp();
         try self.emitRuntimeCheck();
     }
 
@@ -985,6 +983,7 @@ test "jit compile numberp" {
         stencils.load_err_trace.code.len +
         stencils.mov_x8_x21.code.len +
         stencils.call_abs.code.len +
+        stencils.load_ctx_sp.code.len +
         stencils.runtime_check.code.len +
         stencils.stack_push.code.len +
         stencils.stack_pop.code.len +
@@ -1047,6 +1046,7 @@ test "jit compile add" {
         stencils.load_err_trace.code.len +
         stencils.mov_x8_x21.code.len +
         stencils.call_abs.code.len +
+        stencils.load_ctx_sp.code.len +
         stencils.runtime_check.code.len +
         stencils.stack_push.code.len +
         stencils.stack_pop.code.len +

@@ -13,7 +13,6 @@ const BinaryOp = *const fn (*runtime.Heap, Value, Value) arith.Error!Value;
 const JitRoots = struct {
     roots: std.ArrayList(Value),
     stack_vals: []Value,
-    const_vals: []Value,
     extra: []Value,
     alloc: std.mem.Allocator,
 
@@ -25,15 +24,11 @@ const JitRoots = struct {
         const stack_vals = c.frame_base[0..stack_len];
         try roots.appendSlice(alloc, stack_vals);
 
-        const const_vals = c.const_pool[0..c.const_count];
-        try roots.appendSlice(alloc, const_vals);
-
         try roots.appendSlice(alloc, extra);
 
         return .{
             .roots = roots,
             .stack_vals = stack_vals,
-            .const_vals = const_vals,
             .extra = extra,
             .alloc = alloc,
         };
@@ -46,10 +41,6 @@ const JitRoots = struct {
     fn writeBack(self: *JitRoots) void {
         var idx: usize = 0;
         for (self.stack_vals) |*v| {
-            v.* = self.roots.items[idx];
-            idx += 1;
-        }
-        for (self.const_vals) |*v| {
             v.* = self.roots.items[idx];
             idx += 1;
         }
@@ -78,6 +69,9 @@ fn collectJitGarbage(c: *ctx.JitContext, extra: []Value) !void {
     defer {
         c.vm.clearExtRoots();
         jit_roots.writeBack();
+        // const_pool points into a GC-managed Chunk; refresh after relocation.
+        c.const_pool = c.vm.chunk.const_pool;
+        c.const_count = @intCast(c.vm.chunk.const_count);
     }
 
     _ = try c.vm.collectGarbage();

@@ -34,6 +34,11 @@ const compiler = @import("../compiler/compiler.zig");
 const GlobalEnv = compiler.GlobalEnv;
 const Parser = @import("../reader/parser.zig").Parser;
 const BuiltinSymbols = @import("../runtime/builtins.zig").BuiltinSymbols;
+const jit_mod = @import("../jit/mod.zig");
+const Jit = jit_mod.Jit;
+const JitFn = jit_mod.JitFn;
+const jit_ctx = jit_mod.ctx;
+const NativeCode = runtime.NativeCode;
 
 pub const Error = anyerror;
 
@@ -319,6 +324,16 @@ pub const Vm = struct {
     /// External GC roots (e.g., JIT stack/consts)
     ext_roots: []Value,
 
+    /// JIT state (off by default)
+    jit_on: bool,
+    jit_hot: u32,
+    jit_code: Value, // chunk -> NativeCode | t (blacklist)
+    jit_cnt: Value, // chunk -> fixnum call count
+    jit_compile_ns: u64,
+    jit_compile_n: u64,
+    jit_fail_n: u64,
+    jit: ?Jit,
+
     /// Pre-interned builtin symbols for fast dispatch
     builtins: BuiltinSymbols,
 
@@ -401,6 +416,14 @@ pub const Vm = struct {
             .current_closure = null,
             .current_argc = 0,
             .ext_roots = &[_]Value{},
+            .jit_on = false,
+            .jit_hot = 0,
+            .jit_code = Value.nil,
+            .jit_cnt = Value.nil,
+            .jit_compile_ns = 0,
+            .jit_compile_n = 0,
+            .jit_fail_n = 0,
+            .jit = null,
             .builtins = try BuiltinSymbols.init(heap),
             .type_syms = try type_mod.TypeSymbols.init(heap),
         };
@@ -412,6 +435,9 @@ pub const Vm = struct {
     }
 
     pub fn deinit(self: *Vm) void {
+        if (self.jit) |*j| {
+            j.deinit();
+        }
         self.gc_roots.deinit(self.allocator);
     }
 
@@ -468,6 +494,150 @@ pub const Vm = struct {
 
     pub fn clearExtRoots(self: *Vm) void {
         self.ext_roots = &[_]Value{};
+    }
+
+    pub const JitStats = struct {
+        compile_ns: u64,
+        compile_n: u64,
+        fail_n: u64,
+    };
+
+    pub fn jitStats(self: *const Vm) JitStats {
+        return .{
+            .compile_ns = self.jit_compile_ns,
+            .compile_n = self.jit_compile_n,
+            .fail_n = self.jit_fail_n,
+        };
+    }
+
+    pub fn enableJit(self: *Vm, code_buf_size: usize, hot: u32) !void {
+        if (self.jit_on) return;
+        if (builtin.cpu.arch != .aarch64) return error.Unsupported;
+
+        self.jit = try Jit.init(self.allocator, code_buf_size);
+        self.jit_on = true;
+        self.jit_hot = hot;
+
+        // chunk -> NativeCode | t (blacklist)
+        self.jit_code = try self.heap.allocHashTable(1024, .eq);
+        // chunk -> fixnum (call count)
+        self.jit_cnt = try self.heap.allocHashTable(1024, .eq);
+    }
+
+    fn htGrow(self: *Vm, ht_val: Value) !Value {
+        const old = ht_val.toPtr(HashTable);
+        const new_ht_val = try self.heap.allocHashTable(old.capacity * 2, old.test_type);
+        const new_ht = new_ht_val.toPtr(HashTable);
+
+        for (old.getEntries()) |e| {
+            if (!HashTable.isAvailable(e)) {
+                try new_ht.put(e.key, e.value);
+            }
+        }
+
+        return new_ht_val;
+    }
+
+    fn htPut(self: *Vm, ht_field: *Value, key: Value, value: Value) !void {
+        while (true) {
+            const ht = ht_field.*.toPtr(HashTable);
+            ht.put(key, value) catch |err| switch (err) {
+                error.HashTableNeedsGrowth, error.HashTableFull => {
+                    ht_field.* = try self.htGrow(ht_field.*);
+                    continue;
+                },
+                else => return err,
+            };
+            return;
+        }
+    }
+
+    fn stackLenFromPtrs(sp: [*]Value, base: [*]Value) usize {
+        const len_bytes = @intFromPtr(sp) - @intFromPtr(base);
+        return @intCast(@divExact(len_bytes, @sizeOf(Value)));
+    }
+
+    fn runJitFn(self: *Vm, fn_ptr: JitFn, chunk: *const Chunk) Error!Value {
+        var trace_addrs: [16]usize = undefined;
+        var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+        var ret_buf = jit_ctx.RetBuf{ .value = Value.nil, .err = 0 };
+
+        const base = self.stack[0..].ptr;
+        const sp_ptr: [*]Value = base + self.sp;
+        const end = self.stack[self.stack.len..].ptr;
+
+        var ctx_val = jit_ctx.JitContext{
+            .sp = sp_ptr,
+            .const_pool = chunk.const_pool,
+            .frame_base = base,
+            .stack_end = end,
+            .heap = self.heap,
+            .ret_buf = &ret_buf,
+            .err = 0,
+            .const_count = @intCast(chunk.const_count),
+            .err_trace = &trace,
+            .vm = self,
+        };
+
+        const raw = fn_ptr(&ctx_val);
+        self.sp = stackLenFromPtrs(ctx_val.sp, ctx_val.frame_base);
+
+        if (ctx_val.err != 0) return @errorFromInt(ctx_val.err);
+        return Value{ .raw = raw };
+    }
+
+    fn runMaybeJit(self: *Vm, chunk: *const Chunk) Error!?Value {
+        if (!self.jit_on) return null;
+        if (self.jit == null) return null;
+        if (self.jit_code.isNil() or self.jit_cnt.isNil()) return null;
+
+        const key = chunkRoot(chunk);
+        if (key.isNil()) return null;
+
+        // Already compiled (or blacklisted)?
+        if (self.jit_code.toPtr(HashTable).get(self.heap, key)) |v| {
+            if (v.raw == Value.t.raw) return null;
+            if (v.typeKind() != .native_code) return error.TypeMismatch;
+
+            const nc = v.toPtr(NativeCode);
+            const fn_ptr: JitFn = @ptrFromInt(nc.entry);
+            return try self.runJitFn(fn_ptr, chunk);
+        }
+
+        // Increment call counter.
+        const ht_cnt = self.jit_cnt.toPtr(HashTable);
+        var n: u32 = 0;
+        if (ht_cnt.get(self.heap, key)) |v| {
+            if (v.isFixnum()) {
+                const cur: i64 = v.toFixnum();
+                if (cur >= 0 and cur < std.math.maxInt(u32)) {
+                    n = @intCast(cur);
+                }
+            }
+        }
+        n += 1;
+        try self.htPut(&self.jit_cnt, key, Value.makeFixnum(@intCast(n)));
+
+        const hot = if (self.jit_hot == 0) @as(u32, 1) else self.jit_hot;
+        if (n < hot) return null;
+
+        // Compile and cache.
+        var t = try std.time.Timer.start();
+        const fn_ptr = self.jit.?.compile(chunk) catch |err| switch (err) {
+            error.UnsupportedOpcode => {
+                self.jit_fail_n += 1;
+                try self.htPut(&self.jit_code, key, Value.t);
+                return null;
+            },
+            else => return err,
+        };
+        self.jit_compile_ns = t.read();
+        self.jit_compile_n += 1;
+
+        const nc_val = try self.heap.allocNativeCode(@intFromPtr(fn_ptr));
+        try self.htPut(&self.jit_code, key, nc_val);
+
+        return try self.runJitFn(fn_ptr, chunk);
     }
 
     fn bytesInHeap(self: *const Vm, bytes: []const u8) bool {
@@ -753,6 +923,8 @@ pub const Vm = struct {
             4 +
             // current_package
             1 +
+            // jit_code + jit_cnt
+            2 +
             self.secondary_values_count +
             self.saved_chunk_sp +
             // current chunk + frame chunks
@@ -849,6 +1021,11 @@ pub const Vm = struct {
         // Current package
         const current_package_idx = roots.items.len;
         try roots.append(self.allocator, self.current_package);
+
+        const jit_code_idx = roots.items.len;
+        try roots.append(self.allocator, self.jit_code);
+        const jit_cnt_idx = roots.items.len;
+        try roots.append(self.allocator, self.jit_cnt);
 
         // Secondary values
         const secondary_start = roots.items.len;
@@ -964,6 +1141,9 @@ pub const Vm = struct {
 
         // Update current package
         self.current_package = roots.items[current_package_idx];
+
+        self.jit_code = roots.items[jit_code_idx];
+        self.jit_cnt = roots.items[jit_cnt_idx];
 
         // Update secondary values
         for (self.secondary_values[0..self.secondary_values_count], 0..) |*v, i| {
@@ -1128,6 +1308,9 @@ pub const Vm = struct {
             try self.push(Value.nil);
         }
 
+        if (try self.runMaybeJit(chunk)) |res| {
+            return res;
+        }
         return self.execute();
     }
 
@@ -6351,6 +6534,7 @@ pub const Vm = struct {
             .slotdef => try result.appendSlice(self.allocator, "#<slot-definition>"),
             .generic_function => try result.appendSlice(self.allocator, "#<generic-function>"),
             .method => try result.appendSlice(self.allocator, "#<method>"),
+            .native_code => try result.appendSlice(self.allocator, "#<native-code>"),
         }
     }
 
@@ -7239,7 +7423,7 @@ fn hashValueWithTest(val: Value, test_type: runtime.HashTest) u64 {
                 .keyword => fnvHash(val.toPtr(runtime.Keyword).getName()),
                 .string, .string32 => fnvHash(val.toPtr(runtime.String).bytes()),
                 // Reference types: hash address (NOT stable across GC)
-                .cons, .vector, .closure, .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname, .package, .chunk, .condition, .class, .slotdef, .generic_function, .method => fnvHashU64(val.raw),
+                .cons, .vector, .closure, .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname, .package, .chunk, .condition, .class, .slotdef, .generic_function, .method, .native_code => fnvHashU64(val.raw),
             };
         },
     }
@@ -7443,6 +7627,61 @@ test "vm class_of builds args list with GC" {
 
     const result = try vm.run(&chunk);
     try testing.expect(result.isClass());
+}
+
+test "vm jit survives gc and reloads const_pool" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    try vm.enableJit(1024 * 1024, 1);
+
+    const s_val = try heap.allocBaseString("ok");
+    const consts = [_]Value{ s_val };
+
+    const push_const_op: u16 = @intFromEnum(Op.push_const);
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const make_list_op: u16 = @intFromEnum(Op.make_list);
+    const pop_op: u16 = @intFromEnum(Op.pop);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
+        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),   1, 0, 0, 0,
+        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),   2, 0, 0, 0,
+        @truncate(make_list_op & 0xFF),  @truncate(make_list_op >> 8),  2,
+        @truncate(pop_op & 0xFF),        @truncate(pop_op >> 8),
+        @truncate(pop_op & 0xFF),        @truncate(pop_op >> 8),
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
+        @truncate(ret_op & 0xFF),        @truncate(ret_op >> 8),
+    };
+
+    const chunk_val = try heap.allocChunk(&code, &consts, 0, 0, 0, false, 0);
+    const chunk = chunk_val.toPtr(Chunk);
+
+    // First run compiles.
+    const r0 = try vm.run(chunk);
+    try testing.expect(r0.isString());
+    try testing.expectEqual(@as(u64, 1), vm.jitStats().compile_n);
+
+    // Fill from-space with unreachable garbage so make_list must GC while JIT is active.
+    while (true) {
+        _ = heap.allocCons(Value.nil, Value.nil) catch |err| switch (err) {
+            error.OutOfMemory => break,
+        };
+    }
+
+    const r1 = try vm.run(chunk);
+    try testing.expect(r1.isString());
+    try testing.expectEqualStrings("ok", r1.toPtr(runtime.String).bytes());
+    try testing.expectEqual(@as(u64, 1), vm.jitStats().compile_n);
+    try testing.expectEqual(@as(u64, 0), vm.jitStats().fail_n);
 }
 
 test "vm callClosure runs and restores" {

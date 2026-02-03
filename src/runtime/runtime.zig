@@ -38,6 +38,7 @@ pub const Array = objects.Array;
 pub const Pathname = objects.Pathname;
 pub const Package = objects.Package;
 pub const Chunk = objects.Chunk;
+pub const NativeCode = objects.NativeCode;
 pub const BoxedKind = objects.BoxedKind;
 pub const Class = objects.Class;
 

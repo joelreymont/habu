@@ -1186,6 +1186,12 @@ pub const Heap = struct {
         return Value.makeChunk(chunk);
     }
 
+    pub fn allocNativeCode(self: *Heap, entry: usize) error{OutOfMemory}!Value {
+        const nc = try self.alloc(objects.NativeCode);
+        nc.* = .{ .entry = entry };
+        return Value.makeNativeCode(nc);
+    }
+
     /// Allocate a symbol from a string
     pub fn allocSymbol(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
         const aligned_name_len = std.mem.alignForward(usize, name.len, 8);

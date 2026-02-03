@@ -326,7 +326,7 @@ pub const GC = struct {
                         const old_ptr = @intFromPtr(s32.data);
                         s32.data = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
                     },
-                    .rational, .complex, .stream, .bignum, .pathname, .package, .condition, .class, .slotdef, .generic_function, .method => {
+                    .rational, .complex, .stream, .bignum, .pathname, .package, .condition, .class, .slotdef, .generic_function, .method, .native_code => {
                         // No interior pointers to repair
                     },
                 }
@@ -461,7 +461,7 @@ pub const GC = struct {
                             }
                         }
                     },
-                    .rational, .complex, .bignum => {
+                    .rational, .complex, .bignum, .native_code => {
                         // No Value references to scan
                     },
                     .condition => {

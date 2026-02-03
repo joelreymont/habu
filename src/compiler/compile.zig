@@ -1951,6 +1951,7 @@ pub const Compiler = struct {
                 .slotdef => &types.t_any, // SlotDefinition objects
                 .generic_function => &types.t_any, // Generic function objects
                 .method => &types.t_any, // Method objects
+                .native_code => &types.t_any, // Native code handles are internal
             },
             .@"var" => |v| {
                 // Check occurrence typing first (narrowed types)

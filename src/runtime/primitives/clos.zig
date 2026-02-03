@@ -227,6 +227,7 @@ pub fn classOf(heap: *Heap, args: Value) !Value {
         .class => unreachable, // handled above
         .package => "package",
         .chunk => "chunk",
+        .native_code => "chunk",
         .condition => "condition",
         .slotdef => "slot-definition",
         .generic_function => unreachable, // handled above

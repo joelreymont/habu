@@ -667,6 +667,7 @@ pub fn typeOf(heap: *Heap, val: Value) !Value {
         .slotdef => heap.intern("slot-definition"),
         .generic_function => heap.intern("generic-function"),
         .method => heap.intern("method"),
+        .native_code => heap.intern("compiled-function"),
     };
 }
 

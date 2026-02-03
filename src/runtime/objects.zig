@@ -322,6 +322,7 @@ pub const BoxedKind = enum(u64) {
     slotdef = 12,
     generic_function = 13,
     method = 14,
+    native_code = 15,
 };
 
 /// Stream direction
@@ -813,6 +814,14 @@ pub const Chunk = extern struct {
     }
 };
 
+/// Native code handle (GC-managed metadata, non-GC machine code)
+pub const NativeCode = extern struct {
+    /// Boxed object discriminator (must be first)
+    kind: BoxedKind = .native_code,
+    /// Entry point (callconv(.c) function pointer address)
+    entry: usize,
+};
+
 // ============================================================================
 // Object size calculations (for GC)
 // ============================================================================
@@ -881,6 +890,7 @@ pub fn objectSize(val: Value) usize {
                 .slotdef => @sizeOf(SlotDefinition),
                 .generic_function => @sizeOf(GenericFunction),
                 .method => @sizeOf(Method),
+                .native_code => @sizeOf(NativeCode),
                 .chunk => {
                     const chunk = val.toPtr(Chunk);
                     // Header + const pool + bytecode (both aligned to 8)
@@ -950,7 +960,7 @@ pub fn forEachValue(val: Value, callback: *const fn (Value) void) void {
                         callback(c);
                     }
                 },
-                .string32, .rational, .complex, .stream, .bignum, .pathname, .array => {
+                .string32, .rational, .complex, .stream, .bignum, .pathname, .array, .native_code => {
                     // No internal Values to scan
                 },
                 .class => {

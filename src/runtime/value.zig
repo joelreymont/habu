@@ -65,6 +65,7 @@ pub const TypeKind = enum {
     slotdef,
     generic_function,
     method,
+    native_code,
 };
 
 /// A tagged Habu value (64-bit)
@@ -328,6 +329,7 @@ pub const Value = packed struct {
                     .slotdef => .slotdef,
                     .generic_function => .generic_function,
                     .method => .method,
+                    .native_code => .native_code,
                 };
             },
             .forwarding => .cons, // Shouldn't happen during normal execution
@@ -525,6 +527,11 @@ pub const Value = packed struct {
 
     /// Create a method value (boxed object)
     pub inline fn makeMethod(ptr: anytype) Value {
+        return makePtr(ptr, .boxed);
+    }
+
+    /// Create a native code handle (boxed object)
+    pub inline fn makeNativeCode(ptr: anytype) Value {
         return makePtr(ptr, .boxed);
     }
 

@@ -244,6 +244,6 @@ pub fn hashValue(val: Value) u64 {
             }
             break :blk h;
         },
-        .closure, .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname, .package, .chunk, .condition, .class, .slotdef, .generic_function, .method => val.raw,
+        .closure, .hashtable, .rational, .complex, .stream, .bignum, .array, .pathname, .package, .chunk, .condition, .class, .slotdef, .generic_function, .method, .native_code => val.raw,
     };
 }

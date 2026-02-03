@@ -698,10 +698,14 @@ pub const store_ctx_sp = Stencil{
     .holes = &[_]Hole{},
 };
 
-/// Load x19 <- ctx.sp
+/// Load x19 <- ctx.sp, and refresh x20 <- ctx.const_pool (may move after GC)
 pub const load_ctx_sp = Stencil{
     .name = "load_ctx_sp",
-    .code = &inst_bytes(0xF94002D3), // LDR x19, [x22, #0]
+    .code = &(
+        // LDR x19, [x22, #0]
+        inst_bytes(0xF94002D3) ++
+            // LDR x20, [x22, #8]
+            inst_bytes(0xF94006D4)),
     .holes = &[_]Hole{},
 };
 
@@ -926,7 +930,7 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 4), mov_x0_x22.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x1_x22.code.len);
     try testing.expectEqual(@as(usize, 4), store_ctx_sp.code.len);
-    try testing.expectEqual(@as(usize, 4), load_ctx_sp.code.len);
+    try testing.expectEqual(@as(usize, 8), load_ctx_sp.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x0_x21.code.len);
     try testing.expectEqual(@as(usize, 4), load_err_trace.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x8_x21.code.len);

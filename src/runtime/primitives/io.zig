@@ -524,6 +524,7 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
             try w.print("#<generic-function {s}>", .{name_sym.getName()});
         },
         .method => try w.writeAll("#<method>"),
+        .native_code => try w.writeAll("#<native-code>"),
     }
 }
 
@@ -721,6 +722,7 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
             try w.print("#<generic-function {s}>", .{name_sym.getName()});
         },
         .method => try w.writeAll("#<method>"),
+        .native_code => try w.writeAll("#<native-code>"),
     }
 }
 

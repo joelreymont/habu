@@ -1000,6 +1000,10 @@ pub const Repl = struct {
             .slotdef => try writer.writeAll("#<slot-definition>"),
             .generic_function => try writer.writeAll("#<generic-function>"),
             .method => try writer.writeAll("#<method>"),
+            .native_code => {
+                const nc = val.toPtr(runtime.NativeCode);
+                try writer.print("#<native-code 0x{x}>", .{nc.entry});
+            },
         }
     }
 
