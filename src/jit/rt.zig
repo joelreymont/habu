@@ -3,6 +3,7 @@
 const ctx = @import("ctx.zig");
 const runtime = @import("../runtime/runtime.zig");
 const arith = @import("../runtime/primitives/arith.zig");
+const char_prims = @import("../runtime/primitives/char.zig");
 const vm_mod = @import("../interp/vm.zig");
 
 const Value = runtime.Value;
@@ -208,6 +209,41 @@ pub fn codeChar(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
     const n = val.toFixnum();
     if (n < 0 or n > 0x10FFFF) return error.InvalidArgument;
     return Value.makeCharacter(@intCast(n));
+}
+
+pub fn charEq(c: *ctx.JitContext, a: Value, b: Value) vm_mod.Error!Value {
+    _ = c;
+    return char_prims.charEq(a, b);
+}
+
+pub fn charLt(c: *ctx.JitContext, a: Value, b: Value) vm_mod.Error!Value {
+    _ = c;
+    return char_prims.charLt(a, b);
+}
+
+pub fn charGt(c: *ctx.JitContext, a: Value, b: Value) vm_mod.Error!Value {
+    _ = c;
+    return char_prims.charGt(a, b);
+}
+
+pub fn charUpcase(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
+    _ = c;
+    return char_prims.charUpcase(val);
+}
+
+pub fn charDowncase(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
+    _ = c;
+    return char_prims.charDowncase(val);
+}
+
+pub fn digitCharP(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
+    _ = c;
+    return char_prims.digitp(val);
+}
+
+pub fn alphaCharP(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
+    _ = c;
+    return char_prims.alphap(val);
 }
 
 pub fn listp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {

@@ -294,6 +294,35 @@ pub const Jit = struct {
                 try self.emitCallUnary(@intFromPtr(&rt.codeChar));
                 try self.emitStackPush();
             },
+            .char_eq => {
+                try self.emitBinaryCall(@intFromPtr(&rt.charEq));
+            },
+            .char_lt => {
+                try self.emitBinaryCall(@intFromPtr(&rt.charLt));
+            },
+            .char_gt => {
+                try self.emitBinaryCall(@intFromPtr(&rt.charGt));
+            },
+            .char_upcase => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.charUpcase));
+                try self.emitStackPush();
+            },
+            .char_downcase => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.charDowncase));
+                try self.emitStackPush();
+            },
+            .digit_char_p => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.digitCharP));
+                try self.emitStackPush();
+            },
+            .alpha_char_p => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.alphaCharP));
+                try self.emitStackPush();
+            },
 
             .list_length => {
                 try self.emitStackPop();
