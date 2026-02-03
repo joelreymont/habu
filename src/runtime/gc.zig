@@ -481,6 +481,9 @@ pub const GC = struct {
                         if (cls.slots.isPointer() and !cls.slots.isNil()) {
                             cls.slots = try self.copyValue(cls.slots, alloc_ptr);
                         }
+                        if (cls.metaclass.isPointer() and !cls.metaclass.isNil()) {
+                            cls.metaclass = try self.copyValue(cls.metaclass, alloc_ptr);
+                        }
                         for (cls.shared_slots[0..cls.num_shared]) |*slot_val| {
                             if (slot_val.isPointer() and !slot_val.isNil()) {
                                 slot_val.* = try self.copyValue(slot_val.*, alloc_ptr);
@@ -538,6 +541,9 @@ pub const GC = struct {
                         }
                         if (gf.methods.isPointer() and !gf.methods.isNil()) {
                             gf.methods = try self.copyValue(gf.methods, alloc_ptr);
+                        }
+                        if (gf.dispatcher.isPointer() and !gf.dispatcher.isNil()) {
+                            gf.dispatcher = try self.copyValue(gf.dispatcher, alloc_ptr);
                         }
                     },
                     .method => {
@@ -786,4 +792,67 @@ test "package gc correctness" {
     try testing.expect(pkg_after.name.isSymbol());
     const name_after = pkg_after.name.toPtr(objects.Symbol);
     try testing.expect(std.mem.eql(u8, name_after.getName(), "TEST-PKG"));
+}
+
+test "gc scans class metaclass" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const name = try heap.intern("TEST-CLASS");
+    const cls = try heap.alloc(objects.Class);
+    cls.* = .{
+        .kind = .class,
+        .name = name,
+        .direct_supers = Value.nil,
+        .cpl = Value.nil,
+        .direct_slots = Value.nil,
+        .slots = Value.nil,
+        .metaclass = heap.standard_class,
+        .num_shared = 0,
+        // num_shared=0 => must still be non-null per Zig pointer rules.
+        .shared_slots = @ptrFromInt(@as(usize, @alignOf(Value))),
+    };
+
+    var roots = [_]Value{Value.makeClass(cls)};
+    _ = try heap.collectGarbage(&roots);
+    const cls_after = roots[0].toPtr(objects.Class);
+    try testing.expect(cls_after.metaclass.eq(heap.standard_class));
+
+    // Second collection should still preserve/update metaclass field.
+    _ = try heap.collectGarbage(&roots);
+    const cls_after2 = roots[0].toPtr(objects.Class);
+    try testing.expect(cls_after2.metaclass.eq(heap.standard_class));
+}
+
+test "gc scans generic function dispatcher" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const name = try heap.intern("TEST-GF");
+    const dispatcher = try heap.allocClosure(Value.nil, 0, &[_]Value{});
+
+    const gf = try heap.alloc(objects.GenericFunction);
+    gf.* = .{
+        .kind = .generic_function,
+        .name = name,
+        .lambda_list = Value.nil,
+        .methods = Value.nil,
+        .dispatcher = dispatcher,
+    };
+
+    var roots = [_]Value{Value.makeGenericFunction(gf)};
+    _ = try heap.collectGarbage(&roots);
+
+    const gf_after = roots[0].toPtr(objects.GenericFunction);
+    try testing.expect(gf_after.dispatcher.isClosure());
+
+    // If dispatcher isn't scanned, it will still point into the old semispace.
+    const disp_addr = gf_after.dispatcher.toPtrAddr();
+    const start = @intFromPtr(heap.from_start);
+    const end = start + heap.space_size;
+    try testing.expect(disp_addr >= start and disp_addr < end);
 }
