@@ -1,9 +1,11 @@
 ---
 title: Fix GC work queue
-status: open
+status: closed
 priority: 3
 issue-type: task
-created-at: "2026-02-03T10:40:38.361136+01:00"
+created-at: "\"\\\"2026-02-03T10:40:38.361136+01:00\\\"\""
+closed-at: "2026-02-03T15:24:03.982940+01:00"
+close-reason: Track GC work queue peak; drop unused RootSet
 blocks:
   - habu-fix-compiler-env-aec7d63b
 ---

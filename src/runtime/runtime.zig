@@ -46,7 +46,6 @@ pub const UpperName = heap.UpperName;
 pub const upperNameAlloc = heap.upperNameAlloc;
 pub const freeUpperName = heap.freeUpperName;
 pub const GC = gc.GC;
-pub const RootSet = gc.RootSet;
 pub const Interner = interner.Interner;
 
 pub const clos = primitives.clos;

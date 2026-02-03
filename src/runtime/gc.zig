@@ -32,8 +32,8 @@ pub const GC = struct {
     allocator: std.mem.Allocator,
     /// Work list of objects to scan (preallocated, reused across collections)
     work_list: std.ArrayList(WorkItem),
-    /// Root list for collecting roots (preallocated, reused across collections)
-    root_list: std.ArrayList(Value),
+    /// Peak work queue size seen during the most recent collection.
+    work_peak: usize,
     /// Debug: flag set during GC trace/copy phase
     gc_in_progress: if (builtin.mode == .Debug) bool else void,
 
@@ -43,14 +43,13 @@ pub const GC = struct {
             .heap = heap,
             .allocator = allocator,
             .work_list = std.ArrayList(WorkItem){},
-            .root_list = std.ArrayList(Value){},
+            .work_peak = 0,
             .gc_in_progress = if (builtin.mode == .Debug) false else {},
         };
     }
 
     pub fn deinit(self: *GC) void {
         self.work_list.deinit(self.allocator);
-        self.root_list.deinit(self.allocator);
     }
 
     /// Calculate initial capacity for work queues based on heap size
@@ -78,6 +77,7 @@ pub const GC = struct {
 
         // Clear work list, retaining capacity from previous collections
         self.work_list.clearRetainingCapacity();
+        self.work_peak = 0;
         var alloc_ptr = self.heap.to_start;
 
         // Phase 1: Copy roots
@@ -119,13 +119,30 @@ pub const GC = struct {
     /// Growth happens AFTER GC completes to avoid allocations during trace
     fn maybeGrowQueues(self: *GC) !void {
         const work_cap = self.work_list.capacity;
-        const work_peak = self.work_list.items.len;
+        const work_peak = self.work_peak;
 
         // If we used >75% capacity, grow for next cycle
         if (work_peak * 4 > work_cap * 3) {
             const new_cap = work_cap * 2;
             try self.work_list.ensureTotalCapacity(self.allocator, new_cap);
         }
+    }
+
+    fn pushWork(self: *GC, addr: usize, tag: Tag) !void {
+        // Debug check: detect allocations during GC trace/copy.
+        if (builtin.mode == .Debug and self.gc_in_progress) {
+            const old_cap = self.work_list.capacity;
+            try self.work_list.append(self.allocator, .{ .addr = addr, .tag = tag });
+            const new_cap = self.work_list.capacity;
+            if (new_cap > old_cap) {
+                std.debug.print("ERROR: work_list allocated during GC (cap: {} -> {})\n", .{ old_cap, new_cap });
+                @panic("Allocation during GC detected");
+            }
+        } else {
+            try self.work_list.append(self.allocator, .{ .addr = addr, .tag = tag });
+        }
+
+        if (self.work_list.items.len > self.work_peak) self.work_peak = self.work_list.items.len;
     }
 
     /// Finalize unreachable objects that hold resources (e.g., file handles)
@@ -222,24 +239,7 @@ pub const GC = struct {
 
         // Add to work list for scanning (except strings/keywords which have no Value refs)
         if (tag != .string and tag != .keyword) {
-            // Debug check: detect allocations during GC
-            if (builtin.mode == .Debug and self.gc_in_progress) {
-                const old_cap = self.work_list.capacity;
-                try self.work_list.append(self.allocator, .{
-                    .addr = new_addr,
-                    .tag = tag,
-                });
-                const new_cap = self.work_list.capacity;
-                if (new_cap > old_cap) {
-                    std.debug.print("ERROR: work_list allocated during GC (cap: {} -> {})\n", .{ old_cap, new_cap });
-                    @panic("Allocation during GC detected");
-                }
-            } else {
-                try self.work_list.append(self.allocator, .{
-                    .addr = new_addr,
-                    .tag = tag,
-                });
-            }
+            try self.pushWork(new_addr, tag);
         }
 
         // Return new tagged pointer
@@ -575,37 +575,6 @@ pub const GC = struct {
 };
 
 // ============================================================================
-// Root registration for conservative stack scanning
-// ============================================================================
-
-/// Root set for GC
-pub const RootSet = struct {
-    values: std.ArrayList(Value),
-
-    pub fn init(allocator: std.mem.Allocator) RootSet {
-        return .{
-            .values = std.ArrayList(Value).init(allocator),
-        };
-    }
-
-    pub fn deinit(self: *RootSet) void {
-        self.values.deinit();
-    }
-
-    pub fn addRoot(self: *RootSet, val: Value) !void {
-        try self.values.append(val);
-    }
-
-    pub fn clear(self: *RootSet) void {
-        self.values.clearRetainingCapacity();
-    }
-
-    pub fn items(self: *RootSet) []Value {
-        return self.values.items;
-    }
-};
-
-// ============================================================================
 // Tests
 // ============================================================================
 
@@ -696,6 +665,33 @@ test "gc collect with nested cons" {
     const cons3 = cons2.cdr.toPtr(objects.Cons);
     try testing.expectEqual(@as(i64, 3), cons3.car.toFixnum());
     try testing.expect(cons3.cdr.isNil());
+}
+
+test "gc grows work_list after peak use" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var gc = GC.init(testing.allocator, &heap);
+    defer gc.deinit();
+
+    try gc.work_list.ensureTotalCapacity(testing.allocator, 32);
+    const cap0 = gc.work_list.capacity;
+    const n: usize = (cap0 * 3) / 4 + 1;
+
+    const vec_val = try heap.allocVector(n, n);
+    const vec = vec_val.toPtr(objects.Vector);
+    for (0..n) |i| {
+        const cons = try heap.allocCons(Value.makeFixnum(@as(i64, @intCast(i))), Value.makeFixnum(0));
+        vec.set(i, cons);
+    }
+
+    var roots = [_]Value{vec_val};
+    _ = try gc.collect(&roots);
+
+    try testing.expectEqual(n, gc.work_peak);
+    try testing.expect(gc.work_list.capacity >= cap0 * 2);
 }
 
 test "gc finalizes unreachable file streams" {
