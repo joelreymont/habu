@@ -8,6 +8,7 @@ blocks:
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625
   - habu-fix-compiler-env-aec7d63b
+  - habu-fix-gc-work-76dc7cfe
 ---
 
 docs/cranelift-parity.md:8 + src/jit/: no stack maps/safepoints. Fix: write design doc for Habu stack maps: encode live Value slots for VM + JIT frames; define safepoint protocol and root enumeration API; outline minimal implementation steps + tests. Verification: docs + follow-up dots.

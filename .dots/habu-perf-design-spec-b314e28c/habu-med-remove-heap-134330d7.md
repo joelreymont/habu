@@ -8,6 +8,7 @@ blocks:
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625
   - habu-fix-compiler-env-aec7d63b
+  - habu-fix-gc-work-76dc7cfe
 ---
 
 src/interp/vm.zig:1675+: many op handlers build arg lists via self.heap.allocCons (no GC) and can OOM without recovery. Fix: switch to self.allocCons (GC-enabled) and keep intermediate Values rooted (stack slots or collectGarbageExtra); add regression that forces OOM while building args list. Verification: zig build test.

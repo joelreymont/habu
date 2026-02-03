@@ -8,6 +8,7 @@ blocks:
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625
   - habu-fix-compiler-env-aec7d63b
+  - habu-fix-gc-work-76dc7cfe
 ---
 
 docs/cranelift-parity.md:1: define per-row acceptance (test/bench path, perf target, supported ISA). Update matrix columns: feature, status, proof, perf. Ensure each future dot adds/updates a proof link.

@@ -8,6 +8,7 @@ blocks:
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625
   - habu-fix-compiler-env-aec7d63b
+  - habu-fix-gc-work-76dc7cfe
 ---
 
 src/jit/: add SSA IR layer (blocks, values, ops, types, calls, safepoints). Files: src/jit/ir.zig, src/jit/verify.zig, src/jit/print.zig. No stencils in this path.
