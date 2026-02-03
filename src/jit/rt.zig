@@ -155,6 +155,36 @@ pub fn numberp(c: *ctx.JitContext, a: Value) arith.Error!Value {
     return if (a.isNumber()) Value.t else Value.nil;
 }
 
+pub fn consp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (a.isCons()) Value.t else Value.nil;
+}
+
+pub fn symbolp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (a.isSymbol()) Value.t else Value.nil;
+}
+
+pub fn stringp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (a.isString()) Value.t else Value.nil;
+}
+
+pub fn vectorp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (a.isVector()) Value.t else Value.nil;
+}
+
+pub fn closurep(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (a.isClosure()) Value.t else Value.nil;
+}
+
+pub fn keywordp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
+    _ = c;
+    return if (a.isKeyword()) Value.t else Value.nil;
+}
+
 pub fn listLength(c: *ctx.JitContext, seq: Value) vm_mod.Error!Value {
     _ = c;
     switch (seq.typeKind()) {
