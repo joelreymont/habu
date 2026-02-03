@@ -16,6 +16,7 @@ const Value = @import("value.zig").Value;
 const Tag = @import("value.zig").Tag;
 const objects = @import("objects.zig");
 const heap_mod = @import("heap.zig");
+const roots_mod = @import("roots.zig");
 
 /// Work item: object to scan
 const WorkItem = struct {
@@ -63,6 +64,16 @@ pub const GC = struct {
     /// Run a garbage collection cycle
     /// Returns the number of bytes copied, or error on OOM during work list allocation
     pub fn collect(self: *GC, roots: []Value) !usize {
+        var ranges = [_]roots_mod.RootRange{.{ .ptr = roots.ptr, .len = roots.len }};
+        return try self.collectRootSet(.{
+            .ranges = ranges[0..],
+            .slots = &[_]*Value{},
+        });
+    }
+
+    /// Run a garbage collection cycle with a precise root set (slot/range addresses).
+    /// Returns the number of bytes copied, or error on OOM during work list allocation.
+    pub fn collectRootSet(self: *GC, roots: roots_mod.RootSet) !usize {
         // Preallocate work queue if first collection
         if (self.work_list.capacity == 0) {
             const init_cap = self.calculateInitialCapacity();
@@ -81,8 +92,13 @@ pub const GC = struct {
         var alloc_ptr = self.heap.to_start;
 
         // Phase 1: Copy roots
-        for (roots) |*root| {
-            root.* = try self.copyValue(root.*, &alloc_ptr);
+        for (roots.ranges) |r| {
+            for (r.ptr[0..r.len]) |*root| {
+                root.* = try self.copyValue(root.*, &alloc_ptr);
+            }
+        }
+        for (roots.slots) |slot| {
+            slot.* = try self.copyValue(slot.*, &alloc_ptr);
         }
 
         // Phase 2: Process work list, scanning objects and copying references
@@ -643,6 +659,30 @@ test "gc collect with cons" {
     try testing.expect(root.isCons());
 
     // Values should be preserved
+    const cons = root.toPtr(objects.Cons);
+    try testing.expectEqual(@as(i64, 1), cons.car.toFixnum());
+    try testing.expectEqual(@as(i64, 2), cons.cdr.toFixnum());
+}
+
+test "gc collectRootSet updates slots" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var root = try heap.allocCons(Value.makeFixnum(1), Value.makeFixnum(2));
+    const raw_before = root.raw;
+
+    var gc = GC.init(testing.allocator, &heap);
+    defer gc.deinit();
+
+    var slots = [_]*Value{&root};
+    const bytes = try gc.collectRootSet(.{ .ranges = &[_]roots_mod.RootRange{}, .slots = slots[0..] });
+
+    try testing.expect(bytes >= @sizeOf(objects.Cons));
+    try testing.expect(root.isCons());
+    try testing.expect(root.raw != raw_before);
+
     const cons = root.toPtr(objects.Cons);
     try testing.expectEqual(@as(i64, 1), cons.car.toFixnum());
     try testing.expectEqual(@as(i64, 2), cons.cdr.toFixnum());
