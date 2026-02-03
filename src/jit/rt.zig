@@ -216,6 +216,20 @@ pub fn listMember(c: *ctx.JitContext, item: Value, list: Value) vm_mod.Error!Val
     return Value.nil;
 }
 
+pub fn assoc(c: *ctx.JitContext, key: Value, alist: Value) vm_mod.Error!Value {
+    _ = c;
+    var curr = alist;
+    while (curr.isCons()) {
+        const cell = curr.toPtr(runtime.Cons);
+        if (cell.car.isCons()) {
+            const pair = cell.car.toPtr(runtime.Cons);
+            if (pair.car.raw == key.raw) return cell.car;
+        }
+        curr = cell.cdr;
+    }
+    return Value.nil;
+}
+
 pub fn listLength(c: *ctx.JitContext, seq: Value) vm_mod.Error!Value {
     _ = c;
     switch (seq.typeKind()) {

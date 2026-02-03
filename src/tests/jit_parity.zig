@@ -74,6 +74,7 @@ test "parity: vm vs jit (hand-picked)" {
         "(svref (vector 10 20 30) 1)",
         "(let ((v (make-vector 3 0))) (setf (svref v 1) 9) (svref v 1))",
         "(member 2 (list 1 2 3))",
+        "(assoc 'b '((a . 1) (b . 2)))",
         "(reverse (list 1 2 3))",
         "(append (list 1 2) (list 3 4))",
         "(nth 1 (list 7 8 9))",

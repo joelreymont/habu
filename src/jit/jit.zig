@@ -287,6 +287,9 @@ pub const Jit = struct {
             .list_member => {
                 try self.emitBinaryCall(@intFromPtr(&rt.listMember));
             },
+            .assoc => {
+                try self.emitBinaryCall(@intFromPtr(&rt.assoc));
+            },
 
             .list_reverse => {
                 try self.emitStackPop();
