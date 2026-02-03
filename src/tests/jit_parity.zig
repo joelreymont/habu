@@ -59,6 +59,8 @@ test "parity: vm vs jit (hand-picked)" {
         "(reverse (list 1 2 3))",
         "(nth 1 (list 7 8 9))",
         "(nthcdr 2 (list 1 2 3 4))",
+        "(let ((x (cons 1 2))) (rplaca x 9) (car x))",
+        "(let ((x (cons 1 2))) (rplacd x (list 3 4)) (cdr x))",
         "(if (numberp 1) 42 0)",
         "(let ((x 10) (y 20)) (+ x y))",
         "(cons 1 2)",

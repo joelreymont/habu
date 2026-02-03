@@ -249,6 +249,14 @@ pub const Jit = struct {
                 try self.emitBinaryCall(@intFromPtr(&rt.listNthcdr));
             },
 
+            .rplaca => {
+                try self.emitBinaryCall(@intFromPtr(&rt.rplaca));
+            },
+
+            .rplacd => {
+                try self.emitBinaryCall(@intFromPtr(&rt.rplacd));
+            },
+
             .dup => {
                 try self.emitStackPop();
                 try self.emitStackPush();

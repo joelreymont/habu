@@ -242,6 +242,22 @@ pub fn listNthcdr(c: *ctx.JitContext, n_val: Value, list: Value) vm_mod.Error!Va
     return curr;
 }
 
+pub fn rplaca(c: *ctx.JitContext, cons_val: Value, new_car: Value) vm_mod.Error!Value {
+    _ = c;
+    if (!cons_val.isCons()) return error.TypeMismatch;
+    const cell = cons_val.toPtr(runtime.Cons);
+    cell.car = new_car;
+    return new_car;
+}
+
+pub fn rplacd(c: *ctx.JitContext, cons_val: Value, new_cdr: Value) vm_mod.Error!Value {
+    _ = c;
+    if (!cons_val.isCons()) return error.TypeMismatch;
+    const cell = cons_val.toPtr(runtime.Cons);
+    cell.cdr = new_cdr;
+    return new_cdr;
+}
+
 pub fn lt(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
     _ = c;
     return if (try arith.lt(a, b)) Value.t else Value.nil;
