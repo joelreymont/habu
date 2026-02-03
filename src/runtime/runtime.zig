@@ -10,6 +10,7 @@ pub const value = @import("value.zig");
 pub const objects = @import("objects.zig");
 pub const heap = @import("heap.zig");
 pub const gc = @import("gc.zig");
+pub const roots = @import("roots.zig");
 pub const interner = @import("interner.zig");
 pub const primitives = @import("primitives/primitives.zig");
 
@@ -48,6 +49,8 @@ pub const upperNameAlloc = heap.upperNameAlloc;
 pub const freeUpperName = heap.freeUpperName;
 pub const GC = gc.GC;
 pub const Interner = interner.Interner;
+pub const RootRange = roots.RootRange;
+pub const RootSet = roots.RootSet;
 
 pub const clos = primitives.clos;
 
@@ -56,6 +59,7 @@ test {
     _ = objects;
     _ = heap;
     _ = gc;
+    _ = roots;
     _ = interner;
     _ = primitives;
 }

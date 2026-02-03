@@ -16,6 +16,7 @@ blocks:
   - habu-add-jit-num-7dffed90
   - habu-add-jit-mod-cfdd286a
   - habu-add-rootset-types-cf9db4d2
+  - habu-add-rootset-gc-be933d07
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625
   - habu-fix-compiler-env-aec7d63b
