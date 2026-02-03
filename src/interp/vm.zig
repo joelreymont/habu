@@ -221,6 +221,11 @@ pub const Vm = struct {
     /// Base offset for current eval's chunks
     chunk_base: usize,
 
+    /// Chunk roots saved by external entrypoints (callClosure/callFromStack/applyFromStack)
+    /// so they stay alive and get relocated across GC.
+    saved_chunks: [MAX_SAVED_CHUNKS]Value,
+    saved_chunk_sp: usize,
+
     /// Catch stack for exception handling
     catch_stack: [MAX_CATCHES]CatchFrame,
     /// Catch stack pointer
@@ -327,6 +332,13 @@ pub const Vm = struct {
     const MAX_BLOCKS = 64;
     const MAX_PROGVS = 32;
     const MAX_HANDLERS = 64;
+    const MAX_SAVED_CHUNKS = 16;
+
+    fn chunkRoot(ptr: *const Chunk) Value {
+        const addr = @intFromPtr(ptr);
+        if (addr & 0xF != 0) return Value.nil;
+        return Value.makeChunk(ptr);
+    }
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap) !Vm {
         var vm = Vm{
@@ -343,6 +355,8 @@ pub const Vm = struct {
             .current_package = Value.nil,
             .chunk_pool = &[_]*Chunk{},
             .chunk_base = 0,
+            .saved_chunks = undefined,
+            .saved_chunk_sp = 0,
             .catch_stack = undefined,
             .catch_sp = 0,
             .unwind_stack = undefined,
@@ -660,22 +674,68 @@ pub const Vm = struct {
     }
 
     pub fn collectGarbage(self: *Vm) !usize {
-        // Gather roots from VM state
         var roots = std.ArrayList(Value){};
         defer roots.deinit(self.allocator);
 
         // Stack values
+        const stack_start = roots.items.len;
         try roots.appendSlice(self.allocator, self.stack[0..self.sp]);
 
         // Global values
+        const globals_start = roots.items.len;
         try roots.appendSlice(self.allocator, self.globals[0..self.num_globals]);
 
-        // Catch frame return values
+        // Catch frames
+        const catch_tag_start = roots.items.len;
         for (self.catch_stack[0..self.catch_sp]) |frame| {
             try roots.append(self.allocator, frame.tag);
         }
+        const catch_chunk_start = roots.items.len;
+        for (self.catch_stack[0..self.catch_sp]) |frame| {
+            try roots.append(self.allocator, chunkRoot(frame.chunk));
+        }
 
-        // Frame closures - must trace closures in call frames
+        // Unwind frames
+        const unwind_chunk_start = roots.items.len;
+        for (self.unwind_stack[0..self.unwind_sp]) |frame| {
+            try roots.append(self.allocator, chunkRoot(frame.chunk));
+        }
+
+        // Block frames
+        const block_name_start = roots.items.len;
+        for (self.block_stack[0..self.block_sp]) |frame| {
+            try roots.append(self.allocator, frame.name_raw);
+        }
+        const block_chunk_start = roots.items.len;
+        for (self.block_stack[0..self.block_sp]) |frame| {
+            try roots.append(self.allocator, chunkRoot(frame.chunk));
+        }
+
+        // Restart frames
+        const restart_name_start = roots.items.len;
+        for (self.restart_stack[0..self.restart_sp]) |frame| {
+            try roots.append(self.allocator, frame.name);
+        }
+        const restart_chunk_start = roots.items.len;
+        for (self.restart_stack[0..self.restart_sp]) |frame| {
+            try roots.append(self.allocator, chunkRoot(frame.chunk));
+        }
+
+        // Progv frames
+        const progv_start = roots.items.len;
+        for (self.progv_stack[0..self.progv_sp]) |frame| {
+            try roots.append(self.allocator, frame.saved_bindings);
+        }
+
+        // Handler frames
+        const handler_start = roots.items.len;
+        for (self.handler_stack[0..self.handler_sp]) |frame| {
+            try roots.append(self.allocator, frame.condition_type);
+            try roots.append(self.allocator, frame.handler_fn);
+        }
+
+        // Frame closures
+        const frame_closure_start = roots.items.len;
         for (self.frames[0..self.fp]) |frame| {
             if (frame.closure) |c| {
                 try roots.append(self.allocator, Value.makeClosure(c));
@@ -683,61 +743,48 @@ pub const Vm = struct {
         }
 
         // current_closure for callClosure's fp=0 case
+        const current_closure_idx = roots.items.len;
+        const has_current_closure = self.current_closure != null;
         if (self.current_closure) |c| {
             try roots.append(self.allocator, Value.makeClosure(c));
         }
 
         // Pending throw values
+        const pending_throw_tag_idx = roots.items.len;
         try roots.append(self.allocator, self.pending_throw_tag);
+        const pending_throw_value_idx = roots.items.len;
         try roots.append(self.allocator, self.pending_throw_value);
 
-        // Pending block value
+        // Pending block values
+        const pending_block_name_idx = roots.items.len;
+        try roots.append(self.allocator, self.pending_block_name);
+        const pending_block_value_idx = roots.items.len;
         try roots.append(self.allocator, self.pending_block_value);
 
         // Current package
+        const current_package_idx = roots.items.len;
         try roots.append(self.allocator, self.current_package);
 
-        // Restart frames
-        for (self.restart_stack[0..self.restart_sp]) |frame| {
-            try roots.append(self.allocator, frame.name);
-        }
-
-        // Handler frames
-        for (self.handler_stack[0..self.handler_sp]) |frame| {
-            try roots.append(self.allocator, frame.condition_type);
-            try roots.append(self.allocator, frame.handler_fn);
-        }
-
         // Secondary values
+        const secondary_start = roots.items.len;
         try roots.appendSlice(self.allocator, self.secondary_values[0..self.secondary_values_count]);
 
-        // Current chunk constants
-        const current_chunk_start = roots.items.len;
-        for (self.chunk.getConstants()) |c| {
-            try roots.append(self.allocator, c);
-        }
+        // Saved chunks from external entrypoints
+        const saved_chunk_start = roots.items.len;
+        try roots.appendSlice(self.allocator, self.saved_chunks[0..self.saved_chunk_sp]);
 
-        // Active frame chunks (from closures)
-        var frame_chunk_starts = std.ArrayList(usize){};
-        defer frame_chunk_starts.deinit(self.allocator);
+        // Current chunk + frame chunks (return addresses)
+        const current_chunk_idx = roots.items.len;
+        try roots.append(self.allocator, chunkRoot(self.chunk));
+        const frame_chunk_start = roots.items.len;
         for (self.frames[0..self.fp]) |frame| {
-            if (frame.closure) |closure| {
-                const chunk: *const Chunk = closure.code.toPtr(Chunk);
-                try frame_chunk_starts.append(self.allocator, roots.items.len);
-                for (chunk.getConstants()) |c| {
-                    try roots.append(self.allocator, c);
-                }
-            }
+            try roots.append(self.allocator, chunkRoot(frame.chunk));
         }
 
-        // Chunk constant pools - track start index for each chunk
-        var chunk_const_starts = std.ArrayList(usize){};
-        defer chunk_const_starts.deinit(self.allocator);
+        // Chunk pool for make_closure
+        const chunk_pool_start = roots.items.len;
         for (self.chunk_pool) |chunk| {
-            try chunk_const_starts.append(self.allocator, roots.items.len);
-            for (chunk.getConstants()) |c| {
-                try roots.append(self.allocator, c);
-            }
+            try roots.append(self.allocator, chunkRoot(chunk));
         }
 
         const ext_start = roots.items.len;
@@ -745,111 +792,114 @@ pub const Vm = struct {
             try roots.appendSlice(self.allocator, self.ext_roots);
         }
 
-        // Run GC
-        const reclaimed = self.heap.collectGarbage(roots.items);
-
-        // Update VM state with new locations
-        var idx: usize = 0;
+        const reclaimed = try self.heap.collectGarbage(roots.items);
 
         // Update stack
-        for (self.stack[0..self.sp]) |*v| {
-            v.* = roots.items[idx];
-            idx += 1;
+        for (self.stack[0..self.sp], 0..) |*v, i| {
+            v.* = roots.items[stack_start + i];
         }
 
         // Update globals
-        for (self.globals[0..self.num_globals]) |*v| {
-            v.* = roots.items[idx];
-            idx += 1;
+        for (self.globals[0..self.num_globals], 0..) |*v, i| {
+            v.* = roots.items[globals_start + i];
         }
 
-        // Update catch frame tags
-        for (self.catch_stack[0..self.catch_sp]) |*frame| {
-            frame.tag = roots.items[idx];
-            idx += 1;
+        // Update catch frames
+        for (self.catch_stack[0..self.catch_sp], 0..) |*frame, i| {
+            frame.tag = roots.items[catch_tag_start + i];
+            const chunk_val = roots.items[catch_chunk_start + i];
+            if (!chunk_val.isNil()) {
+                frame.chunk = chunk_val.toPtr(Chunk);
+            }
         }
 
-        // Update frame closures with relocated addresses
+        // Update unwind frames
+        for (self.unwind_stack[0..self.unwind_sp], 0..) |*frame, i| {
+            const chunk_val = roots.items[unwind_chunk_start + i];
+            if (!chunk_val.isNil()) {
+                frame.chunk = chunk_val.toPtr(Chunk);
+            }
+        }
+
+        // Update block frames
+        for (self.block_stack[0..self.block_sp], 0..) |*frame, i| {
+            frame.name_raw = roots.items[block_name_start + i];
+            const chunk_val = roots.items[block_chunk_start + i];
+            if (!chunk_val.isNil()) {
+                frame.chunk = chunk_val.toPtr(Chunk);
+            }
+        }
+
+        // Update restart frames
+        for (self.restart_stack[0..self.restart_sp], 0..) |*frame, i| {
+            frame.name = roots.items[restart_name_start + i];
+            const chunk_val = roots.items[restart_chunk_start + i];
+            if (!chunk_val.isNil()) {
+                frame.chunk = chunk_val.toPtr(Chunk);
+            }
+        }
+
+        // Update progv frames
+        for (self.progv_stack[0..self.progv_sp], 0..) |*frame, i| {
+            frame.saved_bindings = roots.items[progv_start + i];
+        }
+
+        // Update handler frames
+        for (self.handler_stack[0..self.handler_sp], 0..) |*frame, i| {
+            frame.condition_type = roots.items[handler_start + i * 2];
+            frame.handler_fn = roots.items[handler_start + i * 2 + 1];
+        }
+
+        // Update frame closures
+        var closure_idx: usize = 0;
         for (self.frames[0..self.fp]) |*frame| {
             if (frame.closure != null) {
-                const relocated = roots.items[idx];
-                frame.closure = relocated.toPtr(runtime.Closure);
-                idx += 1;
+                frame.closure = roots.items[frame_closure_start + closure_idx].toPtr(runtime.Closure);
+                closure_idx += 1;
             }
         }
 
         // Update current_closure
-        if (self.current_closure != null) {
-            const relocated = roots.items[idx];
-            self.current_closure = relocated.toPtr(runtime.Closure);
-            idx += 1;
+        if (has_current_closure) {
+            self.current_closure = roots.items[current_closure_idx].toPtr(runtime.Closure);
         }
 
         // Update pending throw values
-        self.pending_throw_tag = roots.items[idx];
-        idx += 1;
-        self.pending_throw_value = roots.items[idx];
-        idx += 1;
+        self.pending_throw_tag = roots.items[pending_throw_tag_idx];
+        self.pending_throw_value = roots.items[pending_throw_value_idx];
 
-        // Update pending block value
-        self.pending_block_value = roots.items[idx];
-        idx += 1;
+        // Update pending block values
+        self.pending_block_name = roots.items[pending_block_name_idx];
+        self.pending_block_value = roots.items[pending_block_value_idx];
 
         // Update current package
-        self.current_package = roots.items[idx];
-        idx += 1;
-
-        // Update restart frames
-        for (self.restart_stack[0..self.restart_sp]) |*frame| {
-            frame.name = roots.items[idx];
-            idx += 1;
-        }
-
-        // Update handler frames
-        for (self.handler_stack[0..self.handler_sp]) |*frame| {
-            frame.condition_type = roots.items[idx];
-            idx += 1;
-            frame.handler_fn = roots.items[idx];
-            idx += 1;
-        }
+        self.current_package = roots.items[current_package_idx];
 
         // Update secondary values
-        for (self.secondary_values[0..self.secondary_values_count]) |*v| {
-            v.* = roots.items[idx];
-            idx += 1;
+        for (self.secondary_values[0..self.secondary_values_count], 0..) |*v, i| {
+            v.* = roots.items[secondary_start + i];
         }
 
-        // Update current chunk constants
-        for (self.chunk.getConstants(), 0..) |*c, i| {
-            c.* = roots.items[current_chunk_start + i];
+        // Update saved chunk roots
+        for (self.saved_chunks[0..self.saved_chunk_sp], 0..) |*v, i| {
+            v.* = roots.items[saved_chunk_start + i];
         }
-        idx = current_chunk_start + self.chunk.getConstants().len;
 
-        // Update active frame chunk constants
-        var frame_idx: usize = 0;
-        for (self.frames[0..self.fp]) |frame| {
-            if (frame.closure) |closure| {
-                const chunk: *const Chunk = closure.code.toPtr(Chunk);
-                const start = frame_chunk_starts.items[frame_idx];
-                for (chunk.getConstants(), 0..) |*c, i| {
-                    c.* = roots.items[start + i];
-                }
-                frame_idx += 1;
+        // Update chunks
+        const current_chunk_val = roots.items[current_chunk_idx];
+        if (!current_chunk_val.isNil()) {
+            self.chunk = current_chunk_val.toPtr(Chunk);
+        }
+        for (self.frames[0..self.fp], 0..) |*frame, i| {
+            const chunk_val = roots.items[frame_chunk_start + i];
+            if (!chunk_val.isNil()) {
+                frame.chunk = chunk_val.toPtr(Chunk);
             }
         }
-        if (frame_chunk_starts.items.len > 0) {
-            idx = frame_chunk_starts.items[frame_chunk_starts.items.len - 1];
-            if (self.frames[self.fp - 1].closure) |last_closure| {
-                const last_chunk: *const Chunk = last_closure.code.toPtr(Chunk);
-                idx += last_chunk.getConstants().len;
-            }
-        }
-
-        // Update chunk constant pools with relocated values
-        for (self.chunk_pool, 0..) |chunk, chunk_idx| {
-            const start = chunk_const_starts.items[chunk_idx];
-            for (chunk.getConstants(), 0..) |_, const_idx| {
-                chunk.getConstants()[const_idx] = roots.items[start + const_idx];
+        for (self.chunk_pool, 0..) |*chunk, i| {
+            const chunk_val = roots.items[chunk_pool_start + i];
+            if (!chunk_val.isNil()) {
+                chunk.* = chunk_val.toPtr(Chunk);
             }
         }
 
@@ -865,9 +915,20 @@ pub const Vm = struct {
     /// Call a closure with arguments already on stack
     /// Expects args to be pushed already at positions [0..argc)
     pub fn callClosure(self: *Vm, closure: *const runtime.Closure, argc: u8) anyerror!Value {
-        // Save state - will be restored on both success and error
         const saved_state = State.save(self);
-        defer saved_state.restore(self);
+
+        const saved_idx = self.saved_chunk_sp;
+        if (saved_idx >= MAX_SAVED_CHUNKS) return error.StackOverflow;
+        self.saved_chunks[saved_idx] = chunkRoot(saved_state.chunk);
+        self.saved_chunk_sp = saved_idx + 1;
+        defer {
+            const chunk_val = self.saved_chunks[saved_idx];
+            self.saved_chunk_sp = saved_idx;
+            saved_state.restore(self);
+            if (!chunk_val.isNil()) {
+                self.chunk = chunk_val.toPtr(Chunk);
+            }
+        }
 
         // Set up to execute the closure's chunk directly (like vm.run)
         const closure_chunk: *const Chunk = closure.code.toPtr(Chunk);
@@ -895,7 +956,19 @@ pub const Vm = struct {
     /// Call function with arguments provided as a slice
     pub fn callFromStack(self: *Vm, fn_val: Value, args: []const Value) Error!Value {
         const saved_state = State.save(self);
-        defer saved_state.restore(self);
+
+        const saved_idx = self.saved_chunk_sp;
+        if (saved_idx >= MAX_SAVED_CHUNKS) return error.StackOverflow;
+        self.saved_chunks[saved_idx] = chunkRoot(saved_state.chunk);
+        self.saved_chunk_sp = saved_idx + 1;
+        defer {
+            const chunk_val = self.saved_chunks[saved_idx];
+            self.saved_chunk_sp = saved_idx;
+            saved_state.restore(self);
+            if (!chunk_val.isNil()) {
+                self.chunk = chunk_val.toPtr(Chunk);
+            }
+        }
 
         if (args.len + 1 > self.stack.len) return error.StackOverflow;
         self.stack[0] = fn_val;
@@ -917,7 +990,19 @@ pub const Vm = struct {
     /// Apply function with args list provided as a value
     pub fn applyFromStack(self: *Vm, fn_val: Value, args_list: Value) Error!Value {
         const saved_state = State.save(self);
-        defer saved_state.restore(self);
+
+        const saved_idx = self.saved_chunk_sp;
+        if (saved_idx >= MAX_SAVED_CHUNKS) return error.StackOverflow;
+        self.saved_chunks[saved_idx] = chunkRoot(saved_state.chunk);
+        self.saved_chunk_sp = saved_idx + 1;
+        defer {
+            const chunk_val = self.saved_chunks[saved_idx];
+            self.saved_chunk_sp = saved_idx;
+            saved_state.restore(self);
+            if (!chunk_val.isNil()) {
+                self.chunk = chunk_val.toPtr(Chunk);
+            }
+        }
 
         if (self.stack.len < 2) return error.StackOverflow;
         self.stack[0] = fn_val;
@@ -8124,6 +8209,114 @@ test "vm write_to_string propagates buffer errors" {
     try vm.push(str);
 
     try testing.expectError(error.NoSpaceLeft, vm.executeOp(.write_to_string));
+}
+
+test "vm collectGarbage relocates chunk pointers" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+
+    const empty_code = [_]u8{};
+    const no_consts = [_]Value{};
+
+    const cur_val = try heap.allocChunk(&empty_code, &no_consts, 0, 0, 0, false, 0);
+    const frame_val = try heap.allocChunk(&empty_code, &no_consts, 0, 0, 0, false, 0);
+    const catch_val = try heap.allocChunk(&empty_code, &no_consts, 0, 0, 0, false, 0);
+    const unwind_val = try heap.allocChunk(&empty_code, &no_consts, 0, 0, 0, false, 0);
+    const block_val = try heap.allocChunk(&empty_code, &no_consts, 0, 0, 0, false, 0);
+    const restart_val = try heap.allocChunk(&empty_code, &no_consts, 0, 0, 0, false, 0);
+    const pool_val = try heap.allocChunk(&empty_code, &no_consts, 0, 0, 0, false, 0);
+
+    const cur_ptr = cur_val.toPtr(Chunk);
+    const frame_ptr = frame_val.toPtr(Chunk);
+    const catch_ptr = catch_val.toPtr(Chunk);
+    const unwind_ptr = unwind_val.toPtr(Chunk);
+    const block_ptr = block_val.toPtr(Chunk);
+    const restart_ptr = restart_val.toPtr(Chunk);
+    const pool_ptr = pool_val.toPtr(Chunk);
+
+    vm.chunk = cur_ptr;
+    vm.frames[0] = .{
+        .chunk = frame_ptr,
+        .return_ip = 0,
+        .bp = 0,
+        .closure = null,
+        .argc = 0,
+    };
+    vm.fp = 1;
+    vm.catch_stack[0] = .{
+        .tag = Value.nil,
+        .chunk = catch_ptr,
+        .catch_ip = 0,
+        .catch_sp = 0,
+        .catch_fp = 0,
+    };
+    vm.catch_sp = 1;
+    vm.unwind_stack[0] = .{
+        .chunk = unwind_ptr,
+        .cleanup_ip = 0,
+        .unwind_sp = 0,
+        .unwind_fp = 0,
+    };
+    vm.unwind_sp = 1;
+    vm.block_stack[0] = .{
+        .name_raw = Value.nil,
+        .chunk = block_ptr,
+        .exit_ip = 0,
+        .block_sp = 0,
+        .block_fp = 0,
+    };
+    vm.block_sp = 1;
+    vm.restart_stack[0] = .{
+        .name = Value.nil,
+        .chunk = restart_ptr,
+        .handler_ip = 0,
+        .restart_sp = 0,
+        .restart_fp = 0,
+        .catch_depth = 0,
+        .unwind_depth = 0,
+    };
+    vm.restart_sp = 1;
+
+    var pool = [_]*Chunk{pool_ptr};
+    vm.setChunkPool(pool[0..]);
+
+    _ = try vm.collectGarbage();
+
+    const start = @intFromPtr(heap.from_start);
+    const end = start + heap.space_size;
+
+    const cur_after = @intFromPtr(vm.chunk);
+    try testing.expect(cur_after >= start and cur_after < end);
+    try testing.expect(cur_after != @intFromPtr(cur_ptr));
+
+    const frame_after = @intFromPtr(vm.frames[0].chunk);
+    try testing.expect(frame_after >= start and frame_after < end);
+    try testing.expect(frame_after != @intFromPtr(frame_ptr));
+
+    const catch_after = @intFromPtr(vm.catch_stack[0].chunk);
+    try testing.expect(catch_after >= start and catch_after < end);
+    try testing.expect(catch_after != @intFromPtr(catch_ptr));
+
+    const unwind_after = @intFromPtr(vm.unwind_stack[0].chunk);
+    try testing.expect(unwind_after >= start and unwind_after < end);
+    try testing.expect(unwind_after != @intFromPtr(unwind_ptr));
+
+    const block_after = @intFromPtr(vm.block_stack[0].chunk);
+    try testing.expect(block_after >= start and block_after < end);
+    try testing.expect(block_after != @intFromPtr(block_ptr));
+
+    const restart_after = @intFromPtr(vm.restart_stack[0].chunk);
+    try testing.expect(restart_after >= start and restart_after < end);
+    try testing.expect(restart_after != @intFromPtr(restart_ptr));
+
+    const pool_after = @intFromPtr(pool[0]);
+    try testing.expect(pool_after >= start and pool_after < end);
+    try testing.expect(pool_after != @intFromPtr(pool_ptr));
 }
 
 test "vm collectGarbage updates ext roots" {
