@@ -1655,17 +1655,15 @@ pub const Heap = struct {
 
     /// Try to allocate, running GC if needed
     /// external_roots should contain VM stack, globals, etc.
-    pub fn allocWithGC(self: *Heap, comptime T: type, external_roots: []Value) ?*T {
+    pub fn allocWithGC(self: *Heap, comptime T: type, external_roots: []Value) error{OutOfMemory}!*T {
         // Try allocation first
-        if (self.alloc(T)) |ptr| {
-            return ptr;
-        }
+        if (self.alloc(T)) |ptr| return ptr else |_| {}
 
         // Run GC and retry
-        _ = self.collectGarbage(external_roots);
+        _ = try self.collectGarbage(external_roots);
 
-        // Try again
-        return self.alloc(T);
+        // Try again (propagate OOM if still full)
+        return try self.alloc(T);
     }
 
     /// Bootstrap metaclass: chicken-egg solution where class-of(Class) = Class itself
