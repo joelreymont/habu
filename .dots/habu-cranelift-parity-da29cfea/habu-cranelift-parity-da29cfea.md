@@ -12,6 +12,7 @@ blocks:
   - habu-add-jit-cons-bd49c0de
   - habu-update-parity-matrix-00bb1636
   - habu-test-jit-tiering-198b18e1
+  - habu-update-tiering-proof-c3601f32
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625
   - habu-fix-compiler-env-aec7d63b

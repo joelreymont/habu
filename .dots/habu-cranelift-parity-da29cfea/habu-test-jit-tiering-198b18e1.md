@@ -1,9 +1,11 @@
 ---
 title: Test JIT tiering
-status: active
+status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-02-03T22:14:19.419958+01:00\""
+created-at: "\"\\\"2026-02-03T22:14:19.419958+01:00\\\"\""
+closed-at: "2026-02-03T22:17:23.275068+01:00"
+close-reason: Add hot threshold test
 blocks:
   - habu-update-parity-matrix-00bb1636
 ---
