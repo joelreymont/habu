@@ -2,8 +2,8 @@
 
 978 external symbols in COMMON-LISP package per ANSI INCITS 226-1994.
 
-Status: ✓ implemented (957, 98%) | ⚠ partial (3, 0%)
-Note: 960 symbols documented, 18 symbols pending audit
+Status: ✓ implemented (988) | ⚠ partial (10) | ✗ missing (13)
+Note: 1011 entries; 978 unique ANSI CL external symbols (see docs/cl-symbols-sbcl.txt)
 
 ## Lambda List Keywords (8)
 | Symbol | Status | Location | Notes |
@@ -1057,40 +1057,70 @@ Note: 960 symbols documented, 18 symbols pending audit
 | vector | ✓ | compile.zig | Vector type |
 | warning | ✓ | lib/stdlib.habu | Condition type |
 
+## Audit Additions (51)
+| Symbol | Status | Location | Notes |
+|--------|--------|----------|-------|
+| apply | ✓ | compile.zig:4135 | (apply fn &rest args) |
+| arithmetic-error | ✓ | lib/stdlib.habu:2020 | Condition type |
+| call-method | ✗ | - | Method combination helper macro |
+| compilation-speed | ⚠ | compile.zig:9675 | OPTIMIZE quality parsed but ignored |
+| compiler-macro | ✓ | lib/stdlib.habu:4732 | Documentation doc-type (ignored) |
+| complement | ✓ | lib/stdlib.habu:2184 | Return negation of predicate |
+| complexp | ✓ | compile.zig:1018 | Complex predicate |
+| constantly | ✓ | lib/stdlib.habu:2179 | Return constant function |
+| copy-structure | ✗ | - | Structure copier |
+| debug | ⚠ | compile.zig:9675 | OPTIMIZE quality parsed but ignored |
+| declaration | ⚠ | compile.zig:9621 | Declaration spec accepted but ignored |
+| declare | ✓ | compile.zig:9518 | Local declarations |
+| dynamic-extent | ✓ | compile.zig:9540 | Declaration spec |
+| eq | ✓ | compile.zig:751 | Pointer identity |
+| equal | ✓ | compile.zig:752 | Structural equality |
+| equalp | ✗ | - | Extended equality |
+| fdefinition | ✗ | - | Function binding accessor |
+| floatp | ✓ | compile.zig:809 | Float predicate |
+| fmakunbound | ✓ | primitives/symbol.zig:218 | Unbind function cell |
+| ftype | ✓ | compile.zig:9549 | Function type declaration |
+| funcall | ✓ | compile.zig:4126 | Call function |
+| function-lambda-expression | ✗ | - | Closure introspection |
+| functionp | ✓ | lib/stdlib.habu:3190 | Callable predicate |
+| get-setf-expansion | ✗ | - | SETF expander API |
+| identity | ✓ | lib/stdlib.habu:204 | Return argument unchanged |
+| ignorable | ✓ | compile.zig:9554 | Declaration spec |
+| ignore | ✓ | compile.zig:9553 | Declaration spec |
+| inline | ✓ | compile.zig:9551 | Declaration spec |
+| integerp | ✗ | - | Integer predicate |
+| invalid-method-error | ✗ | - | Method combination helper |
+| load-logical-pathname-translations | ✗ | - | Logical pathname translations |
+| make-condition | ✓ | primitives/condition.zig:10 | Condition constructor |
+| make-method | ✗ | - | Method combination helper |
+| make-sequence | ✓ | lib/stdlib.habu:2762 | Generic sequence constructor |
+| method-combination-error | ✗ | - | Method combination helper |
+| notinline | ✓ | compile.zig:9552 | Declaration spec |
+| numberp | ✓ | compile.zig:801 | Number predicate |
+| optimize | ⚠ | compile.zig:9675 | Declaration spec accepted but ignored |
+| otherwise | ✓ | lib/stdlib.habu:26 | CASE/TYPECASE default marker |
+| proclaim | ✓ | compile.zig:9752 | Global declaration |
+| rationalp | ✓ | compile.zig:1017 | Rational predicate |
+| realp | ✗ | - | Real predicate |
+| safety | ⚠ | compile.zig:9675 | OPTIMIZE quality parsed but ignored |
+| space | ⚠ | compile.zig:9675 | OPTIMIZE quality parsed but ignored |
+| special | ✓ | compile.zig:9555 | Declaration spec |
+| speed | ⚠ | compile.zig:9675 | OPTIMIZE quality parsed but ignored |
+| standard | ✗ | - | Method combination name |
+| structure | ✓ | lib/stdlib.habu:4732 | Documentation doc-type (ignored) |
+| type | ✓ | compile.zig:9548 | Declaration spec; doc-type marker |
+| values-list | ✓ | compile.zig:5426 | Spread list into VALUES |
+| variable | ✓ | lib/stdlib.habu:4732 | Documentation doc-type (ignored) |
+
 ---
 
 ## Summary
 
-| Category | Total | Implemented | Partial | Missing |
-|----------|-------|-------------|---------|---------|
-| Lambda Keywords | 8 | 4 | 1 | 3 |
-| Special Variables | 65 | 18 | 0 | 47 |
-| Constants | 43 | 43 | 0 | 0 |
-| Special Operators | 25 | 19 | 0 | 6 |
-| Macros | 86 | 53 | 1 | 32 |
-| Arithmetic | 79 | 64 | 0 | 15 |
-| Characters | 30 | 20 | 0 | 10 |
-| Conses/Lists | 77 | 67 | 0 | 10 |
-| Arrays | 38 | 8 | 0 | 30 |
-| Strings | 28 | 23 | 0 | 5 |
-| Sequences | 56 | 36 | 0 | 20 |
-| Hash Tables | 17 | 11 | 0 | 6 |
-| Filenames | 26 | 7 | 0 | 19 |
-| Files/Streams | 47 | 24 | 0 | 23 |
-| Printer | 25 | 7 | 0 | 18 |
-| Reader | 19 | 10 | 0 | 9 |
-| System/Environment | 43 | 14 | 0 | 29 |
-| Symbols | 17 | 12 | 0 | 5 |
-| Packages | 22 | 6 | 0 | 16 |
-| CLOS | 25 | 2 | 0 | 23 |
-| Conditions | 25 | 9 | 0 | 16 |
-| Types | 15 | 4 | 0 | 11 |
-| Type Specifiers | 50 | 28 | 2 | 20 |
-
-**Total: 960 symbols**
-- **Implemented: 957 (99.7%)**
-- **Partial: 3 (0.3%)**
-- **Missing: 0 (0%)**
+- Symbol set: `docs/cl-symbols-sbcl.txt` (978 external symbols)
+- Document: 1011 entries (duplicates allowed for multi-role symbols)
+- Entry status: ✓ 988 | ⚠ 10 | ✗ 13
+- Unique coverage: 978/978
+- Verify: `python3 tools/cl_symbols_audit.py`
 
 ---
 
