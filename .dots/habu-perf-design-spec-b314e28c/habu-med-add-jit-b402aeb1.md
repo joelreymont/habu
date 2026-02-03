@@ -1,9 +1,11 @@
 ---
 title: [MED] Add JIT microbench + triggers
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-02-03T12:45:06.752710+01:00"
+closed-at: "2026-02-03T19:55:13.849671+01:00"
+close-reason: bench-jit, tiering trigger, GC-safe const_pool
 blocks:
   - habu-low-stack-maps-1d094863
   - habu-fix-repl-chunk-dd041c71

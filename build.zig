@@ -122,4 +122,34 @@ pub fn build(b: *std.Build) void {
     }
     const vm_bench_step = b.step("bench-vm", "Run VM microbench");
     vm_bench_step.dependOn(&vm_bench_run_cmd.step);
+
+    // JIT microbench
+    const jit_bench = b.addExecutable(.{
+        .name = "jit_bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/jit.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    jit_bench.root_module.addImport("habu", b.createModule(.{
+        .root_source_file = b.path("src/lib.zig"),
+        .target = target,
+        .optimize = optimize,
+    }));
+    // Z3 is required by src/types/smt.zig (imported via src/lib.zig).
+    jit_bench.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
+    jit_bench.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
+    jit_bench.root_module.linkSystemLibrary("z3", .{});
+    jit_bench.root_module.linkSystemLibrary("c", .{});
+
+    b.installArtifact(jit_bench);
+
+    const jit_bench_run_cmd = b.addRunArtifact(jit_bench);
+    jit_bench_run_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        jit_bench_run_cmd.addArgs(args);
+    }
+    const jit_bench_step = b.step("bench-jit", "Run JIT microbench");
+    jit_bench_step.dependOn(&jit_bench_run_cmd.step);
 }

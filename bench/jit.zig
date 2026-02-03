@@ -12,7 +12,6 @@ const Vm = interp.Vm;
 const Compiler = compiler_mod.Compiler;
 
 const Bench = struct {
-    name: []const u8,
     ops: u64,
     ns: u64,
     allocs: usize,
@@ -22,25 +21,28 @@ const Bench = struct {
 
 const Opts = struct {
     heap_mb: usize = 256,
+    code_mb: usize = 64,
+    hot: u32 = 1,
     fix_n: u64 = 50_000_000,
-    cons_n: u64 = 1_000_000,
-    hash_n: u64 = 500_000,
-    str_n: u64 = 200_000,
     json: bool = false,
 };
 
 fn usage(w: anytype) !void {
     try w.writeAll(
-        \\VM microbench
+        \\JIT microbench (VM vs JIT)
         \\
         \\Usage:
-        \\  zig build bench-vm -- [--heap-mb N] [--fix-n N] [--cons-n N] [--hash-n N] [--str-n N] [--json]
+        \\  zig build bench-jit -- [--heap-mb N] [--code-mb N] [--hot N] [--fix-n N] [--json]
         \\
     );
 }
 
 fn parseU64(arg: []const u8) !u64 {
     return try std.fmt.parseInt(u64, arg, 10);
+}
+
+fn parseU32(arg: []const u8) !u32 {
+    return try std.fmt.parseInt(u32, arg, 10);
 }
 
 fn parseUsize(arg: []const u8) !usize {
@@ -62,37 +64,35 @@ fn parseArgs() !Opts {
             opts.json = true;
         } else if (std.mem.startsWith(u8, arg, "--heap-mb=")) {
             opts.heap_mb = try parseUsize(arg["--heap-mb=".len..]);
+        } else if (std.mem.startsWith(u8, arg, "--code-mb=")) {
+            opts.code_mb = try parseUsize(arg["--code-mb=".len..]);
+        } else if (std.mem.startsWith(u8, arg, "--hot=")) {
+            opts.hot = try parseU32(arg["--hot=".len..]);
         } else if (std.mem.startsWith(u8, arg, "--fix-n=")) {
             opts.fix_n = try parseU64(arg["--fix-n=".len..]);
-        } else if (std.mem.startsWith(u8, arg, "--cons-n=")) {
-            opts.cons_n = try parseU64(arg["--cons-n=".len..]);
-        } else if (std.mem.startsWith(u8, arg, "--hash-n=")) {
-            opts.hash_n = try parseU64(arg["--hash-n=".len..]);
-        } else if (std.mem.startsWith(u8, arg, "--str-n=")) {
-            opts.str_n = try parseU64(arg["--str-n=".len..]);
         } else {
             return error.InvalidArgs;
         }
     }
-    if (opts.heap_mb == 0) return error.InvalidArgs;
+
+    if (opts.heap_mb == 0 or opts.code_mb == 0) return error.InvalidArgs;
     return opts;
 }
 
-fn runBench(timer: *std.time.Timer, heap: *Heap, vm: *Vm, chunk: *runtime.objects.Chunk, name: []const u8, ops: u64) !Bench {
+fn run(timer: *std.time.Timer, heap: *Heap, vm: *Vm, chunk: *runtime.objects.Chunk, ops: u64) !Bench {
     const a0 = heap.stats.allocations;
     const b0 = heap.stats.bytes_allocated;
     const g0 = heap.stats.gc_count;
-
     const t0 = timer.read();
-    _ = try vm.run(chunk);
-    const t1 = timer.read();
 
+    _ = try vm.run(chunk);
+
+    const t1 = timer.read();
     const a1 = heap.stats.allocations;
     const b1 = heap.stats.bytes_allocated;
     const g1 = heap.stats.gc_count;
 
     return .{
-        .name = name,
         .ops = ops,
         .ns = t1 - t0,
         .allocs = a1 - a0,
@@ -128,71 +128,63 @@ pub fn main() !void {
     var timer = try std.time.Timer.start();
 
     var src_buf: [512]u8 = undefined;
-
     const fix_src = try std.fmt.bufPrint(
         &src_buf,
         "(let ((i 0) (acc 0)) (while (< i {d}) (setq acc (+ acc i)) (setq i (+ i 1))) acc)",
         .{opts.fix_n},
     );
-    const fix_chunk = try common.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool, fix_src);
+    const chunk = try common.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool, fix_src);
 
-    const cons_src = try std.fmt.bufPrint(
-        &src_buf,
-        "(let ((i 0) (xs nil)) (while (< i {d}) (setq xs (cons i xs)) (setq i (+ i 1))) xs)",
-        .{opts.cons_n},
-    );
-    const cons_chunk = try common.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool, cons_src);
+    // Baseline VM (interp)
+    _ = try vm.run(chunk);
+    const vm_bench = try run(&timer, &heap, &vm, chunk, opts.fix_n);
 
-    const hash_src = try std.fmt.bufPrint(
-        &src_buf,
-        "(let ((ht (make-hash-table)) (i 0) (acc 0)) (while (< i {d}) (puthash i i ht) (setq acc (+ acc (gethash i ht 0))) (setq i (+ i 1))) acc)",
-        .{opts.hash_n},
-    );
-    const hash_chunk = try common.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool, hash_src);
+    // JIT cold (includes compilation)
+    try vm.enableJit(opts.code_mb * 1024 * 1024, opts.hot);
+    const jit_cold = try run(&timer, &heap, &vm, chunk, opts.fix_n);
+    const st = vm.jitStats();
 
-    const str_src = try std.fmt.bufPrint(
-        &src_buf,
-        "(let ((i 0) (s \"\")) (while (< i {d}) (setq s (concatenate 'string s \"a\")) (setq i (+ i 1))) s)",
-        .{opts.str_n},
-    );
-    const str_chunk = try common.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool, str_src);
+    // JIT steady-state (cached code)
+    const jit_steady = try run(&timer, &heap, &vm, chunk, opts.fix_n);
 
-    // Warmup (bytecode decode caches, etc.)
-    _ = try vm.run(fix_chunk);
-
-    const benches = [_]Bench{
-        try runBench(&timer, &heap, &vm, fix_chunk, "fixnum", opts.fix_n),
-        try runBench(&timer, &heap, &vm, cons_chunk, "cons", opts.cons_n),
-        // puthash + gethash
-        try runBench(&timer, &heap, &vm, hash_chunk, "hash", opts.hash_n * 2),
-        try runBench(&timer, &heap, &vm, str_chunk, "string", opts.str_n),
-    };
+    const speedup = if (jit_steady.ns == 0) 0.0 else @as(f64, @floatFromInt(vm_bench.ns)) / @as(f64, @floatFromInt(jit_steady.ns));
 
     var out_buf: [4096]u8 = undefined;
     var out = std.fs.File.stdout().writer(&out_buf);
     const w = &out.interface;
 
     if (opts.json) {
-        try w.writeAll("{\"benches\":[");
-        for (benches, 0..) |b, i| {
-            if (i != 0) try w.writeByte(',');
-            try w.print(
-                "{{\"name\":\"{s}\",\"ops\":{d},\"ns\":{d},\"ops_per_sec\":{d:.3},\"allocs\":{d},\"bytes_alloc\":{d},\"gc_count\":{d}}}",
-                .{ b.name, b.ops, b.ns, common.opsPerSec(b.ops, b.ns), b.allocs, b.bytes_alloc, b.gc_count },
-            );
-        }
-        try w.writeAll("]}\n");
+        try w.print(
+            "{{\"ops\":{d},\"vm\":{{\"ns\":{d},\"ops_per_sec\":{d:.3},\"allocs\":{d},\"bytes_alloc\":{d},\"gc_count\":{d}}},\"jit\":{{\"cold\":{{\"ns\":{d},\"ops_per_sec\":{d:.3}}},\"steady\":{{\"ns\":{d},\"ops_per_sec\":{d:.3}}},\"compile_ns\":{d},\"compile_n\":{d},\"fail_n\":{d}}},\"speedup\":{d:.3}}}\n",
+            .{
+                opts.fix_n,
+                vm_bench.ns,
+                common.opsPerSec(vm_bench.ops, vm_bench.ns),
+                vm_bench.allocs,
+                vm_bench.bytes_alloc,
+                vm_bench.gc_count,
+                jit_cold.ns,
+                common.opsPerSec(jit_cold.ops, jit_cold.ns),
+                jit_steady.ns,
+                common.opsPerSec(jit_steady.ops, jit_steady.ns),
+                st.compile_ns,
+                st.compile_n,
+                st.fail_n,
+                speedup,
+            },
+        );
         try w.flush();
         return;
     }
 
-    try w.print("VM microbench\n", .{});
+    try w.print("JIT microbench\n", .{});
     try w.print("  heap: {d} MiB\n", .{opts.heap_mb});
-    for (benches) |b| {
-        try w.print(
-            "  {s}: {d:.3} Mops/s (allocs {d}, gc {d})\n",
-            .{ b.name, common.opsPerSec(b.ops, b.ns) / 1e6, b.allocs, b.gc_count },
-        );
-    }
+    try w.print("  code: {d} MiB\n", .{opts.code_mb});
+    try w.print("  hot: {d}\n", .{opts.hot});
+    try w.print("  vm:  {d:.3} Mops/s\n", .{common.opsPerSec(vm_bench.ops, vm_bench.ns) / 1e6});
+    try w.print("  jit: {d:.3} Mops/s (steady)\n", .{common.opsPerSec(jit_steady.ops, jit_steady.ns) / 1e6});
+    try w.print("  compile: {d} ns (n={d}, fail={d})\n", .{ st.compile_ns, st.compile_n, st.fail_n });
+    try w.print("  speedup: {d:.3}x\n", .{speedup});
     try w.flush();
 }
+
