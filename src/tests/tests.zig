@@ -3,6 +3,7 @@ pub const property = @import("property.zig");
 pub const oracle = @import("oracle.zig");
 pub const cpl_test = @import("cpl_test.zig");
 pub const stdlib_paths = @import("stdlib_paths.zig");
+pub const jit_parity = @import("jit_parity.zig");
 // pub const loop_tests = @import("loop_tests.zig"); // DISABLED: requires working stdlib
 
 test {
@@ -11,5 +12,6 @@ test {
     _ = oracle;
     _ = cpl_test;
     _ = stdlib_paths;
+    _ = jit_parity;
     // _ = loop_tests;
 }

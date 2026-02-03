@@ -1,9 +1,11 @@
 ---
 title: Parity tests
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-02-03T13:28:48.533075+01:00\""
+created-at: "\"\\\"2026-02-03T13:28:48.533075+01:00\\\"\""
+closed-at: "2026-02-03T21:23:25.252425+01:00"
+close-reason: Add VM vs JIT parity tests
 blocks:
   - habu-bench-harness-f817afd6
   - habu-med-add-jit-b402aeb1
