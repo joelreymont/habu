@@ -489,6 +489,20 @@ pub const Jit = struct {
                 });
                 try self.emitCallUnary(@intFromPtr(&rt.makeVecN));
             },
+            .vec_ref => {
+                try self.emitBinaryCall(@intFromPtr(&rt.vecRef));
+            },
+            .vec_set => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                    .{ .imm64 = 0 },
+                });
+                try self.emitCallUnary(@intFromPtr(&rt.vecSet));
+            },
+            .vec_len => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.vecLen));
+                try self.emitStackPush();
+            },
             .call, .tail_call => {
                 const argc = chunk.readU8(bc_offset.*);
                 bc_offset.* += 1;

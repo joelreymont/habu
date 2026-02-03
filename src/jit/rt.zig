@@ -406,6 +406,44 @@ pub fn makeVec(c: *ctx.JitContext, _: u8) vm_mod.Error!Value {
     return vec;
 }
 
+pub fn vecRef(c: *ctx.JitContext, vec_val: Value, idx_val: Value) vm_mod.Error!Value {
+    _ = c;
+    if (!vec_val.isVector() or !idx_val.isFixnum()) return error.TypeMismatch;
+    const vec = vec_val.toPtr(runtime.Vector);
+    const idx_signed = idx_val.toFixnum();
+    if (idx_signed < 0) return error.TypeMismatch;
+    const idx: usize = @intCast(idx_signed);
+    if (idx >= vec.length) return error.TypeMismatch;
+    return vec.get(idx);
+}
+
+pub fn vecSet(c: *ctx.JitContext, _: u8) vm_mod.Error!Value {
+    const sp = stackLen(c);
+    if (sp < 3) return error.StackUnderflow;
+
+    const val = c.frame_base[sp - 1];
+    const idx_val = c.frame_base[sp - 2];
+    const vec_val = c.frame_base[sp - 3];
+    if (!vec_val.isVector() or !idx_val.isFixnum()) return error.TypeMismatch;
+    const vec = vec_val.toPtr(runtime.Vector);
+    const idx_signed = idx_val.toFixnum();
+    if (idx_signed < 0) return error.TypeMismatch;
+    const idx: usize = @intCast(idx_signed);
+    if (idx >= vec.length) return error.TypeMismatch;
+    vec.set(idx, val);
+
+    c.frame_base[sp - 3] = val;
+    c.sp = c.frame_base + sp - 2;
+    return val;
+}
+
+pub fn vecLen(c: *ctx.JitContext, vec_val: Value) vm_mod.Error!Value {
+    _ = c;
+    if (!vec_val.isVector()) return error.TypeMismatch;
+    const vec = vec_val.toPtr(runtime.Vector);
+    return Value.makeFixnum(@intCast(vec.length));
+}
+
 pub fn makeClosure(c: *ctx.JitContext, chunk_idx: u16, num_captures: u8) vm_mod.Error!Value {
     if (num_captures > 64) return error.StackOverflow;
 
