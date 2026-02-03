@@ -297,6 +297,10 @@ pub const Jit = struct {
                 });
             },
 
+            .cons => {
+                try self.emitBinaryCall(@intFromPtr(&rt.cons));
+            },
+
             .car => {
                 try self.emitStackPop();
                 const nil_branch_offset = self.code_buffer.pos;

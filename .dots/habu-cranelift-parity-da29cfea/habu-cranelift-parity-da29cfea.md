@@ -10,6 +10,7 @@ blocks:
   - habu-jit-ir-3ffafaa9
   - habu-bench-harness-f817afd6
   - habu-add-jit-cons-bd49c0de
+  - habu-update-parity-matrix-00bb1636
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625
   - habu-fix-compiler-env-aec7d63b

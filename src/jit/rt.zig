@@ -99,6 +99,10 @@ fn allocConsWithGc(c: *ctx.JitContext, car: Value, cdr: Value) vm_mod.Error!Valu
     };
 }
 
+pub fn cons(c: *ctx.JitContext, car: Value, cdr: Value) vm_mod.Error!Value {
+    return try allocConsWithGc(c, car, cdr);
+}
+
 fn allocVectorWithGc(c: *ctx.JitContext, len: usize) vm_mod.Error!Value {
     return c.heap.allocVector(len, len) catch |err| switch (err) {
         error.OutOfMemory => blk: {
@@ -400,8 +404,8 @@ test "rt gc keeps vm globals" {
     var vm = try vm_mod.Vm.init(testing.allocator, &heap);
     defer vm.deinit();
 
-    const cons = try heap.allocCons(Value.makeFixnum(1), Value.nil);
-    try vm.storeGlobal(0, cons);
+    const cell = try heap.allocCons(Value.makeFixnum(1), Value.nil);
+    try vm.storeGlobal(0, cell);
 
     var stack = [_]Value{Value.nil, Value.nil};
     const base = stack[0..].ptr;
