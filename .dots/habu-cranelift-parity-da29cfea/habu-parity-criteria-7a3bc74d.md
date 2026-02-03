@@ -1,9 +1,11 @@
 ---
 title: Parity criteria
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-03T13:28:42.900213+01:00"
+created-at: "\"2026-02-03T13:28:42.900213+01:00\""
+closed-at: "2026-02-03T15:41:28.634281+01:00"
+close-reason: Define cranelift parity criteria
 blocks:
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625
