@@ -57,6 +57,7 @@ const Opts = struct {
     min_fix_mops: f64 = 1.0,
     // JIT bench thresholds
     min_jit_speedup: f64 = 2.0,
+    max_jit_compile_ms: f64 = 200.0,
     // GC bench thresholds
     max_gc_p95_ms: f64 = 200.0,
     json: bool = false,
@@ -67,7 +68,7 @@ fn usage(w: anytype) !void {
         \\Bench regression checks
         \\
         \\Usage:
-        \\  zig build bench-check -- [--min-fix-mops N] [--min-jit-speedup N] [--max-gc-p95-ms N] [--json]
+        \\  zig build bench-check -- [--min-fix-mops N] [--min-jit-speedup N] [--max-jit-compile-ms N] [--max-gc-p95-ms N] [--json]
         \\
     );
 }
@@ -93,6 +94,8 @@ fn parseArgs() !Opts {
             opts.min_fix_mops = try parseF64(arg["--min-fix-mops=".len..]);
         } else if (std.mem.startsWith(u8, arg, "--min-jit-speedup=")) {
             opts.min_jit_speedup = try parseF64(arg["--min-jit-speedup=".len..]);
+        } else if (std.mem.startsWith(u8, arg, "--max-jit-compile-ms=")) {
+            opts.max_jit_compile_ms = try parseF64(arg["--max-jit-compile-ms=".len..]);
         } else if (std.mem.startsWith(u8, arg, "--max-gc-p95-ms=")) {
             opts.max_gc_p95_ms = try parseF64(arg["--max-gc-p95-ms=".len..]);
         } else {
@@ -102,6 +105,7 @@ fn parseArgs() !Opts {
 
     if (opts.min_fix_mops <= 0.0) return error.InvalidArgs;
     if (opts.min_jit_speedup <= 0.0) return error.InvalidArgs;
+    if (opts.max_jit_compile_ms <= 0.0) return error.InvalidArgs;
     if (opts.max_gc_p95_ms <= 0.0) return error.InvalidArgs;
     return opts;
 }
@@ -192,6 +196,12 @@ pub fn main() !void {
 
     if (jit.jit.fail_n != 0) try fail("jit fail_n {d} != 0", .{jit.jit.fail_n});
     if (jit.jit.compile_n != 1) try fail("jit compile_n {d} != 1", .{jit.jit.compile_n});
+    if (jit.jit.compile_n == 0) try fail("jit compile_n is 0", .{});
+    const compile_ms = (@as(f64, @floatFromInt(jit.jit.compile_ns)) /
+        @as(f64, @floatFromInt(jit.jit.compile_n))) / 1e6;
+    if (compile_ms > opts.max_jit_compile_ms) {
+        try fail("jit compile {d:.3}ms > {d:.3}ms", .{ compile_ms, opts.max_jit_compile_ms });
+    }
     if (jit.speedup < opts.min_jit_speedup) try fail("jit speedup {d:.3}x < {d:.3}x", .{ jit.speedup, opts.min_jit_speedup });
 
     if (!opts.json) return;
