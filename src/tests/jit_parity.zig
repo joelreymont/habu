@@ -75,6 +75,7 @@ test "parity: vm vs jit (hand-picked)" {
         "(alpha-char-p #\\Z)",
         "(string-upcase \"aBc\")",
         "(string-downcase \"AbC\")",
+        "(progn (random-seed 123) (random 10))",
         "(floatp 1.5)",
         "(listp nil)",
         "(listp (cons 1 2))",

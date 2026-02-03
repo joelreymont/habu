@@ -272,6 +272,14 @@ pub fn stringDowncase(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
     };
 }
 
+pub fn random(c: *ctx.JitContext, n: Value) vm_mod.Error!Value {
+    return try arith.random(&c.vm.prng, &c.vm.prng_seeded, n);
+}
+
+pub fn randomSeed(c: *ctx.JitContext, seed: Value) vm_mod.Error!Value {
+    return try arith.randomSeed(&c.vm.prng, &c.vm.prng_seeded, seed);
+}
+
 pub fn listp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
     _ = c;
     return if (a.isNil() or a.isCons()) Value.t else Value.nil;

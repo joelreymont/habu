@@ -333,6 +333,16 @@ pub const Jit = struct {
                 try self.emitCallUnary(@intFromPtr(&rt.stringDowncase));
                 try self.emitStackPush();
             },
+            .random => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.random));
+                try self.emitStackPush();
+            },
+            .random_seed => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.randomSeed));
+                try self.emitStackPush();
+            },
 
             .list_length => {
                 try self.emitStackPop();
