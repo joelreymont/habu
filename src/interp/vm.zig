@@ -7574,6 +7574,7 @@ test "vm jit survives gc and reloads const_pool" {
     const r0 = try vm.run(chunk);
     try testing.expect(r0.isString());
     try testing.expectEqual(@as(u64, 1), vm.jitStats().compile_n);
+    try testing.expect(vm.jitStats().code_bytes > 0);
 
     // Fill from-space with unreachable garbage so make_list must GC while JIT is active.
     while (true) {
