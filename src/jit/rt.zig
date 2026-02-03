@@ -195,6 +195,21 @@ pub fn floatp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
     return if (a.isFloat()) Value.t else Value.nil;
 }
 
+pub fn charCode(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
+    _ = c;
+    if (!val.isCharacter()) return error.TypeMismatch;
+    const cp = val.toCharacter();
+    return Value.makeFixnum(@intCast(cp));
+}
+
+pub fn codeChar(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
+    _ = c;
+    if (!val.isFixnum()) return error.TypeMismatch;
+    const n = val.toFixnum();
+    if (n < 0 or n > 0x10FFFF) return error.InvalidArgument;
+    return Value.makeCharacter(@intCast(n));
+}
+
 pub fn listp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
     _ = c;
     return if (a.isNil() or a.isCons()) Value.t else Value.nil;

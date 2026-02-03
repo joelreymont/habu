@@ -64,6 +64,8 @@ test "parity: vm vs jit (hand-picked)" {
         "(keywordp :a)",
         "(closurep (lambda (x) x))",
         "(characterp #\\a)",
+        "(char-code #\\a)",
+        "(code-char 97)",
         "(floatp 1.5)",
         "(listp nil)",
         "(listp (cons 1 2))",

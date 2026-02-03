@@ -284,6 +284,16 @@ pub const Jit = struct {
                 try self.emitCallUnary(@intFromPtr(&rt.atom));
                 try self.emitStackPush();
             },
+            .char_code => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.charCode));
+                try self.emitStackPush();
+            },
+            .code_char => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.codeChar));
+                try self.emitStackPush();
+            },
 
             .list_length => {
                 try self.emitStackPop();
