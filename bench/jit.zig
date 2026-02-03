@@ -155,7 +155,7 @@ pub fn main() !void {
 
     if (opts.json) {
         try w.print(
-            "{{\"ops\":{d},\"vm\":{{\"ns\":{d},\"ops_per_sec\":{d:.3},\"allocs\":{d},\"bytes_alloc\":{d},\"gc_count\":{d}}},\"jit\":{{\"cold\":{{\"ns\":{d},\"ops_per_sec\":{d:.3}}},\"steady\":{{\"ns\":{d},\"ops_per_sec\":{d:.3}}},\"compile_ns\":{d},\"compile_n\":{d},\"fail_n\":{d}}},\"speedup\":{d:.3}}}\n",
+            "{{\"ops\":{d},\"vm\":{{\"ns\":{d},\"ops_per_sec\":{d:.3},\"allocs\":{d},\"bytes_alloc\":{d},\"gc_count\":{d}}},\"jit\":{{\"cold\":{{\"ns\":{d},\"ops_per_sec\":{d:.3}}},\"steady\":{{\"ns\":{d},\"ops_per_sec\":{d:.3}}},\"compile_ns\":{d},\"compile_n\":{d},\"code_bytes\":{d},\"fail_n\":{d}}},\"speedup\":{d:.3}}}\n",
             .{
                 opts.fix_n,
                 vm_bench.ns,
@@ -169,6 +169,7 @@ pub fn main() !void {
                 common.opsPerSec(jit_steady.ops, jit_steady.ns),
                 st.compile_ns,
                 st.compile_n,
+                st.code_bytes,
                 st.fail_n,
                 speedup,
             },
@@ -187,4 +188,3 @@ pub fn main() !void {
     try w.print("  speedup: {d:.3}x\n", .{speedup});
     try w.flush();
 }
-

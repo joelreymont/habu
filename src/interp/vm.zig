@@ -333,6 +333,7 @@ pub const Vm = struct {
     jit_cnt: Value, // chunk -> fixnum call count
     jit_compile_ns: u64,
     jit_compile_n: u64,
+    jit_code_bytes: u64,
     jit_fail_n: u64,
     jit: ?Jit,
 
@@ -425,6 +426,7 @@ pub const Vm = struct {
             .jit_cnt = Value.nil,
             .jit_compile_ns = 0,
             .jit_compile_n = 0,
+            .jit_code_bytes = 0,
             .jit_fail_n = 0,
             .jit = null,
             .builtins = try BuiltinSymbols.init(heap),
@@ -503,6 +505,7 @@ pub const Vm = struct {
     pub const JitStats = struct {
         compile_ns: u64,
         compile_n: u64,
+        code_bytes: u64,
         fail_n: u64,
     };
 
@@ -510,6 +513,7 @@ pub const Vm = struct {
         return .{
             .compile_ns = self.jit_compile_ns,
             .compile_n = self.jit_compile_n,
+            .code_bytes = self.jit_code_bytes,
             .fail_n = self.jit_fail_n,
         };
     }
@@ -627,6 +631,7 @@ pub const Vm = struct {
 
         // Compile and cache.
         var t = try std.time.Timer.start();
+        const code_start = self.jit.?.code_buffer.pos;
         const fn_ptr = self.jit.?.compile(chunk) catch |err| switch (err) {
             error.UnsupportedOpcode => {
                 self.jit_fail_n += 1;
@@ -635,8 +640,10 @@ pub const Vm = struct {
             },
             else => return err,
         };
+        const code_end = self.jit.?.code_buffer.pos;
         self.jit_compile_ns = t.read();
         self.jit_compile_n += 1;
+        self.jit_code_bytes += @intCast(code_end - code_start);
 
         const nc_val = try self.heap.allocNativeCode(@intFromPtr(fn_ptr));
         try self.htPut(&self.jit_code, key, nc_val);
