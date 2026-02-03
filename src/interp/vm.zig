@@ -674,6 +674,11 @@ pub const Vm = struct {
     }
 
     pub fn collectGarbage(self: *Vm) !usize {
+        var none: [0]Value = .{};
+        return try self.collectGarbageExtra(none[0..]);
+    }
+
+    fn collectGarbageExtra(self: *Vm, extra_roots: []Value) !usize {
         var roots = std.ArrayList(Value){};
         defer roots.deinit(self.allocator);
 
@@ -792,6 +797,11 @@ pub const Vm = struct {
             try roots.appendSlice(self.allocator, self.ext_roots);
         }
 
+        const extra_start = roots.items.len;
+        if (extra_roots.len != 0) {
+            try roots.appendSlice(self.allocator, extra_roots);
+        }
+
         const reclaimed = try self.heap.collectGarbage(roots.items);
 
         // Update stack
@@ -906,6 +916,12 @@ pub const Vm = struct {
         if (self.ext_roots.len != 0) {
             for (self.ext_roots, 0..) |*v, i| {
                 v.* = roots.items[ext_start + i];
+            }
+        }
+
+        if (extra_roots.len != 0) {
+            for (extra_roots, 0..) |*v, i| {
+                v.* = roots.items[extra_start + i];
             }
         }
 
