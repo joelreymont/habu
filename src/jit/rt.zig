@@ -181,6 +181,67 @@ pub fn listLength(c: *ctx.JitContext, seq: Value) vm_mod.Error!Value {
     }
 }
 
+pub fn listReverse(c: *ctx.JitContext, list: Value) vm_mod.Error!Value {
+    var curr = list;
+    var res = Value.nil;
+    var roots = [_]Value{ curr, res };
+
+    while (curr.isCons()) {
+        var cell = curr.toPtr(runtime.Cons);
+        var car = cell.car;
+        var next = cell.cdr;
+        roots[0] = curr;
+        roots[1] = res;
+
+        const new_cell = c.heap.allocCons(car, res) catch |err| switch (err) {
+            error.OutOfMemory => blk: {
+                try collectJitGarbage(c, &roots);
+                curr = roots[0];
+                res = roots[1];
+                cell = curr.toPtr(runtime.Cons);
+                car = cell.car;
+                next = cell.cdr;
+                break :blk try c.heap.allocCons(car, res);
+            },
+            else => return err,
+        };
+
+        res = new_cell;
+        curr = next;
+    }
+    if (!curr.isNil()) return error.TypeMismatch;
+    return res;
+}
+
+pub fn listNth(c: *ctx.JitContext, n_val: Value, list: Value) vm_mod.Error!Value {
+    _ = c;
+    if (!n_val.isFixnum()) return error.TypeMismatch;
+    const n = n_val.toFixnum();
+    if (n < 0) return error.TypeMismatch;
+    var idx: i64 = 0;
+    var curr = list;
+    while (curr.isCons()) {
+        if (idx == n) return curr.toPtr(runtime.Cons).car;
+        idx += 1;
+        curr = curr.toPtr(runtime.Cons).cdr;
+    }
+    return Value.nil;
+}
+
+pub fn listNthcdr(c: *ctx.JitContext, n_val: Value, list: Value) vm_mod.Error!Value {
+    _ = c;
+    if (!n_val.isFixnum()) return error.TypeMismatch;
+    const n = n_val.toFixnum();
+    if (n < 0) return error.TypeMismatch;
+    var idx: i64 = 0;
+    var curr = list;
+    while (idx < n and curr.isCons()) {
+        idx += 1;
+        curr = curr.toPtr(runtime.Cons).cdr;
+    }
+    return curr;
+}
+
 pub fn lt(c: *ctx.JitContext, a: Value, b: Value) arith.Error!Value {
     _ = c;
     return if (try arith.lt(a, b)) Value.t else Value.nil;
