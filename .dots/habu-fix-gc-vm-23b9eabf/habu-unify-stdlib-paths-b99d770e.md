@@ -1,9 +1,11 @@
 ---
 title: Unify stdlib paths
-status: open
+status: closed
 priority: 3
 issue-type: task
-created-at: "2026-02-03T10:40:46.720862+01:00"
+created-at: "\"\\\"2026-02-03T10:40:46.720862+01:00\\\"\""
+closed-at: "2026-02-03T16:33:48.359463+01:00"
+close-reason: Symlink stdlib.habu to lib and guard
 blocks:
   - habu-fix-gc-work-76dc7cfe
   - habu-ir-skeleton-d7b83105

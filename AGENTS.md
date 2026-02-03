@@ -251,7 +251,7 @@ String comparison is ONLY acceptable for:
 - Debug/error message formatting
 - Comparing actual string objects (not their symbolic meaning)
 
-### Lisp Code (stdlib.habu) - Symbol Dispatch
+### Lisp Code (lib/stdlib.habu) - Symbol Dispatch
 
 **Use `case` for symbol dispatch, NEVER `cond` with `eq` chains.**
 

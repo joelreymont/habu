@@ -6,7 +6,7 @@
 **Tracked as**: habu-fix-lambda-compilation-c9250a2c
 
 ### Symptom
-REPL fails to load stdlib.habu with "COMPILE FAILED with error.InvalidSyntax: Failed form head: lambda"
+REPL fails to load lib/stdlib.habu with "COMPILE FAILED with error.InvalidSyntax: Failed form head: lambda"
 
 ### Root Cause
 Lambda compilation fails when:

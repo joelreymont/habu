@@ -5,44 +5,44 @@ Habu targets 100% compatibility with the ANSI Common Lisp specification (ANSI IN
 ## Implementation Status
 
 ## TIER 1 (Foundation) - ✅ COMPLETE
-- ✅ destructuring-bind (stdlib.habu:504)
-- ✅ reduce (stdlib.habu:152)
-- ✅ mapcar/mapc/maplist (stdlib.habu:456,459,467)
-- ✅ mapcan/mapcon (stdlib.habu:1092,1098)
-- ✅ ignore-errors (stdlib.habu:55)
+- ✅ destructuring-bind (lib/stdlib.habu:504)
+- ✅ reduce (lib/stdlib.habu:152)
+- ✅ mapcar/mapc/maplist (lib/stdlib.habu:456,459,467)
+- ✅ mapcan/mapcon (lib/stdlib.habu:1092,1098)
+- ✅ ignore-errors (lib/stdlib.habu:55)
 
 ## TIER 2 (Core features) - ✅ COMPLETE
 
 ### Sequence functions
-- ✅ every (stdlib.habu)
-- ✅ some (stdlib.habu)
-- ✅ subseq (stdlib.habu)
-- ✅ substitute (stdlib.habu)
-- ✅ sort (stdlib.habu)
-- ✅ nth/nthcdr (stdlib.habu:407,412) - list access
-- ✅ elt (stdlib.habu:417) - generic sequence access
+- ✅ every (lib/stdlib.habu)
+- ✅ some (lib/stdlib.habu)
+- ✅ subseq (lib/stdlib.habu)
+- ✅ substitute (lib/stdlib.habu)
+- ✅ sort (lib/stdlib.habu)
+- ✅ nth/nthcdr (lib/stdlib.habu:407,412) - list access
+- ✅ elt (lib/stdlib.habu:417) - generic sequence access
 - ✅ find/find-if, position/position-if, member - search functions
 - ✅ remove/remove-if/remove-if-not, count/count-if - filtering
 - ✅ assoc, acons, pairlis, copy-alist - association list functions
 
 ### Control flow
-- ✅ case (stdlib.habu:26) - symbol dispatch macro
-- ✅ typecase (stdlib.habu)
-- ✅ ecase (stdlib.habu)
-- ✅ prog (stdlib.habu)
-- ✅ do/do* (stdlib.habu:61,113) - parallel/sequential iteration with stepping
-- ✅ loop (stdlib.habu:438) - for/from/to, for/in, repeat, while, until with collect/sum/count/do
-- ✅ multiple-value-setq (stdlib.habu)
-- ✅ nth-value (stdlib.habu)
-- ✅ when-let, if-let (stdlib.habu:11,18) - conditional binding macros
-- ✅ assert, psetq, rotatef, incf, decf (stdlib.habu) - place-modifying macros
+- ✅ case (lib/stdlib.habu:26) - symbol dispatch macro
+- ✅ typecase (lib/stdlib.habu)
+- ✅ ecase (lib/stdlib.habu)
+- ✅ prog (lib/stdlib.habu)
+- ✅ do/do* (lib/stdlib.habu:61,113) - parallel/sequential iteration with stepping
+- ✅ loop (lib/stdlib.habu:438) - for/from/to, for/in, repeat, while, until with collect/sum/count/do
+- ✅ multiple-value-setq (lib/stdlib.habu)
+- ✅ nth-value (lib/stdlib.habu)
+- ✅ when-let, if-let (lib/stdlib.habu:11,18) - conditional binding macros
+- ✅ assert, psetq, rotatef, incf, decf (lib/stdlib.habu) - place-modifying macros
 
 ### Data structures
-- ✅ setf macro (stdlib.habu:878) - supports car/cdr/aref/nth/elt/gethash/slot-value/variables
-- ✅ copy-list (stdlib.habu)
-- ✅ copy-tree (stdlib.habu)
-- ✅ coerce (stdlib.habu)
-- ✅ concatenate (stdlib.habu)
+- ✅ setf macro (lib/stdlib.habu:878) - supports car/cdr/aref/nth/elt/gethash/slot-value/variables
+- ✅ copy-list (lib/stdlib.habu)
+- ✅ copy-tree (lib/stdlib.habu)
+- ✅ coerce (lib/stdlib.habu)
+- ✅ concatenate (lib/stdlib.habu)
 - ✅ List utilities: butlast, ldiff, tailp, nconc, nreverse, endp, revappend, nreconc, make-list, list-length, list*
 - ✅ Set operations: union, intersection, set-difference (treating lists as sets)
 - ✅ Tree operations: subst, tree-equal
@@ -52,17 +52,17 @@ Habu targets 100% compatibility with the ANSI Common Lisp specification (ANSI IN
 
 ### Condition system
 - ✅ restart-case (compile.zig:3384, opcodes.zig:B8)
-- ✅ handler-bind (stdlib.habu:1024)
-- ✅ cerror (stdlib.habu:1041)
+- ✅ handler-bind (lib/stdlib.habu:1024)
+- ✅ cerror (lib/stdlib.habu:1041)
 - ✅ warn (condition.zig:42) - signal warning condition
 - ✅ break (condition.zig:72) - enter debugger with continue restart
 - ✅ invoke-restart (condition.zig:70) - restart invocation primitives
-- ✅ abort, continue, muffle-warning, store-value, use-value (stdlib.habu:3580-3598) - restart convenience functions
+- ✅ abort, continue, muffle-warning, store-value, use-value (lib/stdlib.habu:3580-3598) - restart convenience functions
 
 ### Strings
 - ✅ string comparisons (string<, string>, string=, string<=, string>=)
 - ✅ string-trim, string-left-trim, string-right-trim
-- ✅ format directives (stdlib.habu)
+- ✅ format directives (lib/stdlib.habu)
 
 ### Hash tables, streams, packages
 - ✅ Hash table functions (make-hash-table, gethash, puthash, etc.)
@@ -86,13 +86,13 @@ Habu targets 100% compatibility with the ANSI Common Lisp specification (ANSI IN
 - ✅ Complex (objects.zig:223, full arithmetic integration - supports mixed-type operations)
 - ✅ Numeric tower complete: complex > float > rational > bignum > fixnum
 - ✅ Numeric predicates: zerop, plusp, minusp, evenp, oddp (primitives)
-- ✅ Math functions: floor, ceiling, round, truncate, ffloor, fceiling, fround, ftruncate (stdlib.habu:47-61)
-- ✅ Math functions: 1+, 1-, signum (stdlib.habu:37-45)
-- ✅ Math functions: isqrt (stdlib.habu:63-67)
+- ✅ Math functions: floor, ceiling, round, truncate, ffloor, fceiling, fround, ftruncate (lib/stdlib.habu:47-61)
+- ✅ Math functions: 1+, 1-, signum (lib/stdlib.habu:37-45)
+- ✅ Math functions: isqrt (lib/stdlib.habu:63-67)
 - ✅ Trigonometric: sin, cos, tan, asin, acos, atan, atan2 (arith.zig:637-676)
 - ✅ Hyperbolic: sinh, cosh, tanh, asinh, acosh, atanh (arith.zig:679+)
-- ✅ Complex functions: phase, cis (stdlib.habu:1765-1772)
-- ✅ Rational functions: rational, rationalize (stdlib.habu:1775-1778, stubs)
+- ✅ Complex functions: phase, cis (lib/stdlib.habu:1765-1772)
+- ✅ Rational functions: rational, rationalize (lib/stdlib.habu:1775-1778, stubs)
 - ✅ String conversion: parse-integer (compile.zig:6836)
 - ✅ Logic operations: logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logeqv, logbitp, logcount, integer-length, logorc1, logorc2, logtest
 
@@ -127,10 +127,10 @@ Habu targets 100% compatibility with the ANSI Common Lisp specification (ANSI IN
 
 **Recently Fixed:**
 - Complex number support: sqrt(-1) now returns #C(0 1) instead of NaN
-- REPL now auto-loads stdlib.habu on startup (loop, case, setf now work immediately)
+- REPL now auto-loads lib/stdlib.habu on startup (loop, case, setf now work immediately)
 - Reader conditionals (#+ #-) fully implemented with (and/or/not) support
 - gensym primitive added with optional prefix argument (works in macro expansion)
-- close primitive added as public alias for %close (stdlib.habu now loads successfully)
+- close primitive added as public alias for %close (lib/stdlib.habu now loads successfully)
 - with-open-file, with-input-from-string, with-output-to-string macros working
 - rational/rationalize primitives fully implemented (0.5 -> 1/2, uses continued fractions)
 - format ~< ~> justification directive fully implemented with all parameters (mincol,colinc,minpad,padchar), modifiers (:@), segment splitting (~;), recursive directive processing
