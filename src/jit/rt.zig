@@ -371,6 +371,23 @@ pub fn listRemoveEqual(c: *ctx.JitContext, item: Value, seq: Value) vm_mod.Error
     return try c.vm.listRemoveWithTest(item, seq, .equal);
 }
 
+pub fn listLast(c: *ctx.JitContext, list: Value) vm_mod.Error!Value {
+    _ = c;
+    switch (list.typeKind()) {
+        .nil => return Value.nil,
+        .cons => {
+            var curr = list;
+            while (curr.isCons()) {
+                const cell = curr.toPtr(runtime.Cons);
+                if (!cell.cdr.isCons()) return curr;
+                curr = cell.cdr;
+            }
+            return Value.nil;
+        },
+        else => return error.TypeMismatch,
+    }
+}
+
 pub fn listLength(c: *ctx.JitContext, seq: Value) vm_mod.Error!Value {
     _ = c;
     switch (seq.typeKind()) {

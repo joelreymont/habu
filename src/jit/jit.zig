@@ -377,6 +377,11 @@ pub const Jit = struct {
             .list_remove_equal => {
                 try self.emitBinaryCall(@intFromPtr(&rt.listRemoveEqual));
             },
+            .list_last => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.listLast));
+                try self.emitStackPush();
+            },
 
             .list_reverse => {
                 try self.emitStackPop();

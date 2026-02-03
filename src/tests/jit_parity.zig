@@ -98,6 +98,7 @@ test "parity: vm vs jit (hand-picked)" {
         "(count \"a\" (list \"a\" \"b\" \"a\") :test 'equal)",
         "(remove 2 (list 1 2 3 2))",
         "(remove \"a\" (list \"a\" \"b\" \"a\") :test 'equal)",
+        "(last (list 1 2 3))",
         "(reverse (list 1 2 3))",
         "(append (list 1 2) (list 3 4))",
         "(nth 1 (list 7 8 9))",
