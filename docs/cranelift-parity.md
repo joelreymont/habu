@@ -17,6 +17,7 @@ This matrix tracks "Cranelift-class" JIT backend capabilities. Each row has:
 
 - `tests`: `path: test "<name>"`
 - `bench`: `path` + command (prefer `zig build ...`)
+- Perf targets: `docs/cranelift-perf.md`
 
 | Area | Capability | Habu | Proof | Perf | ISA | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
