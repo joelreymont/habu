@@ -20,7 +20,7 @@ Goal: keep cold compile time low enough for REPL and small scripts.
 
 - Metric: wall-clock compile time per function.
 - Target: <= 200us median for a 50-op function; <= 2ms for 500-op.
-- Proof: `bench/jit_compile.zig` (pending).
+- Proof: `bench/jit.zig` via `zig build bench-jit -- --json` (compile_ns/compile_n).
 
 ### Warm execution throughput
 
@@ -28,7 +28,7 @@ Goal: JIT steady-state should beat the interpreter for hot loops.
 
 - Metric: ops/sec on tight arithmetic and list loops.
 - Target: >= 5x interpreter on AArch64 for loop microbench.
-- Proof: `bench/jit_hot_loop.zig` (pending).
+- Proof: `bench/jit.zig` via `zig build bench-jit -- --json` (steady ops/sec).
 
 ### Allocation + GC pause
 
@@ -36,7 +36,7 @@ Goal: GC pauses bounded and amortized; no pathological spikes.
 
 - Metric: max pause (ms) and total GC time over N allocations.
 - Target: max pause <= 5ms for 1e6 cons allocations in 64MB heap.
-- Proof: `bench/gc_pause.zig` (pending).
+- Proof: `bench/gc.zig` via `zig build bench -- --json` (p95_pause_ns).
 
 ### Code size / memory
 
@@ -44,7 +44,7 @@ Goal: native code size bounded and W^X overhead stable.
 
 - Metric: bytes of code emitted per bytecode op.
 - Target: <= 16 bytes/op median.
-- Proof: `bench/jit_code_size.zig` (pending).
+- Proof: `bench/jit.zig` via `zig build bench-jit -- --json` (code_bytes; per-op pending).
 
 ## Updating parity matrix
 
