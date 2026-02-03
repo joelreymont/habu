@@ -1,9 +1,11 @@
 ---
 title: Fix macro chunk pool
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-02-03T10:40:25.678148+01:00"
+created-at: "\"\\\"2026-02-03T10:40:25.678148+01:00\\\"\""
+closed-at: "2026-02-03T14:14:50.609186+01:00"
+close-reason: Restore VM state in macroexpansion
 blocks:
   - habu-fix-repl-chunk-dd041c71
 ---

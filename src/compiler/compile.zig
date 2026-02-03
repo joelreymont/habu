@@ -2584,8 +2584,12 @@ pub const Compiler = struct {
         const params_body = try heap.allocCons(final_params, body_list);
         const lambda_list = try heap.allocCons(lambda_sym, params_body);
 
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        const arena_alloc = arena.allocator();
+
         // Compile the lambda to get a closure
-        var macro_compiler = try Compiler.initWithHeap(self.allocator, vm);
+        var macro_compiler = try Compiler.initWithHeap(arena_alloc, vm);
         defer macro_compiler.deinit();
         // Share macro table so nested macros (like prog1) work in macro bodies
         var iter = self.macro_table.iterator();
@@ -2605,32 +2609,54 @@ pub const Compiler = struct {
             }
         }
 
-        var empty_env = Env.init(self.allocator, null);
+        var empty_env = Env.init(arena_alloc, null);
+        defer empty_env.deinit();
         const lambda_ir = try macro_compiler.compile(lambda_list, &empty_env);
 
         // Emit to bytecode
-        var emitter = Emitter.initWithHeap(self.allocator, heap);
+        var emitter = Emitter.initWithHeap(arena_alloc, heap);
         defer emitter.deinit();
         try emitter.emit(lambda_ir);
 
         // Get child chunks and main chunk (all GC-managed Values)
         const child_chunks = try emitter.getChildChunks();
-        defer self.allocator.free(child_chunks);
 
         const chunk_val = try emitter.finalize();
 
-        // Convert Value chunks to *Chunk pointers for VM
+        const saved_state = vm_mod.State.save(vm);
+        const saved_env = vm.global_env;
+        const saved_ext = vm.ext_roots;
+        const saved_pool = vm.chunk_pool;
+
+        const pool_roots = try self.allocator.alloc(Value, saved_pool.len);
+        defer self.allocator.free(pool_roots);
         const chunk_ptrs = try self.allocator.alloc(*Chunk, child_chunks.len);
         defer self.allocator.free(chunk_ptrs);
+        for (saved_pool, 0..) |ptr, i| {
+            pool_roots[i] = Value.makeChunk(ptr);
+        }
         for (child_chunks, 0..) |cv, i| {
             chunk_ptrs[i] = cv.toPtr(Chunk);
         }
 
-        // Share global env with macro VM so it can see defuns
+        vm.setExtRoots(pool_roots);
         vm.setGlobalEnv(&self.globals);
-
-        // Set chunk pool and run
         vm.setChunkPool(chunk_ptrs);
+        defer {
+            // Keep the previous chunk pool slice up-to-date across GC that may run
+            // while we temporarily replace vm.chunk_pool for macro expansion.
+            for (saved_pool, 0..) |*slot, i| {
+                const v = pool_roots[i];
+                if (!v.isNil()) {
+                    slot.* = v.toPtr(Chunk);
+                }
+            }
+
+            vm.setExtRoots(saved_ext);
+            vm.global_env = saved_env;
+            saved_state.restore(vm);
+        }
+
         const chunk_ptr = chunk_val.toPtr(Chunk);
         const closure_val = try vm.run(chunk_ptr);
 
@@ -6090,8 +6116,12 @@ pub const Compiler = struct {
         const vm = if (self.vm) |val| val else return error.InvalidSyntax;
         const heap = if (self.heap) |val| val else return error.InvalidSyntax;
 
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        const arena_alloc = arena.allocator();
+
         // Compile the form
-        var eval_compiler = try Compiler.initWithHeap(self.allocator, vm);
+        var eval_compiler = try Compiler.initWithHeap(arena_alloc, vm);
         defer eval_compiler.deinit();
 
         // Copy macro table for consistency
@@ -6100,11 +6130,12 @@ pub const Compiler = struct {
             try eval_compiler.macro_table.put(entry.key_ptr.*, entry.value_ptr.*);
         }
 
-        var empty_env = Env.init(self.allocator, null);
+        var empty_env = Env.init(arena_alloc, null);
+        defer empty_env.deinit();
         const form_ir = try eval_compiler.compile(form, &empty_env);
 
         // Wrap in a thunk (lambda with no args) so it returns the value
-        const thunk_ir = try self.builder.lambda(
+        const thunk_ir = try eval_compiler.builder.lambda(
             &[_][]const u8{},
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
@@ -6114,25 +6145,46 @@ pub const Compiler = struct {
         );
 
         // Emit to bytecode
-        var emitter = Emitter.initWithHeap(self.allocator, heap);
+        var emitter = Emitter.initWithHeap(arena_alloc, heap);
         defer emitter.deinit();
         try emitter.emit(thunk_ir);
 
         // Get child chunks and main chunk
         const child_chunks = try emitter.getChildChunks();
-        defer self.allocator.free(child_chunks);
 
         const chunk_val = try emitter.finalize();
 
-        // Convert Value chunks to *Chunk pointers for VM
+        const saved_state = vm_mod.State.save(vm);
+        const saved_env = vm.global_env;
+        const saved_ext = vm.ext_roots;
+        const saved_pool = vm.chunk_pool;
+
+        const pool_roots = try self.allocator.alloc(Value, saved_pool.len);
+        defer self.allocator.free(pool_roots);
         const chunk_ptrs = try self.allocator.alloc(*Chunk, child_chunks.len);
         defer self.allocator.free(chunk_ptrs);
+        for (saved_pool, 0..) |ptr, i| {
+            pool_roots[i] = Value.makeChunk(ptr);
+        }
         for (child_chunks, 0..) |cv, i| {
             chunk_ptrs[i] = cv.toPtr(Chunk);
         }
 
-        // Set chunk pool and run to get closure
+        vm.setExtRoots(pool_roots);
         vm.setChunkPool(chunk_ptrs);
+        defer {
+            for (saved_pool, 0..) |*slot, i| {
+                const v = pool_roots[i];
+                if (!v.isNil()) {
+                    slot.* = v.toPtr(Chunk);
+                }
+            }
+
+            vm.setExtRoots(saved_ext);
+            vm.global_env = saved_env;
+            saved_state.restore(vm);
+        }
+
         const chunk_ptr = chunk_val.toPtr(Chunk);
         const closure_val = try vm.run(chunk_ptr);
 
@@ -13586,6 +13638,65 @@ test "defmacro with destructured params" {
     const stored_cons = stored.toPtr(Cons);
     const stored_params = stored_cons.car;
     try testing.expect(stored_params.isCons());
+}
+
+test "macro expansion restores VM chunk_pool" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    const start_pool_len = vm.chunk_pool.len;
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    errdefer compiler.deinit();
+
+    var env = Env.init(allocator, null);
+    defer env.deinit();
+
+    const m_sym = try heap.intern("m");
+    const body = try heap.allocCons(Value.makeFixnum(42), Value.nil);
+    const macro_def = try heap.allocCons(Value.nil, body);
+    try compiler.macro_table.put(m_sym, macro_def);
+
+    const call_expr = try heap.allocCons(m_sym, Value.nil);
+    const ir_node = try compiler.compile(call_expr, &env);
+    try testing.expectEqual(Ir.lit, std.meta.activeTag(ir_node.*));
+    try testing.expectEqual(@as(i64, 42), ir_node.lit.toFixnum());
+    allocator.destroy(ir_node);
+
+    compiler.deinit();
+    try testing.expectEqual(start_pool_len, vm.chunk_pool.len);
+    _ = try vm.collectGarbage();
+}
+
+test "load-time-value restores VM chunk_pool" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    const start_pool_len = vm.chunk_pool.len;
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    errdefer compiler.deinit();
+
+    var env = Env.init(allocator, null);
+    defer env.deinit();
+
+    const ltv_sym = try heap.intern("load-time-value");
+    const args = try heap.allocCons(Value.makeFixnum(42), Value.nil);
+    const expr = try heap.allocCons(ltv_sym, args);
+    const ir_node = try compiler.compile(expr, &env);
+    try testing.expectEqual(Ir.lit, std.meta.activeTag(ir_node.*));
+    try testing.expectEqual(@as(i64, 42), ir_node.lit.toFixnum());
+    allocator.destroy(ir_node);
+
+    compiler.deinit();
+    try testing.expectEqual(start_pool_len, vm.chunk_pool.len);
+    _ = try vm.collectGarbage();
 }
 
 test "transformDestructuredParams nested" {
