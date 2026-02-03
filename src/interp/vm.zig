@@ -15,6 +15,7 @@ const opcodes = @import("../bytecode/opcodes.zig");
 const Op = bytecode.Op;
 const Chunk = bytecode.Chunk;
 const runtime = @import("../runtime/runtime.zig");
+const roots_mod = @import("../runtime/roots.zig");
 const primitives = @import("../runtime/primitives/primitives.zig");
 const qual_name = @import("../runtime/qual_name.zig");
 const Value = runtime.Value;
@@ -213,8 +214,9 @@ pub const Vm = struct {
     /// Allocator
     allocator: std.mem.Allocator,
 
-    /// Reusable buffer for building GC root slices.
-    gc_roots: std.ArrayList(Value),
+    /// Reusable buffers for GC root tracking.
+    gc_slots: std.ArrayList(*Value),
+    gc_vals: std.ArrayList(Value),
 
     /// Global variables (indexed by constant pool index)
     globals: [MAX_GLOBALS]Value,
@@ -368,7 +370,8 @@ pub const Vm = struct {
             .ip = 0,
             .heap = heap,
             .allocator = allocator,
-            .gc_roots = std.ArrayList(Value){},
+            .gc_slots = std.ArrayList(*Value){},
+            .gc_vals = std.ArrayList(Value){},
             .globals = undefined,
             .num_globals = 0,
             .current_package = Value.nil,
@@ -438,7 +441,8 @@ pub const Vm = struct {
         if (self.jit) |*j| {
             j.deinit();
         }
-        self.gc_roots.deinit(self.allocator);
+        self.gc_slots.deinit(self.allocator);
+        self.gc_vals.deinit(self.allocator);
     }
 
     /// Set the chunk pool for closures with a base offset (deprecated)
@@ -904,284 +908,178 @@ pub const Vm = struct {
     }
 
     fn collectGarbageExtra(self: *Vm, extra_roots: []Value) !usize {
-        self.gc_roots.clearRetainingCapacity();
-        var roots = &self.gc_roots;
+        self.gc_slots.clearRetainingCapacity();
+        self.gc_vals.clearRetainingCapacity();
 
-        // Pre-reserve to avoid allocator churn while building the roots slice.
-        const cap_need: usize = self.sp +
-            self.num_globals +
-            self.catch_sp * 2 +
-            self.unwind_sp +
-            self.block_sp * 2 +
-            self.restart_sp * 2 +
+        const slots_need: usize = self.catch_sp +
+            self.block_sp +
+            self.restart_sp +
             self.progv_sp +
             self.handler_sp * 2 +
-            // Worst-case: every frame has a closure.
-            self.fp +
-            (if (self.current_closure != null) @as(usize, 1) else 0) +
-            // pending_throw_{tag,value} + pending_block_{name,value}
-            4 +
-            // current_package
+            7;
+        try self.gc_slots.ensureTotalCapacity(self.allocator, slots_need);
+
+        for (self.catch_stack[0..self.catch_sp]) |*frame| {
+            try self.gc_slots.append(self.allocator, &frame.tag);
+        }
+        for (self.block_stack[0..self.block_sp]) |*frame| {
+            try self.gc_slots.append(self.allocator, &frame.name_raw);
+        }
+        for (self.restart_stack[0..self.restart_sp]) |*frame| {
+            try self.gc_slots.append(self.allocator, &frame.name);
+        }
+        for (self.progv_stack[0..self.progv_sp]) |*frame| {
+            try self.gc_slots.append(self.allocator, &frame.saved_bindings);
+        }
+        for (self.handler_stack[0..self.handler_sp]) |*frame| {
+            try self.gc_slots.append(self.allocator, &frame.condition_type);
+            try self.gc_slots.append(self.allocator, &frame.handler_fn);
+        }
+
+        try self.gc_slots.append(self.allocator, &self.pending_throw_tag);
+        try self.gc_slots.append(self.allocator, &self.pending_throw_value);
+        try self.gc_slots.append(self.allocator, &self.pending_block_name);
+        try self.gc_slots.append(self.allocator, &self.pending_block_value);
+        try self.gc_slots.append(self.allocator, &self.current_package);
+        try self.gc_slots.append(self.allocator, &self.jit_code);
+        try self.gc_slots.append(self.allocator, &self.jit_cnt);
+
+        const vals_need: usize = self.catch_sp +
+            self.unwind_sp +
+            self.block_sp +
+            self.restart_sp +
             1 +
-            // jit_code + jit_cnt
-            2 +
-            self.secondary_values_count +
-            self.saved_chunk_sp +
-            // current chunk + frame chunks
-            (1 + self.fp) +
+            self.fp +
             self.chunk_pool.len +
-            self.ext_roots.len +
-            extra_roots.len;
-        try roots.ensureTotalCapacity(self.allocator, cap_need);
+            self.fp +
+            (if (self.current_closure != null) @as(usize, 1) else 0);
+        try self.gc_vals.ensureTotalCapacity(self.allocator, vals_need);
 
-        // Stack values
-        const stack_start = roots.items.len;
-        try roots.appendSlice(self.allocator, self.stack[0..self.sp]);
-
-        // Global values
-        const globals_start = roots.items.len;
-        try roots.appendSlice(self.allocator, self.globals[0..self.num_globals]);
-
-        // Catch frames
-        const catch_tag_start = roots.items.len;
-        for (self.catch_stack[0..self.catch_sp]) |frame| {
-            try roots.append(self.allocator, frame.tag);
-        }
-        const catch_chunk_start = roots.items.len;
-        for (self.catch_stack[0..self.catch_sp]) |frame| {
-            try roots.append(self.allocator, chunkRoot(frame.chunk));
-        }
-
-        // Unwind frames
-        const unwind_chunk_start = roots.items.len;
-        for (self.unwind_stack[0..self.unwind_sp]) |frame| {
-            try roots.append(self.allocator, chunkRoot(frame.chunk));
-        }
-
-        // Block frames
-        const block_name_start = roots.items.len;
-        for (self.block_stack[0..self.block_sp]) |frame| {
-            try roots.append(self.allocator, frame.name_raw);
-        }
-        const block_chunk_start = roots.items.len;
-        for (self.block_stack[0..self.block_sp]) |frame| {
-            try roots.append(self.allocator, chunkRoot(frame.chunk));
-        }
-
-        // Restart frames
-        const restart_name_start = roots.items.len;
-        for (self.restart_stack[0..self.restart_sp]) |frame| {
-            try roots.append(self.allocator, frame.name);
-        }
-        const restart_chunk_start = roots.items.len;
-        for (self.restart_stack[0..self.restart_sp]) |frame| {
-            try roots.append(self.allocator, chunkRoot(frame.chunk));
-        }
-
-        // Progv frames
-        const progv_start = roots.items.len;
-        for (self.progv_stack[0..self.progv_sp]) |frame| {
-            try roots.append(self.allocator, frame.saved_bindings);
-        }
-
-        // Handler frames
-        const handler_start = roots.items.len;
-        for (self.handler_stack[0..self.handler_sp]) |frame| {
-            try roots.append(self.allocator, frame.condition_type);
-            try roots.append(self.allocator, frame.handler_fn);
-        }
-
-        // Frame closures
-        const frame_closure_start = roots.items.len;
+        const closure_start = self.gc_vals.items.len;
         for (self.frames[0..self.fp]) |frame| {
             if (frame.closure) |c| {
-                try roots.append(self.allocator, Value.makeClosure(c));
+                try self.gc_vals.append(self.allocator, Value.makeClosure(c));
             }
         }
-
-        // current_closure for callClosure's fp=0 case
-        const current_closure_idx = roots.items.len;
+        const current_closure_idx = self.gc_vals.items.len;
         const has_current_closure = self.current_closure != null;
         if (self.current_closure) |c| {
-            try roots.append(self.allocator, Value.makeClosure(c));
+            try self.gc_vals.append(self.allocator, Value.makeClosure(c));
         }
 
-        // Pending throw values
-        const pending_throw_tag_idx = roots.items.len;
-        try roots.append(self.allocator, self.pending_throw_tag);
-        const pending_throw_value_idx = roots.items.len;
-        try roots.append(self.allocator, self.pending_throw_value);
-
-        // Pending block values
-        const pending_block_name_idx = roots.items.len;
-        try roots.append(self.allocator, self.pending_block_name);
-        const pending_block_value_idx = roots.items.len;
-        try roots.append(self.allocator, self.pending_block_value);
-
-        // Current package
-        const current_package_idx = roots.items.len;
-        try roots.append(self.allocator, self.current_package);
-
-        const jit_code_idx = roots.items.len;
-        try roots.append(self.allocator, self.jit_code);
-        const jit_cnt_idx = roots.items.len;
-        try roots.append(self.allocator, self.jit_cnt);
-
-        // Secondary values
-        const secondary_start = roots.items.len;
-        try roots.appendSlice(self.allocator, self.secondary_values[0..self.secondary_values_count]);
-
-        // Saved chunks from external entrypoints
-        const saved_chunk_start = roots.items.len;
-        try roots.appendSlice(self.allocator, self.saved_chunks[0..self.saved_chunk_sp]);
-
-        // Current chunk + frame chunks (return addresses)
-        const current_chunk_idx = roots.items.len;
-        try roots.append(self.allocator, chunkRoot(self.chunk));
-        const frame_chunk_start = roots.items.len;
+        const catch_chunk_start = self.gc_vals.items.len;
+        for (self.catch_stack[0..self.catch_sp]) |frame| {
+            try self.gc_vals.append(self.allocator, chunkRoot(frame.chunk));
+        }
+        const unwind_chunk_start = self.gc_vals.items.len;
+        for (self.unwind_stack[0..self.unwind_sp]) |frame| {
+            try self.gc_vals.append(self.allocator, chunkRoot(frame.chunk));
+        }
+        const block_chunk_start = self.gc_vals.items.len;
+        for (self.block_stack[0..self.block_sp]) |frame| {
+            try self.gc_vals.append(self.allocator, chunkRoot(frame.chunk));
+        }
+        const restart_chunk_start = self.gc_vals.items.len;
+        for (self.restart_stack[0..self.restart_sp]) |frame| {
+            try self.gc_vals.append(self.allocator, chunkRoot(frame.chunk));
+        }
+        const current_chunk_idx = self.gc_vals.items.len;
+        try self.gc_vals.append(self.allocator, chunkRoot(self.chunk));
+        const frame_chunk_start = self.gc_vals.items.len;
         for (self.frames[0..self.fp]) |frame| {
-            try roots.append(self.allocator, chunkRoot(frame.chunk));
+            try self.gc_vals.append(self.allocator, chunkRoot(frame.chunk));
         }
-
-        // Chunk pool for make_closure
-        const chunk_pool_start = roots.items.len;
+        const chunk_pool_start = self.gc_vals.items.len;
         for (self.chunk_pool) |chunk| {
-            try roots.append(self.allocator, chunkRoot(chunk));
+            try self.gc_vals.append(self.allocator, chunkRoot(chunk));
         }
 
-        const ext_start = roots.items.len;
+        var ranges: [8]roots_mod.RootRange = undefined;
+        var range_len: usize = 0;
+        if (self.sp != 0) {
+            ranges[range_len] = .{ .ptr = self.stack[0..self.sp].ptr, .len = self.sp };
+            range_len += 1;
+        }
+        if (self.num_globals != 0) {
+            ranges[range_len] = .{ .ptr = self.globals[0..self.num_globals].ptr, .len = self.num_globals };
+            range_len += 1;
+        }
+        if (self.secondary_values_count != 0) {
+            ranges[range_len] = .{ .ptr = self.secondary_values[0..self.secondary_values_count].ptr, .len = self.secondary_values_count };
+            range_len += 1;
+        }
+        if (self.saved_chunk_sp != 0) {
+            ranges[range_len] = .{ .ptr = self.saved_chunks[0..self.saved_chunk_sp].ptr, .len = self.saved_chunk_sp };
+            range_len += 1;
+        }
         if (self.ext_roots.len != 0) {
-            try roots.appendSlice(self.allocator, self.ext_roots);
+            ranges[range_len] = .{ .ptr = self.ext_roots.ptr, .len = self.ext_roots.len };
+            range_len += 1;
         }
-
-        const extra_start = roots.items.len;
         if (extra_roots.len != 0) {
-            try roots.appendSlice(self.allocator, extra_roots);
+            ranges[range_len] = .{ .ptr = extra_roots.ptr, .len = extra_roots.len };
+            range_len += 1;
+        }
+        if (self.gc_vals.items.len != 0) {
+            ranges[range_len] = .{ .ptr = self.gc_vals.items.ptr, .len = self.gc_vals.items.len };
+            range_len += 1;
         }
 
-        const reclaimed = try self.heap.collectGarbage(roots.items);
+        const reclaimed = try self.heap.collectGarbageRootSet(.{
+            .ranges = ranges[0..range_len],
+            .slots = self.gc_slots.items,
+        });
 
-        // Update stack
-        for (self.stack[0..self.sp], 0..) |*v, i| {
-            v.* = roots.items[stack_start + i];
-        }
-
-        // Update globals
-        for (self.globals[0..self.num_globals], 0..) |*v, i| {
-            v.* = roots.items[globals_start + i];
-        }
-
-        // Update catch frames
-        for (self.catch_stack[0..self.catch_sp], 0..) |*frame, i| {
-            frame.tag = roots.items[catch_tag_start + i];
-            const chunk_val = roots.items[catch_chunk_start + i];
-            if (!chunk_val.isNil()) {
-                frame.chunk = chunk_val.toPtr(Chunk);
-            }
-        }
-
-        // Update unwind frames
-        for (self.unwind_stack[0..self.unwind_sp], 0..) |*frame, i| {
-            const chunk_val = roots.items[unwind_chunk_start + i];
-            if (!chunk_val.isNil()) {
-                frame.chunk = chunk_val.toPtr(Chunk);
-            }
-        }
-
-        // Update block frames
-        for (self.block_stack[0..self.block_sp], 0..) |*frame, i| {
-            frame.name_raw = roots.items[block_name_start + i];
-            const chunk_val = roots.items[block_chunk_start + i];
-            if (!chunk_val.isNil()) {
-                frame.chunk = chunk_val.toPtr(Chunk);
-            }
-        }
-
-        // Update restart frames
-        for (self.restart_stack[0..self.restart_sp], 0..) |*frame, i| {
-            frame.name = roots.items[restart_name_start + i];
-            const chunk_val = roots.items[restart_chunk_start + i];
-            if (!chunk_val.isNil()) {
-                frame.chunk = chunk_val.toPtr(Chunk);
-            }
-        }
-
-        // Update progv frames
-        for (self.progv_stack[0..self.progv_sp], 0..) |*frame, i| {
-            frame.saved_bindings = roots.items[progv_start + i];
-        }
-
-        // Update handler frames
-        for (self.handler_stack[0..self.handler_sp], 0..) |*frame, i| {
-            frame.condition_type = roots.items[handler_start + i * 2];
-            frame.handler_fn = roots.items[handler_start + i * 2 + 1];
-        }
-
-        // Update frame closures
         var closure_idx: usize = 0;
         for (self.frames[0..self.fp]) |*frame| {
             if (frame.closure != null) {
-                frame.closure = roots.items[frame_closure_start + closure_idx].toPtr(runtime.Closure);
+                frame.closure = self.gc_vals.items[closure_start + closure_idx].toPtr(runtime.Closure);
                 closure_idx += 1;
             }
         }
-
-        // Update current_closure
         if (has_current_closure) {
-            self.current_closure = roots.items[current_closure_idx].toPtr(runtime.Closure);
+            self.current_closure = self.gc_vals.items[current_closure_idx].toPtr(runtime.Closure);
         }
 
-        // Update pending throw values
-        self.pending_throw_tag = roots.items[pending_throw_tag_idx];
-        self.pending_throw_value = roots.items[pending_throw_value_idx];
-
-        // Update pending block values
-        self.pending_block_name = roots.items[pending_block_name_idx];
-        self.pending_block_value = roots.items[pending_block_value_idx];
-
-        // Update current package
-        self.current_package = roots.items[current_package_idx];
-
-        self.jit_code = roots.items[jit_code_idx];
-        self.jit_cnt = roots.items[jit_cnt_idx];
-
-        // Update secondary values
-        for (self.secondary_values[0..self.secondary_values_count], 0..) |*v, i| {
-            v.* = roots.items[secondary_start + i];
+        for (self.catch_stack[0..self.catch_sp], 0..) |*frame, i| {
+            const chunk_val = self.gc_vals.items[catch_chunk_start + i];
+            if (!chunk_val.isNil()) {
+                frame.chunk = chunk_val.toPtr(Chunk);
+            }
+        }
+        for (self.unwind_stack[0..self.unwind_sp], 0..) |*frame, i| {
+            const chunk_val = self.gc_vals.items[unwind_chunk_start + i];
+            if (!chunk_val.isNil()) {
+                frame.chunk = chunk_val.toPtr(Chunk);
+            }
+        }
+        for (self.block_stack[0..self.block_sp], 0..) |*frame, i| {
+            const chunk_val = self.gc_vals.items[block_chunk_start + i];
+            if (!chunk_val.isNil()) {
+                frame.chunk = chunk_val.toPtr(Chunk);
+            }
+        }
+        for (self.restart_stack[0..self.restart_sp], 0..) |*frame, i| {
+            const chunk_val = self.gc_vals.items[restart_chunk_start + i];
+            if (!chunk_val.isNil()) {
+                frame.chunk = chunk_val.toPtr(Chunk);
+            }
         }
 
-        // Update saved chunk roots
-        for (self.saved_chunks[0..self.saved_chunk_sp], 0..) |*v, i| {
-            v.* = roots.items[saved_chunk_start + i];
-        }
-
-        // Update chunks
-        const current_chunk_val = roots.items[current_chunk_idx];
+        const current_chunk_val = self.gc_vals.items[current_chunk_idx];
         if (!current_chunk_val.isNil()) {
             self.chunk = current_chunk_val.toPtr(Chunk);
         }
         for (self.frames[0..self.fp], 0..) |*frame, i| {
-            const chunk_val = roots.items[frame_chunk_start + i];
+            const chunk_val = self.gc_vals.items[frame_chunk_start + i];
             if (!chunk_val.isNil()) {
                 frame.chunk = chunk_val.toPtr(Chunk);
             }
         }
         for (self.chunk_pool, 0..) |*chunk, i| {
-            const chunk_val = roots.items[chunk_pool_start + i];
+            const chunk_val = self.gc_vals.items[chunk_pool_start + i];
             if (!chunk_val.isNil()) {
                 chunk.* = chunk_val.toPtr(Chunk);
-            }
-        }
-
-        if (self.ext_roots.len != 0) {
-            for (self.ext_roots, 0..) |*v, i| {
-                v.* = roots.items[ext_start + i];
-            }
-        }
-
-        if (extra_roots.len != 0) {
-            for (extra_roots, 0..) |*v, i| {
-                v.* = roots.items[extra_start + i];
             }
         }
 
@@ -8789,7 +8687,7 @@ test "vm collectGarbage updates ext roots" {
     try testing.expect(ptr >= start and ptr < end);
 }
 
-test "vm collectGarbage reuses gc_roots buffer" {
+test "vm collectGarbage reuses gc_vals buffer" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
@@ -8800,11 +8698,91 @@ test "vm collectGarbage reuses gc_roots buffer" {
     defer vm.deinit();
 
     _ = try vm.collectGarbage();
-    const cap1 = vm.gc_roots.capacity;
+    const cap1 = vm.gc_vals.capacity;
     try testing.expect(cap1 > 0);
 
     _ = try vm.collectGarbage();
-    try testing.expectEqual(cap1, vm.gc_roots.capacity);
+    try testing.expectEqual(cap1, vm.gc_vals.capacity);
+}
+
+test "vm collectGarbage roots slot-tracked values" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    const a = try heap.allocCons(Value.makeFixnum(1), Value.nil);
+    const b = try heap.allocCons(Value.makeFixnum(2), Value.nil);
+    const c = try heap.allocCons(Value.makeFixnum(3), Value.nil);
+    const d = try heap.allocCons(Value.makeFixnum(4), Value.nil);
+    const e = try heap.allocCons(Value.makeFixnum(5), Value.nil);
+    const f = try heap.allocCons(Value.makeFixnum(6), Value.nil);
+    const g = try heap.allocCons(Value.makeFixnum(7), Value.nil);
+    const h = try heap.allocCons(Value.makeFixnum(8), Value.nil);
+
+    vm.pending_throw_tag = a;
+    vm.pending_throw_value = b;
+    vm.pending_block_name = c;
+    vm.pending_block_value = d;
+    vm.current_package = e;
+    vm.jit_code = f;
+    vm.jit_cnt = g;
+
+    vm.handler_stack[0] = .{
+        .condition_type = h,
+        .handler_fn = a,
+    };
+    vm.handler_sp = 1;
+
+    vm.progv_stack[0] = .{
+        .saved_bindings = b,
+    };
+    vm.progv_sp = 1;
+
+    const raw_a = a.raw;
+    const raw_b = b.raw;
+    const raw_c = c.raw;
+    const raw_d = d.raw;
+    const raw_e = e.raw;
+    const raw_f = f.raw;
+    const raw_g = g.raw;
+    const raw_h = h.raw;
+
+    _ = try vm.collectGarbage();
+
+    const start = @intFromPtr(heap.from_start);
+    const end = start + heap.space_size;
+
+    const vals = [_]Value{
+        vm.pending_throw_tag,
+        vm.pending_throw_value,
+        vm.pending_block_name,
+        vm.pending_block_value,
+        vm.current_package,
+        vm.jit_code,
+        vm.jit_cnt,
+        vm.handler_stack[0].condition_type,
+        vm.handler_stack[0].handler_fn,
+        vm.progv_stack[0].saved_bindings,
+    };
+    for (vals) |v| {
+        try testing.expect(v.isCons());
+        const ptr = @intFromPtr(v.toPtr(runtime.Cons));
+        try testing.expect(ptr >= start and ptr < end);
+    }
+
+    try testing.expect(vm.pending_throw_tag.raw != raw_a);
+    try testing.expect(vm.pending_throw_value.raw != raw_b);
+    try testing.expect(vm.pending_block_name.raw != raw_c);
+    try testing.expect(vm.pending_block_value.raw != raw_d);
+    try testing.expect(vm.current_package.raw != raw_e);
+    try testing.expect(vm.jit_code.raw != raw_f);
+    try testing.expect(vm.jit_cnt.raw != raw_g);
+    try testing.expect(vm.handler_stack[0].condition_type.raw != raw_h);
 }
 
 test "vm allocCons roots args across GC" {
