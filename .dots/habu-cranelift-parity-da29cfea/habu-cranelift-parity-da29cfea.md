@@ -18,6 +18,7 @@ blocks:
   - habu-add-rootset-types-cf9db4d2
   - habu-add-rootset-gc-be933d07
   - habu-port-heap-gc-b1aecb37
+  - habu-add-heap-rootset-7bdae262
   - habu-fix-repl-chunk-dd041c71
   - habu-fix-macro-chunk-5f196625
   - habu-fix-compiler-env-aec7d63b

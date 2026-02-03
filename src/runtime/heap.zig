@@ -13,6 +13,7 @@ const Value = @import("value.zig").Value;
 const objects = @import("objects.zig");
 const Symbol = objects.Symbol;
 const GC = @import("gc.zig").GC;
+const roots_mod = @import("roots.zig");
 
 pub const ALIGNMENT: usize = 16;
 
@@ -228,8 +229,8 @@ pub const Heap = struct {
     from_end: [*]u8,
     /// GC threshold in bytes
     gc_threshold: usize,
-    /// Reusable buffer for building GC root slices.
-    gc_roots: std.ArrayList(Value),
+    /// Reusable buffer for building GC root slot lists.
+    gc_slots: std.ArrayList(*Value),
     /// Backing allocator (for the memory buffer itself)
     backing_allocator: std.mem.Allocator,
     /// Statistics
@@ -323,7 +324,7 @@ pub const Heap = struct {
             .alloc_ptr = from_start,
             .from_end = memory.ptr + space_size,
             .gc_threshold = @intFromFloat(@as(f32, @floatFromInt(space_size)) * config.gc_threshold),
-            .gc_roots = std.ArrayList(Value){},
+            .gc_slots = std.ArrayList(*Value){},
             .backing_allocator = allocator,
             .stats = .{},
             .symbols = SymbolTable.init(allocator),
@@ -447,7 +448,7 @@ pub const Heap = struct {
             stream.finalize();
         }
         self.stream_list.deinit(self.backing_allocator);
-        self.gc_roots.deinit(self.backing_allocator);
+        self.gc_slots.deinit(self.backing_allocator);
         self.backing_allocator.free(self.memory);
     }
 
@@ -1477,197 +1478,83 @@ pub const Heap = struct {
     pub fn collectGarbage(self: *Heap, external_roots: []Value) !usize {
         const before = self.bytesUsed();
 
-        // Build root set: external roots + interned symbol/keyword values
-        self.gc_roots.clearRetainingCapacity();
-        var all_roots = &self.gc_roots;
+        // Internal roots are tracked by slot address; external roots are passed as a range.
+        self.gc_slots.clearRetainingCapacity();
 
-        // Add external roots
-        try all_roots.appendSlice(self.backing_allocator, external_roots);
-
-        // Add symbol table values (the Values need to be updated after GC)
+        // Add symbol table values.
         var sym_it = self.symbols.map.valueIterator();
         while (sym_it.next()) |v| {
-            try all_roots.append(self.backing_allocator, v.*);
+            try self.gc_slots.append(self.backing_allocator, v);
         }
 
-        // Add keyword table values
+        // Add keyword table values.
         var kw_it = self.keywords.map.valueIterator();
         while (kw_it.next()) |v| {
-            try all_roots.append(self.backing_allocator, v.*);
+            try self.gc_slots.append(self.backing_allocator, v);
         }
 
-        // Add package symbol table values
+        // Add package symbol table values.
         var pkg_it = self.packages.valueIterator();
         while (pkg_it.next()) |pkg| {
             var pkg_sym_it = pkg.*.symbols.map.valueIterator();
             while (pkg_sym_it.next()) |v| {
-                try all_roots.append(self.backing_allocator, v.*);
+                try self.gc_slots.append(self.backing_allocator, v);
             }
         }
 
-        // Add readtable function values
+        // Add readtable function values.
         var rt_it = self.readtable.valueIterator();
         while (rt_it.next()) |entry| {
-            try all_roots.append(self.backing_allocator, entry.function);
+            try self.gc_slots.append(self.backing_allocator, &entry.function);
         }
 
-        // Add dispatch readtable function values
+        // Add dispatch readtable function values.
         var drt_it = self.dispatch_readtable.valueIterator();
         while (drt_it.next()) |sub_table| {
             var sub_it = sub_table.valueIterator();
             while (sub_it.next()) |fn_val| {
-                try all_roots.append(self.backing_allocator, fn_val.*);
+                try self.gc_slots.append(self.backing_allocator, fn_val);
             }
         }
 
-        // Add Lisp package registry
+        // Lisp package registry.
         if (self.lisp_packages.raw != Value.nil.raw) {
-            try all_roots.append(self.backing_allocator, self.lisp_packages);
+            try self.gc_slots.append(self.backing_allocator, &self.lisp_packages);
         }
         if (self.lisp_classes.raw != Value.nil.raw) {
-            try all_roots.append(self.backing_allocator, self.lisp_classes);
+            try self.gc_slots.append(self.backing_allocator, &self.lisp_classes);
         }
 
-        // Add metaclass roots
+        // Metaclass roots.
         if (self.standard_class.raw != Value.nil.raw) {
-            try all_roots.append(self.backing_allocator, self.standard_class);
+            try self.gc_slots.append(self.backing_allocator, &self.standard_class);
         }
         if (self.built_in_class.raw != Value.nil.raw) {
-            try all_roots.append(self.backing_allocator, self.built_in_class);
+            try self.gc_slots.append(self.backing_allocator, &self.built_in_class);
         }
         if (self.structure_class.raw != Value.nil.raw) {
-            try all_roots.append(self.backing_allocator, self.structure_class);
+            try self.gc_slots.append(self.backing_allocator, &self.structure_class);
         }
 
-        // Cached condition symbols/keywords
+        // Cached condition symbols/keywords.
         if (self.sym_simple_warning.raw != Value.nil.raw) {
-            try all_roots.append(self.backing_allocator, self.sym_simple_warning);
+            try self.gc_slots.append(self.backing_allocator, &self.sym_simple_warning);
         }
         if (self.kw_format_control.raw != Value.nil.raw) {
-            try all_roots.append(self.backing_allocator, self.kw_format_control);
+            try self.gc_slots.append(self.backing_allocator, &self.kw_format_control);
         }
         if (self.kw_format_arguments.raw != Value.nil.raw) {
-            try all_roots.append(self.backing_allocator, self.kw_format_arguments);
+            try self.gc_slots.append(self.backing_allocator, &self.kw_format_arguments);
         }
 
         // Run GC
         var gc = GC.init(self.backing_allocator, self);
         defer gc.deinit();
-        _ = try gc.collect(all_roots.items);
-
-        // Update symbol table with new locations
-        const sym_count = self.symbols.map.count();
-        const kw_count = self.keywords.map.count();
-        const ext_count = external_roots.len;
-
-        // Count package symbols
-        var pkg_sym_count: usize = 0;
-        var pkg_count_it = self.packages.valueIterator();
-        while (pkg_count_it.next()) |pkg| {
-            pkg_sym_count += pkg.*.symbols.map.count();
-        }
-
-        // Count readtable functions
-        const rt_count = self.readtable.count();
-        var drt_count: usize = 0;
-        var drt_count_it = self.dispatch_readtable.valueIterator();
-        while (drt_count_it.next()) |sub_table| {
-            drt_count += sub_table.count();
-        }
-
-        // External roots are updated in-place by GC.collect
-        // Copy external roots back (they were passed by value to ArrayList)
-        for (external_roots, 0..) |_, i| {
-            external_roots[i] = all_roots.items[i];
-        }
-
-        // Update symbol table values
-        var sym_idx: usize = 0;
-        var sym_update_it = self.symbols.map.valueIterator();
-        while (sym_update_it.next()) |v| {
-            v.* = all_roots.items[ext_count + sym_idx];
-            sym_idx += 1;
-        }
-
-        // Update keyword table values
-        var kw_idx: usize = 0;
-        var kw_update_it = self.keywords.map.valueIterator();
-        while (kw_update_it.next()) |v| {
-            v.* = all_roots.items[ext_count + sym_count + kw_idx];
-            kw_idx += 1;
-        }
-
-        // Update package symbol table values
-        var pkg_sym_idx: usize = 0;
-        var pkg_update_it = self.packages.valueIterator();
-        while (pkg_update_it.next()) |pkg| {
-            var pkg_sym_update_it = pkg.*.symbols.map.valueIterator();
-            while (pkg_sym_update_it.next()) |v| {
-                v.* = all_roots.items[ext_count + sym_count + kw_count + pkg_sym_idx];
-                pkg_sym_idx += 1;
-            }
-        }
-        std.debug.assert(pkg_sym_idx == pkg_sym_count);
-
-        // Update readtable function values
-        var rt_idx: usize = 0;
-        var rt_update_it = self.readtable.valueIterator();
-        while (rt_update_it.next()) |entry| {
-            entry.function = all_roots.items[ext_count + sym_count + kw_count + pkg_sym_count + rt_idx];
-            rt_idx += 1;
-        }
-        std.debug.assert(rt_idx == rt_count);
-
-        // Update dispatch readtable function values
-        var drt_idx: usize = 0;
-        var drt_update_it = self.dispatch_readtable.valueIterator();
-        while (drt_update_it.next()) |sub_table| {
-            var sub_update_it = sub_table.valueIterator();
-            while (sub_update_it.next()) |fn_val| {
-                fn_val.* = all_roots.items[ext_count + sym_count + kw_count + pkg_sym_count + rt_count + drt_idx];
-                drt_idx += 1;
-            }
-        }
-        std.debug.assert(drt_idx == drt_count);
-
-        // Update Lisp package registry
-        var idx = ext_count + sym_count + kw_count + pkg_sym_count + rt_count + drt_count;
-        if (self.lisp_packages.raw != Value.nil.raw) {
-            self.lisp_packages = all_roots.items[idx];
-            idx += 1;
-        }
-        if (self.lisp_classes.raw != Value.nil.raw) {
-            self.lisp_classes = all_roots.items[idx];
-            idx += 1;
-        }
-
-        // Update metaclass roots
-        if (self.standard_class.raw != Value.nil.raw) {
-            self.standard_class = all_roots.items[idx];
-            idx += 1;
-        }
-        if (self.built_in_class.raw != Value.nil.raw) {
-            self.built_in_class = all_roots.items[idx];
-            idx += 1;
-        }
-        if (self.structure_class.raw != Value.nil.raw) {
-            self.structure_class = all_roots.items[idx];
-            idx += 1;
-        }
-
-        // Update cached condition symbols/keywords
-        if (self.sym_simple_warning.raw != Value.nil.raw) {
-            self.sym_simple_warning = all_roots.items[idx];
-            idx += 1;
-        }
-        if (self.kw_format_control.raw != Value.nil.raw) {
-            self.kw_format_control = all_roots.items[idx];
-            idx += 1;
-        }
-        if (self.kw_format_arguments.raw != Value.nil.raw) {
-            self.kw_format_arguments = all_roots.items[idx];
-            idx += 1;
-        }
+        var ranges = [_]roots_mod.RootRange{.{ .ptr = external_roots.ptr, .len = external_roots.len }};
+        _ = try gc.collectRootSet(.{
+            .ranges = ranges[0..],
+            .slots = self.gc_slots.items,
+        });
 
         const after = self.bytesUsed();
         return if (before > after) before - after else 0;
@@ -1824,7 +1711,7 @@ test "heap init and deinit" {
     try testing.expect(heap.bytesUsed() > 0);
 }
 
-test "heap collectGarbage reuses gc_roots buffer" {
+test "heap collectGarbage reuses gc_slots buffer" {
     const testing = std.testing;
 
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
@@ -1832,11 +1719,11 @@ test "heap collectGarbage reuses gc_roots buffer" {
 
     var roots = [_]Value{};
     _ = try heap.collectGarbage(&roots);
-    const cap1 = heap.gc_roots.capacity;
+    const cap1 = heap.gc_slots.capacity;
     try testing.expect(cap1 > 0);
 
     _ = try heap.collectGarbage(&roots);
-    try testing.expectEqual(cap1, heap.gc_roots.capacity);
+    try testing.expectEqual(cap1, heap.gc_slots.capacity);
 }
 
 test "heap deinit finalizes output streams" {
