@@ -15,8 +15,8 @@ pub fn makeCondition(heap: *Heap, args: []const Value) !Value {
     if (!type_sym.isSymbol()) return error.TypeError;
 
     // Parse initargs for :format-control and :format-arguments
-    const kw_format_control = try heap.internKeyword("format-control");
-    const kw_format_args = try heap.internKeyword("format-arguments");
+    const kw_format_control = heap.kw_format_control;
+    const kw_format_args = heap.kw_format_arguments;
     var format_control = Value.nil;
     var format_args = Value.nil;
 
@@ -48,7 +48,7 @@ pub fn warn(heap: *Heap, args: []const Value) !Value {
     // Create warning condition
     const condition = switch (datum.typeKind()) {
         .string => try heap.allocCondition(
-            try heap.intern("simple-warning"),
+            heap.sym_simple_warning,
             datum,
             try heap.listFromSlice(rest),
         ),
@@ -172,6 +172,30 @@ pub fn @"break"(heap: *Heap, args: []const Value) !Value {
 // ============================================================================
 // Tests
 // ============================================================================
+
+test "condition caches keywords and symbols" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    try testing.expect(heap.sym_simple_warning.isSymbol());
+    try testing.expectEqualStrings("SIMPLE-WARNING", heap.sym_simple_warning.toPtr(runtime.Symbol).getName());
+
+    try testing.expect(heap.kw_format_control.isKeyword());
+    try testing.expectEqualStrings("FORMAT-CONTROL", heap.kw_format_control.toPtr(runtime.Keyword).getName());
+
+    try testing.expect(heap.kw_format_arguments.isKeyword());
+    try testing.expectEqualStrings("FORMAT-ARGUMENTS", heap.kw_format_arguments.toPtr(runtime.Keyword).getName());
+
+    const kw_ctrl = try heap.internKeyword("format-control");
+    try testing.expectEqual(heap.kw_format_control.raw, kw_ctrl.raw);
+
+    try testing.expect(heap.cl_user_package != null);
+    heap.setCurrentPackage(heap.cl_user_package.?);
+    const sym2 = try heap.intern("simple-warning");
+    try testing.expectEqual(heap.sym_simple_warning.raw, sym2.raw);
+}
 
 test "warn accepts string and symbol datum" {
     const testing = std.testing;

@@ -274,6 +274,10 @@ pub const Heap = struct {
     /// Warning handler for warn primitive (optional)
     warn_handler: ?WarnHandler,
     warn_ctx: ?*anyopaque,
+    /// Cached condition symbols/keywords for primitives (avoid per-call interning)
+    sym_simple_warning: Value,
+    kw_format_control: Value,
+    kw_format_arguments: Value,
 
     pub const ReadtableEntry = struct {
         function: Value,
@@ -338,6 +342,9 @@ pub const Heap = struct {
             .stream_list = std.ArrayList(*objects.Stream){},
             .warn_handler = null,
             .warn_ctx = null,
+            .sym_simple_warning = Value.nil,
+            .kw_format_control = Value.nil,
+            .kw_format_arguments = Value.nil,
         };
 
         try heap.symbols.put("T", Value.t);
@@ -392,6 +399,11 @@ pub const Heap = struct {
 
         // Create built-in classes for primitive types (must be after CL package exists)
         try heap.createBuiltInClasses();
+
+        // Cache condition symbols/keywords while current_package is CL so CL-USER resolves them.
+        heap.sym_simple_warning = try heap.intern("simple-warning");
+        heap.kw_format_control = try heap.internKeyword("format-control");
+        heap.kw_format_arguments = try heap.internKeyword("format-arguments");
 
         return heap;
     }
@@ -1507,6 +1519,17 @@ pub const Heap = struct {
             try all_roots.append(self.backing_allocator, self.structure_class);
         }
 
+        // Cached condition symbols/keywords
+        if (self.sym_simple_warning.raw != Value.nil.raw) {
+            try all_roots.append(self.backing_allocator, self.sym_simple_warning);
+        }
+        if (self.kw_format_control.raw != Value.nil.raw) {
+            try all_roots.append(self.backing_allocator, self.kw_format_control);
+        }
+        if (self.kw_format_arguments.raw != Value.nil.raw) {
+            try all_roots.append(self.backing_allocator, self.kw_format_arguments);
+        }
+
         // Run GC
         var gc = GC.init(self.backing_allocator, self);
         defer gc.deinit();
@@ -1609,6 +1632,20 @@ pub const Heap = struct {
         }
         if (self.structure_class.raw != Value.nil.raw) {
             self.structure_class = all_roots.items[idx];
+            idx += 1;
+        }
+
+        // Update cached condition symbols/keywords
+        if (self.sym_simple_warning.raw != Value.nil.raw) {
+            self.sym_simple_warning = all_roots.items[idx];
+            idx += 1;
+        }
+        if (self.kw_format_control.raw != Value.nil.raw) {
+            self.kw_format_control = all_roots.items[idx];
+            idx += 1;
+        }
+        if (self.kw_format_arguments.raw != Value.nil.raw) {
+            self.kw_format_arguments = all_roots.items[idx];
             idx += 1;
         }
 
