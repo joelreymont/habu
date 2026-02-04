@@ -1216,7 +1216,7 @@ pub const Builtins = struct {
         "string=", "string<", "string>", "string<=", "string>=",
         "substring", "subseq",
         // I/O
-        "print", "princ", "terpri", "write-char", "random", "random-seed", "format",
+        "write", "print", "princ", "terpri", "write-char", "random", "random-seed", "format",
         // Character functions
         "char-upcase", "char-downcase", "digit-char-p", "alpha-char-p",
         // String/number conversion
@@ -10154,7 +10154,7 @@ pub const Compiler = struct {
         // String
         str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat,
         // I/O
-        print, princ, terpri, write_char, random, random_seed,
+        write, print, princ, terpri, write_char, random, random_seed,
         // Symbol
         intern, unintern, sym_name, copy_symbol, makunbound, set_sym_val, type_of, error_user, boundp, fboundp, symbol_value, symbol_function, typep, subtypep,
         // Character
@@ -10275,6 +10275,7 @@ pub const Compiler = struct {
         .{ .field = "%find-class", .tag = .find_class },
         .{ .field = "%class-name", .tag = .class_name },
         .{ .field = "string-length", .tag = .str_len },
+        .{ .field = "write", .tag = .write },
         .{ .field = "print", .tag = .print },
         .{ .field = "princ", .tag = .princ },
         .{ .field = "write-char", .tag = .write_char },
@@ -11156,6 +11157,7 @@ pub const Compiler = struct {
                 break :blk node;
             },
             .str_len => try self.builder.strLen(operand),
+            .write => try self.builder.write(operand),
             .print => try self.builder.print(operand),
             .princ => try self.builder.princ(operand),
             .write_char => try self.builder.writeChar(operand),

@@ -387,6 +387,41 @@ pub fn strGe(c: *ctx.JitContext, a: Value, b: Value) vm_mod.Error!Value {
     return if (str_prims.stringGe(a, b)) Value.t else Value.nil;
 }
 
+pub fn write(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
+    try c.vm.syncPrintGlobals();
+    return try io_prims.write(val, Value.nil);
+}
+
+pub fn print(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
+    try c.vm.syncPrintGlobals();
+    return try io_prims.print(val, Value.nil);
+}
+
+pub fn princ(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
+    try c.vm.syncPrintGlobals();
+    return try io_prims.princ(val, Value.nil);
+}
+
+pub fn terpri(c: *ctx.JitContext, _: Value) vm_mod.Error!Value {
+    _ = c;
+    try io_prims.sysNewline();
+    return Value.nil;
+}
+
+pub fn writeChar(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
+    _ = c;
+    if (!val.isCharacter()) return error.TypeMismatch;
+    const cp = val.toCharacter();
+    if (cp < 128) {
+        try io_prims.sysWriteChar(@intCast(cp));
+    } else {
+        var buf: [4]u8 = undefined;
+        const len = try std.unicode.utf8Encode(@intCast(cp), &buf);
+        try io_prims.sysWriteBytes(buf[0..len]);
+    }
+    return val;
+}
+
 pub fn listp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
     _ = c;
     return if (a.isNil() or a.isCons()) Value.t else Value.nil;

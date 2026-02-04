@@ -776,7 +776,7 @@ pub const Vm = struct {
 
     /// Run garbage collection, using VM state as roots
     /// Returns bytes reclaimed
-    fn syncPrintGlobals(self: *Vm) !void {
+    pub fn syncPrintGlobals(self: *Vm) !void {
         if (self.global_env) |env| {
             if (env.lookup("*print-length*")) |idx| {
                 const val = self.globals[idx];

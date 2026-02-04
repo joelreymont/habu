@@ -380,6 +380,33 @@ pub const Jit = struct {
                 try self.emitCallUnary(@intFromPtr(&rt.randomSeed));
                 try self.emitStackPush();
             },
+            .write => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.write));
+                try self.emitStackPush();
+            },
+            .print => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.print));
+                try self.emitStackPush();
+            },
+            .princ => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.princ));
+                try self.emitStackPush();
+            },
+            .terpri => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                    .{ .imm64 = 0 },
+                });
+                try self.emitCallUnary(@intFromPtr(&rt.terpri));
+                try self.emitStackPush();
+            },
+            .write_char => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.writeChar));
+                try self.emitStackPush();
+            },
 
             .list_length => {
                 try self.emitStackPop();
