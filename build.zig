@@ -32,12 +32,15 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     // Tests
+    const test_filter = b.option([]const u8, "test-filter", "Only compile/run tests matching this filter");
+    const test_filters: []const []const u8 = if (test_filter) |f| &.{f} else &.{};
     const lib_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/lib.zig"),
             .target = target,
             .optimize = optimize,
         }),
+        .filters = test_filters,
     });
 
     // Add ohsnap for snapshot testing
@@ -56,7 +59,8 @@ pub fn build(b: *std.Build) void {
     lib_tests.root_module.linkSystemLibrary("c", .{});
 
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&b.addRunArtifact(lib_tests).step);
+    const test_run = b.addRunArtifact(lib_tests);
+    test_step.dependOn(&test_run.step);
 
     // Error masking check
     const check_errors = b.addSystemCommand(&.{
