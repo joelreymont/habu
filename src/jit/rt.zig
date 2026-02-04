@@ -60,6 +60,11 @@ fn stackLen(c: *ctx.JitContext) usize {
     return @intCast(@divExact(len_bytes, @sizeOf(Value)));
 }
 
+fn syncVmSp(c: *ctx.JitContext) void {
+    // JIT keeps the authoritative sp in ctx.sp; some VM helpers assume vm.sp is current.
+    c.vm.sp = stackLen(c);
+}
+
 fn stackCap(c: *ctx.JitContext) usize {
     const cap_bytes = @intFromPtr(c.stack_end) - @intFromPtr(c.frame_base);
     return @intCast(@divExact(cap_bytes, @sizeOf(Value)));
@@ -536,14 +541,17 @@ pub fn listCountEqual(c: *ctx.JitContext, item: Value, seq: Value) vm_mod.Error!
 }
 
 pub fn listRemove(c: *ctx.JitContext, item: Value, seq: Value) vm_mod.Error!Value {
+    syncVmSp(c);
     return try c.vm.listRemoveWithTest(item, seq, .eql);
 }
 
 pub fn listRemoveEq(c: *ctx.JitContext, item: Value, seq: Value) vm_mod.Error!Value {
+    syncVmSp(c);
     return try c.vm.listRemoveWithTest(item, seq, .eq);
 }
 
 pub fn listRemoveEqual(c: *ctx.JitContext, item: Value, seq: Value) vm_mod.Error!Value {
+    syncVmSp(c);
     return try c.vm.listRemoveWithTest(item, seq, .equal);
 }
 
