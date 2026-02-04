@@ -84,6 +84,7 @@ test "parity: vm vs jit (hand-picked)" {
         "(string> \"b\" \"a\")",
         "(string<= \"a\" \"a\")",
         "(string>= \"b\" \"a\")",
+        "(write-to-string (list 1 2))",
         "(progn (random-seed 123) (random 10))",
         "(floatp 1.5)",
         "(listp nil)",

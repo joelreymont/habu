@@ -6,6 +6,7 @@ const arith = @import("../runtime/primitives/arith.zig");
 const char_prims = @import("../runtime/primitives/char.zig");
 const str_prims = @import("../runtime/primitives/string.zig");
 const vec_prims = @import("../runtime/primitives/vector.zig");
+const io_prims = @import("../runtime/primitives/io.zig");
 const vm_mod = @import("../interp/vm.zig");
 
 const Value = runtime.Value;
@@ -267,6 +268,17 @@ pub fn stringDowncase(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
         error.OutOfMemory => blk: {
             try collectJitGarbage(c, &args);
             break :blk try str_prims.stringDowncase(c.heap, args[0]);
+        },
+        else => return err,
+    };
+}
+
+pub fn writeToString(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
+    var args = [_]Value{ val };
+    return io_prims.writeToString(c.heap, args[0]) catch |err| switch (err) {
+        error.OutOfMemory => blk: {
+            try collectJitGarbage(c, &args);
+            break :blk try io_prims.writeToString(c.heap, args[0]);
         },
         else => return err,
     };

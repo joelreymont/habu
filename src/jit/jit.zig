@@ -333,6 +333,11 @@ pub const Jit = struct {
                 try self.emitCallUnary(@intFromPtr(&rt.stringDowncase));
                 try self.emitStackPush();
             },
+            .write_to_string => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.writeToString));
+                try self.emitStackPush();
+            },
             .str_ref => {
                 try self.emitBinaryCall(@intFromPtr(&rt.strRef));
             },
