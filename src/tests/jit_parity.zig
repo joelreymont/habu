@@ -6,39 +6,199 @@ const testing = std.testing;
 
 const runtime = @import("../runtime/runtime.zig");
 const Heap = runtime.Heap;
+const Value = runtime.Value;
+const Cons = runtime.Cons;
 
 const harness = @import("../testing/harness.zig");
 const Runner = harness.Runner;
 
-fn runVmAndJit(allocator: std.mem.Allocator, source: []const u8) !struct { vm: []u8, jit: []u8 } {
-    var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
-    defer heap.deinit();
+fn buildListSource(allocator: std.mem.Allocator, cases: []const []const u8) ![]u8 {
+    var buf = std.ArrayList(u8){};
+    errdefer buf.deinit(allocator);
 
-    var r = try Runner.init(allocator, &heap);
-    defer r.deinit();
+    try buf.appendSlice(allocator, "(list");
+    for (cases) |src| {
+        try buf.append(allocator, ' ');
+        try buf.appendSlice(allocator, src);
+    }
+    try buf.append(allocator, ')');
+    return try buf.toOwnedSlice(allocator);
+}
 
-    const chunk = try r.compile(source);
+fn runExprParity(p: *Parity, source: []const u8) !void {
+    const chunk = try p.r.compile(source);
+    var roots = [_]Value{Value.makeChunk(chunk)};
+    p.r.vm.setExtRoots(roots[0..]);
+    defer p.r.vm.clearExtRoots();
 
-    const vm_val = try r.run(chunk);
-    const vm_s = try harness.valueToString(allocator, vm_val);
-    errdefer allocator.free(vm_s);
+    const saved_jit_on = p.r.vm.jit_on;
+    p.r.vm.jit_on = false;
+    defer p.r.vm.jit_on = saved_jit_on;
+    const vm_val = try p.r.run(chunk);
 
-    const st0 = r.vm.jitStats();
-    try r.enableJit(64 * 1024 * 1024, 1);
-    const jit_val = try r.run(chunk);
-    const st1 = r.vm.jitStats();
+    const vm_s = try harness.valueToString(p.allocator, vm_val);
+    defer p.allocator.free(vm_s);
+
+    const st0 = p.r.vm.jitStats();
+    p.r.vm.jit_on = true;
+    const jit_chunk = roots[0].toPtr(runtime.Chunk);
+    const jit_val = try p.r.run(jit_chunk);
+    const st1 = p.r.vm.jitStats();
 
     try testing.expectEqual(st0.fail_n, st1.fail_n);
     try testing.expectEqual(st0.compile_n + 1, st1.compile_n);
 
-    const jit_s = try harness.valueToString(allocator, jit_val);
-    errdefer allocator.free(jit_s);
+    const jit_s = try harness.valueToString(p.allocator, jit_val);
+    defer p.allocator.free(jit_s);
 
-    return .{ .vm = vm_s, .jit = jit_s };
+    try testing.expectEqualStrings(vm_s, jit_s);
+}
+
+const Parity = struct {
+    allocator: std.mem.Allocator,
+
+    heap: Heap,
+    r: Runner,
+
+    pub fn init(allocator: std.mem.Allocator) !Parity {
+        var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+        errdefer heap.deinit();
+
+        var r = try Runner.init(allocator, &heap);
+        errdefer r.deinit();
+
+        try r.enableJit(64 * 1024 * 1024, 1);
+
+        return .{
+            .allocator = allocator,
+            .heap = heap,
+            .r = r,
+        };
+    }
+
+    pub fn deinit(self: *Parity) void {
+        self.r.deinit();
+        self.heap.deinit();
+    }
+
+    pub fn runCases(self: *Parity, cases: []const []const u8, source: []const u8) !void {
+        const chunk = try self.r.compile(source);
+        var roots = [_]Value{Value.makeChunk(chunk)};
+        self.r.vm.setExtRoots(roots[0..]);
+        defer self.r.vm.clearExtRoots();
+
+        const saved_jit_on = self.r.vm.jit_on;
+        self.r.vm.jit_on = false;
+        defer self.r.vm.jit_on = saved_jit_on;
+
+        const vm_val = try self.r.run(chunk);
+
+        var vm_strs = std.ArrayList([]u8){};
+        errdefer {
+            for (vm_strs.items) |s| self.allocator.free(s);
+            vm_strs.deinit(self.allocator);
+        }
+        try vm_strs.ensureTotalCapacity(self.allocator, cases.len);
+
+        var vm_list = vm_val;
+        for (cases, 0..) |src, i| {
+            _ = src;
+            if (!vm_list.isCons()) {
+                const got = try harness.valueToString(self.allocator, vm_list);
+                defer self.allocator.free(got);
+                std.debug.panic("parity: vm result not list at idx {d}: {s}", .{ i, got });
+            }
+            const cons = vm_list.toPtr(Cons);
+            const s = try harness.valueToString(self.allocator, cons.car);
+            vm_strs.appendAssumeCapacity(s);
+            vm_list = cons.cdr;
+        }
+        if (!vm_list.isNil()) {
+            const got = try harness.valueToString(self.allocator, vm_list);
+            defer self.allocator.free(got);
+            std.debug.panic("parity: vm result has extra tail: {s}", .{got});
+        }
+        defer {
+            for (vm_strs.items) |s| self.allocator.free(s);
+            vm_strs.deinit(self.allocator);
+        }
+
+        const st0 = self.r.vm.jitStats();
+        self.r.vm.jit_on = true;
+        const jit_chunk = roots[0].toPtr(runtime.Chunk);
+        const jit_val = try self.r.run(jit_chunk);
+        const st1 = self.r.vm.jitStats();
+
+        try testing.expectEqual(st0.fail_n, st1.fail_n);
+        try testing.expectEqual(st0.compile_n + 1, st1.compile_n);
+
+        var jit_list = jit_val;
+        for (cases, 0..) |src, i| {
+            if (!jit_list.isCons()) {
+                const got = try harness.valueToString(self.allocator, jit_list);
+                defer self.allocator.free(got);
+                std.debug.panic("parity: jit result not list at idx {d}: {s}", .{ i, got });
+            }
+            const cons = jit_list.toPtr(Cons);
+            const jit_s = try harness.valueToString(self.allocator, cons.car);
+            defer self.allocator.free(jit_s);
+
+            const vm_s = vm_strs.items[i];
+            if (!std.mem.eql(u8, vm_s, jit_s)) {
+                std.debug.panic("parity mismatch at {d}: {s}\nvm: {s}\njit: {s}", .{ i, src, vm_s, jit_s });
+            }
+            jit_list = cons.cdr;
+        }
+        if (!jit_list.isNil()) {
+            const got = try harness.valueToString(self.allocator, jit_list);
+            defer self.allocator.free(got);
+            std.debug.panic("parity: jit result has extra tail: {s}", .{got});
+        }
+    }
+};
+
+test "parity: vm vs jit (single add)" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    var p = try Parity.init(testing.allocator);
+    defer p.deinit();
+
+    try runExprParity(&p, "(+ 1 2)");
+}
+
+test "parity: vm vs jit (single list)" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    var p = try Parity.init(testing.allocator);
+    defer p.deinit();
+
+    try runExprParity(&p, "(list (+ 1 2) 4)");
+}
+
+test "parity: vm vs jit (make_list 64)" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    var p = try Parity.init(testing.allocator);
+    defer p.deinit();
+
+    var buf = std.ArrayList(u8){};
+    errdefer buf.deinit(testing.allocator);
+    try buf.appendSlice(testing.allocator, "(list");
+    for (0..64) |_| {
+        try buf.appendSlice(testing.allocator, " (+ 1 2)");
+    }
+    try buf.append(testing.allocator, ')');
+
+    const src = try buf.toOwnedSlice(testing.allocator);
+    defer testing.allocator.free(src);
+    try runExprParity(&p, src);
 }
 
 test "parity: vm vs jit (hand-picked)" {
     if (builtin.cpu.arch != .aarch64) return;
+
+    var p = try Parity.init(testing.allocator);
+    defer p.deinit();
 
     const cases = [_][]const u8{
         "(+ 1 2)",
@@ -138,19 +298,26 @@ test "parity: vm vs jit (hand-picked)" {
         "(make-vector 3 7)",
     };
 
-    for (cases) |src| {
-        const res = try runVmAndJit(testing.allocator, src);
-        defer testing.allocator.free(res.vm);
-        defer testing.allocator.free(res.jit);
-        try testing.expectEqualStrings(res.vm, res.jit);
-    }
+    const src = try buildListSource(testing.allocator, cases[0..]);
+    defer testing.allocator.free(src);
+    try p.runCases(cases[0..], src);
 }
 
 test "parity: vm vs jit (random arith)" {
     if (builtin.cpu.arch != .aarch64) return;
 
+    var p = try Parity.init(testing.allocator);
+    defer p.deinit();
+
     var rng = std.Random.DefaultPrng.init(0x2c0f7d11);
     const random = rng.random();
+
+    var exprs = std.ArrayList([]const u8){};
+    errdefer {
+        for (exprs.items) |s| testing.allocator.free(s);
+        exprs.deinit(testing.allocator);
+    }
+    try exprs.ensureTotalCapacity(testing.allocator, 200);
 
     for (0..200) |_| {
         const a = random.intRangeAtMost(i32, -10_000, 10_000);
@@ -162,15 +329,21 @@ test "parity: vm vs jit (random arith)" {
         const op2 = ops[random.uintLessThan(usize, ops.len)];
 
         var buf: [256]u8 = undefined;
-        const src = try std.fmt.bufPrint(
+        const src_tmp = try std.fmt.bufPrint(
             &buf,
             "(let ((x {d}) (y {d}) (z {d})) ({s} ({s} x y) z))",
             .{ a, b, c, op2, op1 },
         );
 
-        const res = try runVmAndJit(testing.allocator, src);
-        defer testing.allocator.free(res.vm);
-        defer testing.allocator.free(res.jit);
-        try testing.expectEqualStrings(res.vm, res.jit);
+        const src = try testing.allocator.dupe(u8, src_tmp);
+        exprs.appendAssumeCapacity(src);
     }
+    defer {
+        for (exprs.items) |s| testing.allocator.free(s);
+        exprs.deinit(testing.allocator);
+    }
+
+    const src = try buildListSource(testing.allocator, exprs.items);
+    defer testing.allocator.free(src);
+    try p.runCases(exprs.items, src);
 }
