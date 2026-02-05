@@ -20,26 +20,25 @@ pub const Runner = struct {
     comp: Compiler,
     chunk_pool: std.ArrayList(*Chunk),
 
-    pub fn init(allocator: std.mem.Allocator, heap: *Heap) !Runner {
-        var vm = try Vm.init(allocator, heap);
-        errdefer vm.deinit();
-
-        var comp = try Compiler.initWithHeap(allocator, &vm);
-        errdefer comp.deinit();
-
-        vm.setGlobalEnv(&comp.globals);
-
-        var chunk_pool = std.ArrayList(*Chunk){};
-        errdefer chunk_pool.deinit(allocator);
-        vm.setChunkPool(chunk_pool.items);
-
-        return .{
+    pub fn init(self: *Runner, allocator: std.mem.Allocator, heap: *Heap) !void {
+        self.* = .{
             .allocator = allocator,
             .heap = heap,
-            .vm = vm,
-            .comp = comp,
-            .chunk_pool = chunk_pool,
+            .vm = undefined,
+            .comp = undefined,
+            .chunk_pool = std.ArrayList(*Chunk){},
         };
+
+        self.vm = try Vm.init(allocator, heap);
+        errdefer self.vm.deinit();
+
+        self.comp = try Compiler.initWithHeap(allocator, &self.vm);
+        errdefer self.comp.deinit();
+
+        self.vm.setGlobalEnv(&self.comp.globals);
+
+        errdefer self.chunk_pool.deinit(allocator);
+        self.vm.setChunkPool(self.chunk_pool.items);
     }
 
     pub fn deinit(self: *Runner) void {
@@ -62,7 +61,8 @@ pub const Runner = struct {
 };
 
 pub fn eval(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {
-    var r = try Runner.init(allocator, heap);
+    var r: Runner = undefined;
+    try r.init(allocator, heap);
     defer r.deinit();
 
     const chunk = try r.compile(source);
@@ -77,4 +77,3 @@ pub fn valueToString(allocator: std.mem.Allocator, val: Value) ![]u8 {
     try io.writeValueToBuffer(val, w.any());
     return try buf.toOwnedSlice(allocator);
 }
-

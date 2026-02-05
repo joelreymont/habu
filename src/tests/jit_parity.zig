@@ -60,20 +60,15 @@ const Parity = struct {
     heap: Heap,
     r: Runner,
 
-    pub fn init(allocator: std.mem.Allocator) !Parity {
-        var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
-        errdefer heap.deinit();
+    pub fn init(self: *Parity, allocator: std.mem.Allocator) !void {
+        self.allocator = allocator;
+        self.heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+        errdefer self.heap.deinit();
 
-        var r = try Runner.init(allocator, &heap);
-        errdefer r.deinit();
+        try self.r.init(allocator, &self.heap);
+        errdefer self.r.deinit();
 
-        try r.enableJit(64 * 1024 * 1024, 1);
-
-        return .{
-            .allocator = allocator,
-            .heap = heap,
-            .r = r,
-        };
+        try self.r.enableJit(64 * 1024 * 1024, 1);
     }
 
     pub fn deinit(self: *Parity) void {
@@ -160,7 +155,8 @@ const Parity = struct {
 test "parity: vm vs jit (single add)" {
     if (builtin.cpu.arch != .aarch64) return;
 
-    var p = try Parity.init(testing.allocator);
+    var p: Parity = undefined;
+    try p.init(testing.allocator);
     defer p.deinit();
 
     try runExprParity(&p, "(+ 1 2)");
@@ -169,7 +165,8 @@ test "parity: vm vs jit (single add)" {
 test "parity: vm vs jit (single list)" {
     if (builtin.cpu.arch != .aarch64) return;
 
-    var p = try Parity.init(testing.allocator);
+    var p: Parity = undefined;
+    try p.init(testing.allocator);
     defer p.deinit();
 
     try runExprParity(&p, "(list (+ 1 2) 4)");
@@ -178,7 +175,8 @@ test "parity: vm vs jit (single list)" {
 test "parity: vm vs jit (make_list 64)" {
     if (builtin.cpu.arch != .aarch64) return;
 
-    var p = try Parity.init(testing.allocator);
+    var p: Parity = undefined;
+    try p.init(testing.allocator);
     defer p.deinit();
 
     var buf = std.ArrayList(u8){};
@@ -197,7 +195,8 @@ test "parity: vm vs jit (make_list 64)" {
 test "parity: vm vs jit (hand-picked)" {
     if (builtin.cpu.arch != .aarch64) return;
 
-    var p = try Parity.init(testing.allocator);
+    var p: Parity = undefined;
+    try p.init(testing.allocator);
     defer p.deinit();
 
     const cases = [_][]const u8{
@@ -310,7 +309,8 @@ test "parity: vm vs jit (hand-picked)" {
 test "parity: vm vs jit (random arith)" {
     if (builtin.cpu.arch != .aarch64) return;
 
-    var p = try Parity.init(testing.allocator);
+    var p: Parity = undefined;
+    try p.init(testing.allocator);
     defer p.deinit();
 
     var rng = std.Random.DefaultPrng.init(0x2c0f7d11);

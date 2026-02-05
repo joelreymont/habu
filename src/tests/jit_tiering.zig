@@ -16,7 +16,8 @@ test "jit tiering hot threshold" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 4 * 1024 * 1024 });
     defer heap.deinit();
 
-    var r = try Runner.init(testing.allocator, &heap);
+    var r: Runner = undefined;
+    try r.init(testing.allocator, &heap);
     defer r.deinit();
 
     const chunk = try r.compile("(+ 1 2)");
@@ -52,4 +53,3 @@ test "jit tiering hot threshold" {
     try testing.expectEqual(st3.compile_n, st4.compile_n);
     try testing.expectEqual(st3.fail_n, st4.fail_n);
 }
-
