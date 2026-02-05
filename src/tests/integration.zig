@@ -2619,6 +2619,50 @@ test "method-function" {
     try testing.expectEqual(@as(i64, 10), result.toFixnum());
 }
 
+test "method-combination helper macros" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const call_simple = try repl.eval(
+        "(call-method (make-method 41))",
+    );
+    try testing.expectEqual(@as(i64, 41), call_simple.toFixnum());
+
+    const make_method = try repl.eval(
+        "(funcall (make-method (+ 1 2)))",
+    );
+    try testing.expectEqual(@as(i64, 3), make_method.toFixnum());
+
+    const standard_name = try repl.eval("(eq standard 'standard)");
+    try testing.expect(!standard_name.isNil());
+}
+
+test "method-combination error helpers" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const helpers_bound = try repl.eval(
+        "(and (fboundp 'invalid-method-error)\n" ++
+            "     (fboundp 'method-combination-error)\n" ++
+            "     (eq standard 'standard))",
+    );
+    try testing.expect(!helpers_bound.isNil());
+}
+
 test "defmethod multi-arity dispatch" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });

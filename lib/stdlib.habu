@@ -4560,6 +4560,32 @@
   (declare (ignore name args))
   nil)
 
+; Method-combination helper symbols
+(defvar standard 'standard)
+(defvar *method-combination-args* nil)
+
+; call-method - invoke a method object, optionally installing next-method.
+(defmacro call-method (method &optional next-methods)
+  (declare (ignore next-methods))
+  `(let ((m ,method))
+     (if (functionp m)
+         (funcall m)
+       (funcall (method-function m)))))
+
+; make-method - build a method object from an effective method form.
+(defmacro make-method (form)
+  `(lambda (&rest *method-combination-args*)
+     ,form))
+
+; invalid-method-error - signal invalid method use in method combinations.
+(defun invalid-method-error (method format-control &rest format-arguments)
+  (declare (ignore method))
+  (apply #'error format-control format-arguments))
+
+; method-combination-error - signal method combination expansion errors.
+(defun method-combination-error (format-control &rest format-arguments)
+  (apply #'error format-control format-arguments))
+
 ; formatter - compile format string (stub - just returns lambda)
 (defmacro formatter (control-string)
   `(lambda (stream &rest args)
