@@ -3143,6 +3143,34 @@
             (coerce (nreverse chars) 'string)
             ""))))
 
+; read-from-string - keyword-aware wrapper around primitive one-arg reader
+(defun read-from-string (string &optional (eof-error-p t) eof-value
+                         &key (start 0) end preserve-whitespace (allow-other-keys nil))
+  (declare (ignore preserve-whitespace allow-other-keys))
+  (let* ((limit (or end (length string)))
+         (slice (if (and (= start 0) (= limit (length string)))
+                    string
+                    (subseq string start limit))))
+    (if (and (>= (length slice) 2)
+             (= (char slice 0) 35)
+             (= (char slice 1) 46))
+        (if *read-suppress*
+            eof-value
+            (eval (read-from-string (subseq slice 2))))
+        (if eof-error-p
+            (read-from-string slice)
+            (handler-case (read-from-string slice)
+              (error () eof-value))))))
+
+; write-to-string - keyword-aware wrapper around primitive one-arg writer
+(defun write-to-string (object &key array base case circle escape gensym length level lines
+                         miser-width pprint-dispatch pretty radix readably right-margin
+                         stream (allow-other-keys nil))
+  (declare (ignore array base case circle escape gensym length level lines
+                   miser-width pprint-dispatch pretty radix readably right-margin stream
+                   allow-other-keys))
+  (write-to-string object))
+
 ; y-or-n-p - prompt for yes/no answer (single char)
 (defun y-or-n-p (&optional format-string &rest args)
   (when format-string

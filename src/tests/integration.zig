@@ -3073,49 +3073,83 @@ test "ansi repro make-load-form.order.14 still nonconforming" {
     try testing.expectError(error.TypeMismatch, evalExpr(allocator, &heap, src));
 }
 
-test "ansi repro write-to-string.3 still nonconforming" {
+test "ansi repro write-to-string.3 honors allow-other-keys" {
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
 
     // ANSI write-to-string.3 permits odd trailing keys when :allow-other-keys t.
     const src =
         \\(with-standard-io-syntax
-        \\  (write-to-string 3 :allow-other-keys t '#.(gensym) 0))
+        \\  (let ((k (gensym)))
+        \\    (funcall #'write-to-string 3 :allow-other-keys t k 0)))
     ;
-
-    try testing.expectError(error.UnexpectedToken, evalExpr(allocator, &heap, src));
+    const result = try repl.eval(src);
+    try testing.expect(result.isString());
+    try testing.expectEqualStrings("3", result.toPtr(runtime.String).bytes());
 }
 
-test "ansi repro syntax.sharp-dot.1 still nonconforming" {
+test "ansi repro syntax.sharp-dot.1 read-time evaluates #." {
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
 
     // ANSI syntax.sharp-dot.1 expects read-time evaluation support for #.
-    const src = "(read-from-string \"#.(+ 1 2)\")";
-    try testing.expectError(error.UnexpectedToken, evalExpr(allocator, &heap, src));
+    const src = "(read-from-string \"#.(+ 1 2)\" t nil :start 0)";
+    const result = try repl.eval(src);
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 3), result.toFixnum());
 }
 
-test "ansi repro read-suppress.sharp-dot.1 still nonconforming" {
+test "ansi repro read-suppress.sharp-dot.1 ignores #. when suppressed" {
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
 
     // ANSI read-suppress.sharp-dot.1 should ignore #. when *read-suppress* is true.
-    const src = "(let ((*read-suppress* t)) (read-from-string \"#.1\"))";
-    try testing.expectError(error.UnexpectedToken, evalExpr(allocator, &heap, src));
+    const src =
+        \\(progn
+        \\  (setq *read-suppress* t)
+        \\  (unwind-protect
+        \\      (read-from-string "#.1" t nil :start 0)
+        \\    (setq *read-suppress* nil)))
+    ;
+    const result = try repl.eval(src);
+    try testing.expect(result.isNil());
 }
 
-test "ansi repro read-from-string.error.10 still nonconforming" {
+test "ansi repro read-from-string.error.10 rejects unknown keyword" {
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
 
     // ANSI read-from-string.error.10 expects PROGRAM-ERROR here.
     const src = "(read-from-string \"A\" nil t :bad-keyword t :allow-other-keys nil)";
-    const result = try evalExpr(allocator, &heap, src);
-    try testing.expect(result.isSymbol());
+    try testing.expectError(error.TypeMismatch, repl.eval(src));
 }
 
 test "ansi repro warn.1 still nonconforming" {

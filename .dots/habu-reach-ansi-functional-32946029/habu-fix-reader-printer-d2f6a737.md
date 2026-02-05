@@ -1,9 +1,11 @@
 ---
 title: Fix reader/printer failures batch1
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-05T22:32:05.478940+01:00"
+created-at: "\"\\\"2026-02-05T22:32:05.478940+01:00\\\"\""
+closed-at: "2026-02-05T23:23:21.326866+01:00"
+close-reason: "Fixed read/write string key semantics and #. handling paths"
 blocks:
   - habu-add-reader-printer-9a30a9ff
 ---

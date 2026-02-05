@@ -11449,6 +11449,7 @@ pub const Compiler = struct {
     fn compileUnaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) anyerror!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
         const cons = args.toPtr(Cons);
+        if (!cons.cdr.isNil()) return error.InvalidSyntax;
         const operand = try self.compile(cons.car, env);
 
         return switch (prim) {
