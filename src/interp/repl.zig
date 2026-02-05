@@ -360,7 +360,6 @@ pub const Repl = struct {
 
     /// Evaluate file content using a separate VM to avoid stack corruption
     fn evalFileContentSeparateVm(self: *Repl, content: []const u8) !Value {
-        var pos: usize = 0;
         var last_value = Value.nil;
 
         // Create a temporary VM for nested evaluation
@@ -385,75 +384,22 @@ pub const Repl = struct {
         self.current_vm = &nested_vm;
         defer self.current_vm = saved_current_vm;
 
-        while (pos < content.len) {
-            // Skip whitespace and comments
-            while (pos < content.len) {
-                if (content[pos] == ' ' or content[pos] == '\t' or
-                    content[pos] == '\n' or content[pos] == '\r')
-                {
-                    pos += 1;
-                } else if (content[pos] == ';') {
-                    while (pos < content.len and content[pos] != '\n') {
-                        pos += 1;
-                    }
-                } else {
-                    break;
-                }
-            }
+        var parse_arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer parse_arena.deinit();
+        const parse_alloc = parse_arena.allocator();
 
-            if (pos >= content.len) break;
+        var parser = try Parser.init(parse_alloc, self.heap, content, &self.vm.builtins);
+        defer parser.deinit();
 
-            // Find the expression extent
-            const expr_start = pos;
-            var depth: usize = 0;
-            var in_string = false;
-            var in_char = false;
+        var exprs = std.ArrayList(Value){};
+        defer exprs.deinit(parse_alloc);
+        try parser.parseAll(parse_alloc, &exprs);
 
-            while (pos < content.len) {
-                const c = content[pos];
-                if (in_string) {
-                    if (c == '\\' and pos + 1 < content.len) {
-                        pos += 2;
-                        continue;
-                    }
-                    if (c == '"') in_string = false;
-                } else if (in_char) {
-                    in_char = false;
-                } else {
-                    if (c == '"') in_string = true;
-                    if (c == '#' and pos + 1 < content.len and content[pos + 1] == '\\') {
-                        pos += 1;
-                        in_char = true;
-                    }
-                    if (c == '(') depth += 1;
-                    if (c == ')') {
-                        if (depth > 0) depth -= 1;
-                        if (depth == 0) {
-                            pos += 1;
-                            break;
-                        }
-                    }
-                    if (depth == 0 and (c == ' ' or c == '\t' or c == '\n' or c == '\r')) {
-                        break;
-                    }
-                }
-                pos += 1;
-            }
-
-            const expr_slice = content[expr_start..pos];
-            if (expr_slice.len > 0) {
-                // Use evalWithVm for the nested VM
-                if (self.evalWithVm(expr_slice, &nested_vm)) |value| {
-                    last_value = value;
-                } else |err| {
-                    std.debug.print("Error at pos {}: {s} - {s}\n", .{
-                        pos,
-                        @errorName(err),
-                        expr_slice[0..@min(80, expr_slice.len)],
-                    });
-                    return err;
-                }
-            }
+        for (exprs.items) |expr| {
+            var eval_arena = std.heap.ArenaAllocator.init(self.allocator);
+            defer eval_arena.deinit();
+            const eval_alloc = eval_arena.allocator();
+            last_value = try self.evalParsedWithVm(expr, &nested_vm, eval_alloc);
         }
 
         // Copy globals back to source VM
@@ -474,7 +420,13 @@ pub const Repl = struct {
 
         // Parse
         var parser = try Parser.init(arena_alloc, self.heap, source, &self.vm.builtins);
-        var expr = try parser.parse();
+        const expr = try parser.parse();
+
+        return self.evalParsedWithVm(expr, vm, arena_alloc);
+    }
+
+    fn evalParsedWithVm(self: *Repl, parsed_expr: Value, vm: *Vm, arena_alloc: std.mem.Allocator) !Value {
+        var expr = parsed_expr;
 
         // Check for defmacro - handle specially like main eval
         if (self.isDefmacro(expr)) {

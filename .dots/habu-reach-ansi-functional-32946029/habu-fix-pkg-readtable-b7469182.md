@@ -1,9 +1,11 @@
 ---
 title: Fix package/readtable failures batch1
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-05T22:32:05.520100+01:00"
+created-at: "\"2026-02-05T22:32:05.520100+01:00\""
+closed-at: "2026-02-06T00:03:05.984513+01:00"
+close-reason: Switched load path to parser forms and updated repros to conforming behavior.
 blocks:
   - habu-add-pkg-readtable-a3987459
 ---

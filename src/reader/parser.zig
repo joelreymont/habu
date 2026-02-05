@@ -911,6 +911,31 @@ test "parse nil" {
     try testing.expect(val.isNil());
 }
 
+test "feature conditional skips absent branch and keeps next form" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+    var parser = try Parser.init(
+        testing.allocator,
+        &heap,
+        "#+ecl (si::package-lock nil nil)\n42",
+        &vm.builtins,
+    );
+    defer parser.deinit();
+
+    var results = std.ArrayList(Value){};
+    defer results.deinit(testing.allocator);
+    try parser.parseAll(testing.allocator, &results);
+
+    try testing.expectEqual(@as(usize, 1), results.items.len);
+    try testing.expect(results.items[0].isFixnum());
+    try testing.expectEqual(@as(i64, 42), results.items[0].toFixnum());
+}
+
 test "parse all expressions" {
     const testing = std.testing;
 

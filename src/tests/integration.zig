@@ -3333,7 +3333,7 @@ test "ansi repro read-from-string.feature-plus.2 suppresses package form to nil"
     try testing.expect(result.isNil());
 }
 
-test "ansi repro load.feature-plus.1 still TypeMismatch on #+ecl" {
+test "ansi repro load.feature-plus.1 ignores #+ecl branch" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
@@ -3350,10 +3350,12 @@ test "ansi repro load.feature-plus.1 still TypeMismatch on #+ecl" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    try testing.expectError(error.TypeMismatch, repl.eval("(load \"tmp_pkg_feature_1.lsp\")"));
+    const result = try repl.eval("(load \"tmp_pkg_feature_1.lsp\")");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
-test "ansi repro load.feature-plus.2 still TypeMismatch on #+(and ...)" {
+test "ansi repro load.feature-plus.2 ignores #+(and ...) branch" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
@@ -3370,10 +3372,12 @@ test "ansi repro load.feature-plus.2 still TypeMismatch on #+(and ...)" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    try testing.expectError(error.TypeMismatch, repl.eval("(load \"tmp_pkg_feature_2.lsp\")"));
+    const result = try repl.eval("(load \"tmp_pkg_feature_2.lsp\")");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
-test "ansi repro load.feature-plus.3 still TypeMismatch on #+lispworks" {
+test "ansi repro load.feature-plus.3 ignores #+lispworks branch" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
@@ -3390,5 +3394,7 @@ test "ansi repro load.feature-plus.3 still TypeMismatch on #+lispworks" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    try testing.expectError(error.TypeMismatch, repl.eval("(load \"tmp_pkg_feature_3.lsp\")"));
+    const result = try repl.eval("(load \"tmp_pkg_feature_3.lsp\")");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
