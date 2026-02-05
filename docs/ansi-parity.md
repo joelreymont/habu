@@ -29,6 +29,20 @@ a1107c9564833680c72946f1cd87c9c3bbe0de5a
 - Normalized results: `docs/ansi/results/<runtime>-<timestamp>.json`
 - Baseline snapshot: `docs/ansi-parity-baseline.json`
 
+## Runner
+
+Generate deterministic raw logs with:
+
+```bash
+tools/ansi/run.sh sbcl --input /path/to/test.lisp --tag latest
+tools/ansi/run.sh habu --input /path/to/test.lisp --tag latest
+```
+
+By default the runner writes:
+
+- `docs/ansi/raw/sbcl-latest.log`
+- `docs/ansi/raw/habu-latest.log`
+
 ## Next Required Dot
 
-- `habu-add-ansi-test-05377306`: add deterministic runner for `sbcl` and `habu`.
+- `habu-normalize-ansi-output-9aa78296`: normalize raw logs to JSON.

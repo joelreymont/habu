@@ -1,9 +1,11 @@
 ---
 title: Add ANSI test runner
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-05T22:32:05.457618+01:00"
+created-at: "\"2026-02-05T22:32:05.457618+01:00\""
+closed-at: "2026-02-05T22:37:08.819454+01:00"
+close-reason: Added tools/ansi/run.sh and docs usage; verified logs for both runtimes.
 blocks:
   - habu-pin-ansi-test-8ec33815
 ---
