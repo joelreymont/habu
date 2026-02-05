@@ -30,6 +30,6 @@ This matrix tracks "Cranelift-class" JIT backend capabilities. Each row has:
 | Runtime | Tiering / profiling hooks | partial | `src/tests/jit_tiering.zig`: test "jit tiering hot threshold" | `bench/jit.zig`: `zig build bench-jit -- --json` | aarch64 | Hot-count threshold JIT tiering exists; no hot-loop detection/profiling yet. |
 | Debug | DWARF / debug info | no | n/a | n/a | n/a | No debug info emitted. |
 | ISA | Multi-ISA backend | no | n/a | n/a | n/a | AArch64 only. |
-| Memory | W^X / icache management | yes | `src/jit/patch.zig`: test "code buffer" | `bench/jit.zig`: `zig build bench-jit -- --json` (code_bytes) | aarch64 | macOS MAP_JIT + write-protect; non-mac uses mprotect; aarch64 icache flush. |
+| Memory | W^X / icache management | yes | `src/jit/patch.zig`: test "code buffer" | `bench/jit.zig`: `zig build bench-jit -- --json` (code_bytes, code_bytes_per_op) | aarch64 | macOS MAP_JIT + write-protect; non-mac uses mprotect; aarch64 icache flush. |
 
 Last updated: 2026-02-05

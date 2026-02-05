@@ -4,7 +4,7 @@ const habu = @import("habu");
 const runtime = habu.runtime;
 const interp = habu.interp;
 const compiler_mod = habu.compiler;
-const compile_chunk = @import("../src/testing/compile_chunk.zig");
+const compile_chunk = habu.testutil;
 
 const Heap = runtime.Heap;
 const Vm = interp.Vm;

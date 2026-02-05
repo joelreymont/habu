@@ -16,6 +16,7 @@ pub const interp = @import("interp/interp.zig");
 pub const jit = @import("jit/mod.zig");
 pub const ir = @import("ir/ir.zig");
 pub const tests = @import("tests/tests.zig");
+pub const testutil = @import("testing/compile_chunk.zig");
 
 test {
     _ = diagnostic;
@@ -28,4 +29,5 @@ test {
     _ = jit;
     _ = ir;
     _ = tests;
+    _ = testutil;
 }

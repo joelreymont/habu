@@ -6,10 +6,12 @@ const habu = @import("habu");
 const runtime = habu.runtime;
 const interp = habu.interp;
 const compiler_mod = habu.compiler;
+const bytecode = habu.bytecode;
 
 const Heap = runtime.Heap;
 const Vm = interp.Vm;
 const Compiler = compiler_mod.Compiler;
+const Op = bytecode.Op;
 
 const Bench = struct {
     ops: u64,
@@ -101,6 +103,21 @@ fn run(timer: *std.time.Timer, heap: *Heap, vm: *Vm, chunk: *runtime.objects.Chu
     };
 }
 
+fn countBytecodeOps(chunk: *runtime.objects.Chunk) u64 {
+    const code = chunk.getCode();
+    var i: usize = 0;
+    var n: u64 = 0;
+    while (i + 1 < code.len) {
+        const low: u16 = code[i];
+        const high: u16 = code[i + 1];
+        const op_raw: u16 = low | (high << 8);
+        const op: Op = @enumFromInt(op_raw);
+        i += 2 + op.operandSize();
+        n += 1;
+    }
+    return n;
+}
+
 pub fn main() !void {
     const opts = parseArgs() catch |err| switch (err) {
         error.InvalidArgs => return,
@@ -148,6 +165,8 @@ pub fn main() !void {
     const jit_steady = try run(&timer, &heap, &vm, chunk, opts.fix_n);
 
     const speedup = if (jit_steady.ns == 0) 0.0 else @as(f64, @floatFromInt(vm_bench.ns)) / @as(f64, @floatFromInt(jit_steady.ns));
+    const bc_ops = countBytecodeOps(chunk);
+    const bytes_per_op = if (bc_ops == 0) 0.0 else @as(f64, @floatFromInt(st.code_bytes)) / @as(f64, @floatFromInt(bc_ops));
 
     var out_buf: [4096]u8 = undefined;
     var out = std.fs.File.stdout().writer(&out_buf);
@@ -155,7 +174,7 @@ pub fn main() !void {
 
     if (opts.json) {
         try w.print(
-            "{{\"ops\":{d},\"vm\":{{\"ns\":{d},\"ops_per_sec\":{d:.3},\"allocs\":{d},\"bytes_alloc\":{d},\"gc_count\":{d}}},\"jit\":{{\"cold\":{{\"ns\":{d},\"ops_per_sec\":{d:.3}}},\"steady\":{{\"ns\":{d},\"ops_per_sec\":{d:.3}}},\"compile_ns\":{d},\"compile_n\":{d},\"code_bytes\":{d},\"fail_n\":{d}}},\"speedup\":{d:.3}}}\n",
+            "{{\"ops\":{d},\"vm\":{{\"ns\":{d},\"ops_per_sec\":{d:.3},\"allocs\":{d},\"bytes_alloc\":{d},\"gc_count\":{d}}},\"jit\":{{\"cold\":{{\"ns\":{d},\"ops_per_sec\":{d:.3}}},\"steady\":{{\"ns\":{d},\"ops_per_sec\":{d:.3}}},\"compile_ns\":{d},\"compile_n\":{d},\"code_bytes\":{d},\"bytecode_ops\":{d},\"code_bytes_per_op\":{d:.3},\"fail_n\":{d}}},\"speedup\":{d:.3}}}\n",
             .{
                 opts.fix_n,
                 vm_bench.ns,
@@ -170,6 +189,8 @@ pub fn main() !void {
                 st.compile_ns,
                 st.compile_n,
                 st.code_bytes,
+                bc_ops,
+                bytes_per_op,
                 st.fail_n,
                 speedup,
             },
@@ -185,7 +206,7 @@ pub fn main() !void {
     try w.print("  vm:  {d:.3} Mops/s\n", .{common.opsPerSec(vm_bench.ops, vm_bench.ns) / 1e6});
     try w.print("  jit: {d:.3} Mops/s (steady)\n", .{common.opsPerSec(jit_steady.ops, jit_steady.ns) / 1e6});
     try w.print("  compile: {d} ns (n={d}, fail={d})\n", .{ st.compile_ns, st.compile_n, st.fail_n });
-    try w.print("  code: {d} bytes\n", .{st.code_bytes});
+    try w.print("  code: {d} bytes ({d:.3} bytes/op, ops={d})\n", .{ st.code_bytes, bytes_per_op, bc_ops });
     try w.print("  speedup: {d:.3}x\n", .{speedup});
     try w.flush();
 }

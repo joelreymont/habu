@@ -44,7 +44,7 @@ Goal: native code size bounded and W^X overhead stable.
 
 - Metric: bytes of code emitted per bytecode op.
 - Target: <= 16 bytes/op median.
-- Proof: `bench/jit.zig` via `zig build bench-jit -- --json` (code_bytes; per-op pending).
+- Proof: `bench/jit.zig` via `zig build bench-jit -- --json` (code_bytes, code_bytes_per_op).
 
 ## Updating parity matrix
 
