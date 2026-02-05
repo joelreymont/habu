@@ -285,6 +285,7 @@ pub const Builtins = struct {
     @"find-symbol": Value,
     @"symbol-name": Value,
     @"copy-symbol": Value,
+    @"copy-structure": Value,
     makunbound: Value,
     set: Value,
     get: Value,
@@ -847,6 +848,7 @@ pub const Builtins = struct {
             .@"find-symbol" = try heap.intern("find-symbol"),
             .@"symbol-name" = try heap.intern("symbol-name"),
             .@"copy-symbol" = try heap.intern("copy-symbol"),
+            .@"copy-structure" = try heap.intern("copy-structure"),
             .makunbound = try heap.intern("makunbound"),
             .set = try heap.intern("set"),
             .get = try heap.intern("get"),
@@ -1212,6 +1214,7 @@ pub const Builtins = struct {
         // Symbol operations
         "boundp", "fboundp", "symbol-value", "symbol-function",
         "typep", "type-of", "intern", "symbol-name", "copy-symbol", "makunbound", "set",
+        "copy-structure",
         "get", "put", "remprop",
         // Numeric
         "abs", "zerop", "plusp", "minusp", "evenp", "oddp",
@@ -4644,6 +4647,7 @@ pub const Compiler = struct {
         if (s == b.stringp.raw) return try self.makeUnaryWrapper(&IrBuilder.stringp);
         if (s == b.atom.raw) return try self.makeUnaryWrapper(&IrBuilder.atomp);
         if (s == b.listp.raw) return try self.makeUnaryWrapper(&IrBuilder.listp);
+        if (s == b.@"copy-structure".raw) return try self.makeUnaryWrapper(&IrBuilder.copyStructure);
 
         // Variadic arithmetic - create wrappers using add/sub/mul/div builders
         if (s == b.@"+".raw) return try self.makeVariadicAddWrapper();
@@ -6646,7 +6650,7 @@ pub const Compiler = struct {
         var def_idx: usize = 0;
 
         // 1. Constructor: (defun make-name (slot1 slot2 ...) (vector 'name slot1 slot2 ...))
-        const make_name = try self.concatStrings("make-", struct_name);
+        const make_name = try self.concatStrings("MAKE-", struct_name);
         defs[def_idx] = try self.generateStructConstructor(heap, make_name, struct_name, slot_specs.items, env);
         def_idx += 1;
 
@@ -6658,7 +6662,7 @@ pub const Compiler = struct {
         }
 
         // 3. Predicate: (defun name-p (obj) (and (vectorp obj) (eq (aref obj 0) 'name)))
-        const pred_name = try self.concatStrings(struct_name, "-p");
+        const pred_name = try self.concatStrings(struct_name, "-P");
         defs[def_idx] = try self.generateStructPredicate(heap, pred_name, struct_name);
         def_idx += 1;
 
@@ -6667,8 +6671,8 @@ pub const Compiler = struct {
         const persistent_pred_name = try self.globals.allocator.dupe(u8, pred_name);
         try self.struct_predicates.put(persistent_pred_name, struct_type);
 
-        // 4. Copier: (defun copy-name (obj) (copy-seq obj))
-        const copy_name = try self.concatStrings("copy-", struct_name);
+        // 4. Copier: (defun copy-name (obj) (copy-structure obj))
+        const copy_name = try self.concatStrings("COPY-", struct_name);
         defs[def_idx] = try self.generateStructCopier(copy_name);
         def_idx += 1;
 
@@ -7494,7 +7498,8 @@ pub const Compiler = struct {
         const obj_ref = try self.builder.variable("obj", 0, 0);
         const vectorp_ir = try self.builder.vectorp(obj_ref);
         const idx0 = try self.builder.lit(Value.makeFixnum(0));
-        const vecref0 = try self.builder.vecRef(obj_ref, idx0);
+        const obj_ref2 = try self.builder.variable("obj", 0, 0);
+        const vecref0 = try self.builder.vecRef(obj_ref2, idx0);
         const name_sym = try heap.intern(struct_name);
         const name_lit = try self.builder.lit(name_sym);
         const eq_ir = try self.builder.eq(vecref0, name_lit);
@@ -7513,9 +7518,7 @@ pub const Compiler = struct {
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
     }
 
-    /// Generate copier: (lambda (obj) obj)
-    /// Identity function - opcode space full, proper copy requires extending bytecode
-    /// Users must call copy-seq explicitly for shallow copy
+    /// Generate copier: (lambda (obj) (copy-structure obj))
     fn generateStructCopier(self: *Compiler, copy_name: []const u8) anyerror!*Ir {
         // Qualify the copier name with current package
         var qual_buf: [512]u8 = undefined;
@@ -7524,8 +7527,8 @@ pub const Compiler = struct {
         const qualified_name = q.name;
         const global_idx = try self.globals.define(qualified_name);
 
-        // Identity - proper copy needs opcode slot or multi-byte opcodes
         const obj_ref = try self.builder.variable("obj", 0, 0);
+        const copy_ir = try self.builder.copyStructure(obj_ref);
 
         const lambda_ir = try self.builder.lambda(
             &[_][]const u8{"obj"},
@@ -7533,7 +7536,7 @@ pub const Compiler = struct {
             &[_]Ir.KeyParam{},
             null,
             &[_]Ir.Capture{},
-            obj_ref,
+            copy_ir,
         );
 
         return try self.builder.define(qualified_name, global_idx, lambda_ir);
@@ -10212,7 +10215,7 @@ pub const Compiler = struct {
         method_qualifiers, method_specializers, method_function,
         generic_function_methods, generic_function_lambda_list, generic_function_name,
         // Vector
-        vec_ref, vec_len, vec_fill_ptr, vec_set_fill_ptr, vec_set_adjustable, vec_push, vec_push_ext, vec_pop, vec_adjust,
+        vec_ref, vec_len, vec_fill_ptr, vec_set_fill_ptr, vec_set_adjustable, vec_push, vec_push_ext, vec_pop, vec_adjust, copy_structure,
         // Box
         make_box, box_ref, box_set,
         // String
@@ -10336,6 +10339,7 @@ pub const Compiler = struct {
         .{ .field = "float-radix", .tag = .float_radix },
         .{ .field = "float-digits", .tag = .float_digits },
         .{ .field = "vector-length", .tag = .vec_len },
+        .{ .field = "copy-structure", .tag = .copy_structure },
         .{ .field = "%fill-pointer", .tag = .vec_fill_ptr },
         .{ .field = "%vector-pop", .tag = .vec_pop },
         .{ .field = "%find-class", .tag = .find_class },
@@ -11216,6 +11220,7 @@ pub const Compiler = struct {
             .nilp => try self.builder.nilp(operand),
             .not => try self.builder.not(operand),
             .vec_len => try self.builder.vecLen(operand),
+            .copy_structure => try self.builder.copyStructure(operand),
             .make_box => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .make_box = .{ .operand = operand } };
@@ -12783,7 +12788,8 @@ pub const Compiler = struct {
                 // This is a struct predicate call - generate struct_p IR
                 // Extract struct name from predicate (remove "-p" suffix)
                 const struct_name = if (sym_name.len > 2 and
-                    std.mem.endsWith(u8, sym_name, "-p"))
+                    sym_name[sym_name.len - 2] == '-' and
+                    (sym_name[sym_name.len - 1] == 'p' or sym_name[sym_name.len - 1] == 'P'))
                     sym_name[0 .. sym_name.len - 2]
                 else
                     sym_name;

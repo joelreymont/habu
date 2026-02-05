@@ -781,6 +781,11 @@ pub const Jit = struct {
                 });
                 try self.emitCallUnary(@intFromPtr(&rt.vecAdjust));
             },
+            .copy_structure => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.copyStructure));
+                try self.emitStackPush();
+            },
             .call, .tail_call => {
                 const argc = chunk.readU8(bc_offset.*);
                 bc_offset.* += 1;

@@ -1115,6 +1115,10 @@ pub const Op = enum(u16) {
     /// ( a b -- t/nil )
     equalp = 0x127,
 
+    /// Copy structure (copy-structure)
+    /// ( struct -- struct-copy )
+    copy_structure = 0x128,
+
     /// Association list lookup (using eql - compares numbers by value)
     /// ( key alist -- cons-or-nil )
     assoc_eql = 0xF9,
@@ -2026,6 +2030,7 @@ pub const Op = enum(u16) {
             .equal,
             .eql,
             .equalp,
+            .copy_structure,
             .rplaca,
             .rplacd,
             .error_user,

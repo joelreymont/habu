@@ -1076,7 +1076,7 @@ Audit: `python3 tools/cl_symbols_audit.py`
 | complement | ✓ | lib/stdlib.habu:2184 | Return negation of predicate |
 | complexp | ✓ | compile.zig:1018 | Complex predicate |
 | constantly | ✓ | lib/stdlib.habu:2179 | Return constant function |
-| copy-structure | ✗ | - | Structure copier |
+| copy-structure | ✓ | vector.zig:488 | Structure copier |
 | debug | ⚠ | compile.zig:9675 | OPTIMIZE quality parsed but ignored |
 | declaration | ⚠ | compile.zig:9621 | Declaration spec accepted but ignored |
 | declare | ✓ | compile.zig:9518 | Local declarations |

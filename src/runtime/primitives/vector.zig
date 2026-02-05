@@ -483,6 +483,20 @@ pub fn vectorCopy(heap: *Heap, val: Value) error{OutOfMemory, Overflow}!Value {
     return new_vec;
 }
 
+/// COPY-STRUCTURE (ANSI CL): shallow copy of a structure object.
+/// Habu represents structures as vectors with a type tag symbol in slot 0.
+pub fn copyStructure(heap: *Heap, val: Value) error{OutOfMemory, Overflow, TypeMismatch}!Value {
+    if (!val.isVector()) return error.TypeMismatch;
+    const src = val.toPtr(objects.Vector);
+    if (src.length == 0) return error.TypeMismatch;
+    if (src.data[0].typeKind() != .symbol) return error.TypeMismatch;
+
+    const new_vec = try makeVector(heap, src.length);
+    const dst = new_vec.toPtr(objects.Vector);
+    @memcpy(dst.data[0..src.length], src.data[0..src.length]);
+    return new_vec;
+}
+
 /// Create vector from list
 pub fn listToVector(heap: *Heap, list_val: Value) error{OutOfMemory, Overflow}!Value {
     const list_prim = @import("list.zig");

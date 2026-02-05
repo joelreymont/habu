@@ -951,6 +951,7 @@ pub const Emitter = struct {
             .vec_push_ext => |op| try self.emitTernaryOp(op, .vec_push_ext),
             .vec_pop => |op| try self.emitUnaryOp(op.operand, .vec_pop),
             .vec_adjust => |op| try self.emitTernaryOp(op, .vec_adjust),
+            .copy_structure => |op| try self.emitUnaryOp(op.operand, .copy_structure),
             .elt_set => |e| try self.emitEltSet(e),
 
             // Array operations

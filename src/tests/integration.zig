@@ -12,53 +12,30 @@ const Heap = runtime.Heap;
 const Chunk = runtime.Chunk;
 const Cons = runtime.Cons;
 
-const reader = @import("../reader/reader.zig");
-const Parser = reader.Parser;
-
 const compiler = @import("../compiler/compiler.zig");
 const Compiler = compiler.Compiler;
-const Env = compiler.Env;
-
-const bytecode = @import("../bytecode/bytecode.zig");
-const Emitter = bytecode.Emitter;
 
 const interp = @import("../interp/interp.zig");
 const Vm = interp.Vm;
 
+const compile_chunk = @import("../testing/compile_chunk.zig");
+
 /// Test helper: parse, compile, emit, run and return result
 fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {
-    // Use arena for IR allocations (freed all at once)
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    const arena_alloc = arena.allocator();
-
-    // Compile (with heap for symbol interning)
-    var comp_vm = try Vm.init(arena_alloc, heap);
-    defer comp_vm.deinit();
-
-    // Parse
-    var parser = try Parser.init(arena_alloc, heap, source, &comp_vm.builtins);
-    defer parser.deinit();
-
-    const expr = try parser.parse();
-    var comp = try Compiler.initWithHeap(arena_alloc, &comp_vm);
-    defer comp.deinit();
-
-    var env = Env.init(arena_alloc, null);
-    defer env.deinit();
-
-    const ir_node = try comp.compile(expr, &env);
-
-    // Emit bytecode
-    var emitter = Emitter.initWithHeap(arena_alloc, heap);
-    try emitter.emit(ir_node);
-    const chunk_val = try emitter.finalize();
-    // Arena handles cleanup
-
-    // Run - use main allocator for VM stack
     var vm = try Vm.init(allocator, heap);
     defer vm.deinit();
-    return vm.run(chunk_val.toPtr(Chunk));
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(*Chunk){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPool(chunk_pool.items);
+
+    const chunk = try compile_chunk.compileChunk(allocator, heap, &vm, &comp, &chunk_pool, source);
+    return vm.run(chunk);
 }
 
 // ============================================================================
@@ -2595,4 +2572,69 @@ test "listen reports input availability on stream" {
     const cons3 = cons2.cdr.toPtr(Cons);
     try testing.expect(cons3.car.isNil());
     try testing.expect(cons3.cdr.isNil());
+}
+
+test "copy-structure copies defstruct instance" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap,
+        "(progn (defstruct foo (bar fixnum) (baz fixnum))\n" ++
+        "  (let* ((x (make-foo 1 2))\n" ++
+        "         (y (copy-structure x))\n" ++
+        "         (z (copy-foo x)))\n" ++
+        "    (list\n" ++
+        "      (foo-p y)\n" ++
+        "      (foo-p z)\n" ++
+        "      (not (eq x y))\n" ++
+        "      (not (eq x z))\n" ++
+        "      (eql (foo-bar x) (foo-bar y))\n" ++
+        "      (eql (foo-baz x) (foo-baz y))\n" ++
+        "      (eql (foo-bar x) (foo-bar z))\n" ++
+        "      (eql (foo-baz x) (foo-baz z))))))");
+
+    var cur = result;
+    try testing.expect(cur.isCons());
+    const c0 = cur.toPtr(Cons);
+    try testing.expect(c0.car.eq(Value.t));
+    cur = c0.cdr;
+
+    try testing.expect(cur.isCons());
+    const c1 = cur.toPtr(Cons);
+    try testing.expect(c1.car.eq(Value.t));
+    cur = c1.cdr;
+
+    try testing.expect(cur.isCons());
+    const c2 = cur.toPtr(Cons);
+    try testing.expect(c2.car.eq(Value.t));
+    cur = c2.cdr;
+
+    try testing.expect(cur.isCons());
+    const c3 = cur.toPtr(Cons);
+    try testing.expect(c3.car.eq(Value.t));
+    cur = c3.cdr;
+
+    try testing.expect(cur.isCons());
+    const c4 = cur.toPtr(Cons);
+    try testing.expect(c4.car.eq(Value.t));
+    cur = c4.cdr;
+
+    try testing.expect(cur.isCons());
+    const c5 = cur.toPtr(Cons);
+    try testing.expect(c5.car.eq(Value.t));
+    cur = c5.cdr;
+
+    try testing.expect(cur.isCons());
+    const c6 = cur.toPtr(Cons);
+    try testing.expect(c6.car.eq(Value.t));
+    cur = c6.cdr;
+
+    try testing.expect(cur.isCons());
+    const c7 = cur.toPtr(Cons);
+    try testing.expect(c7.car.eq(Value.t));
+    cur = c7.cdr;
+
+    try testing.expect(cur.isNil());
 }

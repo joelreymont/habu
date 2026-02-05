@@ -844,6 +844,17 @@ pub fn vecLen(c: *ctx.JitContext, vec_val: Value) vm_mod.Error!Value {
     return Value.makeFixnum(@intCast(vec.length));
 }
 
+pub fn copyStructure(c: *ctx.JitContext, obj: Value) vm_mod.Error!Value {
+    var args = [_]Value{obj};
+    return vec_prims.copyStructure(c.heap, args[0]) catch |err| switch (err) {
+        error.OutOfMemory => blk: {
+            try collectJitGarbage(c, &args);
+            break :blk try vec_prims.copyStructure(c.heap, args[0]);
+        },
+        else => return err,
+    };
+}
+
 pub fn vecFillPtr(c: *ctx.JitContext, vec_val: Value) vm_mod.Error!Value {
     _ = c;
     if (!vec_val.isVector()) return error.TypeMismatch;

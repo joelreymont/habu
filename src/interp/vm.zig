@@ -2097,6 +2097,12 @@ pub const Vm = struct {
                 try self.push(result);
             },
 
+            .copy_structure => {
+                const obj = try self.pop();
+                const result = try primitives.vector.copyStructure(self.heap, obj);
+                try self.push(result);
+            },
+
             // CLOS operations
             .slot_value => {
                 const args = try self.popArgs(2);

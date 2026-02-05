@@ -798,6 +798,7 @@ pub const Ir = union(enum) {
     vec_push_ext: TernaryOp,
     vec_pop: UnaryOp,
     vec_adjust: TernaryOp,
+    copy_structure: UnaryOp, // (copy-structure struct)
     elt_set: struct { // (setf (elt seq idx) val) - polymorphic
         seq: *const Ir,
         index: *const Ir,
@@ -1138,6 +1139,7 @@ pub const Ir = union(enum) {
             .vec_push_ext,
             .vec_pop,
             .vec_adjust,
+            .copy_structure,
             .arr_new,
             .arr_ref,
             .arr_set,
@@ -2559,6 +2561,12 @@ pub const IrBuilder = struct {
     pub fn vecLen(self: IrBuilder, v: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .vec_len = .{ .operand = v } };
+        return node;
+    }
+
+    pub fn copyStructure(self: IrBuilder, v: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .copy_structure = .{ .operand = v } };
         return node;
     }
 
