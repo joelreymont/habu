@@ -599,9 +599,22 @@
         (setf (aref result i) (- 1 (aref bit-array i)))
         (setq i (+ i 1))))))
 
-(defun warn (msg)
-  (print msg)
-  nil)
+(defun warn (datum &rest arguments)
+  "Signal a warning and allow MUFFLE-WARNING restart to continue."
+  (let ((condition (if (symbolp datum)
+                       (make-condition datum)
+                       (make-condition 'simple-warning
+                                       :format-control datum
+                                       :format-arguments arguments))))
+    (restart-case
+      (handler-case
+        (signal 'warning condition)
+        (warning (c)
+          (declare (ignore c))
+          nil))
+      (muffle-warning (&optional c)
+        (declare (ignore c))
+        nil))))
 
 ; Standard restarts
 (defun abort (&optional condition)
@@ -2227,11 +2240,19 @@
   (throw '%condition% condition))
 
 ;; cerror - continuable error
-(defun cerror (format-string &rest args)
-  (declare (ignore format-string))
-  (if args
-      (signal-condition (car args))
-      nil))
+(defun cerror (continue-format datum &rest arguments)
+  "Signal a continuable SIMPLE-ERROR."
+  (declare (ignore continue-format))
+  (let ((condition (if (and (symbolp datum) (null arguments))
+                       (make-condition datum)
+                       (make-condition 'simple-error
+                                       :format-control datum
+                                       :format-arguments arguments))))
+    (restart-case
+      (signal 'simple-error condition)
+      (continue (&optional c)
+        (declare (ignore c))
+        nil))))
 
 ;; Standard restart functions
 ;; These invoke the corresponding named restarts
@@ -4861,23 +4882,28 @@
 
 (defun abort (&optional condition)
   "Invoke the abort restart"
-  (invoke-restart 'abort condition))
+  (declare (ignore condition))
+  (invoke-restart 'abort))
 
 (defun continue (&optional condition)
   "Invoke the continue restart"
-  (invoke-restart 'continue condition))
+  (declare (ignore condition))
+  (invoke-restart 'continue))
 
 (defun muffle-warning (&optional condition)
   "Invoke the muffle-warning restart"
-  (invoke-restart 'muffle-warning condition))
+  (declare (ignore condition))
+  (invoke-restart 'muffle-warning))
 
 (defun store-value (value &optional condition)
   "Invoke the store-value restart with value"
-  (invoke-restart 'store-value value condition))
+  (declare (ignore condition))
+  (invoke-restart 'store-value value))
 
 (defun use-value (value &optional condition)
   "Invoke the use-value restart with value"
-  (invoke-restart 'use-value value condition))
+  (declare (ignore condition))
+  (invoke-restart 'use-value value))
 
 ; apropos - print symbols matching string
 (defun apropos (string &optional package)

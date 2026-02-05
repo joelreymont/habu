@@ -1821,13 +1821,12 @@ pub const Emitter = struct {
             i -= 1;
             const h = hb.handlers[i];
 
-            // Push handler function (should be lambda/closure)
-            try self.emit(h.handler_fn);
-            // Push condition type
+            // Build (condition-type . handler-fn)
             try self.emit(h.condition_type);
-            // Cons them: (condition_type . handler_fn)
+            try self.emit(h.handler_fn);
             try self.emitOp(.cons);
-            // Cons onto list
+            // Cons pair onto list.
+            try self.emitOp(.swap);
             try self.emitOp(.cons);
         }
 

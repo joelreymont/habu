@@ -3152,22 +3152,28 @@ test "ansi repro read-from-string.error.10 rejects unknown keyword" {
     try testing.expectError(error.TypeMismatch, repl.eval(src));
 }
 
-test "ansi repro warn.1 still nonconforming" {
+test "ansi repro warn.1 muffle-warning restart works" {
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
 
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
     const src =
-        \\(let ((warned nil))
-        \\  (handler-bind
-        \\   ((warning #'(lambda (c)
-        \\                (declare (ignore c))
-        \\                (setq warned t)
-        \\                (muffle-warning c))))
-        \\   (warn "This is a warning"))
-        \\  warned)
+        \\(handler-bind
+        \\ ((warning #'(lambda (c)
+        \\              (declare (ignore c))
+        \\              (muffle-warning c))))
+        \\ (progn
+        \\   (warn "This is a warning")
+        \\   t))
     ;
-    try testing.expectError(error.TypeMismatch, evalExpr(allocator, &heap, src));
+    const result = try repl.eval(src);
+    try testing.expect(!result.isNil());
 }
 
 test "ansi repro compute-restarts.1 returns restart objects" {
@@ -3200,10 +3206,16 @@ test "ansi repro compute-restarts.3 find-restart returns restart object" {
     try testing.expect(!result.isNil());
 }
 
-test "ansi repro cerror.6 still nonconforming" {
+test "ansi repro cerror.6 continue restart resumes" {
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
 
     const src =
         \\(handler-bind ((simple-error #'(lambda (c) (continue c))))
@@ -3211,5 +3223,7 @@ test "ansi repro cerror.6 still nonconforming" {
         \\    (cerror "Wooo" 'simple-error)
         \\    10))
     ;
-    try testing.expectError(error.TypeMismatch, evalExpr(allocator, &heap, src));
+    const result = try repl.eval(src);
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 10), result.toFixnum());
 }

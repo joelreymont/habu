@@ -143,6 +143,8 @@ pub const Frame = struct {
     closure: ?*const runtime.Closure,
     /// Argument count passed to this function call
     argc: u8,
+    /// Optional handler stack depth to restore on return.
+    handler_restore_depth: ?usize,
 };
 
 /// Let scope frame for nested let bindings
@@ -260,6 +262,8 @@ pub const Vm = struct {
     handler_stack: [MAX_HANDLERS]HandlerFrame,
     /// Handler stack pointer
     handler_sp: usize,
+    /// One-shot restore depth consumed by the next non-tail call frame.
+    pending_handler_restore_depth: ?usize,
 
     /// Progv stack for dynamic variable binding
     progv_stack: [MAX_PROGVS]ProgvFrame,
@@ -390,6 +394,7 @@ pub const Vm = struct {
             .block_sp = 0,
             .handler_stack = undefined,
             .handler_sp = 0,
+            .pending_handler_restore_depth = null,
             .progv_stack = undefined,
             .progv_sp = 0,
             .scope_stack = undefined,
@@ -2364,6 +2369,9 @@ pub const Vm = struct {
                 self.sp = frame.bp;
                 self.chunk = frame.chunk;
                 self.ip = frame.return_ip;
+                if (frame.handler_restore_depth) |depth| {
+                    self.handler_sp = depth;
+                }
                 try self.push(result);
             },
             .make_closure => {
@@ -5762,13 +5770,17 @@ pub const Vm = struct {
             curr = pair.cdr;
         }
 
-        // Call body function
+        // Call body function with handlers active; restore handler depth on return.
         if (!body_fn.isClosure()) return error.TypeMismatch;
-        const closure = body_fn.toPtr(runtime.Closure);
-        _ = try self.callClosure(closure, 0);
-
-        // Pop handlers
-        self.handler_sp = depth_before;
+        if (self.sp >= STACK_SIZE) return error.StackOverflow;
+        self.stack[self.sp] = body_fn;
+        self.sp += 1;
+        self.pending_handler_restore_depth = depth_before;
+        errdefer {
+            self.pending_handler_restore_depth = null;
+            self.handler_sp = depth_before;
+        }
+        try self.doCall(0, false);
     }
 
     // ========================================================================
@@ -6934,7 +6946,9 @@ pub const Vm = struct {
                 .bp = self.sp - actual_argc - 1, // -1 for function value
                 .closure = closure,
                 .argc = argc,
+                .handler_restore_depth = self.pending_handler_restore_depth,
             };
+            self.pending_handler_restore_depth = null;
             self.fp += 1;
 
             // The arguments are already on stack above the function value
@@ -8663,6 +8677,7 @@ test "vm collectGarbage relocates chunk pointers" {
         .bp = 0,
         .closure = null,
         .argc = 0,
+        .handler_restore_depth = null,
     };
     vm.fp = 1;
     vm.catch_stack[0] = .{

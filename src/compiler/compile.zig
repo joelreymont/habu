@@ -5353,9 +5353,12 @@ pub const Compiler = struct {
             if (!spec.isCons()) return error.InvalidSyntax;
             const spec_cons = spec.toPtr(Cons);
 
-            // First element: condition type (evaluate at runtime)
+            // First element: condition type designator (symbols are literal).
             const condition_type_expr = spec_cons.car;
-            const condition_type_ir = try self.compile(condition_type_expr, env);
+            const condition_type_ir = if (condition_type_expr.isSymbol())
+                try self.builder.lit(condition_type_expr)
+            else
+                try self.compile(condition_type_expr, env);
 
             // Second element: handler function (evaluate at runtime)
             const rest = spec_cons.cdr;
@@ -5371,8 +5374,10 @@ pub const Compiler = struct {
             current = cons.cdr;
         }
 
-        // Compile body as progn
-        const body_ir = try self.compileProgn(body_forms, env);
+        // Compile body as zero-arg closure so handlers are active during execution.
+        const heap = self.heap orelse return error.OutOfMemory;
+        const lambda_args = try heap.allocCons(Value.nil, body_forms);
+        const body_ir = try self.compileLambda(lambda_args, env);
 
         const handlers_slice = try self.allocator.dupe(ir.Handler, handlers.items);
 
