@@ -36,12 +36,16 @@ Generate deterministic raw logs with:
 ```bash
 tools/ansi/run.sh sbcl --input /path/to/test.lisp --tag latest
 tools/ansi/run.sh habu --input /path/to/test.lisp --tag latest
+tools/ansi/parse_results.py docs/ansi/raw/sbcl-latest.log
+tools/ansi/parse_results.py docs/ansi/raw/habu-latest.log
 ```
 
 By default the runner writes:
 
 - `docs/ansi/raw/sbcl-latest.log`
 - `docs/ansi/raw/habu-latest.log`
+- `docs/ansi/results/sbcl-latest.json`
+- `docs/ansi/results/habu-latest.json`
 
 ## Next Required Dot
 

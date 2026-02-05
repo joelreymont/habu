@@ -73,12 +73,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$input" ]]; then
+    [[ -d "$ansi_dir" ]] || die "ansi dir not found: $ansi_dir"
     input="$ansi_dir/doit.lsp"
 fi
 
 [[ -f "$input" ]] || die "input not found: $input"
 input="$(cd "$(dirname "$input")" && pwd)/$(basename "$input")"
-ansi_dir="$(cd "$ansi_dir" && pwd)"
+if [[ -d "$ansi_dir" ]]; then
+    ansi_dir="$(cd "$ansi_dir" && pwd)"
+fi
 
 if [[ "${habu_bin#/}" == "$habu_bin" ]]; then
     habu_bin="$repo_root/$habu_bin"
@@ -99,9 +102,13 @@ case "$mode" in
             (cd "$repo_root" && zig build >/dev/null)
         fi
         [[ -x "$habu_bin" ]] || die "habu binary not executable: $habu_bin"
-        if [[ ! -f "$ansi_dir/lib/stdlib.habu" ]]; then
-            mkdir -p "$ansi_dir/lib"
-            ln -sf "$repo_root/lib/stdlib.habu" "$ansi_dir/lib/stdlib.habu"
+        run_root="$ansi_dir"
+        if [[ -z "$run_root" || ! -d "$run_root" ]]; then
+            run_root="$repo_root"
+        fi
+        if [[ ! -f "$run_root/lib/stdlib.habu" ]]; then
+            mkdir -p "$run_root/lib"
+            ln -sf "$repo_root/lib/stdlib.habu" "$run_root/lib/stdlib.habu"
         fi
         cmd=("$habu_bin" "$input")
         ;;
@@ -119,11 +126,22 @@ esac
     echo
 } >"$out"
 
-if (cd "$ansi_dir" && "${cmd[@]}") >>"$out" 2>&1; then
-    echo "# exit_code: 0" >>"$out"
-else
+run_cwd="$ansi_dir"
+if [[ -z "$run_cwd" || ! -d "$run_cwd" ]]; then
+    run_cwd="$repo_root"
+fi
+
+tmp_log="$(mktemp "${TMPDIR:-/tmp}/habu-ansi-run.XXXXXX")"
+code=0
+if ! (cd "$run_cwd" && "${cmd[@]}") >"$tmp_log" 2>&1; then
     code=$?
-    echo "# exit_code: $code" >>"$out"
+fi
+
+cat "$tmp_log" >>"$out"
+rm -f "$tmp_log"
+echo "# exit_code: $code" >>"$out"
+
+if [[ "$code" -ne 0 ]]; then
     exit "$code"
 fi
 

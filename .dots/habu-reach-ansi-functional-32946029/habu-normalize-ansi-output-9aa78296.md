@@ -1,9 +1,11 @@
 ---
 title: Normalize ANSI output to JSON
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-05T22:32:05.462251+01:00"
+created-at: "\"2026-02-05T22:32:05.462251+01:00\""
+closed-at: "2026-02-05T22:39:30.758320+01:00"
+close-reason: Added parse_results.py, docs usage, and stable runner exit-code capture.
 blocks:
   - habu-add-ansi-test-05377306
 ---
