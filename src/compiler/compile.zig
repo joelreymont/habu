@@ -240,6 +240,8 @@ pub const Builtins = struct {
     consp: Value,
     symbolp: Value,
     numberp: Value,
+    integerp: Value,
+    realp: Value,
     stringp: Value,
     vectorp: Value,
     closurep: Value,
@@ -800,6 +802,8 @@ pub const Builtins = struct {
             .consp = try heap.intern("consp"),
             .symbolp = try heap.intern("symbolp"),
             .numberp = try heap.intern("numberp"),
+            .integerp = try heap.intern("integerp"),
+            .realp = try heap.intern("realp"),
             .stringp = try heap.intern("stringp"),
             .vectorp = try heap.intern("vectorp"),
             .closurep = try heap.intern("closurep"),
@@ -1194,7 +1198,7 @@ pub const Builtins = struct {
         "member", "assoc", "find", "position", "count", "remove",
         "list", "rplaca", "rplacd",
         // Type predicates
-        "consp", "symbolp", "numberp", "stringp", "vectorp", "closurep", "keywordp",
+        "consp", "symbolp", "numberp", "integerp", "realp", "stringp", "vectorp", "closurep", "keywordp",
         "null", "not", "characterp", "floatp", "listp", "atom",
         // Character operations
         "char-code", "code-char", "char=", "char<", "char>",
@@ -1969,7 +1973,7 @@ pub const Compiler = struct {
             .eq, .lt, .gt, .le, .ge, .num_eq => &types.t_any, // Returns t or nil
             .cons => &types.t_cons,
             .car, .cdr => &types.t_any, // Could be anything
-            .consp, .symbolp, .numberp, .nilp, .not, .stringp, .vectorp => &types.t_any,
+            .consp, .symbolp, .numberp, .integerp, .realp, .nilp, .not, .stringp, .vectorp => &types.t_any,
             .quote_sym => &types.t_symbol,
             .@"if" => &types.t_any, // Would need union of branches
             .lambda => &types.t_closure,
@@ -4577,6 +4581,8 @@ pub const Compiler = struct {
         if (s == b.consp.raw) return try self.makeUnaryWrapper(&IrBuilder.consp);
         if (s == b.symbolp.raw) return try self.makeUnaryWrapper(&IrBuilder.symbolp);
         if (s == b.numberp.raw) return try self.makeUnaryWrapper(&IrBuilder.numberp);
+        if (s == b.integerp.raw) return try self.makeUnaryWrapper(&IrBuilder.integerp);
+        if (s == b.realp.raw) return try self.makeUnaryWrapper(&IrBuilder.realp);
         if (s == b.stringp.raw) return try self.makeUnaryWrapper(&IrBuilder.stringp);
         if (s == b.atom.raw) return try self.makeUnaryWrapper(&IrBuilder.atomp);
         if (s == b.listp.raw) return try self.makeUnaryWrapper(&IrBuilder.listp);
@@ -10143,7 +10149,7 @@ pub const Compiler = struct {
         // List
         cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd,
         // Type predicates
-        consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, characterp, floatp, listp, atom,
+        consp, symbolp, numberp, integerp, realp, stringp, vectorp, closurep, keywordp, nilp, not, characterp, floatp, listp, atom,
         // CLOS introspection
         method_qualifiers, method_specializers, method_function,
         generic_function_methods, generic_function_lambda_list, generic_function_name,
@@ -10217,6 +10223,8 @@ pub const Compiler = struct {
         .{ .field = "consp", .tag = .consp },
         .{ .field = "symbolp", .tag = .symbolp },
         .{ .field = "numberp", .tag = .numberp },
+        .{ .field = "integerp", .tag = .integerp },
+        .{ .field = "realp", .tag = .realp },
         .{ .field = "stringp", .tag = .stringp },
         .{ .field = "vectorp", .tag = .vectorp },
         .{ .field = "closurep", .tag = .closurep },
@@ -11143,6 +11151,8 @@ pub const Compiler = struct {
             .consp => try self.builder.consp(operand),
             .symbolp => try self.builder.symbolp(operand),
             .numberp => try self.builder.numberp(operand),
+            .integerp => try self.builder.integerp(operand),
+            .realp => try self.builder.realp(operand),
             .nilp => try self.builder.nilp(operand),
             .not => try self.builder.not(operand),
             .vec_len => try self.builder.vecLen(operand),

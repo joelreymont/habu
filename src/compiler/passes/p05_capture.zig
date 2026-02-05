@@ -177,12 +177,12 @@ pub const CaptureAnalyzer = struct {
             },
 
             // Unary operations
-            .car, .cdr, .consp, .symbolp, .numberp, .stringp, .vectorp, .not, .nilp => |u| {
+            .car, .cdr, .consp, .symbolp, .numberp, .integerp, .realp, .stringp, .vectorp, .not, .nilp => |u| {
                 const operand = try self.analyzeNode(u.operand);
                 const result = try self.allocator.create(Ir);
                 result.* = node.*;
                 switch (result.*) {
-                    inline .car, .cdr, .consp, .symbolp, .numberp, .stringp, .vectorp, .not, .nilp => |*un| {
+                    inline .car, .cdr, .consp, .symbolp, .numberp, .integerp, .realp, .stringp, .vectorp, .not, .nilp => |*un| {
                         un.operand = operand;
                     },
                     else => unreachable,
@@ -258,7 +258,7 @@ pub const CaptureAnalyzer = struct {
             },
 
             // Unary operations
-            .car, .cdr, .consp, .symbolp, .numberp, .stringp, .vectorp, .not, .nilp => |u| {
+            .car, .cdr, .consp, .symbolp, .numberp, .integerp, .realp, .stringp, .vectorp, .not, .nilp => |u| {
                 try self.collectCaptures(u.operand, captures);
             },
 

@@ -1,39 +1,20 @@
-# ANSI Common Lisp Implementation Progress
+# ANSI Common Lisp Progress
 
-Tracking:
-- Symbol set: `docs/cl-symbols-sbcl.txt` (978 external symbols)
-- Audit table: `docs/cl-symbols.md` (duplicates allowed for multi-role symbols)
-- Validator: `python3 tools/cl_symbols_audit.py`
+## Source of Truth
 
-Status (symbols): ✓ 955 | ⚠ 10 | ✗ 13
+- Symbol audit: `docs/cl-symbols.md`
+- Symbol set: `docs/cl-symbols-sbcl.txt` (978 external `COMMON-LISP` symbols)
 
-Work plan:
-- Dot tree: `.dots/habu-cl-spec-parity-6821074c/`
+## Update / Verify
 
-Next missing (✗):
-- call-method
-- copy-structure
-- equalp
-- fdefinition
-- function-lambda-expression
-- get-setf-expansion
-- integerp
-- invalid-method-error
-- load-logical-pathname-translations
-- make-method
-- method-combination-error
-- realp
-- standard
+- Verify audit: `python3 tools/cl_symbols_audit.py`
+- Keep `docs/cl-symbols.md` header counts in sync with the verifier output.
 
-Next partial (⚠):
-- &allow-other-keys
-- &environment
-- &whole
-- compilation-speed
-- debug
-- declaration
-- optimize
-- safety
-- space
-- speed
+## Workflow
 
+1. `dot ready`
+2. `dot on <id>`
+3. Implement + tests
+4. Update the relevant rows in `docs/cl-symbols.md` (status/location/notes)
+5. `python3 tools/cl_symbols_audit.py`
+6. `dot off <id> -r "..."` + `jj describe -m "..."` + `jj git push`

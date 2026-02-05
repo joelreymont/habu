@@ -569,6 +569,8 @@ pub const Ir = union(enum) {
     consp: UnaryOp,
     symbolp: UnaryOp,
     numberp: UnaryOp,
+    integerp: UnaryOp,
+    realp: UnaryOp,
     stringp: UnaryOp,
     vectorp: UnaryOp,
     closurep: UnaryOp,
@@ -1084,6 +1086,8 @@ pub const Ir = union(enum) {
             .consp,
             .symbolp,
             .numberp,
+            .integerp,
+            .realp,
             .stringp,
             .vectorp,
             .closurep,
@@ -1564,6 +1568,18 @@ pub const IrBuilder = struct {
     pub fn numberp(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .numberp = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn integerp(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .integerp = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn realp(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .realp = .{ .operand = operand } };
         return node;
     }
 

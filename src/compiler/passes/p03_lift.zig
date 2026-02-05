@@ -67,6 +67,8 @@ pub const LiftSymbols = struct {
     consp: Value,
     symbolp: Value,
     numberp: Value,
+    integerp: Value,
+    realp: Value,
     stringp: Value,
     vectorp: Value,
     null: Value,
@@ -102,6 +104,8 @@ pub const LiftSymbols = struct {
             .consp = try heap.intern("consp"),
             .symbolp = try heap.intern("symbolp"),
             .numberp = try heap.intern("numberp"),
+            .integerp = try heap.intern("integerp"),
+            .realp = try heap.intern("realp"),
             .stringp = try heap.intern("stringp"),
             .vectorp = try heap.intern("vectorp"),
             .null = try heap.intern("null"),
@@ -175,6 +179,8 @@ pub const Lifter = struct {
             if (head.raw == s.consp.raw) return self.liftUnary(tail, .consp);
             if (head.raw == s.symbolp.raw) return self.liftUnary(tail, .symbolp);
             if (head.raw == s.numberp.raw) return self.liftUnary(tail, .numberp);
+            if (head.raw == s.integerp.raw) return self.liftUnary(tail, .integerp);
+            if (head.raw == s.realp.raw) return self.liftUnary(tail, .realp);
             if (head.raw == s.stringp.raw) return self.liftUnary(tail, .stringp);
             if (head.raw == s.vectorp.raw) return self.liftUnary(tail, .vectorp);
             if (head.raw == s.null.raw or head.raw == s.not.raw) return self.liftUnary(tail, .not);

@@ -122,6 +122,16 @@ pub fn numberp(c: *ctx.JitContext, a: Value) arith.Error!Value {
     return if (a.isNumber()) Value.t else Value.nil;
 }
 
+pub fn integerp(c: *ctx.JitContext, a: Value) arith.Error!Value {
+    _ = c;
+    return if (a.isFixnum() or a.isBignum()) Value.t else Value.nil;
+}
+
+pub fn realp(c: *ctx.JitContext, a: Value) arith.Error!Value {
+    _ = c;
+    return if (a.isFixnum() or a.isBignum() or a.isFloat() or a.isRational()) Value.t else Value.nil;
+}
+
 pub fn consp(c: *ctx.JitContext, a: Value) vm_mod.Error!Value {
     _ = c;
     return if (a.isCons()) Value.t else Value.nil;

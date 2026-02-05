@@ -1844,6 +1844,14 @@ pub const Vm = struct {
                 const a = try self.pop();
                 try self.push(if (a.isNumber()) Value.t else Value.nil);
             },
+            .integerp => {
+                const a = try self.pop();
+                try self.push(if (a.isFixnum() or a.isBignum()) Value.t else Value.nil);
+            },
+            .realp => {
+                const a = try self.pop();
+                try self.push(if (a.isFixnum() or a.isBignum() or a.isFloat() or a.isRational()) Value.t else Value.nil);
+            },
             .stringp => {
                 const a = try self.pop();
                 try self.push(if (a.isString()) Value.t else Value.nil);

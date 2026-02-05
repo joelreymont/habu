@@ -61,8 +61,9 @@ pub fn disassemble(chunk: *const Chunk, writer: anytype) !void {
 pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytype) !usize {
     try writer.print("{d:0>4}  ", .{offset});
 
-    const opcode_byte = chunk.code[offset];
-    const op = try std.meta.intToEnum(Op, opcode_byte);
+    if (offset + 1 >= chunk.code.len) return error.UnexpectedEof;
+    const opcode = chunk.readU16(offset);
+    const op = try std.meta.intToEnum(Op, opcode);
 
     return switch (op) {
         // No operand
@@ -100,6 +101,8 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .consp,
         .symbolp,
         .numberp,
+        .integerp,
+        .realp,
         .stringp,
         .vectorp,
         .closurep,
@@ -428,61 +431,61 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .close_stream,
         => {
             try writer.print("{s}\n", .{op.name()});
-            return offset + 1;
+            return offset + 2;
         },
 
         // 1 byte operand
         .load_local, .store_local, .load_capture, .call, .tail_call, .make_list, .make_vec_n, .values, .mv_bind, .format, .enter_scope, .exit_scope, .pop_restarts, .open, .make_array, .aref, .aset, .make_pathname, .encode_universal_time, .make_broadcast_stream, .make_concatenated_stream => {
-            const operand = chunk.readU8(offset + 1);
+            const operand = chunk.readU8(offset + 2);
             try writer.print("{s} {d}\n", .{ op.name(), operand });
-            return offset + 2;
+            return offset + 3;
         },
 
         // 2 byte operand (u16)
         .push_const, .load_global, .store_global, .make_vec, .make_hash, .find_key, .check_or, .return_from => {
-            const operand = chunk.readU16(offset + 1);
+            const operand = chunk.readU16(offset + 2);
             try writer.print("{s} {d}\n", .{ op.name(), operand });
-            return offset + 3;
+            return offset + 4;
         },
 
         // 2 byte operand (i16 jump)
         .jmp, .jmp_nil, .jmp_not_nil, .push_catch, .push_unwind, .pop_unwind, .push_restart => {
-            const displacement = chunk.readI16(offset + 1);
-            const target = @as(i32, @intCast(offset)) + 3 + displacement;
+            const displacement = chunk.readI16(offset + 2);
+            const target = @as(i32, @intCast(offset)) + 4 + displacement;
             try writer.print("{s} {d} (-> {d})\n", .{ op.name(), displacement, target });
-            return offset + 3;
+            return offset + 4;
         },
 
         // 2 byte operand (depth, index)
         .load_upvalue, .store_upvalue => {
-            const depth = chunk.readU8(offset + 1);
-            const index = chunk.readU8(offset + 2);
+            const depth = chunk.readU8(offset + 2);
+            const index = chunk.readU8(offset + 3);
             try writer.print("{s} depth={d} index={d}\n", .{ op.name(), depth, index });
-            return offset + 3;
+            return offset + 4;
         },
 
         // 3 byte operand (code index + captures)
         .make_closure => {
-            const code_idx = chunk.readU16(offset + 1);
-            const num_captures = chunk.readU8(offset + 3);
+            const code_idx = chunk.readU16(offset + 2);
+            const num_captures = chunk.readU8(offset + 4);
             try writer.print("{s} code={d} captures={d}\n", .{ op.name(), code_idx, num_captures });
-            return offset + 4;
+            return offset + 5;
         },
 
         // 4 byte operand
         .push_i32 => {
-            const val = chunk.readI32(offset + 1);
+            const val = chunk.readI32(offset + 2);
             try writer.print("{s} {d}\n", .{ op.name(), val });
-            return offset + 5;
+            return offset + 6;
         },
 
         // 4 byte operand (i16 exit offset + u16 name index)
         .push_block => {
-            const displacement = chunk.readI16(offset + 1);
-            const name_idx = chunk.readU16(offset + 3);
-            const target = @as(i32, @intCast(offset)) + 5 + displacement;
+            const displacement = chunk.readI16(offset + 2);
+            const name_idx = chunk.readU16(offset + 4);
+            const target = @as(i32, @intCast(offset)) + 6 + displacement;
             try writer.print("{s} name={d} exit={d} (-> {d})\n", .{ op.name(), name_idx, displacement, target });
-            return offset + 5;
+            return offset + 6;
         },
     };
 }
@@ -520,22 +523,25 @@ fn disassembleInstructionRuntime(chunk: *const @import("../runtime/objects.zig")
     try writer.print("{d:0>4}  ", .{offset});
 
     const code = chunk.getCode();
-    const opcode_byte = code[offset];
-    const op = try std.meta.intToEnum(Op, opcode_byte);
+    if (offset + 1 >= code.len) return error.UnexpectedEof;
+    const low: u16 = code[offset];
+    const high: u16 = code[offset + 1];
+    const opcode = low | (high << 8);
+    const op = try std.meta.intToEnum(Op, opcode);
 
     // Simplified: just print opcode name and advance by operand size
     const size = op.operandSize();
     if (size == 0) {
         try writer.print("{s}\n", .{op.name()});
-        return offset + 1;
+        return offset + 2;
     } else {
         try writer.print("{s}", .{op.name()});
         for (0..size) |i| {
-            const b = if (offset + 1 + i < code.len) code[offset + 1 + i] else 0;
+            const b = if (offset + 2 + i < code.len) code[offset + 2 + i] else 0;
             try writer.print(" {d}", .{b});
         }
         try writer.writeAll("\n");
-        return offset + 1 + size;
+        return offset + 2 + size;
     }
 }
 
@@ -548,10 +554,14 @@ test "disassemble simple" {
     const allocator = testing.allocator;
 
     const code = [_]u8{
-        @intFromEnum(Op.push_nil),
-        @intFromEnum(Op.push_t),
-        @intFromEnum(Op.cons),
-        @intFromEnum(Op.ret),
+        @truncate(@as(u16, @intFromEnum(Op.push_nil))),
+        @truncate(@as(u16, @intFromEnum(Op.push_nil)) >> 8),
+        @truncate(@as(u16, @intFromEnum(Op.push_t))),
+        @truncate(@as(u16, @intFromEnum(Op.push_t)) >> 8),
+        @truncate(@as(u16, @intFromEnum(Op.cons))),
+        @truncate(@as(u16, @intFromEnum(Op.cons)) >> 8),
+        @truncate(@as(u16, @intFromEnum(Op.ret))),
+        @truncate(@as(u16, @intFromEnum(Op.ret)) >> 8),
     };
 
     const chunk = Chunk{
@@ -578,7 +588,7 @@ test "disassemble invalid opcode errors" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    const code = [_]u8{0x08};
+    const code = [_]u8{ 0xFF, 0xFF };
 
     const chunk = Chunk{
         .code = @constCast(&code),
@@ -599,14 +609,17 @@ test "disassemble with operands" {
     const allocator = testing.allocator;
 
     const code = [_]u8{
-        @intFromEnum(Op.push_i32),
+        @truncate(@as(u16, @intFromEnum(Op.push_i32))),
+        @truncate(@as(u16, @intFromEnum(Op.push_i32)) >> 8),
         42,
         0,
         0,
         0, // 42 as i32 LE
-        @intFromEnum(Op.load_local),
+        @truncate(@as(u16, @intFromEnum(Op.load_local))),
+        @truncate(@as(u16, @intFromEnum(Op.load_local)) >> 8),
         5, // local 5
-        @intFromEnum(Op.ret),
+        @truncate(@as(u16, @intFromEnum(Op.ret))),
+        @truncate(@as(u16, @intFromEnum(Op.ret)) >> 8),
     };
 
     const chunk = Chunk{
@@ -634,15 +647,20 @@ test "disassemble jump" {
 
     // jmp_nil with displacement of 5
     const code = [_]u8{
-        @intFromEnum(Op.jmp_nil),
+        @truncate(@as(u16, @intFromEnum(Op.jmp_nil))),
+        @truncate(@as(u16, @intFromEnum(Op.jmp_nil)) >> 8),
         5,
         0, // displacement = 5
-        @intFromEnum(Op.push_t),
-        @intFromEnum(Op.jmp),
+        @truncate(@as(u16, @intFromEnum(Op.push_t))),
+        @truncate(@as(u16, @intFromEnum(Op.push_t)) >> 8),
+        @truncate(@as(u16, @intFromEnum(Op.jmp))),
+        @truncate(@as(u16, @intFromEnum(Op.jmp)) >> 8),
         3,
         0, // displacement = 3
-        @intFromEnum(Op.push_nil),
-        @intFromEnum(Op.ret),
+        @truncate(@as(u16, @intFromEnum(Op.push_nil))),
+        @truncate(@as(u16, @intFromEnum(Op.push_nil)) >> 8),
+        @truncate(@as(u16, @intFromEnum(Op.ret))),
+        @truncate(@as(u16, @intFromEnum(Op.ret)) >> 8),
     };
 
     const chunk = Chunk{

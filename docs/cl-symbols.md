@@ -6,8 +6,8 @@ This doc tracks the ANSI symbol set (978 unique) but allows duplicate rows for m
 (function/variable/macro/type, etc).
 
 Counts:
-- Symbols: ✓ 955 | ⚠ 10 | ✗ 13
-- Rows:    ✓ 988 | ⚠ 10 | ✗ 13
+- Symbols: ✓ 957 | ⚠ 10 | ✗ 11
+- Rows:    ✓ 990 | ⚠ 10 | ✗ 11
 - Rows total: 1011
 
 Source-of-truth symbol set: `docs/cl-symbols-sbcl.txt`
@@ -1096,7 +1096,7 @@ Audit: `python3 tools/cl_symbols_audit.py`
 | ignorable | ✓ | compile.zig:9554 | Declaration spec |
 | ignore | ✓ | compile.zig:9553 | Declaration spec |
 | inline | ✓ | compile.zig:9551 | Declaration spec |
-| integerp | ✗ | - | Integer predicate |
+| integerp | ✓ | compile.zig:805 | Fixnum/bignum predicate |
 | invalid-method-error | ✗ | - | Method combination helper |
 | load-logical-pathname-translations | ✗ | - | Logical pathname translations |
 | make-condition | ✓ | primitives/condition.zig:10 | Condition constructor |
@@ -1109,7 +1109,7 @@ Audit: `python3 tools/cl_symbols_audit.py`
 | otherwise | ✓ | lib/stdlib.habu:26 | CASE/TYPECASE default marker |
 | proclaim | ✓ | compile.zig:9752 | Global declaration |
 | rationalp | ✓ | compile.zig:1017 | Rational predicate |
-| realp | ✗ | - | Real predicate |
+| realp | ✓ | compile.zig:806 | Fixnum/bignum/float/rational predicate |
 | safety | ⚠ | compile.zig:9675 | OPTIMIZE quality parsed but ignored |
 | space | ⚠ | compile.zig:9675 | OPTIMIZE quality parsed but ignored |
 | special | ✓ | compile.zig:9555 | Declaration spec |
@@ -1125,11 +1125,10 @@ Audit: `python3 tools/cl_symbols_audit.py`
 ## Summary
 
 - Symbol set: `docs/cl-symbols-sbcl.txt` (978 external symbols)
-- Document: 1011 entries (duplicates allowed for multi-role symbols)
-- Entry status: ✓ 988 | ⚠ 10 | ✗ 13
-- Unique coverage: 978/978
+- Document: 1011 entries (978 unique; duplicates allowed for multi-role symbols)
+- Unique status: ✓ 957 | ⚠ 10 | ✗ 11
+- Entry status: ✓ 990 | ⚠ 10 | ✗ 11
 - Verify: `python3 tools/cl_symbols_audit.py`
-
 ---
 
 ## Priority Implementation Order

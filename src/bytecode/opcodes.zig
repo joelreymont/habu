@@ -270,6 +270,14 @@ pub const Op = enum(u16) {
     /// ( x -- t/nil )
     numberp = 0x52,
 
+    /// Check if integer (fixnum or bignum)
+    /// ( x -- t/nil )
+    integerp = 0x1FD,
+
+    /// Check if real number (integer, rational, or float)
+    /// ( x -- t/nil )
+    realp = 0x1FE,
+
     /// Check if string
     /// ( x -- t/nil )
     stringp = 0x53,
@@ -1775,6 +1783,8 @@ pub const Op = enum(u16) {
             .consp,
             .symbolp,
             .numberp,
+            .integerp,
+            .realp,
             .stringp,
             .vectorp,
             .closurep,
