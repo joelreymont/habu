@@ -3228,62 +3228,77 @@ test "ansi repro cerror.6 continue restart resumes" {
     try testing.expectEqual(@as(i64, 10), result.toFixnum());
 }
 
-test "ansi repro pathname-host.1 still TypeMismatch" {
+test "ansi repro pathname-host.1 accepts pathname designator" {
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
 
-    try testing.expectError(error.TypeMismatch, evalExpr(
-        allocator,
-        &heap,
-        "(pathname-host *default-pathname-defaults*)",
-    ));
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(pathname-host *default-pathname-defaults*)");
+    try testing.expect(result.isNil());
 }
 
-test "ansi repro pathname-device.1 still TypeMismatch" {
+test "ansi repro pathname-device.1 accepts pathname designator" {
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
 
-    try testing.expectError(error.TypeMismatch, evalExpr(
-        allocator,
-        &heap,
-        "(pathname-device *default-pathname-defaults*)",
-    ));
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(pathname-device *default-pathname-defaults*)");
+    try testing.expect(result.isNil());
 }
 
-test "ansi repro pathname-directory.1 still TypeMismatch" {
+test "ansi repro pathname-directory.1 accepts pathname designator" {
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
 
-    try testing.expectError(error.TypeMismatch, evalExpr(
-        allocator,
-        &heap,
-        "(pathname-directory *default-pathname-defaults*)",
-    ));
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(pathname-directory *default-pathname-defaults*)");
+    try testing.expect(result.isNil());
 }
 
-test "ansi repro pathname-name.1 still TypeMismatch" {
+test "ansi repro pathname-name.1 accepts pathname designator" {
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
 
-    try testing.expectError(error.TypeMismatch, evalExpr(
-        allocator,
-        &heap,
-        "(pathname-name *default-pathname-defaults*)",
-    ));
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(pathname-name *default-pathname-defaults*)");
+    try testing.expect(result.isNil());
 }
 
-test "ansi repro pathname-type.1 still TypeMismatch" {
+test "ansi repro pathname-type.1 accepts pathname designator" {
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
 
-    try testing.expectError(error.TypeMismatch, evalExpr(
-        allocator,
-        &heap,
-        "(pathname-type *default-pathname-defaults*)",
-    ));
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(pathname-type *default-pathname-defaults*)");
+    try testing.expect(result.isNil());
 }

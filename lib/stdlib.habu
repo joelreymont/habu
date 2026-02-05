@@ -4671,29 +4671,32 @@
         (v (if (null version) (if defaults (pathname-version defaults) nil) version)))
     (%make-pathname h dev dir n ty v)))
 
+; CL requires *default-pathname-defaults* to be a pathname designator.
+(setq *default-pathname-defaults* (make-pathname))
+
 (defun pathname-host (pathname)
   "Return the host component of pathname."
-  (%pathname-host pathname))
+  (%pathname-host (pathname pathname)))
 
 (defun pathname-device (pathname)
   "Return the device component of pathname."
-  (%pathname-device pathname))
+  (%pathname-device (pathname pathname)))
 
 (defun pathname-directory (pathname)
   "Return the directory component of pathname."
-  (%pathname-directory pathname))
+  (%pathname-directory (pathname pathname)))
 
 (defun pathname-name (pathname)
   "Return the name component of pathname."
-  (%pathname-name pathname))
+  (%pathname-name (pathname pathname)))
 
 (defun pathname-type (pathname)
   "Return the type component of pathname."
-  (%pathname-type pathname))
+  (%pathname-type (pathname pathname)))
 
 (defun pathname-version (pathname)
   "Return the version component of pathname."
-  (%pathname-version pathname))
+  (%pathname-version (pathname pathname)))
 
 ;;; Package Iteration Macros
 ;;; ============================================================================
