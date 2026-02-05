@@ -4209,32 +4209,32 @@ pub const Vm = struct {
             },
             .pathname_host => {
                 const path = try self.pop();
-                const result = try primitives.pathname.pathnameHost(path);
+                const result = try primitives.pathname.pathnameHost(self.allocator, self.heap, path);
                 try self.push(result);
             },
             .pathname_device => {
                 const path = try self.pop();
-                const result = try primitives.pathname.pathnameDevice(path);
+                const result = try primitives.pathname.pathnameDevice(self.allocator, self.heap, path);
                 try self.push(result);
             },
             .pathname_directory => {
                 const path = try self.pop();
-                const result = try primitives.pathname.pathnameDirectory(path);
+                const result = try primitives.pathname.pathnameDirectory(self.allocator, self.heap, path);
                 try self.push(result);
             },
             .pathname_name => {
                 const path = try self.pop();
-                const result = try primitives.pathname.pathnameName(path);
+                const result = try primitives.pathname.pathnameName(self.allocator, self.heap, path);
                 try self.push(result);
             },
             .pathname_type => {
                 const path = try self.pop();
-                const result = try primitives.pathname.pathnameType(path);
+                const result = try primitives.pathname.pathnameType(self.allocator, self.heap, path);
                 try self.push(result);
             },
             .pathname_version => {
                 const path = try self.pop();
-                const result = try primitives.pathname.pathnameVersion(path);
+                const result = try primitives.pathname.pathnameVersion(self.allocator, self.heap, path);
                 try self.push(result);
             },
             .truename => {

@@ -22,44 +22,44 @@ pub fn makePathname(
 }
 
 /// Get pathname host component
-pub fn pathnameHost(val: Value) !Value {
-    if (!val.isPathname()) return error.TypeMismatch;
-    const p = val.toPtr(Pathname);
+pub fn pathnameHost(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
+    const p_val = try pathname(allocator, heap, val);
+    const p = p_val.toPtr(Pathname);
     return p.host;
 }
 
 /// Get pathname device component
-pub fn pathnameDevice(val: Value) !Value {
-    if (!val.isPathname()) return error.TypeMismatch;
-    const p = val.toPtr(Pathname);
+pub fn pathnameDevice(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
+    const p_val = try pathname(allocator, heap, val);
+    const p = p_val.toPtr(Pathname);
     return p.device;
 }
 
 /// Get pathname directory component
-pub fn pathnameDirectory(val: Value) !Value {
-    if (!val.isPathname()) return error.TypeMismatch;
-    const p = val.toPtr(Pathname);
+pub fn pathnameDirectory(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
+    const p_val = try pathname(allocator, heap, val);
+    const p = p_val.toPtr(Pathname);
     return p.directory;
 }
 
 /// Get pathname name component
-pub fn pathnameName(val: Value) !Value {
-    if (!val.isPathname()) return error.TypeMismatch;
-    const p = val.toPtr(Pathname);
+pub fn pathnameName(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
+    const p_val = try pathname(allocator, heap, val);
+    const p = p_val.toPtr(Pathname);
     return p.name;
 }
 
 /// Get pathname type component
-pub fn pathnameType(val: Value) !Value {
-    if (!val.isPathname()) return error.TypeMismatch;
-    const p = val.toPtr(Pathname);
+pub fn pathnameType(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
+    const p_val = try pathname(allocator, heap, val);
+    const p = p_val.toPtr(Pathname);
     return p.type;
 }
 
 /// Get pathname version component
-pub fn pathnameVersion(val: Value) !Value {
-    if (!val.isPathname()) return error.TypeMismatch;
-    const p = val.toPtr(Pathname);
+pub fn pathnameVersion(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
+    const p_val = try pathname(allocator, heap, val);
+    const p = p_val.toPtr(Pathname);
     return p.version;
 }
 

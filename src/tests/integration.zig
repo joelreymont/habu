@@ -3302,3 +3302,93 @@ test "ansi repro pathname-type.1 accepts pathname designator" {
     const result = try repl.eval("(pathname-type *default-pathname-defaults*)");
     try testing.expect(result.isNil());
 }
+
+test "ansi repro read-from-string.feature-plus.1 returns nil" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(read-from-string \"#+foo bar\" nil :eof)");
+    try testing.expect(result.isNil());
+}
+
+test "ansi repro read-from-string.feature-plus.2 suppresses package form to nil" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(read-from-string \"#+ecl (si::package-lock nil nil)\" nil :eof)");
+    try testing.expect(result.isNil());
+}
+
+test "ansi repro load.feature-plus.1 still TypeMismatch on #+ecl" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    try std.fs.cwd().writeFile(.{
+        .sub_path = "tmp_pkg_feature_1.lsp",
+        .data = "#+ecl (si::package-lock (find-package \"COMMON-LISP\") nil)\n42\n",
+    });
+    defer std.fs.cwd().deleteFile("tmp_pkg_feature_1.lsp") catch {};
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    try testing.expectError(error.TypeMismatch, repl.eval("(load \"tmp_pkg_feature_1.lsp\")"));
+}
+
+test "ansi repro load.feature-plus.2 still TypeMismatch on #+(and ...)" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    try std.fs.cwd().writeFile(.{
+        .sub_path = "tmp_pkg_feature_2.lsp",
+        .data = "#+(and ecl (not ecl-bytecmp)) (si::package-lock (find-package \"COMMON-LISP\") nil)\n42\n",
+    });
+    defer std.fs.cwd().deleteFile("tmp_pkg_feature_2.lsp") catch {};
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    try testing.expectError(error.TypeMismatch, repl.eval("(load \"tmp_pkg_feature_2.lsp\")"));
+}
+
+test "ansi repro load.feature-plus.3 still TypeMismatch on #+lispworks" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    try std.fs.cwd().writeFile(.{
+        .sub_path = "tmp_pkg_feature_3.lsp",
+        .data = "#+lispworks (lw:set-default-character-element-type 'character)\n42\n",
+    });
+    defer std.fs.cwd().deleteFile("tmp_pkg_feature_3.lsp") catch {};
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    try testing.expectError(error.TypeMismatch, repl.eval("(load \"tmp_pkg_feature_3.lsp\")"));
+}
