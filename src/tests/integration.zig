@@ -3227,3 +3227,63 @@ test "ansi repro cerror.6 continue restart resumes" {
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 10), result.toFixnum());
 }
+
+test "ansi repro pathname-host.1 still TypeMismatch" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    try testing.expectError(error.TypeMismatch, evalExpr(
+        allocator,
+        &heap,
+        "(pathname-host *default-pathname-defaults*)",
+    ));
+}
+
+test "ansi repro pathname-device.1 still TypeMismatch" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    try testing.expectError(error.TypeMismatch, evalExpr(
+        allocator,
+        &heap,
+        "(pathname-device *default-pathname-defaults*)",
+    ));
+}
+
+test "ansi repro pathname-directory.1 still TypeMismatch" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    try testing.expectError(error.TypeMismatch, evalExpr(
+        allocator,
+        &heap,
+        "(pathname-directory *default-pathname-defaults*)",
+    ));
+}
+
+test "ansi repro pathname-name.1 still TypeMismatch" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    try testing.expectError(error.TypeMismatch, evalExpr(
+        allocator,
+        &heap,
+        "(pathname-name *default-pathname-defaults*)",
+    ));
+}
+
+test "ansi repro pathname-type.1 still TypeMismatch" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    try testing.expectError(error.TypeMismatch, evalExpr(
+        allocator,
+        &heap,
+        "(pathname-type *default-pathname-defaults*)",
+    ));
+}

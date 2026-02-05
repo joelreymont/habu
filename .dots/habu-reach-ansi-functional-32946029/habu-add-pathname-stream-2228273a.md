@@ -1,9 +1,11 @@
 ---
 title: Add pathname/stream repro tests batch1
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-05T22:32:05.499745+01:00"
+created-at: "\"2026-02-05T22:32:05.499745+01:00\""
+closed-at: "2026-02-05T23:49:36.998331+01:00"
+close-reason: Added 5 pathname default-path repro tests capturing current TypeMismatch behavior.
 blocks:
   - habu-map-failures-to-e9ce25c5
 ---
