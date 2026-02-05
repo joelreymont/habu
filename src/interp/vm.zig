@@ -3331,16 +3331,16 @@ pub const Vm = struct {
             .find_restart => {
                 const name = try self.pop();
                 // Search for restart by name
-                var found = false;
+                var found = Value.nil;
                 var i = self.restart_sp;
                 while (i > 0) {
                     i -= 1;
                     if (self.restart_stack[i].name.raw == name.raw) {
-                        found = true;
+                        found = self.restart_stack[i].name;
                         break;
                     }
                 }
-                try self.push(if (found) Value.t else Value.nil);
+                try self.push(found);
             },
 
             .handler_bind => {
@@ -5482,6 +5482,31 @@ pub const Vm = struct {
             self.fp = unwind_frame.unwind_fp;
             // pop_unwind will re-throw after cleanup completes
             return;
+        }
+
+        // Handler-bind dispatch for signaled conditions.
+        if (tag.raw == self.builtins.sym_condition_tag.raw and self.handler_sp > 0) {
+            var condition_type = Value.nil;
+            var condition_value = value;
+            if (value.isCons()) {
+                const pair = value.toPtr(Cons);
+                condition_type = pair.car;
+                condition_value = pair.cdr;
+            }
+
+            var i = self.handler_sp;
+            while (i > 0) {
+                i -= 1;
+                const frame = self.handler_stack[i];
+                if (frame.condition_type.raw == Value.t.raw or frame.condition_type.raw == condition_type.raw) {
+                    if (self.sp + 2 > STACK_SIZE) return error.StackOverflow;
+                    self.stack[self.sp] = frame.handler_fn;
+                    self.stack[self.sp + 1] = condition_value;
+                    self.sp += 2;
+                    try self.doCall(1, false);
+                    return;
+                }
+            }
         }
 
         // No unwind frames - search for matching catch frame

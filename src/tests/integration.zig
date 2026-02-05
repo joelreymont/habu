@@ -3170,7 +3170,7 @@ test "ansi repro warn.1 still nonconforming" {
     try testing.expectError(error.TypeMismatch, evalExpr(allocator, &heap, src));
 }
 
-test "ansi repro compute-restarts.1 still nonconforming" {
+test "ansi repro compute-restarts.1 returns restart objects" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
@@ -3178,21 +3178,22 @@ test "ansi repro compute-restarts.1 still nonconforming" {
     const src =
         \\(restart-case
         \\  (let ((r (compute-restarts)))
-        \\    (and (consp r) (symbolp (car r))))
+        \\    (and (consp r) (eq (restart-name (car r)) 'foo)))
         \\  (foo () nil))
     ;
     const result = try evalExpr(allocator, &heap, src);
     try testing.expect(!result.isNil());
 }
 
-test "ansi repro compute-restarts.3 still nonconforming" {
+test "ansi repro compute-restarts.3 find-restart returns restart object" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     const src =
         \\(restart-case
-        \\  (eq (find-restart 'foo) t)
+        \\  (let ((r (find-restart 'foo)))
+        \\    (and r (eq (restart-name r) 'foo)))
         \\  (foo () nil))
     ;
     const result = try evalExpr(allocator, &heap, src);
