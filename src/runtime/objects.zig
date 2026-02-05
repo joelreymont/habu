@@ -788,6 +788,10 @@ pub const Chunk = extern struct {
     num_locals: u8,
     /// Padding for alignment
     _pad: [3]u8 = .{0} ** 3,
+    /// Original source lambda expression (for function-lambda-expression), or nil
+    lambda_expr: Value = Value.nil,
+    /// Debug name / function name (for function-lambda-expression), or nil
+    name: Value = Value.nil,
     /// Constant pool pointer (points to inline array after header)
     const_pool: [*]Value,
     /// Bytecode pointer (points to inline array after constants)
@@ -939,6 +943,7 @@ pub fn forEachValue(val: Value, callback: *const fn (Value) void) void {
         },
         .closure => {
             const cls = val.toPtr(Closure);
+            callback(cls.code);
             for (cls.getCapturedValues()) |cap| {
                 callback(cap);
             }
@@ -962,6 +967,8 @@ pub fn forEachValue(val: Value, callback: *const fn (Value) void) void {
                 },
                 .chunk => {
                     const chunk = val.toPtr(Chunk);
+                    callback(chunk.lambda_expr);
+                    callback(chunk.name);
                     for (chunk.getConstants()) |c| {
                         callback(c);
                     }

@@ -456,8 +456,14 @@ pub const GC = struct {
                         }
                     },
                     .chunk => {
-                        // Scan all constants in the constant pool
+                        // Scan chunk metadata + all constants in the constant pool
                         const chunk: *objects.Chunk = @ptrFromInt(addr);
+                        if (chunk.lambda_expr.isPointer() and !chunk.lambda_expr.isNil()) {
+                            chunk.lambda_expr = try self.copyValue(chunk.lambda_expr, alloc_ptr);
+                        }
+                        if (chunk.name.isPointer() and !chunk.name.isNil()) {
+                            chunk.name = try self.copyValue(chunk.name, alloc_ptr);
+                        }
                         for (chunk.getConstants()) |*const_val| {
                             if (const_val.isPointer() and !const_val.isNil()) {
                                 const_val.* = try self.copyValue(const_val.*, alloc_ptr);

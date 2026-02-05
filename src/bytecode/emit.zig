@@ -389,6 +389,7 @@ pub const Emitter = struct {
             .string_downcase,
             .symbol_value,
             .symbol_function,
+            .function_lambda_expression,
             .vec_len,
             .make_box,
             .box_ref,
@@ -902,6 +903,7 @@ pub const Emitter = struct {
             .fboundp => |op| try self.emitUnaryOp(op.operand, .fboundp),
             .symbol_value => |op| try self.emitUnaryOp(op.operand, .symbol_value),
             .symbol_function => |op| try self.emitUnaryOp(op.operand, .symbol_function),
+            .function_lambda_expression => |op| try self.emitUnaryOp(op.operand, .function_lambda_expression),
             .typep => |op| try self.emitBinaryOp(op, .typep),
             .subtypep => |op| try self.emitBinaryOp(op, .subtypep),
 
@@ -1426,6 +1428,8 @@ pub const Emitter = struct {
         // Finalize lambda chunk (GC Value)
         const chunk_val = try lambda_emitter.finalize();
         const chunk = chunk_val.toPtr(Chunk);
+        chunk.lambda_expr = lam.lambda_expr;
+        chunk.name = lam.name;
 
         // Patch lambda's make_closure indices to account for parent's existing child_chunks
         // The lambda's code uses indices relative to its own child_chunks array (starting at 0).

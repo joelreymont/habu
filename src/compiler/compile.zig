@@ -276,6 +276,7 @@ pub const Builtins = struct {
     fboundp: Value,
     @"symbol-value": Value,
     @"symbol-function": Value,
+    @"function-lambda-expression": Value,
     fdefinition: Value,
     typep: Value,
     subtypep: Value,
@@ -839,6 +840,7 @@ pub const Builtins = struct {
             .fboundp = try heap.intern("fboundp"),
             .@"symbol-value" = try heap.intern("symbol-value"),
             .@"symbol-function" = try heap.intern("symbol-function"),
+            .@"function-lambda-expression" = try heap.intern("function-lambda-expression"),
             .fdefinition = try heap.intern("fdefinition"),
             .typep = try heap.intern("typep"),
             .subtypep = try heap.intern("subtypep"),
@@ -1212,7 +1214,7 @@ pub const Builtins = struct {
         "upgraded-complex-part-type",
         "eval", "gensym", "macroexpand", "macroexpand-1",
         // Symbol operations
-        "boundp", "fboundp", "symbol-value", "symbol-function",
+        "boundp", "fboundp", "symbol-value", "symbol-function", "function-lambda-expression",
         "typep", "type-of", "intern", "symbol-name", "copy-symbol", "makunbound", "set",
         "copy-structure",
         "get", "put", "remprop",
@@ -3180,7 +3182,13 @@ pub const Compiler = struct {
             body_ir = try self.builder.letExpr(aux_slice, body_ir);
         }
 
-        return try self.builder.lambda(params.items, opt_params, kp_params, rest_param, captures, body_ir);
+        const lam_ir = try self.builder.lambda(params.items, opt_params, kp_params, rest_param, captures, body_ir);
+
+        // Preserve source lambda expression for FUNCTION-LAMBDA-EXPRESSION.
+        const heap = if (self.heap) |val| val else return error.UninitializedBuiltins;
+        const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
+        lam_ir.lambda.lambda_expr = try heap.allocCons(b.lambda, args);
+        return lam_ir;
     }
 
     /// Create a type assertion IR node for a given type symbol or complex type
@@ -3837,6 +3845,9 @@ pub const Compiler = struct {
             // Build lambda from rest: ((params) body...) -> compile as lambda
             if (!f.cdr.isCons()) return error.InvalidLet;
             const lambda_ir = try self.compileLambda(f.cdr, env);
+            if (lambda_ir.* == .lambda) {
+                lambda_ir.lambda.name = f.car;
+            }
 
             try bindings.append(self.allocator, .{ .name = name, .value = lambda_ir, .index = index });
 
@@ -3868,6 +3879,9 @@ pub const Compiler = struct {
         var indices = std.ArrayList(u16){};
         defer indices.deinit(self.allocator);
 
+        var sym_vals = std.ArrayList(Value){};
+        defer sym_vals.deinit(self.allocator);
+
         var binding_list = bindings_expr;
         while (binding_list.isCons()) {
             const binding_cons = binding_list.toPtr(Cons);
@@ -3894,6 +3908,7 @@ pub const Compiler = struct {
             try names.append(self.allocator, name);
             try lambda_args.append(self.allocator, f.cdr);
             try indices.append(self.allocator, idx);
+            try sym_vals.append(self.allocator, f.car);
 
             binding_list = binding_cons.cdr;
         }
@@ -3902,8 +3917,11 @@ pub const Compiler = struct {
         var exprs = std.ArrayList(*const Ir){};
         defer exprs.deinit(self.allocator);
 
-        for (names.items, lambda_args.items, indices.items) |name, largs, idx| {
+        for (names.items, lambda_args.items, indices.items, sym_vals.items) |name, largs, idx, sym_val| {
             const lambda_ir = try self.compileLambda(largs, env);
+            if (lambda_ir.* == .lambda) {
+                lambda_ir.lambda.name = sym_val;
+            }
             const define_ir = try self.builder.define(name, idx, lambda_ir);
             try exprs.append(self.allocator, define_ir);
         }
@@ -4648,6 +4666,7 @@ pub const Compiler = struct {
         if (s == b.atom.raw) return try self.makeUnaryWrapper(&IrBuilder.atomp);
         if (s == b.listp.raw) return try self.makeUnaryWrapper(&IrBuilder.listp);
         if (s == b.@"copy-structure".raw) return try self.makeUnaryWrapper(&IrBuilder.copyStructure);
+        if (s == b.@"function-lambda-expression".raw) return try self.makeUnaryWrapper(&IrBuilder.functionLambdaExpression);
 
         // Variadic arithmetic - create wrappers using add/sub/mul/div builders
         if (s == b.@"+".raw) return try self.makeVariadicAddWrapper();
@@ -5592,6 +5611,9 @@ pub const Compiler = struct {
         const cons2 = cons1.cdr.toPtr(Cons);
         // std.debug.print("  Compiling value for define: {s}\n", .{name});
         const value_ir = try self.compile(cons2.car, env);
+        if (value_ir.* == .lambda) {
+            value_ir.lambda.name = cons1.car;
+        }
 
         return try self.builder.define(name, idx, value_ir);
     }
@@ -5605,18 +5627,21 @@ pub const Compiler = struct {
         const name_spec = cons1.car;
 
         var name_sym_saved: *const Symbol = undefined;
+        var name_val: Value = undefined;
         var return_type: ?Value = null;
 
         switch (name_spec.typeKind()) {
             .symbol => {
                 // Simple: (defun name ...)
                 name_sym_saved = name_spec.toPtr(Symbol);
+                name_val = name_spec;
             },
             .cons => {
                 // Typed: (defun (name -> type) ...)
                 const spec_cons = name_spec.toPtr(Cons);
                 if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
                 name_sym_saved = spec_cons.car.toPtr(Symbol);
+                name_val = spec_cons.car;
 
                 // Check for -> arrow (use symbol identity)
                 if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
@@ -5645,6 +5670,9 @@ pub const Compiler = struct {
         // Rest is (params...) body...
         const lambda_args = cons1.cdr;
         const lambda_ir = try self.compileLambdaWithReturnType(lambda_args, env, return_type);
+        if (lambda_ir.* == .lambda) {
+            lambda_ir.lambda.name = name_val;
+        }
 
         return try self.builder.define(name, idx, lambda_ir);
     }
@@ -10223,7 +10251,7 @@ pub const Compiler = struct {
         // I/O
         write, print, princ, terpri, write_char, random, random_seed,
         // Symbol
-        intern, unintern, sym_name, copy_symbol, makunbound, set_sym_val, type_of, error_user, boundp, fboundp, symbol_value, symbol_function, typep, subtypep,
+        intern, unintern, sym_name, copy_symbol, makunbound, set_sym_val, type_of, error_user, boundp, fboundp, symbol_value, symbol_function, function_lambda_expression, typep, subtypep,
         // Character
         char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p,
         read_char, peek_char, unread_char, listen, upgraded_complex_part_type,
@@ -10310,6 +10338,7 @@ pub const Compiler = struct {
         .{ .field = "fboundp", .tag = .fboundp },
         .{ .field = "symbol-value", .tag = .symbol_value },
         .{ .field = "symbol-function", .tag = .symbol_function },
+        .{ .field = "function-lambda-expression", .tag = .function_lambda_expression },
         .{ .field = "type-of", .tag = .type_of },
         .{ .field = "intern", .tag = .intern },
         .{ .field = "symbol-name", .tag = .sym_name },
@@ -11325,6 +11354,7 @@ pub const Compiler = struct {
             .fboundp => try self.builder.fboundp(operand),
             .symbol_value => try self.builder.symbolValue(operand),
             .symbol_function => try self.builder.symbolFunction(operand),
+            .function_lambda_expression => try self.builder.functionLambdaExpression(operand),
             .abs => try self.builder.abs(operand),
             .zerop => try self.builder.zerop(operand),
             .plusp => try self.builder.plusp(operand),
@@ -14237,6 +14267,41 @@ test "compile defun typed name" {
     try testing.expectEqualStrings("CL-USER:FOO", ir_def.define.name);
     try testing.expect(ir_def.define.value.* == .lambda);
     try testing.expect(ir_def.define.value.lambda.body.* == .assert_fixnum);
+}
+
+test "compile defun sets lambda name" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const defun_sym = try heap.intern("defun");
+    const foo_sym = try heap.intern("foo");
+    const x_sym = try heap.intern("x");
+
+    const params = try heap.allocCons(x_sym, Value.nil);
+    const body = try heap.allocCons(x_sym, Value.nil);
+    const defun_args = try heap.allocCons(foo_sym, try heap.allocCons(params, body));
+    const expr = try heap.allocCons(defun_sym, defun_args);
+
+    const ir_def = try compiler.compile(expr, &env);
+    defer arena_alloc.destroy(ir_def);
+
+    try testing.expect(ir_def.define.value.* == .lambda);
+    try testing.expectEqual(foo_sym.raw, ir_def.define.value.lambda.name.raw);
 }
 
 test "compile defpackage names" {

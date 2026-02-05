@@ -2354,6 +2354,49 @@ test "generic-function-lambda-list" {
     try testing.expect(lambda_list.isCons());
 }
 
+test "function-lambda-expression" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const simple_ok = try repl.eval(
+        \\(multiple-value-bind (lambda-expr closure-p name)
+        \\    (function-lambda-expression (lambda (x) (+ x 1)))
+        \\  (and (consp lambda-expr)
+        \\       (eq (car lambda-expr) 'lambda)
+        \\       (null closure-p)
+        \\       (null name)))
+    );
+    try testing.expect(!simple_ok.isNil());
+
+    _ = try repl.eval("(defun fle-make-adder (n) (lambda (x) (+ x n)))");
+    const closure_ok = try repl.eval(
+        \\(multiple-value-bind (lambda-expr closure-p name)
+        \\    (function-lambda-expression (fle-make-adder 10))
+        \\  (and (consp lambda-expr)
+        \\       (eq (car lambda-expr) 'lambda)
+        \\       closure-p
+        \\       (null name)))
+    );
+    try testing.expect(!closure_ok.isNil());
+
+    _ = try repl.eval("(defun fle-foo (x) (+ x 1))");
+    const named_ok = try repl.eval(
+        \\(multiple-value-bind (lambda-expr closure-p name)
+        \\    (function-lambda-expression (symbol-function 'fle-foo))
+        \\  (and (consp lambda-expr)
+        \\       (eq (car lambda-expr) 'lambda)
+        \\       (null closure-p)
+        \\       (eq name 'fle-foo)))
+    );
+    try testing.expect(!named_ok.isNil());
+}
+
 test "method-qualifiers" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });

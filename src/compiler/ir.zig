@@ -101,6 +101,12 @@ pub const Ir = union(enum) {
         /// Free variables captured from enclosing scope
         captures: []const Capture,
         body: *const Ir,
+        /// Original source (lambda ...) form, or nil if unavailable.
+        /// Used by FUNCTION-LAMBDA-EXPRESSION.
+        lambda_expr: Value = Value.nil,
+        /// Function name symbol, or nil if anonymous.
+        /// Used by FUNCTION-LAMBDA-EXPRESSION.
+        name: Value = Value.nil,
     },
 
     // ========================================================================
@@ -733,6 +739,7 @@ pub const Ir = union(enum) {
     fboundp: UnaryOp, // Check if symbol has function binding
     symbol_value: UnaryOp, // Get symbol's global value
     symbol_function: UnaryOp, // Get symbol's function binding
+    function_lambda_expression: UnaryOp, // (function-lambda-expression fn) -> (values lambda-expr closure-p name)
     typep: BinaryOp, // Check if object is of given type
     subtypep: BinaryOp, // Check subtype relationship
 
@@ -1166,6 +1173,7 @@ pub const Ir = union(enum) {
             .put,
             .remprop,
             .type_of,
+            .function_lambda_expression,
             .assert_fixnum,
             .assert_cons,
             .assert_symbol,
@@ -2371,6 +2379,12 @@ pub const IrBuilder = struct {
     pub fn symbolFunction(self: IrBuilder, sym: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .symbol_function = .{ .operand = sym } };
+        return node;
+    }
+
+    pub fn functionLambdaExpression(self: IrBuilder, fn_val: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .function_lambda_expression = .{ .operand = fn_val } };
         return node;
     }
 

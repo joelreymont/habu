@@ -855,6 +855,32 @@ pub fn copyStructure(c: *ctx.JitContext, obj: Value) vm_mod.Error!Value {
     };
 }
 
+pub fn functionLambdaExpression(c: *ctx.JitContext, fn_val: Value) vm_mod.Error!Value {
+    switch (fn_val.typeKind()) {
+        .closure => {
+            const cls = fn_val.toPtr(runtime.Closure);
+            if (cls.code.typeKind() != .chunk) return error.TypeMismatch;
+            const chunk = cls.code.toPtr(runtime.Chunk);
+            c.vm.secondary_values[0] = if (cls.num_captures != 0) Value.t else Value.nil;
+            c.vm.secondary_values[1] = chunk.name;
+            c.vm.secondary_values_count = 2;
+            return chunk.lambda_expr;
+        },
+        .generic_function => {
+            const gf = fn_val.toPtr(runtime.objects.GenericFunction);
+            if (!gf.dispatcher.isClosure()) return error.TypeMismatch;
+            const cls = gf.dispatcher.toPtr(runtime.Closure);
+            if (cls.code.typeKind() != .chunk) return error.TypeMismatch;
+            const chunk = cls.code.toPtr(runtime.Chunk);
+            c.vm.secondary_values[0] = if (cls.num_captures != 0) Value.t else Value.nil;
+            c.vm.secondary_values[1] = gf.name;
+            c.vm.secondary_values_count = 2;
+            return chunk.lambda_expr;
+        },
+        else => return error.TypeMismatch,
+    }
+}
+
 pub fn vecFillPtr(c: *ctx.JitContext, vec_val: Value) vm_mod.Error!Value {
     _ = c;
     if (!vec_val.isVector()) return error.TypeMismatch;

@@ -5312,6 +5312,33 @@ pub const Vm = struct {
                 }
             },
 
+            .function_lambda_expression => {
+                const fn_val = try self.pop();
+                switch (fn_val.typeKind()) {
+                    .closure => {
+                        const cls = fn_val.toPtr(runtime.Closure);
+                        if (cls.code.typeKind() != .chunk) return error.TypeMismatch;
+                        const chunk = cls.code.toPtr(runtime.Chunk);
+                        try self.push(chunk.lambda_expr);
+                        self.secondary_values[0] = if (cls.num_captures != 0) Value.t else Value.nil;
+                        self.secondary_values[1] = chunk.name;
+                        self.secondary_values_count = 2;
+                    },
+                    .generic_function => {
+                        const gf = fn_val.toPtr(runtime.objects.GenericFunction);
+                        if (!gf.dispatcher.isClosure()) return error.TypeMismatch;
+                        const cls = gf.dispatcher.toPtr(runtime.Closure);
+                        if (cls.code.typeKind() != .chunk) return error.TypeMismatch;
+                        const chunk = cls.code.toPtr(runtime.Chunk);
+                        try self.push(chunk.lambda_expr);
+                        self.secondary_values[0] = if (cls.num_captures != 0) Value.t else Value.nil;
+                        self.secondary_values[1] = gf.name;
+                        self.secondary_values_count = 2;
+                    },
+                    else => return error.TypeMismatch,
+                }
+            },
+
             .typep => {
                 const type_spec = try self.pop();
                 const obj = try self.pop();
@@ -5420,7 +5447,7 @@ pub const Vm = struct {
         }
 
         // Clear stale secondary values after each op (except ops that set them)
-        if (op != .values and op != .get_decoded_time and op != .decode_universal_time) {
+        if (op != .values and op != .get_decoded_time and op != .decode_universal_time and op != .function_lambda_expression) {
             self.secondary_values_count = 0;
         }
     }

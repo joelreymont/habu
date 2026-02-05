@@ -1119,6 +1119,11 @@ pub const Op = enum(u16) {
     /// ( struct -- struct-copy )
     copy_structure = 0x128,
 
+    /// FUNCTION-LAMBDA-EXPRESSION
+    /// ( fn -- lambda-expr )
+    /// Also sets secondary values: closure-p, name.
+    function_lambda_expression = 0x129,
+
     /// Association list lookup (using eql - compares numbers by value)
     /// ( key alist -- cons-or-nil )
     assoc_eql = 0xF9,
@@ -1922,6 +1927,7 @@ pub const Op = enum(u16) {
             .fboundp,
             .symbol_value,
             .symbol_function,
+            .function_lambda_expression,
             .typep,
             .subtypep,
             .abs,

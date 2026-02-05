@@ -786,6 +786,11 @@ pub const Jit = struct {
                 try self.emitCallUnary(@intFromPtr(&rt.copyStructure));
                 try self.emitStackPush();
             },
+            .function_lambda_expression => {
+                try self.emitStackPop();
+                try self.emitCallUnary(@intFromPtr(&rt.functionLambdaExpression));
+                try self.emitStackPush();
+            },
             .call, .tail_call => {
                 const argc = chunk.readU8(bc_offset.*);
                 bc_offset.* += 1;
