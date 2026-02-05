@@ -1119,33 +1119,70 @@ pub const Heap = struct {
     }
 
     /// Allocate a hash table with given initial capacity (will be rounded to power of 2)
-    pub fn allocHashTable(self: *Heap, capacity: usize, test_type: objects.HashTest) error{OutOfMemory}!Value {
-        // Ensure power-of-two capacity for correct linear probing with mask
+    pub fn allocHashTable(self: *Heap, capacity: usize, test_type: objects.HashTest) error{ OutOfMemory, Overflow }!Value {
+        // Ensure power-of-two capacity for correct linear probing with mask.
         const actual_capacity = nextPowerOfTwo(if (capacity < 8) 8 else capacity);
-        const total_size = @sizeOf(objects.HashTable) + actual_capacity * @sizeOf(objects.HashEntry);
 
-        const ptr = try self.allocRaw(total_size);
-        const ht: *objects.HashTable = @ptrCast(@alignCast(ptr));
+        const entries_len = try std.math.mul(usize, actual_capacity, 2);
+        const entries_vec_val = try self.allocVector(entries_len, entries_len);
+        const entries_vec = entries_vec_val.toPtr(objects.Vector);
 
-        // Entries follow immediately after header
-        const entries_ptr: [*]objects.HashEntry = @ptrCast(@alignCast(ptr + @sizeOf(objects.HashTable)));
-
-        // Initialize all entries to EMPTY
+        // Keys are in even slots. Values stay nil.
         for (0..actual_capacity) |i| {
-            entries_ptr[i] = .{
-                .key = objects.HashTable.EMPTY,
-                .value = Value.nil,
-            };
+            entries_vec.data[i * 2] = objects.HashTable.EMPTY;
         }
 
+        const ht = try self.alloc(objects.HashTable);
         ht.* = .{
             .count = 0,
             .capacity = actual_capacity,
-            .entries = entries_ptr,
+            .entries_vec = entries_vec_val,
             .test_type = test_type,
         };
 
         return Value.makeHashTable(ht);
+    }
+
+    pub fn growHashTableInPlace(
+        self: *Heap,
+        ht: *objects.HashTable,
+        new_capacity: usize,
+    ) error{ OutOfMemory, Overflow, HashTableNeedsGrowth, HashTableFull }!void {
+        const old_cap: usize = @intCast(ht.capacity);
+        const dbl = try std.math.mul(usize, old_cap, 2);
+        const target = if (new_capacity < dbl) dbl else new_capacity;
+
+        const actual_capacity = nextPowerOfTwo(if (target < 8) 8 else target);
+        if (actual_capacity <= old_cap) return;
+
+        const entries_len = try std.math.mul(usize, actual_capacity, 2);
+        const entries_vec_val = try self.allocVector(entries_len, entries_len);
+        const entries_vec = entries_vec_val.toPtr(objects.Vector);
+
+        // Keys are in even slots. Values stay nil.
+        for (0..actual_capacity) |i| {
+            entries_vec.data[i * 2] = objects.HashTable.EMPTY;
+        }
+
+        const old_entries_vec = ht.entries_vec.toPtr(objects.Vector);
+
+        var tmp: objects.HashTable = .{
+            .count = 0,
+            .capacity = actual_capacity,
+            .entries_vec = entries_vec_val,
+            .test_type = ht.test_type,
+        };
+
+        for (0..old_cap) |i| {
+            const k = old_entries_vec.data[i * 2];
+            if (objects.HashTable.isAvailableKey(k)) continue;
+            const v = old_entries_vec.data[i * 2 + 1];
+            try tmp.put(k, v);
+        }
+
+        ht.entries_vec = entries_vec_val;
+        ht.capacity = actual_capacity;
+        ht.count = tmp.count;
     }
 
     /// Allocate a bytecode chunk with constant pool and code
@@ -1272,7 +1309,7 @@ pub const Heap = struct {
         if (self.lisp_packages.raw == Value.nil.raw) return null;
         const ht = self.lisp_packages.toPtr(objects.HashTable);
         const key = try self.packageKey(name);
-        return ht.get(self, key);
+        return ht.get(key);
     }
 
     /// Register a Lisp package
@@ -1302,45 +1339,14 @@ pub const Heap = struct {
     pub fn putLispClass(self: *Heap, name: Value, class: Value) !void {
         if (self.lisp_classes.raw == Value.nil.raw) return error.RegistryNotInitialized;
         const ht = self.lisp_classes.toPtr(objects.HashTable);
-
-        const hash = @import("primitives/hash.zig").hashValue(name);
-        var idx = hash % ht.capacity;
-        var i: usize = 0;
-        while (i < ht.capacity) : (i += 1) {
-            const e = &ht.entries[idx];
-            const is_empty = e.key.raw == objects.HashTable.EMPTY.raw;
-            const is_deleted = e.key.raw == objects.HashTable.DELETED.raw;
-
-            if (is_empty or is_deleted or e.key.raw == name.raw) {
-                const was_new = is_empty or is_deleted;
-                e.key = name;
-                e.value = class;
-                if (was_new) ht.count += 1;
-                return;
-            }
-
-            idx = (idx + 1) % ht.capacity;
-        }
-        return error.HashTableFull;
+        try ht.put(name, class);
     }
 
     /// Find a class by name in the global class registry
     pub fn findLispClass(self: *Heap, name: Value) ?Value {
         if (self.lisp_classes.raw == Value.nil.raw) return null;
         const ht = self.lisp_classes.toPtr(objects.HashTable);
-
-        const hash = @import("primitives/hash.zig").hashValue(name);
-        var idx = hash % ht.capacity;
-        var i: usize = 0;
-        while (i < ht.capacity) : (i += 1) {
-            const e = &ht.entries[idx];
-            if (e.key.raw == objects.HashTable.EMPTY.raw) return null;
-            if (e.key.raw != objects.HashTable.DELETED.raw and e.key.raw == name.raw) {
-                return e.value;
-            }
-            idx = (idx + 1) % ht.capacity;
-        }
-        return null;
+        return ht.get(name);
     }
 
     /// Intern a symbol (same name = same Value)

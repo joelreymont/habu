@@ -314,6 +314,7 @@ pub const HashTest = enum(u8) {
     eq = 0, // Identity comparison
     eql = 1, // Identity + numeric equality (default)
     equal = 2, // Structural equality
+    equalp = 3, // Extended structural equality (case-insensitive, numeric coercions)
 };
 
 /// Boxed object kind - first word of all boxed objects
@@ -586,9 +587,10 @@ pub const HashTable = extern struct {
     count: u64,
     /// Capacity (size of entries array)
     capacity: u64,
-    /// Pointer to entries array
-    entries: [*]HashEntry,
-    /// Test function type (eq, eql, equal)
+    /// Entries backing store: a vector of length (capacity * 2)
+    /// Layout: [k0, v0, k1, v1, ...]
+    entries_vec: Value,
+    /// Test function type (eq, eql, equal, equalp)
     test_type: HashTest,
     /// Padding for alignment
     _pad: [7]u8 = .{ 0, 0, 0, 0, 0, 0, 0 },
@@ -599,39 +601,58 @@ pub const HashTable = extern struct {
     /// Sentinel for deleted entry - uses another impossible character codepoint
     pub const DELETED: Value = Value{ .raw = 0x80000000003FFFFC }; // char with codepoint 0x1FFFFE
 
-    /// Check if an entry is empty
-    pub fn isEmpty(entry: HashEntry) bool {
-        return entry.key.raw == EMPTY.raw;
+    pub fn isEmptyKey(key: Value) bool {
+        return key.raw == EMPTY.raw;
     }
 
-    /// Check if an entry is deleted
-    pub fn isDeleted(entry: HashEntry) bool {
-        return entry.key.raw == DELETED.raw;
+    pub fn isDeletedKey(key: Value) bool {
+        return key.raw == DELETED.raw;
     }
 
-    /// Check if an entry is available (empty or deleted)
-    pub fn isAvailable(entry: HashEntry) bool {
-        return isEmpty(entry) or isDeleted(entry);
+    pub fn isAvailableKey(key: Value) bool {
+        return isEmptyKey(key) or isDeletedKey(key);
     }
 
-    /// Get entries slice
-    pub fn getEntries(self: *const HashTable) []HashEntry {
-        return self.entries[0..self.capacity];
+    fn entryItems(self: *const HashTable) []Value {
+        const vec = self.entries_vec.toPtr(Vector);
+        const cap: usize = @intCast(self.capacity);
+        return vec.items()[0 .. cap * 2];
+    }
+
+    pub fn getKey(self: *const HashTable, idx: usize) Value {
+        const items = self.entryItems();
+        return items[idx * 2];
+    }
+
+    pub fn getValue(self: *const HashTable, idx: usize) Value {
+        const items = self.entryItems();
+        return items[idx * 2 + 1];
+    }
+
+    fn keyPtr(self: *HashTable, idx: usize) *Value {
+        const vec = self.entries_vec.toPtr(Vector);
+        return &vec.data[idx * 2];
+    }
+
+    fn valuePtr(self: *HashTable, idx: usize) *Value {
+        const vec = self.entries_vec.toPtr(Vector);
+        return &vec.data[idx * 2 + 1];
     }
 
     /// Get value by key, returns null if not found
-    pub fn get(self: *const HashTable, heap: anytype, key: Value) ?Value {
-        _ = heap;
-        const h = @import("../runtime/primitives/hash.zig").hashValue(key);
-        var idx = h % self.capacity;
-        var i: usize = 0;
-        while (i < self.capacity) : (i += 1) {
-            const entry = self.entries[idx];
-            if (isEmpty(entry)) return null;
-            if (!isDeleted(entry) and self.keysEqual(entry.key, key)) {
-                return entry.value;
+    pub fn get(self: *const HashTable, key: Value) ?Value {
+        const h = @import("../runtime/primitives/hash.zig").hashValueWithTest(key, self.test_type);
+        const cap: u64 = self.capacity;
+        const mask: u64 = cap - 1;
+        var idx: u64 = h & mask;
+        var i: u64 = 0;
+        while (i < cap) : (i += 1) {
+            const entry_key = self.getKey(@intCast(idx));
+            if (isEmptyKey(entry_key)) return null;
+            if (!isDeletedKey(entry_key) and self.keysEqual(entry_key, key)) {
+                return self.getValue(@intCast(idx));
             }
-            idx = (idx + 1) % self.capacity;
+            idx = (idx + 1) & mask;
         }
         return null;
     }
@@ -643,91 +664,71 @@ pub const HashTable = extern struct {
             return error.HashTableNeedsGrowth;
         }
 
-        const h = @import("../runtime/primitives/hash.zig").hashValue(key);
-        var idx = h % self.capacity;
-        var i: usize = 0;
-        var first_deleted: ?usize = null;
+        const h = @import("../runtime/primitives/hash.zig").hashValueWithTest(key, self.test_type);
+        const cap: u64 = self.capacity;
+        const mask: u64 = cap - 1;
+        var idx: u64 = h & mask;
+        var i: u64 = 0;
+        var first_deleted: ?u64 = null;
 
-        while (i < self.capacity) : (i += 1) {
-            const entry = &self.entries[idx];
-            if (isEmpty(entry.*)) {
+        while (i < cap) : (i += 1) {
+            const entry_key = self.keyPtr(@intCast(idx));
+            const entry_val = self.valuePtr(@intCast(idx));
+            if (isEmptyKey(entry_key.*)) {
                 // Use first deleted slot if found, otherwise use empty slot
-                const target_idx = first_deleted orelse idx;
-                self.entries[target_idx] = .{ .key = key, .value = value };
+                const target_idx: u64 = first_deleted orelse idx;
+                self.keyPtr(@intCast(target_idx)).* = key;
+                self.valuePtr(@intCast(target_idx)).* = value;
                 self.count += 1;
                 return;
             }
-            if (isDeleted(entry.*) and first_deleted == null) {
+            if (isDeletedKey(entry_key.*) and first_deleted == null) {
                 first_deleted = idx;
-            } else if (!isDeleted(entry.*) and self.keysEqual(entry.key, key)) {
+            } else if (!isDeletedKey(entry_key.*) and self.keysEqual(entry_key.*, key)) {
                 // Update existing
-                entry.value = value;
+                entry_val.* = value;
                 return;
             }
-            idx = (idx + 1) % self.capacity;
+            idx = (idx + 1) & mask;
         }
         return error.HashTableFull;
     }
 
     /// Remove key, returns true if found
     pub fn remove(self: *HashTable, key: Value) bool {
-        const h = @import("../runtime/primitives/hash.zig").hashValue(key);
-        var idx = h % self.capacity;
-        var i: usize = 0;
-        while (i < self.capacity) : (i += 1) {
-            const entry = &self.entries[idx];
-            if (isEmpty(entry.*)) return false;
-            if (!isDeleted(entry.*) and self.keysEqual(entry.key, key)) {
-                entry.* = .{ .key = DELETED, .value = Value.nil };
+        const h = @import("../runtime/primitives/hash.zig").hashValueWithTest(key, self.test_type);
+        const cap: u64 = self.capacity;
+        const mask: u64 = cap - 1;
+        var idx: u64 = h & mask;
+        var i: u64 = 0;
+        while (i < cap) : (i += 1) {
+            const entry_key = self.keyPtr(@intCast(idx));
+            if (isEmptyKey(entry_key.*)) return false;
+            if (!isDeletedKey(entry_key.*) and self.keysEqual(entry_key.*, key)) {
+                entry_key.* = DELETED;
+                self.valuePtr(@intCast(idx)).* = Value.nil;
                 self.count -= 1;
                 return true;
             }
-            idx = (idx + 1) % self.capacity;
+            idx = (idx + 1) & mask;
         }
         return false;
     }
 
     /// Clear all entries
     pub fn clear(self: *HashTable) void {
-        for (0..self.capacity) |i| {
-            self.entries[i] = .{ .key = EMPTY, .value = Value.nil };
+        const cap: usize = @intCast(self.capacity);
+        const vec = self.entries_vec.toPtr(Vector);
+        for (0..cap) |i| {
+            vec.data[i * 2] = EMPTY;
+            vec.data[i * 2 + 1] = Value.nil;
         }
         self.count = 0;
     }
 
     /// Compare keys according to hash table test type
     fn keysEqual(self: *const HashTable, a: Value, b: Value) bool {
-        return switch (self.test_type) {
-            .eq => a.raw == b.raw,
-            .eql => blk: {
-                if (a.raw == b.raw) break :blk true;
-                if (a.typeKind() != b.typeKind()) break :blk false;
-                // eql: same for numbers with same value
-                if (a.isFixnum() and b.isFixnum()) break :blk a.toFixnum() == b.toFixnum();
-                if (a.isFloat() and b.isFloat()) break :blk a.toFloat() == b.toFloat();
-                if (a.isCharacter() and b.isCharacter()) break :blk a.toCharacter() == b.toCharacter();
-                break :blk false;
-            },
-            .equal => blk: {
-                if (a.raw == b.raw) break :blk true;
-                const tk_a = a.typeKind();
-                const tk_b = b.typeKind();
-                if (tk_a != tk_b) break :blk false;
-                // equal: compares string contents
-                if (tk_a == .string) {
-                    const sa = a.toPtr(String);
-                    const sb = b.toPtr(String);
-                    break :blk std.mem.eql(u8, sa.bytes(), sb.bytes());
-                }
-                if (tk_a == .string32) {
-                    const sa = a.toPtr(String32);
-                    const sb = b.toPtr(String32);
-                    break :blk std.mem.eql(u32, sa.codepoints(), sb.codepoints());
-                }
-                // Fall back to eql for other types
-                break :blk self.keysEqual(a, b); // This would recurse with .eql
-            },
-        };
+        return @import("../runtime/primitives/hash.zig").keyEqualWithTest(a, b, self.test_type);
     }
 };
 
@@ -873,9 +874,8 @@ pub fn objectSize(val: Value) usize {
             const kind_ptr: *const BoxedKind = @ptrFromInt(val.raw & ~@as(u64, 0xF));
             break :blk switch (kind_ptr.*) {
                 .hashtable => {
-                    const ht = val.toPtr(HashTable);
-                    // Header + entries array
-                    break :blk @sizeOf(HashTable) + ht.capacity * @sizeOf(HashEntry);
+                    // Header only (entries live in a separate vector)
+                    break :blk @sizeOf(HashTable);
                 },
                 .array => {
                     const arr = val.toPtr(Array);
@@ -949,12 +949,7 @@ pub fn forEachValue(val: Value, callback: *const fn (Value) void) void {
             switch (kind_ptr.*) {
                 .hashtable => {
                     const ht = val.toPtr(HashTable);
-                    for (ht.getEntries()) |entry| {
-                        if (!HashTable.isAvailable(entry)) {
-                            callback(entry.key);
-                            callback(entry.value);
-                        }
-                    }
+                    callback(ht.entries_vec);
                 },
                 .package => {
                     const pkg = val.toPtr(Package);

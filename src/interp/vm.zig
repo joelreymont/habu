@@ -537,10 +537,12 @@ pub const Vm = struct {
         const new_ht_val = try self.heap.allocHashTable(old.capacity * 2, old.test_type);
         const new_ht = new_ht_val.toPtr(HashTable);
 
-        for (old.getEntries()) |e| {
-            if (!HashTable.isAvailable(e)) {
-                try new_ht.put(e.key, e.value);
-            }
+        const old_cap: usize = @intCast(old.capacity);
+        var i: usize = 0;
+        while (i < old_cap) : (i += 1) {
+            const k = old.getKey(i);
+            if (HashTable.isAvailableKey(k)) continue;
+            try new_ht.put(k, old.getValue(i));
         }
 
         return new_ht_val;
@@ -558,6 +560,41 @@ pub const Vm = struct {
             };
             return;
         }
+    }
+
+    fn htGrowInPlace(self: *Vm, ht_idx: usize, new_cap: usize) !void {
+        const entries_len = try std.math.mul(usize, new_cap, 2);
+        const new_entries_vec_val = try self.allocVector(entries_len, entries_len);
+
+        // Initialize keys in even slots.
+        const new_entries_vec = new_entries_vec_val.toPtr(runtime.Vector);
+        for (0..new_cap) |i| {
+            new_entries_vec.data[i * 2] = HashTable.EMPTY;
+        }
+
+        // Re-acquire hash table pointer after potential GC during allocVector.
+        const ht = self.stack[ht_idx].toPtr(HashTable);
+        const old_entries_vec = ht.entries_vec.toPtr(runtime.Vector);
+        const old_cap: usize = @intCast(ht.capacity);
+
+        // Build into a temporary view, then swap backing store.
+        var tmp: HashTable = .{
+            .count = 0,
+            .capacity = new_cap,
+            .entries_vec = new_entries_vec_val,
+            .test_type = ht.test_type,
+        };
+
+        for (0..old_cap) |i| {
+            const k = old_entries_vec.data[i * 2];
+            if (HashTable.isAvailableKey(k)) continue;
+            const v = old_entries_vec.data[i * 2 + 1];
+            try tmp.put(k, v);
+        }
+
+        ht.entries_vec = new_entries_vec_val;
+        ht.capacity = new_cap;
+        ht.count = tmp.count;
     }
 
     fn stackLenFromPtrs(sp: [*]Value, base: [*]Value) usize {
@@ -603,7 +640,7 @@ pub const Vm = struct {
         if (key.isNil()) return null;
 
         // Already compiled (or blacklisted)?
-        if (self.jit_code.toPtr(HashTable).get(self.heap, key)) |v| {
+        if (self.jit_code.toPtr(HashTable).get(key)) |v| {
             if (v.raw == Value.t.raw) return null;
             if (v.typeKind() != .native_code) return error.TypeMismatch;
 
@@ -615,7 +652,7 @@ pub const Vm = struct {
         // Increment call counter.
         const ht_cnt = self.jit_cnt.toPtr(HashTable);
         var n: u32 = 0;
-        if (ht_cnt.get(self.heap, key)) |v| {
+        if (ht_cnt.get(key)) |v| {
             if (v.isFixnum()) {
                 const cur: i64 = v.toFixnum();
                 if (cur >= 0 and cur < std.math.maxInt(u32)) {
@@ -750,10 +787,13 @@ pub const Vm = struct {
     }
 
     /// Allocate a hash table, running GC if needed
-    pub fn allocHashTable(self: *Vm, capacity: usize, test_type: runtime.HashTest) error{OutOfMemory}!Value {
-        return if (self.heap.allocHashTable(capacity, test_type)) |val| val else |_| {
-            _ = try self.collectGarbage();
-            return try self.heap.allocHashTable(capacity, test_type);
+    pub fn allocHashTable(self: *Vm, capacity: usize, test_type: runtime.HashTest) error{ OutOfMemory, Overflow }!Value {
+        return self.heap.allocHashTable(capacity, test_type) catch |err| switch (err) {
+            error.OutOfMemory => blk: {
+                _ = try self.collectGarbage();
+                break :blk try self.heap.allocHashTable(capacity, test_type);
+            },
+            error.Overflow => return error.Overflow,
         };
     }
 
@@ -3439,8 +3479,7 @@ pub const Vm = struct {
                 const ht_val = try self.pop();
                 if (!ht_val.isHashTable()) return error.TypeMismatch;
                 const ht = ht_val.toPtr(HashTable);
-                const result = hashTableGet(ht, key);
-                try self.push(result);
+                try self.push(ht.get(key) orelse Value.nil);
             },
             .sxhash => {
                 const obj = try self.pop();
@@ -3454,36 +3493,21 @@ pub const Vm = struct {
                 const val_idx = self.sp - 1;
                 if (!self.stack[ht_idx].isHashTable()) return error.TypeMismatch;
 
-                var ht = self.stack[ht_idx].toPtr(HashTable);
-                const key = self.stack[key_idx];
-                const value = self.stack[val_idx];
+                while (true) {
+                    const ht = self.stack[ht_idx].toPtr(HashTable);
+                    const key = self.stack[key_idx];
+                    const value = self.stack[val_idx];
 
-                // Try to insert, resize if needed
-                if (!hashTableSet(ht, key, value)) {
-                    // Allocate the new hash table first (may GC)
-                    const new_cap_u64 = ht.capacity * 2;
-                    if (new_cap_u64 < ht.capacity) return error.Overflow;
-                    const new_cap: usize = @intCast(new_cap_u64);
-                    const test_type = ht.test_type;
-                    const new_ht_val = try self.allocHashTable(new_cap, test_type);
-
-                    // Re-acquire old ht pointer after potential GC
-                    ht = self.stack[ht_idx].toPtr(HashTable);
-                    const new_ht = new_ht_val.toPtr(HashTable);
-
-                    // Copy all entries from old to new
-                    for (ht.getEntries()) |entry| {
-                        if (!HashTable.isEmpty(entry) and !HashTable.isDeleted(entry)) {
-                            _ = hashTableSet(new_ht, entry.key, entry.value);
-                        }
-                    }
-
-                    // Update original hash table to use new entries
-                    ht.entries = new_ht.entries;
-                    ht.capacity = new_ht.capacity;
-
-                    // Now insert should succeed
-                    _ = hashTableSet(ht, self.stack[key_idx], self.stack[val_idx]);
+                    ht.put(key, value) catch |err| switch (err) {
+                        error.HashTableNeedsGrowth, error.HashTableFull => {
+                            const new_cap_u64 = ht.capacity * 2;
+                            if (new_cap_u64 < ht.capacity) return error.Overflow;
+                            try self.htGrowInPlace(ht_idx, @intCast(new_cap_u64));
+                            continue;
+                        },
+                        else => return err,
+                    };
+                    break;
                 }
 
                 // Only push the value (CL setf gethash semantics)
@@ -3496,7 +3520,7 @@ pub const Vm = struct {
                 const ht_val = try self.pop();
                 if (!ht_val.isHashTable()) return error.TypeMismatch;
                 const ht = ht_val.toPtr(HashTable);
-                const removed = hashTableRemove(ht, key);
+                const removed = ht.remove(key);
                 try self.push(if (removed) Value.t else Value.nil);
             },
             .hash_count => {
@@ -3792,7 +3816,7 @@ pub const Vm = struct {
                 const ht_val = try self.pop();
                 if (!ht_val.isHashTable()) return error.TypeMismatch;
                 const ht = ht_val.toPtr(HashTable);
-                hashTableClear(ht);
+                ht.clear();
                 try self.push(ht_val);
             },
             .hash_test => {
@@ -3803,6 +3827,7 @@ pub const Vm = struct {
                     .eq => "eq",
                     .eql => "eql",
                     .equal => "equal",
+                    .equalp => "equalp",
                 };
                 const sym = try self.heap.intern(test_name);
                 try self.push(sym);
@@ -3817,9 +3842,9 @@ pub const Vm = struct {
                 var i: u64 = 0;
                 while (i < cap) : (i += 1) {
                     const ht = self.stack[ht_idx].toPtr(HashTable);
-                    const entry = ht.getEntries()[@intCast(i)];
-                    if (HashTable.isAvailable(entry)) continue;
-                    result = try self.allocCons(entry.key, result);
+                    const k = ht.getKey(@intCast(i));
+                    if (HashTable.isAvailableKey(k)) continue;
+                    result = try self.allocCons(k, result);
                 }
                 self.sp -= 1;
                 try self.push(result);
@@ -3834,10 +3859,11 @@ pub const Vm = struct {
                 var i: u64 = 0;
                 while (i < cap) : (i += 1) {
                     const ht = self.stack[ht_idx].toPtr(HashTable);
-                    const entry = ht.getEntries()[@intCast(i)];
-                    if (HashTable.isAvailable(entry)) continue;
+                    const k = ht.getKey(@intCast(i));
+                    if (HashTable.isAvailableKey(k)) continue;
+                    const v = ht.getValue(@intCast(i));
 
-                    const pair = try self.allocCons(entry.key, entry.value);
+                    const pair = try self.allocCons(k, v);
                     result = try self.allocCons(pair, result);
                 }
                 self.sp -= 1;
@@ -7411,123 +7437,7 @@ fn hashValueWithTest(val: Value, test_type: runtime.HashTest) u64 {
 
 /// Check if two Values are equal for hash table purposes
 pub fn hashKeyEqualWithTest(a: Value, b: Value, test_type: runtime.HashTest) bool {
-    switch (test_type) {
-        .eq => {
-            // eq: pure identity comparison
-            return a.raw == b.raw;
-        },
-        .eql => {
-            // eql: identity, but floats use numeric equality
-            if (a.raw == b.raw) return true;
-            if (a.isFloat() and b.isFloat()) {
-                return floatEql(a.toFloat(), b.toFloat());
-            }
-            return false;
-        },
-        .equal => {
-            // equal: structural equality
-            return valueEqual(a, b);
-        },
-    }
-}
-
-/// Get value from hash table, returns nil if not found
-fn hashTableGet(ht: *HashTable, key: Value) Value {
-    const entries = ht.getEntries();
-    const mask = ht.capacity - 1;
-    const test_type = ht.test_type;
-    var idx = hashValueWithTest(key, test_type) & mask;
-
-    var probes: usize = 0;
-    while (probes < ht.capacity) : (probes += 1) {
-        const entry = entries[idx];
-        if (HashTable.isEmpty(entry)) {
-            return Value.nil; // Not found
-        }
-        if (!HashTable.isDeleted(entry) and hashKeyEqualWithTest(entry.key, key, test_type)) {
-            return entry.value; // Found
-        }
-        idx = (idx + 1) & mask; // Linear probe
-    }
-    return Value.nil; // Table full and key not found
-}
-
-/// Set value in hash table (insert or update)
-/// Returns true on success, false if table is full and needs resize
-fn hashTableSet(ht: *HashTable, key: Value, value: Value) bool {
-    const entries = ht.getEntries();
-    const mask = ht.capacity - 1;
-    const test_type = ht.test_type;
-    var idx = hashValueWithTest(key, test_type) & mask;
-
-    var first_deleted: ?usize = null;
-    var probes: usize = 0;
-    while (probes < ht.capacity) : (probes += 1) {
-        const entry = entries[idx];
-        if (HashTable.isEmpty(entry)) {
-            // Check load factor before inserting (max 75%)
-            if (ht.count * 4 >= ht.capacity * 3) {
-                return false; // Table needs resize
-            }
-            // Insert at first deleted slot if we found one, else here
-            const insert_idx = first_deleted orelse idx;
-            entries[insert_idx] = .{ .key = key, .value = value };
-            ht.count += 1;
-            return true;
-        }
-        if (HashTable.isDeleted(entry)) {
-            if (first_deleted == null) first_deleted = idx;
-        } else if (hashKeyEqualWithTest(entry.key, key, test_type)) {
-            // Update existing
-            entries[idx].value = value;
-            return true;
-        }
-        idx = (idx + 1) & mask;
-    }
-    // Table full - insert at first deleted if available
-    if (first_deleted) |del_idx| {
-        if (ht.count * 4 >= ht.capacity * 3) {
-            return false; // Table needs resize
-        }
-        entries[del_idx] = .{ .key = key, .value = value };
-        ht.count += 1;
-        return true;
-    }
-    // Table is truly full
-    return false;
-}
-
-/// Remove key from hash table, returns true if removed
-fn hashTableRemove(ht: *HashTable, key: Value) bool {
-    const entries = ht.getEntries();
-    const mask = ht.capacity - 1;
-    const test_type = ht.test_type;
-    var idx = hashValueWithTest(key, test_type) & mask;
-
-    var probes: usize = 0;
-    while (probes < ht.capacity) : (probes += 1) {
-        const entry = entries[idx];
-        if (HashTable.isEmpty(entry)) {
-            return false; // Not found
-        }
-        if (!HashTable.isDeleted(entry) and hashKeyEqualWithTest(entry.key, key, test_type)) {
-            // Mark as deleted
-            entries[idx].key = HashTable.DELETED;
-            ht.count -= 1;
-            return true;
-        }
-        idx = (idx + 1) & mask;
-    }
-    return false;
-}
-
-fn hashTableClear(ht: *HashTable) void {
-    const entries = ht.getEntries();
-    for (entries[0..ht.capacity]) |*entry| {
-        entry.key = HashTable.EMPTY;
-        entry.value = Value.nil;
-    }
-    ht.count = 0;
+    return hash_prims.keyEqualWithTest(a, b, test_type);
 }
 
 // ============================================================================

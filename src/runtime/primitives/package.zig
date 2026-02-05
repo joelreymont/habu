@@ -7,7 +7,6 @@ const Value = @import("../value.zig").Value;
 const objects = @import("../objects.zig");
 const heap_mod = @import("../heap.zig");
 const Heap = heap_mod.Heap;
-const hash = @import("hash.zig");
 const Cons = objects.Cons;
 const String = objects.String;
 const Vector = objects.Vector;
@@ -356,21 +355,20 @@ pub fn aproposSymbols(heap: *Heap, substring: Value) !Value {
         // Check internal symbols
         if (pkg.symbols.raw != Value.nil.raw) {
             const ht = pkg.symbols.toPtr(objects.HashTable);
-            var i: usize = 0;
-            while (i < ht.capacity) : (i += 1) {
-                const entry = &ht.entries[i];
-                if (entry.key.raw == objects.HashTable.EMPTY.raw or
-                    entry.key.raw == objects.HashTable.DELETED.raw) continue;
-                if (!entry.key.isSymbol()) continue;
+            const cap: usize = @intCast(ht.capacity);
+            for (0..cap) |i| {
+                const entry_key = ht.getKey(i);
+                if (objects.HashTable.isAvailableKey(entry_key)) continue;
+                if (!entry_key.isSymbol()) continue;
 
                 // Check if name contains substring
-                const sym = entry.key.toPtr(objects.Symbol);
+                const sym = entry_key.toPtr(objects.Symbol);
                 const sym_name = sym.getName();
                 if (std.mem.indexOf(u8, sym_name, substr) != null) {
                     // Avoid duplicates
-                    if (seen.get(entry.key.raw) == null) {
-                        try seen.put(entry.key.raw, {});
-                        result = try heap.allocCons(entry.key, result);
+                    if (seen.get(entry_key.raw) == null) {
+                        try seen.put(entry_key.raw, {});
+                        result = try heap.allocCons(entry_key, result);
                     }
                 }
             }
@@ -482,7 +480,7 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
     if (p.symbols.raw == Value.nil.raw) {
         p.symbols = try createHashTable(heap, 16);
     }
-    try insertHashTable(heap, p.symbols, new_sym, Value.t);
+    try insertHashTable(heap, p.symbols, new_sym, new_sym);
 
     const status = try heap.internKeyword("INTERNAL");
     return try heap.allocCons(new_sym, try heap.allocCons(status, Value.nil));
@@ -491,133 +489,28 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
 fn hashTableLookup(table: Value, key: Value) Value {
     if (!table.isHashTable()) return Value.nil;
     const ht = table.toPtr(objects.HashTable);
-    const entries = ht.getEntries();
-    const mask = ht.capacity - 1;
-    const test_type = ht.test_type;
-    var idx = hashValueWithTest(key, test_type) & mask;
-
-    var probes: usize = 0;
-    while (probes < ht.capacity) : (probes += 1) {
-        const entry = entries[idx];
-        if (objects.HashTable.isEmpty(entry)) {
-            return Value.nil;
-        }
-        if (!objects.HashTable.isDeleted(entry) and hashKeyEqualWithTest(entry.key, key, test_type)) {
-            return entry.key;
-        }
-        idx = (idx + 1) & mask;
-    }
-    return Value.nil;
-}
-
-fn hashValueWithTest(key: Value, test_type: objects.HashTest) u64 {
-    return switch (test_type) {
-        .eq => key.raw,
-        .eql => key.raw,
-        .equal => hash.hashValue(key),
-    };
-}
-
-fn hashKeyEqualWithTest(a: Value, b: Value, test_type: objects.HashTest) bool {
-    return switch (test_type) {
-        .eq => a.raw == b.raw,
-        .eql => valueEql(a, b),
-        .equal => valueEqual(a, b, 0),
-    };
-}
-
-const MAX_EQUAL_DEPTH = 1000;
-
-fn valueEql(a: Value, b: Value) bool {
-    if (a.isFloat() and b.isFloat()) {
-        const af = a.toFloat();
-        const bf = b.toFloat();
-        if (std.math.isNan(af) or std.math.isNan(bf)) return false;
-        return af == bf;
-    }
-    return a.raw == b.raw;
-}
-
-fn valueEqual(a: Value, b: Value, depth: usize) bool {
-    if (depth > MAX_EQUAL_DEPTH) return false;
-    if (a.isFloat() and b.isFloat()) return valueEql(a, b);
-    if (a.raw == b.raw) return true;
-    if (a.isFixnum() or b.isFixnum()) return false;
-    if (a.isCharacter() or b.isCharacter()) return false;
-    if (a.isFloat() or b.isFloat()) return false;
-
-    const tag_a = a.raw & 0xF;
-    const tag_b = b.raw & 0xF;
-    if (tag_a != tag_b) return false;
-
-    return switch (a.typeKind()) {
-        .cons => blk: {
-            const ca = a.toPtr(Cons);
-            const cb = b.toPtr(Cons);
-            break :blk valueEqual(ca.car, cb.car, depth + 1) and valueEqual(ca.cdr, cb.cdr, depth + 1);
-        },
-        .string => blk: {
-            const sa = a.toPtr(String);
-            const sb = b.toPtr(String);
-            break :blk std.mem.eql(u8, sa.bytes(), sb.bytes());
-        },
-        .vector => blk: {
-            const va = a.toPtr(Vector);
-            const vb = b.toPtr(Vector);
-            if (va.length != vb.length) break :blk false;
-            for (va.items(), vb.items()) |ea, eb| {
-                if (!valueEqual(ea, eb, depth + 1)) break :blk false;
-            }
-            break :blk true;
-        },
-        else => false,
-    };
+    return ht.get(key) orelse Value.nil;
 }
 
 fn createHashTable(heap: *Heap, capacity: usize) !Value {
-    const size = @sizeOf(objects.HashTable) + capacity * @sizeOf(objects.HashEntry);
-    const ptr = try heap.allocRaw(size);
-    const ht: *objects.HashTable = @ptrCast(@alignCast(ptr));
-    const entries: [*]objects.HashEntry = @ptrCast(ptr + @sizeOf(objects.HashTable));
-
-    ht.* = .{
-        .kind = .hashtable,
-        .count = 0,
-        .capacity = capacity,
-        .entries = entries,
-        .test_type = .eql,
-    };
-
-    // Initialize all entries to empty
-    var i: usize = 0;
-    while (i < capacity) : (i += 1) {
-        entries[i] = .{ .key = objects.HashTable.EMPTY, .value = Value.nil };
-    }
-
-    return Value.makePtr(ht, .boxed);
+    return heap.allocHashTable(capacity, .eql);
 }
 
 fn insertHashTable(heap: *Heap, table: Value, key: Value, value: Value) !void {
-    _ = heap;
     if (!table.isHashTable()) return error.TypeError;
     const ht = table.toPtr(objects.HashTable);
 
-    // Simple linear probing
-    const h = key.raw;
-    var idx = h % ht.capacity;
-    var i: usize = 0;
-    while (i < ht.capacity) : (i += 1) {
-        const entry = &ht.entries[idx];
-        if (entry.key.raw == objects.HashTable.EMPTY.raw or entry.key.raw == objects.HashTable.DELETED.raw or entry.key.raw == key.raw) {
-            const was_new = entry.key.raw == objects.HashTable.EMPTY.raw or entry.key.raw == objects.HashTable.DELETED.raw;
-            entry.key = key;
-            entry.value = value;
-            if (was_new) ht.count += 1;
-            return;
-        }
-        idx = (idx + 1) % ht.capacity;
+    while (true) {
+        ht.put(key, value) catch |err| switch (err) {
+            error.HashTableNeedsGrowth, error.HashTableFull => {
+                const new_cap = try std.math.mul(usize, @intCast(ht.capacity), 2);
+                try heap.growHashTableInPlace(ht, new_cap);
+                continue;
+            },
+            else => return err,
+        };
+        return;
     }
-    return error.HashTableFull;
 }
 
 /// Find a symbol in a package
@@ -685,7 +578,7 @@ pub fn exportSymbols(heap: *Heap, symbols: Value, pkg: Value) !void {
     // Handle single symbol or list
     switch (symbols.typeKind()) {
         .symbol => {
-            try insertHashTable(heap, p.exports, symbols, Value.t);
+            try insertHashTable(heap, p.exports, symbols, symbols);
             try addNativeExport(native_pkg, symbols.toPtr(objects.Symbol).getName());
         },
         .nil => return,
@@ -695,7 +588,7 @@ pub fn exportSymbols(heap: *Heap, symbols: Value, pkg: Value) !void {
                 if (!list.isCons()) return error.TypeError;
                 const sym = list.toPtr(objects.Cons).car;
                 if (!sym.isSymbol()) return error.TypeError;
-                try insertHashTable(heap, p.exports, sym, Value.t);
+                try insertHashTable(heap, p.exports, sym, sym);
                 try addNativeExport(native_pkg, sym.toPtr(objects.Symbol).getName());
                 list = list.toPtr(objects.Cons).cdr;
             }
@@ -718,7 +611,7 @@ pub fn importSymbols(heap: *Heap, symbols: Value, pkg: Value) !void {
     // Handle single symbol or list
     switch (symbols.typeKind()) {
         .symbol => {
-            try insertHashTable(heap, p.symbols, symbols, Value.t);
+            try insertHashTable(heap, p.symbols, symbols, symbols);
             try addNativeSymbol(native_pkg, symbols);
         },
         .nil => return,
@@ -728,7 +621,7 @@ pub fn importSymbols(heap: *Heap, symbols: Value, pkg: Value) !void {
                 if (!list.isCons()) return error.TypeError;
                 const sym = list.toPtr(objects.Cons).car;
                 if (!sym.isSymbol()) return error.TypeError;
-                try insertHashTable(heap, p.symbols, sym, Value.t);
+                try insertHashTable(heap, p.symbols, sym, sym);
                 try addNativeSymbol(native_pkg, sym);
                 list = list.toPtr(objects.Cons).cdr;
             }
@@ -850,20 +743,7 @@ pub fn unexportSymbols(heap: *Heap, symbols: Value, pkg: Value) !void {
 }
 
 fn removeFromHashTable(ht: *objects.HashTable, key: Value) !void {
-    const h = key.raw;
-    var idx = h % ht.capacity;
-    var i: usize = 0;
-    while (i < ht.capacity) : (i += 1) {
-        const entry = &ht.entries[idx];
-        if (entry.key.raw == objects.HashTable.EMPTY.raw) return;
-        if (entry.key.raw == key.raw) {
-            entry.key = objects.HashTable.DELETED;
-            entry.value = Value.nil;
-            ht.count -= 1;
-            return;
-        }
-        idx = (idx + 1) % ht.capacity;
-    }
+    _ = ht.remove(key);
 }
 
 /// Remove symbol from package
@@ -875,24 +755,7 @@ pub fn uninternSymbol(heap: *Heap, symbol: Value, pkg: Value) !bool {
     if (p.symbols.raw == Value.nil.raw) return false;
 
     const ht = p.symbols.toPtr(objects.HashTable);
-    const h = symbol.raw;
-    var idx = h % ht.capacity;
-    var i: usize = 0;
-    var found = false;
-    while (i < ht.capacity) : (i += 1) {
-        const entry = &ht.entries[idx];
-        if (entry.key.raw == objects.HashTable.EMPTY.raw) break;
-        if (entry.key.raw == symbol.raw) {
-            entry.key = objects.HashTable.DELETED;
-            entry.value = Value.nil;
-            ht.count -= 1;
-            found = true;
-            break;
-        }
-        idx = (idx + 1) % ht.capacity;
-    }
-
-    if (!found) return false;
+    if (!ht.remove(symbol)) return false;
 
     // Remove from exports if present
     if (p.exports.raw != Value.nil.raw) {
@@ -928,13 +791,14 @@ pub fn deletePackage(heap: *Heap, pkg: Value) !bool {
 
     if (heap.lisp_packages.raw != Value.nil.raw) {
         const ht = heap.lisp_packages.toPtr(objects.HashTable);
-        const entries = ht.getEntries();
         var seen = std.AutoHashMap(u64, void).init(heap.backing_allocator);
         defer seen.deinit();
 
-        for (entries) |entry| {
-            if (objects.HashTable.isEmpty(entry) or objects.HashTable.isDeleted(entry)) continue;
-            const pkg_val = entry.value;
+        const cap: usize = @intCast(ht.capacity);
+        for (0..cap) |i| {
+            const key = ht.getKey(i);
+            if (objects.HashTable.isAvailableKey(key)) continue;
+            const pkg_val = ht.getValue(i);
             if (!pkg_val.isPackage()) continue;
             if (pkg_val.raw == pkg.raw) continue;
             if (seen.get(pkg_val.raw) != null) continue;

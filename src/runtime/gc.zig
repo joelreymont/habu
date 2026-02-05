@@ -314,12 +314,6 @@ pub const GC = struct {
                 // Check discriminator to determine actual type
                 const kind_ptr: *const objects.BoxedKind = @ptrFromInt(new_addr);
                 switch (kind_ptr.*) {
-                    .hashtable => {
-                        // HashTable.entries points to inline entries array after header
-                        const ht: *objects.HashTable = @ptrFromInt(new_addr);
-                        const old_ptr = @intFromPtr(ht.entries);
-                        ht.entries = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
-                    },
                     .array => {
                         // Array.data_ptr points to data array
                         const arr: *objects.Array = @ptrFromInt(new_addr);
@@ -342,7 +336,7 @@ pub const GC = struct {
                         const old_ptr = @intFromPtr(s32.data);
                         s32.data = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
                     },
-                    .rational, .complex, .stream, .bignum, .pathname, .package, .condition, .class, .slotdef, .generic_function, .method, .native_code => {
+                    .hashtable, .rational, .complex, .stream, .bignum, .pathname, .package, .condition, .class, .slotdef, .generic_function, .method, .native_code => {
                         // No interior pointers to repair
                     },
                 }
@@ -401,17 +395,10 @@ pub const GC = struct {
                 const kind_ptr: *const objects.BoxedKind = @ptrFromInt(addr);
                 switch (kind_ptr.*) {
                     .hashtable => {
-                        // Scan all key-value entries
+                        // Scan entries vector (which scans keys/values transitively)
                         const ht: *objects.HashTable = @ptrFromInt(addr);
-                        for (ht.getEntries()) |*entry| {
-                            if (!objects.HashTable.isAvailable(entry.*)) {
-                                if (entry.key.isPointer() and !entry.key.isNil()) {
-                                    entry.key = try self.copyValue(entry.key, alloc_ptr);
-                                }
-                                if (entry.value.isPointer() and !entry.value.isNil()) {
-                                    entry.value = try self.copyValue(entry.value, alloc_ptr);
-                                }
-                            }
+                        if (ht.entries_vec.isPointer() and !ht.entries_vec.isNil()) {
+                            ht.entries_vec = try self.copyValue(ht.entries_vec, alloc_ptr);
                         }
                     },
                     .array => {
