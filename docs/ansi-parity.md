@@ -47,6 +47,13 @@ By default the runner writes:
 - `docs/ansi/results/sbcl-latest.json`
 - `docs/ansi/results/habu-latest.json`
 
-## Next Required Dot
+## CI Gates
 
-- `habu-normalize-ansi-output-9aa78296`: normalize raw logs to JSON.
+- Workflow: `.github/workflows/ansi-conformance.yml`
+- PR smoke gate:
+  - Runs `tools/ansi/smoke.lsp` on `sbcl` and `habu`
+  - Normalizes logs with `tools/ansi/parse_results.py`
+  - Rejects new failures versus baseline with `tools/ansi/check_regression.py`
+- Nightly full gate:
+  - Runs full `doit.lsp` on `sbcl` and `habu`
+  - Uploads raw and normalized artifacts for both runtimes

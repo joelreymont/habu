@@ -1,9 +1,11 @@
 ---
 title: Fix condition/restart failures batch1
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-05T22:32:05.487173+01:00"
+created-at: "\"2026-02-05T22:32:05.487173+01:00\""
+closed-at: "2026-02-05T23:39:43.080942+01:00"
+close-reason: "Completed batch1: condition throw dispatch via handler-bind, restart object lookup semantics, and warn/cerror conforming repro updates."
 blocks:
   - habu-add-cond-restart-0e4fd31b
 ---
