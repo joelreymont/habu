@@ -1,9 +1,11 @@
 ---
 title: Add macro env boxed object
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-02-05T21:43:27.839084+01:00"
+created-at: "\"2026-02-05T21:43:27.839084+01:00\""
+closed-at: "2026-02-05T22:07:17.467959+01:00"
+close-reason: Already implemented in prior macro environment object commit
 blocks:
   - habu-fix-repl-macro-e4f601e0
 ---
