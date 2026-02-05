@@ -6,8 +6,8 @@ This doc tracks the ANSI symbol set (978 unique) but allows duplicate rows for m
 (function/variable/macro/type, etc).
 
 Counts:
-- Symbols: ✓ 957 | ⚠ 10 | ✗ 11
-- Rows:    ✓ 990 | ⚠ 10 | ✗ 11
+- Symbols: ✓ 958 | ⚠ 10 | ✗ 10
+- Rows:    ✓ 991 | ⚠ 10 | ✗ 10
 - Rows total: 1011
 
 Source-of-truth symbol set: `docs/cl-symbols-sbcl.txt`
@@ -1084,7 +1084,7 @@ Audit: `python3 tools/cl_symbols_audit.py`
 | eq | ✓ | compile.zig:751 | Pointer identity |
 | equal | ✓ | compile.zig:752 | Structural equality |
 | equalp | ✗ | - | Extended equality |
-| fdefinition | ✗ | - | Function binding accessor |
+| fdefinition | ✓ | lib/stdlib.habu:1073 | Function binding accessor |
 | floatp | ✓ | compile.zig:809 | Float predicate |
 | fmakunbound | ✓ | primitives/symbol.zig:218 | Unbind function cell |
 | ftype | ✓ | compile.zig:9549 | Function type declaration |

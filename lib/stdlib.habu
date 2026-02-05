@@ -1066,6 +1066,57 @@
             (t (error "setf: unsupported place"))))
       (error "setf: invalid place"))))
 
+; fdefinition - function binding accessor
+; Supports:
+; - symbol: (fdefinition 'foo) => (symbol-function 'foo)
+; - setf name list: (fdefinition '(setf foo)) => (symbol-function (intern "(setf foo)"))
+(defun fdefinition (name)
+  (cond
+    ((symbolp name) (symbol-function name))
+    ((consp name)
+     (let ((head (car name)))
+       (case head
+         (setf
+          (let ((tail (cdr name)))
+            (if (and (consp tail) (null (cdr tail)) (symbolp (car tail)))
+                 (symbol-function
+                  (intern (string-concat
+                           (string-concat "(SETF " (symbol-name (car tail)))
+                           ")")))
+              (error "fdefinition: invalid (setf ...) name"))))
+          (t (error "fdefinition: invalid function name")))))
+    (t (error "fdefinition: invalid function name"))))
+
+; Bootstrap function cells for core primitives so (symbol-function 'car) works.
+(setf (fdefinition 'car) #'car)
+(setf (fdefinition 'cdr) #'cdr)
+(setf (fdefinition 'cons) #'cons)
+(setf (fdefinition 'first) #'first)
+(setf (fdefinition 'rest) #'rest)
+(setf (fdefinition 'eq) #'eq)
+(setf (fdefinition 'eql) #'eql)
+(setf (fdefinition 'equal) #'equal)
+(setf (fdefinition '<) #'<)
+(setf (fdefinition '>) #'>)
+(setf (fdefinition '<=) #'<=)
+(setf (fdefinition '>=) #'>=)
+(setf (fdefinition '=) #'=)
+(setf (fdefinition 'append) #'append)
+(setf (fdefinition 'not) #'not)
+(setf (fdefinition 'null) #'null)
+(setf (fdefinition 'consp) #'consp)
+(setf (fdefinition 'symbolp) #'symbolp)
+(setf (fdefinition 'numberp) #'numberp)
+(setf (fdefinition 'integerp) #'integerp)
+(setf (fdefinition 'realp) #'realp)
+(setf (fdefinition 'stringp) #'stringp)
+(setf (fdefinition 'atom) #'atom)
+(setf (fdefinition 'listp) #'listp)
+(setf (fdefinition '+) #'+)
+(setf (fdefinition '*) #'*)
+(setf (fdefinition '-) #'-)
+(setf (fdefinition '/) #'/)
+
 ; incf - increment place (works with setf places)
 (defmacro incf (place &optional (delta 1))
   (if (symbolp place)

@@ -318,6 +318,15 @@ test "eval progn returns last" {
 const repl_mod = @import("../interp/repl.zig");
 const Repl = repl_mod.Repl;
 
+fn loadStdlib(repl: *Repl) !void {
+    const null_writer = std.io.null_writer;
+    const file = try std.fs.cwd().openFile("lib/stdlib.habu", .{});
+    defer file.close();
+    const content = try file.readToEndAlloc(repl.allocator, 16 * 1024 * 1024);
+    defer repl.allocator.free(content);
+    try repl.evalFileContent(content, null_writer);
+}
+
 test "eval define simple" {
     const allocator = testing.allocator;
 
@@ -337,6 +346,65 @@ test "eval define simple" {
     const use_result = try repl.eval("x");
     try testing.expect(use_result.isFixnum());
     try testing.expectEqual(@as(i64, 42), use_result.toFixnum());
+}
+
+test "stdlib fdefinition basic" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    try repl.wireGlobalEnv();
+    defer repl.deinit();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(progn
+        \\  (defun foo (x) x)
+        \\  (eq (fdefinition 'foo) (symbol-function 'foo)))
+    );
+    try testing.expect(result.eq(Value.t));
+}
+
+test "stdlib setf fdefinition (symbol)" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    try repl.wireGlobalEnv();
+    defer repl.deinit();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(progn
+        \\  (setf (fdefinition 'foo) (lambda (x) (+ x 1)))
+        \\  (funcall (fdefinition 'foo) 41))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "stdlib setf fdefinition ((setf name))" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = try Repl.init(allocator, &heap, .{});
+    try repl.wireGlobalEnv();
+    defer repl.deinit();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(progn
+        \\  (setf (fdefinition '(setf bar)) (lambda (x) (+ x 1)))
+        \\  (funcall (fdefinition '(setf bar)) 41))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
 test "eval define with expression" {

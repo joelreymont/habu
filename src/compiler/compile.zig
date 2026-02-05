@@ -275,6 +275,7 @@ pub const Builtins = struct {
     fboundp: Value,
     @"symbol-value": Value,
     @"symbol-function": Value,
+    fdefinition: Value,
     typep: Value,
     subtypep: Value,
     @"type-of": Value,
@@ -835,6 +836,7 @@ pub const Builtins = struct {
             .fboundp = try heap.intern("fboundp"),
             .@"symbol-value" = try heap.intern("symbol-value"),
             .@"symbol-function" = try heap.intern("symbol-function"),
+            .fdefinition = try heap.intern("fdefinition"),
             .typep = try heap.intern("typep"),
             .subtypep = try heap.intern("subtypep"),
             .@"type-of" = try heap.intern("type-of"),
@@ -4329,6 +4331,59 @@ pub const Compiler = struct {
                     const slot_sym = try self.builder.quoteSym(slot_name);
                     const val_ir = try self.compile(value_expr, env);
                     return try self.builder.setSlotValue(obj_ir, slot_sym, val_ir);
+                }
+
+                // (setf (fdefinition 'name) val) -> define global function binding
+                // (setf (fdefinition '(setf name)) val) -> define global binding for "(setf name)"
+                // Note: we require a quoted function-name to avoid silently miscompiling dynamic names.
+                if (h == b.fdefinition.raw) {
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const ac1 = place_args.toPtr(Cons);
+                    if (!ac1.cdr.isNil()) return error.InvalidSyntax;
+                    const name_expr = ac1.car;
+
+                    // Require (quote <function-name>)
+                    if (!name_expr.isCons()) return error.InvalidSyntax;
+                    const q0 = name_expr.toPtr(Cons);
+                    if (!q0.car.isSymbol() or q0.car.raw != b.quote.raw) return error.InvalidSyntax;
+                    if (!q0.cdr.isCons()) return error.InvalidSyntax;
+                    const q1 = q0.cdr.toPtr(Cons);
+                    if (!q1.cdr.isNil()) return error.InvalidSyntax;
+                    const fn_name = q1.car;
+
+                    const val_ir = try self.compile(value_expr, env);
+
+                    switch (fn_name.typeKind()) {
+                        .symbol => {
+                            const sym = fn_name.toPtr(Symbol);
+                            var qual_buf: [256]u8 = undefined;
+                            const q = try self.getQualifiedName(sym, &qual_buf);
+                            defer if (q.owned) self.allocator.free(q.name);
+                            const name = q.name;
+                            const idx = try self.globals.define(name);
+                            return try self.builder.define(name, idx, val_ir);
+                        },
+                        .cons => {
+                            const c0 = fn_name.toPtr(Cons);
+                            if (!c0.car.isSymbol() or c0.car.raw != b.setf.raw) return error.InvalidSyntax;
+                            if (!c0.cdr.isCons()) return error.InvalidSyntax;
+                            const c1 = c0.cdr.toPtr(Cons);
+                            if (!c1.car.isSymbol()) return error.InvalidSyntax;
+                            if (!c1.cdr.isNil()) return error.InvalidSyntax;
+
+                            const base_name = c1.car.toPtr(Symbol).getName();
+                            const setf_name = try std.fmt.allocPrint(self.allocator, "(SETF {s})", .{base_name});
+                            defer self.allocator.free(setf_name);
+
+                            var qual_buf: [512]u8 = undefined;
+                            const q = try self.qualifyName(setf_name, &qual_buf);
+                            defer if (q.owned) self.allocator.free(q.name);
+                            const name = q.name;
+                            const idx = try self.globals.define(name);
+                            return try self.builder.define(name, idx, val_ir);
+                        },
+                        else => return error.InvalidSyntax,
+                    }
                 }
 
                 // (setf (gethash key table) val) -> hash_set IR
