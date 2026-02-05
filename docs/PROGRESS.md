@@ -4,8 +4,7 @@
 
 - Symbol audit: `docs/cl-symbols.md`
 - Symbol set: `docs/cl-symbols-sbcl.txt` (978 external `COMMON-LISP` symbols)
-- Current audit snapshot (2026-02-05): symbols `✓ 977 | ⚠ 1 | ✗ 0`, rows `✓ 1010 | ⚠ 1 | ✗ 0`
-- Remaining partial symbol: `declaration`
+- Current audit snapshot (2026-02-05): symbols `✓ 978 | ⚠ 0 | ✗ 0`, rows `✓ 1011 | ⚠ 0 | ✗ 0`
 
 ## Update / Verify
 

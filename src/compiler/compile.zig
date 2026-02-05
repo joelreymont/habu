@@ -1535,6 +1535,7 @@ pub const CaptureSet = struct {
 pub const DeclSpec = enum {
     type_decl,
     ftype,
+    declaration,
     inline_decl,
     notinline,
     ignore,
@@ -9798,6 +9799,7 @@ pub const Compiler = struct {
         const ignorable_sym = try heap.intern("ignorable");
         const special_sym = try heap.intern("special");
         const dynamic_extent_sym = try heap.intern("dynamic-extent");
+        const declaration_sym = try heap.intern("declaration");
         const optimize_sym = try heap.intern("optimize");
 
         if (spec_name.eq(type_sym)) {
@@ -9862,6 +9864,9 @@ pub const Compiler = struct {
         } else if (spec_name.eq(dynamic_extent_sym)) {
             // (dynamic-extent var1 var2 ...)
             try self.addSimpleDecls(spec_args, .dynamic_extent);
+        } else if (spec_name.eq(declaration_sym)) {
+            // (declaration name1 name2 ...)
+            try self.addSimpleDecls(spec_args, .declaration);
         } else if (spec_name.eq(optimize_sym)) {
             // (optimize (quality value)...) or (optimize quality)
             var updated = self.optimize_current;
@@ -9923,6 +9928,7 @@ pub const Compiler = struct {
         const inline_sym = try heap.intern("inline");
         const notinline_sym = try heap.intern("notinline");
         const special_sym = try heap.intern("special");
+        const declaration_sym = try heap.intern("declaration");
         const optimize_sym = try heap.intern("optimize");
 
         if (spec_name.eq(type_sym)) {
@@ -9978,6 +9984,9 @@ pub const Compiler = struct {
         } else if (spec_name.eq(special_sym)) {
             // (special var1 var2 ...)
             try self.addGlobalSimpleDecls(spec_args, .special);
+        } else if (spec_name.eq(declaration_sym)) {
+            // (declaration name1 name2 ...)
+            try self.addGlobalSimpleDecls(spec_args, .declaration);
         } else if (spec_name.eq(optimize_sym)) {
             // (optimize (quality value)...) or (optimize quality)
             var updated = self.optimize_global;
@@ -13777,6 +13786,33 @@ test "declare - multiple declaration specs" {
     // Check both declarations
     try testing.expect(compiler.global_decls.hasDecl("X", .type_decl));
     try testing.expect(compiler.global_decls.hasDecl("Y", .ignore));
+}
+
+test "declaim - declaration spec is recorded" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    const declaration_sym = try heap.intern("declaration");
+    const foo_sym = try heap.intern("foo");
+
+    const names = try heap.allocCons(foo_sym, Value.nil);
+    const spec = try heap.allocCons(declaration_sym, names);
+    const args = try heap.allocCons(spec, Value.nil);
+
+    const result = try compiler.compileDeclaim(args);
+    defer allocator.destroy(result);
+
+    try testing.expect(result.* == .lit);
+    try testing.expect(result.lit.isNil());
+    try testing.expect(compiler.global_decls.hasDecl("FOO", .declaration));
 }
 
 test "declare - optimize updates current settings" {

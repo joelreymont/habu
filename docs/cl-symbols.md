@@ -6,8 +6,8 @@ This doc tracks the ANSI symbol set (978 unique) but allows duplicate rows for m
 (function/variable/macro/type, etc).
 
 Counts:
-- Symbols: ✓ 977 | ⚠ 1 | ✗ 0
-- Rows:    ✓ 1010 | ⚠ 1 | ✗ 0
+- Symbols: ✓ 978 | ⚠ 0 | ✗ 0
+- Rows:    ✓ 1011 | ⚠ 0 | ✗ 0
 - Rows total: 1011
 
 Source-of-truth symbol set: `docs/cl-symbols-sbcl.txt`
@@ -1078,7 +1078,7 @@ Audit: `python3 tools/cl_symbols_audit.py`
 | constantly | ✓ | lib/stdlib.habu:2179 | Return constant function |
 | copy-structure | ✓ | vector.zig:488 | Structure copier |
 | debug | ✓ | compile.zig:10015 | OPTIMIZE quality parsed and stored (advisory) |
-| declaration | ⚠ | compile.zig:9621 | Declaration spec accepted but ignored |
+| declaration | ✓ | compile.zig:9801, compile.zig:9927 | Declaration spec parsed and recorded in declaration environment |
 | declare | ✓ | compile.zig:9518 | Local declarations |
 | dynamic-extent | ✓ | compile.zig:9540 | Declaration spec |
 | eq | ✓ | compile.zig:751 | Pointer identity |
@@ -1126,8 +1126,8 @@ Audit: `python3 tools/cl_symbols_audit.py`
 
 - Symbol set: `docs/cl-symbols-sbcl.txt` (978 external symbols)
 - Document: 1011 entries (978 unique; duplicates allowed for multi-role symbols)
-- Unique status: ✓ 977 | ⚠ 1 | ✗ 0
-- Entry status: ✓ 1010 | ⚠ 1 | ✗ 0
+- Unique status: ✓ 978 | ⚠ 0 | ✗ 0
+- Entry status: ✓ 1011 | ⚠ 0 | ✗ 0
 - Verify: `python3 tools/cl_symbols_audit.py`
 ---
 

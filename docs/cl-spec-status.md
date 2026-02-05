@@ -16,9 +16,8 @@ Habu targets ANSI Common Lisp compatibility (ANSI INCITS 226-1994) plus gradual 
 
 ## Current Snapshot (2026-02-05)
 
-- Symbol status: `✓ 977 | ⚠ 1 | ✗ 0`
-- Row status: `✓ 1010 | ⚠ 1 | ✗ 0`
-- Remaining partial symbol: `declaration`
+- Symbol status: `✓ 978 | ⚠ 0 | ✗ 0`
+- Row status: `✓ 1011 | ⚠ 0 | ✗ 0`
 
 ## Plan
 
