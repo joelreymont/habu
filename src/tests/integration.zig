@@ -500,6 +500,29 @@ test "eval defun two params" {
     try testing.expectEqual(@as(i64, 30), result.toFixnum());
 }
 
+test "keyword arg validation" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defun f (&key a) a)");
+    const ok = try repl.eval("(f :a 1)");
+    try testing.expect(ok.isFixnum());
+    try testing.expectEqual(@as(i64, 1), ok.toFixnum());
+
+    const err = repl.eval("(f :b 2)");
+    try testing.expectError(error.TypeMismatch, err);
+
+    const ok2 = try repl.eval("(f :b 2 :allow-other-keys t)");
+    try testing.expect(ok2.isNil());
+}
+
 test "eval defun recursive" {
     const allocator = testing.allocator;
 

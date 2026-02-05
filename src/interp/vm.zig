@@ -6704,6 +6704,16 @@ pub const Vm = struct {
     // Function call support
     // ========================================================================
 
+    fn isAllowedKeyword(kw: Value, allowed_list: Value) bool {
+        var list = allowed_list;
+        while (list.isCons()) {
+            const cell = list.toPtr(Cons);
+            if (cell.car.raw == kw.raw) return true;
+            list = cell.cdr;
+        }
+        return false;
+    }
+
     fn doCall(self: *Vm, argc: u8, tail: bool) Error!void {
         // Bounds check: need at least argc + 1 items on stack (args + function)
         if (self.sp < @as(usize, argc) + 1) return error.StackUnderflow;
@@ -6765,6 +6775,34 @@ pub const Vm = struct {
             const kw_arg_count = argc - actual_positional;
             if (kw_arg_count % 2 != 0) {
                 return error.TypeMismatch;
+            }
+            if (callee_chunk.allow_other_keys == 0) {
+                const allow_kw = self.builtins.kw_allow_other_keys;
+                const arg_base = self.sp - argc;
+                var allow_unknown = false;
+                var i: u8 = actual_positional;
+                while (i + 1 < argc) : (i += 2) {
+                    const kw = self.stack[arg_base + i];
+                    if (kw.raw == allow_kw.raw) {
+                        const val = self.stack[arg_base + i + 1];
+                        if (!val.isNil()) {
+                            allow_unknown = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!allow_unknown) {
+                    const allowed_list = callee_chunk.allowed_keywords;
+                    i = actual_positional;
+                    while (i + 1 < argc) : (i += 2) {
+                        const kw = self.stack[arg_base + i];
+                        if (kw.raw == allow_kw.raw) continue;
+                        if (!isAllowedKeyword(kw, allowed_list)) {
+                            return error.TypeMismatch;
+                        }
+                    }
+                }
             }
         } else if (opt_count > 0) {
             // Has optional params: argc must be in [arity, arity + opt_count]
