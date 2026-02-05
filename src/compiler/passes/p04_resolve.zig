@@ -270,6 +270,7 @@ pub const Resolver = struct {
                     lam.params,
                     lam.optional_params,
                     lam.key_params,
+                    lam.allow_other_keys,
                     lam.rest_param,
                     lam.captures,
                     resolved_body,

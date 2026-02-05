@@ -1216,6 +1216,7 @@ pub const Heap = struct {
             .opt_count = opt_count,
             .key_count = key_count,
             .has_rest = if (has_rest) 1 else 0,
+            .allow_other_keys = 0,
             .num_locals = num_locals,
             .const_pool = const_ptr,
             .code = code_ptr,

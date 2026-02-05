@@ -13,6 +13,7 @@ const opcodes = @import("opcodes.zig");
 const Op = opcodes.Op;
 const runtime = @import("../runtime/runtime.zig");
 const Chunk = runtime.Chunk;
+const Cons = runtime.Cons;
 const Value = runtime.Value;
 const Heap = runtime.Heap;
 
@@ -1430,6 +1431,19 @@ pub const Emitter = struct {
         const chunk = chunk_val.toPtr(Chunk);
         chunk.lambda_expr = lam.lambda_expr;
         chunk.name = lam.name;
+        chunk.allow_other_keys = if (lam.allow_other_keys) 1 else 0;
+        if (lam.key_params.len > 0) {
+            if (lambda_emitter.heap) |heap| {
+                var kw_list = Value.nil;
+                var i: usize = lam.key_params.len;
+                while (i > 0) {
+                    i -= 1;
+                    const kw = try heap.internKeyword(lam.key_params[i].keyword);
+                    kw_list = try heap.allocCons(kw, kw_list);
+                }
+                chunk.allowed_keywords = kw_list;
+            }
+        }
 
         // Patch lambda's make_closure indices to account for parent's existing child_chunks
         // The lambda's code uses indices relative to its own child_chunks array (starting at 0).
@@ -2622,7 +2636,7 @@ test "emit lambda key params" {
     const key_params = [_]ir.Ir.KeyParam{
         .{ .keyword = "foo", .name = "foo", .default = null },
     };
-    const lam = try builder.lambda(&[_][]const u8{}, &[_]ir.Ir.OptionalParam{}, &key_params, null, &[_]ir.Ir.Capture{}, body);
+    const lam = try builder.lambda(&[_][]const u8{}, &[_]ir.Ir.OptionalParam{}, &key_params, false, null, &[_]ir.Ir.Capture{}, body);
 
     try emitter.emit(lam);
 
@@ -2653,6 +2667,17 @@ test "emit lambda key params" {
         }
     }
     try testing.expect(kw_found);
+
+    try testing.expectEqual(@as(u8, 0), chunk.allow_other_keys);
+    var kw_list = chunk.allowed_keywords;
+    var kw_count: usize = 0;
+    while (kw_list.isCons()) {
+        const cell = kw_list.toPtr(Cons);
+        kw_count += 1;
+        kw_list = cell.cdr;
+    }
+    try testing.expectEqual(@as(usize, key_params.len), kw_count);
+    try testing.expect(kw_list.isNil());
 }
 
 test "emit block return-from patches" {

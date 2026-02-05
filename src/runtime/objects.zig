@@ -771,7 +771,7 @@ pub const Pathname = extern struct {
 /// Compiled bytecode chunk (GC-managed)
 pub const Chunk = extern struct {
     /// Boxed object discriminator (must be first)
-    kind: BoxedKind = .chunk,
+    kind: BoxedKind align(16) = .chunk,
     /// Number of constants in pool
     const_count: u32,
     /// Number of bytecode bytes
@@ -784,14 +784,18 @@ pub const Chunk = extern struct {
     key_count: u8,
     /// Has rest parameter
     has_rest: u8, // bool as u8 for alignment
+    /// Allow unknown keywords
+    allow_other_keys: u8 = 0, // bool as u8 for alignment
     /// Number of local variables
     num_locals: u8,
     /// Padding for alignment
-    _pad: [3]u8 = .{0} ** 3,
+    _pad: [2]u8 = .{0} ** 2,
     /// Original source lambda expression (for function-lambda-expression), or nil
     lambda_expr: Value = Value.nil,
     /// Debug name / function name (for function-lambda-expression), or nil
     name: Value = Value.nil,
+    /// Allowed keyword symbols (list), or nil
+    allowed_keywords: Value = Value.nil,
     /// Constant pool pointer (points to inline array after header)
     const_pool: [*]Value,
     /// Bytecode pointer (points to inline array after constants)

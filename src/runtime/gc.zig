@@ -464,6 +464,9 @@ pub const GC = struct {
                         if (chunk.name.isPointer() and !chunk.name.isNil()) {
                             chunk.name = try self.copyValue(chunk.name, alloc_ptr);
                         }
+                        if (chunk.allowed_keywords.isPointer() and !chunk.allowed_keywords.isNil()) {
+                            chunk.allowed_keywords = try self.copyValue(chunk.allowed_keywords, alloc_ptr);
+                        }
                         for (chunk.getConstants()) |*const_val| {
                             if (const_val.isPointer() and !const_val.isNil()) {
                                 const_val.* = try self.copyValue(const_val.*, alloc_ptr);

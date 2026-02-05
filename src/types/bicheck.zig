@@ -989,6 +989,7 @@ test "check lambda against pi type" {
             .params = params,
             .optional_params = &.{},
             .key_params = &.{},
+            .allow_other_keys = false,
             .rest_param = null,
             .captures = &.{},
             .body = body,

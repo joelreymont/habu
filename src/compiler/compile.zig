@@ -606,6 +606,7 @@ pub const Builtins = struct {
     @"&body": Value,
     @"&optional": Value,
     @"&key": Value,
+    @"&allow-other-keys": Value,
     @"&aux": Value,
     @"&whole": Value,
     @"&environment": Value,
@@ -1152,6 +1153,7 @@ pub const Builtins = struct {
             .@"&body" = try heap.intern("&body"),
             .@"&optional" = try heap.intern("&optional"),
             .@"&key" = try heap.intern("&key"),
+            .@"&allow-other-keys" = try heap.intern("&allow-other-keys"),
             .@"&aux" = try heap.intern("&aux"),
             .@"&whole" = try heap.intern("&whole"),
             .@"&environment" = try heap.intern("&environment"),
@@ -2918,6 +2920,7 @@ pub const Compiler = struct {
         defer lambda_env.deinit();
 
         var rest_param: ?[]const u8 = null;
+        var allow_other_keys = false;
         var in_optional = false;
         var in_key = false;
         var in_aux = false;
@@ -2959,6 +2962,13 @@ pub const Compiler = struct {
                         in_key = true;
                         in_optional = false;
                         in_aux = false;
+                        param_list = param_cons.cdr;
+                        continue;
+                    }
+
+                    // Check for &allow-other-keys keyword (use symbol identity)
+                    if (param_item.raw == b.@"&allow-other-keys".raw) {
+                        allow_other_keys = true;
                         param_list = param_cons.cdr;
                         continue;
                     }
@@ -3182,7 +3192,7 @@ pub const Compiler = struct {
             body_ir = try self.builder.letExpr(aux_slice, body_ir);
         }
 
-        const lam_ir = try self.builder.lambda(params.items, opt_params, kp_params, rest_param, captures, body_ir);
+        const lam_ir = try self.builder.lambda(params.items, opt_params, kp_params, allow_other_keys, rest_param, captures, body_ir);
 
         // Preserve source lambda expression for FUNCTION-LAMBDA-EXPRESSION.
         const heap = if (self.heap) |val| val else return error.UninitializedBuiltins;
@@ -4683,7 +4693,7 @@ pub const Compiler = struct {
         const b_ref = try self.builder.variable("b", 0, 1);
         const prim_call = try buildFn(self.builder, a_ref, b_ref);
         const params = [_][]const u8{ "a", "b" };
-        return try self.builder.lambda(&params, &.{}, &.{}, null, &.{}, prim_call);
+        return try self.builder.lambda(&params, &.{}, &.{}, false, null, &.{}, prim_call);
     }
 
     fn makeUnaryWrapper(self: *Compiler, buildFn: *const fn (IrBuilder, *const Ir) std.mem.Allocator.Error!*Ir) anyerror!*Ir {
@@ -4691,7 +4701,7 @@ pub const Compiler = struct {
         const a_ref = try self.builder.variable("a", 0, 0);
         const prim_call = try buildFn(self.builder, a_ref);
         const params = [_][]const u8{"a"};
-        return try self.builder.lambda(&params, &.{}, &.{}, null, &.{}, prim_call);
+        return try self.builder.lambda(&params, &.{}, &.{}, false, null, &.{}, prim_call);
     }
 
     fn makeVariadicAddWrapper(self: *Compiler) anyerror!*Ir {
@@ -4783,7 +4793,7 @@ pub const Compiler = struct {
         // Outer if: (if (null args) 0 <inner>)
         const outer_if = try b.ifExpr(null_args, zero, inner_if);
 
-        return try self.builder.lambda(&.{}, &.{}, &.{}, "args", &.{}, outer_if);
+        return try self.builder.lambda(&.{}, &.{}, &.{}, false, "args", &.{}, outer_if);
     }
 
     fn makeVariadicDivWrapper(self: *Compiler) anyerror!*Ir {
@@ -4835,7 +4845,7 @@ pub const Compiler = struct {
         const inner_if = try b.ifExpr(null_cdr, recip_result, acc_let);
         const outer_if = try b.ifExpr(null_args, one, inner_if);
 
-        return try self.builder.lambda(&.{}, &.{}, &.{}, "args", &.{}, outer_if);
+        return try self.builder.lambda(&.{}, &.{}, &.{}, false, "args", &.{}, outer_if);
     }
 
     /// Helper to build a simple fold wrapper for + and *
@@ -4871,7 +4881,7 @@ pub const Compiler = struct {
         const init_val = try b.lit(Value.makeFixnum(identity));
         const let_node = try b.let1("acc", 1, init_val, let_body);
 
-        return try self.builder.lambda(&.{}, &.{}, &.{}, "args", &.{}, let_node);
+        return try self.builder.lambda(&.{}, &.{}, &.{}, false, "args", &.{}, let_node);
     }
 
     /// Compile quasiquote (backquote)
@@ -6379,6 +6389,7 @@ pub const Compiler = struct {
             &[_][]const u8{},
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
+            false,
             null,
             &[_]Ir.Capture{},
             form_ir,
@@ -6976,6 +6987,7 @@ pub const Compiler = struct {
             slot_names,
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
+            false,
             null,
             &[_]Ir.Capture{},
             body_ir,
@@ -7462,6 +7474,7 @@ pub const Compiler = struct {
             &[_][]const u8{"obj"},
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
+            false,
             null,
             &[_]Ir.Capture{},
             body_ir,
@@ -7505,6 +7518,7 @@ pub const Compiler = struct {
             &[_][]const u8{ "val", "obj" },
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
+            false,
             null,
             &[_]Ir.Capture{},
             body_ir,
@@ -7538,6 +7552,7 @@ pub const Compiler = struct {
             &[_][]const u8{"obj"},
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
+            false,
             null,
             &[_]Ir.Capture{},
             body_ir,
@@ -7562,6 +7577,7 @@ pub const Compiler = struct {
             &[_][]const u8{"obj"},
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
+            false,
             null,
             &[_]Ir.Capture{},
             copy_ir,
@@ -8369,6 +8385,7 @@ pub const Compiler = struct {
             try dispatch_params.toOwnedSlice(self.allocator),
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
+            false,
             null,
             captures,
             body_ir,
@@ -8764,6 +8781,7 @@ pub const Compiler = struct {
                     lambda_params,
                     &[_]Ir.OptionalParam{},
                     &[_]Ir.KeyParam{},
+                    false,
                     null,
                     &[_]Ir.Capture{},
                     next_method,
@@ -8800,6 +8818,7 @@ pub const Compiler = struct {
             &[_][]const u8{}, // No required params
             try opt_params.toOwnedSlice(self.allocator),
             &[_]Ir.KeyParam{},
+            false,
             null,
             &[_]Ir.Capture{}, // No captures - methods are stored as IR
             dispatch_body,
@@ -8835,6 +8854,7 @@ pub const Compiler = struct {
                 lambda_params,
                 &[_]Ir.OptionalParam{},
                 &[_]Ir.KeyParam{},
+                false,
                 null,
                 &[_]Ir.Capture{},
                 body,
@@ -9250,6 +9270,7 @@ pub const Compiler = struct {
             .params = params,
             .optional_params = &.{},
             .key_params = &.{},
+            .allow_other_keys = false,
             .rest_param = null,
             .captures = &[_]Ir.Capture{},
             .body = vec_node,
@@ -9305,6 +9326,7 @@ pub const Compiler = struct {
             .params = params,
             .optional_params = &.{},
             .key_params = &.{},
+            .allow_other_keys = false,
             .rest_param = null,
             .captures = &[_]Ir.Capture{},
             .body = if_node,
@@ -9335,6 +9357,7 @@ pub const Compiler = struct {
             .params = params,
             .optional_params = &.{},
             .key_params = &.{},
+            .allow_other_keys = false,
             .rest_param = null,
             .captures = &[_]Ir.Capture{},
             .body = aref_node,
@@ -9403,6 +9426,7 @@ pub const Compiler = struct {
             .params = params,
             .optional_params = &.{},
             .key_params = &.{},
+            .allow_other_keys = false,
             .rest_param = null,
             .captures = &[_]Ir.Capture{},
             .body = body,
@@ -10063,6 +10087,7 @@ pub const Compiler = struct {
             dispatch_params,
             empty_opt,
             empty_key,
+            false,
             null,
             empty_cap,
             predicate_body,

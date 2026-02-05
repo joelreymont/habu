@@ -96,6 +96,8 @@ pub const Ir = union(enum) {
         optional_params: []const OptionalParam,
         /// Keyword parameters with defaults: (x &key (y 10) z)
         key_params: []const KeyParam,
+        /// Whether &allow-other-keys was present
+        allow_other_keys: bool = false,
         /// Rest parameter name (for dotted param lists like (a b . rest))
         rest_param: ?[]const u8,
         /// Free variables captured from enclosing scope
@@ -1255,7 +1257,7 @@ pub const IrBuilder = struct {
         return node;
     }
 
-    pub fn lambda(self: IrBuilder, params: []const []const u8, optional_params: []const Ir.OptionalParam, key_params: []const Ir.KeyParam, rest_param: ?[]const u8, captures: []const Ir.Capture, body: *const Ir) !*Ir {
+    pub fn lambda(self: IrBuilder, params: []const []const u8, optional_params: []const Ir.OptionalParam, key_params: []const Ir.KeyParam, allow_other_keys: bool, rest_param: ?[]const u8, captures: []const Ir.Capture, body: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         // Copy params
         var params_copy = try self.allocator.alloc([]const u8, params.len);
@@ -1285,6 +1287,7 @@ pub const IrBuilder = struct {
             .params = params_copy,
             .optional_params = opt_copy,
             .key_params = key_copy,
+            .allow_other_keys = allow_other_keys,
             .rest_param = rest_copy,
             .captures = captures_copy,
             .body = body,
@@ -2873,7 +2876,7 @@ test "ir lambda" {
     const body = try builder.lit(Value.nil);
     const params = [_][]const u8{ "x", "y" };
     const captures = [_]Ir.Capture{};
-    const lam = try builder.lambda(&params, &.{}, &.{}, null, &captures, body);
+    const lam = try builder.lambda(&params, &.{}, &.{}, false, null, &captures, body);
 
     try std.testing.expectEqual(Ir.lambda, std.meta.activeTag(lam.*));
     try std.testing.expectEqual(@as(usize, 2), lam.lambda.params.len);
