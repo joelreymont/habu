@@ -1013,6 +1013,15 @@
                       (cons 'progn setqs))
                 (cons 'progn (if result result (list nil)))))))
 
+; setf expander registry
+(defvar *setf-expanders* (make-hash-table :test 'eq))
+
+(defun %get-setf-expander (name)
+  (gethash name *setf-expanders*))
+
+(defun %set-setf-expander (name fn)
+  (puthash name fn *setf-expanders*))
+
 ; setf - generalized assignment
 ; Handles: symbols, (car x), (cdr x), (svref v i), (aref a i), (gethash k h)
 (defmacro setf (place value)
@@ -5171,12 +5180,6 @@
   "Define a method combination (not implemented)"
   (declare (ignore options))
   `',name)
-
-; define-setf-expander - define setf expansion (stub)
-(defmacro define-setf-expander (access-fn lambda-list &body body)
-  "Define a setf expander (not implemented)"
-  (declare (ignore lambda-list body))
-  `',access-fn)
 
 ; define-symbol-macro - define symbol macro (stub)
 (defmacro define-symbol-macro (symbol expansion)

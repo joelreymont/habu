@@ -427,6 +427,22 @@ test "stdlib setf fdefinition ((setf name))" {
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
+test "stdlib setf expander registry" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(hash-table-p *setf-expanders*)");
+    try testing.expect(result.eq(Value.t));
+}
+
 test "eval define with expression" {
     const allocator = testing.allocator;
 
