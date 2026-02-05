@@ -1,0 +1,59 @@
+#!/bin/bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF' >&2
+Usage: tools/dot-finish <dot-id> -m "commit msg" [-r "dot close reason"] [-b bookmark]
+
+Runs tests, commits the current jj change, pushes a bookmark, then closes the dot.
+
+Defaults:
+  - bookmark: $JJ_BOOKMARK or "codex/cl-parity"
+  - close reason: commit msg
+
+Examples:
+  tools/dot-finish habu-add-integerp-realp-490c51c9 -m "Add integerp and realp"
+EOF
+}
+
+dot_id=""
+msg=""
+reason=""
+bookmark="${JJ_BOOKMARK:-codex/cl-parity}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -m|--message) msg="$2"; shift 2 ;;
+    -r|--reason) reason="$2"; shift 2 ;;
+    -b|--bookmark) bookmark="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *)
+      if [[ -z "$dot_id" ]]; then
+        dot_id="$1"
+        shift
+      else
+        echo "error: unknown arg: $1" >&2
+        usage
+        exit 2
+      fi
+      ;;
+  esac
+done
+
+if [[ -z "$dot_id" || -z "$msg" ]]; then
+  usage
+  exit 2
+fi
+if [[ -z "$reason" ]]; then
+  reason="$msg"
+fi
+
+zig build test
+
+jj describe -m "$msg"
+jj bookmark set -r @ "$bookmark" >/dev/null
+jj bookmark track "$bookmark" --remote origin >/dev/null 2>&1 || true
+jj git push -b "$bookmark"
+dot off "$dot_id" -r "$reason"
+jj new
+

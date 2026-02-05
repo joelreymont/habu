@@ -322,8 +322,11 @@ fn getPredicateOperand(node: *const Ir) ?*const Ir {
 dot add "Task title" -d "Full context: file:line, what needs to be done, dependencies"
 
 # REQUIRED after completing work:
-dot off <id> -r "Brief completion note"
+tools/dot-finish <id> -m "50-char imperative commit msg" [-r "Brief completion note"]
 ```
+
+`tools/dot-finish` is mandatory for any dot that changes tracked files. It runs `zig build test`,
+creates a jj commit message, pushes, closes the dot, then starts a new empty change.
 
 **When to create dots (MANDATORY):**
 - Before implementing any new feature (>30 min)
