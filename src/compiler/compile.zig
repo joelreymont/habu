@@ -1308,6 +1308,14 @@ const VarKeyCtx = struct {
 
 const VarMap = std.HashMap(VarKey, u16, VarKeyCtx, std.hash_map.default_max_load_percentage);
 
+pub const OptimizeSettings = struct {
+    speed: u8 = 1,
+    safety: u8 = 1,
+    debug: u8 = 1,
+    space: u8 = 1,
+    compilation_speed: u8 = 1,
+};
+
 pub const Env = struct {
     pub const Binding = struct {
         depth: u16,
@@ -1326,6 +1334,8 @@ pub const Env = struct {
     base_index: u16,
     /// Allocator for bindings
     allocator: std.mem.Allocator,
+    /// Effective optimize settings for this lexical scope
+    optimize: OptimizeSettings,
 
     /// Create a new frame environment (for lambda)
     pub fn init(allocator: std.mem.Allocator, parent: ?*const Env) Env {
@@ -1336,6 +1346,7 @@ pub const Env = struct {
             .new_frame = true,
             .base_index = 0,
             .allocator = allocator,
+            .optimize = if (parent) |p| p.optimize else .{},
         };
     }
 
@@ -1348,6 +1359,7 @@ pub const Env = struct {
             .new_frame = false,
             .base_index = parent.localCount(), // Continue from parent's count
             .allocator = allocator,
+            .optimize = parent.optimize,
         };
     }
 
@@ -1691,6 +1703,10 @@ pub const Compiler = struct {
     type_aliases: std.StringHashMap(Value),
     /// Global declaration environment
     global_decls: DeclEnv,
+    /// Persistent optimize declarations from DECLAIM/PROCLAIM
+    optimize_global: OptimizeSettings,
+    /// Effective optimize settings for current compile scope
+    optimize_current: OptimizeSettings,
     /// Diagnostic prints for compile errors
     diag: bool,
 
@@ -1746,6 +1762,8 @@ pub const Compiler = struct {
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
             .type_aliases = std.StringHashMap(Value).init(allocator),
             .global_decls = DeclEnv.create(allocator),
+            .optimize_global = .{},
+            .optimize_current = .{},
             .diag = false,
         };
     }
@@ -1779,6 +1797,8 @@ pub const Compiler = struct {
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
             .type_aliases = std.StringHashMap(Value).init(allocator),
             .global_decls = DeclEnv.create(allocator),
+            .optimize_global = .{},
+            .optimize_current = .{},
             .diag = false,
         };
     }
@@ -2920,6 +2940,10 @@ pub const Compiler = struct {
         // stashing GC-movable pointers into auxiliary arrays/maps.
         var lambda_env = Env.init(self.allocator, env);
         defer lambda_env.deinit();
+        const saved_optimize = self.optimize_current;
+        self.optimize_current = self.effectiveOptimizeForEnv(env);
+        defer self.optimize_current = saved_optimize;
+        lambda_env.optimize = self.optimize_current;
 
         var rest_param: ?[]const u8 = null;
         var allow_other_keys = false;
@@ -3124,8 +3148,8 @@ pub const Compiler = struct {
         }
 
         // Filter out declare forms from body
-
-        const filtered_body = try self.filterDeclares(body_exprs);
+        const filtered_body = try self.filterDeclares(body_exprs, &lambda_env);
+        lambda_env.optimize = self.optimize_current;
         // Capture analysis: collect free variables before compiling body
         var capture_set = CaptureSet.init(self.allocator);
         defer capture_set.deinit();
@@ -3156,10 +3180,11 @@ pub const Compiler = struct {
 
             if (type_sym_to_check) |type_sym| {
                 const var_ir = try self.builder.variable(param_name, 0, tp.idx);
-
-                const assert_ir = try self.makeTypeAssertionSym(var_ir, type_sym);
-                if (assert_ir) |assert_node| {
-                    try assertions.append(self.allocator, assert_node);
+                if (self.typeChecksEnabled()) {
+                    const assert_ir = try self.makeTypeAssertionSym(var_ir, type_sym);
+                    if (assert_ir) |assert_node| {
+                        try assertions.append(self.allocator, assert_node);
+                    }
                 }
             }
         }
@@ -3173,9 +3198,11 @@ pub const Compiler = struct {
 
         // Wrap body in return type assertion if specified
         if (return_type) |ret_type_sym| {
-            const assert_ir = try self.makeTypeAssertionSym(body_ir, ret_type_sym);
-            if (assert_ir) |wrapped| {
-                body_ir = wrapped;
+            if (self.typeChecksEnabled()) {
+                const assert_ir = try self.makeTypeAssertionSym(body_ir, ret_type_sym);
+                if (assert_ir) |wrapped| {
+                    body_ir = wrapped;
+                }
             }
         }
 
@@ -3714,9 +3741,11 @@ pub const Compiler = struct {
             }
 
             if (type_sym_to_check) |type_sym| {
-                const assert_ir = try self.makeTypeAssertionSym(val_ir, type_sym);
-                if (assert_ir) |wrapped| {
-                    val_ir = wrapped;
+                if (self.typeChecksEnabled()) {
+                    const assert_ir = try self.makeTypeAssertionSym(val_ir, type_sym);
+                    if (assert_ir) |wrapped| {
+                        val_ir = wrapped;
+                    }
                 }
             }
 
@@ -9701,6 +9730,7 @@ pub const Compiler = struct {
 
         // Compile the expression first
         const expr_ir = try self.compile(expr, env);
+        if (!self.typeChecksEnabled()) return expr_ir;
 
         // Handle compound type specs: (or type1 type2 ...)
         if (type_spec.isCons()) {
@@ -9739,7 +9769,7 @@ pub const Compiler = struct {
 
             // Each spec should be a list like (type fixnum x y)
             if (decl_spec.isCons()) {
-                try self.processDeclSpec(decl_spec);
+                try self.processDeclSpec(decl_spec, null);
             }
 
             list = cons.cdr;
@@ -9749,7 +9779,7 @@ pub const Compiler = struct {
         return self.builder.lit(Value.nil);
     }
 
-    fn processDeclSpec(self: *Compiler, spec: Value) !void {
+    fn processDeclSpec(self: *Compiler, spec: Value, env: ?*Env) !void {
         const spec_cons = spec.toPtr(Cons);
         const spec_name = spec_cons.car;
         const spec_args = spec_cons.cdr;
@@ -9768,6 +9798,7 @@ pub const Compiler = struct {
         const ignorable_sym = try heap.intern("ignorable");
         const special_sym = try heap.intern("special");
         const dynamic_extent_sym = try heap.intern("dynamic-extent");
+        const optimize_sym = try heap.intern("optimize");
 
         if (spec_name.eq(type_sym)) {
             // (type type-spec var1 var2 ...)
@@ -9831,6 +9862,12 @@ pub const Compiler = struct {
         } else if (spec_name.eq(dynamic_extent_sym)) {
             // (dynamic-extent var1 var2 ...)
             try self.addSimpleDecls(spec_args, .dynamic_extent);
+        } else if (spec_name.eq(optimize_sym)) {
+            // (optimize (quality value)...) or (optimize quality)
+            var updated = self.optimize_current;
+            try self.parseOptimizeQualities(spec_args, &updated);
+            self.optimize_current = updated;
+            if (env) |scope_env| scope_env.optimize = updated;
         }
         // Ignore unknown declaration specs
     }
@@ -9942,7 +9979,11 @@ pub const Compiler = struct {
             // (special var1 var2 ...)
             try self.addGlobalSimpleDecls(spec_args, .special);
         } else if (spec_name.eq(optimize_sym)) {
-            // (optimize (quality value)...) - ignored for now
+            // (optimize (quality value)...) or (optimize quality)
+            var updated = self.optimize_global;
+            try self.parseOptimizeQualities(spec_args, &updated);
+            self.optimize_global = updated;
+            self.optimize_current = updated;
         }
         // Ignore unknown declaration specs
     }
@@ -9961,6 +10002,73 @@ pub const Compiler = struct {
 
             list = cons.cdr;
         }
+    }
+
+    fn parseOptimizeLevel(level_val: Value) !u8 {
+        if (!level_val.isFixnum()) return error.InvalidSyntax;
+        const raw = level_val.toFixnum();
+        if (raw <= 0) return 0;
+        if (raw >= 3) return 3;
+        return @intCast(raw);
+    }
+
+    fn parseOptimizeQualities(self: *Compiler, specs: Value, target: *OptimizeSettings) !void {
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+        const speed_sym = try heap.intern("speed");
+        const safety_sym = try heap.intern("safety");
+        const debug_sym = try heap.intern("debug");
+        const space_sym = try heap.intern("space");
+        const comp_speed_sym = try heap.intern("compilation-speed");
+
+        var list = specs;
+        while (list.isCons()) {
+            const cons = list.toPtr(Cons);
+            const spec = cons.car;
+
+            var quality = Value.nil;
+            var level: u8 = 3; // Bare quality implies max preference.
+
+            if (spec.isSymbol()) {
+                quality = spec;
+            } else if (spec.isCons()) {
+                const qcons = spec.toPtr(Cons);
+                quality = qcons.car;
+                if (!quality.isSymbol()) return error.InvalidSyntax;
+                if (!qcons.cdr.isCons()) return error.InvalidSyntax;
+                level = try parseOptimizeLevel(qcons.cdr.toPtr(Cons).car);
+            } else {
+                return error.InvalidSyntax;
+            }
+
+            if (quality.eq(speed_sym)) {
+                target.speed = level;
+            } else if (quality.eq(safety_sym)) {
+                target.safety = level;
+            } else if (quality.eq(debug_sym)) {
+                target.debug = level;
+            } else if (quality.eq(space_sym)) {
+                target.space = level;
+            } else if (quality.eq(comp_speed_sym)) {
+                target.compilation_speed = level;
+            }
+
+            list = cons.cdr;
+        }
+    }
+
+    fn typeChecksEnabled(self: *const Compiler) bool {
+        return self.optimize_current.safety > 0;
+    }
+
+    fn isDefaultOptimize(opt: OptimizeSettings) bool {
+        return opt.speed == 1 and opt.safety == 1 and opt.debug == 1 and opt.space == 1 and opt.compilation_speed == 1;
+    }
+
+    fn effectiveOptimizeForEnv(self: *const Compiler, env: *const Env) OptimizeSettings {
+        if (env.parent == null and isDefaultOptimize(env.optimize)) {
+            return self.optimize_global;
+        }
+        return env.optimize;
     }
 
     fn compileProclaim(self: *Compiler, args: Value, _: *const Env) !*Ir {
@@ -10240,7 +10348,7 @@ pub const Compiler = struct {
         return result;
     }
 
-    fn filterDeclares(self: *Compiler, exprs: Value) !Value {
+    fn filterDeclares(self: *Compiler, exprs: Value, env: *Env) !Value {
         const heap = if (self.heap) |val| val else return exprs;
         const declare_sym = try heap.intern("declare");
 
@@ -10257,7 +10365,7 @@ pub const Compiler = struct {
                 const expr_cons = expr.toPtr(Cons);
                 if (expr_cons.car.eq(declare_sym)) {
                     is_declare = true;
-                    try self.processDeclareList(expr_cons.cdr);
+                    try self.processDeclareList(expr_cons.cdr, env);
                 }
             }
 
@@ -10284,13 +10392,13 @@ pub const Compiler = struct {
         return result;
     }
 
-    fn processDeclareList(self: *Compiler, decl_list: Value) !void {
+    fn processDeclareList(self: *Compiler, decl_list: Value, env: *Env) !void {
         var list = decl_list;
         while (list.isCons()) {
             const cons = list.toPtr(Cons);
             const decl_spec = cons.car;
             if (decl_spec.isCons()) {
-                try self.processDeclSpec(decl_spec);
+                try self.processDeclSpec(decl_spec, env);
             }
             list = cons.cdr;
         }
@@ -13669,6 +13777,80 @@ test "declare - multiple declaration specs" {
     // Check both declarations
     try testing.expect(compiler.global_decls.hasDecl("X", .type_decl));
     try testing.expect(compiler.global_decls.hasDecl("Y", .ignore));
+}
+
+test "declare - optimize updates current settings" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    const optimize_sym = try heap.intern("optimize");
+    const safety_sym = try heap.intern("safety");
+    const speed_sym = try heap.intern("speed");
+    const debug_sym = try heap.intern("debug");
+    const space_sym = try heap.intern("space");
+    const comp_speed_sym = try heap.intern("compilation-speed");
+
+    const safety_spec = try heap.allocCons(safety_sym, try heap.allocCons(Value.makeFixnum(0), Value.nil));
+    const debug_spec = try heap.allocCons(debug_sym, try heap.allocCons(Value.makeFixnum(2), Value.nil));
+    const space_spec = try heap.allocCons(space_sym, try heap.allocCons(Value.makeFixnum(1), Value.nil));
+    const comp_speed_spec = try heap.allocCons(comp_speed_sym, try heap.allocCons(Value.makeFixnum(3), Value.nil));
+    const optimize_specs = try heap.allocCons(safety_spec, try heap.allocCons(speed_sym, try heap.allocCons(debug_spec, try heap.allocCons(space_spec, try heap.allocCons(comp_speed_spec, Value.nil)))));
+    const optimize_decl = try heap.allocCons(optimize_sym, optimize_specs);
+    const args = try heap.allocCons(optimize_decl, Value.nil);
+
+    const result = try compiler.compileDeclare(args);
+    defer allocator.destroy(result);
+    try testing.expect(result.* == .lit);
+    try testing.expect(result.lit.isNil());
+    try testing.expectEqual(@as(u8, 0), compiler.optimize_current.safety);
+    try testing.expectEqual(@as(u8, 3), compiler.optimize_current.speed);
+    try testing.expectEqual(@as(u8, 2), compiler.optimize_current.debug);
+    try testing.expectEqual(@as(u8, 1), compiler.optimize_current.space);
+    try testing.expectEqual(@as(u8, 3), compiler.optimize_current.compilation_speed);
+}
+
+test "declaim/proclaim optimize update global settings" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    const optimize_sym = try heap.intern("optimize");
+    const safety_sym = try heap.intern("safety");
+    const speed_sym = try heap.intern("speed");
+    const debug_sym = try heap.intern("debug");
+    const quote_sym = try heap.intern("quote");
+
+    const declaim_opt = try heap.allocCons(optimize_sym, try heap.allocCons(try heap.allocCons(safety_sym, try heap.allocCons(Value.makeFixnum(2), Value.nil)), try heap.allocCons(try heap.allocCons(speed_sym, try heap.allocCons(Value.makeFixnum(1), Value.nil)), Value.nil)));
+    const declaim_args = try heap.allocCons(declaim_opt, Value.nil);
+    const declaim_result = try compiler.compileDeclaim(declaim_args);
+    defer allocator.destroy(declaim_result);
+    try testing.expectEqual(@as(u8, 2), compiler.optimize_global.safety);
+    try testing.expectEqual(@as(u8, 1), compiler.optimize_global.speed);
+
+    const proclaim_opt = try heap.allocCons(optimize_sym, try heap.allocCons(try heap.allocCons(safety_sym, try heap.allocCons(Value.makeFixnum(0), Value.nil)), try heap.allocCons(try heap.allocCons(debug_sym, try heap.allocCons(Value.makeFixnum(3), Value.nil)), Value.nil)));
+    const quoted = try heap.allocCons(quote_sym, try heap.allocCons(proclaim_opt, Value.nil));
+    const proclaim_args = try heap.allocCons(quoted, Value.nil);
+    var env = Env.init(allocator, null);
+    defer env.deinit();
+    const proclaim_result = try compiler.compileProclaim(proclaim_args, &env);
+    defer allocator.destroy(proclaim_result);
+    try testing.expectEqual(@as(u8, 0), compiler.optimize_global.safety);
+    try testing.expectEqual(@as(u8, 3), compiler.optimize_global.debug);
 }
 
 test "parseDestructParams - simple parameters" {

@@ -800,6 +800,48 @@ test "eval defmacro unless" {
     try testing.expectEqual(@as(i64, 99), result.toFixnum());
 }
 
+test "declare optimize safety controls type assertions" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defun unsafe-id (x) (declare (optimize (safety 0))) (the fixnum x))");
+    const unchecked = try repl.eval("(unsafe-id \"hi\")");
+    try testing.expect(unchecked.isString());
+
+    _ = try repl.eval("(defun safe-id (x) (declare (optimize (safety 3))) (the fixnum x))");
+    const checked = repl.eval("(safe-id \"hi\")");
+    try testing.expectError(error.TypeMismatch, checked);
+}
+
+test "declaim/proclaim optimize sets default safety" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval("(declaim (optimize (safety 0)))");
+    _ = try repl.eval("(defun globally-unsafe (x) (the fixnum x))");
+    const unchecked = try repl.eval("(globally-unsafe \"hi\")");
+    try testing.expect(unchecked.isString());
+
+    _ = try repl.eval("(proclaim '(optimize (safety 2)))");
+    _ = try repl.eval("(defun globally-safe (x) (the fixnum x))");
+    const checked = repl.eval("(globally-safe \"hi\")");
+    try testing.expectError(error.TypeMismatch, checked);
+}
+
 // ============================================================================
 // Type assertions: (the type expr)
 // ============================================================================
