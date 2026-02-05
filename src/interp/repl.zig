@@ -251,18 +251,15 @@ pub const Repl = struct {
 
         // Check if it's a macro
         if (self.macros.contains(sym)) {
-            std.debug.print("  -> macro found\n", .{});
             return true;
         }
         // Check if it's a user-defined function (try both names)
         const in_qual = self.compiler.globals.lookup(qname) != null;
         const in_local = self.compiler.globals.lookup(local_name) != null;
-        std.debug.print("  -> globals: qual={}, local={}\n", .{ in_qual, in_local });
         if (in_qual or in_local) return true;
         // Check if it's a builtin primitive
         if (self.compiler.builtins) |b| {
             if (b.isBuiltinFunction(sym)) {
-                std.debug.print("  -> builtin\n", .{});
                 return true;
             }
         }

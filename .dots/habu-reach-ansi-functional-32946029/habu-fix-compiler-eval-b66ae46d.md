@@ -1,9 +1,11 @@
 ---
 title: Fix compiler/eval failures batch1
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-05T22:32:05.512118+01:00"
+created-at: "\"2026-02-05T22:32:05.512118+01:00\""
+closed-at: "2026-02-05T22:57:50.229946+01:00"
+close-reason: Removed REPL debug noise; fixed top-level setq semantics, destructuring/macrolet behavior, and compiler regression coverage
 blocks:
   - habu-add-compiler-eval-74528b18
 ---

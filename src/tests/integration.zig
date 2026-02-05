@@ -2930,44 +2930,52 @@ test "copy-structure copies defstruct instance" {
     try testing.expect(cur.isNil());
 }
 
-test "ansi repro define-compiler-macro.8 currently TypeMismatch" {
+test "ansi repro define-compiler-macro.8 still TypeMismatch" {
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
 
-    const src =
-        \\(let* ((sym (gensym))
-        \\       (form `(define-compiler-macro ,sym (x y)
-        \\                (declare (special *x*))
-        \\                (setf *x* :bad)
-        \\                `(list ,x ,y)))
-        \\       (form2 `(defmacro ,sym (x y) `(list ,x ,y))))
-        \\  (eval form)
-        \\  (eval form2)
-        \\  (let ((*x* :good))
-        \\    (declare (special *x*))
-        \\    (values
-        \\     (funcall (compile nil `(lambda (a b)
-        \\                              (declare (notinline ,sym))
-        \\                              (,sym a b)))
-        \\              7 23)
-        \\     *x*)))
-    ;
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
 
-    try testing.expectError(error.TypeMismatch, evalExpr(allocator, &heap, src));
+    _ = try repl.eval(
+        \\(define-compiler-macro foo-cmpr (x y)
+        \\  (declare (special *x*))
+        \\  (setf *x* :bad)
+        \\  `(list ,x ,y))
+    );
+    _ = try repl.eval("(defmacro foo-cmpr (x y) `(list ,x ,y))");
+
+    const compiled = try repl.eval(
+        \\(compile nil '(lambda (a b)
+        \\                (declare (notinline foo-cmpr))
+        \\                (foo-cmpr a b)))
+    );
+    try testing.expect(compiled.isClosure());
+
+    try testing.expectError(error.TypeMismatch, repl.eval(
+        \\(let ((*x* :good))
+        \\  (declare (special *x*))
+        \\  (funcall (compile nil '(lambda (a b)
+        \\                           (declare (notinline foo-cmpr))
+        \\                           (foo-cmpr a b)))
+        \\           7 23))
+    ));
 }
 
-test "ansi repro destructuring-bind.error.10 currently returns nil" {
+test "ansi repro destructuring-bind.error.10 rejects nil binder" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     const src = "(destructuring-bind (foo nil bar) (list 1 2 3) nil)";
-    const result = try evalExpr(allocator, &heap, src);
-    try testing.expect(result.isNil());
+    try testing.expectError(error.InvalidSyntax, evalExpr(allocator, &heap, src));
 }
 
-test "ansi repro macrolet.36 currently InvalidSyntax" {
+test "ansi repro macrolet.36 supports whole destructuring pattern" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
@@ -2977,14 +2985,34 @@ test "ansi repro macrolet.36 currently InvalidSyntax" {
         \\  (%m 1 2))
     ;
 
-    try testing.expectError(error.InvalidSyntax, evalExpr(allocator, &heap, src));
+    const result = try evalExpr(allocator, &heap, src);
+    try testing.expect(result.isCons());
+    const c0 = result.toPtr(Cons);
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.isFixnum());
+    try testing.expectEqual(@as(i64, 1), c1.car.toFixnum());
+    try testing.expect(c1.cdr.isCons());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(c2.car.isFixnum());
+    try testing.expectEqual(@as(i64, 2), c2.car.toFixnum());
+    try testing.expect(c2.cdr.isCons());
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expect(c3.car.isFixnum());
+    try testing.expectEqual(@as(i64, 1), c3.car.toFixnum());
+    try testing.expect(c3.cdr.isCons());
+    const c4 = c3.cdr.toPtr(Cons);
+    try testing.expect(c4.car.isFixnum());
+    try testing.expectEqual(@as(i64, 2), c4.car.toFixnum());
+    try testing.expect(c4.cdr.isNil());
 }
 
-test "ansi repro top-level setq undeclared special is UnboundVariable" {
+test "ansi repro top-level setq undeclared special defines global" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
     const src = "(setq *enclose-printer-errors* nil)";
-    try testing.expectError(error.UnboundVariable, evalExpr(allocator, &heap, src));
+    const result = try evalExpr(allocator, &heap, src);
+    try testing.expect(result.isNil());
 }

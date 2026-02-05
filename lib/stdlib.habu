@@ -5183,11 +5183,23 @@
   "Return the package associated with the condition"
   (slot-value condition 'package))
 
-; compile - compile function (stub)
+; compile - compile function
 (defun compile (name &optional definition)
-  "Compile NAME as a function"
-  (declare (ignore definition))
-  name) ; Stub: habu is already compiled
+  "Compile NAME as a function and return (values function-or-name warnings-p failure-p)."
+  (cond
+    ((and (null name) definition)
+     (let ((fn (if (functionp definition) definition (eval definition))))
+       (values fn nil nil)))
+    ((and name definition)
+     (let ((fn (if (functionp definition) definition (eval definition))))
+       (eval (list 'setf
+                   (list 'fdefinition (list 'quote name))
+                   fn))
+       (values name nil nil)))
+    (name
+     (values (fdefinition name) nil nil))
+    (t
+     (values nil nil t))))
 
 ; compile-file - compile file (stub)
 (defun compile-file (input-file &key output-file verbose print external-format)

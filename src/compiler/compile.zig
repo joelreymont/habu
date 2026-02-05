@@ -2650,18 +2650,28 @@ pub const Compiler = struct {
 
         const def_cons = transformed.toPtr(Cons);
         var params = def_cons.car;
-        const body_list = def_cons.cdr;
+        var wrapped_body = def_cons.cdr;
 
         // Check for &whole at the beginning of params and extract the var name
         var whole_var: ?Value = null;
+        var whole_pattern: ?Value = null;
         if (params.isCons()) {
             const first_cons = params.toPtr(Cons);
             if (first_cons.car.raw == b.@"&whole".raw) {
                 // &whole var - extract var name and skip both
                 if (first_cons.cdr.isCons()) {
                     const rest = first_cons.cdr.toPtr(Cons);
-                    whole_var = rest.car; // The variable name
+                    switch (rest.car.typeKind()) {
+                        .symbol => whole_var = rest.car,
+                        .cons => {
+                            whole_pattern = rest.car;
+                            whole_var = try prims.gensym(heap, null);
+                        },
+                        else => return error.InvalidSyntax,
+                    }
                     params = rest.cdr; // Skip &whole and var
+                } else {
+                    return error.InvalidSyntax;
                 }
             }
         }
@@ -2708,9 +2718,21 @@ pub const Compiler = struct {
             final_params = try heap.allocCons(wv, final_params);
         }
 
+        if (whole_pattern) |pat| {
+            const wv = whole_var orelse return error.InvalidSyntax;
+            const db_sym = try heap.intern("destructuring-bind");
+            const progn_sym = try heap.intern("progn");
+            const progn_body = try heap.allocCons(progn_sym, wrapped_body);
+            const progn_cell = try heap.allocCons(progn_body, Value.nil);
+            const whole_cell = try heap.allocCons(wv, progn_cell);
+            const pat_cell = try heap.allocCons(pat, whole_cell);
+            const db_form = try heap.allocCons(db_sym, pat_cell);
+            wrapped_body = try heap.allocCons(db_form, Value.nil);
+        }
+
         // Build (lambda (params...) body...) with all body forms
         const lambda_sym = try heap.intern("lambda");
-        const params_body = try heap.allocCons(final_params, body_list);
+        const params_body = try heap.allocCons(final_params, wrapped_body);
         const lambda_list = try heap.allocCons(lambda_sym, params_body);
 
         var arena = std.heap.ArenaAllocator.init(self.allocator);
@@ -4282,12 +4304,13 @@ pub const Compiler = struct {
         const global_name = q.name;
 
         if (self.globals.lookup(global_name)) |idx| {
-            // Re-define the global with the new value
-                return try self.builder.define(global_name, idx, val_ir);
-            }
-
-            return error.UnboundVariable;
+            return try self.builder.define(global_name, idx, val_ir);
         }
+
+        // CL semantics: top-level setq creates a global binding when absent.
+        const idx = try self.globals.define(global_name);
+        return try self.builder.define(global_name, idx, val_ir);
+    }
 
     /// Compile setf special form: (setf place value)
     /// Handles symbol macros, compound places like (car x), (slot-value obj 'slot), etc.
@@ -6123,11 +6146,17 @@ pub const Compiler = struct {
                 const car_pat = p.car;
                 const cdr_pat = p.cdr;
 
+                if (car_pat.typeKind() == .nil or car_pat.typeKind() == .t) {
+                    return error.InvalidSyntax;
+                }
+
                 // car binding
                 const car_ir = try self.builder.car(expr_ir);
                 try self.genDestructBindingsRec(car_pat, car_ir, bindings);
 
                 // cdr binding
+                if (cdr_pat.isNil()) return;
+                if (cdr_pat.typeKind() == .t) return error.InvalidSyntax;
                 const cdr_ir = try self.builder.cdr(expr_ir);
                 try self.genDestructBindingsRec(cdr_pat, cdr_ir, bindings);
             },
