@@ -14,47 +14,6 @@ const std = @import("std");
 
 const BinaryOp = *const fn (*runtime.Heap, Value, Value) arith.Error!Value;
 
-const JitRoots = struct {
-    roots: std.ArrayList(Value),
-    stack_vals: []Value,
-    extra: []Value,
-    alloc: std.mem.Allocator,
-
-    fn init(c: *ctx.JitContext, extra: []Value) !JitRoots {
-        const alloc = c.heap.backing_allocator;
-        var roots = std.ArrayList(Value){};
-
-        const stack_len = stackLen(c);
-        const stack_vals = c.frame_base[0..stack_len];
-        try roots.appendSlice(alloc, stack_vals);
-
-        try roots.appendSlice(alloc, extra);
-
-        return .{
-            .roots = roots,
-            .stack_vals = stack_vals,
-            .extra = extra,
-            .alloc = alloc,
-        };
-    }
-
-    fn deinit(self: *JitRoots) void {
-        self.roots.deinit(self.alloc);
-    }
-
-    fn writeBack(self: *JitRoots) void {
-        var idx: usize = 0;
-        for (self.stack_vals) |*v| {
-            v.* = self.roots.items[idx];
-            idx += 1;
-        }
-        for (self.extra) |*v| {
-            v.* = self.roots.items[idx];
-            idx += 1;
-        }
-    }
-};
-
 fn stackLen(c: *ctx.JitContext) usize {
     const len_bytes = @intFromPtr(c.sp) - @intFromPtr(c.frame_base);
     return @intCast(@divExact(len_bytes, @sizeOf(Value)));
@@ -71,13 +30,11 @@ fn stackCap(c: *ctx.JitContext) usize {
 }
 
 fn collectJitGarbage(c: *ctx.JitContext, extra: []Value) !void {
-    var jit_roots = try JitRoots.init(c, extra);
-    defer jit_roots.deinit();
+    syncVmSp(c);
 
-    c.vm.setExtRoots(jit_roots.roots.items);
+    c.vm.setExtRoots(extra);
     defer {
         c.vm.clearExtRoots();
-        jit_roots.writeBack();
         // const_pool points into a GC-managed Chunk; refresh after relocation.
         c.const_pool = c.vm.chunk.const_pool;
         c.const_count = @intCast(c.vm.chunk.const_count);
@@ -115,7 +72,8 @@ pub fn cons(c: *ctx.JitContext, car: Value, cdr: Value) vm_mod.Error!Value {
 fn allocVectorWithGc(c: *ctx.JitContext, len: usize) vm_mod.Error!Value {
     return c.heap.allocVector(len, len) catch |err| switch (err) {
         error.OutOfMemory => blk: {
-            try collectJitGarbage(c, &[_]Value{});
+            var none: [0]Value = .{};
+            try collectJitGarbage(c, none[0..]);
             break :blk try c.heap.allocVector(len, len);
         },
         else => return err,
@@ -1009,17 +967,14 @@ pub fn call(c: *ctx.JitContext, argc: u8) vm_mod.Error!Value {
     const fn_val = c.frame_base[fn_idx];
     const args = c.frame_base[fn_idx + 1 .. fn_idx + 1 + argc_usize];
 
-    var jit_roots = try JitRoots.init(c, &[_]Value{});
-    defer jit_roots.deinit();
-
-    c.vm.setExtRoots(jit_roots.roots.items);
-    const call_res = c.vm.callFromStack(fn_val, args);
-    c.vm.clearExtRoots();
-    jit_roots.writeBack();
-
-    const res = call_res catch |err| return err;
+    syncVmSp(c);
+    const res = try c.vm.callFromStackAt(fn_idx, fn_val, args);
     c.frame_base[fn_idx] = res;
     c.sp = c.frame_base + fn_idx + 1;
+    syncVmSp(c);
+    // const_pool points into a GC-managed Chunk; refresh after potential relocation.
+    c.const_pool = c.vm.chunk.const_pool;
+    c.const_count = @intCast(c.vm.chunk.const_count);
     return res;
 }
 
@@ -1031,17 +986,14 @@ pub fn apply(c: *ctx.JitContext, _: u8) vm_mod.Error!Value {
     const fn_val = c.frame_base[fn_idx];
     const args_list = c.frame_base[sp - 1];
 
-    var jit_roots = try JitRoots.init(c, &[_]Value{});
-    defer jit_roots.deinit();
-
-    c.vm.setExtRoots(jit_roots.roots.items);
-    const apply_res = c.vm.applyFromStack(fn_val, args_list);
-    c.vm.clearExtRoots();
-    jit_roots.writeBack();
-
-    const res = apply_res catch |err| return err;
+    syncVmSp(c);
+    const res = try c.vm.applyFromStackAt(fn_idx, fn_val, args_list);
     c.frame_base[fn_idx] = res;
     c.sp = c.frame_base + fn_idx + 1;
+    syncVmSp(c);
+    // const_pool points into a GC-managed Chunk; refresh after potential relocation.
+    c.const_pool = c.vm.chunk.const_pool;
+    c.const_count = @intCast(c.vm.chunk.const_count);
     return res;
 }
 
@@ -1122,16 +1074,15 @@ test "rt gc keeps vm globals" {
     const cell = try heap.allocCons(Value.makeFixnum(1), Value.nil);
     try vm.storeGlobal(0, cell);
 
-    var stack = [_]Value{Value.nil, Value.nil};
-    const base = stack[0..].ptr;
+    const base = vm.stack[0..].ptr;
     var trace_addrs: [16]usize = undefined;
     var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
     var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
     var c = ctx.JitContext{
-        .sp = base + 1,
+        .sp = base,
         .const_pool = base,
         .frame_base = base,
-        .stack_end = base + stack.len,
+        .stack_end = base + vm.stack.len,
         .heap = &heap,
         .ret_buf = &ret_buf,
         .err = 0,
@@ -1140,7 +1091,8 @@ test "rt gc keeps vm globals" {
         .vm = &vm,
     };
 
-    try collectJitGarbage(&c, &[_]Value{});
+    var none: [0]Value = .{};
+    try collectJitGarbage(&c, none[0..]);
 
     const global = vm.globals[0];
     try testing.expect(global.isCons());
@@ -1166,12 +1118,9 @@ test "rt makeVec reloads init after gc" {
         };
     }
 
-    var stack = [_]Value{
-        Value.makeFixnum(1),
-        init_cons,
-        Value.nil,
-    };
-    const base = stack[0..].ptr;
+    const base = vm.stack[0..].ptr;
+    vm.stack[0] = Value.makeFixnum(1);
+    vm.stack[1] = init_cons;
     var trace_addrs: [16]usize = undefined;
     var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
     var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
@@ -1179,7 +1128,7 @@ test "rt makeVec reloads init after gc" {
         .sp = base + 2,
         .const_pool = base,
         .frame_base = base,
-        .stack_end = base + stack.len,
+        .stack_end = base + vm.stack.len,
         .heap = &heap,
         .ret_buf = &ret_buf,
         .err = 0,
@@ -1199,4 +1148,158 @@ test "rt makeVec reloads init after gc" {
     const start = @intFromPtr(heap.from_start);
     const end = start + heap.space_size;
     try testing.expect(ptr >= start and ptr < end);
+}
+
+test "rt cons reloads args after gc" {
+    const testing = std.testing;
+
+    var heap = try runtime.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+
+    const base = vm.stack[0..].ptr;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var c = ctx.JitContext{
+        .sp = base,
+        .const_pool = base,
+        .frame_base = base,
+        .stack_end = base + vm.stack.len,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+        .const_count = 0,
+        .err_trace = &trace,
+        .vm = &vm,
+    };
+
+    const car = try heap.allocCons(Value.makeFixnum(1), Value.nil);
+    while (true) {
+        _ = heap.allocCons(Value.nil, Value.nil) catch |err| switch (err) {
+            error.OutOfMemory => break,
+        };
+    }
+
+    const gc_before = heap.stats.gc_count;
+    const cell = try cons(&c, car, Value.nil);
+    try testing.expect(heap.stats.gc_count > gc_before);
+
+    try testing.expect(cell.isCons());
+    const cell_obj = cell.toPtr(runtime.Cons);
+    const car_post = cell_obj.car;
+    try testing.expect(car_post.isCons());
+    const ptr = @intFromPtr(car_post.toPtr(runtime.Cons));
+    const start = @intFromPtr(heap.from_start);
+    const end = start + heap.space_size;
+    try testing.expect(ptr >= start and ptr < end);
+}
+
+test "rt call preserves stack below" {
+    const testing = std.testing;
+    const bytecode = @import("../bytecode/bytecode.zig");
+    const Op = bytecode.Op;
+
+    var heap = try runtime.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        7, 0, 0, 0,
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk_val = try heap.allocChunk(&code, &.{}, 2, 0, 0, false, 2);
+    const closure = try heap.allocClosure(chunk_val, 2, &.{});
+    vm.chunk = chunk_val.toPtr(runtime.Chunk);
+
+    const base = vm.stack[0..].ptr;
+    vm.stack[0] = Value.makeFixnum(111);
+    vm.stack[1] = closure;
+    vm.stack[2] = Value.makeFixnum(1);
+    vm.stack[3] = Value.makeFixnum(2);
+
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var c = ctx.JitContext{
+        .sp = base + 4,
+        .const_pool = vm.chunk.const_pool,
+        .frame_base = base,
+        .stack_end = base + vm.stack.len,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+        .const_count = @intCast(vm.chunk.const_count),
+        .err_trace = &trace,
+        .vm = &vm,
+    };
+
+    const res = try call(&c, 2);
+    try testing.expect(res.isFixnum());
+    try testing.expectEqual(@as(i64, 7), res.toFixnum());
+    try testing.expectEqual(@as(i64, 111), vm.stack[0].toFixnum());
+    try testing.expectEqual(@as(i64, 7), vm.stack[1].toFixnum());
+    try testing.expectEqual(@as(usize, 2), stackLen(&c));
+}
+
+test "rt apply preserves stack below" {
+    const testing = std.testing;
+    const bytecode = @import("../bytecode/bytecode.zig");
+    const Op = bytecode.Op;
+
+    var heap = try runtime.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+
+    const load_local_op: u16 = @intFromEnum(Op.load_local);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(load_local_op & 0xFF), @truncate(load_local_op >> 8),
+        0,
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk_val = try heap.allocChunk(&code, &.{}, 2, 0, 0, false, 2);
+    const closure = try heap.allocClosure(chunk_val, 2, &.{});
+    vm.chunk = chunk_val.toPtr(runtime.Chunk);
+
+    const args = try heap.allocCons(Value.makeFixnum(1), try heap.allocCons(Value.makeFixnum(2), Value.nil));
+
+    const base = vm.stack[0..].ptr;
+    vm.stack[0] = Value.makeFixnum(111);
+    vm.stack[1] = closure;
+    vm.stack[2] = args;
+
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var c = ctx.JitContext{
+        .sp = base + 3,
+        .const_pool = vm.chunk.const_pool,
+        .frame_base = base,
+        .stack_end = base + vm.stack.len,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+        .const_count = @intCast(vm.chunk.const_count),
+        .err_trace = &trace,
+        .vm = &vm,
+    };
+
+    const res = try apply(&c, 0);
+    try testing.expect(res.isFixnum());
+    try testing.expectEqual(@as(i64, 1), res.toFixnum());
+    try testing.expectEqual(@as(i64, 111), vm.stack[0].toFixnum());
+    try testing.expectEqual(@as(i64, 1), vm.stack[1].toFixnum());
+    try testing.expectEqual(@as(usize, 2), stackLen(&c));
 }

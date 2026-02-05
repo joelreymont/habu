@@ -1168,6 +1168,41 @@ pub const Vm = struct {
         return try self.execute();
     }
 
+    /// Call function with arguments provided as a slice, using stack slots starting at `base`.
+    /// This preserves any values below `base` without copying.
+    pub fn callFromStackAt(self: *Vm, base: usize, fn_val: Value, args: []const Value) Error!Value {
+        const saved_state = State.save(self);
+
+        const saved_idx = self.saved_chunk_sp;
+        if (saved_idx >= MAX_SAVED_CHUNKS) return error.StackOverflow;
+        self.saved_chunks[saved_idx] = chunkRoot(saved_state.chunk);
+        self.saved_chunk_sp = saved_idx + 1;
+        defer {
+            const chunk_val = self.saved_chunks[saved_idx];
+            self.saved_chunk_sp = saved_idx;
+            saved_state.restore(self);
+            if (!chunk_val.isNil()) {
+                self.chunk = chunk_val.toPtr(Chunk);
+            }
+        }
+
+        if (base + args.len + 1 > self.stack.len) return error.StackOverflow;
+        self.stack[base] = fn_val;
+        for (args, 0..) |arg, i| {
+            self.stack[base + i + 1] = arg;
+        }
+        self.sp = base + args.len + 1;
+
+        self.chunk = &halt_chunk;
+        self.ip = 0;
+        self.fp = 0;
+        self.scope_sp = 0;
+
+        const argc: u8 = @intCast(args.len);
+        try self.doCall(argc, false);
+        return try self.execute();
+    }
+
     /// Apply function with args list provided as a value
     pub fn applyFromStack(self: *Vm, fn_val: Value, args_list: Value) Error!Value {
         const saved_state = State.save(self);
@@ -1189,6 +1224,38 @@ pub const Vm = struct {
         self.stack[0] = fn_val;
         self.stack[1] = args_list;
         self.sp = 2;
+
+        self.chunk = &halt_chunk;
+        self.ip = 0;
+        self.fp = 0;
+        self.scope_sp = 0;
+
+        try self.doApply();
+        return try self.execute();
+    }
+
+    /// Apply function with args list provided as a value, using stack slots starting at `base`.
+    /// This preserves any values below `base` without copying.
+    pub fn applyFromStackAt(self: *Vm, base: usize, fn_val: Value, args_list: Value) Error!Value {
+        const saved_state = State.save(self);
+
+        const saved_idx = self.saved_chunk_sp;
+        if (saved_idx >= MAX_SAVED_CHUNKS) return error.StackOverflow;
+        self.saved_chunks[saved_idx] = chunkRoot(saved_state.chunk);
+        self.saved_chunk_sp = saved_idx + 1;
+        defer {
+            const chunk_val = self.saved_chunks[saved_idx];
+            self.saved_chunk_sp = saved_idx;
+            saved_state.restore(self);
+            if (!chunk_val.isNil()) {
+                self.chunk = chunk_val.toPtr(Chunk);
+            }
+        }
+
+        if (base + 2 > self.stack.len) return error.StackOverflow;
+        self.stack[base] = fn_val;
+        self.stack[base + 1] = args_list;
+        self.sp = base + 2;
 
         self.chunk = &halt_chunk;
         self.ip = 0;
