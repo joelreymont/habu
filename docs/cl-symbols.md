@@ -2,8 +2,16 @@
 
 978 external symbols in COMMON-LISP package per ANSI INCITS 226-1994.
 
-Status: ✓ implemented (988) | ⚠ partial (10) | ✗ missing (13)
-Note: 1011 entries; 978 unique ANSI CL external symbols (see docs/cl-symbols-sbcl.txt)
+This doc tracks the ANSI symbol set (978 unique) but allows duplicate rows for multi-role symbols
+(function/variable/macro/type, etc).
+
+Counts:
+- Symbols: ✓ 955 | ⚠ 10 | ✗ 13
+- Rows:    ✓ 988 | ⚠ 10 | ✗ 13
+- Rows total: 1011
+
+Source-of-truth symbol set: `docs/cl-symbols-sbcl.txt`
+Audit: `python3 tools/cl_symbols_audit.py`
 
 ## Lambda List Keywords (8)
 | Symbol | Status | Location | Notes |
