@@ -65,6 +65,9 @@
 8. **Gate + Signoff**
    - `habu-add-conformance-ci-d7fca6ff` Add smoke + nightly CI gates.
    - `habu-publish-functional-parity-8447f41b` Publish final signoff report.
+   - Required report artifact: `docs/ansi-parity-signoff.md`
+   - Required inputs: `docs/ansi-parity-baseline.json`, `docs/ansi/results/sbcl-latest.json`, `docs/ansi/results/habu-latest.json`
+   - Required decision fields: corpus revision, fail counts, regression check status, CI smoke/nightly status, final go/no-go.
 
 ### Dependency Order
 - Execute strictly in numeric order.

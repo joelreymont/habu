@@ -1,9 +1,11 @@
 ---
 title: Publish functional parity signoff
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-05T22:32:05.528260+01:00"
+created-at: "\"2026-02-05T22:32:05.528260+01:00\""
+closed-at: "2026-02-06T00:13:29.434143+01:00"
+close-reason: Added docs/ansi-parity-signoff.md and linked it from PLAN.md and docs/cl-spec-status.md.
 blocks:
   - habu-add-conformance-ci-d7fca6ff
 ---

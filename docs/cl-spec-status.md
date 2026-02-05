@@ -23,3 +23,9 @@ Habu targets ANSI Common Lisp compatibility (ANSI INCITS 226-1994) plus gradual 
 
 - `dot tree habu-cl-spec-parity-6821074c`
 - `dot ready`
+
+## Functional Parity Signoff
+
+- Signoff template: `docs/ansi-parity-signoff.md`
+- Conformance process: `docs/ansi-parity.md`
+- Active parity umbrella: `dot tree habu-reach-ansi-functional-32946029`
