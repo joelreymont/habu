@@ -83,10 +83,12 @@ pub const Jit = struct {
     /// Compile a bytecode chunk to native code
     pub fn compile(self: *Jit, chunk: *const Chunk) JitError!JitFn {
         const start_pos = self.code_buffer.pos;
+        const reloc_start = self.code_buffer.relocs.items.len;
         var ok = false;
         defer {
             if (!ok) {
                 self.code_buffer.pos = start_pos;
+                self.code_buffer.relocs.items = self.code_buffer.relocs.items[0..reloc_start];
                 self.labels.clearRetainingCapacity();
                 self.pending_jumps.clearRetainingCapacity();
                 self.err_branches.clearRetainingCapacity();
@@ -1078,6 +1080,7 @@ pub const Jit = struct {
             },
             else => return error.InvalidHoleType,
         }
+        try self.code_buffer.recordReloc(code_offset, hole_type, target_addr);
         patch.flushIcache(self.code_buffer.memory.ptr + code_offset, 4);
     }
 };
@@ -1241,6 +1244,107 @@ test "jit compile jump" {
     const inst = std.mem.readInt(u32, jit.code_buffer.memory[branch_off .. branch_off + 4], .little);
     const word_off = inst & 0x03FFFFFF;
     try testing.expectEqual(@as(u32, 1), word_off);
+}
+
+test "jit relocations reapply after move" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try runtime.Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var jit = try Jit.init(allocator, 1024 * 1024);
+    defer jit.deinit();
+
+    const push_nil_op: u16 = @intFromEnum(Op.push_nil);
+    const jmp_nil_op: u16 = @intFromEnum(Op.jmp_nil);
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const jmp_op: u16 = @intFromEnum(Op.jmp);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+
+    // (push_nil)
+    // (jmp_nil +10) ; jump to push_i32 2
+    // (push_i32 1)
+    // (jmp +6)      ; jump to ret
+    // (push_i32 2)
+    // (ret)
+    const code = [_]u8{
+        @truncate(push_nil_op & 0xFF), @truncate(push_nil_op >> 8),
+        @truncate(jmp_nil_op & 0xFF), @truncate(jmp_nil_op >> 8), 10, 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 1, 0, 0, 0,
+        @truncate(jmp_op & 0xFF), @truncate(jmp_op >> 8), 6, 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 2, 0, 0, 0,
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+
+    const vm_res = try vm.run(&chunk);
+    try testing.expect(vm_res.isFixnum());
+    try testing.expectEqual(@as(i64, 2), vm_res.toFixnum());
+
+    const fn_ptr = try jit.compile(&chunk);
+    try testing.expect(jit.code_buffer.relocs.items.len > 0);
+
+    var stack_buf: [32]Value = undefined;
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var ctx_val = ctx.JitContext{
+        .sp = stack_buf[0..].ptr,
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .frame_base = stack_buf[0..].ptr,
+        .stack_end = stack_buf[stack_buf.len..].ptr,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+        .const_count = 0,
+        .err_trace = &trace,
+        .vm = &vm,
+    };
+
+    const jit_raw = fn_ptr(&ctx_val);
+    try testing.expectEqual(@as(u16, 0), ctx_val.err);
+    const jit_res = Value{ .raw = jit_raw };
+    try testing.expect(jit_res.isFixnum());
+    try testing.expectEqual(@as(i64, 2), jit_res.toFixnum());
+
+    var moved = try patch.CodeBuffer.init(allocator, 1024 * 1024);
+    defer moved.deinit();
+    moved.pos = jit.code_buffer.pos;
+    try moved.setWritable(true);
+    @memcpy(moved.memory[0..moved.pos], jit.code_buffer.memory[0..moved.pos]);
+    try moved.relocs.appendSlice(moved.alloc, jit.code_buffer.relocs.items);
+    try moved.reapplyRelocs();
+    try moved.setWritable(false);
+
+    var ctx_val2 = ctx_val;
+    ctx_val2.sp = stack_buf[0..].ptr;
+    ctx_val2.err = 0;
+    ret_buf.err = 0;
+    ret_buf.value = Value.nil;
+
+    const moved_fn = moved.getFnPtr(JitFn, jit.fn_start);
+    const moved_raw = moved_fn(&ctx_val2);
+    try testing.expectEqual(@as(u16, 0), ctx_val2.err);
+    const moved_res = Value{ .raw = moved_raw };
+    try testing.expect(moved_res.isFixnum());
+    try testing.expectEqual(@as(i64, 2), moved_res.toFixnum());
 }
 
 test "jit branch range check" {

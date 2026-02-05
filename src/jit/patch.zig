@@ -27,6 +27,17 @@ pub const PatchError = error{
     Unexpected,
 };
 
+pub const RelocTgt = union(enum) {
+    abs: usize,
+    code_off: usize,
+};
+
+pub const Reloc = struct {
+    site_off: usize,
+    kind: HoleType,
+    tgt: RelocTgt,
+};
+
 /// Executable memory allocator for JIT code
 pub const CodeBuffer = struct {
     /// Raw memory (mmap'd with execute permission on real systems)
@@ -35,9 +46,10 @@ pub const CodeBuffer = struct {
     pos: usize,
     /// Whether the buffer is currently writable
     writable: bool,
+    alloc: std.mem.Allocator,
+    relocs: std.ArrayList(Reloc),
 
     pub fn init(allocator: std.mem.Allocator, size: usize) !CodeBuffer {
-        _ = allocator;
         const len = std.mem.alignForward(usize, size, std.heap.page_size_min);
         var flags: std.posix.MAP = .{ .TYPE = .PRIVATE, .ANONYMOUS = true };
         if (@hasField(@TypeOf(flags), "JIT")) {
@@ -52,12 +64,15 @@ pub const CodeBuffer = struct {
             .memory = memory,
             .pos = 0,
             .writable = false,
+            .alloc = allocator,
+            .relocs = std.ArrayList(Reloc){},
         };
         try buffer.setWritable(true);
         return buffer;
     }
 
     pub fn deinit(self: *CodeBuffer) void {
+        self.relocs.deinit(self.alloc);
         std.posix.munmap(self.memory);
     }
 
@@ -102,6 +117,69 @@ pub const CodeBuffer = struct {
         const addr = @intFromPtr(self.memory.ptr) + offset;
         return @ptrFromInt(addr);
     }
+
+    fn baseAddr(self: *const CodeBuffer) usize {
+        return @intFromPtr(self.memory.ptr);
+    }
+
+    fn mkRelocTgt(self: *const CodeBuffer, target_addr: usize) RelocTgt {
+        const base = self.baseAddr();
+        const end = base + self.pos;
+        if (target_addr >= base and target_addr < end) {
+            return .{ .code_off = target_addr - base };
+        }
+        return .{ .abs = target_addr };
+    }
+
+    pub fn recordReloc(self: *CodeBuffer, site_off: usize, kind: HoleType, target_addr: usize) PatchError!void {
+        switch (kind) {
+            .rel26, .rel19, .rel14 => {},
+            else => return error.InvalidHoleType,
+        }
+        try self.relocs.append(self.alloc, .{
+            .site_off = site_off,
+            .kind = kind,
+            .tgt = self.mkRelocTgt(target_addr),
+        });
+    }
+
+    pub fn reapplyRelocs(self: *CodeBuffer) PatchError!void {
+        const was_writable = self.writable;
+        try self.setWritable(true);
+
+        const base = self.baseAddr();
+        for (self.relocs.items) |r| {
+            const inst_addr = base + r.site_off;
+            const target_addr = switch (r.tgt) {
+                .abs => |a| a,
+                .code_off => |off| base + off,
+            };
+            const offset = @as(i64, @intCast(target_addr)) - @as(i64, @intCast(inst_addr));
+
+            const code = self.memory[r.site_off..];
+            switch (r.kind) {
+                .rel26 => {
+                    if (offset < -0x8000000 or offset > 0x7FFFFFC) return error.OffsetTooLarge;
+                    const word_off: i32 = @intCast(@divTrunc(offset, 4));
+                    patchRel26(code, @bitCast(word_off));
+                },
+                .rel19 => {
+                    if (offset < -0x100000 or offset > 0xFFFFC) return error.OffsetTooLarge;
+                    const word_off: i32 = @intCast(@divTrunc(offset, 4));
+                    patchRel19(code, @bitCast(word_off));
+                },
+                .rel14 => {
+                    if (offset < -0x8000 or offset > 0x7FFC) return error.OffsetTooLarge;
+                    const word_off: i32 = @intCast(@divTrunc(offset, 4));
+                    patchRel14(code, @bitCast(word_off));
+                },
+                else => return error.InvalidHoleType,
+            }
+        }
+
+        flushIcache(self.memory.ptr, self.pos);
+        if (!was_writable) try self.setWritable(false);
+    }
 };
 
 /// Patch a stencil and write to code buffer
@@ -145,7 +223,7 @@ fn applyPatch(
     hole: Hole,
     value: PatchValue,
     code_start: usize,
-    buffer: *const CodeBuffer,
+    buffer: *CodeBuffer,
 ) PatchError!void {
     switch (hole.hole_type) {
         .imm64 => {
@@ -186,6 +264,7 @@ fn applyPatch(
             // Encode as 26-bit word offset
             const word_offset: i32 = @intCast(@divTrunc(offset, 4));
             patchRel26(code[hole.offset..], @bitCast(word_offset));
+            try buffer.recordReloc(code_start + hole.offset, .rel26, target);
         },
         .rel19 => {
             const target = switch (value) {
@@ -202,6 +281,7 @@ fn applyPatch(
 
             const word_offset: i32 = @intCast(@divTrunc(offset, 4));
             patchRel19(code[hole.offset..], @bitCast(word_offset));
+            try buffer.recordReloc(code_start + hole.offset, .rel19, target);
         },
         .rel14 => {
             const target = switch (value) {
@@ -218,6 +298,7 @@ fn applyPatch(
 
             const word_offset: i32 = @intCast(@divTrunc(offset, 4));
             patchRel14(code[hole.offset..], @bitCast(word_offset));
+            try buffer.recordReloc(code_start + hole.offset, .rel14, target);
         },
     }
 }

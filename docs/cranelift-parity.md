@@ -25,7 +25,7 @@ This matrix tracks "Cranelift-class" JIT backend capabilities. Each row has:
 | Codegen | Register allocation | no | n/a | n/a | n/a | Fixed register assignment today. |
 | Codegen | Calling convention support | partial | `src/jit/jit.zig`: test "jit vm parity call closure"; test "jit vm parity apply" | n/a | aarch64 | C-ABI entry; helper calls use Zig error-union ABI; closures dispatch via rt.call/apply (no native ABI lowering). |
 | Runtime | Stack maps / GC safepoints | no | n/a | `docs/cranelift-perf.md` (GC pause targets) | n/a | GC via helpers with explicit root arrays; no stack maps or compiler-inserted safepoints. Design: `docs/stack-maps.md`. |
-| Runtime | Relocations | no | n/a | n/a | n/a | Compile-time patching only; no relocation records or code movement. |
+| Runtime | Relocations | partial | `src/jit/jit.zig`: test "jit relocations reapply after move" | n/a | aarch64 | Reloc records + reapply for rel{26,19,14}; no code movement/growth yet. |
 | Runtime | Deopt / OSR hooks | no | n/a | n/a | n/a | Typically handled by the embedding runtime. |
 | Runtime | Tiering / profiling hooks | partial | `src/tests/jit_tiering.zig`: test "jit tiering hot threshold" | `bench/jit.zig`: `zig build bench-jit -- --json` | aarch64 | Hot-count threshold JIT tiering exists; no hot-loop detection/profiling yet. |
 | Debug | DWARF / debug info | no | n/a | n/a | n/a | No debug info emitted. |
