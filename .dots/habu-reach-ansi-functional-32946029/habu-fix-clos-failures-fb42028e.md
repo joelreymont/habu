@@ -1,9 +1,11 @@
 ---
 title: Fix CLOS failures batch1
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-05T22:32:05.495679+01:00"
+created-at: "\"2026-02-05T22:32:05.495679+01:00\""
+closed-at: "2026-02-06T00:12:21.631930+01:00"
+close-reason: Added eql specializer dispatch and made compile-file ANSI repro conforming under stdlib.
 blocks:
   - habu-add-clos-repro-f4f345fc
 ---

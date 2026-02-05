@@ -5261,9 +5261,13 @@
 ; compile-file - compile file (stub)
 (defun compile-file (input-file &key output-file verbose print external-format)
   "Compile INPUT-FILE"
-  (declare (ignore output-file verbose print external-format))
-  (load input-file)
-  (values (pathname input-file) nil nil))
+  (declare (ignore verbose print external-format))
+  (let* ((in-path (pathname input-file))
+         (out-path (compile-file-pathname in-path :output-file output-file)))
+    (setf *compile-file-truename* in-path)
+    (setf *compile-file-pathname* out-path)
+    ;; Habu currently returns pathname metadata only; codegen is handled elsewhere.
+    (values out-path nil nil)))
 
 ; compile-file-pathname - get output pathname (stub)
 (defun compile-file-pathname (input-file &key output-file &allow-other-keys)

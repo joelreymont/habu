@@ -8466,6 +8466,13 @@ pub const Compiler = struct {
                             // Intern the class name symbol
                             const class_name = class_cons.car.toPtr(Symbol).getName();
                             try specializers.append(self.allocator, try heap.intern(class_name));
+                        } else if (class_cons.car.isCons()) {
+                            // (eql obj) specializer
+                            if (self.eqlSpecializerObject(class_cons.car) != null) {
+                                try specializers.append(self.allocator, class_cons.car);
+                            } else {
+                                try specializers.append(self.allocator, Value.t);
+                            }
                         } else {
                             try specializers.append(self.allocator, Value.t);
                         }
@@ -8529,12 +8536,22 @@ pub const Compiler = struct {
             .after => "a",
             .around => "r",
         };
+        var spec_owned: ?[]u8 = null;
+        defer if (spec_owned) |s| self.allocator.free(s);
         const spec_str = if (specializers.items.len > 0) blk: {
             const spec_val = specializers.items[0];
             switch (spec_val.typeKind()) {
                 .t => break :blk "t",
                 .symbol => break :blk spec_val.toPtr(Symbol).getName(),
-                else => break :blk "t",
+                .cons => {
+                    if (self.eqlSpecializerObject(spec_val)) |eql_obj| {
+                        const txt = try std.fmt.allocPrint(self.allocator, "eql_{x}", .{eql_obj.raw});
+                        spec_owned = txt;
+                        break :blk txt;
+                    }
+                    break :blk "cons";
+                },
+                else => break :blk "obj",
             }
         } else "t";
         const simple_name = name_sym.getName();
@@ -8841,17 +8858,12 @@ pub const Compiler = struct {
             for (primary.specializers, 0..) |spec_val, param_idx| {
                 if (param_idx >= dispatch_params.len) return error.InvalidSyntax;
 
-                // Skip unspecialized parameters (specializer = t)
-                if (spec_val.eq(Value.t)) continue;
-
                 // Reference to parameter
                 const arg_ir = try self.builder.variable(dispatch_params[param_idx], 0, @intCast(param_idx));
-
-                // Class name symbol (already interned)
-                const class_ir = try self.builder.lit(spec_val);
-
-                // typep check
-                const check_ir = try self.builder.typep(arg_ir, class_ir);
+                const check_ir = if (try self.buildMethodSpecializerCheck(spec_val, arg_ir)) |check|
+                    check
+                else
+                    continue;
 
                 // AND with previous checks: (if prev check nil)
                 cond_ir = if (cond_ir) |prev| blk: {
@@ -8998,16 +9010,17 @@ pub const Compiler = struct {
 
         // Call applicable :before methods (most specific first)
         // Generate runtime typep checks for each :before method
-        for (before_methods) |before| {
-            // Build condition: (typep arg class) for each specialized parameter
-            var cond: ?*Ir = null;
-            for (before.specializers, 0..) |spec, param_idx| {
-                if (spec.eq(Value.t)) continue; // t matches any
-                if (param_idx >= dispatch_params.len) continue;
+            for (before_methods) |before| {
+                // Build condition: (typep arg class) for each specialized parameter
+                var cond: ?*Ir = null;
+                for (before.specializers, 0..) |spec, param_idx| {
+                    if (param_idx >= dispatch_params.len) continue;
 
-                const arg_ir = try self.builder.variable(dispatch_params[param_idx], 0, @intCast(param_idx));
-                const class_ir = try self.builder.lit(spec);
-                const check = try self.builder.typep(arg_ir, class_ir);
+                    const arg_ir = try self.builder.variable(dispatch_params[param_idx], 0, @intCast(param_idx));
+                    const check = if (try self.buildMethodSpecializerCheck(spec, arg_ir)) |val|
+                        val
+                    else
+                        continue;
 
                 cond = if (cond) |prev| blk: {
                     const nil_ir = try self.builder.lit(Value.nil);
@@ -9039,19 +9052,20 @@ pub const Compiler = struct {
             // The params are still at depth=0, indices 0..n-1
             // Runtime typep checks for :after methods (least specific first)
             var k = after_methods.len;
-            while (k > 0) {
-                k -= 1;
-                const after = after_methods[k];
+                while (k > 0) {
+                    k -= 1;
+                    const after = after_methods[k];
 
-                // Build runtime type check condition
-                var cond: ?*Ir = null;
-                for (after.specializers, 0..) |spec, param_idx| {
-                    if (spec.eq(Value.t)) continue;
-                    if (param_idx >= dispatch_params.len) continue;
+                    // Build runtime type check condition
+                    var cond: ?*Ir = null;
+                    for (after.specializers, 0..) |spec, param_idx| {
+                        if (param_idx >= dispatch_params.len) continue;
 
-                    const arg_ir = try self.builder.variable(dispatch_params[param_idx], 0, @intCast(param_idx));
-                    const class_ir = try self.builder.lit(spec);
-                    const check = try self.builder.typep(arg_ir, class_ir);
+                        const arg_ir = try self.builder.variable(dispatch_params[param_idx], 0, @intCast(param_idx));
+                        const check = if (try self.buildMethodSpecializerCheck(spec, arg_ir)) |val|
+                            val
+                        else
+                            continue;
 
                     cond = if (cond) |prev| blk: {
                         const nil_ir = try self.builder.lit(Value.nil);
@@ -9130,6 +9144,17 @@ pub const Compiler = struct {
             // Both t - equal at this position
             if (a_is_t and b_is_t) continue;
 
+            const a_is_eql = self.eqlSpecializerObject(a_spec) != null;
+            const b_is_eql = self.eqlSpecializerObject(b_spec) != null;
+
+            if (a_is_eql and b_is_eql) {
+                if (a_spec.eq(b_spec)) continue;
+                return .equal;
+            }
+
+            if (a_is_eql and !b_is_eql) return .more_specific;
+            if (!a_is_eql and b_is_eql) return .less_specific;
+
             // Both non-t - check class hierarchy
             if (a_spec.eq(b_spec)) continue; // Same class
 
@@ -9142,6 +9167,27 @@ pub const Compiler = struct {
         if (a.specializers.len > b.specializers.len) return .more_specific;
         if (a.specializers.len < b.specializers.len) return .less_specific;
         return .equal;
+    }
+
+    fn eqlSpecializerObject(self: *Compiler, spec: Value) ?Value {
+        const builtins = self.builtins orelse return null;
+        if (!spec.isCons()) return null;
+        const cons = spec.toPtr(Cons);
+        if (!cons.car.eq(builtins.ty_eql)) return null;
+        if (!cons.cdr.isCons()) return null;
+        const arg_cons = cons.cdr.toPtr(Cons);
+        if (!arg_cons.cdr.isNil()) return null;
+        return arg_cons.car;
+    }
+
+    fn buildMethodSpecializerCheck(self: *Compiler, spec: Value, arg_ir: *const Ir) anyerror!?*Ir {
+        if (spec.eq(Value.t)) return null;
+        if (self.eqlSpecializerObject(spec)) |eql_obj| {
+            const eql_obj_ir = try self.builder.lit(eql_obj);
+            return try self.builder.eql(arg_ir, eql_obj_ir);
+        }
+        const class_ir = try self.builder.lit(spec);
+        return try self.builder.typep(arg_ir, class_ir);
     }
 
     /// Compare two class specializers using CPL

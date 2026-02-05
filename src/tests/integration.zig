@@ -3017,7 +3017,7 @@ test "ansi repro top-level setq undeclared special defines global" {
     try testing.expect(result.isNil());
 }
 
-test "ansi repro define-method-combination-long.11.4 still nonconforming" {
+test "ansi repro define-method-combination-long.11.4 eql method dispatch" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
@@ -3045,23 +3045,32 @@ test "ansi repro define-method-combination-long.11.4 still nonconforming" {
         \\    (dmc-long-gf-11c 1 1 2 3)))
     );
 
+    const sym_a = try heap.intern("A");
     const sym_b = try heap.intern("B");
+    const expected = [_]Value{ sym_b, sym_a, sym_b, sym_a, sym_a };
     var cur = result;
-    var count: usize = 0;
+    var idx: usize = 0;
     while (cur.isCons()) {
         const c = cur.toPtr(Cons);
-        try testing.expect(c.car.eq(sym_b));
-        count += 1;
+        try testing.expect(idx < expected.len);
+        try testing.expect(c.car.eq(expected[idx]));
+        idx += 1;
         cur = c.cdr;
     }
     try testing.expect(cur.isNil());
-    try testing.expectEqual(@as(usize, 5), count);
+    try testing.expectEqual(@as(usize, expected.len), idx);
 }
 
-test "ansi repro make-load-form.order.14 still nonconforming" {
+test "ansi repro make-load-form.order.14 compile-file returns pathname" {
     const allocator = testing.allocator;
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
 
     const src =
         \\(let ((file "/tmp/habu-mlf-order14.lsp"))
@@ -3070,7 +3079,8 @@ test "ansi repro make-load-form.order.14 still nonconforming" {
         \\  (compile-file file :verbose nil :print nil))
     ;
 
-    try testing.expectError(error.TypeMismatch, evalExpr(allocator, &heap, src));
+    const result = try repl.eval(src);
+    try testing.expect(result.isPathname());
 }
 
 test "ansi repro write-to-string.3 honors allow-other-keys" {
