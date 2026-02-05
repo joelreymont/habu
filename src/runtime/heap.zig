@@ -1225,6 +1225,17 @@ pub const Heap = struct {
         return Value.makeChunk(chunk);
     }
 
+    pub fn allocMacroEnv(self: *Heap) !Value {
+        const macros = try self.allocHashTable(16, .eq);
+        const symbol_macros = try self.allocHashTable(16, .eq);
+        const env = try self.alloc(objects.MacroEnv);
+        env.* = .{
+            .macros = macros,
+            .symbol_macros = symbol_macros,
+        };
+        return Value.makeMacroEnv(env);
+    }
+
     pub fn allocNativeCode(self: *Heap, entry: usize) error{OutOfMemory}!Value {
         const nc = try self.alloc(objects.NativeCode);
         nc.* = .{ .entry = entry };

@@ -1968,6 +1968,7 @@ pub const Compiler = struct {
                 .generic_function => &types.t_any, // Generic function objects
                 .method => &types.t_any, // Method objects
                 .native_code => &types.t_any, // Native code handles are internal
+                .macro_env => &types.t_any, // Macro environment objects
             },
             .@"var" => |v| {
                 // Check occurrence typing first (narrowed types)
@@ -2781,7 +2782,8 @@ pub const Compiler = struct {
 
         // Push &environment (nil) if needed
         if (env_var != null) {
-            try vm.push(Value.nil);
+            const env_val = try heap.allocMacroEnv();
+            try vm.push(env_val);
             arg_count += 1;
         }
 

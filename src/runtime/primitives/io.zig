@@ -525,6 +525,7 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
         },
         .method => try w.writeAll("#<method>"),
         .native_code => try w.writeAll("#<native-code>"),
+        .macro_env => try w.writeAll("#<macro-env>"),
     }
 }
 
@@ -723,6 +724,7 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
         },
         .method => try w.writeAll("#<method>"),
         .native_code => try w.writeAll("#<native-code>"),
+        .macro_env => try w.writeAll("#<macro-env>"),
     }
 }
 

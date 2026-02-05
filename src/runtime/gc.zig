@@ -336,7 +336,7 @@ pub const GC = struct {
                         const old_ptr = @intFromPtr(s32.data);
                         s32.data = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
                     },
-                    .hashtable, .rational, .complex, .stream, .bignum, .pathname, .package, .condition, .class, .slotdef, .generic_function, .method, .native_code => {
+                    .hashtable, .rational, .complex, .stream, .bignum, .pathname, .package, .condition, .class, .slotdef, .generic_function, .method, .native_code, .macro_env => {
                         // No interior pointers to repair
                     },
                 }
@@ -453,6 +453,15 @@ pub const GC = struct {
                         }
                         if (pkg.shadowing.isPointer() and !pkg.shadowing.isNil()) {
                             pkg.shadowing = try self.copyValue(pkg.shadowing, alloc_ptr);
+                        }
+                    },
+                    .macro_env => {
+                        const env: *objects.MacroEnv = @ptrFromInt(addr);
+                        if (env.macros.isPointer() and !env.macros.isNil()) {
+                            env.macros = try self.copyValue(env.macros, alloc_ptr);
+                        }
+                        if (env.symbol_macros.isPointer() and !env.symbol_macros.isNil()) {
+                            env.symbol_macros = try self.copyValue(env.symbol_macros, alloc_ptr);
                         }
                     },
                     .chunk => {

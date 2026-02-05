@@ -1021,6 +1021,7 @@ pub const Repl = struct {
                 const nc = val.toPtr(runtime.NativeCode);
                 try writer.print("#<native-code 0x{x}>", .{nc.entry});
             },
+            .macro_env => try writer.writeAll("#<macro-env>"),
         }
     }
 
@@ -1751,7 +1752,8 @@ pub const Repl = struct {
         }
         var call_args = args;
         if (macro.has_env) {
-            call_args = try self.heap.allocCons(Value.nil, call_args);
+            const env_val = try self.heap.allocMacroEnv();
+            call_args = try self.heap.allocCons(env_val, call_args);
         }
         if (macro.has_whole) {
             call_args = try self.heap.allocCons(whole_form, call_args);

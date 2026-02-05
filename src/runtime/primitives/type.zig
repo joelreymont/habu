@@ -668,6 +668,7 @@ pub fn typeOf(heap: *Heap, val: Value) !Value {
         .generic_function => heap.intern("generic-function"),
         .method => heap.intern("method"),
         .native_code => heap.intern("compiled-function"),
+        .macro_env => heap.intern("macro-env"),
     };
 }
 

@@ -623,7 +623,8 @@ test "eval defmacro &whole &environment" {
     const w_cons = w_val.toPtr(Cons);
     const m_sym = try heap.intern("m");
     try testing.expectEqual(m_sym.raw, w_cons.car.raw);
-    try testing.expect(e_val.isNil());
+    try testing.expect(e_val.isBoxed());
+    try testing.expectEqual(runtime.TypeKind.macro_env, e_val.typeKind());
     try testing.expectEqual(@as(i64, 42), x_val.toFixnum());
 }
 

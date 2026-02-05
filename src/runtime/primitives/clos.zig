@@ -232,6 +232,7 @@ pub fn classOf(heap: *Heap, args: Value) !Value {
         .slotdef => "slot-definition",
         .generic_function => unreachable, // handled above
         .method => unreachable, // handled above
+        .macro_env => "t",
     };
 
     const type_sym = if ((try heap.internInPackage("CL", type_name))) |val| val else return error.InvalidArgument;

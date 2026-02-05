@@ -6573,6 +6573,7 @@ pub const Vm = struct {
             .generic_function => try result.appendSlice(self.allocator, "#<generic-function>"),
             .method => try result.appendSlice(self.allocator, "#<method>"),
             .native_code => try result.appendSlice(self.allocator, "#<native-code>"),
+            .macro_env => try result.appendSlice(self.allocator, "#<macro-env>"),
         }
     }
 

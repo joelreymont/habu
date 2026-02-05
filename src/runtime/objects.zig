@@ -335,6 +335,7 @@ pub const BoxedKind = enum(u64) {
     generic_function = 13,
     method = 14,
     native_code = 15,
+    macro_env = 16,
 };
 
 /// Stream direction
@@ -749,6 +750,15 @@ pub const Package = extern struct {
     shadowing: Value,
 };
 
+/// Macro environment object for &environment
+pub const MacroEnv = extern struct {
+    kind: BoxedKind align(16) = .macro_env,
+    /// Hash table of macro definitions
+    macros: Value,
+    /// Hash table of symbol-macro definitions
+    symbol_macros: Value,
+};
+
 /// Pathname object for file path manipulation
 /// Follows Common Lisp pathname component model
 pub const Pathname = extern struct {
@@ -910,6 +920,7 @@ pub fn objectSize(val: Value) usize {
                 .generic_function => @sizeOf(GenericFunction),
                 .method => @sizeOf(Method),
                 .native_code => @sizeOf(NativeCode),
+                .macro_env => @sizeOf(MacroEnv),
                 .chunk => {
                     const chunk = val.toPtr(Chunk);
                     // Header + const pool + bytecode (both aligned to 8)
@@ -973,9 +984,15 @@ pub fn forEachValue(val: Value, callback: *const fn (Value) void) void {
                     const chunk = val.toPtr(Chunk);
                     callback(chunk.lambda_expr);
                     callback(chunk.name);
+                    callback(chunk.allowed_keywords);
                     for (chunk.getConstants()) |c| {
                         callback(c);
                     }
+                },
+                .macro_env => {
+                    const env = val.toPtr(MacroEnv);
+                    callback(env.macros);
+                    callback(env.symbol_macros);
                 },
                 .string32, .rational, .complex, .stream, .bignum, .pathname, .array, .native_code => {
                     // No internal Values to scan

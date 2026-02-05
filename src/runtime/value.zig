@@ -66,6 +66,7 @@ pub const TypeKind = enum {
     generic_function,
     method,
     native_code,
+    macro_env,
 };
 
 /// A tagged Habu value (64-bit)
@@ -330,6 +331,7 @@ pub const Value = packed struct {
                     .generic_function => .generic_function,
                     .method => .method,
                     .native_code => .native_code,
+                    .macro_env => .macro_env,
                 };
             },
             .forwarding => .cons, // Shouldn't happen during normal execution
@@ -536,6 +538,10 @@ pub const Value = packed struct {
     }
 
     pub inline fn makeSlotDef(ptr: anytype) Value {
+        return makePtr(ptr, .boxed);
+    }
+
+    pub inline fn makeMacroEnv(ptr: anytype) Value {
         return makePtr(ptr, .boxed);
     }
 
