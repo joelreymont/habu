@@ -5090,17 +5090,39 @@
   "Translate logical pathname to physical"
   pathname)
 
-; logical-pathname-translations - get translations (stub)
+; Logical pathname translation table
+(defvar *logical-pathname-translations* (make-hash-table :test 'equal))
+
+(defun %logical-pathname-host-key (host)
+  (if (symbolp host)
+      (symbol-name host)
+      (string host)))
+
+; logical-pathname-translations - get translations for host
 (defun logical-pathname-translations (host)
   "Return translations for HOST"
-  (declare (ignore host))
-  nil)
+  (gethash (%logical-pathname-host-key host) *logical-pathname-translations*))
 
-; (setf logical-pathname-translations) - set translations (stub)
+; (setf logical-pathname-translations) - set translations for host
 (defun set-logical-pathname-translations (host translations)
   "Set translations for HOST"
-  (declare (ignore host translations))
-  nil)
+  (setf (gethash (%logical-pathname-host-key host) *logical-pathname-translations*)
+        translations)
+  translations)
+
+(defun load-logical-pathname-translations (host)
+  "Load HOST translations from HOST.translations.lisp and install them."
+  (let* ((host-key (%logical-pathname-host-key host))
+         (filename (concatenate 'string host-key ".translations.lisp"))
+         (value (load filename))
+         (translations (if (consp value)
+                           value
+                         (logical-pathname-translations host))))
+    (if translations
+        (progn
+          (set-logical-pathname-translations host translations)
+          t)
+      nil)))
 
 ; logical-pathname - coerce to logical pathname (stub)
 (defun logical-pathname (pathspec)
