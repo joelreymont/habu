@@ -1,9 +1,11 @@
 ---
 title: Add CLOS repro tests batch1
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-05T22:32:05.491324+01:00"
+created-at: "\"2026-02-05T22:32:05.491324+01:00\""
+closed-at: "2026-02-05T23:04:37.068233+01:00"
+close-reason: Added characterization tests for DEFINE-METHOD-COMBINATION-LONG.11.4 and MAKE-LOAD-FORM.ORDER.14
 blocks:
   - habu-map-failures-to-e9ce25c5
 ---

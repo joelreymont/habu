@@ -3016,3 +3016,59 @@ test "ansi repro top-level setq undeclared special defines global" {
     const result = try evalExpr(allocator, &heap, src);
     try testing.expect(result.isNil());
 }
+
+test "ansi repro define-method-combination-long.11.4 still nonconforming" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(progn
+        \\  (define-method-combination mc-long-11 () ((method-list *))
+        \\    (:arguments x1 &optional (y1 :y1 y1-supplied) &rest r1 &key (z1 :z1 z1-supplied))
+        \\    `(vector ,x1 ,y1 ,y1-supplied ,r1 ,z1 ,z1-supplied
+        \\             ,@(mapcar #'(lambda (m) `(call-method ,m)) method-list)))
+        \\  (defgeneric dmc-long-gf-11c (x1 &optional y1 &rest r1) (:method-combination mc-long-11))
+        \\  (defmethod dmc-long-gf-11c ((x (eql 1)) &optional y &rest r1) 'a)
+        \\  (defmethod dmc-long-gf-11c ((x integer) &optional (y 2) &rest r1) 'b)
+        \\  (list
+        \\    (dmc-long-gf-11c 0)
+        \\    (dmc-long-gf-11c 1)
+        \\    (dmc-long-gf-11c 0 0)
+        \\    (dmc-long-gf-11c 1 1)
+        \\    (dmc-long-gf-11c 1 1 2 3)))
+    );
+
+    const sym_b = try heap.intern("B");
+    var cur = result;
+    var count: usize = 0;
+    while (cur.isCons()) {
+        const c = cur.toPtr(Cons);
+        try testing.expect(c.car.eq(sym_b));
+        count += 1;
+        cur = c.cdr;
+    }
+    try testing.expect(cur.isNil());
+    try testing.expectEqual(@as(usize, 5), count);
+}
+
+test "ansi repro make-load-form.order.14 still nonconforming" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const src =
+        \\(let ((file "/tmp/habu-mlf-order14.lsp"))
+        \\  (with-open-file (s file :direction :output :if-exists :supersede :if-does-not-exist :create)
+        \\    (write-string "(defparameter *a* #.(list 1))\n" s))
+        \\  (compile-file file :verbose nil :print nil))
+    ;
+
+    try testing.expectError(error.TypeMismatch, evalExpr(allocator, &heap, src));
+}
