@@ -33,7 +33,8 @@ pub fn main() !void {
     try writer.flush();
 
     // Run REPL
-    var repl = try Repl.init(allocator, &heap, .{});
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
     defer repl.deinit();
     try repl.wireGlobalEnv();
 

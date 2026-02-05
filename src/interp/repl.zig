@@ -88,28 +88,30 @@ pub const Repl = struct {
     /// Current VM being used (for nested loads)
     current_vm: ?*Vm,
 
-    pub fn init(allocator: std.mem.Allocator, heap: *Heap, config: Config) !Repl {
-        // NOTE: Vm must be initialized in-place before Compiler.initWithHeap so
-        // subcomponents can safely keep pointers into vm (builtins, etc).
-        var self: Repl = undefined;
-        self.allocator = allocator;
-        self.heap = heap;
-        self.config = config;
-        self.chunk_pool = std.ArrayList(*runtime.objects.Chunk){};
+    pub fn init(self: *Repl, allocator: std.mem.Allocator, heap: *Heap, config: Config) !void {
+        // NOTE: Repl must be initialized in-place so Compiler subcomponents can
+        // safely keep pointers into vm (builtins, etc) without a move.
+        self.* = .{
+            .allocator = allocator,
+            .heap = heap,
+            .vm = undefined,
+            .config = config,
+            .compiler = undefined,
+            .chunk_pool = std.ArrayList(*runtime.objects.Chunk){},
+            .macros = std.AutoHashMap(Value, Value).init(allocator),
+            .line_editor = LineEditor.init(allocator),
+            .current_vm = null,
+        };
         errdefer self.chunk_pool.deinit(allocator);
-        self.macros = std.AutoHashMap(Value, Value).init(allocator);
         errdefer self.macros.deinit();
-        self.line_editor = LineEditor.init(allocator);
         errdefer self.line_editor.deinit();
-        self.current_vm = null;
 
         self.vm = try Vm.init(allocator, heap);
         errdefer self.vm.deinit();
+        self.vm.setChunkPool(self.chunk_pool.items);
 
         self.compiler = try Compiler.initWithHeap(allocator, &self.vm);
         errdefer self.compiler.deinit();
-
-        return self;
     }
 
     fn syncChunkPools(self: *Repl, vm: *Vm) void {
@@ -1817,6 +1819,21 @@ pub const Repl = struct {
     }
 };
 
+test "repl init wires compiler pointers to repl vm" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    try testing.expect(repl.compiler.vm == &repl.vm);
+    try testing.expect(repl.compiler.bi_checker.builtins == &repl.vm.builtins);
+}
+
 /// Patch make_closure instructions to use absolute chunk indices
 fn patchMakeClosureIndices(code: []u8, base: u16) void {
     var i: usize = 0;
@@ -1838,7 +1855,8 @@ fn patchMakeClosureIndices(code: []u8, base: u16) void {
 
 /// Convenience function to evaluate a string
 pub fn evalString(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {
-    var repl = try Repl.init(allocator, heap, .{});
+    var repl: Repl = undefined;
+    try repl.init(allocator, heap, .{});
     defer repl.deinit();
     return repl.eval(source);
 }
@@ -1897,7 +1915,8 @@ test "eval parse error sets error info" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = try Repl.init(allocator, &heap, .{});
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     var info: ?Repl.ErrorInfo = null;
@@ -1917,7 +1936,8 @@ test "loadFilePublic missing file errors" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = try Repl.init(allocator, &heap, .{});
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     var buf: [1024]u8 = undefined;
@@ -1932,7 +1952,8 @@ test "showType reports compile error" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = try Repl.init(allocator, &heap, .{});
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     var buf: [1024]u8 = undefined;
@@ -1951,7 +1972,8 @@ test "handleReadlineResult evals buffered input on error" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = try Repl.init(allocator, &heap, .{});
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     var out_buf: [256]u8 = undefined;
@@ -2055,7 +2077,8 @@ test "showType parse error propagates" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = try Repl.init(allocator, &heap, .{});
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     var buf = std.ArrayList(u8){};
@@ -2071,7 +2094,8 @@ test "repl chunk pool survives GC between evals" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = try Repl.init(allocator, &heap, .{});
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
     defer repl.deinit();
     try repl.wireGlobalEnv();
 
