@@ -6726,7 +6726,6 @@ pub const Vm = struct {
         if (fn_val.isGenericFunction()) {
             const gf = fn_val.toPtr(runtime.objects.GenericFunction);
             if (gf.dispatcher.isNil()) {
-                std.debug.print("doCall: generic function has no dispatcher! name={any}\n", .{gf.name});
                 return error.TypeMismatch;
             }
             fn_val = gf.dispatcher;
@@ -6735,7 +6734,6 @@ pub const Vm = struct {
         }
 
         if (!fn_val.isClosure()) {
-            std.debug.print("doCall: fn_val is not a closure! type={}, argc={}\n", .{ fn_val.typeKind(), argc });
             return error.TypeMismatch;
         }
 
@@ -6808,13 +6806,11 @@ pub const Vm = struct {
         } else if (opt_count > 0) {
             // Has optional params: argc must be in [arity, arity + opt_count]
             if (argc < arity or argc > max_positional) {
-                std.debug.print("doCall: optional arity mismatch! argc={}, arity={}, max_positional={}\n", .{ argc, arity, max_positional });
                 return error.TypeMismatch;
             }
         } else {
             // Fixed: need exact arity
             if (argc != arity) {
-                std.debug.print("doCall: arity mismatch! argc={}, arity={}, opt={}, key={}, rest={}\n", .{ argc, arity, opt_count, key_count, callee_chunk.has_rest });
                 return error.TypeMismatch;
             }
         }

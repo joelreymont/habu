@@ -2929,3 +2929,62 @@ test "copy-structure copies defstruct instance" {
 
     try testing.expect(cur.isNil());
 }
+
+test "ansi repro define-compiler-macro.8 currently TypeMismatch" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const src =
+        \\(let* ((sym (gensym))
+        \\       (form `(define-compiler-macro ,sym (x y)
+        \\                (declare (special *x*))
+        \\                (setf *x* :bad)
+        \\                `(list ,x ,y)))
+        \\       (form2 `(defmacro ,sym (x y) `(list ,x ,y))))
+        \\  (eval form)
+        \\  (eval form2)
+        \\  (let ((*x* :good))
+        \\    (declare (special *x*))
+        \\    (values
+        \\     (funcall (compile nil `(lambda (a b)
+        \\                              (declare (notinline ,sym))
+        \\                              (,sym a b)))
+        \\              7 23)
+        \\     *x*)))
+    ;
+
+    try testing.expectError(error.TypeMismatch, evalExpr(allocator, &heap, src));
+}
+
+test "ansi repro destructuring-bind.error.10 currently returns nil" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const src = "(destructuring-bind (foo nil bar) (list 1 2 3) nil)";
+    const result = try evalExpr(allocator, &heap, src);
+    try testing.expect(result.isNil());
+}
+
+test "ansi repro macrolet.36 currently InvalidSyntax" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const src =
+        \\(macrolet ((%m (&whole (m a b) c d) `(quote (,m ,a ,b ,c ,d))))
+        \\  (%m 1 2))
+    ;
+
+    try testing.expectError(error.InvalidSyntax, evalExpr(allocator, &heap, src));
+}
+
+test "ansi repro top-level setq undeclared special is UnboundVariable" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const src = "(setq *enclose-printer-errors* nil)";
+    try testing.expectError(error.UnboundVariable, evalExpr(allocator, &heap, src));
+}
