@@ -15,19 +15,61 @@
 - **Debugger**: REPL-based interactive debugger for `break`
 
 ## Current State
-- **Implemented**: ~500 primitives/macros
-- **Tracked (dots)**: 135 features
+- **Symbol coverage**: `978/978` symbols implemented (`docs/cl-symbols.md`)
+- **Functional parity**: not yet proven against `ansi-test`
 - **stdlib.habu**: 358 definitions, 2813 lines
-- **cl-spec-status.md**: Claims 100% (inaccurate - actually ~50%)
+- **Conformance gap**: no committed ansi-test baseline + no CI conformance gate
 
-## First Action: Symbol Audit
-Create `docs/cl-symbols.md` with all 978 CL symbols:
-- Column 1: Symbol name
-- Column 2: Status (✓ implemented, ⚠ partial, ✗ missing)
-- Column 3: Location (file:line or "stdlib")
-- Column 4: Notes
+## Active Plan: Functional Parity Closure
 
-Source: CLHS symbol index + dpans2 reference
+### Exit Criteria
+- `ansi-test` corpus pinned and reproducible.
+- Habu baseline report committed and machine-readable.
+- Zero failing ANSI test IDs in baseline delta.
+- PR smoke gate + nightly full conformance gate green.
+- Signoff report published with artifact links.
+
+### Required Steps (with dots)
+
+1. **Harness + Baseline**
+   - `habu-pin-ansi-test-8ec33815` Pin ANSI test corpus.
+   - `habu-add-ansi-test-05377306` Add deterministic test runner (`sbcl|habu`).
+   - `habu-normalize-ansi-output-9aa78296` Normalize raw logs to JSON.
+   - `habu-record-functional-parity-34a77dda` Commit baseline artifacts.
+   - `habu-map-failures-to-e9ce25c5` Map every failing ID to a subsystem bucket.
+
+2. **Reader/Printer closure (batch 1: <=5 failing IDs)**
+   - `habu-add-reader-printer-9a30a9ff` Add reduced repro tests.
+   - `habu-fix-reader-printer-d2f6a737` Implement fixes and close mapped IDs.
+
+3. **Condition/Restart closure (batch 1: <=5 failing IDs)**
+   - `habu-add-cond-restart-0e4fd31b` Add reduced repro tests.
+   - `habu-fix-cond-restart-59500793` Implement fixes and close mapped IDs.
+
+4. **CLOS closure (batch 1: <=5 failing IDs)**
+   - `habu-add-clos-repro-f4f345fc` Add reduced repro tests.
+   - `habu-fix-clos-failures-fb42028e` Implement fixes and close mapped IDs.
+
+5. **Pathname/Stream closure (batch 1: <=5 failing IDs)**
+   - `habu-add-pathname-stream-2228273a` Add reduced repro tests.
+   - `habu-fix-pathname-stream-48fc38c3` Implement fixes and close mapped IDs.
+
+6. **Compiler/Evaluator closure (batch 1: <=5 failing IDs)**
+   - `habu-add-compiler-eval-74528b18` Add reduced repro tests.
+   - `habu-fix-compiler-eval-b66ae46d` Implement fixes and close mapped IDs.
+
+7. **Package/Readtable closure (batch 1: <=5 failing IDs)**
+   - `habu-add-pkg-readtable-a3987459` Add reduced repro tests.
+   - `habu-fix-pkg-readtable-b7469182` Implement fixes and close mapped IDs.
+
+8. **Gate + Signoff**
+   - `habu-add-conformance-ci-d7fca6ff` Add smoke + nightly CI gates.
+   - `habu-publish-functional-parity-8447f41b` Publish final signoff report.
+
+### Dependency Order
+- Execute strictly in numeric order.
+- Each `fix-*` dot depends on its paired `add-*-repro` dot.
+- Do not close `habu-publish-functional-parity-8447f41b` before all `fix-*` dots and CI gate dot are closed.
 
 ## Gap Analysis
 
