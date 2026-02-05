@@ -3127,10 +3127,10 @@ test "ansi repro read-suppress.sharp-dot.1 ignores #. when suppressed" {
     // ANSI read-suppress.sharp-dot.1 should ignore #. when *read-suppress* is true.
     const src =
         \\(progn
-        \\  (setq *read-suppress* t)
+        \\  (setq common-lisp::*read-suppress* t)
         \\  (unwind-protect
         \\      (read-from-string "#.1" t nil :start 0)
-        \\    (setq *read-suppress* nil)))
+        \\    (setq common-lisp::*read-suppress* nil)))
     ;
     const result = try repl.eval(src);
     try testing.expect(result.isNil());
