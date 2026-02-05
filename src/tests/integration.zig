@@ -597,6 +597,36 @@ test "eval defmacro simple" {
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
+test "eval defmacro &whole &environment" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defmacro m (&whole w &environment e x) `(list ',w ',e ',x))");
+    const result = try repl.eval("(m 42)");
+    try testing.expect(result.isCons());
+
+    const r0 = result.toPtr(Cons);
+    const w_val = r0.car;
+    const r1 = r0.cdr.toPtr(Cons);
+    const e_val = r1.car;
+    const r2 = r1.cdr.toPtr(Cons);
+    const x_val = r2.car;
+
+    try testing.expect(w_val.isCons());
+    const w_cons = w_val.toPtr(Cons);
+    const m_sym = try heap.intern("m");
+    try testing.expectEqual(m_sym.raw, w_cons.car.raw);
+    try testing.expect(e_val.isNil());
+    try testing.expectEqual(@as(i64, 42), x_val.toFixnum());
+}
+
 test "eval defmacro with cons" {
     const allocator = testing.allocator;
 

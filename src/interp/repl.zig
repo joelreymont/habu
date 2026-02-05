@@ -71,6 +71,12 @@ pub const Config = struct {
     cont_prompt: []const u8 = "   ",
 };
 
+const MacroEntry = struct {
+    closure: Value,
+    has_whole: bool,
+    has_env: bool,
+};
+
 /// REPL state
 pub const Repl = struct {
     allocator: std.mem.Allocator,
@@ -82,7 +88,7 @@ pub const Repl = struct {
     /// Persistent chunk pool for closures (GC updates pointers in-place via Vm.chunk_pool roots)
     chunk_pool: std.ArrayList(*runtime.objects.Chunk),
     /// Macro definitions: symbol -> closure
-    macros: std.AutoHashMap(Value, Value),
+    macros: std.AutoHashMap(Value, MacroEntry),
     /// Line editor for interactive input
     line_editor: LineEditor,
     /// Current VM being used (for nested loads)
@@ -98,7 +104,7 @@ pub const Repl = struct {
             .config = config,
             .compiler = undefined,
             .chunk_pool = std.ArrayList(*runtime.objects.Chunk){},
-            .macros = std.AutoHashMap(Value, Value).init(allocator),
+            .macros = std.AutoHashMap(Value, MacroEntry).init(allocator),
             .line_editor = LineEditor.init(allocator),
             .current_vm = null,
         };
@@ -1274,6 +1280,65 @@ pub const Repl = struct {
         return cons.car.raw == b.defpackage.raw;
     }
 
+    fn normalizeMacroParams(self: *Repl, params_val: Value) !struct { params: Value, has_whole: bool, has_env: bool } {
+        const b = self.compiler.builtins.?; // must exist during repl use
+        var params = params_val;
+
+        var whole_var: ?Value = null;
+        if (params.isCons()) {
+            const first_cons = params.toPtr(Cons);
+            if (first_cons.car.raw == b.@"&whole".raw) {
+                if (first_cons.cdr.isCons()) {
+                    const rest = first_cons.cdr.toPtr(Cons);
+                    whole_var = rest.car;
+                    params = rest.cdr;
+                }
+            }
+        }
+
+        var env_var: ?Value = null;
+        var new_params = Value.nil;
+        var param_tail: ?*Cons = null;
+        var p = params;
+        while (p.isCons()) {
+            const pc = p.toPtr(Cons);
+            if (pc.car.raw == b.@"&environment".raw) {
+                if (pc.cdr.isCons()) {
+                    const env_rest = pc.cdr.toPtr(Cons);
+                    env_var = env_rest.car;
+                    p = env_rest.cdr;
+                } else {
+                    p = pc.cdr;
+                }
+                continue;
+            }
+
+            const new_cell = try self.heap.allocCons(pc.car, Value.nil);
+            const new_cons = new_cell.toPtr(Cons);
+            if (param_tail) |t| {
+                t.cdr = new_cell;
+            } else {
+                new_params = new_cell;
+            }
+            param_tail = new_cons;
+            p = pc.cdr;
+        }
+
+        var final_params = new_params;
+        if (env_var) |ev| {
+            final_params = try self.heap.allocCons(ev, final_params);
+        }
+        if (whole_var) |wv| {
+            final_params = try self.heap.allocCons(wv, final_params);
+        }
+
+        return .{
+            .params = final_params,
+            .has_whole = whole_var != null,
+            .has_env = env_var != null,
+        };
+    }
+
     /// Handle defmacro: compile the macro body and store the closure
     /// (defmacro name (args...) body...) -> stores (lambda (args...) body...) as macro
     fn handleDefmacro(self: *Repl, expr: Value, arena_alloc: std.mem.Allocator) !Value {
@@ -1289,10 +1354,18 @@ pub const Repl = struct {
 
         // Transform destructured params before building lambda
         const transformed_rest2 = try self.compiler.transformDestructuredParams(rest2);
+        if (!transformed_rest2.isCons()) return error.CompileError;
+
+        const def_cons = transformed_rest2.toPtr(Cons);
+        const raw_params = def_cons.car;
+        const body_list = def_cons.cdr;
+
+        const macro_params = try self.normalizeMacroParams(raw_params);
+        const runtime_rest2 = try self.heap.allocCons(macro_params.params, body_list);
 
         // Build (lambda (args...) body...) to evaluate
         const lambda_sym = try self.heap.intern("lambda");
-        const lambda_expr = try self.heap.allocCons(lambda_sym, transformed_rest2);
+        const lambda_expr = try self.heap.allocCons(lambda_sym, runtime_rest2);
 
         // Don't expand macros in defmacro body - they'll be expanded when the macro is called
         // Expanding here can cause issues with forward references and recursive macros
@@ -1363,7 +1436,11 @@ pub const Repl = struct {
 
         // Store the closure in REPL macro table for pre-compilation macro expansion
         // Store the AST in Compiler macro table for compile-time expansion
-        try self.macros.put(cons2.car, closure);
+        try self.macros.put(cons2.car, .{
+            .closure = closure,
+            .has_whole = macro_params.has_whole,
+            .has_env = macro_params.has_env,
+        });
         try self.compiler.macro_table.put(cons2.car, transformed_rest2);
 
         // Return the macro name as a symbol
@@ -1565,9 +1642,9 @@ pub const Repl = struct {
 
         // Check if head is a macro
         if (head.isSymbol()) {
-            if (self.macros.get(head)) |macro_closure| {
+            if (self.macros.get(head)) |macro_entry| {
                 // Expand macro once and return without recursive expansion
-                return try self.callMacro(macro_closure, cons.cdr);
+                return try self.callMacro(macro_entry, expr, cons.cdr);
             }
         }
 
@@ -1627,9 +1704,9 @@ pub const Repl = struct {
                 }
             }
 
-            if (self.macros.get(head)) |macro_closure| {
+            if (self.macros.get(head)) |macro_entry| {
                 // Expand macro: call the closure with the args
-                const expansion = try self.callMacro(macro_closure, cons.cdr);
+                const expansion = try self.callMacro(macro_entry, expr, cons.cdr);
                 // Recursively expand the result
                 return self.expandMacrosWithDepth(expansion, depth + 1);
             }
@@ -1666,14 +1743,22 @@ pub const Repl = struct {
     }
 
     /// Call a macro closure with arguments (as a list)
-    fn callMacro(self: *Repl, closure: Value, args: Value) ReplError!Value {
+    fn callMacro(self: *Repl, macro: MacroEntry, whole_form: Value, args: Value) ReplError!Value {
+        const closure = macro.closure;
         if (!closure.isClosure()) {
             std.debug.print("callMacro: closure is not a closure! type={}\n", .{closure.typeKind()});
             return error.RuntimeError;
         }
+        var call_args = args;
+        if (macro.has_env) {
+            call_args = try self.heap.allocCons(Value.nil, call_args);
+        }
+        if (macro.has_whole) {
+            call_args = try self.heap.allocCons(whole_form, call_args);
+        }
         // Count args
         var argc: usize = 0;
-        var arg_list = args;
+        var arg_list = call_args;
         while (arg_list.isCons()) {
             argc += 1;
             arg_list = arg_list.toPtr(Cons).cdr;
@@ -1691,7 +1776,7 @@ pub const Repl = struct {
 
         // push each arg as constant
         var const_idx: u16 = 1;
-        arg_list = args;
+        arg_list = call_args;
         while (arg_list.isCons()) {
             std.mem.writeInt(u16, code_buf[code_len..][0..2], @intFromEnum(Op.push_const), .little);
             code_len += 2;
@@ -1715,7 +1800,7 @@ pub const Repl = struct {
         var constants = std.ArrayList(Value){};
         defer constants.deinit(self.allocator);
         try constants.append(self.allocator, closure);
-        arg_list = args;
+        arg_list = call_args;
         while (arg_list.isCons()) {
             try constants.append(self.allocator, arg_list.toPtr(Cons).car);
             arg_list = arg_list.toPtr(Cons).cdr;
