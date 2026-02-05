@@ -50,10 +50,9 @@ fi
 
 zig build test
 
+dot off "$dot_id" -r "$reason"
 jj describe -m "$msg"
 jj bookmark set -r @ "$bookmark" >/dev/null
 jj bookmark track "$bookmark" --remote origin >/dev/null 2>&1 || true
 jj git push -b "$bookmark"
-dot off "$dot_id" -r "$reason"
 jj new
-
