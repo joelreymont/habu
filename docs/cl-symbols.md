@@ -6,8 +6,8 @@ This doc tracks the ANSI symbol set (978 unique) but allows duplicate rows for m
 (function/variable/macro/type, etc).
 
 Counts:
-- Symbols: ✓ 958 | ⚠ 10 | ✗ 10
-- Rows:    ✓ 991 | ⚠ 10 | ✗ 10
+- Symbols: ✓ 977 | ⚠ 1 | ✗ 0
+- Rows:    ✓ 1010 | ⚠ 1 | ✗ 0
 - Rows total: 1011
 
 Source-of-truth symbol set: `docs/cl-symbols-sbcl.txt`
@@ -16,14 +16,14 @@ Audit: `python3 tools/cl_symbols_audit.py`
 ## Lambda List Keywords (8)
 | Symbol | Status | Location | Notes |
 |--------|--------|----------|-------|
-| &allow-other-keys | ⚠ | compile.zig | Parsed but not fully enforced |
+| &allow-other-keys | ✓ | compile.zig:2949, emit.zig:1434, vm.zig:6780 | Parsed, stored in chunks, and enforced by VM keyword validation |
 | &aux | ✓ | compile.zig:453 | Aux bindings |
 | &body | ✓ | compile.zig:427 | Macro lambda lists |
-| &environment | ⚠ | compile.zig:2444 | Macro env (nil), REPL path incomplete |
+| &environment | ✓ | compile.zig:2675, repl.zig:1306, objects.zig:754 | MacroEnv object allocated and passed to macro expanders |
 | &key | ✓ | compile.zig:429 | Keyword args |
 | &optional | ✓ | compile.zig:428 | Optional args |
 | &rest | ✓ | compile.zig:426 | Rest args |
-| &whole | ⚠ | compile.zig:2444 | Macro whole form, REPL path incomplete |
+| &whole | ✓ | compile.zig:2658, repl.zig:1291 | Whole form binding supported in compiler and REPL macro paths |
 
 ## Special Variables (65)
 | Symbol | Status | Location | Notes |
@@ -1070,14 +1070,14 @@ Audit: `python3 tools/cl_symbols_audit.py`
 |--------|--------|----------|-------|
 | apply | ✓ | compile.zig:4135 | (apply fn &rest args) |
 | arithmetic-error | ✓ | lib/stdlib.habu:2020 | Condition type |
-| call-method | ✗ | - | Method combination helper macro |
-| compilation-speed | ⚠ | compile.zig:9675 | OPTIMIZE quality parsed but ignored |
+| call-method | ✓ | lib/stdlib.habu:4568 | Method combination helper macro |
+| compilation-speed | ✓ | compile.zig:10015 | OPTIMIZE quality parsed and stored (advisory) |
 | compiler-macro | ✓ | lib/stdlib.habu:4732 | Documentation doc-type (ignored) |
 | complement | ✓ | lib/stdlib.habu:2184 | Return negation of predicate |
 | complexp | ✓ | compile.zig:1018 | Complex predicate |
 | constantly | ✓ | lib/stdlib.habu:2179 | Return constant function |
 | copy-structure | ✓ | vector.zig:488 | Structure copier |
-| debug | ⚠ | compile.zig:9675 | OPTIMIZE quality parsed but ignored |
+| debug | ✓ | compile.zig:10015 | OPTIMIZE quality parsed and stored (advisory) |
 | declaration | ⚠ | compile.zig:9621 | Declaration spec accepted but ignored |
 | declare | ✓ | compile.zig:9518 | Local declarations |
 | dynamic-extent | ✓ | compile.zig:9540 | Declaration spec |
@@ -1091,30 +1091,30 @@ Audit: `python3 tools/cl_symbols_audit.py`
 | funcall | ✓ | compile.zig:4126 | Call function |
 | function-lambda-expression | ✓ | src/compiler/compile.zig, src/compiler/ir.zig, src/bytecode/emit.zig, src/bytecode/opcodes.zig, src/interp/vm.zig, src/jit/rt.zig, src/runtime/objects.zig, src/tests/integration.zig | Closure introspection |
 | functionp | ✓ | lib/stdlib.habu:3190 | Callable predicate |
-| get-setf-expansion | ✗ | - | SETF expander API |
+| get-setf-expansion | ✓ | lib/stdlib.habu:1055 | SETF expander API |
 | identity | ✓ | lib/stdlib.habu:204 | Return argument unchanged |
 | ignorable | ✓ | compile.zig:9554 | Declaration spec |
 | ignore | ✓ | compile.zig:9553 | Declaration spec |
 | inline | ✓ | compile.zig:9551 | Declaration spec |
 | integerp | ✓ | compile.zig:805 | Fixnum/bignum predicate |
-| invalid-method-error | ✗ | - | Method combination helper |
-| load-logical-pathname-translations | ✗ | - | Logical pathname translations |
+| invalid-method-error | ✓ | lib/stdlib.habu:4581 | Method combination helper |
+| load-logical-pathname-translations | ✓ | lib/stdlib.habu:5113 | Logical pathname translations loader |
 | make-condition | ✓ | primitives/condition.zig:10 | Condition constructor |
-| make-method | ✗ | - | Method combination helper |
+| make-method | ✓ | lib/stdlib.habu:4576 | Method combination helper |
 | make-sequence | ✓ | lib/stdlib.habu:2762 | Generic sequence constructor |
-| method-combination-error | ✗ | - | Method combination helper |
+| method-combination-error | ✓ | lib/stdlib.habu:4586 | Method combination helper |
 | notinline | ✓ | compile.zig:9552 | Declaration spec |
 | numberp | ✓ | compile.zig:801 | Number predicate |
-| optimize | ⚠ | compile.zig:9675 | Declaration spec accepted but ignored |
+| optimize | ✓ | compile.zig:9865 | Declaration spec parsed; qualities stored; safety affects assertion emission |
 | otherwise | ✓ | lib/stdlib.habu:26 | CASE/TYPECASE default marker |
 | proclaim | ✓ | compile.zig:9752 | Global declaration |
 | rationalp | ✓ | compile.zig:1017 | Rational predicate |
 | realp | ✓ | compile.zig:806 | Fixnum/bignum/float/rational predicate |
-| safety | ⚠ | compile.zig:9675 | OPTIMIZE quality parsed but ignored |
-| space | ⚠ | compile.zig:9675 | OPTIMIZE quality parsed but ignored |
+| safety | ✓ | compile.zig:10059 | safety=0 suppresses emitted runtime type assertions |
+| space | ✓ | compile.zig:10015 | OPTIMIZE quality parsed and stored (advisory) |
 | special | ✓ | compile.zig:9555 | Declaration spec |
-| speed | ⚠ | compile.zig:9675 | OPTIMIZE quality parsed but ignored |
-| standard | ✗ | - | Method combination name |
+| speed | ✓ | compile.zig:10015 | OPTIMIZE quality parsed and stored (advisory) |
+| standard | ✓ | lib/stdlib.habu:4564 | Standard method-combination name |
 | structure | ✓ | lib/stdlib.habu:4732 | Documentation doc-type (ignored) |
 | type | ✓ | compile.zig:9548 | Declaration spec; doc-type marker |
 | values-list | ✓ | compile.zig:5426 | Spread list into VALUES |
@@ -1126,8 +1126,8 @@ Audit: `python3 tools/cl_symbols_audit.py`
 
 - Symbol set: `docs/cl-symbols-sbcl.txt` (978 external symbols)
 - Document: 1011 entries (978 unique; duplicates allowed for multi-role symbols)
-- Unique status: ✓ 957 | ⚠ 10 | ✗ 11
-- Entry status: ✓ 990 | ⚠ 10 | ✗ 11
+- Unique status: ✓ 977 | ⚠ 1 | ✗ 0
+- Entry status: ✓ 1010 | ⚠ 1 | ✗ 0
 - Verify: `python3 tools/cl_symbols_audit.py`
 ---
 
