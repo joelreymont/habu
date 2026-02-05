@@ -443,6 +443,23 @@ test "stdlib setf expander registry" {
     try testing.expect(result.eq(Value.t));
 }
 
+test "stdlib define-setf-expander registers" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(define-setf-expander foo (place) (list place))");
+    const result = try repl.eval("(gethash 'foo *setf-expanders*)");
+    try testing.expect(!result.isNil());
+}
+
 test "eval define with expression" {
     const allocator = testing.allocator;
 

@@ -4421,10 +4421,11 @@
   (declare (ignore symbol expansion))
   nil)
 
-; define-setf-expander - define complex setf expansion (stub)
+; define-setf-expander - define complex setf expansion
 (defmacro define-setf-expander (access-fn lambda-list &body body)
-  (declare (ignore access-fn lambda-list body))
-  nil)
+  `(progn
+     (%set-setf-expander ',access-fn (lambda ,lambda-list ,@body))
+     ',access-fn))
 
 ; define-compiler-macro - compiler optimization hint (stub)
 (defmacro define-compiler-macro (name lambda-list &body body)
