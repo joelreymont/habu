@@ -172,6 +172,42 @@
 ; Package system
 (defvar *package* (find-package "CL-USER"))  ; current package
 
+; Package constructors/mutators backed by VM primitives
+(defun make-package (name &key nicknames use)
+  (%make-package name nicknames use))
+
+(defun rename-package (package new-name &optional new-nicknames)
+  (%rename-package package new-name new-nicknames))
+
+; Package designator helper
+(defun %ensure-package (package-designator)
+  (if (packagep package-designator)
+      package-designator
+    (or (find-package package-designator)
+        (error "Unknown package designator: ~S" package-designator))))
+
+; Package mutation functions
+(defun import (symbols &optional (package *package*))
+  (%import symbols (%ensure-package package)))
+
+(defun shadow (symbol-names &optional (package *package*))
+  (%shadow symbol-names (%ensure-package package)))
+
+(defun shadowing-import (symbols &optional (package *package*))
+  (%shadowing-import symbols (%ensure-package package)))
+
+(defun use-package (packages &optional (package *package*))
+  (%use-package packages (%ensure-package package)))
+
+(defun unexport (symbols &optional (package *package*))
+  (%unexport symbols (%ensure-package package)))
+
+(defun unuse-package (packages &optional (package *package*))
+  (%unuse-package packages (%ensure-package package)))
+
+(defun unintern (symbol &optional (package *package*))
+  (%unintern symbol (%ensure-package package)))
+
 ; CLOS metadata
 (defvar *class-metadata* (make-hash-table :test 'eq))
 ; *terminal-io* set by runtime
@@ -852,13 +888,15 @@
               (member x (cdr lst) :test test)
               (member x (cdr lst))))))
 
-; Assoc - find pair in alist by key
-(defun assoc (key alist)
+; Assoc - find pair in alist by key (supports :test)
+(defun assoc (item alist &key (test #'eql))
   (if (null alist)
       nil
-      (if (eq key (car (car alist)))
-          (car alist)
-          (assoc key (cdr alist)))))
+      (let ((pair (car alist)))
+        (if (and (consp pair)
+                 (funcall test item (car pair)))
+            pair
+            (assoc item (cdr alist) :test test)))))
 
 ; list* - like list but last arg is tail
 ; list* - creates improper list with last arg as tail
@@ -5272,7 +5310,10 @@
 ; compile-file-pathname - get output pathname (stub)
 (defun compile-file-pathname (input-file &key output-file &allow-other-keys)
   "Return the pathname that compile-file would write"
-  (or output-file (make-pathname :type "fasl" :defaults input-file)))
+  (let ((in-path (pathname input-file)))
+    (if output-file
+        (pathname output-file)
+        (make-pathname :type "fasl" :defaults in-path))))
 
 ; disassemble - show bytecode disassembly
 (defun disassemble (fn)

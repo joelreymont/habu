@@ -499,6 +499,18 @@ pub const Vm = struct {
         self.fboundp_context = context;
     }
 
+    fn pathDesignatorBytes(self: *Vm, val: Value) ![]const u8 {
+        return switch (val.typeKind()) {
+            .string => val.toPtr(String).bytes(),
+            .pathname => blk: {
+                const ns = try primitives.pathname.namestring(self.allocator, self.heap, &self.builtins, val);
+                if (!ns.isString()) return error.TypeMismatch;
+                break :blk ns.toPtr(String).bytes();
+            },
+            else => error.TypeMismatch,
+        };
+    }
+
     pub fn setExtRoots(self: *Vm, roots: []Value) void {
         self.ext_roots = roots;
     }
@@ -716,7 +728,7 @@ pub const Vm = struct {
     }
 
     /// Allocate a vector, running GC if needed
-    pub fn allocVector(self: *Vm, length: usize, capacity: usize) error{OutOfMemory, Overflow}!Value {
+    pub fn allocVector(self: *Vm, length: usize, capacity: usize) error{ OutOfMemory, Overflow }!Value {
         return if (self.heap.allocVector(length, capacity)) |val| val else |err| switch (err) {
             error.OutOfMemory => {
                 _ = try self.collectGarbage();
@@ -727,7 +739,7 @@ pub const Vm = struct {
     }
 
     /// Allocate a string, running GC if needed
-    pub fn allocString(self: *Vm, data: []const u8) error{OutOfMemory, Overflow}!Value {
+    pub fn allocString(self: *Vm, data: []const u8) error{ OutOfMemory, Overflow }!Value {
         return if (self.heap.allocBaseString(data)) |val| val else |err| switch (err) {
             error.OutOfMemory => {
                 var tmp: ?[]u8 = null;
@@ -938,6 +950,26 @@ pub const Vm = struct {
                 }
             }
         }
+    }
+
+    fn lookupSymbolGlobalIndex(self: *Vm, sym: *const Symbol) Error!?u16 {
+        const env = self.global_env orelse return null;
+        const local_name = sym.getName();
+
+        var qual_buf: [512]u8 = undefined;
+        const q = try qual_name.qualSym(self.allocator, sym, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+
+        if (env.lookup(q.name)) |idx| return idx;
+        if (env.lookup(local_name)) |idx| return idx;
+
+        const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:" };
+        var full_buf: [640]u8 = undefined;
+        for (prefixes) |prefix| {
+            const candidate = std.fmt.bufPrint(&full_buf, "{s}{s}", .{ prefix, local_name }) catch continue;
+            if (env.lookup(candidate)) |idx| return idx;
+        }
+        return null;
     }
 
     pub fn loadGlobal(self: *Vm, idx: u16) Error!Value {
@@ -2608,41 +2640,35 @@ pub const Vm = struct {
             },
             .read_file => {
                 const path_val = try self.pop();
-                if (!path_val.isString()) return error.TypeMismatch;
-                const path_str = path_val.toPtr(String);
-                const result = try io.readFile(self.heap, path_str.bytes());
+                const path_str = try self.pathDesignatorBytes(path_val);
+                const result = try io.readFile(self.heap, path_str);
                 try self.push(result);
             },
             .write_file => {
                 const content_val = try self.pop();
                 const path_val = try self.pop();
-                if (!path_val.isString()) return error.TypeMismatch;
-                const path_str = path_val.toPtr(String);
-                try io.writeFile(path_str.bytes(), content_val);
+                const path_str = try self.pathDesignatorBytes(path_val);
+                try io.writeFile(path_str, content_val);
                 try self.push(Value.nil);
             },
             .delete_file => {
                 const path_val = try self.pop();
-                if (!path_val.isString()) return error.TypeMismatch;
-                const path_str = path_val.toPtr(String);
-                try io.deleteFile(path_str.bytes());
+                const path_str = try self.pathDesignatorBytes(path_val);
+                try io.deleteFile(path_str);
                 try self.push(Value.nil);
             },
             .rename_file => {
                 const new_path_val = try self.pop();
                 const old_path_val = try self.pop();
-                if (!old_path_val.isString()) return error.TypeMismatch;
-                if (!new_path_val.isString()) return error.TypeMismatch;
-                const old_path_str = old_path_val.toPtr(String);
-                const new_path_str = new_path_val.toPtr(String);
-                try io.renameFile(old_path_str.bytes(), new_path_str.bytes());
+                const old_path_str = try self.pathDesignatorBytes(old_path_val);
+                const new_path_str = try self.pathDesignatorBytes(new_path_val);
+                try io.renameFile(old_path_str, new_path_str);
                 try self.push(Value.nil);
             },
             .probe_file => {
                 const path_val = try self.pop();
-                if (!path_val.isString()) return error.TypeMismatch;
-                const path_str = path_val.toPtr(String);
-                if (try io.probeFile(path_str.bytes())) {
+                const path_str = try self.pathDesignatorBytes(path_val);
+                if (try io.probeFile(path_str)) {
                     // Return the path as truename
                     try self.push(path_val);
                 } else {
@@ -2651,9 +2677,8 @@ pub const Vm = struct {
             },
             .file_write_date => {
                 const path_val = try self.pop();
-                if (!path_val.isString()) return error.TypeMismatch;
-                const path_str = path_val.toPtr(String);
-                const timestamp = try io.fileWriteDate(path_str.bytes());
+                const path_str = try self.pathDesignatorBytes(path_val);
+                const timestamp = try io.fileWriteDate(path_str);
                 try self.push(Value.makeFixnum(timestamp));
             },
             .file_author => {
@@ -2971,6 +2996,10 @@ pub const Vm = struct {
                     .symbol => blk: {
                         const sym = sym_val.toPtr(Symbol);
                         break :blk try self.allocString(sym.getName());
+                    },
+                    .keyword => blk: {
+                        const kw = sym_val.toPtr(runtime.Keyword);
+                        break :blk try self.allocString(kw.getName());
                     },
                     else => return error.TypeMismatch,
                 };
@@ -3738,6 +3767,18 @@ pub const Vm = struct {
                 try primitives.package.importSymbols(self.heap, symbols, pkg);
                 try self.push(Value.t);
             },
+            .pkg_use_package => {
+                const pkg = try self.pop();
+                const packages = try self.pop();
+                try primitives.package.usePackage(self.heap, packages, pkg);
+                try self.push(Value.t);
+            },
+            .pkg_export => {
+                const pkg = try self.pop();
+                const symbols = try self.pop();
+                try primitives.package.exportSymbols(self.heap, symbols, pkg);
+                try self.push(Value.t);
+            },
             .pkg_unexport => {
                 const pkg = try self.pop();
                 const symbols = try self.pop();
@@ -3772,19 +3813,21 @@ pub const Vm = struct {
                 const pkg = try self.pop();
                 const name = try self.pop();
                 const result = try primitives.package.findSymbol(self.heap, name, pkg);
-                // Returns (symbol . (status . nil)), push symbol then status
+                // Returns (symbol . (status . nil)); expose as primary + secondary value.
                 if (result.isCons()) {
                     const c1 = result.toPtr(runtime.Cons);
-                    try self.push(c1.car); // symbol
+                    try self.push(c1.car);
                     if (c1.cdr.isCons()) {
                         const c2 = c1.cdr.toPtr(runtime.Cons);
-                        try self.push(c2.car); // status
+                        self.secondary_values[0] = c2.car;
                     } else {
-                        try self.push(Value.nil);
+                        self.secondary_values[0] = Value.nil;
                     }
+                    self.secondary_values_count = 1;
                 } else {
                     try self.push(Value.nil);
-                    try self.push(Value.nil);
+                    self.secondary_values[0] = Value.nil;
+                    self.secondary_values_count = 1;
                 }
             },
             .pkg_find_all_symbols => {
@@ -4277,7 +4320,22 @@ pub const Vm = struct {
                 const pkg = try self.pop();
                 const name = try self.pop();
                 const result = try primitives.package.findSymbol(self.heap, name, pkg);
-                try self.push(result);
+                // Returns (symbol . (status . nil)); expose as primary + secondary value.
+                if (result.isCons()) {
+                    const c1 = result.toPtr(runtime.Cons);
+                    try self.push(c1.car);
+                    if (c1.cdr.isCons()) {
+                        const c2 = c1.cdr.toPtr(runtime.Cons);
+                        self.secondary_values[0] = c2.car;
+                    } else {
+                        self.secondary_values[0] = Value.nil;
+                    }
+                    self.secondary_values_count = 1;
+                } else {
+                    try self.push(Value.nil);
+                    self.secondary_values[0] = Value.nil;
+                    self.secondary_values_count = 1;
+                }
             },
             .open => {
                 const mode_val = try self.pop();
@@ -4800,29 +4858,24 @@ pub const Vm = struct {
             .merge_pathnames => {
                 const default_val = try self.pop();
                 const pn_val = try self.pop();
-
-                if (!pn_val.isPathname()) return error.TypeMismatch;
-                if (!default_val.isPathname()) return error.TypeMismatch;
-
-                const pn = pn_val.toPtr(runtime.Pathname);
-                const default_pn = default_val.toPtr(runtime.Pathname);
-
-                // Create new pathname with merged components
-                const bytes = try self.heap.allocRaw(@sizeOf(runtime.Pathname));
-                const result: *runtime.Pathname = @ptrCast(@alignCast(bytes));
-
-                // Fill nil components from defaults
-                result.* = .{
-                    .kind = .pathname,
-                    .host = if (pn.host != Value.nil) pn.host else default_pn.host,
-                    .device = if (pn.device != Value.nil) pn.device else default_pn.device,
-                    .directory = if (pn.directory != Value.nil) pn.directory else default_pn.directory,
-                    .name = if (pn.name != Value.nil) pn.name else default_pn.name,
-                    .type = if (pn.type != Value.nil) pn.type else default_pn.type,
-                    .version = if (pn.version != Value.nil) pn.version else default_pn.version,
-                };
-
-                try self.push(Value.makePathname(result));
+                const empty = try self.heap.allocPathname(
+                    Value.nil,
+                    Value.nil,
+                    Value.nil,
+                    Value.nil,
+                    Value.nil,
+                    Value.nil,
+                );
+                const pn_path = if (pn_val.isNil())
+                    empty
+                else
+                    try primitives.pathname.pathname(self.allocator, self.heap, pn_val);
+                const default_path = if (default_val.isNil())
+                    empty
+                else
+                    try primitives.pathname.pathname(self.allocator, self.heap, default_val);
+                const merged = try primitives.pathname.mergePathnames(self.heap, pn_path, default_path);
+                try self.push(merged);
             },
 
             .set_macro_character => {
@@ -5133,10 +5186,7 @@ pub const Vm = struct {
             .load => {
                 // Load and evaluate a file
                 const filename_val = try self.pop();
-                if (!filename_val.isString()) return error.TypeMismatch;
-
-                const str = filename_val.toPtr(String);
-                const filename = str.bytes();
+                const filename = try self.pathDesignatorBytes(filename_val);
 
                 // Call the load callback if set
                 if (self.load_callback) |callback| {
@@ -5275,17 +5325,10 @@ pub const Vm = struct {
                 // Use callback to check for function binding (macro, primitive, or defun)
                 const is_fbound = if (self.fboundp_callback) |cb|
                     try cb(val, self.fboundp_context.?)
-                else if (self.global_env) |env| blk: {
+                else blk: {
                     const sym = val.toPtr(Symbol);
-                    const local_name = sym.getName();
-                    // Build qualified name using symbol's package
-                    var qbuf: [512]u8 = undefined;
-                    const q = try qual_name.qualSym(self.allocator, sym, &qbuf);
-                    defer if (q.owned) self.allocator.free(q.name);
-                    const qname = q.name;
-                    // Check qualified name first, then local name
-                    break :blk (env.lookup(qname) orelse env.lookup(local_name)) != null;
-                } else false;
+                    break :blk (try self.lookupSymbolGlobalIndex(sym)) != null;
+                };
                 try self.push(if (is_fbound) Value.t else Value.nil);
             },
 
@@ -5297,21 +5340,8 @@ pub const Vm = struct {
                     .t => try self.push(Value.t),
                     .symbol => {
                         const sym = val.toPtr(Symbol);
-                        const local_name = sym.getName();
-                        // Build qualified name using symbol's package
-                        var qual_buf: [512]u8 = undefined;
-                        const q = try qual_name.qualSym(self.allocator, sym, &qual_buf);
-                        defer if (q.owned) self.allocator.free(q.name);
-                        const qname = q.name;
-                        // Look up symbol in global environment
-                        if (self.global_env) |env| {
-                            // Try qualified name first, then local name
-                            const idx = env.lookup(qname) orelse env.lookup(local_name);
-                            if (idx) |i| {
-                                try self.push(self.globals[i]);
-                            } else {
-                                return error.UnboundSymbol;
-                            }
+                        if (try self.lookupSymbolGlobalIndex(sym)) |idx| {
+                            try self.push(self.globals[idx]);
                         } else {
                             return error.UnboundSymbol;
                         }
@@ -5542,11 +5572,20 @@ pub const Vm = struct {
         return error.UnhandledThrow;
     }
 
+    fn globalNameMatches(sym_name: []const u8, global_name: []const u8) bool {
+        if (std.mem.eql(u8, sym_name, global_name)) return true;
+        if (global_name.len <= sym_name.len + 1) return false;
+        const split_idx = global_name.len - sym_name.len - 1;
+        if (global_name[split_idx] != ':') return false;
+        return std.mem.eql(u8, global_name[split_idx + 1 ..], sym_name);
+    }
+
     /// Handle return-from by searching for matching block frame and jumping to it
     fn pushProgvFrame(self: *Vm, symbols: Value, values: Value) Error!void {
         if (self.progv_sp >= MAX_PROGVS) return error.StackOverflow;
 
-        // Build list of (symbol . old-value) pairs
+        // Build list of (global-index . old-value) pairs.
+        // A single symbol name may map to multiple global aliases.
         var saved_bindings = Value.nil;
         var sym_list = symbols;
         var val_list = values;
@@ -5557,28 +5596,31 @@ pub const Vm = struct {
 
             if (!symbol.isSymbol()) return error.TypeMismatch;
 
-            // Get old value (or nil if unbound)
             const sym_ptr = symbol.toPtr(Symbol);
             const sym_name = sym_ptr.getName();
-            const global_idx = if (self.global_env) |env| env.lookup(sym_name) else null;
-            const old_value = if (global_idx) |idx| blk: {
-                if (idx < self.num_globals) break :blk self.globals[idx] else break :blk Value.nil;
-            } else Value.nil;
-
-            // Set new value
             const new_value = if (val_list.isCons()) val_list.toPtr(Cons).car else Value.nil;
-            if (global_idx) |idx| {
-                if (idx < MAX_GLOBALS) {
-                    self.globals[idx] = new_value;
-                    if (idx >= self.num_globals) {
-                        self.num_globals = idx + 1;
+
+            if (self.global_env) |env| {
+                var it = env.bindings.iterator();
+                while (it.next()) |entry| {
+                    const global_name = entry.key_ptr.*;
+                    if (!globalNameMatches(sym_name, global_name)) continue;
+
+                    const idx = entry.value_ptr.*;
+                    const old_value = if (idx < self.num_globals) self.globals[idx] else Value.nil;
+
+                    if (idx < MAX_GLOBALS) {
+                        self.globals[idx] = new_value;
+                        if (idx >= self.num_globals) {
+                            self.num_globals = idx + 1;
+                        }
                     }
+
+                    const idx_fix = Value.makeFixnum(@intCast(idx));
+                    const pair = try self.heap.allocCons(idx_fix, old_value);
+                    saved_bindings = try self.heap.allocCons(pair, saved_bindings);
                 }
             }
-
-            // Save (symbol . old-value) pair
-            const pair = try self.heap.allocCons(symbol, old_value);
-            saved_bindings = try self.heap.allocCons(pair, saved_bindings);
 
             // Advance lists
             sym_list = sym_cons.cdr;
@@ -5605,15 +5647,17 @@ pub const Vm = struct {
 
             if (pair.isCons()) {
                 const pair_cons = pair.toPtr(Cons);
-                const symbol = pair_cons.car;
+                const idx_val = pair_cons.car;
                 const old_value = pair_cons.cdr;
-                const sym_ptr = symbol.toPtr(Symbol);
-                const sym_name = sym_ptr.getName();
-                if (self.global_env) |env| {
-                    if (env.lookup(sym_name)) |idx| {
-                        if (idx < MAX_GLOBALS) {
-                            self.globals[idx] = old_value;
-                        }
+                if (!idx_val.isFixnum()) {
+                    bindings = binding_cons.cdr;
+                    continue;
+                }
+                const idx_signed = idx_val.toFixnum();
+                if (idx_signed >= 0) {
+                    const idx: usize = @intCast(idx_signed);
+                    if (idx < MAX_GLOBALS) {
+                        self.globals[idx] = old_value;
                     }
                 }
             }
@@ -5702,7 +5746,8 @@ pub const Vm = struct {
         return self.mapError(err);
     }
 
-    fn mapError(_: *Vm, err: anyerror) Error {
+    fn mapError(self: *Vm, err: anyerror) Error {
+        _ = self;
         return err;
     }
 
@@ -6752,6 +6797,14 @@ pub const Vm = struct {
         return false;
     }
 
+    fn callMismatch(self: *Vm, fn_val: Value, argc: u8, reason: []const u8) Error {
+        _ = self;
+        _ = fn_val;
+        _ = argc;
+        _ = reason;
+        return error.TypeMismatch;
+    }
+
     fn doCall(self: *Vm, argc: u8, tail: bool) Error!void {
         // Bounds check: need at least argc + 1 items on stack (args + function)
         if (self.sp < @as(usize, argc) + 1) return error.StackUnderflow;
@@ -6763,16 +6816,14 @@ pub const Vm = struct {
         if (fn_val.isGenericFunction()) {
             const gf = fn_val.toPtr(runtime.objects.GenericFunction);
             if (gf.dispatcher.isNil()) {
-                return error.TypeMismatch;
+                return self.callMismatch(fn_val, argc, "gf-dispatcher-nil");
             }
             fn_val = gf.dispatcher;
             // Update function slot on stack
             self.stack[self.sp - argc - 1] = fn_val;
         }
 
-        if (!fn_val.isClosure()) {
-            return error.TypeMismatch;
-        }
+        if (!fn_val.isClosure()) return self.callMismatch(fn_val, argc, "not-closure");
 
         const closure = fn_val.toPtr(runtime.Closure);
         const callee_chunk: *const Chunk = closure.code.toPtr(Chunk);
@@ -6800,19 +6851,19 @@ pub const Vm = struct {
         if (callee_chunk.has_rest != 0) {
             // Variadic: need at least required args
             if (argc < arity) {
-                return error.TypeMismatch;
+                return self.callMismatch(fn_val, argc, "rest-arity");
             }
         } else if (key_count > 0) {
             // Has keyword params: need at least required args
             if (argc < arity) {
-                return error.TypeMismatch;
+                return self.callMismatch(fn_val, argc, "key-min-arity");
             }
             // Keyword args must come in pairs (after actual positional args)
             const kw_arg_count = argc - actual_positional;
             if (kw_arg_count % 2 != 0) {
-                return error.TypeMismatch;
+                return self.callMismatch(fn_val, argc, "key-odd-pairs");
             }
-            if (callee_chunk.allow_other_keys == 0) {
+            if (callee_chunk.allow_other_keys == 0 and callee_chunk.allowed_keywords.raw != Value.nil.raw) {
                 const allow_kw = self.builtins.kw_allow_other_keys;
                 const arg_base = self.sp - argc;
                 var allow_unknown = false;
@@ -6835,7 +6886,7 @@ pub const Vm = struct {
                         const kw = self.stack[arg_base + i];
                         if (kw.raw == allow_kw.raw) continue;
                         if (!isAllowedKeyword(kw, allowed_list)) {
-                            return error.TypeMismatch;
+                            return self.callMismatch(fn_val, argc, "unknown-keyword");
                         }
                     }
                 }
@@ -6843,12 +6894,12 @@ pub const Vm = struct {
         } else if (opt_count > 0) {
             // Has optional params: argc must be in [arity, arity + opt_count]
             if (argc < arity or argc > max_positional) {
-                return error.TypeMismatch;
+                return self.callMismatch(fn_val, argc, "optional-arity");
             }
         } else {
             // Fixed: need exact arity
             if (argc != arity) {
-                return error.TypeMismatch;
+                return self.callMismatch(fn_val, argc, "fixed-arity");
             }
         }
 
@@ -7604,9 +7655,10 @@ test "vm class_of builds args list with GC" {
     const ret_op: u16 = @intFromEnum(Op.ret);
     const code = [_]u8{
         @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
-        42, 0, 0, 0,
+        42,                            0,
+        0,                             0,
         @truncate(class_of_op & 0xFF), @truncate(class_of_op >> 8),
-        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+        @truncate(ret_op & 0xFF),      @truncate(ret_op >> 8),
     };
 
     const chunk = Chunk{
@@ -7640,7 +7692,7 @@ test "vm jit survives gc and reloads const_pool" {
     try vm.enableJit(1024 * 1024, 1);
 
     const s_val = try heap.allocBaseString("ok");
-    const consts = [_]Value{ s_val };
+    const consts = [_]Value{s_val};
 
     const push_const_op: u16 = @intFromEnum(Op.push_const);
     const push_i32_op: u16 = @intFromEnum(Op.push_i32);
@@ -7648,14 +7700,14 @@ test "vm jit survives gc and reloads const_pool" {
     const pop_op: u16 = @intFromEnum(Op.pop);
     const ret_op: u16 = @intFromEnum(Op.ret);
     const code = [_]u8{
-        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
-        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),   1, 0, 0, 0,
-        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),   2, 0, 0, 0,
-        @truncate(make_list_op & 0xFF),  @truncate(make_list_op >> 8),  2,
-        @truncate(pop_op & 0xFF),        @truncate(pop_op >> 8),
-        @truncate(pop_op & 0xFF),        @truncate(pop_op >> 8),
-        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
-        @truncate(ret_op & 0xFF),        @truncate(ret_op >> 8),
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0,                             0,
+        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),   1,                             0,
+        0,                               0,                             @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        2,                               0,                             0,                             0,
+        @truncate(make_list_op & 0xFF),  @truncate(make_list_op >> 8),  2,                             @truncate(pop_op & 0xFF),
+        @truncate(pop_op >> 8),          @truncate(pop_op & 0xFF),      @truncate(pop_op >> 8),        @truncate(push_const_op & 0xFF),
+        @truncate(push_const_op >> 8),   0,                             0,                             @truncate(ret_op & 0xFF),
+        @truncate(ret_op >> 8),
     };
 
     const chunk_val = try heap.allocChunk(&code, &consts, 0, 0, 0, false, 0);
@@ -7695,8 +7747,9 @@ test "vm callClosure runs and restores" {
     const ret_op: u16 = @intFromEnum(Op.ret);
     const code = [_]u8{
         @truncate(push_op & 0xFF), @truncate(push_op >> 8),
-        42, 0, 0, 0,
-        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+        42,                        0,
+        0,                         0,
+        @truncate(ret_op & 0xFF),  @truncate(ret_op >> 8),
     };
 
     const chunk_val = try heap.allocChunk(&code, &.{}, 0, 0, 0, false, 0);
@@ -7778,9 +7831,9 @@ test "vm make_complex" {
     const ret_op: u16 = @intFromEnum(Op.ret);
 
     const code = [_]u8{
-        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0,                       0,
-        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),   2,                       0, 0, 0,
-        @truncate(make_complex_op & 0xFF), @truncate(make_complex_op >> 8),
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0,                                 0,
+        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),   2,                                 0,
+        0,                               0,                             @truncate(make_complex_op & 0xFF), @truncate(make_complex_op >> 8),
         @truncate(ret_op & 0xFF),        @truncate(ret_op >> 8),
     };
 
@@ -7840,9 +7893,9 @@ test "vm sym_name" {
     try testing.expectEqualStrings("nil", res_nil.toPtr(runtime.String).bytes());
 
     const code_t = [_]u8{
-        @truncate(push_t_op & 0xFF), @truncate(push_t_op >> 8),
+        @truncate(push_t_op & 0xFF),   @truncate(push_t_op >> 8),
         @truncate(sym_name_op & 0xFF), @truncate(sym_name_op >> 8),
-        @truncate(ret_op & 0xFF),    @truncate(ret_op >> 8),
+        @truncate(ret_op & 0xFF),      @truncate(ret_op >> 8),
     };
     const chunk_t = Chunk{
         .code = @constCast(&code_t),
@@ -7862,9 +7915,8 @@ test "vm sym_name" {
     const sym = try heap.intern("foo");
     const consts = [_]Value{sym};
     const code_sym = [_]u8{
-        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
-        @truncate(sym_name_op & 0xFF),   @truncate(sym_name_op >> 8),
-        @truncate(ret_op & 0xFF),        @truncate(ret_op >> 8),
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0,                        0,
+        @truncate(sym_name_op & 0xFF),   @truncate(sym_name_op >> 8),   @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
     };
     const chunk_sym = Chunk{
         .code = @constCast(&code_sym),
@@ -7976,11 +8028,10 @@ test "vm elt_set list" {
         0x11, 0x00, 0, // store_local 0
         0x10, 0x00, 0, // load_local 0
         0x02, 0x00, 1, 0, 0, 0, // push_i32 1 (index)
-        0x02, 0x00, 99, 0, 0, 0, // push_i32 99 (value)
-        @truncate(elt_set_op & 0xFF), @truncate(elt_set_op >> 8),
-        @truncate(pop_op & 0xFF), @truncate(pop_op >> 8),
+        0x02,                         0x00,                       99,                       0,                      0, 0, // push_i32 99 (value)
+        @truncate(elt_set_op & 0xFF), @truncate(elt_set_op >> 8), @truncate(pop_op & 0xFF), @truncate(pop_op >> 8),
         0x02, 0x00, 1, 0, 0, 0, // push_i32 1 (index)
-        0x10, 0x00, 0, // load_local 0
+        0x10,                          0x00,                        0, // load_local 0
         @truncate(list_nth_op & 0xFF), @truncate(list_nth_op >> 8),
         0x92, 0x00, // ret
     };
@@ -8017,10 +8068,10 @@ test "vm symbol_package nil" {
     const ret_op: u16 = @intFromEnum(Op.ret);
 
     const code = [_]u8{
-        @truncate(push_nil_op & 0xFF), @truncate(push_nil_op >> 8),
+        @truncate(push_nil_op & 0xFF),       @truncate(push_nil_op >> 8),
         @truncate(symbol_package_op & 0xFF), @truncate(symbol_package_op >> 8),
-        @truncate(package_name_op & 0xFF), @truncate(package_name_op >> 8),
-        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+        @truncate(package_name_op & 0xFF),   @truncate(package_name_op >> 8),
+        @truncate(ret_op & 0xFF),            @truncate(ret_op >> 8),
     };
 
     const chunk = Chunk{
@@ -8066,11 +8117,11 @@ test "vm aref aset vector" {
         0x02, 0x00, 1, 0, 0, 0, // push_i32 1 (index)
         0x02, 0x00, 99, 0, 0, 0, // push_i32 99 (value)
         @truncate(aset_op & 0xFF), @truncate(aset_op >> 8), 1, // aset sub_count=1
-        @truncate(pop_op & 0xFF), @truncate(pop_op >> 8),
+        @truncate(pop_op & 0xFF),  @truncate(pop_op >> 8),
         0x10, 0x00, 0, // load_local 0
         0x02, 0x00, 1, 0, 0, 0, // push_i32 1 (index)
         @truncate(aref_op & 0xFF), @truncate(aref_op >> 8), 1, // aref sub_count=1
-        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+        @truncate(ret_op & 0xFF),  @truncate(ret_op >> 8),
     };
 
     const chunk = Chunk{
@@ -8105,9 +8156,9 @@ test "vm symbol_value specials" {
     const ret_op: u16 = @intFromEnum(Op.ret);
 
     const code_nil = [_]u8{
-        @truncate(push_nil_op & 0xFF), @truncate(push_nil_op >> 8),
+        @truncate(push_nil_op & 0xFF),     @truncate(push_nil_op >> 8),
         @truncate(symbol_value_op & 0xFF), @truncate(symbol_value_op >> 8),
-        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+        @truncate(ret_op & 0xFF),          @truncate(ret_op >> 8),
     };
 
     const chunk_nil = Chunk{
@@ -8126,9 +8177,9 @@ test "vm symbol_value specials" {
     try testing.expect(res_nil.isNil());
 
     const code_t = [_]u8{
-        @truncate(push_t_op & 0xFF), @truncate(push_t_op >> 8),
+        @truncate(push_t_op & 0xFF),       @truncate(push_t_op >> 8),
         @truncate(symbol_value_op & 0xFF), @truncate(symbol_value_op >> 8),
-        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+        @truncate(ret_op & 0xFF),          @truncate(ret_op >> 8),
     };
 
     const chunk_t = Chunk{
@@ -8167,11 +8218,13 @@ test "vm format selector" {
     const consts = [_]Value{control};
 
     const code_nil = [_]u8{
-        @truncate(push_nil_op & 0xFF), @truncate(push_nil_op >> 8),
-        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
-        @truncate(push_nil_op & 0xFF), @truncate(push_nil_op >> 8),
-        @truncate(format_op & 0xFF), @truncate(format_op >> 8), 1,
-        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+        @truncate(push_nil_op & 0xFF),   @truncate(push_nil_op >> 8),
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8),
+        0,                               0,
+        @truncate(push_nil_op & 0xFF),   @truncate(push_nil_op >> 8),
+        @truncate(format_op & 0xFF),     @truncate(format_op >> 8),
+        1,                               @truncate(ret_op & 0xFF),
+        @truncate(ret_op >> 8),
     };
 
     const chunk_nil = Chunk{
@@ -8191,11 +8244,15 @@ test "vm format selector" {
     try testing.expectEqualStrings("no", res_nil.toPtr(runtime.String).bytes());
 
     const code_one = [_]u8{
-        @truncate(push_nil_op & 0xFF), @truncate(push_nil_op >> 8),
-        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
-        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 1, 0, 0, 0,
-        @truncate(format_op & 0xFF), @truncate(format_op >> 8), 1,
-        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+        @truncate(push_nil_op & 0xFF),   @truncate(push_nil_op >> 8),
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8),
+        0,                               0,
+        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),
+        1,                               0,
+        0,                               0,
+        @truncate(format_op & 0xFF),     @truncate(format_op >> 8),
+        1,                               @truncate(ret_op & 0xFF),
+        @truncate(ret_op >> 8),
     };
 
     const chunk_one = Chunk{
@@ -8236,10 +8293,9 @@ test "vm list_position count string" {
     const consts = [_]Value{str};
 
     const code_pos = [_]u8{
-        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 98, 0, 0, 0,
-        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
-        @truncate(list_position_op & 0xFF), @truncate(list_position_op >> 8),
-        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),   98, 0, 0,                                  0,
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0,  0, @truncate(list_position_op & 0xFF), @truncate(list_position_op >> 8),
+        @truncate(ret_op & 0xFF),        @truncate(ret_op >> 8),
     };
 
     const chunk_pos = Chunk{
@@ -8258,11 +8314,9 @@ test "vm list_position count string" {
     try testing.expectEqual(@as(i64, 1), res_pos.toFixnum());
 
     const code_count = [_]u8{
-        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 97, 0, 0, 0,
-        @truncate(code_char_op & 0xFF), @truncate(code_char_op >> 8),
-        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
-        @truncate(list_count_op & 0xFF), @truncate(list_count_op >> 8),
-        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),   97,                              0,                             0, 0,
+        @truncate(code_char_op & 0xFF),  @truncate(code_char_op >> 8),  @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
+        @truncate(list_count_op & 0xFF), @truncate(list_count_op >> 8), @truncate(ret_op & 0xFF),        @truncate(ret_op >> 8),
     };
 
     const chunk_count = Chunk{
@@ -8300,10 +8354,9 @@ test "vm list_find string returns character" {
     const consts = [_]Value{str};
 
     const code = [_]u8{
-        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 97, 0, 0, 0,
-        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
-        @truncate(list_find_op & 0xFF), @truncate(list_find_op >> 8),
-        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),   97, 0, 0,                              0,
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0,  0, @truncate(list_find_op & 0xFF), @truncate(list_find_op >> 8),
+        @truncate(ret_op & 0xFF),        @truncate(ret_op >> 8),
     };
 
     const chunk = Chunk{
@@ -8342,10 +8395,9 @@ test "vm list_position string invalid item errors" {
     const consts = [_]Value{ item_str, seq_str };
 
     const code = [_]u8{
-        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
-        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 1, 0,
-        @truncate(list_position_op & 0xFF), @truncate(list_position_op >> 8),
-        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+        @truncate(push_const_op & 0xFF),    @truncate(push_const_op >> 8),    0,                        0,
+        @truncate(push_const_op & 0xFF),    @truncate(push_const_op >> 8),    1,                        0,
+        @truncate(list_position_op & 0xFF), @truncate(list_position_op >> 8), @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
     };
 
     const chunk = Chunk{
@@ -8382,16 +8434,13 @@ test "vm equal vector string" {
     const ret_op: u16 = @intFromEnum(Op.ret);
 
     const code_vec = [_]u8{
-        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 1, 0, 0, 0,
-        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 2, 0, 0, 0,
-        @truncate(make_vec_n_op & 0xFF), @truncate(make_vec_n_op >> 8), 2,
-        @truncate(store_local_op & 0xFF), @truncate(store_local_op >> 8), 0,
-        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 1, 0, 0, 0,
-        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 2, 0, 0, 0,
-        @truncate(make_vec_n_op & 0xFF), @truncate(make_vec_n_op >> 8), 2,
-        @truncate(load_local_op & 0xFF), @truncate(load_local_op >> 8), 0,
-        @truncate(equal_op & 0xFF), @truncate(equal_op >> 8),
-        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),   1,                        0,                                0,                              0,
+        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),   2,                        0,                                0,                              0,
+        @truncate(make_vec_n_op & 0xFF), @truncate(make_vec_n_op >> 8), 2,                        @truncate(store_local_op & 0xFF), @truncate(store_local_op >> 8), 0,
+        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),   1,                        0,                                0,                              0,
+        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),   2,                        0,                                0,                              0,
+        @truncate(make_vec_n_op & 0xFF), @truncate(make_vec_n_op >> 8), 2,                        @truncate(load_local_op & 0xFF),  @truncate(load_local_op >> 8),  0,
+        @truncate(equal_op & 0xFF),      @truncate(equal_op >> 8),      @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
     };
 
     const chunk_vec = Chunk{
@@ -8414,10 +8463,9 @@ test "vm equal vector string" {
     const consts = [_]Value{ str_a, str_b };
 
     const code_str = [_]u8{
-        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0, 0,
-        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 1, 0,
-        @truncate(equal_op & 0xFF), @truncate(equal_op >> 8),
-        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 0,                        0,
+        @truncate(push_const_op & 0xFF), @truncate(push_const_op >> 8), 1,                        0,
+        @truncate(equal_op & 0xFF),      @truncate(equal_op >> 8),      @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
     };
 
     const chunk_str = Chunk{

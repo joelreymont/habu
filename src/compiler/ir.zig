@@ -379,8 +379,14 @@ pub const Ir = union(enum) {
         operand: *const Ir,
     },
 
+    /// Export symbols from package: (%export symbols package)
+    pkg_export: BinaryOp,
+
     /// Import symbols into package: (%import symbols package)
     pkg_import: BinaryOp,
+
+    /// Use packages in target package: (%use-package packages package)
+    pkg_use_package: BinaryOp,
 
     /// Unexport symbols from package: (%unexport symbols package)
     pkg_unexport: BinaryOp,
@@ -730,7 +736,7 @@ pub const Ir = union(enum) {
         device: *const Ir,
         directory: *const Ir,
         name: *const Ir,
-        @"type": *const Ir,
+        type: *const Ir,
         version: *const Ir,
     },
     make_string: BinaryOp, // Create string (length, char)
@@ -2325,7 +2331,7 @@ pub const IrBuilder = struct {
             .device = dev,
             .directory = dir,
             .name = n,
-            .@"type" = ty,
+            .type = ty,
             .version = ver,
         } };
         return node;

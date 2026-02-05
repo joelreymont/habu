@@ -1407,9 +1407,17 @@ pub const Op = enum(u16) {
     /// ( package -- t-or-nil )
     delete_package = 0x15F,
 
+    /// Export symbols from package
+    /// ( symbols package -- t )
+    pkg_export = 0x18E,
+
     /// Import symbols into package
     /// ( symbols package -- t )
     pkg_import = 0x160,
+
+    /// Add packages to package use-list
+    /// ( packages package -- t )
+    pkg_use_package = 0x18F,
 
     /// Unexport symbols from package
     /// ( symbols package -- t )
@@ -1985,7 +1993,9 @@ pub const Op = enum(u16) {
             .list_all_packages,
             .find_package,
             .delete_package,
+            .pkg_export,
             .pkg_import,
+            .pkg_use_package,
             .pkg_unexport,
             .pkg_shadow,
             .pkg_shadowing_import,

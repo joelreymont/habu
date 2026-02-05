@@ -2797,8 +2797,7 @@ test "read-char and peek-char from stream" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    const result = try evalExpr(allocator, &heap,
-        "(let ((s (make-string-input-stream \"ab\"))) (list (%peek-char-from-stream s) (%read-char-from-stream s) (%read-char-from-stream s) (%read-char-from-stream s)))");
+    const result = try evalExpr(allocator, &heap, "(let ((s (make-string-input-stream \"ab\"))) (list (%peek-char-from-stream s) (%read-char-from-stream s) (%read-char-from-stream s) (%read-char-from-stream s)))");
 
     try testing.expect(result.isCons());
     const cons1 = result.toPtr(Cons);
@@ -2827,8 +2826,7 @@ test "read-char-no-hang from stream" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    const result = try evalExpr(allocator, &heap,
-        "(let ((s (make-string-input-stream \"a\"))) (list (read-char-no-hang s) (read-char-no-hang s)))");
+    const result = try evalExpr(allocator, &heap, "(let ((s (make-string-input-stream \"a\"))) (list (read-char-no-hang s) (read-char-no-hang s)))");
 
     try testing.expect(result.isCons());
     const cons1 = result.toPtr(Cons);
@@ -2847,8 +2845,7 @@ test "listen reports input availability on stream" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    const result = try evalExpr(allocator, &heap,
-        "(let ((s (make-string-input-stream \"a\"))) (list (listen s) (%read-char-from-stream s) (listen s)))");
+    const result = try evalExpr(allocator, &heap, "(let ((s (make-string-input-stream \"a\"))) (list (listen s) (%read-char-from-stream s) (listen s)))");
 
     try testing.expect(result.isCons());
     const cons1 = result.toPtr(Cons);
@@ -2871,8 +2868,7 @@ test "copy-structure copies defstruct instance" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    const result = try evalExpr(allocator, &heap,
-        "(progn (defstruct foo (bar fixnum) (baz fixnum))\n" ++
+    const result = try evalExpr(allocator, &heap, "(progn (defstruct foo (bar fixnum) (baz fixnum))\n" ++
         "  (let* ((x (make-foo 1 2))\n" ++
         "         (y (copy-structure x))\n" ++
         "         (z (copy-foo x)))\n" ++
@@ -3081,6 +3077,42 @@ test "ansi repro make-load-form.order.14 compile-file returns pathname" {
 
     const result = try repl.eval(src);
     try testing.expect(result.isPathname());
+}
+
+test "ansi repro compile-file-pathname accepts string designator" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(compile-file-pathname \"init.lsp\")");
+    try testing.expect(result.isPathname());
+}
+
+test "ansi repro delete-file accepts pathname designator" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src =
+        \\(progn
+        \\  (with-open-file (s "/tmp/habu-delete-pathname.tmp" :direction :output :if-exists :supersede :if-does-not-exist :create)
+        \\    (write-string "x" s))
+        \\  (delete-file (pathname "/tmp/habu-delete-pathname.tmp")))
+    ;
+    const result = try repl.eval(src);
+    try testing.expect(result.isNil());
 }
 
 test "ansi repro write-to-string.3 honors allow-other-keys" {
@@ -3407,4 +3439,26 @@ test "ansi repro load.feature-plus.3 ignores #+lispworks branch" {
     const result = try repl.eval("(load \"tmp_pkg_feature_3.lsp\")");
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "ansi repro package dynamic *package* controls use-package target" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src =
+        \\(let* ((pkg-a (make-package "TMP-A" :use '("COMMON-LISP")))
+        \\       (pkg-b (make-package "TMP-B" :use '("COMMON-LISP"))))
+        \\  (let ((*package* pkg-b))
+        \\    (use-package "TMP-A")
+        \\    (member pkg-a (package-use-list pkg-b))))
+    ;
+    const result = try repl.eval(src);
+    try testing.expect(!result.isNil());
 }

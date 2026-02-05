@@ -318,7 +318,9 @@ pub const Emitter = struct {
             .make_string,
             .write_file,
             .merge_pathnames,
+            .pkg_export,
             .pkg_import,
+            .pkg_use_package,
             .pkg_unexport,
             .pkg_shadow,
             .pkg_shadowing_import,
@@ -456,7 +458,7 @@ pub const Emitter = struct {
                 max_idx = computeMaxLocalIndexImpl(op.device, max_idx);
                 max_idx = computeMaxLocalIndexImpl(op.directory, max_idx);
                 max_idx = computeMaxLocalIndexImpl(op.name, max_idx);
-                max_idx = computeMaxLocalIndexImpl(op.@"type", max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.type, max_idx);
                 max_idx = computeMaxLocalIndexImpl(op.version, max_idx);
             },
             .rationalp => |r| max_idx = computeMaxLocalIndexImpl(r.operand, max_idx),
@@ -703,7 +705,9 @@ pub const Emitter = struct {
             .host_namestring => |op| try self.emitUnaryOp(op.operand, .host_namestring),
             .wild_pathname_p => |op| try self.emitUnaryOp(op.operand, .wild_pathname_p),
             .merge_pathnames => |op| try self.emitBinaryOp(op, .merge_pathnames),
+            .pkg_export => |op| try self.emitBinaryOp(op, .pkg_export),
             .pkg_import => |op| try self.emitBinaryOp(op, .pkg_import),
+            .pkg_use_package => |op| try self.emitBinaryOp(op, .pkg_use_package),
             .pkg_unexport => |op| try self.emitBinaryOp(op, .pkg_unexport),
             .pkg_shadow => |op| try self.emitBinaryOp(op, .pkg_shadow),
             .pkg_shadowing_import => |op| try self.emitBinaryOp(op, .pkg_shadowing_import),
@@ -890,7 +894,7 @@ pub const Emitter = struct {
                 try self.emit(op.device);
                 try self.emit(op.directory);
                 try self.emit(op.name);
-                try self.emit(op.@"type");
+                try self.emit(op.type);
                 try self.emit(op.version);
                 try self.emitOp(.make_pathname);
                 // All 6 flags set: host=1, device=2, dir=4, name=8, type=16, version=32

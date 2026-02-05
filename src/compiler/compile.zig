@@ -557,6 +557,7 @@ pub const Builtins = struct {
     @"find-package": Value,
     @"delete-package": Value,
     @"%import": Value,
+    @"%use-package": Value,
     @"%unexport": Value,
     @"%shadow": Value,
     @"%shadowing-import": Value,
@@ -1113,6 +1114,7 @@ pub const Builtins = struct {
             .@"find-package" = try heap.intern("find-package"),
             .@"delete-package" = try heap.intern("delete-package"),
             .@"%import" = try heap.intern("%import"),
+            .@"%use-package" = try heap.intern("%use-package"),
             .@"%unexport" = try heap.intern("%unexport"),
             .@"%shadow" = try heap.intern("%shadow"),
             .@"%shadowing-import" = try heap.intern("%shadowing-import"),
@@ -1208,82 +1210,71 @@ pub const Builtins = struct {
     /// Comptime list of primitive function field names (not special forms)
     const primitive_fields = [_][]const u8{
         // Arithmetic
-        "+", "-", "*", "/", "mod", "%", "quot", "truncate", "rem",
+        "+",                      "-",                        "*",                         "/",                        "mod",                      "%",                           "quot",               "truncate",               "rem",
         // Comparison
-        "eq", "equal", "eql", "equalp", "<", ">", "<=", ">=", "=",
+        "eq",                     "equal",                    "eql",                       "equalp",                   "<",                        ">",                           "<=",                 ">=",                     "=",
         // List operations
-        "cons", "car", "cdr", "first", "rest",
-        "caar", "cadr", "cdar", "cddr",
-        "caaar", "caadr", "cadar", "caddr", "cdaar", "cdadr", "cddar", "cdddr",
-        "second", "third", "fourth",
-        "append", "length", "reverse", "nth", "nthcdr", "last",
-        "member", "assoc", "find", "position", "count", "remove",
-        "list", "rplaca", "rplacd",
+        "cons",                   "car",                      "cdr",                       "first",                    "rest",                     "caar",                        "cadr",               "cdar",                   "cddr",
+        "caaar",                  "caadr",                    "cadar",                     "caddr",                    "cdaar",                    "cdadr",                       "cddar",              "cdddr",                  "second",
+        "third",                  "fourth",                   "append",                    "length",                   "reverse",                  "nth",                         "nthcdr",             "last",                   "member",
+        "assoc",                  "find",                     "position",                  "count",                    "remove",                   "list",                        "rplaca",             "rplacd",
         // Type predicates
-        "consp", "symbolp", "numberp", "integerp", "realp", "stringp", "vectorp", "closurep", "keywordp",
-        "null", "not", "characterp", "floatp", "listp", "atom",
+                        "consp",
+        "symbolp",                "numberp",                  "integerp",                  "realp",                    "stringp",                  "vectorp",                     "closurep",           "keywordp",               "null",
+        "not",                    "characterp",               "floatp",                    "listp",                    "atom",
         // Character operations
-        "char-code", "code-char", "char=", "char<", "char>",
-        "%read-char", "%peek-char", "read", "read-from-string", "load", "unread-char", "listen",
-        "upgraded-complex-part-type",
-        "eval", "gensym", "macroexpand", "macroexpand-1",
+                            "char-code",                   "code-char",          "char=",                  "char<",
+        "char>",                  "%read-char",               "%peek-char",                "read",                     "read-from-string",         "load",                        "unread-char",        "listen",                 "upgraded-complex-part-type",
+        "eval",                   "gensym",                   "macroexpand",               "macroexpand-1",
         // Symbol operations
-        "boundp", "fboundp", "symbol-value", "symbol-function", "function-lambda-expression",
-        "typep", "type-of", "intern", "symbol-name", "copy-symbol", "makunbound", "set",
-        "copy-structure",
-        "get", "put", "remprop",
+                   "boundp",                   "fboundp",                     "symbol-value",       "symbol-function",        "function-lambda-expression",
+        "typep",                  "type-of",                  "intern",                    "symbol-name",              "copy-symbol",              "makunbound",                  "set",                "copy-structure",         "get",
+        "put",                    "remprop",
         // Numeric
-        "abs", "zerop", "plusp", "minusp", "evenp", "oddp",
+                         "abs",                       "zerop",                    "plusp",                    "minusp",                      "evenp",              "oddp",
         // Math functions
-        "sqrt", "sin", "cos", "tan", "exp", "log", "floor", "ceiling", "round",
+                          "sqrt",
+        "sin",                    "cos",                      "tan",                       "exp",                      "log",                      "floor",                       "ceiling",            "round",
         // Vector operations
-        "aref", "svref", "vector-length", "make-vector", "vector", "make-array",
+                         "aref",
+        "svref",                  "vector-length",            "make-vector",               "vector",                   "make-array",
         // String operations
-        "char", "schar", "string-length", "string-concat",
-        "string=", "string<", "string>", "string<=", "string>=",
-        "substring", "subseq",
+                      "char",                        "schar",              "string-length",          "string-concat",
+        "string=",                "string<",                  "string>",                   "string<=",                 "string>=",                 "substring",                   "subseq",
         // I/O
-        "write", "print", "princ", "terpri", "write-char", "random", "random-seed", "format",
+                    "write",                  "print",
+        "princ",                  "terpri",                   "write-char",                "random",                   "random-seed",              "format",
         // Character functions
-        "char-upcase", "char-downcase", "digit-char-p", "alpha-char-p",
+                             "char-upcase",        "char-downcase",          "digit-char-p",
+        "alpha-char-p",
         // String/number conversion
-        "parse-integer", "write-to-string",
+                  "parse-integer",            "write-to-string",
         // Bitwise operations
-        "logand", "logior", "logxor", "lognot", "ash",
-        "lognand", "lognor", "logandc1", "logandc2", "logeqv",
-        "logbitp", "logcount", "integer-length",
+                  "logand",                   "logior",                   "logxor",                      "lognot",             "ash",                    "lognand",
+        "lognor",                 "logandc1",                 "logandc2",                  "logeqv",                   "logbitp",                  "logcount",                    "integer-length",
         // File I/O
-        "read-file", "write-file", "delete-file", "rename-file",
-        "probe-file", "file-write-date", "file-author", "file-string-length",
-        "get-universal-time", "get-internal-real-time", "get-internal-run-time",
-        "get-decoded-time", "decode-universal-time", "encode-universal-time", "room",
-        "lisp-implementation-type", "lisp-implementation-version",
-        "software-type", "machine-type",
-        "machine-instance", "machine-version", "software-version",
-        "short-site-name", "long-site-name", "user-homedir-pathname",
+            "read-file",              "write-file",
+        "delete-file",            "rename-file",              "probe-file",                "file-write-date",          "file-author",              "file-string-length",          "get-universal-time", "get-internal-real-time", "get-internal-run-time",
+        "get-decoded-time",       "decode-universal-time",    "encode-universal-time",     "room",                     "lisp-implementation-type", "lisp-implementation-version", "software-type",      "machine-type",           "machine-instance",
+        "machine-version",        "software-version",         "short-site-name",           "long-site-name",           "user-homedir-pathname",
         // String construction
-        "make-string", "string-to-list", "list-to-string",
-        "string-upcase", "string-downcase", "concatenate",
+           "make-string",                 "string-to-list",     "list-to-string",         "string-upcase",
+        "string-downcase",        "concatenate",
         // Hash tables
-        "make-hash-table", "gethash", "puthash", "remhash",
-        "hash-table-count", "hash-table-capacity", "clrhash",
-        "hash-table-test", "hash-table-p", "hash-table-keys", "hash-table-alist", "sxhash",
+                     "make-hash-table",           "gethash",                  "puthash",                  "remhash",                     "hash-table-count",   "hash-table-capacity",    "clrhash",
+        "hash-table-test",        "hash-table-p",             "hash-table-keys",           "hash-table-alist",         "sxhash",
         // Numeric types
-        "rationalp", "complexp", "make-complex", "real-part", "imag-part",
-        "numerator", "denominator",
+                          "rationalp",                   "complexp",           "make-complex",           "real-part",
+        "imag-part",              "numerator",                "denominator",
         // Streams
-        "streamp", "input-stream-p", "output-stream-p", "open-stream-p", "interactive-stream-p",
-        "stream-element-type", "stream-external-format",
-        "make-string-input-stream", "make-string-output-stream",
-        "get-output-stream-string", "write-to-stream",
+                      "streamp",                  "input-stream-p",           "output-stream-p",             "open-stream-p",      "interactive-stream-p",   "stream-element-type",
+        "stream-external-format", "make-string-input-stream", "make-string-output-stream", "get-output-stream-string", "write-to-stream",
         // Pathname primitives
-        "pathname-host", "pathname-device", "pathname-directory",
-        "pathname-name", "pathname-type", "pathname-version",
-        "truename", "ensure-directories-exist",
-        "pathname", "parse-namestring", "namestring", "merge-pathnames",
-        "directory-namestring", "file-namestring", "host-namestring", "wild-pathname-p",
+                 "pathname-host",               "pathname-device",    "pathname-directory",     "pathname-name",
+        "pathname-type",          "pathname-version",         "truename",                  "ensure-directories-exist", "pathname",                 "parse-namestring",            "namestring",         "merge-pathnames",        "directory-namestring",
+        "file-namestring",        "host-namestring",          "wild-pathname-p",
         // Also callable
-        "funcall", "apply", "values", "values-list",
+                  "funcall",                  "apply",                    "values",                      "values-list",
     };
 
     /// Check if a symbol is a builtin function (not special form)
@@ -1474,6 +1465,31 @@ pub const Env = struct {
     /// Look up a compiler-generated name, returns (depth, index) or null
     pub fn lookupName(self: *const Env, name: []const u8) ?Binding {
         return self.lookupKey(.{ .pkg_ptr = 0, .uid = 0, .name = name });
+    }
+
+    /// Look up any lexical symbol by case-insensitive symbol name.
+    /// This is used for special vars like *PACKAGE* where package-qualified
+    /// symbol identity may differ across read/compile contexts.
+    pub fn lookupSymbolName(self: *const Env, sym_name: []const u8) ?Binding {
+        var it = self.bindings.iterator();
+        while (it.next()) |entry| {
+            const key = entry.key_ptr.*;
+            if (key.uid != 0) continue;
+            if (key.name.len == 0) continue;
+            if (!std.ascii.eqlIgnoreCase(key.name, sym_name)) continue;
+            return .{ .depth = 0, .index = entry.value_ptr.* };
+        }
+
+        if (self.parent) |parent| {
+            if (parent.lookupSymbolName(sym_name)) |result| {
+                if (self.new_frame) {
+                    return .{ .depth = result.depth + 1, .index = result.index };
+                }
+                return result;
+            }
+        }
+
+        return null;
     }
 };
 
@@ -2257,7 +2273,7 @@ pub const Compiler = struct {
         // Symbol (variable reference or symbol macro)
         if (expr.isSymbol()) {
             // Check for symbol macros first
-            if (self.symbol_macros.get(expr)) |expansion| {
+            if (self.lookupSymbolMacro(expr)) |expansion| {
                 return self.compileWithTail(expansion, env, in_tail);
             }
 
@@ -2283,14 +2299,31 @@ pub const Compiler = struct {
             const q = try self.getQualifiedName(sym, &qual_buf);
             defer if (q.owned) self.allocator.free(q.name);
             const qname = q.name;
-            // Allow forward references: allocate slot if not found
-            // Runtime will check if still undefined when accessed
-            const maybe_idx = self.globals.lookup(qname);
-            const idx = maybe_idx orelse blk: {
-                break :blk try self.globals.define(qname);
-            };
-            const ref = try self.builder.globalRef(qname, idx);
-            return ref;
+
+            // Resolve existing globals before creating a forward-reference slot.
+            // This avoids creating package-local NIL slots for imported CL symbols.
+            if (self.globals.lookup(qname)) |idx| {
+                return try self.builder.globalRef(qname, idx);
+            }
+            if (self.globals.lookup(name)) |idx| {
+                return try self.builder.globalRef(name, idx);
+            }
+
+            const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:" };
+            var full_buf: [640]u8 = undefined;
+            for (prefixes) |prefix| {
+                if (prefix.len + name.len > full_buf.len) continue;
+                @memcpy(full_buf[0..prefix.len], prefix);
+                @memcpy(full_buf[prefix.len .. prefix.len + name.len], name);
+                const candidate = full_buf[0 .. prefix.len + name.len];
+                if (self.globals.lookup(candidate)) |idx| {
+                    return try self.builder.globalRef(candidate, idx);
+                }
+            }
+
+            // Allow forward references: allocate slot if still not found.
+            const idx = try self.globals.define(qname);
+            return try self.builder.globalRef(qname, idx);
         }
 
         // List (special form or function call)
@@ -2592,8 +2625,8 @@ pub const Compiler = struct {
                     // Packages
                     .defpackage => self.compileDefpackage(tail),
                     .@"in-package" => self.compileInPackage(tail),
-                    .@"export" => self.compileExport(tail),
-                    .@"use-package" => self.compileUsePackage(tail),
+                    .@"export" => self.compileExport(tail, env),
+                    .@"use-package" => self.compileUsePackage(tail, env),
                     // Structure definition
                     .defstruct => self.compileDefstruct(tail, env),
                     // CLOS
@@ -2630,7 +2663,7 @@ pub const Compiler = struct {
             }
 
             // Check for macros - expand at compile time if VM is available
-            if (self.macro_table.get(head)) |macro_def| {
+            if (self.lookupMacroDef(head)) |macro_def| {
                 if (self.vm) |vm| {
                     const expanded = try self.expandMacro(macro_def, tail, expr, vm);
                     return self.compileWithTail(expanded, env, in_tail);
@@ -2938,6 +2971,69 @@ pub const Compiler = struct {
         };
     }
 
+    const KeyParamSpec = struct {
+        keyword_name: []const u8,
+        param_name: []const u8,
+        param_sym: ?Value,
+        default_expr: ?Value,
+    };
+
+    fn parseKeyParamSpec(item: Value) ?KeyParamSpec {
+        switch (item.typeKind()) {
+            .symbol, .t, .nil => {
+                const name = symLikeName(item) orelse return null;
+                return .{
+                    .keyword_name = name,
+                    .param_name = name,
+                    .param_sym = if (item.typeKind() == .symbol) item else null,
+                    .default_expr = null,
+                };
+            },
+            .cons => {
+                const item_cons = item.toPtr(Cons);
+                const param_spec = item_cons.car;
+                const default_expr = if (item_cons.cdr.isCons())
+                    item_cons.cdr.toPtr(Cons).car
+                else
+                    null;
+
+                switch (param_spec.typeKind()) {
+                    .symbol, .t, .nil => {
+                        const name = symLikeName(param_spec) orelse return null;
+                        return .{
+                            .keyword_name = name,
+                            .param_name = name,
+                            .param_sym = if (param_spec.typeKind() == .symbol) param_spec else null,
+                            .default_expr = default_expr,
+                        };
+                    },
+                    .cons => {
+                        const spec_cons = param_spec.toPtr(Cons);
+                        if (!spec_cons.cdr.isCons()) return null;
+                        const var_cons = spec_cons.cdr.toPtr(Cons);
+                        const kw_designator = spec_cons.car;
+                        const var_designator = var_cons.car;
+
+                        const keyword_name = switch (kw_designator.typeKind()) {
+                            .keyword => kw_designator.toPtr(runtime.Keyword).getName(),
+                            .symbol, .t, .nil => symLikeName(kw_designator) orelse return null,
+                            else => return null,
+                        };
+                        const param_name = symLikeName(var_designator) orelse return null;
+                        return .{
+                            .keyword_name = keyword_name,
+                            .param_name = param_name,
+                            .param_sym = if (var_designator.typeKind() == .symbol) var_designator else null,
+                            .default_expr = default_expr,
+                        };
+                    },
+                    else => return null,
+                }
+            },
+            else => return null,
+        }
+    }
+
     fn compileLambdaCore(self: *Compiler, args: Value, env: *const Env, return_type: ?Value) anyerror!*Ir {
         // (lambda (params...) body)
         // Params can be: symbol for untyped, (symbol type) for typed
@@ -2993,9 +3089,10 @@ pub const Compiler = struct {
             switch (param_item.typeKind()) {
                 .symbol, .t, .nil => {
                     const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
+                    const marker = self.canonicalBuiltinSymbol(param_item);
 
                     // Check for &rest/&body keyword (use symbol identity)
-                    if (param_item.raw == b.@"&rest".raw or param_item.raw == b.@"&body".raw) {
+                    if (marker.raw == b.@"&rest".raw or marker.raw == b.@"&body".raw) {
                         // Next element is the rest parameter name
                         if (!param_cons.cdr.isCons()) return error.InvalidLambda;
                         const rest_cons = param_cons.cdr.toPtr(Cons);
@@ -3011,7 +3108,7 @@ pub const Compiler = struct {
                     }
 
                     // Check for &optional keyword (use symbol identity)
-                    if (param_item.raw == b.@"&optional".raw) {
+                    if (marker.raw == b.@"&optional".raw) {
                         in_optional = true;
                         in_key = false;
                         param_list = param_cons.cdr;
@@ -3019,7 +3116,7 @@ pub const Compiler = struct {
                     }
 
                     // Check for &key keyword (use symbol identity)
-                    if (param_item.raw == b.@"&key".raw) {
+                    if (marker.raw == b.@"&key".raw) {
                         in_key = true;
                         in_optional = false;
                         in_aux = false;
@@ -3028,14 +3125,14 @@ pub const Compiler = struct {
                     }
 
                     // Check for &allow-other-keys keyword (use symbol identity)
-                    if (param_item.raw == b.@"&allow-other-keys".raw) {
+                    if (marker.raw == b.@"&allow-other-keys".raw) {
                         allow_other_keys = true;
                         param_list = param_cons.cdr;
                         continue;
                     }
 
                     // Check for &aux keyword (use symbol identity)
-                    if (param_item.raw == b.@"&aux".raw) {
+                    if (marker.raw == b.@"&aux".raw) {
                         in_aux = true;
                         in_key = false;
                         in_optional = false;
@@ -3095,8 +3192,9 @@ pub const Compiler = struct {
                 },
                 .cons => {
                     const typed = param_item.toPtr(Cons);
-                    const name_raw = if (symLikeName(typed.car)) |sym_name| sym_name else return error.InvalidLambda;
-                    const name = try self.allocator.dupe(u8, name_raw);
+                    const typed_name = symLikeName(typed.car);
+                    if (!in_key and typed_name == null) return error.InvalidLambda;
+                    const name = if (typed_name) |sym_name| try self.allocator.dupe(u8, sym_name) else "";
 
                     if (in_aux) {
                         // Aux variable: (name init-expr)
@@ -3118,22 +3216,24 @@ pub const Compiler = struct {
                             _ = try lambda_env.bindName(name);
                         }
                     } else if (in_key) {
-                        // Key parameter: (name default-expr) or just name
-                        // Compile default in parent env (not lambda env)
+                        // Key parameter supports both (var default) and
+                        // ((:keyword var) default) CL lambda-list syntax.
+                        const spec = parseKeyParamSpec(param_item) orelse return error.InvalidLambda;
+                        const keyword_name = try self.allocator.dupe(u8, spec.keyword_name);
+                        const param_name = try self.allocator.dupe(u8, spec.param_name);
                         var default_ir: ?*const Ir = null;
-                        if (typed.cdr.isCons()) {
-                            const default_cons = typed.cdr.toPtr(Cons);
-                            default_ir = try self.compile(default_cons.car, env);
+                        if (spec.default_expr) |default_expr| {
+                            default_ir = try self.compile(default_expr, env);
                         }
                         try key_params.append(self.allocator, .{
-                            .keyword = name,
-                            .name = name,
+                            .keyword = keyword_name,
+                            .name = param_name,
                             .default = default_ir,
                         });
-                        if (typed.car.typeKind() == .symbol) {
-                            _ = try lambda_env.bindSym(typed.car);
+                        if (spec.param_sym) |param_sym| {
+                            _ = try lambda_env.bindSym(param_sym);
                         } else {
-                            _ = try lambda_env.bindName(name);
+                            _ = try lambda_env.bindName(param_name);
                         }
                     } else if (in_optional) {
                         // Optional parameter: (name default-expr)
@@ -3685,6 +3785,12 @@ pub const Compiler = struct {
         const bindings_expr = cons.car;
         const body_exprs = cons.cdr;
 
+        // Special-variable dynamic binding path.
+        // Lower (let ((*var* init) ...) body) to progv so callees observe dynamic values.
+        if (try self.tryCompileSpecialLet(bindings_expr, body_exprs, env, in_tail)) |special_ir| {
+            return special_ir;
+        }
+
         // First pass: collect binding names for boxing analysis
         var binding_names = std.ArrayList([]const u8){};
         defer binding_names.deinit(self.allocator);
@@ -3696,14 +3802,19 @@ pub const Compiler = struct {
             const binding_cons = binding_list.toPtr(Cons);
             const binding = binding_cons.car;
 
-            if (!binding.isCons()) return error.InvalidLet;
-            const b = binding.toPtr(Cons);
-
-            if (!b.car.isSymbolLike()) return error.InvalidLet;
-            const name_raw = b.car.getSymbolName();
+            const bind_sym = if (binding.isSymbolLike()) blk: {
+                break :blk binding;
+            } else if (binding.isCons()) blk: {
+                const b = binding.toPtr(Cons);
+                if (!b.car.isSymbolLike()) return error.InvalidLet;
+                break :blk b.car;
+            } else {
+                return error.InvalidLet;
+            };
+            const name_raw = bind_sym.getSymbolName();
             const name_copy = try self.allocator.dupe(u8, name_raw);
             try binding_names.append(self.allocator, name_copy);
-            try binding_syms.append(self.allocator, b.car);
+            try binding_syms.append(self.allocator, bind_sym);
 
             binding_list = binding_cons.cdr;
         }
@@ -3749,8 +3860,6 @@ pub const Compiler = struct {
         while (binding_list.isCons()) : (name_idx += 1) {
             const binding_cons = binding_list.toPtr(Cons);
             const binding = binding_cons.car;
-
-            const b = binding.toPtr(Cons);
             const name = binding_names.items[name_idx];
             const sym = binding_syms.items[name_idx];
 
@@ -3765,9 +3874,15 @@ pub const Compiler = struct {
             };
 
             // Get value expression - compile in value_env (has reserved slots)
-            if (!b.cdr.isCons()) return error.InvalidLet;
-            const val_cons = b.cdr.toPtr(Cons);
-            var val_ir = try self.compile(val_cons.car, &value_env);
+            var val_ir = blk: {
+                if (binding.isSymbolLike()) break :blk try self.builder.lit(Value.nil);
+                if (!binding.isCons()) return error.InvalidLet;
+                const b = binding.toPtr(Cons);
+                if (b.cdr.isNil()) break :blk try self.builder.lit(Value.nil);
+                if (!b.cdr.isCons()) return error.InvalidLet;
+                const val_cons = b.cdr.toPtr(Cons);
+                break :blk try self.compile(val_cons.car, &value_env);
+            };
 
             // Check for type declaration and add type assertion
             var type_sym_to_check: ?Value = null;
@@ -3811,6 +3926,78 @@ pub const Compiler = struct {
         self.boxed_vars = saved_boxed;
 
         return try self.builder.letExpr(bindings.items, body_ir);
+    }
+
+    fn isSpecialBindingSym(self: *Compiler, sym: Value) bool {
+        if (!sym.isSymbolLike()) return false;
+        const name = sym.getSymbolName();
+        if (self.global_decls.hasDecl(name, .special)) return true;
+        return name.len >= 2 and name[0] == '*' and name[name.len - 1] == '*';
+    }
+
+    fn buildIrList(self: *Compiler, items: []const *const Ir) !*Ir {
+        var out = try self.builder.lit(Value.nil);
+        var i = items.len;
+        while (i > 0) {
+            i -= 1;
+            out = try self.builder.cons(items[i], out);
+        }
+        return out;
+    }
+
+    fn tryCompileSpecialLet(
+        self: *Compiler,
+        bindings_expr: Value,
+        body_exprs: Value,
+        env: *const Env,
+        in_tail: bool,
+    ) anyerror!?*Ir {
+        if (!bindings_expr.isCons()) return null;
+
+        var syms = std.ArrayList(Value){};
+        defer syms.deinit(self.allocator);
+        var vals = std.ArrayList(*const Ir){};
+        defer vals.deinit(self.allocator);
+
+        var bindings = bindings_expr;
+        while (bindings.isCons()) {
+            const bind_cons = bindings.toPtr(Cons);
+            const binding = bind_cons.car;
+
+            const sym = if (binding.isSymbolLike()) blk: {
+                break :blk binding;
+            } else if (binding.isCons()) blk: {
+                const b = binding.toPtr(Cons);
+                if (!b.car.isSymbolLike()) return null;
+                break :blk b.car;
+            } else {
+                return null;
+            };
+
+            if (!self.isSpecialBindingSym(sym)) return null;
+
+            const init_ir = if (binding.isSymbolLike()) blk: {
+                break :blk try self.builder.lit(Value.nil);
+            } else blk: {
+                const b = binding.toPtr(Cons);
+                if (b.cdr.isNil()) break :blk try self.builder.lit(Value.nil);
+                if (!b.cdr.isCons()) return error.InvalidLet;
+                break :blk try self.compile(b.cdr.toPtr(Cons).car, env);
+            };
+
+            try syms.append(self.allocator, sym);
+            try vals.append(self.allocator, init_ir);
+            bindings = bind_cons.cdr;
+        }
+
+        if (!bindings.isNil()) return error.InvalidLet;
+        if (syms.items.len == 0) return null;
+
+        const sym_list = try self.listFromSlice(syms.items);
+        const symbols_ir = try self.builder.lit(sym_list);
+        const values_ir = try self.buildIrList(vals.items);
+        const body_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
+        return try self.builder.progv(symbols_ir, values_ir, body_ir);
     }
 
     fn compileLetrecWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
@@ -4041,26 +4228,36 @@ pub const Compiler = struct {
         const binding = binding_cons.car;
         const rest = binding_cons.cdr;
 
-        if (!binding.isCons()) return error.InvalidLet;
-        const b = binding.toPtr(Cons);
-
-        if (!b.car.isSymbolLike()) return error.InvalidLet;
-        const name_raw = b.car.getSymbolName();
+        const bind_sym = if (binding.isSymbolLike()) blk: {
+            break :blk binding;
+        } else if (binding.isCons()) blk: {
+            const b = binding.toPtr(Cons);
+            if (!b.car.isSymbolLike()) return error.InvalidLet;
+            break :blk b.car;
+        } else {
+            return error.InvalidLet;
+        };
+        const name_raw = bind_sym.getSymbolName();
         const name = try self.allocator.dupe(u8, name_raw);
-
-        if (!b.cdr.isCons()) return error.InvalidLet;
-        const val_cons = b.cdr.toPtr(Cons);
 
         // Create extended environment first to get binding index
         var let_env = Env.initLet(self.allocator, env);
         defer let_env.deinit();
-        const index = if (b.car.typeKind() == .symbol)
-            try let_env.bindSym(b.car)
+        const index = if (bind_sym.typeKind() == .symbol)
+            try let_env.bindSym(bind_sym)
         else
             try let_env.bindName(name);
 
         // Compile value in current environment
-        const val_ir = try self.compile(val_cons.car, env);
+        const val_ir = blk: {
+            if (binding.isSymbolLike()) break :blk try self.builder.lit(Value.nil);
+            if (!binding.isCons()) return error.InvalidLet;
+            const b = binding.toPtr(Cons);
+            if (b.cdr.isNil()) break :blk try self.builder.lit(Value.nil);
+            if (!b.cdr.isCons()) return error.InvalidLet;
+            const val_cons = b.cdr.toPtr(Cons);
+            break :blk try self.compile(val_cons.car, env);
+        };
 
         // Create single-binding array with index
         const binding_array = [_]ir.Ir.Binding{.{ .name = name, .value = val_ir, .index = index }};
@@ -4637,6 +4834,10 @@ pub const Compiler = struct {
                 const func_sym = head.toPtr(Symbol);
                 const func_name = func_sym.getName();
 
+                if (try self.compileSetfCxr(func_name, place_args, value_expr, env)) |cxr_ir| {
+                    return cxr_ir;
+                }
+
                 // Accept both canonical "(SETF ...)" and legacy "(setf ...)" names.
                 const setf_name_upper = try std.fmt.allocPrint(self.allocator, "(SETF {s})", .{func_name});
                 defer self.allocator.free(setf_name_upper);
@@ -4667,6 +4868,48 @@ pub const Compiler = struct {
         }
 
         return error.InvalidSyntax;
+    }
+
+    fn compileSetfCxr(
+        self: *Compiler,
+        accessor_name: []const u8,
+        place_args: Value,
+        value_expr: Value,
+        env: *const Env,
+    ) anyerror!?*Ir {
+        if (accessor_name.len < 3) return null;
+        if (!((accessor_name[0] == 'c' or accessor_name[0] == 'C') and (accessor_name[accessor_name.len - 1] == 'r' or accessor_name[accessor_name.len - 1] == 'R'))) return null;
+
+        const ops = accessor_name[1 .. accessor_name.len - 1];
+        if (ops.len == 0) return null;
+        for (ops) |ch| {
+            const c = std.ascii.toLower(ch);
+            if (c != 'a' and c != 'd') return null;
+        }
+
+        if (!place_args.isCons()) return error.InvalidSyntax;
+        const arg1 = place_args.toPtr(Cons);
+        if (!arg1.cdr.isNil()) return error.InvalidSyntax;
+
+        var target_ir = try self.compile(arg1.car, env);
+        if (ops.len > 1) {
+            var i: usize = ops.len - 1;
+            while (i >= 1) : (i -= 1) {
+                const c = std.ascii.toLower(ops[i]);
+                target_ir = if (c == 'a')
+                    try self.builder.car(target_ir)
+                else
+                    try self.builder.cdr(target_ir);
+                if (i == 1) break;
+            }
+        }
+
+        const val_ir = try self.compile(value_expr, env);
+        return switch (std.ascii.toLower(ops[0])) {
+            'a' => try self.builder.rplaca(target_ir, val_ir),
+            'd' => try self.builder.rplacd(target_ir, val_ir),
+            else => unreachable,
+        };
     }
 
     fn compileSetfGlobalCall(
@@ -4754,7 +4997,8 @@ pub const Compiler = struct {
     /// Returns null if sym is not a known primitive
     fn compilePrimitiveFunctionRef(self: *Compiler, sym: Value) anyerror!?*Ir {
         const b = if (self.builtins) |val| val else return null;
-        const s = sym.raw;
+        const dispatch_sym = self.canonicalBuiltinSymbol(sym);
+        const s = dispatch_sym.raw;
 
         // Binary primitives: (lambda (a b) (prim a b))
         if (s == b.cons.raw) return try self.makeBinaryWrapper(&IrBuilder.cons);
@@ -4782,6 +5026,12 @@ pub const Compiler = struct {
         if (s == b.stringp.raw) return try self.makeUnaryWrapper(&IrBuilder.stringp);
         if (s == b.atom.raw) return try self.makeUnaryWrapper(&IrBuilder.atomp);
         if (s == b.listp.raw) return try self.makeUnaryWrapper(&IrBuilder.listp);
+        if (s == b.@"delete-file".raw) return try self.makeUnaryWrapper(&IrBuilder.deleteFile);
+        if (s == b.@"probe-file".raw) return try self.makeUnaryWrapper(&IrBuilder.probeFile);
+        if (s == b.@"file-write-date".raw) return try self.makeUnaryWrapper(&IrBuilder.fileWriteDate);
+        if (s == b.@"file-author".raw) return try self.makeUnaryWrapper(&IrBuilder.fileAuthor);
+        if (s == b.@"symbol-name".raw) return try self.makeUnaryPrimitiveWrapper(.sym_name);
+        if (s == b.intern.raw) return try self.makeUnaryPrimitiveWrapper(.intern);
         if (s == b.@"copy-structure".raw) return try self.makeUnaryWrapper(&IrBuilder.copyStructure);
         if (s == b.@"function-lambda-expression".raw) return try self.makeUnaryWrapper(&IrBuilder.functionLambdaExpression);
 
@@ -4807,6 +5057,18 @@ pub const Compiler = struct {
         // Create: (lambda (a) (op a))
         const a_ref = try self.builder.variable("a", 0, 0);
         const prim_call = try buildFn(self.builder, a_ref);
+        const params = [_][]const u8{"a"};
+        return try self.builder.lambda(&params, &.{}, &.{}, false, null, &.{}, prim_call);
+    }
+
+    fn makeUnaryPrimitiveWrapper(self: *Compiler, comptime tag: std.meta.Tag(Ir)) anyerror!*Ir {
+        const a_ref = try self.builder.variable("a", 0, 0);
+        const prim_call = try self.allocator.create(Ir);
+        prim_call.* = switch (tag) {
+            .sym_name => .{ .sym_name = .{ .operand = a_ref } },
+            .intern => .{ .intern = .{ .operand = a_ref } },
+            else => unreachable,
+        };
         const params = [_][]const u8{"a"};
         return try self.builder.lambda(&params, &.{}, &.{}, false, null, &.{}, prim_call);
     }
@@ -6226,109 +6488,110 @@ pub const Compiler = struct {
 
             switch (item.typeKind()) {
                 .symbol => {
-                const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
+                    const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
 
-                // Check for lambda-list keywords
-                if (item.raw == b.@"&optional".raw) {
-                    in_optional = true;
-                    in_key = false;
-                    param_list = cons.cdr;
-                    continue;
-                }
-
-                if (item.raw == b.@"&rest".raw or item.raw == b.@"&body".raw) {
-                    if (!cons.cdr.isCons()) return error.InvalidSyntax;
-                    const rest_cons = cons.cdr.toPtr(Cons);
-                    if (!rest_cons.car.isSymbol()) return error.InvalidSyntax;
-                    const rest_sym = rest_cons.car.toPtr(Symbol);
-                    try result.append(self.allocator, .{
-                        .kind = .rest,
-                        .name = rest_sym.getName(),
-                        .children = null,
-                        .default_expr = null,
-                        .keyword = null,
-                    });
-                    break; // &rest must be last
-                }
-
-                if (item.raw == b.@"&key".raw) {
-                    in_key = true;
-                    in_optional = false;
-                    param_list = cons.cdr;
-                    continue;
-                }
-
-                // Simple symbol parameter
-                const sym = item.toPtr(Symbol);
-                const name = sym.getName();
-
-                if (in_key) {
-                    try result.append(self.allocator, .{
-                        .kind = .key,
-                        .name = name,
-                        .children = null,
-                        .default_expr = null,
-                        .keyword = name,
-                    });
-                } else if (in_optional) {
-                    try result.append(self.allocator, .{
-                        .kind = .optional,
-                        .name = name,
-                        .children = null,
-                        .default_expr = null,
-                        .keyword = null,
-                    });
-                } else {
-                    try result.append(self.allocator, .{
-                        .kind = .simple,
-                        .name = name,
-                        .children = null,
-                        .default_expr = null,
-                        .keyword = null,
-                    });
-                }
-                },
-                .cons => {
-                const nested = item.toPtr(Cons);
-
-                if (in_optional or in_key) {
-                    // (name default) form
-                    if (!nested.car.isSymbol()) return error.InvalidSyntax;
-                    const name_sym = nested.car.toPtr(Symbol);
-                    const name = name_sym.getName();
-                    var default_expr: ?Value = null;
-                    if (nested.cdr.isCons()) {
-                        default_expr = nested.cdr.toPtr(Cons).car;
+                    // Check for lambda-list keywords
+                    if (item.raw == b.@"&optional".raw) {
+                        in_optional = true;
+                        in_key = false;
+                        param_list = cons.cdr;
+                        continue;
                     }
+
+                    if (item.raw == b.@"&rest".raw or item.raw == b.@"&body".raw) {
+                        if (!cons.cdr.isCons()) return error.InvalidSyntax;
+                        const rest_cons = cons.cdr.toPtr(Cons);
+                        if (!rest_cons.car.isSymbol()) return error.InvalidSyntax;
+                        const rest_sym = rest_cons.car.toPtr(Symbol);
+                        try result.append(self.allocator, .{
+                            .kind = .rest,
+                            .name = rest_sym.getName(),
+                            .children = null,
+                            .default_expr = null,
+                            .keyword = null,
+                        });
+                        break; // &rest must be last
+                    }
+
+                    if (item.raw == b.@"&key".raw) {
+                        in_key = true;
+                        in_optional = false;
+                        param_list = cons.cdr;
+                        continue;
+                    }
+
+                    // Simple symbol parameter
+                    const sym = item.toPtr(Symbol);
+                    const name = sym.getName();
 
                     if (in_key) {
                         try result.append(self.allocator, .{
                             .kind = .key,
                             .name = name,
                             .children = null,
-                            .default_expr = default_expr,
+                            .default_expr = null,
                             .keyword = name,
                         });
-                    } else {
+                    } else if (in_optional) {
                         try result.append(self.allocator, .{
                             .kind = .optional,
                             .name = name,
                             .children = null,
-                            .default_expr = default_expr,
+                            .default_expr = null,
+                            .keyword = null,
+                        });
+                    } else {
+                        try result.append(self.allocator, .{
+                            .kind = .simple,
+                            .name = name,
+                            .children = null,
+                            .default_expr = null,
                             .keyword = null,
                         });
                     }
-                } else {
-                    // Nested destructuring list
-                    const children = try self.parseDestructParams(item);
-                    try result.append(self.allocator, .{
-                        .kind = .nested,
-                        .name = null,
-                        .children = children,
-                        .default_expr = null,
-                        .keyword = null,
-                    });
-                }
+                },
+                .cons => {
+                    const nested = item.toPtr(Cons);
+
+                    if (in_optional or in_key) {
+                        if (in_key) {
+                            // &key accepts (var default) and ((:keyword var) default)
+                            const spec = parseKeyParamSpec(item) orelse return error.InvalidSyntax;
+                            try result.append(self.allocator, .{
+                                .kind = .key,
+                                .name = spec.param_name,
+                                .children = null,
+                                .default_expr = spec.default_expr,
+                                .keyword = spec.keyword_name,
+                            });
+                        } else {
+                            // (name default) form
+                            if (!nested.car.isSymbol()) return error.InvalidSyntax;
+                            const name_sym = nested.car.toPtr(Symbol);
+                            const name = name_sym.getName();
+                            var default_expr: ?Value = null;
+                            if (nested.cdr.isCons()) {
+                                default_expr = nested.cdr.toPtr(Cons).car;
+                            }
+                            try result.append(self.allocator, .{
+                                .kind = .optional,
+                                .name = name,
+                                .children = null,
+                                .default_expr = default_expr,
+                                .keyword = null,
+                            });
+                        }
+                    } else {
+                        // Nested destructuring list
+                        const children = try self.parseDestructParams(item);
+                        try result.append(self.allocator, .{
+                            .kind = .nested,
+                            .name = null,
+                            .children = children,
+                            .default_expr = null,
+                            .keyword = null,
+                        });
+                    }
                 },
                 else => return error.InvalidSyntax,
             }
@@ -6648,37 +6911,77 @@ pub const Compiler = struct {
         return try self.builder.lit(try heap.intern(pkg_name));
     }
 
-    /// Compile export: (export 'sym1 'sym2 ...)
-    /// Exports symbols from the current package
-    fn compileExport(self: *Compiler, args: Value) anyerror!*Ir {
-        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
-        const pkg = if (heap.current_package) |val| val else return error.InvalidSyntax;
+    /// Compile export: (export symbols &optional package)
+    /// Runtime semantics: evaluate arguments, then export symbols from package.
+    fn compileExport(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        if (!args.isCons()) return try self.builder.lit(Value.nil);
 
-        var syms = args;
-        while (syms.isCons()) {
-            const cons = syms.toPtr(Cons);
-            const sym_name = if (self.getStringOrSymbolName(cons.car)) |val| val else return error.InvalidSyntax;
-            try pkg.exportSymbol(sym_name);
-            syms = cons.cdr;
-        }
+        const cons1 = args.toPtr(Cons);
+        const symbols_ir = try self.compile(cons1.car, env);
 
-        return try self.builder.lit(Value.t);
+        const pkg_ir = if (cons1.cdr.isCons()) blk: {
+            const cons2 = cons1.cdr.toPtr(Cons);
+            break :blk try self.compile(cons2.car, env);
+        } else blk: {
+            // Default package must be runtime *package*, not compile-time current package.
+            if (env.lookupSymbolName("*PACKAGE*")) |binding| {
+                break :blk try self.builder.variable("*PACKAGE*", binding.depth, binding.index);
+            }
+
+            const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+            const pkg_sym = if (heap.cl_package) |cl_pkg|
+                cl_pkg.findAccessibleUpper("*PACKAGE*") orelse try heap.intern("*package*")
+            else
+                try heap.intern("*package*");
+            break :blk try self.compile(pkg_sym, env);
+        };
+
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .pkg_export = .{ .left = symbols_ir, .right = pkg_ir } };
+        return node;
     }
 
-    /// Compile use-package: (use-package "pkg")
-    /// Makes another package's exports available in current package
-    fn compileUsePackage(self: *Compiler, args: Value) anyerror!*Ir {
-        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
-        if (!args.isCons()) return error.InvalidSyntax;
+    /// Compile use-package: (use-package packages &optional package)
+    /// Runtime semantics: evaluate arguments, then update target package use-list.
+    fn compileUsePackage(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        if (!args.isCons()) return try self.builder.lit(Value.nil);
 
-        const pkg = if (heap.current_package) |val| val else return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
-        const other_name = if (self.getStringOrSymbolName(cons1.car)) |val| val else return error.InvalidSyntax;
+        const packages_ir = try self.compile(cons1.car, env);
 
-        const other_pkg = if (heap.findPackage(other_name)) |val| val else return error.InvalidSyntax;
-        try pkg.usePackage(other_pkg);
+        const pkg_ir = if (cons1.cdr.isCons()) blk: {
+            const cons2 = cons1.cdr.toPtr(Cons);
+            break :blk try self.compile(cons2.car, env);
+        } else blk: {
+            // Default package must be runtime *package*, not compile-time current package.
+            if (env.lookupSymbolName("*PACKAGE*")) |binding| {
+                break :blk try self.builder.variable("*PACKAGE*", binding.depth, binding.index);
+            }
 
-        return try self.builder.lit(Value.t);
+            const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+            const pkg_sym = if (heap.cl_package) |cl_pkg|
+                cl_pkg.findAccessibleUpper("*PACKAGE*") orelse try heap.intern("*package*")
+            else
+                try heap.intern("*package*");
+            break :blk try self.compile(pkg_sym, env);
+        };
+
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .pkg_use_package = .{ .left = packages_ir, .right = pkg_ir } };
+        return node;
+    }
+
+    fn stripSingleQuote(self: *Compiler, val: Value) Value {
+        if (self.builtins) |b| {
+            if (val.isCons()) {
+                const q0 = val.toPtr(Cons);
+                if (q0.car.isSymbol() and q0.car.raw == b.quote.raw and q0.cdr.isCons()) {
+                    const q1 = q0.cdr.toPtr(Cons);
+                    if (q1.cdr.isNil()) return q1.car;
+                }
+            }
+        }
+        return val;
     }
 
     /// Helper to get string from a string or symbol value
@@ -6687,6 +6990,7 @@ pub const Compiler = struct {
         return switch (val.typeKind()) {
             .string => val.toPtr(runtime.String).bytes(),
             .symbol => val.toPtr(Symbol).getName(),
+            .keyword => val.toPtr(runtime.Keyword).getName(),
             else => null,
         };
     }
@@ -7912,102 +8216,102 @@ pub const Compiler = struct {
                     const slot_name_raw = spec_cons.car.toPtr(Symbol).getName();
                     const slot_name = try self.allocator.dupe(u8, slot_name_raw);
 
-                // Extract slot options
-                var field_type: *const types.Type = &types.t_any;
-                var type_sym: Value = Value.t;
-                var initform: ?Value = null;
-                var allocation: Allocation = .instance;
-                var initargs = std.ArrayList(Value){};
-                var readers = std.ArrayList(Value){};
-                var writers = std.ArrayList(Value){};
-                var opts = spec_cons.cdr;
-                while (opts.isCons()) {
-                    const opt_cons = opts.toPtr(Cons);
-                    const opt_key = opt_cons.car;
+                    // Extract slot options
+                    var field_type: *const types.Type = &types.t_any;
+                    var type_sym: Value = Value.t;
+                    var initform: ?Value = null;
+                    var allocation: Allocation = .instance;
+                    var initargs = std.ArrayList(Value){};
+                    var readers = std.ArrayList(Value){};
+                    var writers = std.ArrayList(Value){};
+                    var opts = spec_cons.cdr;
+                    while (opts.isCons()) {
+                        const opt_cons = opts.toPtr(Cons);
+                        const opt_key = opt_cons.car;
 
-                    if (opt_key.isKeyword()) {
-                        const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
+                        if (opt_key.isKeyword()) {
+                            const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
 
-                        if (opt_key.eq(b.kw_type)) {
-                            // type keyword - next element is the type
-                            if (opt_cons.cdr.isCons()) {
-                                const type_cons = opt_cons.cdr.toPtr(Cons);
-                                type_sym = type_cons.car; // Store the type expression as runtime value
-                                if (try self.parseTypeExpr(type_cons.car)) |ty| {
-                                    field_type = ty;
-                                }
-                                opts = type_cons.cdr;
-                                continue;
-                            }
-                        } else if (opt_key.eq(b.kw_initform)) {
-                            // initform keyword - next element is the init expression
-                            if (opt_cons.cdr.isCons()) {
-                                const init_cons = opt_cons.cdr.toPtr(Cons);
-                                initform = init_cons.car;
-                                opts = init_cons.cdr;
-                                continue;
-                            }
-                        } else if (opt_key.eq(b.kw_allocation)) {
-                            // allocation keyword - next element is :instance or :class
-                            if (opt_cons.cdr.isCons()) {
-                                const alloc_cons = opt_cons.cdr.toPtr(Cons);
-                                const alloc_val = alloc_cons.car;
-                                if (alloc_val.isKeyword()) {
-                                    if (alloc_val.eq(b.kw_class)) {
-                                        allocation = .class;
-                                    } else if (alloc_val.eq(b.kw_instance)) {
-                                        allocation = .instance;
+                            if (opt_key.eq(b.kw_type)) {
+                                // type keyword - next element is the type
+                                if (opt_cons.cdr.isCons()) {
+                                    const type_cons = opt_cons.cdr.toPtr(Cons);
+                                    type_sym = type_cons.car; // Store the type expression as runtime value
+                                    if (try self.parseTypeExpr(type_cons.car)) |ty| {
+                                        field_type = ty;
                                     }
+                                    opts = type_cons.cdr;
+                                    continue;
                                 }
-                                opts = alloc_cons.cdr;
-                                continue;
+                            } else if (opt_key.eq(b.kw_initform)) {
+                                // initform keyword - next element is the init expression
+                                if (opt_cons.cdr.isCons()) {
+                                    const init_cons = opt_cons.cdr.toPtr(Cons);
+                                    initform = init_cons.car;
+                                    opts = init_cons.cdr;
+                                    continue;
+                                }
+                            } else if (opt_key.eq(b.kw_allocation)) {
+                                // allocation keyword - next element is :instance or :class
+                                if (opt_cons.cdr.isCons()) {
+                                    const alloc_cons = opt_cons.cdr.toPtr(Cons);
+                                    const alloc_val = alloc_cons.car;
+                                    if (alloc_val.isKeyword()) {
+                                        if (alloc_val.eq(b.kw_class)) {
+                                            allocation = .class;
+                                        } else if (alloc_val.eq(b.kw_instance)) {
+                                            allocation = .instance;
+                                        }
+                                    }
+                                    opts = alloc_cons.cdr;
+                                    continue;
+                                }
+                            } else if (opt_key.eq(b.kw_initarg)) {
+                                if (opt_cons.cdr.isCons()) {
+                                    const initarg_cons = opt_cons.cdr.toPtr(Cons);
+                                    if (!initarg_cons.car.isKeyword()) return error.InvalidSyntax;
+                                    try initargs.append(self.allocator, initarg_cons.car);
+                                    opts = initarg_cons.cdr;
+                                    continue;
+                                }
+                            } else if (opt_key.eq(b.kw_reader)) {
+                                if (opt_cons.cdr.isCons()) {
+                                    const reader_cons = opt_cons.cdr.toPtr(Cons);
+                                    try readers.append(self.allocator, reader_cons.car);
+                                    opts = reader_cons.cdr;
+                                    continue;
+                                }
+                            } else if (opt_key.eq(b.kw_writer)) {
+                                if (opt_cons.cdr.isCons()) {
+                                    const writer_cons = opt_cons.cdr.toPtr(Cons);
+                                    try writers.append(self.allocator, writer_cons.car);
+                                    opts = writer_cons.cdr;
+                                    continue;
+                                }
+                            } else if (opt_key.eq(b.kw_accessor)) {
+                                if (opt_cons.cdr.isCons()) {
+                                    const accessor_cons = opt_cons.cdr.toPtr(Cons);
+                                    const accessor_name = accessor_cons.car;
+                                    try readers.append(self.allocator, accessor_name);
+                                    try writers.append(self.allocator, accessor_name);
+                                    opts = accessor_cons.cdr;
+                                    continue;
+                                }
                             }
-                        } else if (opt_key.eq(b.kw_initarg)) {
-                            if (opt_cons.cdr.isCons()) {
-                                const initarg_cons = opt_cons.cdr.toPtr(Cons);
-                                if (!initarg_cons.car.isKeyword()) return error.InvalidSyntax;
-                                try initargs.append(self.allocator, initarg_cons.car);
-                                opts = initarg_cons.cdr;
-                                continue;
-                            }
-                        } else if (opt_key.eq(b.kw_reader)) {
-                            if (opt_cons.cdr.isCons()) {
-                                const reader_cons = opt_cons.cdr.toPtr(Cons);
-                                try readers.append(self.allocator, reader_cons.car);
-                                opts = reader_cons.cdr;
-                                continue;
-                            }
-                        } else if (opt_key.eq(b.kw_writer)) {
-                            if (opt_cons.cdr.isCons()) {
-                                const writer_cons = opt_cons.cdr.toPtr(Cons);
-                                try writers.append(self.allocator, writer_cons.car);
-                                opts = writer_cons.cdr;
-                                continue;
-                            }
-                        } else if (opt_key.eq(b.kw_accessor)) {
-                            if (opt_cons.cdr.isCons()) {
-                                const accessor_cons = opt_cons.cdr.toPtr(Cons);
-                                const accessor_name = accessor_cons.car;
-                                try readers.append(self.allocator, accessor_name);
-                                try writers.append(self.allocator, accessor_name);
-                                opts = accessor_cons.cdr;
-                                continue;
-                            }
+                        }
+
+                        // Skip this option (and its value if present)
+                        if (opt_cons.cdr.isCons()) {
+                            opts = opt_cons.cdr.toPtr(Cons).cdr;
+                        } else {
+                            break;
                         }
                     }
 
-                    // Skip this option (and its value if present)
-                    if (opt_cons.cdr.isCons()) {
-                        opts = opt_cons.cdr.toPtr(Cons).cdr;
-                    } else {
-                        break;
+                    if (initargs.items.len == 0) {
+                        const default_initarg = try heap.internKeyword(slot_name_raw);
+                        try initargs.append(self.allocator, default_initarg);
                     }
-                }
-
-                if (initargs.items.len == 0) {
-                    const default_initarg = try heap.internKeyword(slot_name_raw);
-                    try initargs.append(self.allocator, default_initarg);
-                }
 
                     try slot_specs.append(self.allocator, .{
                         .name = slot_name,
@@ -9010,17 +9314,17 @@ pub const Compiler = struct {
 
         // Call applicable :before methods (most specific first)
         // Generate runtime typep checks for each :before method
-            for (before_methods) |before| {
-                // Build condition: (typep arg class) for each specialized parameter
-                var cond: ?*Ir = null;
-                for (before.specializers, 0..) |spec, param_idx| {
-                    if (param_idx >= dispatch_params.len) continue;
+        for (before_methods) |before| {
+            // Build condition: (typep arg class) for each specialized parameter
+            var cond: ?*Ir = null;
+            for (before.specializers, 0..) |spec, param_idx| {
+                if (param_idx >= dispatch_params.len) continue;
 
-                    const arg_ir = try self.builder.variable(dispatch_params[param_idx], 0, @intCast(param_idx));
-                    const check = if (try self.buildMethodSpecializerCheck(spec, arg_ir)) |val|
-                        val
-                    else
-                        continue;
+                const arg_ir = try self.builder.variable(dispatch_params[param_idx], 0, @intCast(param_idx));
+                const check = if (try self.buildMethodSpecializerCheck(spec, arg_ir)) |val|
+                    val
+                else
+                    continue;
 
                 cond = if (cond) |prev| blk: {
                     const nil_ir = try self.builder.lit(Value.nil);
@@ -9052,20 +9356,20 @@ pub const Compiler = struct {
             // The params are still at depth=0, indices 0..n-1
             // Runtime typep checks for :after methods (least specific first)
             var k = after_methods.len;
-                while (k > 0) {
-                    k -= 1;
-                    const after = after_methods[k];
+            while (k > 0) {
+                k -= 1;
+                const after = after_methods[k];
 
-                    // Build runtime type check condition
-                    var cond: ?*Ir = null;
-                    for (after.specializers, 0..) |spec, param_idx| {
-                        if (param_idx >= dispatch_params.len) continue;
+                // Build runtime type check condition
+                var cond: ?*Ir = null;
+                for (after.specializers, 0..) |spec, param_idx| {
+                    if (param_idx >= dispatch_params.len) continue;
 
-                        const arg_ir = try self.builder.variable(dispatch_params[param_idx], 0, @intCast(param_idx));
-                        const check = if (try self.buildMethodSpecializerCheck(spec, arg_ir)) |val|
-                            val
-                        else
-                            continue;
+                    const arg_ir = try self.builder.variable(dispatch_params[param_idx], 0, @intCast(param_idx));
+                    const check = if (try self.buildMethodSpecializerCheck(spec, arg_ir)) |val|
+                        val
+                    else
+                        continue;
 
                     cond = if (cond) |prev| blk: {
                         const nil_ir = try self.builder.lit(Value.nil);
@@ -10508,69 +10812,335 @@ pub const Compiler = struct {
     /// Primitive operation tags for dispatch
     const PrimTag = enum {
         // Arithmetic
-        add, sub, mul, div, mod, quot, rem,
+        add,
+        sub,
+        mul,
+        div,
+        mod,
+        quot,
+        rem,
         // Comparison
-        eq, equal, eql, equalp, lt, gt, le, ge, num_eq,
+        eq,
+        equal,
+        eql,
+        equalp,
+        lt,
+        gt,
+        le,
+        ge,
+        num_eq,
         // List
-        cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd,
+        cons,
+        car,
+        cdr,
+        append,
+        length,
+        reverse,
+        nth,
+        nthcdr,
+        last,
+        member,
+        assoc,
+        rplaca,
+        rplacd,
         // Type predicates
-        consp, symbolp, numberp, integerp, realp, stringp, vectorp, closurep, keywordp, nilp, not, characterp, floatp, listp, atom,
+        consp,
+        symbolp,
+        numberp,
+        integerp,
+        realp,
+        stringp,
+        vectorp,
+        closurep,
+        keywordp,
+        nilp,
+        not,
+        characterp,
+        floatp,
+        listp,
+        atom,
         // CLOS introspection
-        method_qualifiers, method_specializers, method_function,
-        generic_function_methods, generic_function_lambda_list, generic_function_name,
+        method_qualifiers,
+        method_specializers,
+        method_function,
+        generic_function_methods,
+        generic_function_lambda_list,
+        generic_function_name,
         // Vector
-        vec_ref, vec_len, vec_fill_ptr, vec_set_fill_ptr, vec_set_adjustable, vec_push, vec_push_ext, vec_pop, vec_adjust, copy_structure,
+        vec_ref,
+        vec_len,
+        vec_fill_ptr,
+        vec_set_fill_ptr,
+        vec_set_adjustable,
+        vec_push,
+        vec_push_ext,
+        vec_pop,
+        vec_adjust,
+        copy_structure,
         // Box
-        make_box, box_ref, box_set,
+        make_box,
+        box_ref,
+        box_set,
         // String
-        str_ref, str_len, str_eq, str_lt, str_gt, str_le, str_ge, str_concat,
+        str_ref,
+        str_len,
+        str_eq,
+        str_lt,
+        str_gt,
+        str_le,
+        str_ge,
+        str_concat,
         // I/O
-        write, print, princ, terpri, write_char, random, random_seed,
+        write,
+        print,
+        princ,
+        terpri,
+        write_char,
+        random,
+        random_seed,
         // Symbol
-        intern, unintern, sym_name, copy_symbol, makunbound, set_sym_val, type_of, error_user, boundp, fboundp, symbol_value, symbol_function, function_lambda_expression, typep, subtypep,
+        intern,
+        unintern,
+        sym_name,
+        copy_symbol,
+        makunbound,
+        set_sym_val,
+        type_of,
+        error_user,
+        boundp,
+        fboundp,
+        symbol_value,
+        symbol_function,
+        function_lambda_expression,
+        typep,
+        subtypep,
         // Character
-        char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p,
-        read_char, peek_char, unread_char, listen, upgraded_complex_part_type,
+        char_code,
+        code_char,
+        char_eq,
+        char_lt,
+        char_gt,
+        char_upcase,
+        char_downcase,
+        digit_char_p,
+        alpha_char_p,
+        read_char,
+        peek_char,
+        unread_char,
+        listen,
+        upgraded_complex_part_type,
         // Read/eval
-        read, read_from_string, load, eval, gensym, macroexpand, macroexpand_1,
+        read,
+        read_from_string,
+        load,
+        eval,
+        gensym,
+        macroexpand,
+        macroexpand_1,
         // String/number conversion
-        parse_integer, write_to_string,
+        parse_integer,
+        write_to_string,
         // Bitwise
-        logand, logior, logxor, lognot, ash, lognand, lognor, logandc1, logandc2, logorc1, logorc2, logeqv, logtest, logbitp, logcount, integer_length,
+        logand,
+        logior,
+        logxor,
+        lognot,
+        ash,
+        lognand,
+        lognor,
+        logandc1,
+        logandc2,
+        logorc1,
+        logorc2,
+        logeqv,
+        logtest,
+        logbitp,
+        logcount,
+        integer_length,
         // File I/O
-        read_file, write_file, delete_file, rename_file, probe_file, file_write_date, file_author, file_string_length,
+        read_file,
+        write_file,
+        delete_file,
+        rename_file,
+        probe_file,
+        file_write_date,
+        file_author,
+        file_string_length,
         // Time
-        get_universal_time, get_internal_real_time, get_internal_run_time,
-        get_decoded_time, decode_universal_time, encode_universal_time,
+        get_universal_time,
+        get_internal_real_time,
+        get_internal_run_time,
+        get_decoded_time,
+        decode_universal_time,
+        encode_universal_time,
         // Environment
-        room, lisp_implementation_type, lisp_implementation_version, software_type, machine_type,
-        machine_instance, machine_version, software_version, short_site_name, long_site_name, user_homedir_pathname, make_pathname,
+        room,
+        lisp_implementation_type,
+        lisp_implementation_version,
+        software_type,
+        machine_type,
+        machine_instance,
+        machine_version,
+        software_version,
+        short_site_name,
+        long_site_name,
+        user_homedir_pathname,
+        make_pathname,
         // String construction
-        make_string, list_to_string, string_upcase, string_downcase,
+        make_string,
+        list_to_string,
+        string_upcase,
+        string_downcase,
         // Numeric
-        abs, zerop, plusp, minusp, evenp, oddp,
+        abs,
+        zerop,
+        plusp,
+        minusp,
+        evenp,
+        oddp,
         // Math
-        sqrt, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, log, floor, ceiling, round,
-        decode_float, integer_decode_float, float_radix, float_digits,
+        sqrt,
+        sin,
+        cos,
+        tan,
+        asin,
+        acos,
+        atan,
+        atan2,
+        sinh,
+        cosh,
+        tanh,
+        asinh,
+        acosh,
+        atanh,
+        exp,
+        log,
+        floor,
+        ceiling,
+        round,
+        decode_float,
+        integer_decode_float,
+        float_radix,
+        float_digits,
         // Numeric types
-        rationalp, complexp, make_complex, real_part, imag_part, numerator, denominator, rational, rationalize,
+        rationalp,
+        complexp,
+        make_complex,
+        real_part,
+        imag_part,
+        numerator,
+        denominator,
+        rational,
+        rationalize,
         // Properties
-        get, put, remprop, get_macro_character, set_dispatch_macro_character, get_dispatch_macro_character,
+        get,
+        put,
+        remprop,
+        get_macro_character,
+        set_dispatch_macro_character,
+        get_dispatch_macro_character,
         // Hash tables
-        hashtablep, hash_clear, hash_test, hash_keys, hash_alist, sxhash,
+        hashtablep,
+        hash_clear,
+        hash_test,
+        hash_keys,
+        hash_alist,
+        sxhash,
         // Streams
-        streamp, input_stream_p, output_stream_p, open_stream_p, interactive_stream_p, stream_element_type, stream_external_format, make_string_input_stream, make_string_output_stream, get_output_stream_string, write_to_stream,
+        streamp,
+        input_stream_p,
+        output_stream_p,
+        open_stream_p,
+        interactive_stream_p,
+        stream_element_type,
+        stream_external_format,
+        make_string_input_stream,
+        make_string_output_stream,
+        get_output_stream_string,
+        write_to_stream,
         // Compound streams
-        broadcast_stream_streams, concatenated_stream_streams, echo_stream_input_stream, echo_stream_output_stream, synonym_stream_symbol, two_way_stream_input_stream, two_way_stream_output_stream, make_synonym_stream, make_echo_stream, make_two_way_stream, make_broadcast_stream_list, make_concatenated_stream_list, disassemble, read_char_stream, peek_char_stream, open_file, close_stream,
+        broadcast_stream_streams,
+        concatenated_stream_streams,
+        echo_stream_input_stream,
+        echo_stream_output_stream,
+        synonym_stream_symbol,
+        two_way_stream_input_stream,
+        two_way_stream_output_stream,
+        make_synonym_stream,
+        make_echo_stream,
+        make_two_way_stream,
+        make_broadcast_stream_list,
+        make_concatenated_stream_list,
+        disassemble,
+        read_char_stream,
+        peek_char_stream,
+        open_file,
+        close_stream,
         // Pathnames
-        pathname_host, pathname_device, pathname_directory, pathname_name, pathname_type, pathname_version, truename, ensure_directories_exist,
-        pathname, parse_namestring, namestring, merge_pathnames,
-        directory_namestring, file_namestring, host_namestring, wild_pathname_p,
+        pathname_host,
+        pathname_device,
+        pathname_directory,
+        pathname_name,
+        pathname_type,
+        pathname_version,
+        truename,
+        ensure_directories_exist,
+        pathname,
+        parse_namestring,
+        namestring,
+        merge_pathnames,
+        directory_namestring,
+        file_namestring,
+        host_namestring,
+        wild_pathname_p,
         // Packages
-        package_symbols_table, package_exports_table, package_symbols_list, package_exports_list, package_name, package_nicknames, package_use_list, package_used_by_list, package_shadowing_symbols, packagep, symbol_package, list_all_packages, find_package, delete_package, pkg_import, pkg_unexport, pkg_shadow, pkg_shadowing_import, pkg_unuse_package, pkg_unintern, pkg_find_symbol, pkg_find_all_symbols, pkg_make_package, pkg_rename_package, apropos_list, read_char_no_hang, compute_restarts, restart_name, directory, pathname_match_p, enough_namestring,
+        package_symbols_table,
+        package_exports_table,
+        package_symbols_list,
+        package_exports_list,
+        package_name,
+        package_nicknames,
+        package_use_list,
+        package_used_by_list,
+        package_shadowing_symbols,
+        packagep,
+        symbol_package,
+        list_all_packages,
+        find_package,
+        delete_package,
+        pkg_import,
+        pkg_use_package,
+        pkg_unexport,
+        pkg_shadow,
+        pkg_shadowing_import,
+        pkg_unuse_package,
+        pkg_unintern,
+        pkg_find_symbol,
+        pkg_find_all_symbols,
+        pkg_make_package,
+        pkg_rename_package,
+        apropos_list,
+        read_char_no_hang,
+        compute_restarts,
+        restart_name,
+        directory,
+        pathname_match_p,
+        enough_namestring,
         // Class/slot introspection
-        find_symbol, find_class, class_name, class_direct_superclasses, class_precedence_list, class_direct_slots, class_slots,
-        slot_definition_name, slot_definition_initform, slot_definition_initargs, slot_definition_readers, slot_definition_writers, slot_definition_allocation, slot_definition_type,
+        find_symbol,
+        find_class,
+        class_name,
+        class_direct_superclasses,
+        class_precedence_list,
+        class_direct_slots,
+        class_slots,
+        slot_definition_name,
+        slot_definition_initform,
+        slot_definition_initargs,
+        slot_definition_readers,
+        slot_definition_writers,
+        slot_definition_allocation,
+        slot_definition_type,
         // Misc
         sleep,
     };
@@ -10824,6 +11394,7 @@ pub const Compiler = struct {
         .{ .field = "write-to-stream", .tag = .write_to_stream },
         .{ .field = "merge-pathnames", .tag = .merge_pathnames },
         .{ .field = "%import", .tag = .pkg_import },
+        .{ .field = "%use-package", .tag = .pkg_use_package },
         .{ .field = "%unexport", .tag = .pkg_unexport },
         .{ .field = "%shadow", .tag = .pkg_shadow },
         .{ .field = "%shadowing-import", .tag = .pkg_shadowing_import },
@@ -10894,8 +11465,33 @@ pub const Compiler = struct {
         .{ .field = "fourth", .pattern = "addd" },
     };
 
+    fn canonicalBuiltinSymbol(self: *Compiler, sym: Value) Value {
+        if (!sym.isSymbol()) return sym;
+        const heap = if (self.heap) |val| val else return sym;
+        const cl_pkg = if (heap.cl_package) |val| val else return sym;
+        const name = sym.toPtr(Symbol).getName();
+        return cl_pkg.findAccessibleUpper(name) orelse sym;
+    }
+
+    fn lookupMacroDef(self: *Compiler, sym: Value) ?Value {
+        if (!sym.isSymbol()) return null;
+        if (self.macro_table.get(sym)) |def| return def;
+        const canonical = self.canonicalBuiltinSymbol(sym);
+        if (canonical.raw == sym.raw) return null;
+        return self.macro_table.get(canonical);
+    }
+
+    fn lookupSymbolMacro(self: *Compiler, sym: Value) ?Value {
+        if (!sym.isSymbol()) return null;
+        if (self.symbol_macros.get(sym)) |expansion| return expansion;
+        const canonical = self.canonicalBuiltinSymbol(sym);
+        if (canonical.raw == sym.raw) return null;
+        return self.symbol_macros.get(canonical);
+    }
+
     fn compilePrimitive(self: *Compiler, sym: Value, args: Value, env: *const Env) anyerror!*Ir {
-        const s = sym.raw;
+        const dispatch_sym = self.canonicalBuiltinSymbol(sym);
+        const s = dispatch_sym.raw;
         const b = if (self.builtins) |val| val else return error.InvalidSyntax;
 
         // Variadic arithmetic (+, -, *, /)
@@ -10906,27 +11502,37 @@ pub const Compiler = struct {
 
         // Table-driven dispatch for unary primitives
         inline for (unary_dispatch) |entry| {
-            if (s == @field(b, entry.field).raw) return self.compileUnaryPrim(args, env, entry.tag);
+            if (s == @field(b, entry.field).raw) {
+                return self.compileUnaryPrim(args, env, entry.tag);
+            }
         }
 
         // Table-driven dispatch for binary primitives
         inline for (binary_dispatch) |entry| {
-            if (s == @field(b, entry.field).raw) return self.compileBinaryPrim(args, env, entry.tag);
+            if (s == @field(b, entry.field).raw) {
+                return self.compileBinaryPrim(args, env, entry.tag);
+            }
         }
 
         // Table-driven dispatch for ternary primitives
         inline for (ternary_dispatch) |entry| {
-            if (s == @field(b, entry.field).raw) return self.compileTernaryPrim(args, env, entry.tag);
+            if (s == @field(b, entry.field).raw) {
+                return self.compileTernaryPrim(args, env, entry.tag);
+            }
         }
 
         // Table-driven dispatch for nullary primitives
         inline for (nullary_dispatch) |entry| {
-            if (s == @field(b, entry.field).raw) return self.compileNullaryPrim(entry.tag);
+            if (s == @field(b, entry.field).raw) {
+                return self.compileNullaryPrim(entry.tag);
+            }
         }
 
         // Table-driven dispatch for composed accessors
         inline for (composed_dispatch) |entry| {
-            if (s == @field(b, entry.field).raw) return self.compileComposedAccessor(args, env, entry.pattern);
+            if (s == @field(b, entry.field).raw) {
+                return self.compileComposedAccessor(args, env, entry.pattern);
+            }
         }
 
         // Special cases with custom handling
@@ -11338,6 +11944,11 @@ pub const Compiler = struct {
                 node.* = .{ .pkg_import = .{ .left = left, .right = right } };
                 break :blk node;
             },
+            .pkg_use_package => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pkg_use_package = .{ .left = left, .right = right } };
+                break :blk node;
+            },
             .pkg_unexport => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .pkg_unexport = .{ .left = left, .right = right } };
@@ -11429,6 +12040,21 @@ pub const Compiler = struct {
             .vec_adjust => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .vec_adjust = .{ .first = first, .second = second, .third = third } };
+                break :blk node;
+            },
+            .set_dispatch_macro_character => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .set_dispatch_macro_character = .{ .first = first, .second = second, .third = third } };
+                break :blk node;
+            },
+            .pkg_make_package => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pkg_make_package = .{ .first = first, .second = second, .third = third } };
+                break :blk node;
+            },
+            .pkg_rename_package => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .pkg_rename_package = .{ .first = first, .second = second, .third = third } };
                 break :blk node;
             },
             else => error.InvalidSyntax,
@@ -13145,12 +13771,12 @@ pub const Compiler = struct {
     // ========================================================================
 
     /// Type inference error types
-pub const InferError = error{
-    TypeMismatch,
-    ArityMismatch,
-    InfiniteType,
-    OutOfMemory,
-};
+    pub const InferError = error{
+        TypeMismatch,
+        ArityMismatch,
+        InfiniteType,
+        OutOfMemory,
+    };
 
     /// Run type inference on an IR tree
     /// Returns the inferred type, or an error with a descriptive message

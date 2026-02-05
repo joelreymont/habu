@@ -24,6 +24,7 @@ const vm_mod = @import("vm.zig");
 const Vm = vm_mod.Vm;
 const runtime = @import("../runtime/runtime.zig");
 const qual_name = @import("../runtime/qual_name.zig");
+const primitives = @import("../runtime/primitives/primitives.zig");
 const Value = runtime.Value;
 const Heap = runtime.Heap;
 const Cons = runtime.Cons;
@@ -250,16 +251,53 @@ pub const Repl = struct {
         const qname = q.name;
 
         // Check if it's a macro
-        if (self.macros.contains(sym)) {
+        if (self.lookupMacroEntry(sym) != null) {
             return true;
         }
+        const source_vm = self.current_vm orelse &self.vm;
+        const static = struct {
+            fn isCallable(val: Value) bool {
+                return switch (val.typeKind()) {
+                    .closure, .native_code, .generic_function => true,
+                    else => false,
+                };
+            }
+        };
+
         // Check if it's a user-defined function (try both names)
-        const in_qual = self.compiler.globals.lookup(qname) != null;
-        const in_local = self.compiler.globals.lookup(local_name) != null;
+        var in_qual = false;
+        if (self.compiler.globals.lookup(qname)) |idx| {
+            if (idx < source_vm.num_globals and static.isCallable(source_vm.globals[idx])) {
+                in_qual = true;
+            }
+        }
+        var in_local = false;
+        if (self.compiler.globals.lookup(local_name)) |idx| {
+            if (idx < source_vm.num_globals and static.isCallable(source_vm.globals[idx])) {
+                in_local = true;
+            }
+        }
         if (in_qual or in_local) return true;
+
+        // Also check common package-qualified candidates for imported CL symbols.
+        var full_buf: [640]u8 = undefined;
+        const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:" };
+        for (prefixes) |prefix| {
+            if (prefix.len + local_name.len > full_buf.len) continue;
+            @memcpy(full_buf[0..prefix.len], prefix);
+            @memcpy(full_buf[prefix.len .. prefix.len + local_name.len], local_name);
+            const candidate = full_buf[0 .. prefix.len + local_name.len];
+            if (self.compiler.globals.lookup(candidate)) |idx| {
+                if (idx < source_vm.num_globals and static.isCallable(source_vm.globals[idx])) {
+                    return true;
+                }
+            }
+        }
+
         // Check if it's a builtin primitive
         if (self.compiler.builtins) |b| {
-            if (b.isBuiltinFunction(sym)) {
+            const dispatch_sym = self.canonicalMacroSymbol(sym);
+            if (b.isBuiltinFunction(dispatch_sym)) {
                 return true;
             }
         }
@@ -348,14 +386,196 @@ pub const Repl = struct {
     /// Load a file and return the last value (for (load ...) primitive)
     /// Uses a separate VM to avoid recursive execution issues
     fn loadFileValue(self: *Repl, path: []const u8) !Value {
-        const file = try std.fs.cwd().openFile(path, .{});
-        defer file.close();
+        const source_vm = self.current_vm orelse &self.vm;
+        const resolved_path = try self.resolveLoadPath(source_vm, path);
+        defer self.allocator.free(resolved_path);
 
-        const content = try file.readToEndAlloc(self.allocator, 1024 * 1024);
+        const content = self.readFileContent(resolved_path) catch |err| {
+            if (err == error.FileNotFound) {
+                if (try self.fallbackSourcePathForFasl(resolved_path)) |fallback_path| {
+                    defer self.allocator.free(fallback_path);
+                    if (self.isCurrentLoadPath(source_vm, fallback_path)) {
+                        return Value.t;
+                    }
+                    return try self.loadFileValue(fallback_path);
+                }
+            }
+            return err;
+        };
         defer self.allocator.free(content);
 
-        // Evaluate all expressions using a fresh VM, return last value
-        return self.evalFileContentSeparateVm(content);
+        const load_path = try self.loadPathnameValue(resolved_path);
+        const load_bindings = self.bindLoadGlobals(source_vm, load_path);
+        defer self.restoreLoadGlobals(source_vm, load_bindings);
+
+        // Evaluate all expressions using a fresh VM, return last value.
+        // Some ANSI harnesses hand us host-generated .fasl files; if parsing
+        // fails, fall back to sibling source file when available.
+        return self.evalFileContentSeparateVm(content) catch |err| {
+            if (err == error.UnexpectedToken) {
+                if (try self.fallbackSourcePathForFasl(resolved_path)) |fallback_path| {
+                    defer self.allocator.free(fallback_path);
+                    if (self.isCurrentLoadPath(source_vm, fallback_path)) {
+                        return Value.t;
+                    }
+                    return try self.loadFileValue(fallback_path);
+                }
+            }
+            return err;
+        };
+    }
+
+    const LoadBindings = struct {
+        load_pathname_cl: ?struct { idx: usize, prev: Value } = null,
+        load_pathname_user: ?struct { idx: usize, prev: Value } = null,
+        load_pathname_plain: ?struct { idx: usize, prev: Value } = null,
+        load_truename_cl: ?struct { idx: usize, prev: Value } = null,
+        load_truename_user: ?struct { idx: usize, prev: Value } = null,
+        load_truename_plain: ?struct { idx: usize, prev: Value } = null,
+    };
+
+    fn loadPathnameValue(self: *Repl, path: []const u8) !Value {
+        const resolved = if (std.fs.realpathAlloc(self.allocator, path)) |p| p else |_| blk: {
+            if (std.fs.path.isAbsolute(path)) {
+                break :blk try self.allocator.dupe(u8, path);
+            }
+            const cwd = try std.process.getCwdAlloc(self.allocator);
+            defer self.allocator.free(cwd);
+            break :blk try std.fs.path.join(self.allocator, &.{ cwd, path });
+        };
+        defer self.allocator.free(resolved);
+
+        const path_str = try self.heap.allocBaseString(resolved);
+        return try primitives.pathname.parseNamestring(self.allocator, self.heap, path_str);
+    }
+
+    fn bindLoadGlobals(self: *Repl, vm: *Vm, path: Value) LoadBindings {
+        var bindings: LoadBindings = .{};
+        if (self.compiler.globals.lookup("COMMON-LISP:*LOAD-PATHNAME*")) |idx| {
+            bindings.load_pathname_cl = .{ .idx = idx, .prev = vm.globals[idx] };
+            vm.globals[idx] = path;
+            if (idx >= vm.num_globals) vm.num_globals = idx + 1;
+        }
+        if (self.compiler.globals.lookup("CL-USER:*LOAD-PATHNAME*")) |idx| {
+            bindings.load_pathname_user = .{ .idx = idx, .prev = vm.globals[idx] };
+            vm.globals[idx] = path;
+            if (idx >= vm.num_globals) vm.num_globals = idx + 1;
+        }
+        if (self.compiler.globals.lookup("*LOAD-PATHNAME*")) |idx| {
+            bindings.load_pathname_plain = .{ .idx = idx, .prev = vm.globals[idx] };
+            vm.globals[idx] = path;
+            if (idx >= vm.num_globals) vm.num_globals = idx + 1;
+        }
+        if (self.compiler.globals.lookup("COMMON-LISP:*LOAD-TRUENAME*")) |idx| {
+            bindings.load_truename_cl = .{ .idx = idx, .prev = vm.globals[idx] };
+            vm.globals[idx] = path;
+            if (idx >= vm.num_globals) vm.num_globals = idx + 1;
+        }
+        if (self.compiler.globals.lookup("CL-USER:*LOAD-TRUENAME*")) |idx| {
+            bindings.load_truename_user = .{ .idx = idx, .prev = vm.globals[idx] };
+            vm.globals[idx] = path;
+            if (idx >= vm.num_globals) vm.num_globals = idx + 1;
+        }
+        if (self.compiler.globals.lookup("*LOAD-TRUENAME*")) |idx| {
+            bindings.load_truename_plain = .{ .idx = idx, .prev = vm.globals[idx] };
+            vm.globals[idx] = path;
+            if (idx >= vm.num_globals) vm.num_globals = idx + 1;
+        }
+        return bindings;
+    }
+
+    fn restoreLoadGlobals(self: *Repl, vm: *Vm, bindings: LoadBindings) void {
+        _ = self;
+        if (bindings.load_pathname_cl) |entry| vm.globals[entry.idx] = entry.prev;
+        if (bindings.load_pathname_user) |entry| vm.globals[entry.idx] = entry.prev;
+        if (bindings.load_pathname_plain) |entry| vm.globals[entry.idx] = entry.prev;
+        if (bindings.load_truename_cl) |entry| vm.globals[entry.idx] = entry.prev;
+        if (bindings.load_truename_user) |entry| vm.globals[entry.idx] = entry.prev;
+        if (bindings.load_truename_plain) |entry| vm.globals[entry.idx] = entry.prev;
+    }
+
+    fn readFileContent(self: *Repl, path: []const u8) ![]u8 {
+        const file = if (std.fs.path.isAbsolute(path))
+            try std.fs.openFileAbsolute(path, .{})
+        else
+            try std.fs.cwd().openFile(path, .{});
+        defer file.close();
+
+        return try file.readToEndAlloc(self.allocator, 1024 * 1024);
+    }
+
+    fn currentLoadTruename(self: *Repl, vm: *const Vm) ?Value {
+        const names = [_][]const u8{
+            "COMMON-LISP:*LOAD-TRUENAME*",
+            "CL-USER:*LOAD-TRUENAME*",
+            "*LOAD-TRUENAME*",
+        };
+        for (names) |name| {
+            if (self.compiler.globals.lookup(name)) |idx| {
+                if (idx < vm.num_globals) {
+                    const val = vm.globals[idx];
+                    if (!val.isNil()) return val;
+                }
+            }
+        }
+        return null;
+    }
+
+    fn resolveLoadPath(self: *Repl, vm: *const Vm, path: []const u8) ![]u8 {
+        if (std.fs.path.isAbsolute(path)) {
+            return try self.allocator.dupe(u8, path);
+        }
+        if (self.currentLoadTruename(vm)) |load_true| {
+            const ns = try primitives.pathname.namestring(self.allocator, self.heap, &self.vm.builtins, load_true);
+            if (ns.isString()) {
+                const full = ns.toPtr(runtime.String).bytes();
+                if (std.fs.path.dirname(full)) |dir| {
+                    return try std.fs.path.join(self.allocator, &.{ dir, path });
+                }
+            }
+        }
+        return try self.allocator.dupe(u8, path);
+    }
+
+    fn isCurrentLoadPath(self: *Repl, vm: *const Vm, path: []const u8) bool {
+        if (self.currentLoadTruename(vm)) |load_true| {
+            const ns = primitives.pathname.namestring(self.allocator, self.heap, &self.vm.builtins, load_true) catch return false;
+            if (ns.isString()) {
+                return std.mem.eql(u8, ns.toPtr(runtime.String).bytes(), path);
+            }
+        }
+        return false;
+    }
+
+    fn fileExists(self: *Repl, path: []const u8) !bool {
+        _ = self;
+        if (std.fs.path.isAbsolute(path)) {
+            std.fs.accessAbsolute(path, .{}) catch |err| switch (err) {
+                error.FileNotFound => return false,
+                else => return err,
+            };
+            return true;
+        }
+        std.fs.cwd().access(path, .{}) catch |err| switch (err) {
+            error.FileNotFound => return false,
+            else => return err,
+        };
+        return true;
+    }
+
+    fn fallbackSourcePathForFasl(self: *Repl, path: []const u8) !?[]u8 {
+        const ext = std.fs.path.extension(path);
+        if (!(std.ascii.eqlIgnoreCase(ext, ".fasl") or std.ascii.eqlIgnoreCase(ext, ".hfasl"))) {
+            return null;
+        }
+        const base = path[0 .. path.len - ext.len];
+        const candidates = [_][]const u8{ ".lsp", ".lisp", ".habu" };
+        for (candidates) |cand_ext| {
+            const cand = try std.mem.concat(self.allocator, u8, &.{ base, cand_ext });
+            if (try self.fileExists(cand)) return cand;
+            self.allocator.free(cand);
+        }
+        return null;
     }
 
     /// Evaluate file content using a separate VM to avoid stack corruption
@@ -391,15 +611,12 @@ pub const Repl = struct {
         var parser = try Parser.init(parse_alloc, self.heap, content, &self.vm.builtins);
         defer parser.deinit();
 
-        var exprs = std.ArrayList(Value){};
-        defer exprs.deinit(parse_alloc);
-        try parser.parseAll(parse_alloc, &exprs);
-
-        for (exprs.items) |expr| {
+        while (parser.current.kind != .eof) {
+            const expr = try parser.parse();
             var eval_arena = std.heap.ArenaAllocator.init(self.allocator);
             defer eval_arena.deinit();
             const eval_alloc = eval_arena.allocator();
-            last_value = try self.evalParsedWithVm(expr, &nested_vm, eval_alloc);
+            last_value = self.evalParsedWithVm(expr, &nested_vm, eval_alloc) catch |err| return err;
         }
 
         // Copy globals back to source VM
@@ -1086,20 +1303,10 @@ pub const Repl = struct {
 
     /// Load and evaluate a file
     fn loadFile(self: *Repl, path: []const u8, writer: anytype) !void {
-        const file = if (std.fs.cwd().openFile(path, .{})) |opened| opened else |err| {
+        _ = if (self.loadFileValue(path)) |value| value else |err| {
             try writer.print("Cannot open '{s}': {s}\n", .{ path, @errorName(err) });
             return err;
         };
-        defer file.close();
-
-        const content = if (file.readToEndAlloc(self.allocator, 1024 * 1024)) |buf| buf else |err| {
-            try writer.print("Cannot read '{s}': {s}\n", .{ path, @errorName(err) });
-            return err;
-        };
-        defer self.allocator.free(content);
-
-        // Evaluate all expressions in the file
-        try self.evalFileContent(content, writer);
         try writer.print("; loaded {s}\n", .{path});
     }
 
@@ -1208,7 +1415,8 @@ pub const Repl = struct {
         if (!cons.car.isSymbol()) return false;
 
         const b = self.compiler.builtins.?;
-        return cons.car.raw == b.defmacro.raw;
+        const dispatch_head = self.canonicalMacroSymbol(cons.car);
+        return dispatch_head.raw == b.defmacro.raw;
     }
 
     /// Check if expression is (in-package ...)
@@ -1217,7 +1425,8 @@ pub const Repl = struct {
         const cons = expr.toPtr(Cons);
         if (!cons.car.isSymbol()) return false;
 
-        return cons.car.eq(self.vm.builtins.sym_in_package);
+        const dispatch_head = self.canonicalMacroSymbol(cons.car);
+        return dispatch_head.eq(self.vm.builtins.sym_in_package);
     }
 
     /// Check if expression is (defpackage ...)
@@ -1227,7 +1436,23 @@ pub const Repl = struct {
         if (!cons.car.isSymbol()) return false;
 
         const b = self.compiler.builtins.?;
-        return cons.car.raw == b.defpackage.raw;
+        const dispatch_head = self.canonicalMacroSymbol(cons.car);
+        return dispatch_head.raw == b.defpackage.raw;
+    }
+
+    fn canonicalMacroSymbol(self: *Repl, sym: Value) Value {
+        if (!sym.isSymbol()) return sym;
+        const cl_pkg = self.heap.cl_package orelse return sym;
+        const name = sym.toPtr(Symbol).getName();
+        return cl_pkg.findAccessibleUpper(name) orelse sym;
+    }
+
+    fn lookupMacroEntry(self: *Repl, sym: Value) ?MacroEntry {
+        if (!sym.isSymbol()) return null;
+        if (self.macros.get(sym)) |entry| return entry;
+        const canonical = self.canonicalMacroSymbol(sym);
+        if (canonical.raw == sym.raw) return null;
+        return self.macros.get(canonical);
     }
 
     fn normalizeMacroParams(self: *Repl, params_val: Value) !struct { params: Value, has_whole: bool, has_env: bool } {
@@ -1404,7 +1629,8 @@ pub const Repl = struct {
         if (!cons.car.isSymbol()) return false;
 
         const b = self.compiler.builtins.?;
-        return cons.car.raw == b.@"eval-when".raw;
+        const dispatch_head = self.canonicalMacroSymbol(cons.car);
+        return dispatch_head.raw == b.@"eval-when".raw;
     }
 
     /// Handle eval-when: evaluate at compile time if :compile-toplevel
@@ -1592,7 +1818,7 @@ pub const Repl = struct {
 
         // Check if head is a macro
         if (head.isSymbol()) {
-            if (self.macros.get(head)) |macro_entry| {
+            if (self.lookupMacroEntry(head)) |macro_entry| {
                 // Expand macro once and return without recursive expansion
                 return try self.callMacro(macro_entry, expr, cons.cdr);
             }
@@ -1613,8 +1839,9 @@ pub const Repl = struct {
 
         // Check if head is a macro or special form
         if (head.isSymbol()) {
+            const dispatch_head = self.canonicalMacroSymbol(head);
             // Handle eval-when during macro expansion (using symbol identity)
-            const is_eval_when = head.raw == self.compiler.builtins.?.@"eval-when".raw;
+            const is_eval_when = dispatch_head.raw == self.compiler.builtins.?.@"eval-when".raw;
 
             if (is_eval_when) {
                 // Use arena for compile-time evaluation
@@ -1633,11 +1860,11 @@ pub const Repl = struct {
 
             // Skip special forms that shouldn't be expanded
             if (self.compiler.builtins) |b| {
-                if (head.raw == b.quote.raw or head.raw == b.quasiquote.raw or head.raw == b.lambda.raw) {
+                if (dispatch_head.raw == b.quote.raw or dispatch_head.raw == b.quasiquote.raw or dispatch_head.raw == b.lambda.raw) {
                     return expr; // Don't expand inside quote or lambda
                 }
                 // For setf, don't expand the place (first arg) but do expand value (second arg)
-                if (head.raw == b.setf.raw) {
+                if (dispatch_head.raw == b.setf.raw) {
                     const args = cons.cdr;
                     if (args.isCons()) {
                         const args_cons = args.toPtr(Cons);
@@ -1654,7 +1881,7 @@ pub const Repl = struct {
                 }
             }
 
-            if (self.macros.get(head)) |macro_entry| {
+            if (self.lookupMacroEntry(head)) |macro_entry| {
                 // Expand macro: call the closure with the args
                 const expansion = try self.callMacro(macro_entry, expr, cons.cdr);
                 // Recursively expand the result

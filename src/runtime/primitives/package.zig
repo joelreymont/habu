@@ -32,6 +32,7 @@ fn packageNameBytes(pkg: *objects.Package) ![]const u8 {
     return switch (pkg.name.typeKind()) {
         .symbol => pkg.name.toPtr(objects.Symbol).getName(),
         .string => pkg.name.toPtr(objects.String).bytes(),
+        .keyword => pkg.name.toPtr(objects.Keyword).getName(),
         else => error.TypeError,
     };
 }
@@ -140,7 +141,9 @@ fn removeNativeExport(pkg: *heap_mod.Package, name: []const u8) void {
 fn addNativeSymbol(pkg: *heap_mod.Package, sym: Value) !void {
     const sym_name = sym.toPtr(objects.Symbol).getName();
     if (pkg.symbols.get(sym_name)) |existing| {
-        if (existing.raw != sym.raw) return error.SymConflict;
+        if (existing.raw != sym.raw) {
+            return error.SymConflict;
+        }
         return;
     }
     try pkg.symbols.put(sym_name, sym);
@@ -154,13 +157,17 @@ fn removeNativeSymbol(pkg: *heap_mod.Package, sym: Value) void {
 /// Create a new package
 pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value) !Value {
     switch (name.typeKind()) {
-        .string, .symbol => {},
+        .string, .symbol, .keyword => {},
         else => return error.TypeError,
     }
 
+    const pkg_name = try nameBytesWithKeyword(name);
     if (try heap.findLispPackage(name)) |_| return error.PackageExists;
-    const pkg_name = try nameBytes(name);
-    if (heap.findPackage(pkg_name) != null) return error.PackageExists;
+
+    const existing_native = heap.findPackage(pkg_name);
+    const direct_native = heap.packages.get(pkg_name);
+    if (existing_native != null and direct_native == null) return error.PackageExists;
+    const reused_native = if (existing_native) |native| native else null;
 
     if (nicknames) |nns| {
         var nicks = nns;
@@ -168,24 +175,30 @@ pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value
             if (!nicks.isCons()) return error.TypeError;
             const nick = nicks.toPtr(Cons).car;
             switch (nick.typeKind()) {
-                .string, .symbol => {},
+                .string, .symbol, .keyword => {},
                 else => return error.TypeError,
             }
             if (try heap.findLispPackage(nick)) |_| return error.PackageExists;
             const nick_name = try nameBytes(nick);
-            if (heap.findPackage(nick_name) != null) return error.PackageExists;
+            if (heap.findPackage(nick_name)) |existing_nick_pkg| {
+                if (reused_native) |native| {
+                    if (existing_nick_pkg != native) return error.PackageExists;
+                } else {
+                    return error.PackageExists;
+                }
+            }
             nicks = nicks.toPtr(Cons).cdr;
         }
     }
 
     const resolved_use_list = if (use_list) |ul| try resolvePkgList(heap, ul) else Value.nil;
-    const native_pkg = try heap.findOrCreatePackage(pkg_name);
-    errdefer {
+    const native_pkg = if (reused_native) |native| native else try heap.findOrCreatePackage(pkg_name);
+    errdefer if (reused_native == null) {
         if (heap.packages.fetchRemove(pkg_name)) |removed| {
             heap.backing_allocator.free(removed.key);
         }
         native_pkg.deinit();
-    }
+    };
 
     const pkg = try heap.alloc(objects.Package);
 
@@ -218,10 +231,14 @@ pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value
                 _ = heap.removeLispPackageKey(nick_key);
             }
             const nick_name = try nameBytes(nick);
-            const alias_key = try heap.backing_allocator.dupe(u8, nick_name);
-            errdefer heap.backing_allocator.free(alias_key);
-            try heap.package_aliases.put(heap.backing_allocator, alias_key, native_pkg);
-            errdefer _ = heap.package_aliases.remove(alias_key);
+            if (heap.package_aliases.get(nick_name)) |existing_alias| {
+                if (existing_alias != native_pkg) return error.PackageExists;
+            } else {
+                const alias_key = try heap.backing_allocator.dupe(u8, nick_name);
+                errdefer heap.backing_allocator.free(alias_key);
+                try heap.package_aliases.put(heap.backing_allocator, alias_key, native_pkg);
+                errdefer _ = heap.package_aliases.remove(alias_key);
+            }
             nicks = nicks.toPtr(Cons).cdr;
         }
     }
@@ -241,7 +258,7 @@ pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value
 }
 
 /// Find a package by name or nickname
-pub fn findPackage(heap: *Heap, name: Value) error{OutOfMemory, TypeError}!?Value {
+pub fn findPackage(heap: *Heap, name: Value) error{ OutOfMemory, TypeError }!?Value {
     return try heap.findLispPackage(name);
 }
 
@@ -516,12 +533,11 @@ fn insertHashTable(heap: *Heap, table: Value, key: Value, value: Value) !void {
 /// Find a symbol in a package
 /// Returns (values symbol status) where status is :internal/:external/:inherited/nil
 pub fn findSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
-    if (!pkg.isPackage()) return error.TypeError;
-    const p = pkg.toPtr(objects.Package);
+    const resolved_pkg = try resolvePkg(heap, pkg);
+    const p = resolved_pkg.toPtr(objects.Package);
 
     const name_str = try nameBytesWithKeyword(name);
-    const pkg_name = try packageNameBytes(p);
-    const native_pkg = if (heap.findPackage(pkg_name)) |val| val else return error.InvalidPackage;
+    const native_pkg = try nativePkgFor(heap, resolved_pkg);
 
     if (try native_pkg.findAccessible(name_str)) |sym| {
         // Check if symbol exists in internal table
@@ -566,9 +582,9 @@ pub fn findSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
 
 /// Export symbols from a package
 pub fn exportSymbols(heap: *Heap, symbols: Value, pkg: Value) !void {
-    if (!pkg.isPackage()) return error.TypeError;
-    const p = pkg.toPtr(objects.Package);
-    const native_pkg = try nativePkgFor(heap, pkg);
+    const resolved_pkg = try resolvePkg(heap, pkg);
+    const p = resolved_pkg.toPtr(objects.Package);
+    const native_pkg = try nativePkgFor(heap, resolved_pkg);
 
     // Create exports table if needed
     if (p.exports.raw == Value.nil.raw) {
@@ -599,9 +615,9 @@ pub fn exportSymbols(heap: *Heap, symbols: Value, pkg: Value) !void {
 
 /// Import symbols into a package
 pub fn importSymbols(heap: *Heap, symbols: Value, pkg: Value) !void {
-    if (!pkg.isPackage()) return error.TypeError;
-    const p = pkg.toPtr(objects.Package);
-    const native_pkg = try nativePkgFor(heap, pkg);
+    const resolved_pkg = try resolvePkg(heap, pkg);
+    const p = resolved_pkg.toPtr(objects.Package);
+    const native_pkg = try nativePkgFor(heap, resolved_pkg);
 
     // Create symbols table if needed
     if (p.symbols.raw == Value.nil.raw) {
@@ -632,8 +648,8 @@ pub fn importSymbols(heap: *Heap, symbols: Value, pkg: Value) !void {
 
 /// Shadow symbols in a package
 pub fn shadowSymbols(heap: *Heap, names: Value, pkg: Value) !void {
-    if (!pkg.isPackage()) return error.TypeError;
-    const p = pkg.toPtr(objects.Package);
+    const resolved_pkg = try resolvePkg(heap, pkg);
+    const p = resolved_pkg.toPtr(objects.Package);
 
     // Handle single name or list
     switch (names.typeKind()) {
@@ -666,9 +682,9 @@ pub fn shadowingImport(heap: *Heap, symbols: Value, pkg: Value) !void {
 
 /// Add packages to use-list
 pub fn usePackage(heap: *Heap, pkgs_to_use: Value, pkg: Value) !void {
-    if (!pkg.isPackage()) return error.TypeError;
-    const p = pkg.toPtr(objects.Package);
-    const native_pkg = try nativePkgFor(heap, pkg);
+    const resolved_pkg = try resolvePkg(heap, pkg);
+    const p = resolved_pkg.toPtr(objects.Package);
+    const native_pkg = try nativePkgFor(heap, resolved_pkg);
     const resolved = try resolvePkgList(heap, pkgs_to_use);
 
     var list = resolved;
@@ -688,9 +704,9 @@ pub fn usePackage(heap: *Heap, pkgs_to_use: Value, pkg: Value) !void {
 
 /// Remove packages from use-list
 pub fn unusePackage(heap: *Heap, pkgs_to_unuse: Value, pkg: Value) !void {
-    if (!pkg.isPackage()) return error.TypeError;
-    const p = pkg.toPtr(objects.Package);
-    const native_pkg = try nativePkgFor(heap, pkg);
+    const resolved_pkg = try resolvePkg(heap, pkg);
+    const p = resolved_pkg.toPtr(objects.Package);
+    const native_pkg = try nativePkgFor(heap, resolved_pkg);
     const to_remove = try resolvePkgList(heap, pkgs_to_unuse);
     if (to_remove.raw == Value.nil.raw) return;
 
@@ -713,10 +729,10 @@ pub fn unusePackage(heap: *Heap, pkgs_to_unuse: Value, pkg: Value) !void {
 
 /// Unexport symbols
 pub fn unexportSymbols(heap: *Heap, symbols: Value, pkg: Value) !void {
-    if (!pkg.isPackage()) return error.TypeError;
-    const p = pkg.toPtr(objects.Package);
+    const resolved_pkg = try resolvePkg(heap, pkg);
+    const p = resolved_pkg.toPtr(objects.Package);
     if (p.exports.raw == Value.nil.raw) return;
-    const native_pkg = try nativePkgFor(heap, pkg);
+    const native_pkg = try nativePkgFor(heap, resolved_pkg);
 
     const ht = p.exports.toPtr(objects.HashTable);
 
@@ -749,9 +765,9 @@ fn removeFromHashTable(ht: *objects.HashTable, key: Value) !void {
 /// Remove symbol from package
 pub fn uninternSymbol(heap: *Heap, symbol: Value, pkg: Value) !bool {
     if (!symbol.isSymbol()) return error.TypeError;
-    if (!pkg.isPackage()) return error.TypeError;
-    const p = pkg.toPtr(objects.Package);
-    const native_pkg = try nativePkgFor(heap, pkg);
+    const resolved_pkg = try resolvePkg(heap, pkg);
+    const p = resolved_pkg.toPtr(objects.Package);
+    const native_pkg = try nativePkgFor(heap, resolved_pkg);
     if (p.symbols.raw == Value.nil.raw) return false;
 
     const ht = p.symbols.toPtr(objects.HashTable);
@@ -1351,6 +1367,21 @@ test "makePackage rejects existing nickname" {
     try testing.expectError(error.PackageExists, makePackage(&heap, foo, nick_list, null));
     const found = try heap.findLispPackage(foo);
     try testing.expect(found == null);
+}
+
+test "makePackage reuses native placeholder package" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const placeholder = try heap.findOrCreatePackage("REGRESSION-TEST");
+    const name = try heap.allocBaseString("REGRESSION-TEST");
+    const pkg = try makePackage(&heap, name, null, null);
+
+    try testing.expect(pkg.isPackage());
+    const native_pkg = try nativePkgFor(&heap, pkg);
+    try testing.expect(native_pkg == placeholder);
 }
 
 test "resolvePkg invalid package" {
