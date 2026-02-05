@@ -5446,8 +5446,8 @@ pub const Vm = struct {
             .halt => return error.Halt,
         }
 
-        // Clear stale secondary values after each op (except ops that set them)
-        if (op != .values and op != .get_decoded_time and op != .decode_universal_time and op != .function_lambda_expression) {
+        // Clear stale secondary values after each op (except ops that set/preserve them)
+        if (op != .values and op != .values_list and op != .ret and op != .get_decoded_time and op != .decode_universal_time and op != .function_lambda_expression) {
             self.secondary_values_count = 0;
         }
     }

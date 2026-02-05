@@ -4270,6 +4270,29 @@ pub const Compiler = struct {
         if (!cons1.cdr.isCons()) return error.InvalidSyntax;
         const cons2 = cons1.cdr.toPtr(Cons);
         const value_expr = cons2.car;
+        if (!cons2.cdr.isNil()) {
+            // Multi-place setf: compile each pair in sequence and return last value.
+            var items = std.ArrayList(*const Ir){};
+            defer items.deinit(self.allocator);
+
+            var p = args;
+            const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+            while (p.isCons()) {
+                const pair1 = p.toPtr(Cons);
+                if (!pair1.cdr.isCons()) return error.InvalidSyntax;
+                const pair2 = pair1.cdr.toPtr(Cons);
+
+                const one = try heap.allocCons(pair1.car, try heap.allocCons(pair2.car, Value.nil));
+                const node_ir = try self.compileSetf(one, env);
+                try items.append(self.allocator, node_ir);
+
+                p = pair2.cdr;
+            }
+
+            if (items.items.len == 0) return error.InvalidSyntax;
+            if (items.items.len == 1) return @constCast(items.items[0]);
+            return try self.builder.progn(items.items);
+        }
 
         // If place is a symbol, check for symbol macro
         if (place.isSymbol()) {
@@ -4549,49 +4572,66 @@ pub const Compiler = struct {
                 const func_sym = head.toPtr(Symbol);
                 const func_name = func_sym.getName();
 
-                // Build "(setf func-name)" and look it up
-                const setf_name = try std.fmt.allocPrint(self.allocator, "(setf {s})", .{func_name});
-                defer self.allocator.free(setf_name);
-
-                // Try unqualified first, then qualified
-                var setf_idx: ?u16 = self.globals.lookup(setf_name);
-                if (setf_idx == null) {
-                    // Try with package qualification
-                    var qual_buf: [512]u8 = undefined;
-                    const q = try self.qualifyName(setf_name, &qual_buf);
-                    defer if (q.owned) self.allocator.free(q.name);
-                    setf_idx = self.globals.lookup(q.name);
+                // Accept both canonical "(SETF ...)" and legacy "(setf ...)" names.
+                const setf_name_upper = try std.fmt.allocPrint(self.allocator, "(SETF {s})", .{func_name});
+                defer self.allocator.free(setf_name_upper);
+                if (self.globals.lookup(setf_name_upper)) |idx| {
+                    return try self.compileSetfGlobalCall(env, value_expr, place_args, setf_name_upper, idx);
                 }
 
-                // Check if setf function exists in globals
-                if (setf_idx) |idx| {
-                    // Compile as call to (setf func-name) with (value args...)
-                    const val_ir = try self.compile(value_expr, env);
-                    const setf_ref = try self.builder.globalRef(setf_name, idx);
+                var qual_upper_buf: [512]u8 = undefined;
+                const q_upper = try self.qualifyName(setf_name_upper, &qual_upper_buf);
+                defer if (q_upper.owned) self.allocator.free(q_upper.name);
+                if (self.globals.lookup(q_upper.name)) |idx| {
+                    return try self.compileSetfGlobalCall(env, value_expr, place_args, q_upper.name, idx);
+                }
 
-                    // Build argument list: (value arg1 arg2 ...)
-                    var arg_count: usize = 1; // value first
-                    var p = place_args;
-                    while (p.isCons()) : (p = p.toPtr(Cons).cdr) arg_count += 1;
+                const setf_name_lower = try std.fmt.allocPrint(self.allocator, "(setf {s})", .{func_name});
+                defer self.allocator.free(setf_name_lower);
+                if (self.globals.lookup(setf_name_lower)) |idx| {
+                    return try self.compileSetfGlobalCall(env, value_expr, place_args, setf_name_lower, idx);
+                }
 
-                    const call_args = try self.allocator.alloc(*Ir, arg_count);
-                    call_args[0] = val_ir;
-
-                    var i: usize = 1;
-                    p = place_args;
-                    while (p.isCons()) {
-                        const arg_cons = p.toPtr(Cons);
-                        call_args[i] = try self.compile(arg_cons.car, env);
-                        i += 1;
-                        p = arg_cons.cdr;
-                    }
-
-                    return try self.builder.call(setf_ref, call_args);
+                var qual_lower_buf: [512]u8 = undefined;
+                const q_lower = try self.qualifyName(setf_name_lower, &qual_lower_buf);
+                defer if (q_lower.owned) self.allocator.free(q_lower.name);
+                if (self.globals.lookup(q_lower.name)) |idx| {
+                    return try self.compileSetfGlobalCall(env, value_expr, place_args, q_lower.name, idx);
                 }
             }
         }
 
         return error.InvalidSyntax;
+    }
+
+    fn compileSetfGlobalCall(
+        self: *Compiler,
+        env: *const Env,
+        value_expr: Value,
+        place_args: Value,
+        setf_name: []const u8,
+        idx: u16,
+    ) anyerror!*Ir {
+        const val_ir = try self.compile(value_expr, env);
+        const setf_ref = try self.builder.globalRef(setf_name, idx);
+
+        var arg_count: usize = 1;
+        var p = place_args;
+        while (p.isCons()) : (p = p.toPtr(Cons).cdr) arg_count += 1;
+
+        const call_args = try self.allocator.alloc(*Ir, arg_count);
+        call_args[0] = val_ir;
+
+        var i: usize = 1;
+        p = place_args;
+        while (p.isCons()) {
+            const arg_cons = p.toPtr(Cons);
+            call_args[i] = try self.compile(arg_cons.car, env);
+            i += 1;
+            p = arg_cons.cdr;
+        }
+
+        return try self.builder.call(setf_ref, call_args);
     }
 
     fn compileQuote(self: *Compiler, args: Value) anyerror!*Ir {

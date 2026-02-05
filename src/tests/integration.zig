@@ -19,6 +19,7 @@ const interp = @import("../interp/interp.zig");
 const Vm = interp.Vm;
 
 const compile_chunk = @import("../testing/compile_chunk.zig");
+const OhSnap = @import("ohsnap");
 
 /// Test helper: parse, compile, emit, run and return result
 fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {
@@ -343,6 +344,13 @@ fn loadStdlib(repl: *Repl) !void {
     try repl.evalFileContent(content, null_writer);
 }
 
+fn asString(val: Value) ![]const u8 {
+    switch (val.typeKind()) {
+        .string => return val.toPtr(runtime.String).bytes(),
+        else => return error.TypeMismatch,
+    }
+}
+
 test "eval define simple" {
     const allocator = testing.allocator;
 
@@ -458,6 +466,73 @@ test "stdlib define-setf-expander registers" {
     _ = try repl.eval("(define-setf-expander foo (place) (list place))");
     const result = try repl.eval("(gethash 'foo *setf-expanders*)");
     try testing.expect(!result.isNil());
+}
+
+test "stdlib get-setf-expansion snapshots" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const got = try repl.eval(
+        \\(write-to-string
+        \\  (list
+        \\    (let ((e (multiple-value-list (get-setf-expansion '(car x)))))
+        \\      (list (length (first e)) (length (second e)) (length (third e))
+        \\            (car (fourth e)) (car (fifth e))))
+        \\    (let ((e (multiple-value-list (get-setf-expansion '(aref a i)))))
+        \\      (list (length (first e)) (length (second e)) (length (third e))
+        \\            (car (fourth e)) (car (fifth e))))
+        \\    (let ((e (multiple-value-list (get-setf-expansion '(gethash k h)))))
+        \\      (list (length (first e)) (length (second e)) (length (third e))
+        \\            (car (fourth e)) (car (fifth e))))))
+    );
+    const got_str = try asString(got);
+    const oh = OhSnap{};
+    try oh.snap(@src(),
+        \\((1 1 1 PROGN CAR) (2 2 1 PROGN AREF) (2 2 1 PROGN GETHASH))
+    ).diff(got_str, true);
+}
+
+test "stdlib setf custom expander integration" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval(
+        "(progn\n" ++
+            "  (defun cell-val (x) (car x))\n" ++
+            "  (define-setf-expander cell-val (x)\n" ++
+            "    (let ((g (gensym \"CELL\"))\n" ++
+            "          (s (gensym \"STORE\")))\n" ++
+            "      (values (list g) (list x) (list s)\n" ++
+            "              `(progn (rplaca ,g ,s) ,s)\n" ++
+            "              `(car ,g)))))",
+    );
+
+    const got = try repl.eval(
+        "(let ((a (cons 1 nil))\n" ++
+            "      (b (cons 2 nil)))\n" ++
+            "  (setf (cell-val a) 9 (car b) 8)\n" ++
+            "  (list (car a) (car b)))",
+    );
+    const cons = got.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 9), cons.car.toFixnum());
+    const tail = cons.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 8), tail.car.toFixnum());
 }
 
 test "eval define with expression" {
