@@ -3117,3 +3117,64 @@ test "ansi repro read-from-string.error.10 still nonconforming" {
     const result = try evalExpr(allocator, &heap, src);
     try testing.expect(result.isSymbol());
 }
+
+test "ansi repro warn.1 still nonconforming" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const src =
+        \\(let ((warned nil))
+        \\  (handler-bind
+        \\   ((warning #'(lambda (c)
+        \\                (declare (ignore c))
+        \\                (setq warned t)
+        \\                (muffle-warning c))))
+        \\   (warn "This is a warning"))
+        \\  warned)
+    ;
+    try testing.expectError(error.TypeMismatch, evalExpr(allocator, &heap, src));
+}
+
+test "ansi repro compute-restarts.1 still nonconforming" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const src =
+        \\(restart-case
+        \\  (let ((r (compute-restarts)))
+        \\    (and (consp r) (symbolp (car r))))
+        \\  (foo () nil))
+    ;
+    const result = try evalExpr(allocator, &heap, src);
+    try testing.expect(!result.isNil());
+}
+
+test "ansi repro compute-restarts.3 still nonconforming" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const src =
+        \\(restart-case
+        \\  (eq (find-restart 'foo) t)
+        \\  (foo () nil))
+    ;
+    const result = try evalExpr(allocator, &heap, src);
+    try testing.expect(!result.isNil());
+}
+
+test "ansi repro cerror.6 still nonconforming" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const src =
+        \\(handler-bind ((simple-error #'(lambda (c) (continue c))))
+        \\  (progn
+        \\    (cerror "Wooo" 'simple-error)
+        \\    10))
+    ;
+    try testing.expectError(error.TypeMismatch, evalExpr(allocator, &heap, src));
+}
