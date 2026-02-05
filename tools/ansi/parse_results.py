@@ -47,6 +47,12 @@ TEST_PATTERNS = [
 
 EXIT_RE = re.compile(r"^#\s*exit_code:\s*(\d+)\s*$")
 STARTED_RE = re.compile(r"^#\s*started_utc:\s*(.+?)\s*$")
+FAIL_LINE_RE = re.compile(r"^\s*Test\s+(.+?)\s+failed\s*$", re.IGNORECASE)
+SUMMARY_RE = re.compile(
+    r"(\d+)\s+failure(?:s)?\s+with\s+(\d+)\s+unexpected\s+failure(?:s)?.*out\s+of\s+(\d+)\s+test",
+    re.IGNORECASE,
+)
+PASS_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9-]*(?:\.[A-Z0-9-]+)+\b")
 
 
 def normalize_status(raw: str) -> str:
@@ -90,11 +96,25 @@ class TestEntry:
         self.line_numbers.append(line_no)
 
 
-def parse_lines(lines: Iterable[str]) -> tuple[Dict[str, TestEntry], Optional[int], Optional[str]]:
+def upsert_test(
+    tests: Dict[str, TestEntry], test_id: str, raw_status: str, line_no: int, next_ordinal: int
+) -> int:
+    entry = tests.get(test_id)
+    if entry is None:
+        entry = TestEntry(ordinal=next_ordinal)
+        tests[test_id] = entry
+        next_ordinal += 1
+    entry.update(raw_status, line_no)
+    return next_ordinal
+
+
+def parse_lines(lines: Iterable[str]) -> tuple[Dict[str, TestEntry], Optional[int], Optional[str], Optional[dict]]:
     tests: Dict[str, TestEntry] = {}
     next_ordinal = 1
     exit_code: Optional[int] = None
     started_utc: Optional[str] = None
+    reported: Optional[dict] = None
+    in_fail_list = False
 
     for idx, line in enumerate(lines, start=1):
         text = line.rstrip("\n")
@@ -106,6 +126,39 @@ def parse_lines(lines: Iterable[str]) -> tuple[Dict[str, TestEntry], Optional[in
         exit_match = EXIT_RE.match(text)
         if exit_match:
             exit_code = int(exit_match.group(1))
+            continue
+
+        summary_match = SUMMARY_RE.search(text)
+        if summary_match:
+            reported = {
+                "fail": int(summary_match.group(1)),
+                "unexpected_fail": int(summary_match.group(2)),
+                "total": int(summary_match.group(3)),
+            }
+            continue
+
+        fail_line = FAIL_LINE_RE.match(text)
+        if fail_line:
+            test_id = normalize_test_id(fail_line.group(1))
+            next_ordinal = upsert_test(tests, test_id, "fail", idx, next_ordinal)
+            continue
+
+        stripped = text.strip()
+        if stripped.lower().startswith("failures:"):
+            in_fail_list = True
+            continue
+        if in_fail_list and (
+            stripped == ""
+            or stripped.lower().startswith("unexpected failures:")
+            or stripped.lower().startswith("no unexpected failures")
+            or stripped.lower().startswith("no failures")
+        ):
+            in_fail_list = False
+        if in_fail_list:
+            if stripped:
+                test_id = normalize_test_id(stripped)
+                if test_id:
+                    next_ordinal = upsert_test(tests, test_id, "fail", idx, next_ordinal)
             continue
 
         matched = False
@@ -120,19 +173,18 @@ def parse_lines(lines: Iterable[str]) -> tuple[Dict[str, TestEntry], Optional[in
                 raw_status = m.group("status")
             test_id = normalize_test_id(m.group("id"))
 
-            entry = tests.get(test_id)
-            if entry is None:
-                entry = TestEntry(ordinal=next_ordinal)
-                tests[test_id] = entry
-                next_ordinal += 1
-            entry.update(raw_status, idx)
+            next_ordinal = upsert_test(tests, test_id, raw_status, idx, next_ordinal)
             matched = True
             break
 
         if matched:
             continue
 
-    return tests, exit_code, started_utc
+        if text.startswith(" ") and "WARNING" not in text and "warning" not in text:
+            for token in PASS_TOKEN_RE.findall(text):
+                next_ordinal = upsert_test(tests, normalize_test_id(token), "pass", idx, next_ordinal)
+
+    return tests, exit_code, started_utc, reported
 
 
 def summarize_counts(tests: Dict[str, TestEntry]) -> dict:
@@ -170,7 +222,7 @@ def main() -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    tests, exit_code, started_utc = parse_lines(lines)
+    tests, exit_code, started_utc, reported = parse_lines(lines)
 
     if not tests:
         fallback_status = "pass" if (exit_code is None or exit_code == 0) else "fail"
@@ -180,10 +232,17 @@ def main() -> int:
         tests["__run__"] = entry
 
     counts = summarize_counts(tests)
+    if reported is not None:
+        counts["fail"] = reported["fail"]
+        counts["pass"] = max(reported["total"] - reported["fail"], 0)
+        counts["skip"] = 0
+        counts["other"] = 0
+        counts["total"] = reported["total"]
     data = {
         "source_log": str(log_path),
         "run_started_utc": started_utc,
         "exit_code": exit_code,
+        "reported": reported,
         "counts": counts,
         "tests": serialize_tests(tests),
     }

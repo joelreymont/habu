@@ -1,0 +1,25 @@
+{
+  "counts": {
+    "fail": 1,
+    "other": 0,
+    "pass": 0,
+    "skip": 0,
+    "total": 1
+  },
+  "exit_code": 0,
+  "reported": null,
+  "run_started_utc": "2026-02-05T21:42:28Z",
+  "source_log": "/Users/joel/Work/habu/docs/ansi/raw/habu-baseline-20260205T214222Z.log",
+  "tests": {
+    "UnboundVariable": {
+      "line_numbers": [
+        8
+      ],
+      "ordinal": 1,
+      "raw_statuses": [
+        "error"
+      ],
+      "status": "fail"
+    }
+  }
+}

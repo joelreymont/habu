@@ -1,9 +1,11 @@
 ---
 title: Record functional parity baseline
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-05T22:32:05.466524+01:00"
+created-at: "\"2026-02-05T22:32:05.466524+01:00\""
+closed-at: "2026-02-05T22:43:13.166572+01:00"
+close-reason: Generated baseline JSON with corpus rev, totals, and failing test lists for sbcl and habu.
 blocks:
   - habu-normalize-ansi-output-9aa78296
 ---
