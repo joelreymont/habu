@@ -3072,3 +3072,48 @@ test "ansi repro make-load-form.order.14 still nonconforming" {
 
     try testing.expectError(error.TypeMismatch, evalExpr(allocator, &heap, src));
 }
+
+test "ansi repro write-to-string.3 still nonconforming" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // ANSI write-to-string.3 permits odd trailing keys when :allow-other-keys t.
+    const src =
+        \\(with-standard-io-syntax
+        \\  (write-to-string 3 :allow-other-keys t '#.(gensym) 0))
+    ;
+
+    try testing.expectError(error.UnexpectedToken, evalExpr(allocator, &heap, src));
+}
+
+test "ansi repro syntax.sharp-dot.1 still nonconforming" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // ANSI syntax.sharp-dot.1 expects read-time evaluation support for #.
+    const src = "(read-from-string \"#.(+ 1 2)\")";
+    try testing.expectError(error.UnexpectedToken, evalExpr(allocator, &heap, src));
+}
+
+test "ansi repro read-suppress.sharp-dot.1 still nonconforming" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // ANSI read-suppress.sharp-dot.1 should ignore #. when *read-suppress* is true.
+    const src = "(let ((*read-suppress* t)) (read-from-string \"#.1\"))";
+    try testing.expectError(error.UnexpectedToken, evalExpr(allocator, &heap, src));
+}
+
+test "ansi repro read-from-string.error.10 still nonconforming" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // ANSI read-from-string.error.10 expects PROGRAM-ERROR here.
+    const src = "(read-from-string \"A\" nil t :bad-keyword t :allow-other-keys nil)";
+    const result = try evalExpr(allocator, &heap, src);
+    try testing.expect(result.isSymbol());
+}
