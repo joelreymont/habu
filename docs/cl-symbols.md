@@ -1083,7 +1083,7 @@ Audit: `python3 tools/cl_symbols_audit.py`
 | dynamic-extent | ✓ | compile.zig:9540 | Declaration spec |
 | eq | ✓ | compile.zig:751 | Pointer identity |
 | equal | ✓ | compile.zig:752 | Structural equality |
-| equalp | ✗ | - | Extended equality |
+| equalp | ✓ | compile.zig:759 | Extended equality |
 | fdefinition | ✓ | lib/stdlib.habu:1073 | Function binding accessor |
 | floatp | ✓ | compile.zig:809 | Float predicate |
 | fmakunbound | ✓ | primitives/symbol.zig:218 | Unbind function cell |

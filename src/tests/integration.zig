@@ -196,6 +196,45 @@ test "eval comparison greater than false" {
 }
 
 // ============================================================================
+// Equality Tests
+// ============================================================================
+
+test "eval equalp case-insensitive string" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(equalp \"a\" \"A\")");
+    try testing.expect(!result.isNil());
+}
+
+test "eval equalp numeric coercion" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(equalp 1 1.0)");
+    try testing.expect(!result.isNil());
+}
+
+test "eval hash-table :test equalp folds string case" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const src =
+        "(let ((h (make-hash-table :test 'equalp)))\n" ++
+        "  (puthash \"a\" 42 h)\n" ++
+        "  (gethash \"A\" h))";
+    const result = try evalExpr(allocator, &heap, src);
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+// ============================================================================
 // List Tests
 // ============================================================================
 

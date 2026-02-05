@@ -89,18 +89,27 @@ pub const Repl = struct {
     current_vm: ?*Vm,
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap, config: Config) !Repl {
-        var vm = try Vm.init(allocator, heap);
-        return Repl{
-            .allocator = allocator,
-            .heap = heap,
-            .vm = vm,
-            .config = config,
-            .compiler = try Compiler.initWithHeap(allocator, &vm),
-            .chunk_pool = std.ArrayList(*runtime.objects.Chunk){},
-            .macros = std.AutoHashMap(Value, Value).init(allocator),
-            .line_editor = LineEditor.init(allocator),
-            .current_vm = null,
-        };
+        // NOTE: Vm must be initialized in-place before Compiler.initWithHeap so
+        // subcomponents can safely keep pointers into vm (builtins, etc).
+        var self: Repl = undefined;
+        self.allocator = allocator;
+        self.heap = heap;
+        self.config = config;
+        self.chunk_pool = std.ArrayList(*runtime.objects.Chunk){};
+        errdefer self.chunk_pool.deinit(allocator);
+        self.macros = std.AutoHashMap(Value, Value).init(allocator);
+        errdefer self.macros.deinit();
+        self.line_editor = LineEditor.init(allocator);
+        errdefer self.line_editor.deinit();
+        self.current_vm = null;
+
+        self.vm = try Vm.init(allocator, heap);
+        errdefer self.vm.deinit();
+
+        self.compiler = try Compiler.initWithHeap(allocator, &self.vm);
+        errdefer self.compiler.deinit();
+
+        return self;
     }
 
     fn syncChunkPools(self: *Repl, vm: *Vm) void {

@@ -190,6 +190,7 @@ pub const Builtins = struct {
     eq: Value,
     equal: Value,
     eql: Value,
+    equalp: Value,
     @"<": Value,
     @">": Value,
     @"<=": Value,
@@ -755,6 +756,7 @@ pub const Builtins = struct {
             .eq = try heap.intern("eq"),
             .equal = try heap.intern("equal"),
             .eql = try heap.intern("eql"),
+            .equalp = try heap.intern("equalp"),
             .@"<" = try heap.intern("<"),
             .@">" = try heap.intern(">"),
             .@"<=" = try heap.intern("<="),
@@ -1190,7 +1192,7 @@ pub const Builtins = struct {
         // Arithmetic
         "+", "-", "*", "/", "mod", "%", "quot", "truncate", "rem",
         // Comparison
-        "eq", "equal", "eql", "<", ">", "<=", ">=", "=",
+        "eq", "equal", "eql", "equalp", "<", ">", "<=", ">=", "=",
         // List operations
         "cons", "car", "cdr", "first", "rest",
         "caar", "cadr", "cdar", "cddr",
@@ -4621,6 +4623,7 @@ pub const Compiler = struct {
         if (s == b.eq.raw) return try self.makeBinaryWrapper(&IrBuilder.eq);
         if (s == b.equal.raw) return try self.makeBinaryWrapper(&IrBuilder.equal);
         if (s == b.eql.raw) return try self.makeBinaryWrapper(&IrBuilder.eql);
+        if (s == b.equalp.raw) return try self.makeBinaryWrapper(&IrBuilder.equalp);
         if (s == b.@"<".raw) return try self.makeBinaryWrapper(&IrBuilder.lt);
         if (s == b.@">".raw) return try self.makeBinaryWrapper(&IrBuilder.gt);
         if (s == b.@"<=".raw) return try self.makeBinaryWrapper(&IrBuilder.le);
@@ -10200,7 +10203,7 @@ pub const Compiler = struct {
         // Arithmetic
         add, sub, mul, div, mod, quot, rem,
         // Comparison
-        eq, equal, eql, lt, gt, le, ge, num_eq,
+        eq, equal, eql, equalp, lt, gt, le, ge, num_eq,
         // List
         cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd,
         // Type predicates
@@ -10455,6 +10458,7 @@ pub const Compiler = struct {
         .{ .field = "eq", .tag = .eq },
         .{ .field = "equal", .tag = .equal },
         .{ .field = "eql", .tag = .eql },
+        .{ .field = "equalp", .tag = .equalp },
         .{ .field = "<", .tag = .lt },
         .{ .field = ">", .tag = .gt },
         .{ .field = "<=", .tag = .le },
@@ -10883,6 +10887,7 @@ pub const Compiler = struct {
             .eq => try self.builder.eq(left, right),
             .equal => try self.builder.equal(left, right),
             .eql => try self.builder.eql(left, right),
+            .equalp => try self.builder.equalp(left, right),
             .lt => try self.builder.lt(left, right),
             .gt => try self.builder.gt(left, right),
             .le => blk: {
@@ -12049,6 +12054,8 @@ pub const Compiler = struct {
                         test_type = .eql;
                     } else if (test_sym.raw == b.equal.raw) {
                         test_type = .equal;
+                    } else if (test_sym.raw == b.equalp.raw) {
+                        test_type = .equalp;
                     } else {
                         return error.InvalidSyntax;
                     }

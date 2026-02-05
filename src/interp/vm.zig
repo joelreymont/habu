@@ -5040,18 +5040,17 @@ pub const Vm = struct {
             .equal => {
                 const b = try self.pop();
                 const a = try self.pop();
-                try self.push(if (valueEqual(a, b)) Value.t else Value.nil);
+                try self.push(if (hash_prims.valueEqual(a, b)) Value.t else Value.nil);
             },
             .eql => {
                 const b = try self.pop();
                 const a = try self.pop();
-                // eql: eq for most types, but numeric equality for numbers
-                // Floats need special handling: 0.0 == -0.0, NaN != NaN
-                if (a.isFloat() and b.isFloat()) {
-                    try self.push(if (floatEql(a.toFloat(), b.toFloat())) Value.t else Value.nil);
-                } else {
-                    try self.push(if (a.eq(b)) Value.t else Value.nil);
-                }
+                try self.push(if (hash_prims.keyEqualWithTest(a, b, .eql)) Value.t else Value.nil);
+            },
+            .equalp => {
+                const b = try self.pop();
+                const a = try self.pop();
+                try self.push(if (hash_prims.valueEqualp(a, b)) Value.t else Value.nil);
             },
             .char_code => {
                 const val = try self.pop();

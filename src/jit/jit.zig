@@ -198,6 +198,9 @@ pub const Jit = struct {
             .eql => {
                 try self.emitBinaryCall(@intFromPtr(&rt.eql));
             },
+            .equalp => {
+                try self.emitBinaryCall(@intFromPtr(&rt.equalp));
+            },
 
             .lt => {
                 try self.emitBinaryCompare(stencils.lt_stencil, @intFromPtr(&rt.lt));

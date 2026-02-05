@@ -739,6 +739,7 @@ pub const Emitter = struct {
             .num_eq => |op| try self.emitBinaryOp(op, .num_eq),
             .equal => |op| try self.emitBinaryOp(op, .equal),
             .eql => |op| try self.emitBinaryOp(op, .eql),
+            .equalp => |op| try self.emitBinaryOp(op, .equalp),
 
             // Logic
             .not => |op| try self.emitUnaryOp(op.operand, .not),

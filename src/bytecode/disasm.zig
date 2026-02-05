@@ -348,6 +348,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .assoc,
         .equal,
         .eql,
+        .equalp,
         .rplaca,
         .rplacd,
         .error_user,

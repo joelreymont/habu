@@ -1111,6 +1111,10 @@ pub const Op = enum(u16) {
     /// ( a b -- t/nil )
     eql = 0xF7,
 
+    /// Extended structural equality (equalp)
+    /// ( a b -- t/nil )
+    equalp = 0x127,
+
     /// Association list lookup (using eql - compares numbers by value)
     /// ( key alist -- cons-or-nil )
     assoc_eql = 0xF9,
@@ -2021,6 +2025,7 @@ pub const Op = enum(u16) {
             .assoc,
             .equal,
             .eql,
+            .equalp,
             .rplaca,
             .rplacd,
             .error_user,
