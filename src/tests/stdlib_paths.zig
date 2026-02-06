@@ -57,3 +57,43 @@ test "logical pathname translations load from host file" {
     );
     try testing.expect(!loaded.isNil());
 }
+
+test "logical pathname translations search default-pathname-defaults first" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const dir_name = "tmp_lp_default_dir";
+    std.fs.cwd().makeDir(dir_name) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    defer std.fs.cwd().deleteTree(dir_name) catch {};
+
+    var file_path_buf: [256]u8 = undefined;
+    const file_path = try std.fmt.bufPrint(&file_path_buf, "{s}/DEFAULTHOST.translations.lisp", .{dir_name});
+    try std.fs.cwd().writeFile(.{
+        .sub_path = file_path,
+        .data = "'((\"DEFAULT;**;*.*\" \"/tmp/default/*.*\"))\n",
+    });
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    var eval_src_buf: [512]u8 = undefined;
+    const eval_src = try std.fmt.bufPrint(
+        &eval_src_buf,
+        "(let ((*default-pathname-defaults* (pathname \"{s}/\")))\n" ++
+            "  (let ((ok (load-logical-pathname-translations 'DEFAULTHOST))\n" ++
+            "        (tr (logical-pathname-translations 'DEFAULTHOST)))\n" ++
+            "    (and ok (consp tr))))",
+        .{dir_name},
+    );
+    const loaded = try repl.eval(eval_src);
+    try testing.expect(!loaded.isNil());
+}

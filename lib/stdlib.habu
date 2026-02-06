@@ -5229,19 +5229,36 @@
         translations)
   translations)
 
+(defun %load-logical-translations-candidate (host candidate)
+  (handler-case
+      (let ((value (load candidate)))
+        (if (consp value)
+            (progn
+              (set-logical-pathname-translations host value)
+              t)
+          (if (logical-pathname-translations host) t nil)))
+    (error (c)
+      (declare (ignore c))
+      nil)))
+
 (defun load-logical-pathname-translations (host)
-  "Load HOST translations from HOST.translations.lisp and install them."
+  "Load HOST translations from default path or ./HOST.translations.lisp."
   (let* ((host-key (%logical-pathname-host-key host))
          (filename (concatenate 'string host-key ".translations.lisp"))
-         (value (load filename))
-         (translations (if (consp value)
-                           value
-                         (logical-pathname-translations host))))
-    (if translations
-        (progn
-          (set-logical-pathname-translations host translations)
-          t)
-      nil)))
+         (base (if *default-pathname-defaults*
+                   (pathname *default-pathname-defaults*)
+                 nil))
+         (default-candidate
+          (if base
+              (namestring (merge-pathnames (pathname filename) base))
+            nil))
+         (cwd-candidate
+          (namestring (merge-pathnames (pathname filename) (pathname "./")))))
+    (or (if default-candidate
+            (%load-logical-translations-candidate host default-candidate)
+          nil)
+        (%load-logical-translations-candidate host cwd-candidate)
+        nil)))
 
 ; logical-pathname - coerce to logical pathname (stub)
 (defun logical-pathname (pathspec)
