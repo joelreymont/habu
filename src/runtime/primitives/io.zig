@@ -959,9 +959,45 @@ pub fn sysExit(code: i64) noreturn {
     std.process.exit(exit_code);
 }
 
+fn openPath(path: []const u8, flags: fs.File.OpenFlags) !fs.File {
+    if (fs.path.isAbsolute(path)) {
+        return fs.openFileAbsolute(path, flags);
+    }
+    return fs.cwd().openFile(path, flags);
+}
+
+fn createPath(path: []const u8, flags: fs.File.CreateFlags) !fs.File {
+    if (fs.path.isAbsolute(path)) {
+        return fs.createFileAbsolute(path, flags);
+    }
+    return fs.cwd().createFile(path, flags);
+}
+
+fn accessPath(path: []const u8, flags: fs.File.OpenFlags) !void {
+    if (fs.path.isAbsolute(path)) {
+        return fs.accessAbsolute(path, flags);
+    }
+    return fs.cwd().access(path, flags);
+}
+
+fn deletePath(path: []const u8) !void {
+    if (fs.path.isAbsolute(path)) {
+        return fs.deleteFileAbsolute(path);
+    }
+    return fs.cwd().deleteFile(path);
+}
+
+fn renamePath(old_path: []const u8, new_path: []const u8) !void {
+    const old_abs = fs.path.isAbsolute(old_path);
+    const new_abs = fs.path.isAbsolute(new_path);
+    if (old_abs and new_abs) return fs.renameAbsolute(old_path, new_path);
+    if (!old_abs and !new_abs) return fs.cwd().rename(old_path, new_path);
+    return error.InvalidPath;
+}
+
 /// Read entire file contents (allocates in heap)
 pub fn readFile(heap: *heap_mod.Heap, path: []const u8) !Value {
-    const file = try fs.openFileAbsolute(path, .{});
+    const file = try openPath(path, .{});
     defer file.close();
 
     const stat = try file.stat();
@@ -997,7 +1033,7 @@ pub fn writeFile(path: []const u8, content: Value) !void {
 
     const str = content.toPtr(objects.String);
 
-    const file = try fs.createFileAbsolute(path, .{});
+    const file = try createPath(path, .{});
     defer file.close();
 
     try file.writeAll(str.bytes());
@@ -1005,7 +1041,7 @@ pub fn writeFile(path: []const u8, content: Value) !void {
 
 /// Check if file exists
 pub fn fileExists(path: []const u8) !bool {
-    if (fs.accessAbsolute(path, .{})) |_| {
+    if (accessPath(path, .{})) |_| {
         return true;
     } else |err| switch (err) {
         error.FileNotFound => return false,
@@ -1015,7 +1051,7 @@ pub fn fileExists(path: []const u8) !bool {
 
 /// Get file size
 pub fn fileSize(path: []const u8) !i64 {
-    const file = try fs.openFileAbsolute(path, .{});
+    const file = try openPath(path, .{});
     defer file.close();
 
     const stat = try file.stat();
@@ -1024,18 +1060,18 @@ pub fn fileSize(path: []const u8) !i64 {
 
 /// Delete file
 pub fn deleteFile(path: []const u8) !void {
-    try fs.deleteFileAbsolute(path);
+    try deletePath(path);
 }
 
 /// Rename file
 pub fn renameFile(old_path: []const u8, new_path: []const u8) !void {
-    try fs.renameAbsolute(old_path, new_path);
+    try renamePath(old_path, new_path);
 }
 
 /// Probe file (check if exists)
 /// Returns true if file exists, false otherwise
 pub fn probeFile(path: []const u8) !bool {
-    if (fs.accessAbsolute(path, .{})) |_| {
+    if (accessPath(path, .{})) |_| {
         return true;
     } else |err| switch (err) {
         error.FileNotFound => return false,
@@ -1046,7 +1082,7 @@ pub fn probeFile(path: []const u8) !bool {
 /// Get file write date (modification time) as Universal Time
 /// Universal Time is seconds since 1900-01-01
 pub fn fileWriteDate(path: []const u8) !i64 {
-    const file = try fs.openFileAbsolute(path, .{});
+    const file = try openPath(path, .{});
     defer file.close();
     const stat = try file.stat();
     // Convert from nanoseconds to seconds, then from Unix to Universal Time

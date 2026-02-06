@@ -835,9 +835,52 @@ pub const Parser = struct {
         const feat_present = try self.evalFeature(feat);
 
         // If feature matches conditional, parse and return form
-        const form = try self.parseExpr();
-        if (feat_present == present) return form;
+        if (feat_present == present) {
+            return try self.parseExpr();
+        }
+
+        // Otherwise consume one full form without constructing objects.
+        try self.skipExpr();
         return error.SkipForm;
+    }
+
+    fn skipExpr(self: *Parser) Error!void {
+        switch (self.current.kind) {
+            .lparen, .vector_open, .complex_open, .struct_open, .array_open => {
+                self.advance(); // consume opening token
+                while (true) {
+                    switch (self.current.kind) {
+                        .rparen => {
+                            self.advance();
+                            return;
+                        },
+                        .eof => return error.UnterminatedList,
+                        .dot => {
+                            self.advance();
+                            try self.skipExpr();
+                            if (self.current.kind != .rparen) return error.UnexpectedToken;
+                            self.advance();
+                            return;
+                        },
+                        else => try self.skipExpr(),
+                    }
+                }
+            },
+            .quote, .backquote, .comma, .comma_at, .function_quote => {
+                self.advance();
+                try self.skipExpr();
+            },
+            .feature_present, .feature_absent => {
+                self.advance(); // consume #+ or #-
+                try self.skipExpr(); // feature expression
+                try self.skipExpr(); // conditional form
+            },
+            .number, .bignum, .float, .rational, .string, .symbol, .keyword, .uninterned_symbol, .character, .pathname, .bitvec => {
+                self.advance();
+            },
+            .eof => return error.UnexpectedToken,
+            .rparen, .dot, .err => return error.UnexpectedToken,
+        }
     }
 
     fn evalFeature(self: *Parser, expr: Value) Error!bool {

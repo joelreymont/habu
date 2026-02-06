@@ -616,7 +616,7 @@ pub const Repl = struct {
             var eval_arena = std.heap.ArenaAllocator.init(self.allocator);
             defer eval_arena.deinit();
             const eval_alloc = eval_arena.allocator();
-            last_value = self.evalParsedWithVm(expr, &nested_vm, eval_alloc) catch |err| return err;
+            last_value = try self.evalParsedWithVm(expr, &nested_vm, eval_alloc);
         }
 
         // Copy globals back to source VM
@@ -644,6 +644,16 @@ pub const Repl = struct {
 
     fn evalParsedWithVm(self: *Repl, parsed_expr: Value, vm: *Vm, arena_alloc: std.mem.Allocator) !Value {
         var expr = parsed_expr;
+        const saved_compiler_vm = self.compiler.vm;
+        self.compiler.setVm(vm);
+        try self.compiler.refreshBuiltins();
+        defer {
+            if (saved_compiler_vm) |saved_vm| {
+                self.compiler.setVm(saved_vm);
+            } else {
+                self.compiler.vm = null;
+            }
+        }
 
         // Check for defmacro - handle specially like main eval
         if (self.isDefmacro(expr)) {
@@ -957,6 +967,9 @@ pub const Repl = struct {
 
     /// Evaluate a string, capture error info for diagnostics
     fn evalCapturingError(self: *Repl, source: []const u8, err_info: *?ErrorInfo) !Value {
+        self.compiler.setVm(&self.vm);
+        try self.compiler.refreshBuiltins();
+
         // Use arena for IR nodes to simplify cleanup
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
@@ -1690,6 +1703,7 @@ pub const Repl = struct {
     /// Evaluate a single expression (used by eval-when for compile-time evaluation)
     fn evalSingleExpr(self: *Repl, expr_val: Value, arena_alloc: std.mem.Allocator) ReplError!Value {
         var expr = expr_val;
+        try self.compiler.refreshBuiltins();
 
         // Check for defmacro
         if (self.isDefmacro(expr)) {
@@ -1829,7 +1843,7 @@ pub const Repl = struct {
     }
 
     fn expandMacrosWithDepth(self: *Repl, expr: Value, depth: u32) ReplError!Value {
-        if (depth > 1000) return error.MacroExpansionTooDeep;
+        if (depth > 10000) return error.MacroExpansionTooDeep;
 
         // Non-list: no expansion
         if (!expr.isCons()) return expr;
@@ -1889,14 +1903,7 @@ pub const Repl = struct {
             }
         }
 
-        // Recursively expand in subexpressions
-        const expanded_car = try self.expandMacrosWithDepth(cons.car, depth + 1);
-        const expanded_cdr = try self.expandMacroListWithDepth(cons.cdr, depth + 1);
-
-        // Rebuild cons if changed
-        if (expanded_car.raw != cons.car.raw or expanded_cdr.raw != cons.cdr.raw) {
-            return try self.heap.allocCons(expanded_car, expanded_cdr);
-        }
+        // Non-macro form: leave recursive expansion to the compiler path.
         return expr;
     }
 
@@ -1906,12 +1913,12 @@ pub const Repl = struct {
     }
 
     fn expandMacroListWithDepth(self: *Repl, list: Value, depth: u32) ReplError!Value {
-        if (depth > 1000) return error.MacroExpansionTooDeep;
+        if (depth > 10000) return error.MacroExpansionTooDeep;
         if (!list.isCons()) return list;
 
         const cons = list.toPtr(Cons);
         const expanded_car = try self.expandMacrosWithDepth(cons.car, depth + 1);
-        const expanded_cdr = try self.expandMacroListWithDepth(cons.cdr, depth + 1);
+        const expanded_cdr = try self.expandMacroListWithDepth(cons.cdr, depth);
 
         if (expanded_car.raw != cons.car.raw or expanded_cdr.raw != cons.cdr.raw) {
             return try self.heap.allocCons(expanded_car, expanded_cdr);

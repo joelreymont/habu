@@ -4348,7 +4348,16 @@
          (options (if (consp name-and-options)
                       (cdr name-and-options)
                       nil))
+         (conc-pair (assoc :conc-name options))
          (name-str (string-upcase (symbol-name name)))
+         (conc-prefix (if conc-pair
+                          (let ((cv (cadr conc-pair)))
+                            (if (null cv)
+                                ""
+                              (if (symbolp cv)
+                                  (string-upcase (symbol-name cv))
+                                cv)))
+                        (concatenate 'string name-str "-")))
          (constructor-name (intern (concatenate 'string "MAKE-" name-str)))
          (predicate-name (intern (concatenate 'string name-str "-P")))
          (slot-names (mapcar (lambda (s) (if (consp s) (car s) s)) slots))
@@ -4378,13 +4387,28 @@
                   (let ((i 1))
                     (mapcar (lambda (slot)
                               (let ((accessor-name (intern (concatenate 'string
-                                                                        name-str
-                                                                        "-"
+                                                                        conc-prefix
                                                                         (string-upcase (symbol-name slot)))))
                                     (index i))
                                 (setq i (+ i 1))
                                 (list 'defun accessor-name (list 'obj)
                                       (list 'svref 'obj index))))
+                            slot-names)))
+
+            ; Setf writers: (setf (fdefinition '(setf ACCESSOR)) (lambda (val obj) ...))
+            (cons 'progn
+                  (let ((i 1))
+                    (mapcar (lambda (slot)
+                              (let ((accessor-name (intern (concatenate 'string
+                                                                        conc-prefix
+                                                                        (string-upcase (symbol-name slot)))))
+                                    (index i))
+                                (setq i (+ i 1))
+                                (list 'setf
+                                      (list 'fdefinition (list 'quote (list 'setf accessor-name)))
+                                      (list 'function
+                                            (list 'lambda (list 'val 'obj)
+                                                  (list 'setf (list 'svref 'obj index) 'val))))))
                             slot-names)))))))
 
 ;;; ============================================================================

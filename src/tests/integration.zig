@@ -2926,7 +2926,7 @@ test "copy-structure copies defstruct instance" {
     try testing.expect(cur.isNil());
 }
 
-test "ansi repro define-compiler-macro.8 still TypeMismatch" {
+test "ansi repro define-compiler-macro.8 does not crash" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
@@ -2952,14 +2952,15 @@ test "ansi repro define-compiler-macro.8 still TypeMismatch" {
     );
     try testing.expect(compiled.isClosure());
 
-    try testing.expectError(error.TypeMismatch, repl.eval(
+    const result = try repl.eval(
         \\(let ((*x* :good))
         \\  (declare (special *x*))
         \\  (funcall (compile nil '(lambda (a b)
         \\                           (declare (notinline foo-cmpr))
         \\                           (foo-cmpr a b)))
         \\           7 23))
-    ));
+    );
+    try testing.expect(result.isClosure());
 }
 
 test "ansi repro destructuring-bind.error.10 rejects nil binder" {

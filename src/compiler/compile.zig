@@ -1709,6 +1709,9 @@ pub const Compiler = struct {
     /// Struct predicate names mapped to struct types (for occurrence typing)
     /// Maps "point-p" -> pointer to point struct type
     struct_predicates: std.StringHashMap(*const types.Type),
+    /// Struct/class accessor names mapped to slot index for setf compilation.
+    /// Maps "foo-bar" / "PKG:foo-bar" -> slot index (0-based field index).
+    struct_accessors: std.StringHashMap(usize),
     /// Macro table: maps macro name to closure (expander function)
     /// When a form (macro-name args...) is compiled, the macro is expanded first
     macro_table: std.AutoHashMap(Value, Value),
@@ -1783,6 +1786,7 @@ pub const Compiler = struct {
             .defined_types = std.StringHashMap([]const Variant).init(allocator),
             .struct_types = std.StringHashMap(*const types.Type).init(allocator),
             .struct_predicates = std.StringHashMap(*const types.Type).init(allocator),
+            .struct_accessors = std.StringHashMap(usize).init(allocator),
             .macro_table = std.AutoHashMap(Value, Value).init(allocator),
             .symbol_macros = std.AutoHashMap(Value, Value).init(allocator),
             .vm = vm,
@@ -1799,9 +1803,7 @@ pub const Compiler = struct {
 
     /// Initialize with heap for symbol interning
     pub fn initWithHeap(allocator: std.mem.Allocator, vm: *Vm) !Compiler {
-        // Builtins are interned in CL package (current_package starts as CL)
-        const builtins = try Builtins.init(vm.heap);
-        // Switch to CL-USER for user code
+        const builtins = try initBuiltinsCanonical(vm.heap);
         if (vm.heap.cl_user_package) |cl_user| {
             vm.heap.setCurrentPackage(cl_user);
         }
@@ -1818,6 +1820,38 @@ pub const Compiler = struct {
             .defined_types = std.StringHashMap([]const Variant).init(allocator),
             .struct_types = std.StringHashMap(*const types.Type).init(allocator),
             .struct_predicates = std.StringHashMap(*const types.Type).init(allocator),
+            .struct_accessors = std.StringHashMap(usize).init(allocator),
+            .macro_table = std.AutoHashMap(Value, Value).init(allocator),
+            .symbol_macros = std.AutoHashMap(Value, Value).init(allocator),
+            .vm = vm,
+            .heap = vm.heap,
+            .class_metadata = std.StringHashMap([]const SlotSpec).init(allocator),
+            .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
+            .type_aliases = std.StringHashMap(Value).init(allocator),
+            .global_decls = DeclEnv.create(allocator),
+            .optimize_global = .{},
+            .optimize_current = .{},
+            .diag = false,
+        };
+    }
+
+    /// Initialize with heap while preserving current package selection.
+    pub fn initWithHeapPreservePackage(allocator: std.mem.Allocator, vm: *Vm) !Compiler {
+        const builtins = try initBuiltinsCanonical(vm.heap);
+        return .{
+            .builder = IrBuilder.init(allocator),
+            .allocator = allocator,
+            .type_checker = TypeChecker.init(allocator),
+            .bi_checker = BiChecker.init(allocator, &vm.builtins),
+            .type_checking_enabled = false,
+            .globals = GlobalEnv.init(allocator),
+            .builtins = builtins,
+            .occ = null,
+            .boxed_vars = null,
+            .defined_types = std.StringHashMap([]const Variant).init(allocator),
+            .struct_types = std.StringHashMap(*const types.Type).init(allocator),
+            .struct_predicates = std.StringHashMap(*const types.Type).init(allocator),
+            .struct_accessors = std.StringHashMap(usize).init(allocator),
             .macro_table = std.AutoHashMap(Value, Value).init(allocator),
             .symbol_macros = std.AutoHashMap(Value, Value).init(allocator),
             .vm = vm,
@@ -1837,6 +1871,23 @@ pub const Compiler = struct {
         self.vm = vm;
     }
 
+    fn initBuiltinsCanonical(heap: *Heap) !Builtins {
+        const saved_pkg = heap.current_package;
+        if (heap.cl_package) |cl_pkg| {
+            heap.setCurrentPackage(cl_pkg);
+        }
+        defer if (saved_pkg) |pkg| {
+            heap.setCurrentPackage(pkg);
+        };
+        return try Builtins.init(heap);
+    }
+
+    /// Refresh interned builtin symbol identities after GC may have moved objects.
+    pub fn refreshBuiltins(self: *Compiler) !void {
+        const heap = self.heap orelse return;
+        self.builtins = try initBuiltinsCanonical(heap);
+    }
+
     pub fn deinit(self: *Compiler) void {
         self.type_checker.deinit();
         self.bi_checker.deinit();
@@ -1846,6 +1897,12 @@ pub const Compiler = struct {
             self.globals.allocator.free(key.*);
         }
         self.struct_predicates.deinit();
+        // Free struct_accessors keys (allocated with globals.allocator)
+        var accessor_iter = self.struct_accessors.keyIterator();
+        while (accessor_iter.next()) |key| {
+            self.globals.allocator.free(key.*);
+        }
+        self.struct_accessors.deinit();
         // Free struct_types keys (allocated with globals.allocator)
         var type_iter = self.struct_types.keyIterator();
         while (type_iter.next()) |key| {
@@ -1911,6 +1968,25 @@ pub const Compiler = struct {
     /// Look up a struct type by name
     pub fn getStructType(self: *const Compiler, struct_name: []const u8) ?*const types.Type {
         return self.struct_types.get(struct_name);
+    }
+
+    fn registerStructAccessor(self: *Compiler, accessor_name: []const u8, slot_idx: usize) !void {
+        if (self.struct_accessors.getPtr(accessor_name)) |idx_ptr| {
+            idx_ptr.* = slot_idx;
+        } else {
+            const key_copy = try self.globals.allocator.dupe(u8, accessor_name);
+            try self.struct_accessors.put(key_copy, slot_idx);
+        }
+
+        var qual_buf: [512]u8 = undefined;
+        const q = try self.qualifyName(accessor_name, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        if (self.struct_accessors.getPtr(q.name)) |idx_ptr| {
+            idx_ptr.* = slot_idx;
+        } else {
+            const q_copy = try self.globals.allocator.dupe(u8, q.name);
+            try self.struct_accessors.put(q_copy, slot_idx);
+        }
     }
 
     /// Enable type checking mode
@@ -2665,7 +2741,7 @@ pub const Compiler = struct {
             // Check for macros - expand at compile time if VM is available
             if (self.lookupMacroDef(head)) |macro_def| {
                 if (self.vm) |vm| {
-                    const expanded = try self.expandMacro(macro_def, tail, expr, vm);
+                    const expanded = self.expandMacro(macro_def, tail, expr, vm) catch |err| return err;
                     return self.compileWithTail(expanded, env, in_tail);
                 }
                 // No VM - can't expand macro, treat as function call
@@ -2686,6 +2762,7 @@ pub const Compiler = struct {
     /// Expand a macro by calling its expander function with the arguments
     fn expandMacro(self: *Compiler, macro_def: Value, args: Value, whole_form: Value, vm: *Vm) !Value {
         const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+        try self.refreshBuiltins();
         const b = if (self.builtins) |val| val else return error.InvalidSyntax;
 
         // macro_def is ((params...) body...)
@@ -2785,7 +2862,7 @@ pub const Compiler = struct {
         const arena_alloc = arena.allocator();
 
         // Compile the lambda to get a closure
-        var macro_compiler = try Compiler.initWithHeap(arena_alloc, vm);
+        var macro_compiler = try Compiler.initWithHeapPreservePackage(arena_alloc, vm);
         defer macro_compiler.deinit();
         // Share macro table so nested macros (like prog1) work in macro bodies
         var iter = self.macro_table.iterator();
@@ -2824,25 +2901,72 @@ pub const Compiler = struct {
         const saved_ext = vm.ext_roots;
         const saved_pool = vm.chunk_pool;
 
-        const pool_roots = try self.allocator.alloc(Value, saved_pool.len);
-        defer self.allocator.free(pool_roots);
+        const RootPair = struct { key: Value, val: Value };
+        var macro_entries = std.ArrayList(RootPair){};
+        defer macro_entries.deinit(self.allocator);
+        var macro_iter = self.macro_table.iterator();
+        while (macro_iter.next()) |entry| {
+            try macro_entries.append(self.allocator, .{
+                .key = entry.key_ptr.*,
+                .val = entry.value_ptr.*,
+            });
+        }
+
+        var symbol_macro_entries = std.ArrayList(RootPair){};
+        defer symbol_macro_entries.deinit(self.allocator);
+        var sym_iter = self.symbol_macros.iterator();
+        while (sym_iter.next()) |entry| {
+            try symbol_macro_entries.append(self.allocator, .{
+                .key = entry.key_ptr.*,
+                .val = entry.value_ptr.*,
+            });
+        }
+
+        const root_chunk_idx = saved_pool.len;
+        const root_closure_idx = saved_pool.len + 1;
+        const root_args_idx = saved_pool.len + 2;
+        const root_whole_idx = saved_pool.len + 3;
+        const root_env_idx = saved_pool.len + 4;
+        const root_macro_start = saved_pool.len + 5;
+        const root_symbol_start = root_macro_start + (macro_entries.items.len * 2);
+        const macro_roots = try self.allocator.alloc(
+            Value,
+            saved_pool.len + 5 + (macro_entries.items.len * 2) + (symbol_macro_entries.items.len * 2),
+        );
+        defer self.allocator.free(macro_roots);
         const chunk_ptrs = try self.allocator.alloc(*Chunk, child_chunks.len);
         defer self.allocator.free(chunk_ptrs);
         for (saved_pool, 0..) |ptr, i| {
-            pool_roots[i] = Value.makeChunk(ptr);
+            macro_roots[i] = Value.makeChunk(ptr);
+        }
+        macro_roots[root_chunk_idx] = chunk_val;
+        macro_roots[root_closure_idx] = Value.nil;
+        macro_roots[root_args_idx] = args;
+        macro_roots[root_whole_idx] = whole_form;
+        macro_roots[root_env_idx] = Value.nil;
+        var root_idx = root_macro_start;
+        for (macro_entries.items) |entry| {
+            macro_roots[root_idx] = entry.key;
+            macro_roots[root_idx + 1] = entry.val;
+            root_idx += 2;
+        }
+        for (symbol_macro_entries.items) |entry| {
+            macro_roots[root_idx] = entry.key;
+            macro_roots[root_idx + 1] = entry.val;
+            root_idx += 2;
         }
         for (child_chunks, 0..) |cv, i| {
             chunk_ptrs[i] = cv.toPtr(Chunk);
         }
 
-        vm.setExtRoots(pool_roots);
+        vm.setExtRoots(macro_roots);
         vm.setGlobalEnv(&self.globals);
         vm.setChunkPool(chunk_ptrs);
         defer {
             // Keep the previous chunk pool slice up-to-date across GC that may run
             // while we temporarily replace vm.chunk_pool for macro expansion.
             for (saved_pool, 0..) |*slot, i| {
-                const v = pool_roots[i];
+                const v = macro_roots[i];
                 if (!v.isNil()) {
                     slot.* = v.toPtr(Chunk);
                 }
@@ -2853,39 +2977,77 @@ pub const Compiler = struct {
             saved_state.restore(vm);
         }
 
-        const chunk_ptr = chunk_val.toPtr(Chunk);
-        const closure_val = try vm.run(chunk_ptr);
+        const chunk_ptr = macro_roots[root_chunk_idx].toPtr(Chunk);
+        macro_roots[root_closure_idx] = try vm.run(chunk_ptr);
 
+        const closure_val = macro_roots[root_closure_idx];
         if (!closure_val.isClosure()) return error.InvalidSyntax;
-        const closure = closure_val.toPtr(Closure);
 
-        // Now call the closure with the macro arguments
-        var arg_count: u8 = 0;
-
-        // Push &whole form first if needed
-        if (whole_var != null) {
-            try vm.push(whole_form);
-            arg_count += 1;
-        }
-
-        // Push &environment (nil) if needed
         if (env_var != null) {
-            const env_val = try heap.allocMacroEnv();
-            try vm.push(env_val);
-            arg_count += 1;
+            macro_roots[root_env_idx] = try heap.allocMacroEnv();
         }
 
-        // Push regular arguments
-        var arg_list = args;
+        var call_args = std.ArrayList(Value){};
+        defer call_args.deinit(self.allocator);
+
+        if (whole_var != null) {
+            try call_args.append(self.allocator, macro_roots[root_whole_idx]);
+        }
+        if (env_var != null) {
+            try call_args.append(self.allocator, macro_roots[root_env_idx]);
+        }
+
+        var arg_list = macro_roots[root_args_idx];
         while (arg_list.isCons()) {
             const arg_cons = arg_list.toPtr(Cons);
-            try vm.push(arg_cons.car);
-            arg_count += 1;
+            try call_args.append(self.allocator, arg_cons.car);
             arg_list = arg_cons.cdr;
         }
 
-        // Call the macro expander
-        return try vm.callClosure(closure, arg_count);
+        const call_result = vm.callFromStack(closure_val, call_args.items) catch |err| {
+            try self.restoreMacroTablesFromRoots(
+                macro_roots,
+                root_macro_start,
+                macro_entries.items.len,
+                root_symbol_start,
+                symbol_macro_entries.items.len,
+            );
+            try self.refreshBuiltins();
+            return err;
+        };
+
+        try self.restoreMacroTablesFromRoots(
+            macro_roots,
+            root_macro_start,
+            macro_entries.items.len,
+            root_symbol_start,
+            symbol_macro_entries.items.len,
+        );
+        try self.refreshBuiltins();
+        return call_result;
+    }
+
+    fn restoreMacroTablesFromRoots(
+        self: *Compiler,
+        roots: []const Value,
+        macro_start: usize,
+        macro_count: usize,
+        symbol_start: usize,
+        symbol_count: usize,
+    ) !void {
+        self.macro_table.clearRetainingCapacity();
+        var i: usize = 0;
+        while (i < macro_count) : (i += 1) {
+            const base = macro_start + (i * 2);
+            try self.macro_table.put(roots[base], roots[base + 1]);
+        }
+
+        self.symbol_macros.clearRetainingCapacity();
+        i = 0;
+        while (i < symbol_count) : (i += 1) {
+            const base = symbol_start + (i * 2);
+            try self.symbol_macros.put(roots[base], roots[base + 1]);
+        }
     }
 
     fn compileIf(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -4610,7 +4772,8 @@ pub const Compiler = struct {
 
             if (head.isSymbol()) {
                 const b = if (self.builtins) |val| val else return error.InvalidSyntax;
-                const h = head.raw;
+                const dispatch_head = self.canonicalBuiltinSymbol(head);
+                const h = dispatch_head.raw;
 
                 // (setf (car x) val) -> (rplaca x val)
                 if (h == b.car.raw or h == b.first.raw) {
@@ -4838,6 +5001,11 @@ pub const Compiler = struct {
                     return cxr_ir;
                 }
 
+                // (setf (struct-slot obj) val) for defstruct-generated accessors.
+                if (try self.compileSetfStructAccessor(func_name, place_args, value_expr, env)) |set_ir| {
+                    return set_ir;
+                }
+
                 // Accept both canonical "(SETF ...)" and legacy "(setf ...)" names.
                 const setf_name_upper = try std.fmt.allocPrint(self.allocator, "(SETF {s})", .{func_name});
                 defer self.allocator.free(setf_name_upper);
@@ -4868,6 +5036,84 @@ pub const Compiler = struct {
         }
 
         return error.InvalidSyntax;
+    }
+
+    fn compileSetfStructAccessor(
+        self: *Compiler,
+        accessor_name: []const u8,
+        place_args: Value,
+        value_expr: Value,
+        env: *const Env,
+    ) anyerror!?*Ir {
+        if (!place_args.isCons()) return null;
+        const arg_cons = place_args.toPtr(Cons);
+        if (!arg_cons.cdr.isNil()) return null;
+
+        if (self.struct_accessors.get(accessor_name)) |slot_idx| {
+            const obj_ir = try self.compile(arg_cons.car, env);
+            const idx_ir = try self.builder.lit(Value.makeFixnum(@intCast(slot_idx + 1)));
+            const val_ir = try self.compile(value_expr, env);
+            return try self.builder.vecSet(obj_ir, idx_ir, val_ir);
+        }
+
+        var qual_buf: [512]u8 = undefined;
+        const q = try self.qualifyName(accessor_name, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        if (self.struct_accessors.get(q.name)) |slot_idx| {
+            const obj_ir = try self.compile(arg_cons.car, env);
+            const idx_ir = try self.builder.lit(Value.makeFixnum(@intCast(slot_idx + 1)));
+            const val_ir = try self.compile(value_expr, env);
+            return try self.builder.vecSet(obj_ir, idx_ir, val_ir);
+        }
+
+        // Accessor format: STRUCT-FIELD where FIELD may contain dashes.
+        const dash_idx = std.mem.indexOfScalar(u8, accessor_name, '-') orelse return null;
+        if (dash_idx == 0 or dash_idx + 1 >= accessor_name.len) return null;
+        const struct_name = accessor_name[0..dash_idx];
+        const field_name = accessor_name[dash_idx + 1 ..];
+
+        var slot_idx_opt: ?usize = null;
+        var it = self.struct_types.iterator();
+        while (it.next()) |entry| {
+            const st_ty = entry.value_ptr.*.*;
+            if (st_ty != .@"struct") continue;
+            const st = st_ty.@"struct";
+            if (!std.ascii.eqlIgnoreCase(st.name, struct_name)) continue;
+            for (st.fields, 0..) |field, i| {
+                if (std.ascii.eqlIgnoreCase(field.name, field_name)) {
+                    slot_idx_opt = i;
+                    break;
+                }
+            }
+            if (slot_idx_opt != null) break;
+        }
+        if (slot_idx_opt == null) {
+            var fallback_slot: ?usize = null;
+            var fallback_matches: usize = 0;
+            var it_fallback = self.struct_types.iterator();
+            while (it_fallback.next()) |entry| {
+                const st_ty = entry.value_ptr.*.*;
+                if (st_ty != .@"struct") continue;
+                const st = st_ty.@"struct";
+                for (st.fields, 0..) |field, i| {
+                    if (std.ascii.eqlIgnoreCase(field.name, field_name)) {
+                        fallback_slot = i;
+                        fallback_matches += 1;
+                        break;
+                    }
+                }
+                if (fallback_matches > 1) break;
+            }
+            if (fallback_matches == 1) {
+                slot_idx_opt = fallback_slot;
+            }
+        }
+        if (slot_idx_opt == null) return null;
+
+        const obj_ir = try self.compile(arg_cons.car, env);
+        const idx_ir = try self.builder.lit(Value.makeFixnum(@intCast(slot_idx_opt.? + 1)));
+        const val_ir = try self.compile(value_expr, env);
+        return try self.builder.vecSet(obj_ir, idx_ir, val_ir);
     }
 
     fn compileSetfCxr(
@@ -5986,10 +6232,32 @@ pub const Compiler = struct {
         var qual_buf: [256]u8 = undefined;
         const q = try self.getQualifiedName(name_sym, &qual_buf);
         defer if (q.owned) self.allocator.free(q.name);
-        const name = q.name;
+        const local_name = name_sym.getName();
+        var name = q.name;
+        var idx_opt = self.globals.lookup(name);
+        if (idx_opt == null) {
+            if (self.globals.lookup(local_name)) |idx| {
+                idx_opt = idx;
+                name = local_name;
+            } else {
+                const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:" };
+                var full_buf: [640]u8 = undefined;
+                for (prefixes) |prefix| {
+                    if (prefix.len + local_name.len > full_buf.len) continue;
+                    @memcpy(full_buf[0..prefix.len], prefix);
+                    @memcpy(full_buf[prefix.len .. prefix.len + local_name.len], local_name);
+                    const candidate = full_buf[0 .. prefix.len + local_name.len];
+                    if (self.globals.lookup(candidate)) |idx| {
+                        idx_opt = idx;
+                        name = candidate;
+                        break;
+                    }
+                }
+            }
+        }
 
         // Pre-register global for recursive definitions
-        const idx = try self.globals.define(name);
+        const idx = idx_opt orelse try self.globals.define(name);
 
         if (!cons1.cdr.isCons()) return error.InvalidSyntax;
         const cons2 = cons1.cdr.toPtr(Cons);
@@ -6048,8 +6316,30 @@ pub const Compiler = struct {
         var qual_buf: [256]u8 = undefined;
         const q = try self.getQualifiedName(name_sym_saved, &qual_buf);
         defer if (q.owned) self.allocator.free(q.name);
-        const name = q.name;
-        const idx = try self.globals.define(name);
+        const local_name = name_sym_saved.getName();
+        var name = q.name;
+        var idx_opt = self.globals.lookup(name);
+        if (idx_opt == null) {
+            if (self.globals.lookup(local_name)) |idx| {
+                idx_opt = idx;
+                name = local_name;
+            } else {
+                const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:" };
+                var full_buf: [640]u8 = undefined;
+                for (prefixes) |prefix| {
+                    if (prefix.len + local_name.len > full_buf.len) continue;
+                    @memcpy(full_buf[0..prefix.len], prefix);
+                    @memcpy(full_buf[prefix.len .. prefix.len + local_name.len], local_name);
+                    const candidate = full_buf[0 .. prefix.len + local_name.len];
+                    if (self.globals.lookup(candidate)) |idx| {
+                        idx_opt = idx;
+                        name = candidate;
+                        break;
+                    }
+                }
+            }
+        }
+        const idx = idx_opt orelse try self.globals.define(name);
 
         // Rest is (params...) body...
         const lambda_args = cons1.cdr;
@@ -7028,13 +7318,59 @@ pub const Compiler = struct {
     fn compileDefstruct(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         const heap = if (self.heap) |val| val else return error.InvalidSyntax;
 
-        // Parse: (name slot1 slot2 ...)
+        // Parse: (name slot1 slot2 ...) or ((name options...) slot1 slot2 ...)
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
-        const name_val = cons1.car;
-        if (!name_val.isSymbol()) return error.InvalidSyntax;
+        const name_spec = cons1.car;
+
+        var name_sym_val: Value = undefined;
+        var struct_name_raw: []const u8 = undefined;
+        var accessor_prefix: []const u8 = undefined;
+        var accessor_prefix_owned = true;
+
+        if (name_spec.isSymbol()) {
+            name_sym_val = name_spec;
+            struct_name_raw = name_spec.toPtr(Symbol).getName();
+            accessor_prefix = try self.concatStrings(struct_name_raw, "-");
+        } else if (name_spec.isCons()) {
+            const name_cons = name_spec.toPtr(Cons);
+            if (!name_cons.car.isSymbol()) return error.InvalidSyntax;
+            name_sym_val = name_cons.car;
+            struct_name_raw = name_sym_val.toPtr(Symbol).getName();
+            accessor_prefix = try self.concatStrings(struct_name_raw, "-");
+
+            var options = name_cons.cdr;
+            while (options.isCons()) {
+                const opt_cell = options.toPtr(Cons);
+                const opt = opt_cell.car;
+                if (opt.isCons()) {
+                    const opt_cons = opt.toPtr(Cons);
+                    if (opt_cons.car.isKeyword()) {
+                        const key_name = opt_cons.car.toPtr(runtime.Keyword).getName();
+                        if (std.ascii.eqlIgnoreCase(key_name, "conc-name")) {
+                            if (accessor_prefix_owned) self.allocator.free(accessor_prefix);
+                            if (!opt_cons.cdr.isCons()) return error.InvalidSyntax;
+                            const value = opt_cons.cdr.toPtr(Cons).car;
+                            if (value.isNil()) {
+                                accessor_prefix = "";
+                                accessor_prefix_owned = false;
+                            } else if (self.getStringOrSymbolName(value)) |prefix_name| {
+                                accessor_prefix = try self.allocator.dupe(u8, prefix_name);
+                                accessor_prefix_owned = true;
+                            } else {
+                                return error.InvalidSyntax;
+                            }
+                        }
+                    }
+                }
+                options = opt_cell.cdr;
+            }
+        } else {
+            return error.InvalidSyntax;
+        }
+        defer if (accessor_prefix_owned) self.allocator.free(accessor_prefix);
+
         // Dupe struct name to avoid dangling pointer if heap moves
-        const struct_name_raw = name_val.toPtr(Symbol).getName();
         const struct_name = try self.allocator.dupe(u8, struct_name_raw);
 
         // Collect slot specs: either `slot` or `(slot type)`
@@ -7089,14 +7425,17 @@ pub const Compiler = struct {
 
         // Create struct fields from specs
         const struct_fields = try self.allocator.alloc(types.StructField, slot_specs.items.len);
+        defer {
+            for (struct_fields) |field| self.allocator.free(field.name);
+            self.allocator.free(struct_fields);
+        }
         for (slot_specs.items, 0..) |spec, i| {
             struct_fields[i] = .{
                 .name = try self.allocator.dupe(u8, spec.name),
                 .type = spec.field_type,
             };
         }
-        var type_builder = types.TypeBuilder.init(self.allocator);
-        const struct_type = try type_builder.makeStruct(struct_name, struct_fields);
+        const struct_type = try self.type_checker.builder.makeStruct(struct_name, struct_fields);
         try self.registerStructType(struct_name, struct_type);
 
         // Extract slot names for constructor params
@@ -7105,8 +7444,8 @@ pub const Compiler = struct {
             slot_names[i] = spec.name;
         }
 
-        // Pre-allocate array: constructor + accessors + predicate + copier + name_lit
-        const num_defs = 4 + slot_specs.items.len;
+        // Pre-allocate array: constructor + accessors + writers + predicate + copier + name_lit
+        const num_defs = 4 + (slot_specs.items.len * 2);
         const defs = try self.allocator.alloc(*Ir, num_defs);
         var def_idx: usize = 0;
 
@@ -7117,12 +7456,28 @@ pub const Compiler = struct {
 
         // 2. Accessors: (defun name-slotN (obj) (if (name-p obj) (aref obj N+1) (error)))
         for (slot_specs.items, 0..) |spec, i| {
-            const accessor_name = try self.concatStrings3(struct_name, "-", spec.name);
+            const accessor_name = if (accessor_prefix.len == 0)
+                try self.allocator.dupe(u8, spec.name)
+            else
+                try self.concatStrings(accessor_prefix, spec.name);
             defs[def_idx] = try self.generateStructAccessor(heap, accessor_name, struct_name, i);
+            try self.registerStructAccessor(accessor_name, i);
             def_idx += 1;
         }
 
-        // 3. Predicate: (defun name-p (obj) (and (vectorp obj) (eq (aref obj 0) 'name)))
+        // 3. Writers: (defun (setf name-slotN) (val obj) ...)
+        for (slot_specs.items, 0..) |spec, i| {
+            const accessor_name = if (accessor_prefix.len == 0)
+                try self.allocator.dupe(u8, spec.name)
+            else
+                try self.concatStrings(accessor_prefix, spec.name);
+            const setf_name = try self.concatStrings("(setf ", accessor_name);
+            const setf_full = try self.concatStrings(setf_name, ")");
+            defs[def_idx] = try self.generateStructWriter(heap, setf_full, struct_name, i);
+            def_idx += 1;
+        }
+
+        // 4. Predicate: (defun name-p (obj) (and (vectorp obj) (eq (aref obj 0) 'name)))
         const pred_name = try self.concatStrings(struct_name, "-P");
         defs[def_idx] = try self.generateStructPredicate(heap, pred_name, struct_name);
         def_idx += 1;
@@ -7132,13 +7487,13 @@ pub const Compiler = struct {
         const persistent_pred_name = try self.globals.allocator.dupe(u8, pred_name);
         try self.struct_predicates.put(persistent_pred_name, struct_type);
 
-        // 4. Copier: (defun copy-name (obj) (copy-structure obj))
+        // 5. Copier: (defun copy-name (obj) (copy-structure obj))
         const copy_name = try self.concatStrings("COPY-", struct_name);
         defs[def_idx] = try self.generateStructCopier(copy_name);
         def_idx += 1;
 
-        // 5. Return struct name
-        defs[def_idx] = try self.builder.lit(name_val);
+        // 6. Return struct name
+        defs[def_idx] = try self.builder.lit(name_sym_val);
 
         return try self.builder.progn(defs);
     }
@@ -8333,14 +8688,17 @@ pub const Compiler = struct {
 
         // Create class type - similar to struct
         const class_fields = try self.allocator.alloc(types.StructField, slot_specs.items.len);
+        defer {
+            for (class_fields) |field| self.allocator.free(field.name);
+            self.allocator.free(class_fields);
+        }
         for (slot_specs.items, 0..) |spec, i| {
             class_fields[i] = .{
                 .name = try self.allocator.dupe(u8, spec.name),
                 .type = spec.field_type,
             };
         }
-        var type_builder = types.TypeBuilder.init(self.allocator);
-        const class_type = try type_builder.makeStruct(class_name, class_fields);
+        const class_type = try self.type_checker.builder.makeStruct(class_name, class_fields);
         try self.registerStructType(class_name, class_type);
 
         // Store class metadata for compilation (compiler-side with initforms)
@@ -8380,14 +8738,14 @@ pub const Compiler = struct {
         const class_obj = try self.allocateClass(heap, name_val, superclasses, slot_specs.items);
         try heap.putLispClass(name_val, class_obj);
 
-        // Count total defs: constructor + predicate + default_accessors + readers + writers + name_lit
+        // Count total defs: constructor + predicate + default_accessors + default_writers + readers + writers + name_lit
         var num_readers: usize = 0;
         var num_writers: usize = 0;
         for (slot_specs.items) |spec| {
             num_readers += spec.readers.items.len;
             num_writers += spec.writers.items.len;
         }
-        const num_defs = 1 + 1 + slot_specs.items.len + num_readers + num_writers + 1;
+        const num_defs = 1 + 1 + slot_specs.items.len + slot_specs.items.len + num_readers + num_writers + 1;
         const defs = try self.allocator.alloc(*Ir, num_defs);
         var def_idx: usize = 0;
 
@@ -8412,21 +8770,42 @@ pub const Compiler = struct {
         for (slot_specs.items, 0..) |spec, i| {
             const accessor_name = try self.concatStrings3(class_name, "-", spec.name);
             defs[def_idx] = try self.generateStructAccessor(heap, accessor_name, class_name, i);
+            try self.registerStructAccessor(accessor_name, i);
             def_idx += 1;
         }
 
-        // 4. Readers: (defun reader-name (obj) (class-name-slot obj))
+        // 4. Default writers: (defun (setf class-name-slot) (val obj) ...)
+        for (slot_specs.items, 0..) |spec, i| {
+            const accessor_name = try self.concatStrings3(class_name, "-", spec.name);
+            const setf_name = try self.concatStrings("(setf ", accessor_name);
+            const setf_full = try self.concatStrings(setf_name, ")");
+            defs[def_idx] = try self.generateStructWriter(heap, setf_full, class_name, i);
+            def_idx += 1;
+        }
+
+        // 5. Readers: (defun reader-name (obj) (class-name-slot obj))
         for (slot_specs.items, 0..) |spec, i| {
             for (spec.readers.items) |reader_val| {
                 if (!reader_val.isSymbol()) continue;
                 const reader_sym = reader_val.toPtr(Symbol);
                 const reader_name = reader_sym.getName();
                 defs[def_idx] = try self.generateStructAccessor(heap, reader_name, class_name, i);
+                var writable_reader = false;
+                for (spec.writers.items) |writer_val| {
+                    if (!writer_val.isSymbol()) continue;
+                    if (std.mem.eql(u8, writer_val.toPtr(Symbol).getName(), reader_name)) {
+                        writable_reader = true;
+                        break;
+                    }
+                }
+                if (writable_reader) {
+                    try self.registerStructAccessor(reader_name, i);
+                }
                 def_idx += 1;
             }
         }
 
-        // 5. Writers: (defun (setf writer-name) (val obj) (if (class-name-p obj) (setf (aref obj N+1) val) (error)))
+        // 6. Writers: (defun (setf writer-name) (val obj) (if (class-name-p obj) (setf (aref obj N+1) val) (error)))
         for (slot_specs.items, 0..) |spec, i| {
             for (spec.writers.items) |writer_val| {
                 if (!writer_val.isSymbol()) continue;
@@ -8439,7 +8818,7 @@ pub const Compiler = struct {
             }
         }
 
-        // 6. Return class name
+        // 7. Return class name
         defs[def_idx] = try self.builder.lit(name_val);
 
         return try self.builder.progn(defs);
@@ -10507,16 +10886,22 @@ pub const Compiler = struct {
     fn compileSimpleTypeCheckSym(self: *Compiler, type_sym: Value, expr_ir: *const Ir) anyerror!*Ir {
         const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
         // Dispatch by symbol identity (no string comparison)
-        if (type_sym.raw == b.ty_fixnum.raw) return self.builder.assertFixnum(expr_ir);
+        if (type_sym.raw == b.ty_fixnum.raw or type_sym.raw == b.ty_integer.raw) return self.builder.assertFixnum(expr_ir);
         if (type_sym.raw == b.cons.raw) return self.builder.assertCons(expr_ir);
         if (type_sym.raw == b.ty_symbol.raw) return self.builder.assertSymbol(expr_ir);
         if (type_sym.raw == b.string.raw) return self.builder.assertString(expr_ir);
         if (type_sym.raw == b.ty_vector.raw) return self.builder.assertVector(expr_ir);
-        if (type_sym.raw == b.ty_closure.raw) return self.builder.assertClosure(expr_ir);
+        if (type_sym.raw == b.ty_closure.raw or type_sym.raw == b.ty_function.raw or type_sym.raw == b.function.raw) return self.builder.assertClosure(expr_ir);
         if (type_sym.raw == b.@"ty_non-nil".raw) return self.builder.assertNonNil(expr_ir);
-        if (type_sym.raw == b.ty_list.raw) return self.builder.assertList(expr_ir);
-        if (type_sym.raw == b.ty_any.raw) return @constCast(expr_ir); // no check
-        return error.InvalidSyntax;
+        if (type_sym.raw == b.ty_list.raw or type_sym.raw == b.list.raw) return self.builder.assertList(expr_ir);
+        if (type_sym.raw == b.ty_nil.raw or type_sym.raw == b.null.raw) {
+            const syms = try self.allocator.alloc(Value, 1);
+            syms[0] = b.ty_nil;
+            return self.builder.assertOr(expr_ir, syms);
+        }
+        if (type_sym.raw == b.ty_any.raw or type_sym.raw == b.ty_t.raw) return @constCast(expr_ir); // no check
+        // Defer unsupported type symbols to runtime semantics instead of failing compile-time.
+        return @constCast(expr_ir);
     }
 
     /// Compile a compound type check: (or type1 type2 ...), (refine T x P), etc.
@@ -12991,14 +13376,15 @@ pub const Compiler = struct {
                     }
                 }
                 if (test_sym.isSymbol()) {
+                    const canon = self.canonicalBuiltinSymbol(test_sym);
                     // Compare by identity with pre-interned symbols
-                    if (test_sym.raw == b.eq.raw) {
+                    if (canon.raw == b.eq.raw) {
                         test_type = .eq;
-                    } else if (test_sym.raw == b.eql.raw) {
+                    } else if (canon.raw == b.eql.raw) {
                         test_type = .eql;
-                    } else if (test_sym.raw == b.equal.raw) {
+                    } else if (canon.raw == b.equal.raw) {
                         test_type = .equal;
-                    } else if (test_sym.raw == b.equalp.raw) {
+                    } else if (canon.raw == b.equalp.raw) {
                         test_type = .equalp;
                     } else {
                         return error.InvalidSyntax;
@@ -13059,11 +13445,12 @@ pub const Compiler = struct {
                     }
                 }
                 if (test_sym.isSymbol()) {
-                    if (test_sym.raw == b.eq.raw) {
+                    const canon = self.canonicalBuiltinSymbol(test_sym);
+                    if (canon.raw == b.eq.raw) {
                         test_type = .eq;
-                    } else if (test_sym.raw == b.eql.raw) {
+                    } else if (canon.raw == b.eql.raw) {
                         test_type = .eql;
-                    } else if (test_sym.raw == b.equal.raw) {
+                    } else if (canon.raw == b.equal.raw) {
                         test_type = .equal;
                     } else {
                         return error.InvalidSyntax;

@@ -365,6 +365,23 @@ pub const Vm = struct {
         return Value.makeChunk(ptr);
     }
 
+    fn valueFieldSlice(comptime T: type, ptr: *T) []Value {
+        const info = @typeInfo(T);
+        comptime {
+            if (info != .@"struct") {
+                @compileError("valueFieldSlice requires a struct type");
+            }
+            for (info.@"struct".fields) |field| {
+                if (field.type != Value) {
+                    @compileError("valueFieldSlice requires all fields to be Value");
+                }
+            }
+        }
+        const count = info.@"struct".fields.len;
+        const vals: [*]Value = @ptrCast(ptr);
+        return vals[0..count];
+    }
+
     pub fn init(allocator: std.mem.Allocator, heap: *Heap) !Vm {
         var vm = Vm{
             .stack = undefined,
@@ -1078,7 +1095,7 @@ pub const Vm = struct {
             try self.gc_vals.append(self.allocator, chunkRoot(chunk));
         }
 
-        var ranges: [8]roots_mod.RootRange = undefined;
+        var ranges: [12]roots_mod.RootRange = undefined;
         var range_len: usize = 0;
         if (self.sp != 0) {
             ranges[range_len] = .{ .ptr = self.stack[0..self.sp].ptr, .len = self.sp };
@@ -1094,6 +1111,16 @@ pub const Vm = struct {
         }
         if (self.saved_chunk_sp != 0) {
             ranges[range_len] = .{ .ptr = self.saved_chunks[0..self.saved_chunk_sp].ptr, .len = self.saved_chunk_sp };
+            range_len += 1;
+        }
+        const builtin_roots = valueFieldSlice(BuiltinSymbols, &self.builtins);
+        if (builtin_roots.len != 0) {
+            ranges[range_len] = .{ .ptr = builtin_roots.ptr, .len = builtin_roots.len };
+            range_len += 1;
+        }
+        const type_roots = valueFieldSlice(type_mod.TypeSymbols, &self.type_syms);
+        if (type_roots.len != 0) {
+            ranges[range_len] = .{ .ptr = type_roots.ptr, .len = type_roots.len };
             range_len += 1;
         }
         if (self.ext_roots.len != 0) {
