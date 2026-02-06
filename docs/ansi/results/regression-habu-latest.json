@@ -1,0 +1,12 @@
+{
+  "expected_failures": [
+    "UnboundVariable"
+  ],
+  "observed_failures": [
+    "InvalidOpcode"
+  ],
+  "runtime": "habu",
+  "unexpected_failures": [
+    "InvalidOpcode"
+  ]
+}

@@ -9,6 +9,19 @@ Source baseline: `docs/ansi-parity-baseline.json` (`tag=baseline-20260205T214222
 - Unmapped: `0`
 - Duplicate assignments: `0`
 
+## Latest Regression Delta
+
+Source: `docs/ansi/results/regression-habu-latest.json`
+
+- Unexpected failures: `1`
+- ID: `InvalidOpcode`
+- Priority: `P0`
+- Owner files:
+  - `src/interp/vm.zig`
+  - `src/bytecode/opcodes.zig`
+  - `src/bytecode/emit.zig`
+  - `src/compiler/compile.zig`
+
 ## Buckets
 
 ### 1) Compiler and Macro Expansion (`P1`)

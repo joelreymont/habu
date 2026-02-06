@@ -1,0 +1,25 @@
+{
+  "counts": {
+    "fail": 1,
+    "other": 0,
+    "pass": 0,
+    "skip": 0,
+    "total": 1
+  },
+  "exit_code": 0,
+  "reported": null,
+  "run_started_utc": "2026-02-06T02:53:50Z",
+  "source_log": "docs/ansi/raw/habu-latest.log",
+  "tests": {
+    "InvalidOpcode": {
+      "line_numbers": [
+        7
+      ],
+      "ordinal": 1,
+      "raw_statuses": [
+        "error"
+      ],
+      "status": "fail"
+    }
+  }
+}
