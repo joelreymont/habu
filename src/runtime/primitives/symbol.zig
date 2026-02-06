@@ -46,9 +46,23 @@ pub fn gensym(heap: *Heap, prefix: ?Value) !Value {
 
 /// Create uninterned symbol with given name
 pub fn makeSymbol(heap: *Heap, name: Value) !Value {
-    if (!name.isString()) return error.TypeError;
-    const s = name.toPtr(objects.String);
-    return try heap.allocSymbol(s.bytes());
+    const name_bytes: []const u8 = switch (name.typeKind()) {
+        .string => name.toPtr(objects.String).bytes(),
+        .symbol => name.toPtr(objects.Symbol).getName(),
+        .char => blk: {
+            var buf: [4]u8 = undefined;
+            const cp: u21 = @intCast(name.toCharacter());
+            const n = try std.unicode.utf8Encode(cp, &buf);
+            break :blk buf[0..n];
+        },
+        .array => blk: {
+            const arr = name.toPtr(objects.Array);
+            if (arr.rank != 1 or arr.total_size != 0) return error.TypeError;
+            break :blk "";
+        },
+        else => return error.TypeError,
+    };
+    return try heap.allocSymbol(name_bytes);
 }
 
 /// Copy symbol optionally copying properties

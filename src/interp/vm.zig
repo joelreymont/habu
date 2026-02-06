@@ -1778,6 +1778,12 @@ pub const Vm = struct {
                         const str = seq.toPtr(runtime.String);
                         try self.push(Value.makeFixnum(@intCast(str.length)));
                     },
+                    .array => {
+                        const arr = seq.toPtr(runtime.Array);
+                        if (arr.rank != 1) return error.TypeMismatch;
+                        if (arr.total_size > std.math.maxInt(i64)) return error.Overflow;
+                        try self.push(Value.makeFixnum(@intCast(arr.total_size)));
+                    },
                     else => return error.TypeMismatch,
                 }
             },
@@ -3000,6 +3006,11 @@ pub const Vm = struct {
                 if (!str_val.isString()) return error.TypeMismatch;
                 const str = str_val.toPtr(String);
                 const sym = try self.intern(str.bytes());
+                try self.push(sym);
+            },
+            .make_symbol => {
+                const name_val = try self.pop();
+                const sym = try primitives.symbol.makeSymbol(self.heap, name_val);
                 try self.push(sym);
             },
             .substring => {

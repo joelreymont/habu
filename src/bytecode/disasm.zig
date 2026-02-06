@@ -154,6 +154,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .slot_definition_allocation,
         .slot_definition_type,
         .intern,
+        .make_symbol,
         .unintern,
         .substring,
         .sym_name,

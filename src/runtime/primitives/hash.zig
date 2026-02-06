@@ -518,9 +518,19 @@ fn valueEqualWithDepth(a: Value, b: Value, depth: usize) bool {
         return valueEql(a, b);
     }
 
-    if (a.typeKind() != b.typeKind()) return false;
+    const ta = a.typeKind();
+    const tb = b.typeKind();
 
-    return switch (a.typeKind()) {
+    // ANSI compatibility: a zero-length rank-1 array compares equal to an empty string.
+    if ((ta == .array and tb == .string) or (ta == .string and tb == .array)) {
+        const arr = if (ta == .array) a.toPtr(objects.Array) else b.toPtr(objects.Array);
+        const str = if (ta == .string) a.toPtr(objects.String) else b.toPtr(objects.String);
+        return arr.rank == 1 and arr.total_size == 0 and str.length == 0;
+    }
+
+    if (ta != tb) return false;
+
+    return switch (ta) {
         .cons => blk: {
             const ca = a.toPtr(objects.Cons);
             const cb = b.toPtr(objects.Cons);
@@ -542,6 +552,25 @@ fn valueEqualWithDepth(a: Value, b: Value, depth: usize) bool {
             if (va.length != vb.length) break :blk false;
             for (va.items(), vb.items()) |ea, eb| {
                 if (!valueEqualWithDepth(ea, eb, depth + 1)) break :blk false;
+            }
+            break :blk true;
+        },
+        .array => blk: {
+            const aa = a.toPtr(objects.Array);
+            const ab = b.toPtr(objects.Array);
+            if (aa.rank != ab.rank) break :blk false;
+            if (aa.total_size != ab.total_size) break :blk false;
+
+            const rank: usize = @intCast(aa.rank);
+            for (0..rank) |i| {
+                if (aa.dimensions[i] != ab.dimensions[i]) break :blk false;
+            }
+
+            const size: usize = @intCast(aa.total_size);
+            const data_a: [*]Value = @ptrFromInt(aa.data_ptr);
+            const data_b: [*]Value = @ptrFromInt(ab.data_ptr);
+            for (0..size) |i| {
+                if (!valueEqualWithDepth(data_a[i], data_b[i], depth + 1)) break :blk false;
             }
             break :blk true;
         },

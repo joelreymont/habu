@@ -502,6 +502,10 @@ pub const Op = enum(u16) {
     /// ( str -- sym )
     intern = 0x74,
 
+    /// Make uninterned symbol from string designator
+    /// ( designator -- sym )
+    make_symbol = 0x10F,
+
     /// Unintern - remove symbol from package
     /// ( sym pkg -- bool )
     unintern = 0x0A,
@@ -1862,6 +1866,7 @@ pub const Op = enum(u16) {
             .random_seed,
             .type_of,
             .intern,
+            .make_symbol,
             .unintern,
             .substring,
             .sym_name,

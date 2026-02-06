@@ -275,10 +275,18 @@
 ; Equality - eql is same as eq for now (no floats with identity)
 (defun eql (a b) (eq a b))
 
+; Zero-length NIL vectors are treated as empty strings for ANSI compatibility notes.
+(defun %empty-nil-vector-p (x)
+  (and (or (vectorp x) (arrayp x))
+       (= (length x) 0)))
+
 ; Structural equality
 (defun equal (a b)
   (cond
     ((eq a b) t)
+    ((and (%empty-nil-vector-p a) (%empty-nil-vector-p b)) t)
+    ((and (%empty-nil-vector-p a) (stringp b)) (string= "" b))
+    ((and (stringp a) (%empty-nil-vector-p b)) (string= a ""))
     ((and (consp a) (consp b))
      (and (equal (car a) (car b))
           (equal (cdr a) (cdr b))))
@@ -3359,7 +3367,7 @@
 
 ; make-symbol - create uninterned symbol
 (defun make-symbol (name)
-  (gensym name))
+  (%make-symbol name))
 
 ;; ============================================================
 ;; Mapping Variations
@@ -3460,7 +3468,8 @@
 
 ; arrayp - check if array (vectors are arrays)
 (defun arrayp (x)
-  (vectorp x))
+  (or (vectorp x)
+      (eq (type-of x) 'array)))
 
 ; simple-vector-p - check if simple vector
 (defun simple-vector-p (x)

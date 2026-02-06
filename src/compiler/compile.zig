@@ -282,6 +282,7 @@ pub const Builtins = struct {
     subtypep: Value,
     @"type-of": Value,
     intern: Value,
+    @"%make-symbol": Value,
     unintern: Value,
     @"find-symbol": Value,
     @"symbol-name": Value,
@@ -854,6 +855,7 @@ pub const Builtins = struct {
             .subtypep = try heap.intern("subtypep"),
             .@"type-of" = try heap.intern("type-of"),
             .intern = try heap.intern("intern"),
+            .@"%make-symbol" = try heap.intern("%make-symbol"),
             .unintern = try heap.intern("unintern"),
             .@"find-symbol" = try heap.intern("find-symbol"),
             .@"symbol-name" = try heap.intern("symbol-name"),
@@ -11285,6 +11287,7 @@ pub const Compiler = struct {
         random_seed,
         // Symbol
         intern,
+        make_symbol,
         unintern,
         sym_name,
         copy_symbol,
@@ -11572,6 +11575,7 @@ pub const Compiler = struct {
         .{ .field = "function-lambda-expression", .tag = .function_lambda_expression },
         .{ .field = "type-of", .tag = .type_of },
         .{ .field = "intern", .tag = .intern },
+        .{ .field = "%make-symbol", .tag = .make_symbol },
         .{ .field = "symbol-name", .tag = .sym_name },
         .{ .field = "makunbound", .tag = .makunbound },
         .{ .field = "abs", .tag = .abs },
@@ -12607,6 +12611,11 @@ pub const Compiler = struct {
             .intern => blk: {
                 const node = try self.allocator.create(Ir);
                 node.* = .{ .intern = .{ .operand = operand } };
+                break :blk node;
+            },
+            .make_symbol => blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .make_symbol = .{ .operand = operand } };
                 break :blk node;
             },
             .sym_name => blk: {

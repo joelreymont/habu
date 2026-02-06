@@ -3138,6 +3138,47 @@ test "ansi repro write-to-string.3 honors allow-other-keys" {
     try testing.expectEqualStrings("3", result.toPtr(runtime.String).bytes());
 }
 
+test "ansi repro make-symbol.11 nil vector string designator" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const name = try repl.eval("(symbol-name (make-symbol (make-array '(0) :element-type nil)))");
+    try testing.expect(name.isString());
+    try testing.expectEqualStrings("", name.toPtr(runtime.String).bytes());
+
+    const pkg = try repl.eval("(symbol-package (make-symbol (make-array '(0) :element-type nil)))");
+    try testing.expect(pkg.isNil());
+}
+
+test "ansi repro equal.13 equal.14 nil vectors are string-like" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const v_eq = try repl.eval(
+        "(equal (make-array '(0) :element-type nil) (make-array '(0) :element-type nil))",
+    );
+    try testing.expect(!v_eq.isNil());
+
+    const s_eq = try repl.eval(
+        "(and (equal (make-array '(0) :element-type nil) \"\") (equal \"\" (make-array '(0) :element-type nil)))",
+    );
+    try testing.expect(!s_eq.isNil());
+}
+
 test "ansi repro syntax.sharp-dot.1 read-time evaluates #." {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
