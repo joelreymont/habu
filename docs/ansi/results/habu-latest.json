@@ -1,25 +1,23 @@
 {
   "counts": {
-    "fail": 1,
+    "fail": 0,
     "other": 0,
-    "pass": 0,
+    "pass": 1,
     "skip": 0,
     "total": 1
   },
   "exit_code": 0,
   "reported": null,
-  "run_started_utc": "2026-02-06T03:17:23Z",
+  "run_started_utc": "2026-02-06T03:57:10Z",
   "source_log": "docs/ansi/raw/habu-latest.log",
   "tests": {
-    "TypeMismatch": {
-      "line_numbers": [
-        7
-      ],
+    "__run__": {
+      "line_numbers": [],
       "ordinal": 1,
       "raw_statuses": [
-        "error"
+        "exit_code:0"
       ],
-      "status": "fail"
+      "status": "pass"
     }
   }
 }

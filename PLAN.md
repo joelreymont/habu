@@ -926,38 +926,82 @@ Add to AGENTS.md under "Next Steps":
 
 ## Remaining parity gaps (11 ✗ + 10 ⚠)
 
-### Active objective
-Close the remaining missing/partial symbols tracked in `docs/cl-symbols.md` by implementing:
+### Objective
+Close the remaining missing/partial CL symbols tracked in `docs/cl-symbols.md` by implementing:
 - setf expander API (`get-setf-expansion`, `define-setf-expander`)
 - macro lambda keywords (`&whole`, `&environment`, `&allow-other-keys`)
-- method-combination helpers (`call-method`, `make-method`, `invalid-method-error`, `method-combination-error`)
+- method-combination helper symbols (`call-method`, `make-method`, `invalid-method-error`, `method-combination-error`)
 - logical pathname translation loading (`load-logical-pathname-translations`)
-- actionable `OPTIMIZE` behavior (safety=0 suppresses assertions)
+- actionable `OPTIMIZE` behavior (`safety=0` suppresses runtime assertion emission)
 
-### Dot tree (execution plan)
-- `habu-cl-spec-parity-6821074c`
-  - `habu-add-get-setf-f354d451`
-    - `habu-add-setf-tests-c67c0876`
-  - `habu-finish-method-combinations-b5f58029`
-    - `habu-add-method-helpers-562d82b3`
-    - `habu-add-method-tests-8946ed7a`
-  - `habu-add-logical-pathname-52bc8dee`
-    - `habu-add-logical-path-f29f4d16`
-    - `habu-load-logical-path-afb281aa`
-    - `habu-add-logical-path-cff91dd2`
-  - `habu-honor-declarations-optimize-d6626aae`
-    - `habu-parse-optimize-85c7bb89`
-    - `habu-honor-safety-3f155793`
-    - `habu-add-optimize-docs-cd7fd297`
-  - `habu-reconcile-tracking-873402a0`
+### Required interfaces
+- `lib/stdlib.habu`:
+  - `get-setf-expansion`
+  - `define-setf-expander`
+  - `load-logical-pathname-translations`
+  - `call-method`
+  - `make-method`
+  - `invalid-method-error`
+  - `method-combination-error`
+- `src/runtime/objects.zig`:
+  - `Chunk.allow_other_keys`
+  - `Chunk.allowed_keywords`
+- `src/interp/repl.zig` + `src/compiler/compile.zig`:
+  - macro expansion honors `&whole`/`&environment` and passes concrete macro environment object
 
-### Concrete implementation checkpoints
-1. Complete setf expander snapshots and custom setf integration tests.
-2. Implement missing method-combination helper symbols in `lib/stdlib.habu`.
-3. Implement logical pathname translation store + loader + tests.
-4. Parse `optimize` declarations into compiler state and honor safety level for assertion emission.
-5. Reconcile `docs/cl-symbols.md`, `docs/PROGRESS.md`, and `docs/cl-spec-status.md` counts/status.
+### Dot tree (detailed, <=30 min sub-dots)
 
-### Verification gates
-- Run `zig build test` before finishing each dot that changes tracked files.
-- Use `tools/dot-finish <dot-id> -m "..."` to test, commit, push, close dot, and open next change.
+1. Parent: `habu-complete-lambda-keywords-d6cb9400`
+   - `habu-allow-other-keys-metadata-55a1b11a`
+     - Parse `&allow-other-keys` and persist metadata through IR/emitter/chunk.
+   - `habu-enforce-keyword-validation-52f2d13f`
+     - VM unknown-keyword enforcement with explicit allow-list and `:allow-other-keys`.
+   - `habu-fix-repl-macro-whole-env-638b531d`
+     - REPL `defmacro` pipeline honors `&whole` and `&environment`.
+   - `habu-add-macroenv-boxed-fd8d4e41`
+     - Add boxed MacroEnv runtime object and pass to macro closures.
+
+2. Parent: `habu-add-get-setf-f354d451`
+   - `habu-setf-expander-registry-2c6f92e4`
+     - Add `*setf-expanders*` and remove duplicate stubs.
+   - `habu-implement-define-setf-expander-faf4e2fd`
+     - Register custom place expanders.
+   - `habu-implement-get-setf-expansion-3f4b67ef`
+     - Return CL 5-value expansion for built-ins and custom expanders.
+   - `habu-refactor-setf-to-expansion-41af5cef`
+     - Route `setf` through `get-setf-expansion`.
+   - `habu-add-setf-expansion-tests-7a7e8d91`
+     - Add snapshot + integration coverage.
+
+3. Parent: `habu-finish-method-combinations-b5f58029`
+   - `habu-add-method-combination-helpers-e2059f10`
+     - Implement helper symbols/macros in stdlib.
+   - `habu-add-method-helper-tests-8ca5fb56`
+     - Integration coverage for helper behavior.
+
+4. Parent: `habu-add-logical-pathname-52bc8dee`
+   - `habu-logical-path-translations-store-5ae4df6c`
+     - Implement translation table API.
+   - `habu-load-logical-path-translations-31593cf5`
+     - Implement SBCL-like loader search order.
+   - `habu-logical-path-loader-tests-b3f13804`
+     - Add temp-file loader tests.
+
+5. Parent: `habu-honor-declarations-optimize-d6626aae`
+   - `habu-parse-optimize-state-8fd9b7b2`
+     - Parse `declare/declaim/proclaim` optimize qualities into compiler state.
+   - `habu-honor-safety-assertion-2976c3af`
+     - Suppress runtime asserts at `safety=0`.
+   - `habu-optimize-docs-tests-6253b9e8`
+     - Add tests and update docs statuses/counts.
+
+6. Parent: `habu-cl-spec-parity-6821074c`
+   - `habu-reconcile-cl-tracking-docs-42af9f7e`
+     - Sync `docs/cl-symbols.md`, `docs/PROGRESS.md`, `docs/cl-spec-status.md`.
+   - `habu-fix-ansi-typemismatch-91f1be52` (active)
+     - Stabilize macro expansion GC/package identity path to unblock full ANSI run.
+
+### Acceptance / verification
+- For every code-changing dot: `zig build test`.
+- For ANSI regressions: `tools/ansi/run.sh habu --tag latest` and archive raw log/json.
+- Dot closure workflow: `tools/dot-finish <dot-id> -m "<50-char imperative>"`.

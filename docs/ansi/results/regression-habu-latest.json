@@ -2,11 +2,7 @@
   "expected_failures": [
     "UnboundVariable"
   ],
-  "observed_failures": [
-    "TypeMismatch"
-  ],
+  "observed_failures": [],
   "runtime": "habu",
-  "unexpected_failures": [
-    "TypeMismatch"
-  ]
+  "unexpected_failures": []
 }
