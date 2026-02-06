@@ -17,6 +17,7 @@ const builtins_mod = @import("../runtime/builtins.zig");
 pub const Error = error{
     UnexpectedToken,
     UnterminatedList,
+    SkipForm,
     InvalidNumber,
     InvalidCharacter,
     Utf8InvalidStartByte,
@@ -76,13 +77,22 @@ pub const Parser = struct {
 
     /// Parse one S-expression
     pub fn parse(self: *Parser) Error!Value {
-        return self.parseExpr();
+        while (true) {
+            const expr = self.parseExpr() catch |err| switch (err) {
+                error.SkipForm => continue,
+                else => return err,
+            };
+            return expr;
+        }
     }
 
     /// Parse all expressions until EOF
     pub fn parseAll(self: *Parser, allocator: std.mem.Allocator, results: *std.ArrayList(Value)) Error!void {
         while (self.current.kind != .eof) {
-            const expr = try self.parseExpr();
+            const expr = self.parseExpr() catch |err| switch (err) {
+                error.SkipForm => continue,
+                else => return err,
+            };
             try results.append(allocator, expr);
         }
     }
@@ -110,6 +120,7 @@ pub const Parser = struct {
             .string => return self.parseString(),
             .symbol => return self.parseSymbol(),
             .keyword => return self.parseKeyword(),
+            .uninterned_symbol => return self.parseUninternedSymbol(),
             .character => return self.parseCharacter(),
             .eof => return Value.nil,
             .rparen, .dot => return error.UnexpectedToken,
@@ -126,12 +137,18 @@ pub const Parser = struct {
         }
 
         // Parse first element
-        const first = try self.parseExpr();
+        const first = self.parseExpr() catch |err| switch (err) {
+            error.SkipForm => return self.parseListTail(),
+            else => return err,
+        };
 
         // Check for dotted pair
         if (self.current.kind == .dot) {
             self.advance(); // consume '.'
-            const second = try self.parseExpr();
+            const second = self.parseExpr() catch |err| switch (err) {
+                error.SkipForm => return error.UnexpectedToken,
+                else => return err,
+            };
 
             if (self.current.kind != .rparen) {
                 return error.UnexpectedToken;
@@ -158,7 +175,10 @@ pub const Parser = struct {
 
         if (self.current.kind == .dot) {
             self.advance();
-            const cdr = try self.parseExpr();
+            const cdr = self.parseExpr() catch |err| switch (err) {
+                error.SkipForm => return error.UnexpectedToken,
+                else => return err,
+            };
             if (self.current.kind != .rparen) {
                 return error.UnexpectedToken;
             }
@@ -166,7 +186,10 @@ pub const Parser = struct {
             return cdr;
         }
 
-        const car = try self.parseExpr();
+        const car = self.parseExpr() catch |err| switch (err) {
+            error.SkipForm => return self.parseListTail(),
+            else => return err,
+        };
         const cdr = try self.parseListTail();
         return try self.heap.allocCons(car, cdr);
     }
@@ -185,7 +208,11 @@ pub const Parser = struct {
             if (count >= elements.len) {
                 return error.VectorTooLarge;
             }
-            elements[count] = try self.parseExpr();
+            const next = self.parseExpr() catch |err| switch (err) {
+                error.SkipForm => continue,
+                else => return err,
+            };
+            elements[count] = next;
             count += 1;
         }
         self.advance(); // consume ')'
@@ -316,7 +343,10 @@ pub const Parser = struct {
             return try self.heap.allocCons(make_array_sym, args);
         }
 
-        const first = try self.parseExpr();
+        const first = self.parseExpr() catch |err| switch (err) {
+            error.SkipForm => return self.parseListTail(),
+            else => return err,
+        };
         const rest = try self.parseListTail();
         const contents = try self.heap.allocCons(first, rest);
 
@@ -730,6 +760,22 @@ pub const Parser = struct {
         return try self.heap.intern(name);
     }
 
+    /// Create an uninterned symbol (fresh Value each read)
+    fn parseUninternedSymbol(self: *Parser) Error!Value {
+        const text = self.current.text;
+        self.advance();
+
+        if (text.len < 3) return error.UnexpectedToken;
+        const name = text[2..];
+        if (name.len == 0) return error.UnexpectedToken;
+
+        var upper_buf: [256]u8 = undefined;
+        const upper = try runtime.upperNameAlloc(self.alloc, name, upper_buf[0..]);
+        defer runtime.freeUpperName(self.alloc, upper);
+
+        return try self.heap.allocSymbol(upper.slice);
+    }
+
     /// Intern a symbol in a specific package
     fn internSymbolInPackage(self: *Parser, pkg_name: []const u8, sym_name: []const u8) Error!Value {
         // Uppercase package name for CL-spec case-insensitivity
@@ -789,13 +835,9 @@ pub const Parser = struct {
         const feat_present = try self.evalFeature(feat);
 
         // If feature matches conditional, parse and return form
-        if (feat_present == present) {
-            return try self.parseExpr();
-        } else {
-            // Skip form, then recurse to get the actual next form
-            _ = try self.parseExpr(); // discard skipped form
-            return try self.parseExpr(); // recurse - handles nested conditionals
-        }
+        const form = try self.parseExpr();
+        if (feat_present == present) return form;
+        return error.SkipForm;
     }
 
     fn evalFeature(self: *Parser, expr: Value) Error!bool {
@@ -934,6 +976,112 @@ test "feature conditional skips absent branch and keeps next form" {
     try testing.expectEqual(@as(usize, 1), results.items.len);
     try testing.expect(results.items[0].isFixnum());
     try testing.expectEqual(@as(i64, 42), results.items[0].toFixnum());
+}
+
+test "feature conditionals inside list skip only guarded forms" {
+    const testing = std.testing;
+    const list = @import("../runtime/primitives/list.zig");
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+    var parser = try Parser.init(
+        testing.allocator,
+        &heap,
+        "(let ((*default-pathname-defaults* *root-path*)) #+allegro (foo 1) #+clasp (bar 2) 42)",
+        &vm.builtins,
+    );
+    defer parser.deinit();
+
+    const expr = try parser.parse();
+    try testing.expect(expr.isCons());
+    try testing.expect(list.car(expr).isSymbol());
+
+    const args = list.cdr(expr);
+    try testing.expect(args.isCons());
+    const body = list.cdr(args);
+    try testing.expect(body.isCons());
+    try testing.expect(list.car(body).isFixnum());
+    try testing.expectEqual(@as(i64, 42), list.car(body).toFixnum());
+    try testing.expect(list.cdr(body).isNil());
+}
+
+test "parse all skips feature-conditional forms with no matches" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+    var parser = try Parser.init(testing.allocator, &heap, "#+allegro 1 #-habu 2", &vm.builtins);
+    defer parser.deinit();
+
+    var results = std.ArrayList(Value){};
+    defer results.deinit(testing.allocator);
+    try parser.parseAll(testing.allocator, &results);
+
+    try testing.expectEqual(@as(usize, 0), results.items.len);
+}
+
+test "feature conditional skip handles pathname forms" {
+    const testing = std.testing;
+    const list = @import("../runtime/primitives/list.zig");
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+    var parser = try Parser.init(
+        testing.allocator,
+        &heap,
+        \\(let ((*default-pathname-defaults* *root-path*))
+        \\  #+allegro
+        \\  (rt:load-expected-failures #P"expected-failures/acl.sexp" :if-does-not-exist nil)
+        \\
+        \\  #+clasp
+        \\  (rt:load-expected-failures #P"expected-failures/clasp.sexp" :if-does-not-exist nil)
+        \\  42)
+    ,
+        &vm.builtins,
+    );
+    defer parser.deinit();
+
+    const expr = try parser.parse();
+    try testing.expect(expr.isCons());
+
+    const args = list.cdr(expr);
+    try testing.expect(args.isCons());
+    const body = list.cdr(args);
+    try testing.expect(body.isCons());
+    try testing.expect(list.car(body).isFixnum());
+    try testing.expectEqual(@as(i64, 42), list.car(body).toFixnum());
+    try testing.expect(list.cdr(body).isNil());
+}
+
+test "parse uninterned symbols are fresh values" {
+    const testing = std.testing;
+    const list = @import("../runtime/primitives/list.zig");
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+    var parser = try Parser.init(testing.allocator, &heap, "(#:foo #:foo)", &vm.builtins);
+    defer parser.deinit();
+
+    const expr = try parser.parse();
+    try testing.expect(expr.isCons());
+
+    const first = list.car(expr);
+    const second = list.car(list.cdr(expr));
+    try testing.expect(first.isSymbol());
+    try testing.expect(second.isSymbol());
+    try testing.expect(!first.eq(second));
 }
 
 test "parse all expressions" {

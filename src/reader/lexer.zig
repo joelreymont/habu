@@ -35,6 +35,7 @@ pub const TokenKind = enum {
     string,
     symbol,
     keyword,
+    uninterned_symbol, // #:foo
     character,
 
     // Reader conditionals
@@ -331,6 +332,15 @@ pub const Lexer = struct {
         return self.makeToken(.keyword);
     }
 
+    fn readUninternedSymbol(self: *Lexer) Token {
+        // Already consumed '#:'
+        if (!isSymbolChar(self.peek())) return self.makeToken(.err);
+        while (isSymbolChar(self.peek())) {
+            _ = self.advance();
+        }
+        return self.makeToken(.uninterned_symbol);
+    }
+
     fn readHash(self: *Lexer) Token {
         // Already consumed '#'
         if (self.isAtEnd()) return self.makeToken(.err);
@@ -430,6 +440,11 @@ pub const Lexer = struct {
             // Reader conditional: #-feature
             _ = self.advance(); // consume '-'
             return self.makeToken(.feature_absent);
+        }
+        if (c == ':') {
+            // Uninterned symbol: #:foo
+            _ = self.advance(); // consume ':'
+            return self.readUninternedSymbol();
         }
         if (c == '*') {
             // Bit vector: #*101010
@@ -618,6 +633,20 @@ test "lex keywords" {
     const t2 = lexer.next();
     try testing.expectEqual(TokenKind.keyword, t2.kind);
     try testing.expectEqualStrings(":test-key", t2.text);
+}
+
+test "lex uninterned symbols" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#:foo #:*bar*");
+
+    const t1 = lexer.next();
+    try testing.expectEqual(TokenKind.uninterned_symbol, t1.kind);
+    try testing.expectEqualStrings("#:foo", t1.text);
+
+    const t2 = lexer.next();
+    try testing.expectEqual(TokenKind.uninterned_symbol, t2.kind);
+    try testing.expectEqualStrings("#:*bar*", t2.text);
 }
 
 test "lex strings" {

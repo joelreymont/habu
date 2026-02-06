@@ -202,9 +202,18 @@ pub const Emitter = struct {
                 max_idx = computeMaxLocalIndexImpl(t.value, max_idx);
             },
             .handler_case => |hc| {
+                const idx: u8 = @intCast(hc.cond_idx);
+                max_idx = @max(max_idx, idx + 1);
                 max_idx = computeMaxLocalIndexImpl(hc.tag, max_idx);
                 max_idx = computeMaxLocalIndexImpl(hc.body, max_idx);
                 max_idx = computeMaxLocalIndexImpl(hc.handler, max_idx);
+            },
+            .handler_bind => |hb| {
+                for (hb.handlers) |h| {
+                    max_idx = computeMaxLocalIndexImpl(h.condition_type, max_idx);
+                    max_idx = computeMaxLocalIndexImpl(h.handler_fn, max_idx);
+                }
+                max_idx = computeMaxLocalIndexImpl(hb.body, max_idx);
             },
             .restart_case => |rc| {
                 max_idx = computeMaxLocalIndexImpl(rc.body, max_idx);
@@ -218,6 +227,11 @@ pub const Emitter = struct {
                 max_idx = computeMaxLocalIndexImpl(inv.value, max_idx);
             },
             .find_restart => |fr| max_idx = computeMaxLocalIndexImpl(fr.operand, max_idx),
+            .progv => |p| {
+                max_idx = computeMaxLocalIndexImpl(p.symbols, max_idx);
+                max_idx = computeMaxLocalIndexImpl(p.values, max_idx);
+                max_idx = computeMaxLocalIndexImpl(p.body, max_idx);
+            },
             .tagbody => |tb| {
                 for (tb.segments) |seg| max_idx = computeMaxLocalIndexImpl(seg, max_idx);
             },
@@ -257,8 +271,20 @@ pub const Emitter = struct {
                 max_idx = computeMaxLocalIndexImpl(a.args, max_idx);
             },
 
-            // Set has a nested value
-            .set => |s| max_idx = computeMaxLocalIndexImpl(s.value, max_idx),
+            // Vars/sets can reference frame locals outside let binding forms.
+            .@"var" => |v| {
+                if (v.depth == 0) {
+                    const idx: u8 = @intCast(v.index);
+                    max_idx = @max(max_idx, idx + 1);
+                }
+            },
+            .set => |s| {
+                if (s.depth == 0) {
+                    const idx: u8 = @intCast(s.index);
+                    max_idx = @max(max_idx, idx + 1);
+                }
+                max_idx = computeMaxLocalIndexImpl(s.value, max_idx);
+            },
             .define => |d| max_idx = computeMaxLocalIndexImpl(d.value, max_idx),
 
             // Lambda creates its own frame, don't recurse

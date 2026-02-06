@@ -14,13 +14,12 @@ Source baseline: `docs/ansi-parity-baseline.json` (`tag=baseline-20260205T214222
 Source: `docs/ansi/results/regression-habu-latest.json`
 
 - Unexpected failures: `1`
-- ID: `InvalidOpcode`
+- ID: `TypeMismatch`
 - Priority: `P0`
 - Owner files:
   - `src/interp/vm.zig`
-  - `src/bytecode/opcodes.zig`
-  - `src/bytecode/emit.zig`
-  - `src/compiler/compile.zig`
+  - `src/interp/repl.zig`
+  - `lib/stdlib.habu`
 
 ## Buckets
 

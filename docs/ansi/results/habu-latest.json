@@ -8,10 +8,10 @@
   },
   "exit_code": 0,
   "reported": null,
-  "run_started_utc": "2026-02-06T02:53:50Z",
+  "run_started_utc": "2026-02-06T03:17:23Z",
   "source_log": "docs/ansi/raw/habu-latest.log",
   "tests": {
-    "InvalidOpcode": {
+    "TypeMismatch": {
       "line_numbers": [
         7
       ],

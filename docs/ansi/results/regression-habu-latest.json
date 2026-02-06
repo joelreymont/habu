@@ -3,10 +3,10 @@
     "UnboundVariable"
   ],
   "observed_failures": [
-    "InvalidOpcode"
+    "TypeMismatch"
   ],
   "runtime": "habu",
   "unexpected_failures": [
-    "InvalidOpcode"
+    "TypeMismatch"
   ]
 }

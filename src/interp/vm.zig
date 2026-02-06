@@ -1414,7 +1414,7 @@ pub const Vm = struct {
                 const idx = self.readU8();
                 const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
                 const stack_idx = bp + idx;
-                if (stack_idx >= STACK_SIZE or stack_idx >= self.sp) return error.InvalidOpcode;
+                if (idx >= self.chunk.num_locals or stack_idx >= STACK_SIZE) return error.InvalidOpcode;
                 const val = self.stack[stack_idx];
                 try self.push(val);
             },
@@ -1422,7 +1422,7 @@ pub const Vm = struct {
                 const idx = self.readU8();
                 const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
                 const stack_idx = bp + idx;
-                if (stack_idx >= STACK_SIZE or stack_idx >= self.sp) return error.InvalidOpcode;
+                if (idx >= self.chunk.num_locals or stack_idx >= STACK_SIZE) return error.InvalidOpcode;
                 self.stack[stack_idx] = try self.pop();
             },
             .enter_scope => {
