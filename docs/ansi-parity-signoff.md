@@ -34,11 +34,11 @@ Provide an objective go/no-go record for claiming functional parity against the 
 
 ## Decision Record
 
-- Signoff date (UTC): `TBD`
-- Corpus revision: `TBD`
-- SBCL fail count: `TBD`
-- Habu fail count: `TBD`
-- Regression status: `TBD`
+- Signoff date (UTC): `2026-02-06`
+- Corpus revision: `a1107c9564833680c72946f1cd87c9c3bbe0de5a`
+- SBCL fail count: `13 / 3587`
+- Habu fail count: `0 / 1` (latest artifact is not a full-corpus run)
+- Regression status: `FAILED` (`regression-status-latest.json` reports non-zero due baseline drift)
 - CI smoke status: `TBD`
 - CI nightly status: `TBD`
 - Decision: `NOT READY`

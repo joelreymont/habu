@@ -14,7 +14,7 @@ Habu targets ANSI Common Lisp compatibility (ANSI INCITS 226-1994) plus gradual 
 - Passing the symbol audit means the external symbol set is present and `docs/cl-symbols.md` is internally consistent.
 - Full ANSI CL parity also depends on semantics, edge cases, and error behavior; those gaps are tracked as dots under `.dots/habu-cl-spec-parity-6821074c/`.
 
-## Current Snapshot (2026-02-05)
+## Current Snapshot (2026-02-06)
 
 - Symbol status: `✓ 978 | ⚠ 0 | ✗ 0`
 - Row status: `✓ 1011 | ⚠ 0 | ✗ 0`
@@ -28,4 +28,4 @@ Habu targets ANSI Common Lisp compatibility (ANSI INCITS 226-1994) plus gradual 
 
 - Signoff template: `docs/ansi-parity-signoff.md`
 - Conformance process: `docs/ansi-parity.md`
-- Active parity umbrella: `dot tree habu-reach-ansi-functional-32946029`
+- Active parity umbrella: `dot tree habu-reopen-ansi-parity-54f40d78`

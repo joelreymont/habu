@@ -13,13 +13,10 @@ Source baseline: `docs/ansi-parity-baseline.json` (`tag=baseline-20260205T214222
 
 Source: `docs/ansi/results/regression-habu-latest.json`
 
-- Unexpected failures: `1`
-- ID: `TypeMismatch`
-- Priority: `P0`
-- Owner files:
-  - `src/interp/vm.zig`
-  - `src/interp/repl.zig`
-  - `lib/stdlib.habu`
+- Unexpected failures: `0`
+- Unexpected IDs: none
+- Baseline drift (expected failure now passing): `UnboundVariable`
+- Action: refresh baseline after a full-corpus Habu run and keep `UnboundVariable` mapped until then.
 
 ## Buckets
 

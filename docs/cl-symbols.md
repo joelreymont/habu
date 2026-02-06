@@ -197,7 +197,7 @@ Audit: `python3 tools/cl_symbols_audit.py`
 | define-condition | ✓ | lib/stdlib.habu | Condition class |
 | define-method-combination | ✓ | lib/stdlib.habu:5070 | Stub macro |
 | define-modify-macro | ✓ | lib/stdlib.habu | Read-modify-write macro |
-| define-setf-expander | ✓ | lib/stdlib.habu:5076 | Stub macro |
+| define-setf-expander | ✓ | lib/stdlib.habu:4649 | Registers custom setf expanders and writer functions |
 | define-symbol-macro | ✓ | lib/stdlib.habu:5082 | Stub macro |
 | defmacro | ✓ | compile.zig:89 | Macro definition |
 | defmethod | ✓ | compile.zig:133 | CLOS method |
@@ -673,7 +673,7 @@ Audit: `python3 tools/cl_symbols_audit.py`
 | file-write-date | ✓ | compile.zig:9545, vm.zig:2159 | Get file modification time |
 | host-namestring | ✓ | pathname.zig:352, vm.zig:3725 | Host as string |
 | logical-pathname | ✓ | lib/stdlib.habu:4780 | Coerce to logical |
-| logical-pathname-translations | ✓ | lib/stdlib.habu:4771 | Returns nil |
+| logical-pathname-translations | ✓ | lib/stdlib.habu:5221 | Host-keyed logical translation lookup |
 | make-pathname | ✓ | pathname.zig:9, vm.zig:3013, lib/stdlib.habu:4080 | Create from components |
 | merge-pathnames | ✓ | pathname.zig:269, vm.zig:3232 | Merge with defaults |
 | namestring | ✓ | pathname.zig:78, vm.zig:3173 | Pathname to string |
@@ -1070,7 +1070,7 @@ Audit: `python3 tools/cl_symbols_audit.py`
 |--------|--------|----------|-------|
 | apply | ✓ | compile.zig:4135 | (apply fn &rest args) |
 | arithmetic-error | ✓ | lib/stdlib.habu:2020 | Condition type |
-| call-method | ✓ | lib/stdlib.habu:4568 | Method combination helper macro |
+| call-method | ✓ | lib/stdlib.habu:4679 | Method-combination helper macro |
 | compilation-speed | ✓ | compile.zig:10015 | OPTIMIZE quality parsed and stored (advisory) |
 | compiler-macro | ✓ | lib/stdlib.habu:4732 | Documentation doc-type (ignored) |
 | complement | ✓ | lib/stdlib.habu:2184 | Return negation of predicate |
@@ -1091,18 +1091,18 @@ Audit: `python3 tools/cl_symbols_audit.py`
 | funcall | ✓ | compile.zig:4126 | Call function |
 | function-lambda-expression | ✓ | src/compiler/compile.zig, src/compiler/ir.zig, src/bytecode/emit.zig, src/bytecode/opcodes.zig, src/interp/vm.zig, src/jit/rt.zig, src/runtime/objects.zig, src/tests/integration.zig | Closure introspection |
 | functionp | ✓ | lib/stdlib.habu:3190 | Callable predicate |
-| get-setf-expansion | ✓ | lib/stdlib.habu:1055 | SETF expander API |
+| get-setf-expansion | ✓ | lib/stdlib.habu:1106 | SETF expander API |
 | identity | ✓ | lib/stdlib.habu:204 | Return argument unchanged |
 | ignorable | ✓ | compile.zig:9554 | Declaration spec |
 | ignore | ✓ | compile.zig:9553 | Declaration spec |
 | inline | ✓ | compile.zig:9551 | Declaration spec |
 | integerp | ✓ | compile.zig:805 | Fixnum/bignum predicate |
-| invalid-method-error | ✓ | lib/stdlib.habu:4581 | Method combination helper |
-| load-logical-pathname-translations | ✓ | lib/stdlib.habu:5113 | Logical pathname translations loader |
+| invalid-method-error | ✓ | lib/stdlib.habu:4692 | Method-combination error helper |
+| load-logical-pathname-translations | ✓ | lib/stdlib.habu:5244 | Loads host translations from default path or cwd fallback |
 | make-condition | ✓ | primitives/condition.zig:10 | Condition constructor |
-| make-method | ✓ | lib/stdlib.habu:4576 | Method combination helper |
+| make-method | ✓ | lib/stdlib.habu:4687 | Method-combination helper |
 | make-sequence | ✓ | lib/stdlib.habu:2762 | Generic sequence constructor |
-| method-combination-error | ✓ | lib/stdlib.habu:4586 | Method combination helper |
+| method-combination-error | ✓ | lib/stdlib.habu:4697 | Method-combination error helper |
 | notinline | ✓ | compile.zig:9552 | Declaration spec |
 | numberp | ✓ | compile.zig:801 | Number predicate |
 | optimize | ✓ | compile.zig:9865 | Declaration spec parsed; qualities stored; safety affects assertion emission |
