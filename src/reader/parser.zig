@@ -35,13 +35,19 @@ pub const Error = error{
 };
 
 pub const Parser = struct {
+    pub const ReadEvalFn = *const fn (ctx: *anyopaque, expr: Value) Error!Value;
+
     lexer: Lexer,
     heap: *Heap,
     current: Token,
     /// List of active feature keywords (e.g., :habu)
     features: std.ArrayList(Value),
+    /// Reader labels (#n= and #n#) for shared references.
+    labels: std.AutoHashMap(u32, Value),
     alloc: std.mem.Allocator,
     builtins: *const builtins_mod.BuiltinSymbols,
+    read_eval_ctx: ?*anyopaque,
+    read_eval_fn: ?ReadEvalFn,
 
     pub fn init(alloc: std.mem.Allocator, heap: *Heap, source: []const u8, builtins: *const builtins_mod.BuiltinSymbols) Error!Parser {
         var lexer = Lexer.init(source);
@@ -51,19 +57,30 @@ pub const Parser = struct {
         // Add :habu by default
         const habu_kw = try heap.internKeyword("habu");
         try feats.append(alloc, habu_kw);
+        var labels = std.AutoHashMap(u32, Value).init(alloc);
+        errdefer labels.deinit();
 
         return .{
             .lexer = lexer,
             .heap = heap,
             .current = first_token,
             .features = feats,
+            .labels = labels,
             .alloc = alloc,
             .builtins = builtins,
+            .read_eval_ctx = null,
+            .read_eval_fn = null,
         };
     }
 
     pub fn deinit(self: *Parser) void {
         self.features.deinit(self.alloc);
+        self.labels.deinit();
+    }
+
+    pub fn setReadEvalHook(self: *Parser, ctx: *anyopaque, hook: ReadEvalFn) void {
+        self.read_eval_ctx = ctx;
+        self.read_eval_fn = hook;
     }
 
     /// Get the current token's location for error reporting
@@ -111,6 +128,7 @@ pub const Parser = struct {
             .comma => return self.parseQuote("unquote"),
             .comma_at => return self.parseQuote("unquote-splicing"),
             .function_quote => return self.parseQuote("function"),
+            .read_eval => return self.parseReadEval(),
             .feature_present => return self.parseFeatureConditional(true),
             .feature_absent => return self.parseFeatureConditional(false),
             .number => return self.parseNumber(),
@@ -122,10 +140,46 @@ pub const Parser = struct {
             .keyword => return self.parseKeyword(),
             .uninterned_symbol => return self.parseUninternedSymbol(),
             .character => return self.parseCharacter(),
+            .label_def => return self.parseLabelDef(),
+            .label_ref => return self.parseLabelRef(),
             .eof => return Value.nil,
             .rparen, .dot => return error.UnexpectedToken,
             .err => return error.UnexpectedToken,
         }
+    }
+
+    fn parseReadEval(self: *Parser) Error!Value {
+        self.advance(); // consume #.
+        const expr = try self.parseExpr();
+        if (self.read_eval_fn) |hook| {
+            const ctx = self.read_eval_ctx orelse return error.UnexpectedToken;
+            return try hook(ctx, expr);
+        }
+        // Fallback when no read-eval hook is configured.
+        return expr;
+    }
+
+    fn parseLabelId(text: []const u8) Error!u32 {
+        if (text.len < 3 or text[0] != '#') return error.UnexpectedToken;
+        const suffix = text[text.len - 1];
+        if (suffix != '=' and suffix != '#') return error.UnexpectedToken;
+        const digits = text[1 .. text.len - 1];
+        if (digits.len == 0) return error.UnexpectedToken;
+        return std.fmt.parseUnsigned(u32, digits, 10) catch error.InvalidNumber;
+    }
+
+    fn parseLabelDef(self: *Parser) Error!Value {
+        const label_id = try parseLabelId(self.current.text);
+        self.advance(); // consume #n=
+        const expr = try self.parseExpr();
+        try self.labels.put(label_id, expr);
+        return expr;
+    }
+
+    fn parseLabelRef(self: *Parser) Error!Value {
+        const label_id = try parseLabelId(self.current.text);
+        self.advance(); // consume #n#
+        return self.labels.get(label_id) orelse error.UnexpectedToken;
     }
 
     fn parseList(self: *Parser) Error!Value {
@@ -332,6 +386,30 @@ pub const Parser = struct {
         }
 
         self.advance(); // consume array_open token
+
+        // Rank-0 arrays are scalar literals: #0AT, #0A(T), or #0A()
+        if (rank != null and rank.? == 0) {
+            const make_array_sym = try self.internSymbol("make-array");
+            const dims = Value.nil;
+            const has_paren_contents = token_text.len > 0 and token_text[token_text.len - 1] == '(';
+
+            if (has_paren_contents and self.current.kind == .rparen) {
+                self.advance();
+                const args = try self.heap.allocCons(dims, Value.nil);
+                return try self.heap.allocCons(make_array_sym, args);
+            }
+
+            const scalar = try self.parseExpr();
+            if (has_paren_contents) {
+                if (self.current.kind != .rparen) return error.UnexpectedToken;
+                self.advance();
+            }
+
+            const initial_element_kw = try self.internKeyword("initial-element");
+            const kw_pair = try self.heap.allocCons(initial_element_kw, try self.heap.allocCons(scalar, Value.nil));
+            const args = try self.heap.allocCons(dims, kw_pair);
+            return try self.heap.allocCons(make_array_sym, args);
+        }
 
         // Parse all contents until closing paren (similar to parseList)
         if (self.current.kind == .rparen) {
@@ -542,50 +620,51 @@ pub const Parser = struct {
         const text = self.current.text;
         self.advance();
 
-        // Parse digits into limbs (64-bit each, little-endian)
-        // For now, use simple approach: try parsing as u128, split into two u64 limbs
-        // Future: implement full arbitrary-precision parsing
+        if (text.len == 0) return error.InvalidNumber;
 
-        const is_negative = text.len > 0 and text[0] == '-';
-        const digits = if (is_negative) text[1..] else text;
+        const is_negative = text[0] == '-';
+        const digits = if (text[0] == '-' or text[0] == '+') text[1..] else text;
+        if (digits.len == 0) return error.InvalidNumber;
 
-        // Try u128 first (covers up to ~38 decimal digits)
-        if (digits.len <= 38) {
-            const n = try std.fmt.parseUnsigned(u128, digits, 10);
+        var limbs: [8]u64 = [_]u64{0} ** 8;
 
-            // Allocate bignum
-            const bn = try self.heap.alloc(objects.Bignum);
-            bn.* = .{
-                .kind = .bignum,
-                .size = 0,
-                .limbs = [_]u64{0} ** 8,
-            };
-
-            // Split into limbs (little-endian: least significant first)
-            const limb0: u64 = @truncate(n);
-            const limb1: u64 = @truncate(n >> 64);
-
-            bn.limbs[0] = limb0;
-            if (limb1 != 0) {
-                bn.limbs[1] = limb1;
-                bn.size = if (is_negative) -2 else 2;
-            } else {
-                bn.size = if (is_negative) -1 else 1;
+        // Parse arbitrary-length decimal by repeated multiply-by-10 and add-digit.
+        for (digits) |ch| {
+            if (ch < '0' or ch > '9') return error.InvalidNumber;
+            var carry: u128 = @as(u128, ch - '0');
+            var i: usize = 0;
+            while (i < limbs.len) : (i += 1) {
+                const acc: u128 = (@as(u128, limbs[i]) * 10) + carry;
+                limbs[i] = @truncate(acc);
+                carry = acc >> 64;
             }
-
-            return Value.makeBignum(bn);
+            // Current Bignum stores up to 8 limbs; reject values that overflow this capacity.
+            if (carry != 0) return error.InvalidNumber;
         }
 
-        // For numbers > 38 digits, we need proper multi-precision parsing
-        // For now, return error (will implement later)
-        return error.InvalidNumber;
+        return self.heap.allocBignumFromLimbs(&limbs, is_negative);
     }
 
     fn parseFloat(self: *Parser) Error!Value {
         const text = self.current.text;
         self.advance();
 
-        const f = try std.fmt.parseFloat(f64, text);
+        var float_text = text;
+        var normalized: ?[]u8 = null;
+        defer if (normalized) |buf| self.alloc.free(buf);
+
+        for (text, 0..) |ch, i| {
+            if (ch == 's' or ch == 'S' or ch == 'f' or ch == 'F' or ch == 'd' or ch == 'D' or ch == 'l' or ch == 'L') {
+                const buf = try self.alloc.alloc(u8, text.len);
+                std.mem.copyForwards(u8, buf, text);
+                buf[i] = 'e';
+                float_text = buf;
+                normalized = buf;
+                break;
+            }
+        }
+
+        const f = try std.fmt.parseFloat(f64, float_text);
         return Value.makeFloat(f);
     }
 
@@ -598,10 +677,29 @@ pub const Parser = struct {
         const num_str = text[0..slash_pos];
         const den_str = text[slash_pos + 1 ..];
 
-        const num = try std.fmt.parseInt(i64, num_str, 10);
-        const den = try std.fmt.parseInt(i64, den_str, 10);
+        const num_opt = std.fmt.parseInt(i64, num_str, 10) catch |err| switch (err) {
+            error.Overflow => null,
+            else => return error.InvalidNumber,
+        };
+        const den_opt = std.fmt.parseInt(i64, den_str, 10) catch |err| switch (err) {
+            error.Overflow => null,
+            else => return error.InvalidNumber,
+        };
 
-        return primitives.rational.makeRational(self.heap, num, den);
+        if (num_opt) |num| {
+            if (den_opt) |den| {
+                return primitives.rational.makeRational(self.heap, num, den);
+            }
+        }
+
+        // Fallback for very large literals: approximate via float and convert back
+        // to the runtime rational representation.
+        const num_f = std.fmt.parseFloat(f64, num_str) catch return error.InvalidNumber;
+        const den_f = std.fmt.parseFloat(f64, den_str) catch return error.InvalidNumber;
+        if (den_f == 0.0) return error.InvalidNumber;
+        const ratio = num_f / den_f;
+        if (std.math.isNan(ratio) or std.math.isInf(ratio)) return error.Overflow;
+        return primitives.rational.floatToRational(self.heap, ratio);
     }
 
     fn parseString(self: *Parser) Error!Value {
@@ -782,9 +880,27 @@ pub const Parser = struct {
         var upper_buf: [128]u8 = undefined;
         const upper = try runtime.upperNameAlloc(self.alloc, pkg_name, upper_buf[0..]);
         defer runtime.freeUpperName(self.alloc, upper);
-        // Find or create the package
-        const pkg = try self.heap.findOrCreatePackage(upper.slice);
-        return try pkg.intern(self.heap, sym_name);
+        const pkg_name_val = try self.heap.allocBaseString(upper.slice);
+        const pkg_val = (self.heap.findLispPackage(pkg_name_val) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.TypeError => return error.UnexpectedToken,
+        });
+        const native_pkg = if (pkg_val) |val| blk: {
+            if (!val.isPackage()) return error.UnexpectedToken;
+            const pkg_obj = val.toPtr(objects.Package);
+            const native_name = switch (pkg_obj.name.typeKind()) {
+                .symbol => pkg_obj.name.toPtr(runtime.Symbol).getName(),
+                .string => pkg_obj.name.toPtr(runtime.String).bytes(),
+                .keyword => pkg_obj.name.toPtr(runtime.Keyword).getName(),
+                else => return error.UnexpectedToken,
+            };
+            break :blk (self.heap.findPackage(native_name) orelse return error.UnexpectedToken);
+        } else blk: {
+            // Keep reader/package behavior consistent for native-only packages
+            // created via compiler special forms (e.g. DEFPACKAGE in test files).
+            break :blk (self.heap.findPackage(upper.slice) orelse return error.UnexpectedToken);
+        };
+        return try native_pkg.intern(self.heap, sym_name);
     }
 
     /// Intern a keyword (same name = same Value)
@@ -866,7 +982,7 @@ pub const Parser = struct {
                     }
                 }
             },
-            .quote, .backquote, .comma, .comma_at, .function_quote => {
+            .quote, .backquote, .comma, .comma_at, .function_quote, .read_eval => {
                 self.advance();
                 try self.skipExpr();
             },
@@ -874,6 +990,13 @@ pub const Parser = struct {
                 self.advance(); // consume #+ or #-
                 try self.skipExpr(); // feature expression
                 try self.skipExpr(); // conditional form
+            },
+            .label_def => {
+                self.advance(); // consume #n=
+                try self.skipExpr();
+            },
+            .label_ref => {
+                self.advance(); // consume #n#
             },
             .number, .bignum, .float, .rational, .string, .symbol, .keyword, .uninterned_symbol, .character, .pathname, .bitvec => {
                 self.advance();
@@ -979,6 +1102,52 @@ test "parse negative number" {
     const val = try parser.parse();
     try testing.expect(val.isFixnum());
     try testing.expectEqual(@as(i64, -123), val.toFixnum());
+}
+
+test "parse large positive bignum" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+    var parser = try Parser.init(
+        testing.allocator,
+        &heap,
+        "1234567890123456789012345678901234567890",
+        &vm.builtins,
+    );
+    defer parser.deinit();
+
+    const val = try parser.parse();
+    try testing.expect(val.isBignum());
+    const bn = val.toPtr(objects.Bignum);
+    try testing.expect(bn.size > 0);
+    try testing.expect(@as(u64, @intCast(bn.size)) >= 3);
+}
+
+test "parse large negative bignum" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+    var parser = try Parser.init(
+        testing.allocator,
+        &heap,
+        "-12345678901234567890123456789012345678901234567890",
+        &vm.builtins,
+    );
+    defer parser.deinit();
+
+    const val = try parser.parse();
+    try testing.expect(val.isBignum());
+    const bn = val.toPtr(objects.Bignum);
+    try testing.expect(bn.size < 0);
+    try testing.expect(@as(u64, @intCast(-bn.size)) >= 3);
 }
 
 test "parse nil" {
@@ -1125,6 +1294,30 @@ test "parse uninterned symbols are fresh values" {
     try testing.expect(first.isSymbol());
     try testing.expect(second.isSymbol());
     try testing.expect(!first.eq(second));
+}
+
+test "parse shared labels reuse symbol identity" {
+    const testing = std.testing;
+    const list = @import("../runtime/primitives/list.zig");
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+    var parser = try Parser.init(testing.allocator, &heap, "(#1=#:foo #1#)", &vm.builtins);
+    defer parser.deinit();
+
+    const expr = try parser.parse();
+    try testing.expect(expr.isCons());
+
+    const first = list.car(expr);
+    const rest = list.cdr(expr);
+    try testing.expect(rest.isCons());
+    const second = list.car(rest);
+    try testing.expect(first.isSymbol());
+    try testing.expect(second.isSymbol());
+    try testing.expect(first.eq(second));
 }
 
 test "parse all expressions" {
@@ -1299,6 +1492,28 @@ test "parse quote" {
 
     const string = @import("../runtime/primitives/string.zig");
     try testing.expectEqualStrings("QUOTE", string.symbolNameBytes(quote_sym).?);
+}
+
+test "parse sharp dot fallback expression" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+    var parser = try Parser.init(testing.allocator, &heap, "#.(+ 1 2)", &vm.builtins);
+    defer parser.deinit();
+
+    const val = try parser.parse();
+    try testing.expect(val.isCons());
+
+    const list = @import("../runtime/primitives/list.zig");
+    const head = list.car(val);
+    try testing.expect(head.isSymbol());
+
+    const string = @import("../runtime/primitives/string.zig");
+    try testing.expectEqualStrings("+", string.symbolNameBytes(head).?);
 }
 
 test "symbol interning" {
@@ -1585,8 +1800,38 @@ test "parse #0A array" {
     try testing.expect(args.isCons());
     const args_cons = args.toPtr(objects.Cons);
     const dims = args_cons.car;
-    try testing.expectEqual(@as(i64, 0), dims.toFixnum());
+    try testing.expect(dims.isNil());
     try testing.expect(args_cons.cdr.isNil());
+}
+
+test "parse #0A scalar array" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+
+    var parser = try Parser.init(testing.allocator, &heap, "#0AT", &vm.builtins);
+    defer parser.deinit();
+
+    const result = try parser.parse();
+    try testing.expect(result.isCons());
+
+    const cons = result.toPtr(objects.Cons);
+    const sym = cons.car.toPtr(objects.Symbol);
+    try testing.expectEqualStrings("MAKE-ARRAY", sym.getName());
+
+    const args = cons.cdr;
+    try testing.expect(args.isCons());
+    const args_cons = args.toPtr(objects.Cons);
+    try testing.expect(args_cons.car.isNil());
+    try testing.expect(args_cons.cdr.isCons());
+
+    const kw_pair = args_cons.cdr.toPtr(objects.Cons);
+    try testing.expect(kw_pair.car.isKeyword());
+    try testing.expectEqualStrings("INITIAL-ELEMENT", kw_pair.car.toPtr(objects.Symbol).getName());
 }
 
 test "parse #2A ragged errors" {

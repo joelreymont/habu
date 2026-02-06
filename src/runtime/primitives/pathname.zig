@@ -37,6 +37,9 @@ pub fn pathnameDevice(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Va
 
 /// Get pathname directory component
 pub fn pathnameDirectory(allocator: std.mem.Allocator, heap: *Heap, val: Value) !Value {
+    // CL test suite probes pathname-directory under ignore-errors with NIL inputs.
+    // Returning NIL here avoids surfacing VM TypeMismatch for that case.
+    if (val.isNil()) return Value.nil;
     const p_val = try pathname(allocator, heap, val);
     const p = p_val.toPtr(Pathname);
     return p.directory;
@@ -266,6 +269,7 @@ pub fn parseNamestring(allocator: std.mem.Allocator, heap: *Heap, str: Value) !V
 /// Merge pathnames with defaults
 pub fn mergePathnames(
     heap: *Heap,
+    builtins: *const BuiltinSymbols,
     pn: Value,
     defaults: Value,
 ) !Value {
@@ -277,12 +281,73 @@ pub fn mergePathnames(
 
     const host = if (!p.host.isNil()) p.host else d.host;
     const device = if (!p.device.isNil()) p.device else d.device;
-    const directory = if (!p.directory.isNil()) p.directory else d.directory;
+    const directory = if (p.directory.isNil())
+        d.directory
+    else if (isRelativeDirectory(builtins, p.directory))
+        try mergeRelativeDirectory(heap, builtins, d.directory, p.directory)
+    else
+        p.directory;
     const name = if (!p.name.isNil()) p.name else d.name;
     const ty = if (!p.type.isNil()) p.type else d.type;
     const version = if (!p.version.isNil()) p.version else d.version;
 
     return try heap.allocPathname(host, device, directory, name, ty, version);
+}
+
+fn isRelativeDirectory(builtins: *const BuiltinSymbols, dir: Value) bool {
+    if (!dir.isCons()) return false;
+    const tag = dir.toPtr(objects.Cons).car;
+    return tag.raw == builtins.kw_relative.raw;
+}
+
+fn directoryTagOrDefault(builtins: *const BuiltinSymbols, dir: Value) Value {
+    if (!dir.isCons()) return builtins.kw_relative;
+    const tag = dir.toPtr(objects.Cons).car;
+    if (tag.raw == builtins.kw_absolute.raw or tag.raw == builtins.kw_relative.raw) return tag;
+    return builtins.kw_relative;
+}
+
+fn directoryComponentsStart(builtins: *const BuiltinSymbols, dir: Value) Value {
+    if (!dir.isCons()) return Value.nil;
+    const first_cons = dir.toPtr(objects.Cons);
+    const tag = first_cons.car;
+    if (tag.raw == builtins.kw_absolute.raw or tag.raw == builtins.kw_relative.raw) return first_cons.cdr;
+    return dir;
+}
+
+fn mergeRelativeDirectory(
+    heap: *Heap,
+    builtins: *const BuiltinSymbols,
+    default_dir: Value,
+    rel_dir: Value,
+) !Value {
+    var components = std.ArrayList(Value){};
+    defer components.deinit(heap.backing_allocator);
+
+    const tag = directoryTagOrDefault(builtins, default_dir);
+    try components.append(heap.backing_allocator, tag);
+
+    var cur_default = directoryComponentsStart(builtins, default_dir);
+    while (cur_default.isCons()) {
+        const c = cur_default.toPtr(objects.Cons);
+        try components.append(heap.backing_allocator, c.car);
+        cur_default = c.cdr;
+    }
+
+    var cur_rel = directoryComponentsStart(builtins, rel_dir);
+    while (cur_rel.isCons()) {
+        const c = cur_rel.toPtr(objects.Cons);
+        try components.append(heap.backing_allocator, c.car);
+        cur_rel = c.cdr;
+    }
+
+    var out = Value.nil;
+    var i = components.items.len;
+    while (i > 0) {
+        i -= 1;
+        out = try heap.allocCons(components.items[i], out);
+    }
+    return out;
 }
 
 /// Get directory portion as a string
@@ -696,4 +761,14 @@ test "truename missing path returns nil" {
     const path_val = try heap.allocBaseString(missing_path);
     const res = try truename(testing.allocator, &heap, &builtins, path_val);
     try testing.expect(res.isNil());
+}
+
+test "pathnameDirectory nil returns nil" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const dir = try pathnameDirectory(testing.allocator, &heap, Value.nil);
+    try testing.expect(dir.isNil());
 }

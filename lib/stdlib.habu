@@ -5,9 +5,12 @@
 
 ; Core list utilities - must be early (needed by macros)
 (defun map (f lst)
-  (if (null lst)
-      nil
-      (cons (funcall f (car lst)) (map f (cdr lst)))))
+  (let ((acc nil)
+        (cur lst))
+    (while (not (null cur))
+      (setq acc (cons (funcall f (car cur)) acc))
+      (setq cur (cdr cur)))
+    (reverse acc)))
 
 (defun mapcar (f &rest lists)
   (cond
@@ -17,10 +20,14 @@
     (t (error "mapcar: >2 lists not yet supported"))))
 
 (defun mapcar2 (f lst1 lst2)
-  (if (or (null lst1) (null lst2))
-      nil
-    (cons (funcall f (car lst1) (car lst2))
-          (mapcar2 f (cdr lst1) (cdr lst2)))))
+  (let ((acc nil)
+        (cur1 lst1)
+        (cur2 lst2))
+    (while (and (not (null cur1)) (not (null cur2)))
+      (setq acc (cons (funcall f (car cur1) (car cur2)) acc))
+      (setq cur1 (cdr cur1))
+      (setq cur2 (cdr cur2)))
+    (reverse acc)))
 
 ; case - dispatch on value (must be early, uses mapcar)
 ; Note: In Habu, 't' at read time becomes the value t (= fixnum 1), not a symbol.
@@ -170,7 +177,9 @@
 ; *debug-io*, *trace-output*, *terminal-io* are all pre-initialized
 
 ; Package system
-(defvar *package* (find-package "CL-USER"))  ; current package
+; Keep reader/package interning in COMMON-LISP while this file loads.
+; The final (in-package "CL-USER") at EOF restores CL-USER for user code.
+(defvar *package* (find-package "COMMON-LISP"))  ; current package
 
 ; Package constructors/mutators backed by VM primitives
 (defun make-package (name &key nicknames use)
@@ -251,6 +260,14 @@
 (defun flip (f)
   (lambda (a b) (funcall f b a)))
 
+; string - coerce object to string (minimal CL behavior)
+(defun string (x)
+  (cond
+    ((stringp x) x)
+    ((symbolp x) (symbol-name x))
+    ((characterp x) (make-string 1 :initial-element x))
+    (t (error "string: cannot coerce ~S" x))))
+
 ; Boolean operations
 (defun not (x) (if x nil t))
 
@@ -295,8 +312,13 @@
     (t nil)))
 
 ; Error signaling - simplified stub
-(defun error (msg)
-  (print msg)
+; Accept CL-style (error datum &rest args) to avoid arity traps in callers.
+(defun error (datum &rest arguments)
+  (print datum)
+  (let ((cur arguments))
+    (while (consp cur)
+      (print (car cur))
+      (setq cur (cdr cur))))
   nil)
 
 ;;; ============================================================================
@@ -731,11 +753,13 @@
 (defun list3 (a b c) (cons a (cons b (cons c nil))))
 (defun list4 (a b c d) (cons a (cons b (cons c (cons d nil)))))
 
-; Length with TCO (for lists)
+; Length helper (iterative for deep lists)
 (defun length-aux (lst acc)
-  (if (null lst)
-      acc
-      (length-aux (cdr lst) (+ acc 1))))
+  (block nil
+    (while t
+      (when (null lst) (return-from nil acc))
+      (setq acc (+ acc 1))
+      (setq lst (cdr lst)))))
 
 ; length - works on lists, strings, and vectors
 (defun length (seq)
@@ -750,16 +774,22 @@
 (defun list-length (lst)
   (if (null lst) 0 (length-aux lst 0)))
 
-; Append - the built-in append only takes 2 args
-; For multi-arg append, use append*
-(defun append* (&rest lists)
+; Capture primitive 2-arg append before redefining CL append.
+(setf (fdefinition '%append2) #'append)
+
+; append - CL-compatible variadic append
+(defun append (&rest lists)
   (labels ((helper (lsts)
              (if (null lsts)
                  nil
                (if (null (cdr lsts))
                    (car lsts)
-                 (append (car lsts) (helper (cdr lsts)))))))
+                 (%append2 (car lsts) (helper (cdr lsts)))))))
     (helper lists)))
+
+; append* retained for compatibility with older stdlib code
+(defun append* (&rest lists)
+  (apply #'append lists))
 
 ; flatten1 - flatten one level of nesting (concat list of lists)
 (defun flatten1 (lists)
@@ -767,14 +797,14 @@
       nil
     (append (car lists) (flatten1 (cdr lists)))))
 
-; Reverse with TCO
-(defun reverse-aux (lst acc)
-  (if (null lst)
-      acc
-      (reverse-aux (cdr lst) (cons (car lst) acc))))
-
+; Reverse (iterative for deep lists)
 (defun reverse (lst)
-  (reverse-aux lst nil))
+  (let ((acc nil))
+    (block nil
+      (while t
+        (when (null lst) (return-from nil acc))
+        (setq acc (cons (car lst) acc))
+        (setq lst (cdr lst))))))
 
 ; Mapc - like map but for side effects, returns nil
 (defun mapc (f lst)
@@ -1101,14 +1131,72 @@
           (list 'progn (list writer a b store) store)
           (list reader a b))))
 
+(defun %setf-gensym-list (items)
+  (if (null items)
+      nil
+    (cons (gensym "A") (%setf-gensym-list (cdr items)))))
+
 (defun %setf-expansion-n (reader writer args)
-  (let ((temps (mapcar (lambda (x) (declare (ignore x)) (gensym "A")) args))
+  (let ((temps (%setf-gensym-list args))
         (store (gensym "STORE")))
     (list temps
           args
           (list store)
           (list 'progn (cons writer (append temps (list store))) store)
           (cons reader temps))))
+
+(defun %pair-bindings (vars vals)
+  (if (or (null vars) (null vals))
+      nil
+    (cons (list (car vars) (car vals))
+          (%pair-bindings (cdr vars) (cdr vals)))))
+
+(defun %pair-quoted-bindings (vars vals)
+  (if (or (null vars) (null vals))
+      nil
+    (cons (list (car vars) (list 'quote (car vals)))
+          (%pair-quoted-bindings (cdr vars) (cdr vals)))))
+
+(defun %self-bindings (vars)
+  (if (null vars)
+      nil
+    (cons (list (car vars) (list 'quote (car vars)))
+          (%self-bindings (cdr vars)))))
+
+(defun %strip-leading-defsetf-body (forms)
+  (if (null forms)
+      nil
+    (if (and (consp (car forms))
+             (eq (car (car forms)) 'declare))
+        (%strip-leading-defsetf-body (cdr forms))
+      (if (stringp (car forms))
+          (cdr forms)
+        forms))))
+
+(defun %setf-store-bindings (stores vals-var idx)
+  (if (null stores)
+      nil
+    (cons (list (car stores) (list 'nth idx vals-var))
+          (%setf-store-bindings (cdr stores) vals-var (+ idx 1)))))
+
+(defun %setf-build-form (place value)
+  (let* ((exp (multiple-value-list (get-setf-expansion place)))
+         (temps (nth 0 exp))
+         (vals (nth 1 exp))
+         (stores (nth 2 exp))
+         (writer (nth 3 exp))
+         (vals-var (gensym "VALS")))
+    (list 'let* (%pair-bindings temps vals)
+          (list 'let* (cons (list vals-var (list 'multiple-value-list value))
+                            (%setf-store-bindings stores vals-var 0))
+                writer
+                (list 'values-list vals-var)))))
+
+(defun %setf-build-forms (args)
+  (if (null args)
+      nil
+    (cons (%setf-build-form (car args) (car (cdr args)))
+          (%setf-build-forms (cdr (cdr args))))))
 
 ; get-setf-expansion - return 5 values for setf expansion
 (defun get-setf-expansion (place &optional env)
@@ -1211,31 +1299,10 @@
       (error "setf: no place/value pairs")
     (if (oddp (length args))
         (error "setf: odd number of arguments")
-      (let ((forms nil))
-        (while args
-          (let* ((place (car args))
-                 (value (car (cdr args)))
-                 (exp (multiple-value-list (get-setf-expansion place)))
-                 (temps (nth 0 exp))
-                 (vals (nth 1 exp))
-                 (stores (nth 2 exp))
-                 (writer (nth 3 exp))
-                 (vals-var (gensym "VALS"))
-                 (store-binds nil)
-                 (i 0))
-            (dolist (sv stores)
-              (push (list sv (list 'nth i vals-var)) store-binds)
-              (setq i (+ i 1)))
-            (push (list 'let* (mapcar (lambda (a b) (list a b)) temps vals)
-                        (list 'let* (cons (list vals-var (list 'multiple-value-list value))
-                                          (nreverse store-binds))
-                              writer
-                              (list 'values-list vals-var)))
-                  forms))
-          (setq args (cdr (cdr args))))
+      (let ((forms (%setf-build-forms args)))
         (if (null (cdr forms))
             (car forms)
-          (cons 'progn (nreverse forms)))))))
+          (cons 'progn forms))))))
 
 ; fdefinition - function binding accessor
 ; Supports:
@@ -1257,6 +1324,12 @@
               (error "fdefinition: invalid (setf ...) name"))))
           (t (error "fdefinition: invalid function name")))))
     (t (error "fdefinition: invalid function name"))))
+
+; intern with optional package designator (current backend interns in current package)
+(setf (fdefinition '%intern-core) #'intern)
+(defun intern (name &optional package)
+  (declare (ignore package))
+  (funcall #'%intern-core name))
 
 ; Bootstrap function cells for core primitives so (symbol-function 'car) works.
 (setf (fdefinition 'car) #'car)
@@ -1317,21 +1390,21 @@
 ; push - push value onto list (destructive)
 ; (push val place) => new-list
 (defmacro push (val place)
-  (list 'setq place (list 'cons val place)))
+  (list 'setf place (list 'cons val place)))
 
 ; pop - pop value from list (destructive)
 ; (pop place) => first-element
 (defmacro pop (place)
   (let ((temp (gensym)))
     (list 'let (list (list temp (list 'car place)))
-          (list 'setq place (list 'cdr place))
+          (list 'setf place (list 'cdr place))
           temp)))
 
 ; pushnew - push value if not already present
 (defmacro pushnew (val place &key (test '#'eql))
   (let ((v (gensym)))
     (list 'let (list (list v val))
-          (list 'unless (list 'member v place)
+          (list 'unless (list 'member v place ':test test)
                 (list 'push v place)))))
 
 ; cond - multi-way conditional
@@ -1573,6 +1646,20 @@
                 (destructuring-bind-impl pattern temp)
                 body))))
 
+; Helper: ensure destructured variables are present in LOOP let* vars.
+(defun loop-ensure-vars-from-bindings (bindings vars)
+  (let ((cur bindings))
+    (while cur
+      (let ((v (car (car cur))))
+        (unless (assoc v vars)
+          (push (list v nil) vars)))
+      (setq cur (cdr cur)))
+    vars))
+
+; Helper: convert destructuring bindings into setq forms for LOOP body.
+(defun loop-binding-setq-forms (bindings)
+  (mapcar (lambda (b) (list 'setq (car b) (cadr b))) bindings))
+
 ;; ============================================================
 ;; String Functions
 ;; ============================================================
@@ -1671,9 +1758,25 @@
 
 ; copy-list - shallow copy of list structure
 (defun copy-list (lst)
-  (if (null lst)
-      nil
-      (cons (car lst) (copy-list (cdr lst)))))
+  (cond
+    ((null lst) nil)
+    ((not (consp lst)) lst)
+    (t
+     (let ((head (cons (car lst) nil))
+           (tail nil))
+       (setq tail head)
+       (setq lst (cdr lst))
+       (block nil
+         (while t
+           (when (null lst) (return-from nil head))
+           (if (consp lst)
+               (let ((node (cons (car lst) nil)))
+                 (rplacd tail node)
+                 (setq tail node)
+                 (setq lst (cdr lst)))
+             (progn
+               (rplacd tail lst)
+               (return-from nil head)))))))))
 
 ; copy-tree - deep copy of tree structure
 (defun copy-tree (tree)
@@ -1682,14 +1785,22 @@
             (copy-tree (cdr tree)))
       tree))
 
-; copy-seq - copy sequence (for lists, same as copy-list)
+; copy-seq - copy sequence
 (defun copy-seq (seq)
-  (if (vectorp seq)
-      (let* ((len (length seq))
-             (new (make-vector len nil)))
-        (dotimes (i len new)
-          (setf (svref new i) (svref seq i))))
-      (copy-list seq)))
+  (cond
+    ((stringp seq)
+     (let* ((len (length seq))
+            (new (make-string len #\Space)))
+       (dotimes (i len new)
+         (setf (char new i) (char seq i)))))
+    ((or (consp seq) (null seq))
+     (copy-list seq))
+    (t
+     (let* ((len (length seq))
+            (new (make-vector len nil)))
+       (dotimes (i len new)
+         (setf (svref new i) (aref seq i)))))
+    ))
 
 ;; ============================================================
 ;; Type Dispatch Macros
@@ -1807,17 +1918,26 @@
 ;; ============================================================
 
 ; concatenate - concatenate sequences into result type
+(defun sequence-type-key (sym)
+  (if (symbolp sym)
+      (let ((name (string-upcase (symbol-name sym))))
+        (cond
+          ((string= name "LIST") :list)
+          ((string= name "STRING") :string)
+          ((string= name "VECTOR") :vector)
+          (t nil)))
+      nil))
+
 (defun concatenate (result-type &rest seqs)
-  (let ((combined (apply #'append (mapcar (lambda (s)
-                                            (if (vectorp s)
-                                                (coerce s 'list)
-                                                s))
-                                          seqs))))
+  (let ((combined nil)
+        (rtype (sequence-type-key result-type)))
+    (dolist (seq seqs)
+      (setq combined (append combined (coerce seq 'list))))
     (cond
-      ((eq result-type 'list) combined)
-      ((eq result-type 'string)
+      ((eq rtype :list) combined)
+      ((eq rtype :string)
        (list-to-string combined))
-      ((eq result-type 'vector)
+      ((eq rtype :vector)
        (coerce combined 'vector))
       (t combined))))
 
@@ -1838,13 +1958,14 @@
 
 ; coerce - convert between sequence types
 (defun coerce (object result-type)
-  (cond
+  (let ((rtype (sequence-type-key result-type)))
+    (cond
     ; Same type - return as-is
-    ((and (eq result-type 'list) (listp object)) object)
-    ((and (eq result-type 'vector) (vectorp object)) object)
-    ((and (eq result-type 'string) (stringp object)) object)
+    ((and (eq rtype :list) (listp object)) object)
+    ((and (eq rtype :vector) (vectorp object)) object)
+    ((and (eq rtype :string) (stringp object)) object)
     ; List to vector
-    ((and (eq result-type 'vector) (listp object))
+    ((and (eq rtype :vector) (listp object))
      (let* ((len (length object))
             (vec (make-vector len nil))
             (i 0))
@@ -1852,21 +1973,53 @@
          (setf (svref vec i) x)
          (setq i (+ i 1)))))
     ; Vector to list
-    ((and (eq result-type 'list) (vectorp object))
+    ((and (eq rtype :list) (vectorp object))
      (let ((lst nil)
            (len (length object)))
        (dotimes (i len (nreverse lst))
          (push (svref object i) lst))))
     ; String to list
-    ((and (eq result-type 'list) (stringp object))
+    ((and (eq rtype :list) (stringp object))
      (string-to-list object))
     ; List to string
-    ((and (eq result-type 'string) (listp object))
+    ((and (eq rtype :string) (listp object))
      (list-to-string object))
     ; Character to string
-    ((and (eq result-type 'string) (characterp object))
+    ((and (eq rtype :string) (characterp object))
      (make-string 1 object))
-    (t (error "Cannot coerce to type"))))
+    (t (error "Cannot coerce to type")))))
+
+; (setf (subseq ...)) writer used by ANSI suite helpers
+(setf (fdefinition '(setf subseq))
+      (lambda (new seq start &optional end)
+        (let ((stop (if end end (length seq))))
+          (cond
+            ((stringp seq)
+             (let ((chars (coerce new 'list))
+                   (i start))
+               (dolist (ch chars)
+                 (when (< i stop)
+                   (setf (char seq i) ch)
+                   (setq i (+ i 1))))
+               new))
+            ((vectorp seq)
+             (let ((vals (coerce new 'list))
+                   (i start))
+               (dolist (v vals)
+                 (when (< i stop)
+                   (setf (svref seq i) v)
+                   (setq i (+ i 1))))
+               new))
+            ((listp seq)
+             (let ((vals (coerce new 'list))
+                   (cell (nthcdr start seq)))
+               (dolist (v vals)
+                 (when (and cell (< start stop))
+                   (rplaca cell v)
+                   (setq cell (cdr cell))
+                   (setq start (+ start 1))))
+               new))
+            (t (error "Cannot setf subseq on object"))))))
 
 ;; ============================================================
 ;; Multiple Value Utilities
@@ -1961,7 +2114,12 @@
         (real-end2 (or end2 (length seq2))))
     (let ((count (min (- real-end1 start1) (- real-end2 start2))))
       (dotimes (i count seq1)
-        (setf (elt seq1 (+ start1 i)) (elt seq2 (+ start2 i)))))))
+        (let ((src (elt seq2 (+ start2 i))))
+          (setf (elt seq1 (+ start1 i))
+                (if (and (stringp seq1)
+                         (integerp src))
+                    (code-char src)
+                    src)))))))
 
 ;; ============================================================
 ;; Prog Special Forms
@@ -2815,6 +2973,14 @@
       (make-complex (realpart z) (- (imagpart z)))
       z))
 
+; float - coerce a real to floating-point, honoring prototype shape (single impl here)
+(defun float (number &optional prototype)
+  (declare (ignore prototype))
+  (cond
+    ((floatp number) number)
+    ((complexp number) (error "FLOAT expects a real number"))
+    (t (+ number 0.0))))
+
 ; rational - convert number to exact rational
 (defun rational (x) x)
 
@@ -2984,6 +3150,7 @@
   (cond
     ((stringp sequence) (char sequence index))
     ((vectorp sequence) (svref sequence index))
+    ((arrayp sequence) (aref sequence index))
     (t (nth index sequence))))
 
 ; (setf elt) is handled by setf expansion
@@ -3021,21 +3188,27 @@
 
 ; delete-duplicates - remove duplicate elements
 ; remove-duplicates-with-key - helper with key support
+(defun %member-with-test (item seen cmp)
+  (block nil
+    (while t
+      (when (null seen) (return-from nil nil))
+      (when (funcall cmp item (car seen)) (return-from nil t))
+      (setq seen (cdr seen)))))
+
 (defun remove-duplicates-with-key (sequence test key)
-  (if (null sequence)
-      nil
-      (let* ((first (car sequence))
-             (first-key (if key (funcall key first) first))
-             (rest (remove-duplicates-with-key (cdr sequence) test key)))
-        ; Check if first-key appears in rest (comparing by key)
-        (if (some (lambda (x)
-                    (let ((x-key (if key (funcall key x) x)))
-                      (if test
-                          (funcall test first-key x-key)
-                          (eql first-key x-key))))
-                  rest)
-            rest
-            (cons first rest)))))
+  (let ((cmp (or test #'eql))
+        (src (reverse sequence))
+        (seen nil)
+        (result nil))
+    (block nil
+      (while t
+        (when (null src) (return-from nil result))
+        (let* ((item (car src))
+               (item-key (if key (funcall key item) item)))
+          (unless (%member-with-test item-key seen cmp)
+            (setq seen (cons item-key seen))
+            (setq result (cons item result))))
+        (setq src (cdr src))))))
 
 ; remove-duplicates - non-destructive duplicate removal
 (defun remove-duplicates (sequence &key test key)
@@ -3221,7 +3394,7 @@
     (if (and (>= (length slice) 2)
              (= (char slice 0) 35)
              (= (char slice 1) 46))
-        (if *read-suppress*
+        (if common-lisp::*read-suppress*
             eof-value
             (eval (read-from-string (subseq slice 2))))
         (if eof-error-p
@@ -3468,8 +3641,13 @@
 
 ; arrayp - check if array (vectors are arrays)
 (defun arrayp (x)
-  (or (vectorp x)
-      (eq (type-of x) 'array)))
+  (let ((ty (type-of x)))
+    (or (vectorp x)
+        (eq ty 'array)
+        (eq ty 'simple-array)
+        (eq ty 'simple-vector)
+        (eq ty 'string)
+        (eq ty 'simple-string))))
 
 ; simple-vector-p - check if simple vector
 (defun simple-vector-p (x)
@@ -3549,14 +3727,81 @@
 ;;; CL LOOP Macro
 ;;; ============================================================================
 
+; Canonicalize LOOP clause keywords across packages (e.g. CL-TEST::FOR -> :FOR)
+(defun loop-kw-canon (x)
+  (if (symbolp x)
+      (let ((name (string-upcase (symbol-name x))))
+        (cond
+          ((string= name "FOR") :for)
+          ((string= name "AS") :as)
+          ((string= name "WITH") :with)
+          ((string= name "REPEAT") :repeat)
+          ((string= name "WHILE") :while)
+          ((string= name "UNTIL") :until)
+          ((string= name "DO") :do)
+          ((string= name "DOING") :doing)
+          ((string= name "COLLECT") :collect)
+          ((string= name "COLLECTING") :collecting)
+          ((string= name "APPEND") :append)
+          ((string= name "APPENDING") :appending)
+          ((string= name "NCONC") :nconc)
+          ((string= name "NCONCING") :nconcing)
+          ((string= name "SUM") :sum)
+          ((string= name "SUMMING") :summing)
+          ((string= name "COUNT") :count)
+          ((string= name "COUNTING") :counting)
+          ((string= name "MAXIMIZE") :maximize)
+          ((string= name "MAXIMIZING") :maximizing)
+          ((string= name "MINIMIZE") :minimize)
+          ((string= name "MINIMIZING") :minimizing)
+          ((string= name "INTO") :into)
+          ((string= name "FINALLY") :finally)
+          ((string= name "INITIALLY") :initially)
+          ((string= name "RETURN") :return)
+          ((string= name "FROM") :from)
+          ((string= name "DOWNFROM") :downfrom)
+          ((string= name "TO") :to)
+          ((string= name "UPTO") :upto)
+          ((string= name "BELOW") :below)
+          ((string= name "DOWNTO") :downto)
+          ((string= name "ABOVE") :above)
+          ((string= name "BY") :by)
+          ((string= name "IN") :in)
+          ((string= name "ON") :on)
+          ((string= name "ACROSS") :across)
+          ((string= name "=") :=)
+          ((string= name "THEN") :then)
+          ((string= name "IF") :if)
+          ((string= name "WHEN") :when)
+          ((string= name "UNLESS") :unless)
+          ((string= name "ELSE") :else)
+          ((string= name "END") :end)
+          ((string= name "AND") :and)
+          ((string= name "NAMED") :named)
+          ((string= name "ALWAYS") :always)
+          ((string= name "NEVER") :never)
+          ((string= name "THEREIS") :thereis)
+          ((string= name "BEING") :being)
+          ((string= name "THE") :the)
+          ((string= name "EACH") :each)
+          ((string= name "OF") :of)
+          ((string= name "USING") :using)
+          ((string= name "HASH-KEYS") :hash-keys)
+          ((string= name "HASH-KEY") :hash-key)
+          ((string= name "HASH-VALUES") :hash-values)
+          ((string= name "HASH-VALUE") :hash-value)
+          ((string= name "SYMBOLS") :symbols)
+          ((string= name "SYMBOL") :symbol)
+          ((string= name "PRESENT-SYMBOLS") :present-symbols)
+          ((string= name "PRESENT-SYMBOL") :present-symbol)
+          ((string= name "EXTERNAL-SYMBOLS") :external-symbols)
+          ((string= name "EXTERNAL-SYMBOL") :external-symbol)
+          (t nil)))
+      nil))
+
 ; Helper: Check if symbol is a loop keyword
 (defun loop-keyword-p (x)
-  (and (symbolp x)
-       (member x '(for as with repeat while until do doing collect collecting
-                   append appending nconc nconcing sum summing count counting
-                   maximize maximizing minimize minimizing into finally initially
-                   return from downfrom to upto below downto above by in on across
-                   = then if when unless else end and named always never thereis))))
+  (not (null (loop-kw-canon x))))
 
 ; c[ad]r accessors - all 28 compositions
 (defun caaar (x) (car (caar x)))
@@ -3592,38 +3837,38 @@
         (downp nil)
         (rest clauses))
     ; Parse modifiers using while loop
-    (while (and rest (member (car rest) '(from downfrom to upto below downto above by)))
-      (case (car rest)
-        ((from)
+    (while (and rest (member (loop-kw-canon (car rest)) '(:from :downfrom :to :upto :below :downto :above :by)))
+      (case (loop-kw-canon (car rest))
+        ((:from)
          (setq from-val (cadr rest))
          (setq rest (cddr rest)))
-        ((downfrom)
+        ((:downfrom)
          (setq from-val (cadr rest))
          (setq downp t)
          (setq rest (cddr rest)))
-        ((to)
+        ((:to)
          (setq to-val (cadr rest))
          (setq to-op (if downp '>= '<=))
          (setq rest (cddr rest)))
-        ((upto)
+        ((:upto)
          (setq to-val (cadr rest))
          (setq to-op '<=)
          (setq rest (cddr rest)))
-        ((below)
+        ((:below)
          (setq to-val (cadr rest))
          (setq to-op '<)
          (setq rest (cddr rest)))
-        ((downto)
+        ((:downto)
          (setq to-val (cadr rest))
          (setq to-op '>=)
          (setq downp t)
          (setq rest (cddr rest)))
-        ((above)
+        ((:above)
          (setq to-val (cadr rest))
          (setq to-op '>)
          (setq downp t)
          (setq rest (cddr rest)))
-        ((by)
+        ((:by)
          (setq by-val (cadr rest))
          (setq rest (cddr rest)))))
     ; Generate: (var init step-form end-test remaining-clauses)
@@ -3730,9 +3975,9 @@
                                    (if (and (consp expr) (member (car expr) '(when unless)))
                                        (list (car expr) (cadr expr)
                                              (list 'setq append-var
-                                                   (list 'append append-var (list 'copy-list (caddr expr)))))
+                                                   (list 'append append-var (caddr expr))))
                                        (list 'setq append-var
-                                             (list 'append append-var (list 'copy-list expr)))))
+                                             (list 'append append-var expr))))
                                  (nreverse append-forms)))
             ; Nconc destructively concatenates
             (nconc-body (mapcar (lambda (expr)
@@ -3855,19 +4100,25 @@
         (block-name nil)     ; named loop block name
         (finally-forms nil)  ; finally body
         (initially-forms nil) ; initially body
+        (and-context nil)     ; tracks FOR/WITH chains split by AND
         (rest clauses))
 
     ; Parse all clauses using while loop
     (while rest
-      (let ((kw (car rest)))
-        (case kw
+      (let* ((kw (car rest))
+             (kw-key (loop-kw-canon kw)))
+        (when (and (not (eq kw-key :and))
+                   (not (member kw-key '(:for :as :with))))
+          (setq and-context nil))
+        (case kw-key
           ; FOR/AS with various iteration types
-          ((for as)
+          ((:for :as)
+           (setq and-context :for)
            (let* ((var (cadr rest))
-                  (next-kw (caddr rest)))
+                  (next-kw (loop-kw-canon (caddr rest))))
              (case next-kw
                ; FOR var FROM/DOWNFROM ... TO/BELOW/ABOVE ...
-               ((from downfrom to upto below downto above)
+               ((:from :downfrom :to :upto :below :downto :above)
                 (let ((parsed (parse-loop-for-arithmetic var (cddr rest))))
                   (push (list (car parsed) (cadr parsed)) vars)
                   (push (list 'setq (car parsed) (caddr parsed)) step-forms)
@@ -3876,43 +4127,55 @@
                   (setq rest (car (cddddr parsed)))))
 
                ; FOR var IN list
-               ((in)
+               ((:in)
                 (let ((list-var (gensym "list")))
                   (push (list list-var (cadddr rest)) vars)
                   ; Check if var is a list (destructuring) or a symbol
                   (if (consp var)
                       ; Destructuring case: (for (a b) in list ...)
                       (progn
-                        (let ((tmp-var (gensym "tmp")))
+                        (let* ((tmp-var (gensym "tmp"))
+                               (bindings (destructuring-bind-impl var tmp-var))
+                               (assign-forms (loop-binding-setq-forms bindings)))
                           (push (list tmp-var nil) vars)
-                          (push (list 'setq tmp-var (list 'car list-var)) body-forms)
-                          (push (list 'destructuring-bind var tmp-var) body-forms))
+                          (setq vars (loop-ensure-vars-from-bindings bindings vars))
+                          (setq body-forms
+                                (append (list (list 'setq tmp-var (list 'car list-var)))
+                                        assign-forms
+                                        body-forms)))
                         (push (list 'setq list-var (list 'cdr list-var)) step-forms)
                         (push (list 'null list-var) end-tests)
                         (setq rest (cddddr rest)))
                     ; Simple case: for x in list
                     (progn
-                      (push (list var nil) vars)
-                      (push (list 'setq var (list 'car list-var)) body-forms)
+                      ; Keep VAR in sync via init + step so dependent FOR clauses
+                      ; see the current element in the same iteration.
+                      (push (list var (list 'car list-var)) vars)
                       (push (list 'setq list-var (list 'cdr list-var)) step-forms)
+                      (push (list 'setq var (list 'car list-var)) step-forms)
                       (push (list 'null list-var) end-tests)
                       (setq rest (cddddr rest))))))
 
                ; FOR var ON list [BY step-fn]
-               ((on)
+               ((:on)
                 (let ((list-expr (cadddr rest))
                       (by-rest (cddddr rest))
                       (step-fn 'cdr))
-                  (when (and (consp by-rest) (eq (car by-rest) 'by))
+                  (when (and (consp by-rest) (eq (loop-kw-canon (car by-rest)) :by))
                     (setq step-fn (cadr by-rest))
                     (setq by-rest (cddr by-rest)))
                   (if (consp var)
-                      (let ((list-var (gensym "list"))
-                            (tmp-var (gensym "tmp")))
+                      (let* ((list-var (gensym "list"))
+                             (tmp-var (gensym "tmp"))
+                             (bindings (destructuring-bind-impl var tmp-var))
+                             (assign-forms (loop-binding-setq-forms bindings)))
                         (push (list list-var list-expr) vars)
                         (push (list tmp-var nil) vars)
-                        (push (list 'setq tmp-var list-var) body-forms)
-                        (push (list 'destructuring-bind var tmp-var) body-forms)
+                        (setq vars (loop-ensure-vars-from-bindings bindings vars))
+                        (setq body-forms
+                              (append (list (list 'setq tmp-var list-var))
+                                      assign-forms
+                                      body-forms))
                         (push (list 'setq list-var (list step-fn list-var)) step-forms)
                         (push (list 'null list-var) end-tests)
                         (setq rest by-rest))
@@ -3923,21 +4186,37 @@
                       (setq rest by-rest)))))
 
                ; FOR var = expr [THEN step-expr]
-               ((=)
+               ((:=)
                 (let ((init-expr (cadddr rest))
                       (then-rest (cddddr rest)))
-                  (if (and (consp then-rest) (eq (car then-rest) 'then))
+                  (if (consp var)
+                      (let* ((tmp-var (gensym "tmp"))
+                             (bindings (destructuring-bind-impl var tmp-var))
+                             (assign-forms (loop-binding-setq-forms bindings))
+                             (step-expr (if (and (consp then-rest)
+                                                 (eq (loop-kw-canon (car then-rest)) :then))
+                                            (cadr then-rest)
+                                            init-expr)))
+                        (push (list tmp-var init-expr) vars)
+                        (setq vars (loop-ensure-vars-from-bindings bindings vars))
+                        (setq body-forms (append assign-forms body-forms))
+                        (push (list 'setq tmp-var step-expr) step-forms)
+                        (setq rest (if (and (consp then-rest)
+                                            (eq (loop-kw-canon (car then-rest)) :then))
+                                       (cddr then-rest)
+                                       then-rest)))
+                    (if (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :then))
+                        (progn
+                          (push (list var init-expr) vars)
+                          (push (list 'setq var (cadr then-rest)) step-forms)
+                          (setq rest (cddr then-rest)))
                       (progn
                         (push (list var init-expr) vars)
-                        (push (list 'setq var (cadr then-rest)) step-forms)
-                        (setq rest (cddr then-rest)))
-                    (progn
-                      (push (list var init-expr) vars)
-                      (push (list 'setq var init-expr) step-forms)
-                      (setq rest then-rest)))))
+                        (push (list 'setq var init-expr) step-forms)
+                        (setq rest then-rest))))))
 
                ; FOR var ACROSS vector
-               ((across)
+               ((:across)
                 (let ((vec-var (gensym "vec"))
                       (idx-var (gensym "idx"))
                       (len-var (gensym "len")))
@@ -3947,10 +4226,15 @@
                   ; Check if var is a list (destructuring) or a symbol
                   (if (consp var)
                       ; Destructuring case: (for (a b) across vec ...)
-                      (let ((tmp-var (gensym "tmp")))
+                      (let* ((tmp-var (gensym "tmp"))
+                             (bindings (destructuring-bind-impl var tmp-var))
+                             (assign-forms (loop-binding-setq-forms bindings)))
                         (push (list tmp-var nil) vars)
-                        (push (list 'setq tmp-var (list 'aref vec-var idx-var)) body-forms)
-                        (push (list 'destructuring-bind var tmp-var) body-forms))
+                        (setq vars (loop-ensure-vars-from-bindings bindings vars))
+                        (setq body-forms
+                              (append (list (list 'setq tmp-var (list 'aref vec-var idx-var)))
+                                      assign-forms
+                                      body-forms)))
                     ; Simple case: for x across vec
                     (progn
                       (push (list var nil) vars)
@@ -3960,28 +4244,28 @@
                   (setq rest (cddddr rest))))
 
                ; FOR var BEING THE/EACH HASH-KEYS/HASH-VALUES/SYMBOLS OF hash/package [USING (...)]
-               ((being)
+               ((:being)
                 (let ((the-rest (cdddr rest)))
                   ; Skip 'the' or 'each' if present
-                  (when (member (car the-rest) '(the each))
+                  (when (member (loop-kw-canon (car the-rest)) '(:the :each))
                     (setq the-rest (cdr the-rest)))
                   (let ((iter-type (car the-rest))
                         (of-rest (cdr the-rest)))
                     ; Skip 'of' or 'in'
-                    (when (member (car of-rest) '(of in))
+                    (when (member (loop-kw-canon (car of-rest)) '(:of :in))
                       (setq of-rest (cdr of-rest)))
                     (let ((target-expr (car of-rest))
                           (using-rest (cdr of-rest))
                           (other-var nil))
                       ; Check for USING clause
-                      (when (and (consp using-rest) (eq (car using-rest) 'using))
+                      (when (and (consp using-rest) (eq (loop-kw-canon (car using-rest)) :using))
                         (let ((using-spec (cadr using-rest)))
                           (when (consp using-spec)
                             (setq other-var (cadr using-spec)))
                           (setq using-rest (cddr using-rest))))
                       ; Generate iteration code
-                      (case iter-type
-                        ((hash-keys hash-key)
+                      (case (loop-kw-canon iter-type)
+                        ((:hash-keys :hash-key)
                          (let ((keys-var (gensym "keys"))
                                (hash-var (gensym "hash")))
                            (push (list hash-var target-expr) vars)
@@ -3989,19 +4273,24 @@
                            ; Check if var is a list (destructuring) or symbol
                            (if (consp var)
                                ; Destructuring: (for (key . val) being hash-keys ...)
-                               (let ((tmp-var (gensym "tmp"))
-                                     (val-var (gensym "val")))
+                               (let* ((tmp-var (gensym "tmp"))
+                                      (val-var (gensym "val"))
+                                      (bindings (destructuring-bind-impl var val-var))
+                                      (assign-forms (loop-binding-setq-forms bindings))
+                                      (init-forms (list (list 'setq tmp-var (list 'car keys-var)))))
                                  (push (list tmp-var nil) vars)
                                  (when other-var
                                    (push (list other-var nil) vars))
                                  (push (list val-var nil) vars)
-                                 (push (list 'setq tmp-var (list 'car keys-var)) body-forms)
+                                 (setq vars (loop-ensure-vars-from-bindings bindings vars))
                                  (when other-var
-                                   (push (list 'setq other-var (list 'gethash tmp-var hash-var)) body-forms)
-                                   (push (list 'setq val-var (list 'cons tmp-var other-var)) body-forms))
+                                   (setq init-forms (append init-forms
+                                                            (list (list 'setq other-var (list 'gethash tmp-var hash-var))
+                                                                  (list 'setq val-var (list 'cons tmp-var other-var))))))
                                  (unless other-var
-                                   (push (list 'setq val-var tmp-var) body-forms))
-                                 (push (list 'destructuring-bind var val-var) body-forms))
+                                   (setq init-forms (append init-forms
+                                                            (list (list 'setq val-var tmp-var)))))
+                                 (setq body-forms (append init-forms assign-forms body-forms)))
                              ; Simple: var is symbol
                              (progn
                                (push (list var nil) vars)
@@ -4012,7 +4301,7 @@
                                  (push (list 'setq other-var (list 'gethash var hash-var)) body-forms))))
                            (push (list 'setq keys-var (list 'cdr keys-var)) step-forms)
                            (push (list 'null keys-var) end-tests)))
-                        ((hash-values hash-value)
+                        ((:hash-values :hash-value)
                          (let ((keys-var (gensym "keys"))
                                (hash-var (gensym "hash"))
                                (key-var (or other-var (gensym "key"))))
@@ -4022,11 +4311,14 @@
                            ; Check if var is a list (destructuring) or symbol
                            (if (consp var)
                                ; Destructuring: (for (a . b) being hash-values ...)
-                               (let ((tmp-var (gensym "tmp")))
+                               (let* ((tmp-var (gensym "tmp"))
+                                      (bindings (destructuring-bind-impl var tmp-var))
+                                      (assign-forms (loop-binding-setq-forms bindings))
+                                      (init-forms (list (list 'setq key-var (list 'car keys-var))
+                                                        (list 'setq tmp-var (list 'gethash key-var hash-var)))))
                                  (push (list tmp-var nil) vars)
-                                 (push (list 'setq key-var (list 'car keys-var)) body-forms)
-                                 (push (list 'setq tmp-var (list 'gethash key-var hash-var)) body-forms)
-                                 (push (list 'destructuring-bind var tmp-var) body-forms))
+                                 (setq vars (loop-ensure-vars-from-bindings bindings vars))
+                                 (setq body-forms (append init-forms assign-forms body-forms)))
                              ; Simple: var is symbol
                              (progn
                                (push (list var nil) vars)
@@ -4034,7 +4326,7 @@
                                (push (list 'setq var (list 'gethash key-var hash-var)) body-forms)))
                            (push (list 'setq keys-var (list 'cdr keys-var)) step-forms)
                            (push (list 'null keys-var) end-tests)))
-                        ((symbols symbol)
+                        ((:symbols :symbol)
                          (let ((syms-var (gensym "syms"))
                                (pkg-var (gensym "pkg")))
                            (push (list pkg-var target-expr) vars)
@@ -4043,7 +4335,7 @@
                            (push (list 'setq var (list 'car syms-var)) body-forms)
                            (push (list 'setq syms-var (list 'cdr syms-var)) step-forms)
                            (push (list 'null syms-var) end-tests)))
-                        ((present-symbols present-symbol)
+                        ((:present-symbols :present-symbol)
                          (let ((syms-var (gensym "syms"))
                                (pkg-var (gensym "pkg")))
                            (push (list pkg-var target-expr) vars)
@@ -4052,7 +4344,7 @@
                            (push (list 'setq var (list 'car syms-var)) body-forms)
                            (push (list 'setq syms-var (list 'cdr syms-var)) step-forms)
                            (push (list 'null syms-var) end-tests)))
-                        ((external-symbols external-symbol)
+                        ((:external-symbols :external-symbol)
                          (let ((syms-var (gensym "syms"))
                                (pkg-var (gensym "pkg")))
                            (push (list pkg-var target-expr) vars)
@@ -4067,9 +4359,10 @@
                (t (error "Unknown FOR clause")))))
 
           ; WITH var = expr
-          ((with)
+          ((:with)
+           (setq and-context :with)
            (let ((var (cadr rest)))
-             (if (and (cdddr rest) (eq (caddr rest) '=))
+             (if (and (cdddr rest) (eq (loop-kw-canon (caddr rest)) :=))
                  (progn
                    (push (list var (cadddr rest)) vars)
                    (setq rest (cddddr rest)))
@@ -4077,8 +4370,24 @@
                  (push (list var nil) vars)
                  (setq rest (cddr rest))))))
 
+          ; AND separator for parallel FOR/WITH clauses
+          ((:and)
+           (let ((next-kw (loop-kw-canon (cadr rest))))
+             (cond
+               ((member next-kw '(:for :as :with))
+                ; Explicit keyword after AND: drop separator only.
+                (setq rest (cdr rest)))
+               ((eq and-context :for)
+                ; Implicit FOR continuation: (for a in x and b from 0)
+                (setq rest (cons 'for (cdr rest))))
+               ((eq and-context :with)
+                ; Implicit WITH continuation: (with a = 1 and b = 2)
+                (setq rest (cons 'with (cdr rest))))
+               (t
+                (error "AND must continue FOR/AS/WITH clause")))))
+
           ; REPEAT n
-          ((repeat)
+          ((:repeat)
            (let ((cnt-var (gensym "count")))
              (push (list cnt-var (cadr rest)) vars)
              (push (list 'setq cnt-var (list '- cnt-var 1)) step-forms)
@@ -4086,17 +4395,17 @@
              (setq rest (cddr rest))))
 
           ; WHILE test
-          ((while)
+          ((:while)
            (push (list 'not (cadr rest)) end-tests)
            (setq rest (cddr rest)))
 
           ; UNTIL test
-          ((until)
+          ((:until)
            (push (cadr rest) end-tests)
            (setq rest (cddr rest)))
 
           ; DO/DOING body...
-          ((do doing)
+          ((:do :doing)
            (let ((forms nil))
              (setq rest (cdr rest))
              (while (and rest (not (loop-keyword-p (car rest))))
@@ -4105,97 +4414,151 @@
              (setq body-forms (append body-forms (nreverse forms)))))
 
           ; IF/WHEN test clause [ELSE clause] [END]
-          ((if when)
+          ((:if :when)
            (let ((test (cadr rest))
                  (then-rest (cddr rest))
                  (then-action nil)
                  (else-action nil))
              ; Parse THEN clause
-             (case (car then-rest)
-               ((do collect sum count append nconc maximize minimize)
+             (case (loop-kw-canon (car then-rest))
+               ((:do :collect :sum :count :append :nconc :maximize :minimize :return)
                 (setq then-action (list (car then-rest) (cadr then-rest)))
                 (setq then-rest (cddr then-rest)))
                (t (error "IF requires DO/COLLECT/SUM/COUNT/etc")))
              ; Check for ELSE
-             (when (and (consp then-rest) (eq (car then-rest) 'else))
+             (when (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :else))
                (setq then-rest (cdr then-rest))
-               (case (car then-rest)
-                 ((do collect sum count append nconc maximize minimize)
+               (case (loop-kw-canon (car then-rest))
+                 ((:do :collect :sum :count :append :nconc :maximize :minimize :return)
                   (setq else-action (list (car then-rest) (cadr then-rest)))
                   (setq then-rest (cddr then-rest)))
                  (t (error "ELSE requires DO/COLLECT/SUM/COUNT/etc"))))
              ; Skip END if present
-             (when (and (consp then-rest) (eq (car then-rest) 'end))
+             (when (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :end))
                (setq then-rest (cdr then-rest)))
              ; Generate conditional forms
-             (case (car then-action)
-               ((do)
+             (case (loop-kw-canon (car then-action))
+               ((:do)
                 (push (list 'when test (cadr then-action)) body-forms)
                 (when else-action
                   (push (list 'unless test (cadr else-action)) body-forms)))
-               ((collect)
+               ((:collect)
                 ; Ensure collect-var exists
                 (unless collect-var
                   (setq collect-var (gensym "collect")))
                 (push (list 'when test (cadr then-action)) collect-forms)
                 (when else-action
                   (push (list 'unless test (cadr else-action)) collect-forms)))
-               ((sum)
+               ((:sum)
                 ; Ensure sum-var exists
                 (unless sum-var
                   (setq sum-var (gensym "sum")))
                 (push (list 'when test (cadr then-action)) sum-forms)
                 (when else-action
                   (push (list 'unless test (cadr else-action)) sum-forms)))
-               ((count)
+               ((:count)
                 ; Ensure count-var exists
                 (unless count-var
                   (setq count-var (gensym "count")))
                 (push (list 'when test (cadr then-action)) count-forms)
                 (when else-action
-                  (push (list 'unless test (cadr else-action)) count-forms))))
+                  (push (list 'unless test (cadr else-action)) count-forms)))
+               ((:append)
+                ; Ensure append-var exists
+                (unless append-var
+                  (setq append-var (gensym "append")))
+                (push (list 'when test (cadr then-action)) append-forms)
+                (when else-action
+                  (push (list 'unless test (cadr else-action)) append-forms)))
+               ((:nconc)
+                ; Ensure nconc-var exists
+                (unless nconc-var
+                  (setq nconc-var (gensym "nconc")))
+                (push (list 'when test (cadr then-action)) nconc-forms)
+                (when else-action
+                  (push (list 'unless test (cadr else-action)) nconc-forms)))
+               ((:maximize)
+                ; Ensure max-var exists
+                (unless max-var
+                  (setq max-var (gensym "max")))
+                (push (list 'when test (cadr then-action)) max-forms)
+                (when else-action
+                  (push (list 'unless test (cadr else-action)) max-forms)))
+               ((:minimize)
+                ; Ensure min-var exists
+                (unless min-var
+                  (setq min-var (gensym "min")))
+                (push (list 'when test (cadr then-action)) min-forms)
+                (when else-action
+                  (push (list 'unless test (cadr else-action)) min-forms)))
+               ((:return)
+                (push (list 'when test (list 'return-from block-name (cadr then-action))) body-forms)
+                (when else-action
+                  (push (list 'unless test (list 'return-from block-name (cadr else-action))) body-forms))))
              (setq rest then-rest)))
 
           ; UNLESS test clause [END]
-          ((unless)
+          ((:unless)
            (let ((test (cadr rest))
                  (then-rest (cddr rest))
                  (then-action nil))
              ; Parse clause
-             (case (car then-rest)
-               ((do collect sum count append nconc maximize minimize)
+             (case (loop-kw-canon (car then-rest))
+               ((:do :collect :sum :count :append :nconc :maximize :minimize :return)
                 (setq then-action (list (car then-rest) (cadr then-rest)))
                 (setq then-rest (cddr then-rest)))
                (t (error "UNLESS requires DO/COLLECT/SUM/COUNT/etc")))
              ; Skip END if present
-             (when (and (consp then-rest) (eq (car then-rest) 'end))
+             (when (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :end))
                (setq then-rest (cdr then-rest)))
              ; Generate conditional forms
-             (case (car then-action)
-               ((do)
+             (case (loop-kw-canon (car then-action))
+               ((:do)
                 (push (list 'unless test (cadr then-action)) body-forms))
-               ((collect)
+               ((:collect)
                 ; Ensure collect-var exists
                 (unless collect-var
                   (setq collect-var (gensym "collect")))
                 (push (list 'unless test (cadr then-action)) collect-forms))
-               ((sum)
+               ((:sum)
                 ; Ensure sum-var exists
                 (unless sum-var
                   (setq sum-var (gensym "sum")))
                 (push (list 'unless test (cadr then-action)) sum-forms))
-               ((count)
+               ((:count)
                 ; Ensure count-var exists
                 (unless count-var
                   (setq count-var (gensym "count")))
-                (push (list 'unless test (cadr then-action)) count-forms)))
+                (push (list 'unless test (cadr then-action)) count-forms))
+               ((:append)
+                ; Ensure append-var exists
+                (unless append-var
+                  (setq append-var (gensym "append")))
+                (push (list 'unless test (cadr then-action)) append-forms))
+               ((:nconc)
+                ; Ensure nconc-var exists
+                (unless nconc-var
+                  (setq nconc-var (gensym "nconc")))
+                (push (list 'unless test (cadr then-action)) nconc-forms))
+               ((:maximize)
+                ; Ensure max-var exists
+                (unless max-var
+                  (setq max-var (gensym "max")))
+                (push (list 'unless test (cadr then-action)) max-forms))
+               ((:minimize)
+                ; Ensure min-var exists
+                (unless min-var
+                  (setq min-var (gensym "min")))
+                (push (list 'unless test (cadr then-action)) min-forms))
+               ((:return)
+                (push (list 'unless test (list 'return-from block-name (cadr then-action))) body-forms)))
              (setq rest then-rest)))
 
           ; COLLECT/COLLECTING expr [INTO var]
-          ((collect collecting)
+          ((:collect :collecting)
            (let ((expr (cadr rest))
                  (into-rest (cddr rest)))
-             (when (and (consp into-rest) (eq (car into-rest) 'into))
+             (when (and (consp into-rest) (eq (loop-kw-canon (car into-rest)) :into))
                (setq collect-var (cadr into-rest))
                (setq into-rest (cddr into-rest)))
              (unless collect-var
@@ -4204,10 +4567,10 @@
              (setq rest into-rest)))
 
           ; SUM/SUMMING expr [INTO var]
-          ((sum summing)
+          ((:sum :summing)
            (let ((expr (cadr rest))
                  (into-rest (cddr rest)))
-             (when (and (consp into-rest) (eq (car into-rest) 'into))
+             (when (and (consp into-rest) (eq (loop-kw-canon (car into-rest)) :into))
                (setq sum-var (cadr into-rest))
                (setq into-rest (cddr into-rest)))
              (unless sum-var
@@ -4216,10 +4579,10 @@
              (setq rest into-rest)))
 
           ; COUNT/COUNTING expr [INTO var]
-          ((count counting)
+          ((:count :counting)
            (let ((expr (cadr rest))
                  (into-rest (cddr rest)))
-             (when (and (consp into-rest) (eq (car into-rest) 'into))
+             (when (and (consp into-rest) (eq (loop-kw-canon (car into-rest)) :into))
                (setq count-var (cadr into-rest))
                (setq into-rest (cddr into-rest)))
              (unless count-var
@@ -4228,7 +4591,7 @@
              (setq rest into-rest)))
 
           ; FINALLY body...
-          ((finally)
+          ((:finally)
            (setq rest (cdr rest))
            (while (and rest (not (loop-keyword-p (car rest))))
              (push (car rest) finally-forms)
@@ -4236,7 +4599,7 @@
            (setq finally-forms (nreverse finally-forms)))
 
           ; INITIALLY body...
-          ((initially)
+          ((:initially)
            (setq rest (cdr rest))
            (while (and rest (not (loop-keyword-p (car rest))))
              (push (car rest) initially-forms)
@@ -4244,20 +4607,20 @@
            (setq initially-forms (nreverse initially-forms)))
 
           ; RETURN expr
-          ((return)
+          ((:return)
            (push (list 'return-from block-name (cadr rest)) body-forms)
            (setq rest (cddr rest)))
 
           ; NAMED name - set block name for return-from
-          ((named)
+          ((:named)
            (setq block-name (cadr rest))
            (setq rest (cddr rest)))
 
           ; APPEND/APPENDING expr [INTO var]
-          ((append appending)
+          ((:append :appending)
            (let ((expr (cadr rest))
                  (into-rest (cddr rest)))
-             (when (and (consp into-rest) (eq (car into-rest) 'into))
+             (when (and (consp into-rest) (eq (loop-kw-canon (car into-rest)) :into))
                (setq append-var (cadr into-rest))
                (setq into-rest (cddr into-rest)))
              (unless append-var
@@ -4266,10 +4629,10 @@
              (setq rest into-rest)))
 
           ; NCONC/NCONCING expr [INTO var]
-          ((nconc nconcing)
+          ((:nconc :nconcing)
            (let ((expr (cadr rest))
                  (into-rest (cddr rest)))
-             (when (and (consp into-rest) (eq (car into-rest) 'into))
+             (when (and (consp into-rest) (eq (loop-kw-canon (car into-rest)) :into))
                (setq nconc-var (cadr into-rest))
                (setq into-rest (cddr into-rest)))
              (unless nconc-var
@@ -4278,10 +4641,10 @@
              (setq rest into-rest)))
 
           ; MAXIMIZE/MAXIMIZING expr [INTO var]
-          ((maximize maximizing)
+          ((:maximize :maximizing)
            (let ((expr (cadr rest))
                  (into-rest (cddr rest)))
-             (when (and (consp into-rest) (eq (car into-rest) 'into))
+             (when (and (consp into-rest) (eq (loop-kw-canon (car into-rest)) :into))
                (setq max-var (cadr into-rest))
                (setq into-rest (cddr into-rest)))
              (unless max-var
@@ -4290,10 +4653,10 @@
              (setq rest into-rest)))
 
           ; MINIMIZE/MINIMIZING expr [INTO var]
-          ((minimize minimizing)
+          ((:minimize :minimizing)
            (let ((expr (cadr rest))
                  (into-rest (cddr rest)))
-             (when (and (consp into-rest) (eq (car into-rest) 'into))
+             (when (and (consp into-rest) (eq (loop-kw-canon (car into-rest)) :into))
                (setq min-var (cadr into-rest))
                (setq into-rest (cddr into-rest)))
              (unless min-var
@@ -4302,17 +4665,17 @@
              (setq rest into-rest)))
 
           ; ALWAYS test - loop terminates with NIL if test fails
-          ((always)
+          ((:always)
            (push (cadr rest) always-forms)
            (setq rest (cddr rest)))
 
           ; NEVER test - loop terminates with NIL if test succeeds
-          ((never)
+          ((:never)
            (push (cadr rest) never-forms)
            (setq rest (cddr rest)))
 
           ; THEREIS test - loop terminates with value if non-NIL
-          ((thereis)
+          ((:thereis)
            (push (cadr rest) thereis-forms)
            (setq rest (cddr rest)))
 
@@ -4369,6 +4732,10 @@
                         (concatenate 'string name-str "-")))
          (constructor-name (intern (concatenate 'string "MAKE-" name-str)))
          (predicate-name (intern (concatenate 'string name-str "-P")))
+         (copier-pair (assoc :copier options))
+         (copier-name (if copier-pair
+                          (if (cdr copier-pair) (cadr copier-pair) nil)
+                        (intern (concatenate 'string "COPY-" name-str))))
          (slot-names (mapcar (lambda (s) (if (consp s) (car s) s)) slots))
          (slot-count (length slot-names)))
 
@@ -4403,6 +4770,12 @@
                                 (list 'defun accessor-name (list 'obj)
                                       (list 'svref 'obj index))))
                             slot-names)))
+
+            ; Copier: (defun COPY-NAME (obj) (copy-structure obj))
+            (if copier-name
+                (list 'defun copier-name '(obj)
+                      (list 'copy-structure 'obj))
+              nil)
 
             ; Setf writers: (setf (fdefinition '(setf ACCESSOR)) (lambda (val obj) ...))
             (cons 'progn
@@ -4628,9 +5001,28 @@
     `(progn ,@body)))
 
 ; defsetf - define setf expansion (simple form)
-(defmacro defsetf (access-fn update-fn &optional doc)
-  (declare (ignore doc))
-  `(put ',access-fn 'setf-function ',update-fn))
+(defmacro defsetf (access-fn &rest rest)
+  (if (symbolp (car rest))
+      (let ((update-fn (car rest)))
+        `(progn
+           (put ',access-fn 'setf-function ',update-fn)
+           ',access-fn))
+    (let* ((lambda-list (car rest))
+           (store-vars (car (cdr rest)))
+           (body-forms (%strip-leading-defsetf-body (cdr (cdr rest)))))
+      `(define-setf-expander ,access-fn ,lambda-list
+         (let* ((temps (%setf-gensym-list ',lambda-list))
+                (stores ',store-vars)
+                (vals (list ,@lambda-list))
+                (writer
+                 (eval
+                  (list 'let*
+                        (append (%pair-quoted-bindings ',lambda-list temps)
+                                (%self-bindings stores))
+                        (cons 'block
+                              (cons ',access-fn ',body-forms)))))
+                (reader (cons ',access-fn temps)))
+           (values temps vals stores writer reader))))))
 
 ; define-modify-macro - define read-modify-write macro
 (defmacro define-modify-macro (name lambda-list function &optional doc)
@@ -4650,8 +5042,17 @@
          (vals (nth 1 expansion))
          (stores (nth 2 expansion))
          (writer (nth 3 expansion))
-         (tmp-binds (mapcar (lambda (a b) (list a b)) temps vals))
-         (store-binds (mapcar (lambda (s) (list s new-value)) stores)))
+         (tmp-binds (%pair-bindings temps vals))
+         (store-binds
+          (if (null stores)
+              nil
+            (cons (list (car stores) (list 'quote new-value))
+                  (let ((rest (cdr stores))
+                        (acc nil))
+                    (while rest
+                      (push (list (car rest) (list 'quote new-value)) acc)
+                      (setq rest (cdr rest)))
+                    (nreverse acc))))))
     (eval (list 'let* tmp-binds (list 'let* store-binds writer)))
     new-value))
 
@@ -4892,6 +5293,10 @@
   "Create an instance of CLASS (stub)"
   (declare (ignore initargs class))
   nil)
+
+;; Ensure CL package entry point is present even when stdlib loads in CL-USER.
+(unless (eq 'make-instance 'common-lisp:make-instance)
+  (setf (fdefinition 'common-lisp:make-instance) #'make-instance))
 
 (defun allocate-instance (class &rest initargs)
   "Allocate storage for an instance (stub)"
@@ -5237,6 +5642,11 @@
   (setf (gethash (%logical-pathname-host-key host) *logical-pathname-translations*)
         translations)
   translations)
+
+(put 'logical-pathname-translations 'setf-function 'set-logical-pathname-translations)
+
+(setf (fdefinition '(setf logical-pathname-translations))
+      #'set-logical-pathname-translations)
 
 (defun %load-logical-translations-candidate (host candidate)
   (handler-case

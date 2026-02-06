@@ -1,0 +1,6 @@
+(load "compile-and-load.lsp")
+(load "rt-package.lsp")
+(load "rt.lsp")
+(load "cl-test-package.lsp")
+(compile-and-load* "auxiliary/ansi-aux-macros.lsp")
+(cl:handler-case 1 (error () nil))

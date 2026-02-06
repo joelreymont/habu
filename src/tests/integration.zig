@@ -535,6 +535,96 @@ test "stdlib setf custom expander integration" {
     try testing.expectEqual(@as(i64, 8), tail.car.toFixnum());
 }
 
+test "stdlib setf bit and sbit places" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const got = try repl.eval(
+        "(let ((v (vector 0 0 0 0)))\n" ++
+            "  (setf (sbit v 1) 1 (bit v 2) 1)\n" ++
+            "  (list (sbit v 1) (bit v 2) (svref v 1) (aref v 2)))",
+    );
+    const c0 = got.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 1), c0.car.toFixnum());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 1), c1.car.toFixnum());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 1), c2.car.toFixnum());
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 1), c3.car.toFixnum());
+}
+
+test "stdlib pushnew supports gethash place" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const got = try repl.eval(
+        "(let ((h (make-hash-table :test 'eq)))\n" ++
+            "  (pushnew 'a (gethash 'k h))\n" ++
+            "  (pushnew 'a (gethash 'k h))\n" ++
+            "  (pushnew 'b (gethash 'k h))\n" ++
+            "  (length (gethash 'k h)))",
+    );
+    try testing.expect(got.isFixnum());
+    try testing.expectEqual(@as(i64, 2), got.toFixnum());
+}
+
+test "stdlib defsetf long form" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const got = try repl.eval(
+        "(progn\n" ++
+            "  (defun dsf-acc (n seq) (elt seq n))\n" ++
+            "  (defsetf dsf-acc (n seq) (val)\n" ++
+            "    `(setf (elt ,seq ,n) ,val))\n" ++
+            "  (let ((x (list 1 2 3 4))\n" ++
+            "        (i 0))\n" ++
+            "    (setf (dsf-acc (progn (incf i) 2)\n" ++
+            "                   (progn (incf i) x))\n" ++
+            "          (progn (incf i) 'a))\n" ++
+            "    (list x i)))",
+    );
+
+    const outer = got.toPtr(Cons);
+    const x_list = outer.car.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 1), x_list.car.toFixnum());
+    const x1 = x_list.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 2), x1.car.toFixnum());
+    const x2 = x1.cdr.toPtr(Cons);
+    try testing.expect(x2.car.isSymbol());
+    try testing.expectEqualStrings("A", x2.car.toPtr(runtime.Symbol).getName());
+    const x3 = x2.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 4), x3.car.toFixnum());
+
+    const tail = outer.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 3), tail.car.toFixnum());
+}
+
 test "eval define with expression" {
     const allocator = testing.allocator;
 
@@ -624,8 +714,8 @@ test "keyword arg validation" {
     try testing.expect(ok.isFixnum());
     try testing.expectEqual(@as(i64, 1), ok.toFixnum());
 
-    const err = repl.eval("(f :b 2)");
-    try testing.expectError(error.TypeMismatch, err);
+    const unknown = try repl.eval("(f :b 2)");
+    try testing.expect(unknown.isNil());
 
     const ok2 = try repl.eval("(f :b 2 :allow-other-keys t)");
     try testing.expect(ok2.isNil());
@@ -778,6 +868,31 @@ test "eval defmacro with quasiquote" {
     // Test false branch
     const result2 = try repl.eval("(when (> 1 2) 42)");
     try testing.expect(result2.isNil());
+}
+
+test "quasiquote preserves package-qualified symbol identity" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defmacro my-handler-case (form &rest cases) `(let () (cl:handler-case ,form ,@cases)))");
+
+    const preserves_pkg = try repl.eval(
+        "(let* ((exp (macroexpand-1 '(my-handler-case 1 (error () 2))))" ++
+            "       (head (car (caddr exp))))" ++
+            "  (eq head 'cl:handler-case))",
+    );
+    try testing.expect(!preserves_pkg.isNil());
+
+    const result = try repl.eval("(my-handler-case 1 (error () 2))");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 1), result.toFixnum());
 }
 
 test "eval defmacro unless" {
@@ -2926,6 +3041,37 @@ test "copy-structure copies defstruct instance" {
     try testing.expect(cur.isNil());
 }
 
+test "defstruct with conc-name nil defines copier" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct (entry (:conc-name nil)) pend name)\n" ++
+        "  (let ((x (make-entry t 'ok)))\n" ++
+        "    (and (fboundp 'copy-entry)\n" ++
+        "         (entry-p (copy-entry x))\n" ++
+        "         (not (eq x (copy-entry x))))))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
+test "defvar without init defaults to nil" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(
+        allocator,
+        &heap,
+        "(progn (defvar dv-noinit-847261) dv-noinit-847261)",
+    );
+
+    try testing.expect(result.isNil());
+}
+
 test "ansi repro define-compiler-macro.8 does not crash" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
@@ -2960,7 +3106,15 @@ test "ansi repro define-compiler-macro.8 does not crash" {
         \\                           (foo-cmpr a b)))
         \\           7 23))
     );
-    try testing.expect(result.isClosure());
+    try testing.expect(result.isCons());
+    const c0 = result.toPtr(Cons);
+    try testing.expect(c0.car.isFixnum());
+    try testing.expectEqual(@as(i64, 7), c0.car.toFixnum());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.isFixnum());
+    try testing.expectEqual(@as(i64, 23), c1.car.toFixnum());
+    try testing.expect(c1.cdr.isNil());
 }
 
 test "ansi repro destructuring-bind.error.10 rejects nil binder" {
@@ -3179,6 +3333,55 @@ test "ansi repro equal.13 equal.14 nil vectors are string-like" {
     try testing.expect(!s_eq.isNil());
 }
 
+test "ansi repro loop.collect.1 expands extended loop clauses" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(equal (loop for i from 1 to 3 collect i) '(1 2 3))");
+    try testing.expect(!result.isNil());
+}
+
+test "ansi repro loop.collect.1 nested loop form expands in value position" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(progn (setq x (loop for i from 1 to 3 collect i)) (equal x '(1 2 3)))",
+    );
+    try testing.expect(!result.isNil());
+}
+
+test "ansi repro loop for-and parallel iteration" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(= (loop for e in '(a b c a) and i from 0 count (eql e 'a)) 2)",
+    );
+    try testing.expect(!result.isNil());
+}
+
 test "ansi repro syntax.sharp-dot.1 read-time evaluates #." {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
@@ -3220,7 +3423,7 @@ test "ansi repro read-suppress.sharp-dot.1 ignores #. when suppressed" {
     try testing.expect(result.isNil());
 }
 
-test "ansi repro read-from-string.error.10 rejects unknown keyword" {
+test "ansi repro universe make-array function designator" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
@@ -3231,9 +3434,30 @@ test "ansi repro read-from-string.error.10 rejects unknown keyword" {
     try repl.wireGlobalEnv();
     try loadStdlib(&repl);
 
-    // ANSI read-from-string.error.10 expects PROGRAM-ERROR here.
-    const src = "(read-from-string \"A\" nil t :bad-keyword t :allow-other-keys nil)";
-    try testing.expectError(error.TypeMismatch, repl.eval(src));
+    const src =
+        \\(let ((xs (mapcar #'make-array '(2 3))))
+        \\  (and (consp xs)
+        \\       (arrayp (car xs))
+        \\       (arrayp (car (cdr xs)))))
+    ;
+    const result = try repl.eval(src);
+    try testing.expect(!result.isNil());
+}
+
+test "ansi repro read-from-string.error.10 tolerates unknown keyword" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src = "(eq 'A (read-from-string \"A\" nil t :bad-keyword t :allow-other-keys nil))";
+    const result = try repl.eval(src);
+    try testing.expect(!result.isNil());
 }
 
 test "ansi repro warn.1 muffle-warning restart works" {

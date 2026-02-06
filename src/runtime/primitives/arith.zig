@@ -10,13 +10,17 @@ const list_prim = @import("list.zig");
 
 pub const Error = error{ TypeMismatch, DivisionByZero, OutOfMemory, InvalidArgument };
 
+inline fn isFloatKind(v: Value) bool {
+    return v.typeKind() == .float;
+}
+
 /// Add two numbers (fixnum, bignum, float, rational, or complex)
 pub fn add(heap: *Heap, a: Value, b: Value) Error!Value {
     // Complex contagion: if either operand is complex, use complex arithmetic
     if (a.typeKind() == .complex or b.typeKind() == .complex) return addComplex(heap, a, b);
 
     // Float contagion: if either operand is float, use float arithmetic
-    if (a.isFloat() or b.isFloat()) return addFloat(a, b);
+    if (isFloatKind(a) or isFloatKind(b)) return addFloat(a, b);
 
     // Rational arithmetic
     if (a.typeKind() == .rational or b.typeKind() == .rational) return addRational(heap, a, b);
@@ -44,7 +48,7 @@ pub fn sub(heap: *Heap, a: Value, b: Value) Error!Value {
     if (a.typeKind() == .complex or b.typeKind() == .complex) return subComplex(heap, a, b);
 
     // Float contagion
-    if (a.isFloat() or b.isFloat()) return subFloat(a, b);
+    if (isFloatKind(a) or isFloatKind(b)) return subFloat(a, b);
 
     // Rational arithmetic
     if (a.typeKind() == .rational or b.typeKind() == .rational) return subRational(heap, a, b);
@@ -53,7 +57,14 @@ pub fn sub(heap: *Heap, a: Value, b: Value) Error!Value {
     if (a.isBignum() or b.isBignum()) return subBignum(heap, a, b);
 
     // Fixnum arithmetic with overflow check
-    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+    if (!a.isFixnum() or !b.isFixnum()) {
+        if (std.posix.getenv("HABU_TRACE_SUB_MISMATCH") != null) {
+            std.debug.print("TRACE sub mismatch: a={s} b={s}\n", .{ @tagName(a.typeKind()), @tagName(b.typeKind()) });
+            if (a.isSymbol()) std.debug.print("  a.sym={s}\n", .{a.toPtr(objects.Symbol).getName()});
+            if (b.isSymbol()) std.debug.print("  b.sym={s}\n", .{b.toPtr(objects.Symbol).getName()});
+        }
+        return error.TypeMismatch;
+    }
     const result = @subWithOverflow(a.toFixnum(), b.toFixnum());
 
     // Check for i64 overflow OR fixnum range overflow (62-bit signed)
@@ -72,7 +83,7 @@ pub fn mul(heap: *Heap, a: Value, b: Value) Error!Value {
     if (a.typeKind() == .complex or b.typeKind() == .complex) return mulComplex(heap, a, b);
 
     // Float contagion
-    if (a.isFloat() or b.isFloat()) return mulFloat(a, b);
+    if (isFloatKind(a) or isFloatKind(b)) return mulFloat(a, b);
 
     // Rational arithmetic
     if (a.typeKind() == .rational or b.typeKind() == .rational) return mulRational(heap, a, b);
@@ -100,7 +111,7 @@ pub fn div(heap: *Heap, a: Value, b: Value) Error!Value {
     if (a.typeKind() == .complex or b.typeKind() == .complex) return divComplex(heap, a, b);
 
     // Float contagion
-    if (a.isFloat() or b.isFloat()) return divFloat(a, b);
+    if (isFloatKind(a) or isFloatKind(b)) return divFloat(a, b);
 
     // Rational arithmetic - division of integers returns rational
     if (a.typeKind() == .rational or b.typeKind() == .rational or a.isFixnum() and b.isFixnum()) return divRational(heap, a, b);
@@ -348,7 +359,7 @@ pub fn numEq(a: Value, b: Value) bool {
 /// Less than
 pub fn lt(a: Value, b: Value) Error!bool {
     // Float comparison
-    if (a.isFloat() or b.isFloat()) {
+    if (isFloatKind(a) or isFloatKind(b)) {
         const af = try toNumber(a);
         const bf = try toNumber(b);
         return af < bf;
@@ -369,7 +380,7 @@ pub fn lt(a: Value, b: Value) Error!bool {
 /// Greater than
 pub fn gt(a: Value, b: Value) Error!bool {
     // Float comparison
-    if (a.isFloat() or b.isFloat()) {
+    if (isFloatKind(a) or isFloatKind(b)) {
         const af = try toNumber(a);
         const bf = try toNumber(b);
         return af > bf;
@@ -390,7 +401,7 @@ pub fn gt(a: Value, b: Value) Error!bool {
 /// Less than or equal
 pub fn le(a: Value, b: Value) Error!bool {
     // Float comparison
-    if (a.isFloat() or b.isFloat()) {
+    if (isFloatKind(a) or isFloatKind(b)) {
         const af = try toNumber(a);
         const bf = try toNumber(b);
         return af <= bf;
@@ -411,7 +422,7 @@ pub fn le(a: Value, b: Value) Error!bool {
 /// Greater than or equal
 pub fn ge(a: Value, b: Value) Error!bool {
     // Float comparison
-    if (a.isFloat() or b.isFloat()) {
+    if (isFloatKind(a) or isFloatKind(b)) {
         const af = try toNumber(a);
         const bf = try toNumber(b);
         return af >= bf;
@@ -435,6 +446,8 @@ pub fn ge(a: Value, b: Value) Error!bool {
 
 pub const RangeError = error{InvalidRange};
 
+const max_fixnum_u64: u64 = (@as(u64, 1) << 62) - 1;
+
 /// Seed the random number generator
 pub fn randomSeed(prng: *std.Random.DefaultPrng, seeded: *bool, seed: Value) Error!Value {
     if (!seed.isFixnum()) return error.TypeMismatch;
@@ -444,12 +457,10 @@ pub fn randomSeed(prng: *std.Random.DefaultPrng, seeded: *bool, seed: Value) Err
     return seed;
 }
 
-/// Generate random integer in [0, n)
-pub fn random(prng: *std.Random.DefaultPrng, seeded: *bool, n: Value) (Error || RangeError)!Value {
-    if (!n.isFixnum()) return error.TypeMismatch;
-    const max = n.toFixnum();
-    if (max <= 0) return error.InvalidRange;
-
+/// Generate random number in [0, n)
+/// - Integer/bignum bounds return non-negative integers less than n.
+/// - Float bounds return floats in [0.0, n).
+pub fn random(heap: *Heap, prng: *std.Random.DefaultPrng, seeded: *bool, n: Value) (Error || RangeError)!Value {
     // Auto-seed on first use
     if (!seeded.*) {
         const ts = std.time.nanoTimestamp();
@@ -459,8 +470,87 @@ pub fn random(prng: *std.Random.DefaultPrng, seeded: *bool, n: Value) (Error || 
     }
 
     const rand = prng.random();
-    const result = rand.intRangeLessThan(i64, 0, max);
-    return Value.makeFixnum(result);
+
+    if (n.isFixnum()) {
+        const max = n.toFixnum();
+        if (max <= 0) return error.InvalidRange;
+        const result = rand.intRangeLessThan(i64, 0, max);
+        return Value.makeFixnum(result);
+    }
+
+    if (isFloatKind(n)) {
+        const max = n.toFloat();
+        if (!(max > 0.0) or !std.math.isFinite(max)) {
+            if (std.posix.getenv("HABU_TRACE_RANDOM_RANGE") != null) {
+                std.debug.print(
+                    "TRACE random invalid float bound={d} raw=0x{x} tag={d} kind={s}\n",
+                    .{ max, n.raw, @intFromEnum(n.getTag()), @tagName(n.typeKind()) },
+                );
+            }
+            return error.InvalidRange;
+        }
+        return Value.makeFloat(rand.float(f64) * max);
+    }
+
+    if (n.isBignum()) {
+        return randomBignumLessThan(heap, rand, n.toPtr(objects.Bignum));
+    }
+
+    if (std.posix.getenv("HABU_TRACE_RANDOM_MISMATCH") != null) {
+        std.debug.print("TRACE random mismatch type={s}\n", .{@tagName(n.typeKind())});
+    }
+    return error.TypeMismatch;
+}
+
+fn randomBignumLessThan(heap: *Heap, rand: std.Random, limit: *const objects.Bignum) (Error || RangeError)!Value {
+    if (limit.size <= 0) return error.InvalidRange;
+    const size: usize = @intCast(limit.size);
+    if (size == 0) return error.InvalidRange;
+
+    if (size == 1) {
+        const max = limit.limbs[0];
+        if (max == 0) return error.InvalidRange;
+        const sample = rand.intRangeLessThan(u64, 0, max);
+        if (sample <= max_fixnum_u64) return Value.makeFixnum(@intCast(sample));
+        var limbs: [8]u64 = [_]u64{0} ** 8;
+        limbs[0] = sample;
+        return heap.allocBignumFromLimbs(limbs[0..1], false);
+    }
+
+    const top = limit.limbs[size - 1];
+    if (top == 0) return error.InvalidRange;
+    const top_bits: u7 = @intCast(64 - @clz(top));
+    const top_mask: u64 = if (top_bits == 64) std.math.maxInt(u64) else (@as(u64, 1) << @intCast(top_bits)) - 1;
+
+    var candidate: [8]u64 = [_]u64{0} ** 8;
+    while (true) {
+        for (0..size) |i| candidate[i] = rand.int(u64);
+        candidate[size - 1] &= top_mask;
+
+        if (limbsLessThanLimit(&candidate, limit, size)) {
+            return valueFromUnsignedLimbs(heap, &candidate, size);
+        }
+    }
+}
+
+fn limbsLessThanLimit(candidate: *const [8]u64, limit: *const objects.Bignum, size: usize) bool {
+    var i = size;
+    while (i > 0) {
+        i -= 1;
+        const a = candidate[i];
+        const b = limit.limbs[i];
+        if (a < b) return true;
+        if (a > b) return false;
+    }
+    return false;
+}
+
+fn valueFromUnsignedLimbs(heap: *Heap, limbs: *const [8]u64, size: usize) Error!Value {
+    var used = size;
+    while (used > 0 and limbs[used - 1] == 0) : (used -= 1) {}
+    if (used == 0) return Value.makeFixnum(0);
+    if (used == 1 and limbs[0] <= max_fixnum_u64) return Value.makeFixnum(@intCast(limbs[0]));
+    return heap.allocBignumFromLimbs(limbs[0..used], false);
 }
 
 // ============================================================================
@@ -583,9 +673,28 @@ test "comparisons" {
 
 /// Helper: convert Value to f64
 fn toNumber(v: Value) Error!f64 {
-    if (v.isFloat()) return v.toFloat();
-    if (v.isFixnum()) return @floatFromInt(v.toFixnum());
-    return error.TypeMismatch;
+    return switch (v.typeKind()) {
+        .float => v.toFloat(),
+        .fixnum => @floatFromInt(v.toFixnum()),
+        .rational => blk: {
+            const rat = v.toPtr(objects.Rational);
+            const num: f64 = @floatFromInt(rat.numerator);
+            const den: f64 = @floatFromInt(rat.denominator);
+            break :blk num / den;
+        },
+        .bignum => blk: {
+            const bn = v.toPtr(objects.Bignum);
+            const size: usize = @intCast(@abs(bn.size));
+            var out: f64 = 0.0;
+            var i = size;
+            while (i > 0) {
+                i -= 1;
+                out = out * 18446744073709551616.0 + @as(f64, @floatFromInt(bn.limbs[i]));
+            }
+            break :blk if (bn.isNegative()) -out else out;
+        },
+        else => error.TypeMismatch,
+    };
 }
 
 /// Float addition (supports fixnum→float contagion)
@@ -845,7 +954,7 @@ pub fn floatPrecision(a: Value) Error!Value {
 
 /// Floor: largest integer not greater than x/y
 pub fn floor_val(_: *Heap, x: Value, y: Value) Error!Value {
-    if (x.isFloat() or y.isFloat()) {
+    if (isFloatKind(x) or isFloatKind(y)) {
         const xf = try toNumber(x);
         const yf = try toNumber(y);
         const q = @floor(xf / yf);
@@ -863,7 +972,7 @@ pub fn floor_val(_: *Heap, x: Value, y: Value) Error!Value {
 
 /// Ceiling: smallest integer not less than x/y
 pub fn ceil_val(_: *Heap, x: Value, y: Value) Error!Value {
-    if (x.isFloat() or y.isFloat()) {
+    if (isFloatKind(x) or isFloatKind(y)) {
         const xf = try toNumber(x);
         const yf = try toNumber(y);
         const q = @ceil(xf / yf);
@@ -886,7 +995,7 @@ pub fn ceil_val(_: *Heap, x: Value, y: Value) Error!Value {
 
 /// Truncate: integer part of x/y toward zero
 pub fn trunc_val(_: *Heap, x: Value, y: Value) Error!Value {
-    if (x.isFloat() or y.isFloat()) {
+    if (isFloatKind(x) or isFloatKind(y)) {
         const xf = try toNumber(x);
         const yf = try toNumber(y);
         const q = @trunc(xf / yf);
@@ -904,7 +1013,7 @@ pub fn trunc_val(_: *Heap, x: Value, y: Value) Error!Value {
 
 /// Round: nearest integer to x/y, ties to even
 pub fn round_val(_: *Heap, x: Value, y: Value) Error!Value {
-    if (x.isFloat() or y.isFloat()) {
+    if (isFloatKind(x) or isFloatKind(y)) {
         const xf = try toNumber(x);
         const yf = try toNumber(y);
         const q = @round(xf / yf);
@@ -1383,4 +1492,34 @@ test "logbitp type errors" {
 
     // Non-integer value
     try testing.expectError(error.TypeMismatch, logbitp(Value.makeFixnum(0), Value.nil));
+}
+
+test "random supports float bounds" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    var prng = std.Random.DefaultPrng.init(1234567);
+    var seeded = true;
+    const result = try random(&heap, &prng, &seeded, Value.makeFloat(10.0));
+    try testing.expect(result.isFloat());
+    try testing.expect(result.toFloat() >= 0.0 and result.toFloat() < 10.0);
+}
+
+test "random supports bignum bounds" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const limit = try heap.allocBignumFromLimbs(&[_]u64{ 0, 1 }, false); // 2^64
+    var prng = std.Random.DefaultPrng.init(7654321);
+    var seeded = true;
+
+    const result = try random(&heap, &prng, &seeded, limit);
+    try testing.expect(result.isFixnum() or result.isBignum());
+    if (result.isFixnum()) {
+        try testing.expect(result.toFixnum() >= 0);
+    } else {
+        try testing.expect(!result.toPtr(objects.Bignum).isNegative());
+    }
 }

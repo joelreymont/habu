@@ -107,6 +107,44 @@ fn nativePkgFor(heap: *Heap, pkg: Value) !*heap_mod.Package {
     return if (heap.findPackage(pkg_name)) |found| found else return error.InvalidPackage;
 }
 
+fn listContainsValue(list: Value, value: Value) bool {
+    var cur = list;
+    while (cur.raw != Value.nil.raw) {
+        if (!cur.isCons()) break;
+        if (cur.toPtr(Cons).car.raw == value.raw) return true;
+        cur = cur.toPtr(Cons).cdr;
+    }
+    return false;
+}
+
+fn ensureLispSymbolTable(heap: *Heap, pkg: *objects.Package) !void {
+    if (pkg.symbols.raw == Value.nil.raw) {
+        pkg.symbols = try createHashTable(heap, 16);
+    }
+}
+
+fn addShadowingSymbol(heap: *Heap, pkg: *objects.Package, sym: Value) !void {
+    if (!listContainsValue(pkg.shadowing, sym)) {
+        pkg.shadowing = try heap.allocCons(sym, pkg.shadowing);
+    }
+}
+
+fn ensureLocalShadowSymbol(heap: *Heap, native_pkg: *heap_mod.Package, name: []const u8) !Value {
+    var upper_buf: [256]u8 = undefined;
+    const upper = try heap_mod.upperNameAlloc(heap.backing_allocator, name, upper_buf[0..]);
+    defer heap_mod.freeUpperName(heap.backing_allocator, upper);
+    const upper_name = upper.slice;
+
+    if (native_pkg.symbols.get(upper_name)) |existing| {
+        return existing;
+    }
+
+    const sym = try heap.allocSymbol(upper_name);
+    sym.toPtr(objects.Symbol).reserved = @intFromPtr(native_pkg);
+    try native_pkg.symbols.put(upper_name, sym);
+    return sym;
+}
+
 fn nativeUseHas(list: []const *heap_mod.Package, pkg: *heap_mod.Package) bool {
     for (list) |item| {
         if (item == pkg) return true;
@@ -123,6 +161,46 @@ fn filterNativeUseList(list: *std.ArrayList(*heap_mod.Package), remove_items: []
         }
     }
     list.items = list.items[0..out];
+}
+
+fn purgeNativePackageEntries(heap: *Heap, native_pkg: *heap_mod.Package) !void {
+    var pkg_keys = std.ArrayList([]u8){};
+    defer {
+        for (pkg_keys.items) |key| heap.backing_allocator.free(key);
+        pkg_keys.deinit(heap.backing_allocator);
+    }
+
+    var pkg_it = heap.packages.iterator();
+    while (pkg_it.next()) |entry| {
+        if (entry.value_ptr.* == native_pkg) {
+            const key_copy = try heap.backing_allocator.dupe(u8, entry.key_ptr.*);
+            try pkg_keys.append(heap.backing_allocator, key_copy);
+        }
+    }
+    for (pkg_keys.items) |key| {
+        if (heap.packages.fetchRemove(key)) |removed| {
+            heap.backing_allocator.free(removed.key);
+        }
+    }
+
+    var alias_keys = std.ArrayList([]u8){};
+    defer {
+        for (alias_keys.items) |key| heap.backing_allocator.free(key);
+        alias_keys.deinit(heap.backing_allocator);
+    }
+
+    var alias_it = heap.package_aliases.iterator();
+    while (alias_it.next()) |entry| {
+        if (entry.value_ptr.* == native_pkg) {
+            const key_copy = try heap.backing_allocator.dupe(u8, entry.key_ptr.*);
+            try alias_keys.append(heap.backing_allocator, key_copy);
+        }
+    }
+    for (alias_keys.items) |key| {
+        if (heap.package_aliases.fetchRemove(key)) |removed| {
+            heap.backing_allocator.free(removed.key);
+        }
+    }
 }
 
 fn addNativeExport(pkg: *heap_mod.Package, name: []const u8) !void {
@@ -650,11 +728,16 @@ pub fn importSymbols(heap: *Heap, symbols: Value, pkg: Value) !void {
 pub fn shadowSymbols(heap: *Heap, names: Value, pkg: Value) !void {
     const resolved_pkg = try resolvePkg(heap, pkg);
     const p = resolved_pkg.toPtr(objects.Package);
+    const native_pkg = try nativePkgFor(heap, resolved_pkg);
+    try ensureLispSymbolTable(heap, p);
 
     // Handle single name or list
     switch (names.typeKind()) {
-        .symbol, .string => {
-            p.shadowing = try heap.allocCons(names, p.shadowing);
+        .symbol, .string, .keyword => {
+            const name = try nameBytesWithKeyword(names);
+            const sym = try ensureLocalShadowSymbol(heap, native_pkg, name);
+            try insertHashTable(heap, p.symbols, sym, sym);
+            try addShadowingSymbol(heap, p, sym);
         },
         .nil => return,
         .cons => {
@@ -663,10 +746,13 @@ pub fn shadowSymbols(heap: *Heap, names: Value, pkg: Value) !void {
                 if (!list.isCons()) return error.TypeError;
                 const name = list.toPtr(objects.Cons).car;
                 switch (name.typeKind()) {
-                    .symbol, .string => {},
+                    .symbol, .string, .keyword => {},
                     else => return error.TypeError,
                 }
-                p.shadowing = try heap.allocCons(name, p.shadowing);
+                const name_str = try nameBytesWithKeyword(name);
+                const sym = try ensureLocalShadowSymbol(heap, native_pkg, name_str);
+                try insertHashTable(heap, p.symbols, sym, sym);
+                try addShadowingSymbol(heap, p, sym);
                 list = list.toPtr(objects.Cons).cdr;
             }
         },
@@ -676,8 +762,27 @@ pub fn shadowSymbols(heap: *Heap, names: Value, pkg: Value) !void {
 
 /// Shadowing import
 pub fn shadowingImport(heap: *Heap, symbols: Value, pkg: Value) !void {
-    try importSymbols(heap, symbols, pkg);
-    try shadowSymbols(heap, symbols, pkg);
+    const resolved_pkg = try resolvePkg(heap, pkg);
+    const p = resolved_pkg.toPtr(objects.Package);
+    try importSymbols(heap, symbols, resolved_pkg);
+
+    switch (symbols.typeKind()) {
+        .symbol => {
+            try addShadowingSymbol(heap, p, symbols);
+        },
+        .nil => return,
+        .cons => {
+            var list = symbols;
+            while (list.raw != Value.nil.raw) {
+                if (!list.isCons()) return error.TypeError;
+                const sym = list.toPtr(objects.Cons).car;
+                if (!sym.isSymbol()) return error.TypeError;
+                try addShadowingSymbol(heap, p, sym);
+                list = list.toPtr(objects.Cons).cdr;
+            }
+        },
+        else => return error.TypeError,
+    }
 }
 
 /// Add packages to use-list
@@ -803,6 +908,13 @@ pub fn deletePackage(heap: *Heap, pkg: Value) !bool {
     const p = pkg.toPtr(objects.Package);
     const pkg_name = try packageNameBytes(p);
     const native_pkg = if (heap.findPackage(pkg_name)) |found| found else return error.InvalidPackage;
+    if ((heap.cl_package != null and native_pkg == heap.cl_package.?) or
+        (heap.cl_user_package != null and native_pkg == heap.cl_user_package.?) or
+        (heap.keyword_package != null and native_pkg == heap.keyword_package.?))
+    {
+        // Protect core packages; deleting them leaves stale compiler/runtime assumptions.
+        return error.InvalidPackage;
+    }
     const rm_list = try heap.allocCons(pkg, Value.nil);
 
     if (heap.lisp_packages.raw != Value.nil.raw) {
@@ -869,9 +981,7 @@ pub fn deletePackage(heap: *Heap, pkg: Value) !bool {
         }
     }
 
-    if (heap.packages.fetchRemove(pkg_name)) |removed| {
-        heap.backing_allocator.free(removed.key);
-    }
+    try purgeNativePackageEntries(heap, native_pkg);
     native_pkg.deinit();
 
     return true;
@@ -1247,6 +1357,43 @@ test "delete-package removes nicknames" {
     try testing.expect(after_del == null);
 }
 
+test "delete-package rejects protected packages" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const cl_name = try heap.allocBaseString("COMMON-LISP");
+    const cl_user_name = try heap.allocBaseString("CL-USER");
+    const kw_name = try heap.allocBaseString("KEYWORD");
+    const cl_pkg = (try findPackage(&heap, cl_name)).?;
+    const cl_user_pkg = (try findPackage(&heap, cl_user_name)).?;
+    const kw_pkg = (try findPackage(&heap, kw_name)).?;
+
+    try testing.expectError(error.InvalidPackage, deletePackage(&heap, cl_pkg));
+    try testing.expectError(error.InvalidPackage, deletePackage(&heap, cl_user_pkg));
+    try testing.expectError(error.InvalidPackage, deletePackage(&heap, kw_pkg));
+
+    _ = try heap.intern("IF");
+    _ = try heap.intern("NIL");
+}
+
+test "delete-package purges stray native aliases" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const name = try heap.allocBaseString("P-ALIAS-TEST");
+    const pkg = try makePackage(&heap, name, null, null);
+    const native_pkg = try nativePkgFor(&heap, pkg);
+
+    const alias_name = "PALIASX";
+    const alias_key = try heap.backing_allocator.dupe(u8, alias_name);
+    try heap.package_aliases.put(heap.backing_allocator, alias_key, native_pkg);
+
+    _ = try deletePackage(&heap, pkg);
+    try testing.expect(heap.findPackage(alias_name) == null);
+}
+
 test "rename-package updates name" {
     const testing = std.testing;
     var heap = try Heap.init(testing.allocator, .{});
@@ -1303,7 +1450,12 @@ test "shadow creates shadowing symbol" {
     const shadowing = try packageShadowingSymbols(pkg);
     try testing.expect(shadowing.isCons());
     const first = shadowing.toPtr(Cons).car;
-    try testing.expect(first.raw == name.raw);
+    try testing.expect(first.isSymbol());
+    try testing.expectEqualStrings("SHADOWED", first.toPtr(objects.Symbol).getName());
+
+    const found = try findSymbol(&heap, name, pkg);
+    const found_sym = found.toPtr(Cons).car;
+    try testing.expect(found_sym.raw == first.raw);
 }
 
 test "shadowing-import imports and shadows" {
@@ -1325,6 +1477,40 @@ test "shadowing-import imports and shadows" {
 
     const shadowing = try packageShadowingSymbols(pkg2);
     try testing.expect(shadowing.isCons());
+    const shadowed = shadowing.toPtr(Cons).car;
+    try testing.expect(shadowed.raw == sym.raw);
+}
+
+test "shadow creates local symbol that masks inherited symbol" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const provider = try makePackage(&heap, try heap.allocBaseString("PROVIDER"), null, null);
+    const pkg = try makePackage(&heap, try heap.allocBaseString("TEST-MASK"), null, null);
+    try usePackage(&heap, provider, pkg);
+
+    const name = try heap.allocBaseString("MASKED");
+    const provider_intern = try internSymbol(&heap, name, provider);
+    const provider_sym = provider_intern.toPtr(Cons).car;
+    try exportSymbols(&heap, provider_sym, provider);
+
+    const before = try findSymbol(&heap, name, pkg);
+    const inherited = before.toPtr(Cons).car;
+    try testing.expect(inherited.isSymbol());
+    const before_status = before.toPtr(Cons).cdr.toPtr(Cons).car;
+    try testing.expect(before_status.isKeyword());
+    try testing.expectEqualStrings("INHERITED", before_status.toPtr(objects.Keyword).getName());
+
+    try shadowSymbols(&heap, name, pkg);
+
+    const after = try findSymbol(&heap, name, pkg);
+    const local_sym = after.toPtr(Cons).car;
+    const status = after.toPtr(Cons).cdr.toPtr(Cons).car;
+    try testing.expect(local_sym.isSymbol());
+    try testing.expect(local_sym.raw != inherited.raw);
+    try testing.expect(status.isKeyword());
+    try testing.expectEqualStrings("INTERNAL", status.toPtr(objects.Keyword).getName());
 }
 
 test "packageSymbolsList accepts keyword name" {

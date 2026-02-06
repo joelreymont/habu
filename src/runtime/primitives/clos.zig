@@ -183,15 +183,15 @@ pub fn classOf(heap: *Heap, args: Value) !Value {
 
     // CLOS objects
     if (obj.isGenericFunction()) {
-        const type_sym = try heap.intern("generic-function");
+        const type_sym = (try heap.internInPackage("CL", "generic-function")) orelse return error.InvalidArgument;
         return heap.findLispClass(type_sym) orelse error.InvalidArgument;
     }
     if (obj.isMethod()) {
-        const type_sym = try heap.intern("method");
+        const type_sym = (try heap.internInPackage("CL", "method")) orelse return error.InvalidArgument;
         return heap.findLispClass(type_sym) orelse error.InvalidArgument;
     }
     if (obj.isSlotDefinition()) {
-        const type_sym = try heap.intern("slot-definition");
+        const type_sym = (try heap.internInPackage("CL", "slot-definition")) orelse return error.InvalidArgument;
         return heap.findLispClass(type_sym) orelse error.InvalidArgument;
     }
 

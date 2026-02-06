@@ -1,0 +1,23 @@
+docs/ansi/results/habu-wip-loop-and.json
+": 0,
+    "pass": 0,
+    "skip": 0,
+    "total": 1
+  },
+  "exit_code": 0,
+  "reported": null,
+  "run_started_utc": "2026-02-06T19:11:18Z",
+  "source_log": "docs/ansi/raw/habu-wip-loop-and.log",
+  "tests": {
+    "InvalidSyntax": {
+      "line_numbers": [
+        2744
+      ],
+      "ordinal": 1,
+      "raw_statuses": [
+        "error"
+      ],
+      "status": "fail"
+    }
+  }
+}

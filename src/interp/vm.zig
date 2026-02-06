@@ -143,6 +143,13 @@ pub const Frame = struct {
     closure: ?*const runtime.Closure,
     /// Argument count passed to this function call
     argc: u8,
+    /// Control stack depths at call entry (restored on normal return)
+    block_depth: usize,
+    catch_depth: usize,
+    unwind_depth: usize,
+    restart_depth: usize,
+    progv_depth: usize,
+    handler_depth: usize,
     /// Optional handler stack depth to restore on return.
     handler_restore_depth: ?usize,
 };
@@ -350,7 +357,7 @@ pub const Vm = struct {
     const STACK_SIZE = 4096;
     const MAX_SECONDARY_VALUES = 20;
     const MAX_FRAMES = 256;
-    const MAX_GLOBALS = 2048;
+    const MAX_GLOBALS = 16384;
     const MAX_CATCHES = 32;
     const MAX_UNWINDS = 32;
     const MAX_RESTARTS = 64;
@@ -1609,6 +1616,16 @@ pub const Vm = struct {
             .sub => {
                 const b = try self.pop();
                 const a = try self.pop();
+                if (std.posix.getenv("HABU_TRACE_SUB_CONTEXT") != null) {
+                    const chunk_name = if (self.chunk.name.isSymbol())
+                        self.chunk.name.toPtr(runtime.Symbol).getName()
+                    else
+                        @tagName(self.chunk.name.typeKind());
+                    std.debug.print(
+                        "TRACE sub ctx: chunk={s} ip={d} a={s} b={s}\n",
+                        .{ chunk_name, self.ip, @tagName(a.typeKind()), @tagName(b.typeKind()) },
+                    );
+                }
                 try self.push(try primitives.arith.sub(self.heap, a, b));
             },
             .mul => {
@@ -1777,6 +1794,10 @@ pub const Vm = struct {
                     .string => {
                         const str = seq.toPtr(runtime.String);
                         try self.push(Value.makeFixnum(@intCast(str.length)));
+                    },
+                    .string32 => {
+                        const str32 = seq.toPtr(runtime.String32);
+                        try self.push(Value.makeFixnum(@intCast(str32.length)));
                     },
                     .array => {
                         const arr = seq.toPtr(runtime.Array);
@@ -1964,7 +1985,7 @@ pub const Vm = struct {
             },
             .stringp => {
                 const a = try self.pop();
-                try self.push(if (a.isString()) Value.t else Value.nil);
+                try self.push(if (a.isString() or a.isString32()) Value.t else Value.nil);
             },
             .vectorp => {
                 const a = try self.pop();
@@ -2085,6 +2106,22 @@ pub const Vm = struct {
                         const vec = seq_val.toPtr(runtime.Vector);
                         if (idx >= vec.length) return error.TypeMismatch;
                         vec.set(idx, val);
+                        try self.push(val);
+                    },
+                    .string => {
+                        const str = seq_val.toPtr(runtime.String);
+                        if (idx >= str.length) return error.TypeMismatch;
+                        if (!val.isCharacter()) return error.TypeMismatch;
+                        const cp = val.toCharacter();
+                        if (cp > 255) return error.TypeMismatch;
+                        str.mutableBytes()[idx] = @intCast(cp);
+                        try self.push(val);
+                    },
+                    .string32 => {
+                        const str32 = seq_val.toPtr(runtime.String32);
+                        if (idx >= str32.length) return error.TypeMismatch;
+                        if (!val.isCharacter()) return error.TypeMismatch;
+                        str32.mutableCodepoints()[idx] = val.toCharacter();
                         try self.push(val);
                     },
                     .cons, .nil => {
@@ -2324,37 +2361,67 @@ pub const Vm = struct {
             .str_ref => {
                 const idx_val = try self.pop();
                 const str_val = try self.pop();
-                if (!str_val.isString() or !idx_val.isFixnum()) return error.TypeMismatch;
-                const str = str_val.toPtr(runtime.String);
+                if (!idx_val.isFixnum()) return error.TypeMismatch;
                 const idx_signed = idx_val.toFixnum();
                 if (idx_signed < 0) return error.TypeMismatch;
                 const idx: usize = @intCast(idx_signed);
-                if (idx >= str.length) return error.TypeMismatch;
-                try self.push(Value.makeFixnum(str.bytes()[idx]));
+                switch (str_val.typeKind()) {
+                    .string => {
+                        const str = str_val.toPtr(runtime.String);
+                        if (idx >= str.length) return error.TypeMismatch;
+                        try self.push(Value.makeFixnum(str.bytes()[idx]));
+                    },
+                    .string32 => {
+                        const str32 = str_val.toPtr(runtime.String32);
+                        if (idx >= str32.length) return error.TypeMismatch;
+                        try self.push(Value.makeFixnum(@intCast(str32.codepoints()[idx])));
+                    },
+                    else => return error.TypeMismatch,
+                }
             },
             .str_len => {
                 const str_val = try self.pop();
-                if (!str_val.isString()) return error.TypeMismatch;
-                const str = str_val.toPtr(runtime.String);
-                try self.push(Value.makeFixnum(@intCast(str.length)));
+                switch (str_val.typeKind()) {
+                    .string => {
+                        const str = str_val.toPtr(runtime.String);
+                        try self.push(Value.makeFixnum(@intCast(str.length)));
+                    },
+                    .string32 => {
+                        const str32 = str_val.toPtr(runtime.String32);
+                        try self.push(Value.makeFixnum(@intCast(str32.length)));
+                    },
+                    else => return error.TypeMismatch,
+                }
             },
             .str_set => {
                 const char_val = try self.pop();
                 const idx_val = try self.pop();
                 const str_val = try self.pop();
-                if (!str_val.isString() or !idx_val.isFixnum()) return error.TypeMismatch;
-                const str = str_val.toPtr(runtime.String);
+                if (!idx_val.isFixnum()) return error.TypeMismatch;
                 const idx_signed = idx_val.toFixnum();
                 if (idx_signed < 0) return error.TypeMismatch;
                 const idx: usize = @intCast(idx_signed);
-                if (idx >= str.length) return error.TypeMismatch;
                 const char_int = switch (char_val.typeKind()) {
                     .fixnum => char_val.toFixnum(),
                     .char => @as(i64, @intCast(char_val.toCharacter())),
                     else => return error.TypeMismatch,
                 };
-                if (char_int < 0 or char_int > 255) return error.TypeMismatch;
-                str.mutableBytes()[idx] = @intCast(char_int);
+                if (char_int < 0) return error.TypeMismatch;
+                switch (str_val.typeKind()) {
+                    .string => {
+                        const str = str_val.toPtr(runtime.String);
+                        if (idx >= str.length) return error.TypeMismatch;
+                        if (char_int > 255) return error.TypeMismatch;
+                        str.mutableBytes()[idx] = @intCast(char_int);
+                    },
+                    .string32 => {
+                        const str32 = str_val.toPtr(runtime.String32);
+                        if (idx >= str32.length) return error.TypeMismatch;
+                        if (char_int > std.math.maxInt(u21)) return error.TypeMismatch;
+                        str32.mutableCodepoints()[idx] = @intCast(char_int);
+                    },
+                    else => return error.TypeMismatch,
+                }
                 try self.push(str_val);
             },
             .str_concat => {
@@ -2363,20 +2430,56 @@ pub const Vm = struct {
                 const s1_idx = self.sp - 2;
                 const s2 = self.stack[s2_idx];
                 const s1 = self.stack[s1_idx];
-                if (!s1.isString() or !s2.isString()) return error.TypeMismatch;
-                // Allocate new string with combined length
-                const len1 = s1.toPtr(runtime.String).length;
-                const len2 = s2.toPtr(runtime.String).length;
-                const new_len = try std.math.add(usize, len1, len2);
-                const result = try self.allocStringUninitialized(new_len);
-                const result_str = result.toPtr(runtime.String);
-                const dest = result_str.mutableBytes();
-                const str1 = self.stack[s1_idx].toPtr(runtime.String);
-                const str2 = self.stack[s2_idx].toPtr(runtime.String);
-                @memcpy(dest[0..len1], str1.bytes());
-                @memcpy(dest[len1..new_len], str2.bytes());
-                self.sp -= 2;
-                try self.push(result);
+                const s1_is_base = s1.isString();
+                const s1_is_utf32 = s1.isString32();
+                const s2_is_base = s2.isString();
+                const s2_is_utf32 = s2.isString32();
+                if (!(s1_is_base or s1_is_utf32) or !(s2_is_base or s2_is_utf32)) return error.TypeMismatch;
+
+                if (s1_is_base and s2_is_base) {
+                    // Fast path: base-string + base-string.
+                    const len1 = s1.toPtr(runtime.String).length;
+                    const len2 = s2.toPtr(runtime.String).length;
+                    const new_len = try std.math.add(usize, len1, len2);
+                    const result = try self.allocStringUninitialized(new_len);
+                    const result_str = result.toPtr(runtime.String);
+                    const dest = result_str.mutableBytes();
+                    const str1 = self.stack[s1_idx].toPtr(runtime.String);
+                    const str2 = self.stack[s2_idx].toPtr(runtime.String);
+                    @memcpy(dest[0..len1], str1.bytes());
+                    @memcpy(dest[len1..new_len], str2.bytes());
+                    self.sp -= 2;
+                    try self.push(result);
+                } else {
+                    // General path: any combination that includes String32.
+                    const len1 = if (s1_is_utf32) s1.toPtr(runtime.String32).length else s1.toPtr(runtime.String).length;
+                    const len2 = if (s2_is_utf32) s2.toPtr(runtime.String32).length else s2.toPtr(runtime.String).length;
+                    const new_len = try std.math.add(usize, len1, len2);
+                    const result = try self.heap.allocString32Uninitialized(new_len);
+                    const dest = result.toPtr(runtime.String32).mutableCodepoints();
+
+                    var out_idx: usize = 0;
+                    if (s1_is_utf32) {
+                        const cps = s1.toPtr(runtime.String32).codepoints();
+                        @memcpy(dest[0..cps.len], cps);
+                        out_idx = cps.len;
+                    } else {
+                        const bytes = s1.toPtr(runtime.String).bytes();
+                        for (bytes, 0..) |b, i| dest[i] = @intCast(b);
+                        out_idx = bytes.len;
+                    }
+
+                    if (s2_is_utf32) {
+                        const cps = s2.toPtr(runtime.String32).codepoints();
+                        @memcpy(dest[out_idx .. out_idx + cps.len], cps);
+                    } else {
+                        const bytes = s2.toPtr(runtime.String).bytes();
+                        for (bytes, 0..) |b, i| dest[out_idx + i] = @intCast(b);
+                    }
+
+                    self.sp -= 2;
+                    try self.push(result);
+                }
             },
 
             // Control flow
@@ -2436,7 +2539,14 @@ pub const Vm = struct {
                 self.ip = frame.return_ip;
                 if (frame.handler_restore_depth) |depth| {
                     self.handler_sp = depth;
+                } else {
+                    self.handler_sp = frame.handler_depth;
                 }
+                self.block_sp = frame.block_depth;
+                self.catch_sp = frame.catch_depth;
+                self.unwind_sp = frame.unwind_depth;
+                self.restart_sp = frame.restart_depth;
+                self.progv_sp = frame.progv_depth;
                 try self.push(result);
             },
             .make_closure => {
@@ -2711,6 +2821,9 @@ pub const Vm = struct {
             .file_write_date => {
                 const path_val = try self.pop();
                 const path_str = try self.pathDesignatorBytes(path_val);
+                if (std.posix.getenv("HABU_TRACE_IO") != null) {
+                    std.debug.print("TRACE file-write-date: {s}\n", .{path_str});
+                }
                 const timestamp = try io.fileWriteDate(path_str);
                 try self.push(Value.makeFixnum(timestamp));
             },
@@ -2993,7 +3106,7 @@ pub const Vm = struct {
             },
             .random => {
                 const n = try self.pop();
-                const result = try arith.random(&self.prng, &self.prng_seeded, n);
+                const result = try arith.random(self.heap, &self.prng, &self.prng_seeded, n);
                 try self.push(result);
             },
             .random_seed => {
@@ -3028,6 +3141,31 @@ pub const Vm = struct {
             },
             .sym_name => {
                 const sym_val = try self.pop();
+                if (std.posix.getenv("HABU_TRACE_SYM_NAME") != null) {
+                    const chunk_name = if (self.chunk.name.isSymbol())
+                        self.chunk.name.toPtr(Symbol).getName()
+                    else if (self.chunk.name.isString())
+                        self.chunk.name.toPtr(runtime.String).bytes()
+                    else
+                        @tagName(self.chunk.name.typeKind());
+                    switch (sym_val.typeKind()) {
+                        .symbol => {
+                            const sym = sym_val.toPtr(Symbol);
+                            std.debug.print("TRACE sym_name arg: chunk={s} ip={d} symbol {s}\n", .{ chunk_name, self.ip, sym.getName() });
+                        },
+                        .keyword => {
+                            const kw = sym_val.toPtr(runtime.Keyword);
+                            std.debug.print("TRACE sym_name arg: chunk={s} ip={d} keyword {s}\n", .{ chunk_name, self.ip, kw.getName() });
+                        },
+                        .string => {
+                            const s = sym_val.toPtr(String);
+                            std.debug.print("TRACE sym_name arg: chunk={s} ip={d} string len={d}\n", .{ chunk_name, self.ip, s.length });
+                        },
+                        else => {
+                            std.debug.print("TRACE sym_name arg: chunk={s} ip={d} kind={s} raw=0x{x}\n", .{ chunk_name, self.ip, @tagName(sym_val.typeKind()), sym_val.raw });
+                        },
+                    }
+                }
                 const name_str = switch (sym_val.typeKind()) {
                     .nil => try self.allocString("nil"),
                     .t => try self.allocString("t"),
@@ -3303,7 +3441,35 @@ pub const Vm = struct {
                 const exit_ip = @as(usize, @intCast(@as(isize, @intCast(self.ip)) + offset));
                 const name_idx = self.readU16();
                 const name_raw = self.chunk.getConstants()[name_idx];
-                if (self.block_sp >= MAX_BLOCKS) return error.StackOverflow;
+                if (self.block_sp >= MAX_BLOCKS) {
+                    if (std.process.hasEnvVar(self.allocator, "HABU_TRACE_BLOCK_OVERFLOW") catch false) {
+                        const chunk_name = if (self.chunk.name.isSymbol())
+                            self.chunk.name.toPtr(runtime.Symbol).getName()
+                        else
+                            @tagName(self.chunk.name.typeKind());
+                        const block_name = if (name_raw.isSymbol())
+                            name_raw.toPtr(runtime.Symbol).getName()
+                        else
+                            @tagName(name_raw.typeKind());
+                        std.debug.print("BLOCK_OVERFLOW chunk={s} block={s} ip={d} sp={d} fp={d}\n", .{
+                            chunk_name,
+                            block_name,
+                            self.ip,
+                            self.sp,
+                            self.fp,
+                        });
+                        var i: usize = 0;
+                        while (i < self.block_sp) : (i += 1) {
+                            const frame = self.block_stack[i];
+                            const frame_name = if (frame.name_raw.isSymbol())
+                                frame.name_raw.toPtr(runtime.Symbol).getName()
+                            else
+                                @tagName(frame.name_raw.typeKind());
+                            std.debug.print("  frame[{d}] name={s} exit_ip={d}\n", .{ i, frame_name, frame.exit_ip });
+                        }
+                    }
+                    return error.StackOverflow;
+                }
                 self.block_stack[self.block_sp] = .{
                     .name_raw = name_raw,
                     .chunk = self.chunk,
@@ -4471,24 +4637,59 @@ pub const Vm = struct {
                 const rank: u8 = operand >> 1;
                 const has_initial: bool = (operand & 1) == 1;
 
-                if (rank == 0 or rank > 8) return error.TypeMismatch;
+                if (rank > 8) return error.TypeMismatch;
 
                 // Pop initial-element if present
                 const initial_element = if (has_initial) try self.pop() else Value.nil;
 
-                // Pop dimensions from stack (in reverse order)
+                // Pop dimensions from stack.
                 var dimensions: [8]u64 = [_]u64{0} ** 8;
                 var total_size: u64 = 1;
-                var i: usize = rank;
-                while (i > 0) {
-                    i -= 1;
-                    const dim_val = try self.pop();
-                    if (!dim_val.isFixnum()) return error.TypeMismatch;
-                    const dim_signed = dim_val.toFixnum();
-                    if (dim_signed < 0) return error.TypeMismatch;
-                    const dim: u64 = @intCast(dim_signed);
-                    dimensions[i] = dim;
-                    total_size *= dim;
+                var final_rank: u8 = rank;
+                if (rank == 0) {
+                    // Dynamic dimensions mode: pop one fixnum or a proper list of fixnums.
+                    const dims_val = try self.pop();
+                    switch (dims_val.typeKind()) {
+                        .fixnum => {
+                            const dim_signed = dims_val.toFixnum();
+                            if (dim_signed < 0) return error.TypeMismatch;
+                            dimensions[0] = @intCast(dim_signed);
+                            total_size = dimensions[0];
+                            final_rank = 1;
+                        },
+                        .nil, .cons => {
+                            var cur = dims_val;
+                            var idx: usize = 0;
+                            while (cur.isCons()) {
+                                if (idx >= dimensions.len) return error.TypeMismatch;
+                                const pair = cur.toPtr(runtime.Cons);
+                                if (!pair.car.isFixnum()) return error.TypeMismatch;
+                                const dim_signed = pair.car.toFixnum();
+                                if (dim_signed < 0) return error.TypeMismatch;
+                                const dim: u64 = @intCast(dim_signed);
+                                dimensions[idx] = dim;
+                                total_size *= dim;
+                                idx += 1;
+                                cur = pair.cdr;
+                            }
+                            if (!cur.isNil()) return error.TypeMismatch;
+                            final_rank = @intCast(idx);
+                        },
+                        else => return error.TypeMismatch,
+                    }
+                } else {
+                    // Static rank mode: pop N dimensions in reverse order.
+                    var i: usize = rank;
+                    while (i > 0) {
+                        i -= 1;
+                        const dim_val = try self.pop();
+                        if (!dim_val.isFixnum()) return error.TypeMismatch;
+                        const dim_signed = dim_val.toFixnum();
+                        if (dim_signed < 0) return error.TypeMismatch;
+                        const dim: u64 = @intCast(dim_signed);
+                        dimensions[i] = dim;
+                        total_size *= dim;
+                    }
                 }
 
                 // Allocate array object + data storage together
@@ -4501,7 +4702,7 @@ pub const Vm = struct {
 
                 arr.* = .{
                     .kind = .array,
-                    .rank = rank,
+                    .rank = final_rank,
                     .dimensions = dimensions,
                     .total_size = total_size,
                     .data_ptr = @intFromPtr(data_ptr),
@@ -4912,7 +5113,7 @@ pub const Vm = struct {
                     empty
                 else
                     try primitives.pathname.pathname(self.allocator, self.heap, default_val);
-                const merged = try primitives.pathname.mergePathnames(self.heap, pn_path, default_path);
+                const merged = try primitives.pathname.mergePathnames(self.heap, &self.builtins, pn_path, default_path);
                 try self.push(merged);
             },
 
@@ -5239,13 +5440,29 @@ pub const Vm = struct {
             .read_from_string => {
                 // Parse a string into a Lisp value
                 const str_val = try self.pop();
-                if (!str_val.isString()) return error.TypeMismatch;
-
-                const str = str_val.toPtr(String);
-                var parser = try Parser.init(self.allocator, self.heap, str.bytes(), &self.builtins);
-                defer parser.deinit();
-                const result = try parser.parse();
-                try self.push(result);
+                if (str_val.isString()) {
+                    const str = str_val.toPtr(String);
+                    var parser = try Parser.init(self.allocator, self.heap, str.bytes(), &self.builtins);
+                    defer parser.deinit();
+                    const result = try parser.parse();
+                    try self.push(result);
+                } else if (str_val.isString32()) {
+                    const s32 = str_val.toPtr(runtime.String32);
+                    var utf8 = std.ArrayList(u8){};
+                    defer utf8.deinit(self.allocator);
+                    for (s32.codepoints()) |cp| {
+                        var buf: [4]u8 = undefined;
+                        const cp_u21 = std.math.cast(u21, cp) orelse return error.TypeMismatch;
+                        const n = std.unicode.utf8Encode(cp_u21, &buf) catch return error.TypeMismatch;
+                        try utf8.appendSlice(self.allocator, buf[0..n]);
+                    }
+                    var parser = try Parser.init(self.allocator, self.heap, utf8.items, &self.builtins);
+                    defer parser.deinit();
+                    const result = try parser.parse();
+                    try self.push(result);
+                } else {
+                    return error.TypeMismatch;
+                }
             },
 
             .eval => {
@@ -5785,7 +6002,29 @@ pub const Vm = struct {
     }
 
     fn mapError(self: *Vm, err: anyerror) Error {
-        _ = self;
+        if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+            const cur_name = if (self.chunk.name.isSymbol())
+                self.chunk.name.toPtr(runtime.Symbol).getName()
+            else
+                @tagName(self.chunk.name.typeKind());
+            std.debug.print(
+                "TRACE error ctx: err={s} chunk={s} ip={d} fp={d} sp={d}\n",
+                .{ @errorName(err), cur_name, self.ip, self.fp, self.sp },
+            );
+            var i: usize = self.fp;
+            while (i > 0) {
+                i -= 1;
+                const frame = self.frames[i];
+                const name = if (frame.chunk.name.isSymbol())
+                    frame.chunk.name.toPtr(runtime.Symbol).getName()
+                else
+                    @tagName(frame.chunk.name.typeKind());
+                std.debug.print(
+                    "  frame[{d}] chunk={s} ret_ip={d} bp={d} argc={d}\n",
+                    .{ i, name, frame.return_ip, frame.bp, frame.argc },
+                );
+            }
+        }
         return err;
     }
 
@@ -6836,10 +7075,177 @@ pub const Vm = struct {
     }
 
     fn callMismatch(self: *Vm, fn_val: Value, argc: u8, reason: []const u8) Error {
-        _ = self;
-        _ = fn_val;
-        _ = argc;
-        _ = reason;
+        if (std.posix.getenv("HABU_TRACE_CALL_MISMATCH") != null) {
+            std.debug.print("CALL_MISMATCH reason={s} argc={d} fn-kind={s}", .{
+                reason,
+                argc,
+                @tagName(fn_val.typeKind()),
+            });
+            if (fn_val.isClosure()) {
+                const closure = fn_val.toPtr(runtime.Closure);
+                if (closure.code.isChunk()) {
+                    const chunk = closure.code.toPtr(Chunk);
+                    switch (chunk.name.typeKind()) {
+                        .symbol => std.debug.print(" chunk={s}", .{chunk.name.toPtr(Symbol).getName()}),
+                        .string => std.debug.print(" chunk={s}", .{chunk.name.toPtr(runtime.String).bytes()}),
+                        else => {},
+                    }
+                }
+            }
+            if (self.chunk.name.isSymbol()) {
+                std.debug.print(" frame={s}", .{self.chunk.name.toPtr(Symbol).getName()});
+            } else if (self.chunk.name.isString()) {
+                std.debug.print(" frame={s}", .{self.chunk.name.toPtr(runtime.String).bytes()});
+            }
+            std.debug.print(" ip={d}\n", .{self.ip});
+
+            if (self.sp >= @as(usize, argc) + 1) {
+                const fn_slot = self.sp - argc - 1;
+                const raw_fn = self.stack[fn_slot];
+                std.debug.print("CALL_MISMATCH stack-fn-kind={s}\n", .{@tagName(raw_fn.typeKind())});
+                if (raw_fn.isSymbol()) {
+                    std.debug.print("CALL_MISMATCH stack-fn-symbol={s}\n", .{raw_fn.toPtr(Symbol).getName()});
+                }
+                var i: usize = 0;
+                while (i < argc and i < 8) : (i += 1) {
+                    const arg = self.stack[fn_slot + 1 + i];
+                    std.debug.print("CALL_MISMATCH arg[{d}]={s}\n", .{ i, @tagName(arg.typeKind()) });
+                    if (arg.isSymbol()) {
+                        std.debug.print("CALL_MISMATCH arg[{d}]-sym={s}\n", .{ i, arg.toPtr(Symbol).getName() });
+                    }
+                }
+            }
+
+            if (self.heap.cl_package) |cl_pkg| {
+                const cl_has_apply_sym = cl_pkg.symbols.get("APPLY") != null;
+                const cl_has_apply_export = cl_pkg.auto_export or cl_pkg.exports.contains("APPLY");
+                std.debug.print("CALL_MISMATCH CL APPLY sym={any} export={any}\n", .{
+                    cl_has_apply_sym,
+                    cl_has_apply_export,
+                });
+            }
+
+            if (self.heap.current_package) |pkg| {
+                const cur_has_apply_sym = pkg.symbols.get("APPLY") != null;
+                const cur_has_apply_export = pkg.auto_export or pkg.exports.contains("APPLY");
+                const cur_has_apply_accessible = (pkg.findAccessible("APPLY") catch null) != null;
+                var uses_cl = false;
+                if (self.heap.cl_package) |cl_pkg| {
+                    for (pkg.use_list.items) |used| {
+                        if (used == cl_pkg) {
+                            uses_cl = true;
+                            break;
+                        }
+                    }
+                }
+                std.debug.print("CALL_MISMATCH CURPKG={s} APPLY sym={any} export={any} accessible={any} uses-cl={any}\n", .{
+                    pkg.name,
+                    cur_has_apply_sym,
+                    cur_has_apply_export,
+                    cur_has_apply_accessible,
+                    uses_cl,
+                });
+            }
+
+            std.debug.print("CALL_MISMATCH fp={d} sp={d}\n", .{ self.fp, self.sp });
+            std.debug.print("CALL_MISMATCH cur code_len={d} ip={d}", .{ self.chunk.code_len, self.ip });
+            if (self.ip < self.chunk.code_len) {
+                std.debug.print(" op=0x{x}", .{self.chunk.code[self.ip]});
+            }
+            switch (self.chunk.name.typeKind()) {
+                .symbol => std.debug.print(" chunk={s}", .{self.chunk.name.toPtr(Symbol).getName()}),
+                .string => std.debug.print(" chunk={s}", .{self.chunk.name.toPtr(runtime.String).bytes()}),
+                else => std.debug.print(" chunk-kind={s}", .{@tagName(self.chunk.name.typeKind())}),
+            }
+            std.debug.print("\n", .{});
+            if (self.chunk.code_len > 0) {
+                const start = if (self.ip > 24) self.ip - 24 else 0;
+                const end = @min(self.chunk.code_len, self.ip + 24);
+                std.debug.print("CALL_MISMATCH code-bytes [{d}..{d}):", .{ start, end });
+                var bi: usize = start;
+                while (bi < end) : (bi += 1) {
+                    std.debug.print(" {x:0>2}", .{self.chunk.code[bi]});
+                }
+                std.debug.print("\n", .{});
+            }
+            const probe_lo: usize = 0x0b1c;
+            const probe_hi: usize = 0x0b28;
+            std.debug.print("CALL_MISMATCH globals-probe [{x}..{x})\n", .{ probe_lo, probe_hi });
+            if (self.global_env) |env| {
+                var gi: usize = probe_lo;
+                while (gi < probe_hi and gi < MAX_GLOBALS) : (gi += 1) {
+                    std.debug.print("  idx={d} kind={s}", .{ gi, @tagName(self.globals[gi].typeKind()) });
+                    if (self.globals[gi].isSymbol()) {
+                        std.debug.print(" sym={s}", .{self.globals[gi].toPtr(Symbol).getName()});
+                    }
+                    std.debug.print("\n", .{});
+                    var it = env.bindings.iterator();
+                    var printed: usize = 0;
+                    while (it.next()) |entry| {
+                        if (entry.value_ptr.* == gi) {
+                            std.debug.print("    name={s}\n", .{entry.key_ptr.*});
+                            printed += 1;
+                            if (printed >= 6) break;
+                        }
+                    }
+                }
+            }
+            if (self.ip >= 3 and self.ip <= self.chunk.code_len) {
+                const call_pos = self.ip - 3;
+                if (call_pos + 1 < self.chunk.code_len) {
+                    const call_op = @as(u16, self.chunk.code[call_pos]) | (@as(u16, self.chunk.code[call_pos + 1]) << 8);
+                    if (call_op == @intFromEnum(opcodes.Op.call) and call_pos >= 4) {
+                        const prev_pos = call_pos - 4;
+                        const prev_op = @as(u16, self.chunk.code[prev_pos]) | (@as(u16, self.chunk.code[prev_pos + 1]) << 8);
+                        if (prev_op == @intFromEnum(opcodes.Op.load_global)) {
+                            const gidx = @as(u16, self.chunk.code[prev_pos + 2]) | (@as(u16, self.chunk.code[prev_pos + 3]) << 8);
+                            std.debug.print("CALL_MISMATCH call-site load_global idx={d} val-kind={s}\n", .{ gidx, @tagName(self.globals[gidx].typeKind()) });
+                            if (gidx < MAX_GLOBALS and self.globals[gidx].isSymbol()) {
+                                std.debug.print("CALL_MISMATCH call-site global symbol={s}\n", .{self.globals[gidx].toPtr(Symbol).getName()});
+                            }
+                            if (self.global_env) |env| {
+                                var it = env.bindings.iterator();
+                                var printed: usize = 0;
+                                while (it.next()) |entry| {
+                                    if (entry.value_ptr.* == gidx) {
+                                        std.debug.print("CALL_MISMATCH call-site global name={s}\n", .{entry.key_ptr.*});
+                                        printed += 1;
+                                        if (printed >= 8) break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            var shown: usize = 0;
+            var fi: usize = self.fp;
+            while (fi > 0 and shown < 8) : (shown += 1) {
+                fi -= 1;
+                const frame = self.frames[fi];
+                std.debug.print("CALL_MISMATCH frame[{d}] return_ip={d}", .{ fi, frame.return_ip });
+                switch (frame.chunk.name.typeKind()) {
+                    .symbol => std.debug.print(" name={s}", .{frame.chunk.name.toPtr(Symbol).getName()}),
+                    .string => std.debug.print(" name={s}", .{frame.chunk.name.toPtr(runtime.String).bytes()}),
+                    else => std.debug.print(" name-kind={s}", .{@tagName(frame.chunk.name.typeKind())}),
+                }
+                std.debug.print("\n", .{});
+            }
+
+            if (std.posix.getenv("HABU_TRACE_CALL_MISMATCH_DISASM") != null) {
+                std.debug.print("CALL_MISMATCH disasm-begin\n", .{});
+                const stdout_file = std.fs.File.stdout();
+                var buf: [8192]u8 = undefined;
+                var file_writer = stdout_file.writer(&buf);
+                const w = &file_writer.interface;
+                disasm.disassembleRuntime(self.chunk, w) catch |err| {
+                    std.debug.print("CALL_MISMATCH disasm-error={s}\n", .{@errorName(err)});
+                };
+                w.flush() catch {};
+                std.debug.print("CALL_MISMATCH disasm-end\n", .{});
+            }
+        }
         return error.TypeMismatch;
     }
 
@@ -6848,7 +7254,16 @@ pub const Vm = struct {
         if (self.sp < @as(usize, argc) + 1) return error.StackUnderflow;
 
         // Get function value (below args on stack)
-        var fn_val = self.stack[self.sp - argc - 1];
+        const fn_designator = self.stack[self.sp - argc - 1];
+        var fn_val = fn_designator;
+
+        // Function designator: symbol -> function cell/global binding.
+        if (fn_val.isSymbol()) {
+            const sym = fn_val.toPtr(Symbol);
+            const idx = (try self.lookupSymbolGlobalIndex(sym)) orelse return error.UnboundSymbol;
+            fn_val = self.globals[idx];
+            self.stack[self.sp - argc - 1] = fn_val;
+        }
 
         // If calling a generic function, delegate to its dispatcher
         if (fn_val.isGenericFunction()) {
@@ -6861,7 +7276,13 @@ pub const Vm = struct {
             self.stack[self.sp - argc - 1] = fn_val;
         }
 
-        if (!fn_val.isClosure()) return self.callMismatch(fn_val, argc, "not-closure");
+        if (!fn_val.isClosure()) {
+            if (std.posix.getenv("HABU_TRACE_CALL_MISMATCH") != null and fn_designator.isSymbol()) {
+                const sym = fn_designator.toPtr(Symbol);
+                std.debug.print("CALL_MISMATCH symbol={s}\n", .{sym.getName()});
+            }
+            return self.callMismatch(fn_val, argc, "not-closure");
+        }
 
         const closure = fn_val.toPtr(runtime.Closure);
         const callee_chunk: *const Chunk = closure.code.toPtr(Chunk);
@@ -6923,9 +7344,7 @@ pub const Vm = struct {
                     while (i + 1 < argc) : (i += 2) {
                         const kw = self.stack[arg_base + i];
                         if (kw.raw == allow_kw.raw) continue;
-                        if (!isAllowedKeyword(kw, allowed_list)) {
-                            return self.callMismatch(fn_val, argc, "unknown-keyword");
-                        }
+                        if (!isAllowedKeyword(kw, allowed_list)) continue;
                     }
                 }
             }
@@ -7016,8 +7435,13 @@ pub const Vm = struct {
                 self.frames[self.fp - 1].argc = argc;
             }
 
-            // Reserve space for additional locals (after args + rest)
-            const used_locals: usize = actual_argc + @as(u8, if (callee_chunk.has_rest != 0) 1 else 0);
+            // Reserve space for additional locals.
+            // For keyword lambdas, keyword-pair slots live above positional/key slots.
+            const used_slots: usize = if (key_count > 0) blk: {
+                const kw_pair_count: u8 = argc - actual_positional;
+                break :blk @as(usize, max_positional) + @as(usize, key_count) + @as(usize, kw_pair_count);
+            } else @as(usize, actual_argc);
+            const used_locals: usize = used_slots + @as(usize, if (callee_chunk.has_rest != 0) @as(u8, 1) else @as(u8, 0));
             var i: usize = used_locals;
             while (i < callee_chunk.num_locals) : (i += 1) {
                 try self.push(Value.nil);
@@ -7035,6 +7459,12 @@ pub const Vm = struct {
                 .bp = self.sp - actual_argc - 1, // -1 for function value
                 .closure = closure,
                 .argc = argc,
+                .block_depth = self.block_sp,
+                .catch_depth = self.catch_sp,
+                .unwind_depth = self.unwind_sp,
+                .restart_depth = self.restart_sp,
+                .progv_depth = self.progv_sp,
+                .handler_depth = self.handler_sp,
                 .handler_restore_depth = self.pending_handler_restore_depth,
             };
             self.pending_handler_restore_depth = null;
@@ -7092,8 +7522,13 @@ pub const Vm = struct {
             self.chunk = callee_chunk;
             self.ip = 0;
 
-            // Reserve space for additional locals (after args + rest)
-            const used: usize = actual_argc + @as(u8, if (callee_chunk.has_rest != 0) 1 else 0);
+            // Reserve space for additional locals.
+            // For keyword lambdas, keyword-pair slots live above positional/key slots.
+            const used_slots: usize = if (key_count > 0) blk: {
+                const kw_pair_count: u8 = argc - actual_positional;
+                break :blk @as(usize, max_positional) + @as(usize, key_count) + @as(usize, kw_pair_count);
+            } else @as(usize, actual_argc);
+            const used: usize = used_slots + @as(usize, if (callee_chunk.has_rest != 0) @as(u8, 1) else @as(u8, 0));
             var i: usize = used;
             while (i < callee_chunk.num_locals) : (i += 1) {
                 try self.push(Value.nil);
@@ -7105,8 +7540,40 @@ pub const Vm = struct {
         // Stack: ... fn args-list
         const args_list = try self.pop();
         const fn_val = try self.pop();
+        var callable = fn_val;
 
-        if (!fn_val.isClosure()) {
+        // Function designator: symbol -> function cell/global binding.
+        if (callable.isSymbol()) {
+            const sym = callable.toPtr(Symbol);
+            const idx = (try self.lookupSymbolGlobalIndex(sym)) orelse return error.UnboundSymbol;
+            callable = self.globals[idx];
+        }
+
+        // Generic function designator resolves to dispatcher closure.
+        if (callable.isGenericFunction()) {
+            const gf = callable.toPtr(runtime.objects.GenericFunction);
+            if (gf.dispatcher.isNil()) return error.TypeMismatch;
+            callable = gf.dispatcher;
+        }
+
+        if (!callable.isClosure()) {
+            if (std.posix.getenv("HABU_TRACE_CALL_MISMATCH") != null) {
+                std.debug.print("CALL_MISMATCH DO_APPLY non-closure kind={s}\n", .{@tagName(callable.typeKind())});
+                std.debug.print("CALL_MISMATCH DO_APPLY fn-val-kind={s}\n", .{@tagName(fn_val.typeKind())});
+                if (fn_val.isSymbol()) {
+                    std.debug.print("CALL_MISMATCH DO_APPLY fn-symbol={s}\n", .{fn_val.toPtr(Symbol).getName()});
+                }
+                var dbg = args_list;
+                var i: usize = 0;
+                while (dbg.isCons() and i < 8) : (i += 1) {
+                    const cell = dbg.toPtr(runtime.Cons);
+                    std.debug.print("CALL_MISMATCH DO_APPLY arglist[{d}]={s}\n", .{ i, @tagName(cell.car.typeKind()) });
+                    if (cell.car.isSymbol()) {
+                        std.debug.print("CALL_MISMATCH DO_APPLY arglist[{d}]-sym={s}\n", .{ i, cell.car.toPtr(Symbol).getName() });
+                    }
+                    dbg = cell.cdr;
+                }
+            }
             return error.TypeMismatch;
         }
 
@@ -7137,13 +7604,27 @@ pub const Vm = struct {
                 i -= 1;
                 self.stack[self.sp - count + i + 1] = self.stack[self.sp - count + i];
             }
-            self.stack[self.sp - count] = fn_val;
+            self.stack[self.sp - count] = callable;
             self.sp += 1;
         } else {
-            try self.push(fn_val);
+            try self.push(callable);
         }
 
         // Now call with unpacked args
+        if (std.posix.getenv("HABU_TRACE_CALL_MISMATCH") != null) {
+            std.debug.print("CALL_MISMATCH DO_APPLY callable-kind={s} argc={d}\n", .{
+                @tagName(callable.typeKind()),
+                count,
+            });
+            if (self.sp >= @as(usize, count) + 1) {
+                const fn_slot = self.sp - count - 1;
+                const fn_dbg = self.stack[fn_slot];
+                std.debug.print("CALL_MISMATCH DO_APPLY stack-fn-kind={s}\n", .{@tagName(fn_dbg.typeKind())});
+                if (fn_dbg.isSymbol()) {
+                    std.debug.print("CALL_MISMATCH DO_APPLY stack-fn-symbol={s}\n", .{fn_dbg.toPtr(Symbol).getName()});
+                }
+            }
+        }
         try self.doCall(count, false);
     }
 
@@ -8763,6 +9244,12 @@ test "vm collectGarbage relocates chunk pointers" {
         .bp = 0,
         .closure = null,
         .argc = 0,
+        .block_depth = 0,
+        .catch_depth = 0,
+        .unwind_depth = 0,
+        .restart_depth = 0,
+        .progv_depth = 0,
+        .handler_depth = 0,
         .handler_restore_depth = null,
     };
     vm.fp = 1;

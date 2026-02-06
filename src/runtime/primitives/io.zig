@@ -8,6 +8,7 @@ const Value = @import("../value.zig").Value;
 const objects = @import("../objects.zig");
 const heap_mod = @import("../heap.zig");
 const builtins_mod = @import("../builtins.zig");
+const pathname_prim = @import("pathname.zig");
 
 const IO_BUF = 4096;
 const LINE_BUF = 1024;
@@ -2167,102 +2168,227 @@ pub fn closeStream(stream: Value, abort: ?Value) !void {
     s.finalize();
 }
 
-/// List files in a directory matching pathname
-pub fn listDirectory(heap: *heap_mod.Heap, pathname: Value) !Value {
-    // Get path string from pathname or string
-    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const path_str = switch (pathname.typeKind()) {
-        .string => pathname.toPtr(objects.String).bytes(),
-        .pathname => blk: {
-            // Build namestring from pathname components
-            const pn = pathname.toPtr(objects.Pathname);
-            var len: usize = 0;
+fn valueIsKeywordNamed(heap: *heap_mod.Heap, val: Value, name: []const u8) !bool {
+    if (!val.isKeyword()) return false;
+    const kw = try heap.internKeyword(name);
+    return val.eq(kw);
+}
 
-            // Add directory
-            if (pn.directory.isCons()) {
-                var dir = pn.directory;
-                while (dir.isCons()) {
-                    const cons = dir.toPtr(objects.Cons);
-                    if (cons.car.isString()) {
-                        const s = cons.car.toPtr(objects.String).bytes();
-                        if (len > 0 and len < path_buf.len) {
-                            path_buf[len] = '/';
-                            len += 1;
-                        }
-                        const copy_len = @min(s.len, path_buf.len - len);
-                        @memcpy(path_buf[len..][0..copy_len], s[0..copy_len]);
-                        len += copy_len;
-                    }
-                    dir = cons.cdr;
-                }
-            }
+fn valueIsWildcard(heap: *heap_mod.Heap, val: Value) !bool {
+    if (try valueIsKeywordNamed(heap, val, "wild")) return true;
+    if (!val.isString()) return false;
+    const s = val.toPtr(objects.String).bytes();
+    return std.mem.indexOfAny(u8, s, "*?") != null;
+}
 
-            // Add name
-            if (pn.name.isString()) {
-                const s = pn.name.toPtr(objects.String).bytes();
-                if (len > 0 and len < path_buf.len) {
-                    path_buf[len] = '/';
-                    len += 1;
-                }
-                const copy_len = @min(s.len, path_buf.len - len);
-                @memcpy(path_buf[len..][0..copy_len], s[0..copy_len]);
-                len += copy_len;
-            }
+fn wildcardMatchCaseInsensitive(text: []const u8, pattern: []const u8) bool {
+    var ti: usize = 0;
+    var pi: usize = 0;
+    var star_pi: ?usize = null;
+    var star_ti: usize = 0;
 
-            break :blk path_buf[0..len];
-        },
-        else => return error.TypeError,
-    };
-
-    // Handle wildcards - for now, just list all files in directory
-    // Strip trailing wildcard if present
-    var dir_path = path_str;
-    if (std.mem.endsWith(u8, dir_path, "*.*") or std.mem.endsWith(u8, dir_path, "*")) {
-        // Find last path separator
-        if (std.mem.lastIndexOf(u8, dir_path, "/")) |idx| {
-            dir_path = dir_path[0..idx];
-        } else {
-            dir_path = ".";
+    while (ti < text.len) {
+        if (pi < pattern.len and (pattern[pi] == '?' or std.ascii.toLower(pattern[pi]) == std.ascii.toLower(text[ti]))) {
+            ti += 1;
+            pi += 1;
+            continue;
         }
+        if (pi < pattern.len and pattern[pi] == '*') {
+            star_pi = pi;
+            pi += 1;
+            star_ti = ti;
+            continue;
+        }
+        if (star_pi) |sp| {
+            pi = sp + 1;
+            star_ti += 1;
+            ti = star_ti;
+            continue;
+        }
+        return false;
     }
 
-    // Open directory
-    var dir = if (std.fs.cwd().openDir(dir_path, .{ .iterate = true })) |opened| opened else |err| {
+    while (pi < pattern.len and pattern[pi] == '*') {
+        pi += 1;
+    }
+
+    return pi == pattern.len;
+}
+
+fn appendPathComponent(buf: *std.ArrayList(u8), allocator: std.mem.Allocator, component: []const u8) !void {
+    if (component.len == 0) return;
+    if (buf.items.len == 0) {
+        try buf.appendSlice(allocator, component);
+        return;
+    }
+    if (buf.items[buf.items.len - 1] != '/') {
+        try buf.append(allocator, '/');
+    }
+    try buf.appendSlice(allocator, component);
+}
+
+fn appendPathnameResult(heap: *heap_mod.Heap, full_path: []const u8, result: *Value) !void {
+    const path_val = try heap.allocBaseString(full_path);
+    const pn = try pathname_prim.parseNamestring(std.heap.page_allocator, heap, path_val);
+    result.* = try heap.allocCons(pn, result.*);
+}
+
+fn scanDirectoryForPattern(
+    heap: *heap_mod.Heap,
+    dir_path: []const u8,
+    name_wild: bool,
+    name_pat: []const u8,
+    type_wild: bool,
+    type_pat: []const u8,
+    result: *Value,
+) !void {
+    var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| {
         return switch (err) {
-            error.FileNotFound, error.NotDir => Value.nil,
+            error.FileNotFound, error.NotDir => {},
             else => err,
         };
     };
     defer dir.close();
 
-    // Build list of pathnames
-    var result = Value.nil;
     var iter = dir.iterate();
+    var full_buf: [std.fs.max_path_bytes]u8 = undefined;
     while (try iter.next()) |entry| {
-        // Build full path
-        var full_path_buf: [std.fs.max_path_bytes]u8 = undefined;
-        const full_path = try std.fmt.bufPrint(&full_path_buf, "{s}/{s}", .{ dir_path, entry.name });
+        switch (entry.kind) {
+            .file, .sym_link => {},
+            else => continue,
+        }
 
-        // Parse path into pathname components
-        const name_str = try heap.allocBaseString(std.fs.path.stem(entry.name));
-        const type_str = if (std.fs.path.extension(entry.name).len > 0)
-            try heap.allocBaseString(std.fs.path.extension(entry.name)[1..]) // Skip the '.'
+        const stem = std.fs.path.stem(entry.name);
+        const ext = std.fs.path.extension(entry.name);
+        const ext_no_dot = if (ext.len > 0) ext[1..] else "";
+
+        if (!name_wild and !wildcardMatchCaseInsensitive(stem, name_pat)) continue;
+        if (!type_wild and !wildcardMatchCaseInsensitive(ext_no_dot, type_pat)) continue;
+
+        const full_path = if (std.mem.eql(u8, dir_path, "."))
+            entry.name
         else
-            Value.nil;
-        const dir_str = try heap.allocBaseString(dir_path);
-        const dir_list = try heap.allocCons(dir_str, Value.nil);
+            try std.fmt.bufPrint(&full_buf, "{s}/{s}", .{ dir_path, entry.name });
 
-        const pn = try heap.allocPathname(
-            Value.nil, // host
-            Value.nil, // device
-            dir_list, // directory
-            name_str, // name
-            type_str, // type
-            Value.nil, // version
-        );
-        _ = full_path;
-        result = try heap.allocCons(pn, result);
+        try appendPathnameResult(heap, full_path, result);
     }
+}
+
+/// List files in a directory matching pathname
+pub fn listDirectory(heap: *heap_mod.Heap, pathname: Value) !Value {
+    var result = Value.nil;
+    const allocator = std.heap.page_allocator;
+
+    var base_dir_buf = std.ArrayList(u8){};
+    defer base_dir_buf.deinit(allocator);
+
+    var suffix_components = std.ArrayList([]const u8){};
+    defer suffix_components.deinit(allocator);
+
+    var target_buf = std.ArrayList(u8){};
+    defer target_buf.deinit(allocator);
+
+    var name_wild = true;
+    var type_wild = true;
+    var name_pat: []const u8 = "";
+    var type_pat: []const u8 = "";
+    var dir_has_wild = false;
+
+    switch (pathname.typeKind()) {
+        .string => {
+            const path_str = pathname.toPtr(objects.String).bytes();
+            var dir_path = path_str;
+            if (std.mem.endsWith(u8, dir_path, "*.*") or std.mem.endsWith(u8, dir_path, "*")) {
+                if (std.mem.lastIndexOf(u8, dir_path, "/")) |idx| {
+                    dir_path = dir_path[0..idx];
+                } else {
+                    dir_path = ".";
+                }
+            }
+            try scanDirectoryForPattern(heap, dir_path, true, "", true, "", &result);
+            return result;
+        },
+        .pathname => {
+            const pn = pathname.toPtr(objects.Pathname);
+
+            if (try valueIsWildcard(heap, pn.name)) {
+                name_wild = true;
+            } else if (pn.name.isString()) {
+                name_wild = false;
+                name_pat = pn.name.toPtr(objects.String).bytes();
+            }
+
+            if (try valueIsWildcard(heap, pn.type)) {
+                type_wild = true;
+            } else if (pn.type.isString()) {
+                type_wild = false;
+                type_pat = pn.type.toPtr(objects.String).bytes();
+            }
+
+            if (pn.directory.isCons()) {
+                var dir = pn.directory;
+
+                if (dir.isCons() and dir.toPtr(objects.Cons).car.isKeyword()) {
+                    const tag = dir.toPtr(objects.Cons).car;
+                    if (try valueIsKeywordNamed(heap, tag, "absolute")) {
+                        try base_dir_buf.append(allocator, '/');
+                    }
+                    dir = dir.toPtr(objects.Cons).cdr;
+                }
+
+                var saw_wild = false;
+                while (dir.isCons()) {
+                    const cons = dir.toPtr(objects.Cons);
+                    const elem = cons.car;
+
+                    if (try valueIsWildcard(heap, elem)) {
+                        saw_wild = true;
+                        dir_has_wild = true;
+                    } else if (elem.isString()) {
+                        const comp = elem.toPtr(objects.String).bytes();
+                        if (!saw_wild) {
+                            try appendPathComponent(&base_dir_buf, allocator, comp);
+                        } else {
+                            try suffix_components.append(allocator, comp);
+                        }
+                    }
+                    dir = cons.cdr;
+                }
+            }
+        },
+        else => return error.TypeError,
+    }
+
+    const base_dir = if (base_dir_buf.items.len == 0) "." else base_dir_buf.items;
+    if (!dir_has_wild) {
+        try target_buf.appendSlice(allocator, base_dir);
+        for (suffix_components.items) |comp| {
+            try appendPathComponent(&target_buf, allocator, comp);
+        }
+        try scanDirectoryForPattern(heap, target_buf.items, name_wild, name_pat, type_wild, type_pat, &result);
+        return result;
+    }
+
+    var base_dir_handle = std.fs.cwd().openDir(base_dir, .{ .iterate = true }) catch |err| {
+        return switch (err) {
+            error.FileNotFound, error.NotDir => Value.nil,
+            else => err,
+        };
+    };
+    defer base_dir_handle.close();
+
+    var iter = base_dir_handle.iterate();
+    while (try iter.next()) |entry| {
+        if (entry.kind != .directory) continue;
+        target_buf.clearRetainingCapacity();
+        try target_buf.appendSlice(allocator, base_dir);
+        try appendPathComponent(&target_buf, allocator, entry.name);
+        for (suffix_components.items) |comp| {
+            try appendPathComponent(&target_buf, allocator, comp);
+        }
+        try scanDirectoryForPattern(heap, target_buf.items, name_wild, name_pat, type_wild, type_pat, &result);
+    }
+
     return result;
 }
 
@@ -2360,6 +2486,65 @@ test "listDirectory missing dir returns nil" {
     const missing_val = try heap.allocBaseString(missing_path);
     const res = try listDirectory(&heap, missing_val);
     try testing.expect(res.isNil());
+}
+
+test "listDirectory pathname wildcard filters by type" {
+    const testing = std.testing;
+    var heap = try heap_mod.Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.makeDir("sub");
+    (try tmp.dir.createFile("keep.fasl", .{})).close();
+    (try tmp.dir.createFile("drop.lsp", .{})).close();
+    (try tmp.dir.createFile("sub/nested.fasl", .{})).close();
+
+    const tmp_path = try tmp.parent_dir.realpathAlloc(testing.allocator, &tmp.sub_path);
+    defer testing.allocator.free(tmp_path);
+
+    const top_pat_s = try std.fmt.allocPrint(testing.allocator, "{s}/*.fasl", .{tmp_path});
+    defer testing.allocator.free(top_pat_s);
+    const top_pat_v = try heap.allocBaseString(top_pat_s);
+    const top_pat = try pathname_prim.parseNamestring(testing.allocator, &heap, top_pat_v);
+    const top_res = try listDirectory(&heap, top_pat);
+
+    var top_count: usize = 0;
+    var cur = top_res;
+    while (cur.isCons()) {
+        const cons = cur.toPtr(objects.Cons);
+        const pn = cons.car.toPtr(objects.Pathname);
+        try testing.expect(pn.type.isString());
+        try testing.expect(std.ascii.eqlIgnoreCase("fasl", pn.type.toPtr(objects.String).bytes()));
+        top_count += 1;
+        cur = cons.cdr;
+    }
+    try testing.expectEqual(@as(usize, 1), top_count);
+
+    const sub_pat_s = try std.fmt.allocPrint(testing.allocator, "{s}/*/*.fasl", .{tmp_path});
+    defer testing.allocator.free(sub_pat_s);
+    const sub_pat_v = try heap.allocBaseString(sub_pat_s);
+    const sub_pat = try pathname_prim.parseNamestring(testing.allocator, &heap, sub_pat_v);
+    const sub_res = try listDirectory(&heap, sub_pat);
+
+    var sub_count: usize = 0;
+    var saw_nested = false;
+    var sub_cur = sub_res;
+    while (sub_cur.isCons()) {
+        const cons = sub_cur.toPtr(objects.Cons);
+        const pn = cons.car.toPtr(objects.Pathname);
+        try testing.expect(pn.name.isString());
+        try testing.expect(pn.type.isString());
+        if (std.ascii.eqlIgnoreCase("nested", pn.name.toPtr(objects.String).bytes())) {
+            saw_nested = true;
+        }
+        try testing.expect(std.ascii.eqlIgnoreCase("fasl", pn.type.toPtr(objects.String).bytes()));
+        sub_count += 1;
+        sub_cur = cons.cdr;
+    }
+    try testing.expectEqual(@as(usize, 1), sub_count);
+    try testing.expect(saw_nested);
 }
 
 test "pathnameMatchP matches string and pathname" {

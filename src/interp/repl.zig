@@ -136,6 +136,230 @@ pub const Repl = struct {
         }
     }
 
+    const MacroMapPair = struct {
+        key: Value,
+        val: Value,
+    };
+
+    const ReplMacroPair = struct {
+        key: Value,
+        closure: Value,
+        has_whole: bool,
+        has_env: bool,
+    };
+
+    fn isLiveValue(self: *Repl, val: Value) bool {
+        if (!val.isPointer()) return true;
+        const addr = val.toPtrAddr();
+        const start = @intFromPtr(self.heap.from_start);
+        const end = @intFromPtr(self.heap.from_end);
+        return addr >= start and addr < end;
+    }
+
+    fn collectCompilerMacroPairs(self: *Repl, out: *std.ArrayList(MacroMapPair)) !void {
+        var it = self.compiler.macro_table.iterator();
+        while (it.next()) |entry| {
+            const key = entry.key_ptr.*;
+            const val = entry.value_ptr.*;
+            if (!key.isSymbol()) continue;
+            if (!self.isLiveValue(key) or !self.isLiveValue(val)) continue;
+            try out.append(self.allocator, .{
+                .key = key,
+                .val = val,
+            });
+        }
+    }
+
+    fn collectSymbolMacroPairs(self: *Repl, out: *std.ArrayList(MacroMapPair)) !void {
+        var it = self.compiler.symbol_macros.iterator();
+        while (it.next()) |entry| {
+            const key = entry.key_ptr.*;
+            const val = entry.value_ptr.*;
+            if (!key.isSymbol()) continue;
+            if (!self.isLiveValue(key) or !self.isLiveValue(val)) continue;
+            try out.append(self.allocator, .{
+                .key = key,
+                .val = val,
+            });
+        }
+    }
+
+    fn collectReplMacroPairs(self: *Repl, out: *std.ArrayList(ReplMacroPair)) !void {
+        var it = self.macros.iterator();
+        while (it.next()) |entry| {
+            const key = entry.key_ptr.*;
+            const m = entry.value_ptr.*;
+            if (!key.isSymbol()) continue;
+            if (!self.isLiveValue(key) or !self.isLiveValue(m.closure)) continue;
+            try out.append(self.allocator, .{
+                .key = key,
+                .closure = m.closure,
+                .has_whole = m.has_whole,
+                .has_env = m.has_env,
+            });
+        }
+    }
+
+    fn restoreMacroMapsFromRoots(
+        self: *Repl,
+        roots: []const Value,
+        compiler_macro_start: usize,
+        compiler_macro_count: usize,
+        symbol_macro_start: usize,
+        symbol_macro_count: usize,
+        repl_macro_start: usize,
+        repl_macros: []const ReplMacroPair,
+        live_compiler_macros: []const MacroMapPair,
+        live_symbol_macros: []const MacroMapPair,
+        live_repl_macros: []const ReplMacroPair,
+    ) !void {
+        self.compiler.macro_table.clearRetainingCapacity();
+        var i: usize = 0;
+        while (i < compiler_macro_count) : (i += 1) {
+            const base = compiler_macro_start + (i * 2);
+            const key = roots[base];
+            const val = roots[base + 1];
+            if (!key.isSymbol()) continue;
+            if (!self.isLiveValue(key) or !self.isLiveValue(val)) continue;
+            try self.compiler.macro_table.put(key, val);
+        }
+        for (live_compiler_macros) |pair| {
+            try self.compiler.macro_table.put(pair.key, pair.val);
+        }
+
+        self.compiler.symbol_macros.clearRetainingCapacity();
+        i = 0;
+        while (i < symbol_macro_count) : (i += 1) {
+            const base = symbol_macro_start + (i * 2);
+            const key = roots[base];
+            const val = roots[base + 1];
+            if (!key.isSymbol()) continue;
+            if (!self.isLiveValue(key) or !self.isLiveValue(val)) continue;
+            try self.compiler.symbol_macros.put(key, val);
+        }
+        for (live_symbol_macros) |pair| {
+            try self.compiler.symbol_macros.put(pair.key, pair.val);
+        }
+
+        self.macros.clearRetainingCapacity();
+        i = 0;
+        while (i < repl_macros.len) : (i += 1) {
+            const base = repl_macro_start + (i * 2);
+            const pair = repl_macros[i];
+            const key = roots[base];
+            const closure = roots[base + 1];
+            if (!key.isSymbol()) continue;
+            if (!self.isLiveValue(key) or !self.isLiveValue(closure)) continue;
+            try self.macros.put(key, .{
+                .closure = closure,
+                .has_whole = pair.has_whole,
+                .has_env = pair.has_env,
+            });
+        }
+        for (live_repl_macros) |pair| {
+            try self.macros.put(pair.key, .{
+                .closure = pair.closure,
+                .has_whole = pair.has_whole,
+                .has_env = pair.has_env,
+            });
+        }
+    }
+
+    fn runVmPreserveMacroState(self: *Repl, vm: *Vm, chunk_ptr: *runtime.objects.Chunk) !Value {
+        const saved_ext = vm.ext_roots;
+
+        var compiler_macros = std.ArrayList(MacroMapPair){};
+        defer compiler_macros.deinit(self.allocator);
+        try self.collectCompilerMacroPairs(&compiler_macros);
+
+        var symbol_macros = std.ArrayList(MacroMapPair){};
+        defer symbol_macros.deinit(self.allocator);
+        try self.collectSymbolMacroPairs(&symbol_macros);
+
+        var repl_macros = std.ArrayList(ReplMacroPair){};
+        defer repl_macros.deinit(self.allocator);
+        try self.collectReplMacroPairs(&repl_macros);
+
+        const total_roots = saved_ext.len +
+            (compiler_macros.items.len * 2) +
+            (symbol_macros.items.len * 2) +
+            (repl_macros.items.len * 2);
+        const roots = try self.allocator.alloc(Value, total_roots);
+        defer self.allocator.free(roots);
+
+        if (saved_ext.len > 0) {
+            @memcpy(roots[0..saved_ext.len], saved_ext);
+        }
+
+        var idx: usize = saved_ext.len;
+        const compiler_macro_start = idx;
+        for (compiler_macros.items) |entry| {
+            roots[idx] = entry.key;
+            roots[idx + 1] = entry.val;
+            idx += 2;
+        }
+
+        const symbol_macro_start = idx;
+        for (symbol_macros.items) |entry| {
+            roots[idx] = entry.key;
+            roots[idx + 1] = entry.val;
+            idx += 2;
+        }
+
+        const repl_macro_start = idx;
+        for (repl_macros.items) |entry| {
+            roots[idx] = entry.key;
+            roots[idx + 1] = entry.closure;
+            idx += 2;
+        }
+
+        vm.setExtRoots(roots);
+        defer vm.setExtRoots(saved_ext);
+
+        var live_compiler_macros = std.ArrayList(MacroMapPair){};
+        defer live_compiler_macros.deinit(self.allocator);
+        var live_symbol_macros = std.ArrayList(MacroMapPair){};
+        defer live_symbol_macros.deinit(self.allocator);
+        var live_repl_macros = std.ArrayList(ReplMacroPair){};
+        defer live_repl_macros.deinit(self.allocator);
+
+        const result = vm.run(chunk_ptr) catch |run_err| {
+            try self.collectCompilerMacroPairs(&live_compiler_macros);
+            try self.collectSymbolMacroPairs(&live_symbol_macros);
+            try self.collectReplMacroPairs(&live_repl_macros);
+            try self.restoreMacroMapsFromRoots(
+                roots,
+                compiler_macro_start,
+                compiler_macros.items.len,
+                symbol_macro_start,
+                symbol_macros.items.len,
+                repl_macro_start,
+                repl_macros.items,
+                live_compiler_macros.items,
+                live_symbol_macros.items,
+                live_repl_macros.items,
+            );
+            return run_err;
+        };
+
+        try self.collectCompilerMacroPairs(&live_compiler_macros);
+        try self.collectSymbolMacroPairs(&live_symbol_macros);
+        try self.collectReplMacroPairs(&live_repl_macros);
+        try self.restoreMacroMapsFromRoots(
+            roots,
+            compiler_macro_start,
+            compiler_macros.items.len,
+            symbol_macro_start,
+            symbol_macros.items.len,
+            repl_macro_start,
+            repl_macros.items,
+            live_compiler_macros.items,
+            live_symbol_macros.items,
+            live_repl_macros.items,
+        );
+        return result;
+    }
+
     /// Wire up VM to compiler's global environment. Must be called after init.
     pub fn wireGlobalEnv(self: *Repl) !void {
         self.vm.setGlobalEnv(&self.compiler.globals);
@@ -222,6 +446,32 @@ pub const Repl = struct {
     /// Callback for (eval expr) from VM
     fn evalCallback(expr: Value, context: *anyopaque) vm_mod.Error!Value {
         const self: *Repl = @ptrCast(@alignCast(context));
+        if (std.process.hasEnvVar(self.allocator, "HABU_TRACE_EVAL_EXPR") catch false) {
+            if (expr.isCons()) {
+                const head = expr.toPtr(Cons).car;
+                if (head.isSymbol()) {
+                    std.debug.print("EVAL expr head={s}\n", .{head.toPtr(Symbol).getName()});
+                } else {
+                    std.debug.print("EVAL expr head-kind={s}\n", .{@tagName(head.typeKind())});
+                }
+                if (expr.toPtr(Cons).cdr.isCons()) {
+                    const arg0 = expr.toPtr(Cons).cdr.toPtr(Cons).car;
+                    std.debug.print("EVAL expr arg0-kind={s}\n", .{@tagName(arg0.typeKind())});
+                    if (arg0.isSymbol()) {
+                        std.debug.print("EVAL expr arg0-symbol={s}\n", .{arg0.toPtr(Symbol).getName()});
+                    } else if (arg0.isCons()) {
+                        const inner_head = arg0.toPtr(Cons).car;
+                        if (inner_head.isSymbol()) {
+                            std.debug.print("EVAL expr arg0-head={s}\n", .{inner_head.toPtr(Symbol).getName()});
+                        } else {
+                            std.debug.print("EVAL expr arg0-head-kind={s}\n", .{@tagName(inner_head.typeKind())});
+                        }
+                    }
+                }
+            } else {
+                std.debug.print("EVAL expr kind={s}\n", .{@tagName(expr.typeKind())});
+            }
+        }
         return self.evalExpression(expr);
     }
 
@@ -311,12 +561,22 @@ pub const Repl = struct {
         defer arena.deinit();
         const arena_alloc = arena.allocator();
 
+        const source_vm = self.current_vm orelse &self.vm;
+
         // Save and set compiler state
         const saved_builder = self.compiler.builder;
         const saved_allocator = self.compiler.allocator;
+        const saved_compiler_vm = self.compiler.vm;
+        self.compiler.setVm(source_vm);
+        try self.compiler.refreshBuiltins();
         self.compiler.builder = ir.IrBuilder.init(arena_alloc);
         self.compiler.allocator = arena_alloc;
         defer {
+            if (saved_compiler_vm) |saved_vm| {
+                self.compiler.setVm(saved_vm);
+            } else {
+                self.compiler.vm = null;
+            }
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
         }
@@ -324,7 +584,10 @@ pub const Repl = struct {
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
-        const ir_node = try self.compiler.compile(expr, &env);
+        // CL EVAL must macroexpand first; compiling raw forms breaks macro-only operators.
+        var expanded = try self.expandMacros(expr);
+        expanded = try self.desugarExpr(expanded);
+        const ir_node = try self.compiler.compile(expanded, &env);
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
@@ -359,25 +622,26 @@ pub const Repl = struct {
         nested_vm.setMacroexpand1Callback(&macroexpand1Callback, @ptrCast(self));
         nested_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
 
-        // Copy globals from main VM
-        for (self.vm.globals, 0..) |g, i| {
+        // Copy globals from active VM context (supports nested eval during file loads).
+        for (source_vm.globals, 0..) |g, i| {
             nested_vm.globals[i] = g;
         }
-        nested_vm.num_globals = self.vm.num_globals;
+        nested_vm.num_globals = source_vm.num_globals;
 
         // Set up chunk pool for closures with base offset
         self.syncChunkPools(&nested_vm);
 
         // Execute
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        const result = try nested_vm.run(chunk_ptr);
+        patchChunkIndices(chunk_ptr, chunk_base);
+        const result = try self.runVmPreserveMacroState(&nested_vm, chunk_ptr);
 
-        // Copy back any new globals
+        // Copy back any new globals into the active VM context.
         for (nested_vm.globals, 0..) |g, i| {
-            self.vm.globals[i] = g;
+            source_vm.globals[i] = g;
         }
-        if (nested_vm.num_globals > self.vm.num_globals) {
-            self.vm.num_globals = nested_vm.num_globals;
+        if (nested_vm.num_globals > source_vm.num_globals) {
+            source_vm.num_globals = nested_vm.num_globals;
         }
 
         return result;
@@ -389,6 +653,20 @@ pub const Repl = struct {
         const source_vm = self.current_vm orelse &self.vm;
         const resolved_path = try self.resolveLoadPath(source_vm, path);
         defer self.allocator.free(resolved_path);
+        const trace_forms = std.process.hasEnvVar(self.allocator, "HABU_TRACE_FORMS") catch false;
+        if (trace_forms) {
+            std.debug.print("TRACE load: {s} [pkg={s}]\n", .{ resolved_path, self.heap.getCurrentPackageName() });
+        }
+
+        // Prefer sibling source for FASL designators so macro definitions are
+        // seen by the REPL macro table during ANSI harness loads.
+        if (try self.fallbackSourcePathForFasl(resolved_path)) |fallback_path| {
+            defer self.allocator.free(fallback_path);
+            if (!self.isCurrentLoadPath(source_vm, fallback_path)) {
+                return try self.loadFileValue(fallback_path);
+            }
+            return Value.t;
+        }
 
         const content = self.readFileContent(resolved_path) catch |err| {
             if (err == error.FileNotFound) {
@@ -521,6 +799,37 @@ pub const Repl = struct {
         return null;
     }
 
+    fn currentPackageGlobal(self: *Repl, vm: *const Vm) ?Value {
+        const names = [_][]const u8{
+            "COMMON-LISP:*PACKAGE*",
+            "CL-USER:*PACKAGE*",
+            "*PACKAGE*",
+        };
+        for (names) |name| {
+            if (self.compiler.globals.lookup(name)) |idx| {
+                if (idx < vm.num_globals) {
+                    const val = vm.globals[idx];
+                    if (val.isPackage()) return val;
+                }
+            }
+        }
+        return null;
+    }
+
+    fn syncReaderPackageFromVm(self: *Repl, vm: *const Vm) void {
+        const pkg_val = self.currentPackageGlobal(vm) orelse return;
+        const pkg_obj = pkg_val.toPtr(runtime.objects.Package);
+        const pkg_name = switch (pkg_obj.name.typeKind()) {
+            .symbol => pkg_obj.name.toPtr(runtime.Symbol).getName(),
+            .string => pkg_obj.name.toPtr(runtime.String).bytes(),
+            .keyword => pkg_obj.name.toPtr(runtime.Keyword).getName(),
+            else => return,
+        };
+        if (self.heap.findPackage(pkg_name)) |native_pkg| {
+            self.heap.setCurrentPackage(native_pkg);
+        }
+    }
+
     fn resolveLoadPath(self: *Repl, vm: *const Vm, path: []const u8) ![]u8 {
         if (std.fs.path.isAbsolute(path)) {
             return try self.allocator.dupe(u8, path);
@@ -578,9 +887,25 @@ pub const Repl = struct {
         return null;
     }
 
+    const ReadEvalCtx = struct {
+        repl: *Repl,
+        vm: *Vm,
+    };
+
+    fn parserReadEval(ctx: *anyopaque, expr: Value) reader.ParseError!Value {
+        const hook: *ReadEvalCtx = @ptrCast(@alignCast(ctx));
+        var arena = std.heap.ArenaAllocator.init(hook.repl.allocator);
+        defer arena.deinit();
+        const eval_alloc = arena.allocator();
+        return hook.repl.evalParsedWithVm(expr, hook.vm, eval_alloc) catch return error.UnexpectedToken;
+    }
+
     /// Evaluate file content using a separate VM to avoid stack corruption
     fn evalFileContentSeparateVm(self: *Repl, content: []const u8) !Value {
         var last_value = Value.nil;
+        const trace_forms = std.process.hasEnvVar(self.allocator, "HABU_TRACE_FORMS") catch false;
+        var form_idx: usize = 0;
+        var had_deftest_state: ?bool = null;
 
         // Create a temporary VM for nested evaluation
         var nested_vm = try Vm.init(self.allocator, self.heap);
@@ -604,19 +929,95 @@ pub const Repl = struct {
         self.current_vm = &nested_vm;
         defer self.current_vm = saved_current_vm;
 
+        // Keep reader package aligned with runtime *PACKAGE* for this VM.
+        self.syncReaderPackageFromVm(&nested_vm);
+
         var parse_arena = std.heap.ArenaAllocator.init(self.allocator);
         defer parse_arena.deinit();
         const parse_alloc = parse_arena.allocator();
 
         var parser = try Parser.init(parse_alloc, self.heap, content, &self.vm.builtins);
         defer parser.deinit();
+        var read_eval_ctx = ReadEvalCtx{ .repl = self, .vm = &nested_vm };
+        parser.setReadEvalHook(@ptrCast(&read_eval_ctx), parserReadEval);
 
         while (parser.current.kind != .eof) {
+            self.syncReaderPackageFromVm(&nested_vm);
             const expr = try parser.parse();
+            form_idx += 1;
+            if (trace_forms) {
+                if (expr.isCons()) {
+                    const head = expr.toPtr(Cons).car;
+                    if (head.isSymbol()) {
+                        std.debug.print("TRACE form {d}: {s}\n", .{ form_idx, head.toPtr(Symbol).getName() });
+                    } else {
+                        std.debug.print("TRACE form {d}: {s}\n", .{ form_idx, @tagName(head.typeKind()) });
+                    }
+                } else {
+                    std.debug.print("TRACE form {d}: {s}\n", .{ form_idx, @tagName(expr.typeKind()) });
+                }
+            }
+            if (std.posix.getenv("HABU_TRACE_MACRO_LOOKUP") != null and expr.isCons()) {
+                const head = expr.toPtr(Cons).car;
+                if (head.isSymbol()) {
+                    const head_name = head.toPtr(Symbol).getName();
+                    if (std.mem.eql(u8, head_name, "DEFTEST")) {
+                        const repl_hit = self.lookupMacroEntry(head) != null;
+                        const direct_hit = self.macros.get(head) != null;
+                        const compiler_hit = self.compiler.macro_table.get(head) != null;
+                        var named_hit = false;
+                        var it = self.macros.iterator();
+                        while (it.next()) |entry| {
+                            const key = entry.key_ptr.*;
+                            if (!key.isSymbol()) continue;
+                            if (std.mem.eql(u8, key.toPtr(Symbol).getName(), "DEFTEST")) {
+                                named_hit = true;
+                                break;
+                            }
+                        }
+                        std.debug.print(
+                            "TRACE macro DEFTEST: repl={any} direct={any} compiler={any} named={any} counts repl={d} compiler={d}\n",
+                            .{
+                                repl_hit,
+                                direct_hit,
+                                compiler_hit,
+                                named_hit,
+                                self.macros.count(),
+                                self.compiler.macro_table.count(),
+                            },
+                        );
+                    }
+                }
+            }
             var eval_arena = std.heap.ArenaAllocator.init(self.allocator);
             defer eval_arena.deinit();
             const eval_alloc = eval_arena.allocator();
             last_value = try self.evalParsedWithVm(expr, &nested_vm, eval_alloc);
+            if (std.posix.getenv("HABU_TRACE_DEFMACRO") != null) {
+                var has_def = false;
+                var it = self.macros.iterator();
+                while (it.next()) |entry| {
+                    const key = entry.key_ptr.*;
+                    if (!key.isSymbol()) continue;
+                    if (std.mem.eql(u8, key.toPtr(Symbol).getName(), "DEFTEST")) {
+                        has_def = true;
+                        break;
+                    }
+                }
+                if (had_deftest_state == null or had_deftest_state.? != has_def) {
+                    std.debug.print(
+                        "TRACE macro DEFTEST state: present={any} form={d} pkg={s} repl={d} compiler={d}\n",
+                        .{
+                            has_def,
+                            form_idx,
+                            self.heap.getCurrentPackageName(),
+                            self.macros.count(),
+                            self.compiler.macro_table.count(),
+                        },
+                    );
+                }
+                had_deftest_state = has_def;
+            }
         }
 
         // Copy globals back to source VM
@@ -637,6 +1038,8 @@ pub const Repl = struct {
 
         // Parse
         var parser = try Parser.init(arena_alloc, self.heap, source, &self.vm.builtins);
+        var read_eval_ctx = ReadEvalCtx{ .repl = self, .vm = vm };
+        parser.setReadEvalHook(@ptrCast(&read_eval_ctx), parserReadEval);
         const expr = try parser.parse();
 
         return self.evalParsedWithVm(expr, vm, arena_alloc);
@@ -723,7 +1126,7 @@ pub const Repl = struct {
         // Set chunk pool and run with base offset
         self.syncChunkPools(vm);
 
-        return try vm.run(chunk_ptr);
+        return try self.runVmPreserveMacroState(vm, chunk_ptr);
     }
 
     pub fn deinit(self: *Repl) void {
@@ -1076,7 +1479,7 @@ pub const Repl = struct {
 
         self.syncChunkPools(&self.vm);
 
-        const result = if (self.vm.run(chunk.toPtr(runtime.objects.Chunk))) |value| value else |err| {
+        const result = if (self.runVmPreserveMacroState(&self.vm, chunk.toPtr(runtime.objects.Chunk))) |value| value else |err| {
             err_info.* = .{
                 .kind = if (err == error.UserError) .runtime_user_error else .runtime_type_mismatch,
                 .line = 1,
@@ -1460,12 +1863,55 @@ pub const Repl = struct {
         return cl_pkg.findAccessibleUpper(name) orelse sym;
     }
 
+    fn lookupMacroByNameInPackage(self: *Repl, pkg: *runtime.heap.Package, name: []const u8) ?MacroEntry {
+        if (pkg.symbols.get(name)) |pkg_sym| {
+            if (self.macros.get(pkg_sym)) |entry| return entry;
+        }
+        for (pkg.use_list.items) |used_pkg| {
+            if (used_pkg.exports.contains(name) or used_pkg.auto_export) {
+                if (used_pkg.symbols.get(name)) |used_sym| {
+                    if (self.macros.get(used_sym)) |entry| return entry;
+                }
+            }
+        }
+        return null;
+    }
+
+    fn symbolPackage(sym: *const Symbol) ?*runtime.heap.Package {
+        const bits = sym.reserved;
+        if (bits == 0 or (bits & 1) != 0) return null;
+        return @ptrFromInt(bits);
+    }
+
     fn lookupMacroEntry(self: *Repl, sym: Value) ?MacroEntry {
         if (!sym.isSymbol()) return null;
         if (self.macros.get(sym)) |entry| return entry;
+
+        const sym_ptr = sym.toPtr(Symbol);
+        const name = sym_ptr.getName();
+
+        if (symbolPackage(sym_ptr)) |pkg| {
+            if (self.lookupMacroByNameInPackage(pkg, name)) |entry| return entry;
+            // Respect package-qualified symbols: do not fall back to current package
+            // lookup by name, which can hijack CL:FOO with local FOO macros.
+            const canonical = self.canonicalMacroSymbol(sym);
+            if (canonical.raw == sym.raw) return null;
+            return self.macros.get(canonical);
+        }
+
+        // Uninterned symbols can only be resolved by current package context.
+        if (self.heap.current_package) |pkg| {
+            if (self.lookupMacroByNameInPackage(pkg, name)) |entry| return entry;
+        }
+        if (self.heap.cl_package) |cl_pkg| {
+            if (self.lookupMacroByNameInPackage(cl_pkg, name)) |entry| return entry;
+        }
+
         const canonical = self.canonicalMacroSymbol(sym);
-        if (canonical.raw == sym.raw) return null;
-        return self.macros.get(canonical);
+        if (canonical.raw != sym.raw) {
+            if (self.macros.get(canonical)) |entry| return entry;
+        }
+        return null;
     }
 
     fn normalizeMacroParams(self: *Repl, params_val: Value) !struct { params: Value, has_whole: bool, has_env: bool } {
@@ -1618,21 +2064,43 @@ pub const Repl = struct {
         macro_vm.num_globals = source_vm.num_globals;
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        const closure = try macro_vm.run(chunk_ptr);
+        const closure = try self.runVmPreserveMacroState(&macro_vm, chunk_ptr);
 
         if (!closure.isClosure()) return error.CompileError;
 
+        var macro_sym = cons2.car;
+        if (self.heap.current_package) |pkg| {
+            const macro_name = cons2.car.toPtr(Symbol).getName();
+            if (pkg.symbols.get(macro_name)) |local_sym| {
+                macro_sym = local_sym;
+            }
+        }
+
         // Store the closure in REPL macro table for pre-compilation macro expansion
         // Store the AST in Compiler macro table for compile-time expansion
-        try self.macros.put(cons2.car, .{
+        try self.macros.put(macro_sym, .{
             .closure = closure,
             .has_whole = macro_params.has_whole,
             .has_env = macro_params.has_env,
         });
-        try self.compiler.macro_table.put(cons2.car, transformed_rest2);
+        try self.compiler.macro_table.put(macro_sym, transformed_rest2);
+
+        if (std.posix.getenv("HABU_TRACE_DEFMACRO") != null and macro_sym.isSymbol()) {
+            const macro_name = macro_sym.toPtr(Symbol).getName();
+            if (std.mem.eql(u8, macro_name, "DEFTEST")) {
+                std.debug.print(
+                    "TRACE defmacro DEFTEST defined: repl={d} compiler={d} pkg={s}\n",
+                    .{
+                        self.macros.count(),
+                        self.compiler.macro_table.count(),
+                        self.heap.getCurrentPackageName(),
+                    },
+                );
+            }
+        }
 
         // Return the macro name as a symbol
-        return cons2.car;
+        return macro_sym;
     }
 
     /// Check if expression is (eval-when (situations...) body...)
@@ -1798,7 +2266,7 @@ pub const Repl = struct {
         defer self.current_vm = saved_current_vm;
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        const result = try eval_vm.run(chunk_ptr);
+        const result = try self.runVmPreserveMacroState(&eval_vm, chunk_ptr);
 
         // Copy back any new globals to the original source
         for (eval_vm.globals, 0..) |g, i| {
@@ -1850,6 +2318,7 @@ pub const Repl = struct {
 
         const cons = expr.toPtr(Cons);
         const head = cons.car;
+        const tail = cons.cdr;
 
         // Check if head is a macro or special form
         if (head.isSymbol()) {
@@ -1874,19 +2343,34 @@ pub const Repl = struct {
 
             // Skip special forms that shouldn't be expanded
             if (self.compiler.builtins) |b| {
-                if (dispatch_head.raw == b.quote.raw or dispatch_head.raw == b.quasiquote.raw or dispatch_head.raw == b.lambda.raw) {
-                    return expr; // Don't expand inside quote or lambda
+                if (dispatch_head.raw == b.quote.raw or dispatch_head.raw == b.quasiquote.raw) {
+                    return expr; // Don't expand inside quoted forms
+                }
+                if (dispatch_head.raw == b.lambda.raw) {
+                    // Expand lambda body forms, but keep parameter list untouched.
+                    const lambda_args = tail;
+                    if (!lambda_args.isCons()) return expr;
+                    const args_cons = lambda_args.toPtr(Cons);
+                    const params = args_cons.car;
+                    const body = args_cons.cdr;
+                    const expanded_body = try self.expandMacroListWithDepth(body, depth + 1);
+                    if (expanded_body.raw == body.raw) return expr;
+                    const rebuilt_args = try self.heap.allocCons(params, expanded_body);
+                    return try self.heap.allocCons(head, rebuilt_args);
                 }
                 // For setf, don't expand the place (first arg) but do expand value (second arg)
                 if (dispatch_head.raw == b.setf.raw) {
-                    const args = cons.cdr;
+                    const args = tail;
                     if (args.isCons()) {
                         const args_cons = args.toPtr(Cons);
                         const place = args_cons.car; // Keep place unexpanded
                         const rest = args_cons.cdr;
                         if (rest.isCons()) {
-                            const expanded_value = try self.expandMacrosWithDepth(rest.toPtr(Cons).car, depth + 1);
-                            const new_rest = try self.heap.allocCons(expanded_value, rest.toPtr(Cons).cdr);
+                            const rest_cons = rest.toPtr(Cons);
+                            const value_expr = rest_cons.car;
+                            const rest_tail = rest_cons.cdr;
+                            const expanded_value = try self.expandMacrosWithDepth(value_expr, depth + 1);
+                            const new_rest = try self.heap.allocCons(expanded_value, rest_tail);
                             const new_args = try self.heap.allocCons(place, new_rest);
                             return try self.heap.allocCons(head, new_args);
                         }
@@ -1896,15 +2380,39 @@ pub const Repl = struct {
             }
 
             if (self.lookupMacroEntry(head)) |macro_entry| {
+                if (std.posix.getenv("HABU_TRACE_MACRO_DEPTH") != null and depth >= 480) {
+                    const sym = head.toPtr(runtime.Symbol);
+                    if (symbolPackage(sym)) |pkg| {
+                        std.debug.print("TRACE macro-depth {d}: {s} [{s}]\n", .{ depth, sym.getName(), pkg.name });
+                    } else {
+                        std.debug.print("TRACE macro-depth {d}: {s} [uninterned]\n", .{ depth, sym.getName() });
+                    }
+                }
                 // Expand macro: call the closure with the args
-                const expansion = try self.callMacro(macro_entry, expr, cons.cdr);
+                const expansion = try self.callMacro(macro_entry, expr, tail);
+                if (expansion.raw == expr.raw) {
+                    // No-op expansion: stop to avoid unbounded recursion on self-expanding macros.
+                    return expansion;
+                }
+                if (depth > 512 and expansion.isCons()) {
+                    const exp_head = expansion.toPtr(Cons).car;
+                    if (exp_head.isSymbol()) {
+                        const exp_dispatch = self.canonicalMacroSymbol(exp_head);
+                        if (exp_dispatch.raw == dispatch_head.raw) return error.MacroExpansionTooDeep;
+                    }
+                }
                 // Recursively expand the result
                 return self.expandMacrosWithDepth(expansion, depth + 1);
             }
         }
 
-        // Non-macro form: leave recursive expansion to the compiler path.
-        return expr;
+        // Non-macro form: recursively expand subforms.
+        const expanded_head = try self.expandMacrosWithDepth(head, depth + 1);
+        const expanded_tail = try self.expandMacroListWithDepth(tail, depth + 1);
+        if (expanded_head.raw == head.raw and expanded_tail.raw == tail.raw) {
+            return expr;
+        }
+        return try self.heap.allocCons(expanded_head, expanded_tail);
     }
 
     /// Expand macros in a list (for cdr of cons)
@@ -1917,10 +2425,12 @@ pub const Repl = struct {
         if (!list.isCons()) return list;
 
         const cons = list.toPtr(Cons);
-        const expanded_car = try self.expandMacrosWithDepth(cons.car, depth + 1);
-        const expanded_cdr = try self.expandMacroListWithDepth(cons.cdr, depth);
+        const car = cons.car;
+        const cdr = cons.cdr;
+        const expanded_car = try self.expandMacrosWithDepth(car, depth + 1);
+        const expanded_cdr = try self.expandMacroListWithDepth(cdr, depth);
 
-        if (expanded_car.raw != cons.car.raw or expanded_cdr.raw != cons.cdr.raw) {
+        if (expanded_car.raw != car.raw or expanded_cdr.raw != cdr.raw) {
             return try self.heap.allocCons(expanded_car, expanded_cdr);
         }
         return list;
@@ -2012,7 +2522,7 @@ pub const Repl = struct {
         self.syncChunkPools(&macro_vm);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        return try macro_vm.run(chunk_ptr);
+        return try self.runVmPreserveMacroState(&macro_vm, chunk_ptr);
     }
 
     /// Handle package forms (defpackage/in-package) - execute them immediately
@@ -2031,7 +2541,7 @@ pub const Repl = struct {
 
         // Execute to set package at runtime (though it's already set at compile time)
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        const result = try self.vm.run(chunk_ptr);
+        const result = try self.runVmPreserveMacroState(&self.vm, chunk_ptr);
 
         // The package is now set in self.heap.current_package for future reads
         // Return the result (package name as symbol)
@@ -2304,6 +2814,23 @@ test "eval comparison" {
 
     const result2 = try evalString(allocator, &heap, "(> 5 10)");
     try testing.expect(result2.isNil());
+}
+
+test "eval expands macro forms" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    _ = try repl.eval("(defmacro eval-macro (x) x)");
+    const result = try repl.eval("(eval '(eval-macro 42))");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
 test "eval type predicate" {

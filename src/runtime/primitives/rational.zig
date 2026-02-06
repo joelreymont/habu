@@ -49,9 +49,18 @@ pub fn floatToRational(heap: *Heap, f: f64) Error!Value {
         return Value.makeFloat(f);
     }
 
+    const max_i64_f: f64 = @floatFromInt(std.math.maxInt(i64));
+    const min_i64_f: f64 = @floatFromInt(std.math.minInt(i64));
+
+    // Current Rational stores i64 numerator/denominator; values outside this
+    // range must remain floats to avoid overflow/panics.
+    if (f > max_i64_f or f < min_i64_f) {
+        return Value.makeFloat(f);
+    }
+
     // If already integer, return as rational n/1
     if (f == @floor(f)) {
-        const n: i64 = @intFromFloat(f);
+        const n: i64 = @intFromFloat(@trunc(f));
         return makeRational(heap, n, 1);
     }
 
@@ -65,9 +74,23 @@ pub fn floatToRational(heap: *Heap, f: f64) Error!Value {
     var x = f;
 
     while (true) {
+        if (x > max_i64_f or x < min_i64_f) {
+            return Value.makeFloat(f);
+        }
+
         const a: i64 = @intFromFloat(@floor(x));
-        const n2 = n0 + a * n1;
-        const d2 = d0 + a * d1;
+
+        const mul_n = @mulWithOverflow(a, n1);
+        if (mul_n[1] != 0) return Value.makeFloat(f);
+        const n2_of = @addWithOverflow(n0, mul_n[0]);
+        if (n2_of[1] != 0) return Value.makeFloat(f);
+        const n2 = n2_of[0];
+
+        const mul_d = @mulWithOverflow(a, d1);
+        if (mul_d[1] != 0) return Value.makeFloat(f);
+        const d2_of = @addWithOverflow(d0, mul_d[0]);
+        if (d2_of[1] != 0) return Value.makeFloat(f);
+        const d2 = d2_of[0];
 
         if (d2 > max_den) break;
 
@@ -81,6 +104,7 @@ pub fn floatToRational(heap: *Heap, f: f64) Error!Value {
         x = 1.0 / frac;
     }
 
+    if (d1 == 0) return Value.makeFloat(f);
     return makeRational(heap, n1, d1);
 }
 
@@ -105,4 +129,14 @@ test "rational negative denominator" {
     const r = try makeRational(&heap, 6, -8);
     try testing.expectEqual(@as(i64, -3), try numerator(r));
     try testing.expectEqual(@as(i64, 4), try denominator(r));
+}
+
+test "floatToRational keeps huge finite as float" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const v = try floatToRational(&heap, 1.0e40);
+    try testing.expect(v.typeKind() == .float);
+    try testing.expect(std.math.isFinite(v.toFloat()));
 }

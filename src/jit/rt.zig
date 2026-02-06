@@ -258,7 +258,7 @@ pub fn writeToString(c: *ctx.JitContext, val: Value) vm_mod.Error!Value {
 }
 
 pub fn random(c: *ctx.JitContext, n: Value) vm_mod.Error!Value {
-    return try arith.random(&c.vm.prng, &c.vm.prng_seeded, n);
+    return try arith.random(c.heap, &c.vm.prng, &c.vm.prng_seeded, n);
 }
 
 pub fn randomSeed(c: *ctx.JitContext, seed: Value) vm_mod.Error!Value {

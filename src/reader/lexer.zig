@@ -26,6 +26,7 @@ pub const TokenKind = enum {
     comma,
     comma_at,
     function_quote, // #'
+    read_eval, // #.
 
     // Literals
     number,
@@ -37,6 +38,8 @@ pub const TokenKind = enum {
     keyword,
     uninterned_symbol, // #:foo
     character,
+    label_def, // #1=
+    label_ref, // #1#
 
     // Reader conditionals
     feature_present, // #+
@@ -109,6 +112,7 @@ pub const Lexer = struct {
             ',' => if (self.match('@')) self.makeToken(.comma_at) else self.makeToken(.comma),
             '"' => self.readString(.string),
             ':' => self.readKeyword(),
+            '|' => self.readEscapedSymbol(),
             '.' => if (isDelimiter(self.peek())) self.makeToken(.dot) else self.readSymbolFromDot(),
             '-', '+' => if (isDigit(self.peek())) self.readNumber() else self.readSymbolFromSign(c),
             '#' => self.readHash(),
@@ -165,7 +169,7 @@ pub const Lexer = struct {
         while (!self.isAtEnd()) {
             const c = self.peek();
             switch (c) {
-                ' ', '\t', '\r', '\n' => _ = self.advance(),
+                ' ', '\t', '\r', '\n', 0x0C => _ = self.advance(),
                 ';' => {
                     // Comment - skip to end of line
                     while (!self.isAtEnd() and self.peek() != '\n') {
@@ -224,7 +228,7 @@ pub const Lexer = struct {
                 _ = self.advance();
             }
             // Check for exponent
-            if (self.peek() == 'e' or self.peek() == 'E') {
+            if (isExponentMarker(self.peek())) {
                 _ = self.advance();
                 if (self.peek() == '+' or self.peek() == '-') {
                     _ = self.advance();
@@ -244,7 +248,7 @@ pub const Lexer = struct {
         }
 
         // Check for exponent (scientific notation for integers becomes float)
-        if (self.peek() == 'e' or self.peek() == 'E') {
+        if (isExponentMarker(self.peek())) {
             _ = self.advance();
             if (self.peek() == '+' or self.peek() == '-') {
                 _ = self.advance();
@@ -302,43 +306,81 @@ pub const Lexer = struct {
     }
 
     fn readSymbol(self: *Lexer) Token {
-        while (isSymbolChar(self.peek())) {
-            _ = self.advance();
-        }
-        return self.makeToken(.symbol);
+        // First symbol character was already consumed in next().
+        return self.readSymbolLike(.symbol, false, true, false);
     }
 
     fn readSymbolFromDot(self: *Lexer) Token {
-        while (isSymbolChar(self.peek())) {
-            _ = self.advance();
-        }
-        return self.makeToken(.symbol);
+        // Leading '.' was already consumed in next().
+        return self.readSymbolLike(.symbol, false, true, false);
     }
 
     fn readSymbolFromSign(self: *Lexer, sign: u8) Token {
         _ = sign;
-        // Already consumed sign, now read rest
-        while (isSymbolChar(self.peek())) {
-            _ = self.advance();
-        }
-        return self.makeToken(.symbol);
+        // Already consumed sign, now read rest.
+        return self.readSymbolLike(.symbol, false, true, false);
     }
 
     fn readKeyword(self: *Lexer) Token {
         // Already consumed ':'
-        while (isSymbolChar(self.peek())) {
-            _ = self.advance();
-        }
-        return self.makeToken(.keyword);
+        return self.readSymbolLike(.keyword, false, false, false);
     }
 
     fn readUninternedSymbol(self: *Lexer) Token {
         // Already consumed '#:'
-        if (!isSymbolChar(self.peek())) return self.makeToken(.err);
-        while (isSymbolChar(self.peek())) {
-            _ = self.advance();
+        return self.readSymbolLike(.uninterned_symbol, false, false, false);
+    }
+
+    fn readEscapedSymbol(self: *Lexer) Token {
+        // Opening '|' was already consumed as first character of token.
+        return self.readSymbolLike(.symbol, true, false, true);
+    }
+
+    fn readSymbolLike(self: *Lexer, kind: TokenKind, allow_empty: bool, saw_any_init: bool, in_bar_init: bool) Token {
+        var saw_any = saw_any_init;
+        var in_bar = in_bar_init;
+
+        while (!self.isAtEnd()) {
+            const c = self.peek();
+            if (in_bar) {
+                _ = self.advance();
+                if (c == '\\') {
+                    if (self.isAtEnd()) return self.makeToken(.err);
+                    _ = self.advance(); // escaped char inside bars
+                    saw_any = true;
+                } else if (c == '|') {
+                    // || is a valid empty escaped symbol name.
+                    if (!saw_any) saw_any = true;
+                    in_bar = false;
+                } else {
+                    saw_any = true;
+                }
+                continue;
+            }
+
+            if (c == '\\') {
+                _ = self.advance();
+                if (self.isAtEnd()) return self.makeToken(.err);
+                _ = self.advance(); // escaped char outside bars
+                saw_any = true;
+                continue;
+            }
+            if (c == '|') {
+                _ = self.advance();
+                in_bar = true;
+                continue;
+            }
+            if (isSymbolChar(c)) {
+                _ = self.advance();
+                saw_any = true;
+                continue;
+            }
+            break;
         }
-        return self.makeToken(.uninterned_symbol);
+
+        if (in_bar) return self.makeToken(.err); // Unterminated |...|
+        if (!allow_empty and !saw_any) return self.makeToken(.err);
+        return self.makeToken(kind);
     }
 
     fn readHash(self: *Lexer) Token {
@@ -350,6 +392,11 @@ pub const Lexer = struct {
             // Character literal: #\a, #\newline, etc.
             _ = self.advance(); // consume backslash
             return self.readCharacter();
+        }
+        if (c == '.') {
+            // Read-time eval: #.
+            _ = self.advance(); // consume dot
+            return self.makeToken(.read_eval);
         }
         if (c == '\'') {
             // Function quote: #'name
@@ -408,14 +455,28 @@ pub const Lexer = struct {
             return self.makeToken(.err);
         }
         if (std.ascii.isDigit(c)) {
+            // Label syntax: #n= / #n#
             // Multi-dimensional array: #2A((row1)(row2))
             while (!self.isAtEnd() and std.ascii.isDigit(self.peek())) {
                 _ = self.advance();
+            }
+            if (self.peek() == '=') {
+                _ = self.advance();
+                return self.makeToken(.label_def);
+            }
+            if (self.peek() == '#') {
+                _ = self.advance();
+                return self.makeToken(.label_ref);
             }
             if ((self.peek() == 'A' or self.peek() == 'a')) {
                 _ = self.advance(); // consume 'A'
                 if (self.peek() == '(') {
                     _ = self.advance(); // consume '('
+                    return self.makeToken(.array_open);
+                }
+                // Rank-0 scalar syntax: #0Afoo
+                const digits = self.source[self.token_start + 1 .. self.pos - 1];
+                if (allDigitsZero(digits)) {
                     return self.makeToken(.array_open);
                 }
             }
@@ -491,6 +552,12 @@ pub const Lexer = struct {
         // Already consumed '#\'
         if (self.isAtEnd()) return self.makeToken(.err);
 
+        // CL allows delimiter characters as a single-character name, e.g. #\  or #\).
+        if (isDelimiter(self.peek())) {
+            _ = self.advance();
+            return self.makeToken(.character);
+        }
+
         // Read character name or single char
         const start = self.pos;
         while (!self.isAtEnd() and !isDelimiter(self.peek())) {
@@ -530,7 +597,7 @@ pub const Lexer = struct {
     }
 
     fn isDelimiter(c: u8) bool {
-        return c == 0 or c == ' ' or c == '\t' or c == '\n' or c == '\r' or
+        return c == 0 or c == ' ' or c == '\t' or c == '\n' or c == '\r' or c == 0x0C or
             c == '(' or c == ')' or c == '"' or c == ';' or c == '\'';
     }
 };
@@ -539,8 +606,23 @@ fn isDigit(c: u8) bool {
     return c >= '0' and c <= '9';
 }
 
+fn isExponentMarker(c: u8) bool {
+    return switch (c) {
+        'e', 'E', 's', 'S', 'f', 'F', 'd', 'D', 'l', 'L' => true,
+        else => false,
+    };
+}
+
 fn isHexDigit(c: u8) bool {
     return isDigit(c) or (c >= 'a' and c <= 'f') or (c >= 'A' and c <= 'F');
+}
+
+fn allDigitsZero(s: []const u8) bool {
+    if (s.len == 0) return false;
+    for (s) |c| {
+        if (c != '0') return false;
+    }
+    return true;
 }
 
 fn isSymbolStart(c: u8) bool {
@@ -635,6 +717,32 @@ test "lex keywords" {
     try testing.expectEqualStrings(":test-key", t2.text);
 }
 
+test "lex escaped symbol names" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init(":|| :|a| :|1234| #:|| ||");
+
+    const t1 = lexer.next();
+    try testing.expectEqual(TokenKind.keyword, t1.kind);
+    try testing.expectEqualStrings(":||", t1.text);
+
+    const t2 = lexer.next();
+    try testing.expectEqual(TokenKind.keyword, t2.kind);
+    try testing.expectEqualStrings(":|a|", t2.text);
+
+    const t3 = lexer.next();
+    try testing.expectEqual(TokenKind.keyword, t3.kind);
+    try testing.expectEqualStrings(":|1234|", t3.text);
+
+    const t4 = lexer.next();
+    try testing.expectEqual(TokenKind.uninterned_symbol, t4.kind);
+    try testing.expectEqualStrings("#:||", t4.text);
+
+    const t5 = lexer.next();
+    try testing.expectEqual(TokenKind.symbol, t5.kind);
+    try testing.expectEqualStrings("||", t5.text);
+}
+
 test "lex uninterned symbols" {
     const testing = std.testing;
 
@@ -647,6 +755,38 @@ test "lex uninterned symbols" {
     const t2 = lexer.next();
     try testing.expectEqual(TokenKind.uninterned_symbol, t2.kind);
     try testing.expectEqualStrings("#:*bar*", t2.text);
+}
+
+test "lex shared labels" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#1=#:foo #1# #12=(a b) #12#");
+
+    const t1 = lexer.next();
+    try testing.expectEqual(TokenKind.label_def, t1.kind);
+    try testing.expectEqualStrings("#1=", t1.text);
+
+    const t2 = lexer.next();
+    try testing.expectEqual(TokenKind.uninterned_symbol, t2.kind);
+    try testing.expectEqualStrings("#:foo", t2.text);
+
+    const t3 = lexer.next();
+    try testing.expectEqual(TokenKind.label_ref, t3.kind);
+    try testing.expectEqualStrings("#1#", t3.text);
+
+    const t4 = lexer.next();
+    try testing.expectEqual(TokenKind.label_def, t4.kind);
+    try testing.expectEqualStrings("#12=", t4.text);
+
+    const t5 = lexer.next();
+    try testing.expectEqual(TokenKind.lparen, t5.kind);
+    try testing.expectEqual(TokenKind.symbol, lexer.next().kind);
+    try testing.expectEqual(TokenKind.symbol, lexer.next().kind);
+    try testing.expectEqual(TokenKind.rparen, lexer.next().kind);
+
+    const t6 = lexer.next();
+    try testing.expectEqual(TokenKind.label_ref, t6.kind);
+    try testing.expectEqualStrings("#12#", t6.text);
 }
 
 test "lex strings" {
@@ -720,7 +860,7 @@ test "dot token" {
 test "lex characters" {
     const testing = std.testing;
 
-    var lexer = Lexer.init("#\\a #\\newline #\\space");
+    var lexer = Lexer.init("#\\a #\\newline #\\space #\\  #\\)");
 
     const t1 = lexer.next();
     try testing.expectEqual(TokenKind.character, t1.kind);
@@ -733,6 +873,14 @@ test "lex characters" {
     const t3 = lexer.next();
     try testing.expectEqual(TokenKind.character, t3.kind);
     try testing.expectEqualStrings("#\\space", t3.text);
+
+    const t4 = lexer.next();
+    try testing.expectEqual(TokenKind.character, t4.kind);
+    try testing.expectEqualStrings("#\\ ", t4.text);
+
+    const t5 = lexer.next();
+    try testing.expectEqual(TokenKind.character, t5.kind);
+    try testing.expectEqualStrings("#\\)", t5.text);
 }
 
 test "lex hex numbers" {
@@ -819,6 +967,17 @@ test "lex #2A array literal" {
     try testing.expectEqualStrings("#2A(", t1.text);
 }
 
+test "lex #0A scalar array literal" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#0AT");
+
+    const t1 = lexer.next();
+    try testing.expectEqual(TokenKind.array_open, t1.kind);
+    try testing.expectEqualStrings("#0A", t1.text);
+    try testing.expectEqual(TokenKind.symbol, lexer.next().kind);
+}
+
 test "lex block comment" {
     const testing = std.testing;
 
@@ -860,5 +1019,18 @@ test "lex reader conditionals" {
     try testing.expectEqual(TokenKind.symbol, t4.kind);
     try testing.expectEqualStrings("cl", t4.text);
 
+    try testing.expectEqual(TokenKind.eof, lexer.next().kind);
+}
+
+test "lex sharp dot reader eval" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#.(+ 1 2)");
+    try testing.expectEqual(TokenKind.read_eval, lexer.next().kind);
+    try testing.expectEqual(TokenKind.lparen, lexer.next().kind);
+    try testing.expectEqual(TokenKind.symbol, lexer.next().kind);
+    try testing.expectEqual(TokenKind.number, lexer.next().kind);
+    try testing.expectEqual(TokenKind.number, lexer.next().kind);
+    try testing.expectEqual(TokenKind.rparen, lexer.next().kind);
     try testing.expectEqual(TokenKind.eof, lexer.next().kind);
 }

@@ -334,6 +334,8 @@ pub const Builtins = struct {
     // Primitives - Vector operations (CL names)
     aref: Value, // CL: array element access
     svref: Value, // CL: simple-vector element access
+    bit: Value, // CL: bit-array element access
+    sbit: Value, // CL: simple-bit-vector element access
     elt: Value, // CL: generic sequence element access
     @"%svset": Value, // internal: (setf (svref ...)) expands to this
     @"%aset": Value, // internal: (setf (aref ...)) expands to this
@@ -635,6 +637,9 @@ pub const Builtins = struct {
     kw_eq: Value,
     kw_eql: Value,
     kw_equal: Value,
+    @"kw_initial-element": Value,
+    @"kw_element-type": Value,
+    @"kw_allow-other-keys": Value,
     kw_colon: Value,
     kw_type: Value,
     kw_initform: Value,
@@ -904,6 +909,8 @@ pub const Builtins = struct {
             // Primitives - Vector operations (CL names)
             .aref = try heap.intern("aref"),
             .svref = try heap.intern("svref"),
+            .bit = try heap.intern("bit"),
+            .sbit = try heap.intern("sbit"),
             .elt = try heap.intern("elt"),
             .@"%svset" = try heap.intern("%svset"),
             .@"%aset" = try heap.intern("%aset"),
@@ -1188,6 +1195,9 @@ pub const Builtins = struct {
             .kw_eq = try heap.internKeyword("eq"),
             .kw_eql = try heap.internKeyword("eql"),
             .kw_equal = try heap.internKeyword("equal"),
+            .@"kw_initial-element" = try heap.internKeyword("initial-element"),
+            .@"kw_element-type" = try heap.internKeyword("element-type"),
+            .@"kw_allow-other-keys" = try heap.internKeyword("allow-other-keys"),
             .kw_colon = try heap.intern(":"),
             .kw_type = try heap.internKeyword("type"),
             .kw_initform = try heap.internKeyword("initform"),
@@ -1380,12 +1390,8 @@ pub const Env = struct {
     /// Get total local count in this frame
     pub fn localCount(self: *const Env) u16 {
         const own_count: u16 = @intCast(self.bindings.count());
-        if (!self.new_frame) {
-            // For let envs, add parent's count
-            if (self.parent) |p| {
-                return p.localCount() + own_count;
-            }
-        }
+        // base_index is absolute for both lambda and let scopes.
+        // Nested let scopes set base_index from parent.localCount().
         return self.base_index + own_count;
     }
 
@@ -2387,7 +2393,7 @@ pub const Compiler = struct {
                 return try self.builder.globalRef(name, idx);
             }
 
-            const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:" };
+            const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
             var full_buf: [640]u8 = undefined;
             for (prefixes) |prefix| {
                 if (prefix.len + name.len > full_buf.len) continue;
@@ -2667,8 +2673,9 @@ pub const Compiler = struct {
                     .function => self.compileFunction(tail, env),
                     .quasiquote => self.compileQuasiquote(tail, env),
                     .@"while" => self.compileWhile(tail, env),
-                    .loop => self.compileLoop(tail, env),
-                    .define, .defvar => self.compileDefine(tail, env),
+                    .loop => self.compileLoopSpecial(expr, head, tail, env, in_tail),
+                    .define => self.compileDefine(tail, env),
+                    .defvar => self.compileDefvar(tail, env),
                     .defun => self.compileDefun(tail, env),
                     .the => self.compileThe(tail, env),
                     .declare => self.compileDeclare(tail),
@@ -2702,7 +2709,7 @@ pub const Compiler = struct {
                     .@"load-time-value" => self.compileLoadTimeValue(tail, env),
                     // Packages
                     .defpackage => self.compileDefpackage(tail),
-                    .@"in-package" => self.compileInPackage(tail),
+                    .@"in-package" => self.compileInPackage(tail, env),
                     .@"export" => self.compileExport(tail, env),
                     .@"use-package" => self.compileUsePackage(tail, env),
                     // Structure definition
@@ -2725,7 +2732,17 @@ pub const Compiler = struct {
                     .@"slot-boundp" => self.compileSlotBoundp(tail, env),
                     .@"slot-makunbound" => self.compileSlotMakunbound(tail, env),
                     .@"class-name" => self.compileUnaryPrim(tail, env, .class_name),
-                    .@"find-class" => self.compileUnaryPrim(tail, env, .find_class),
+                    .@"find-class" => blk: {
+                        // FIND-CLASS has optional args in CL. Keep unary fast path for
+                        // (find-class name), but fall back to regular function call when
+                        // optional args are present.
+                        if (!tail.isCons()) return error.InvalidSyntax;
+                        const first = tail.toPtr(Cons);
+                        if (first.cdr.isNil()) {
+                            break :blk self.compileUnaryPrim(tail, env, .find_class);
+                        }
+                        break :blk self.compileCallWithTail(head, tail, env, in_tail);
+                    },
                     .@"class-direct-superclasses" => self.compileUnaryPrim(tail, env, .class_direct_superclasses),
                     .@"class-precedence-list" => self.compileUnaryPrim(tail, env, .class_precedence_list),
                     .@"class-direct-slots" => self.compileUnaryPrim(tail, env, .class_direct_slots),
@@ -2759,6 +2776,25 @@ pub const Compiler = struct {
 
         // Function call - pass tail position
         return self.compileCallWithTail(head, tail, env, in_tail);
+    }
+
+    fn patchChunkClosureIndices(chunk: *Chunk, base: u16) void {
+        const code = chunk.getCode();
+        var i: usize = 0;
+        while (i + 1 < code.len) {
+            const low: u16 = code[i];
+            const high: u16 = code[i + 1];
+            const opcode: u16 = low | (high << 8);
+            const op: bytecode.Op = @enumFromInt(opcode);
+            const size = op.operandSize();
+
+            if (op == .make_closure) {
+                const rel_idx = std.mem.readInt(u16, code[i + 2 ..][0..2], .little);
+                std.mem.writeInt(u16, code[i + 2 ..][0..2], rel_idx + base, .little);
+            }
+
+            i += 2 + size;
+        }
     }
 
     /// Expand a macro by calling its expander function with the arguments
@@ -2936,10 +2972,11 @@ pub const Compiler = struct {
             saved_pool.len + 5 + (macro_entries.items.len * 2) + (symbol_macro_entries.items.len * 2),
         );
         defer self.allocator.free(macro_roots);
-        const chunk_ptrs = try self.allocator.alloc(*Chunk, child_chunks.len);
+        const chunk_ptrs = try self.allocator.alloc(*Chunk, saved_pool.len + child_chunks.len);
         defer self.allocator.free(chunk_ptrs);
         for (saved_pool, 0..) |ptr, i| {
             macro_roots[i] = Value.makeChunk(ptr);
+            chunk_ptrs[i] = ptr;
         }
         macro_roots[root_chunk_idx] = chunk_val;
         macro_roots[root_closure_idx] = Value.nil;
@@ -2957,8 +2994,17 @@ pub const Compiler = struct {
             macro_roots[root_idx + 1] = entry.val;
             root_idx += 2;
         }
+        const macro_chunk_base: u16 = @intCast(saved_pool.len);
+        if (macro_chunk_base > 0) {
+            patchChunkClosureIndices(macro_roots[root_chunk_idx].toPtr(Chunk), macro_chunk_base);
+        }
+
         for (child_chunks, 0..) |cv, i| {
-            chunk_ptrs[i] = cv.toPtr(Chunk);
+            const child_ptr = cv.toPtr(Chunk);
+            if (macro_chunk_base > 0) {
+                patchChunkClosureIndices(child_ptr, macro_chunk_base);
+            }
+            chunk_ptrs[saved_pool.len + i] = child_ptr;
         }
 
         vm.setExtRoots(macro_roots);
@@ -3535,28 +3581,29 @@ pub const Compiler = struct {
 
         // Handle simple type symbols by identity
         if (type_sym.isSymbol()) {
-            if (type_sym.raw == b.ty_fixnum.raw) return self.builder.assertFixnum(expr_ir);
-            if (type_sym.raw == b.cons.raw) return self.builder.assertCons(expr_ir);
+            if (type_sym.raw == b.ty_fixnum.raw or type_sym.raw == b.ty_integer.raw) return self.builder.assertFixnum(expr_ir);
+            if (type_sym.raw == b.cons.raw or type_sym.raw == b.ty_cons.raw) return self.builder.assertCons(expr_ir);
             if (type_sym.raw == b.ty_symbol.raw) return self.builder.assertSymbol(expr_ir);
-            if (type_sym.raw == b.string.raw) return self.builder.assertString(expr_ir);
-            if (type_sym.raw == b.ty_vector.raw) return self.builder.assertVector(expr_ir);
-            if (type_sym.raw == b.ty_closure.raw) return self.builder.assertClosure(expr_ir);
-            if (type_sym.raw == b.ty_list.raw) return self.builder.assertList(expr_ir);
+            if (type_sym.raw == b.string.raw or type_sym.raw == b.ty_string.raw) return self.builder.assertString(expr_ir);
+            if (type_sym.raw == b.ty_vector.raw or type_sym.raw == b.vector.raw) return self.builder.assertVector(expr_ir);
+            if (type_sym.raw == b.ty_closure.raw or type_sym.raw == b.ty_function.raw or type_sym.raw == b.function.raw) return self.builder.assertClosure(expr_ir);
+            if (type_sym.raw == b.ty_list.raw or type_sym.raw == b.list.raw) return self.builder.assertList(expr_ir);
             if (type_sym.raw == b.@"ty_non-nil".raw) return self.builder.assertNonNil(expr_ir);
-            if (type_sym.raw == b.ty_any.raw) return null; // any = no check
-            if (type_sym.raw == b.ty_nil.raw) {
+            if (type_sym.raw == b.ty_any.raw or type_sym.raw == b.ty_t.raw) return null; // any = no check
+            if (type_sym.raw == b.ty_nil.raw or type_sym.raw == b.null.raw) {
                 // nil type - use assertOr with just nil
                 const syms = try self.allocator.alloc(Value, 1);
                 syms[0] = b.ty_nil;
                 return self.builder.assertOr(expr_ir, syms);
             }
-            return error.InvalidSyntax;
+            // Unknown type declarations are advisory.
+            return null;
         }
 
         // Handle complex types: (union T1 T2 ...), etc.
         if (type_sym.isCons()) {
             const cons = type_sym.toPtr(Cons);
-            if (!cons.car.isSymbol()) return error.InvalidSyntax;
+            if (!cons.car.isSymbol()) return null;
 
             // Check for (union T1 T2 ...) or (or T1 T2 ...)
             if (cons.car.raw == b.ty_union.raw or cons.car.raw == b.ty_or.raw) {
@@ -3575,30 +3622,24 @@ pub const Compiler = struct {
                             try alts.append(self.allocator, b.ty_nil);
                         },
                         else => {
-                            // Nested complex type - not yet supported
-                            return error.InvalidSyntax;
+                            // Nested complex type declarations are advisory.
+                            return null;
                         },
                     }
                     current = c.cdr;
                 }
 
-                if (alts.items.len == 0) return error.InvalidSyntax;
+                if (alts.items.len == 0) return null;
 
                 const syms = try self.allocator.dupe(Value, alts.items);
                 return self.builder.assertOr(expr_ir, syms);
             }
 
-            // Other complex types not yet supported
-            if (self.diag) {
-                std.debug.print("InvalidSyntax: unknown complex type\n", .{});
-            }
-            return error.InvalidSyntax;
+            // Other complex declarations are advisory.
+            return null;
         }
 
-        if (self.diag) {
-            std.debug.print("InvalidSyntax: unknown type\n", .{});
-        }
-        return error.InvalidSyntax;
+        return null;
     }
 
     /// Collect free variables in an expression
@@ -4010,9 +4051,17 @@ pub const Compiler = struct {
         }
 
         // Create a slot-reserving environment for compiling value expressions.
-        // This env has the same localCount as let_env but no visible bindings.
-        // Nested lets/ors will use indices starting after our reserved slots.
-        var value_env = Env.initLet(self.allocator, &let_env);
+        // This env has the same localCount as let_env but must NOT see let_env bindings.
+        // LET value forms are evaluated in the outer lexical environment.
+        var value_env = Env{
+            .bindings = VarMap.init(self.allocator),
+            .parent = env,
+            .depth = env.depth,
+            .new_frame = false,
+            .base_index = let_env.localCount(),
+            .allocator = self.allocator,
+            .optimize = env.optimize,
+        };
         defer value_env.deinit();
 
         // Second pass: compile bindings using pre-assigned indices
@@ -4381,8 +4430,39 @@ pub const Compiler = struct {
 
         if (!bindings_expr.isCons()) return error.InvalidLet;
 
-        // Recursively compile as nested lets
-        return self.compileLetStarBindings(bindings_expr, body_exprs, env, in_tail);
+        // Desugar to explicit nested LET forms, then compile once.
+        // This keeps lexical shadowing semantics correct for repeated names.
+        const nested_let_form = try self.buildNestedLetFromLetStar(bindings_expr, body_exprs);
+        return self.compileWithTail(nested_let_form, env, in_tail);
+    }
+
+    fn buildNestedLetFromLetStar(self: *Compiler, bindings_list: Value, body_exprs: Value) anyerror!Value {
+        if (!bindings_list.isCons()) return error.InvalidLet;
+        const heap = if (self.heap) |h| h else return error.InvalidLet;
+        const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
+
+        const bind_cons = bindings_list.toPtr(Cons);
+        const first_binding = bind_cons.car;
+        const rest_bindings = bind_cons.cdr;
+
+        // Validate binding syntax early so invalid let* forms still fail here.
+        if (!first_binding.isSymbolLike() and !first_binding.isCons()) return error.InvalidLet;
+        if (first_binding.isCons()) {
+            const pair = first_binding.toPtr(Cons);
+            if (!pair.car.isSymbolLike()) return error.InvalidLet;
+        }
+
+        const single_binding_list = try heap.allocCons(first_binding, Value.nil);
+
+        const inner_body = if (rest_bindings.isNil()) blk: {
+            break :blk body_exprs;
+        } else blk: {
+            const nested_inner = try self.buildNestedLetFromLetStar(rest_bindings, body_exprs);
+            break :blk try heap.allocCons(nested_inner, Value.nil);
+        };
+
+        const let_args = try heap.allocCons(single_binding_list, inner_body);
+        return try heap.allocCons(b.let, let_args);
     }
 
     fn compileLetStarBindings(self: *Compiler, bindings_list: Value, body_exprs: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
@@ -4404,15 +4484,9 @@ pub const Compiler = struct {
         const name_raw = bind_sym.getSymbolName();
         const name = try self.allocator.dupe(u8, name_raw);
 
-        // Create extended environment first to get binding index
-        var let_env = Env.initLet(self.allocator, env);
-        defer let_env.deinit();
-        const index = if (bind_sym.typeKind() == .symbol)
-            try let_env.bindSym(bind_sym)
-        else
-            try let_env.bindName(name);
-
-        // Compile value in current environment
+        // Compile value before introducing the new binding.
+        // This preserves CL let* shadowing semantics for repeated names:
+        // (let* ((x 1) (x (+ x 1))) ...) must read the outer X in (+ x 1).
         const val_ir = blk: {
             if (binding.isSymbolLike()) break :blk try self.builder.lit(Value.nil);
             if (!binding.isCons()) return error.InvalidLet;
@@ -4422,6 +4496,14 @@ pub const Compiler = struct {
             const val_cons = b.cdr.toPtr(Cons);
             break :blk try self.compile(val_cons.car, env);
         };
+
+        // Create extended environment and allocate slot for this binding.
+        var let_env = Env.initLet(self.allocator, env);
+        defer let_env.deinit();
+        const index = if (bind_sym.typeKind() == .symbol)
+            try let_env.bindSym(bind_sym)
+        else
+            try let_env.bindName(name);
 
         // Create single-binding array with index
         const binding_array = [_]ir.Ir.Binding{.{ .name = name, .value = val_ir, .index = index }};
@@ -4676,13 +4758,32 @@ pub const Compiler = struct {
         defer if (q.owned) self.allocator.free(q.name);
         const global_name = q.name;
 
-        if (self.globals.lookup(global_name)) |idx| {
-            return try self.builder.define(global_name, idx, val_ir);
+        var name = global_name;
+        var idx_opt = self.globals.lookup(name);
+        if (idx_opt == null) {
+            if (self.globals.lookup(local_name)) |idx| {
+                idx_opt = idx;
+                name = local_name;
+            } else {
+                const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
+                var full_buf: [640]u8 = undefined;
+                for (prefixes) |prefix| {
+                    if (prefix.len + local_name.len > full_buf.len) continue;
+                    @memcpy(full_buf[0..prefix.len], prefix);
+                    @memcpy(full_buf[prefix.len .. prefix.len + local_name.len], local_name);
+                    const candidate = full_buf[0 .. prefix.len + local_name.len];
+                    if (self.globals.lookup(candidate)) |idx| {
+                        idx_opt = idx;
+                        name = candidate;
+                        break;
+                    }
+                }
+            }
         }
 
         // CL semantics: top-level setq creates a global binding when absent.
-        const idx = try self.globals.define(global_name);
-        return try self.builder.define(global_name, idx, val_ir);
+        const idx = idx_opt orelse try self.globals.define(name);
+        return try self.builder.define(name, idx, val_ir);
     }
 
     /// Compile setf special form: (setf place value)
@@ -4755,9 +4856,29 @@ pub const Compiler = struct {
                     const q = try self.getQualifiedName(exp_sym, &qual_buf);
                     defer if (q.owned) self.allocator.free(q.name);
                     const global_name = q.name;
-                    if (self.globals.lookup(global_name)) |idx| {
-                        return try self.builder.define(global_name, idx, val_ir);
+                    var name = global_name;
+                    var idx_opt = self.globals.lookup(name);
+                    if (idx_opt == null) {
+                        if (self.globals.lookup(exp_name)) |idx| {
+                            idx_opt = idx;
+                            name = exp_name;
+                        } else {
+                            const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
+                            var full_buf: [640]u8 = undefined;
+                            for (prefixes) |prefix| {
+                                if (prefix.len + exp_name.len > full_buf.len) continue;
+                                @memcpy(full_buf[0..prefix.len], prefix);
+                                @memcpy(full_buf[prefix.len .. prefix.len + exp_name.len], exp_name);
+                                const candidate = full_buf[0 .. prefix.len + exp_name.len];
+                                if (self.globals.lookup(candidate)) |idx| {
+                                    idx_opt = idx;
+                                    name = candidate;
+                                    break;
+                                }
+                            }
+                        }
                     }
+                    if (idx_opt) |idx| return try self.builder.define(name, idx, val_ir);
                     return error.UnboundVariable;
                 }
                 return error.InvalidSyntax;
@@ -4887,8 +5008,9 @@ pub const Compiler = struct {
                     return node;
                 }
 
-                // (setf (aref array idx...) val) -> (%aset array idx... val)
-                if (h == b.aref.raw) {
+                // (setf (aref array idx...) val) and (setf (bit array idx) val)
+                // lower to (%aset array idx... val).
+                if (h == b.aref.raw or h == b.bit.raw) {
                     // Build args for compileAset: (array sub1 sub2 ... val)
                     const heap = if (self.heap) |val| val else return error.InvalidSyntax;
                     // Append value_expr to place_args
@@ -4908,8 +5030,8 @@ pub const Compiler = struct {
                     return self.compileAset(aset_args, env);
                 }
 
-                // (setf (svref vec idx) val) -> vec_set
-                if (h == b.svref.raw) {
+                // (setf (svref vec idx) val) and (setf (sbit vec idx) val) -> vec_set
+                if (h == b.svref.raw or h == b.sbit.raw) {
                     if (!place_args.isCons()) return error.InvalidSyntax;
                     const pc1 = place_args.toPtr(Cons);
                     const vec_ir = try self.compile(pc1.car, env);
@@ -4994,6 +5116,38 @@ pub const Compiler = struct {
                     return node;
                 }
 
+                // (setf (logical-pathname-translations host) val)
+                // Route directly to set-logical-pathname-translations(host, val).
+                if (std.ascii.eqlIgnoreCase(head.toPtr(Symbol).getName(), "logical-pathname-translations")) {
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const host_cons = place_args.toPtr(Cons);
+                    if (!host_cons.cdr.isNil()) return error.InvalidSyntax;
+
+                    const host_ir = try self.compile(host_cons.car, env);
+                    const val_ir = try self.compile(value_expr, env);
+
+                    const setter_candidates = [_][]const u8{
+                        "SET-LOGICAL-PATHNAME-TRANSLATIONS",
+                        "set-logical-pathname-translations",
+                        "COMMON-LISP:SET-LOGICAL-PATHNAME-TRANSLATIONS",
+                        "COMMON-LISP:set-logical-pathname-translations",
+                        "CL:SET-LOGICAL-PATHNAME-TRANSLATIONS",
+                        "CL:set-logical-pathname-translations",
+                        "CL-USER:SET-LOGICAL-PATHNAME-TRANSLATIONS",
+                        "CL-USER:set-logical-pathname-translations",
+                    };
+
+                    for (setter_candidates) |name| {
+                        if (self.globals.lookup(name)) |idx| {
+                            const set_ref = try self.builder.globalRef(name, idx);
+                            const args_ir = try self.allocator.alloc(*Ir, 2);
+                            args_ir[0] = host_ir;
+                            args_ir[1] = val_ir;
+                            return try self.builder.call(set_ref, args_ir);
+                        }
+                    }
+                }
+
                 // Fallback: look for (setf accessor-name) function
                 // (setf (accessor-name args...) val) -> ((setf accessor-name) val args...)
                 const func_sym = head.toPtr(Symbol);
@@ -5022,6 +5176,18 @@ pub const Compiler = struct {
                     return try self.compileSetfGlobalCall(env, value_expr, place_args, q_upper.name, idx);
                 }
 
+                const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
+                var prefixed_upper_buf: [768]u8 = undefined;
+                for (prefixes) |prefix| {
+                    if (prefix.len + setf_name_upper.len > prefixed_upper_buf.len) continue;
+                    @memcpy(prefixed_upper_buf[0..prefix.len], prefix);
+                    @memcpy(prefixed_upper_buf[prefix.len .. prefix.len + setf_name_upper.len], setf_name_upper);
+                    const candidate = prefixed_upper_buf[0 .. prefix.len + setf_name_upper.len];
+                    if (self.globals.lookup(candidate)) |idx| {
+                        return try self.compileSetfGlobalCall(env, value_expr, place_args, candidate, idx);
+                    }
+                }
+
                 const setf_name_lower = try std.fmt.allocPrint(self.allocator, "(setf {s})", .{func_name});
                 defer self.allocator.free(setf_name_lower);
                 if (self.globals.lookup(setf_name_lower)) |idx| {
@@ -5033,6 +5199,17 @@ pub const Compiler = struct {
                 defer if (q_lower.owned) self.allocator.free(q_lower.name);
                 if (self.globals.lookup(q_lower.name)) |idx| {
                     return try self.compileSetfGlobalCall(env, value_expr, place_args, q_lower.name, idx);
+                }
+
+                var prefixed_lower_buf: [768]u8 = undefined;
+                for (prefixes) |prefix| {
+                    if (prefix.len + setf_name_lower.len > prefixed_lower_buf.len) continue;
+                    @memcpy(prefixed_lower_buf[0..prefix.len], prefix);
+                    @memcpy(prefixed_lower_buf[prefix.len .. prefix.len + setf_name_lower.len], setf_name_lower);
+                    const candidate = prefixed_lower_buf[0 .. prefix.len + setf_name_lower.len];
+                    if (self.globals.lookup(candidate)) |idx| {
+                        return try self.compileSetfGlobalCall(env, value_expr, place_args, candidate, idx);
+                    }
                 }
             }
         }
@@ -5197,13 +5374,7 @@ pub const Compiler = struct {
         const cons = args.toPtr(Cons);
         const quoted = cons.car;
 
-        // For symbols, use quote_sym
-        if (quoted.isSymbol()) {
-            const sym = quoted.toPtr(Symbol);
-            return try self.builder.quoteSym(sym.getName());
-        }
-
-        // For other values, return as literal
+        // Preserve exact symbol identity/package in quoted forms.
         return try self.builder.lit(quoted);
     }
 
@@ -5231,7 +5402,8 @@ pub const Compiler = struct {
             const inner = func_spec.toPtr(Cons);
             if (inner.car.isSymbol()) {
                 if (self.builtins) |b| {
-                    if (inner.car.raw == b.lambda.raw or inner.car.raw == b.@"fn".raw) {
+                    const canonical_head = self.canonicalBuiltinSymbol(inner.car);
+                    if (canonical_head.raw == b.lambda.raw or canonical_head.raw == b.@"fn".raw) {
                         return self.compileLambda(inner.cdr, env);
                     }
                 }
@@ -5278,10 +5450,12 @@ pub const Compiler = struct {
         if (s == b.@"probe-file".raw) return try self.makeUnaryWrapper(&IrBuilder.probeFile);
         if (s == b.@"file-write-date".raw) return try self.makeUnaryWrapper(&IrBuilder.fileWriteDate);
         if (s == b.@"file-author".raw) return try self.makeUnaryWrapper(&IrBuilder.fileAuthor);
+        if (s == b.@"make-array".raw) return try self.makeMakeArrayWrapper();
         if (s == b.@"symbol-name".raw) return try self.makeUnaryPrimitiveWrapper(.sym_name);
         if (s == b.intern.raw) return try self.makeUnaryPrimitiveWrapper(.intern);
         if (s == b.@"copy-structure".raw) return try self.makeUnaryWrapper(&IrBuilder.copyStructure);
         if (s == b.@"function-lambda-expression".raw) return try self.makeUnaryWrapper(&IrBuilder.functionLambdaExpression);
+        if (s == b.values.raw) return try self.makeValuesWrapper();
 
         // Variadic arithmetic - create wrappers using add/sub/mul/div builders
         if (s == b.@"+".raw) return try self.makeVariadicAddWrapper();
@@ -5319,6 +5493,21 @@ pub const Compiler = struct {
         };
         const params = [_][]const u8{"a"};
         return try self.builder.lambda(&params, &.{}, &.{}, false, null, &.{}, prim_call);
+    }
+
+    fn makeMakeArrayWrapper(self: *Compiler) anyerror!*Ir {
+        // (lambda (dimensions) (make-array dimensions))
+        const dims_ref = try self.builder.variable("dimensions", 0, 0);
+        const prim_call = try self.builder.arrNewDynamic(dims_ref, null);
+        const params = [_][]const u8{"dimensions"};
+        return try self.builder.lambda(&params, &.{}, &.{}, false, null, &.{}, prim_call);
+    }
+
+    fn makeValuesWrapper(self: *Compiler) anyerror!*Ir {
+        // (lambda (&rest args) (values-list args))
+        const args_ref = try self.builder.variable("args", 0, 0);
+        const body = try self.builder.valuesList(args_ref);
+        return try self.builder.lambda(&.{}, &.{}, &.{}, false, "args", &.{}, body);
     }
 
     fn makeVariadicAddWrapper(self: *Compiler) anyerror!*Ir {
@@ -5517,10 +5706,6 @@ pub const Compiler = struct {
     fn quasiquoteExpr(self: *Compiler, expr: Value, env: *const Env) anyerror!*Ir {
         // Non-list: return as quoted literal
         if (!expr.isCons()) {
-            if (expr.isSymbol()) {
-                const sym = expr.toPtr(Symbol);
-                return try self.builder.quoteSym(sym.getName());
-            }
             return try self.builder.lit(expr);
         }
 
@@ -5530,13 +5715,14 @@ pub const Compiler = struct {
         // Check for (unquote x) - evaluate x (use symbol identity)
         if (head.isSymbol()) {
             const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
-            if (head.raw == b.unquote.raw) {
+            const dispatch_head = self.canonicalBuiltinSymbol(head);
+            if (dispatch_head.raw == b.unquote.raw) {
                 // (unquote x) -> compile x
                 if (!cons.cdr.isCons()) return error.InvalidSyntax;
                 const unquoted = cons.cdr.toPtr(Cons).car;
                 return self.compile(unquoted, env);
             }
-            if (head.raw == b.@"unquote-splicing".raw) {
+            if (dispatch_head.raw == b.@"unquote-splicing".raw) {
                 // unquote-splicing outside of list context is an error
                 return error.InvalidSyntax;
             }
@@ -5554,10 +5740,6 @@ pub const Compiler = struct {
 
         if (!list.isCons()) {
             // Improper list tail - just quote it
-            if (list.isSymbol()) {
-                const sym = list.toPtr(Symbol);
-                return try self.builder.quoteSym(sym.getName());
-            }
             return try self.builder.lit(list);
         }
 
@@ -5570,7 +5752,8 @@ pub const Compiler = struct {
             const head_cons = head.toPtr(Cons);
             if (head_cons.car.isSymbol()) {
                 const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
-                if (head_cons.car.raw == b.@"unquote-splicing".raw) {
+                const dispatch_head = self.canonicalBuiltinSymbol(head_cons.car);
+                if (dispatch_head.raw == b.@"unquote-splicing".raw) {
                     // (,@x ...) -> (append x (quasiquote-list ...))
                     if (!head_cons.cdr.isCons()) return error.InvalidSyntax;
                     const spliced = head_cons.cdr.toPtr(Cons).car;
@@ -5620,6 +5803,40 @@ pub const Compiler = struct {
         const loop_ir = try self.builder.loop(test_ir, body_ir);
         // Wrap in nil block for (return ...) support
         return try self.builder.block(Value.nil, loop_ir);
+    }
+
+    fn compileLoopSpecial(
+        self: *Compiler,
+        whole_form: Value,
+        head: Value,
+        args: Value,
+        env: *const Env,
+        in_tail: bool,
+    ) anyerror!*Ir {
+        // During bootstrap, LOOP is a built-in simple loop special form.
+        // After stdlib defines LOOP as a macro, expanded LOOP clauses
+        // (FOR/COLLECT/...) must macroexpand instead of taking special-form path.
+        // Prefer compiler-local macro table first so file loads do not depend on
+        // REPL macroexpand callbacks being wired.
+        if (self.lookupMacroDef(head)) |macro_def| {
+            if (self.vm) |vm| {
+                const expanded = try self.expandMacro(macro_def, args, whole_form, vm);
+                return self.compileWithTail(expanded, env, in_tail);
+            }
+        }
+
+        // Fallback path for externally provided macroexpand hooks.
+        if (self.vm) |vm| {
+            if (vm.macroexpand_1_callback) |macroexpand1| {
+                if (vm.macroexpand_1_context) |ctx| {
+                    const expanded = try macroexpand1(whole_form, ctx);
+                    if (expanded.raw != whole_form.raw) {
+                        return self.compileWithTail(expanded, env, in_tail);
+                    }
+                }
+            }
+        }
+        return self.compileLoop(args, env);
     }
 
     fn compileBlockWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
@@ -6242,7 +6459,7 @@ pub const Compiler = struct {
                 idx_opt = idx;
                 name = local_name;
             } else {
-                const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:" };
+                const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
                 var full_buf: [640]u8 = undefined;
                 for (prefixes) |prefix| {
                     if (prefix.len + local_name.len > full_buf.len) continue;
@@ -6272,6 +6489,22 @@ pub const Compiler = struct {
         return try self.builder.define(name, idx, value_ir);
     }
 
+    fn compileDefvar(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        // (defvar name [init [doc]])
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        if (!cons1.car.isSymbol()) return error.InvalidSyntax;
+
+        const init_expr = if (cons1.cdr.isCons())
+            cons1.cdr.toPtr(Cons).car
+        else
+            Value.nil;
+
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+        const def_tail = try heap.allocCons(cons1.car, try heap.allocCons(init_expr, Value.nil));
+        return self.compileDefine(def_tail, env);
+    }
+
     fn compileDefun(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (defun name (params...) body...) -> (define name (lambda (params...) body...))
         // (defun (name -> type) (params...) body...) -> with return type assertion
@@ -6280,9 +6513,11 @@ pub const Compiler = struct {
         const cons1 = args.toPtr(Cons);
         const name_spec = cons1.car;
 
-        var name_sym_saved: *const Symbol = undefined;
+        var name_sym_saved: ?*const Symbol = null;
         var name_val: Value = undefined;
         var return_type: ?Value = null;
+        var setf_name_owned: ?[]u8 = null;
+        defer if (setf_name_owned) |setf_name| self.allocator.free(setf_name);
 
         switch (name_spec.typeKind()) {
             .symbol => {
@@ -6291,42 +6526,65 @@ pub const Compiler = struct {
                 name_val = name_spec;
             },
             .cons => {
-                // Typed: (defun (name -> type) ...)
                 const spec_cons = name_spec.toPtr(Cons);
                 if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
-                name_sym_saved = spec_cons.car.toPtr(Symbol);
-                name_val = spec_cons.car;
-
-                // Check for -> arrow (use symbol identity)
-                if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
-                const arrow_cons = spec_cons.cdr.toPtr(Cons);
                 const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
-                if (arrow_cons.car.raw != b.@"->".raw) return error.InvalidSyntax;
 
-                // Get return type (symbol or complex type like (or T1 T2))
-                if (!arrow_cons.cdr.isCons()) return error.InvalidSyntax;
-                const type_cons = arrow_cons.cdr.toPtr(Cons);
-                // Accept symbol or cons (complex type expression)
-                if (!type_cons.car.isSymbol() and !type_cons.car.isCons()) return error.InvalidSyntax;
-                return_type = type_cons.car;
+                // SETF function name: (defun (setf foo) ...)
+                if (self.canonicalBuiltinSymbol(spec_cons.car).raw == b.setf.raw) {
+                    if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
+                    const name_cons = spec_cons.cdr.toPtr(Cons);
+                    if (!name_cons.car.isSymbol() or !name_cons.cdr.isNil()) return error.InvalidSyntax;
+                    const base_name = name_cons.car.toPtr(Symbol).getName();
+                    setf_name_owned = try std.fmt.allocPrint(self.allocator, "(SETF {s})", .{base_name});
+                    name_val = name_spec;
+                } else {
+                    // Typed: (defun (name -> type) ...)
+                    name_sym_saved = spec_cons.car.toPtr(Symbol);
+                    name_val = spec_cons.car;
+
+                    // Check for -> arrow (use symbol identity)
+                    if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
+                    const arrow_cons = spec_cons.cdr.toPtr(Cons);
+                    if (arrow_cons.car.raw != b.@"->".raw) return error.InvalidSyntax;
+
+                    // Get return type (symbol or complex type like (or T1 T2))
+                    if (!arrow_cons.cdr.isCons()) return error.InvalidSyntax;
+                    const type_cons = arrow_cons.cdr.toPtr(Cons);
+                    // Accept symbol or cons (complex type expression)
+                    if (!type_cons.car.isSymbol() and !type_cons.car.isCons()) return error.InvalidSyntax;
+                    return_type = type_cons.car;
+                }
             },
             else => return error.InvalidSyntax,
         }
 
         // Pre-register the global so recursive calls work
-        // Use qualified name for consistency
-        var qual_buf: [256]u8 = undefined;
-        const q = try self.getQualifiedName(name_sym_saved, &qual_buf);
-        defer if (q.owned) self.allocator.free(q.name);
-        const local_name = name_sym_saved.getName();
-        var name = q.name;
+        var local_name: []const u8 = undefined;
+        var name: []const u8 = undefined;
+        var qual_sym_buf: [256]u8 = undefined;
+        var qual_setf_buf: [512]u8 = undefined;
+
+        if (setf_name_owned) |setf_name| {
+            const q_setf = try self.qualifyName(setf_name, &qual_setf_buf);
+            defer if (q_setf.owned) self.allocator.free(q_setf.name);
+            local_name = setf_name;
+            name = q_setf.name;
+        } else {
+            const sym = name_sym_saved orelse return error.InvalidSyntax;
+            const q = try self.getQualifiedName(sym, &qual_sym_buf);
+            defer if (q.owned) self.allocator.free(q.name);
+            local_name = sym.getName();
+            name = q.name;
+        }
+
         var idx_opt = self.globals.lookup(name);
         if (idx_opt == null) {
             if (self.globals.lookup(local_name)) |idx| {
                 idx_opt = idx;
                 name = local_name;
             } else {
-                const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:" };
+                const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
                 var full_buf: [640]u8 = undefined;
                 for (prefixes) |prefix| {
                     if (prefix.len + local_name.len > full_buf.len) continue;
@@ -7187,20 +7445,27 @@ pub const Compiler = struct {
     }
 
     /// Compile in-package: (in-package "name")
-    /// Switches the current package
-    fn compileInPackage(self: *Compiler, args: Value) anyerror!*Ir {
+    /// Runtime semantics: (setf *package* (find-package <name>))
+    fn compileInPackage(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         const heap = if (self.heap) |val| val else return error.InvalidSyntax;
         if (!args.isCons()) return error.InvalidSyntax;
 
         const cons1 = args.toPtr(Cons);
         const pkg_name = if (self.getStringOrSymbolName(cons1.car)) |val| val else return error.InvalidSyntax;
+        const pkg_name_val = try heap.allocBaseString(pkg_name);
 
-        // Find or create the package and set it as current
-        const pkg = try heap.findOrCreatePackage(pkg_name);
-        heap.setCurrentPackage(pkg);
+        const pkg_sym = (try heap.internInPackage("CL", "*PACKAGE*")) orelse return error.InvalidSyntax;
+        const find_pkg_sym = (try heap.internInPackage("CL", "FIND-PACKAGE")) orelse return error.InvalidSyntax;
+        const setf_sym = self.builtins.?.setf;
 
-        // Return the package name
-        return try self.builder.lit(try heap.intern(pkg_name));
+        // IN-PACKAGE package designator is read-time data, not a runtime variable.
+        // Normalize to a string literal to avoid symbol-evaluation pitfalls.
+        const find_pkg_args = try heap.allocCons(pkg_name_val, Value.nil);
+        const find_pkg_call = try heap.allocCons(find_pkg_sym, find_pkg_args);
+        const setf_rest = try heap.allocCons(find_pkg_call, Value.nil);
+        const setf_args = try heap.allocCons(pkg_sym, setf_rest);
+        const setf_expr = try heap.allocCons(setf_sym, setf_args);
+        return try self.compile(setf_expr, env);
     }
 
     /// Compile export: (export symbols &optional package)
@@ -7307,6 +7572,21 @@ pub const Compiler = struct {
         if (qual.owned) return qual.name;
         // Dupe to allocator since buf is stack-local
         return try self.allocator.dupe(u8, qual.name);
+    }
+
+    fn lookupGlobalIdxWithFallback(self: *const Compiler, name: []const u8) ?u16 {
+        if (self.globals.lookup(name)) |idx| return idx;
+
+        const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
+        var full_buf: [640]u8 = undefined;
+        for (prefixes) |prefix| {
+            if (prefix.len + name.len > full_buf.len) continue;
+            @memcpy(full_buf[0..prefix.len], prefix);
+            @memcpy(full_buf[prefix.len .. prefix.len + name.len], name);
+            const candidate = full_buf[0 .. prefix.len + name.len];
+            if (self.globals.lookup(candidate)) |idx| return idx;
+        }
+        return null;
     }
 
     // ========================================================================
@@ -7531,12 +7811,39 @@ pub const Compiler = struct {
         var super_list = superclasses;
         while (super_list.isCons()) {
             const cons = super_list.toPtr(Cons);
-            const super_sym = cons.car;
-            if (!super_sym.isSymbol()) return error.InvalidSyntax;
+            var super_entry = cons.car;
+            // Accept quoted superclass names in addition to bare symbols.
+            if (super_entry.isCons()) {
+                const maybe_quote = super_entry.toPtr(Cons);
+                if (maybe_quote.car.isSymbol() and maybe_quote.cdr.isCons()) {
+                    const head_name = maybe_quote.car.toPtr(Symbol).getName();
+                    if (std.mem.eql(u8, head_name, "QUOTE")) {
+                        super_entry = maybe_quote.cdr.toPtr(Cons).car;
+                    }
+                }
+            }
+
+            if (super_entry.isClass()) {
+                try direct_supers_classes.append(self.allocator, super_entry);
+                super_list = cons.cdr;
+                continue;
+            }
+            if (!super_entry.isSymbol()) return error.InvalidSyntax;
+
             // Resolve symbol to Class object for direct_supers
-            if (heap.findLispClass(super_sym)) |class_val| {
+            if (heap.findLispClass(super_entry)) |class_val| {
                 try direct_supers_classes.append(self.allocator, class_val);
             } else {
+                // Some ANSI forms resolve superclasses via CL package symbols
+                // even when the current package symbol is not pointer-identical.
+                const super_name = super_entry.toPtr(Symbol).getName();
+                if (try heap.internInPackage("CL", super_name)) |cl_super_sym| {
+                    if (heap.findLispClass(cl_super_sym)) |class_val| {
+                        try direct_supers_classes.append(self.allocator, class_val);
+                        super_list = cons.cdr;
+                        continue;
+                    }
+                }
                 return error.UndefinedClass;
             }
             super_list = cons.cdr;
@@ -7662,8 +7969,20 @@ pub const Compiler = struct {
         }
         while (cpl_tail.isCons()) {
             const cpl_cons = cpl_tail.toPtr(Cons);
-            const super_val = cpl_cons.car;
-            if (!super_val.isClass()) return error.InvalidSyntax;
+            var super_val = cpl_cons.car;
+            if (!super_val.isClass()) {
+                if (super_val.isSymbol()) {
+                    if (heap.findLispClass(super_val)) |found| {
+                        super_val = found;
+                    } else {
+                        cpl_tail = cpl_cons.cdr;
+                        continue;
+                    }
+                } else {
+                    cpl_tail = cpl_cons.cdr;
+                    continue;
+                }
+            }
             var super_slots = super_val.toPtr(runtime.Class).direct_slots;
             while (super_slots.isCons()) {
                 const slot_cons = super_slots.toPtr(Cons);
@@ -8449,6 +8768,10 @@ pub const Compiler = struct {
     /// Runtime representation: #('class-name slot1-val slot2-val ...)
     fn compileDefclass(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+        const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
+        const kw_default_initargs = try heap.internKeyword("default-initargs");
+        const kw_metaclass = try heap.internKeyword("metaclass");
+        const kw_documentation = try heap.internKeyword("documentation");
 
         // Parse: (name (superclasses...) (slot1 slot2 ...) ...)
         if (!args.isCons()) return error.InvalidSyntax;
@@ -8474,6 +8797,12 @@ pub const Compiler = struct {
             }
             slot_specs.deinit(self.allocator);
         }
+        const InitargDefault = struct {
+            key: Value,
+            value: Value,
+        };
+        var class_initarg_defaults = std.ArrayList(InitargDefault){};
+        defer class_initarg_defaults.deinit(self.allocator);
 
         // Process superclass list
         if (superclasses.isCons()) {
@@ -8519,27 +8848,32 @@ pub const Compiler = struct {
         // Support both CL standard: (defclass name () ((slot1 ...) (slot2 ...)))
         // and Habu style: (defclass name () (slot1 ...) (slot2 ...))
         var rest = cons2.cdr;
+        var class_options_rest = Value.nil;
 
-        // Check for CL standard syntax: single list of slot specs
-        // e.g. (defclass name () ((slot1 ...) (slot2 ...))) or (defclass name () ())
+        // Normalize defclass forms:
+        // - CL standard: (defclass C () ((slot ...)) (:default-initargs ...))
+        // - Habu style:  (defclass C () (slot ...) (slot ...))
         if (rest.isCons()) {
             const first = rest.toPtr(Cons);
-            // If next element is nil, first could be the slot list
-            if (first.cdr.isNil()) {
-                switch (first.car.typeKind()) {
-                    .nil => {
-                        // Empty slot list: (defclass name (supers) ())
-                        rest = Value.nil;
-                    },
-                    .cons => {
-                        // Check if first element looks like a slots list (list of symbols/lists)
-                        const inner = first.car.toPtr(Cons);
-                        if (inner.car.isSymbol() or inner.car.isCons()) {
-                            // CL standard: unwrap the outer list
-                            rest = first.car;
-                        }
-                    },
-                    else => {},
+            if (first.car.isNil()) {
+                // Empty slot list in CL syntax
+                rest = Value.nil;
+                class_options_rest = first.cdr;
+            } else if (first.car.isCons()) {
+                const maybe_slot_list = first.car.toPtr(Cons);
+                var looks_like_slot_list = false;
+                if (maybe_slot_list.cdr.isNil()) {
+                    // Single-element list: treat as slot list for CL compatibility.
+                    looks_like_slot_list = true;
+                } else if (maybe_slot_list.cdr.isCons()) {
+                    const second = maybe_slot_list.cdr.toPtr(Cons).car;
+                    // Habu style slot spec is typically (slot :keyword ...).
+                    // CL style slot list is ((slot ...) (slot ...) ...), or (slot1 slot2 ...).
+                    looks_like_slot_list = !second.isKeyword();
+                }
+                if (looks_like_slot_list) {
+                    rest = first.car;
+                    class_options_rest = first.cdr;
                 }
             }
         }
@@ -8547,6 +8881,40 @@ pub const Compiler = struct {
         while (rest.isCons()) {
             const c = rest.toPtr(Cons);
             const slot_spec = c.car;
+
+            if (slot_spec.isCons()) {
+                const class_opt_cons = slot_spec.toPtr(Cons);
+                const class_opt_key = class_opt_cons.car;
+                if (class_opt_key.isKeyword()) {
+                    // Recognize class options after the slot list.
+                    if (class_opt_key.eq(kw_default_initargs)) {
+                        var defaults = class_opt_cons.cdr;
+                        while (defaults.isCons()) {
+                            const default_cons = defaults.toPtr(Cons);
+                            const initarg = default_cons.car;
+                            switch (initarg.typeKind()) {
+                                .keyword, .symbol, .nil, .t => {},
+                                else => return error.InvalidSyntax,
+                            }
+                            if (!default_cons.cdr.isCons()) return error.InvalidSyntax;
+                            const value_cons = default_cons.cdr.toPtr(Cons);
+                            try class_initarg_defaults.append(self.allocator, .{
+                                .key = initarg,
+                                .value = value_cons.car,
+                            });
+                            defaults = value_cons.cdr;
+                        }
+                        if (!defaults.isNil()) return error.InvalidSyntax;
+                        rest = c.cdr;
+                        continue;
+                    }
+                    if (class_opt_key.eq(kw_metaclass) or class_opt_key.eq(kw_documentation)) {
+                        // Parsed for syntax compatibility; currently ignored.
+                        rest = c.cdr;
+                        continue;
+                    }
+                }
+            }
 
             switch (slot_spec.typeKind()) {
                 .symbol => {
@@ -8587,8 +8955,6 @@ pub const Compiler = struct {
                         const opt_key = opt_cons.car;
 
                         if (opt_key.isKeyword()) {
-                            const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
-
                             if (opt_key.eq(b.kw_type)) {
                                 // type keyword - next element is the type
                                 if (opt_cons.cdr.isCons()) {
@@ -8626,7 +8992,10 @@ pub const Compiler = struct {
                             } else if (opt_key.eq(b.kw_initarg)) {
                                 if (opt_cons.cdr.isCons()) {
                                     const initarg_cons = opt_cons.cdr.toPtr(Cons);
-                                    if (!initarg_cons.car.isKeyword()) return error.InvalidSyntax;
+                                    switch (initarg_cons.car.typeKind()) {
+                                        .keyword, .symbol, .nil, .t => {},
+                                        else => return error.InvalidSyntax,
+                                    }
                                     try initargs.append(self.allocator, initarg_cons.car);
                                     opts = initarg_cons.cdr;
                                     continue;
@@ -8688,6 +9057,58 @@ pub const Compiler = struct {
             rest = c.cdr;
         }
 
+        while (class_options_rest.isCons()) {
+            const opt_form_cons = class_options_rest.toPtr(Cons);
+            const class_opt_form = opt_form_cons.car;
+            if (!class_opt_form.isCons()) return error.InvalidSyntax;
+            const class_opt = class_opt_form.toPtr(Cons);
+            const class_opt_key = class_opt.car;
+            if (!class_opt_key.isKeyword()) return error.InvalidSyntax;
+            if (class_opt_key.eq(kw_default_initargs)) {
+                var defaults = class_opt.cdr;
+                while (defaults.isCons()) {
+                    const default_cons = defaults.toPtr(Cons);
+                    const initarg = default_cons.car;
+                    switch (initarg.typeKind()) {
+                        .keyword, .symbol, .nil, .t => {},
+                        else => return error.InvalidSyntax,
+                    }
+                    if (!default_cons.cdr.isCons()) return error.InvalidSyntax;
+                    const value_cons = default_cons.cdr.toPtr(Cons);
+                    try class_initarg_defaults.append(self.allocator, .{
+                        .key = initarg,
+                        .value = value_cons.car,
+                    });
+                    defaults = value_cons.cdr;
+                }
+                if (!defaults.isNil()) return error.InvalidSyntax;
+            } else if (!(class_opt_key.eq(kw_metaclass) or class_opt_key.eq(kw_documentation))) {
+                // Unknown class option for now; parse and ignore.
+            }
+            class_options_rest = opt_form_cons.cdr;
+        }
+        if (!class_options_rest.isNil()) return error.InvalidSyntax;
+
+        if (class_initarg_defaults.items.len > 0 and slot_specs.items.len > 0) {
+            const slot_default_set = try self.allocator.alloc(bool, slot_specs.items.len);
+            defer self.allocator.free(slot_default_set);
+            @memset(slot_default_set, false);
+
+            // Apply :default-initargs in declaration order; first matching initarg wins per slot.
+            for (class_initarg_defaults.items) |default_initarg| {
+                for (slot_specs.items, 0..) |*spec, idx| {
+                    if (slot_default_set[idx]) continue;
+                    for (spec.initargs.items) |slot_initarg| {
+                        if (default_initarg.key.eq(slot_initarg)) {
+                            spec.initform = default_initarg.value;
+                            slot_default_set[idx] = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         // Create class type - similar to struct
         const class_fields = try self.allocator.alloc(types.StructField, slot_specs.items.len);
         defer {
@@ -8740,26 +9161,19 @@ pub const Compiler = struct {
         const class_obj = try self.allocateClass(heap, name_val, superclasses, slot_specs.items);
         try heap.putLispClass(name_val, class_obj);
 
-        // Count total defs: constructor + predicate + default_accessors + default_writers + readers + writers + name_lit
-        var num_readers: usize = 0;
-        var num_writers: usize = 0;
-        for (slot_specs.items) |spec| {
-            num_readers += spec.readers.items.len;
-            num_writers += spec.writers.items.len;
-        }
-        const num_defs = 1 + 1 + slot_specs.items.len + slot_specs.items.len + num_readers + num_writers + 1;
-        const defs = try self.allocator.alloc(*Ir, num_defs);
-        var def_idx: usize = 0;
+        // Build defclass expansion forms dynamically; reader/writer options may
+        // include non-symbol entries that are skipped, so fixed-size pre-counting
+        // can leave uninitialized tails.
+        var defs = std.ArrayList(*Ir){};
+        defer defs.deinit(self.allocator);
 
         // 1. Constructor: (defun make-class-name (slot1 slot2 ...) (vector 'class-name slot1 slot2 ...))
         const make_name = try self.concatStrings("make-", class_name);
-        defs[def_idx] = try self.generateStructConstructor(heap, make_name, class_name, slot_specs.items, env);
-        def_idx += 1;
+        try defs.append(self.allocator, try self.generateStructConstructor(heap, make_name, class_name, slot_specs.items, env));
 
         // 2. Predicate: (defun class-name-p (obj) (and (vectorp obj) (eq (aref obj 0) 'class-name)))
         const pred_name = try self.concatStrings(class_name, "-p");
-        defs[def_idx] = try self.generateStructPredicate(heap, pred_name, class_name);
-        def_idx += 1;
+        try defs.append(self.allocator, try self.generateStructPredicate(heap, pred_name, class_name));
 
         // Register predicate for occurrence typing (use qualified name to match globals table)
         var pred_qual_buf: [512]u8 = undefined;
@@ -8771,9 +9185,8 @@ pub const Compiler = struct {
         // 3. Default accessors: (defun class-name-slot (obj) (if (class-name-p obj) (aref obj N+1) (error)))
         for (slot_specs.items, 0..) |spec, i| {
             const accessor_name = try self.concatStrings3(class_name, "-", spec.name);
-            defs[def_idx] = try self.generateStructAccessor(heap, accessor_name, class_name, i);
+            try defs.append(self.allocator, try self.generateStructAccessor(heap, accessor_name, class_name, i));
             try self.registerStructAccessor(accessor_name, i);
-            def_idx += 1;
         }
 
         // 4. Default writers: (defun (setf class-name-slot) (val obj) ...)
@@ -8781,8 +9194,7 @@ pub const Compiler = struct {
             const accessor_name = try self.concatStrings3(class_name, "-", spec.name);
             const setf_name = try self.concatStrings("(setf ", accessor_name);
             const setf_full = try self.concatStrings(setf_name, ")");
-            defs[def_idx] = try self.generateStructWriter(heap, setf_full, class_name, i);
-            def_idx += 1;
+            try defs.append(self.allocator, try self.generateStructWriter(heap, setf_full, class_name, i));
         }
 
         // 5. Readers: (defun reader-name (obj) (class-name-slot obj))
@@ -8791,7 +9203,7 @@ pub const Compiler = struct {
                 if (!reader_val.isSymbol()) continue;
                 const reader_sym = reader_val.toPtr(Symbol);
                 const reader_name = reader_sym.getName();
-                defs[def_idx] = try self.generateStructAccessor(heap, reader_name, class_name, i);
+                try defs.append(self.allocator, try self.generateStructAccessor(heap, reader_name, class_name, i));
                 var writable_reader = false;
                 for (spec.writers.items) |writer_val| {
                     if (!writer_val.isSymbol()) continue;
@@ -8803,7 +9215,6 @@ pub const Compiler = struct {
                 if (writable_reader) {
                     try self.registerStructAccessor(reader_name, i);
                 }
-                def_idx += 1;
             }
         }
 
@@ -8815,15 +9226,14 @@ pub const Compiler = struct {
                 const writer_name = writer_sym.getName();
                 const setf_name = try self.concatStrings("(setf ", writer_name);
                 const setf_full = try self.concatStrings(setf_name, ")");
-                defs[def_idx] = try self.generateStructWriter(heap, setf_full, class_name, i);
-                def_idx += 1;
+                try defs.append(self.allocator, try self.generateStructWriter(heap, setf_full, class_name, i));
             }
         }
 
         // 7. Return class name
-        defs[def_idx] = try self.builder.lit(name_val);
+        try defs.append(self.allocator, try self.builder.lit(name_val));
 
-        return try self.builder.progn(defs);
+        return try self.builder.progn(defs.items);
     }
 
     /// Compile make-instance: (make-instance 'class-name :slot1 val1 :slot2 val2 ...)
@@ -8857,7 +9267,10 @@ pub const Compiler = struct {
             const kw_cons = rest.toPtr(Cons);
             const kw = kw_cons.car;
 
-            if (!kw.isKeyword()) return error.InvalidSyntax;
+            switch (kw.typeKind()) {
+                .keyword, .symbol, .nil, .t => {},
+                else => return error.InvalidSyntax,
+            }
 
             // Get value (next element after keyword)
             if (!kw_cons.cdr.isCons()) return error.InvalidSyntax;
@@ -9413,9 +9826,11 @@ pub const Compiler = struct {
         const next_method_check_ir = try self.builder.globalRef(nm_name, nm_global_idx);
 
         // Call (no-next-method gf method args...)
-        const no_next_fn_idx = self.globals.lookup("no-next-method") orelse
-            try self.globals.define("no-next-method");
-        const no_next_fn = try self.builder.globalRef("no-next-method", no_next_fn_idx);
+        const no_next_fn_idx = self.globals.lookup("COMMON-LISP:NO-NEXT-METHOD") orelse
+            self.globals.lookup("CL:NO-NEXT-METHOD") orelse
+            self.lookupGlobalIdxWithFallback("no-next-method") orelse
+            try self.globals.define("COMMON-LISP:NO-NEXT-METHOD");
+        const no_next_fn = try self.builder.globalRef("COMMON-LISP:NO-NEXT-METHOD", no_next_fn_idx);
 
         // Build args: gf=nil, method=nil, original args
         var no_next_args = std.ArrayList(*Ir){};
@@ -9524,8 +9939,11 @@ pub const Compiler = struct {
             try no_app_args.append(self.allocator, arg_ir);
         }
         // Look up no-applicable-method as a global function
-        const no_app_idx = self.globals.lookup("no-applicable-method") orelse try self.globals.define("no-applicable-method");
-        const no_app_fn = try self.builder.globalRef("no-applicable-method", no_app_idx);
+        const no_app_idx = self.globals.lookup("COMMON-LISP:NO-APPLICABLE-METHOD") orelse
+            self.globals.lookup("CL:NO-APPLICABLE-METHOD") orelse
+            self.lookupGlobalIdxWithFallback("no-applicable-method") orelse
+            try self.globals.define("COMMON-LISP:NO-APPLICABLE-METHOD");
+        const no_app_fn = try self.builder.globalRef("COMMON-LISP:NO-APPLICABLE-METHOD", no_app_idx);
         dispatch_body = try self.builder.call(no_app_fn, no_app_args.items);
 
         // Build dispatch chain for primary methods (type checking)
@@ -11778,7 +12196,6 @@ pub const Compiler = struct {
         .{ .field = "logbitp", .tag = .logbitp },
         .{ .field = "write-file", .tag = .write_file },
         .{ .field = "rename-file", .tag = .rename_file },
-        .{ .field = "make-string", .tag = .make_string },
         .{ .field = "make-complex", .tag = .make_complex },
         .{ .field = "write-to-stream", .tag = .write_to_stream },
         .{ .field = "merge-pathnames", .tag = .merge_pathnames },
@@ -11866,16 +12283,20 @@ pub const Compiler = struct {
         if (!sym.isSymbol()) return null;
         if (self.macro_table.get(sym)) |def| return def;
         const canonical = self.canonicalBuiltinSymbol(sym);
-        if (canonical.raw == sym.raw) return null;
-        return self.macro_table.get(canonical);
+        if (canonical.raw != sym.raw) {
+            if (self.macro_table.get(canonical)) |def| return def;
+        }
+        return null;
     }
 
     fn lookupSymbolMacro(self: *Compiler, sym: Value) ?Value {
         if (!sym.isSymbol()) return null;
         if (self.symbol_macros.get(sym)) |expansion| return expansion;
         const canonical = self.canonicalBuiltinSymbol(sym);
-        if (canonical.raw == sym.raw) return null;
-        return self.symbol_macros.get(canonical);
+        if (canonical.raw != sym.raw) {
+            if (self.symbol_macros.get(canonical)) |expansion| return expansion;
+        }
+        return null;
     }
 
     fn compilePrimitive(self: *Compiler, sym: Value, args: Value, env: *const Env) anyerror!*Ir {
@@ -11888,6 +12309,28 @@ pub const Compiler = struct {
         if (s == b.@"-".raw) return self.compileVariadicArith(args, env, .sub, null);
         if (s == b.@"*".raw) return self.compileVariadicArith(args, env, .mul, 1);
         if (s == b.@"/".raw) return self.compileVariadicArith(args, env, .div, null);
+        if (s == b.append.raw) {
+            if (args.isNil()) return try self.builder.lit(Value.nil);
+
+            var parts = std.ArrayList(*Ir){};
+            defer parts.deinit(self.allocator);
+
+            var rest = args;
+            while (rest.isCons()) : (rest = rest.toPtr(Cons).cdr) {
+                const cell = rest.toPtr(Cons);
+                try parts.append(self.allocator, try self.compile(cell.car, env));
+            }
+
+            if (parts.items.len == 0) return try self.builder.lit(Value.nil);
+            if (parts.items.len == 1) return parts.items[0];
+
+            var acc = parts.items[0];
+            var i: usize = 1;
+            while (i < parts.items.len) : (i += 1) {
+                acc = try self.builder.append(acc, parts.items[i]);
+            }
+            return acc;
+        }
 
         // Table-driven dispatch for unary primitives
         inline for (unary_dispatch) |entry| {
@@ -11957,6 +12400,7 @@ pub const Compiler = struct {
         if (s == b.round.raw) return self.compileFloorCeilRound(args, env, .round);
         if (s == b.truncate.raw) return self.compileBinaryPrim(args, env, .quot);
         if (s == b.aref.raw) return self.compileAref(args, env);
+        if (s == b.@"make-string".raw) return self.compileMakeString(args, env);
         if (s == b.@"make-vector".raw) return self.compileMakeVector(args, env);
         if (s == b.@"%svset".raw) return self.compileSvset(args, env);
         if (s == b.@"%aset".raw) return self.compileAset(args, env);
@@ -13862,6 +14306,58 @@ pub const Compiler = struct {
         return try self.builder.vec(elements.items);
     }
 
+    fn compileMakeString(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        // (make-string size &key initial-element element-type allow-other-keys)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const b = if (self.builtins) |val| val else return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const len_ir = try self.compile(cons1.car, env);
+
+        var fill_ir = try self.builder.lit(Value.nil);
+        var allow_other_keys = false;
+        var rest = cons1.cdr;
+
+        // Backward-compatible positional fill character.
+        if (rest.isCons()) {
+            const maybe_pos = rest.toPtr(Cons);
+            if (!maybe_pos.car.isKeyword()) {
+                fill_ir = try self.compile(maybe_pos.car, env);
+                rest = maybe_pos.cdr;
+            }
+        }
+
+        // Parse keyword arguments.
+        while (rest.isCons()) {
+            const key_cons = rest.toPtr(Cons);
+            const key = key_cons.car;
+            if (!key.isKeyword()) return error.InvalidSyntax;
+            if (!key_cons.cdr.isCons()) return error.InvalidSyntax;
+            const val_cons = key_cons.cdr.toPtr(Cons);
+
+            if (key.raw == b.@"kw_initial-element".raw) {
+                fill_ir = try self.compile(val_cons.car, env);
+            } else if (key.raw == b.@"kw_allow-other-keys".raw) {
+                if (val_cons.car.isNil()) {
+                    allow_other_keys = false;
+                } else if (val_cons.car.isKeyword()) {
+                    allow_other_keys = true;
+                } else if (val_cons.car.isFixnum()) {
+                    allow_other_keys = val_cons.car.toFixnum() != 0;
+                } else {
+                    allow_other_keys = true;
+                }
+            } else if (key.raw == b.@"kw_element-type".raw) {
+                // Accepted but ignored for now.
+            } else if (!allow_other_keys) {
+                return error.InvalidSyntax;
+            }
+
+            rest = val_cons.cdr;
+        }
+
+        return try self.builder.makeString(len_ir, fill_ir);
+    }
+
     fn compileMakeArray(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (make-array dimensions &optional initial-element)
         // dimensions can be a single fixnum or a quoted list of fixnums
@@ -13870,6 +14366,7 @@ pub const Compiler = struct {
 
         var dimensions = std.ArrayList(*const Ir){};
         defer dimensions.deinit(self.allocator);
+        var dynamic_dimensions: ?*const Ir = null;
 
         var dims_val = cons1.car;
 
@@ -13883,13 +14380,23 @@ pub const Compiler = struct {
             }
         }
 
-        // Now dims_val is either a fixnum, list of dimensions, or an expression
-        if (dims_val.isCons()) {
-            // Check if it's a (quote list) form - actual list of dimensions
-            const cons_check = dims_val.toPtr(Cons);
-            // If car is a fixnum, it's a literal list of dimensions
-            if (cons_check.car.isFixnum()) {
-                var current = dims_val;
+        // dims can be a fixnum, literal list of fixnums, or a dynamic expression.
+        if (dims_val.isFixnum()) {
+            const dim_ir = try self.compile(dims_val, env);
+            try dimensions.append(self.allocator, dim_ir);
+        } else if (dims_val.isCons()) {
+            var current = dims_val;
+            var all_fixnums = true;
+            while (current.isCons()) {
+                const dim_cons = current.toPtr(Cons);
+                if (!dim_cons.car.isFixnum()) {
+                    all_fixnums = false;
+                    break;
+                }
+                current = dim_cons.cdr;
+            }
+            if (all_fixnums and current.isNil()) {
+                current = dims_val;
                 while (current.isCons()) {
                     const dim_cons = current.toPtr(Cons);
                     const dim_ir = try self.compile(dim_cons.car, env);
@@ -13897,14 +14404,10 @@ pub const Compiler = struct {
                     current = dim_cons.cdr;
                 }
             } else {
-                // It's an expression like (length lst) - compile it as single dim
-                const dim_ir = try self.compile(dims_val, env);
-                try dimensions.append(self.allocator, dim_ir);
+                dynamic_dimensions = try self.compile(dims_val, env);
             }
         } else {
-            // Fixnum, symbol (variable), or other expression - compile as single dim
-            const dim_ir = try self.compile(dims_val, env);
-            try dimensions.append(self.allocator, dim_ir);
+            dynamic_dimensions = try self.compile(dims_val, env);
         }
 
         // Optional initial element - handle keyword args (:initial-element value)
@@ -13926,6 +14429,9 @@ pub const Compiler = struct {
             }
         }
 
+        if (dynamic_dimensions) |dyn| {
+            return try self.builder.arrNewDynamic(dyn, init_ir);
+        }
         return try self.builder.arrNew(dimensions.items, init_ir);
     }
 

@@ -197,7 +197,14 @@ pub const Package = struct {
     }
 
     pub fn exportSymbol(self: *Package, name: []const u8) !void {
-        try self.exports.put(self.allocator, name, {});
+        var upper_buf: [256]u8 = undefined;
+        const upper = try upperNameAlloc(self.allocator, name, upper_buf[0..]);
+        defer freeUpperName(self.allocator, upper);
+        if (self.exports.contains(upper.slice)) return;
+
+        const key = try self.allocator.dupe(u8, upper.slice);
+        errdefer self.allocator.free(key);
+        try self.exports.put(self.allocator, key, {});
     }
 
     pub fn usePackage(self: *Package, other: *Package) !void {
@@ -374,9 +381,11 @@ pub const Heap = struct {
 
             // CL-USER package (uses CL)
             const cl_user_name = try heap.allocBaseString("CL-USER");
+            const cl_user_alias = try heap.allocBaseString("COMMON-LISP-USER");
             const cl_user_uses = try heap.allocCons(cl_pkg, Value.nil);
             const cl_user_pkg = try heap.allocPackage(cl_user_name, Value.nil, cl_user_uses, false);
             try heap.putLispPackage(cl_user_name, cl_user_pkg);
+            try heap.putLispPackage(cl_user_alias, cl_user_pkg);
 
             // KEYWORD package
             const kw_name = try heap.allocBaseString("KEYWORD");
@@ -399,6 +408,9 @@ pub const Heap = struct {
         const cl_user_key = try allocator.dupe(u8, "CL-USER");
         errdefer allocator.free(cl_user_key);
         try heap.packages.put(allocator, cl_user_key, heap.cl_user_package.?);
+        const cl_user_alias_key = try allocator.dupe(u8, "COMMON-LISP-USER");
+        errdefer allocator.free(cl_user_alias_key);
+        try heap.package_aliases.put(allocator, cl_user_alias_key, heap.cl_user_package.?);
 
         // Start in CL package so primitives get interned there
         // VM will switch to CL-USER after primitive registration
@@ -1185,6 +1197,26 @@ pub const Heap = struct {
         ht.count = tmp.count;
     }
 
+    fn putHashTableAutoGrow(
+        self: *Heap,
+        ht: *objects.HashTable,
+        key: Value,
+        value: Value,
+    ) error{ OutOfMemory, Overflow, HashTableNeedsGrowth, HashTableFull }!void {
+        while (true) {
+            ht.put(key, value) catch |err| switch (err) {
+                error.HashTableNeedsGrowth, error.HashTableFull => {
+                    const cap: usize = @intCast(ht.capacity);
+                    const grown = try std.math.mul(usize, cap, 2);
+                    try self.growHashTableInPlace(ht, grown);
+                    continue;
+                },
+                else => return err,
+            };
+            return;
+        }
+    }
+
     /// Allocate a bytecode chunk with constant pool and code
     pub fn allocChunk(
         self: *Heap,
@@ -1329,7 +1361,7 @@ pub const Heap = struct {
         if (self.lisp_packages.raw == Value.nil.raw) return error.RegistryNotInitialized;
         const ht = self.lisp_packages.toPtr(objects.HashTable);
         const key = try self.packageKey(name);
-        try ht.put(key, pkg);
+        try self.putHashTableAutoGrow(ht, key, pkg);
     }
 
     /// Remove a Lisp package by name string
@@ -1351,7 +1383,7 @@ pub const Heap = struct {
     pub fn putLispClass(self: *Heap, name: Value, class: Value) !void {
         if (self.lisp_classes.raw == Value.nil.raw) return error.RegistryNotInitialized;
         const ht = self.lisp_classes.toPtr(objects.HashTable);
-        try ht.put(name, class);
+        try self.putHashTableAutoGrow(ht, name, class);
     }
 
     /// Find a class by name in the global class registry
@@ -1366,7 +1398,7 @@ pub const Heap = struct {
     /// Uses current package if available, otherwise legacy global table
     pub fn intern(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
         // Use current package if available
-        if (self.current_package) |pkg| {
+        if (self.resolveCurrentPackageForIntern()) |pkg| {
             return pkg.intern(self, name);
         }
 
@@ -1384,6 +1416,41 @@ pub const Heap = struct {
         const sym = try self.allocSymbol(upper_name);
         try self.symbols.put(upper_name, sym);
         return sym;
+    }
+
+    fn hasNativePackagePtr(self: *const Heap, pkg: *Package) bool {
+        if (self.cl_package != null and self.cl_package.? == pkg) return true;
+        if (self.cl_user_package != null and self.cl_user_package.? == pkg) return true;
+        if (self.keyword_package != null and self.keyword_package.? == pkg) return true;
+
+        var pkg_it = self.packages.valueIterator();
+        while (pkg_it.next()) |entry| {
+            if (entry.* == pkg) return true;
+        }
+
+        var alias_it = self.package_aliases.valueIterator();
+        while (alias_it.next()) |entry| {
+            if (entry.* == pkg) return true;
+        }
+
+        return false;
+    }
+
+    fn resolveCurrentPackageForIntern(self: *Heap) ?*Package {
+        const pkg = self.current_package orelse return null;
+        if (self.hasNativePackagePtr(pkg)) return pkg;
+
+        std.log.err("stale current package pointer 0x{x}; resetting package context", .{@intFromPtr(pkg)});
+        if (self.cl_user_package) |user_pkg| {
+            self.current_package = user_pkg;
+            return user_pkg;
+        }
+        if (self.cl_package) |cl_pkg| {
+            self.current_package = cl_pkg;
+            return cl_pkg;
+        }
+        self.current_package = null;
+        return null;
     }
 
     /// Intern a symbol in a specific package by name
@@ -1420,7 +1487,7 @@ pub const Heap = struct {
     /// Get current package name
     pub fn getCurrentPackageName(self: *const Heap) []const u8 {
         if (self.current_package) |pkg| {
-            return pkg.name;
+            if (self.hasNativePackagePtr(pkg)) return pkg.name;
         }
         return "CL-USER";
     }
@@ -1690,6 +1757,11 @@ pub const Heap = struct {
             "slot-definition",
         };
 
+        var vector_class: Value = Value.nil;
+        var generic_function_class: Value = Value.nil;
+        var method_class: Value = Value.nil;
+        var slot_definition_class: Value = Value.nil;
+
         for (type_names) |name| {
             const name_sym = try self.intern(name);
             const class_ptr = try self.alloc(objects.Class);
@@ -1714,6 +1786,50 @@ pub const Heap = struct {
 
             // Register in class registry
             try self.putLispClass(name_sym, class_val);
+
+            if (std.mem.eql(u8, name, "vector")) vector_class = class_val;
+            if (std.mem.eql(u8, name, "generic-function")) generic_function_class = class_val;
+            if (std.mem.eql(u8, name, "method")) method_class = class_val;
+            if (std.mem.eql(u8, name, "slot-definition")) slot_definition_class = class_val;
+        }
+
+        // ANSI CLOS names that are expected to exist in FIND-CLASS and DEFCLASS superlists.
+        // Keep aliases to runtime classes where dedicated runtime objects are not distinct yet.
+        const std_object_name = try self.intern("standard-object");
+        const std_object_ptr = try self.alloc(objects.Class);
+        const std_object = Value.makeClass(std_object_ptr);
+        const std_object_supers = if (vector_class.raw != Value.nil.raw)
+            try self.allocCons(vector_class, Value.nil)
+        else
+            Value.nil;
+        const std_object_cpl = if (vector_class.raw != Value.nil.raw)
+            try self.allocCons(std_object, vector_class.toPtr(objects.Class).cpl)
+        else
+            try self.allocCons(std_object, try self.allocCons(Value.t, Value.nil));
+        std_object_ptr.* = .{
+            .kind = .class,
+            .name = std_object_name,
+            .direct_supers = std_object_supers,
+            .cpl = std_object_cpl,
+            .direct_slots = Value.nil,
+            .slots = Value.nil,
+            .metaclass = self.standard_class,
+            .num_shared = 0,
+            .shared_slots = undefined,
+        };
+        try self.putLispClass(std_object_name, std_object);
+
+        if (generic_function_class.raw != Value.nil.raw) {
+            const std_gf_name = try self.intern("standard-generic-function");
+            try self.putLispClass(std_gf_name, generic_function_class);
+        }
+        if (method_class.raw != Value.nil.raw) {
+            const std_method_name = try self.intern("standard-method");
+            try self.putLispClass(std_method_name, method_class);
+        }
+        if (slot_definition_class.raw != Value.nil.raw) {
+            const std_slot_name = try self.intern("standard-slot-definition");
+            try self.putLispClass(std_slot_name, slot_definition_class);
         }
     }
 };

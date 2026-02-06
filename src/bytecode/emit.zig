@@ -565,6 +565,10 @@ pub const Emitter = struct {
                 }
                 if (a.init) |init_val| max_idx = computeMaxLocalIndexImpl(init_val, max_idx);
             },
+            .arr_new_dyn => |a| {
+                max_idx = computeMaxLocalIndexImpl(a.dimensions, max_idx);
+                if (a.init) |init_val| max_idx = computeMaxLocalIndexImpl(init_val, max_idx);
+            },
             .arr_ref => |a| {
                 max_idx = computeMaxLocalIndexImpl(a.array, max_idx);
                 for (a.subscripts) |sub| {
@@ -989,6 +993,7 @@ pub const Emitter = struct {
 
             // Array operations
             .arr_new => |a| try self.emitArrNew(a),
+            .arr_new_dyn => |a| try self.emitArrNewDynamic(a),
             .arr_ref => |a| try self.emitArrRef(a),
             .arr_set => |a| try self.emitArrSet(a),
 
@@ -1476,12 +1481,15 @@ pub const Emitter = struct {
             }
         }
 
-        // Patch lambda's make_closure indices to account for parent's existing child_chunks
-        // The lambda's code uses indices relative to its own child_chunks array (starting at 0).
-        // But when we copy those child_chunks into the parent, they'll be at offset = parent's current len.
-        // So we need to add this offset to all make_closure indices in the lambda's code.
+        // Patch make_closure indices for the entire lambda subtree before moving it.
+        // Each chunk emitted under lambda_emitter uses indices relative to
+        // lambda_emitter.child_chunks; once spliced into parent child_chunks,
+        // every chunk in that subtree needs the same offset.
         const child_base: u16 = @intCast(self.child_chunks.items.len);
         if (child_base > 0) {
+            for (lambda_emitter.child_chunks.items) |child_chunk_val| {
+                patchMakeClosureIndicesOffset(child_chunk_val.toPtr(Chunk).getCode(), child_base);
+            }
             patchMakeClosureIndicesOffset(chunk.getCode(), child_base);
         }
 
@@ -1652,7 +1660,9 @@ pub const Emitter = struct {
         // Emit body
         try self.emit(b.body);
 
-        // Emit pop_block for normal exit
+        // Emit pop_block for normal exit. Compile-time return-from jumps should
+        // land on this instruction so the block stack is popped in normal control flow.
+        const pop_block_loc = self.currentOffset();
         try self.emitOp(.pop_block);
 
         // Patch the exit offset to point here (after pop_block)
@@ -1667,7 +1677,7 @@ pub const Emitter = struct {
         switch (popped) {
             .block => |*blk| {
                 for (blk.pending_exits.items) |jump_loc| {
-                    try self.patchJumpAt(jump_loc);
+                    try self.patchJumpToOffset(jump_loc, pop_block_loc);
                 }
                 blk.pending_exits.deinit(self.allocator);
             },
@@ -1714,6 +1724,10 @@ pub const Emitter = struct {
         const name_idx = try self.addConstant(r.name.raw);
         try self.emitOp(.return_from);
         try self.emitU16(name_idx);
+    }
+
+    fn patchJumpToOffset(self: *Emitter, jump_loc: usize, target_offset: usize) Error!void {
+        try self.patchJumpTo(jump_loc, target_offset);
     }
 
     fn emitUnwindProtect(self: *Emitter, u: anytype) Error!void {
@@ -2349,6 +2363,20 @@ pub const Emitter = struct {
         // Encode: [7:1] = dim count, [0] = has initial-element
         const dim_count: u8 = @intCast(a.dimensions.len);
         const operand = (dim_count << 1) | has_init;
+        try self.emitOp(.make_array);
+        try self.emitU8(operand);
+    }
+
+    fn emitArrNewDynamic(self: *Emitter, a: anytype) Error!void {
+        // Emit dimensions expression (fixnum or list) and optional initial element.
+        try self.emit(a.dimensions);
+        const has_init: u8 = if (a.init != null) 1 else 0;
+        if (a.init) |init_val| {
+            try self.emit(init_val);
+        }
+
+        // rank==0 means "dynamic rank from dimensions value" in VM.
+        const operand: u8 = has_init;
         try self.emitOp(.make_array);
         try self.emitU8(operand);
     }

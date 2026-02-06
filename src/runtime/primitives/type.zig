@@ -242,6 +242,8 @@ pub fn typep(heap: *Heap, syms: *const TypeSymbols, obj: Value, type_spec: Value
         // values is a type specifier for multiple return values, not for typep
         if (sym.eq(syms.values)) return false;
 
+        const maybe_class = heap.findLispClass(type_spec);
+
         // Check if it's a class name (instance type check)
         if (obj.isVector()) {
             const vec = obj.toPtr(@import("../objects.zig").Vector);
@@ -269,6 +271,26 @@ pub fn typep(heap: *Heap, syms: *const TypeSymbols, obj: Value, type_spec: Value
                 }
                 return false;
             }
+            if (maybe_class != null) return false;
+        }
+
+        if (maybe_class) |class_val| {
+            // Class objects can match by identity or by class-name in CPL.
+            if (obj.isClass()) {
+                if (obj.eq(class_val)) return true;
+                var cpl = obj.toPtr(@import("../objects.zig").Class).cpl;
+                while (cpl.isCons()) {
+                    const cons = cpl.toPtr(@import("../objects.zig").Cons);
+                    if (cons.car.eq(class_val) or cons.car.eq(type_spec)) return true;
+                    if (cons.car.isClass()) {
+                        const cpl_class = cons.car.toPtr(@import("../objects.zig").Class);
+                        if (cpl_class.name.eq(type_spec)) return true;
+                    }
+                    cpl = cons.cdr;
+                }
+            }
+            // Non-instance values are not of this class; return false instead of signaling unknown spec.
+            return false;
         }
 
         return error.UnknownTypeSpecifier;

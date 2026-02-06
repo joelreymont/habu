@@ -825,6 +825,10 @@ pub const Ir = union(enum) {
         dimensions: []const *const Ir,
         init: ?*const Ir,
     },
+    arr_new_dyn: struct {
+        dimensions: *const Ir,
+        init: ?*const Ir,
+    },
     arr_ref: struct {
         array: *const Ir,
         subscripts: []const *const Ir,
@@ -1157,6 +1161,7 @@ pub const Ir = union(enum) {
             .vec_adjust,
             .copy_structure,
             .arr_new,
+            .arr_new_dyn,
             .arr_ref,
             .arr_set,
             .slot_value,
@@ -2600,6 +2605,12 @@ pub const IrBuilder = struct {
         const node = try self.allocator.create(Ir);
         const dims_copy = try self.allocator.dupe(*const Ir, dimensions);
         node.* = .{ .arr_new = .{ .dimensions = dims_copy, .init = init_val } };
+        return node;
+    }
+
+    pub fn arrNewDynamic(self: IrBuilder, dimensions: *const Ir, init_val: ?*const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .arr_new_dyn = .{ .dimensions = dimensions, .init = init_val } };
         return node;
     }
 
