@@ -2460,6 +2460,21 @@ test "class-name - returns name of class" {
     try testing.expect(result.eq(expected));
 }
 
+test "find-class accepts optional errorp and environment args" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    try testing.expect((try repl.eval("(find-class 'definitely-missing nil)")).isNil());
+    try testing.expect((try repl.eval("(find-class 'definitely-missing nil nil)")).isNil());
+}
+
 test "class-direct-superclasses - returns direct supers" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });

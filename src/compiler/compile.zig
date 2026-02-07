@@ -2732,17 +2732,7 @@ pub const Compiler = struct {
                     .@"slot-boundp" => self.compileSlotBoundp(tail, env),
                     .@"slot-makunbound" => self.compileSlotMakunbound(tail, env),
                     .@"class-name" => self.compileUnaryPrim(tail, env, .class_name),
-                    .@"find-class" => blk: {
-                        // FIND-CLASS has optional args in CL. Keep unary fast path for
-                        // (find-class name), but fall back to regular function call when
-                        // optional args are present.
-                        if (!tail.isCons()) return error.InvalidSyntax;
-                        const first = tail.toPtr(Cons);
-                        if (first.cdr.isNil()) {
-                            break :blk self.compileUnaryPrim(tail, env, .find_class);
-                        }
-                        break :blk self.compileCallWithTail(head, tail, env, in_tail);
-                    },
+                    .@"find-class" => self.compileFindClass(tail, env),
                     .@"class-direct-superclasses" => self.compileUnaryPrim(tail, env, .class_direct_superclasses),
                     .@"class-precedence-list" => self.compileUnaryPrim(tail, env, .class_precedence_list),
                     .@"class-direct-slots" => self.compileUnaryPrim(tail, env, .class_direct_slots),
@@ -9446,6 +9436,35 @@ pub const Compiler = struct {
         const obj_ir = try self.compile(obj_expr, env);
 
         return try self.builder.classOf(obj_ir);
+    }
+
+    /// Compile find-class with CL optional args:
+    /// (find-class name &optional errorp environment)
+    /// Runtime currently uses %find-class for lookup and ignores optional flags.
+    /// We still compile optional args for side effects before the lookup.
+    fn compileFindClass(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+        const first = args.toPtr(Cons);
+        const class_name_ir = try self.compile(first.car, env);
+
+        const lookup_ir = blk: {
+            const node = try self.allocator.create(Ir);
+            node.* = .{ .find_class = .{ .operand = class_name_ir } };
+            break :blk node;
+        };
+
+        if (first.cdr.isNil()) return lookup_ir;
+
+        var exprs = std.ArrayList(*const Ir){};
+        defer exprs.deinit(self.allocator);
+
+        var rest = first.cdr;
+        while (rest.isCons()) : (rest = rest.toPtr(Cons).cdr) {
+            const cell = rest.toPtr(Cons);
+            try exprs.append(self.allocator, try self.compile(cell.car, env));
+        }
+        try exprs.append(self.allocator, lookup_ir);
+        return try self.builder.progn(exprs.items);
     }
 
     /// Compile defgeneric: (defgeneric name (arg1 arg2 ...))
