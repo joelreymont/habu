@@ -46,7 +46,7 @@ fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Valu
 test "eval integer literal" {
     const allocator = testing.allocator;
 
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
 
     const result = try evalExpr(allocator, &heap, "42");
@@ -57,11 +57,31 @@ test "eval integer literal" {
 test "eval nil" {
     const allocator = testing.allocator;
 
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
     defer heap.deinit();
 
     const result = try evalExpr(allocator, &heap, "nil");
     try testing.expect(result.isNil());
+}
+
+test "intern accepts nil designator" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(intern nil)");
+    try testing.expect(result.isNil());
+}
+
+test "intern accepts symbol designator" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(eq (intern 'foo) 'foo)");
+    try testing.expect(result.isT());
 }
 
 test "eval addition" {
@@ -393,6 +413,76 @@ test "stdlib fdefinition basic" {
     try testing.expect(result.eq(Value.t));
 }
 
+test "stdlib symbol-function primitive wrapper ash" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(funcall (symbol-function 'ash) 1 3)
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 8), result.toFixnum());
+}
+
+test "stdlib symbol-function primitive wrapper count" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(funcall (symbol-function 'count) 'a '(a b a))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 2), result.toFixnum());
+}
+
+test "compiler primitiveRefArity ash is binary" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const b = repl.compiler.builtins.?;
+    const arity = repl.compiler.primitiveRefArity(b.ash);
+    try testing.expect(arity != null);
+    try testing.expectEqual(compiler.Compiler.PrimitiveRefArity.binary, arity.?);
+}
+
+test "compiler primitiveRefArity count is binary" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const b = repl.compiler.builtins.?;
+    const arity = repl.compiler.primitiveRefArity(b.count);
+    try testing.expect(arity != null);
+    try testing.expectEqual(compiler.Compiler.PrimitiveRefArity.binary, arity.?);
+}
+
 test "stdlib setf fdefinition (symbol)" {
     const allocator = testing.allocator;
 
@@ -562,6 +652,79 @@ test "stdlib setf bit and sbit places" {
     try testing.expectEqual(@as(i64, 1), c3.car.toFixnum());
 }
 
+test "aref supports strings with character semantics" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const downcased = try repl.eval("(char-downcase (aref \"SFDL\" 0))");
+    try testing.expect(downcased.isCharacter());
+    try testing.expectEqual(@as(u21, 's'), downcased.toCharacter());
+
+    const mutated = try repl.eval(
+        "(let ((s (make-string 2 :initial-element #\\A)))\n" ++
+            "  (setf (aref s 1) #\\z)\n" ++
+            "  (aref s 1))",
+    );
+    try testing.expect(mutated.isCharacter());
+    try testing.expectEqual(@as(u21, 'z'), mutated.toCharacter());
+}
+
+test "array reader keeps terminal cons and symbol literals" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const got = try repl.eval(
+        "(let ((a #2A((4 (17)) (9 (a)) ((b) 0))))\n" ++
+            "  (list (consp (aref a 0 1))\n" ++
+            "        (car (aref a 0 1))\n" ++
+            "        (car (aref a 1 1))\n" ++
+            "        (car (aref a 2 0))))",
+    );
+
+    const c0 = got.toPtr(Cons);
+    try testing.expect(c0.car.isT());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 17), c1.car.toFixnum());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(c2.car.isSymbol());
+    try testing.expectEqualStrings("A", c2.car.toPtr(runtime.Symbol).getName());
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expect(c3.car.isSymbol());
+    try testing.expectEqualStrings("B", c3.car.toPtr(runtime.Symbol).getName());
+}
+
+test "nested array literals read as nested array objects" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const got = try repl.eval("(let ((a #2A((#2A((a)))))) (arrayp (aref a 0 0)))");
+    try testing.expect(got.isT());
+}
+
 test "stdlib pushnew supports gethash place" {
     const allocator = testing.allocator;
 
@@ -714,8 +877,7 @@ test "keyword arg validation" {
     try testing.expect(ok.isFixnum());
     try testing.expectEqual(@as(i64, 1), ok.toFixnum());
 
-    const unknown = try repl.eval("(f :b 2)");
-    try testing.expect(unknown.isNil());
+    try testing.expectError(error.UnhandledThrow, repl.eval("(f :b 2)"));
 
     const ok2 = try repl.eval("(f :b 2 :allow-other-keys t)");
     try testing.expect(ok2.isNil());
@@ -955,6 +1117,45 @@ test "declaim/proclaim optimize sets default safety" {
     _ = try repl.eval("(defun globally-safe (x) (the fixnum x))");
     const checked = repl.eval("(globally-safe \"hi\")");
     try testing.expectError(error.TypeMismatch, checked);
+}
+
+test "declaim notinline accepts setf function name" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval("(declaim (notinline function-to-trace (setf function-to-trace)))");
+    try testing.expect(result.isNil());
+}
+
+test "defgeneric and defmethod accept setf function names" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass doc-setf-test () ((doc :initform nil)))");
+    _ = try repl.eval("(defgeneric doc-setf-test-accessor (obj))");
+    _ = try repl.eval("(defgeneric (setf doc-setf-test-accessor) (new obj))");
+    _ = try repl.eval("(defmethod doc-setf-test-accessor ((obj doc-setf-test)) (slot-value obj 'doc))");
+    _ = try repl.eval("(defmethod (setf doc-setf-test-accessor) ((new string) (obj doc-setf-test)) (setf (slot-value obj 'doc) new))");
+
+    const result = try repl.eval(
+        "(let ((obj (make-instance 'doc-setf-test))) (setf (doc-setf-test-accessor obj) \"ok\") (doc-setf-test-accessor obj))",
+    );
+    try testing.expect(result.isString());
+    try testing.expectEqualStrings("ok", try asString(result));
 }
 
 // ============================================================================
@@ -2475,6 +2676,29 @@ test "find-class accepts optional errorp and environment args" {
     try testing.expect((try repl.eval("(find-class 'definitely-missing nil nil)")).isNil());
 }
 
+test "setf find-class overrides and removes lookup" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defclass fc-a () ())");
+    _ = try repl.eval("(defclass fc-b () ())");
+
+    const b_class = try repl.eval("(find-class 'fc-b)");
+    _ = try repl.eval("(setf (find-class 'fc-a) (find-class 'fc-b))");
+    const aliased = try repl.eval("(find-class 'fc-a)");
+    try testing.expect(aliased.eq(b_class));
+
+    _ = try repl.eval("(setf (find-class 'fc-a) nil)");
+    try testing.expect((try repl.eval("(find-class 'fc-a nil)")).isNil());
+}
+
 test "class-direct-superclasses - returns direct supers" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
@@ -3090,6 +3314,21 @@ test "defstruct with conc-name nil defines copier" {
     try testing.expect(result.eq(Value.t));
 }
 
+test "defstruct with character conc-name coerces to string prefix" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct (entry-char-prefix (:conc-name #\\X)) foo)\n" ++
+        "  (let ((x (vector 'entry-char-prefix 7)))\n" ++
+        "    (and (fboundp 'xfoo)\n" ++
+        "         (= (xfoo x) 7))))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
 test "defvar without init defaults to nil" {
     const allocator = testing.allocator;
 
@@ -3282,6 +3521,31 @@ test "ansi repro compile-file-pathname accepts string designator" {
     try testing.expect(result.isPathname());
 }
 
+test "compile-file-pathname keeps explicit input name over defaults" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(progn
+        \\  (setf *default-pathname-defaults* (pathname "/tmp/gclload1.lsp"))
+        \\  (let ((pn (compile-file-pathname "rt.lsp")))
+        \\    (list (pathname-name pn) (pathname-type pn))))
+    );
+    try testing.expect(result.isCons());
+    const c1 = result.toPtr(Cons);
+    try testing.expectEqualStrings("rt", try asString(c1.car));
+    try testing.expect(c1.cdr.isCons());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expectEqualStrings("fasl", try asString(c2.car));
+}
+
 test "ansi repro delete-file accepts pathname designator" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
@@ -3431,6 +3695,44 @@ test "ansi repro syntax.sharp-dot.1 read-time evaluates #." {
     const result = try repl.eval(src);
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 3), result.toFixnum());
+}
+
+test "ansi repro syntax.sharp-c.1 read-time complex helper" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src = "(read-from-string \"#.(complex 1 1)\" t nil :start 0)";
+    const result = try repl.eval(src);
+    try testing.expect(result.typeKind() == .complex);
+    const cplx = result.toPtr(runtime.Complex);
+    try testing.expectApproxEqAbs(@as(f64, 1.0), cplx.real, 0.0001);
+    try testing.expectApproxEqAbs(@as(f64, 1.0), cplx.imag, 0.0001);
+}
+
+test "ansi repro syntax.sharp-c.4 read-time complex helper rational part" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src = "(read-from-string \"#.(complex -1/2 1)\" t nil :start 0)";
+    const result = try repl.eval(src);
+    try testing.expect(result.typeKind() == .complex);
+    const cplx = result.toPtr(runtime.Complex);
+    try testing.expectApproxEqAbs(@as(f64, -0.5), cplx.real, 0.0001);
+    try testing.expectApproxEqAbs(@as(f64, 1.0), cplx.imag, 0.0001);
 }
 
 test "ansi repro read-suppress.sharp-dot.1 ignores #. when suppressed" {
@@ -3738,6 +4040,38 @@ test "ansi repro load.feature-plus.3 ignores #+lispworks branch" {
     const result = try repl.eval("(load \"tmp_pkg_feature_3.lsp\")");
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "load in-package updates reader package for following forms" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    try std.fs.cwd().writeFile(.{
+        .sub_path = "tmp_load_in_package.lsp",
+        .data = "(defpackage \"TMP-LOAD-PKG\" (:use \"COMMON-LISP\"))\n" ++
+            "(in-package \"TMP-LOAD-PKG\")\n" ++
+            "(defun load-marker-fn () 42)\n" ++
+            "(in-package \"CL-USER\")\n" ++
+            "42\n",
+    });
+    defer std.fs.cwd().deleteFile("tmp_load_in_package.lsp") catch {};
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const loaded = try repl.eval("(load \"tmp_load_in_package.lsp\")");
+    try testing.expect(loaded.isFixnum());
+    try testing.expectEqual(@as(i64, 42), loaded.toFixnum());
+
+    const check =
+        "(and (fboundp 'tmp-load-pkg::load-marker-fn) " ++
+        "(= (tmp-load-pkg::load-marker-fn) 42))";
+    const result = try repl.eval(check);
+    try testing.expect(!result.isNil());
 }
 
 test "ansi repro package dynamic *package* controls use-package target" {
