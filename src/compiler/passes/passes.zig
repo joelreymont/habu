@@ -6,18 +6,19 @@
 //! Full Pipeline:
 //!   Source → parse → p01_expand → p02_desugar → p03_lift →
 //!   p04_resolve → p05_capture → p06_annotate → p07_infer →
-//!   p08_erase → p09_emit → Bytecode
+//!   p07b_constrain → p08_erase → p09_emit → Bytecode
 //!
 //! Stages:
-//!   p01_expand:   Value → Value   (macro expansion)
-//!   p02_desugar:  Value → Value   (let*, cond, and, or, defun → core forms)
-//!   p03_lift:     Value → Ir      (S-expr to IR, unresolved vars)
-//!   p04_resolve:  Ir → Ir         (name resolution, fill depth/index)
-//!   p05_capture:  Ir → Ir         (closure analysis, identify captures)
-//!   p06_annotate: Ir → TypedIr    (wrap with type/quantity slots)
-//!   p07_infer:    TypedIr → TypedIr (run BiChecker, populate types)
-//!   p08_erase:    TypedIr → Ir    (remove zero-quantity nodes)
-//!   p09_emit:     Ir → Chunk      (bytecode generation)
+//!   p01_expand:    Value → Value     (macro expansion)
+//!   p02_desugar:   Value → Value     (let*, cond, and, or, defun → core forms)
+//!   p03_lift:      Value → Ir        (S-expr to IR, unresolved vars)
+//!   p04_resolve:   Ir → Ir           (name resolution, fill depth/index)
+//!   p05_capture:   Ir → Ir           (closure analysis, identify captures)
+//!   p06_annotate:  Ir → TypedIr      (wrap with type/quantity slots)
+//!   p07_infer:     TypedIr → TypedIr (run BiChecker, populate types)
+//!   p07b_constrain:TypedIr → TypedIr (flow-sensitive constraint propagation)
+//!   p08_erase:     TypedIr → Ir      (remove zero-quantity nodes)
+//!   p09_emit:      Ir → Chunk        (bytecode generation)
 
 pub const pass = @import("pass.zig");
 pub const pipeline = @import("pipeline.zig");
@@ -31,6 +32,8 @@ pub const resolve = @import("p04_resolve.zig");
 pub const capture = @import("p05_capture.zig");
 pub const annotate = @import("p06_annotate.zig");
 pub const infer = @import("p07_infer.zig");
+pub const constraint = @import("constraint.zig");
+pub const constrain = @import("p07b_constrain.zig");
 pub const specialize = @import("p07c_specialize.zig");
 pub const erase = @import("p08_erase.zig");
 pub const emit = @import("p09_emit.zig");
@@ -144,9 +147,13 @@ pub fn runNanoPipeline(allocator: std.mem.Allocator, builtins: *const builtins_m
     const infer_result = try infer.infer(typed_alloc, builtins, typed_ir);
     const inferred_ir = infer_result.output;
 
+    // Pass 2b: Constrain (TypedIr → TypedIr) — eliminate redundant type checks
+    const constrain_result = try constrain.constrain(typed_alloc, inferred_ir);
+    const constrained_ir = constrain_result.output;
+
     // Pass 3: Erase (TypedIr → Ir)
     // Use original allocator for final Ir output
-    const erase_result = try erase.erase(allocator, inferred_ir);
+    const erase_result = try erase.erase(allocator, constrained_ir);
 
     // Pass 4: Specialize (Ir → Ir)
     // Replace generic ops with specialized variants where types are proven
@@ -277,6 +284,8 @@ test {
     _ = capture;
     _ = annotate;
     _ = infer;
+    _ = constraint;
+    _ = constrain;
     _ = specialize;
     _ = erase;
     _ = emit;
