@@ -153,7 +153,51 @@ pub const Repl = struct {
         const addr = val.toPtrAddr();
         const start = @intFromPtr(self.heap.from_start);
         const end = @intFromPtr(self.heap.from_end);
-        return addr >= start and addr < end;
+        if (addr < start or addr >= end) return false;
+
+        const align8 = struct {
+            fn run(n: usize) ?usize {
+                const plus = std.math.add(usize, n, 7) catch return null;
+                return plus & ~@as(usize, 7);
+            }
+        }.run;
+
+        switch (val.typeKind()) {
+            .symbol => {
+                const sym = val.toPtr(Symbol);
+                const name_len = sym.name_len;
+                const aligned_name = align8(name_len) orelse return false;
+                const data_start = std.math.add(usize, addr, @sizeOf(Symbol)) catch return false;
+                const data_end = std.math.add(usize, data_start, aligned_name) catch return false;
+                if (data_end > end) return false;
+                const name_ptr = @intFromPtr(sym.name_ptr);
+                const name_end = std.math.add(usize, name_ptr, name_len) catch return false;
+                return name_ptr >= data_start and name_end <= data_end;
+            },
+            .keyword => {
+                const kw = val.toPtr(runtime.Keyword);
+                const name_len = kw.name_len;
+                const aligned_name = align8(name_len) orelse return false;
+                const data_start = std.math.add(usize, addr, @sizeOf(runtime.Keyword)) catch return false;
+                const data_end = std.math.add(usize, data_start, aligned_name) catch return false;
+                if (data_end > end) return false;
+                const name_ptr = @intFromPtr(kw.name_ptr);
+                const name_end = std.math.add(usize, name_ptr, name_len) catch return false;
+                return name_ptr >= data_start and name_end <= data_end;
+            },
+            .chunk => {
+                const chunk = val.toPtr(runtime.Chunk);
+                const const_size = std.math.mul(usize, chunk.const_count, @sizeOf(Value)) catch return false;
+                const code_size = align8(chunk.code_len) orelse return false;
+                const header_end = std.math.add(usize, addr, @sizeOf(runtime.Chunk)) catch return false;
+                const code_start = std.math.add(usize, header_end, const_size) catch return false;
+                const obj_end = std.math.add(usize, code_start, code_size) catch return false;
+                if (obj_end > end) return false;
+                if (@intFromPtr(chunk.const_pool) != header_end) return false;
+                return @intFromPtr(chunk.code) == code_start;
+            },
+            else => return true,
+        }
     }
 
     fn collectCompilerMacroPairs(self: *Repl, out: *std.ArrayList(MacroMapPair)) !void {
@@ -267,6 +311,13 @@ pub const Repl = struct {
 
     fn runVmPreserveMacroState(self: *Repl, vm: *Vm, chunk_ptr: *runtime.objects.Chunk) !Value {
         const saved_ext = vm.ext_roots;
+        if (saved_ext.len != 0) {
+            for (saved_ext) |*val| {
+                if (!self.isLiveValue(val.*)) {
+                    val.* = Value.nil;
+                }
+            }
+        }
 
         var compiler_macros = std.ArrayList(MacroMapPair){};
         defer compiler_macros.deinit(self.allocator);
@@ -279,6 +330,25 @@ pub const Repl = struct {
         var repl_macros = std.ArrayList(ReplMacroPair){};
         defer repl_macros.deinit(self.allocator);
         try self.collectReplMacroPairs(&repl_macros);
+
+        // Purge any stale entries before executing in nested VMs. We only keep
+        // values proven live in current from-space by the collectors above.
+        self.compiler.macro_table.clearRetainingCapacity();
+        for (compiler_macros.items) |pair| {
+            try self.compiler.macro_table.put(pair.key, pair.val);
+        }
+        self.compiler.symbol_macros.clearRetainingCapacity();
+        for (symbol_macros.items) |pair| {
+            try self.compiler.symbol_macros.put(pair.key, pair.val);
+        }
+        self.macros.clearRetainingCapacity();
+        for (repl_macros.items) |pair| {
+            try self.macros.put(pair.key, .{
+                .closure = pair.closure,
+                .has_whole = pair.has_whole,
+                .has_env = pair.has_env,
+            });
+        }
 
         const total_roots = saved_ext.len +
             (compiler_macros.items.len * 2) +

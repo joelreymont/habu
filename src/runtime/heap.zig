@@ -587,8 +587,8 @@ pub const Heap = struct {
             bn.limbs[i] = limbs[i];
         }
 
-        // Set size (negative if negative flag is set)
-        bn.size = if (used_limbs == 0) 0 else if (negative) -@as(i64, @intCast(used_limbs)) else @as(i64, @intCast(used_limbs));
+        // Size must match stored limb count; Bignum currently stores up to 8 limbs.
+        bn.size = if (copy_count == 0) 0 else if (negative) -@as(i64, @intCast(copy_count)) else @as(i64, @intCast(copy_count));
 
         return Value.makeBignum(bn);
     }

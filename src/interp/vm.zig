@@ -3141,31 +3141,6 @@ pub const Vm = struct {
             },
             .sym_name => {
                 const sym_val = try self.pop();
-                if (std.posix.getenv("HABU_TRACE_SYM_NAME") != null) {
-                    const chunk_name = if (self.chunk.name.isSymbol())
-                        self.chunk.name.toPtr(Symbol).getName()
-                    else if (self.chunk.name.isString())
-                        self.chunk.name.toPtr(runtime.String).bytes()
-                    else
-                        @tagName(self.chunk.name.typeKind());
-                    switch (sym_val.typeKind()) {
-                        .symbol => {
-                            const sym = sym_val.toPtr(Symbol);
-                            std.debug.print("TRACE sym_name arg: chunk={s} ip={d} symbol {s}\n", .{ chunk_name, self.ip, sym.getName() });
-                        },
-                        .keyword => {
-                            const kw = sym_val.toPtr(runtime.Keyword);
-                            std.debug.print("TRACE sym_name arg: chunk={s} ip={d} keyword {s}\n", .{ chunk_name, self.ip, kw.getName() });
-                        },
-                        .string => {
-                            const s = sym_val.toPtr(String);
-                            std.debug.print("TRACE sym_name arg: chunk={s} ip={d} string len={d}\n", .{ chunk_name, self.ip, s.length });
-                        },
-                        else => {
-                            std.debug.print("TRACE sym_name arg: chunk={s} ip={d} kind={s} raw=0x{x}\n", .{ chunk_name, self.ip, @tagName(sym_val.typeKind()), sym_val.raw });
-                        },
-                    }
-                }
                 const name_str = switch (sym_val.typeKind()) {
                     .nil => try self.allocString("nil"),
                     .t => try self.allocString("t"),
@@ -3675,6 +3650,7 @@ pub const Vm = struct {
                         var first = Value.nil;
                         var count: usize = 0;
                         var current = list;
+                        var overflow = false;
 
                         while (current.isCons()) {
                             const cons = current.toPtr(runtime.Cons);
@@ -3682,11 +3658,14 @@ pub const Vm = struct {
                                 first = cons.car;
                             } else if (count - 1 < self.secondary_values.len) {
                                 self.secondary_values[count - 1] = cons.car;
+                            } else {
+                                overflow = true;
                             }
                             count += 1;
                             current = cons.cdr;
                         }
 
+                        if (overflow) return error.StackOverflow;
                         self.secondary_values_count = if (count > 1) count - 1 else 0;
                         try self.push(first);
                     },

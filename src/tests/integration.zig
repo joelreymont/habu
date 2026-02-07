@@ -2103,6 +2103,24 @@ test "values-list returns elements as values" {
     try testing.expectEqual(@as(i64, 1), result.toFixnum());
 }
 
+test "values-list errors when secondary values exceed limit" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const err = repl.eval(
+        \\(values-list '(1 2 3 4 5 6 7 8 9 10 11
+        \\               12 13 14 15 16 17 18 19 20 21 22))
+    );
+    try testing.expectError(error.StackOverflow, err);
+}
+
 // ============================================================================
 // format tests
 // ============================================================================
