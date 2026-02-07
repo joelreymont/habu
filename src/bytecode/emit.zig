@@ -89,6 +89,12 @@ pub const Emitter = struct {
     heap: ?*Heap,
     /// Unified control stack for blocks and unwind-protects
     control_stack: std.ArrayList(ControlEntry),
+    /// Per-local-slot type tags for JIT (TypeKind as u8, 0xFF = unknown)
+    type_map: ?[]u8 = null,
+    /// Optimize speed level (0-3, from declarations)
+    speed: u8 = 1,
+    /// Optimize safety level (0-3, from declarations)
+    safety: u8 = 1,
 
     pub fn init(allocator: std.mem.Allocator) Emitter {
         return .{
@@ -148,6 +154,7 @@ pub const Emitter = struct {
             }
         }
         self.control_stack.deinit(self.allocator);
+        if (self.type_map) |tm| self.allocator.free(tm);
     }
 
     /// Compute the maximum local index used in an IR tree
@@ -1145,7 +1152,7 @@ pub const Emitter = struct {
             const_values[i] = Value{ .raw = c };
         }
 
-        return heap.allocChunk(
+        const chunk_val = try heap.allocChunk(
             self.code.items,
             const_values,
             self.arity,
@@ -1154,6 +1161,27 @@ pub const Emitter = struct {
             self.has_rest,
             final_num_locals,
         );
+
+        const chunk_ptr = chunk_val.toPtr(Chunk);
+
+        // Set optimize levels
+        chunk_ptr.speed = self.speed;
+        chunk_ptr.safety = self.safety;
+
+        // Attach type_map if available (ownership transfers to chunk)
+        if (self.type_map) |tm| {
+            chunk_ptr.type_map = tm.ptr;
+            self.type_map = null; // Prevent double-free in deinit
+        }
+
+        return chunk_val;
+    }
+
+    /// Set per-local type map from compiler type inference.
+    /// Emitter takes ownership of the slice.
+    pub fn setTypeMap(self: *Emitter, tm: []u8) void {
+        if (self.type_map) |old| self.allocator.free(old);
+        self.type_map = tm;
     }
 
     /// Get child chunks as GC Values (caller takes ownership via duped slice)
@@ -1415,6 +1443,8 @@ pub const Emitter = struct {
             Emitter.initWithHeap(self.allocator, h)
         else
             Emitter.init(self.allocator);
+        lambda_emitter.speed = self.speed;
+        lambda_emitter.safety = self.safety;
         defer lambda_emitter.deinit();
 
         const arity: u8 = @intCast(lam.params.len);

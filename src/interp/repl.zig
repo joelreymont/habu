@@ -1150,6 +1150,8 @@ pub const Repl = struct {
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
+        emitter.speed = self.compiler.optimize_current.speed;
+        emitter.safety = self.compiler.optimize_current.safety;
         defer emitter.deinit();
         try emitter.emit(ir_node);
         const chunk = try emitter.finalize();
@@ -1743,6 +1745,8 @@ pub const Repl = struct {
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
+        emitter.speed = self.compiler.optimize_current.speed;
+        emitter.safety = self.compiler.optimize_current.safety;
         defer emitter.deinit();
         try emitter.emit(ir_node);
         const chunk = try emitter.finalize();
@@ -2108,6 +2112,8 @@ pub const Repl = struct {
 
         // Emit bytecode (with heap for symbol interning)
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
+        emitter.speed = self.compiler.optimize_current.speed;
+        emitter.safety = self.compiler.optimize_current.safety;
         defer emitter.deinit();
 
         try emitter.emit(ir_node);
@@ -2705,6 +2711,8 @@ pub const Repl = struct {
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
+        emitter.speed = self.compiler.optimize_current.speed;
+        emitter.safety = self.compiler.optimize_current.safety;
         defer emitter.deinit();
         try emitter.emit(ir_node);
         const chunk = try emitter.finalize();
@@ -2915,6 +2923,8 @@ pub const Repl = struct {
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
+        emitter.speed = self.compiler.optimize_current.speed;
+        emitter.safety = self.compiler.optimize_current.safety;
         defer emitter.deinit();
         try emitter.emit(final_ir);
         const chunk = try emitter.finalize();
@@ -3346,6 +3356,8 @@ pub const Repl = struct {
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
+        emitter.speed = self.compiler.optimize_current.speed;
+        emitter.safety = self.compiler.optimize_current.safety;
         defer emitter.deinit();
         try emitter.emit(ir_node);
         const chunk = try emitter.finalize();

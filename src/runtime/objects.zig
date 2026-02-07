@@ -798,14 +798,18 @@ pub const Chunk = extern struct {
     allow_other_keys: u8 = 0, // bool as u8 for alignment
     /// Number of local variables
     num_locals: u8,
-    /// Padding for alignment
-    _pad: [2]u8 = .{0} ** 2,
+    /// Optimize speed level (0-3)
+    speed: u8 = 1,
+    /// Optimize safety level (0-3)
+    safety: u8 = 1,
     /// Original source lambda expression (for function-lambda-expression), or nil
     lambda_expr: Value = Value.nil,
     /// Debug name / function name (for function-lambda-expression), or nil
     name: Value = Value.nil,
     /// Allowed keyword symbols (list), or nil
     allowed_keywords: Value = Value.nil,
+    /// Type map for JIT: one TypeKind byte per local slot, or null
+    type_map: ?[*]u8 = null,
     /// Constant pool pointer (points to inline array after header)
     const_pool: [*]Value,
     /// Bytecode pointer (points to inline array after constants)
@@ -817,6 +821,12 @@ pub const Chunk = extern struct {
 
     pub fn getCode(self: *const Chunk) []u8 {
         return self.code[0..self.code_len];
+    }
+
+    /// Get type map slice (one TypeKind byte per local), or null
+    pub fn getTypeMap(self: *const Chunk) ?[]const u8 {
+        const tm = self.type_map orelse return null;
+        return tm[0..self.num_locals];
     }
 
     pub fn readU8(self: *const Chunk, offset: usize) u8 {

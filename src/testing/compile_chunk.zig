@@ -68,6 +68,8 @@ pub fn compileChunk(
     };
 
     var emitter = Emitter.initWithHeap(allocator, heap);
+    emitter.speed = comp.optimize_current.speed;
+    emitter.safety = comp.optimize_current.safety;
     defer emitter.deinit();
     try emitter.emit(ir_node);
     const chunk = try emitter.finalize();

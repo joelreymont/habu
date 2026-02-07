@@ -157,6 +157,35 @@ pub fn build(b: *std.Build) void {
     const jit_bench_step = b.step("bench-jit", "Run JIT microbench");
     jit_bench_step.dependOn(&jit_bench_run_cmd.step);
 
+    // CL comparison bench (Habu vs SBCL)
+    const cl_bench = b.addExecutable(.{
+        .name = "cl_bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/cl_bench.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    cl_bench.root_module.addImport("habu", b.createModule(.{
+        .root_source_file = b.path("src/lib.zig"),
+        .target = target,
+        .optimize = optimize,
+    }));
+    cl_bench.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
+    cl_bench.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
+    cl_bench.root_module.linkSystemLibrary("z3", .{});
+    cl_bench.root_module.linkSystemLibrary("c", .{});
+
+    b.installArtifact(cl_bench);
+
+    const cl_bench_run_cmd = b.addRunArtifact(cl_bench);
+    cl_bench_run_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        cl_bench_run_cmd.addArgs(args);
+    }
+    const cl_bench_step = b.step("bench-cl", "Run CL comparison bench");
+    cl_bench_step.dependOn(&cl_bench_run_cmd.step);
+
     // Bench regression checks (runs gc_bench/vm_bench/jit_bench)
     const bench_check = b.addExecutable(.{
         .name = "bench_check",

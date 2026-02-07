@@ -3026,6 +3026,8 @@ pub const Compiler = struct {
 
         // Emit to bytecode
         var emitter = Emitter.initWithHeap(arena_alloc, heap);
+        emitter.speed = self.optimize_current.speed;
+        emitter.safety = self.optimize_current.safety;
         defer emitter.deinit();
         try emitter.emit(lambda_ir);
 
@@ -7883,6 +7885,8 @@ pub const Compiler = struct {
 
         // Emit to bytecode
         var emitter = Emitter.initWithHeap(arena_alloc, heap);
+        emitter.speed = self.optimize_current.speed;
+        emitter.safety = self.optimize_current.safety;
         defer emitter.deinit();
         try emitter.emit(thunk_ir);
 

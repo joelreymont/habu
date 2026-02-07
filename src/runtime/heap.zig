@@ -1266,6 +1266,26 @@ pub const Heap = struct {
         return Value.makeChunk(chunk);
     }
 
+    /// Allocate a chunk with optimize settings
+    pub fn allocChunkWithOpt(
+        self: *Heap,
+        code: []const u8,
+        constants: []const Value,
+        arity: u8,
+        opt_count: u8,
+        key_count: u8,
+        has_rest: bool,
+        num_locals: u8,
+        speed: u8,
+        safety: u8,
+    ) !Value {
+        const val = try self.allocChunk(code, constants, arity, opt_count, key_count, has_rest, num_locals);
+        const chunk = val.toPtr(objects.Chunk);
+        chunk.speed = speed;
+        chunk.safety = safety;
+        return val;
+    }
+
     pub fn allocMacroEnv(self: *Heap) !Value {
         const macros = try self.allocHashTable(16, .eq);
         const symbol_macros = try self.allocHashTable(16, .eq);

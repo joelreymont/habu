@@ -119,6 +119,8 @@ pub const Expander = struct {
 
         const emit_mod = @import("../../bytecode/emit.zig");
         var emitter = emit_mod.Emitter.initWithHeap(self.allocator, self.heap);
+        emitter.speed = comp.optimize_current.speed;
+        emitter.safety = comp.optimize_current.safety;
         defer emitter.deinit();
         try emitter.emit(ir);
         const chunk_val = try emitter.finalize();
