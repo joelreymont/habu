@@ -157,7 +157,8 @@ pub const Repl = struct {
 
         const align8 = struct {
             fn run(n: usize) ?usize {
-                const plus = std.math.add(usize, n, 7) catch return null;
+                if (n > std.math.maxInt(usize) - 7) return null;
+                const plus = n + 7;
                 return plus & ~@as(usize, 7);
             }
         }.run;
