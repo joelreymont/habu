@@ -46,6 +46,7 @@ pub const slotMakunbound = clos.slotMakunbound;
 pub const callNextMethod = clos.callNextMethod;
 pub const classp = clos.classp;
 pub const findClass = clos.findClass;
+pub const setFindClass = clos.setFindClass;
 pub const className = clos.className;
 pub const classDirectSuperclasses = clos.classDirectSuperclasses;
 pub const classPrecedenceList = clos.classPrecedenceList;

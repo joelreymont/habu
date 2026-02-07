@@ -66,6 +66,8 @@ pub const BuiltinSymbols = struct {
     sym_no_applicable_method: Value,
     sym_no_next_method: Value,
     sym_condition_tag: Value,
+    sym_error: Value,
+    sym_condition: Value,
 
     // Feature evaluation
     sym_and: Value,
@@ -156,6 +158,8 @@ pub const BuiltinSymbols = struct {
             .sym_no_applicable_method = try heap.intern("no-applicable-method"),
             .sym_no_next_method = try heap.intern("no-next-method"),
             .sym_condition_tag = try heap.intern("%condition%"),
+            .sym_error = try heap.intern("error"),
+            .sym_condition = try heap.intern("condition"),
 
             // Feature evaluation
             .sym_and = try heap.intern("and"),

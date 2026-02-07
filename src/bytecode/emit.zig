@@ -621,7 +621,7 @@ pub const Emitter = struct {
             .lit => |v| try self.emitLiteral(v),
             .quote_sym => |name| try self.emitQuoteSym(name),
             .quote => |inner| try self.emitQuote(inner),
-            .@"var" => |v| try self.emitVar(v.depth, v.index),
+            .@"var" => |v| try self.emitVar(v.name, v.depth, v.index),
             .set => |s| try self.emitSet(s),
             .global_ref => |g| {
                 const idx = g.index;
@@ -1002,6 +1002,7 @@ pub const Emitter = struct {
             .set_slot_value => |op| try self.emitTernaryOp(op, .set_slot_value),
             .class_of => |op| try self.emitUnaryOp(op.operand, .class_of),
             .find_class => |op| try self.emitUnaryOp(op.operand, .find_class),
+            .set_find_class => |op| try self.emitBinaryOp(op, .set_find_class),
             .class_name => |op| try self.emitUnaryOp(op.operand, .class_name),
             .class_direct_superclasses => |op| try self.emitUnaryOp(op.operand, .class_direct_superclasses),
             .class_precedence_list => |op| try self.emitUnaryOp(op.operand, .class_precedence_list),
@@ -1116,11 +1117,8 @@ pub const Emitter = struct {
             try self.emitOp(.ret);
         }
 
-        // Use computed max_local_idx for REPL expressions (when num_locals is 0)
-        const final_num_locals = if (self.num_locals > 0)
-            self.num_locals
-        else
-            self.max_local_idx;
+        // Keep explicit lambda preallocation, but never under-allocate.
+        const final_num_locals = @max(self.num_locals, self.max_local_idx);
 
         const heap = if (self.heap) |val| val else return error.NoHeap;
 
@@ -1155,6 +1153,12 @@ pub const Emitter = struct {
         const opcode: u16 = @intFromEnum(op);
         try self.code.append(self.allocator, @truncate(opcode & 0xFF));
         try self.code.append(self.allocator, @truncate(opcode >> 8));
+    }
+
+    fn noteLocal(self: *Emitter, index: u16) Error!void {
+        if (index > 255) return error.TooManyLocals;
+        const needed: u8 = @intCast(index + 1);
+        self.max_local_idx = @max(self.max_local_idx, needed);
     }
 
     fn emitU8(self: *Emitter, val: u8) Error!void {
@@ -1271,23 +1275,25 @@ pub const Emitter = struct {
         try self.emit(inner);
     }
 
-    fn emitVar(self: *Emitter, depth: u16, index: u16) Error!void {
+    fn emitVar(self: *Emitter, name: []const u8, depth: u16, index: u16) Error!void {
         if (depth == 0) {
             // Local variable
             if (index > 255) return error.TooManyLocals;
+            try self.noteLocal(index);
             try self.emitOp(.load_local);
             try self.emitU8(@intCast(index));
         } else {
-            // Check if this is a captured variable
-            // Captures are stored with depth from enclosing function's perspective
-            // IR nodes have depth from this function's perspective (so +1)
-            for (self.captures, 0..) |cap, i| {
-                if (cap.depth + 1 == depth and cap.index == index) {
-                    // Load from capture array
-                    try self.emitOp(.load_capture);
-                    try self.emitU8(@intCast(i));
-                    return;
-                }
+            if (self.resolveCaptureSlot(depth, index)) |slot| {
+                // Load from capture array
+                try self.emitOp(.load_capture);
+                try self.emitU8(slot);
+                return;
+            }
+            if (self.resolveCaptureSlotByName(name)) |slot| {
+                // Keep capture access stable when depth/index metadata drifts.
+                try self.emitOp(.load_capture);
+                try self.emitU8(slot);
+                return;
             }
             // Upvalue (nested closure case)
             if (depth > 255 or index > 255) return error.TooManyLocals;
@@ -1327,9 +1333,24 @@ pub const Emitter = struct {
         // Then store
         if (s.depth == 0) {
             if (s.index > 255) return error.TooManyLocals;
+            try self.noteLocal(s.index);
             try self.emitOp(.store_local);
             try self.emitU8(@intCast(s.index));
         } else {
+            if (self.resolveCaptureSlot(s.depth, s.index)) |slot| {
+                // store_upvalue targets current closure capture slots.
+                try self.emitOp(.store_upvalue);
+                try self.emitU8(0);
+                try self.emitU8(slot);
+                return;
+            }
+            if (self.resolveCaptureSlotByName(s.name)) |slot| {
+                // Keep capture store aligned to closure slot order.
+                try self.emitOp(.store_upvalue);
+                try self.emitU8(0);
+                try self.emitU8(slot);
+                return;
+            }
             if (s.depth > 255 or s.index > 255) return error.TooManyLocals;
             try self.emitOp(.store_upvalue);
             try self.emitU8(@intCast(s.depth));
@@ -1337,11 +1358,32 @@ pub const Emitter = struct {
         }
     }
 
+    fn resolveCaptureSlot(self: *const Emitter, depth: u16, index: u16) ?u8 {
+        // Captures are stored with depth from enclosing function's perspective.
+        // IR variable depths are from current function perspective.
+        for (self.captures, 0..) |cap, i| {
+            if (cap.depth + 1 == depth and cap.index == index) {
+                return @intCast(i);
+            }
+        }
+        return null;
+    }
+
+    fn resolveCaptureSlotByName(self: *const Emitter, name: []const u8) ?u8 {
+        for (self.captures, 0..) |cap, i| {
+            if (std.mem.eql(u8, cap.name, name)) {
+                return @intCast(i);
+            }
+        }
+        return null;
+    }
+
     fn emitLet(self: *Emitter, l: anytype) Error!void {
         // Local slots are pre-allocated by vm.run() based on num_locals.
         // Just store each binding at its absolute slot.
         for (l.bindings) |b| {
             try self.emit(b.value);
+            try self.noteLocal(b.index);
             try self.emitOp(.store_local);
             try self.emitU8(@intCast(b.index)); // Use IR's absolute index
         }
@@ -1502,14 +1544,31 @@ pub const Emitter = struct {
 
         // Emit captures (if any)
         for (lam.captures) |cap| {
-            // Load the captured value from upvalue
             if (cap.depth == 0) {
+                // Capture from this function's local slot.
                 try self.emitOp(.load_local);
                 try self.emitU8(@intCast(cap.index));
             } else {
-                try self.emitOp(.load_upvalue);
-                try self.emitU8(@intCast(cap.depth - 1));
-                try self.emitU8(@intCast(cap.index));
+                // Capture from this function's own capture array.
+                // `cap.index` is a lexical slot index, not a capture slot index,
+                // so resolve it against parent captures first.
+                var parent_capture_slot: ?u8 = null;
+                for (self.captures, 0..) |parent_cap, slot| {
+                    if (parent_cap.depth == cap.depth - 1 and parent_cap.index == cap.index) {
+                        parent_capture_slot = @intCast(slot);
+                        break;
+                    }
+                }
+                if (parent_capture_slot) |slot| {
+                    try self.emitOp(.load_capture);
+                    try self.emitU8(slot);
+                } else {
+                    // Fallback for legacy paths where the parent value is still
+                    // accessible via upvalue addressing.
+                    try self.emitOp(.load_upvalue);
+                    try self.emitU8(@intCast(cap.depth - 1));
+                    try self.emitU8(@intCast(cap.index));
+                }
             }
         }
 
@@ -1833,6 +1892,7 @@ pub const Emitter = struct {
 
         // When throw happens, thrown value is on operand stack
         // Store it to the local slot where the handler code expects it
+        try self.noteLocal(hc.cond_idx);
         try self.emitOp(.store_local);
         try self.emitU8(@intCast(hc.cond_idx));
 
@@ -2760,4 +2820,54 @@ test "emit block return-from patches" {
     try emitter.emit(blk);
     _ = try emitter.finalize();
     try testing.expect(emitter.code.items.len > 0);
+}
+
+test "emit set capture fallback by name" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var emitter = Emitter.initWithHeap(allocator, &heap);
+    defer emitter.deinit();
+
+    const builder = ir.IrBuilder.init(allocator);
+    const one = try builder.lit(Value.makeFixnum(1));
+    const set_x = try builder.set("x", 2, 2, one);
+    const captures = [_]ir.Ir.Capture{
+        .{ .name = "x", .depth = 0, .index = 2 },
+    };
+    const lam = try builder.lambda(
+        &[_][]const u8{},
+        &[_]ir.Ir.OptionalParam{},
+        &[_]ir.Ir.KeyParam{},
+        false,
+        null,
+        &captures,
+        set_x,
+    );
+
+    try emitter.emit(lam);
+    try testing.expectEqual(@as(usize, 1), emitter.child_chunks.items.len);
+    const chunk = emitter.child_chunks.items[0].toPtr(Chunk);
+    const code = chunk.getCode();
+
+    const op_val: u16 = @intFromEnum(Op.store_upvalue);
+    const op_lo: u8 = @truncate(op_val & 0xFF);
+    const op_hi: u8 = @truncate(op_val >> 8);
+    var found = false;
+    var i: usize = 0;
+    while (i + 3 < code.len) : (i += 1) {
+        if (code[i] == op_lo and code[i + 1] == op_hi) {
+            found = true;
+            try testing.expectEqual(@as(u8, 0), code[i + 2]); // depth
+            try testing.expectEqual(@as(u8, 0), code[i + 3]); // capture slot
+            break;
+        }
+    }
+    try testing.expect(found);
 }

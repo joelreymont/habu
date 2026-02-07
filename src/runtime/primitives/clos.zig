@@ -390,8 +390,36 @@ pub fn findClass(heap: *Heap, args: Value) !Value {
     if (!args.isCons()) return error.InvalidArgument;
     const c = args.toPtr(Cons);
     const name = c.car;
-    if (!name.isSymbol()) return error.TypeError;
+    switch (name.typeKind()) {
+        .symbol, .nil, .t => {},
+        else => return error.TypeError,
+    }
     return heap.findLispClass(name) orelse Value.nil;
+}
+
+/// set-find-class: (%set-find-class name class-or-nil)
+/// Update class registry entry and return class-or-nil.
+pub fn setFindClass(heap: *Heap, args: Value) !Value {
+    if (!args.isCons()) return error.InvalidArgument;
+    const c1 = args.toPtr(Cons);
+    const name = c1.car;
+    switch (name.typeKind()) {
+        .symbol, .nil, .t => {},
+        else => return error.TypeError,
+    }
+    if (!c1.cdr.isCons()) return error.InvalidArgument;
+
+    const c2 = c1.cdr.toPtr(Cons);
+    const class_or_nil = c2.car;
+    if (!c2.cdr.isNil()) return error.InvalidArgument;
+
+    if (class_or_nil.isNil()) {
+        _ = heap.removeLispClass(name);
+        return Value.nil;
+    }
+
+    try heap.putLispClass(name, class_or_nil);
+    return class_or_nil;
 }
 
 /// class-name: (class-name class)
@@ -552,7 +580,18 @@ pub fn makeGenericFunction(heap: *Heap, args: Value) !Value {
     const cons1 = args.toPtr(Cons);
     const name = cons1.car;
 
-    if (!name.isSymbol()) return error.InvalidArgument;
+    var valid_name = name.isSymbol();
+    if (!valid_name and name.isCons()) {
+        const setf_outer = name.toPtr(Cons);
+        if (setf_outer.car.isSymbol() and setf_outer.cdr.isCons()) {
+            const setf_inner = setf_outer.cdr.toPtr(Cons);
+            if (setf_inner.car.isSymbol() and setf_inner.cdr.isNil()) {
+                const setf_sym = try heap.intern("setf");
+                valid_name = setf_outer.car.eq(setf_sym);
+            }
+        }
+    }
+    if (!valid_name) return error.InvalidArgument;
 
     if (!cons1.cdr.isCons()) return error.InvalidArgument;
     const cons2 = cons1.cdr.toPtr(Cons);
@@ -607,18 +646,67 @@ pub fn makeMethod(heap: *Heap, args: Value) !Value {
 /// %add-method: (%add-method generic-function method)
 /// Add method to generic function's methods list
 pub fn addMethod(heap: *Heap, args: Value) !Value {
+    const trace_add_method = std.posix.getenv("HABU_TRACE_ADD_METHOD") != null;
     if (!args.isCons()) return error.InvalidArgument;
     const cons1 = args.toPtr(Cons);
     const gf_val = cons1.car;
 
-    if (!gf_val.isGenericFunction()) return error.InvalidArgument;
+    if (!gf_val.isGenericFunction()) {
+        if (trace_add_method) {
+            std.debug.print("TRACE add-method invalid gf kind={s}\n", .{@tagName(gf_val.typeKind())});
+            if (gf_val.isClosure()) {
+                const clos = gf_val.toPtr(objects.Closure);
+                if (clos.code.isChunk()) {
+                    const chunk = clos.code.toPtr(objects.Chunk);
+                    if (chunk.name.isSymbol()) {
+                        std.debug.print("TRACE add-method invalid gf closure-name={s}\n", .{chunk.name.toPtr(Symbol).getName()});
+                    } else if (chunk.name.isCons()) {
+                        const outer = chunk.name.toPtr(Cons);
+                        if (outer.car.isSymbol() and outer.cdr.isCons()) {
+                            const inner = outer.cdr.toPtr(Cons);
+                            if (inner.car.isSymbol()) {
+                                std.debug.print(
+                                    "TRACE add-method invalid gf closure-name=({s} {s})\n",
+                                    .{ outer.car.toPtr(Symbol).getName(), inner.car.toPtr(Symbol).getName() },
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return error.InvalidArgument;
+    }
     const gf = gf_val.toPtr(GenericFunction);
 
     if (!cons1.cdr.isCons()) return error.InvalidArgument;
     const cons2 = cons1.cdr.toPtr(Cons);
     const method_val = cons2.car;
 
-    if (!method_val.isMethod()) return error.InvalidArgument;
+    if (!method_val.isMethod()) {
+        if (trace_add_method) {
+            std.debug.print("TRACE add-method invalid method kind={s}\n", .{@tagName(method_val.typeKind())});
+        }
+        return error.InvalidArgument;
+    }
+
+    if (trace_add_method) {
+        const gf_name = gf.name;
+        if (gf_name.isSymbol()) {
+            std.debug.print("TRACE add-method gf={s}\n", .{gf_name.toPtr(Symbol).getName()});
+        } else if (gf_name.isCons()) {
+            const outer = gf_name.toPtr(Cons);
+            if (outer.car.isSymbol() and outer.cdr.isCons()) {
+                const inner = outer.cdr.toPtr(Cons);
+                if (inner.car.isSymbol()) {
+                    std.debug.print(
+                        "TRACE add-method gf=({s} {s})\n",
+                        .{ outer.car.toPtr(Symbol).getName(), inner.car.toPtr(Symbol).getName() },
+                    );
+                }
+            }
+        }
+    }
 
     gf.methods = try heap.allocCons(method_val, gf.methods);
     return gf_val;

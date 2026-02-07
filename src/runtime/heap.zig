@@ -488,18 +488,27 @@ pub const Heap = struct {
     pub fn allocRaw(self: *Heap, size: usize) error{OutOfMemory}![*]align(ALIGNMENT) u8 {
         const aligned_size = std.mem.alignForward(usize, size, ALIGNMENT);
 
-        const current = @intFromPtr(self.alloc_ptr);
+        const raw_current = @intFromPtr(self.alloc_ptr);
         const end = @intFromPtr(self.from_end);
+        if (raw_current >= end) return error.OutOfMemory;
+        if (raw_current > std.math.maxInt(usize) - (ALIGNMENT - 1)) return error.OutOfMemory;
 
-        if (current + aligned_size > end) {
+        const current = std.mem.alignForward(usize, raw_current, ALIGNMENT);
+        if (current < raw_current) return error.OutOfMemory;
+        if (current > std.math.maxInt(usize) - aligned_size) {
+            return error.OutOfMemory;
+        }
+        const next = current + aligned_size;
+
+        if (next > end) {
             return error.OutOfMemory;
         }
 
-        const result = self.alloc_ptr;
-        self.alloc_ptr = @ptrFromInt(current + aligned_size);
+        const result: [*]align(ALIGNMENT) u8 = @ptrFromInt(current);
+        self.alloc_ptr = @ptrFromInt(next);
 
-        self.stats.allocations += 1;
-        self.stats.bytes_allocated += aligned_size;
+        self.stats.allocations +%= 1;
+        self.stats.bytes_allocated +%= aligned_size;
 
         return result;
     }
@@ -1384,6 +1393,13 @@ pub const Heap = struct {
         if (self.lisp_classes.raw == Value.nil.raw) return error.RegistryNotInitialized;
         const ht = self.lisp_classes.toPtr(objects.HashTable);
         try self.putHashTableAutoGrow(ht, name, class);
+    }
+
+    /// Remove a class from the global class registry
+    pub fn removeLispClass(self: *Heap, name: Value) bool {
+        if (self.lisp_classes.raw == Value.nil.raw) return false;
+        const ht = self.lisp_classes.toPtr(objects.HashTable);
+        return ht.remove(name);
     }
 
     /// Find a class by name in the global class registry

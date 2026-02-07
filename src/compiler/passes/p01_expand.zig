@@ -123,21 +123,20 @@ pub const Expander = struct {
         try emitter.emit(ir);
         const chunk_val = try emitter.finalize();
 
-        // Execute to get closure
-        const closure_val = try vm.run(chunk_val.toPtr(Chunk));
+        // Execute to get closure and call it without clobbering active VM frames.
+        const chunk_ptr = chunk_val.toPtr(Chunk);
+        const closure_val = try self.heap.allocClosure(chunk_val, chunk_ptr.arity, &[_]Value{});
 
-        // Push args onto stack
+        var call_args = std.ArrayList(Value){};
+        defer call_args.deinit(self.allocator);
         var arg_iter = args;
-        var nargs: u8 = 0;
         while (arg_iter.isCons()) {
             const arg_cons = arg_iter.toPtr(Cons);
-            try vm.push(arg_cons.car);
+            try call_args.append(self.allocator, arg_cons.car);
             arg_iter = arg_cons.cdr;
-            nargs += 1;
         }
 
-        // Call closure with args
-        return vm.callClosure(closure_val.toPtr(runtime.Closure), nargs);
+        return vm.callFromStackAt(vm.sp, closure_val, call_args.items);
     }
 
     /// Simple parameter substitution (for macros without complex patterns)

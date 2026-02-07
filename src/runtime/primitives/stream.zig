@@ -350,16 +350,16 @@ pub fn primFinishOutput(heap: *Heap, args: []const Value) !Value {
     if (args.len < 1) return error.InvalidArgument;
 
     const stream_val = args[0];
-    if (!stream_val.isStream()) return error.InvalidArgument;
+    // ANSI stream designators: NIL and T are both accepted.
+    if (stream_val.isNil() or stream_val.isT()) return Value.nil;
+    if (!stream_val.isStream()) return error.TypeError;
 
     const stream = stream_val.toPtr(Stream);
 
     if (stream.closed) return error.StreamClosed;
     if (!stream.isOutput()) return error.NotOutputStreamError;
-    if (stream.stream_type != .file) return error.InvalidArgument;
 
-    const file = std.fs.File{ .handle = stream.file_fd };
-    try file.sync();
+    // Streams are already unbuffered at this layer, so finish-output is a no-op.
 
     return Value.nil;
 }
@@ -369,16 +369,14 @@ pub fn primForceOutput(heap: *Heap, args: []const Value) !Value {
     if (args.len < 1) return error.InvalidArgument;
 
     const stream_val = args[0];
-    if (!stream_val.isStream()) return error.InvalidArgument;
+    // ANSI stream designators: NIL and T are both accepted.
+    if (stream_val.isNil() or stream_val.isT()) return Value.nil;
+    if (!stream_val.isStream()) return error.TypeError;
 
     const stream = stream_val.toPtr(Stream);
 
     if (stream.closed) return error.StreamClosed;
     if (!stream.isOutput()) return error.NotOutputStreamError;
-    if (stream.stream_type != .file) return error.InvalidArgument;
-
-    const file = std.fs.File{ .handle = stream.file_fd };
-    try file.sync();
 
     return Value.nil;
 }

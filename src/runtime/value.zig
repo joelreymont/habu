@@ -113,7 +113,7 @@ pub const Value = packed struct {
 
     /// Check if value is symbol-like for symbolp (includes nil and t)
     pub inline fn isSymbolLike(self: Value) bool {
-        return self.isNil() or self.isT() or self.isSymbol();
+        return self.isNil() or self.isT() or self.isSymbol() or self.isKeyword();
     }
 
     /// Check if value is a fixnum (bit0 = 1)

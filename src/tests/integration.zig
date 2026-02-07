@@ -449,6 +449,26 @@ test "stdlib symbol-function primitive wrapper count" {
     try testing.expectEqual(@as(i64, 2), result.toFixnum());
 }
 
+test "stdlib symbol-function eval-dispatch wrapper encode-universal-time" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(symbol-function 'encode-universal-time)
+    );
+    try testing.expect(switch (result.typeKind()) {
+        .closure, .native_code, .generic_function => true,
+        else => false,
+    });
+}
+
 test "compiler primitiveRefArity ash is binary" {
     const allocator = testing.allocator;
 
@@ -481,6 +501,38 @@ test "compiler primitiveRefArity count is binary" {
     const arity = repl.compiler.primitiveRefArity(b.count);
     try testing.expect(arity != null);
     try testing.expectEqual(compiler.Compiler.PrimitiveRefArity.binary, arity.?);
+}
+
+test "stdlib boundp treats nil and t as symbols" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(and (boundp 'nil) (boundp 't))");
+    try testing.expect(result.eq(Value.t));
+}
+
+test "stdlib find-class accepts nil symbol name" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(find-class nil nil)");
+    try testing.expect(result.isNil());
 }
 
 test "stdlib setf fdefinition (symbol)" {
@@ -3606,6 +3658,38 @@ test "ansi repro make-symbol.11 nil vector string designator" {
 
     const pkg = try repl.eval("(symbol-package (make-symbol (make-array '(0) :element-type nil)))");
     try testing.expect(pkg.isNil());
+}
+
+test "ansi repro symbol-package function designator resolves callable" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(funcall #'symbol-package (make-symbol (make-array '(0) :element-type nil)))",
+    );
+    try testing.expect(result.isNil());
+}
+
+test "ansi repro intern function designator accepts optional package arg" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(funcall #'intern \"DOT-INTERN\" :cl-user)");
+    try testing.expect(result.isSymbol());
 }
 
 test "ansi repro equal.13 equal.14 nil vectors are string-like" {

@@ -847,6 +847,7 @@ pub const Ir = union(enum) {
     set_slot_value: TernaryOp, // (%set-slot-value obj 'slot-name value)
     class_of: UnaryOp, // (class-of obj)
     find_class: UnaryOp, // (find-class name)
+    set_find_class: BinaryOp, // (%set-find-class name class-or-nil)
     class_name: UnaryOp, // (class-name class)
     class_direct_superclasses: UnaryOp, // (class-direct-superclasses class)
     class_precedence_list: UnaryOp, // (class-precedence-list class)

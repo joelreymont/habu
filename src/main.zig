@@ -13,13 +13,21 @@ const Heap = runtime.Heap;
 const repl_mod = @import("interp/repl.zig");
 const Repl = repl_mod.Repl;
 
+fn resolveHeapSize() usize {
+    const default_size = 64 * 1024 * 1024;
+    const heap_mb_c = std.posix.getenv("HABU_HEAP_MB") orelse return default_size;
+    const heap_mb = std.fmt.parseUnsigned(usize, std.mem.sliceTo(heap_mb_c, 0), 10) catch return default_size;
+    if (heap_mb == 0) return default_size;
+    return std.math.mul(usize, heap_mb, 1024 * 1024) catch return default_size;
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Initialize heap (64MB)
-    var heap = try Heap.init(allocator, .{});
+    // Initialize heap (64MB default, overridable via HABU_HEAP_MB)
+    var heap = try Heap.init(allocator, .{ .total_size = resolveHeapSize() });
     defer heap.deinit();
 
     // Print banner

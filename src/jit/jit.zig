@@ -596,7 +596,8 @@ pub const Jit = struct {
                     .{ .addr = nil_inst_addr },
                 });
 
-                try self.emitGuardConsX0();
+                const guard_offset = try patch.patchStencil(&self.code_buffer, stencils.guard_cons_x0, &[_]patch.PatchValue{});
+                const guard_branch_offset = guard_offset + stencils.guard_cons_x0_branch_offset;
 
                 _ = try patch.patchStencil(&self.code_buffer, stencils.car_stencil, &[_]patch.PatchValue{});
 
@@ -606,11 +607,16 @@ pub const Jit = struct {
                     .{ .addr = fast_inst_addr },
                 });
 
+                const nil_code_offset = self.code_buffer.pos;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.push_nil_stencil, &[_]patch.PatchValue{});
+
                 const end_code_offset = self.code_buffer.pos;
                 try self.emitStackPush();
                 const end_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + end_code_offset;
+                const nil_target_addr = @intFromPtr(self.code_buffer.memory.ptr) + nil_code_offset;
 
-                try self.patchBranch(nil_branch_offset, end_target_addr, .rel19);
+                try self.patchBranch(nil_branch_offset, nil_target_addr, .rel19);
+                try self.patchBranch(guard_branch_offset, nil_target_addr, .rel19);
                 try self.patchBranch(fast_branch_offset, end_target_addr, .rel26);
                 patch.flushIcache(self.code_buffer.memory.ptr, self.code_buffer.pos);
             },
@@ -1929,7 +1935,7 @@ test "jit car nil returns nil" {
     try testing.expectEqual(@as(u16, 0), ctx_val.err);
 }
 
-test "jit car non-cons sets err" {
+test "jit car non-cons returns nil" {
     if (builtin.cpu.arch != .aarch64) return;
 
     const testing = std.testing;
@@ -1966,7 +1972,8 @@ test "jit car non-cons sets err" {
         .num_locals = 0,
     };
 
-    try testing.expectError(error.TypeMismatch, vm.run(&chunk));
+    const vm_res = try vm.run(&chunk);
+    try testing.expect(vm_res.isNil());
 
     const fn_ptr = try jit.compile(&chunk);
     var stack_buf: [32]Value = undefined;
@@ -1988,8 +1995,8 @@ test "jit car non-cons sets err" {
     const jit_raw = fn_ptr(&ctx_val);
     const jit_res = Value{ .raw = jit_raw };
 
-    try testing.expect(jit_res.isNil());
-    try testing.expectEqual(@intFromError(error.TypeMismatch), ctx_val.err);
+    try testing.expectEqual(vm_res.raw, jit_res.raw);
+    try testing.expectEqual(@as(u16, 0), ctx_val.err);
 }
 
 test "jit vm parity make_list" {

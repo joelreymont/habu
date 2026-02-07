@@ -425,6 +425,8 @@ pub const Builtins = struct {
     lognor: Value,
     logandc1: Value,
     logandc2: Value,
+    logorc1: Value,
+    logorc2: Value,
     logeqv: Value,
     logbitp: Value,
     logcount: Value,
@@ -992,6 +994,8 @@ pub const Builtins = struct {
             .lognor = try heap.intern("lognor"),
             .logandc1 = try heap.intern("logandc1"),
             .logandc2 = try heap.intern("logandc2"),
+            .logorc1 = try heap.intern("logorc1"),
+            .logorc2 = try heap.intern("logorc2"),
             .logeqv = try heap.intern("logeqv"),
             .logbitp = try heap.intern("logbitp"),
             .logcount = try heap.intern("logcount"),
@@ -1240,7 +1244,7 @@ pub const Builtins = struct {
         "eval",                   "gensym",                   "macroexpand",               "macroexpand-1",
         // Symbol operations
                    "boundp",                   "fboundp",                     "symbol-value",       "symbol-function",        "function-lambda-expression",
-        "typep",                  "type-of",                  "intern",                    "symbol-name",              "copy-symbol",              "makunbound",                  "set",                "copy-structure",         "get",
+        "typep",                  "type-of",                  "intern",                    "symbol-name",              "symbol-package",           "copy-symbol",              "makunbound",                  "set",                "copy-structure",         "get",
         "put",                    "remprop",
         // Numeric
                          "abs",                       "zerop",                    "plusp",                    "minusp",                      "evenp",              "oddp",
@@ -1262,8 +1266,8 @@ pub const Builtins = struct {
         // String/number conversion
                   "parse-integer",            "write-to-string",
         // Bitwise operations
-                  "logand",                   "logior",                   "logxor",                      "lognot",             "ash",                    "lognand",
-        "lognor",                 "logandc1",                 "logandc2",                  "logeqv",                   "logbitp",                  "logcount",                    "integer-length",
+        "logand",                   "logior",                   "logxor",                      "lognot",             "ash",                    "lognand",
+        "lognor",                 "logandc1",                 "logandc2",                  "logorc1",                  "logorc2",                  "logeqv",                      "logbitp",                  "logcount",                    "integer-length",
         // File I/O
             "read-file",              "write-file",
         "delete-file",            "rename-file",              "probe-file",                "file-write-date",          "file-author",              "file-string-length",          "get-universal-time", "get-internal-real-time", "get-internal-run-time",
@@ -1339,6 +1343,8 @@ pub const Env = struct {
 
     /// Variable bindings at this level
     bindings: VarMap,
+    /// Function bindings at this level (Lisp-2 function namespace)
+    fn_bindings: VarMap,
     /// Parent environment (for closures)
     parent: ?*const Env,
     /// Depth from root (0 = top level)
@@ -1356,6 +1362,7 @@ pub const Env = struct {
     pub fn init(allocator: std.mem.Allocator, parent: ?*const Env) Env {
         return .{
             .bindings = VarMap.init(allocator),
+            .fn_bindings = VarMap.init(allocator),
             .parent = parent,
             .depth = if (parent) |p| p.depth + 1 else 0,
             .new_frame = true,
@@ -1369,6 +1376,7 @@ pub const Env = struct {
     pub fn initLet(allocator: std.mem.Allocator, parent: *const Env) Env {
         return .{
             .bindings = VarMap.init(allocator),
+            .fn_bindings = VarMap.init(allocator),
             .parent = parent,
             .depth = parent.depth, // Same depth - same frame
             .new_frame = false,
@@ -1385,6 +1393,13 @@ pub const Env = struct {
             if (key.uid == 0) self.allocator.free(key.name);
         }
         self.bindings.deinit();
+
+        var fn_it = self.fn_bindings.keyIterator();
+        while (fn_it.next()) |key| {
+            // Only uid==0 keys allocate name storage.
+            if (key.uid == 0) self.allocator.free(key.name);
+        }
+        self.fn_bindings.deinit();
     }
 
     /// Get total local count in this frame
@@ -1446,6 +1461,22 @@ pub const Env = struct {
         return abs_index;
     }
 
+    fn bindHiddenSlot(self: *Env) error{OutOfMemory}!u16 {
+        const local_index: u16 = @intCast(self.bindings.count());
+        const abs_index = self.base_index + local_index;
+        const hidden_name = try std.fmt.allocPrint(self.allocator, "__fn_slot_{d}", .{abs_index});
+        try self.bindings.put(.{ .pkg_ptr = 0, .uid = 0, .name = hidden_name }, abs_index);
+        return abs_index;
+    }
+
+    /// Add a function binding for a symbol in the function namespace.
+    pub fn bindFunctionSym(self: *Env, sym_val: Value) error{OutOfMemory}!u16 {
+        const abs_index = try self.bindHiddenSlot();
+        const key = try keyOwnedFromSym(self.allocator, sym_val);
+        try self.fn_bindings.put(key, abs_index);
+        return abs_index;
+    }
+
     fn lookupKey(self: *const Env, key: VarKey) ?Binding {
         if (self.bindings.get(key)) |index| {
             return .{ .depth = 0, .index = index };
@@ -1473,6 +1504,57 @@ pub const Env = struct {
     /// Look up a compiler-generated name, returns (depth, index) or null
     pub fn lookupName(self: *const Env, name: []const u8) ?Binding {
         return self.lookupKey(.{ .pkg_ptr = 0, .uid = 0, .name = name });
+    }
+
+    fn lookupFunctionKey(self: *const Env, key: VarKey) ?Binding {
+        if (self.fn_bindings.get(key)) |index| {
+            return .{ .depth = 0, .index = index };
+        }
+        if (self.parent) |parent| {
+            if (parent.lookupFunctionKey(key)) |result| {
+                if (self.new_frame) {
+                    // Cross frame boundary - increment depth
+                    return .{ .depth = result.depth + 1, .index = result.index };
+                } else {
+                    // Same frame (let) - keep same depth
+                    return result;
+                }
+            }
+        }
+        return null;
+    }
+
+    fn lookupFunctionName(self: *const Env, name: []const u8) ?Binding {
+        var it = self.fn_bindings.iterator();
+        while (it.next()) |entry| {
+            if (std.ascii.eqlIgnoreCase(entry.key_ptr.name, name)) {
+                return .{ .depth = 0, .index = entry.value_ptr.* };
+            }
+        }
+
+        if (self.parent) |parent| {
+            if (parent.lookupFunctionName(name)) |result| {
+                if (self.new_frame) {
+                    return .{ .depth = result.depth + 1, .index = result.index };
+                } else {
+                    return result;
+                }
+            }
+        }
+        return null;
+    }
+
+    /// Look up a function symbol, returns (depth, index) or null.
+    pub fn lookupFunctionSym(self: *const Env, sym_val: Value) ?Binding {
+        if (keyFromSym(sym_val)) |key| {
+            if (self.lookupFunctionKey(key)) |binding| return binding;
+        }
+
+        if (sym_val.isSymbol()) {
+            return self.lookupFunctionName(sym_val.toPtr(Symbol).getName());
+        }
+
+        return null;
     }
 
     /// Look up any lexical symbol by case-insensitive symbol name.
@@ -1709,6 +1791,8 @@ pub const Compiler = struct {
     occ: ?*const OccurrenceCtx,
     /// Variables that need boxing (mutable + captured) - set during let compilation
     boxed_vars: ?*const BoxingSet,
+    /// Function symbols that are boxed (used by LABELS letrec lowering).
+    boxed_fn_syms: ?*const BoxingSet,
     /// Defined ADT types for match exhaustiveness checking
     defined_types: std.StringHashMap([]const Variant),
     /// Defined struct types for typed struct support
@@ -1791,6 +1875,7 @@ pub const Compiler = struct {
             .builtins = null, // Lazily initialized when heap is available
             .occ = null,
             .boxed_vars = null,
+            .boxed_fn_syms = null,
             .defined_types = std.StringHashMap([]const Variant).init(allocator),
             .struct_types = std.StringHashMap(*const types.Type).init(allocator),
             .struct_predicates = std.StringHashMap(*const types.Type).init(allocator),
@@ -1825,6 +1910,7 @@ pub const Compiler = struct {
             .builtins = builtins,
             .occ = null,
             .boxed_vars = null,
+            .boxed_fn_syms = null,
             .defined_types = std.StringHashMap([]const Variant).init(allocator),
             .struct_types = std.StringHashMap(*const types.Type).init(allocator),
             .struct_predicates = std.StringHashMap(*const types.Type).init(allocator),
@@ -1856,6 +1942,7 @@ pub const Compiler = struct {
             .builtins = builtins,
             .occ = null,
             .boxed_vars = null,
+            .boxed_fn_syms = null,
             .defined_types = std.StringHashMap([]const Variant).init(allocator),
             .struct_types = std.StringHashMap(*const types.Type).init(allocator),
             .struct_predicates = std.StringHashMap(*const types.Type).init(allocator),
@@ -1877,6 +1964,7 @@ pub const Compiler = struct {
     /// Set VM for compile-time macro expansion
     pub fn setVm(self: *Compiler, vm: *Vm) void {
         self.vm = vm;
+        self.heap = vm.heap;
     }
 
     fn initBuiltinsCanonical(heap: *Heap) !Builtins {
@@ -2354,6 +2442,11 @@ pub const Compiler = struct {
             return try self.builder.lit(expr);
         }
 
+        // Array literal - #2A(...)
+        if (expr.isArray()) {
+            return try self.builder.lit(expr);
+        }
+
         // Symbol (variable reference or symbol macro)
         if (expr.isSymbol()) {
             // Check for symbol macros first
@@ -2378,36 +2471,7 @@ pub const Compiler = struct {
                 }
                 return var_ir;
             }
-            // Check globals - use qualified name if symbol has package
-            var qual_buf: [256]u8 = undefined;
-            const q = try self.getQualifiedName(sym, &qual_buf);
-            defer if (q.owned) self.allocator.free(q.name);
-            const qname = q.name;
-
-            // Resolve existing globals before creating a forward-reference slot.
-            // This avoids creating package-local NIL slots for imported CL symbols.
-            if (self.globals.lookup(qname)) |idx| {
-                return try self.builder.globalRef(qname, idx);
-            }
-            if (self.globals.lookup(name)) |idx| {
-                return try self.builder.globalRef(name, idx);
-            }
-
-            const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
-            var full_buf: [640]u8 = undefined;
-            for (prefixes) |prefix| {
-                if (prefix.len + name.len > full_buf.len) continue;
-                @memcpy(full_buf[0..prefix.len], prefix);
-                @memcpy(full_buf[prefix.len .. prefix.len + name.len], name);
-                const candidate = full_buf[0 .. prefix.len + name.len];
-                if (self.globals.lookup(candidate)) |idx| {
-                    return try self.builder.globalRef(candidate, idx);
-                }
-            }
-
-            // Allow forward references: allocate slot if still not found.
-            const idx = try self.globals.define(qname);
-            return try self.builder.globalRef(qname, idx);
+            return self.compileGlobalSymbolRef(sym_val);
         }
 
         // List (special form or function call)
@@ -2768,6 +2832,44 @@ pub const Compiler = struct {
         return self.compileCallWithTail(head, tail, env, in_tail);
     }
 
+    fn compileGlobalSymbolRef(self: *Compiler, sym_val: Value) anyerror!*Ir {
+        if (!sym_val.isSymbol()) return error.InvalidSyntax;
+
+        const sym = sym_val.toPtr(Symbol);
+        const name = sym.getName();
+
+        // Check globals - use qualified name if symbol has package
+        var qual_buf: [256]u8 = undefined;
+        const q = try self.getQualifiedName(sym, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        const qname = q.name;
+
+        // Resolve existing globals before creating a forward-reference slot.
+        // This avoids creating package-local NIL slots for imported CL symbols.
+        if (self.globals.lookup(qname)) |idx| {
+            return try self.builder.globalRef(qname, idx);
+        }
+        if (self.globals.lookup(name)) |idx| {
+            return try self.builder.globalRef(name, idx);
+        }
+
+        const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
+        var full_buf: [640]u8 = undefined;
+        for (prefixes) |prefix| {
+            if (prefix.len + name.len > full_buf.len) continue;
+            @memcpy(full_buf[0..prefix.len], prefix);
+            @memcpy(full_buf[prefix.len .. prefix.len + name.len], name);
+            const candidate = full_buf[0 .. prefix.len + name.len];
+            if (self.globals.lookup(candidate)) |idx| {
+                return try self.builder.globalRef(candidate, idx);
+            }
+        }
+
+        // Allow forward references: allocate slot if still not found.
+        const idx = try self.globals.define(qname);
+        return try self.builder.globalRef(qname, idx);
+    }
+
     fn patchChunkClosureIndices(chunk: *Chunk, base: u16) void {
         const code = chunk.getCode();
         var i: usize = 0;
@@ -3016,7 +3118,12 @@ pub const Compiler = struct {
         }
 
         const chunk_ptr = macro_roots[root_chunk_idx].toPtr(Chunk);
-        macro_roots[root_closure_idx] = try vm.run(chunk_ptr);
+        const compile_closure = try heap.allocClosure(
+            macro_roots[root_chunk_idx],
+            chunk_ptr.arity,
+            &[_]Value{},
+        );
+        macro_roots[root_closure_idx] = try vm.callFromStackAt(vm.sp, compile_closure, &[_]Value{});
 
         const closure_val = macro_roots[root_closure_idx];
         if (!closure_val.isClosure()) return error.InvalidSyntax;
@@ -3165,6 +3272,7 @@ pub const Compiler = struct {
     fn symLikeName(val: Value) ?[]const u8 {
         return switch (val.typeKind()) {
             .symbol => val.toPtr(Symbol).getName(),
+            .keyword => val.toPtr(runtime.Keyword).getName(),
             .t => "t",
             .nil => "nil",
             else => null,
@@ -3180,7 +3288,7 @@ pub const Compiler = struct {
 
     fn parseKeyParamSpec(item: Value) ?KeyParamSpec {
         switch (item.typeKind()) {
-            .symbol, .t, .nil => {
+            .symbol, .keyword, .t, .nil => {
                 const name = symLikeName(item) orelse return null;
                 return .{
                     .keyword_name = name,
@@ -3198,7 +3306,7 @@ pub const Compiler = struct {
                     null;
 
                 switch (param_spec.typeKind()) {
-                    .symbol, .t, .nil => {
+                    .symbol, .keyword, .t, .nil => {
                         const name = symLikeName(param_spec) orelse return null;
                         return .{
                             .keyword_name = name,
@@ -3287,7 +3395,7 @@ pub const Compiler = struct {
             const param_item = param_cons.car;
 
             switch (param_item.typeKind()) {
-                .symbol, .t, .nil => {
+                .symbol, .keyword, .t, .nil => {
                     const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
                     const marker = self.canonicalBuiltinSymbol(param_item);
 
@@ -3633,6 +3741,167 @@ pub const Compiler = struct {
     }
 
     /// Collect free variables in an expression
+    fn bindLambdaParamForCapture(_: *Compiler, lambda_env: *Env, val: Value) error{OutOfMemory}!void {
+        if (val.typeKind() == .symbol) {
+            _ = try lambda_env.bindSym(val);
+            return;
+        }
+        const name = symLikeName(val) orelse return;
+        _ = try lambda_env.bindName(name);
+    }
+
+    fn isLambdaListMarker(self: *Compiler, val: Value) bool {
+        const b = if (self.builtins) |builtins| builtins else return false;
+        const marker = self.canonicalBuiltinSymbol(val);
+        return marker.raw == b.@"&optional".raw or
+            marker.raw == b.@"&rest".raw or
+            marker.raw == b.@"&body".raw or
+            marker.raw == b.@"&key".raw or
+            marker.raw == b.@"&allow-other-keys".raw or
+            marker.raw == b.@"&aux".raw or
+            marker.raw == b.@"&whole".raw or
+            marker.raw == b.@"&environment".raw;
+    }
+
+    fn bindLambdaParamsForCapture(self: *Compiler, params_expr: Value, lambda_env: *Env) error{OutOfMemory}!void {
+        var in_optional = false;
+        var in_key = false;
+        var in_aux = false;
+
+        var param_list = params_expr;
+        while (param_list.isCons()) {
+            const param_cons = param_list.toPtr(Cons);
+            const item = param_cons.car;
+
+            switch (item.typeKind()) {
+                .symbol, .keyword, .t, .nil => {
+                    const marker = self.canonicalBuiltinSymbol(item);
+                    const b = if (self.builtins) |builtins| builtins else return;
+                    if (marker.raw == b.@"&optional".raw) {
+                        in_optional = true;
+                        in_key = false;
+                        in_aux = false;
+                        param_list = param_cons.cdr;
+                        continue;
+                    }
+                    if (marker.raw == b.@"&key".raw) {
+                        in_optional = false;
+                        in_key = true;
+                        in_aux = false;
+                        param_list = param_cons.cdr;
+                        continue;
+                    }
+                    if (marker.raw == b.@"&aux".raw) {
+                        in_optional = false;
+                        in_key = false;
+                        in_aux = true;
+                        param_list = param_cons.cdr;
+                        continue;
+                    }
+                    if (marker.raw == b.@"&allow-other-keys".raw) {
+                        param_list = param_cons.cdr;
+                        continue;
+                    }
+                    if (marker.raw == b.@"&rest".raw or marker.raw == b.@"&body".raw) {
+                        if (param_cons.cdr.isCons()) {
+                            const rest_cons = param_cons.cdr.toPtr(Cons);
+                            try self.bindLambdaParamForCapture(lambda_env, rest_cons.car);
+                        }
+                        return;
+                    }
+                    if (!self.isLambdaListMarker(item)) {
+                        try self.bindLambdaParamForCapture(lambda_env, item);
+                    }
+                },
+                .cons => {
+                    if (in_key) {
+                        if (parseKeyParamSpec(item)) |spec| {
+                            if (spec.param_sym) |param_sym| {
+                                _ = try lambda_env.bindSym(param_sym);
+                            } else {
+                                _ = try lambda_env.bindName(spec.param_name);
+                            }
+                        }
+                    } else {
+                        const typed = item.toPtr(Cons);
+                        if (typed.car.isSymbolLike()) {
+                            try self.bindLambdaParamForCapture(lambda_env, typed.car);
+                        }
+                    }
+                },
+                else => {},
+            }
+
+            param_list = param_cons.cdr;
+        }
+
+        // Dotted rest parameter: (a b . rest)
+        if (!param_list.isNil()) {
+            try self.bindLambdaParamForCapture(lambda_env, param_list);
+        }
+    }
+
+    fn collectNestedLambdaTransitiveCaptures(self: *Compiler, lambda_tail: Value, env: *const Env, captures: *CaptureSet) error{OutOfMemory}!void {
+        if (!lambda_tail.isCons()) return;
+        const lam_cons = lambda_tail.toPtr(Cons);
+        const params_expr = lam_cons.car;
+        const body_expr = lam_cons.cdr;
+
+        // Build nested lambda environment so capture analysis ignores nested params.
+        var nested_env = Env.init(self.allocator, env);
+        defer nested_env.deinit();
+        try self.bindLambdaParamsForCapture(params_expr, &nested_env);
+
+        // Collect nested captures relative to current env, then rebase one frame out.
+        var nested_captures = CaptureSet.init(self.allocator);
+        defer nested_captures.deinit();
+        try self.collectFreeVarsInList(body_expr, &nested_env, &nested_captures);
+
+        for (nested_captures.captures.items) |cap| {
+            if (cap.depth == 0) continue;
+            try captures.addCapture(cap.name, cap.depth - 1, cap.index);
+        }
+    }
+
+    fn collectFreeFunctionCapture(_: *Compiler, sym: Value, env: *const Env, captures: *CaptureSet) error{OutOfMemory}!void {
+        if (!sym.isSymbol()) return;
+        const sym_name = sym.toPtr(Symbol).getName();
+        const fn_binding = env.lookupFunctionSym(sym) orelse {
+            if (std.posix.getenv("HABU_TRACE_CAPTURE") != null) {
+                std.debug.print("TRACE capture fn miss sym={s}\n", .{sym_name});
+            }
+            return;
+        };
+        if (std.posix.getenv("HABU_TRACE_CAPTURE") != null) {
+            std.debug.print(
+                "TRACE capture fn sym={s} depth={d} index={d}\n",
+                .{ sym_name, fn_binding.depth, fn_binding.index },
+            );
+        }
+        if (fn_binding.depth == 0) return;
+
+        var lambda_env: ?*const Env = env;
+        while (lambda_env) |e| {
+            if (e.new_frame) break;
+            lambda_env = e.parent;
+        }
+        if (lambda_env) |le| {
+            if (le.parent) |lambda_parent| {
+                if (lambda_parent.lookupFunctionSym(sym)) |parent_binding| {
+                    if (std.posix.getenv("HABU_TRACE_CAPTURE") != null) {
+                        std.debug.print(
+                            "TRACE capture fn add sym={s} depth={d} index={d}\n",
+                            .{ sym_name, parent_binding.depth, parent_binding.index },
+                        );
+                    }
+                    try captures.addCapture(sym_name, parent_binding.depth, parent_binding.index);
+                } else if (std.posix.getenv("HABU_TRACE_CAPTURE") != null) {
+                    std.debug.print("TRACE capture fn parent miss sym={s}\n", .{sym_name});
+                }
+            }
+        }
+    }
+
     fn collectFreeVars(self: *Compiler, expr: Value, env: *const Env, captures: *CaptureSet) error{OutOfMemory}!void {
         if (expr.isNil() or expr.isFixnum() or expr.isBignum() or expr.isString() or expr.isString32() or expr.isKeyword() or expr.isCharacter() or expr.isMagicSymbol() or expr.isVector()) {
             return; // Literals have no free variables
@@ -3677,7 +3946,21 @@ pub const Compiler = struct {
                 const b = if (self.builtins) |val| val else return;
 
                 if (head.raw == b.lambda.raw or head.raw == b.@"fn".raw) {
-                    // Lambda creates new scope - handled recursively by compileLambda
+                    // Nested lambda can force this lambda to capture transitive upvalues.
+                    try self.collectNestedLambdaTransitiveCaptures(tail, env, captures);
+                    return;
+                }
+
+                if (head.raw == b.function.raw) {
+                    // (function foo): foo can be a lexical function binding.
+                    if (tail.isCons()) {
+                        const fun_cons = tail.toPtr(Cons);
+                        if (fun_cons.car.isSymbol()) {
+                            try self.collectFreeFunctionCapture(fun_cons.car, env, captures);
+                        } else {
+                            try self.collectFreeVars(fun_cons.car, env, captures);
+                        }
+                    }
                     return;
                 }
 
@@ -3729,6 +4012,9 @@ pub const Compiler = struct {
                 if (head.raw == b.quote.raw) {
                     return; // Quoted expressions have no free variables
                 }
+
+                // Function position can reference lexical function namespace bindings.
+                try self.collectFreeFunctionCapture(head, env, captures);
             }
 
             // Recurse on head and tail
@@ -4045,6 +4331,7 @@ pub const Compiler = struct {
         // LET value forms are evaluated in the outer lexical environment.
         var value_env = Env{
             .bindings = VarMap.init(self.allocator),
+            .fn_bindings = VarMap.init(self.allocator),
             .parent = env,
             .depth = env.depth,
             .new_frame = false,
@@ -4305,8 +4592,8 @@ pub const Compiler = struct {
             const name_sym = f.car.toPtr(Symbol);
             const name = try self.allocator.dupe(u8, name_sym.getName());
 
-            // Get index from env
-            const index = try flet_env.bindSym(f.car);
+            // Bind in function namespace and reserve a hidden local slot.
+            const index = try flet_env.bindFunctionSym(f.car);
 
             // Build lambda from rest: ((params) body...) -> compile as lambda
             if (!f.cdr.isCons()) return error.InvalidLet;
@@ -4328,14 +4615,24 @@ pub const Compiler = struct {
 
     fn compileLabelsWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
         // (labels ((fname (args) body...) ...) body)
-        // Like letrec - functions can see each other and themselves
+        // Like letrec - functions can see each other and themselves.
+        //
+        // Closures capture values, not cells. To preserve recursive LABELS
+        // semantics we lower function slots as boxes:
+        //   1) initialize each slot with (make-box nil)
+        //   2) set each box to the compiled closure via box_set
+        //   3) compile function references as box_ref of lexical fn slots
         if (!args.isCons()) return error.InvalidLet;
 
         const cons = args.toPtr(Cons);
         const bindings_expr = cons.car;
         const body_exprs = cons.cdr;
 
-        // First pass: pre-register all globals for mutual visibility
+        // LABELS introduces lexical function bindings (function namespace).
+        var labels_env = Env.initLet(self.allocator, env);
+        defer labels_env.deinit();
+
+        // First pass: pre-bind all function names so lambdas can see each other.
         var names = std.ArrayList([]const u8){};
         defer names.deinit(self.allocator);
 
@@ -4356,20 +4653,12 @@ pub const Compiler = struct {
             // Each fdef is (fname (params) body...)
             if (!fdef.isCons()) return error.InvalidLet;
             const f = fdef.toPtr(Cons);
-
             if (!f.car.isSymbol()) return error.InvalidLet;
             const name_sym = f.car.toPtr(Symbol);
-
-            // Use qualified name for globals (package-aware)
-            var qual_buf: [256]u8 = undefined;
-            const q = try self.getQualifiedName(name_sym, &qual_buf);
-            defer if (q.owned) self.allocator.free(q.name);
-            const name = try self.allocator.dupe(u8, q.name);
-
-            // Pre-register global for recursive visibility
-            const idx = try self.globals.define(name);
-
             if (!f.cdr.isCons()) return error.InvalidLet;
+
+            const name = try self.allocator.dupe(u8, name_sym.getName());
+            const idx = try labels_env.bindFunctionSym(f.car);
 
             try names.append(self.allocator, name);
             try lambda_args.append(self.allocator, f.cdr);
@@ -4379,29 +4668,52 @@ pub const Compiler = struct {
             binding_list = binding_cons.cdr;
         }
 
-        // Second pass: compile lambdas and create defines
-        var exprs = std.ArrayList(*const Ir){};
-        defer exprs.deinit(self.allocator);
+        const boxed_fn = try self.allocator.create(BoxingSet);
+        boxed_fn.* = BoxingSet.init(self.allocator);
+        defer {
+            boxed_fn.deinit();
+            self.allocator.destroy(boxed_fn);
+        }
+        for (sym_vals.items) |sym_val| {
+            try boxed_fn.add(sym_val);
+        }
 
-        for (names.items, lambda_args.items, indices.items, sym_vals.items) |name, largs, idx, sym_val| {
-            const lambda_ir = try self.compileLambda(largs, env);
+        const saved_boxed_fn = self.boxed_fn_syms;
+        self.boxed_fn_syms = boxed_fn;
+        defer self.boxed_fn_syms = saved_boxed_fn;
+
+        // First LET stage: initialize every fn slot with a box placeholder.
+        var boxed_bindings = std.ArrayList(Ir.Binding){};
+        defer boxed_bindings.deinit(self.allocator);
+        for (names.items, indices.items) |name, idx| {
+            const nil_ir = try self.builder.lit(Value.nil);
+            const make_box = try self.allocator.create(Ir);
+            make_box.* = .{ .make_box = .{ .operand = nil_ir } };
+            try boxed_bindings.append(self.allocator, .{ .name = name, .value = make_box, .index = idx });
+        }
+
+        // Compile lambdas in labels_env for recursive visibility, then assign
+        // each slot's box content.
+        var init_forms = std.ArrayList(*const Ir){};
+        defer init_forms.deinit(self.allocator);
+        for (lambda_args.items, indices.items, sym_vals.items) |largs, idx, sym_val| {
+            const lambda_ir = try self.compileLambda(largs, &labels_env);
             if (lambda_ir.* == .lambda) {
                 lambda_ir.lambda.name = sym_val;
             }
-            const define_ir = try self.builder.define(name, idx, lambda_ir);
-            try exprs.append(self.allocator, define_ir);
-        }
-        for (names.items) |name| {
-            self.allocator.free(name);
+
+            const slot_name = sym_val.toPtr(Symbol).getName();
+            const slot_ref = try self.builder.variable(slot_name, 0, idx);
+            const box_set = try self.allocator.create(Ir);
+            box_set.* = .{ .box_set = .{ .left = slot_ref, .right = lambda_ir } };
+            try init_forms.append(self.allocator, box_set);
         }
 
-        // Compile body
-        const body_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
-        try exprs.append(self.allocator, body_ir);
+        const body_ir = try self.compileBodyWithTail(body_exprs, &labels_env, in_tail);
+        try init_forms.append(self.allocator, body_ir);
+        const seq_ir = try self.builder.progn(init_forms.items);
 
-        // Return progn of defines + body
-        const items = try self.allocator.dupe(*const Ir, exprs.items);
-        return try self.builder.progn(items);
+        return try self.builder.letExpr(boxed_bindings.items, seq_ir);
     }
 
     fn compileLetStarWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
@@ -4664,11 +4976,25 @@ pub const Compiler = struct {
     }
 
     fn compileFuncall(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        // (funcall fn arg1 arg2 ...) - same as regular call with computed function
+        // (funcall fn arg1 arg2 ...) - fn is evaluated in value namespace
         if (!args.isCons()) return error.InvalidSyntax;
 
         const cons1 = args.toPtr(Cons);
-        return self.compileCallWithTail(cons1.car, cons1.cdr, env, false);
+        const fn_ir = try self.compile(cons1.car, env);
+
+        var compiled_args = std.ArrayList(*Ir){};
+        defer compiled_args.deinit(self.allocator);
+
+        var list = cons1.cdr;
+        while (list.isCons()) {
+            const c = list.toPtr(Cons);
+            const arg_ir = try self.compile(c.car, env);
+            try compiled_args.append(self.allocator, arg_ir);
+            list = c.cdr;
+        }
+
+        const items = try self.allocator.dupe(*const Ir, compiled_args.items);
+        return try self.builder.call(fn_ir, items);
     }
 
     fn compileApply(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -5106,6 +5432,27 @@ pub const Compiler = struct {
                     return node;
                 }
 
+                // (setf (find-class name [errorp [environment]]) val)
+                // Mutates runtime class registry directly.
+                if (h == b.@"find-class".raw) {
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const pc1 = place_args.toPtr(Cons);
+                    const name_ir = try self.compile(pc1.car, env);
+                    var rest = pc1.cdr;
+                    var optional_count: u8 = 0;
+                    while (rest.isCons()) {
+                        optional_count += 1;
+                        if (optional_count > 2) return error.InvalidSyntax;
+                        rest = rest.toPtr(Cons).cdr;
+                    }
+                    if (!rest.isNil()) return error.InvalidSyntax;
+
+                    const val_ir = try self.compile(value_expr, env);
+                    const node = try self.allocator.create(Ir);
+                    node.* = .{ .set_find_class = .{ .left = name_ir, .right = val_ir } };
+                    return node;
+                }
+
                 // (setf (logical-pathname-translations host) val)
                 // Route directly to set-logical-pathname-translations(host, val).
                 if (std.ascii.eqlIgnoreCase(head.toPtr(Symbol).getName(), "logical-pathname-translations")) {
@@ -5357,6 +5704,17 @@ pub const Compiler = struct {
         return try self.builder.call(setf_ref, call_args);
     }
 
+    fn maybeBoxRefFunction(self: *Compiler, sym: Value, func_ir: *Ir) anyerror!*Ir {
+        if (self.boxed_fn_syms) |boxed_fn| {
+            if (boxed_fn.contains(sym)) {
+                const box_ref = try self.allocator.create(Ir);
+                box_ref.* = .{ .box_ref = .{ .operand = func_ir } };
+                return box_ref;
+            }
+        }
+        return func_ir;
+    }
+
     fn compileQuote(self: *Compiler, args: Value) anyerror!*Ir {
         // (quote expr)
         if (!args.isCons()) return error.InvalidSyntax;
@@ -5379,12 +5737,20 @@ pub const Compiler = struct {
 
         // (function symbol) - look up function binding or wrap primitive
         if (func_spec.isSymbol()) {
+            if (env.lookupFunctionSym(func_spec)) |binding| {
+                const name = func_spec.toPtr(Symbol).getName();
+                const fn_ref = try self.builder.variable(name, binding.depth, binding.index);
+                return try self.maybeBoxRefFunction(func_spec, fn_ref);
+            }
             // Check if it's a primitive that needs wrapping
             if (try self.compilePrimitiveFunctionRef(func_spec)) |wrapper| {
                 return wrapper;
             }
-            // Otherwise compile symbol as a variable reference (will look up in env/globals)
-            return self.compile(func_spec, env);
+            // Resolve global symbols through function namespace semantics.
+            // This keeps #'SYMBOL aligned with SYMBOL-FUNCTION/FDEFINITION
+            // and avoids value-cell NIL reads for lazily materialized builtins.
+            const sym_ir = try self.builder.lit(func_spec);
+            return try self.builder.symbolFunction(sym_ir);
         }
 
         // (function (lambda ...)) - compile the lambda
@@ -5434,6 +5800,7 @@ pub const Compiler = struct {
         if (s == b.integerp.raw) return try self.makeUnaryWrapper(&IrBuilder.integerp);
         if (s == b.realp.raw) return try self.makeUnaryWrapper(&IrBuilder.realp);
         if (s == b.stringp.raw) return try self.makeUnaryWrapper(&IrBuilder.stringp);
+        if (s == b.intern.raw) return try self.makeInternWrapper();
         if (s == b.atom.raw) return try self.makeUnaryWrapper(&IrBuilder.atomp);
         if (s == b.listp.raw) return try self.makeUnaryWrapper(&IrBuilder.listp);
         if (s == b.@"delete-file".raw) return try self.makeUnaryWrapper(&IrBuilder.deleteFile);
@@ -5442,10 +5809,24 @@ pub const Compiler = struct {
         if (s == b.@"file-author".raw) return try self.makeUnaryWrapper(&IrBuilder.fileAuthor);
         if (s == b.@"make-array".raw) return try self.makeMakeArrayWrapper();
         if (s == b.@"symbol-name".raw) return try self.makeUnaryPrimitiveWrapper(.sym_name);
-        if (s == b.intern.raw) return try self.makeUnaryPrimitiveWrapper(.intern);
+        if (s == b.@"symbol-package".raw) return try self.makeUnaryWrapper(&IrBuilder.symbolPackage);
+        if (s == b.boundp.raw) return try self.makeUnaryWrapper(&IrBuilder.boundp);
+        if (s == b.fboundp.raw) return try self.makeUnaryWrapper(&IrBuilder.fboundp);
+        if (s == b.@"symbol-value".raw) return try self.makeUnaryWrapper(&IrBuilder.symbolValue);
+        if (s == b.@"symbol-function".raw) return try self.makeUnaryWrapper(&IrBuilder.symbolFunction);
         if (s == b.@"copy-structure".raw) return try self.makeUnaryWrapper(&IrBuilder.copyStructure);
         if (s == b.@"function-lambda-expression".raw) return try self.makeUnaryWrapper(&IrBuilder.functionLambdaExpression);
+        if (s == b.@"char-code".raw) return try self.makeUnaryWrapper(&IrBuilder.charCode);
+        if (s == b.@"code-char".raw) return try self.makeUnaryWrapper(&IrBuilder.codeChar);
+        if (s == b.@"char-upcase".raw) return try self.makeUnaryWrapper(&IrBuilder.charUpcase);
+        if (s == b.@"char-downcase".raw) return try self.makeUnaryWrapper(&IrBuilder.charDowncase);
+        if (s == b.@"digit-char-p".raw) return try self.makeUnaryWrapper(&IrBuilder.digitCharP);
+        if (s == b.@"alpha-char-p".raw) return try self.makeUnaryWrapper(&IrBuilder.alphaCharP);
         if (s == b.values.raw) return try self.makeValuesWrapper();
+
+        if (s == b.@"char=".raw) return try self.makeBinaryWrapper(&IrBuilder.charEq);
+        if (s == b.@"char<".raw) return try self.makeBinaryWrapper(&IrBuilder.charLt);
+        if (s == b.@"char>".raw) return try self.makeBinaryWrapper(&IrBuilder.charGt);
 
         // Variadic arithmetic - create wrappers using add/sub/mul/div builders
         if (s == b.@"+".raw) return try self.makeVariadicAddWrapper();
@@ -5498,6 +5879,20 @@ pub const Compiler = struct {
         const args_ref = try self.builder.variable("args", 0, 0);
         const body = try self.builder.valuesList(args_ref);
         return try self.builder.lambda(&.{}, &.{}, &.{}, false, "args", &.{}, body);
+    }
+
+    fn makeInternWrapper(self: *Compiler) anyerror!*Ir {
+        // (lambda (name &optional package) (declare (ignore package)) (intern name))
+        // Current runtime INTERN primitive ignores package, but this preserves
+        // function designator arity for callers that pass two arguments.
+        const name_ref = try self.builder.variable("name", 0, 0);
+        const nil_lit = try self.builder.lit(Value.nil);
+        const optional = [_]Ir.OptionalParam{
+            .{ .name = "package", .default = nil_lit },
+        };
+        const body = try self.allocator.create(Ir);
+        body.* = .{ .intern = .{ .operand = name_ref } };
+        return try self.builder.lambda(&.{ "name" }, &optional, &.{}, false, null, &.{}, body);
     }
 
     fn makeVariadicAddWrapper(self: *Compiler) anyerror!*Ir {
@@ -6598,7 +6993,26 @@ pub const Compiler = struct {
             lambda_ir.lambda.name = name_val;
         }
 
+        // A plain function definition overrides any previously tracked generic
+        // metadata for this name so later DEFMETHOD can recreate a GF.
+        self.removeGenericFunctionMeta(name);
+        if (!std.mem.eql(u8, local_name, name)) {
+            self.removeGenericFunctionMeta(local_name);
+        }
+
         return try self.builder.define(name, idx, lambda_ir);
+    }
+
+    fn removeGenericFunctionMeta(self: *Compiler, name: []const u8) void {
+        if (self.generic_functions.fetchRemove(name)) |removed| {
+            self.globals.allocator.free(removed.key);
+            for (removed.value.items) |method| {
+                self.globals.allocator.free(method.specializers);
+                self.globals.allocator.free(method.function_name);
+            }
+            var methods = removed.value;
+            methods.deinit(self.globals.allocator);
+        }
     }
 
     /// Build cons list from slice
@@ -7358,13 +7772,10 @@ pub const Compiler = struct {
         }
 
         const chunk_ptr = chunk_val.toPtr(Chunk);
-        const closure_val = try vm.run(chunk_ptr);
-
-        if (!closure_val.isClosure()) return error.InvalidSyntax;
-        const closure = closure_val.toPtr(Closure);
-
-        // Call the thunk with no args to get the value
-        const result = try vm.callClosure(closure, 0);
+        const thunk_factory = try heap.allocClosure(chunk_val, chunk_ptr.arity, &[_]Value{});
+        const thunk_val = try vm.callFromStackAt(vm.sp, thunk_factory, &[_]Value{});
+        if (!thunk_val.isClosure()) return error.InvalidSyntax;
+        const result = try vm.callFromStackAt(vm.sp, thunk_val, &[_]Value{});
 
         // Return as literal
         return try self.builder.lit(result);
@@ -7626,6 +8037,12 @@ pub const Compiler = struct {
                             if (value.isNil()) {
                                 accessor_prefix = "";
                                 accessor_prefix_owned = false;
+                            } else if (value.isCharacter()) {
+                                var utf8_buf: [4]u8 = undefined;
+                                const cp: u21 = value.toCharacter();
+                                const n = try std.unicode.utf8Encode(@intCast(cp), &utf8_buf);
+                                accessor_prefix = try self.allocator.dupe(u8, utf8_buf[0..n]);
+                                accessor_prefix_owned = true;
                             } else if (self.getStringOrSymbolName(value)) |prefix_name| {
                                 accessor_prefix = try self.allocator.dupe(u8, prefix_name);
                                 accessor_prefix_owned = true;
@@ -8528,6 +8945,12 @@ pub const Compiler = struct {
         const qualified_name = q.name;
         const global_idx = try self.globals.define(qualified_name);
 
+        // Accessor functions are plain closures; clear any stale generic metadata.
+        self.removeGenericFunctionMeta(qualified_name);
+        if (!std.mem.eql(u8, accessor_name, qualified_name)) {
+            self.removeGenericFunctionMeta(accessor_name);
+        }
+
         // Variable reference for obj parameter
         const obj_ref = try self.builder.variable("obj", 0, 0);
 
@@ -8578,6 +9001,12 @@ pub const Compiler = struct {
         defer if (q.owned) self.allocator.free(q.name);
         const qualified_name = q.name;
         const global_idx = try self.globals.define(qualified_name);
+
+        // Writer functions are plain closures; clear any stale generic metadata.
+        self.removeGenericFunctionMeta(qualified_name);
+        if (!std.mem.eql(u8, writer_name, qualified_name)) {
+            self.removeGenericFunctionMeta(writer_name);
+        }
 
         const obj_ref = try self.builder.variable("obj", 0, 1);
         const vectorp_ir = try self.builder.vectorp(obj_ref);
@@ -9471,21 +9900,75 @@ pub const Compiler = struct {
     /// Creates a generic function that dispatches on argument types
     fn compileDefgeneric(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         _ = env;
+        const trace_defgeneric = std.posix.getenv("HABU_TRACE_DEFGENERIC") != null;
 
-        if (!args.isCons()) return error.InvalidSyntax;
+        if (!args.isCons()) {
+            if (trace_defgeneric) std.debug.print("TRACE defgeneric invalid: args not cons kind={s}\n", .{@tagName(args.typeKind())});
+            return error.InvalidSyntax;
+        }
         const cons1 = args.toPtr(Cons);
-        const name_val = cons1.car;
+        const name_spec = cons1.car;
+        var name_val = name_spec;
+        var qual_buf: [512]u8 = undefined;
+        var q_name: []const u8 = "";
+        var q_owned = false;
+        defer if (q_owned) self.allocator.free(q_name);
+        var setf_name: ?[]u8 = null;
+        defer if (setf_name) |mem| self.allocator.free(mem);
 
-        if (!name_val.isSymbol()) return error.InvalidSyntax;
-        const name_sym = name_val.toPtr(Symbol);
-        var qual_buf: [256]u8 = undefined;
-        const q = try self.getQualifiedName(name_sym, &qual_buf);
-        defer if (q.owned) self.allocator.free(q.name);
-        const gen_name_tmp = q.name;
-        const gen_name = try self.allocator.dupe(u8, gen_name_tmp);
+        switch (name_spec.typeKind()) {
+            .symbol => {
+                const name_sym = name_spec.toPtr(Symbol);
+                const q = try self.getQualifiedName(name_sym, &qual_buf);
+                q_owned = q.owned;
+                q_name = q.name;
+            },
+            .cons => {
+                const outer = name_spec.toPtr(Cons);
+                const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
+                if (self.canonicalBuiltinSymbol(outer.car).raw != b.setf.raw) {
+                    if (trace_defgeneric) {
+                        std.debug.print("TRACE defgeneric invalid: cons name not setf head-kind={s}\n", .{@tagName(outer.car.typeKind())});
+                    }
+                    return error.InvalidSyntax;
+                }
+                if (!outer.cdr.isCons()) {
+                    if (trace_defgeneric) std.debug.print("TRACE defgeneric invalid: setf name missing target\n", .{});
+                    return error.InvalidSyntax;
+                }
+                const inner = outer.cdr.toPtr(Cons);
+                if (!inner.car.isSymbol() or !inner.cdr.isNil()) {
+                    if (trace_defgeneric) {
+                        std.debug.print(
+                            "TRACE defgeneric invalid: setf target malformed target-kind={s} tail-kind={s}\n",
+                            .{ @tagName(inner.car.typeKind()), @tagName(inner.cdr.typeKind()) },
+                        );
+                    }
+                    return error.InvalidSyntax;
+                }
+                const base_name = inner.car.toPtr(Symbol).getName();
+                const setf_name_mem = try std.fmt.allocPrint(self.allocator, "(SETF {s})", .{base_name});
+                setf_name = setf_name_mem;
+                const q = try self.qualifyName(setf_name_mem, &qual_buf);
+                q_owned = q.owned;
+                q_name = q.name;
+                name_val = name_spec;
+            },
+            else => {
+                if (trace_defgeneric) {
+                    std.debug.print("TRACE defgeneric invalid: unsupported name kind={s}\n", .{@tagName(name_spec.typeKind())});
+                }
+                return error.InvalidSyntax;
+            },
+        }
+
+        const gen_name = try self.allocator.dupe(u8, q_name);
 
         // Parse lambda-list
-        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        if (!cons1.cdr.isCons()) {
+            if (trace_defgeneric) std.debug.print("TRACE defgeneric invalid: missing lambda-list\n", .{});
+            return error.InvalidSyntax;
+        }
         const cons2 = cons1.cdr.toPtr(Cons);
         const lambda_list = cons2.car;
 
@@ -9509,14 +9992,42 @@ pub const Compiler = struct {
     fn compileDefmethod(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
-        const name_val = cons1.car;
+        const name_spec = cons1.car;
+        var name_val = name_spec;
+        var simple_name: []const u8 = undefined;
+        var qual_buf: [512]u8 = undefined;
+        var gen_name_tmp: []const u8 = "";
+        var q_owned = false;
+        defer if (q_owned) self.allocator.free(gen_name_tmp);
+        var setf_name: ?[]u8 = null;
+        defer if (setf_name) |mem| self.allocator.free(mem);
 
-        if (!name_val.isSymbol()) return error.InvalidSyntax;
-        const name_sym = name_val.toPtr(Symbol);
-        var qual_buf: [256]u8 = undefined;
-        const q = try self.getQualifiedName(name_sym, &qual_buf);
-        defer if (q.owned) self.allocator.free(q.name);
-        const gen_name_tmp = q.name;
+        switch (name_spec.typeKind()) {
+            .symbol => {
+                const name_sym = name_spec.toPtr(Symbol);
+                simple_name = name_sym.getName();
+                const q = try self.getQualifiedName(name_sym, &qual_buf);
+                q_owned = q.owned;
+                gen_name_tmp = q.name;
+            },
+            .cons => {
+                const outer = name_spec.toPtr(Cons);
+                const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
+                if (self.canonicalBuiltinSymbol(outer.car).raw != b.setf.raw) return error.InvalidSyntax;
+                if (!outer.cdr.isCons()) return error.InvalidSyntax;
+                const inner = outer.cdr.toPtr(Cons);
+                if (!inner.car.isSymbol() or !inner.cdr.isNil()) return error.InvalidSyntax;
+                const base_name = inner.car.toPtr(Symbol).getName();
+                const setf_name_mem = try std.fmt.allocPrint(self.allocator, "(SETF {s})", .{base_name});
+                setf_name = setf_name_mem;
+                simple_name = setf_name_mem;
+                const q = try self.qualifyName(simple_name, &qual_buf);
+                q_owned = q.owned;
+                gen_name_tmp = q.name;
+                name_val = name_spec;
+            },
+            else => return error.InvalidSyntax,
+        }
 
         // Check for method qualifier (:before, :after, :around)
         if (!cons1.cdr.isCons()) return error.InvalidSyntax;
@@ -9671,7 +10182,6 @@ pub const Compiler = struct {
                 else => break :blk "obj",
             }
         } else "t";
-        const simple_name = name_sym.getName();
         const method_name = try std.fmt.allocPrint(self.allocator, "{s}${s}${s}", .{ simple_name, qual_str, spec_str });
 
         // Define method as global function
@@ -9748,51 +10258,40 @@ pub const Compiler = struct {
         // Create Method object
         const make_method_ir = try self.builder.makeMethod(qualifiers_ir, specializers_ir, lambda_list_ir, method_fn_ir);
 
-        if (needs_implicit_gf) {
-            // Create implicit generic function
-            const global_idx = try self.globals.define(gen_name);
+        // Ensure a global slot exists and promote non-GF values to a generic function
+        // before adding methods. This handles names currently bound to plain closures.
+        const global_idx = self.globals.lookup(gen_name) orelse try self.globals.define(gen_name);
 
-            // Build lambda list from dispatch params (heap already defined above)
-            var gf_params = Value.nil;
-            var i = dispatch_params_copy.len;
-            while (i > 0) {
-                i -= 1;
-                const param_sym = try heap.intern(dispatch_params_copy[i]);
-                gf_params = try heap.allocCons(param_sym, gf_params);
-            }
-
-            const name_ir = try self.builder.lit(name_val);
-            const gf_params_ir = try self.builder.lit(gf_params);
-            const gf_create_ir = try self.builder.makeGenericFunction(name_ir, gf_params_ir);
-            const gf_def_ir = try self.builder.define(gen_name, global_idx, gf_create_ir);
-
-            // Reference the newly defined GF
-            const gf_ir = try self.builder.globalRef(gen_name, global_idx);
-            const gf_ir2 = try self.builder.globalRef(gen_name, global_idx);
-            const add_method_ir = try self.builder.addMethod(gf_ir, make_method_ir);
-            const set_dispatcher_ir = try self.builder.setGfDispatcher(gf_ir2, dispatcher);
-
-            // Return progn: [defgeneric, defmethod, add-method, set-dispatcher]
-            const defs = try self.allocator.alloc(*Ir, 4);
-            defs[0] = gf_def_ir;
-            defs[1] = method_define_ir;
-            defs[2] = add_method_ir;
-            defs[3] = set_dispatcher_ir;
-            return try self.builder.progn(defs);
-        } else {
-            // GF already exists - just update its dispatcher
-            const global_idx = if (self.globals.lookup(gen_name)) |val| val else return error.UnboundGenericFunction;
-            const gf_ir = try self.builder.globalRef(gen_name, global_idx);
-            const gf_ir2 = try self.builder.globalRef(gen_name, global_idx);
-            const add_method_ir = try self.builder.addMethod(gf_ir, make_method_ir);
-            const set_dispatcher_ir = try self.builder.setGfDispatcher(gf_ir2, dispatcher);
-
-            const defs = try self.allocator.alloc(*Ir, 3);
-            defs[0] = method_define_ir;
-            defs[1] = add_method_ir;
-            defs[2] = set_dispatcher_ir;
-            return try self.builder.progn(defs);
+        // Build lambda list from dispatch params for potential implicit GF creation.
+        var gf_params = Value.nil;
+        var i = dispatch_params_copy.len;
+        while (i > 0) {
+            i -= 1;
+            const param_sym = try heap.intern(dispatch_params_copy[i]);
+            gf_params = try heap.allocCons(param_sym, gf_params);
         }
+
+        const name_ir = try self.builder.lit(name_val);
+        const gf_params_ir = try self.builder.lit(gf_params);
+        const gf_create_ir = try self.builder.makeGenericFunction(name_ir, gf_params_ir);
+        const gf_def_ir = try self.builder.define(gen_name, global_idx, gf_create_ir);
+
+        const gf_existing_for_check = try self.builder.globalRef(gen_name, global_idx);
+        const gf_type_sym = (try heap.internInPackage("CL", "generic-function")) orelse try heap.intern("generic-function");
+        const gf_type_ir = try self.builder.lit(gf_type_sym);
+        const gf_is_generic_ir = try self.builder.typep(gf_existing_for_check, gf_type_ir);
+        const gf_existing_for_add = try self.builder.globalRef(gen_name, global_idx);
+        const gf_ready_ir = try self.builder.ifExpr(gf_is_generic_ir, gf_existing_for_add, gf_def_ir);
+
+        const add_method_ir = try self.builder.addMethod(gf_ready_ir, make_method_ir);
+        const gf_for_dispatch = try self.builder.globalRef(gen_name, global_idx);
+        const set_dispatcher_ir = try self.builder.setGfDispatcher(gf_for_dispatch, dispatcher);
+
+        const defs = try self.allocator.alloc(*Ir, 3);
+        defs[0] = method_define_ir;
+        defs[1] = add_method_ir;
+        defs[2] = set_dispatcher_ir;
+        return try self.builder.progn(defs);
     }
 
     /// Compile call-next-method: (call-next-method [args...])
@@ -10022,22 +10521,30 @@ pub const Compiler = struct {
             var next_method = dispatch_body;
 
             // Build chain from innermost (last around) to outermost (first around)
-            var a = around_methods.items.len;
-            while (a > 0) {
-                a -= 1;
-                const around = around_methods.items[a];
+                var a = around_methods.items.len;
+                while (a > 0) {
+                    a -= 1;
+                    const around = around_methods.items[a];
 
-                // Wrap next_method in a lambda so it can be called via %next-method%
-                const lambda_params = try self.allocator.dupe([]const u8, dispatch_params);
-                const next_method_lambda = try self.builder.lambda(
-                    lambda_params,
-                    &[_]Ir.OptionalParam{},
-                    &[_]Ir.KeyParam{},
-                    false,
-                    null,
-                    &[_]Ir.Capture{},
-                    next_method,
-                );
+                    // Wrap next_method in a lambda so it can be called via %next-method%
+                    const lambda_params = try self.allocator.dupe([]const u8, dispatch_params);
+                    const lambda_captures = try self.allocator.alloc(Ir.Capture, dispatch_params.len);
+                    for (dispatch_params, 0..) |pname, idx| {
+                        lambda_captures[idx] = .{
+                            .name = pname,
+                            .depth = 0,
+                            .index = @intCast(idx),
+                        };
+                    }
+                    const next_method_lambda = try self.builder.lambda(
+                        lambda_params,
+                        &[_]Ir.OptionalParam{},
+                        &[_]Ir.KeyParam{},
+                        false,
+                        null,
+                        lambda_captures,
+                        next_method,
+                    );
 
                 // Define %next-method% global (use qualified name to match symbol interning)
                 const nm_name = try self.getNextMethodName();
@@ -10102,13 +10609,21 @@ pub const Compiler = struct {
 
         const next_method_value = if (next_method_body) |body| blk: {
             const lambda_params = try self.allocator.dupe([]const u8, dispatch_params);
+            const lambda_captures = try self.allocator.alloc(Ir.Capture, dispatch_params.len);
+            for (dispatch_params, 0..) |pname, idx| {
+                lambda_captures[idx] = .{
+                    .name = pname,
+                    .depth = 0,
+                    .index = @intCast(idx),
+                };
+            }
             break :blk try self.builder.lambda(
                 lambda_params,
                 &[_]Ir.OptionalParam{},
                 &[_]Ir.KeyParam{},
                 false,
                 null,
-                &[_]Ir.Capture{},
+                lambda_captures,
                 body,
             );
         } else try self.builder.lit(Value.nil);
@@ -11177,12 +11692,10 @@ pub const Compiler = struct {
             while (fn_list.isCons()) {
                 const fn_cons = fn_list.toPtr(Cons);
                 const fn_name_val = fn_cons.car;
-                if (!fn_name_val.isSymbol()) return error.InvalidSyntax;
+                const parsed_name = try self.parseDeclName(fn_name_val, true);
+                defer if (parsed_name.owned) |mem| self.allocator.free(mem);
 
-                const fn_sym = fn_name_val.toPtr(Symbol);
-                const fn_name = fn_sym.getName();
-
-                try self.global_decls.addDecl(fn_name, .{
+                try self.global_decls.addDecl(parsed_name.name, .{
                     .spec = .ftype,
                     .type_expr = ftype_expr,
                 });
@@ -11213,18 +11726,38 @@ pub const Compiler = struct {
 
     fn addGlobalSimpleDecls(self: *Compiler, vars: Value, spec: DeclSpec) !void {
         var list = vars;
+        const allow_setf_name = spec == .inline_decl or spec == .notinline;
         while (list.isCons()) {
             const cons = list.toPtr(Cons);
             const var_val = cons.car;
-            if (!var_val.isSymbol()) return error.InvalidSyntax;
+            const parsed_name = try self.parseDeclName(var_val, allow_setf_name);
+            defer if (parsed_name.owned) |mem| self.allocator.free(mem);
 
-            const var_sym = var_val.toPtr(Symbol);
-            const var_name = var_sym.getName();
-
-            try self.global_decls.addDecl(var_name, .{ .spec = spec });
+            try self.global_decls.addDecl(parsed_name.name, .{ .spec = spec });
 
             list = cons.cdr;
         }
+    }
+
+    fn parseDeclName(self: *Compiler, form: Value, allow_setf_name: bool) !struct { name: []const u8, owned: ?[]u8 } {
+        if (form.isSymbol()) {
+            return .{ .name = form.toPtr(Symbol).getName(), .owned = null };
+        }
+
+        if (allow_setf_name and form.isCons()) {
+            const outer = form.toPtr(Cons);
+            const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
+            if (self.canonicalBuiltinSymbol(outer.car).raw == b.setf.raw) {
+                if (!outer.cdr.isCons()) return error.InvalidSyntax;
+                const inner = outer.cdr.toPtr(Cons);
+                if (!inner.car.isSymbol() or !inner.cdr.isNil()) return error.InvalidSyntax;
+                const base_name = inner.car.toPtr(Symbol).getName();
+                const setf_name = try std.fmt.allocPrint(self.allocator, "(SETF {s})", .{base_name});
+                return .{ .name = setf_name, .owned = setf_name };
+            }
+        }
+
+        return error.InvalidSyntax;
     }
 
     fn parseOptimizeLevel(level_val: Value) !u8 {
@@ -11970,6 +12503,13 @@ pub const Compiler = struct {
         sleep,
     };
 
+    pub const PrimitiveRefArity = enum {
+        nullary,
+        unary,
+        binary,
+        ternary,
+    };
+
     /// Dispatch entry for simple unary primitives
     const UnaryEntry = struct { field: []const u8, tag: PrimTag };
     const unary_dispatch = [_]UnaryEntry{
@@ -12211,6 +12751,8 @@ pub const Compiler = struct {
         .{ .field = "lognor", .tag = .lognor },
         .{ .field = "logandc1", .tag = .logandc1 },
         .{ .field = "logandc2", .tag = .logandc2 },
+        .{ .field = "logorc1", .tag = .logorc1 },
+        .{ .field = "logorc2", .tag = .logorc2 },
         .{ .field = "logeqv", .tag = .logeqv },
         .{ .field = "logbitp", .tag = .logbitp },
         .{ .field = "write-file", .tag = .write_file },
@@ -12290,6 +12832,46 @@ pub const Compiler = struct {
         .{ .field = "fourth", .pattern = "addd" },
     };
 
+    /// Return fixed arity for primitive function references that can be wrapped
+    /// as (lambda (...) (prim ...)). Variadic primitives return null.
+    pub fn primitiveRefArity(self: *Compiler, sym: Value) ?PrimitiveRefArity {
+        const b = if (self.builtins) |val| val else return null;
+        const dispatch_sym = self.canonicalBuiltinSymbol(sym);
+        const s = dispatch_sym.raw;
+
+        // INTERN has optional package argument; do not force fixed-arity wrappers.
+        if (s == b.intern.raw) return null;
+
+        inline for (nullary_dispatch) |entry| {
+            if (s == @field(b, entry.field).raw) return .nullary;
+        }
+        inline for (unary_dispatch) |entry| {
+            if (s == @field(b, entry.field).raw) return .unary;
+        }
+        inline for (binary_dispatch) |entry| {
+            if (s == @field(b, entry.field).raw) return .binary;
+        }
+        inline for (ternary_dispatch) |entry| {
+            if (s == @field(b, entry.field).raw) return .ternary;
+        }
+
+        // Composed accessors in this table are all unary.
+        inline for (composed_dispatch) |entry| {
+            if (s == @field(b, entry.field).raw) return .unary;
+        }
+
+        // Sequence operators compiled via custom handlers still have
+        // a stable 2-arg core shape for (function <sym>) wrappers.
+        if (s == b.member.raw) return .binary;
+        if (s == b.assoc.raw) return .binary;
+        if (s == b.find.raw) return .binary;
+        if (s == b.position.raw) return .binary;
+        if (s == b.count.raw) return .binary;
+        if (s == b.remove.raw) return .binary;
+
+        return null;
+    }
+
     fn canonicalBuiltinSymbol(self: *Compiler, sym: Value) Value {
         if (!sym.isSymbol()) return sym;
         const heap = if (self.heap) |val| val else return sym;
@@ -12319,6 +12901,9 @@ pub const Compiler = struct {
     }
 
     fn compilePrimitive(self: *Compiler, sym: Value, args: Value, env: *const Env) anyerror!*Ir {
+        // Heap GC can move interned symbols while compiling; refresh identity-based
+        // builtin handles before symbol.raw dispatch.
+        try self.refreshBuiltins();
         const dispatch_sym = self.canonicalBuiltinSymbol(sym);
         const s = dispatch_sym.raw;
         const b = if (self.builtins) |val| val else return error.InvalidSyntax;
@@ -12349,6 +12934,22 @@ pub const Compiler = struct {
                 acc = try self.builder.append(acc, parts.items[i]);
             }
             return acc;
+        }
+        if (s == b.log.raw) {
+            // LOG supports (log x) and (log x base); lower base form to (/ (log x) (log base)).
+            if (!args.isCons()) return error.InvalidSyntax;
+            const cons1 = args.toPtr(Cons);
+            const x_ir = try self.compile(cons1.car, env);
+            if (cons1.cdr.isNil()) {
+                return try self.builder.log_fn(x_ir);
+            }
+            if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+            const cons2 = cons1.cdr.toPtr(Cons);
+            if (!cons2.cdr.isNil()) return error.InvalidSyntax;
+            const base_ir = try self.compile(cons2.car, env);
+            const x_log = try self.builder.log_fn(x_ir);
+            const base_log = try self.builder.log_fn(base_ir);
+            return try self.builder.div(x_log, base_log);
         }
 
         // Table-driven dispatch for unary primitives
@@ -13649,62 +14250,10 @@ pub const Compiler = struct {
     }
 
     fn compileConcatenate(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        // (concatenate 'string str1 str2 ...)
-        // (concatenate 'list list1 list2 ...)
-        if (!args.isCons()) return error.InvalidSyntax;
-        const cons1 = args.toPtr(Cons);
         const b = if (self.builtins) |val| val else return error.InvalidSyntax;
-
-        // First arg should be a quoted type: (quote string) or (quote list)
-        var type_sym: Value = undefined;
-        if (cons1.car.isCons()) {
-            const quote_cons = cons1.car.toPtr(Cons);
-            // Check if it's (quote xxx) - use symbol identity
-            if (quote_cons.car.raw == b.quote.raw and quote_cons.cdr.isCons()) {
-                type_sym = quote_cons.cdr.toPtr(Cons).car;
-            } else {
-                return error.InvalidSyntax;
-            }
-        } else {
-            return error.InvalidSyntax;
-        }
-
-        // Get the sequences
-        var rest = cons1.cdr;
-        if (!rest.isCons()) {
-            // No sequences, return empty string or nil
-            if (type_sym.raw == b.string.raw) {
-                return try self.builder.lit(Value.nil);
-            } else {
-                return try self.builder.lit(Value.nil);
-            }
-        }
-
-        // Compile first sequence
-        const first_cons = rest.toPtr(Cons);
-        var result_ir = try self.compile(first_cons.car, env);
-        rest = first_cons.cdr;
-
-        // Concatenate remaining sequences based on type
-        if (type_sym.raw == b.string.raw) {
-            while (rest.isCons()) {
-                const cons = rest.toPtr(Cons);
-                const next_ir = try self.compile(cons.car, env);
-                result_ir = try self.builder.strConcat(result_ir, next_ir);
-                rest = cons.cdr;
-            }
-        } else if (type_sym.raw == b.list.raw) {
-            while (rest.isCons()) {
-                const cons = rest.toPtr(Cons);
-                const next_ir = try self.compile(cons.car, env);
-                result_ir = try self.builder.append(result_ir, next_ir);
-                rest = cons.cdr;
-            }
-        } else {
-            return error.InvalidSyntax;
-        }
-
-        return result_ir;
+        // Delegate to the stdlib implementation so full CL sequence coercion rules
+        // apply for both list and string result types.
+        return self.compileCall(b.concatenate, args, env);
     }
 
     // coerce is implemented in stdlib, not as a compiler special form
@@ -14639,7 +15188,7 @@ pub const Compiler = struct {
     fn compileCallWithTail(self: *Compiler, func_expr: Value, args_expr: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
         // Check for struct predicate calls (for occurrence typing)
         // If calling a known struct predicate like point-p, generate struct_p IR
-        if (func_expr.isSymbol() and self.struct_predicates.count() > 0) {
+        if (func_expr.isSymbol() and self.struct_predicates.count() > 0 and env.lookupFunctionSym(func_expr) == null) {
             // Copy name to avoid dangling pointer if heap moves
             const sym_name_raw = func_expr.toPtr(Symbol).getName();
             const sym_name = try self.allocator.dupe(u8, sym_name_raw);
@@ -14664,7 +15213,20 @@ pub const Compiler = struct {
             }
         }
 
-        const func_ir = try self.compile(func_expr, env);
+        const func_ir = if (func_expr.isSymbol()) blk: {
+            if (env.lookupFunctionSym(func_expr)) |binding| {
+                const name = func_expr.toPtr(Symbol).getName();
+                const fn_ref = try self.builder.variable(name, binding.depth, binding.index);
+                break :blk try self.maybeBoxRefFunction(func_expr, fn_ref);
+            }
+
+            // Function position uses function namespace, not value namespace.
+            // Emit symbol designator so VM resolves fdefinition/builtin wrappers.
+            if (try self.compilePrimitiveFunctionRef(func_expr)) |wrapper| {
+                break :blk wrapper;
+            }
+            break :blk try self.builder.lit(func_expr);
+        } else try self.compile(func_expr, env);
 
         var args = std.ArrayList(*Ir){};
         defer args.deinit(self.allocator);
@@ -16413,10 +16975,17 @@ test "compile defmethod specialized param" {
     defer arena_alloc.destroy(ir_def);
 
     try testing.expect(ir_def.* == .progn);
-    try testing.expect(ir_def.progn.len >= 2);
-    const method_def = ir_def.progn[1];
-    try testing.expect(method_def.* == .define);
-    try testing.expectEqualStrings("FOO$p$BAR", method_def.define.name);
+    try testing.expect(ir_def.progn.len >= 1);
+
+    var found = false;
+    for (ir_def.progn) |node| {
+        if (node.* != .define) continue;
+        if (std.mem.eql(u8, node.define.name, "FOO$p$BAR")) {
+            found = true;
+            break;
+        }
+    }
+    try testing.expect(found);
 }
 
 test "compiler qualifyName allocates for long names" {

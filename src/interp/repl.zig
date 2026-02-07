@@ -78,6 +78,12 @@ const MacroEntry = struct {
     has_env: bool,
 };
 
+const VmRootCtx = struct {
+    vm: *Vm,
+    roots: *std.ArrayList(Value),
+    prev: ?*VmRootCtx,
+};
+
 /// REPL state
 pub const Repl = struct {
     allocator: std.mem.Allocator,
@@ -94,6 +100,8 @@ pub const Repl = struct {
     line_editor: LineEditor,
     /// Current VM being used (for nested loads)
     current_vm: ?*Vm,
+    /// Linked stack of active VM root contexts for nested eval/load.
+    active_root_ctx: ?*VmRootCtx,
 
     pub fn init(self: *Repl, allocator: std.mem.Allocator, heap: *Heap, config: Config) !void {
         // NOTE: Repl must be initialized in-place so Compiler subcomponents can
@@ -108,6 +116,7 @@ pub const Repl = struct {
             .macros = std.AutoHashMap(Value, MacroEntry).init(allocator),
             .line_editor = LineEditor.init(allocator),
             .current_vm = null,
+            .active_root_ctx = null,
         };
         errdefer self.chunk_pool.deinit(allocator);
         errdefer self.macros.deinit();
@@ -119,6 +128,26 @@ pub const Repl = struct {
 
         self.compiler = try Compiler.initWithHeap(allocator, &self.vm);
         errdefer self.compiler.deinit();
+    }
+
+    fn isVmActive(self: *Repl, vm: *Vm) bool {
+        if (vm == &self.vm) return true;
+        var ctx_opt = self.active_root_ctx;
+        while (ctx_opt) |ctx| {
+            if (ctx.vm == vm) return true;
+            ctx_opt = ctx.prev;
+        }
+        return false;
+    }
+
+    fn activeVm(self: *Repl) *Vm {
+        if (self.current_vm) |vm| {
+            if (self.isVmActive(vm)) return vm;
+        }
+        if (self.active_root_ctx) |ctx| {
+            return ctx.vm;
+        }
+        return &self.vm;
     }
 
     fn syncChunkPools(self: *Repl, vm: *Vm) void {
@@ -134,6 +163,28 @@ pub const Repl = struct {
                 cur.setChunkPool(pool);
             }
         }
+        // Keep all active VMs in nested runVmPreserveMacroState chains in sync too.
+        var ctx_opt = self.active_root_ctx;
+        while (ctx_opt) |ctx| {
+            if (ctx.vm != &self.vm and ctx.vm != vm) {
+                ctx.vm.setChunkPool(pool);
+            }
+            ctx_opt = ctx.prev;
+        }
+    }
+
+    fn pinPersistentRoot(self: *Repl, val: Value) !void {
+        var ctx_opt = self.active_root_ctx;
+        while (ctx_opt) |ctx| {
+            try ctx.roots.append(self.allocator, val);
+            ctx.vm.setExtRoots(ctx.roots.items);
+            ctx_opt = ctx.prev;
+        }
+    }
+
+    fn pinPersistentPair(self: *Repl, key: Value, val: Value) !void {
+        try self.pinPersistentRoot(key);
+        try self.pinPersistentRoot(val);
     }
 
     const MacroMapPair = struct {
@@ -154,6 +205,7 @@ pub const Repl = struct {
         const start = @intFromPtr(self.heap.from_start);
         const end = @intFromPtr(self.heap.from_end);
         if (addr < start or addr >= end) return false;
+        if ((addr & (runtime.heap.ALIGNMENT - 1)) != 0) return false;
 
         const align8 = struct {
             fn run(n: usize) ?usize {
@@ -162,11 +214,24 @@ pub const Repl = struct {
                 return plus & ~@as(usize, 7);
             }
         }.run;
+        const within = struct {
+            fn run(base: usize, size: usize, limit: usize) bool {
+                const obj_end = std.math.add(usize, base, size) catch return false;
+                return obj_end <= limit;
+            }
+        }.run;
+        const mul = struct {
+            fn run(a: anytype, b: usize) ?usize {
+                return std.math.mul(usize, @as(usize, @intCast(a)), b) catch null;
+            }
+        }.run;
 
-        switch (val.typeKind()) {
+        switch (val.getTag()) {
+            .cons => return within(addr, @sizeOf(runtime.Cons), end),
             .symbol => {
+                if (!within(addr, @sizeOf(Symbol), end)) return false;
                 const sym = val.toPtr(Symbol);
-                const name_len = sym.name_len;
+                const name_len: usize = @intCast(sym.name_len);
                 const aligned_name = align8(name_len) orelse return false;
                 const data_start = std.math.add(usize, addr, @sizeOf(Symbol)) catch return false;
                 const data_end = std.math.add(usize, data_start, aligned_name) catch return false;
@@ -175,9 +240,38 @@ pub const Repl = struct {
                 const name_end = std.math.add(usize, name_ptr, name_len) catch return false;
                 return name_ptr >= data_start and name_end <= data_end;
             },
+            .vector => {
+                if (!within(addr, @sizeOf(runtime.Vector), end)) return false;
+                const vec = val.toPtr(runtime.Vector);
+                if (vec.length > vec.capacity) return false;
+                const data_size = mul(vec.capacity, @sizeOf(Value)) orelse return false;
+                const data_start = std.math.add(usize, addr, @sizeOf(runtime.Vector)) catch return false;
+                const data_end = std.math.add(usize, data_start, data_size) catch return false;
+                if (data_end > end) return false;
+                return @intFromPtr(vec.data) == data_start;
+            },
+            .string => {
+                if (!within(addr, @sizeOf(String), end)) return false;
+                const str = val.toPtr(String);
+                const data_size = align8(str.length) orelse return false;
+                const data_start = std.math.add(usize, addr, @sizeOf(String)) catch return false;
+                const data_end = std.math.add(usize, data_start, data_size) catch return false;
+                if (data_end > end) return false;
+                return @intFromPtr(str.data) == data_start;
+            },
+            .closure => {
+                if (!within(addr, @sizeOf(runtime.Closure), end)) return false;
+                const cls = val.toPtr(runtime.Closure);
+                const cap_size = mul(cls.num_captures, @sizeOf(Value)) orelse return false;
+                const cap_start = std.math.add(usize, addr, @sizeOf(runtime.Closure)) catch return false;
+                const cap_end = std.math.add(usize, cap_start, cap_size) catch return false;
+                if (cap_end > end) return false;
+                return @intFromPtr(cls.captures) == cap_start;
+            },
             .keyword => {
+                if (!within(addr, @sizeOf(runtime.Keyword), end)) return false;
                 const kw = val.toPtr(runtime.Keyword);
-                const name_len = kw.name_len;
+                const name_len: usize = @intCast(kw.name_len);
                 const aligned_name = align8(name_len) orelse return false;
                 const data_start = std.math.add(usize, addr, @sizeOf(runtime.Keyword)) catch return false;
                 const data_end = std.math.add(usize, data_start, aligned_name) catch return false;
@@ -186,18 +280,67 @@ pub const Repl = struct {
                 const name_end = std.math.add(usize, name_ptr, name_len) catch return false;
                 return name_ptr >= data_start and name_end <= data_end;
             },
-            .chunk => {
-                const chunk = val.toPtr(runtime.Chunk);
-                const const_size = std.math.mul(usize, chunk.const_count, @sizeOf(Value)) catch return false;
-                const code_size = align8(chunk.code_len) orelse return false;
-                const header_end = std.math.add(usize, addr, @sizeOf(runtime.Chunk)) catch return false;
-                const code_start = std.math.add(usize, header_end, const_size) catch return false;
-                const obj_end = std.math.add(usize, code_start, code_size) catch return false;
-                if (obj_end > end) return false;
-                if (@intFromPtr(chunk.const_pool) != header_end) return false;
-                return @intFromPtr(chunk.code) == code_start;
+            .boxed => {
+                if (!within(addr, @sizeOf(u64), end)) return false;
+                const kind_raw = @as(*const u64, @ptrFromInt(addr)).*;
+                if (kind_raw > @intFromEnum(runtime.BoxedKind.macro_env)) return false;
+                const kind: runtime.BoxedKind = @enumFromInt(@as(u64, kind_raw));
+                return switch (kind) {
+                    .hashtable => within(addr, @sizeOf(runtime.HashTable), end),
+                    .rational => within(addr, @sizeOf(runtime.Rational), end),
+                    .complex => within(addr, @sizeOf(runtime.Complex), end),
+                    .stream => within(addr, @sizeOf(runtime.Stream), end),
+                    .bignum => within(addr, @sizeOf(runtime.Bignum), end),
+                    .array => blk: {
+                        if (!within(addr, @sizeOf(runtime.Array), end)) break :blk false;
+                        const arr = val.toPtr(runtime.Array);
+                        if (arr.rank == 0 or arr.rank > 8) break :blk false;
+                        var expected_total: u64 = 1;
+                        var i: usize = 0;
+                        while (i < arr.rank) : (i += 1) {
+                            expected_total = std.math.mul(u64, expected_total, arr.dimensions[i]) catch break :blk false;
+                        }
+                        if (arr.total_size != expected_total) break :blk false;
+                        const data_size = std.math.mul(usize, @intCast(arr.total_size), @sizeOf(Value)) catch break :blk false;
+                        const data_start = std.math.add(usize, addr, @sizeOf(runtime.Array)) catch break :blk false;
+                        const data_end = std.math.add(usize, data_start, data_size) catch break :blk false;
+                        if (data_end > end) break :blk false;
+                        break :blk arr.data_ptr == data_start;
+                    },
+                    .pathname => within(addr, @sizeOf(runtime.Pathname), end),
+                    .package => within(addr, @sizeOf(runtime.Package), end),
+                    .chunk => blk: {
+                        if (!within(addr, @sizeOf(runtime.Chunk), end)) break :blk false;
+                        const chunk = val.toPtr(runtime.Chunk);
+                        const const_size = std.math.mul(usize, chunk.const_count, @sizeOf(Value)) catch break :blk false;
+                        const code_size = align8(chunk.code_len) orelse break :blk false;
+                        const header_end = std.math.add(usize, addr, @sizeOf(runtime.Chunk)) catch break :blk false;
+                        const code_start = std.math.add(usize, header_end, const_size) catch break :blk false;
+                        const obj_end = std.math.add(usize, code_start, code_size) catch break :blk false;
+                        if (obj_end > end) break :blk false;
+                        if (@intFromPtr(chunk.const_pool) != header_end) break :blk false;
+                        break :blk @intFromPtr(chunk.code) == code_start;
+                    },
+                    .condition => within(addr, @sizeOf(runtime.objects.Condition), end),
+                    .class => within(addr, @sizeOf(runtime.Class), end),
+                    .string32 => blk: {
+                        if (!within(addr, @sizeOf(runtime.String32), end)) break :blk false;
+                        const s32 = val.toPtr(runtime.String32);
+                        const byte_size = std.math.mul(usize, s32.length, @sizeOf(u32)) catch break :blk false;
+                        const data_size = align8(byte_size) orelse break :blk false;
+                        const data_start = std.math.add(usize, addr, @sizeOf(runtime.String32)) catch break :blk false;
+                        const data_end = std.math.add(usize, data_start, data_size) catch break :blk false;
+                        if (data_end > end) break :blk false;
+                        break :blk @intFromPtr(s32.data) == data_start;
+                    },
+                    .slotdef => within(addr, @sizeOf(runtime.objects.SlotDefinition), end),
+                    .generic_function => within(addr, @sizeOf(runtime.objects.GenericFunction), end),
+                    .method => within(addr, @sizeOf(runtime.objects.Method), end),
+                    .native_code => within(addr, @sizeOf(runtime.NativeCode), end),
+                    .macro_env => within(addr, @sizeOf(runtime.MacroEnv), end),
+                };
             },
-            else => return true,
+            .forwarding => return false,
         }
     }
 
@@ -208,6 +351,12 @@ pub const Repl = struct {
             const val = entry.value_ptr.*;
             if (!key.isSymbol()) continue;
             if (!self.isLiveValue(key) or !self.isLiveValue(val)) continue;
+            if (val.isClosure()) {
+                // Closure-valued compiler macros must still point at a valid chunk.
+                const closure = val.toPtr(runtime.Closure);
+                if (!closure.code.isChunk()) continue;
+                if (!self.isLiveValue(closure.code)) continue;
+            }
             try out.append(self.allocator, .{
                 .key = key,
                 .val = val,
@@ -236,6 +385,10 @@ pub const Repl = struct {
             const m = entry.value_ptr.*;
             if (!key.isSymbol()) continue;
             if (!self.isLiveValue(key) or !self.isLiveValue(m.closure)) continue;
+            if (!m.closure.isClosure()) continue;
+            const closure = m.closure.toPtr(runtime.Closure);
+            if (!closure.code.isChunk()) continue;
+            if (!self.isLiveValue(closure.code)) continue;
             try out.append(self.allocator, .{
                 .key = key,
                 .closure = m.closure,
@@ -269,7 +422,10 @@ pub const Repl = struct {
             try self.compiler.macro_table.put(key, val);
         }
         for (live_compiler_macros) |pair| {
-            try self.compiler.macro_table.put(pair.key, pair.val);
+            const gop = try self.compiler.macro_table.getOrPut(pair.key);
+            if (!gop.found_existing) {
+                gop.value_ptr.* = pair.val;
+            }
         }
 
         self.compiler.symbol_macros.clearRetainingCapacity();
@@ -283,7 +439,10 @@ pub const Repl = struct {
             try self.compiler.symbol_macros.put(key, val);
         }
         for (live_symbol_macros) |pair| {
-            try self.compiler.symbol_macros.put(pair.key, pair.val);
+            const gop = try self.compiler.symbol_macros.getOrPut(pair.key);
+            if (!gop.found_existing) {
+                gop.value_ptr.* = pair.val;
+            }
         }
 
         self.macros.clearRetainingCapacity();
@@ -302,11 +461,14 @@ pub const Repl = struct {
             });
         }
         for (live_repl_macros) |pair| {
-            try self.macros.put(pair.key, .{
-                .closure = pair.closure,
-                .has_whole = pair.has_whole,
-                .has_env = pair.has_env,
-            });
+            const gop = try self.macros.getOrPut(pair.key);
+            if (!gop.found_existing) {
+                gop.value_ptr.* = .{
+                    .closure = pair.closure,
+                    .has_whole = pair.has_whole,
+                    .has_env = pair.has_env,
+                };
+            }
         }
     }
 
@@ -355,37 +517,41 @@ pub const Repl = struct {
             (compiler_macros.items.len * 2) +
             (symbol_macros.items.len * 2) +
             (repl_macros.items.len * 2);
-        const roots = try self.allocator.alloc(Value, total_roots);
-        defer self.allocator.free(roots);
+        var roots = std.ArrayList(Value){};
+        defer roots.deinit(self.allocator);
+        try roots.ensureTotalCapacity(self.allocator, total_roots);
 
         if (saved_ext.len > 0) {
-            @memcpy(roots[0..saved_ext.len], saved_ext);
+            try roots.appendSlice(self.allocator, saved_ext);
         }
 
-        var idx: usize = saved_ext.len;
-        const compiler_macro_start = idx;
+        const compiler_macro_start = roots.items.len;
         for (compiler_macros.items) |entry| {
-            roots[idx] = entry.key;
-            roots[idx + 1] = entry.val;
-            idx += 2;
+            try roots.append(self.allocator, entry.key);
+            try roots.append(self.allocator, entry.val);
         }
 
-        const symbol_macro_start = idx;
+        const symbol_macro_start = roots.items.len;
         for (symbol_macros.items) |entry| {
-            roots[idx] = entry.key;
-            roots[idx + 1] = entry.val;
-            idx += 2;
+            try roots.append(self.allocator, entry.key);
+            try roots.append(self.allocator, entry.val);
         }
 
-        const repl_macro_start = idx;
+        const repl_macro_start = roots.items.len;
         for (repl_macros.items) |entry| {
-            roots[idx] = entry.key;
-            roots[idx + 1] = entry.closure;
-            idx += 2;
+            try roots.append(self.allocator, entry.key);
+            try roots.append(self.allocator, entry.closure);
         }
 
-        vm.setExtRoots(roots);
+        vm.setExtRoots(roots.items);
         defer vm.setExtRoots(saved_ext);
+        var root_ctx = VmRootCtx{
+            .vm = vm,
+            .roots = &roots,
+            .prev = self.active_root_ctx,
+        };
+        self.active_root_ctx = &root_ctx;
+        defer self.active_root_ctx = root_ctx.prev;
 
         var live_compiler_macros = std.ArrayList(MacroMapPair){};
         defer live_compiler_macros.deinit(self.allocator);
@@ -394,12 +560,34 @@ pub const Repl = struct {
         var live_repl_macros = std.ArrayList(ReplMacroPair){};
         defer live_repl_macros.deinit(self.allocator);
 
-        const result = vm.run(chunk_ptr) catch |run_err| {
+        const result = if (vm.isExecuting()) blk: {
+            const chunk_val = Value.makeChunk(chunk_ptr);
+            const closure = try self.heap.allocClosure(chunk_val, chunk_ptr.arity, &[_]Value{});
+            const call_base = vm.sp;
+            break :blk vm.callFromStackAt(call_base, closure, &[_]Value{}) catch |run_err| {
+                try self.collectCompilerMacroPairs(&live_compiler_macros);
+                try self.collectSymbolMacroPairs(&live_symbol_macros);
+                try self.collectReplMacroPairs(&live_repl_macros);
+                try self.restoreMacroMapsFromRoots(
+                    roots.items,
+                    compiler_macro_start,
+                    compiler_macros.items.len,
+                    symbol_macro_start,
+                    symbol_macros.items.len,
+                    repl_macro_start,
+                    repl_macros.items,
+                    live_compiler_macros.items,
+                    live_symbol_macros.items,
+                    live_repl_macros.items,
+                );
+                return run_err;
+            };
+        } else vm.run(chunk_ptr) catch |run_err| {
             try self.collectCompilerMacroPairs(&live_compiler_macros);
             try self.collectSymbolMacroPairs(&live_symbol_macros);
             try self.collectReplMacroPairs(&live_repl_macros);
             try self.restoreMacroMapsFromRoots(
-                roots,
+                roots.items,
                 compiler_macro_start,
                 compiler_macros.items.len,
                 symbol_macro_start,
@@ -417,7 +605,7 @@ pub const Repl = struct {
         try self.collectSymbolMacroPairs(&live_symbol_macros);
         try self.collectReplMacroPairs(&live_repl_macros);
         try self.restoreMacroMapsFromRoots(
-            roots,
+            roots.items,
             compiler_macro_start,
             compiler_macros.items.len,
             symbol_macro_start,
@@ -443,6 +631,8 @@ pub const Repl = struct {
         self.vm.setMacroexpand1Callback(&macroexpand1Callback, @ptrCast(self));
         // Set up fboundp callback
         self.vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
+        // Set up symbol-function/function-designator resolver callback
+        self.vm.setFunctionResolveCallback(&functionResolveCallback, @ptrCast(self));
         // Set VM on compiler for macro expansion
         self.compiler.setVm(&self.vm);
         // Create *features* list
@@ -562,57 +752,14 @@ pub const Repl = struct {
     fn fboundpCallback(sym: Value, context: *anyopaque) vm_mod.Error!bool {
         const self: *Repl = @ptrCast(@alignCast(context));
         if (!sym.isSymbol()) return false;
-        const s = sym.toPtr(Symbol);
-        const local_name = s.getName();
 
         // Build qualified name using symbol's package
-        var qbuf: [512]u8 = undefined;
-        const q = try qual_name.qualSym(self.allocator, s, &qbuf);
-        defer if (q.owned) self.allocator.free(q.name);
-        const qname = q.name;
-
         // Check if it's a macro
         if (self.lookupMacroEntry(sym) != null) {
             return true;
         }
-        const source_vm = self.current_vm orelse &self.vm;
-        const static = struct {
-            fn isCallable(val: Value) bool {
-                return switch (val.typeKind()) {
-                    .closure, .native_code, .generic_function => true,
-                    else => false,
-                };
-            }
-        };
-
-        // Check if it's a user-defined function (try both names)
-        var in_qual = false;
-        if (self.compiler.globals.lookup(qname)) |idx| {
-            if (idx < source_vm.num_globals and static.isCallable(source_vm.globals[idx])) {
-                in_qual = true;
-            }
-        }
-        var in_local = false;
-        if (self.compiler.globals.lookup(local_name)) |idx| {
-            if (idx < source_vm.num_globals and static.isCallable(source_vm.globals[idx])) {
-                in_local = true;
-            }
-        }
-        if (in_qual or in_local) return true;
-
-        // Also check common package-qualified candidates for imported CL symbols.
-        var full_buf: [640]u8 = undefined;
-        const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:" };
-        for (prefixes) |prefix| {
-            if (prefix.len + local_name.len > full_buf.len) continue;
-            @memcpy(full_buf[0..prefix.len], prefix);
-            @memcpy(full_buf[prefix.len .. prefix.len + local_name.len], local_name);
-            const candidate = full_buf[0 .. prefix.len + local_name.len];
-            if (self.compiler.globals.lookup(candidate)) |idx| {
-                if (idx < source_vm.num_globals and static.isCallable(source_vm.globals[idx])) {
-                    return true;
-                }
-            }
+        if (try self.lookupCallableFunction(sym)) |_| {
+            return true;
         }
 
         // Check if it's a builtin primitive
@@ -625,6 +772,325 @@ pub const Repl = struct {
         return false;
     }
 
+    /// Callback for symbol-function/function designators from VM.
+    /// Returns a callable Value for globals or lazily materialized primitive wrappers.
+    fn functionResolveCallback(sym: Value, context: *anyopaque) vm_mod.Error!?Value {
+        const self: *Repl = @ptrCast(@alignCast(context));
+        if (!sym.isSymbol()) return null;
+        const trace_fn_resolve = std.posix.getenv("HABU_TRACE_FN_RESOLVE") != null;
+        if (trace_fn_resolve) {
+            std.debug.print("TRACE fn-resolve sym={s}\n", .{sym.toPtr(Symbol).getName()});
+        }
+
+        if (try self.lookupCallableFunction(sym)) |fn_val| {
+            if (trace_fn_resolve) {
+                std.debug.print("TRACE fn-resolve hit-global kind={s}\n", .{@tagName(fn_val.typeKind())});
+            }
+            return fn_val;
+        }
+
+        // Lazily materialize builtin primitive wrappers.
+        if (self.compiler.builtins) |b| {
+            const dispatch_sym = self.canonicalMacroSymbol(sym);
+            const is_builtin = b.isBuiltinFunction(dispatch_sym);
+            if (trace_fn_resolve) {
+                std.debug.print(
+                    "TRACE fn-resolve dispatch={s} builtin={}\n",
+                    .{ dispatch_sym.toPtr(Symbol).getName(), is_builtin },
+                );
+            }
+            if (is_builtin) {
+                const arity_opt = self.compiler.primitiveRefArity(dispatch_sym);
+                if (trace_fn_resolve) {
+                    if (arity_opt) |arity| {
+                        std.debug.print("TRACE fn-resolve arity={d}\n", .{@intFromEnum(arity)});
+                    } else {
+                        std.debug.print("TRACE fn-resolve arity=null\n", .{});
+                    }
+                }
+                if (arity_opt) |arity| {
+                    const wrapper_form = try self.buildPrimitiveFunctionWrapper(dispatch_sym, arity);
+                    const wrapper_val = try self.evalExpression(wrapper_form);
+                    if (trace_fn_resolve) {
+                        std.debug.print("TRACE fn-resolve wrapper kind={s}\n", .{@tagName(wrapper_val.typeKind())});
+                    }
+                    if (isCallableValue(wrapper_val)) return wrapper_val;
+                } else {
+                    // Generic fallback for builtin primitives without fixed arity metadata:
+                    // (lambda (&rest args) (eval (cons 'sym args)))
+                    const wrapper_form = try self.buildEvalDispatchWrapper(dispatch_sym);
+                    const wrapper_val = try self.evalExpression(wrapper_form);
+                    if (trace_fn_resolve) {
+                        std.debug.print(
+                            "TRACE fn-resolve eval-wrapper kind={s}\n",
+                            .{@tagName(wrapper_val.typeKind())},
+                        );
+                    }
+                    if (isCallableValue(wrapper_val)) return wrapper_val;
+                }
+            }
+        }
+
+        if (trace_fn_resolve) {
+            std.debug.print("TRACE fn-resolve miss\n", .{});
+        }
+        return null;
+    }
+
+    fn isCallableValue(val: Value) bool {
+        return switch (val.typeKind()) {
+            .closure, .native_code, .generic_function => true,
+            else => false,
+        };
+    }
+
+    fn buildPrimitiveFunctionWrapper(self: *Repl, sym: Value, arity: Compiler.PrimitiveRefArity) !Value {
+        const builtins = self.compiler.builtins orelse return error.InvalidSyntax;
+        const arg_count: usize = switch (arity) {
+            .nullary => 0,
+            .unary => 1,
+            .binary => 2,
+            .ternary => 3,
+        };
+
+        const sym_a = try self.heap.intern("A");
+        const sym_b = try self.heap.intern("B");
+        const sym_c = try self.heap.intern("C");
+        const param_pool = [_]Value{ sym_a, sym_b, sym_c };
+
+        var params_buf: [3]Value = undefined;
+        var i: usize = 0;
+        while (i < arg_count) : (i += 1) {
+            params_buf[i] = param_pool[i];
+        }
+        const params_list = try self.listFromSlice(params_buf[0..arg_count]);
+
+        var call_items: [4]Value = undefined;
+        call_items[0] = sym;
+        i = 0;
+        while (i < arg_count) : (i += 1) {
+            call_items[i + 1] = params_buf[i];
+        }
+        const call_list = try self.listFromSlice(call_items[0 .. arg_count + 1]);
+
+        const lambda_items = [_]Value{ builtins.lambda, params_list, call_list };
+        return self.listFromSlice(&lambda_items);
+    }
+
+    fn buildEvalDispatchWrapper(self: *Repl, sym: Value) !Value {
+        const builtins = self.compiler.builtins orelse return error.InvalidSyntax;
+        const sym_args = try self.heap.intern("ARGS");
+
+        const params_items = [_]Value{ builtins.@"&rest", sym_args };
+        const params_list = try self.listFromSlice(&params_items);
+
+        const quote_sym_items = [_]Value{ builtins.quote, sym };
+        const quote_sym_form = try self.listFromSlice(&quote_sym_items);
+
+        const cons_items = [_]Value{ builtins.cons, quote_sym_form, sym_args };
+        const cons_form = try self.listFromSlice(&cons_items);
+
+        const eval_items = [_]Value{ builtins.eval, cons_form };
+        const eval_form = try self.listFromSlice(&eval_items);
+
+        const lambda_items = [_]Value{ builtins.lambda, params_list, eval_form };
+        return self.listFromSlice(&lambda_items);
+    }
+
+    fn listFromSlice(self: *Repl, items: []const Value) !Value {
+        var out = Value.nil;
+        var i = items.len;
+        while (i > 0) {
+            i -= 1;
+            out = try self.heap.allocCons(items[i], out);
+        }
+        return out;
+    }
+
+    fn lookupCallableFunction(self: *Repl, sym: Value) !?Value {
+        if (!sym.isSymbol()) return null;
+        const source_vm = self.activeVm();
+        const s = sym.toPtr(Symbol);
+        const local_name = s.getName();
+        const trace = std.posix.getenv("HABU_TRACE_FN_RESOLVE") != null;
+        if (trace and std.mem.eql(u8, local_name, "MAPCAR")) {
+            std.debug.print("TRACE fn-lookup source num_globals={d}\n", .{source_vm.num_globals});
+        }
+
+        var qbuf: [512]u8 = undefined;
+        const q = try qual_name.qualSym(self.allocator, s, &qbuf);
+        defer if (q.owned) self.allocator.free(q.name);
+
+        if (self.compiler.globals.lookup(q.name)) |idx| {
+            if (trace) {
+                std.debug.print("TRACE fn-lookup qname={s} idx={d} kind={s}\n", .{
+                    q.name,
+                    idx,
+                    globalKindName(source_vm, idx),
+                });
+            }
+            if (self.lookupCallableAtGlobalIdx(source_vm, idx)) |callable| {
+                return callable;
+            }
+        }
+        if (self.compiler.globals.lookup(local_name)) |idx| {
+            if (trace) {
+                std.debug.print("TRACE fn-lookup local={s} idx={d} kind={s}\n", .{
+                    local_name,
+                    idx,
+                    globalKindName(source_vm, idx),
+                });
+            }
+            if (self.lookupCallableAtGlobalIdx(source_vm, idx)) |callable| {
+                return callable;
+            }
+        }
+
+        var full_buf: [640]u8 = undefined;
+        const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:" };
+        for (prefixes) |prefix| {
+            if (prefix.len + local_name.len > full_buf.len) continue;
+            @memcpy(full_buf[0..prefix.len], prefix);
+            @memcpy(full_buf[prefix.len .. prefix.len + local_name.len], local_name);
+            const candidate = full_buf[0 .. prefix.len + local_name.len];
+            if (self.compiler.globals.lookup(candidate)) |idx| {
+                if (trace) {
+                    std.debug.print("TRACE fn-lookup cand={s} idx={d} kind={s}\n", .{
+                        candidate,
+                        idx,
+                        globalKindName(source_vm, idx),
+                    });
+                }
+                if (self.lookupCallableAtGlobalIdx(source_vm, idx)) |callable| {
+                    return callable;
+                }
+            }
+        }
+        if (trace and std.mem.eql(u8, local_name, "MAPCAR")) {
+            var it = self.compiler.globals.bindings.iterator();
+            while (it.next()) |entry| {
+                if (std.mem.indexOf(u8, entry.key_ptr.*, "MAPCAR") != null) {
+                    const idx = entry.value_ptr.*;
+                    std.debug.print("TRACE fn-lookup any={s} idx={d} kind={s}\n", .{
+                        entry.key_ptr.*,
+                        idx,
+                        globalKindName(source_vm, idx),
+                    });
+                }
+            }
+        }
+
+        // Package alias fallback: if there is exactly one callable global whose
+        // local (unqualified) name matches, treat it as the function binding.
+        var alias_count: usize = 0;
+        var alias_val = Value.nil;
+        var alias_it = self.compiler.globals.bindings.iterator();
+        while (alias_it.next()) |entry| {
+            const idx = entry.value_ptr.*;
+            const candidate_val = self.lookupCallableAtGlobalIdx(source_vm, idx) orelse continue;
+            if (!isCallableValue(candidate_val)) continue;
+
+            const key = entry.key_ptr.*;
+            const key_local = if (std.mem.lastIndexOfScalar(u8, key, ':')) |split|
+                key[split + 1 ..]
+            else
+                key;
+
+            if (!std.ascii.eqlIgnoreCase(key_local, local_name)) continue;
+            alias_count += 1;
+            alias_val = candidate_val;
+            if (alias_count > 1) break;
+        }
+        if (alias_count == 1) {
+            if (trace) {
+                std.debug.print("TRACE fn-lookup alias-hit local={s}\n", .{local_name});
+            }
+            return alias_val;
+        }
+        if (trace) {
+            var dbg_it = self.compiler.globals.bindings.iterator();
+            while (dbg_it.next()) |entry| {
+                const key = entry.key_ptr.*;
+                const key_local = if (std.mem.lastIndexOfScalar(u8, key, ':')) |split|
+                    key[split + 1 ..]
+                else
+                    key;
+                if (!std.ascii.eqlIgnoreCase(key_local, local_name)) continue;
+                const idx = entry.value_ptr.*;
+                std.debug.print("TRACE fn-lookup alias-cand key={s} idx={d} kind={s}\n", .{
+                    key,
+                    idx,
+                    globalKindName(source_vm, idx),
+                });
+            }
+        }
+        return null;
+    }
+
+    fn globalKindName(vm: *const Vm, idx: usize) []const u8 {
+        if (idx >= vm.num_globals) return "oob";
+        return @tagName(vm.globals[idx].typeKind());
+    }
+
+    fn ptrInHeap(vm: *const Vm, ptr_addr: usize, need_bytes: usize) bool {
+        const heap_start = @intFromPtr(vm.heap.memory.ptr);
+        const heap_end = heap_start + vm.heap.memory.len;
+        if (ptr_addr < heap_start or ptr_addr >= heap_end) return false;
+        const end = ptr_addr + need_bytes;
+        if (end < ptr_addr) return false;
+        return end <= heap_end;
+    }
+
+    fn isCallableGlobalValue(vm: *const Vm, val: Value) bool {
+        const raw = val.raw;
+        if (raw == Value.nil.raw or raw == Value.t.raw or raw == Value.unbound.raw) return false;
+        // Immediates are never callable.
+        if ((raw & 1) == 1) return false; // fixnum
+        if ((raw >> 63) == 1) return false; // char
+        if (((raw >> 62) & 0x3) == 1) return false; // float
+
+        const tag_bits: u4 = @truncate(raw & 0xF);
+        switch (tag_bits) {
+            0x8 => return true, // closure
+            0xC => { // boxed: only generic-function and native-code are callable
+                const ptr_addr = @as(usize, @intCast(raw & ~@as(u64, 0xF)));
+                if (!ptrInHeap(vm, ptr_addr, @sizeOf(u64))) return false;
+                const kind_raw = @as(*const u64, @ptrFromInt(ptr_addr)).*;
+                return kind_raw == @intFromEnum(runtime.BoxedKind.generic_function) or
+                    kind_raw == @intFromEnum(runtime.BoxedKind.native_code);
+            },
+            else => return false,
+        }
+    }
+
+    fn lookupCallableInVm(vm: *const Vm, idx: usize) ?Value {
+        if (idx >= vm.num_globals) return null;
+        const val = vm.globals[idx];
+        if (!isCallableGlobalValue(vm, val)) return null;
+        return val;
+    }
+
+    fn lookupCallableAtGlobalIdx(self: *Repl, source_vm: *const Vm, idx: usize) ?Value {
+        if (lookupCallableInVm(source_vm, idx)) |callable| return callable;
+        if (source_vm != &self.vm) {
+            if (lookupCallableInVm(&self.vm, idx)) |callable| return callable;
+        }
+        if (self.current_vm) |cur| {
+            if (cur != source_vm and cur != &self.vm) {
+                if (lookupCallableInVm(cur, idx)) |callable| return callable;
+            }
+        }
+        var ctx_opt = self.active_root_ctx;
+        while (ctx_opt) |ctx| {
+            const vm = ctx.vm;
+            if (vm != source_vm and vm != &self.vm) {
+                if (lookupCallableInVm(vm, idx)) |callable| return callable;
+            }
+            ctx_opt = ctx.prev;
+        }
+        return null;
+    }
+
     /// Evaluate an expression using a separate VM
     fn evalExpression(self: *Repl, expr: Value) !Value {
         // Use arena for compilation
@@ -632,7 +1098,7 @@ pub const Repl = struct {
         defer arena.deinit();
         const arena_alloc = arena.allocator();
 
-        const source_vm = self.current_vm orelse &self.vm;
+        const source_vm = self.activeVm();
 
         // Save and set compiler state
         const saved_builder = self.compiler.builder;
@@ -655,10 +1121,11 @@ pub const Repl = struct {
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
-        // CL EVAL must macroexpand first; compiling raw forms breaks macro-only operators.
-        var expanded = try self.expandMacros(expr);
-        expanded = try self.desugarExpr(expanded);
-        const ir_node = try self.compiler.compile(expanded, &env);
+        // Let compiler-driven macro expansion run for eval forms. Pre-expanding
+        // through the REPL macro table can leak stale macro bindings into eval.
+        var normalized = expr;
+        normalized = try self.desugarExpr(normalized);
+        const ir_node = try self.compiler.compile(normalized, &env);
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
@@ -683,45 +1150,19 @@ pub const Repl = struct {
             self.chunk_pool.appendAssumeCapacity(c.toPtr(runtime.objects.Chunk));
         }
 
-        // Use a separate VM to avoid stack issues
-        var nested_vm = try Vm.init(self.allocator, self.heap);
-        defer nested_vm.deinit();
-        nested_vm.setGlobalEnv(&self.compiler.globals);
-        nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
-        nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
-        nested_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
-        nested_vm.setMacroexpand1Callback(&macroexpand1Callback, @ptrCast(self));
-        nested_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
-
-        // Copy globals from active VM context (supports nested eval during file loads).
-        for (source_vm.globals, 0..) |g, i| {
-            nested_vm.globals[i] = g;
-        }
-        nested_vm.num_globals = source_vm.num_globals;
-
-        // Set up chunk pool for closures with base offset
-        self.syncChunkPools(&nested_vm);
-
-        // Execute
+        // Run through the same VM using a nested call frame. This preserves
+        // the caller VM's stack/locals across GC while evaluating runtime EVAL.
+        self.syncChunkPools(source_vm);
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         patchChunkIndices(chunk_ptr, chunk_base);
-        const result = try self.runVmPreserveMacroState(&nested_vm, chunk_ptr);
-
-        // Copy back any new globals into the active VM context.
-        for (nested_vm.globals, 0..) |g, i| {
-            source_vm.globals[i] = g;
-        }
-        if (nested_vm.num_globals > source_vm.num_globals) {
-            source_vm.num_globals = nested_vm.num_globals;
-        }
-
-        return result;
+        const closure = try self.heap.allocClosure(chunk, chunk_ptr.arity, &[_]Value{});
+        return try source_vm.callFromStackAt(source_vm.sp, closure, &[_]Value{});
     }
 
     /// Load a file and return the last value (for (load ...) primitive)
     /// Uses a separate VM to avoid recursive execution issues
     fn loadFileValue(self: *Repl, path: []const u8) !Value {
-        const source_vm = self.current_vm orelse &self.vm;
+        const source_vm = self.activeVm();
         const resolved_path = try self.resolveLoadPath(source_vm, path);
         defer self.allocator.free(resolved_path);
         const trace_forms = std.process.hasEnvVar(self.allocator, "HABU_TRACE_FORMS") catch false;
@@ -757,10 +1198,10 @@ pub const Repl = struct {
         const load_bindings = self.bindLoadGlobals(source_vm, load_path);
         defer self.restoreLoadGlobals(source_vm, load_bindings);
 
-        // Evaluate all expressions using a fresh VM, return last value.
+        // Evaluate all expressions and return the last value.
         // Some ANSI harnesses hand us host-generated .fasl files; if parsing
         // fails, fall back to sibling source file when available.
-        return self.evalFileContentSeparateVm(content) catch |err| {
+        const result = self.evalFileContentSeparateVm(content) catch |err| {
             if (err == error.UnexpectedToken) {
                 if (try self.fallbackSourcePathForFasl(resolved_path)) |fallback_path| {
                     defer self.allocator.free(fallback_path);
@@ -772,6 +1213,16 @@ pub const Repl = struct {
             }
             return err;
         };
+        if (trace_forms and (std.mem.endsWith(u8, resolved_path, "gclload1.lsp") or
+            std.mem.endsWith(u8, resolved_path, "rt.lsp") or
+            std.mem.endsWith(u8, resolved_path, "cl-test-package.lsp")))
+        {
+            std.debug.print(
+                "TRACE load done: {s} cl-test-native={any} pkg={s}\n",
+                .{ resolved_path, self.heap.findPackage("CL-TEST") != null, self.heap.getCurrentPackageName() },
+            );
+        }
+        return result;
     }
 
     const LoadBindings = struct {
@@ -873,6 +1324,7 @@ pub const Repl = struct {
     fn currentPackageGlobal(self: *Repl, vm: *const Vm) ?Value {
         const names = [_][]const u8{
             "COMMON-LISP:*PACKAGE*",
+            "CL:*PACKAGE*",
             "CL-USER:*PACKAGE*",
             "*PACKAGE*",
         };
@@ -885,6 +1337,21 @@ pub const Repl = struct {
             }
         }
         return null;
+    }
+
+    fn setPackageGlobals(self: *Repl, vm: *Vm, pkg_val: Value) void {
+        const names = [_][]const u8{
+            "COMMON-LISP:*PACKAGE*",
+            "CL:*PACKAGE*",
+            "CL-USER:*PACKAGE*",
+            "*PACKAGE*",
+        };
+        for (names) |name| {
+            if (self.compiler.globals.lookup(name)) |idx| {
+                vm.globals[idx] = pkg_val;
+                if (idx >= vm.num_globals) vm.num_globals = idx + 1;
+            }
+        }
     }
 
     fn syncReaderPackageFromVm(self: *Repl, vm: *const Vm) void {
@@ -905,16 +1372,45 @@ pub const Repl = struct {
         if (std.fs.path.isAbsolute(path)) {
             return try self.allocator.dupe(u8, path);
         }
+        if (self.currentDefaultPathname(vm)) |defaults| {
+            if (try self.pathnameDesignatorToOwnedString(defaults)) |base| {
+                defer self.allocator.free(base);
+                if (try self.resolveRelativeLoadPath(base, path)) |resolved| {
+                    return resolved;
+                }
+            }
+        }
         if (self.currentLoadTruename(vm)) |load_true| {
-            const ns = try primitives.pathname.namestring(self.allocator, self.heap, &self.vm.builtins, load_true);
-            if (ns.isString()) {
-                const full = ns.toPtr(runtime.String).bytes();
-                if (std.fs.path.dirname(full)) |dir| {
-                    return try std.fs.path.join(self.allocator, &.{ dir, path });
+            if (try self.pathnameDesignatorToOwnedString(load_true)) |base| {
+                defer self.allocator.free(base);
+                if (try self.resolveRelativeLoadPath(base, path)) |resolved| {
+                    return resolved;
                 }
             }
         }
         return try self.allocator.dupe(u8, path);
+    }
+
+    fn resolveRelativeLoadPath(self: *Repl, base: []const u8, path: []const u8) !?[]u8 {
+        const candidates = [_][]const u8{
+            base,
+            std.fs.path.dirname(base) orelse "",
+        };
+        for (candidates) |root| {
+            if (root.len == 0) continue;
+            const primary = try std.fs.path.join(self.allocator, &.{ root, path });
+            if (try self.fileExists(primary)) return primary;
+            self.allocator.free(primary);
+
+            const base_name = std.fs.path.basename(root);
+            if (path.len > base_name.len + 1 and std.mem.eql(u8, path[0..base_name.len], base_name) and path[base_name.len] == '/') {
+                const trimmed = path[base_name.len + 1 ..];
+                const trimmed_join = try std.fs.path.join(self.allocator, &.{ root, trimmed });
+                if (try self.fileExists(trimmed_join)) return trimmed_join;
+                self.allocator.free(trimmed_join);
+            }
+        }
+        return null;
     }
 
     fn isCurrentLoadPath(self: *Repl, vm: *const Vm, path: []const u8) bool {
@@ -943,6 +1439,36 @@ pub const Repl = struct {
         return true;
     }
 
+    fn pathnameDesignatorToOwnedString(self: *Repl, designator: Value) !?[]u8 {
+        return switch (designator.typeKind()) {
+            .string => try self.allocator.dupe(u8, designator.toPtr(String).bytes()),
+            .pathname => blk: {
+                const ns = try primitives.pathname.namestring(self.allocator, self.heap, &self.vm.builtins, designator);
+                if (!ns.isString()) break :blk null;
+                break :blk try self.allocator.dupe(u8, ns.toPtr(String).bytes());
+            },
+            else => null,
+        };
+    }
+
+    fn currentDefaultPathname(self: *Repl, vm: *const Vm) ?Value {
+        const names = [_][]const u8{
+            "COMMON-LISP:*DEFAULT-PATHNAME-DEFAULTS*",
+            "CL:*DEFAULT-PATHNAME-DEFAULTS*",
+            "CL-USER:*DEFAULT-PATHNAME-DEFAULTS*",
+            "*DEFAULT-PATHNAME-DEFAULTS*",
+        };
+        for (names) |name| {
+            if (self.compiler.globals.lookup(name)) |idx| {
+                if (idx < vm.num_globals) {
+                    const val = vm.globals[idx];
+                    if (!val.isNil()) return val;
+                }
+            }
+        }
+        return null;
+    }
+
     fn fallbackSourcePathForFasl(self: *Repl, path: []const u8) !?[]u8 {
         const ext = std.fs.path.extension(path);
         if (!(std.ascii.eqlIgnoreCase(ext, ".fasl") or std.ascii.eqlIgnoreCase(ext, ".hfasl"))) {
@@ -968,40 +1494,41 @@ pub const Repl = struct {
         var arena = std.heap.ArenaAllocator.init(hook.repl.allocator);
         defer arena.deinit();
         const eval_alloc = arena.allocator();
-        return hook.repl.evalParsedWithVm(expr, hook.vm, eval_alloc) catch return error.UnexpectedToken;
+        return hook.repl.evalParsedWithVm(expr, hook.vm, eval_alloc) catch |err| {
+            if (std.posix.getenv("HABU_TRACE_READ_EVAL") != null) {
+                if (expr.isCons()) {
+                    const head = expr.toPtr(Cons).car;
+                    if (head.isSymbol()) {
+                        std.debug.print("TRACE read-eval error: {s} head={s}\n", .{ @errorName(err), head.toPtr(Symbol).getName() });
+                    } else {
+                        std.debug.print("TRACE read-eval error: {s} head-kind={s}\n", .{ @errorName(err), @tagName(head.typeKind()) });
+                    }
+                } else {
+                    std.debug.print("TRACE read-eval error: {s} expr-kind={s}\n", .{ @errorName(err), @tagName(expr.typeKind()) });
+                }
+            }
+            return error.UnexpectedToken;
+        };
     }
 
-    /// Evaluate file content using a separate VM to avoid stack corruption
+    /// Evaluate file content in the active VM context.
+    /// Nested execution is handled through callFromStackAt in runVmPreserveMacroState.
     fn evalFileContentSeparateVm(self: *Repl, content: []const u8) !Value {
         var last_value = Value.nil;
         const trace_forms = std.process.hasEnvVar(self.allocator, "HABU_TRACE_FORMS") catch false;
         var form_idx: usize = 0;
         var had_deftest_state: ?bool = null;
 
-        // Create a temporary VM for nested evaluation
-        var nested_vm = try Vm.init(self.allocator, self.heap);
-        defer nested_vm.deinit();
-        nested_vm.setGlobalEnv(&self.compiler.globals);
-        nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
-        nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
-        nested_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
-        nested_vm.setMacroexpand1Callback(&macroexpand1Callback, @ptrCast(self));
-        nested_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
-
-        // Copy globals from current VM context (for nested loads)
-        const source_vm = self.current_vm orelse &self.vm;
-        for (source_vm.globals, 0..) |g, i| {
-            nested_vm.globals[i] = g;
-        }
-        nested_vm.num_globals = source_vm.num_globals;
-
-        // Save previous current_vm and set nested_vm as current
+        // Evaluate forms in the current active VM to keep GC roots coherent
+        // across nested LOAD/EVAL callback recursion.
+        const source_vm = self.activeVm();
         const saved_current_vm = self.current_vm;
-        self.current_vm = &nested_vm;
+        self.current_vm = source_vm;
         defer self.current_vm = saved_current_vm;
 
+        self.syncChunkPools(source_vm);
         // Keep reader package aligned with runtime *PACKAGE* for this VM.
-        self.syncReaderPackageFromVm(&nested_vm);
+        self.syncReaderPackageFromVm(source_vm);
 
         var parse_arena = std.heap.ArenaAllocator.init(self.allocator);
         defer parse_arena.deinit();
@@ -1009,18 +1536,40 @@ pub const Repl = struct {
 
         var parser = try Parser.init(parse_alloc, self.heap, content, &self.vm.builtins);
         defer parser.deinit();
-        var read_eval_ctx = ReadEvalCtx{ .repl = self, .vm = &nested_vm };
+        var read_eval_ctx = ReadEvalCtx{ .repl = self, .vm = source_vm };
         parser.setReadEvalHook(@ptrCast(&read_eval_ctx), parserReadEval);
 
         while (parser.current.kind != .eof) {
-            self.syncReaderPackageFromVm(&nested_vm);
-            const expr = try parser.parse();
+            self.syncReaderPackageFromVm(source_vm);
+            const expr = parser.parse() catch |err| {
+                if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                    const loc = parser.getErrorLocation();
+                    std.debug.print(
+                        "TRACE parse error: {s} at {d}:{d} token={s} kind={s}\n",
+                        .{ @errorName(err), loc.line, loc.column, loc.text, @tagName(parser.current.kind) },
+                    );
+                }
+                return err;
+            };
             form_idx += 1;
             if (trace_forms) {
+                std.debug.print("TRACE form {d} pkg={s}\n", .{ form_idx, self.heap.getCurrentPackageName() });
                 if (expr.isCons()) {
                     const head = expr.toPtr(Cons).car;
                     if (head.isSymbol()) {
-                        std.debug.print("TRACE form {d}: {s}\n", .{ form_idx, head.toPtr(Symbol).getName() });
+                        const head_name = head.toPtr(Symbol).getName();
+                        std.debug.print("TRACE form {d}: {s}\n", .{ form_idx, head_name });
+                        if (std.mem.eql(u8, head_name, "DEFTEST")) {
+                            const tail = expr.toPtr(Cons).cdr;
+                            if (tail.isCons()) {
+                                const test_name = tail.toPtr(Cons).car;
+                                if (test_name.isSymbol()) {
+                                    std.debug.print("TRACE deftest {d}: {s}\n", .{ form_idx, test_name.toPtr(Symbol).getName() });
+                                } else {
+                                    std.debug.print("TRACE deftest {d}: {s}\n", .{ form_idx, @tagName(test_name.typeKind()) });
+                                }
+                            }
+                        }
                     } else {
                         std.debug.print("TRACE form {d}: {s}\n", .{ form_idx, @tagName(head.typeKind()) });
                     }
@@ -1063,7 +1612,7 @@ pub const Repl = struct {
             var eval_arena = std.heap.ArenaAllocator.init(self.allocator);
             defer eval_arena.deinit();
             const eval_alloc = eval_arena.allocator();
-            last_value = try self.evalParsedWithVm(expr, &nested_vm, eval_alloc);
+            last_value = try self.evalParsedWithVm(expr, source_vm, eval_alloc);
             if (std.posix.getenv("HABU_TRACE_DEFMACRO") != null) {
                 var has_def = false;
                 var it = self.macros.iterator();
@@ -1091,12 +1640,6 @@ pub const Repl = struct {
             }
         }
 
-        // Copy globals back to source VM
-        for (nested_vm.globals, 0..) |g, i| {
-            source_vm.globals[i] = g;
-        }
-        source_vm.num_globals = nested_vm.num_globals;
-
         return last_value;
     }
 
@@ -1121,6 +1664,9 @@ pub const Repl = struct {
         const saved_compiler_vm = self.compiler.vm;
         self.compiler.setVm(vm);
         try self.compiler.refreshBuiltins();
+        // Macro expansion during compile may execute already-defined macro
+        // closures; keep VM chunk pool in sync before any compile-time eval.
+        self.syncChunkPools(vm);
         defer {
             if (saved_compiler_vm) |saved_vm| {
                 self.compiler.setVm(saved_vm);
@@ -1132,6 +1678,12 @@ pub const Repl = struct {
         // Check for defmacro - handle specially like main eval
         if (self.isDefmacro(expr)) {
             return self.handleDefmacro(expr, arena_alloc);
+        }
+
+        // Package forms must execute immediately so subsequent reader forms
+        // use the updated package context during file loads.
+        if (self.isDefpackage(expr) or self.isInPackage(expr)) {
+            return try self.evalPackageForm(expr, arena_alloc);
         }
 
         // Check for eval-when - compile-time evaluation
@@ -1193,6 +1745,18 @@ pub const Repl = struct {
         // Patch main chunk to use absolute chunk indices
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         patchChunkIndices(chunk_ptr, chunk_base);
+
+        if (std.posix.getenv("HABU_TRACE_FORM_DISASM") != null and !vm.isExecuting()) {
+            std.debug.print("TRACE form disasm begin\n", .{});
+            var buf = std.ArrayList(u8){};
+            defer buf.deinit(self.allocator);
+            disasm.disassembleRuntime(chunk_ptr, buf.writer(self.allocator)) catch |err| {
+                std.debug.print("TRACE form disasm error={s}\n", .{@errorName(err)});
+                return err;
+            };
+            std.debug.print("{s}", .{buf.items});
+            std.debug.print("TRACE form disasm end\n", .{});
+        }
 
         // Set chunk pool and run with base offset
         self.syncChunkPools(vm);
@@ -1931,7 +2495,21 @@ pub const Repl = struct {
         if (!sym.isSymbol()) return sym;
         const cl_pkg = self.heap.cl_package orelse return sym;
         const name = sym.toPtr(Symbol).getName();
-        return cl_pkg.findAccessibleUpper(name) orelse sym;
+        if (cl_pkg.findAccessibleUpper(name)) |canonical| return canonical;
+
+        var needs_upper = false;
+        for (name) |ch| {
+            if (ch >= 'a' and ch <= 'z') {
+                needs_upper = true;
+                break;
+            }
+        }
+        if (!needs_upper) return sym;
+        if (name.len > 256) return sym;
+
+        var upper_buf: [256]u8 = undefined;
+        for (name, 0..) |ch, i| upper_buf[i] = std.ascii.toUpper(ch);
+        return cl_pkg.findAccessibleUpper(upper_buf[0..name.len]) orelse sym;
     }
 
     fn lookupMacroByNameInPackage(self: *Repl, pkg: *runtime.heap.Package, name: []const u8) ?MacroEntry {
@@ -2029,6 +2607,15 @@ pub const Repl = struct {
             p = pc.cdr;
         }
 
+        // Preserve dotted/symbol tail in macro lambda lists.
+        if (!p.isNil()) {
+            if (param_tail) |tail| {
+                tail.cdr = p;
+            } else {
+                new_params = p;
+            }
+        }
+
         var final_params = new_params;
         if (env_var) |ev| {
             final_params = try self.heap.allocCons(ev, final_params);
@@ -2124,11 +2711,17 @@ pub const Repl = struct {
         var macro_vm = try Vm.init(self.allocator, self.heap);
         defer macro_vm.deinit();
         macro_vm.setGlobalEnv(&self.compiler.globals);
+        macro_vm.setLoadCallback(&loadCallback, @ptrCast(self));
+        macro_vm.setEvalCallback(&evalCallback, @ptrCast(self));
+        macro_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
+        macro_vm.setMacroexpand1Callback(&macroexpand1Callback, @ptrCast(self));
+        macro_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
+        macro_vm.setFunctionResolveCallback(&functionResolveCallback, @ptrCast(self));
 
         self.syncChunkPools(&macro_vm);
 
         // Copy globals from current context
-        const source_vm = self.current_vm orelse &self.vm;
+        const source_vm = self.activeVm();
         for (source_vm.globals, 0..) |g, i| {
             macro_vm.globals[i] = g;
         }
@@ -2155,6 +2748,8 @@ pub const Repl = struct {
             .has_env = macro_params.has_env,
         });
         try self.compiler.macro_table.put(macro_sym, transformed_rest2);
+        try self.pinPersistentPair(macro_sym, closure);
+        try self.pinPersistentPair(macro_sym, transformed_rest2);
 
         if (std.posix.getenv("HABU_TRACE_DEFMACRO") != null and macro_sym.isSymbol()) {
             const macro_name = macro_sym.toPtr(Symbol).getName();
@@ -2243,6 +2838,7 @@ pub const Repl = struct {
     fn evalSingleExpr(self: *Repl, expr_val: Value, arena_alloc: std.mem.Allocator) ReplError!Value {
         var expr = expr_val;
         try self.compiler.refreshBuiltins();
+        const trace_eval_single = std.posix.getenv("HABU_TRACE_EVAL_SINGLE") != null;
 
         // Check for defmacro
         if (self.isDefmacro(expr)) {
@@ -2261,6 +2857,15 @@ pub const Repl = struct {
 
         // Expand macros
         expr = try self.expandMacros(expr);
+
+        if (trace_eval_single and expr.isCons()) {
+            const head = expr.toPtr(Cons).car;
+            if (head.isSymbol()) {
+                std.debug.print("TRACE eval-single head={s}\n", .{head.toPtr(Symbol).getName()});
+            } else {
+                std.debug.print("TRACE eval-single head-kind={s}\n", .{@tagName(head.typeKind())});
+            }
+        }
 
         // Desugar (let* → let, cond → if, etc.)
         expr = try self.desugarExpr(expr);
@@ -2283,11 +2888,9 @@ pub const Repl = struct {
             return err;
         };
 
-        // Run pipeline passes (typecheck, erasure)
-        const final_ir = if (self.runPipeline(ir_node)) |node| node else |err| {
-            std.debug.print("Pipeline error: {s}\n", .{@errorName(err)});
-            return err;
-        };
+        // Compile-time EVAL-WHEN execution should follow dynamic REPL semantics.
+        // Running nanopass inference here rejects valid ANSI helper forms.
+        const final_ir = ir_node;
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
@@ -2323,9 +2926,10 @@ pub const Repl = struct {
         eval_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
         eval_vm.setMacroexpand1Callback(&macroexpand1Callback, @ptrCast(self));
         eval_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
+        eval_vm.setFunctionResolveCallback(&functionResolveCallback, @ptrCast(self));
 
         // Copy globals from current context
-        const source_vm = self.current_vm orelse &self.vm;
+        const source_vm = self.activeVm();
         for (source_vm.globals, 0..) |g, i| {
             eval_vm.globals[i] = g;
         }
@@ -2373,7 +2977,7 @@ pub const Repl = struct {
         if (head.isSymbol()) {
             if (self.lookupMacroEntry(head)) |macro_entry| {
                 // Expand macro once and return without recursive expansion
-                return try self.callMacro(macro_entry, expr, cons.cdr);
+                return try self.callMacro(macro_entry, expr, cons.cdr, head);
             }
         }
 
@@ -2460,7 +3064,7 @@ pub const Repl = struct {
                     }
                 }
                 // Expand macro: call the closure with the args
-                const expansion = try self.callMacro(macro_entry, expr, tail);
+                const expansion = try self.callMacro(macro_entry, expr, tail, head);
                 if (expansion.raw == expr.raw) {
                     // No-op expansion: stop to avoid unbounded recursion on self-expanding macros.
                     return expansion;
@@ -2508,10 +3112,15 @@ pub const Repl = struct {
     }
 
     /// Call a macro closure with arguments (as a list)
-    fn callMacro(self: *Repl, macro: MacroEntry, whole_form: Value, args: Value) ReplError!Value {
+    fn callMacro(self: *Repl, macro: MacroEntry, whole_form: Value, args: Value, macro_name: Value) ReplError!Value {
         const closure = macro.closure;
         if (!closure.isClosure()) {
-            std.debug.print("callMacro: closure is not a closure! type={}\n", .{closure.typeKind()});
+            if (std.posix.getenv("HABU_TRACE_MACRO_CALLS") != null and macro_name.isSymbol()) {
+                std.debug.print(
+                    "TRACE macro call: {s} invalid-closure type={}\n",
+                    .{ macro_name.toPtr(Symbol).getName(), closure.typeKind() },
+                );
+            }
             return error.RuntimeError;
         }
         var call_args = args;
@@ -2529,38 +3138,49 @@ pub const Repl = struct {
             argc += 1;
             arg_list = arg_list.toPtr(Cons).cdr;
         }
+        if (std.posix.getenv("HABU_TRACE_MACRO_CALLS") != null and macro_name.isSymbol()) {
+            std.debug.print(
+                "TRACE macro call: {s} argc={d}\n",
+                .{ macro_name.toPtr(Symbol).getName(), argc },
+            );
+        }
+
+        if (argc > std.math.maxInt(u8)) return error.InvalidArgument;
+        const byte_count = std.math.add(usize, 9, std.math.mul(usize, argc, 4) catch return error.InvalidArgument) catch return error.InvalidArgument;
 
         // Build bytecode to call closure with args
-        var code_buf: [256]u8 = undefined;
-        var code_len: usize = 0;
+        var code = std.ArrayList(u8){};
+        defer code.deinit(self.allocator);
+        try code.ensureTotalCapacity(self.allocator, byte_count);
 
         // push_const for closure (const 0)
-        std.mem.writeInt(u16, code_buf[code_len..][0..2], @intFromEnum(Op.push_const), .little);
-        code_len += 2;
-        std.mem.writeInt(u16, code_buf[code_len..][0..2], 0, .little);
-        code_len += 2;
+        var op_buf: [2]u8 = undefined;
+        var idx_buf: [2]u8 = undefined;
+        std.mem.writeInt(u16, &op_buf, @intFromEnum(Op.push_const), .little);
+        std.mem.writeInt(u16, &idx_buf, 0, .little);
+        try code.appendSlice(self.allocator, &op_buf);
+        try code.appendSlice(self.allocator, &idx_buf);
 
         // push each arg as constant
         var const_idx: u16 = 1;
         arg_list = call_args;
         while (arg_list.isCons()) {
-            std.mem.writeInt(u16, code_buf[code_len..][0..2], @intFromEnum(Op.push_const), .little);
-            code_len += 2;
-            std.mem.writeInt(u16, code_buf[code_len..][0..2], const_idx, .little);
-            code_len += 2;
+            std.mem.writeInt(u16, &op_buf, @intFromEnum(Op.push_const), .little);
+            std.mem.writeInt(u16, &idx_buf, const_idx, .little);
+            try code.appendSlice(self.allocator, &op_buf);
+            try code.appendSlice(self.allocator, &idx_buf);
             const_idx += 1;
             arg_list = arg_list.toPtr(Cons).cdr;
         }
 
         // call
-        std.mem.writeInt(u16, code_buf[code_len..][0..2], @intFromEnum(Op.call), .little);
-        code_len += 2;
-        code_buf[code_len] = @intCast(argc);
-        code_len += 1;
+        std.mem.writeInt(u16, &op_buf, @intFromEnum(Op.call), .little);
+        try code.appendSlice(self.allocator, &op_buf);
+        try code.append(self.allocator, @intCast(argc));
 
         // ret
-        std.mem.writeInt(u16, code_buf[code_len..][0..2], @intFromEnum(Op.ret), .little);
-        code_len += 2;
+        std.mem.writeInt(u16, &op_buf, @intFromEnum(Op.ret), .little);
+        try code.appendSlice(self.allocator, &op_buf);
 
         // Build constants: [0]=closure, [1..]=args
         var constants = std.ArrayList(Value){};
@@ -2572,7 +3192,7 @@ pub const Repl = struct {
             arg_list = arg_list.toPtr(Cons).cdr;
         }
 
-        const chunk = try self.heap.allocChunk(code_buf[0..code_len], constants.items, 0, 0, 0, false, 0);
+        const chunk = try self.heap.allocChunk(code.items, constants.items, 0, 0, 0, false, 0);
 
         // Use a separate VM to avoid corrupting the current VM state
         var macro_vm = try Vm.init(self.allocator, self.heap);
@@ -2582,9 +3202,10 @@ pub const Repl = struct {
         macro_vm.setEvalCallback(&evalCallback, @ptrCast(self));
         // NOTE: macroexpandCallback NOT set to prevent infinite expansion loops
         macro_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
+        macro_vm.setFunctionResolveCallback(&functionResolveCallback, @ptrCast(self));
 
         // Copy globals from current context (nested VM if loading, main VM otherwise)
-        const source_vm = self.current_vm orelse &self.vm;
+        const source_vm = self.activeVm();
         for (source_vm.globals[0..source_vm.num_globals], 0..) |g, i| {
             macro_vm.globals[i] = g;
         }
@@ -2593,11 +3214,109 @@ pub const Repl = struct {
         self.syncChunkPools(&macro_vm);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        return try self.runVmPreserveMacroState(&macro_vm, chunk_ptr);
+        return self.runVmPreserveMacroState(&macro_vm, chunk_ptr) catch |err| {
+            if (std.posix.getenv("HABU_TRACE_MACRO_CALLS") != null and macro_name.isSymbol()) {
+                std.debug.print(
+                    "TRACE macro call error: {s} err={s}\n",
+                    .{ macro_name.toPtr(Symbol).getName(), @errorName(err) },
+                );
+            }
+            return err;
+        };
     }
 
     /// Handle package forms (defpackage/in-package) - execute them immediately
     fn evalPackageForm(self: *Repl, expr: Value, arena_alloc: std.mem.Allocator) !Value {
+        if (self.isInPackage(expr)) {
+            if (!expr.isCons()) return error.InvalidSyntax;
+            const form_cons = expr.toPtr(Cons);
+            if (!form_cons.cdr.isCons()) return error.InvalidSyntax;
+            const arg_cons = form_cons.cdr.toPtr(Cons);
+            if (!arg_cons.cdr.isNil()) return error.InvalidSyntax;
+
+            var pkg_val_opt = try primitives.package.findPackage(self.heap, arg_cons.car);
+            if (pkg_val_opt == null) {
+                const pkg_name = switch (arg_cons.car.typeKind()) {
+                    .symbol => arg_cons.car.toPtr(runtime.Symbol).getName(),
+                    .string => arg_cons.car.toPtr(runtime.String).bytes(),
+                    .keyword => arg_cons.car.toPtr(runtime.Keyword).getName(),
+                    else => null,
+                };
+                if (pkg_name) |name| {
+                    if (self.heap.findPackage(name)) |native_pkg| {
+                        const name_val = try self.heap.allocBaseString(native_pkg.name);
+                        pkg_val_opt = if (try self.heap.findLispPackage(name_val)) |existing|
+                            existing
+                        else blk: {
+                            const created = try self.heap.allocPackage(name_val, Value.nil, Value.nil, native_pkg.auto_export);
+                            try self.heap.putLispPackage(name_val, created);
+                            break :blk created;
+                        };
+                    }
+                }
+            }
+            const pkg_val = pkg_val_opt orelse {
+                if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                    const arg = arg_cons.car;
+                    const pkg_name_opt = switch (arg.typeKind()) {
+                        .symbol => arg.toPtr(runtime.Symbol).getName(),
+                        .string => arg.toPtr(runtime.String).bytes(),
+                        .keyword => arg.toPtr(runtime.Keyword).getName(),
+                        else => null,
+                    };
+                    const dbg_vm = self.current_vm orelse &self.vm;
+                    const vm_pkg_name = if (self.currentPackageGlobal(dbg_vm)) |cur_pkg| curblk: {
+                        const cur_obj = cur_pkg.toPtr(runtime.objects.Package);
+                        break :curblk switch (cur_obj.name.typeKind()) {
+                            .symbol => cur_obj.name.toPtr(runtime.Symbol).getName(),
+                            .string => cur_obj.name.toPtr(runtime.String).bytes(),
+                            .keyword => cur_obj.name.toPtr(runtime.Keyword).getName(),
+                            else => "<invalid>",
+                        };
+                    } else "<none>";
+                    if (pkg_name_opt) |pkg_name| {
+                        const native_hit = self.heap.findPackage(pkg_name) != null;
+                        std.debug.print(
+                            "TRACE in-package miss: designator={s} native_hit={any} vm_pkg={s} heap_pkg={s}\n",
+                            .{
+                                pkg_name,
+                                native_hit,
+                                vm_pkg_name,
+                                self.heap.getCurrentPackageName(),
+                            },
+                        );
+                    } else {
+                        std.debug.print(
+                            "TRACE in-package miss: designator-kind={s} vm_pkg={s} heap_pkg={s}\n",
+                            .{
+                                @tagName(arg.typeKind()),
+                                vm_pkg_name,
+                                self.heap.getCurrentPackageName(),
+                            },
+                        );
+                    }
+                }
+                return error.UnboundVariable;
+            };
+            if (!pkg_val.isPackage()) return error.TypeMismatch;
+
+            const pkg_obj = pkg_val.toPtr(runtime.objects.Package);
+            const pkg_name = switch (pkg_obj.name.typeKind()) {
+                .symbol => pkg_obj.name.toPtr(runtime.Symbol).getName(),
+                .string => pkg_obj.name.toPtr(runtime.String).bytes(),
+                .keyword => pkg_obj.name.toPtr(runtime.Keyword).getName(),
+                else => return error.TypeMismatch,
+            };
+            if (self.heap.findPackage(pkg_name)) |native_pkg| {
+                self.heap.setCurrentPackage(native_pkg);
+            }
+
+            const target_vm = self.current_vm orelse &self.vm;
+            self.setPackageGlobals(target_vm, pkg_val);
+            self.syncReaderPackageFromVm(target_vm);
+            return pkg_val;
+        }
+
         // For package forms, just compile and execute inline
         // The compiler will call heap.setCurrentPackage which affects future reads
         var env = Env.init(arena_alloc, null);
@@ -2610,9 +3329,13 @@ pub const Repl = struct {
         try emitter.emit(ir_node);
         const chunk = try emitter.finalize();
 
-        // Execute to set package at runtime (though it's already set at compile time)
+        // Execute package side effects in the active VM context.
+        // During nested LOAD/EVAL this must be the nested VM so subsequent
+        // reader sync sees updated *PACKAGE* from that VM's globals.
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        const result = try self.runVmPreserveMacroState(&self.vm, chunk_ptr);
+        const target_vm = self.current_vm orelse &self.vm;
+        const result = try self.runVmPreserveMacroState(target_vm, chunk_ptr);
+        self.syncReaderPackageFromVm(target_vm);
 
         // The package is now set in self.heap.current_package for future reads
         // Return the result (package name as symbol)
@@ -2720,7 +3443,7 @@ test "eval fixnum" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
     defer heap.deinit();
 
     const result = try evalString(allocator, &heap, "42");
@@ -2731,7 +3454,7 @@ test "eval nil" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
     defer heap.deinit();
 
     const result = try evalString(allocator, &heap, "nil");
@@ -2742,7 +3465,7 @@ test "eval arithmetic" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
     defer heap.deinit();
 
     const result = try evalString(allocator, &heap, "(+ 10 20)");
@@ -2794,6 +3517,56 @@ test "loadFilePublic missing file errors" {
     var buf: [1024]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
     try testing.expectError(error.FileNotFound, repl.loadFilePublic("nope-nope.habu", stream.writer()));
+}
+
+test "load resolves relative path with repeated directory prefix" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    const load_globals = [_][]const u8{
+        "COMMON-LISP:*LOAD-PATHNAME*",
+        "COMMON-LISP:*LOAD-TRUENAME*",
+        "CL-USER:*LOAD-PATHNAME*",
+        "CL-USER:*LOAD-TRUENAME*",
+        "*LOAD-PATHNAME*",
+        "*LOAD-TRUENAME*",
+    };
+    for (load_globals) |name| {
+        const idx = try repl.compiler.globals.define(name);
+        repl.vm.globals[idx] = Value.nil;
+        if (idx >= repl.vm.num_globals) repl.vm.num_globals = idx + 1;
+    }
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.makePath("printer/format");
+
+    {
+        var file = try tmp.dir.createFile("printer/format/load.lsp", .{});
+        defer file.close();
+        try file.writeAll("(load \"format/format-c.lsp\")\n");
+    }
+    {
+        var file = try tmp.dir.createFile("printer/format/format-c.lsp", .{});
+        defer file.close();
+        try file.writeAll("42\n");
+    }
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const load_abs = try std.fs.path.join(allocator, &.{ base, "printer", "format", "load.lsp" });
+    defer allocator.free(load_abs);
+
+    var out_buf: [256]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&out_buf);
+    try repl.loadFilePublic(load_abs, stream.writer());
 }
 
 test "showType reports compile error" {

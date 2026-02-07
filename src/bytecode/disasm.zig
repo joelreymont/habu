@@ -141,6 +141,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .type_of,
         .class_of,
         .find_class,
+        .set_find_class,
         .class_name,
         .class_direct_superclasses,
         .class_precedence_list,

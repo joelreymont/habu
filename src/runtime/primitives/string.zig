@@ -50,6 +50,10 @@ pub fn symbolName(heap: *Heap, val: Value) error{OutOfMemory, Overflow}!Value {
     if (val.isT()) {
         return try heap.allocBaseString("t");
     }
+    if (val.isKeyword()) {
+        const kw = val.toPtr(objects.Keyword);
+        return try heap.allocBaseString(kw.getName());
+    }
     if (!val.isSymbol()) return Value.nil;
     const sym = val.toPtr(objects.Symbol);
     const name_bytes = sym.getName();
@@ -61,6 +65,7 @@ pub fn symbolNameBytes(val: Value) ?[]const u8 {
     // Handle special symbols nil and t
     if (val.isNil()) return "nil";
     if (val.isT()) return "t";
+    if (val.isKeyword()) return val.toPtr(objects.Keyword).getName();
     if (!val.isSymbol()) return null;
     const sym = val.toPtr(objects.Symbol);
     return sym.getName();

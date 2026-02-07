@@ -8,12 +8,12 @@
   },
   "exit_code": 1,
   "reported": null,
-  "run_started_utc": "2026-02-07T08:20:07Z",
-  "source_log": "docs/ansi/raw/habu-latest.log",
+  "run_started_utc": "2026-02-07T05:55:12Z",
+  "source_log": "docs/ansi/raw/habu-habu-progress.log",
   "tests": {
-    "InvalidSyntax": {
+    "UnhandledThrow": {
       "line_numbers": [
-        8983
+        8775
       ],
       "ordinal": 1,
       "raw_statuses": [

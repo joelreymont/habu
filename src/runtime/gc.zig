@@ -207,13 +207,6 @@ pub const GC = struct {
             return val;
         }
 
-        // Note: val should never have a forwarding tag - forwarding pointers are only
-        // stored in from-space object locations, never passed as values. If this fires,
-        // there's a bug elsewhere in the system.
-        if (val.isForwarding()) {
-            unreachable;
-        }
-
         // Check if object is in from-space
         const obj_addr = val.toPtrAddr();
         const from_start = @intFromPtr(self.heap.from_start);
@@ -231,11 +224,18 @@ pub const GC = struct {
             //
             // NOTE: Many Habu objects do not have a Value header word (e.g. strings start with
             // length). Those header words can coincidentally look like a forwarding Value, so we
-            // validate that the forwarding target lands in to-space.
+            // validate both forwarding target and stored object size.
             const new_addr = first_word.toPtrAddr();
             const to_start = @intFromPtr(self.heap.to_start);
             const to_end = to_start + self.heap.space_size;
-            if (new_addr >= to_start and new_addr < to_end) {
+            const forwarded_size_ptr: *const usize = @ptrFromInt(obj_addr + @sizeOf(Value));
+            const forwarded_size = forwarded_size_ptr.*;
+            const forwarded_size_ok = forwarded_size > 0 and
+                forwarded_size <= self.heap.space_size and
+                std.mem.isAligned(forwarded_size, heap_mod.ALIGNMENT);
+            const forwarded_range_ok = new_addr >= to_start and new_addr <= to_end and
+                forwarded_size <= to_end - new_addr;
+            if (forwarded_size_ok and forwarded_range_ok) {
                 return .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) };
             }
         }
@@ -372,7 +372,8 @@ pub const GC = struct {
             .vector => {
                 // Scan all elements
                 const vec: *objects.Vector = @ptrFromInt(addr);
-                for (vec.items()) |*item| {
+                const scan_len = @min(vec.length, vec.capacity);
+                for (vec.data[0..scan_len]) |*item| {
                     if (item.isPointer() and !item.isNil()) {
                         item.* = try self.copyValue(item.*, alloc_ptr);
                     }

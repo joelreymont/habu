@@ -421,6 +421,7 @@ pub const Lexer = struct {
         if (c == 'C' or c == 'c') {
             // Complex literal: #C(real imag)
             _ = self.advance(); // consume 'C'
+            self.skipWhitespaceAndComments();
             if (self.peek() == '(') {
                 _ = self.advance(); // consume '('
                 return self.makeToken(.complex_open);
@@ -430,6 +431,7 @@ pub const Lexer = struct {
         if (c == 'S' or c == 's') {
             // Struct literal: #S(struct-name :slot1 val1 ...)
             _ = self.advance(); // consume 'S'
+            self.skipWhitespaceAndComments();
             if (self.peek() == '(') {
                 _ = self.advance(); // consume '('
                 return self.makeToken(.struct_open);
@@ -439,6 +441,7 @@ pub const Lexer = struct {
         if (c == 'P' or c == 'p') {
             // Pathname literal: #P"path"
             _ = self.advance(); // consume 'P'
+            self.skipWhitespaceAndComments();
             if (self.peek() == '"') {
                 _ = self.advance(); // consume '"'
                 return self.readString(.pathname);
@@ -448,6 +451,7 @@ pub const Lexer = struct {
         if (c == 'A' or c == 'a') {
             // Array literal: #A(...) or general #nA(...)
             _ = self.advance(); // consume 'A'
+            self.skipWhitespaceAndComments();
             if (self.peek() == '(') {
                 _ = self.advance(); // consume '('
                 return self.makeToken(.array_open);
@@ -467,6 +471,18 @@ pub const Lexer = struct {
             if (self.peek() == '#') {
                 _ = self.advance();
                 return self.makeToken(.label_ref);
+            }
+            if ((self.peek() == 'R' or self.peek() == 'r')) {
+                _ = self.advance(); // consume 'R'
+                if (self.peek() == '+' or self.peek() == '-') {
+                    _ = self.advance();
+                }
+                const digits_start = self.pos;
+                while (!self.isAtEnd() and !isDelimiter(self.peek())) {
+                    _ = self.advance();
+                }
+                if (self.pos == digits_start) return self.makeToken(.err);
+                return self.makeToken(.number);
             }
             if ((self.peek() == 'A' or self.peek() == 'a')) {
                 _ = self.advance(); // consume 'A'
@@ -526,6 +542,9 @@ pub const Lexer = struct {
 
     fn readHexNumber(self: *Lexer) Token {
         // Already consumed '#x'
+        if (self.peek() == '+' or self.peek() == '-') {
+            _ = self.advance();
+        }
         while (!self.isAtEnd() and isHexDigit(self.peek())) {
             _ = self.advance();
         }
@@ -534,6 +553,9 @@ pub const Lexer = struct {
 
     fn readBinaryNumber(self: *Lexer) Token {
         // Already consumed '#b'
+        if (self.peek() == '+' or self.peek() == '-') {
+            _ = self.advance();
+        }
         while (!self.isAtEnd() and (self.peek() == '0' or self.peek() == '1')) {
             _ = self.advance();
         }
@@ -542,6 +564,9 @@ pub const Lexer = struct {
 
     fn readOctalNumber(self: *Lexer) Token {
         // Already consumed '#o'
+        if (self.peek() == '+' or self.peek() == '-') {
+            _ = self.advance();
+        }
         while (!self.isAtEnd() and self.peek() >= '0' and self.peek() <= '7') {
             _ = self.advance();
         }
@@ -630,7 +655,8 @@ fn isSymbolStart(c: u8) bool {
         (c >= 'A' and c <= 'Z') or
         c == '_' or c == '+' or c == '-' or c == '*' or c == '/' or
         c == '=' or c == '<' or c == '>' or c == '!' or c == '?' or
-        c == '%' or c == '&' or c == '$' or c == '@' or c == '^';
+        c == '%' or c == '&' or c == '$' or c == '@' or c == '^' or
+        c == '~' or c == '{' or c == '}';
 }
 
 fn isSymbolChar(c: u8) bool {
@@ -688,7 +714,7 @@ test "lex bignum range" {
 test "lex symbols" {
     const testing = std.testing;
 
-    var lexer = Lexer.init("foo bar+ list->vector");
+    var lexer = Lexer.init("foo bar+ list->vector format.~.1 format.{.1 format.}.1");
 
     const t1 = lexer.next();
     try testing.expectEqual(TokenKind.symbol, t1.kind);
@@ -701,6 +727,18 @@ test "lex symbols" {
     const t3 = lexer.next();
     try testing.expectEqual(TokenKind.symbol, t3.kind);
     try testing.expectEqualStrings("list->vector", t3.text);
+
+    const t4 = lexer.next();
+    try testing.expectEqual(TokenKind.symbol, t4.kind);
+    try testing.expectEqualStrings("format.~.1", t4.text);
+
+    const t5 = lexer.next();
+    try testing.expectEqual(TokenKind.symbol, t5.kind);
+    try testing.expectEqualStrings("format.{.1", t5.text);
+
+    const t6 = lexer.next();
+    try testing.expectEqual(TokenKind.symbol, t6.kind);
+    try testing.expectEqualStrings("format.}.1", t6.text);
 }
 
 test "lex keywords" {
@@ -905,6 +943,14 @@ test "lex hex numbers" {
     try testing.expectEqualStrings("#X1a2B", t4.text);
 }
 
+test "lex signed hex number" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#x-FF #x+2A");
+    try testing.expectEqualStrings("#x-FF", lexer.next().text);
+    try testing.expectEqualStrings("#x+2A", lexer.next().text);
+}
+
 test "lex binary numbers" {
     const testing = std.testing;
 
@@ -921,6 +967,14 @@ test "lex binary numbers" {
     const t3 = lexer.next();
     try testing.expectEqual(TokenKind.number, t3.kind);
     try testing.expectEqualStrings("#b0", t3.text);
+}
+
+test "lex signed binary number" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#b-101 #B+11");
+    try testing.expectEqualStrings("#b-101", lexer.next().text);
+    try testing.expectEqualStrings("#B+11", lexer.next().text);
 }
 
 test "lex octal numbers" {
@@ -941,6 +995,32 @@ test "lex octal numbers" {
     try testing.expectEqualStrings("#o0", t3.text);
 }
 
+test "lex signed octal numbers" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#o-777 #O+12");
+    try testing.expectEqualStrings("#o-777", lexer.next().text);
+    try testing.expectEqualStrings("#O+12", lexer.next().text);
+}
+
+test "lex arbitrary radix numbers" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#3r2120012102 #16rFF #16r-ff");
+
+    const t1 = lexer.next();
+    try testing.expectEqual(TokenKind.number, t1.kind);
+    try testing.expectEqualStrings("#3r2120012102", t1.text);
+
+    const t2 = lexer.next();
+    try testing.expectEqual(TokenKind.number, t2.kind);
+    try testing.expectEqualStrings("#16rFF", t2.text);
+
+    const t3 = lexer.next();
+    try testing.expectEqual(TokenKind.number, t3.kind);
+    try testing.expectEqualStrings("#16r-ff", t3.text);
+}
+
 test "lex vector literal" {
     const testing = std.testing;
 
@@ -953,6 +1033,23 @@ test "lex vector literal" {
     try testing.expectEqual(TokenKind.number, lexer.next().kind);
     try testing.expectEqual(TokenKind.number, lexer.next().kind);
     try testing.expectEqual(TokenKind.number, lexer.next().kind);
+    try testing.expectEqual(TokenKind.rparen, lexer.next().kind);
+    try testing.expectEqual(TokenKind.eof, lexer.next().kind);
+}
+
+test "lex complex literal with whitespace after #c" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#c (1 1)");
+
+    const t1 = lexer.next();
+    try testing.expectEqual(TokenKind.complex_open, t1.kind);
+    const t2 = lexer.next();
+    try testing.expectEqual(TokenKind.number, t2.kind);
+    try testing.expectEqualStrings("1", t2.text);
+    const t3 = lexer.next();
+    try testing.expectEqual(TokenKind.number, t3.kind);
+    try testing.expectEqualStrings("1", t3.text);
     try testing.expectEqual(TokenKind.rparen, lexer.next().kind);
     try testing.expectEqual(TokenKind.eof, lexer.next().kind);
 }

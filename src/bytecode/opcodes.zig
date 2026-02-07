@@ -384,6 +384,9 @@ pub const Op = enum(u16) {
     /// Find class by name symbol
     /// ( name -- class )
     find_class = 0x101,
+    /// Set class registry entry
+    /// ( name class-or-nil -- class-or-nil )
+    set_find_class = 0x12A,
     /// Return the name of a class
     /// ( class -- name )
     class_name = 0x102,
@@ -1828,6 +1831,7 @@ pub const Op = enum(u16) {
             .set_slot_value,
             .class_of,
             .find_class,
+            .set_find_class,
             .class_name,
             .class_direct_superclasses,
             .class_precedence_list,

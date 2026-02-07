@@ -102,6 +102,7 @@ case "$mode" in
             (cd "$repo_root" && zig build >/dev/null)
         fi
         [[ -x "$habu_bin" ]] || die "habu binary not executable: $habu_bin"
+        heap_mb="${HABU_ANSI_HEAP_MB:-512}"
         run_root="$ansi_dir"
         if [[ -z "$run_root" || ! -d "$run_root" ]]; then
             run_root="$repo_root"
@@ -110,7 +111,7 @@ case "$mode" in
             mkdir -p "$run_root/lib"
             ln -sf "$repo_root/lib/stdlib.habu" "$run_root/lib/stdlib.habu"
         fi
-        cmd=("$habu_bin" "$input")
+        cmd=(env "HABU_HEAP_MB=$heap_mb" "$habu_bin" "$input")
         ;;
     *)
         die "mode must be sbcl or habu"
@@ -132,10 +133,10 @@ if [[ -z "$run_cwd" || ! -d "$run_cwd" ]]; then
 fi
 
 tmp_log="$(mktemp "${TMPDIR:-/tmp}/habu-ansi-run.XXXXXX")"
-code=0
-if ! (cd "$run_cwd" && "${cmd[@]}") >"$tmp_log" 2>&1; then
-    code=$?
-fi
+set +e
+(cd "$run_cwd" && "${cmd[@]}") >"$tmp_log" 2>&1
+code=$?
+set -e
 
 cat "$tmp_log" >>"$out"
 rm -f "$tmp_log"

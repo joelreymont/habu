@@ -306,6 +306,10 @@ pub const Parser = struct {
         const real = try toReal(real_val);
         const imag = try toReal(imag_val);
 
+        // CL reader canonicalizes #C(x 0) to x.
+        if (imag == 0.0) {
+            return real_val;
+        }
         return primitives.complex.makeComplex(self.heap, real, imag);
     }
 
@@ -373,16 +377,17 @@ pub const Parser = struct {
         const token_text = self.current.text;
 
         // Extract rank from token text before consuming
-        // #2A( -> "2A(" text includes opening paren
+        // Accept both "#2A(" and "2A(" token shapes.
         var rank: ?i64 = null;
-        if (token_text.len > 2 and token_text[1] >= '0' and token_text[1] <= '9') {
+        const start_idx: usize = if (token_text.len > 0 and token_text[0] == '#') 1 else 0;
+        if (token_text.len > start_idx + 1 and token_text[start_idx] >= '0' and token_text[start_idx] <= '9') {
             const digits_end = blk: {
-                for (token_text[1..], 1..) |ch, idx| {
+                for (token_text[start_idx..], start_idx..) |ch, idx| {
                     if (ch == 'A' or ch == 'a') break :blk idx;
                 }
                 break :blk token_text.len;
             };
-            rank = try std.fmt.parseInt(i64, token_text[1..digits_end], 10);
+            rank = try std.fmt.parseInt(i64, token_text[start_idx..digits_end], 10);
         }
 
         self.advance(); // consume array_open token
@@ -404,33 +409,26 @@ pub const Parser = struct {
                 if (self.current.kind != .rparen) return error.UnexpectedToken;
                 self.advance();
             }
+            const scalar_lit = try self.quoteIfNeeded(scalar);
 
             const initial_element_kw = try self.internKeyword("initial-element");
-            const kw_pair = try self.heap.allocCons(initial_element_kw, try self.heap.allocCons(scalar, Value.nil));
+            const kw_pair = try self.heap.allocCons(initial_element_kw, try self.heap.allocCons(scalar_lit, Value.nil));
             const args = try self.heap.allocCons(dims, kw_pair);
             return try self.heap.allocCons(make_array_sym, args);
         }
 
-        // Parse all contents until closing paren (similar to parseList)
+        // Parse contents in literal reader mode.
+        var contents = Value.nil;
         if (self.current.kind == .rparen) {
             self.advance();
-            // Empty array
-            const make_array_sym = try self.internSymbol("make-array");
-            const dims = Value.makeFixnum(0);
-            const args = try self.heap.allocCons(dims, Value.nil);
-            return try self.heap.allocCons(make_array_sym, args);
+        } else {
+            const first = self.parseExpr() catch |err| switch (err) {
+                error.SkipForm => return self.parseListTail(),
+                else => return err,
+            };
+            const rest = try self.parseListTail();
+            contents = try self.heap.allocCons(first, rest);
         }
-
-        const first = self.parseExpr() catch |err| switch (err) {
-            error.SkipForm => return self.parseListTail(),
-            else => return err,
-        };
-        const rest = try self.parseListTail();
-        const contents = try self.heap.allocCons(first, rest);
-
-        // Build (make-array dims :initial-contents contents)
-        const make_array_sym = try self.internSymbol("make-array");
-        const initial_contents_kw = try self.internKeyword("initial-contents");
 
         // Build dims argument based on rank
         const rank_val: ?usize = if (rank) |r| blk: {
@@ -442,11 +440,63 @@ pub const Parser = struct {
         } else null;
         const dims_arg = try self.inferArrayDims(contents, rank_val);
 
-        // Build argument list: (dims :initial-contents contents)
-        const kw_pair = try self.heap.allocCons(initial_contents_kw, try self.heap.allocCons(contents, Value.nil));
-        const args = try self.heap.allocCons(dims_arg, kw_pair);
+        var dims_buf: [8]u64 = [_]u64{0} ** 8;
+        const dims_len = try dimsToBuffer(dims_arg, &dims_buf);
+        const arr_val = try self.heap.allocArray(dims_buf[0..dims_len]);
+        const arr = arr_val.toPtr(objects.Array);
 
-        return try self.heap.allocCons(make_array_sym, args);
+        var write_idx: usize = 0;
+        try self.fillArrayLiteral(arr, contents, 0, &write_idx);
+        if (write_idx != @as(usize, @intCast(arr.total_size))) return error.InvalidArray;
+
+        return arr_val;
+    }
+
+    fn quoteIfNeeded(self: *Parser, expr: Value) Error!Value {
+        if (expr.isCons()) return self.buildQuote(expr);
+        if (expr.isSymbol() and !expr.isMagicSymbol()) return self.buildQuote(expr);
+        return expr;
+    }
+
+    fn dimsToBuffer(dims: Value, out: *[8]u64) Error!usize {
+        var count: usize = 0;
+        var current = dims;
+        while (current.isCons()) {
+            if (count >= out.len) return error.InvalidArray;
+            const cons = current.toPtr(objects.Cons);
+            if (!cons.car.isFixnum()) return error.InvalidArray;
+            const dim = cons.car.toFixnum();
+            if (dim < 0) return error.InvalidArray;
+            out[count] = @intCast(dim);
+            count += 1;
+            current = cons.cdr;
+        }
+        if (!current.isNil() or count == 0) return error.InvalidArray;
+        return count;
+    }
+
+    fn fillArrayLiteral(self: *Parser, arr: *objects.Array, contents: Value, depth: usize, write_idx: *usize) Error!void {
+        const rank: usize = @intCast(arr.rank);
+        if (depth >= rank) return error.InvalidArray;
+        const terminal = depth + 1 == rank;
+        var count: usize = 0;
+        var current = contents;
+        const data: [*]Value = @ptrFromInt(arr.data_ptr);
+
+        while (current.isCons()) {
+            const cons = current.toPtr(objects.Cons);
+            if (terminal) {
+                if (write_idx.* >= @as(usize, @intCast(arr.total_size))) return error.InvalidArray;
+                data[write_idx.*] = cons.car;
+                write_idx.* += 1;
+            } else {
+                try self.fillArrayLiteral(arr, cons.car, depth + 1, write_idx);
+            }
+            count += 1;
+            current = cons.cdr;
+        }
+        if (!current.isNil()) return error.InvalidArray;
+        if (count != @as(usize, @intCast(arr.dimensions[depth]))) return error.InvalidArray;
     }
 
     fn inferArrayDims(self: *Parser, contents: Value, rank: ?usize) Error!Value {
@@ -484,11 +534,7 @@ pub const Parser = struct {
             while (cur.isCons()) {
                 const cons = cur.toPtr(objects.Cons);
                 const elem = cons.car;
-                if (nested) {
-                    if (!elem.isCons() and !elem.isNil()) return error.InvalidArray;
-                } else {
-                    if (elem.isCons()) return error.InvalidArray;
-                }
+                if (nested and !elem.isCons() and !elem.isNil()) return error.InvalidArray;
                 cur = cons.cdr;
             }
         } else {
@@ -592,24 +638,68 @@ pub const Parser = struct {
         return try self.heap.allocCons(quote_sym, inner);
     }
 
+    fn parseSignedRadixI64(text: []const u8, radix: u8) Error!i64 {
+        if (text.len == 0) return error.InvalidNumber;
+
+        var negative = false;
+        var digits = text;
+        switch (digits[0]) {
+            '+' => {
+                digits = digits[1..];
+            },
+            '-' => {
+                negative = true;
+                digits = digits[1..];
+            },
+            else => {},
+        }
+        if (digits.len == 0) return error.InvalidNumber;
+
+        const magnitude = std.fmt.parseInt(u64, digits, radix) catch return error.InvalidNumber;
+        const max_pos: u64 = @as(u64, @intCast(std.math.maxInt(i64)));
+        const max_neg_mag: u64 = max_pos + 1;
+
+        if (negative) {
+            if (magnitude > max_neg_mag) return error.InvalidNumber;
+            if (magnitude == max_neg_mag) return std.math.minInt(i64);
+            return -@as(i64, @intCast(magnitude));
+        }
+
+        if (magnitude > max_pos) return error.InvalidNumber;
+        return @as(i64, @intCast(magnitude));
+    }
+
     fn parseNumber(self: *Parser) Error!Value {
         const text = self.current.text;
         self.advance();
 
-        // Check for radix prefixes: #x (hex), #b (binary), #o (octal)
+        // Check for radix prefixes: #x (hex), #b (binary), #o (octal), #<n>r (base n)
         if (text.len >= 2 and text[0] == '#') {
             const radix_char = text[1];
-            const digits = text[2..];
-            if (digits.len == 0) return error.InvalidNumber;
+            if (radix_char == 'x' or radix_char == 'X' or radix_char == 'b' or radix_char == 'B' or radix_char == 'o' or radix_char == 'O') {
+                const digits = text[2..];
+                if (digits.len == 0) return error.InvalidNumber;
 
-            const radix: u8 = switch (radix_char) {
-                'x', 'X' => 16,
-                'b', 'B' => 2,
-                'o', 'O' => 8,
-                else => return error.InvalidNumber,
-            };
-            const n = try std.fmt.parseInt(i64, digits, radix);
-            return Value.makeFixnum(n);
+                const radix: u8 = switch (radix_char) {
+                    'x', 'X' => 16,
+                    'b', 'B' => 2,
+                    'o', 'O' => 8,
+                    else => unreachable,
+                };
+                const n = try parseSignedRadixI64(digits, radix);
+                return Value.makeFixnum(n);
+            }
+
+            var idx: usize = 1;
+            while (idx < text.len and text[idx] >= '0' and text[idx] <= '9') : (idx += 1) {}
+            if (idx > 1 and idx < text.len and (text[idx] == 'r' or text[idx] == 'R')) {
+                const radix = try std.fmt.parseInt(u8, text[1..idx], 10);
+                if (radix < 2 or radix > 36) return error.InvalidNumber;
+                const digits = text[idx + 1 ..];
+                if (digits.len == 0) return error.InvalidNumber;
+                const n = try parseSignedRadixI64(digits, radix);
+                return Value.makeFixnum(n);
+            }
         }
 
         const n = try std.fmt.parseInt(i64, text, 10);
@@ -821,7 +911,7 @@ pub const Parser = struct {
         self.advance();
 
         // Check for package-qualified symbol (pkg:sym or pkg::sym)
-        if (std.mem.indexOf(u8, text, ":")) |colon_pos| {
+        if (findUnescapedColon(text)) |colon_pos| {
             if (colon_pos > 0) {
                 const pkg_name = text[0..colon_pos];
                 // Skip one or two colons
@@ -834,11 +924,37 @@ pub const Parser = struct {
                     return error.UnexpectedToken;
                 }
                 const sym_name = text[sym_start..];
+                if (std.posix.getenv("HABU_TRACE_SYMBOL_COLON") != null) {
+                    std.debug.print(
+                        "TRACE symbol package split: token={s} pkg={s} sym={s}\n",
+                        .{ text, pkg_name, sym_name },
+                    );
+                }
                 return self.internSymbolInPackage(pkg_name, sym_name);
             }
         }
 
         return self.internSymbol(text);
+    }
+
+    fn findUnescapedColon(text: []const u8) ?usize {
+        var i: usize = 0;
+        var in_bar = false;
+        while (i < text.len) {
+            const c = text[i];
+            if (c == '\\') {
+                if (i + 1 < text.len) i += 2 else i += 1;
+                continue;
+            }
+            if (c == '|') {
+                in_bar = !in_bar;
+                i += 1;
+                continue;
+            }
+            if (!in_bar and c == ':') return i;
+            i += 1;
+        }
+        return null;
     }
 
     fn parseKeyword(self: *Parser) Error!Value {
@@ -1719,28 +1835,21 @@ test "parse #A array" {
     var vm = try Vm.init(testing.allocator, &heap);
     defer vm.deinit();
 
-    // #A((1 2 3)) -> (make-array (1 3) :initial-contents (1 2 3))
+    // #A((1 2 3)) -> rank-2 array literal with dimensions (1 3)
     var parser = try Parser.init(testing.allocator, &heap, "#A((1 2 3))", &vm.builtins);
     defer parser.deinit();
 
     const result = try parser.parse();
-    try testing.expect(result.isCons());
+    try testing.expect(result.isArray());
 
-    const cons = result.toPtr(objects.Cons);
-    const sym = cons.car.toPtr(objects.Symbol);
-    try testing.expectEqualStrings("MAKE-ARRAY", sym.getName());
-
-    const args = cons.cdr;
-    try testing.expect(args.isCons());
-    const args_cons = args.toPtr(objects.Cons);
-    const dims = args_cons.car;
-    try testing.expect(dims.isCons());
-    const d1 = dims.toPtr(objects.Cons);
-    try testing.expectEqual(@as(i64, 1), d1.car.toFixnum());
-    try testing.expect(d1.cdr.isCons());
-    const d2 = d1.cdr.toPtr(objects.Cons);
-    try testing.expectEqual(@as(i64, 3), d2.car.toFixnum());
-    try testing.expect(d2.cdr.isNil());
+    const arr = result.toPtr(objects.Array);
+    try testing.expectEqual(@as(u8, 2), arr.rank);
+    try testing.expectEqual(@as(u64, 1), arr.dimensions[0]);
+    try testing.expectEqual(@as(u64, 3), arr.dimensions[1]);
+    const data: [*]Value = @ptrFromInt(arr.data_ptr);
+    try testing.expectEqual(@as(i64, 1), data[0].toFixnum());
+    try testing.expectEqual(@as(i64, 2), data[1].toFixnum());
+    try testing.expectEqual(@as(i64, 3), data[2].toFixnum());
 }
 
 test "parse #2A array" {
@@ -1752,29 +1861,53 @@ test "parse #2A array" {
     var vm = try Vm.init(testing.allocator, &heap);
     defer vm.deinit();
 
-    // #2A((1 2) (3 4)) -> (make-array (2 2) :initial-contents ((1 2) (3 4)))
+    // #2A((1 2) (3 4)) -> rank-2 array literal with dimensions (2 2)
     var parser = try Parser.init(testing.allocator, &heap, "#2A((1 2) (3 4))", &vm.builtins);
     defer parser.deinit();
 
     const result = try parser.parse();
-    try testing.expect(result.isCons());
+    try testing.expect(result.isArray());
 
-    const cons = result.toPtr(objects.Cons);
-    const sym = cons.car.toPtr(objects.Symbol);
-    try testing.expectEqualStrings("MAKE-ARRAY", sym.getName());
+    const arr = result.toPtr(objects.Array);
+    try testing.expectEqual(@as(u8, 2), arr.rank);
+    try testing.expectEqual(@as(u64, 2), arr.dimensions[0]);
+    try testing.expectEqual(@as(u64, 2), arr.dimensions[1]);
+    const data: [*]Value = @ptrFromInt(arr.data_ptr);
+    try testing.expectEqual(@as(i64, 1), data[0].toFixnum());
+    try testing.expectEqual(@as(i64, 2), data[1].toFixnum());
+    try testing.expectEqual(@as(i64, 3), data[2].toFixnum());
+    try testing.expectEqual(@as(i64, 4), data[3].toFixnum());
+}
 
-    // Check dims argument is (2 2)
-    const args = cons.cdr;
-    try testing.expect(args.isCons());
-    const args_cons = args.toPtr(objects.Cons);
-    const dims = args_cons.car;
-    try testing.expect(dims.isCons());
-    const d1 = dims.toPtr(objects.Cons);
-    try testing.expectEqual(@as(i64, 2), d1.car.toFixnum());
-    try testing.expect(d1.cdr.isCons());
-    const d2 = d1.cdr.toPtr(objects.Cons);
-    try testing.expectEqual(@as(i64, 2), d2.car.toFixnum());
-    try testing.expect(d2.cdr.isNil());
+test "parse #2A array with cons elements" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+
+    // Terminal rank elements may be arbitrary objects, including conses.
+    var parser = try Parser.init(testing.allocator, &heap, "#2A((4 (17)) (9 (a)) ((b) 0))", &vm.builtins);
+    defer parser.deinit();
+
+    const result = try parser.parse();
+    try testing.expect(result.isArray());
+
+    const arr = result.toPtr(objects.Array);
+    try testing.expectEqual(@as(u8, 2), arr.rank);
+    try testing.expectEqual(@as(u64, 3), arr.dimensions[0]);
+    try testing.expectEqual(@as(u64, 2), arr.dimensions[1]);
+    const data: [*]Value = @ptrFromInt(arr.data_ptr);
+    try testing.expect(data[1].isCons());
+    const row1_col2 = data[1].toPtr(objects.Cons);
+    try testing.expectEqual(@as(i64, 17), row1_col2.car.toFixnum());
+    try testing.expect(row1_col2.cdr.isNil());
+    try testing.expect(data[3].isCons());
+    const row2_col2 = data[3].toPtr(objects.Cons);
+    try testing.expect(row2_col2.car.isSymbol());
+    try testing.expectEqualStrings("A", row2_col2.car.toPtr(objects.Symbol).getName());
 }
 
 test "parse #0A array" {
@@ -1915,6 +2048,22 @@ test "parse #C complex number" {
     try testing.expectApproxEqAbs(@as(f64, 0.5), c4.real, 0.0001);
     try testing.expectApproxEqAbs(@as(f64, 0.3333), c4.imag, 0.0001);
 
+    // #C(1 0) canonicalizes to the real part.
+    var parser5 = try Parser.init(testing.allocator, &heap, "#C(1 0)", &vm.builtins);
+    defer parser5.deinit();
+    const val5 = try parser5.parse();
+    try testing.expect(val5.isFixnum());
+    try testing.expectEqual(@as(i64, 1), val5.toFixnum());
+
+    // #c may include whitespace before the complex list.
+    var parser6 = try Parser.init(testing.allocator, &heap, "#c (1 1)", &vm.builtins);
+    defer parser6.deinit();
+    const val6 = try parser6.parse();
+    try testing.expect(val6.typeKind() == .complex);
+    const c6 = val6.toPtr(objects.Complex);
+    try testing.expectApproxEqAbs(@as(f64, 1.0), c6.real, 0.0001);
+    try testing.expectApproxEqAbs(@as(f64, 1.0), c6.imag, 0.0001);
+
     // #C("x" 1) is invalid
     var parser_bad = try Parser.init(testing.allocator, &heap, "#C(\"x\" 1)", &vm.builtins);
     defer parser_bad.deinit();
@@ -1989,4 +2138,95 @@ test "parse octal number" {
     defer parser3.deinit();
     const val3 = try parser3.parse();
     try testing.expectEqual(@as(i64, 0), val3.toFixnum());
+
+    // #o-777 = -511
+    var parser4 = try Parser.init(testing.allocator, &heap, "#o-777", &vm.builtins);
+    defer parser4.deinit();
+    const val4 = try parser4.parse();
+    try testing.expectEqual(@as(i64, -511), val4.toFixnum());
+}
+
+test "parse arbitrary radix number" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+
+    var parser1 = try Parser.init(testing.allocator, &heap, "#3r2120012102", &vm.builtins);
+    defer parser1.deinit();
+    const val1 = try parser1.parse();
+    try testing.expect(val1.isFixnum());
+    try testing.expectEqual(@as(i64, 50447), val1.toFixnum());
+
+    var parser2 = try Parser.init(testing.allocator, &heap, "#16r-ff", &vm.builtins);
+    defer parser2.deinit();
+    const val2 = try parser2.parse();
+    try testing.expect(val2.isFixnum());
+    try testing.expectEqual(@as(i64, -255), val2.toFixnum());
+}
+
+test "parse def-format-test form with #3r literal" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+
+    const src =
+        "(def-format-test format.r.13 \"~3@:r\" (#3r2120012102) \"+2,120,012,102\")";
+    var parser = try Parser.init(testing.allocator, &heap, src, &vm.builtins);
+    defer parser.deinit();
+
+    const val = try parser.parse();
+    try testing.expect(val.isCons());
+    const head = val.toPtr(objects.Cons).car;
+    try testing.expect(head.isSymbol());
+    try testing.expectEqualStrings("DEF-FORMAT-TEST", head.toPtr(runtime.Symbol).getName());
+}
+
+test "parse symbol with escaped colon does not trigger package lookup" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+
+    var parser = try Parser.init(testing.allocator, &heap, "format.\\:_.1", &vm.builtins);
+    defer parser.deinit();
+
+    const val = try parser.parse();
+    try testing.expect(val.isSymbol());
+    try testing.expectEqualStrings("FORMAT.\\:_.1", val.toPtr(runtime.Symbol).getName());
+}
+
+test "parse quoted symbol with escaped colon" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+
+    var parser = try Parser.init(testing.allocator, &heap, "(quote format.\\:_.1)", &vm.builtins);
+    defer parser.deinit();
+
+    const form = try parser.parse();
+    try testing.expect(form.isCons());
+    const quote_sym = form.toPtr(objects.Cons).car;
+    try testing.expect(quote_sym.isSymbol());
+    try testing.expectEqualStrings("QUOTE", quote_sym.toPtr(runtime.Symbol).getName());
+
+    const rest = form.toPtr(objects.Cons).cdr;
+    try testing.expect(rest.isCons());
+    const escaped_sym = rest.toPtr(objects.Cons).car;
+    try testing.expect(escaped_sym.isSymbol());
+    try testing.expectEqualStrings("FORMAT.\\:_.1", escaped_sym.toPtr(runtime.Symbol).getName());
 }

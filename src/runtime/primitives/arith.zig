@@ -506,6 +506,10 @@ fn randomBignumLessThan(heap: *Heap, rand: std.Random, limit: *const objects.Big
     if (limit.size <= 0) return error.InvalidRange;
     const size: usize = @intCast(limit.size);
     if (size == 0) return error.InvalidRange;
+    if (std.posix.getenv("HABU_TRACE_RANDOM_BIGNUM") != null) {
+        const top_idx = size - 1;
+        std.debug.print("TRACE random-bignum size={d} top=0x{x}\n", .{ size, limit.limbs[top_idx] });
+    }
 
     if (size == 1) {
         const max = limit.limbs[0];
@@ -522,18 +526,24 @@ fn randomBignumLessThan(heap: *Heap, rand: std.Random, limit: *const objects.Big
     const top_bits: u7 = @intCast(64 - @clz(top));
     const top_mask: u64 = if (top_bits == 64) std.math.maxInt(u64) else (@as(u64, 1) << @intCast(top_bits)) - 1;
 
-    var candidate: [8]u64 = [_]u64{0} ** 8;
+    var stack_candidate: [8]u64 = [_]u64{0} ** 8;
+    var candidate = stack_candidate[0..@min(size, stack_candidate.len)];
+    if (size > stack_candidate.len) {
+        candidate = try heap.backing_allocator.alloc(u64, size);
+        defer heap.backing_allocator.free(candidate);
+    }
+
     while (true) {
         for (0..size) |i| candidate[i] = rand.int(u64);
         candidate[size - 1] &= top_mask;
 
-        if (limbsLessThanLimit(&candidate, limit, size)) {
-            return valueFromUnsignedLimbs(heap, &candidate, size);
+        if (limbsLessThanLimit(candidate, limit, size)) {
+            return valueFromUnsignedLimbs(heap, candidate[0..size]);
         }
     }
 }
 
-fn limbsLessThanLimit(candidate: *const [8]u64, limit: *const objects.Bignum, size: usize) bool {
+fn limbsLessThanLimit(candidate: []const u64, limit: *const objects.Bignum, size: usize) bool {
     var i = size;
     while (i > 0) {
         i -= 1;
@@ -545,8 +555,8 @@ fn limbsLessThanLimit(candidate: *const [8]u64, limit: *const objects.Bignum, si
     return false;
 }
 
-fn valueFromUnsignedLimbs(heap: *Heap, limbs: *const [8]u64, size: usize) Error!Value {
-    var used = size;
+fn valueFromUnsignedLimbs(heap: *Heap, limbs: []const u64) Error!Value {
+    var used = limbs.len;
     while (used > 0 and limbs[used - 1] == 0) : (used -= 1) {}
     if (used == 0) return Value.makeFixnum(0);
     if (used == 1 and limbs[0] <= max_fixnum_u64) return Value.makeFixnum(@intCast(limbs[0]));

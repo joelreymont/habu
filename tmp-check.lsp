@@ -1,0 +1,10 @@
+(let* ((wd #P"/tmp/habu-ansi/ansi-test/")
+       (*default-pathname-defaults* wd))
+  (load "init.lsp"))
+(in-package :cl-test)
+(load "/tmp/habu-ansi/ansi-test/auxiliary/ansi-aux.lsp")
+(format t "FB=~S~%" (fboundp 'collect-properties))
+(handler-case
+    (format t "SF=~S~%" (symbol-function 'collect-properties))
+  (error (e) (format t "SFERR=~S~%" e)))
+(quit)

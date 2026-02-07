@@ -3,21 +3,133 @@
 ; Define stdlib in COMMON-LISP, then return to CL-USER.
 (in-package "COMMON-LISP")
 
-; Core list utilities - must be early (needed by macros)
-(defun map (f lst)
+; Core sequence utilities - must be early (needed by macros)
+; Internal helper: reverse proper list without relying on later stdlib defs.
+(defun %map-reverse (lst)
   (let ((acc nil)
         (cur lst))
-    (while (not (null cur))
-      (setq acc (cons (funcall f (car cur)) acc))
+    (while (consp cur)
+      (setq acc (cons (car cur) acc))
       (setq cur (cdr cur)))
-    (reverse acc)))
+    acc))
+
+; Ensure APPLY/FUNCALL have function-cell bindings for SYMBOL-FUNCTION/FDEFINITION.
+; Body calls to APPLY still compile to VM apply opcode.
+(defun apply (fn &rest args)
+  (if (null args)
+      (error "APPLY requires at least one argument list")
+    (let ((cur args)
+          (head-rev nil))
+      (while (consp (cdr cur))
+        (setq head-rev (cons (car cur) head-rev))
+        (setq cur (cdr cur)))
+      (let ((tail (car cur)))
+        (while (consp head-rev)
+          (setq tail (cons (car head-rev) tail))
+          (setq head-rev (cdr head-rev)))
+        (apply fn tail)))))
+
+(defun funcall (fn &rest args)
+  (apply fn args))
+
+; CL MAP: (map result-type function sequence &rest more-sequences)
+(defun map (result-type fn &rest sequences)
+  (if (null sequences)
+      (error "MAP requires at least one sequence")
+    (let ((all-lists t)
+          (seq-check sequences))
+      (while (consp seq-check)
+        (let ((seq (car seq-check)))
+          (if (or (null seq) (consp seq))
+              nil
+            (setq all-lists nil)))
+        (setq seq-check (cdr seq-check)))
+      (if all-lists
+          (let ((acc nil)
+                (active sequences))
+            (block nil
+              (while t
+                (let ((scan active))
+                  (while (consp scan)
+                    (if (null (car scan))
+                        (return-from nil nil)
+                      nil)
+                    (setq scan (cdr scan))))
+                (let ((args nil)
+                      (next-active nil)
+                      (seqs active))
+                  (while (consp seqs)
+                    (let ((seq (car seqs)))
+                      (setq args (cons (car seq) args))
+                      (setq next-active (cons (cdr seq) next-active)))
+                    (setq seqs (cdr seqs)))
+                  (setq args (%map-reverse args))
+                  (setq active (%map-reverse next-active))
+                  (if result-type
+                      (setq acc (cons (apply fn args) acc))
+                    (apply fn args)))))
+            (if result-type
+                (let ((out (%map-reverse acc)))
+                  (if (eq result-type 'list)
+                      out
+                    (coerce out result-type)))
+              nil))
+        (let ((limit (length (car sequences))))
+          (let ((seqs (cdr sequences)))
+            (while (consp seqs)
+              (let ((seq-len (length (car seqs))))
+                (if (< seq-len limit)
+                    (setq limit seq-len)
+                  nil))
+              (setq seqs (cdr seqs))))
+          (let ((acc nil)
+                (i 0))
+            (while (< i limit)
+        (let ((args nil)
+              (seqs sequences))
+          (while (consp seqs)
+            (let ((seq (car seqs)))
+              (setq args
+                    (cons (if (consp seq)
+                              (nth i seq)
+                              (aref seq i))
+                          args)))
+            (setq seqs (cdr seqs)))
+                (setq args (%map-reverse args))
+                (if result-type
+                    (setq acc (cons (apply fn args) acc))
+                  (apply fn args)))
+              (setq i (+ i 1)))
+            (if result-type
+                (coerce (%map-reverse acc) result-type)
+              nil)))))))
 
 (defun mapcar (f &rest lists)
-  (cond
-    ((null lists) nil)
-    ((null (cdr lists)) (map f (car lists)))
-    ((null (cddr lists)) (mapcar2 f (car lists) (cadr lists)))
-    (t (error "mapcar: >2 lists not yet supported"))))
+  (if (null lists)
+      nil
+    (let ((acc nil)
+          (active lists))
+      (block nil
+        (while t
+          (let ((scan active))
+            (while (consp scan)
+              (let ((seq (car scan)))
+                (if (or (null seq) (not (consp seq)))
+                    (return-from nil nil)
+                  nil))
+              (setq scan (cdr scan))))
+          (let ((args nil)
+                (next-active nil)
+                (seqs active))
+            (while (consp seqs)
+              (let ((seq (car seqs)))
+                (setq args (cons (car seq) args))
+                (setq next-active (cons (cdr seq) next-active)))
+              (setq seqs (cdr seqs)))
+            (setq args (%map-reverse args))
+            (setq active (%map-reverse next-active))
+            (setq acc (cons (apply f args) acc)))))
+      (%map-reverse acc))))
 
 (defun mapcar2 (f lst1 lst2)
   (let ((acc nil)
@@ -28,6 +140,17 @@
       (setq cur1 (cdr cur1))
       (setq cur2 (cdr cur2)))
     (reverse acc)))
+
+; VECTOR function (for function designators like #'vector in APPLY/MAPCAR)
+(defun vector (&rest elems)
+  (let ((v (make-vector (length elems) nil))
+        (i 0)
+        (cur elems))
+    (while (consp cur)
+      (%svset v i (car cur))
+      (setq i (+ i 1))
+      (setq cur (cdr cur)))
+    v))
 
 ; case - dispatch on value (must be early, uses mapcar)
 ; Note: In Habu, 't' at read time becomes the value t (= fixnum 1), not a symbol.
@@ -476,7 +599,7 @@
 
 ; row-major-aref - access by row-major index
 (defun row-major-aref (array index)
-  (svref array index))
+  (aref array index))
 
 ; array-displacement - get displacement (none for simple arrays)
 (defun array-displacement (array)
@@ -1329,7 +1452,7 @@
 (setf (fdefinition '%intern-core) #'intern)
 (defun intern (name &optional package)
   (declare (ignore package))
-  (funcall #'%intern-core name))
+  (funcall #'%intern-core (string name)))
 
 ; Bootstrap function cells for core primitives so (symbol-function 'car) works.
 (setf (fdefinition 'car) #'car)
@@ -1724,8 +1847,8 @@
 ; string-left-trim - remove leading characters from character bag
 (defun string-left-trim (chars s)
   (let ((char-codes (if (stringp chars)
-                        (map (lambda (i) (char chars i))
-                             (range 0 (string-length chars)))
+                        (mapcar (lambda (i) (char chars i))
+                                (range 0 (string-length chars)))
                         chars)))
     (string-trim-left-aux char-codes s 0 (string-length s))))
 
@@ -1740,8 +1863,8 @@
 ; string-right-trim - remove trailing characters
 (defun string-right-trim (chars s)
   (let ((char-codes (if (stringp chars)
-                        (map (lambda (i) (char chars i))
-                             (range 0 (string-length chars)))
+                        (mapcar (lambda (i) (char chars i))
+                                (range 0 (string-length chars)))
                         chars))
         (len (string-length s)))
     (if (= len 0)
@@ -2234,10 +2357,32 @@
 (defun class-of (obj)
   (%class-of obj))
 
+;; setf/find-class overlay for runtime class mutations.
+;; Underlying %find-class reflects compiler-time registry only.
+(defparameter *find-class-overrides* (make-hash-table :test 'eq))
+(defparameter *find-class-removed* (gensym))
+
 ;; find-class - look up class by name symbol
 (defun find-class (name &optional errorp environment)
+  (declare (ignore environment))
+  (let ((override (gethash name *find-class-overrides*)))
+    (let ((class (cond
+                   ((eq override *find-class-removed*) nil)
+                   (override override)
+                   (t (%find-class name)))))
+      (if class
+          class
+          (if errorp
+              (error "No class named ~A." name)
+              nil)))))
+
+;; (setf find-class) - mutate runtime find-class overlay.
+(defun (setf find-class) (new-class name &optional errorp environment)
   (declare (ignore errorp environment))
-  (%find-class name))
+  (if new-class
+      (setf (gethash name *find-class-overrides*) new-class)
+      (setf (gethash name *find-class-overrides*) *find-class-removed*))
+  new-class)
 
 ;; class-name - return the name of a class
 (defun class-name (class)
@@ -2958,6 +3103,19 @@
                       (quot (* x y) (gcd x y)))))
               args)))
 
+; CL aliases for primitive names
+(defun realpart (z)
+  (real-part z))
+
+(defun imagpart (z)
+  (imag-part z))
+
+; complex constructor used by #. reader tests
+(defun complex (realpart &optional (imagpart 0))
+  (if (zerop imagpart)
+      realpart
+      (make-complex realpart imagpart)))
+
 ; phase - angle of complex number (returns real)
 (defun phase (z)
   (if (complexp z)
@@ -2967,6 +3125,21 @@
 ; cis - e^(i*theta) = cos(theta) + i*sin(theta)
 (defun cis (theta)
   (make-complex (cos theta) (sin theta)))
+
+(defun realpart (z)
+  (real-part z))
+
+(defun imagpart (z)
+  (imag-part z))
+
+(defun complex (realpart &optional (imagpart 0))
+  (cond
+    ((complexp realpart)
+     (if (zerop imagpart)
+         realpart
+         (error "COMPLEX with complex realpart requires zero imagpart")))
+    ((zerop imagpart) realpart)
+    (t (make-complex realpart imagpart))))
 
 (defun conjugate (z)
   (if (complexp z)
@@ -3139,7 +3312,9 @@
 (defun string-append (&rest strings)
   (if (null strings)
       ""
-      (foldl (lambda (a b) (string-concat a b)) (car strings) (cdr strings))))
+      (foldl (lambda (a b) (string-concat (string a) (string b)))
+             (string (car strings))
+             (cdr strings))))
 
 ;; ============================================================
 ;; Additional Sequence Functions
@@ -3466,6 +3641,14 @@
 ; clear-input - clear any buffered input (returns nil)
 (defun clear-input (&optional (stream *standard-input*))
   (%clear-input stream))
+
+; finish-output - flush output and wait
+(defun finish-output (&optional (stream *standard-output*))
+  (%finish-output stream))
+
+; force-output - flush output without waiting
+(defun force-output (&optional (stream *standard-output*))
+  (%force-output stream))
 
 ; clear-output - discard buffered output (returns nil)
 (defun clear-output (&optional (stream *standard-output*))
@@ -4720,15 +4903,17 @@
          (options (if (consp name-and-options)
                       (cdr name-and-options)
                       nil))
+         (doc-string (if (and (consp slots) (stringp (car slots)))
+                         (car slots)
+                         nil))
+         (slot-specs (if doc-string (cdr slots) slots))
          (conc-pair (assoc :conc-name options))
          (name-str (string-upcase (symbol-name name)))
          (conc-prefix (if conc-pair
                           (let ((cv (cadr conc-pair)))
                             (if (null cv)
                                 ""
-                              (if (symbolp cv)
-                                  (string-upcase (symbol-name cv))
-                                cv)))
+                              (string cv)))
                         (concatenate 'string name-str "-")))
          (constructor-name (intern (concatenate 'string "MAKE-" name-str)))
          (predicate-name (intern (concatenate 'string name-str "-P")))
@@ -4736,15 +4921,15 @@
          (copier-name (if copier-pair
                           (if (cdr copier-pair) (cadr copier-pair) nil)
                         (intern (concatenate 'string "COPY-" name-str))))
-         (slot-names (mapcar (lambda (s) (if (consp s) (car s) s)) slots))
+         (slot-names (mapcar (lambda (s) (if (consp s) (car s) s)) slot-specs))
          (slot-count (length slot-names)))
 
     ; Parse slot defaults
-    (let ((slot-defaults (mapcar (lambda (s)
+      (let ((slot-defaults (mapcar (lambda (s)
                                    (if (consp s)
                                        (if (cdr s) (cadr s) nil)
                                        nil))
-                                 slots)))
+                                 slot-specs)))
 
       ; Generate forms
       (list 'progn
@@ -5133,8 +5318,9 @@
 ;;; Pathname Functions
 ;;; ============================================================================
 
-(defun make-pathname (&key host device directory name type version defaults)
+(defun make-pathname (&key host device directory name type version defaults case)
   "Create a pathname from components, optionally merging with defaults."
+  (declare (ignore case))
   (let ((h (if (null host) (if defaults (pathname-host defaults) nil) host))
         (dev (if (null device) (if defaults (pathname-device defaults) nil) device))
         (dir (if (null directory) (if defaults (pathname-directory defaults) nil) directory))
@@ -5601,10 +5787,21 @@
   t)
 
 ; readtable-case - get readtable case
+(defvar *readtable-case-mode* :upcase)
+
 (defun readtable-case (readtable)
   "Return the case of READTABLE"
   (declare (ignore readtable))
-  :upcase)
+  *readtable-case-mode*)
+
+(defun set-readtable-case (readtable new-case)
+  "Set READTABLE case mode."
+  (declare (ignore readtable))
+  (setq *readtable-case-mode* new-case)
+  new-case)
+
+(put 'readtable-case 'setf-function 'set-readtable-case)
+(setf (fdefinition '(setf readtable-case)) #'set-readtable-case)
 
 ; set-syntax-from-char - copy character syntax (stub)
 (defun set-syntax-from-char (to-char from-char &optional to-readtable from-readtable)
