@@ -1018,6 +1018,23 @@ pub const Ir = union(enum) {
     },
 
     // ========================================================================
+    // Specialized (type-proven) operations
+    // ========================================================================
+
+    /// Unboxed fixnum addition (no tag check, proven fixnum operands)
+    fixnum_add: BinaryOp,
+    /// Unboxed fixnum subtraction (no tag check, proven fixnum operands)
+    fixnum_sub: BinaryOp,
+    /// Unboxed fixnum multiplication (no tag check, proven fixnum operands)
+    fixnum_mul: BinaryOp,
+    /// Cons car without nil check (proven cons operand)
+    unsafe_car: UnaryOp,
+    /// Cons cdr without nil check (proven cons operand)
+    unsafe_cdr: UnaryOp,
+    /// Array access without bounds check (proven valid index)
+    direct_aref: BinaryOp,
+
+    // ========================================================================
     // Helper types
     // ========================================================================
 

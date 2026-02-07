@@ -438,6 +438,12 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .peek_char_stream,
         .open_file,
         .close_stream,
+        .fixnum_add,
+        .fixnum_sub,
+        .fixnum_mul,
+        .unsafe_car,
+        .unsafe_cdr,
+        .direct_aref,
         => {
             try writer.print("{s}\n", .{op.name()});
             return offset + 2;

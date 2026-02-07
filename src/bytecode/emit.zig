@@ -355,6 +355,10 @@ pub const Emitter = struct {
             .pkg_find_symbol,
             .make_echo_stream,
             .make_two_way_stream,
+            .fixnum_add,
+            .fixnum_sub,
+            .fixnum_mul,
+            .direct_aref,
             => |op| {
                 max_idx = computeMaxLocalIndexImpl(op.left, max_idx);
                 max_idx = computeMaxLocalIndexImpl(op.right, max_idx);
@@ -431,6 +435,8 @@ pub const Emitter = struct {
             .assert_closure,
             .assert_non_nil,
             .assert_list,
+            .unsafe_car,
+            .unsafe_cdr,
             => |op| {
                 max_idx = computeMaxLocalIndexImpl(op.operand, max_idx);
             },
@@ -1098,6 +1104,14 @@ pub const Emitter = struct {
             .assert_non_nil => |op| try self.emitUnaryOp(op.operand, .check_non_nil),
             .assert_list => |op| try self.emitUnaryOp(op.operand, .check_list),
             .assert_or => |ao| try self.emitAssertOr(ao),
+
+            // Specialized (type-proven) operations
+            .fixnum_add => |op| try self.emitBinaryOp(op, .fixnum_add),
+            .fixnum_sub => |op| try self.emitBinaryOp(op, .fixnum_sub),
+            .fixnum_mul => |op| try self.emitBinaryOp(op, .fixnum_mul),
+            .unsafe_car => |op| try self.emitUnaryOp(op.operand, .unsafe_car),
+            .unsafe_cdr => |op| try self.emitUnaryOp(op.operand, .unsafe_cdr),
+            .direct_aref => |op| try self.emitBinaryOp(op, .direct_aref),
 
             // Dependent type operations
             .assert_refine => |ar| try self.emitAssertRefine(ar),

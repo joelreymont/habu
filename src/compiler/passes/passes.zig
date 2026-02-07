@@ -31,6 +31,7 @@ pub const resolve = @import("p04_resolve.zig");
 pub const capture = @import("p05_capture.zig");
 pub const annotate = @import("p06_annotate.zig");
 pub const infer = @import("p07_infer.zig");
+pub const specialize = @import("p07c_specialize.zig");
 pub const erase = @import("p08_erase.zig");
 pub const emit = @import("p09_emit.zig");
 
@@ -147,7 +148,11 @@ pub fn runNanoPipeline(allocator: std.mem.Allocator, builtins: *const builtins_m
     // Use original allocator for final Ir output
     const erase_result = try erase.erase(allocator, inferred_ir);
 
-    return erase_result.output;
+    // Pass 4: Specialize (Ir → Ir)
+    // Replace generic ops with specialized variants where types are proven
+    const specialized = try specialize.specialize(allocator, erase_result.output);
+
+    return specialized;
 }
 
 /// Create an empty homogeneous Ir → Ir pipeline
@@ -272,6 +277,7 @@ test {
     _ = capture;
     _ = annotate;
     _ = infer;
+    _ = specialize;
     _ = erase;
     _ = emit;
 }

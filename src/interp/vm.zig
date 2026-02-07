@@ -6223,6 +6223,51 @@ pub const Vm = struct {
                 try self.push(Value.makeFixnum(rounded));
             },
 
+            // ================================================================
+            // Specialized (type-proven) operations — NO runtime checks
+            // ================================================================
+
+            .fixnum_add => {
+                const b = try self.pop();
+                const a = try self.pop();
+                // a.raw = (a_val << 1) | 1, b.raw = (b_val << 1) | 1
+                // sum = (a_val + b_val) << 1 | 1 = a.raw + b.raw - 1
+                try self.push(.{ .raw = a.raw +% b.raw -% 1 });
+            },
+            .fixnum_sub => {
+                const b = try self.pop();
+                const a = try self.pop();
+                // diff = (a_val - b_val) << 1 = a.raw - b.raw
+                // re-tag: set bit 0
+                try self.push(.{ .raw = (a.raw -% b.raw) | 1 });
+            },
+            .fixnum_mul => {
+                const b = try self.pop();
+                const a = try self.pop();
+                // Extract unboxed values, multiply, re-box
+                const av: i64 = @bitCast(a.raw);
+                const bv: i64 = @bitCast(b.raw);
+                const product = @as(u64, @bitCast((av >> 1) *% (bv >> 1)));
+                try self.push(.{ .raw = (product << 1) | 1 });
+            },
+            .unsafe_car => {
+                const pair = try self.pop();
+                // Proven cons — deref directly, no nil/type check
+                try self.push(pair.toPtr(Cons).car);
+            },
+            .unsafe_cdr => {
+                const pair = try self.pop();
+                try self.push(pair.toPtr(Cons).cdr);
+            },
+            .direct_aref => {
+                const idx_val = try self.pop();
+                const vec_val = try self.pop();
+                // Proven vector + valid index — skip checks
+                const vec = vec_val.toPtr(Vector);
+                const idx: usize = @intCast(@as(i64, @bitCast(idx_val.raw)) >> 1);
+                try self.push(vec.get(idx));
+            },
+
             .halt => return error.Halt,
         }
 

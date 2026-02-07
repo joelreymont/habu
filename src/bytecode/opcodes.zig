@@ -1772,6 +1772,34 @@ pub const Op = enum(u16) {
     /// Returns cons: (symbol . status) where status is :internal/:external/:inherited/nil
     find_symbol = 0x10E,
 
+    // ========================================================================
+    // Specialized (type-proven) operations
+    // ========================================================================
+
+    /// Unboxed fixnum addition (no tag check)
+    /// ( fixnum fixnum -- fixnum )
+    fixnum_add = 0x200,
+
+    /// Unboxed fixnum subtraction (no tag check)
+    /// ( fixnum fixnum -- fixnum )
+    fixnum_sub = 0x201,
+
+    /// Unboxed fixnum multiplication (no tag check)
+    /// ( fixnum fixnum -- fixnum )
+    fixnum_mul = 0x202,
+
+    /// Cons car without nil check (proven cons)
+    /// ( cons -- car )
+    unsafe_car = 0x208,
+
+    /// Cons cdr without nil check (proven cons)
+    /// ( cons -- cdr )
+    unsafe_cdr = 0x209,
+
+    /// Array access without bounds check (proven valid)
+    /// ( vec fixnum -- element )
+    direct_aref = 0x210,
+
     /// Get operand size in bytes
     pub fn operandSize(self: Op) u8 {
         return switch (self) {
@@ -2146,6 +2174,12 @@ pub const Op = enum(u16) {
             .peek_char_stream,
             .open_file,
             .close_stream,
+            .fixnum_add,
+            .fixnum_sub,
+            .fixnum_mul,
+            .unsafe_car,
+            .unsafe_cdr,
+            .direct_aref,
             => 0,
 
             // 1 byte operand
