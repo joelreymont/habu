@@ -68,6 +68,8 @@ pub const BuiltinSymbols = struct {
     sym_condition_tag: Value,
     sym_error: Value,
     sym_condition: Value,
+    sym_type_error: Value,
+    sym_program_error: Value,
 
     // Feature evaluation
     sym_and: Value,
@@ -160,6 +162,8 @@ pub const BuiltinSymbols = struct {
             .sym_condition_tag = try heap.intern("%condition%"),
             .sym_error = try heap.intern("error"),
             .sym_condition = try heap.intern("condition"),
+            .sym_type_error = try heap.intern("type-error"),
+            .sym_program_error = try heap.intern("program-error"),
 
             // Feature evaluation
             .sym_and = try heap.intern("and"),

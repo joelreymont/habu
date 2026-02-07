@@ -72,6 +72,12 @@ pub const CatchFrame = struct {
     catch_sp: usize,
     /// Frame pointer to restore
     catch_fp: usize,
+    /// Dynamic control-stack depths to restore on non-local exit.
+    block_depth: usize,
+    unwind_depth: usize,
+    restart_depth: usize,
+    progv_depth: usize,
+    handler_depth: usize,
 };
 
 /// Unwind frame for unwind-protect
@@ -1567,6 +1573,10 @@ pub const Vm = struct {
                     std.debug.assert(self.sp > 0);
                     return try self.pop();
                 }
+                // Try to convert Zig error to CL condition (type-error etc.).
+                // If a handler-case / handler-bind / catch handles it,
+                // doThrow sets up the handler call and we continue the loop.
+                if (self.trySignalCondition(err)) continue;
                 return self.doError(err);
             }
         }
@@ -3512,7 +3522,10 @@ pub const Vm = struct {
                         const kw = sym_val.toPtr(runtime.Keyword);
                         break :blk try self.allocString(kw.getName());
                     },
-                    else => return error.TypeMismatch,
+                    else => {
+                        try self.signalTypeError();
+                        return;
+                    },
                 };
                 try self.push(name_str);
             },
@@ -3525,7 +3538,10 @@ pub const Vm = struct {
                     .nil => "nil",
                     .t => "t",
                     .symbol => sym_val.toPtr(Symbol).getName(),
-                    else => return error.TypeMismatch,
+                    else => {
+                        try self.signalTypeError();
+                        return;
+                    },
                 };
                 // Create new uninterned symbol
                 const new_sym = try self.heap.allocSymbol(name);
@@ -3566,7 +3582,7 @@ pub const Vm = struct {
                         }
                         try self.push(sym_val);
                     },
-                    else => return error.TypeMismatch,
+                    else => try self.signalTypeError(),
                 }
             },
             .set_sym_val => {
@@ -3599,8 +3615,25 @@ pub const Vm = struct {
                         }
                         try self.push(val);
                     },
-                    else => return error.TypeMismatch,
+                    else => try self.signalTypeError(),
                 }
+            },
+            .set_symbol_plist => {
+                const plist = try self.pop();
+                const sym = try self.pop();
+                switch (sym.typeKind()) {
+                    .nil, .t => {
+                        // Keep nil/t immutable in runtime storage; allow setf protocol to proceed.
+                    },
+                    .symbol => {
+                        primitives.symbol.setSymbolPlist(sym, plist) catch |err| switch (err) {
+                            error.TypeError => try self.signalTypeErrorDatumExpected(sym, self.builtins.sym_symbol),
+                            else => return err,
+                        };
+                    },
+                    else => try self.signalTypeErrorDatumExpected(sym, self.builtins.sym_symbol),
+                }
+                try self.push(plist);
             },
             .type_of => {
                 const val = try self.pop();
@@ -3744,6 +3777,11 @@ pub const Vm = struct {
                     .catch_ip = catch_ip,
                     .catch_sp = self.sp,
                     .catch_fp = self.fp,
+                    .block_depth = self.block_sp,
+                    .unwind_depth = self.unwind_sp,
+                    .restart_depth = self.restart_sp,
+                    .progv_depth = self.progv_sp,
+                    .handler_depth = self.handler_sp,
                 };
                 self.catch_sp += 1;
             },
@@ -4151,6 +4189,15 @@ pub const Vm = struct {
                             try self.push(Value.nil);
                         }
                     },
+                    .keyword => {
+                        // Keywords are in the KEYWORD package
+                        const kw_name = try self.heap.allocBaseString("KEYWORD");
+                        if (try self.heap.findLispPackage(kw_name)) |pkg| {
+                            try self.push(pkg);
+                        } else {
+                            try self.push(Value.nil);
+                        }
+                    },
                     .symbol => {
                         const sym = val.toPtr(Symbol);
                         const pkg_bits = sym.reserved;
@@ -4168,7 +4215,7 @@ pub const Vm = struct {
                             try self.push(Value.nil);
                         }
                     },
-                    else => return error.TypeMismatch,
+                    else => try self.signalTypeError(),
                 }
             },
             .package_name => {
@@ -4310,8 +4357,15 @@ pub const Vm = struct {
             },
             .delete_package => {
                 const pkg = try self.pop();
-                const deleted = try primitives.package.deletePackage(self.heap, pkg);
-                try self.push(if (deleted) Value.t else Value.nil);
+                if (primitives.package.deletePackage(self.heap, pkg)) |deleted| {
+                    try self.push(if (deleted) Value.t else Value.nil);
+                } else |err| {
+                    // Signal Lisp package-error condition for ANSI handler-case
+                    const te = self.intern("package-error") catch return err;
+                    const pair = self.allocCons(te, pkg) catch return err;
+                    self.doThrow(self.builtins.sym_condition_tag, pair) catch |e| return e;
+                    try self.push(Value.nil);
+                }
             },
             .pkg_import => {
                 const pkg = try self.pop();
@@ -5058,7 +5112,7 @@ pub const Vm = struct {
 
             .aref => {
                 const sub_count = self.readU8();
-                if (sub_count == 0 or sub_count > 8) return error.TypeMismatch;
+                if (sub_count > 8) return error.TypeMismatch;
 
                 // Pop subscripts from stack (in reverse order)
                 var subscripts: [8]u64 = [_]u64{0} ** 8;
@@ -5128,7 +5182,7 @@ pub const Vm = struct {
 
             .aset => {
                 const sub_count = self.readU8();
-                if (sub_count == 0 or sub_count > 8) return error.TypeMismatch;
+                if (sub_count > 8) return error.TypeMismatch;
 
                 // Pop new value
                 const new_val = try self.pop();
@@ -5949,7 +6003,7 @@ pub const Vm = struct {
                         } else false;
                         try self.push(if (is_bound) Value.t else Value.nil);
                     },
-                    else => return error.TypeMismatch,
+                    else => try self.signalTypeErrorDatumExpected(val, self.builtins.sym_symbol),
                 }
             },
 
@@ -5970,7 +6024,7 @@ pub const Vm = struct {
                         };
                         try self.push(if (is_fbound) Value.t else Value.nil);
                     },
-                    else => return error.TypeMismatch,
+                    else => try self.signalTypeErrorDatumExpected(val, self.builtins.sym_symbol),
                 }
             },
 
@@ -5994,7 +6048,15 @@ pub const Vm = struct {
                             return error.UnboundSymbol;
                         }
                     },
-                    else => return error.TypeMismatch,
+                    else => {
+                        if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                            std.debug.print(
+                                "TRACE symbol_value non-symbol kind={s} raw=0x{x}\n",
+                                .{ @tagName(val.typeKind()), val.raw },
+                            );
+                        }
+                        try self.signalTypeErrorDatumExpected(val, self.builtins.sym_symbol);
+                    },
                 }
             },
 
@@ -6017,7 +6079,16 @@ pub const Vm = struct {
                             return error.UnboundSymbol;
                         }
                     },
-                    else => return error.TypeMismatch,
+                    else => try self.signalTypeErrorDatumExpected(val, self.builtins.sym_symbol),
+                }
+            },
+
+            .symbol_plist => {
+                const val = try self.pop();
+                switch (val.typeKind()) {
+                    .nil, .t => try self.push(Value.nil),
+                    .symbol => try self.push(try primitives.symbol.symbolPlist(val)),
+                    else => try self.signalTypeErrorDatumExpected(val, self.builtins.sym_symbol),
                 }
             },
 
@@ -6196,25 +6267,59 @@ pub const Vm = struct {
         // Handler-bind dispatch for signaled conditions.
         if (tag.raw == self.builtins.sym_condition_tag.raw and self.handler_sp > 0) {
             var condition_type = Value.nil;
-            var condition_value = value;
+            var condition_object = value;
             if (value.isCons()) {
                 const pair = value.toPtr(Cons);
                 condition_type = pair.car;
-                condition_value = pair.cdr;
+            } else if (value.isSymbol()) {
+                // Allow signaling with a bare condition type symbol to avoid
+                // heap allocation on low-memory paths.
+                condition_type = value;
+                condition_object = value;
+            }
+            if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                std.debug.print(
+                    "TRACE condition dispatch: type={s} raw=0x{x} handlers={d}\n",
+                    .{ @tagName(condition_type.typeKind()), condition_type.raw, self.handler_sp },
+                );
             }
 
             var i = self.handler_sp;
             while (i > 0) {
                 i -= 1;
                 const frame = self.handler_stack[i];
+                if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                    std.debug.print(
+                        "  handler[{d}] expects={s} fn={s}\n",
+                        .{ i, @tagName(frame.condition_type.typeKind()), @tagName(frame.handler_fn.typeKind()) },
+                    );
+                }
                 if (self.handlerTypeMatches(frame.condition_type, condition_type)) {
                     if (self.sp + 2 > STACK_SIZE) return error.StackOverflow;
+                    const saved_handler_sp = self.handler_sp;
+                    // Prevent recursive re-entry into this handler while it runs.
+                    self.handler_sp = i;
+                    // Restore full handler depth when the handler frame returns.
+                    self.pending_handler_restore_depth = saved_handler_sp;
                     self.stack[self.sp] = frame.handler_fn;
-                    self.stack[self.sp + 1] = condition_value;
+                    self.stack[self.sp + 1] = condition_object;
                     self.sp += 2;
-                    try self.doCall(1, false);
+                    if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                        std.debug.print("  handler match -> doCall argc=1\n", .{});
+                    }
+                    self.doCall(1, false) catch |call_err| {
+                        self.pending_handler_restore_depth = null;
+                        self.handler_sp = saved_handler_sp;
+                        if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                            std.debug.print("  handler doCall error={s}\n", .{@errorName(call_err)});
+                        }
+                        return call_err;
+                    };
                     return;
                 }
+            }
+            if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                std.debug.print("  handler dispatch complete; continuing throw search\n", .{});
             }
         }
 
@@ -6230,10 +6335,18 @@ pub const Vm = struct {
                 if (frame.catch_sp > STACK_SIZE or frame.catch_fp > MAX_FRAMES) {
                     return error.InvalidOpcode;
                 }
+                while (self.progv_sp > frame.progv_depth) {
+                    try self.popProgvFrame();
+                }
                 self.chunk = frame.chunk;
                 self.ip = frame.catch_ip;
                 self.sp = frame.catch_sp;
                 self.fp = frame.catch_fp;
+                self.block_sp = frame.block_depth;
+                self.unwind_sp = frame.unwind_depth;
+                self.restart_sp = frame.restart_depth;
+                self.handler_sp = frame.handler_depth;
+                self.pending_handler_restore_depth = null;
                 // Push the thrown value as result
                 try self.push(value);
                 return;
@@ -6454,7 +6567,7 @@ pub const Vm = struct {
         return error.NoMatchingBlock;
     }
 
-    /// Handle an error by running unwind-protect cleanup if needed
+    /// Handle an error by running unwind-protect cleanup if needed.
     fn doError(self: *Vm, err: anyerror) Error {
         // Check if there's an unwind-protect that needs cleanup
         if (self.unwind_sp > 0) {
@@ -6483,6 +6596,25 @@ pub const Vm = struct {
 
         // No unwind frames - propagate error normally
         return self.mapError(err);
+    }
+
+    /// Map Zig VM errors to CL condition type names.
+    fn zigErrorToCondition(_: *const Vm, err: anyerror) ?[]const u8 {
+        if (err == error.TypeMismatch) return "type-error";
+        if (err == error.DivisionByZero) return "division-by-zero";
+        if (err == error.UnboundSymbol) return "unbound-variable";
+        return null;
+    }
+
+    /// Try to signal a Zig error as a CL condition via doThrow.
+    /// Returns true if a handler/catch was found and execution should continue.
+    fn trySignalCondition(self: *Vm, err: anyerror) bool {
+        if (self.handler_sp == 0 and self.catch_sp == 0) return false;
+        const condition_name = zigErrorToCondition(self, err) orelse return false;
+        const condition_type = self.intern(condition_name) catch return false;
+        const condition_pair = self.allocCons(condition_type, Value.nil) catch return false;
+        self.doThrow(self.builtins.sym_condition_tag, condition_pair) catch return false;
+        return true;
     }
 
     fn mapError(self: *Vm, err: anyerror) Error {
@@ -6531,7 +6663,7 @@ pub const Vm = struct {
                     .{ i, name, frame.return_ip, frame.bp, frame.argc },
                 );
             }
-            if (std.posix.getenv("HABU_TRACE_ERROR_DISASM") != null and err == error.TypeMismatch) {
+            if (std.posix.getenv("HABU_TRACE_ERROR_DISASM") != null and (err == error.TypeMismatch or err == error.StackOverflow)) {
                 std.debug.print("TRACE disasm begin (ip={d})\n", .{self.ip});
                 var disasm_buf = std.ArrayList(u8){};
                 defer disasm_buf.deinit(self.allocator);
@@ -7937,9 +8069,11 @@ pub const Vm = struct {
             std.mem.eql(u8, reason, "optional-arity") or
             std.mem.eql(u8, reason, "fixed-arity");
         const condition_name = if (is_program_error) "program-error" else "type-error";
-        const condition_type = self.intern(condition_name) catch return error.TypeMismatch;
-        const condition_pair = self.allocCons(condition_type, Value.nil) catch return error.TypeMismatch;
-        self.doThrow(self.builtins.sym_condition_tag, condition_pair) catch |throw_err| {
+        const condition_type = if (is_program_error) self.builtins.sym_program_error else self.builtins.sym_type_error;
+        const prev_chunk = self.chunk;
+        const prev_ip = self.ip;
+        const prev_sp = self.sp;
+        self.signalCondition(condition_name) catch |throw_err| {
             if (std.posix.getenv("HABU_TRACE_CALL_MISMATCH") != null) {
                 std.debug.print("CALL_MISMATCH throw-failed={s} condition={s}\n", .{
                     @errorName(throw_err),
@@ -7948,6 +8082,125 @@ pub const Vm = struct {
             }
             return throw_err;
         };
+        // If throw transferred control to a catch frame, continue there.
+        if (self.chunk != prev_chunk or self.ip != prev_ip or self.sp != prev_sp) return;
+        // Handler-bind may consume the first signal in-place. If a handler-case
+        // catch is active, rethrow with handlers masked so catch dispatch runs.
+        if (try self.rethrowConditionToCatch(condition_type, Value.nil, Value.nil)) return;
+        return error.TypeMismatch;
+    }
+
+    fn buildConditionPayload(self: *Vm, condition_type: Value, datum: Value, expected_type: Value) Error!Value {
+        // Preserve the legacy (datum . expected-type) payload for TYPE-ERROR
+        // and PROGRAM-ERROR so ANSI helper accessors keep working.
+        if (condition_type.raw == self.builtins.sym_type_error.raw or
+            condition_type.raw == self.builtins.sym_program_error.raw)
+        {
+            return try self.allocCons(datum, expected_type);
+        }
+
+        if (self.heap.class_metadata.get(condition_type)) |slot_names| {
+            const payload = try self.allocVector(slot_names.len + 1, slot_names.len + 1);
+            const vec = payload.toPtr(runtime.Vector);
+            vec.data[0] = condition_type;
+
+            var i: usize = 0;
+            while (i < slot_names.len) : (i += 1) {
+                vec.data[i + 1] = Value.nil;
+            }
+
+            const slot_datum = (try self.heap.internInPackage("CL", "datum")) orelse Value.nil;
+            const slot_expected_type = (try self.heap.internInPackage("CL", "expected-type")) orelse Value.nil;
+            const slot_format_control = (try self.heap.internInPackage("CL", "format-control")) orelse Value.nil;
+            const slot_format_arguments = (try self.heap.internInPackage("CL", "format-arguments")) orelse Value.nil;
+
+            for (slot_names, 0..) |slot_name, slot_idx| {
+                if (slot_name.raw == slot_datum.raw) {
+                    vec.data[slot_idx + 1] = datum;
+                } else if (slot_name.raw == slot_expected_type.raw) {
+                    vec.data[slot_idx + 1] = expected_type;
+                } else if (slot_name.raw == slot_format_control.raw) {
+                    vec.data[slot_idx + 1] = Value.nil;
+                } else if (slot_name.raw == slot_format_arguments.raw) {
+                    vec.data[slot_idx + 1] = Value.nil;
+                }
+            }
+
+            return payload;
+        }
+
+        // Fallback for condition types without class slot metadata:
+        // preserve type-error payload semantics as (datum . expected-type).
+        return try self.allocCons(datum, expected_type);
+    }
+
+    fn signalConditionValue(self: *Vm, condition_type: Value, datum: Value, expected_type: Value) Error!void {
+        const payload = try self.buildConditionPayload(condition_type, datum, expected_type);
+        const condition_value = try self.allocCons(condition_type, payload);
+        try self.doThrow(self.builtins.sym_condition_tag, condition_value);
+    }
+
+    fn signalCondition(self: *Vm, condition_name: []const u8) Error!void {
+        const condition_type = if (std.mem.eql(u8, condition_name, "type-error"))
+            self.builtins.sym_type_error
+        else if (std.mem.eql(u8, condition_name, "program-error"))
+            self.builtins.sym_program_error
+        else
+            try self.intern(condition_name);
+        try self.signalConditionValue(condition_type, Value.nil, Value.nil);
+    }
+
+    fn hasCatchTag(self: *const Vm, tag: Value) bool {
+        var i = self.catch_sp;
+        while (i > 0) {
+            i -= 1;
+            if (self.catch_stack[i].tag.raw == tag.raw) return true;
+        }
+        return false;
+    }
+
+    fn rethrowConditionToCatch(self: *Vm, condition_type: Value, datum: Value, expected_type: Value) Error!bool {
+        if (!self.hasCatchTag(self.builtins.sym_condition_tag)) return false;
+        const saved_handler_sp = self.handler_sp;
+        const saved_pending_restore = self.pending_handler_restore_depth;
+        const prev_chunk = self.chunk;
+        const prev_ip = self.ip;
+        const prev_sp = self.sp;
+        const prev_fp = self.fp;
+        self.handler_sp = 0;
+        self.pending_handler_restore_depth = null;
+        errdefer {
+            self.handler_sp = saved_handler_sp;
+            self.pending_handler_restore_depth = saved_pending_restore;
+        }
+        try self.signalConditionValue(condition_type, datum, expected_type);
+        const transferred =
+            self.chunk != prev_chunk or
+            self.ip != prev_ip or
+            self.sp != prev_sp or
+            self.fp != prev_fp;
+        if (!transferred) {
+            self.handler_sp = saved_handler_sp;
+            self.pending_handler_restore_depth = saved_pending_restore;
+        }
+        return transferred;
+    }
+
+    fn signalTypeErrorDatumExpected(self: *Vm, datum: Value, expected_type: Value) Error!void {
+        const prev_chunk = self.chunk;
+        const prev_ip = self.ip;
+        const prev_sp = self.sp;
+        try self.signalConditionValue(self.builtins.sym_type_error, datum, expected_type);
+        // If throw transferred control to a catch frame, continue there.
+        if (self.chunk != prev_chunk or self.ip != prev_ip or self.sp != prev_sp) return;
+        // Handler-bind may consume the first signal in-place. If a handler-case
+        // catch is active, rethrow with handlers masked so catch dispatch runs.
+        if (try self.rethrowConditionToCatch(self.builtins.sym_type_error, datum, expected_type)) return;
+        return error.TypeMismatch;
+    }
+
+    fn signalTypeError(self: *Vm) Error!void {
+        try self.signalTypeErrorDatumExpected(Value.nil, Value.nil);
     }
 
     fn doCall(self: *Vm, argc: u8, tail: bool) Error!void {
@@ -8300,7 +8553,10 @@ pub const Vm = struct {
                         std.debug.print("CALL_MISMATCH DO_APPLY fn-symbol={s}\n", .{fn_val.toPtr(Symbol).getName()});
                     }
                 }
-                return error.TypeMismatch;
+                const te = self.intern("type-error") catch return error.TypeMismatch;
+                const pair = self.allocCons(te, fn_val) catch return error.TypeMismatch;
+                self.doThrow(self.builtins.sym_condition_tag, pair) catch |e| return e;
+                return;
             }
             callable = gf.dispatcher;
         }
@@ -8349,7 +8605,10 @@ pub const Vm = struct {
                     std.debug.print("\n", .{});
                 }
             }
-            return error.TypeMismatch;
+            const te = self.intern("type-error") catch return error.TypeMismatch;
+            const pair = self.allocCons(te, callable) catch return error.TypeMismatch;
+            self.doThrow(self.builtins.sym_condition_tag, pair) catch |e| return e;
+            return;
         }
 
         if (trace_do_apply) {
@@ -9488,6 +9747,60 @@ test "vm aref aset vector" {
     try testing.expectEqual(@as(i64, 99), result.toFixnum());
 }
 
+test "vm aref aset rank-0 array" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    const push_nil_op: u16 = @intFromEnum(Op.push_nil);
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const make_array_op: u16 = @intFromEnum(Op.make_array);
+    const aref_op: u16 = @intFromEnum(Op.aref);
+    const aset_op: u16 = @intFromEnum(Op.aset);
+    const store_local_op: u16 = @intFromEnum(Op.store_local);
+    const load_local_op: u16 = @intFromEnum(Op.load_local);
+    const pop_op: u16 = @intFromEnum(Op.pop);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+
+    // Dynamic make_array with rank=0 and initial-element (operand=1).
+    // dimensions=nil gives a rank-0 array with one element.
+    const code = [_]u8{
+        @truncate(push_nil_op & 0xFF), @truncate(push_nil_op >> 8),
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 7, 0, 0, 0,
+        @truncate(make_array_op & 0xFF), @truncate(make_array_op >> 8), 1,
+        @truncate(store_local_op & 0xFF), @truncate(store_local_op >> 8), 0,
+
+        @truncate(load_local_op & 0xFF), @truncate(load_local_op >> 8), 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 42, 0, 0, 0,
+        @truncate(aset_op & 0xFF), @truncate(aset_op >> 8), 0,
+        @truncate(pop_op & 0xFF), @truncate(pop_op >> 8),
+
+        @truncate(load_local_op & 0xFF), @truncate(load_local_op >> 8), 0,
+        @truncate(aref_op & 0xFF), @truncate(aref_op >> 8), 0,
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = code.len,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 1,
+    };
+
+    const result = try vm.run(&chunk);
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
 test "vm symbol_value specials" {
     const testing = std.testing;
     const allocator = testing.allocator;
@@ -10088,6 +10401,11 @@ test "vm collectGarbage relocates chunk pointers" {
         .catch_ip = 0,
         .catch_sp = 0,
         .catch_fp = 0,
+        .block_depth = 0,
+        .unwind_depth = 0,
+        .restart_depth = 0,
+        .progv_depth = 0,
+        .handler_depth = 0,
     };
     vm.catch_sp = 1;
     vm.unwind_stack[0] = .{

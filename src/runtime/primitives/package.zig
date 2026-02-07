@@ -902,9 +902,8 @@ pub fn uninternSymbol(heap: *Heap, symbol: Value, pkg: Value) !bool {
 }
 
 /// Delete a package
-pub fn deletePackage(heap: *Heap, pkg: Value) !bool {
-    if (!pkg.isPackage()) return error.TypeError;
-
+pub fn deletePackage(heap: *Heap, designator: Value) !bool {
+    const pkg = try resolvePkg(heap, designator);
     const p = pkg.toPtr(objects.Package);
     const pkg_name = try packageNameBytes(p);
     const native_pkg = if (heap.findPackage(pkg_name)) |found| found else return error.InvalidPackage;

@@ -8,17 +8,15 @@
   },
   "exit_code": 1,
   "reported": null,
-  "run_started_utc": "2026-02-07T09:16:46Z",
-  "source_log": "docs/ansi/raw/habu-latest.log",
+  "run_started_utc": "2026-02-07T09:35:59Z",
+  "source_log": "docs/ansi/raw/habu-stackoverflow-trace-single.log",
   "tests": {
-    "TypeMismatch": {
+    "StackOverflow": {
       "line_numbers": [
-        234934,
-        247161
+        235682
       ],
       "ordinal": 1,
       "raw_statuses": [
-        "error",
         "error"
       ],
       "status": "fail"

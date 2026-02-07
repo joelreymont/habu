@@ -878,6 +878,14 @@ pub const Op = enum(u16) {
     /// ( symbol -- value )
     symbol_function = 0xAE,
 
+    /// Get symbol's property list
+    /// ( symbol -- plist )
+    symbol_plist = 0x190,
+
+    /// Set symbol's property list
+    /// ( symbol plist -- plist )
+    set_symbol_plist = 0x191,
+
     /// Check if object is of given type
     /// ( obj type-sym -- t/nil )
     typep = 0xAF,
@@ -1944,6 +1952,8 @@ pub const Op = enum(u16) {
             .fboundp,
             .symbol_value,
             .symbol_function,
+            .symbol_plist,
+            .set_symbol_plist,
             .function_lambda_expression,
             .typep,
             .subtypep,

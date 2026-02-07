@@ -1202,7 +1202,7 @@ pub fn encodeUniversalTime(
     // Add day of month
     days += date;
     // Adjust to Unix epoch (days from year 0 to 1970-01-01)
-    days -= 719528;
+    days -= 719469;
 
     // Convert to seconds
     const day_seconds = second + minute * 60 + hour * 3600;

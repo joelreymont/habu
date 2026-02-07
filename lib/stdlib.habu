@@ -2506,7 +2506,14 @@
 
 ;; condition-type - get type of condition (class name)
 (defun condition-type (condition)
-  (class-name (class-of condition)))
+  (if (and (consp condition) (symbolp (car condition)))
+      (car condition)
+    (class-name (class-of condition))))
+
+(defun %condition-payload (condition)
+  (if (and (consp condition) (symbolp (car condition)))
+      (cdr condition)
+    condition))
 
 ;; condition-slot - get slot value from condition
 (defun condition-slot (condition slot-name)
@@ -5923,17 +5930,23 @@
 ; file-error-pathname - get pathname from file-error
 (defun file-error-pathname (condition)
   "Return the pathname associated with the condition"
-  (slot-value condition 'pathname))
+  (let ((payload (%condition-payload condition)))
+    (handler-case (slot-value payload 'pathname)
+      (error () nil))))
 
 ; stream-error-stream - get stream from stream-error
 (defun stream-error-stream (condition)
   "Return the stream associated with the condition"
-  (slot-value condition 'stream))
+  (let ((payload (%condition-payload condition)))
+    (handler-case (slot-value payload 'stream)
+      (error () nil))))
 
 ; package-error-package - get package from package-error
 (defun package-error-package (condition)
   "Return the package associated with the condition"
-  (slot-value condition 'package))
+  (let ((payload (%condition-payload condition)))
+    (handler-case (slot-value payload 'package)
+      (error () nil))))
 
 ; compile - compile function
 (defun compile (name &optional definition)
@@ -6003,17 +6016,29 @@
 ; cell-error-name - get name from cell-error
 (defun cell-error-name (condition)
   "Return the name associated with the cell-error"
-  (slot-value condition 'name))
+  (let ((payload (%condition-payload condition)))
+    (if (consp payload)
+        (car payload)
+      (handler-case (slot-value payload 'name)
+        (error () nil)))))
 
 ; type-error-datum - get datum from type-error
 (defun type-error-datum (condition)
   "Return the datum from the type-error"
-  (slot-value condition 'datum))
+  (let ((payload (%condition-payload condition)))
+    (if (consp payload)
+        (car payload)
+      (handler-case (slot-value payload 'datum)
+        (error () nil)))))
 
 ; type-error-expected-type - get expected type
 (defun type-error-expected-type (condition)
   "Return the expected type from the type-error"
-  (slot-value condition 'expected-type))
+  (let ((payload (%condition-payload condition)))
+    (if (consp payload)
+        (cdr payload)
+      (handler-case (slot-value payload 'expected-type)
+        (error () nil)))))
 
 ; unbound-slot-instance - get instance from unbound-slot error
 (defun unbound-slot-instance (condition)

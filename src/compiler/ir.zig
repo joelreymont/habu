@@ -747,6 +747,8 @@ pub const Ir = union(enum) {
     fboundp: UnaryOp, // Check if symbol has function binding
     symbol_value: UnaryOp, // Get symbol's global value
     symbol_function: UnaryOp, // Get symbol's function binding
+    symbol_plist: UnaryOp, // Get symbol's property list
+    set_symbol_plist: BinaryOp, // Set symbol's property list
     function_lambda_expression: UnaryOp, // (function-lambda-expression fn) -> (values lambda-expr closure-p name)
     typep: BinaryOp, // Check if object is of given type
     subtypep: BinaryOp, // Check subtype relationship
@@ -2396,6 +2398,18 @@ pub const IrBuilder = struct {
     pub fn symbolFunction(self: IrBuilder, sym: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .symbol_function = .{ .operand = sym } };
+        return node;
+    }
+
+    pub fn symbolPlist(self: IrBuilder, sym: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .symbol_plist = .{ .operand = sym } };
+        return node;
+    }
+
+    pub fn setSymbolPlist(self: IrBuilder, sym: *const Ir, plist: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .set_symbol_plist = .{ .left = sym, .right = plist } };
         return node;
     }
 

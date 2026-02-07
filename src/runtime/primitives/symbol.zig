@@ -151,7 +151,16 @@ pub fn setSymbolValue(sym: Value, val: Value) !void {
 
 /// Set symbol's property list
 pub fn setSymbolPlist(sym: Value, plist: Value) !void {
-    if (!sym.isSymbol()) return error.TypeError;
+    if (!sym.isSymbol()) {
+        if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+            std.debug.print("TRACE setSymbolPlist type-mismatch kind={s} raw=0x{x} plist_raw=0x{x}\n", .{
+                @tagName(sym.typeKind()),
+                sym.raw,
+                plist.raw,
+            });
+        }
+        return error.TypeError;
+    }
     const s = sym.toPtr(objects.Symbol);
     s.plist = plist;
 }

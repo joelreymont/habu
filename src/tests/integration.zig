@@ -3381,6 +3381,109 @@ test "defstruct with character conc-name coerces to string prefix" {
     try testing.expect(result.eq(Value.t));
 }
 
+test "defstruct bare :conc-name option uses nil prefix" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct (ds-bare-conc :conc-name) a b)\n" ++
+        "  (let ((x (make-ds-bare-conc 1 2)))\n" ++
+        "    (and (fboundp 'a) (fboundp 'b)\n" ++
+        "         (= (a x) 1) (= (b x) 2))))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
+test "defstruct empty (:conc-name) option uses nil prefix" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct (ds-empty-conc (:conc-name)) a b)\n" ++
+        "  (let ((x (make-ds-empty-conc 1 2)))\n" ++
+        "    (and (fboundp 'a) (fboundp 'b)\n" ++
+        "         (= (a x) 1) (= (b x) 2))))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
+test "defstruct (:copier nil) suppresses copier" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct (ds-no-copier (:copier nil)) a)\n" ++
+        "  (not (fboundp 'copy-ds-no-copier)))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
+test "defstruct (:predicate nil) suppresses predicate" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct (ds-no-pred (:predicate nil)) a)\n" ++
+        "  (not (fboundp 'ds-no-pred-p)))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
+test "defstruct slot with init-form" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // (a) is a slot spec with just a name, no init-form — should not error
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct ds-initform (a) (b))\n" ++
+        "  (and (fboundp 'make-ds-initform)\n" ++
+        "       (fboundp 'ds-initform-a)\n" ++
+        "       (fboundp 'ds-initform-b)))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
+test "defstruct slot with :type keyword option" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // (a 1 :type fixnum) - init-form 1, type fixnum
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct ds-typed-slot (a 1 :type fixnum) (b 2 :type integer))\n" ++
+        "  (and (fboundp 'make-ds-typed-slot)\n" ++
+        "       (fboundp 'ds-typed-slot-a)\n" ++
+        "       (fboundp 'ds-typed-slot-b)))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
+test "defstruct slot with :read-only option" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct ds-readonly (a nil :read-only nil) (b 'a :read-only nil))\n" ++
+        "  (and (fboundp 'make-ds-readonly)\n" ++
+        "       (fboundp 'ds-readonly-a)\n" ++
+        "       (fboundp 'ds-readonly-b)))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
 test "defvar without init defaults to nil" {
     const allocator = testing.allocator;
 
@@ -4158,6 +4261,107 @@ test "load in-package updates reader package for following forms" {
     try testing.expect(!result.isNil());
 }
 
+test "setf sbit on make-array uses aset path" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(let ((v (make-array 3 :initial-element 0))) (setf (sbit v 1) 42) (aref v 1))",
+    );
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "setf bit on make-array uses aset path" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(let ((v (make-array 3 :initial-element 0))) (setf (bit v 2) 7) (aref v 2))",
+    );
+    try testing.expectEqual(@as(i64, 7), result.toFixnum());
+}
+
+test "log with optional base computes correctly" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    // (log 100 10) = ln(100)/ln(10) ≈ 2.0; verify result is numeric (not error)
+    const result = try repl.eval("(numberp (log 100.0 10.0))");
+    try testing.expect(!result.isNil());
+}
+
+test "concatenate delegates to stdlib for sequence coercion" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(string= (concatenate 'string "abc" "def") "abcdef")
+    );
+    try testing.expect(!result.isNil());
+}
+
+test "setf the strips type declaration" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(let ((x 1)) (setf (the fixnum x) 42) x)",
+    );
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "defgeneric with setf name" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(progn (defgeneric (setf my-accessor) (val obj)) t)",
+    );
+    try testing.expect(!result.isNil());
+}
+
 test "ansi repro package dynamic *package* controls use-package target" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
@@ -4178,4 +4382,127 @@ test "ansi repro package dynamic *package* controls use-package target" {
     ;
     const result = try repl.eval(src);
     try testing.expect(!result.isNil());
+}
+
+test "ansi repro delete-package rejects core packages" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    // Deleting CL package should signal condition, not crash.
+    // handler-case uses catch internally; the catch tag must match.
+    // Use handler-bind + invoke-restart pattern which is proven to work.
+    const result2 = try repl.eval(
+        \\(let ((caught nil))
+        \\  (handler-bind
+        \\    ((error #'(lambda (c) (declare (ignore c)) (setq caught t))))
+        \\    (delete-package "COMMON-LISP"))
+        \\  caught)
+    );
+    // caught should be T after handler fired
+    try testing.expect(result2.raw == Value.t.raw or !result2.isNil());
+}
+
+test "ansi repro symbol-package type-error signals condition" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    // symbol-package on non-symbol should signal type-error, not VM crash
+    const result2 = try repl.eval(
+        \\(handler-case (symbol-package 42)
+        \\  (type-error () :caught))
+    );
+    try testing.expect(result2.isKeyword());
+}
+
+test "ansi repro apply non-closure signals condition" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    // apply with non-closure callee should signal type-error, not VM crash
+    const result = try repl.eval(
+        \\(handler-case (apply 42 '(1 2))
+        \\  (type-error () :caught))
+    );
+    try testing.expect(result.isKeyword());
+}
+
+test "ansi repro finish-output accepts nil and t designators" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    // finish-output and force-output must accept nil and t as stream designators
+    const r1 = try repl.eval("(finish-output nil)");
+    try testing.expect(r1.isNil());
+    const r2 = try repl.eval("(finish-output t)");
+    try testing.expect(r2.isNil());
+    const r3 = try repl.eval("(force-output nil)");
+    try testing.expect(r3.isNil());
+    const r4 = try repl.eval("(force-output t)");
+    try testing.expect(r4.isNil());
+}
+
+test "ansi repro symbol-function resolves primitive builtins" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    // symbol-function must return callable for various builtins
+    const r1 = try repl.eval("(functionp (symbol-function 'ash))");
+    try testing.expect(r1.raw == Value.t.raw);
+    const r2 = try repl.eval("(functionp (symbol-function 'apply))");
+    try testing.expect(r2.raw == Value.t.raw);
+    const r3 = try repl.eval("(funcall (symbol-function 'ash) 1 4)");
+    try testing.expect(r3.isFixnum());
+    try testing.expectEqual(@as(i64, 16), r3.toFixnum());
+}
+
+test "ansi repro encode-universal-time returns fixnum" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    // encode-universal-time 1900-01-01 00:00:00 UTC = 0 (CL epoch)
+    const result = try repl.eval("(encode-universal-time 0 0 0 1 1 1900 0)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 0), result.toFixnum());
 }

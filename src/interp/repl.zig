@@ -764,7 +764,7 @@ pub const Repl = struct {
 
         // Check if it's a builtin primitive
         if (self.compiler.builtins) |b| {
-            const dispatch_sym = self.canonicalMacroSymbol(sym);
+            const dispatch_sym = try self.canonicalBuiltinFunctionSymbol(sym);
             if (b.isBuiltinFunction(dispatch_sym)) {
                 return true;
             }
@@ -791,7 +791,7 @@ pub const Repl = struct {
 
         // Lazily materialize builtin primitive wrappers.
         if (self.compiler.builtins) |b| {
-            const dispatch_sym = self.canonicalMacroSymbol(sym);
+            const dispatch_sym = try self.canonicalBuiltinFunctionSymbol(sym);
             const is_builtin = b.isBuiltinFunction(dispatch_sym);
             if (trace_fn_resolve) {
                 std.debug.print(
@@ -835,6 +835,27 @@ pub const Repl = struct {
             std.debug.print("TRACE fn-resolve miss\n", .{});
         }
         return null;
+    }
+
+    /// Resolve symbol package aliases for builtin function dispatch.
+    /// This includes internal CL names (for example `%set-symbol-plist`) which
+    /// may not be externally accessible from the current package.
+    fn canonicalBuiltinFunctionSymbol(self: *Repl, sym: Value) vm_mod.Error!Value {
+        if (!sym.isSymbol()) return sym;
+        const b = self.compiler.builtins orelse return sym;
+
+        const direct = self.canonicalMacroSymbol(sym);
+        if (b.isBuiltinFunction(direct)) return direct;
+
+        const name = sym.toPtr(Symbol).getName();
+        if (try self.heap.internInPackage("CL", name)) |cl_sym| {
+            if (b.isBuiltinFunction(cl_sym)) return cl_sym;
+        }
+        if (try self.heap.internInPackage("CL-USER", name)) |cl_user_sym| {
+            if (b.isBuiltinFunction(cl_user_sym)) return cl_user_sym;
+        }
+
+        return direct;
     }
 
     fn isCallableValue(val: Value) bool {
@@ -3749,4 +3770,44 @@ test "repl chunk pool survives GC between evals" {
     const result = try repl.eval("(f)");
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "handler-case catches type-error from symbol-package" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    // symbol-package on a fixnum should signal type-error, caught by handler-case
+    const result = try repl.eval(
+        "(handler-case (symbol-package 42) (type-error (c) (declare (ignore c)) :caught))",
+    );
+    try testing.expect(result.isKeyword());
+
+    const kw = result.toPtr(@import("../runtime/objects.zig").Keyword);
+    try testing.expectEqualStrings("CAUGHT", kw.getName());
+}
+
+test "symbol-package on keyword returns KEYWORD package" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval("(package-name (symbol-package :test))");
+    try testing.expect(result.isString());
+    const str = result.toPtr(@import("../runtime/objects.zig").String);
+    try testing.expectEqualStrings("KEYWORD", str.bytes());
 }

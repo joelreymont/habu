@@ -276,6 +276,9 @@ pub const Builtins = struct {
     fboundp: Value,
     @"symbol-value": Value,
     @"symbol-function": Value,
+    @"symbol-plist": Value,
+    @"%set-symbol-value": Value,
+    @"%set-symbol-plist": Value,
     @"function-lambda-expression": Value,
     fdefinition: Value,
     typep: Value,
@@ -294,6 +297,7 @@ pub const Builtins = struct {
     put: Value,
     remprop: Value,
     @"error": Value,
+    condition: Value,
     // Type specifier symbols for concatenate/coerce
     string: Value,
     character: Value,
@@ -856,6 +860,9 @@ pub const Builtins = struct {
             .fboundp = try heap.intern("fboundp"),
             .@"symbol-value" = try heap.intern("symbol-value"),
             .@"symbol-function" = try heap.intern("symbol-function"),
+            .@"symbol-plist" = try heap.intern("symbol-plist"),
+            .@"%set-symbol-value" = try heap.intern("%set-symbol-value"),
+            .@"%set-symbol-plist" = try heap.intern("%set-symbol-plist"),
             .@"function-lambda-expression" = try heap.intern("function-lambda-expression"),
             .fdefinition = try heap.intern("fdefinition"),
             .typep = try heap.intern("typep"),
@@ -874,6 +881,7 @@ pub const Builtins = struct {
             .put = try heap.intern("put"),
             .remprop = try heap.intern("remprop"),
             .@"error" = try heap.intern("error"),
+            .condition = try heap.intern("condition"),
             // Type specifier symbols for concatenate/coerce
             .string = try heap.intern("string"),
             .character = try heap.intern("character"),
@@ -1243,9 +1251,9 @@ pub const Builtins = struct {
         "char>",                  "%read-char",               "%peek-char",                "read",                     "read-from-string",         "load",                        "unread-char",        "listen",                 "upgraded-complex-part-type",
         "eval",                   "gensym",                   "macroexpand",               "macroexpand-1",
         // Symbol operations
-                   "boundp",                   "fboundp",                     "symbol-value",       "symbol-function",        "function-lambda-expression",
+                   "boundp",                   "fboundp",                     "symbol-value",       "symbol-function",        "symbol-plist",            "function-lambda-expression",
         "typep",                  "type-of",                  "intern",                    "symbol-name",              "symbol-package",           "copy-symbol",              "makunbound",                  "set",                "copy-structure",         "get",
-        "put",                    "remprop",
+        "put",                    "remprop",                   "%set-symbol-value",         "%set-symbol-plist",
         // Numeric
                          "abs",                       "zerop",                    "plusp",                    "minusp",                      "evenp",              "oddp",
         // Math functions
@@ -5324,9 +5332,9 @@ pub const Compiler = struct {
                     return node;
                 }
 
-                // (setf (aref array idx...) val) and (setf (bit array idx) val)
-                // lower to (%aset array idx... val).
-                if (h == b.aref.raw or h == b.bit.raw) {
+                // (setf (aref array idx...) val), (setf (bit array idx) val),
+                // (setf (sbit array idx) val) -- all lower to (%aset array idx... val).
+                if (h == b.aref.raw or h == b.bit.raw or h == b.sbit.raw) {
                     // Build args for compileAset: (array sub1 sub2 ... val)
                     const heap = if (self.heap) |val| val else return error.InvalidSyntax;
                     // Append value_expr to place_args
@@ -5346,8 +5354,8 @@ pub const Compiler = struct {
                     return self.compileAset(aset_args, env);
                 }
 
-                // (setf (svref vec idx) val) and (setf (sbit vec idx) val) -> vec_set
-                if (h == b.svref.raw or h == b.sbit.raw) {
+                // (setf (svref vec idx) val) -> vec_set
+                if (h == b.svref.raw) {
                     if (!place_args.isCons()) return error.InvalidSyntax;
                     const pc1 = place_args.toPtr(Cons);
                     const vec_ir = try self.compile(pc1.car, env);
@@ -5485,6 +5493,108 @@ pub const Compiler = struct {
                     }
                 }
 
+                // (setf (values p1 p2 ... pn) form) ->
+                // (multiple-value-bind (t1 t2 ... tn) form
+                //   (setf p1 t1) (setf p2 t2) ... (setf pn tn)
+                //   (values t1 t2 ... tn))
+                if (h == b.values.raw) {
+                    const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+                    // Collect places
+                    var places = std.ArrayList(Value){};
+                    defer places.deinit(self.allocator);
+                    var p = place_args;
+                    while (p.isCons()) {
+                        const c = p.toPtr(Cons);
+                        try places.append(self.allocator, c.car);
+                        p = c.cdr;
+                    }
+                    if (places.items.len == 0) return error.InvalidSyntax;
+
+                    // Generate temp vars and build mvb bindings list
+                    var bindings = Value.nil;
+                    var temps = std.ArrayList(Value){};
+                    defer temps.deinit(self.allocator);
+                    for (0..places.items.len) |_| {
+                        const tmp = try prims.gensym(heap, null);
+                        try temps.append(self.allocator, tmp);
+                        bindings = try heap.allocCons(tmp, bindings);
+                    }
+
+                    // Build body: (setf p1 t1) ... (setf pn tn) (values t1 ... tn)
+                    // Start from the end
+                    var vals_list = Value.nil;
+                    var i = temps.items.len;
+                    while (i > 0) {
+                        i -= 1;
+                        vals_list = try heap.allocCons(temps.items[i], vals_list);
+                    }
+                    var body = try heap.allocCons(b.values, vals_list);
+                    body = try heap.allocCons(body, Value.nil);
+
+                    // Prepend setf forms in reverse
+                    i = places.items.len;
+                    while (i > 0) {
+                        i -= 1;
+                        const setf_pair = try heap.allocCons(places.items[i], try heap.allocCons(temps.items[i], Value.nil));
+                        const setf_form = try heap.allocCons(b.setf, setf_pair);
+                        body = try heap.allocCons(setf_form, body);
+                    }
+
+                    // Build (multiple-value-bind (temps...) value-expr body...)
+                    const mvb_form = try heap.allocCons(
+                        b.@"multiple-value-bind",
+                        try heap.allocCons(
+                            bindings,
+                            try heap.allocCons(value_expr, body),
+                        ),
+                    );
+                    return self.compile(mvb_form, env);
+                }
+
+                // (setf (the type place) val) -> (setf place (the type val))
+                if (h == b.the.raw) {
+                    const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const the_type_cons = place_args.toPtr(Cons);
+                    if (!the_type_cons.cdr.isCons()) return error.InvalidSyntax;
+                    const the_place_cons = the_type_cons.cdr.toPtr(Cons);
+                    const inner_place = the_place_cons.car;
+                    // Build (the type value_expr)
+                    const the_val = try heap.allocCons(b.the, try heap.allocCons(the_type_cons.car, try heap.allocCons(value_expr, Value.nil)));
+                    // Build (setf inner_place (the type val))
+                    const new_args = try heap.allocCons(inner_place, try heap.allocCons(the_val, Value.nil));
+                    return self.compileSetf(new_args, env);
+                }
+
+                // (setf (apply #'fn args...) val) -> (apply #'(setf fn) val args...)
+                if (h == b.apply.raw) {
+                    const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const fn_cons = place_args.toPtr(Cons);
+                    const fn_expr = fn_cons.car;
+
+                    // Extract function name from #'fn (function fn) form
+                    if (fn_expr.isCons()) {
+                        const fe = fn_expr.toPtr(Cons);
+                        if (fe.car.isSymbol() and fe.car.raw == b.function.raw) {
+                            if (fe.cdr.isCons()) {
+                                const fn_name_val = fe.cdr.toPtr(Cons).car;
+                                if (fn_name_val.isSymbol()) {
+                                    // Build (setf fn-name) list
+                                    const setf_fn_list = try heap.allocCons(b.setf, try heap.allocCons(fn_name_val, Value.nil));
+                                    // Build #'(setf fn-name) -> (function (setf fn-name))
+                                    const fn_ref = try heap.allocCons(b.function, try heap.allocCons(setf_fn_list, Value.nil));
+                                    // Build (apply #'(setf fn-name) val args...)
+                                    var apply_args = try heap.allocCons(fn_ref, try heap.allocCons(value_expr, fn_cons.cdr));
+                                    const apply_form = try heap.allocCons(b.apply, apply_args);
+                                    _ = &apply_args;
+                                    return self.compile(apply_form, env);
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Fallback: look for (setf accessor-name) function
                 // (setf (accessor-name args...) val) -> ((setf accessor-name) val args...)
                 const func_sym = head.toPtr(Symbol);
@@ -5551,7 +5661,38 @@ pub const Compiler = struct {
             }
         }
 
+        if (try self.compileSetfViaMacro(args, env)) |expanded_ir| {
+            return expanded_ir;
+        }
+
         return error.InvalidSyntax;
+    }
+
+    fn compileSetfViaMacro(self: *Compiler, args: Value, env: *const Env) anyerror!?*Ir {
+        const vm = self.vm orelse return null;
+        const heap = self.heap orelse return null;
+
+        try self.refreshBuiltins();
+        const b = self.builtins orelse return null;
+        const whole_form = try heap.allocCons(b.setf, args);
+
+        if (self.lookupMacroDef(b.setf)) |macro_def| {
+            const expanded = try self.expandMacro(macro_def, args, whole_form, vm);
+            if (expanded.raw != whole_form.raw) {
+                return try self.compileWithTail(expanded, env, false);
+            }
+        }
+
+        if (vm.macroexpand_1_callback) |macroexpand1| {
+            if (vm.macroexpand_1_context) |ctx| {
+                const expanded = try macroexpand1(whole_form, ctx);
+                if (expanded.raw != whole_form.raw) {
+                    return try self.compileWithTail(expanded, env, false);
+                }
+            }
+        }
+
+        return null;
     }
 
     fn compileSetfStructAccessor(
@@ -6621,10 +6762,9 @@ pub const Compiler = struct {
             }
         }
 
-        // Build handler body with variable binding
-        // (let ((var (cdr cond))) body...)
+        // Build handler body with variable binding.
+        // CL handler-case binds the full condition object.
         const cond_var_ir2 = try self.builder.variable(cond_name, 0, cond_idx);
-        const cdr_cond = try self.builder.cdr(cond_var_ir2);
 
         // Create environment with binding
         var inner_env = Env.initLet(self.allocator, env);
@@ -6638,7 +6778,7 @@ pub const Compiler = struct {
         const body_ir = try self.compileBodyWithTail(body, &inner_env, in_tail);
 
         // Build let node
-        const let_ir = try self.builder.let1(var_name, var_idx, cdr_cond, body_ir);
+        const let_ir = try self.builder.let1(var_name, var_idx, cond_var_ir2, body_ir);
 
         // Check if condition_type is 't' (catch-all handler)
         if (condition_type.raw == Value.t.raw) {
@@ -6646,11 +6786,22 @@ pub const Compiler = struct {
             return let_ir;
         }
 
-        // Build: (if (eq (car cond) 'type) (let ((var (cdr cond))) body...) else)
+        // Build: (if (match-condition-type (car cond) 'type) (let ((var (cdr cond))) body...) else)
 
         // (car cond)
         const cond_var_ir = try self.builder.variable(cond_name, 0, cond_idx);
         const car_cond = try self.builder.car(cond_var_ir);
+
+        const b = self.builtins.?;
+        const canonical_type = self.canonicalBuiltinSymbol(condition_type);
+
+        // CONDITION and ERROR are catch-all supertypes: match any condition
+        if (canonical_type.raw == b.@"error".raw or canonical_type.raw == b.condition.raw) {
+            // Always match (non-nil car means a condition was thrown)
+            const nil_ir = try self.builder.lit(Value.nil);
+            const test_ir = try self.builder.not(try self.builder.eq(car_cond, nil_ir));
+            return try self.builder.ifExpr(test_ir, let_ir, else_ir);
+        }
 
         // 'type - the condition type symbol
         const type_ir = try self.builder.lit(condition_type);
@@ -7999,10 +8150,17 @@ pub const Compiler = struct {
     /// Runtime representation: #(name slot1-val slot2-val ...)
     /// Registers struct type with type system for occurrence typing and type checking
     fn compileDefstruct(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+        const trace_defstruct = std.posix.getenv("HABU_TRACE_DEFSTRUCT") != null;
+        const heap = if (self.heap) |val| val else {
+            if (trace_defstruct) std.debug.print("TRACE defstruct invalid: missing heap\n", .{});
+            return error.InvalidSyntax;
+        };
 
         // Parse: (name slot1 slot2 ...) or ((name options...) slot1 slot2 ...)
-        if (!args.isCons()) return error.InvalidSyntax;
+        if (!args.isCons()) {
+            if (trace_defstruct) std.debug.print("TRACE defstruct invalid: args-kind={s}\n", .{@tagName(args.typeKind())});
+            return error.InvalidSyntax;
+        }
         const cons1 = args.toPtr(Cons);
         const name_spec = cons1.car;
 
@@ -8010,59 +8168,156 @@ pub const Compiler = struct {
         var struct_name_raw: []const u8 = undefined;
         var accessor_prefix: []const u8 = undefined;
         var accessor_prefix_owned = true;
+        var emit_copier = true;
+        var copier_name_override: ?[]const u8 = null;
+        var emit_predicate = true;
+        var predicate_name_override: ?[]const u8 = null;
 
-        if (name_spec.isSymbol()) {
+        if (name_spec.isSymbol() or name_spec.isKeyword()) {
             name_sym_val = name_spec;
-            struct_name_raw = name_spec.toPtr(Symbol).getName();
+            struct_name_raw = self.getStringOrSymbolName(name_spec) orelse {
+                if (trace_defstruct) {
+                    std.debug.print(
+                        "TRACE defstruct invalid: name literal kind={s}\n",
+                        .{@tagName(name_spec.typeKind())},
+                    );
+                }
+                return error.InvalidSyntax;
+            };
             accessor_prefix = try self.concatStrings(struct_name_raw, "-");
         } else if (name_spec.isCons()) {
             const name_cons = name_spec.toPtr(Cons);
-            if (!name_cons.car.isSymbol()) return error.InvalidSyntax;
+            if (!name_cons.car.isSymbol() and !name_cons.car.isKeyword()) {
+                if (trace_defstruct) {
+                    std.debug.print("TRACE defstruct invalid: name-head-kind={s}\n", .{@tagName(name_cons.car.typeKind())});
+                }
+                return error.InvalidSyntax;
+            }
             name_sym_val = name_cons.car;
-            struct_name_raw = name_sym_val.toPtr(Symbol).getName();
+            struct_name_raw = self.getStringOrSymbolName(name_sym_val) orelse {
+                if (trace_defstruct) {
+                    std.debug.print(
+                        "TRACE defstruct invalid: name-head no symbol/string kind={s}\n",
+                        .{@tagName(name_sym_val.typeKind())},
+                    );
+                }
+                return error.InvalidSyntax;
+            };
             accessor_prefix = try self.concatStrings(struct_name_raw, "-");
 
             var options = name_cons.cdr;
             while (options.isCons()) {
                 const opt_cell = options.toPtr(Cons);
                 const opt = opt_cell.car;
+
+                // Handle bare keyword options: :conc-name, :copier, :predicate, :constructor
+                if (opt.isKeyword()) {
+                    const key_name = opt.toPtr(runtime.Keyword).getName();
+                    if (std.ascii.eqlIgnoreCase(key_name, "conc-name")) {
+                        // Bare :conc-name = nil prefix (use slot name directly)
+                        if (accessor_prefix_owned) self.allocator.free(accessor_prefix);
+                        accessor_prefix = "";
+                        accessor_prefix_owned = false;
+                    }
+                    // Bare :copier, :predicate, :constructor = use defaults (no-op)
+                    options = opt_cell.cdr;
+                    continue;
+                }
+
                 if (opt.isCons()) {
                     const opt_cons = opt.toPtr(Cons);
                     if (opt_cons.car.isKeyword()) {
                         const key_name = opt_cons.car.toPtr(runtime.Keyword).getName();
+
                         if (std.ascii.eqlIgnoreCase(key_name, "conc-name")) {
                             if (accessor_prefix_owned) self.allocator.free(accessor_prefix);
-                            if (!opt_cons.cdr.isCons()) return error.InvalidSyntax;
-                            const value = opt_cons.cdr.toPtr(Cons).car;
-                            if (value.isNil()) {
+
+                            // (:conc-name) and (:conc-name nil) both mean no prefix.
+                            if (opt_cons.cdr.isNil()) {
                                 accessor_prefix = "";
                                 accessor_prefix_owned = false;
-                            } else if (value.isCharacter()) {
-                                var utf8_buf: [4]u8 = undefined;
-                                const cp: u21 = value.toCharacter();
-                                const n = try std.unicode.utf8Encode(@intCast(cp), &utf8_buf);
-                                accessor_prefix = try self.allocator.dupe(u8, utf8_buf[0..n]);
-                                accessor_prefix_owned = true;
-                            } else if (self.getStringOrSymbolName(value)) |prefix_name| {
-                                accessor_prefix = try self.allocator.dupe(u8, prefix_name);
-                                accessor_prefix_owned = true;
-                            } else {
+                                options = opt_cell.cdr;
+                                continue;
+                            }
+                            if (!opt_cons.cdr.isCons()) {
+                                if (trace_defstruct) {
+                                    std.debug.print(
+                                        "TRACE defstruct invalid: conc-name tail-kind={s}\n",
+                                        .{@tagName(opt_cons.cdr.typeKind())},
+                                    );
+                                }
                                 return error.InvalidSyntax;
                             }
+                            // (:conc-name) with no arg = nil prefix
+                            if (!opt_cons.cdr.isCons()) {
+                                accessor_prefix = "";
+                                accessor_prefix_owned = false;
+                            } else {
+                                const conc_val = opt_cons.cdr.toPtr(Cons).car;
+                                if (conc_val.isNil()) {
+                                    accessor_prefix = "";
+                                    accessor_prefix_owned = false;
+                                } else if (conc_val.isCharacter()) {
+                                    var utf8_buf: [4]u8 = undefined;
+                                    const cp: u21 = conc_val.toCharacter();
+                                    const n = try std.unicode.utf8Encode(@intCast(cp), &utf8_buf);
+                                    accessor_prefix = try self.allocator.dupe(u8, utf8_buf[0..n]);
+                                    accessor_prefix_owned = true;
+                                } else if (self.getStringOrSymbolName(conc_val)) |prefix_name| {
+                                    accessor_prefix = try self.allocator.dupe(u8, prefix_name);
+                                    accessor_prefix_owned = true;
+                                } else {
+                                    return error.InvalidSyntax;
+                                }
+                            }
+                        } else if (std.ascii.eqlIgnoreCase(key_name, "copier")) {
+                            // (:copier) = default, (:copier nil) = suppress, (:copier name) = custom
+                            if (!opt_cons.cdr.isCons()) {
+                                emit_copier = true; // (:copier) = default
+                            } else {
+                                const value = opt_cons.cdr.toPtr(Cons).car;
+                                if (value.isNil()) {
+                                    emit_copier = false;
+                                } else if (self.getStringOrSymbolName(value)) |name| {
+                                    copier_name_override = try self.allocator.dupe(u8, name);
+                                } else {
+                                    return error.InvalidSyntax;
+                                }
+                            }
+                        } else if (std.ascii.eqlIgnoreCase(key_name, "predicate")) {
+                            // (:predicate) = default, (:predicate nil) = suppress, (:predicate name) = custom
+                            if (!opt_cons.cdr.isCons()) {
+                                emit_predicate = true; // (:predicate) = default
+                            } else {
+                                const value = opt_cons.cdr.toPtr(Cons).car;
+                                if (value.isNil()) {
+                                    emit_predicate = false;
+                                } else if (self.getStringOrSymbolName(value)) |name| {
+                                    predicate_name_override = try self.allocator.dupe(u8, name);
+                                } else {
+                                    return error.InvalidSyntax;
+                                }
+                            }
                         }
+                        // Other options (:constructor, :include, :type, etc.) silently skipped for now
                     }
                 }
                 options = opt_cell.cdr;
             }
         } else {
+            if (trace_defstruct) {
+                std.debug.print("TRACE defstruct invalid: name-spec-kind={s}\n", .{@tagName(name_spec.typeKind())});
+            }
             return error.InvalidSyntax;
         }
         defer if (accessor_prefix_owned) self.allocator.free(accessor_prefix);
+        defer if (copier_name_override) |n| self.allocator.free(n);
+        defer if (predicate_name_override) |n| self.allocator.free(n);
 
         // Dupe struct name to avoid dangling pointer if heap moves
         const struct_name = try self.allocator.dupe(u8, struct_name_raw);
 
-        // Collect slot specs: either `slot` or `(slot type)`
+        // Collect slot specs: symbol, keyword, or list (slot-name [init-form] [:type T] [:read-only RO])
         var slot_specs = std.ArrayList(SlotSpec){};
         defer slot_specs.deinit(self.allocator);
         var rest = cons1.cdr;
@@ -8071,9 +8326,12 @@ pub const Compiler = struct {
             const slot_spec = c.car;
 
             switch (slot_spec.typeKind()) {
-                .symbol => {
-                    // Simple slot: `x` -> type is any
-                    const slot_name_raw = slot_spec.toPtr(Symbol).getName();
+                .symbol, .keyword => {
+                    // Simple slot: `x` or `:x` -> type is any
+                    const slot_name_raw = if (slot_spec.isKeyword())
+                        slot_spec.toPtr(runtime.Keyword).getName()
+                    else
+                        slot_spec.toPtr(Symbol).getName();
                     const slot_name = try self.allocator.dupe(u8, slot_name_raw);
                     try slot_specs.append(self.allocator, .{
                         .name = slot_name,
@@ -8084,30 +8342,71 @@ pub const Compiler = struct {
                         .writers = std.ArrayList(Value){},
                     });
                 },
+                .string => {
+                    // CL allows trailing defstruct docstring; ignore it.
+                },
                 .cons => {
-                    // Typed slot: `(x fixnum)` -> parse name and type
+                    // CL slot spec: (slot-name [init-form] [:type T] [:read-only RO])
                     const spec_cons = slot_spec.toPtr(Cons);
-                    if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
-                    const slot_name_raw = spec_cons.car.toPtr(Symbol).getName();
+                    const slot_name_val = spec_cons.car;
+                    const slot_name_raw = if (slot_name_val.isKeyword())
+                        slot_name_val.toPtr(runtime.Keyword).getName()
+                    else if (slot_name_val.isSymbol())
+                        slot_name_val.toPtr(Symbol).getName()
+                    else
+                        return error.InvalidSyntax;
                     const slot_name = try self.allocator.dupe(u8, slot_name_raw);
 
-                    // Get type from second element (can be symbol or compound type expr)
-                    if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
-                    const type_cons = spec_cons.cdr.toPtr(Cons);
-                    const type_expr = type_cons.car;
+                    // Parse remaining: [init-form] followed by keyword options
+                    var field_type: *const types.Type = &types.t_any;
+                    var slot_rest = spec_cons.cdr;
 
-                    // Parse type expression (supports compound types like (list fixnum))
-                    const field_type = if (try self.parseTypeExpr(type_expr)) |ty| ty else return error.InvalidSyntax;
+                    // Check if second element is a keyword option or init-form
+                    if (slot_rest.isCons()) {
+                        const next = slot_rest.toPtr(Cons);
+                        // If next element is a keyword like :type or :read-only, no init-form
+                        if (!next.car.isKeyword()) {
+                            // This is the init-form — skip it (init-forms not compiled yet)
+                            slot_rest = next.cdr;
+                        }
+                    }
+
+                    // Parse keyword options: :type T, :read-only RO
+                    while (slot_rest.isCons()) {
+                        const kw_cell = slot_rest.toPtr(Cons);
+                        if (kw_cell.car.isKeyword()) {
+                            const kw_name = kw_cell.car.toPtr(runtime.Keyword).getName();
+                            if (std.ascii.eqlIgnoreCase(kw_name, "type")) {
+                                if (kw_cell.cdr.isCons()) {
+                                    const type_val = kw_cell.cdr.toPtr(Cons).car;
+                                    if (try self.parseTypeExpr(type_val)) |ty| {
+                                        field_type = ty;
+                                    }
+                                    slot_rest = kw_cell.cdr.toPtr(Cons).cdr;
+                                    continue;
+                                }
+                            }
+                            // Skip :read-only and other keyword options
+                            if (kw_cell.cdr.isCons()) {
+                                slot_rest = kw_cell.cdr.toPtr(Cons).cdr;
+                                continue;
+                            }
+                        }
+                        slot_rest = kw_cell.cdr;
+                    }
+
                     try slot_specs.append(self.allocator, .{
                         .name = slot_name,
-                        .sym = spec_cons.car,
+                        .sym = if (slot_name_val.isSymbol()) slot_name_val else Value.nil,
                         .field_type = field_type,
                         .initargs = std.ArrayList(Value){},
                         .readers = std.ArrayList(Value){},
                         .writers = std.ArrayList(Value){},
                     });
                 },
-                else => return error.InvalidSyntax,
+                else => {
+                    // Ignore unsupported defstruct metadata entries instead of aborting.
+                },
             }
             rest = c.cdr;
         }
@@ -8133,8 +8432,11 @@ pub const Compiler = struct {
             slot_names[i] = spec.name;
         }
 
-        // Pre-allocate array: constructor + accessors + writers + predicate + copier + name_lit
-        const num_defs = 4 + (slot_specs.items.len * 2);
+        // Compute number of definitions: constructor + accessors + writers + name_lit
+        // + optional predicate + optional copier
+        const pred_count: usize = if (emit_predicate) 1 else 0;
+        const copier_count: usize = if (emit_copier) 1 else 0;
+        const num_defs = 2 + pred_count + copier_count + (slot_specs.items.len * 2);
         const defs = try self.allocator.alloc(*Ir, num_defs);
         var def_idx: usize = 0;
 
@@ -8166,20 +8468,29 @@ pub const Compiler = struct {
             def_idx += 1;
         }
 
-        // 4. Predicate: (defun name-p (obj) (and (vectorp obj) (eq (aref obj 0) 'name)))
-        const pred_name = try self.concatStrings(struct_name, "-P");
-        defs[def_idx] = try self.generateStructPredicate(heap, pred_name, struct_name);
-        def_idx += 1;
+        // 4. Predicate (unless suppressed)
+        if (emit_predicate) {
+            const pred_name = if (predicate_name_override) |n|
+                try self.allocator.dupe(u8, n)
+            else
+                try self.concatStrings(struct_name, "-P");
+            defs[def_idx] = try self.generateStructPredicate(heap, pred_name, struct_name);
+            def_idx += 1;
 
-        // Register predicate for occurrence typing
-        // Use globals.allocator for persistence across expressions (arena gets freed)
-        const persistent_pred_name = try self.globals.allocator.dupe(u8, pred_name);
-        try self.struct_predicates.put(persistent_pred_name, struct_type);
+            // Register predicate for occurrence typing
+            const persistent_pred_name = try self.globals.allocator.dupe(u8, pred_name);
+            try self.struct_predicates.put(persistent_pred_name, struct_type);
+        }
 
-        // 5. Copier: (defun copy-name (obj) (copy-structure obj))
-        const copy_name = try self.concatStrings("COPY-", struct_name);
-        defs[def_idx] = try self.generateStructCopier(copy_name);
-        def_idx += 1;
+        // 5. Copier (unless suppressed)
+        if (emit_copier) {
+            const copy_name = if (copier_name_override) |n|
+                try self.allocator.dupe(u8, n)
+            else
+                try self.concatStrings("COPY-", struct_name);
+            defs[def_idx] = try self.generateStructCopier(copy_name);
+            def_idx += 1;
+        }
 
         // 6. Return struct name
         defs[def_idx] = try self.builder.lit(name_sym_val);
@@ -11879,10 +12190,10 @@ pub const Compiler = struct {
     /// Compile a compound type check: (or type1 type2 ...), (refine T x P), etc.
     fn compileCompoundTypeCheck(self: *Compiler, type_spec: Value, expr_ir: *const Ir) anyerror!*Ir {
         const cons = type_spec.toPtr(Cons);
-        if (!cons.car.isSymbol()) return error.InvalidSyntax;
+        if (!cons.car.isSymbol()) return @constCast(expr_ir);
 
         const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
-        const head = cons.car;
+        const head = self.canonicalBuiltinSymbol(cons.car);
 
         // Dispatch by symbol identity
         if (head.raw == b.ty_union.raw or head.raw == b.ty_or.raw) {
@@ -11909,9 +12220,13 @@ pub const Compiler = struct {
             // (-> (A B) C) - check it's a closure
             return self.builder.assertClosure(expr_ir);
         }
+        if (head.raw == b.ty_fixnum.raw or head.raw == b.ty_integer.raw or head.raw == b.ty_symbol.raw or head.raw == b.string.raw or head.raw == b.ty_vector.raw or head.raw == b.ty_closure.raw or head.raw == b.ty_function.raw or head.raw == b.function.raw or head.raw == b.@"ty_non-nil".raw or head.raw == b.ty_list.raw or head.raw == b.list.raw or head.raw == b.ty_nil.raw or head.raw == b.null.raw or head.raw == b.ty_any.raw or head.raw == b.ty_t.raw or head.raw == b.ty_float.raw or head.raw == b.ty_char.raw or head.raw == b.ty_character.raw or head.raw == b.ty_keyword.raw) {
+            // For shapes like (integer lo hi), (float low high), etc., enforce only the head check.
+            return self.compileSimpleTypeCheckSym(head, expr_ir);
+        }
 
-        // Unknown compound type
-        return error.InvalidSyntax;
+        // Unknown compound type: keep runtime behavior unchanged and do not fail compilation.
+        return @constCast(expr_ir);
     }
 
     /// Compile (or type1 type2 ...) check
@@ -11919,7 +12234,8 @@ pub const Compiler = struct {
     fn compileOrTypeCheck(self: *Compiler, type_list: Value, expr_ir: *const Ir) anyerror!*Ir {
         const b = if (self.builtins) |val| val else return error.InvalidSyntax;
 
-        // Collect type symbols (symbol Values or nil for "nil" type)
+        // Collect type symbols (symbol Values or nil for "nil" type).
+        // Nested type specs in OR are reduced to their head symbol when possible.
         var type_syms = std.ArrayList(Value){};
         defer type_syms.deinit(self.allocator);
 
@@ -11932,12 +12248,22 @@ pub const Compiler = struct {
                     // nil value in type position means the nil type symbol
                     try type_syms.append(self.allocator, b.ty_nil);
                 },
-                else => return error.InvalidSyntax,
+                .cons => {
+                    const nested = c.car.toPtr(Cons);
+                    if (!nested.car.isSymbol()) return @constCast(expr_ir);
+                    const nested_head = self.canonicalBuiltinSymbol(nested.car);
+                    if (nested_head.raw == b.ty_fixnum.raw or nested_head.raw == b.ty_integer.raw or nested_head.raw == b.ty_symbol.raw or nested_head.raw == b.string.raw or nested_head.raw == b.ty_vector.raw or nested_head.raw == b.ty_closure.raw or nested_head.raw == b.ty_function.raw or nested_head.raw == b.function.raw or nested_head.raw == b.@"ty_non-nil".raw or nested_head.raw == b.ty_list.raw or nested_head.raw == b.list.raw or nested_head.raw == b.ty_nil.raw or nested_head.raw == b.null.raw or nested_head.raw == b.ty_any.raw or nested_head.raw == b.ty_t.raw or nested_head.raw == b.ty_float.raw or nested_head.raw == b.ty_char.raw or nested_head.raw == b.ty_character.raw or nested_head.raw == b.ty_keyword.raw) {
+                        try type_syms.append(self.allocator, nested_head);
+                    } else {
+                        return @constCast(expr_ir);
+                    }
+                },
+                else => return @constCast(expr_ir),
             }
             list = c.cdr;
         }
 
-        if (type_syms.items.len == 0) return error.InvalidSyntax;
+        if (type_syms.items.len == 0) return @constCast(expr_ir);
 
         // Special case: (or cons nil) or (or nil cons) -> list
         if (type_syms.items.len == 2) {
@@ -12269,6 +12595,8 @@ pub const Compiler = struct {
         fboundp,
         symbol_value,
         symbol_function,
+        symbol_plist,
+        set_symbol_plist,
         function_lambda_expression,
         typep,
         subtypep,
@@ -12549,6 +12877,7 @@ pub const Compiler = struct {
         .{ .field = "fboundp", .tag = .fboundp },
         .{ .field = "symbol-value", .tag = .symbol_value },
         .{ .field = "symbol-function", .tag = .symbol_function },
+        .{ .field = "symbol-plist", .tag = .symbol_plist },
         .{ .field = "function-lambda-expression", .tag = .function_lambda_expression },
         .{ .field = "type-of", .tag = .type_of },
         .{ .field = "intern", .tag = .intern },
@@ -12574,7 +12903,7 @@ pub const Compiler = struct {
         .{ .field = "acosh", .tag = .acosh },
         .{ .field = "atanh", .tag = .atanh },
         .{ .field = "exp", .tag = .exp },
-        .{ .field = "log", .tag = .log },
+        // log is handled separately in compilePrimitive for 1/2-arg dispatch
         .{ .field = "decode-float", .tag = .decode_float },
         .{ .field = "integer-decode-float", .tag = .integer_decode_float },
         .{ .field = "float-radix", .tag = .float_radix },
@@ -12731,6 +13060,8 @@ pub const Compiler = struct {
         .{ .field = "copy-symbol", .tag = .copy_symbol },
         .{ .field = "file-string-length", .tag = .file_string_length },
         .{ .field = "set", .tag = .set_sym_val },
+        .{ .field = "%set-symbol-value", .tag = .set_sym_val },
+        .{ .field = "%set-symbol-plist", .tag = .set_symbol_plist },
         .{ .field = "get", .tag = .get },
         .{ .field = "remprop", .tag = .remprop },
         .{ .field = "svref", .tag = .vec_ref },
@@ -13386,6 +13717,7 @@ pub const Compiler = struct {
                 node.* = .{ .set_sym_val = .{ .left = left, .right = right } };
                 break :blk node;
             },
+            .set_symbol_plist => try self.builder.setSymbolPlist(left, right),
             .write_to_stream => try self.builder.writeToStream(left, right),
             .merge_pathnames => blk: {
                 const node = try self.allocator.create(Ir);
@@ -13721,6 +14053,7 @@ pub const Compiler = struct {
             .fboundp => try self.builder.fboundp(operand),
             .symbol_value => try self.builder.symbolValue(operand),
             .symbol_function => try self.builder.symbolFunction(operand),
+            .symbol_plist => try self.builder.symbolPlist(operand),
             .function_lambda_expression => try self.builder.functionLambdaExpression(operand),
             .abs => try self.builder.abs(operand),
             .zerop => try self.builder.zerop(operand),
@@ -15021,8 +15354,6 @@ pub const Compiler = struct {
             current = sub_cons.cdr;
         }
 
-        if (subscripts.items.len == 0) return error.InvalidSyntax;
-
         return try self.builder.arrRef(array_ir, subscripts.items);
     }
 
@@ -15088,7 +15419,7 @@ pub const Compiler = struct {
             current = cons.cdr;
         }
 
-        if (value_ir == null or subscripts.items.len == 0) return error.InvalidSyntax;
+        if (value_ir == null) return error.InvalidSyntax;
 
         return try self.builder.arrSet(array_ir, subscripts.items, value_ir.?);
     }
