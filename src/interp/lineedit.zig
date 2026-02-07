@@ -90,17 +90,6 @@ pub const LineEditor = struct {
         }
     }
 
-test "lineedit disableRawMode requires saved termios" {
-    const testing = std.testing;
-
-    var le = LineEditor.init(testing.allocator);
-    defer le.deinit();
-
-    le.raw_mode_enabled = true;
-    le.orig_termios = null;
-    try testing.expectError(error.MissingTermios, le.disableRawMode());
-}
-
     fn refreshLine(self: *LineEditor, writer: anytype) !void {
         // Move to beginning of line, clear, print prompt and buffer
         try writer.writeAll("\r\x1b[K");
@@ -373,3 +362,14 @@ test "lineedit disableRawMode requires saved termios" {
         }
     }
 };
+
+test "lineedit disableRawMode requires saved termios" {
+    const testing = std.testing;
+
+    var le = LineEditor.init(testing.allocator);
+    defer le.deinit();
+
+    le.raw_mode_enabled = true;
+    le.orig_termios = null;
+    try testing.expectError(error.MissingTermios, le.disableRawMode());
+}

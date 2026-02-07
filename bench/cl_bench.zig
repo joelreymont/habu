@@ -25,6 +25,7 @@ const Opts = struct {
     heap_mb: usize = 256,
     iters: usize = 3,
     json: bool = false,
+    jit: bool = true,
 };
 
 fn usage(w: anytype) !void {
@@ -54,12 +55,30 @@ fn parseArgs() !Opts {
             opts.heap_mb = try std.fmt.parseInt(usize, arg["--heap-mb=".len..], 10);
         } else if (std.mem.startsWith(u8, arg, "--iters=")) {
             opts.iters = try std.fmt.parseInt(usize, arg["--iters=".len..], 10);
+        } else if (std.mem.eql(u8, arg, "--no-jit")) {
+            opts.jit = false;
         } else {
             return error.InvalidArgs;
         }
     }
     if (opts.heap_mb == 0 or opts.iters == 0) return error.InvalidArgs;
     return opts;
+}
+
+fn tryBench(timer: *std.time.Timer, heap: *Heap, vm: *Vm, chunk: *Chunk, name: []const u8, iters: usize) Bench {
+    {
+        var buf: [4096]u8 = undefined;
+        var w = std.fs.File.stderr().writer(&buf);
+        w.interface.print("START {s}\n", .{name}) catch {};
+        w.interface.flush() catch {};
+    }
+    return runBench(timer, heap, vm, chunk, name, iters) catch |err| {
+        var buf: [4096]u8 = undefined;
+        var w = std.fs.File.stderr().writer(&buf);
+        w.interface.print("SKIP {s}: {}\n", .{ name, err }) catch {};
+        w.interface.flush() catch {};
+        return .{ .name = name, .ops = 0, .ns = 0, .allocs = 0, .bytes_alloc = 0, .gc_count = 0 };
+    };
 }
 
 fn runBench(timer: *std.time.Timer, heap: *Heap, vm: *Vm, chunk: *Chunk, name: []const u8, iters: usize) !Bench {
@@ -110,19 +129,24 @@ pub fn main() !void {
     defer chunk_pool.deinit(allocator);
     vm.setChunkPool(chunk_pool.items);
 
+    // Enable JIT: hot=1 means warmup call triggers compilation
+    if (opts.jit) {
+        vm.enableJit(16 * 1024 * 1024, 1) catch {};
+    }
+
     var timer = try std.time.Timer.start();
 
-    // 1. Fixnum loop: sum 0 to 10_000_000
+    // 1. Fixnum loop: sum 0 to 10_000_000 (with type declarations for specialization)
     const fix_chunk = try common.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool,
-        "(let ((i 0) (acc 0)) (while (< i 10000000) (setq acc (+ acc i)) (setq i (+ i 1))) acc)");
+        "(let ((i 0) (acc 0)) (declare (type fixnum i acc)) (while (< i 10000000) (setq acc (the fixnum (+ (the fixnum acc) (the fixnum i)))) (setq i (the fixnum (+ (the fixnum i) 1)))) acc)");
 
-    // 2. Fibonacci: fib(35) recursive
+    // 2. Fibonacci: fib(35) recursive (typed for specialization)
     const fib_chunk = try common.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool,
-        "(progn (defun fib (n) (if (<= n 1) n (+ (fib (- n 1)) (fib (- n 2))))) (fib 35))");
+        "(progn (defun fib (n) (declare (type fixnum n)) (if (<= n 1) n (the fixnum (+ (fib (the fixnum (- n 1))) (fib (the fixnum (- n 2))))))) (fib 35))");
 
-    // 3. Tak: tak(18, 12, 6)
+    // 3. Tak: tak(18, 12, 6) (typed for specialization)
     const tak_chunk = try common.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool,
-        "(progn (defun tak (x y z) (if (<= x y) z (tak (tak (- x 1) y z) (tak (- y 1) z x) (tak (- z 1) x y)))) (tak 18 12 6))");
+        "(progn (defun tak (x y z) (declare (type fixnum x y z)) (if (<= x y) z (tak (tak (the fixnum (- x 1)) y z) (tak (the fixnum (- y 1)) z x) (tak (the fixnum (- z 1)) x y)))) (tak 18 12 6))");
 
     // 4. List length: length of 1M-element list
     const list_chunk = try common.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool,
@@ -132,20 +156,25 @@ pub fn main() !void {
     const cons_chunk = try common.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool,
         "(let ((i 0) (xs nil)) (while (< i 1000000) (setq xs (cons i xs)) (setq i (+ i 1))) xs)");
 
+    // Update chunk pool pointer (ArrayList may have grown during compilation)
+    vm.setChunkPool(chunk_pool.items);
+
     const benches = [_]Bench{
-        try runBench(&timer, &heap, &vm, fix_chunk, "fixnum_loop", opts.iters),
-        try runBench(&timer, &heap, &vm, fib_chunk, "fib35", opts.iters),
-        try runBench(&timer, &heap, &vm, tak_chunk, "tak", opts.iters),
-        try runBench(&timer, &heap, &vm, list_chunk, "list_length", opts.iters),
-        try runBench(&timer, &heap, &vm, cons_chunk, "cons_alloc", opts.iters),
+        tryBench(&timer, &heap, &vm, fix_chunk, "fixnum_loop", opts.iters),
+        tryBench(&timer, &heap, &vm, list_chunk, "list_length", opts.iters),
+        tryBench(&timer, &heap, &vm, cons_chunk, "cons_alloc", opts.iters),
+        tryBench(&timer, &heap, &vm, fib_chunk, "fib35", opts.iters),
+        tryBench(&timer, &heap, &vm, tak_chunk, "tak", opts.iters),
     };
 
     var out_buf: [4096]u8 = undefined;
     var out = std.fs.File.stdout().writer(&out_buf);
     const w = &out.interface;
 
+    const mode: []const u8 = if (vm.jit_on) "jit" else "interp";
+
     if (opts.json) {
-        try w.writeAll("{\"engine\":\"habu\",\"benches\":[");
+        try w.print("{{\"engine\":\"habu\",\"mode\":\"{s}\",\"benches\":[", .{mode});
         for (benches, 0..) |b, i| {
             if (i != 0) try w.writeByte(',');
             try w.print(
@@ -158,7 +187,7 @@ pub fn main() !void {
         return;
     }
 
-    try w.print("CL comparison bench (Habu)\n", .{});
+    try w.print("CL comparison bench (Habu, {s})\n", .{mode});
     try w.print("  heap: {d} MiB, iters: {d}\n", .{ opts.heap_mb, opts.iters });
     for (benches) |b| {
         const ms = @as(f64, @floatFromInt(b.ns)) / 1e6;

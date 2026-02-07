@@ -461,15 +461,13 @@ test "constrain eliminates redundant assert after predicate" {
     const if_node = try builder.ifExpr(cond, assert_node, else_node);
 
     const typed = TypedIr.init(if_node);
-    const result = try constrain(testing.allocator, &typed);
+    const result = try constrain(alloc, &typed);
 
     try testing.expect(result.modified);
     const out_ir = result.output.ir;
     try testing.expectEqual(std.meta.Tag(Ir).@"if", std.meta.activeTag(out_ir.*));
     const then_ir = out_ir.@"if".then_branch;
     try testing.expectEqual(std.meta.Tag(Ir).@"var", std.meta.activeTag(then_ir.*));
-
-    if (result.modified) testing.allocator.destroy(@constCast(result.output));
 }
 
 test "constrain preserves non-redundant assert" {
@@ -485,7 +483,7 @@ test "constrain preserves non-redundant assert" {
     const assert_node = try builder.assertCons(x);
 
     const typed = TypedIr.init(assert_node);
-    const result = try constrain(testing.allocator, &typed);
+    const result = try constrain(alloc, &typed);
 
     try testing.expect(!result.modified);
 }
@@ -512,15 +510,13 @@ test "constrain handles nested if" {
     const outer_if = try builder.ifExpr(cond1, inner_if, nil2);
 
     const typed = TypedIr.init(outer_if);
-    const result = try constrain(testing.allocator, &typed);
+    const result = try constrain(alloc, &typed);
 
     try testing.expect(result.modified);
     const out = result.output.ir;
     const then_branch = out.@"if".then_branch;
     const inner_then = then_branch.@"if".then_branch;
     try testing.expectEqual(std.meta.Tag(Ir).@"var", std.meta.activeTag(inner_then.*));
-
-    if (result.modified) testing.allocator.destroy(@constCast(result.output));
 }
 
 test "constrain comparison adds range" {
@@ -542,11 +538,9 @@ test "constrain comparison adds range" {
     const if_node = try builder.ifExpr(cond, assert_node, nil_node);
 
     const typed = TypedIr.init(if_node);
-    const result = try constrain(testing.allocator, &typed);
+    const result = try constrain(alloc, &typed);
 
     try testing.expect(result.modified);
     const then_ir = result.output.ir.@"if".then_branch;
     try testing.expectEqual(std.meta.Tag(Ir).@"var", std.meta.activeTag(then_ir.*));
-
-    if (result.modified) testing.allocator.destroy(@constCast(result.output));
 }

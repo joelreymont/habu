@@ -163,27 +163,27 @@ pub const Jit = struct {
             },
 
             .add => {
-                try self.emitBinaryArith(stencils.add_fixnum, @intFromPtr(&rt.add));
+                try self.emitBinaryArith(stencils.add_fixnum, @intFromPtr(rt.j_add));
             },
 
             .sub => {
-                try self.emitBinaryArith(stencils.sub_fixnum, @intFromPtr(&rt.sub));
+                try self.emitBinaryArith(stencils.sub_fixnum, @intFromPtr(rt.j_sub));
             },
 
             .mul => {
-                try self.emitBinaryMul(@intFromPtr(&rt.mul));
+                try self.emitBinaryMul(@intFromPtr(rt.j_mul));
             },
 
             .neg => {
-                try self.emitUnaryNeg(@intFromPtr(&rt.neg));
+                try self.emitUnaryNeg(@intFromPtr(rt.j_neg));
             },
 
             .div => {
-                try self.emitBinaryCall(@intFromPtr(&rt.div));
+                try self.emitBinaryCall(@intFromPtr(rt.j_div));
             },
 
             .mod => {
-                try self.emitBinaryCall(@intFromPtr(&rt.mod));
+                try self.emitBinaryCall(@intFromPtr(rt.j_mod));
             },
 
             .eq => {
@@ -193,33 +193,33 @@ pub const Jit = struct {
                 try self.emitStackPush();
             },
             .equal => {
-                try self.emitBinaryCall(@intFromPtr(&rt.equal));
+                try self.emitBinaryCall(@intFromPtr(rt.j_equal));
             },
             .eql => {
-                try self.emitBinaryCall(@intFromPtr(&rt.eql));
+                try self.emitBinaryCall(@intFromPtr(rt.j_eql));
             },
             .equalp => {
-                try self.emitBinaryCall(@intFromPtr(&rt.equalp));
+                try self.emitBinaryCall(@intFromPtr(rt.j_equalp));
             },
 
             .lt => {
-                try self.emitBinaryCompare(stencils.lt_stencil, @intFromPtr(&rt.lt));
+                try self.emitBinaryCompare(stencils.lt_stencil, @intFromPtr(rt.j_lt));
             },
 
             .gt => {
-                try self.emitBinaryCompare(stencils.gt_stencil, @intFromPtr(&rt.gt));
+                try self.emitBinaryCompare(stencils.gt_stencil, @intFromPtr(rt.j_gt));
             },
 
             .le => {
-                try self.emitBinaryCompare(stencils.le_stencil, @intFromPtr(&rt.le));
+                try self.emitBinaryCompare(stencils.le_stencil, @intFromPtr(rt.j_le));
             },
 
             .ge => {
-                try self.emitBinaryCompare(stencils.ge_stencil, @intFromPtr(&rt.ge));
+                try self.emitBinaryCompare(stencils.ge_stencil, @intFromPtr(rt.j_ge));
             },
 
             .num_eq => {
-                try self.emitBinaryCompare(stencils.eq_stencil, @intFromPtr(&rt.numEq));
+                try self.emitBinaryCompare(stencils.eq_stencil, @intFromPtr(rt.j_numEq));
             },
 
             .not => {
@@ -236,276 +236,276 @@ pub const Jit = struct {
 
             .numberp => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.numberp));
+                try self.emitCallUnary(@intFromPtr(rt.j_numberp));
                 try self.emitStackPush();
             },
             .integerp => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.integerp));
+                try self.emitCallUnary(@intFromPtr(rt.j_integerp));
                 try self.emitStackPush();
             },
             .realp => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.realp));
+                try self.emitCallUnary(@intFromPtr(rt.j_realp));
                 try self.emitStackPush();
             },
             .consp => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.consp));
+                try self.emitCallUnary(@intFromPtr(rt.j_consp));
                 try self.emitStackPush();
             },
             .symbolp => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.symbolp));
+                try self.emitCallUnary(@intFromPtr(rt.j_symbolp));
                 try self.emitStackPush();
             },
             .stringp => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.stringp));
+                try self.emitCallUnary(@intFromPtr(rt.j_stringp));
                 try self.emitStackPush();
             },
             .vectorp => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.vectorp));
+                try self.emitCallUnary(@intFromPtr(rt.j_vectorp));
                 try self.emitStackPush();
             },
             .closurep => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.closurep));
+                try self.emitCallUnary(@intFromPtr(rt.j_closurep));
                 try self.emitStackPush();
             },
             .keywordp => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.keywordp));
+                try self.emitCallUnary(@intFromPtr(rt.j_keywordp));
                 try self.emitStackPush();
             },
             .characterp => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.characterp));
+                try self.emitCallUnary(@intFromPtr(rt.j_characterp));
                 try self.emitStackPush();
             },
             .floatp => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.floatp));
+                try self.emitCallUnary(@intFromPtr(rt.j_floatp));
                 try self.emitStackPush();
             },
             .listp => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.listp));
+                try self.emitCallUnary(@intFromPtr(rt.j_listp));
                 try self.emitStackPush();
             },
             .atom => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.atom));
+                try self.emitCallUnary(@intFromPtr(rt.j_atom));
                 try self.emitStackPush();
             },
             .char_code => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.charCode));
+                try self.emitCallUnary(@intFromPtr(rt.j_charCode));
                 try self.emitStackPush();
             },
             .code_char => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.codeChar));
+                try self.emitCallUnary(@intFromPtr(rt.j_codeChar));
                 try self.emitStackPush();
             },
             .char_eq => {
-                try self.emitBinaryCall(@intFromPtr(&rt.charEq));
+                try self.emitBinaryCall(@intFromPtr(rt.j_charEq));
             },
             .char_lt => {
-                try self.emitBinaryCall(@intFromPtr(&rt.charLt));
+                try self.emitBinaryCall(@intFromPtr(rt.j_charLt));
             },
             .char_gt => {
-                try self.emitBinaryCall(@intFromPtr(&rt.charGt));
+                try self.emitBinaryCall(@intFromPtr(rt.j_charGt));
             },
             .char_upcase => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.charUpcase));
+                try self.emitCallUnary(@intFromPtr(rt.j_charUpcase));
                 try self.emitStackPush();
             },
             .char_downcase => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.charDowncase));
+                try self.emitCallUnary(@intFromPtr(rt.j_charDowncase));
                 try self.emitStackPush();
             },
             .digit_char_p => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.digitCharP));
+                try self.emitCallUnary(@intFromPtr(rt.j_digitCharP));
                 try self.emitStackPush();
             },
             .alpha_char_p => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.alphaCharP));
+                try self.emitCallUnary(@intFromPtr(rt.j_alphaCharP));
                 try self.emitStackPush();
             },
             .string_upcase => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.stringUpcase));
+                try self.emitCallUnary(@intFromPtr(rt.j_stringUpcase));
                 try self.emitStackPush();
             },
             .string_downcase => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.stringDowncase));
+                try self.emitCallUnary(@intFromPtr(rt.j_stringDowncase));
                 try self.emitStackPush();
             },
             .write_to_string => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.writeToString));
+                try self.emitCallUnary(@intFromPtr(rt.j_writeToString));
                 try self.emitStackPush();
             },
             .str_ref => {
-                try self.emitBinaryCall(@intFromPtr(&rt.strRef));
+                try self.emitBinaryCall(@intFromPtr(rt.j_strRef));
             },
             .str_len => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.strLen));
+                try self.emitCallUnary(@intFromPtr(rt.j_strLen));
                 try self.emitStackPush();
             },
             .str_set => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = 0 },
                 });
-                try self.emitCallUnary(@intFromPtr(&rt.strSet));
+                try self.emitCallUnary(@intFromPtr(rt.j_strSet));
             },
             .str_concat => {
-                try self.emitBinaryCall(@intFromPtr(&rt.strConcat));
+                try self.emitBinaryCall(@intFromPtr(rt.j_strConcat));
             },
             .str_eq => {
-                try self.emitBinaryCall(@intFromPtr(&rt.strEq));
+                try self.emitBinaryCall(@intFromPtr(rt.j_strEq));
             },
             .str_lt => {
-                try self.emitBinaryCall(@intFromPtr(&rt.strLt));
+                try self.emitBinaryCall(@intFromPtr(rt.j_strLt));
             },
             .str_gt => {
-                try self.emitBinaryCall(@intFromPtr(&rt.strGt));
+                try self.emitBinaryCall(@intFromPtr(rt.j_strGt));
             },
             .str_le => {
-                try self.emitBinaryCall(@intFromPtr(&rt.strLe));
+                try self.emitBinaryCall(@intFromPtr(rt.j_strLe));
             },
             .str_ge => {
-                try self.emitBinaryCall(@intFromPtr(&rt.strGe));
+                try self.emitBinaryCall(@intFromPtr(rt.j_strGe));
             },
             .random => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.random));
+                try self.emitCallUnary(@intFromPtr(rt.j_random));
                 try self.emitStackPush();
             },
             .random_seed => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.randomSeed));
+                try self.emitCallUnary(@intFromPtr(rt.j_randomSeed));
                 try self.emitStackPush();
             },
             .write => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.write));
+                try self.emitCallUnary(@intFromPtr(rt.j_write));
                 try self.emitStackPush();
             },
             .print => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.print));
+                try self.emitCallUnary(@intFromPtr(rt.j_print));
                 try self.emitStackPush();
             },
             .princ => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.princ));
+                try self.emitCallUnary(@intFromPtr(rt.j_princ));
                 try self.emitStackPush();
             },
             .terpri => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = 0 },
                 });
-                try self.emitCallUnary(@intFromPtr(&rt.terpri));
+                try self.emitCallUnary(@intFromPtr(rt.j_terpri));
                 try self.emitStackPush();
             },
             .write_char => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.writeChar));
+                try self.emitCallUnary(@intFromPtr(rt.j_writeChar));
                 try self.emitStackPush();
             },
 
             .list_length => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.listLength));
+                try self.emitCallUnary(@intFromPtr(rt.j_listLength));
                 try self.emitStackPush();
             },
             .list_member => {
-                try self.emitBinaryCall(@intFromPtr(&rt.listMember));
+                try self.emitBinaryCall(@intFromPtr(rt.j_listMember));
             },
             .list_member_eql => {
-                try self.emitBinaryCall(@intFromPtr(&rt.listMemberEql));
+                try self.emitBinaryCall(@intFromPtr(rt.j_listMemberEql));
             },
             .list_member_equal => {
-                try self.emitBinaryCall(@intFromPtr(&rt.listMemberEqual));
+                try self.emitBinaryCall(@intFromPtr(rt.j_listMemberEqual));
             },
             .assoc => {
-                try self.emitBinaryCall(@intFromPtr(&rt.assoc));
+                try self.emitBinaryCall(@intFromPtr(rt.j_assoc));
             },
             .assoc_eql => {
-                try self.emitBinaryCall(@intFromPtr(&rt.assocEql));
+                try self.emitBinaryCall(@intFromPtr(rt.j_assocEql));
             },
             .assoc_equal => {
-                try self.emitBinaryCall(@intFromPtr(&rt.assocEqual));
+                try self.emitBinaryCall(@intFromPtr(rt.j_assocEqual));
             },
             .list_find => {
-                try self.emitBinaryCall(@intFromPtr(&rt.listFind));
+                try self.emitBinaryCall(@intFromPtr(rt.j_listFind));
             },
             .list_find_eq => {
-                try self.emitBinaryCall(@intFromPtr(&rt.listFindEq));
+                try self.emitBinaryCall(@intFromPtr(rt.j_listFindEq));
             },
             .list_find_equal => {
-                try self.emitBinaryCall(@intFromPtr(&rt.listFindEqual));
+                try self.emitBinaryCall(@intFromPtr(rt.j_listFindEqual));
             },
             .list_position => {
-                try self.emitBinaryCall(@intFromPtr(&rt.listPosition));
+                try self.emitBinaryCall(@intFromPtr(rt.j_listPosition));
             },
             .list_count => {
-                try self.emitBinaryCall(@intFromPtr(&rt.listCount));
+                try self.emitBinaryCall(@intFromPtr(rt.j_listCount));
             },
             .list_count_eq => {
-                try self.emitBinaryCall(@intFromPtr(&rt.listCountEq));
+                try self.emitBinaryCall(@intFromPtr(rt.j_listCountEq));
             },
             .list_count_equal => {
-                try self.emitBinaryCall(@intFromPtr(&rt.listCountEqual));
+                try self.emitBinaryCall(@intFromPtr(rt.j_listCountEqual));
             },
             .list_remove => {
-                try self.emitBinaryCall(@intFromPtr(&rt.listRemove));
+                try self.emitBinaryCall(@intFromPtr(rt.j_listRemove));
             },
             .list_remove_eq => {
-                try self.emitBinaryCall(@intFromPtr(&rt.listRemoveEq));
+                try self.emitBinaryCall(@intFromPtr(rt.j_listRemoveEq));
             },
             .list_remove_equal => {
-                try self.emitBinaryCall(@intFromPtr(&rt.listRemoveEqual));
+                try self.emitBinaryCall(@intFromPtr(rt.j_listRemoveEqual));
             },
             .list_last => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.listLast));
+                try self.emitCallUnary(@intFromPtr(rt.j_listLast));
                 try self.emitStackPush();
             },
 
             .list_reverse => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.listReverse));
+                try self.emitCallUnary(@intFromPtr(rt.j_listReverse));
                 try self.emitStackPush();
             },
 
             .append_lists => {
-                try self.emitBinaryCall(@intFromPtr(&rt.appendLists));
+                try self.emitBinaryCall(@intFromPtr(rt.j_appendLists));
             },
 
             .list_nth => {
-                try self.emitBinaryCall(@intFromPtr(&rt.listNth));
+                try self.emitBinaryCall(@intFromPtr(rt.j_listNth));
             },
 
             .list_nthcdr => {
-                try self.emitBinaryCall(@intFromPtr(&rt.listNthcdr));
+                try self.emitBinaryCall(@intFromPtr(rt.j_listNthcdr));
             },
 
             .rplaca => {
-                try self.emitBinaryCall(@intFromPtr(&rt.rplaca));
+                try self.emitBinaryCall(@intFromPtr(rt.j_rplaca));
             },
 
             .rplacd => {
-                try self.emitBinaryCall(@intFromPtr(&rt.rplacd));
+                try self.emitBinaryCall(@intFromPtr(rt.j_rplacd));
             },
 
             .dup => {
@@ -585,7 +585,7 @@ pub const Jit = struct {
             },
 
             .cons => {
-                try self.emitBinaryCall(@intFromPtr(&rt.cons));
+                try self.emitBinaryCall(@intFromPtr(rt.j_cons));
             },
 
             .car => {
@@ -674,7 +674,7 @@ pub const Jit = struct {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = @as(u64, idx) },
                 });
-                try self.emitCallUnary(@intFromPtr(&rt.loadCapture));
+                try self.emitCallUnary(@intFromPtr(rt.j_loadCapture));
                 try self.emitStackPush();
             },
             .load_upvalue => {
@@ -685,7 +685,7 @@ pub const Jit = struct {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = @as(u64, idx) },
                 });
-                try self.emitCallUnary(@intFromPtr(&rt.loadUpvalue));
+                try self.emitCallUnary(@intFromPtr(rt.j_loadUpvalue));
                 try self.emitStackPush();
             },
             .store_upvalue => {
@@ -698,7 +698,7 @@ pub const Jit = struct {
                 });
                 _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x1_x0, &[_]patch.PatchValue{});
                 try self.emitStackPop();
-                try self.emitCallBinary(@intFromPtr(&rt.storeUpvalue));
+                try self.emitCallBinary(@intFromPtr(rt.j_storeUpvalue));
             },
             .load_global => {
                 const idx = chunk.readU16(bc_offset.*);
@@ -706,7 +706,7 @@ pub const Jit = struct {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = @as(u64, idx) },
                 });
-                try self.emitCallUnary(@intFromPtr(&rt.loadGlobal));
+                try self.emitCallUnary(@intFromPtr(rt.j_loadGlobal));
                 try self.emitStackPush();
             },
             .store_global => {
@@ -717,13 +717,13 @@ pub const Jit = struct {
                 });
                 _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x1_x0, &[_]patch.PatchValue{});
                 try self.emitStackPop();
-                try self.emitCallBinary(@intFromPtr(&rt.storeGlobal));
+                try self.emitCallBinary(@intFromPtr(rt.j_storeGlobal));
             },
             .load_argc => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = 0 },
                 });
-                try self.emitCallUnary(@intFromPtr(&rt.loadArgc));
+                try self.emitCallUnary(@intFromPtr(rt.j_loadArgc));
                 try self.emitStackPush();
             },
             .make_vec => {
@@ -732,7 +732,7 @@ pub const Jit = struct {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = 0 },
                 });
-                try self.emitCallUnary(@intFromPtr(&rt.makeVec));
+                try self.emitCallUnary(@intFromPtr(rt.j_makeVec));
             },
             .make_vec_n => {
                 const count = chunk.readU8(bc_offset.*);
@@ -740,61 +740,61 @@ pub const Jit = struct {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = @as(u64, count) },
                 });
-                try self.emitCallUnary(@intFromPtr(&rt.makeVecN));
+                try self.emitCallUnary(@intFromPtr(rt.j_makeVecN));
             },
             .vec_ref => {
-                try self.emitBinaryCall(@intFromPtr(&rt.vecRef));
+                try self.emitBinaryCall(@intFromPtr(rt.j_vecRef));
             },
             .vec_set => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = 0 },
                 });
-                try self.emitCallUnary(@intFromPtr(&rt.vecSet));
+                try self.emitCallUnary(@intFromPtr(rt.j_vecSet));
             },
             .vec_len => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.vecLen));
+                try self.emitCallUnary(@intFromPtr(rt.j_vecLen));
                 try self.emitStackPush();
             },
             .vec_fill_ptr => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.vecFillPtr));
+                try self.emitCallUnary(@intFromPtr(rt.j_vecFillPtr));
                 try self.emitStackPush();
             },
             .vec_push => {
-                try self.emitBinaryCall(@intFromPtr(&rt.vecPush));
+                try self.emitBinaryCall(@intFromPtr(rt.j_vecPush));
             },
             .vec_push_ext => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = 0 },
                 });
-                try self.emitCallUnary(@intFromPtr(&rt.vecPushExt));
+                try self.emitCallUnary(@intFromPtr(rt.j_vecPushExt));
             },
             .vec_pop => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.vecPop));
+                try self.emitCallUnary(@intFromPtr(rt.j_vecPop));
                 try self.emitStackPush();
             },
             .vec_set_fill_ptr => {
-                try self.emitBinaryCall(@intFromPtr(&rt.vecSetFillPtr));
+                try self.emitBinaryCall(@intFromPtr(rt.j_vecSetFillPtr));
             },
             .vec_set_adjustable => {
-                try self.emitBinaryCall(@intFromPtr(&rt.vecSetAdjustable));
+                try self.emitBinaryCall(@intFromPtr(rt.j_vecSetAdjustable));
             },
             .vec_adjust => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = 0 },
                 });
-                try self.emitCallUnary(@intFromPtr(&rt.vecAdjust));
+                try self.emitCallUnary(@intFromPtr(rt.j_vecAdjust));
             },
             .copy_structure => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.copyStructure));
+                try self.emitCallUnary(@intFromPtr(rt.j_copyStructure));
                 try self.emitStackPush();
             },
             .function_lambda_expression => {
                 try self.emitStackPop();
-                try self.emitCallUnary(@intFromPtr(&rt.functionLambdaExpression));
+                try self.emitCallUnary(@intFromPtr(rt.j_functionLambdaExpression));
                 try self.emitStackPush();
             },
             .call, .tail_call => {
@@ -803,13 +803,13 @@ pub const Jit = struct {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = @as(u64, argc) },
                 });
-                try self.emitCallUnary(@intFromPtr(&rt.call));
+                try self.emitCallUnary(@intFromPtr(rt.j_call));
             },
             .apply => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = 0 },
                 });
-                try self.emitCallUnary(@intFromPtr(&rt.apply));
+                try self.emitCallUnary(@intFromPtr(rt.j_apply));
             },
             .make_list => {
                 const count = chunk.readU8(bc_offset.*);
@@ -817,7 +817,7 @@ pub const Jit = struct {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = @as(u64, count) },
                 });
-                try self.emitCallUnary(@intFromPtr(&rt.makeList));
+                try self.emitCallUnary(@intFromPtr(rt.j_makeList));
             },
             .make_closure => {
                 const chunk_idx = chunk.readU16(bc_offset.*);
@@ -831,7 +831,43 @@ pub const Jit = struct {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = @as(u64, chunk_idx) },
                 });
-                try self.emitCallBinary(@intFromPtr(&rt.makeClosure));
+                try self.emitCallBinary(@intFromPtr(rt.j_makeClosure));
+            },
+
+            // Specialized (type-proven) operations — no guards, no slow path
+            .fixnum_add => {
+                try self.emitStackPopX1();
+                try self.emitStackPop();
+                _ = try patch.patchStencil(&self.code_buffer, stencils.spec_fixnum_add, &[_]patch.PatchValue{});
+                try self.emitStackPush();
+            },
+            .fixnum_sub => {
+                try self.emitStackPopX1();
+                try self.emitStackPop();
+                _ = try patch.patchStencil(&self.code_buffer, stencils.spec_fixnum_sub, &[_]patch.PatchValue{});
+                try self.emitStackPush();
+            },
+            .fixnum_mul => {
+                try self.emitStackPopX1();
+                try self.emitStackPop();
+                _ = try patch.patchStencil(&self.code_buffer, stencils.spec_fixnum_mul, &[_]patch.PatchValue{});
+                try self.emitStackPush();
+            },
+            .unsafe_car => {
+                try self.emitStackPop();
+                _ = try patch.patchStencil(&self.code_buffer, stencils.spec_unsafe_car, &[_]patch.PatchValue{});
+                try self.emitStackPush();
+            },
+            .unsafe_cdr => {
+                try self.emitStackPop();
+                _ = try patch.patchStencil(&self.code_buffer, stencils.spec_unsafe_cdr, &[_]patch.PatchValue{});
+                try self.emitStackPush();
+            },
+            .direct_aref => {
+                try self.emitStackPopX1(); // index
+                try self.emitStackPop(); // vector
+                _ = try patch.patchStencil(&self.code_buffer, stencils.spec_direct_aref, &[_]patch.PatchValue{});
+                try self.emitStackPush();
             },
 
             else => return error.UnsupportedOpcode,
@@ -872,36 +908,40 @@ pub const Jit = struct {
         try self.err_branches.append(self.allocator, branch_offset);
     }
 
-    // Zig error-union ABI uses an sret pointer; pass ret_buf in x0 and x8 and shift args by one.
-    fn emitCallUnary(self: *Jit, addr: usize) JitError!void {
-        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x2_x0, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x1_x22, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.store_ctx_sp, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.clear_retbuf_err, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.load_err_trace, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x8_x21, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.call_abs, &[_]patch.PatchValue{
-            .{ .imm64 = addr },
-        });
-        // Runtime calls may trigger GC; refresh ctx-derived state.
-        try self.emitLoadCtxSp();
-        try self.emitRuntimeCheck();
+    // C-ABI runtime check: only checks retbuf.err, result stays in x0.
+    fn emitRuntimeCheckC(self: *Jit) JitError!void {
+        const start = try patch.patchStencil(&self.code_buffer, stencils.runtime_check_c, &[_]patch.PatchValue{});
+        const branch_offset = start + stencils.runtime_check_c_branch_offset;
+        try self.err_branches.append(self.allocator, branch_offset);
     }
 
-    fn emitCallBinary(self: *Jit, addr: usize) JitError!void {
-        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x3_x1, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x2_x0, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x1_x22, &[_]patch.PatchValue{});
+    // C-ABI call: x0=ctx, x1=arg, return u64 in x0. Errors via retbuf.
+    fn emitCallUnary(self: *Jit, addr: usize) JitError!void {
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x1_x0, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x0_x22, &[_]patch.PatchValue{});
         _ = try patch.patchStencil(&self.code_buffer, stencils.store_ctx_sp, &[_]patch.PatchValue{});
         _ = try patch.patchStencil(&self.code_buffer, stencils.clear_retbuf_err, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.load_err_trace, &[_]patch.PatchValue{});
-        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x8_x21, &[_]patch.PatchValue{});
         _ = try patch.patchStencil(&self.code_buffer, stencils.call_abs, &[_]patch.PatchValue{
             .{ .imm64 = addr },
         });
         // Runtime calls may trigger GC; refresh ctx-derived state.
         try self.emitLoadCtxSp();
-        try self.emitRuntimeCheck();
+        try self.emitRuntimeCheckC();
+    }
+
+    // C-ABI call: x0=ctx, x1=arg0, x2=arg1, return u64 in x0. Errors via retbuf.
+    fn emitCallBinary(self: *Jit, addr: usize) JitError!void {
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x2_x1, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x1_x0, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x0_x22, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.store_ctx_sp, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.clear_retbuf_err, &[_]patch.PatchValue{});
+        _ = try patch.patchStencil(&self.code_buffer, stencils.call_abs, &[_]patch.PatchValue{
+            .{ .imm64 = addr },
+        });
+        // Runtime calls may trigger GC; refresh ctx-derived state.
+        try self.emitLoadCtxSp();
+        try self.emitRuntimeCheckC();
     }
 
     fn emitGuardFixnumX0(self: *Jit) JitError!usize {
@@ -1430,15 +1470,13 @@ test "jit compile numberp" {
         stencils.load_imm64.code.len +
         stencils.stack_push.code.len +
         stencils.stack_pop.code.len +
-        stencils.mov_x2_x0.code.len +
-        stencils.mov_x1_x22.code.len +
+        stencils.mov_x1_x0.code.len +
+        stencils.mov_x0_x22.code.len +
         stencils.store_ctx_sp.code.len +
         stencils.clear_retbuf_err.code.len +
-        stencils.load_err_trace.code.len +
-        stencils.mov_x8_x21.code.len +
         stencils.call_abs.code.len +
         stencils.load_ctx_sp.code.len +
-        stencils.runtime_check.code.len +
+        stencils.runtime_check_c.code.len +
         stencils.stack_push.code.len +
         stencils.stack_pop.code.len +
         stencils.epilogue_stencil.code.len +
@@ -1492,16 +1530,14 @@ test "jit compile add" {
         stencils.add_fixnum.code.len +
         stencils.fixnum_range_check.code.len +
         stencils.branch_stencil.code.len +
-        stencils.mov_x3_x1.code.len +
-        stencils.mov_x2_x0.code.len +
-        stencils.mov_x1_x22.code.len +
+        stencils.mov_x2_x1.code.len +
+        stencils.mov_x1_x0.code.len +
+        stencils.mov_x0_x22.code.len +
         stencils.store_ctx_sp.code.len +
         stencils.clear_retbuf_err.code.len +
-        stencils.load_err_trace.code.len +
-        stencils.mov_x8_x21.code.len +
         stencils.call_abs.code.len +
         stencils.load_ctx_sp.code.len +
-        stencils.runtime_check.code.len +
+        stencils.runtime_check_c.code.len +
         stencils.stack_push.code.len +
         stencils.stack_pop.code.len +
         stencils.epilogue_stencil.code.len +

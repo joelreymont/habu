@@ -754,6 +754,19 @@ pub const runtime_check = Stencil{
 };
 pub const runtime_check_branch_offset: usize = 4;
 
+/// C-ABI runtime check: only check retbuf.err, don't overwrite x0.
+/// Used after callconv(.c) calls where result is already in x0.
+pub const runtime_check_c = Stencil{
+    .name = "runtime_check_c",
+    .code = &(
+        // LDRH w9, [x21, #8]
+        inst_bytes(0x794012A9) ++
+            // CBNZ w9, <err>
+            inst_bytes(cbnz_w_placeholder(X9))),
+    .holes = &[_]Hole{},
+};
+pub const runtime_check_c_branch_offset: usize = 4;
+
 /// Store error tag to ctx.err
 pub const store_err = Stencil{
     .name = "store_err",
@@ -898,6 +911,102 @@ pub const nilp_stencil = Stencil{
 };
 
 // ============================================================================
+// Specialized (type-proven) stencils — NO runtime type checks
+// ============================================================================
+
+/// Specialized fixnum add: x0 = a.raw +% b.raw -% 1
+/// Both operands proven fixnum by type system. No guards, no slow path.
+/// Input: x0 = a, x1 = b (tagged fixnums)
+/// Output: x0 = tagged fixnum result
+pub const spec_fixnum_add = Stencil{
+    .name = "spec_fixnum_add",
+    .code = &(
+        // ADD x0, x0, x1
+        inst_bytes(add_reg(X0, X0, X1)) ++
+            // SUB x0, x0, #1
+            inst_bytes(sub_imm(X0, X0, 1))),
+    .holes = &[_]Hole{},
+};
+
+/// Specialized fixnum sub: x0 = (a.raw -% b.raw) | 1
+/// Input: x0 = a, x1 = b (tagged fixnums)
+/// Output: x0 = tagged fixnum result
+pub const spec_fixnum_sub = Stencil{
+    .name = "spec_fixnum_sub",
+    .code = &(
+        // SUB x0, x0, x1
+        inst_bytes(sub_reg(X0, X0, X1)) ++
+            // ORR x0, x0, #1
+            inst_bytes(orr_imm_bit0(X0, X0))),
+    .holes = &[_]Hole{},
+};
+
+/// Specialized fixnum mul: x0 = ((a>>1) *% (b>>1)) << 1 | 1
+/// Input: x0 = a, x1 = b (tagged fixnums)
+/// Output: x0 = tagged fixnum result
+pub const spec_fixnum_mul = Stencil{
+    .name = "spec_fixnum_mul",
+    .code = &(
+        // ASR x9, x0, #1   (unbox a)
+        inst_bytes(asr_imm(X9, X0, 1)) ++
+            // ASR x10, x1, #1   (unbox b)
+            inst_bytes(asr_imm(X10, X1, 1)) ++
+            // MUL x0, x9, x10
+            inst_bytes(mul_reg(X0, X9, X10)) ++
+            // LSL x0, x0, #1
+            inst_bytes(lsl_imm(X0, X0, 1)) ++
+            // ORR x0, x0, #1
+            inst_bytes(orr_imm_bit0(X0, X0))),
+    .holes = &[_]Hole{},
+};
+
+/// Specialized unsafe car: x0 = cons.car (no nil check, no type check)
+/// Input: x0 = tagged cons pointer
+/// Output: x0 = car value
+pub const spec_unsafe_car = Stencil{
+    .name = "spec_unsafe_car",
+    .code = &(
+        // AND x0, x0, PTR_MASK (~0xF) — clear low 4 tag bits
+        // BIC x0, x0, #0xF = AND x0, x0, #~0xF
+        // N=1, immr=0, imms=59 encodes 0xFFFFFFFFFFFFFFF0
+        inst_bytes(0x927CEC00) ++
+            // LDR x0, [x0]     (car at offset 0)
+            inst_bytes(0xF9400000)),
+    .holes = &[_]Hole{},
+};
+
+/// Specialized unsafe cdr: x0 = cons.cdr (no nil check, no type check)
+/// Input: x0 = tagged cons pointer
+/// Output: x0 = cdr value
+pub const spec_unsafe_cdr = Stencil{
+    .name = "spec_unsafe_cdr",
+    .code = &(
+        // AND x0, x0, #~0xF — clear low 4 tag bits
+        inst_bytes(0x927CEC00) ++
+            // LDR x0, [x0, #8]  (cdr at offset 8)
+            inst_bytes(0xF9400400)),
+    .holes = &[_]Hole{},
+};
+
+/// Specialized direct aref: x0 = vec.data[idx]
+/// Input: x0 = tagged vector pointer, x1 = tagged fixnum index
+/// Output: x0 = element value
+/// Vector layout: length(0), capacity(8), data ptr(16), fill_pointer(24)
+pub const spec_direct_aref = Stencil{
+    .name = "spec_direct_aref",
+    .code = &(
+        // AND x0, x0, #~0xF — clear tag bits from vector
+        inst_bytes(0x927CEC00) ++
+            // LDR x0, [x0, #16]  — load data pointer (offset 16)
+            inst_bytes(0xF9400800) ++
+            // ASR x1, x1, #1     — unbox fixnum index
+            inst_bytes(asr_imm(X1, X1, 1)) ++
+            // LDR x0, [x0, x1, LSL #3]  — load data[idx] (each Value is 8 bytes)
+            inst_bytes(0xF8617800)),
+    .holes = &[_]Hole{},
+};
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -953,12 +1062,21 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 12), nilp_stencil.code.len);
     try testing.expectEqual(@as(usize, 12), fixnump_stencil.code.len);
     try testing.expectEqual(@as(usize, 12), runtime_check.code.len);
+    try testing.expectEqual(@as(usize, 8), runtime_check_c.code.len);
     try testing.expectEqual(@as(usize, 4), store_err.code.len);
     try testing.expectEqual(@as(usize, 12), mul_overflow_check.code.len);
     try testing.expectEqual(@as(usize, 36), fixnum_range_check.code.len);
 
     // Call stencils
     try testing.expectEqual(@as(usize, 20), call_abs.code.len);
+
+    // Specialized stencils (type-proven, no guards)
+    try testing.expectEqual(@as(usize, 8), spec_fixnum_add.code.len);
+    try testing.expectEqual(@as(usize, 8), spec_fixnum_sub.code.len);
+    try testing.expectEqual(@as(usize, 20), spec_fixnum_mul.code.len);
+    try testing.expectEqual(@as(usize, 8), spec_unsafe_car.code.len);
+    try testing.expectEqual(@as(usize, 8), spec_unsafe_cdr.code.len);
+    try testing.expectEqual(@as(usize, 16), spec_direct_aref.code.len);
 }
 
 test "instruction encoding" {

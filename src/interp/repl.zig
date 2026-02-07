@@ -1147,13 +1147,14 @@ pub const Repl = struct {
         var normalized = expr;
         normalized = try self.desugarExpr(normalized);
         const ir_node = try self.compiler.compile(normalized, &env);
+        const specialized = try self.specializeIr(ir_node);
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
         emitter.speed = self.compiler.optimize_current.speed;
         emitter.safety = self.compiler.optimize_current.safety;
         defer emitter.deinit();
-        try emitter.emit(ir_node);
+        try emitter.emit(specialized);
         const chunk = try emitter.finalize();
         const child_chunks = try emitter.getChildChunks();
         defer self.allocator.free(child_chunks);
@@ -1742,13 +1743,14 @@ pub const Repl = struct {
         const ir_node = if (self.compiler.compile(expr, &env)) |node| node else |err| {
             return err;
         };
+        const specialized = try self.specializeIr(ir_node);
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
         emitter.speed = self.compiler.optimize_current.speed;
         emitter.safety = self.compiler.optimize_current.safety;
         defer emitter.deinit();
-        try emitter.emit(ir_node);
+        try emitter.emit(specialized);
         const chunk = try emitter.finalize();
         const child_chunks = try emitter.getChildChunks();
         defer self.allocator.free(child_chunks);
@@ -1797,10 +1799,11 @@ pub const Repl = struct {
         self.macros.deinit();
     }
 
-    /// Run nanopass pipeline on IR, returning transformed IR
-    /// Pipeline: annotate → infer → erase
-    fn runPipeline(self: *Repl, ir_node: *const Ir) !*const Ir {
-        return try passes.runNanoPipeline(self.allocator, &self.vm.builtins, ir_node);
+    /// Run specialization pass on IR, replacing generic ops with
+    /// type-specialized variants where types are proven by assertions.
+    /// E.g., (add (assert_fixnum x) (assert_fixnum y)) → fixnum_add
+    fn specializeIr(self: *Repl, ir_node: *const Ir) !*const Ir {
+        return try passes.specialize.specialize(self.compiler.allocator, ir_node);
     }
 
     /// Run the REPL loop with File-based I/O
@@ -2109,6 +2112,7 @@ pub const Repl = struct {
             };
             return err;
         };
+        const specialized = try self.specializeIr(ir_node);
 
         // Emit bytecode (with heap for symbol interning)
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
@@ -2116,7 +2120,7 @@ pub const Repl = struct {
         emitter.safety = self.compiler.optimize_current.safety;
         defer emitter.deinit();
 
-        try emitter.emit(ir_node);
+        try emitter.emit(specialized);
         const chunk = try emitter.finalize();
         const child_chunks = try emitter.getChildChunks();
 
@@ -2708,13 +2712,14 @@ pub const Repl = struct {
             std.debug.print("Compile error: {s}\n", .{@errorName(err)});
             return err;
         };
+        const specialized = try self.specializeIr(ir_node);
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
         emitter.speed = self.compiler.optimize_current.speed;
         emitter.safety = self.compiler.optimize_current.safety;
         defer emitter.deinit();
-        try emitter.emit(ir_node);
+        try emitter.emit(specialized);
         const chunk = try emitter.finalize();
         const child_chunks = try emitter.getChildChunks();
         defer self.allocator.free(child_chunks);
@@ -2919,14 +2924,15 @@ pub const Repl = struct {
 
         // Compile-time EVAL-WHEN execution should follow dynamic REPL semantics.
         // Running nanopass inference here rejects valid ANSI helper forms.
-        const final_ir = ir_node;
+        // But we still run specialization for performance.
+        const specialized = try self.specializeIr(ir_node);
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
         emitter.speed = self.compiler.optimize_current.speed;
         emitter.safety = self.compiler.optimize_current.safety;
         defer emitter.deinit();
-        try emitter.emit(final_ir);
+        try emitter.emit(specialized);
         const chunk = try emitter.finalize();
         const child_chunks = try emitter.getChildChunks();
         defer self.allocator.free(child_chunks);
@@ -3353,13 +3359,14 @@ pub const Repl = struct {
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
         const ir_node = try self.compiler.compile(expr, &env);
+        const specialized = try self.specializeIr(ir_node);
 
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
         emitter.speed = self.compiler.optimize_current.speed;
         emitter.safety = self.compiler.optimize_current.safety;
         defer emitter.deinit();
-        try emitter.emit(ir_node);
+        try emitter.emit(specialized);
         const chunk = try emitter.finalize();
 
         // Execute package side effects in the active VM context.
@@ -3822,4 +3829,55 @@ test "symbol-package on keyword returns KEYWORD package" {
     try testing.expect(result.isString());
     const str = result.toPtr(@import("../runtime/objects.zig").String);
     try testing.expectEqualStrings("KEYWORD", str.bytes());
+}
+
+test "specialize pass produces fixnum_add for (the fixnum) operands" {
+    // Verify that (+ (the fixnum a) (the fixnum b)) uses fixnum_add at runtime
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    // (the fixnum x) wraps operands with assert_fixnum, enabling fixnum_add specialization
+    const result = try repl.eval("(+ (the fixnum 10) (the fixnum 20))");
+    try testing.expectEqual(@as(i64, 30), result.toFixnum());
+}
+
+test "specialize pass produces fixnum_sub for (the fixnum) operands" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval("(- (the fixnum 50) (the fixnum 20))");
+    try testing.expectEqual(@as(i64, 30), result.toFixnum());
+}
+
+test "specialize pass - literal fixnum addition specializes" {
+    // Literal fixnums are also recognized as proven fixnum by the specialize pass
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval("(+ 3 4)");
+    try testing.expectEqual(@as(i64, 7), result.toFixnum());
 }

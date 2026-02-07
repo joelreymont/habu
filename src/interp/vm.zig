@@ -9383,6 +9383,54 @@ test "vm jit survives gc and reloads const_pool" {
     try testing.expectEqual(@as(u64, 0), vm.jitStats().fail_n);
 }
 
+test "vm jit cons binary call" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 });
+    defer heap.deinit();
+
+    var vm_inst = try Vm.init(allocator, &heap);
+    defer vm_inst.deinit();
+
+    try vm_inst.enableJit(1024 * 1024, 1);
+
+    // (cons 1 2) → push_i32 1, push_i32 2, cons, ret
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const cons_op: u16 = @intFromEnum(Op.cons);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        1, 0, 0, 0,
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        2, 0, 0, 0,
+        @truncate(cons_op & 0xFF), @truncate(cons_op >> 8),
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk_val = try heap.allocChunk(&code, &[_]Value{}, 0, 0, 0, false, 0);
+    const chunk = chunk_val.toPtr(Chunk);
+
+    // First run triggers JIT compilation.
+    const r0 = try vm_inst.run(chunk);
+    try testing.expect(r0.isCons());
+    const car0 = r0.toPtr(runtime.Cons).car;
+    const cdr0 = r0.toPtr(runtime.Cons).cdr;
+    try testing.expectEqual(@as(u64, Value.makeFixnum(1).raw), car0.raw);
+    try testing.expectEqual(@as(u64, Value.makeFixnum(2).raw), cdr0.raw);
+    try testing.expectEqual(@as(u64, 1), vm_inst.jitStats().compile_n);
+
+    // Second run uses JIT-compiled code.
+    const r1 = try vm_inst.run(chunk);
+    try testing.expect(r1.isCons());
+    const car1 = r1.toPtr(runtime.Cons).car;
+    const cdr1 = r1.toPtr(runtime.Cons).cdr;
+    try testing.expectEqual(@as(u64, Value.makeFixnum(1).raw), car1.raw);
+    try testing.expectEqual(@as(u64, Value.makeFixnum(2).raw), cdr1.raw);
+}
+
 test "vm callClosure runs and restores" {
     const testing = std.testing;
     const allocator = testing.allocator;

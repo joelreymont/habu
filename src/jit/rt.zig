@@ -14,6 +14,46 @@ const std = @import("std");
 
 const BinaryOp = *const fn (*runtime.Heap, Value, Value) arith.Error!Value;
 
+// C-ABI wrapper generator for JIT call targets.
+// Zig's internal ABI for error unions differs between Debug and Release
+// (hidden error return trace, sret placement). C calling convention is stable.
+fn coerce(comptime T: type, raw: u64) T {
+    if (T == Value) return Value{ .raw = raw };
+    if (T == u8) return @truncate(raw);
+    if (T == u16) return @truncate(raw);
+    if (T == *ctx.JitContext) return @ptrFromInt(raw);
+    @compileError("unsupported JIT arg type: " ++ @typeName(T));
+}
+
+pub fn cWrap1(comptime f: anytype) *const fn (*ctx.JitContext, u64) callconv(.c) u64 {
+    const info = @typeInfo(@TypeOf(f)).@"fn";
+    const P1 = info.params[1].type.?;
+    return &struct {
+        fn call(c: *ctx.JitContext, a: u64) callconv(.c) u64 {
+            const val = @call(.auto, f, .{ c, coerce(P1, a) }) catch |err| {
+                c.ret_buf.err = @intFromError(err);
+                return Value.nil.raw;
+            };
+            return val.raw;
+        }
+    }.call;
+}
+
+pub fn cWrap2(comptime f: anytype) *const fn (*ctx.JitContext, u64, u64) callconv(.c) u64 {
+    const info = @typeInfo(@TypeOf(f)).@"fn";
+    const P1 = info.params[1].type.?;
+    const P2 = info.params[2].type.?;
+    return &struct {
+        fn call(c: *ctx.JitContext, a: u64, b: u64) callconv(.c) u64 {
+            const val = @call(.auto, f, .{ c, coerce(P1, a), coerce(P2, b) }) catch |err| {
+                c.ret_buf.err = @intFromError(err);
+                return Value.nil.raw;
+            };
+            return val.raw;
+        }
+    }.call;
+}
+
 fn stackLen(c: *ctx.JitContext) usize {
     const len_bytes = @intFromPtr(c.sp) - @intFromPtr(c.frame_base);
     return @intCast(@divExact(len_bytes, @sizeOf(Value)));
@@ -1048,6 +1088,114 @@ pub fn apply(c: *ctx.JitContext, _: u8) vm_mod.Error!Value {
     c.const_count = @intCast(c.vm.chunk.const_count);
     return res;
 }
+
+// ── C-ABI entry points for JIT (stable across Debug/Release) ──
+// Unary: fn(*JitContext, u64) callconv(.c) u64
+pub const j_numberp = cWrap1(numberp);
+pub const j_integerp = cWrap1(integerp);
+pub const j_realp = cWrap1(realp);
+pub const j_consp = cWrap1(consp);
+pub const j_symbolp = cWrap1(symbolp);
+pub const j_stringp = cWrap1(stringp);
+pub const j_vectorp = cWrap1(vectorp);
+pub const j_closurep = cWrap1(closurep);
+pub const j_keywordp = cWrap1(keywordp);
+pub const j_characterp = cWrap1(characterp);
+pub const j_floatp = cWrap1(floatp);
+pub const j_listp = cWrap1(listp);
+pub const j_atom = cWrap1(atom);
+pub const j_charCode = cWrap1(charCode);
+pub const j_codeChar = cWrap1(codeChar);
+pub const j_charUpcase = cWrap1(charUpcase);
+pub const j_charDowncase = cWrap1(charDowncase);
+pub const j_digitCharP = cWrap1(digitCharP);
+pub const j_alphaCharP = cWrap1(alphaCharP);
+pub const j_stringUpcase = cWrap1(stringUpcase);
+pub const j_stringDowncase = cWrap1(stringDowncase);
+pub const j_writeToString = cWrap1(writeToString);
+pub const j_strLen = cWrap1(strLen);
+pub const j_strSet = cWrap1(strSet);
+pub const j_random = cWrap1(random);
+pub const j_randomSeed = cWrap1(randomSeed);
+pub const j_write = cWrap1(write);
+pub const j_print = cWrap1(print);
+pub const j_princ = cWrap1(princ);
+pub const j_terpri = cWrap1(terpri);
+pub const j_writeChar = cWrap1(writeChar);
+pub const j_listLength = cWrap1(listLength);
+pub const j_listLast = cWrap1(listLast);
+pub const j_listReverse = cWrap1(listReverse);
+pub const j_loadCapture = cWrap1(loadCapture);
+pub const j_loadUpvalue = cWrap1(loadUpvalue);
+pub const j_loadGlobal = cWrap1(loadGlobal);
+pub const j_loadArgc = cWrap1(loadArgc);
+pub const j_makeVec = cWrap1(makeVec);
+pub const j_makeVecN = cWrap1(makeVecN);
+pub const j_vecSet = cWrap1(vecSet);
+pub const j_vecLen = cWrap1(vecLen);
+pub const j_vecFillPtr = cWrap1(vecFillPtr);
+pub const j_vecPushExt = cWrap1(vecPushExt);
+pub const j_vecPop = cWrap1(vecPop);
+pub const j_vecAdjust = cWrap1(vecAdjust);
+pub const j_copyStructure = cWrap1(copyStructure);
+pub const j_functionLambdaExpression = cWrap1(functionLambdaExpression);
+pub const j_call = cWrap1(call);
+pub const j_apply = cWrap1(apply);
+pub const j_makeList = cWrap1(makeList);
+pub const j_neg = cWrap1(neg);
+// Binary: fn(*JitContext, u64, u64) callconv(.c) u64
+pub const j_add = cWrap2(add);
+pub const j_sub = cWrap2(sub);
+pub const j_mul = cWrap2(mul);
+pub const j_div = cWrap2(div);
+pub const j_mod = cWrap2(mod);
+pub const j_equal = cWrap2(equal);
+pub const j_eql = cWrap2(eql);
+pub const j_equalp = cWrap2(equalp);
+pub const j_lt = cWrap2(lt);
+pub const j_gt = cWrap2(gt);
+pub const j_le = cWrap2(le);
+pub const j_ge = cWrap2(ge);
+pub const j_numEq = cWrap2(numEq);
+pub const j_charEq = cWrap2(charEq);
+pub const j_charLt = cWrap2(charLt);
+pub const j_charGt = cWrap2(charGt);
+pub const j_strRef = cWrap2(strRef);
+pub const j_strConcat = cWrap2(strConcat);
+pub const j_strEq = cWrap2(strEq);
+pub const j_strLt = cWrap2(strLt);
+pub const j_strGt = cWrap2(strGt);
+pub const j_strLe = cWrap2(strLe);
+pub const j_strGe = cWrap2(strGe);
+pub const j_listMember = cWrap2(listMember);
+pub const j_listMemberEql = cWrap2(listMemberEql);
+pub const j_listMemberEqual = cWrap2(listMemberEqual);
+pub const j_assoc = cWrap2(assoc);
+pub const j_assocEql = cWrap2(assocEql);
+pub const j_assocEqual = cWrap2(assocEqual);
+pub const j_listFind = cWrap2(listFind);
+pub const j_listFindEq = cWrap2(listFindEq);
+pub const j_listFindEqual = cWrap2(listFindEqual);
+pub const j_listPosition = cWrap2(listPosition);
+pub const j_listCount = cWrap2(listCount);
+pub const j_listCountEq = cWrap2(listCountEq);
+pub const j_listCountEqual = cWrap2(listCountEqual);
+pub const j_listRemove = cWrap2(listRemove);
+pub const j_listRemoveEq = cWrap2(listRemoveEq);
+pub const j_listRemoveEqual = cWrap2(listRemoveEqual);
+pub const j_appendLists = cWrap2(appendLists);
+pub const j_listNth = cWrap2(listNth);
+pub const j_listNthcdr = cWrap2(listNthcdr);
+pub const j_rplaca = cWrap2(rplaca);
+pub const j_rplacd = cWrap2(rplacd);
+pub const j_cons = cWrap2(cons);
+pub const j_storeUpvalue = cWrap2(storeUpvalue);
+pub const j_storeGlobal = cWrap2(storeGlobal);
+pub const j_vecRef = cWrap2(vecRef);
+pub const j_vecPush = cWrap2(vecPush);
+pub const j_vecSetFillPtr = cWrap2(vecSetFillPtr);
+pub const j_vecSetAdjustable = cWrap2(vecSetAdjustable);
+pub const j_makeClosure = cWrap2(makeClosure);
 
 test "rt add returns error union" {
     const testing = std.testing;

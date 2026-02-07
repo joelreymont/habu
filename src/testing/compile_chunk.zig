@@ -5,6 +5,7 @@ const reader = @import("../reader/reader.zig");
 const compiler_mod = @import("../compiler/compiler.zig");
 const bytecode = @import("../bytecode/bytecode.zig");
 const interp = @import("../interp/interp.zig");
+const specialize = @import("../compiler/passes/p07c_specialize.zig");
 
 const Heap = runtime.Heap;
 const Chunk = runtime.Chunk;
@@ -66,12 +67,13 @@ pub fn compileChunk(
     const ir_node = if (comp.compile(expr, &env)) |node| node else |err| {
         return err;
     };
+    const specialized = try specialize.specialize(a, ir_node);
 
     var emitter = Emitter.initWithHeap(allocator, heap);
     emitter.speed = comp.optimize_current.speed;
     emitter.safety = comp.optimize_current.safety;
     defer emitter.deinit();
-    try emitter.emit(ir_node);
+    try emitter.emit(specialized);
     const chunk = try emitter.finalize();
     const child_chunks = try emitter.getChildChunks();
     defer allocator.free(child_chunks);
