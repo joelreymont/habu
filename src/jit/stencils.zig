@@ -197,6 +197,33 @@ fn ldp_post(rt1: u5, rt2: u5, rn: u5, offset: i7) u32 {
     return 0xA8C00000 | (imm << 15) | (@as(u32, rt2) << 10) | (@as(u32, rn) << 5) | rt1;
 }
 
+/// Encode TBZ: TBZ Xt, #bit, offset (branch if bit is zero)
+fn tbz_placeholder(rt: u5, bit: u6) u32 {
+    // TBZ: b5|011011|0|b40|imm14|Rt
+    // b5 = bit[5], b40 = bit[4:0]
+    const b5: u32 = @as(u32, bit >> 5) & 1;
+    const b40: u32 = @as(u32, bit) & 0x1F;
+    return (b5 << 31) | (0x36 << 24) | (b40 << 19) | @as(u32, rt);
+}
+
+/// Encode AND immediate: AND Xd, Xn, #0xF (extract low 4 bits)
+fn and_low4(rd: u5, rn: u5) u32 {
+    // AND Xd, Xn, #0xF
+    // N=1, immr=0, imms=3 encodes #0xF
+    return 0x92400C00 | (@as(u32, rn) << 5) | rd;
+}
+
+/// Encode CMP immediate: CMP Xn, #imm12
+fn cmp_imm(rn: u5, imm12: u12) u32 {
+    // SUBS XZR, Xn, #imm12
+    return 0xF1000000 | (@as(u32, imm12) << 10) | (@as(u32, rn) << 5) | XZR;
+}
+
+/// Encode B.NE (branch if not equal): B.NE <offset>
+fn bne_placeholder() u32 {
+    return 0x54000001; // B.NE with offset 0
+}
+
 /// Convert u32 instruction to bytes (little-endian)
 fn inst_bytes(inst: u32) [4]u8 {
     return @bitCast(inst);
@@ -813,6 +840,110 @@ pub const guard_cons_x0 = Stencil{
     .holes = &[_]Hole{},
 };
 pub const guard_cons_x0_branch_offset: usize = 12;
+
+/// Peek top of stack into x0 without popping
+pub const peek_tos = Stencil{
+    .name = "peek_tos",
+    .code = &(
+        // LDUR x0, [x19, #-8]  — load TOS without moving sp
+        // x19 = stack pointer; TOS is at [x19 - 8]
+        inst_bytes(0xF85F8260)),
+    .holes = &[_]Hole{},
+};
+
+/// Guard: branch if x0 has non-zero low 4 bits (not a cons/nil pointer)
+/// For check_cons: cons tag is 0, so low 4 bits must be 0 AND not nil
+pub const guard_check_cons = Stencil{
+    .name = "guard_check_cons",
+    .code = &(
+        // AND x10, x0, #0xF (extract low 4 bits)
+        inst_bytes(and_low4(X10, X0)) ++
+            // CBNZ x10, <err> (branch if tag != 0)
+            inst_bytes(cbnz_placeholder(X10))),
+    .holes = &[_]Hole{},
+};
+pub const guard_check_cons_branch_offset: usize = 4;
+
+/// Guard: branch if x0 low bits != 4 (vector tag)
+pub const guard_check_vector = Stencil{
+    .name = "guard_check_vector",
+    .code = &(
+        // AND x10, x0, #0xF
+        inst_bytes(and_low4(X10, X0)) ++
+            // CMP x10, #4
+            inst_bytes(cmp_imm(X10, 4)) ++
+            // B.NE <err>
+            inst_bytes(bne_placeholder())),
+    .holes = &[_]Hole{},
+};
+pub const guard_check_vector_branch_offset: usize = 8;
+
+/// Guard: branch if x0 low bits != 2 (symbol tag), also reject nil (raw==0)
+pub const guard_check_symbol = Stencil{
+    .name = "guard_check_symbol",
+    .code = &(
+        // AND x10, x0, #0xF
+        inst_bytes(and_low4(X10, X0)) ++
+            // CMP x10, #2
+            inst_bytes(cmp_imm(X10, 2)) ++
+            // B.NE <err>
+            inst_bytes(bne_placeholder())),
+    .holes = &[_]Hole{},
+};
+pub const guard_check_symbol_branch_offset: usize = 8;
+
+/// Guard: branch if x0 low bits != 6 (string tag)
+pub const guard_check_string = Stencil{
+    .name = "guard_check_string",
+    .code = &(
+        // AND x10, x0, #0xF
+        inst_bytes(and_low4(X10, X0)) ++
+            // CMP x10, #6
+            inst_bytes(cmp_imm(X10, 6)) ++
+            // B.NE <err>
+            inst_bytes(bne_placeholder())),
+    .holes = &[_]Hole{},
+};
+pub const guard_check_string_branch_offset: usize = 8;
+
+/// Guard: branch if x0 low bits != 8 (closure tag)
+pub const guard_check_closure = Stencil{
+    .name = "guard_check_closure",
+    .code = &(
+        // AND x10, x0, #0xF
+        inst_bytes(and_low4(X10, X0)) ++
+            // CMP x10, #8
+            inst_bytes(cmp_imm(X10, 8)) ++
+            // B.NE <err>
+            inst_bytes(bne_placeholder())),
+    .holes = &[_]Hole{},
+};
+pub const guard_check_closure_branch_offset: usize = 8;
+
+/// Guard: branch if x0 is nil (raw == 0)
+pub const guard_check_non_nil = Stencil{
+    .name = "guard_check_non_nil",
+    .code = &(
+        // CBZ x0, <err>
+        inst_bytes(cbz_placeholder(X0))),
+    .holes = &[_]Hole{},
+};
+pub const guard_check_non_nil_branch_offset: usize = 0;
+
+/// Guard: branch if x0 is not a list (not nil and not cons)
+/// List = nil (raw==0) OR cons (tag==0, not nil)
+pub const guard_check_list = Stencil{
+    .name = "guard_check_list",
+    .code = &(
+        // CBZ x0, +12 (nil is a list, skip check)
+        inst_bytes(cbz_placeholder(X0) | (3 << 5)) ++
+            // AND x10, x0, #0xF
+            inst_bytes(and_low4(X10, X0)) ++
+            // CBNZ x10, <err> (tag != 0 means not cons)
+            inst_bytes(cbnz_placeholder(X10))),
+    .holes = &[_]Hole{},
+};
+pub const guard_check_list_branch_offset: usize = 8;
 
 /// Dup: push x0 without popping
 pub const dup_stencil = Stencil{

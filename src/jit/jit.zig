@@ -870,6 +870,48 @@ pub const Jit = struct {
                 try self.emitStackPush();
             },
 
+            // Type assertion checks: peek TOS, guard type, error if mismatch
+            .check_fixnum => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.peek_tos, &[_]patch.PatchValue{});
+                const branch = try self.emitGuardFixnumX0();
+                try self.err_branches.append(self.allocator, branch);
+            },
+            .check_cons => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.peek_tos, &[_]patch.PatchValue{});
+                const start = try patch.patchStencil(&self.code_buffer, stencils.guard_check_cons, &[_]patch.PatchValue{});
+                try self.err_branches.append(self.allocator, start + stencils.guard_check_cons_branch_offset);
+            },
+            .check_vector => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.peek_tos, &[_]patch.PatchValue{});
+                const start = try patch.patchStencil(&self.code_buffer, stencils.guard_check_vector, &[_]patch.PatchValue{});
+                try self.err_branches.append(self.allocator, start + stencils.guard_check_vector_branch_offset);
+            },
+            .check_symbol => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.peek_tos, &[_]patch.PatchValue{});
+                const start = try patch.patchStencil(&self.code_buffer, stencils.guard_check_symbol, &[_]patch.PatchValue{});
+                try self.err_branches.append(self.allocator, start + stencils.guard_check_symbol_branch_offset);
+            },
+            .check_string => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.peek_tos, &[_]patch.PatchValue{});
+                const start = try patch.patchStencil(&self.code_buffer, stencils.guard_check_string, &[_]patch.PatchValue{});
+                try self.err_branches.append(self.allocator, start + stencils.guard_check_string_branch_offset);
+            },
+            .check_closure => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.peek_tos, &[_]patch.PatchValue{});
+                const start = try patch.patchStencil(&self.code_buffer, stencils.guard_check_closure, &[_]patch.PatchValue{});
+                try self.err_branches.append(self.allocator, start + stencils.guard_check_closure_branch_offset);
+            },
+            .check_non_nil => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.peek_tos, &[_]patch.PatchValue{});
+                const start = try patch.patchStencil(&self.code_buffer, stencils.guard_check_non_nil, &[_]patch.PatchValue{});
+                try self.err_branches.append(self.allocator, start + stencils.guard_check_non_nil_branch_offset);
+            },
+            .check_list => {
+                _ = try patch.patchStencil(&self.code_buffer, stencils.peek_tos, &[_]patch.PatchValue{});
+                const start = try patch.patchStencil(&self.code_buffer, stencils.guard_check_list, &[_]patch.PatchValue{});
+                try self.err_branches.append(self.allocator, start + stencils.guard_check_list_branch_offset);
+            },
+
             else => return error.UnsupportedOpcode,
         }
     }
