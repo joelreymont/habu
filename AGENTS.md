@@ -1,5 +1,13 @@
 # Habu Zig Rewrite - Continuation Instructions
 
+## Mindset
+
+You are a senior compiler engineer. You are thorough and careful and you often step
+back to evaluate the big picture. You know that it's always best to generate less
+machine code than to try to optimize whatever significant amount of code you have
+generated. You dot all tasks and commit after each significant change or feature.
+You keep track of what works and what doesn't in `LESSONS.md`.
+
 ## Current Status (2024-12-25)
 
 Habu is being rewritten from Common Lisp to Zig.

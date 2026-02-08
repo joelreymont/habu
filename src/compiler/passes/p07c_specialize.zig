@@ -131,6 +131,83 @@ pub fn specialize(allocator: std.mem.Allocator, node: *const Ir) !*const Ir {
             return node;
         },
 
+        // Comparisons: specialize when both operands proven fixnum
+        .le => |op| {
+            const left = try specialize(allocator, op.left);
+            const right = try specialize(allocator, op.right);
+            if (isProvenFixnum(left) and isProvenFixnum(right)) {
+                const n = try allocator.create(Ir);
+                n.* = .{ .fixnum_le = .{ .left = left, .right = right } };
+                return n;
+            }
+            if (left != op.left or right != op.right) {
+                const n = try allocator.create(Ir);
+                n.* = .{ .le = .{ .left = left, .right = right } };
+                return n;
+            }
+            return node;
+        },
+        .lt => |op| {
+            const left = try specialize(allocator, op.left);
+            const right = try specialize(allocator, op.right);
+            if (isProvenFixnum(left) and isProvenFixnum(right)) {
+                const n = try allocator.create(Ir);
+                n.* = .{ .fixnum_lt = .{ .left = left, .right = right } };
+                return n;
+            }
+            if (left != op.left or right != op.right) {
+                const n = try allocator.create(Ir);
+                n.* = .{ .lt = .{ .left = left, .right = right } };
+                return n;
+            }
+            return node;
+        },
+        .gt => |op| {
+            const left = try specialize(allocator, op.left);
+            const right = try specialize(allocator, op.right);
+            if (isProvenFixnum(left) and isProvenFixnum(right)) {
+                const n = try allocator.create(Ir);
+                n.* = .{ .fixnum_gt = .{ .left = left, .right = right } };
+                return n;
+            }
+            if (left != op.left or right != op.right) {
+                const n = try allocator.create(Ir);
+                n.* = .{ .gt = .{ .left = left, .right = right } };
+                return n;
+            }
+            return node;
+        },
+        .ge => |op| {
+            const left = try specialize(allocator, op.left);
+            const right = try specialize(allocator, op.right);
+            if (isProvenFixnum(left) and isProvenFixnum(right)) {
+                const n = try allocator.create(Ir);
+                n.* = .{ .fixnum_ge = .{ .left = left, .right = right } };
+                return n;
+            }
+            if (left != op.left or right != op.right) {
+                const n = try allocator.create(Ir);
+                n.* = .{ .ge = .{ .left = left, .right = right } };
+                return n;
+            }
+            return node;
+        },
+        .num_eq => |op| {
+            const left = try specialize(allocator, op.left);
+            const right = try specialize(allocator, op.right);
+            if (isProvenFixnum(left) and isProvenFixnum(right)) {
+                const n = try allocator.create(Ir);
+                n.* = .{ .fixnum_eq = .{ .left = left, .right = right } };
+                return n;
+            }
+            if (left != op.left or right != op.right) {
+                const n = try allocator.create(Ir);
+                n.* = .{ .num_eq = .{ .left = left, .right = right } };
+                return n;
+            }
+            return node;
+        },
+
         // Recurse into compound forms
         .@"if" => |i| {
             const cond = try specialize(allocator, i.cond);
@@ -274,6 +351,40 @@ pub fn specialize(allocator: std.mem.Allocator, node: *const Ir) !*const Ir {
                 return n;
             }
             return node;
+        },
+
+        // assert_fixnum wrapping arithmetic: specialize the inner op.
+        // (the fixnum (+ x y)) → assert_fixnum(add(x, y))
+        // Since the programmer declared the result is fixnum, we trust it
+        // and use the fixnum-specialized op (which skips type dispatch).
+        .assert_fixnum => |af| {
+            const inner = try specialize(allocator, af.operand);
+            switch (inner.*) {
+                .add => |op| {
+                    const n = try allocator.create(Ir);
+                    n.* = .{ .fixnum_add = .{ .left = op.left, .right = op.right } };
+                    return n;
+                },
+                .sub => |op| {
+                    const n = try allocator.create(Ir);
+                    n.* = .{ .fixnum_sub = .{ .left = op.left, .right = op.right } };
+                    return n;
+                },
+                .mul => |op| {
+                    const n = try allocator.create(Ir);
+                    n.* = .{ .fixnum_mul = .{ .left = op.left, .right = op.right } };
+                    return n;
+                },
+                else => {
+                    // Not arithmetic — keep the assert_fixnum with specialized inner
+                    if (inner != af.operand) {
+                        const n = try allocator.create(Ir);
+                        n.* = .{ .assert_fixnum = .{ .operand = inner } };
+                        return n;
+                    }
+                    return node;
+                },
+            }
         },
 
         // Leaf nodes and everything else: return unchanged

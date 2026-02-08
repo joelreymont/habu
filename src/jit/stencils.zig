@@ -230,6 +230,17 @@ fn and_low4(rd: u5, rn: u5) u32 {
 }
 
 /// Encode CMP immediate: CMP Xn, #imm12
+/// CSEL Xd, Xn, Xm, cond
+fn csel(rd: u5, rn: u5, rm: u5, cond: u4) u32 {
+    return 0x9A800000 | (@as(u32, rm) << 16) | (@as(u32, cond) << 12) | (@as(u32, rn) << 5) | rd;
+}
+
+fn csel_le(rd: u5, rn: u5, rm: u5) u32 { return csel(rd, rn, rm, 0xD); } // LE = 13
+fn csel_lt(rd: u5, rn: u5, rm: u5) u32 { return csel(rd, rn, rm, 0xB); } // LT = 11
+fn csel_gt(rd: u5, rn: u5, rm: u5) u32 { return csel(rd, rn, rm, 0xC); } // GT = 12
+fn csel_ge(rd: u5, rn: u5, rm: u5) u32 { return csel(rd, rn, rm, 0xA); } // GE = 10
+fn csel_eq(rd: u5, rn: u5, rm: u5) u32 { return csel(rd, rn, rm, 0x0); } // EQ = 0
+
 fn cmp_imm(rn: u5, imm12: u12) u32 {
     // SUBS XZR, Xn, #imm12
     return 0xF1000000 | (@as(u32, imm12) << 10) | (@as(u32, rn) << 5) | XZR;
@@ -1100,6 +1111,65 @@ pub const spec_fixnum_mul = Stencil{
             inst_bytes(lsl_imm(X0, X0, 1)) ++
             // ORR x0, x0, #1
             inst_bytes(orr_imm_bit0(X0, X0))),
+    .holes = &[_]Hole{},
+};
+
+/// Specialized fixnum LE: x0 = (a <= b) ? t : nil
+/// Input: x0 = a, x1 = b (tagged fixnums)
+/// Output: x0 = t or nil
+/// Since fixnums are tagged with bit0=1 and value=raw>>1, comparing
+/// raw values preserves ordering (both have same tag).
+pub const spec_fixnum_le = Stencil{
+    .name = "spec_fixnum_le",
+    .code = &(
+        // CMP x0, x1
+        inst_bytes(cmp_reg(X0, X1)) ++
+            // CSEL x0, x_t, x_nil, LE
+            // t = 0x02, nil = 0x00
+            // MOV x0, #2 (t)
+            inst_bytes(movz(X0, 2, 0)) ++
+            // CSEL x0, x0, xzr, LE (if LE keep 2, else 0)
+            inst_bytes(csel_le(X0, X0, XZR))),
+    .holes = &[_]Hole{},
+};
+
+/// Specialized fixnum LT: x0 = (a < b) ? t : nil
+pub const spec_fixnum_lt = Stencil{
+    .name = "spec_fixnum_lt",
+    .code = &(
+        inst_bytes(cmp_reg(X0, X1)) ++
+            inst_bytes(movz(X0, 2, 0)) ++
+            inst_bytes(csel_lt(X0, X0, XZR))),
+    .holes = &[_]Hole{},
+};
+
+/// Specialized fixnum GT: x0 = (a > b) ? t : nil
+pub const spec_fixnum_gt = Stencil{
+    .name = "spec_fixnum_gt",
+    .code = &(
+        inst_bytes(cmp_reg(X0, X1)) ++
+            inst_bytes(movz(X0, 2, 0)) ++
+            inst_bytes(csel_gt(X0, X0, XZR))),
+    .holes = &[_]Hole{},
+};
+
+/// Specialized fixnum GE: x0 = (a >= b) ? t : nil
+pub const spec_fixnum_ge = Stencil{
+    .name = "spec_fixnum_ge",
+    .code = &(
+        inst_bytes(cmp_reg(X0, X1)) ++
+            inst_bytes(movz(X0, 2, 0)) ++
+            inst_bytes(csel_ge(X0, X0, XZR))),
+    .holes = &[_]Hole{},
+};
+
+/// Specialized fixnum EQ (numeric): x0 = (a == b) ? t : nil
+pub const spec_fixnum_eq = Stencil{
+    .name = "spec_fixnum_eq",
+    .code = &(
+        inst_bytes(cmp_reg(X0, X1)) ++
+            inst_bytes(movz(X0, 2, 0)) ++
+            inst_bytes(csel_eq(X0, X0, XZR))),
     .holes = &[_]Hole{},
 };
 

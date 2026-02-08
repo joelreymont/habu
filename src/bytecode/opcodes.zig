@@ -1788,6 +1788,13 @@ pub const Op = enum(u16) {
     /// ( fixnum fixnum -- fixnum )
     fixnum_mul = 0x202,
 
+    /// Unboxed fixnum comparisons (no tag check, result is t or nil)
+    fixnum_le = 0x203,
+    fixnum_lt = 0x204,
+    fixnum_gt = 0x205,
+    fixnum_ge = 0x206,
+    fixnum_eq = 0x207,
+
     /// Cons car without nil check (proven cons)
     /// ( cons -- car )
     unsafe_car = 0x208,
@@ -2177,6 +2184,11 @@ pub const Op = enum(u16) {
             .fixnum_add,
             .fixnum_sub,
             .fixnum_mul,
+            .fixnum_le,
+            .fixnum_lt,
+            .fixnum_gt,
+            .fixnum_ge,
+            .fixnum_eq,
             .unsafe_car,
             .unsafe_cdr,
             .direct_aref,

@@ -1031,6 +1031,12 @@ pub const Ir = union(enum) {
     fixnum_sub: BinaryOp,
     /// Unboxed fixnum multiplication (no tag check, proven fixnum operands)
     fixnum_mul: BinaryOp,
+    /// Unboxed fixnum comparisons (no tag check, result is t or nil)
+    fixnum_le: BinaryOp,
+    fixnum_lt: BinaryOp,
+    fixnum_gt: BinaryOp,
+    fixnum_ge: BinaryOp,
+    fixnum_eq: BinaryOp,
     /// Cons car without nil check (proven cons operand)
     unsafe_car: UnaryOp,
     /// Cons cdr without nil check (proven cons operand)

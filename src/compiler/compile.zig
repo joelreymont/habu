@@ -1735,9 +1735,12 @@ pub const DeclEnv = struct {
 
     /// Get type declaration for variable if present
     pub fn getTypeDecl(self: *const DeclEnv, name: []const u8) ?Value {
-        _ = self;
-        _ = name;
-        return null; // TEMP: bypass HashMap to avoid crash
+        if (self.decls.get(name)) |infos| {
+            for (infos.items) |info| {
+                if (info.spec == .type_decl) return info.type_expr;
+            }
+        }
+        return null;
     }
 };
 

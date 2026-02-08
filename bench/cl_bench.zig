@@ -142,11 +142,11 @@ pub fn main() !void {
 
     // 2. Fibonacci: fib(35) recursive (typed for specialization)
     const fib_chunk = try common.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool,
-        "(progn (defun fib (n) (declare (type fixnum n)) (if (<= n 1) n (the fixnum (+ (fib (the fixnum (- n 1))) (fib (the fixnum (- n 2))))))) (fib 35))");
+        "(progn (defun fib (n) (declare (type fixnum n) (optimize (speed 3) (safety 0))) (if (<= n 1) n (the fixnum (+ (fib (the fixnum (- n 1))) (fib (the fixnum (- n 2))))))) (fib 35))");
 
     // 3. Tak: tak(18, 12, 6) (typed for specialization)
     const tak_chunk = try common.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool,
-        "(progn (defun tak (x y z) (declare (type fixnum x y z)) (if (<= x y) z (tak (tak (the fixnum (- x 1)) y z) (tak (the fixnum (- y 1)) z x) (tak (the fixnum (- z 1)) x y)))) (tak 18 12 6))");
+        "(progn (defun tak (x y z) (declare (type fixnum x y z) (optimize (speed 3) (safety 0))) (if (<= x y) z (tak (tak (the fixnum (- x 1)) y z) (tak (the fixnum (- y 1)) z x) (tak (the fixnum (- z 1)) x y)))) (tak 18 12 6))");
 
     // 4. List length: length of 1M-element list
     const list_chunk = try common.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool,

@@ -251,7 +251,9 @@ pub const Jit = struct {
             },
 
             // Specialized binary ops: consume 2, push 1: net -1
-            .fixnum_add, .fixnum_sub, .fixnum_mul => {
+            .fixnum_add, .fixnum_sub, .fixnum_mul,
+            .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
+            => {
                 if (self.self_call_depth) |d| {
                     try self.compileOp(op, chunk, bc_offset);
                     if (d > 0) {
@@ -995,6 +997,36 @@ pub const Jit = struct {
                 try self.emitStackPopX1();
                 try self.emitStackPop();
                 _ = try patch.patchStencil(&self.code_buffer, stencils.spec_fixnum_mul, &[_]patch.PatchValue{});
+                try self.emitStackPush();
+            },
+            .fixnum_le => {
+                try self.emitStackPopX1();
+                try self.emitStackPop();
+                _ = try patch.patchStencil(&self.code_buffer, stencils.spec_fixnum_le, &[_]patch.PatchValue{});
+                try self.emitStackPush();
+            },
+            .fixnum_lt => {
+                try self.emitStackPopX1();
+                try self.emitStackPop();
+                _ = try patch.patchStencil(&self.code_buffer, stencils.spec_fixnum_lt, &[_]patch.PatchValue{});
+                try self.emitStackPush();
+            },
+            .fixnum_gt => {
+                try self.emitStackPopX1();
+                try self.emitStackPop();
+                _ = try patch.patchStencil(&self.code_buffer, stencils.spec_fixnum_gt, &[_]patch.PatchValue{});
+                try self.emitStackPush();
+            },
+            .fixnum_ge => {
+                try self.emitStackPopX1();
+                try self.emitStackPop();
+                _ = try patch.patchStencil(&self.code_buffer, stencils.spec_fixnum_ge, &[_]patch.PatchValue{});
+                try self.emitStackPush();
+            },
+            .fixnum_eq => {
+                try self.emitStackPopX1();
+                try self.emitStackPop();
+                _ = try patch.patchStencil(&self.code_buffer, stencils.spec_fixnum_eq, &[_]patch.PatchValue{});
                 try self.emitStackPush();
             },
             .unsafe_car => {

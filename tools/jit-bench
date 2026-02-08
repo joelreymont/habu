@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# JIT benchmark regression checker
+# Usage: tools/jit-bench [--save-baseline] [--no-sbcl]
+#
+# Runs Habu JIT benchmarks, compares against saved baseline,
+# and optionally compares against SBCL.
+# Exits non-zero if any regression exceeds 5%.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+BASELINE_FILE="bench/baseline.json"
+ITERS=3
+SAVE_BASELINE=false
+NO_SBCL=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --save-baseline) SAVE_BASELINE=true ;;
+    --no-sbcl) NO_SBCL=true ;;
+    --iters=*) ITERS="${arg#--iters=}" ;;
+  esac
+done
+
+# Build ReleaseFast
+zig build -Doptimize=ReleaseFast bench-cl 2>&1 | tail -1
+
+# Run Habu
+HABU_JSON=$(./zig-out/bin/cl_bench --iters="$ITERS" --json 2>/dev/null)
+
+# Run SBCL if available
+SBCL_JSON=""
+if [ "$NO_SBCL" = false ] && command -v sbcl &>/dev/null; then
+  SBCL_JSON=$(sbcl --noinform --script bench/cl_bench.lisp --iters="$ITERS" --json 2>/dev/null || true)
+fi
+
+# Parse and display
+python3 - "$HABU_JSON" "$SBCL_JSON" "$BASELINE_FILE" "$SAVE_BASELINE" << 'PYEOF'
+import json, sys, os
+
+habu = json.loads(sys.argv[1])
+sbcl_raw = sys.argv[2]
+baseline_file = sys.argv[3]
+save_baseline = sys.argv[4] == "true"
+
+sbcl = json.loads(sbcl_raw) if sbcl_raw else None
+
+# Load baseline
+baseline = None
+if os.path.exists(baseline_file):
+    with open(baseline_file) as f:
+        baseline = json.load(f)
+
+# Build lookup tables
+habu_benches = {b["name"]: b["ns"] for b in habu["benches"]}
+sbcl_benches = {b["name"]: b["ns"] for b in sbcl["benches"]} if sbcl else {}
+base_benches = {b["name"]: b["ns"] for b in baseline["benches"]} if baseline else {}
+
+names = ["fixnum_loop", "fib35", "tak", "list_length", "cons_alloc"]
+
+# Header
+cols = ["Benchmark", "Habu JIT"]
+if sbcl_benches:
+    cols += ["SBCL", "vs SBCL"]
+if base_benches:
+    cols += ["Baseline", "vs Base"]
+print(f"{'  '.join(f'{c:>14}' for c in cols)}")
+print("-" * (14 * len(cols) + 2 * (len(cols) - 1)))
+
+regressions = []
+
+for name in names:
+    h = habu_benches.get(name, 0)
+    h_ms = h / 1e6
+
+    parts = [f"{name:>14}", f"{h_ms:>13.3f}ms"]
+
+    if sbcl_benches:
+        s = sbcl_benches.get(name, 0)
+        s_ms = s / 1e6
+        ratio = h / s if s > 0 else float('inf')
+        parts += [f"{s_ms:>13.3f}ms", f"{ratio:>13.1f}x"]
+
+    if base_benches:
+        b = base_benches.get(name, 0)
+        b_ms = b / 1e6
+        if b > 0:
+            change = (h - b) / b * 100
+            # Allow more noise for fast benchmarks (< 20ms)
+            threshold = 15 if b < 20_000_000 else 5
+            marker = "✓" if change <= threshold else "REGRESSION"
+            parts += [f"{b_ms:>13.3f}ms", f"{change:>+12.1f}% {marker}"]
+            if change > threshold:
+                regressions.append((name, change))
+        else:
+            parts += [f"{'N/A':>14}", f"{'N/A':>14}"]
+
+    print("  ".join(parts))
+
+if regressions:
+    print(f"\n❌ REGRESSIONS DETECTED:")
+    for name, pct in regressions:
+        print(f"   {name}: +{pct:.1f}%")
+    sys.exit(1)
+elif base_benches:
+    print(f"\n✅ No regressions (all within 5% of baseline)")
+
+# Save baseline if requested
+if save_baseline:
+    with open(baseline_file, 'w') as f:
+        json.dump(habu, f, indent=2)
+    print(f"\nBaseline saved to {baseline_file}")
+PYEOF

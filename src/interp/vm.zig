@@ -6401,6 +6401,40 @@ pub const Vm = struct {
                 const product = @as(u64, @bitCast((av >> 1) *% (bv >> 1)));
                 try self.push(.{ .raw = (product << 1) | 1 });
             },
+            .fixnum_le => {
+                const b = try self.pop();
+                const a = try self.pop();
+                // Both proven fixnum, tagged with bit0=1. Comparison on raw preserves order.
+                const av: i64 = @bitCast(a.raw);
+                const bv: i64 = @bitCast(b.raw);
+                try self.push(if (av <= bv) Value.t else Value.nil);
+            },
+            .fixnum_lt => {
+                const b = try self.pop();
+                const a = try self.pop();
+                const av: i64 = @bitCast(a.raw);
+                const bv: i64 = @bitCast(b.raw);
+                try self.push(if (av < bv) Value.t else Value.nil);
+            },
+            .fixnum_gt => {
+                const b = try self.pop();
+                const a = try self.pop();
+                const av: i64 = @bitCast(a.raw);
+                const bv: i64 = @bitCast(b.raw);
+                try self.push(if (av > bv) Value.t else Value.nil);
+            },
+            .fixnum_ge => {
+                const b = try self.pop();
+                const a = try self.pop();
+                const av: i64 = @bitCast(a.raw);
+                const bv: i64 = @bitCast(b.raw);
+                try self.push(if (av >= bv) Value.t else Value.nil);
+            },
+            .fixnum_eq => {
+                const b = try self.pop();
+                const a = try self.pop();
+                try self.push(if (a.raw == b.raw) Value.t else Value.nil);
+            },
             .unsafe_car => {
                 const pair = try self.pop();
                 // Proven cons — deref directly, no nil/type check
