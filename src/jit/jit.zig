@@ -134,6 +134,9 @@ pub const Jit = struct {
             // Record label for this bytecode offset
             try self.labels.put(bc_offset, self.code_buffer.pos);
 
+            // Try peephole fusion before single-op compile
+            if (try self.tryPeephole(chunk, &bc_offset)) continue;
+
             const op_raw = chunk.readU16(bc_offset);
             const op: Op = @enumFromInt(op_raw);
             bc_offset += 2;
@@ -151,6 +154,130 @@ pub const Jit = struct {
 
         ok = true;
         return self.code_buffer.getFnPtr(JitFn, self.fn_start);
+    }
+
+    // ========================================================================
+    // Peephole fusion: recognize common bytecode sequences and emit fused
+    // native code that keeps values in registers, eliminating intermediate
+    // stack pushes/pops.
+    // ========================================================================
+
+    /// Peek at opcode at byte offset without advancing. Returns null if past end.
+    fn peekOp(chunk: *const Chunk, offset: usize) ?Op {
+        const code = chunk.getCode();
+        if (offset + 1 >= code.len) return null;
+        const raw = @as(u16, code[offset]) | (@as(u16, code[offset + 1]) << 8);
+        return std.meta.intToEnum(Op, raw) catch null;
+    }
+
+    /// Try to match and emit a fused bytecode pattern starting at bc_offset.
+    /// Returns true if a pattern was consumed (bc_offset advanced past it).
+    fn tryPeephole(self: *Jit, chunk: *const Chunk, bc_offset: *usize) JitError!bool {
+        const off = bc_offset.*;
+        const op0 = peekOp(chunk, off) orelse return false;
+
+        // Pattern: load_local N; push_i32 K; fixnum_{le,lt,gt,ge,eq}; jmp_nil OFFSET
+        // → LDR x0, [frame + N*8]; CMP x0, #tagged_K; B.{inverted_cond} target
+        // This eliminates 4 stack pushes/pops for the compare-and-branch.
+        if (op0 == .load_local) {
+            const local_idx = chunk.getCode()[off + 2];
+            const op1 = peekOp(chunk, off + 3) orelse return false;
+            if (op1 == .push_i32) {
+                const imm = chunk.readI32(off + 5);
+                const op2 = peekOp(chunk, off + 9) orelse return false;
+                const op3 = peekOp(chunk, off + 11) orelse return false;
+
+                // Fused compare-and-branch
+                if (op3 == .jmp_nil) {
+                    const cmp_cond: ?u4 = switch (op2) {
+                        .fixnum_le => @as(u4, 0xC), // invert LE → GT
+                        .fixnum_lt => @as(u4, 0xA), // invert LT → GE
+                        .fixnum_gt => @as(u4, 0xB), // invert GT → LT
+                        .fixnum_ge => @as(u4, 0xD), // invert GE → LE
+                        .fixnum_eq => @as(u4, 0x1), // invert EQ → NE
+                        else => null,
+                    };
+                    if (cmp_cond) |cond| {
+                        const jmp_offset = chunk.readI16(off + 13);
+                        // jmp_nil target = bc_offset_of_jmp_nil + 4 + signed_offset
+                        // But jmp_nil is at off+11, and operand at off+13 (2 bytes)
+                        // After consuming: off+15 is next bytecode
+                        // Target = off+15 + jmp_offset (relative to end of jmp_nil)
+                        const target_bc: usize = @intCast(@as(i64, @intCast(off + 15)) + @as(i64, jmp_offset));
+
+                        // Emit: LDR x0, [x23, #local_idx * 8]
+                        const frame_off: u12 = @intCast(@as(u32, local_idx) * 8);
+                        const tagged: u64 = @bitCast(@as(i64, @intCast(imm)) << 1 | 1);
+                        try self.code_buffer.emitInst(stencils.ldr_imm(stencils.X0, stencils.X23, frame_off));
+                        // Emit: CMP x0, #tagged_imm (if fits in 12 bits)
+                        if (tagged <= 4095) {
+                            try self.code_buffer.emitInst(stencils.cmp_imm(stencils.X0, @intCast(tagged)));
+                        } else {
+                            // Load immediate into x1, then CMP reg
+                            _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64_x1, &[_]patch.PatchValue{
+                                .{ .imm64 = tagged },
+                            });
+                            try self.code_buffer.emitInst(stencils.cmp_reg(stencils.X0, stencils.X1));
+                        }
+                        // Emit: B.cond target (placeholder, patched later)
+                        const branch_pos = self.code_buffer.pos;
+                        try self.code_buffer.emitInst(0x54000000 | @as(u32, cond)); // B.cond with offset=0
+                        try self.pending_jumps.append(self.allocator, .{
+                            .code_offset = branch_pos,
+                            .target_bc_offset = target_bc,
+                            .hole_type = .rel19,
+                        });
+
+                        bc_offset.* = off + 15;
+                        return true;
+                    }
+                }
+
+                // Pattern: load_local N; push_i32 K; fixnum_sub → LDR+SUB_imm+ORR (no stack)
+                // Result left in x0, pushed to stack.
+                if (op2 == .fixnum_sub) {
+                    const frame_off: u12 = @intCast(@as(u32, local_idx) * 8);
+                    const sub_val: u64 = @intCast(@as(i64, @intCast(imm)) << 1); // tag bits cancel in sub
+                    try self.code_buffer.emitInst(stencils.ldr_imm(stencils.X0, stencils.X23, frame_off));
+                    if (sub_val <= 4095) {
+                        try self.code_buffer.emitInst(stencils.sub_imm(stencils.X0, stencils.X0, @intCast(sub_val)));
+                        try self.code_buffer.emitInst(stencils.orr_imm_bit0(stencils.X0, stencils.X0));
+                    } else {
+                        // Fallback: load tagged immediate into x1, use stencil
+                        const tagged: u64 = @bitCast(@as(i64, @intCast(imm)) << 1 | 1);
+                        _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64_x1, &[_]patch.PatchValue{
+                            .{ .imm64 = tagged },
+                        });
+                        _ = try patch.patchStencil(&self.code_buffer, stencils.spec_fixnum_sub, &[_]patch.PatchValue{});
+                    }
+                    try self.emitStackPush();
+                    bc_offset.* = off + 11;
+                    return true;
+                }
+
+                // Pattern: load_local N; push_i32 K; fixnum_add → LDR+ADD_imm-1 (tag adjustment)
+                if (op2 == .fixnum_add) {
+                    const frame_off: u12 = @intCast(@as(u32, local_idx) * 8);
+                    const add_val: u64 = @intCast(@as(i64, @intCast(imm)) << 1); // tagged add - 1 for tag
+                    try self.code_buffer.emitInst(stencils.ldr_imm(stencils.X0, stencils.X23, frame_off));
+                    if (add_val <= 4095) {
+                        try self.code_buffer.emitInst(stencils.add_imm(stencils.X0, stencils.X0, @intCast(add_val)));
+                        // Tag is already correct: (a|1) + (k<<1) = (a + k<<1) which has bit0=1
+                    } else {
+                        const tagged: u64 = @bitCast(@as(i64, @intCast(imm)) << 1 | 1);
+                        _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64_x1, &[_]patch.PatchValue{
+                            .{ .imm64 = tagged },
+                        });
+                        _ = try patch.patchStencil(&self.code_buffer, stencils.spec_fixnum_add, &[_]patch.PatchValue{});
+                    }
+                    try self.emitStackPush();
+                    bc_offset.* = off + 11;
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /// Wrapper around compileOp that detects self-recursive call patterns.

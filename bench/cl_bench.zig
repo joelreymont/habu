@@ -138,7 +138,7 @@ pub fn main() !void {
 
     // 1. Fixnum loop: sum 0 to 10_000_000 (with type declarations for specialization)
     const fix_chunk = try common.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool,
-        "(let ((i 0) (acc 0)) (declare (type fixnum i acc)) (while (< i 10000000) (setq acc (the fixnum (+ (the fixnum acc) (the fixnum i)))) (setq i (the fixnum (+ (the fixnum i) 1)))) acc)");
+        "(progn (defun fixnum-loop () (let ((i 0) (acc 0)) (declare (type fixnum i acc) (optimize (speed 3) (safety 0))) (while (< i 10000000) (setq acc (the fixnum (+ acc i))) (setq i (the fixnum (+ i 1)))) acc)) (fixnum-loop))");
 
     // 2. Fibonacci: fib(35) recursive (typed for specialization)
     const fib_chunk = try common.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool,

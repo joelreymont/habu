@@ -82,7 +82,7 @@ fn and_reg(rd: u5, rn: u5, rm: u5) u32 {
 }
 
 /// Encode CMP instruction: CMP Xn, Xm
-fn cmp_reg(rn: u5, rm: u5) u32 {
+pub fn cmp_reg(rn: u5, rm: u5) u32 {
     return 0xEB00001F | (@as(u32, rm) << 16) | (@as(u32, rn) << 5);
 }
 
@@ -138,7 +138,7 @@ fn lsl_imm(rd: u5, rn: u5, shift: u6) u32 {
 }
 
 /// Encode ORR immediate: ORR Xd, Xn, #imm (for setting bit0)
-fn orr_imm_bit0(rd: u5, rn: u5) u32 {
+pub fn orr_imm_bit0(rd: u5, rn: u5) u32 {
     // ORR Xd, Xn, #1 - immediate bitmask encoding for 1
     // N=1, immr=0, imms=0 encodes #1
     return 0xB2400000 | (@as(u32, rn) << 5) | rd;
@@ -241,7 +241,7 @@ fn csel_gt(rd: u5, rn: u5, rm: u5) u32 { return csel(rd, rn, rm, 0xC); } // GT =
 fn csel_ge(rd: u5, rn: u5, rm: u5) u32 { return csel(rd, rn, rm, 0xA); } // GE = 10
 fn csel_eq(rd: u5, rn: u5, rm: u5) u32 { return csel(rd, rn, rm, 0x0); } // EQ = 0
 
-fn cmp_imm(rn: u5, imm12: u12) u32 {
+pub fn cmp_imm(rn: u5, imm12: u12) u32 {
     // SUBS XZR, Xn, #imm12
     return 0xF1000000 | (@as(u32, imm12) << 10) | (@as(u32, rn) << 5) | XZR;
 }
@@ -271,8 +271,8 @@ pub fn inst_bytes(inst: u32) [4]u8 {
 // x30: link register
 // sp: stack pointer
 
-const X0: u5 = 0; // accumulator
-const X1: u5 = 1; // temp/arg
+pub const X0: u5 = 0; // accumulator
+pub const X1: u5 = 1; // temp/arg
 const X2: u5 = 2; // temp/arg
 const X3: u5 = 3; // temp/arg
 const X8: u5 = 8; // sret mirror
@@ -294,7 +294,7 @@ const X27: u5 = 27; // callee-saved
 const X28: u5 = 28; // callee-saved
 pub const X29: u5 = 29; // fp
 pub const X30: u5 = 30; // link register
-const XZR: u5 = 31; // zero register
+pub const XZR: u5 = 31; // zero register
 pub const SP: u5 = 31; // stack pointer
 
 const COND_HS: u4 = 0x2; // unsigned >=
@@ -316,6 +316,17 @@ pub const load_imm64 = Stencil{
         inst_bytes(movk(X0, 0, 16)) ++
         inst_bytes(movk(X0, 0, 32)) ++
         inst_bytes(movk(X0, 0, 48))),
+    .holes = &[_]Hole{
+        .{ .offset = 0, .hole_type = .imm64, .name = "value" },
+    },
+};
+
+pub const load_imm64_x1 = Stencil{
+    .name = "load_imm64_x1",
+    .code = &(inst_bytes(movz(X1, 0, 0)) ++
+        inst_bytes(movk(X1, 0, 16)) ++
+        inst_bytes(movk(X1, 0, 32)) ++
+        inst_bytes(movk(X1, 0, 48))),
     .holes = &[_]Hole{
         .{ .offset = 0, .hole_type = .imm64, .name = "value" },
     },

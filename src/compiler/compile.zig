@@ -4438,8 +4438,11 @@ pub const Compiler = struct {
         // Restore on error before defer frees boxed
         errdefer self.boxed_vars = saved_boxed;
 
+        // Process declarations from body (declare forms)
+        const filtered_body = try self.filterDeclares(body_exprs, &let_env);
+
         // Compile body - body is in tail position if let is
-        const body_ir = try self.compileBodyWithTail(body_exprs, &let_env, in_tail);
+        const body_ir = try self.compileBodyWithTail(filtered_body, &let_env, in_tail);
 
         // Restore previous boxed_vars
         self.boxed_vars = saved_boxed;

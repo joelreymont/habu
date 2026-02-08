@@ -98,6 +98,12 @@ pub const CodeBuffer = struct {
         @memcpy(dest, bytes);
     }
 
+    /// Emit a single ARM64 instruction (4 bytes, little-endian).
+    pub fn emitInst(self: *CodeBuffer, inst: u32) !void {
+        const bytes = std.mem.asBytes(&inst);
+        try self.write(bytes);
+    }
+
     pub fn setWritable(self: *CodeBuffer, enable: bool) PatchError!void {
         if (self.writable == enable) return;
         if (builtin.os.tag == .macos) {
