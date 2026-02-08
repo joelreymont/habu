@@ -273,3 +273,17 @@ Hoist (Cranelift port in Zig) provides the full SSA pipeline: IR → Optimize (S
 
 ### Hoist Block Params vs SSA Variables
 Two ways to handle phis in Hoist: (1) block params (`setBlockParams` + `jumpArgs`) — manual but doesn't trigger SSA builder, (2) SSA variables (`declareVar`/`defVar`/`useVar`) — automatic phi insertion but requires the SSA builder to compile cleanly in the consumer's build context. Block params are safer for initial integration.
+
+**Caveat**: Block param phis don't work correctly with hoist's current codegen. The merge block param values get assigned to wrong registers. Workaround: emit `ret` directly from both branches (no merge block). This limits if-expressions to top-level position (can't be nested inside arithmetic). Future fix: fix hoist's block param → register mapping.
+
+### Hoist Register Allocator: No Caller-Saved Handling
+Hoist's linear scan register allocator (`src/regalloc/linear_scan.zig`) does NOT save caller-saved registers across `call` or `call_indirect` instructions. The liveness analysis doesn't mark registers as clobbered by calls, so values in caller-saved registers (x0-x18 on AArch64) are silently destroyed after any call.
+
+**Impact**: Recursive functions produce incorrect results — values computed before a call get clobbered and are not reloaded. Also, `stack_store` is not implemented in the AArch64 codegen, so manual spilling isn't possible.
+
+**Workaround**: For recursive functions, use the stencil JIT (which handles its own save/restore). Use hoist only for leaf functions and straight-line arithmetic code.
+
+**Fix needed**: Add call-clobber modeling to `linear_scan.zig`. When processing a `call` instruction, mark all caller-saved registers as dead at the call point. This forces the register allocator to spill values that are live across calls to callee-saved registers or stack slots. Also implement `stack_store` in the AArch64 backend.
+
+### Hoist Aggressive Optimization Removes Recursive Calls
+With `optLevel(.aggressive)`, hoist's optimizer removes `call_indirect` instructions to functions with no observable side effects. Recursive fib calls get eliminated because the optimizer can't prove they terminate. Use `optLevel(.none)` for functions with recursive calls. (This is secondary to the regalloc issue above.)
