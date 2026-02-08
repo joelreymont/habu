@@ -5,6 +5,9 @@
         .ohsnap = .{
             .path = "deps/ohsnap",
         },
+        .hoist = .{
+            .path = "../hoist",
+        },
     },
     .fingerprint = 0xe1672d71b8ccd567,
     .minimum_zig_version = "0.15.0",

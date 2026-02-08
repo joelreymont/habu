@@ -14,6 +14,13 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    // Hoist SSA compiler backend
+    const hoist_dep = b.dependency("hoist", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.root_module.addImport("hoist", hoist_dep.artifact("cranelift").root_module);
+
     // Link Z3 for SMT solving (refinement types)
     exe.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
     exe.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
@@ -50,6 +57,9 @@ pub fn build(b: *std.Build) void {
     })) |ohsnap_dep| {
         lib_tests.root_module.addImport("ohsnap", ohsnap_dep.module("ohsnap"));
     }
+
+    // Hoist SSA compiler backend for tests
+    lib_tests.root_module.addImport("hoist", hoist_dep.artifact("cranelift").root_module);
 
     // Link Z3 for SMT solving (refinement types)
     // Z3 is optional - tests that don't use it will still work

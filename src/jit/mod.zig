@@ -11,6 +11,7 @@ pub const rt = @import("rt.zig");
 pub const ir = @import("ir.zig");
 pub const verify = @import("verify.zig");
 pub const print = @import("print.zig");
+pub const hoist_backend = @import("hoist_backend.zig");
 
 pub const Jit = jit.Jit;
 pub const JitFn = jit.JitFn;
@@ -26,4 +27,5 @@ test {
     _ = ir;
     _ = verify;
     _ = print;
+    _ = hoist_backend;
 }
