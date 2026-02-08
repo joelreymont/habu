@@ -1101,15 +1101,16 @@ pub const Emitter = struct {
             .get_dispatch_macro_character => |op| try self.emitBinaryOp(op, .get_dispatch_macro_character),
             .error_user => |op| try self.emitUnaryOp(op.operand, .error_user),
 
-            // Type assertions
-            .assert_fixnum => |op| try self.emitUnaryOp(op.operand, .check_fixnum),
-            .assert_cons => |op| try self.emitUnaryOp(op.operand, .check_cons),
-            .assert_symbol => |op| try self.emitUnaryOp(op.operand, .check_symbol),
-            .assert_string => |op| try self.emitUnaryOp(op.operand, .check_string),
-            .assert_vector => |op| try self.emitUnaryOp(op.operand, .check_vector),
-            .assert_closure => |op| try self.emitUnaryOp(op.operand, .check_closure),
-            .assert_non_nil => |op| try self.emitUnaryOp(op.operand, .check_non_nil),
-            .assert_list => |op| try self.emitUnaryOp(op.operand, .check_list),
+            // Type assertions: emit runtime check when safety > 0,
+            // otherwise just emit the operand (trust declarations).
+            .assert_fixnum => |op| if (self.safety > 0) try self.emitUnaryOp(op.operand, .check_fixnum) else try self.emit(op.operand),
+            .assert_cons => |op| if (self.safety > 0) try self.emitUnaryOp(op.operand, .check_cons) else try self.emit(op.operand),
+            .assert_symbol => |op| if (self.safety > 0) try self.emitUnaryOp(op.operand, .check_symbol) else try self.emit(op.operand),
+            .assert_string => |op| if (self.safety > 0) try self.emitUnaryOp(op.operand, .check_string) else try self.emit(op.operand),
+            .assert_vector => |op| if (self.safety > 0) try self.emitUnaryOp(op.operand, .check_vector) else try self.emit(op.operand),
+            .assert_closure => |op| if (self.safety > 0) try self.emitUnaryOp(op.operand, .check_closure) else try self.emit(op.operand),
+            .assert_non_nil => |op| if (self.safety > 0) try self.emitUnaryOp(op.operand, .check_non_nil) else try self.emit(op.operand),
+            .assert_list => |op| if (self.safety > 0) try self.emitUnaryOp(op.operand, .check_list) else try self.emit(op.operand),
             .assert_or => |ao| try self.emitAssertOr(ao),
 
             // Specialized (type-proven) operations
@@ -1443,8 +1444,8 @@ pub const Emitter = struct {
             Emitter.initWithHeap(self.allocator, h)
         else
             Emitter.init(self.allocator);
-        lambda_emitter.speed = self.speed;
-        lambda_emitter.safety = self.safety;
+        lambda_emitter.speed = lam.speed;
+        lambda_emitter.safety = lam.safety;
         defer lambda_emitter.deinit();
 
         const arity: u8 = @intCast(lam.params.len);

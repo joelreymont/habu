@@ -3633,11 +3633,11 @@ pub const Compiler = struct {
 
             if (type_sym_to_check) |type_sym| {
                 const var_ir = try self.builder.variable(param_name, 0, tp.idx);
-                if (self.typeChecksEnabled()) {
-                    const assert_ir = try self.makeTypeAssertionSym(var_ir, type_sym);
-                    if (assert_ir) |assert_node| {
-                        try assertions.append(self.allocator, assert_node);
-                    }
+                // Always generate assertions for specialization;
+                // the emitter skips runtime checks when safety=0.
+                const assert_ir = try self.makeTypeAssertionSym(var_ir, type_sym);
+                if (assert_ir) |assert_node| {
+                    try assertions.append(self.allocator, assert_node);
                 }
             }
         }
@@ -3649,13 +3649,12 @@ pub const Compiler = struct {
             body_ir = try self.builder.progn(items);
         }
 
-        // Wrap body in return type assertion if specified
+        // Wrap body in return type assertion if specified.
+        // Always generate for specialization; emitter skips checks at safety=0.
         if (return_type) |ret_type_sym| {
-            if (self.typeChecksEnabled()) {
-                const assert_ir = try self.makeTypeAssertionSym(body_ir, ret_type_sym);
-                if (assert_ir) |wrapped| {
-                    body_ir = wrapped;
-                }
+            const assert_ir = try self.makeTypeAssertionSym(body_ir, ret_type_sym);
+            if (assert_ir) |wrapped| {
+                body_ir = wrapped;
             }
         }
 
@@ -3675,6 +3674,10 @@ pub const Compiler = struct {
         }
 
         const lam_ir = try self.builder.lambda(params.items, opt_params, kp_params, allow_other_keys, rest_param, captures, body_ir);
+
+        // Propagate per-lambda optimize declarations into IR.
+        lam_ir.lambda.speed = self.optimize_current.speed;
+        lam_ir.lambda.safety = self.optimize_current.safety;
 
         // Preserve source lambda expression for FUNCTION-LAMBDA-EXPRESSION.
         const heap = if (self.heap) |val| val else return error.UninitializedBuiltins;
@@ -4391,11 +4394,10 @@ pub const Compiler = struct {
             }
 
             if (type_sym_to_check) |type_sym| {
-                if (self.typeChecksEnabled()) {
-                    const assert_ir = try self.makeTypeAssertionSym(val_ir, type_sym);
-                    if (assert_ir) |wrapped| {
-                        val_ir = wrapped;
-                    }
+                // Always generate for specialization; emitter skips checks at safety=0.
+                const assert_ir = try self.makeTypeAssertionSym(val_ir, type_sym);
+                if (assert_ir) |wrapped| {
+                    val_ir = wrapped;
                 }
             }
 
@@ -11775,7 +11777,8 @@ pub const Compiler = struct {
 
         // Compile the expression first
         const expr_ir = try self.compile(expr, env);
-        if (!self.typeChecksEnabled()) return expr_ir;
+        // Always generate assert_* nodes for specialization, even at safety=0.
+        // The emitter will skip runtime check_* bytecodes when safety=0.
 
         // Handle compound type specs: (or type1 type2 ...)
         if (type_spec.isCons()) {

@@ -109,6 +109,10 @@ pub const Ir = union(enum) {
         /// Function name symbol, or nil if anonymous.
         /// Used by FUNCTION-LAMBDA-EXPRESSION.
         name: Value = Value.nil,
+        /// Per-lambda optimize speed (from declarations)
+        speed: u8 = 1,
+        /// Per-lambda optimize safety (from declarations)
+        safety: u8 = 1,
     },
 
     // ========================================================================
