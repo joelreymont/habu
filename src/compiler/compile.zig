@@ -3649,12 +3649,15 @@ pub const Compiler = struct {
             }
 
             if (type_sym_to_check) |type_sym| {
-                const var_ir = try self.builder.variable(param_name, 0, tp.idx);
-                // Always generate assertions for specialization;
-                // the emitter skips runtime checks when safety=0.
-                const assert_ir = try self.makeTypeAssertionSym(var_ir, type_sym);
-                if (assert_ir) |assert_node| {
-                    try assertions.append(self.allocator, assert_node);
+                // At safety=0, variable references are already wrapped with
+                // assert_fixnum via getTypeDecl, so entry assertions are
+                // redundant. At safety>0, emit entry checks for early error.
+                if (self.optimize_current.safety > 0) {
+                    const var_ir = try self.builder.variable(param_name, 0, tp.idx);
+                    const assert_ir = try self.makeTypeAssertionSym(var_ir, type_sym);
+                    if (assert_ir) |assert_node| {
+                        try assertions.append(self.allocator, assert_node);
+                    }
                 }
             }
         }
