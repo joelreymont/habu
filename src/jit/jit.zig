@@ -803,7 +803,7 @@ pub const Jit = struct {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
                     .{ .imm64 = @as(u64, argc) },
                 });
-                try self.emitCallUnary(@intFromPtr(rt.j_call));
+                try self.emitCallUnary(@intFromPtr(rt.j_callFast));
             },
             .apply => {
                 _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
