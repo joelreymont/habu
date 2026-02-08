@@ -1070,6 +1070,28 @@ pub fn call(c: *ctx.JitContext, argc: u8) vm_mod.Error!Value {
     return res;
 }
 
+/// Like call(), but checks if the callee has JIT code and calls it
+/// directly, bypassing the interpreter loop for JIT→JIT transitions.
+pub fn callFast(c: *ctx.JitContext, argc: u8) vm_mod.Error!Value {
+    const sp = stackLen(c);
+    const argc_usize: usize = argc;
+    if (argc_usize + 1 > sp) return error.StackUnderflow;
+
+    const fn_idx = sp - argc_usize - 1;
+    const fn_val = c.frame_base[fn_idx];
+    const args = c.frame_base[fn_idx + 1 .. fn_idx + 1 + argc_usize];
+
+    syncVmSp(c);
+    const res = try c.vm.callFromStackAtFast(fn_idx, fn_val, args);
+    c.frame_base[fn_idx] = res;
+    c.sp = c.frame_base + fn_idx + 1;
+    syncVmSp(c);
+    // const_pool points into a GC-managed Chunk; refresh after potential relocation.
+    c.const_pool = c.vm.chunk.const_pool;
+    c.const_count = @intCast(c.vm.chunk.const_count);
+    return res;
+}
+
 pub fn apply(c: *ctx.JitContext, _: u8) vm_mod.Error!Value {
     const sp = stackLen(c);
     if (sp < 2) return error.StackUnderflow;
@@ -1140,6 +1162,7 @@ pub const j_vecAdjust = cWrap1(vecAdjust);
 pub const j_copyStructure = cWrap1(copyStructure);
 pub const j_functionLambdaExpression = cWrap1(functionLambdaExpression);
 pub const j_call = cWrap1(call);
+pub const j_callFast = cWrap1(callFast);
 pub const j_apply = cWrap1(apply);
 pub const j_makeList = cWrap1(makeList);
 pub const j_neg = cWrap1(neg);
@@ -1501,5 +1524,60 @@ test "rt apply preserves stack below" {
     try testing.expectEqual(@as(i64, 1), res.toFixnum());
     try testing.expectEqual(@as(i64, 111), vm.stack[0].toFixnum());
     try testing.expectEqual(@as(i64, 1), vm.stack[1].toFixnum());
+    try testing.expectEqual(@as(usize, 2), stackLen(&c));
+}
+
+test "rt callFast falls back to interpreter when no JIT code" {
+    // callFast should behave identically to call when callee has no JIT code
+    const testing = std.testing;
+    const bytecode = @import("../bytecode/bytecode.zig");
+    const Op = bytecode.Op;
+
+    var heap = try runtime.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try vm_mod.Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+
+    const push_i32_op: u16 = @intFromEnum(Op.push_i32);
+    const ret_op: u16 = @intFromEnum(Op.ret);
+    const code = [_]u8{
+        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8),
+        42, 0, 0, 0,
+        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+    };
+
+    const chunk_val = try heap.allocChunk(&code, &.{}, 2, 0, 0, false, 2);
+    const closure = try heap.allocClosure(chunk_val, 2, &.{});
+    vm.chunk = chunk_val.toPtr(runtime.Chunk);
+
+    const base = vm.stack[0..].ptr;
+    vm.stack[0] = Value.makeFixnum(111);
+    vm.stack[1] = closure;
+    vm.stack[2] = Value.makeFixnum(1);
+    vm.stack[3] = Value.makeFixnum(2);
+
+    var trace_addrs: [16]usize = undefined;
+    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var c = ctx.JitContext{
+        .sp = base + 4,
+        .const_pool = vm.chunk.const_pool,
+        .frame_base = base,
+        .stack_end = base + vm.stack.len,
+        .heap = &heap,
+        .ret_buf = &ret_buf,
+        .err = 0,
+        .const_count = @intCast(vm.chunk.const_count),
+        .err_trace = &trace,
+        .vm = &vm,
+    };
+
+    // No JIT enabled, so callFast should fall back to interpreter
+    const res = try callFast(&c, 2);
+    try testing.expect(res.isFixnum());
+    try testing.expectEqual(@as(i64, 42), res.toFixnum());
+    try testing.expectEqual(@as(i64, 111), vm.stack[0].toFixnum());
+    try testing.expectEqual(@as(i64, 42), vm.stack[1].toFixnum());
     try testing.expectEqual(@as(usize, 2), stackLen(&c));
 }

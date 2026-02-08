@@ -835,6 +835,57 @@ pub const Vm = struct {
         return try self.runJitFn(fn_ptr, chunk);
     }
 
+    /// Look up JIT-compiled native code for a chunk.
+    /// Returns the JitFn if found, null if not compiled or blacklisted.
+    pub fn lookupJitCode(self: *const Vm, chunk: *const Chunk) ?JitFn {
+        if (!self.jit_on) return null;
+        if (self.jit_code.isNil()) return null;
+
+        const key = chunkRoot(chunk);
+        if (key.isNil()) return null;
+
+        const v = self.jit_code.toPtr(HashTable).get(key) orelse return null;
+        if (v.raw == Value.t.raw) return null; // blacklisted
+        if (v.typeKind() != .native_code) return null;
+
+        const nc = v.toPtr(NativeCode);
+        return @ptrFromInt(nc.entry);
+    }
+
+    /// Run a JIT function with a specific frame base (for nested JIT calls).
+    /// `bp` is the absolute stack index of the callee's frame base.
+    pub fn runJitFnInFrame(self: *Vm, fn_ptr: JitFn, chunk: *const Chunk, bp: usize) Error!Value {
+        var trace_addrs: [16]usize = undefined;
+        var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
+        var ret_buf = jit_ctx.RetBuf{ .value = Value.nil, .err = 0 };
+
+        const base_ptr: [*]Value = self.stack[0..].ptr + bp;
+        const sp_ptr: [*]Value = self.stack[0..].ptr + self.sp;
+        const end = self.stack[self.stack.len..].ptr;
+
+        var ctx_val = jit_ctx.JitContext{
+            .sp = sp_ptr,
+            .const_pool = chunk.const_pool,
+            .frame_base = base_ptr,
+            .stack_end = end,
+            .heap = self.heap,
+            .ret_buf = &ret_buf,
+            .err = 0,
+            .const_count = @intCast(chunk.const_count),
+            .err_trace = &trace,
+            .vm = self,
+        };
+
+        const raw = fn_ptr(&ctx_val);
+
+        // Compute sp as absolute offset from stack base (not from frame_base)
+        const sp_bytes = @intFromPtr(ctx_val.sp) - @intFromPtr(self.stack[0..].ptr);
+        self.sp = @intCast(@divExact(sp_bytes, @sizeOf(Value)));
+
+        if (ctx_val.err != 0) return @errorFromInt(ctx_val.err);
+        return Value{ .raw = raw };
+    }
+
     fn bytesInHeap(self: *const Vm, bytes: []const u8) bool {
         if (bytes.len == 0) return false;
         const heap_start = @intFromPtr(self.heap.memory.ptr);
@@ -1449,6 +1500,49 @@ pub const Vm = struct {
 
         const argc: u8 = @intCast(args.len);
         try self.doCall(argc, false);
+        return try self.execute();
+    }
+
+    /// Like callFromStackAt, but checks for JIT code on the callee and
+    /// calls it directly, bypassing the interpreter loop.
+    pub fn callFromStackAtFast(self: *Vm, base: usize, fn_val: Value, args: []const Value) Error!Value {
+        const saved_state = State.save(self);
+
+        const saved_idx = self.saved_chunk_sp;
+        if (saved_idx >= MAX_SAVED_CHUNKS) return error.StackOverflow;
+        self.saved_chunks[saved_idx] = chunkRoot(saved_state.chunk);
+        self.saved_chunk_sp = saved_idx + 1;
+        defer {
+            const chunk_val = self.saved_chunks[saved_idx];
+            self.saved_chunk_sp = saved_idx;
+            saved_state.restore(self);
+            if (!chunk_val.isNil()) {
+                if (self.chunkFromValue(chunk_val)) |chunk| {
+                    self.chunk = chunk;
+                }
+            }
+        }
+
+        if (base + args.len + 1 > self.stack.len) return error.StackOverflow;
+        self.stack[base] = fn_val;
+        for (args, 0..) |arg, i| {
+            self.stack[base + i + 1] = arg;
+        }
+        self.sp = base + args.len + 1;
+
+        self.chunk = &halt_chunk;
+        self.ip = 0;
+
+        const argc: u8 = @intCast(args.len);
+        try self.doCall(argc, false);
+
+        // After doCall, self.chunk is the callee's chunk.
+        // Check if it has JIT code and call directly if so.
+        if (self.lookupJitCode(self.chunk)) |jit_fn| {
+            const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
+            return try self.runJitFnInFrame(jit_fn, self.chunk, bp);
+        }
+
         return try self.execute();
     }
 
