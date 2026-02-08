@@ -34,6 +34,19 @@ fn isProvenVector(node: *const Ir) bool {
     return node.* == .assert_vector;
 }
 
+/// Strip assert wrapper, returning the inner operand.
+/// Specialized ops handle the type guarantee, so the runtime check is redundant.
+fn stripAssert(node: *const Ir) *const Ir {
+    return switch (node.*) {
+        .assert_fixnum => |af| af.operand,
+        .assert_cons => |ac| ac.operand,
+        .assert_vector => |av| av.operand,
+        .assert_symbol => |a| a.operand,
+        .assert_string => |a| a.operand,
+        else => node,
+    };
+}
+
 /// Walk IR tree and replace generic ops with specialized variants.
 pub fn specialize(allocator: std.mem.Allocator, node: *const Ir) !*const Ir {
     switch (node.*) {
@@ -287,6 +300,8 @@ pub fn specialize(allocator: std.mem.Allocator, node: *const Ir) !*const Ir {
                     .body = new_body,
                     .lambda_expr = lam.lambda_expr,
                     .name = lam.name,
+                    .speed = lam.speed,
+                    .safety = lam.safety,
                 } };
                 return n;
             }

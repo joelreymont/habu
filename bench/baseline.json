@@ -4,31 +4,31 @@
   "benches": [
     {
       "name": "fixnum_loop",
-      "ns": 81779652,
+      "ns": 83044180,
       "allocs": 0,
       "gc_count": 0
     },
     {
       "name": "list_length",
-      "ns": 11493930,
+      "ns": 11612736,
       "allocs": 1000000,
       "gc_count": 0
     },
     {
       "name": "cons_alloc",
-      "ns": 10918458,
+      "ns": 11258236,
       "allocs": 1000000,
       "gc_count": 0
     },
     {
       "name": "fib35",
-      "ns": 2391553097,
+      "ns": 2487878541,
       "allocs": 1,
       "gc_count": 0
     },
     {
       "name": "tak",
-      "ns": 4967916,
+      "ns": 5207555,
       "allocs": 1,
       "gc_count": 0
     }

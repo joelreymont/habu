@@ -2474,17 +2474,27 @@ pub const Compiler = struct {
             const name = sym.getName();
 
             if (env.lookupSym(sym_val)) |binding| {
-                const var_ir = try self.builder.variable(name, binding.depth, binding.index);
+                const result_ir = try self.builder.variable(name, binding.depth, binding.index);
 
                 // If this variable is boxed, wrap with box-ref
                 if (self.boxed_vars) |bv| {
                     if (bv.contains(sym_val)) {
                         const box_ref = try self.allocator.create(Ir);
-                        box_ref.* = .{ .box_ref = .{ .operand = var_ir } };
+                        box_ref.* = .{ .box_ref = .{ .operand = result_ir } };
                         return box_ref;
                     }
                 }
-                return var_ir;
+
+                // If variable has a type declaration, wrap with assert for specialization
+                if (self.builtins) |b| {
+                    if (self.global_decls.getTypeDecl(name)) |type_expr| {
+                        if (type_expr.raw == b.ty_fixnum.raw) {
+                            return self.builder.assertFixnum(result_ir);
+                        }
+                    }
+                }
+
+                return result_ir;
             }
             return self.compileGlobalSymbolRef(sym_val);
         }
