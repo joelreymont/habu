@@ -353,8 +353,6 @@ pub const prologue_stencil = Stencil{
             inst_bytes(stp_pre(X19, X20, SP, -2)) ++
             inst_bytes(stp_pre(X21, X22, SP, -2)) ++
             inst_bytes(stp_pre(X23, X24, SP, -2)) ++
-            inst_bytes(stp_pre(X25, X26, SP, -2)) ++
-            inst_bytes(stp_pre(X27, X28, SP, -2)) ++
             // MOV x22, x0 (ctx)
             inst_bytes(add_imm(X22, X0, 0)) ++
             // LDR x19, [x22, #0] (ctx.sp)
@@ -376,9 +374,7 @@ pub const prologue_stencil = Stencil{
 pub const epilogue_stencil = Stencil{
     .name = "epilogue",
     .code = &(
-        inst_bytes(ldp_post(X27, X28, SP, 2)) ++
-            inst_bytes(ldp_post(X25, X26, SP, 2)) ++
-            inst_bytes(ldp_post(X23, X24, SP, 2)) ++
+        inst_bytes(ldp_post(X23, X24, SP, 2)) ++
             inst_bytes(ldp_post(X21, X22, SP, 2)) ++
             inst_bytes(ldp_post(X19, X20, SP, 2)) ++
             inst_bytes(ldp_post(X29, X30, SP, 2)) ++
@@ -1177,8 +1173,8 @@ test "stencil sizes" {
     try testing.expectEqual(@as(usize, 16), stack_push_x1.code.len);
     try testing.expectEqual(@as(usize, 16), stack_pop.code.len);
     try testing.expectEqual(@as(usize, 16), swap_stencil.code.len);
-    try testing.expectEqual(@as(usize, 56), prologue_stencil.code.len);
-    try testing.expectEqual(@as(usize, 28), epilogue_stencil.code.len);
+    try testing.expectEqual(@as(usize, 48), prologue_stencil.code.len);
+    try testing.expectEqual(@as(usize, 20), epilogue_stencil.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x1_x0.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x2_x0.code.len);
     try testing.expectEqual(@as(usize, 4), mov_x2_x1.code.len);
