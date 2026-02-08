@@ -117,17 +117,12 @@ pub const Jit = struct {
 
         _ = try patch.patchStencil(&self.code_buffer, stencils.prologue_stencil, &[_]patch.PatchValue{});
 
-        // Self-calls BL to entry (after prologue). The self-call code
-        // directly sets x19/x23 and updates ctx before the BL, so the
-        // prologue register loading is not needed. The BL/RET pair uses
-        // the ARM64 stack for the link register (x30). We save/restore
-        // x23/x19 around the BL ourselves.
-        //
-        // Note: We can't skip the prologue entirely because the function
-        // body may contain `ret` which emits the full epilogue. The epilogue
-        // restores registers from the prologue's saves. So we need to go
-        // through the prologue to set up the matching save/restore pairs.
-        const self_call_target = start_pos; // = fn_start (through prologue)
+        // Self-calls BL to entry_after_prologue (skipping the prologue's
+        // register loads from ctx). The self-call code pushes the same
+        // register pairs to match the epilogue's LDP sequence, then sets
+        // x19/x23 directly. This saves ~8 instructions per self-call.
+        const entry_after_prologue = self.code_buffer.pos;
+        const self_call_target = entry_after_prologue;
 
         // Can this function use self-call optimization?
         // Only for exact-arity functions (no rest, no optional, no keyword).
@@ -1381,72 +1376,75 @@ pub const Jit = struct {
         }
 
         // Non-tail self-call:
+        //
+        // We skip the full prologue by pushing the same register pairs
+        // that the prologue saves (to match the epilogue's LDP sequence),
+        // then setting x19/x23 directly. We BL to entry_after_prologue.
 
-        // Step 1: Save caller frame state to ARM64 stack
-        // STP x23, x19, [ARM64_sp, #-16]!
-        try self.emitRaw(&stencils.inst_bytes(stencils.stp_pre(stencils.X23, stencils.X19, stencils.SP, -2)));
-
-        // Step 2: Set new frame_base = x19 - (argc+1)*8 (at closure slot position)
+        // Step 1: Set up new frame_base and args BEFORE pushing to ARM64 stack.
+        // x23_new = x19 - (argc+1)*8 (at closure slot position)
         const frame_offset: u12 = (@as(u12, argc) + 1) * 8;
-        try self.emitRaw(&stencils.inst_bytes(stencils.sub_imm(stencils.X23, stencils.X19, frame_offset)));
+        // Use x9 as temp for new frame_base (don't clobber x23 yet)
+        try self.emitRaw(&stencils.inst_bytes(stencils.sub_imm(9, stencils.X19, frame_offset)));
 
-        // Step 3: Shift args down by 1 slot (overwrite closure with arg0, etc.)
-        // x23[i] = x23[i+1] for i in 0..argc
-        // Use x9 as temp register
+        // Shift args down by 1 slot: x9[i] = x9[i+1]
         var i: u8 = 0;
         while (i < argc) : (i += 1) {
-            // LDR x9, [x23, #(i+1)*8]
             const src_off: u12 = (@as(u12, i) + 1) * 8;
-            try self.emitRaw(&stencils.inst_bytes(stencils.ldr_imm(9, stencils.X23, src_off)));
-            // STR x9, [x23, #i*8]
             const dst_off: u12 = @as(u12, i) * 8;
-            try self.emitRaw(&stencils.inst_bytes(stencils.str_imm(9, stencils.X23, dst_off)));
+            // LDR x10, [x9, #src_off]; STR x10, [x9, #dst_off]
+            try self.emitRaw(&stencils.inst_bytes(stencils.ldr_imm(10, 9, src_off)));
+            try self.emitRaw(&stencils.inst_bytes(stencils.str_imm(10, 9, dst_off)));
         }
 
-        // Step 4: Set x19 = x23 + argc*8 (past the shifted args)
+        // Step 2: Push register pairs to ARM64 stack matching the epilogue.
+        // Epilogue pops: LDP x23,x24; LDP x21,x22; LDP x19,x20; LDP x29,x30
+        // So we push in reverse order:
+        // STP x29, x30 (match last LDP)
+        try self.emitRaw(&stencils.inst_bytes(stencils.stp_pre(stencils.X29, stencils.X30, stencils.SP, -2)));
+        // MOV x29, sp (set frame pointer for debuggability)
+        try self.emitRaw(&stencils.inst_bytes(stencils.add_imm(stencils.X29, stencils.SP, 0)));
+        // STP x19, x20
+        try self.emitRaw(&stencils.inst_bytes(stencils.stp_pre(stencils.X19, stencils.X20, stencils.SP, -2)));
+        // STP x21, x22
+        try self.emitRaw(&stencils.inst_bytes(stencils.stp_pre(stencils.X21, stencils.X22, stencils.SP, -2)));
+        // STP x23, x24
+        try self.emitRaw(&stencils.inst_bytes(stencils.stp_pre(stencils.X23, stencils.X24, stencils.SP, -2)));
+
+        // Step 3: Set x23 (frame_base) and x19 (sp) for the callee.
+        // MOV x23, x9 (new frame_base computed above)
+        try self.emitRaw(&stencils.inst_bytes(stencils.add_imm(stencils.X23, 9, 0)));
+        // x19 = x23 + argc*8
         const args_bytes: u12 = @as(u12, argc) * 8;
         try self.emitRaw(&stencils.inst_bytes(stencils.add_imm(stencils.X19, stencils.X23, args_bytes)));
 
         // Push nil for extra locals (num_locals - argc)
         var j: u16 = 0;
         while (j < extra_locals) : (j += 1) {
-            // STR xzr, [x19], #8
-            try self.emitRaw(&stencils.inst_bytes(0xF800841F));
+            try self.emitRaw(&stencils.inst_bytes(0xF800841F)); // STR xzr, [x19], #8
         }
 
-        // Step 5: Update JitContext
-        // STR x23, [x22, #16]  — ctx.frame_base
-        try self.emitRaw(&stencils.inst_bytes(0xF9000AD7));
-        // STR x19, [x22, #0]   — ctx.sp
-        try self.emitRaw(&stencils.inst_bytes(0xF90002D3));
+        // Step 4: Update JitContext (for GC to see correct frame)
+        try self.emitRaw(&stencils.inst_bytes(0xF9000AD7)); // STR x23, [x22, #16] ctx.frame_base
+        try self.emitRaw(&stencils.inst_bytes(0xF90002D3)); // STR x19, [x22, #0]  ctx.sp
 
-        // Step 6: Call through prologue
-        // MOV x0, x22  (pass ctx)
-        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x0_x22, &[_]patch.PatchValue{});
-        // BL <fn_start> — patched later to actual entry
+        // Step 5: BL to entry_after_prologue (skip prologue register loads)
         const bl_offset = self.code_buffer.pos;
         try self.emitRaw(&stencils.inst_bytes(stencils.bl_placeholder()));
         try self.self_call_patches.append(self.allocator, bl_offset);
 
-        // Step 7: Restore caller frame state
-        // After return, x0 has the result value.
-        // LDP x23, x19, [ARM64_sp], #16
-        try self.emitRaw(&stencils.inst_bytes(stencils.ldp_post(stencils.X23, stencils.X19, stencils.SP, 2)));
+        // Step 6: After return. x0 = result. Epilogue has already restored
+        // x19-x24, x29/x30 from our STPs above. We're back to caller state.
+        //
+        // Refresh const_pool from ctx (GC may have moved it during callee)
+        try self.emitRaw(&stencils.inst_bytes(0xF94006D4)); // LDR x20, [x22, #8]
+        // Restore ctx.frame_base to caller's frame_base
+        try self.emitRaw(&stencils.inst_bytes(0xF9000AD7)); // STR x23, [x22, #16]
 
-        // Restore JitContext.frame_base for GC safety
-        // STR x23, [x22, #16]
-        try self.emitRaw(&stencils.inst_bytes(0xF9000AD7));
-
-        // Refresh const_pool from ctx (GC may have moved it)
-        // LDR x20, [x22, #8]
-        try self.emitRaw(&stencils.inst_bytes(0xF94006D4));
-
-        // Step 8: Pop closure+args from caller's stack, push result
-        // SUB x19, x19, #((argc+1) * 8)  — pop closure + args
+        // Step 7: Pop closure+args from caller's stack, push result
         const pop_bytes: u12 = (@as(u12, argc) + 1) * 8;
         try self.emitRaw(&stencils.inst_bytes(stencils.sub_imm(stencils.X19, stencils.X19, pop_bytes)));
-        // STR x0, [x19], #8 — push result
-        try self.emitRaw(&stencils.inst_bytes(0xF8008260));
+        try self.emitRaw(&stencils.inst_bytes(0xF8008260)); // STR x0, [x19], #8 (push result)
     }
 
     /// Emit raw instruction bytes to the code buffer.

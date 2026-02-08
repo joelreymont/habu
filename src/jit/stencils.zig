@@ -281,8 +281,8 @@ const X25: u5 = 25; // callee-saved
 const X26: u5 = 26; // callee-saved
 const X27: u5 = 27; // callee-saved
 const X28: u5 = 28; // callee-saved
-const X29: u5 = 29; // fp
-const X30: u5 = 30; // link register
+pub const X29: u5 = 29; // fp
+pub const X30: u5 = 30; // link register
 const XZR: u5 = 31; // zero register
 pub const SP: u5 = 31; // stack pointer
 
