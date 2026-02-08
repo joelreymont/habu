@@ -306,6 +306,47 @@ test "parity: vm vs jit (hand-picked)" {
     try p.runCases(cases[0..], src);
 }
 
+test "parity: vm vs jit (self-recursive fib)" {
+    if (builtin.cpu.arch != .aarch64) return;
+
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var r: Runner = undefined;
+    try r.init(allocator, &heap);
+    defer r.deinit();
+    try r.enableJit(64 * 1024 * 1024, 1);
+
+    const source =
+        \\(progn
+        \\  (defun fib (n)
+        \\    (if (<= n 1) n
+        \\      (+ (fib (- n 1)) (fib (- n 2)))))
+        \\  (fib 10))
+    ;
+
+    // Run with interpreter first
+    const chunk = try r.compile(source);
+    var roots = [_]Value{Value.makeChunk(chunk)};
+    r.vm.setExtRoots(roots[0..]);
+    defer r.vm.clearExtRoots();
+
+    const saved = r.vm.jit_on;
+    r.vm.jit_on = false;
+    const interp_val = try r.run(chunk);
+    r.vm.jit_on = saved;
+
+    // Run with JIT
+    const jit_chunk = roots[0].toPtr(runtime.Chunk);
+    const jit_val = try r.run(jit_chunk);
+
+    // Check correctness: fib(10) = 55
+    try testing.expectEqual(@as(i64, 55), interp_val.toFixnum());
+    try testing.expectEqual(@as(i64, 55), jit_val.toFixnum());
+}
+
 test "parity: vm vs jit (random arith)" {
     if (builtin.cpu.arch != .aarch64) return;
 

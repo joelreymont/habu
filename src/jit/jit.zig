@@ -52,6 +52,12 @@ pub const Jit = struct {
     pending_jumps: std.ArrayList(PendingJump),
     /// Pending runtime error branches to patch
     err_branches: std.ArrayList(usize),
+    /// Pending self-call BLs to patch with entry point after compilation
+    self_call_patches: std.ArrayList(usize),
+    /// Number of items on the JIT stack above the self-call function slot.
+    /// Set when load_global detects the closure matches the chunk being compiled.
+    /// Reset after a call/tail_call consumes it, or when any other op invalidates tracking.
+    self_call_depth: ?u8 = null,
 
     const PendingJump = struct {
         /// Offset in code buffer where jump instruction is
@@ -70,6 +76,7 @@ pub const Jit = struct {
             .labels = std.AutoHashMap(usize, usize).init(allocator),
             .pending_jumps = std.ArrayList(PendingJump){},
             .err_branches = std.ArrayList(usize){},
+            .self_call_patches = std.ArrayList(usize){},
         };
     }
 
@@ -78,10 +85,13 @@ pub const Jit = struct {
         self.labels.deinit();
         self.pending_jumps.deinit(self.allocator);
         self.err_branches.deinit(self.allocator);
+        self.self_call_patches.deinit(self.allocator);
     }
 
     /// Compile a bytecode chunk to native code
-    pub fn compile(self: *Jit, chunk: *const Chunk) JitError!JitFn {
+    /// Compile a bytecode chunk to native code.
+    /// `globals` is the VM's globals array for resolving self-call patterns.
+    pub fn compile(self: *Jit, chunk: *const Chunk, globals: []const Value) JitError!JitFn {
         const start_pos = self.code_buffer.pos;
         const reloc_start = self.code_buffer.relocs.items.len;
         var ok = false;
@@ -101,9 +111,27 @@ pub const Jit = struct {
         self.labels.clearRetainingCapacity();
         self.pending_jumps.clearRetainingCapacity();
         self.err_branches.clearRetainingCapacity();
+        self.self_call_patches.clearRetainingCapacity();
+        self.self_call_depth = null;
         try self.code_buffer.setWritable(true);
 
         _ = try patch.patchStencil(&self.code_buffer, stencils.prologue_stencil, &[_]patch.PatchValue{});
+
+        // Self-calls BL to entry (after prologue). The self-call code
+        // directly sets x19/x23 and updates ctx before the BL, so the
+        // prologue register loading is not needed. The BL/RET pair uses
+        // the ARM64 stack for the link register (x30). We save/restore
+        // x23/x19 around the BL ourselves.
+        //
+        // Note: We can't skip the prologue entirely because the function
+        // body may contain `ret` which emits the full epilogue. The epilogue
+        // restores registers from the prologue's saves. So we need to go
+        // through the prologue to set up the matching save/restore pairs.
+        const self_call_target = start_pos; // = fn_start (through prologue)
+
+        // Can this function use self-call optimization?
+        // Only for exact-arity functions (no rest, no optional, no keyword).
+        const can_self_call = chunk.has_rest == 0 and chunk.opt_count == 0 and chunk.key_count == 0;
 
         var bc_offset: usize = 0;
         const code = chunk.getCode();
@@ -115,17 +143,138 @@ pub const Jit = struct {
             const op: Op = @enumFromInt(op_raw);
             bc_offset += 2;
 
-            try self.compileOp(op, chunk, &bc_offset);
+            try self.compileOpSelfCall(op, chunk, &bc_offset, globals, can_self_call);
         }
 
         // Patch forward jumps
         try self.patchPendingJumps();
         // Emit error handler and patch runtime error branches
         try self.emitErrorHandler();
+        // Patch self-call BLs to branch to fn_start (prologue entry)
+        try self.patchSelfCalls(self_call_target);
         try self.code_buffer.setWritable(false);
 
         ok = true;
         return self.code_buffer.getFnPtr(JitFn, self.fn_start);
+    }
+
+    /// Wrapper around compileOp that detects self-recursive call patterns.
+    ///
+    /// Self-call detection works as follows:
+    /// 1. On `load_global X`: check if globals[X] is a closure whose chunk
+    ///    matches the chunk being compiled. If so, set self_call_depth = 0.
+    /// 2. On each push instruction: increment self_call_depth.
+    /// 3. On `call N` or `tail_call N`: if self_call_depth == N, this is
+    ///    a self-call. Emit optimized native self-call sequence.
+    /// 4. On anything that invalidates tracking (jump, pop, etc.): reset.
+    fn compileOpSelfCall(
+        self: *Jit,
+        op: Op,
+        chunk: *const Chunk,
+        bc_offset: *usize,
+        globals: []const Value,
+        can_self_call: bool,
+    ) JitError!void {
+        if (!can_self_call) {
+            return self.compileOp(op, chunk, bc_offset);
+        }
+
+        switch (op) {
+            .load_global => {
+                // Check if this global holds a closure for the chunk being compiled.
+                const idx = chunk.readU16(bc_offset.*);
+                if (idx < globals.len and globals[idx].isClosure()) {
+                    const cls = globals[idx].toPtr(runtime.Closure);
+                    if (cls.code.isChunk()) {
+                        const target_chunk = cls.code.toPtr(Chunk);
+                        if (target_chunk == chunk) {
+                            // This load_global pushes a self-referencing closure.
+                            // Don't set depth yet — it's set after we emit the push.
+                            try self.compileOp(op, chunk, bc_offset);
+                            self.self_call_depth = 0;
+                            return;
+                        }
+                    }
+                }
+                // Not a self-reference: reset tracking
+                self.self_call_depth = null;
+                return self.compileOp(op, chunk, bc_offset);
+            },
+
+            .call, .tail_call => {
+                const argc = chunk.readU8(bc_offset.*);
+                bc_offset.* += 1;
+
+                if (self.self_call_depth) |depth| {
+                    if (depth == argc) {
+                        // Self-call detected! Emit optimized native sequence.
+                        try self.emitSelfCall(chunk, argc, op == .tail_call);
+                        self.self_call_depth = null;
+                        return;
+                    }
+                }
+
+                // Not a self-call: emit normal call via callFast
+                self.self_call_depth = null;
+                _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                    .{ .imm64 = @as(u64, argc) },
+                });
+                try self.emitCallUnary(@intFromPtr(rt.j_callFast));
+                return;
+            },
+
+            // Instructions that push one value to the stack
+            .push_nil, .push_t, .push_i32, .load_local, .push_const, .dup => {
+                if (self.self_call_depth) |d| {
+                    try self.compileOp(op, chunk, bc_offset);
+                    self.self_call_depth = d + 1;
+                    return;
+                }
+                return self.compileOp(op, chunk, bc_offset);
+            },
+
+            // Binary ops consume 2, push 1: net -1
+            .add, .sub, .mul, .lt, .gt, .le, .ge, .num_eq, .eq, .eql => {
+                if (self.self_call_depth) |d| {
+                    try self.compileOp(op, chunk, bc_offset);
+                    if (d > 0) {
+                        self.self_call_depth = d - 1;
+                    } else {
+                        self.self_call_depth = null;
+                    }
+                    return;
+                }
+                return self.compileOp(op, chunk, bc_offset);
+            },
+
+            // Unary ops that keep stack depth unchanged
+            .check_fixnum, .check_cons, .check_symbol, .check_string,
+            .check_vector, .check_closure, .check_non_nil, .check_list,
+            => {
+                // These peek TOS, don't change depth
+                return self.compileOp(op, chunk, bc_offset);
+            },
+
+            // Specialized binary ops: consume 2, push 1: net -1
+            .fixnum_add, .fixnum_sub, .fixnum_mul => {
+                if (self.self_call_depth) |d| {
+                    try self.compileOp(op, chunk, bc_offset);
+                    if (d > 0) {
+                        self.self_call_depth = d - 1;
+                    } else {
+                        self.self_call_depth = null;
+                    }
+                    return;
+                }
+                return self.compileOp(op, chunk, bc_offset);
+            },
+
+            // Anything else invalidates self-call tracking
+            else => {
+                self.self_call_depth = null;
+                return self.compileOp(op, chunk, bc_offset);
+            },
+        }
     }
 
     fn compileOp(self: *Jit, op: Op, chunk: *const Chunk, bc_offset: *usize) JitError!void {
@@ -1194,6 +1343,128 @@ pub const Jit = struct {
         try self.code_buffer.recordReloc(code_offset, hole_type, target_addr);
         patch.flushIcache(self.code_buffer.memory.ptr + code_offset, 4);
     }
+    /// Emit a self-recursive call sequence.
+    ///
+    /// Stack layout before call: [..., closure, arg0, ..., argN-1]
+    ///                                 ^--- x19 points here after last arg
+    ///
+    /// VM doCall behavior (which we replicate):
+    ///   new_bp = sp - argc - 1 (position of closure slot)
+    ///   stack[new_bp + i] = stack[new_bp + 1 + i]  for i in 0..argc
+    ///   (shifts args down by 1, overwriting closure)
+    ///   push nil for extra locals
+    ///   frame_base = &stack[new_bp]
+    ///
+    /// For non-tail calls:
+    ///   1. Save caller's x23/x19 to ARM64 stack
+    ///   2. Set x23 = x19 - (argc+1)*8 (new frame_base, at closure slot)
+    ///   3. Shift args down by 1 slot (overwrite closure with arg0, etc.)
+    ///   4. Initialize extra locals to nil
+    ///   5. Update JitContext (frame_base, sp)
+    ///   6. BL <fn_start> (through prologue to reload regs from ctx)
+    ///   7. Restore caller's x23/x19, ctx.frame_base, refresh x20
+    ///   8. Adjust x19: pop argc+1 slots, push result
+    ///
+    /// For tail calls:
+    ///   Falls back to callFast (TODO: implement native tail self-call).
+    fn emitSelfCall(self: *Jit, chunk: *const Chunk, argc: u8, is_tail: bool) JitError!void {
+        const num_locals: u16 = chunk.num_locals;
+        const extra_locals: u16 = num_locals -| argc;
+
+        if (is_tail) {
+            // Tail self-call: fall back to callFast for now.
+            _ = try patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                .{ .imm64 = @as(u64, argc) },
+            });
+            try self.emitCallUnary(@intFromPtr(rt.j_callFast));
+            return;
+        }
+
+        // Non-tail self-call:
+
+        // Step 1: Save caller frame state to ARM64 stack
+        // STP x23, x19, [ARM64_sp, #-16]!
+        try self.emitRaw(&stencils.inst_bytes(stencils.stp_pre(stencils.X23, stencils.X19, stencils.SP, -2)));
+
+        // Step 2: Set new frame_base = x19 - (argc+1)*8 (at closure slot position)
+        const frame_offset: u12 = (@as(u12, argc) + 1) * 8;
+        try self.emitRaw(&stencils.inst_bytes(stencils.sub_imm(stencils.X23, stencils.X19, frame_offset)));
+
+        // Step 3: Shift args down by 1 slot (overwrite closure with arg0, etc.)
+        // x23[i] = x23[i+1] for i in 0..argc
+        // Use x9 as temp register
+        var i: u8 = 0;
+        while (i < argc) : (i += 1) {
+            // LDR x9, [x23, #(i+1)*8]
+            const src_off: u12 = (@as(u12, i) + 1) * 8;
+            try self.emitRaw(&stencils.inst_bytes(stencils.ldr_imm(9, stencils.X23, src_off)));
+            // STR x9, [x23, #i*8]
+            const dst_off: u12 = @as(u12, i) * 8;
+            try self.emitRaw(&stencils.inst_bytes(stencils.str_imm(9, stencils.X23, dst_off)));
+        }
+
+        // Step 4: Set x19 = x23 + argc*8 (past the shifted args)
+        const args_bytes: u12 = @as(u12, argc) * 8;
+        try self.emitRaw(&stencils.inst_bytes(stencils.add_imm(stencils.X19, stencils.X23, args_bytes)));
+
+        // Push nil for extra locals (num_locals - argc)
+        var j: u16 = 0;
+        while (j < extra_locals) : (j += 1) {
+            // STR xzr, [x19], #8
+            try self.emitRaw(&stencils.inst_bytes(0xF800841F));
+        }
+
+        // Step 5: Update JitContext
+        // STR x23, [x22, #16]  — ctx.frame_base
+        try self.emitRaw(&stencils.inst_bytes(0xF9000AD7));
+        // STR x19, [x22, #0]   — ctx.sp
+        try self.emitRaw(&stencils.inst_bytes(0xF90002D3));
+
+        // Step 6: Call through prologue
+        // MOV x0, x22  (pass ctx)
+        _ = try patch.patchStencil(&self.code_buffer, stencils.mov_x0_x22, &[_]patch.PatchValue{});
+        // BL <fn_start> — patched later to actual entry
+        const bl_offset = self.code_buffer.pos;
+        try self.emitRaw(&stencils.inst_bytes(stencils.bl_placeholder()));
+        try self.self_call_patches.append(self.allocator, bl_offset);
+
+        // Step 7: Restore caller frame state
+        // After return, x0 has the result value.
+        // LDP x23, x19, [ARM64_sp], #16
+        try self.emitRaw(&stencils.inst_bytes(stencils.ldp_post(stencils.X23, stencils.X19, stencils.SP, 2)));
+
+        // Restore JitContext.frame_base for GC safety
+        // STR x23, [x22, #16]
+        try self.emitRaw(&stencils.inst_bytes(0xF9000AD7));
+
+        // Refresh const_pool from ctx (GC may have moved it)
+        // LDR x20, [x22, #8]
+        try self.emitRaw(&stencils.inst_bytes(0xF94006D4));
+
+        // Step 8: Pop closure+args from caller's stack, push result
+        // SUB x19, x19, #((argc+1) * 8)  — pop closure + args
+        const pop_bytes: u12 = (@as(u12, argc) + 1) * 8;
+        try self.emitRaw(&stencils.inst_bytes(stencils.sub_imm(stencils.X19, stencils.X19, pop_bytes)));
+        // STR x0, [x19], #8 — push result
+        try self.emitRaw(&stencils.inst_bytes(0xF8008260));
+    }
+
+    /// Emit raw instruction bytes to the code buffer.
+    fn emitRaw(self: *Jit, bytes: []const u8) JitError!void {
+        if (self.code_buffer.pos + bytes.len > self.code_buffer.memory.len) return error.CodeTooLarge;
+        @memcpy(self.code_buffer.memory[self.code_buffer.pos..][0..bytes.len], bytes);
+        self.code_buffer.pos += bytes.len;
+    }
+
+    /// Patch all self-call BLs to branch to the entry point (after prologue).
+    fn patchSelfCalls(self: *Jit, entry_after_prologue: usize) JitError!void {
+        if (self.self_call_patches.items.len == 0) return;
+
+        const entry_addr = @intFromPtr(self.code_buffer.memory.ptr) + entry_after_prologue;
+        for (self.self_call_patches.items) |bl_offset| {
+            try self.patchBranch(bl_offset, entry_addr, .rel26);
+        }
+    }
 };
 
 // ============================================================================
@@ -1258,7 +1529,7 @@ test "jit compile rollback on error" {
     };
 
     const start_pos = jit.code_buffer.pos;
-    try testing.expectError(error.UnsupportedOpcode, jit.compile(&chunk));
+    try testing.expectError(error.UnsupportedOpcode, jit.compile(&chunk, &.{}));
     try testing.expectEqual(start_pos, jit.code_buffer.pos);
     try testing.expect(!jit.code_buffer.writable);
 }
@@ -1291,7 +1562,7 @@ test "jit compile simple" {
         .num_locals = 0,
     };
 
-    const fn_ptr = try jit.compile(&chunk);
+    const fn_ptr = try jit.compile(&chunk, &.{});
 
     // Verify function was compiled (on ARM64, we could call it)
     try testing.expect(@intFromPtr(fn_ptr) != 0);
@@ -1337,7 +1608,7 @@ test "jit compile jump" {
         .num_locals = 0,
     };
 
-    _ = try jit.compile(&chunk);
+    _ = try jit.compile(&chunk, &.{});
 
     const err_len =
         stencils.store_err.code.len +
@@ -1409,7 +1680,7 @@ test "jit relocations reapply after move" {
     try testing.expect(vm_res.isFixnum());
     try testing.expectEqual(@as(i64, 2), vm_res.toFixnum());
 
-    const fn_ptr = try jit.compile(&chunk);
+    const fn_ptr = try jit.compile(&chunk, &.{});
     try testing.expect(jit.code_buffer.relocs.items.len > 0);
 
     var stack_buf: [32]Value = undefined;
@@ -1505,7 +1776,7 @@ test "jit compile numberp" {
         .num_locals = 0,
     };
 
-    _ = try jit.compile(&chunk);
+    _ = try jit.compile(&chunk, &.{});
 
     const expected_len =
         stencils.prologue_stencil.code.len +
@@ -1559,7 +1830,7 @@ test "jit compile add" {
         .num_locals = 0,
     };
 
-    _ = try jit.compile(&chunk);
+    _ = try jit.compile(&chunk, &.{});
 
     const expected_len =
         stencils.prologue_stencil.code.len +
@@ -1622,7 +1893,7 @@ test "jit compile locals" {
         .num_locals = 1,
     };
 
-    _ = try jit.compile(&chunk);
+    _ = try jit.compile(&chunk, &.{});
 
     const err_len =
         stencils.store_err.code.len +
@@ -1669,7 +1940,7 @@ test "jit compile push_const" {
         .num_locals = 0,
     };
 
-    _ = try jit.compile(&chunk);
+    _ = try jit.compile(&chunk, &.{});
 
     const err_len =
         stencils.store_err.code.len +
@@ -1731,7 +2002,7 @@ test "jit vm parity add" {
 
     const vm_res = try vm.run(&chunk);
 
-    const fn_ptr = try jit.compile(&chunk);
+    const fn_ptr = try jit.compile(&chunk, &.{});
     var stack_buf: [32]Value = undefined;
     var trace_addrs: [16]usize = undefined;
     var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
@@ -1794,7 +2065,7 @@ test "jit vm parity numberp" {
 
     const vm_res = try vm.run(&chunk);
 
-    const fn_ptr = try jit.compile(&chunk);
+    const fn_ptr = try jit.compile(&chunk, &.{});
     var stack_buf: [32]Value = undefined;
     var trace_addrs: [16]usize = undefined;
     var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
@@ -1859,7 +2130,7 @@ test "jit vm parity lt" {
 
     const vm_res = try vm.run(&chunk);
 
-    const fn_ptr = try jit.compile(&chunk);
+    const fn_ptr = try jit.compile(&chunk, &.{});
     var stack_buf: [32]Value = undefined;
     var trace_addrs: [16]usize = undefined;
     var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
@@ -1927,7 +2198,7 @@ test "jit vm parity global store/load" {
 
     const vm_res = try vm.run(&chunk);
 
-    const fn_ptr = try jit.compile(&chunk);
+    const fn_ptr = try jit.compile(&chunk, &.{});
     var stack_buf: [32]Value = undefined;
     var trace_addrs: [16]usize = undefined;
     var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
@@ -1989,7 +2260,7 @@ test "jit car nil returns nil" {
 
     const vm_res = try vm.run(&chunk);
 
-    const fn_ptr = try jit.compile(&chunk);
+    const fn_ptr = try jit.compile(&chunk, &.{});
     var stack_buf: [32]Value = undefined;
     var trace_addrs: [16]usize = undefined;
     var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
@@ -2053,7 +2324,7 @@ test "jit car non-cons returns nil" {
     const vm_res = try vm.run(&chunk);
     try testing.expect(vm_res.isNil());
 
-    const fn_ptr = try jit.compile(&chunk);
+    const fn_ptr = try jit.compile(&chunk, &.{});
     var stack_buf: [32]Value = undefined;
     var trace_addrs: [16]usize = undefined;
     var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
@@ -2121,7 +2392,7 @@ test "jit vm parity make_list" {
 
     const vm_res = try vm.run(&chunk);
 
-    const fn_ptr = try jit.compile(&chunk);
+    const fn_ptr = try jit.compile(&chunk, &.{});
     var stack_buf: [32]Value = undefined;
     var trace_addrs: [16]usize = undefined;
     var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
@@ -2191,7 +2462,7 @@ test "jit vm parity make_vec_n" {
 
     const vm_res = try vm.run(&chunk);
 
-    const fn_ptr = try jit.compile(&chunk);
+    const fn_ptr = try jit.compile(&chunk, &.{});
     var stack_buf: [32]Value = undefined;
     var trace_addrs: [16]usize = undefined;
     var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
@@ -2259,7 +2530,7 @@ test "jit vm parity make_vec" {
 
     const vm_res = try vm.run(&chunk);
 
-    const fn_ptr = try jit.compile(&chunk);
+    const fn_ptr = try jit.compile(&chunk, &.{});
     var stack_buf: [32]Value = undefined;
     var trace_addrs: [16]usize = undefined;
     var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
@@ -2348,16 +2619,18 @@ test "jit vm parity call closure" {
 
     const vm_res = try vm.run(&chunk);
 
-    const fn_ptr = try jit.compile(&chunk);
-    var stack_buf: [32]Value = undefined;
+    const fn_ptr = try jit.compile(&chunk, &.{});
+    // Use the VM's own stack for the JitContext, since callFast
+    // converts frame-relative indices to absolute VM stack positions.
+    const vm_stack = vm.stack[0..];
     var trace_addrs: [16]usize = undefined;
     var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
     var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
     var ctx_val = ctx.JitContext{
-        .sp = stack_buf[0..].ptr,
+        .sp = vm_stack.ptr,
         .const_pool = @ptrCast(@constCast(&consts)),
-        .frame_base = stack_buf[0..].ptr,
-        .stack_end = stack_buf[stack_buf.len..].ptr,
+        .frame_base = vm_stack.ptr,
+        .stack_end = vm_stack[vm_stack.len..].ptr,
         .heap = &heap,
         .ret_buf = &ret_buf,
         .err = 0,
@@ -2444,31 +2717,31 @@ test "jit vm parity apply" {
 
     const vm_res = try vm.run(&chunk);
 
-    const fn_ptr = try jit.compile(&chunk);
-    var stack_buf: [32]Value = undefined;
-    var trace_addrs: [16]usize = undefined;
-    var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
-    var ret_buf = ctx.RetBuf{ .value = Value.nil, .err = 0 };
-    var ctx_val = ctx.JitContext{
-        .sp = stack_buf[0..].ptr,
+    const fn_ptr = try jit.compile(&chunk, &.{});
+    const vm_stack2 = vm.stack[0..];
+    var trace_addrs2: [16]usize = undefined;
+    var trace2 = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs2[0..] };
+    var ret_buf2 = ctx.RetBuf{ .value = Value.nil, .err = 0 };
+    var ctx_val2 = ctx.JitContext{
+        .sp = vm_stack2.ptr,
         .const_pool = @ptrCast(@constCast(&consts)),
-        .frame_base = stack_buf[0..].ptr,
-        .stack_end = stack_buf[stack_buf.len..].ptr,
+        .frame_base = vm_stack2.ptr,
+        .stack_end = vm_stack2[vm_stack2.len..].ptr,
         .heap = &heap,
-        .ret_buf = &ret_buf,
+        .ret_buf = &ret_buf2,
         .err = 0,
         .const_count = consts.len,
-        .err_trace = &trace,
+        .err_trace = &trace2,
         .vm = &vm,
     };
-    const jit_raw = fn_ptr(&ctx_val);
+    const jit_raw = fn_ptr(&ctx_val2);
     const jit_res = Value{ .raw = jit_raw };
 
     try testing.expect(vm_res.isFixnum());
     try testing.expectEqual(@as(i64, 3), vm_res.toFixnum());
     try testing.expect(jit_res.isFixnum());
     try testing.expectEqual(@as(i64, 3), jit_res.toFixnum());
-    try testing.expectEqual(@as(u16, 0), ctx_val.err);
+    try testing.expectEqual(@as(u16, 0), ctx_val2.err);
 }
 
 test "jit vm parity lt float" {
@@ -2512,7 +2785,7 @@ test "jit vm parity lt float" {
 
     const vm_res = try vm.run(&chunk);
 
-    const fn_ptr = try jit.compile(&chunk);
+    const fn_ptr = try jit.compile(&chunk, &.{});
     var stack_buf: [32]Value = undefined;
     var trace_addrs: [16]usize = undefined;
     var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
@@ -2587,7 +2860,7 @@ test "jit gc roots preserve stack" {
         .num_locals = 0,
     };
 
-    const fn_ptr = try jit.compile(&chunk);
+    const fn_ptr = try jit.compile(&chunk, &.{});
     var stack_buf: [32]Value = undefined;
     var trace_addrs: [16]usize = undefined;
     var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };
@@ -2658,7 +2931,7 @@ test "jit stack overflow sets err" {
         .num_locals = 0,
     };
 
-    const fn_ptr = try jit.compile(&chunk);
+    const fn_ptr = try jit.compile(&chunk, &.{});
     var stack_buf: [4]Value = undefined;
     var trace_addrs: [16]usize = undefined;
     var trace = std.builtin.StackTrace{ .index = 0, .instruction_addresses = trace_addrs[0..] };

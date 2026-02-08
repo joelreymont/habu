@@ -1081,8 +1081,12 @@ pub fn callFast(c: *ctx.JitContext, argc: u8) vm_mod.Error!Value {
     const fn_val = c.frame_base[fn_idx];
     const args = c.frame_base[fn_idx + 1 .. fn_idx + 1 + argc_usize];
 
+    // callFromStackAtFast takes absolute VM stack indices.
+    // Compute the absolute position of fn_idx in vm.stack.
+    const abs_fn_idx = absStackIdx(c, fn_idx);
+
     syncVmSp(c);
-    const res = try c.vm.callFromStackAtFast(fn_idx, fn_val, args);
+    const res = try c.vm.callFromStackAtFast(abs_fn_idx, fn_val, args);
     c.frame_base[fn_idx] = res;
     c.sp = c.frame_base + fn_idx + 1;
     syncVmSp(c);
@@ -1090,6 +1094,15 @@ pub fn callFast(c: *ctx.JitContext, argc: u8) vm_mod.Error!Value {
     c.const_pool = c.vm.chunk.const_pool;
     c.const_count = @intCast(c.vm.chunk.const_count);
     return res;
+}
+
+/// Convert a frame-relative index to an absolute VM stack index.
+/// JitContext.frame_base always points into vm.stack, so this is
+/// a simple pointer arithmetic conversion.
+fn absStackIdx(c: *ctx.JitContext, frame_idx: usize) usize {
+    const stack_base = @intFromPtr(c.vm.stack[0..].ptr);
+    const frame_abs = @intFromPtr(c.frame_base);
+    return (frame_abs - stack_base) / @sizeOf(Value) + frame_idx;
 }
 
 pub fn apply(c: *ctx.JitContext, _: u8) vm_mod.Error!Value {

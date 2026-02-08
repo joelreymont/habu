@@ -428,7 +428,7 @@ pub const Vm = struct {
     const MAX_BLOCKS = 64;
     const MAX_PROGVS = 32;
     const MAX_HANDLERS = 64;
-    const MAX_SAVED_CHUNKS = 16;
+    const MAX_SAVED_CHUNKS = 256;
 
     fn chunkRoot(ptr: *const Chunk) Value {
         const addr = @intFromPtr(ptr);
@@ -816,7 +816,7 @@ pub const Vm = struct {
         // Compile and cache.
         var t = try std.time.Timer.start();
         const code_start = self.jit.?.code_buffer.pos;
-        const fn_ptr = self.jit.?.compile(chunk) catch |err| switch (err) {
+        const fn_ptr = self.jit.?.compile(chunk, self.globals[0..self.num_globals]) catch |err| switch (err) {
             error.UnsupportedOpcode => {
                 self.jit_fail_n += 1;
                 try self.htPut(&self.jit_code, key, Value.t);
@@ -833,6 +833,61 @@ pub const Vm = struct {
         try self.htPut(&self.jit_code, key, nc_val);
 
         return try self.runJitFn(fn_ptr, chunk);
+    }
+
+    /// Try to JIT-compile a chunk if it's hot enough. Returns the compiled
+    /// function pointer if compilation succeeds, null if not hot enough or
+    /// compilation is not possible. Does NOT run the compiled code.
+    /// Safe to call from nested contexts (no saved chunk slots used).
+    fn tryJitCompile(self: *Vm, chunk: *const Chunk) Error!?JitFn {
+        if (!self.jit_on) return null;
+        if (self.jit == null) return null;
+        if (self.jit_code.isNil() or self.jit_cnt.isNil()) return null;
+
+        const key = chunkRoot(chunk);
+        if (key.isNil()) return null;
+
+        // Already compiled or blacklisted? Return null — caller should
+        // have already checked lookupJitCode().
+        if (self.jit_code.toPtr(HashTable).get(key)) |_| return null;
+
+        // Increment call counter.
+        const ht_cnt = self.jit_cnt.toPtr(HashTable);
+        var n: u32 = 0;
+        if (ht_cnt.get(key)) |v| {
+            if (v.isFixnum()) {
+                const cur: i64 = v.toFixnum();
+                if (cur >= 0 and cur < std.math.maxInt(u32)) {
+                    n = @intCast(cur);
+                }
+            }
+        }
+        n += 1;
+        try self.htPut(&self.jit_cnt, key, Value.makeFixnum(@intCast(n)));
+
+        const hot = if (self.jit_hot == 0) @as(u32, 1) else self.jit_hot;
+        if (n < hot) return null;
+
+        // Compile and cache.
+        var t = try std.time.Timer.start();
+        const code_start = self.jit.?.code_buffer.pos;
+        const fn_ptr = self.jit.?.compile(chunk, self.globals[0..self.num_globals]) catch |err| switch (err) {
+            error.UnsupportedOpcode => {
+                self.jit_fail_n += 1;
+                try self.htPut(&self.jit_code, key, Value.t);
+                return null;
+            },
+            else => return err,
+        };
+        const code_end = self.jit.?.code_buffer.pos;
+        self.jit_compile_ns = t.read();
+        self.jit_compile_n += 1;
+        self.jit_code_bytes += @intCast(code_end - code_start);
+
+        const nc_val = try self.heap.allocNativeCode(@intFromPtr(fn_ptr));
+        try self.htPut(&self.jit_code, key, nc_val);
+
+        return fn_ptr;
     }
 
     /// Look up JIT-compiled native code for a chunk.
@@ -1537,9 +1592,11 @@ pub const Vm = struct {
         try self.doCall(argc, false);
 
         // After doCall, self.chunk is the callee's chunk.
-        // Check if it has JIT code and call directly if so.
+        // Try to use JIT: first check cached, then try to compile if hot.
+        const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
         if (self.lookupJitCode(self.chunk)) |jit_fn| {
-            const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
+            return try self.runJitFnInFrame(jit_fn, self.chunk, bp);
+        } else if (try self.tryJitCompile(self.chunk)) |jit_fn| {
             return try self.runJitFnInFrame(jit_fn, self.chunk, bp);
         }
 

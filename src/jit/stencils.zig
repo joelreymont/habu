@@ -92,13 +92,29 @@ fn b_cond(cond: u4) u32 {
 }
 
 /// Encode ADD immediate: ADD Xd, Xn, #imm12
-fn add_imm(rd: u5, rn: u5, imm12: u12) u32 {
+pub fn add_imm(rd: u5, rn: u5, imm12: u12) u32 {
     return 0x91000000 | (@as(u32, imm12) << 10) | (@as(u32, rn) << 5) | rd;
 }
 
 /// Encode SUB immediate: SUB Xd, Xn, #imm12
-fn sub_imm(rd: u5, rn: u5, imm12: u12) u32 {
+pub fn sub_imm(rd: u5, rn: u5, imm12: u12) u32 {
     return 0xD1000000 | (@as(u32, imm12) << 10) | (@as(u32, rn) << 5) | rd;
+}
+
+/// Encode LDR Xt, [Xn, #imm12] — unsigned offset, 8-byte aligned
+/// imm12 is in bytes (must be multiple of 8, max 32760)
+pub fn ldr_imm(rt: u5, rn: u5, byte_offset: u12) u32 {
+    // LDR Xt, [Xn, #pimm] where pimm = byte_offset/8
+    const scaled: u12 = byte_offset >> 3;
+    return 0xF9400000 | (@as(u32, scaled) << 10) | (@as(u32, rn) << 5) | rt;
+}
+
+/// Encode STR Xt, [Xn, #imm12] — unsigned offset, 8-byte aligned
+/// imm12 is in bytes (must be multiple of 8, max 32760)
+pub fn str_imm(rt: u5, rn: u5, byte_offset: u12) u32 {
+    // STR Xt, [Xn, #pimm] where pimm = byte_offset/8
+    const scaled: u12 = byte_offset >> 3;
+    return 0xF9000000 | (@as(u32, scaled) << 10) | (@as(u32, rn) << 5) | rt;
 }
 
 /// Encode LSR immediate: LSR Xd, Xn, #shift
@@ -156,7 +172,7 @@ fn blr(rn: u5) u32 {
 }
 
 /// Encode BL instruction with placeholder offset
-fn bl_placeholder() u32 {
+pub fn bl_placeholder() u32 {
     return 0x94000000; // BL with offset 0 (to be patched)
 }
 
@@ -186,13 +202,13 @@ fn cbnz_w_placeholder(rn: u5) u32 {
 }
 
 /// Encode STP (pre-index): STP Xt1, Xt2, [Xn, #imm7*8]!
-fn stp_pre(rt1: u5, rt2: u5, rn: u5, offset: i7) u32 {
+pub fn stp_pre(rt1: u5, rt2: u5, rn: u5, offset: i7) u32 {
     const imm: u32 = @bitCast(@as(i32, offset) & 0x7F);
     return 0xA9800000 | (imm << 15) | (@as(u32, rt2) << 10) | (@as(u32, rn) << 5) | rt1;
 }
 
 /// Encode LDP (post-index): LDP Xt1, Xt2, [Xn], #imm7*8
-fn ldp_post(rt1: u5, rt2: u5, rn: u5, offset: i7) u32 {
+pub fn ldp_post(rt1: u5, rt2: u5, rn: u5, offset: i7) u32 {
     const imm: u32 = @bitCast(@as(i32, offset) & 0x7F);
     return 0xA8C00000 | (imm << 15) | (@as(u32, rt2) << 10) | (@as(u32, rn) << 5) | rt1;
 }
@@ -225,7 +241,7 @@ fn bne_placeholder() u32 {
 }
 
 /// Convert u32 instruction to bytes (little-endian)
-fn inst_bytes(inst: u32) [4]u8 {
+pub fn inst_bytes(inst: u32) [4]u8 {
     return @bitCast(inst);
 }
 
@@ -255,12 +271,12 @@ const X11: u5 = 11; // scratch
 const X12: u5 = 12; // scratch
 const X13: u5 = 13; // scratch
 const X16: u5 = 16; // scratch
-const X19: u5 = 19; // stack pointer
-const X20: u5 = 20; // const_pool base
-const X21: u5 = 21; // ret_buf pointer
-const X22: u5 = 22; // ctx pointer
-const X23: u5 = 23; // frame base
-const X24: u5 = 24; // saved scratch
+pub const X19: u5 = 19; // stack pointer
+pub const X20: u5 = 20; // const_pool base
+pub const X21: u5 = 21; // ret_buf pointer
+pub const X22: u5 = 22; // ctx pointer
+pub const X23: u5 = 23; // frame base
+pub const X24: u5 = 24; // saved scratch
 const X25: u5 = 25; // callee-saved
 const X26: u5 = 26; // callee-saved
 const X27: u5 = 27; // callee-saved
@@ -268,7 +284,7 @@ const X28: u5 = 28; // callee-saved
 const X29: u5 = 29; // fp
 const X30: u5 = 30; // link register
 const XZR: u5 = 31; // zero register
-const SP: u5 = 31; // stack pointer
+pub const SP: u5 = 31; // stack pointer
 
 const COND_HS: u4 = 0x2; // unsigned >=
 const COND_LS: u4 = 0x9; // unsigned <=
