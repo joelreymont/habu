@@ -355,6 +355,21 @@ dot add "Add sequence map function" -d "src/runtime/primitives/seq.zig: Implemen
 dot add "map function" -d "add map"
 ```
 
+### Lessons Learned - MANDATORY (BLOCKING REQUIREMENT)
+
+**Read `LESSONS.md` before starting any session.** It contains hard-won patterns from 50+ sessions.
+
+**Update `LESSONS.md` at the end of every session** with new patterns discovered:
+- Anti-patterns encountered (with specific file/line references)
+- Positive patterns that worked well
+- New Zig or Lisp-specific gotchas
+
+**Before implementing anything, check LESSONS.md for:**
+- "Already exists" traps (grep first, code second)
+- Arena allocator lifetime rules
+- Package-qualified name requirements
+- Forward reference ordering in stdlib.habu
+
 ### Build/Test
 ```bash
 zig build test  # Run all tests
