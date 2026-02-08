@@ -200,5 +200,32 @@ After completing work, add any new patterns discovered. Reference specific files
 ### sp Recovery After Nested JIT
 When JIT code runs with a non-zero frame_base, recovering `vm.sp` from `ctx.sp` requires computing the absolute offset from the stack base, not from frame_base. Use `@intFromPtr(ctx.sp) - @intFromPtr(stack_base)`.
 
+### callFast Must Use Absolute Stack Indices
+`rt.callFast` computes `fn_idx` relative to `frame_base` via `stackLen(c)`. But `callFromStackAtFast` expects an **absolute** index into `vm.stack`. For top-level JIT (frame_base == stack[0]), they're the same. For nested JIT calls (frame_base > stack[0]), must convert:
+```zig
+const abs_fn_idx = (@intFromPtr(c.frame_base) - @intFromPtr(c.vm.stack[0..].ptr)) / @sizeOf(Value) + fn_idx;
+```
+Bug manifestation: recursive functions returning wrong results (e.g., fib(10) → -7 instead of 55).
+
+### JIT Tests Must Use VM Stack, Not Local Buffers
+Tests that manually create `JitContext` must use `vm.stack` as the stack buffer, not a local `var stack_buf: [32]Value`. When `callFast` converts frame-relative to absolute indices, it assumes `frame_base` points into `vm.stack`. A separate buffer produces garbage indices.
+
+### Self-Call Detection: Track Stack Depth Across Opcodes
+To detect `load_global FIB; ...args...; call N` as a self-call:
+1. On `load_global X` where globals[X] is a closure for the current chunk: set `self_call_depth = 0`
+2. On push ops (push_nil, push_i32, load_local, etc.): increment depth
+3. On binary ops (add, sub, lt, etc.): decrement depth (consume 2, push 1 = net -1)
+4. On `call N` where depth == N: emit self-call
+5. On anything else (jumps, pops, etc.): reset tracking to null
+
+### Self-Call Frame Setup Must Replicate doCall
+The VM's `doCall` shifts args down by 1 (overwriting closure slot): `stack[new_bp + i] = stack[new_bp + 1 + i]`. The JIT self-call must do the same, or `load_local 0` will load the closure instead of arg0.
+
+### saved_chunk_sp Limits Recursive JIT Depth
+`callFromStackAtFast` uses `saved_chunk_sp` (limited to `MAX_SAVED_CHUNKS`). Each nested call uses one slot. For recursive JIT functions, this limits call depth. Increased to 256 from 16.
+
+### tryJitCompile: Compile-Only, No Run
+When adding JIT compilation in call paths, separate "compile and cache" from "run". `tryJitCompile` should only compile and return the function pointer. The caller handles `runJitFnInFrame`. This avoids re-entrance issues where compile→run→callFast→compile creates nested compilation contexts.
+
 ### Dot Workflow
 Always: `dot add` → `dot activate` → work → `tools/dot-finish`. Close activate dots immediately after activation. Never start multi-step work without a tracking dot.
