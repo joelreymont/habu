@@ -640,6 +640,8 @@ pub const Builtins = struct {
     kw_export: Value,
     kw_size: Value,
     kw_test: Value,
+    kw_key: Value,
+    kw_count: Value,
     kw_eq: Value,
     kw_eql: Value,
     kw_equal: Value,
@@ -1204,6 +1206,8 @@ pub const Builtins = struct {
             .kw_export = try heap.internKeyword("export"),
             .kw_size = try heap.internKeyword("size"),
             .kw_test = try heap.internKeyword("test"),
+            .kw_key = try heap.internKeyword("key"),
+            .kw_count = try heap.internKeyword("count"),
             .kw_eq = try heap.internKeyword("eq"),
             .kw_eql = try heap.internKeyword("eql"),
             .kw_equal = try heap.internKeyword("equal"),
@@ -13345,10 +13349,10 @@ pub const Compiler = struct {
         }
         if (s == b.member.raw) return self.compileMemberWithTest(args, env);
         if (s == b.assoc.raw) return self.compileAssocWithTest(args, env);
-        if (s == b.find.raw) return self.compileFindWithTest(args, env);
-        if (s == b.position.raw) return self.compilePositionWithTest(args, env);
-        if (s == b.count.raw) return self.compileCountWithTest(args, env);
-        if (s == b.remove.raw) return self.compileRemoveWithTest(args, env);
+        if (s == b.find.raw and !self.hasKeywordArg(args, b.kw_key)) return self.compileFindWithTest(args, env);
+        if (s == b.position.raw and !self.hasKeywordArg(args, b.kw_key)) return self.compilePositionWithTest(args, env);
+        if (s == b.count.raw and !self.hasKeywordArg(args, b.kw_key)) return self.compileCountWithTest(args, env);
+        if (s == b.remove.raw and !self.hasKeywordArg(args, b.kw_key) and !self.hasKeywordArg(args, b.kw_count)) return self.compileRemoveWithTest(args, env);
         if (s == b.list.raw) return self.compileListPrim(args, env);
         if (s == b.@"%make-broadcast-stream".raw) return self.compileBroadcastStream(args, env);
         if (s == b.@"%make-concatenated-stream".raw) return self.compileConcatenatedStream(args, env);
@@ -14904,6 +14908,31 @@ pub const Compiler = struct {
 
     /// Compile (find item sequence &key test) with optional :test keyword
     /// Default test is eql (CL spec)
+    /// Check if a keyword argument is present in a function call's argument list.
+    /// Scans the args list (past positional args) for a keyword matching `kw`.
+    fn hasKeywordArg(self: *const Compiler, args: Value, kw: Value) bool {
+        _ = self;
+        // Skip first two positional args (item, sequence)
+        var current = args;
+        var skip: u8 = 2;
+        while (current.isCons() and skip > 0) {
+            current = current.toPtr(Cons).cdr;
+            skip -= 1;
+        }
+        // Scan for keyword
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            if (cons.car.isKeyword() and cons.car.raw == kw.raw) return true;
+            // Skip key-value pair
+            if (cons.cdr.isCons()) {
+                current = cons.cdr.toPtr(Cons).cdr;
+            } else {
+                break;
+            }
+        }
+        return false;
+    }
+
     fn compileFindWithTest(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         const b = self.builtins.?;
 

@@ -1640,6 +1640,30 @@
 (defun count-if-not (pred seq)
   (count-if (lambda (x) (not (funcall pred x))) seq))
 
+; find - find first element matching item
+(defun find (item seq &key (test #'eql) key)
+  (find-if (lambda (x) (funcall test item (if key (funcall key x) x))) seq))
+
+; position - find position of first element matching item
+(defun position (item seq &key (test #'eql) key)
+  (position-if (lambda (x) (funcall test item (if key (funcall key x) x))) seq))
+
+; count - count elements matching item
+(defun count (item seq &key (test #'eql) key)
+  (count-if (lambda (x) (funcall test item (if key (funcall key x) x))) seq))
+
+; remove - remove all elements matching item
+(defun remove (item seq &key (test #'eql) key count)
+  (let ((pred (lambda (x) (funcall test item (if key (funcall key x) x)))))
+    (if count
+        (let ((n 0) (result nil))
+          (dolist (x (if (stringp seq) (coerce seq 'list) seq))
+            (if (and (< n count) (funcall pred x))
+                (setq n (+ n 1))
+                (push x result)))
+          (nreverse result))
+        (remove-if pred seq))))
+
 ; every - true if predicate holds for all elements
 (defun every (pred lst)
   (cond
