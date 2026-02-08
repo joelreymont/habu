@@ -178,3 +178,27 @@ After completing work, add any new patterns discovered. Reference specific files
 2. `read()` target files before editing
 3. Check both Zig source (`src/`) and Lisp source (`lib/`)
 4. Look for related opcodes, VM handlers, and compiler special forms
+
+---
+
+## JIT-Specific Lessons
+
+### runMaybeJit Only Called from vm.run()
+`runMaybeJit` (the JIT code check) is only called in `vm.run()`, NOT in `callFromStackAt()`. This means JIT→interpreter→JIT transitions via `callFromStackAt` never check for JIT code on the callee. Fix: `callFromStackAtFast` adds a JIT check after `doCall()`.
+
+### ARM64 Register Map for JIT
+- `x19` = sp (JIT stack pointer)
+- `x20` = const_pool
+- `x21` = ret_buf
+- `x22` = ctx (JitContext pointer)
+- `x23` = frame_base (locals accessed via `LDR x0, [x23, #offset]`)
+- `x24` = stack_end
+
+### Nested JIT Calls Need Adjusted frame_base
+`runJitFn` sets `frame_base = self.stack[0..].ptr` (absolute base). For nested JIT calls, `frame_base` must be `self.stack[0..].ptr + bp` where `bp` is the callee's frame base from `self.frames[fp-1].bp`. See `runJitFnInFrame`.
+
+### sp Recovery After Nested JIT
+When JIT code runs with a non-zero frame_base, recovering `vm.sp` from `ctx.sp` requires computing the absolute offset from the stack base, not from frame_base. Use `@intFromPtr(ctx.sp) - @intFromPtr(stack_base)`.
+
+### Dot Workflow
+Always: `dot add` → `dot activate` → work → `tools/dot-finish`. Close activate dots immediately after activation. Never start multi-step work without a tracking dot.
