@@ -116,11 +116,13 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    vm_bench.root_module.addImport("habu", b.createModule(.{
+    const habu_bench_mod = b.createModule(.{
         .root_source_file = b.path("src/lib.zig"),
         .target = target,
         .optimize = optimize,
-    }));
+    });
+    habu_bench_mod.addImport("hoist", hoist_dep.artifact("cranelift").root_module);
+    vm_bench.root_module.addImport("habu", habu_bench_mod);
     // Z3 is required by src/types/smt.zig (imported via src/lib.zig).
     vm_bench.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
     vm_bench.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
@@ -146,11 +148,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    jit_bench.root_module.addImport("habu", b.createModule(.{
-        .root_source_file = b.path("src/lib.zig"),
-        .target = target,
-        .optimize = optimize,
-    }));
+    jit_bench.root_module.addImport("habu", habu_bench_mod);
     // Z3 is required by src/types/smt.zig (imported via src/lib.zig).
     jit_bench.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
     jit_bench.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
@@ -176,11 +174,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    cl_bench.root_module.addImport("habu", b.createModule(.{
-        .root_source_file = b.path("src/lib.zig"),
-        .target = target,
-        .optimize = optimize,
-    }));
+    cl_bench.root_module.addImport("habu", habu_bench_mod);
     cl_bench.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
     cl_bench.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
     cl_bench.root_module.linkSystemLibrary("z3", .{});

@@ -16,6 +16,7 @@ const ir = @import("../compiler/ir.zig");
 const Ir = ir.Ir;
 const IrBuilder = ir.IrBuilder;
 const passes = @import("../compiler/passes/passes.zig");
+const hoist_backend = @import("../jit/hoist_backend.zig");
 const bytecode = @import("../bytecode/bytecode.zig");
 const Emitter = bytecode.Emitter;
 const Op = bytecode.Op;
@@ -1769,6 +1770,9 @@ pub const Repl = struct {
             self.chunk_pool.appendAssumeCapacity(child_chunk.toPtr(runtime.objects.Chunk));
         }
 
+        // Try hoist SSA JIT compilation for eligible lambda nodes
+        _ = self.tryHoistCompileLambdas(specialized, child_chunks, chunk_base);
+
         // Patch main chunk to use absolute chunk indices
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         patchChunkIndices(chunk_ptr, chunk_base);
@@ -1804,6 +1808,68 @@ pub const Repl = struct {
     /// E.g., (add (assert_fixnum x) (assert_fixnum y)) → fixnum_add
     fn specializeIr(self: *Repl, ir_node: *const Ir) !*const Ir {
         return try passes.specialize.specialize(self.compiler.allocator, ir_node);
+    }
+
+    /// Try to compile lambda nodes via Hoist SSA JIT and register with the VM.
+    /// Called after bytecode emission, before arena reset.
+    /// Returns true if hoist compilation succeeded, false otherwise.
+    fn tryHoistCompileLambdas(
+        self: *Repl,
+        ir_node: *const Ir,
+        child_chunks: []const Value,
+        chunk_base: u16,
+    ) bool {
+        _ = chunk_base;
+        // Only handle top-level (define name lambda) for now
+        const define = switch (ir_node.*) {
+            .define => |d| d,
+            else => return false,
+        };
+        const lambda_ir = switch (define.value.*) {
+            .lambda => define.value,
+            else => return false,
+        };
+        const lambda = lambda_ir.lambda;
+
+        // Only compile speed=3, safety=0 functions
+        if (lambda.speed < 3 or lambda.safety > 0) return false;
+        // Only simple functions without captures, optional, key, or rest params
+        if (lambda.captures.len > 0) return false;
+        if (lambda.optional_params.len > 0) return false;
+        if (lambda.key_params.len > 0) return false;
+        if (lambda.rest_param != null) return false;
+
+        // The first child chunk is the lambda's chunk
+        if (child_chunks.len == 0) return false;
+        const chunk_val = child_chunks[0];
+        const chunk_ptr = chunk_val.toPtr(runtime.objects.Chunk);
+
+        // Try hoist compilation (may fail for unsupported IR nodes — that's OK)
+        return self.doHoistCompile(lambda_ir, define.name, chunk_ptr);
+    }
+
+    /// Inner function that propagates errors to allow try usage.
+    fn doHoistCompile(
+        self: *Repl,
+        lambda_ir: *const Ir,
+        name: []const u8,
+        chunk_ptr: *const runtime.objects.Chunk,
+    ) bool {
+        var compiled = hoist_backend.compileIr(self.allocator, lambda_ir, name) catch {
+            return false;
+        };
+        const persistent = self.allocator.create(hoist_backend.CompiledFn) catch {
+            compiled.deinit();
+            return false;
+        };
+        persistent.* = compiled;
+        const vm = self.activeVm();
+        vm.registerHoistFn(chunk_ptr, persistent) catch {
+            persistent.deinit();
+            self.allocator.destroy(persistent);
+            return false;
+        };
+        return true;
     }
 
     /// Run the REPL loop with File-based I/O
@@ -2139,6 +2205,9 @@ pub const Repl = struct {
         for (child_chunks) |c| {
             self.chunk_pool.appendAssumeCapacity(c.toPtr(runtime.objects.Chunk));
         }
+
+        // Try hoist SSA JIT compilation for eligible lambda nodes
+        _ = self.tryHoistCompileLambdas(specialized, child_chunks, chunk_base);
 
         // Free child chunk array (now owned by persistent storage)
         self.allocator.free(child_chunks);

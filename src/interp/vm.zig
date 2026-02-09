@@ -37,6 +37,7 @@ const Parser = @import("../reader/parser.zig").Parser;
 const BuiltinSymbols = @import("../runtime/builtins.zig").BuiltinSymbols;
 const jit_mod = @import("../jit/mod.zig");
 const Jit = jit_mod.Jit;
+const hoist_backend = @import("../jit/hoist_backend.zig");
 const JitFn = jit_mod.JitFn;
 const jit_ctx = jit_mod.ctx;
 const NativeCode = runtime.NativeCode;
@@ -412,6 +413,9 @@ pub const Vm = struct {
     jit_fail_n: u64,
     jit: ?Jit,
 
+    /// Hoist SSA JIT: maps chunk address to compiled native function.
+    hoist_fns: std.AutoHashMap(usize, *hoist_backend.CompiledFn),
+
     /// Pre-interned builtin symbols for fast dispatch
     builtins: BuiltinSymbols,
 
@@ -533,6 +537,7 @@ pub const Vm = struct {
             .jit_code_bytes = 0,
             .jit_fail_n = 0,
             .jit = null,
+            .hoist_fns = std.AutoHashMap(usize, *hoist_backend.CompiledFn).init(allocator),
             .builtins = try BuiltinSymbols.init(heap),
             .type_syms = try type_mod.TypeSymbols.init(heap),
         };
@@ -833,6 +838,29 @@ pub const Vm = struct {
         try self.htPut(&self.jit_code, key, nc_val);
 
         return try self.runJitFn(fn_ptr, chunk);
+    }
+
+    /// Register a hoist-compiled native function for a chunk.
+    pub fn registerHoistFn(self: *Vm, chunk: *const Chunk, compiled: *hoist_backend.CompiledFn) !void {
+        try self.hoist_fns.put(@intFromPtr(chunk), compiled);
+    }
+
+    /// Look up hoist-compiled function for a chunk.
+    pub fn lookupHoistFn(self: *Vm, chunk: *const Chunk) ?*const hoist_backend.CompiledFn {
+        return self.hoist_fns.get(@intFromPtr(chunk));
+    }
+
+    /// Try to call a closure via hoist-compiled native code.
+    /// Returns the result of calling it, or null if not hoist-compiled.
+    fn tryCallHoist(self: *Vm, argc: u8) ?Value {
+        const chunk = self.chunk;
+        const compiled = self.hoist_fns.get(@intFromPtr(chunk)) orelse return null;
+        if (compiled.arity != argc) return null;
+
+        // Extract args from the VM stack (they're above the callee frame)
+        const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
+        const args = self.stack[bp .. bp + argc];
+        return compiled.callFromValues(args);
     }
 
     /// Try to JIT-compile a chunk if it's hot enough. Returns the compiled
@@ -1592,7 +1620,13 @@ pub const Vm = struct {
         try self.doCall(argc, false);
 
         // After doCall, self.chunk is the callee's chunk.
-        // Try to use JIT: first check cached, then try to compile if hot.
+        // Try hoist SSA JIT first (faster native code), then stencil JIT.
+        if (self.tryCallHoist(argc)) |result| {
+            // Hoist call succeeded — unwind frame and return result
+            self.fp -= 1;
+            self.sp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
+            return result;
+        }
         const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
         if (self.lookupJitCode(self.chunk)) |jit_fn| {
             return try self.runJitFnInFrame(jit_fn, self.chunk, bp);
@@ -2969,10 +3003,17 @@ pub const Vm = struct {
                         .{ self.ip, argc, self.fp, self.sp, self.chunk.getCode().len },
                     );
                 }
-                //const start_idx = if (self.sp > argc + 3) self.sp - argc - 3 else 0;
-                //for (start_idx..self.sp) |i| {
-                //}
                 try self.doCall(argc, false);
+                // Check for hoist-compiled function
+                if (self.tryCallHoist(argc)) |result| {
+                    // Pop the call frame and push result
+                    self.fp -= 1;
+                    const caller_frame = self.frames[self.fp];
+                    self.chunk = caller_frame.chunk;
+                    self.ip = caller_frame.return_ip;
+                    self.sp = caller_frame.bp;
+                    try self.push(result);
+                }
             },
             .tail_call => {
                 const argc = self.readU8();

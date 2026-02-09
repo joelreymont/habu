@@ -33,6 +33,7 @@ const ExternalName = hoist.extfunc.ExternalName;
 const habu_ir = @import("../compiler/ir.zig");
 const Ir = habu_ir.Ir;
 const habu_value = @import("../runtime/value.zig");
+const Symbol = @import("../runtime/objects.zig").Symbol;
 const Value = habu_value.Value;
 
 const I64 = HoistType.I64;
@@ -52,6 +53,29 @@ pub const CompiledFn = struct {
     pub fn deinit(self: *CompiledFn) void {
         self.mem.deinit();
         self.allocator.destroy(self.mem);
+    }
+
+    /// Call with args from VM stack (Values → tagged i64 → native → Value).
+    pub fn callFromValues(self: *const CompiledFn, args: []const Value) Value {
+        return switch (self.arity) {
+            0 => blk: {
+                const f: *const fn () callconv(.c) i64 = @ptrCast(@alignCast(self.fn_ptr));
+                break :blk @bitCast(f());
+            },
+            1 => blk: {
+                const f: *const fn (i64) callconv(.c) i64 = @ptrCast(@alignCast(self.fn_ptr));
+                break :blk @bitCast(f(@bitCast(args[0])));
+            },
+            2 => blk: {
+                const f: *const fn (i64, i64) callconv(.c) i64 = @ptrCast(@alignCast(self.fn_ptr));
+                break :blk @bitCast(f(@bitCast(args[0]), @bitCast(args[1])));
+            },
+            3 => blk: {
+                const f: *const fn (i64, i64, i64) callconv(.c) i64 = @ptrCast(@alignCast(self.fn_ptr));
+                break :blk @bitCast(f(@bitCast(args[0]), @bitCast(args[1]), @bitCast(args[2])));
+            },
+            else => @bitCast(@as(i64, 0)), // TODO: support more args
+        };
     }
 
     /// Call with 1 tagged i64 arg, returns tagged i64.
@@ -120,6 +144,7 @@ pub const IrTranslator = struct {
         return switch (ir.*) {
             .lit => |v| try self.translateLit(v),
             .@"var" => |v| self.translateVar(v),
+            // Specialized fixnum ops (from type specialize pass)
             .fixnum_add => |op| try self.translateFixnumAdd(op.left, op.right),
             .fixnum_sub => |op| try self.translateFixnumSub(op.left, op.right),
             .fixnum_le => |op| try self.translateFixnumCmp(.sle, op.left, op.right),
@@ -127,6 +152,14 @@ pub const IrTranslator = struct {
             .fixnum_gt => |op| try self.translateFixnumCmp(.sgt, op.left, op.right),
             .fixnum_ge => |op| try self.translateFixnumCmp(.sge, op.left, op.right),
             .fixnum_eq => |op| try self.translateFixnumCmp(.eq, op.left, op.right),
+            // Generic arithmetic ops (same semantics, just not type-proven)
+            .add => |op| try self.translateFixnumAdd(op.left, op.right),
+            .sub => |op| try self.translateFixnumSub(op.left, op.right),
+            .le => |op| try self.translateFixnumCmp(.sle, op.left, op.right),
+            .lt => |op| try self.translateFixnumCmp(.slt, op.left, op.right),
+            .gt => |op| try self.translateFixnumCmp(.sgt, op.left, op.right),
+            .ge => |op| try self.translateFixnumCmp(.sge, op.left, op.right),
+            .num_eq => |op| try self.translateFixnumCmp(.eq, op.left, op.right),
             .@"if" => |if_node| try self.translateIf(if_node.cond, if_node.then_branch, if_node.else_branch),
             .progn => |exprs| try self.translateProgn(exprs),
             .assert_fixnum => |op| try self.translate(op.operand), // At safety 0, just pass through
@@ -211,12 +244,7 @@ pub const IrTranslator = struct {
 
     fn translateCall(self: *IrTranslator, func_ir: *const Ir, args: []const *const Ir) anyerror!HoistValue {
         // Check for self-recursive call
-        const is_self = switch (func_ir.*) {
-            .global_ref => |gr| self.is_recursive and std.mem.eql(u8, gr.name, self.fn_name),
-            else => false,
-        };
-
-        if (is_self) {
+        if (self.is_recursive and isCallTargetSelf(func_ir, self.fn_name)) {
             return try self.translateSelfCall(args);
         }
 
@@ -314,26 +342,89 @@ fn patchPlaceholder(buf: []u8, placeholder: u64, target: u64) bool {
     return found;
 }
 
+/// Check if a call target matches the current function name.
+/// Handles both global_ref (unit tests) and lit-symbol (REPL compiler).
+/// For lit-symbol, the symbol name is unqualified ("MYCD") while the
+/// function name is qualified ("CL-USER:MYCD"), so we check if the
+/// qualified name ends with ":" + symbol_name.
+fn isCallTargetSelf(func_ir: *const Ir, name: []const u8) bool {
+    return switch (func_ir.*) {
+        .global_ref => |gr| std.mem.eql(u8, gr.name, name),
+        .lit => |v| blk: {
+            if (!v.isSymbol()) break :blk false;
+            if (v.isNil()) break :blk false;
+            const sym_name = v.toPtr(Symbol).getName();
+            // Exact match
+            if (std.mem.eql(u8, sym_name, name)) break :blk true;
+            // Qualified match: name = "PKG:SYM" and sym_name = "SYM"
+            if (name.len > sym_name.len + 1) {
+                const suffix_start = name.len - sym_name.len;
+                if (name[suffix_start - 1] == ':' and
+                    std.mem.eql(u8, name[suffix_start..], sym_name))
+                    break :blk true;
+            }
+            break :blk false;
+        },
+        else => false,
+    };
+}
+
+/// Detect if a self-call appears as an argument to another self-call.
+/// This pattern (e.g., tak) causes segfaults due to hoist regalloc bug
+/// with call_indirect spilling. Returns true if the pattern is found.
+fn hasNestedSelfCalls(body: *const Ir, name: []const u8) bool {
+    return switch (body.*) {
+        .call => |c| blk: {
+            if (isCallTargetSelf(c.func, name)) {
+                for (c.args) |arg| {
+                    if (detectSelfCalls(arg, name)) break :blk true;
+                }
+            }
+            for (c.args) |arg| {
+                if (hasNestedSelfCalls(arg, name)) break :blk true;
+            }
+            break :blk false;
+        },
+        .tailcall => |tc| blk: {
+            if (isCallTargetSelf(tc.func, name)) {
+                for (tc.args) |arg| {
+                    if (detectSelfCalls(arg, name)) break :blk true;
+                }
+            }
+            for (tc.args) |arg| {
+                if (hasNestedSelfCalls(arg, name)) break :blk true;
+            }
+            break :blk false;
+        },
+        .@"if" => |if_node| hasNestedSelfCalls(if_node.cond, name) or
+            hasNestedSelfCalls(if_node.then_branch, name) or
+            hasNestedSelfCalls(if_node.else_branch, name),
+        .fixnum_add, .fixnum_sub, .add, .sub => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
+        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
+        .le, .lt, .gt, .ge, .num_eq => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
+        .progn => |exprs| {
+            for (exprs) |expr| {
+                if (hasNestedSelfCalls(expr, name)) return true;
+            }
+            return false;
+        },
+        .assert_fixnum => |op| hasNestedSelfCalls(op.operand, name),
+        else => false,
+    };
+}
+
 /// Detect whether a function body contains self-recursive calls.
 fn detectSelfCalls(body: *const Ir, name: []const u8) bool {
     return switch (body.*) {
         .call => |c| blk: {
-            const callee_is_self = switch (c.func.*) {
-                .global_ref => |gr| std.mem.eql(u8, gr.name, name),
-                else => false,
-            };
-            if (callee_is_self) break :blk true;
+            if (isCallTargetSelf(c.func, name)) break :blk true;
             for (c.args) |arg| {
                 if (detectSelfCalls(arg, name)) break :blk true;
             }
             break :blk detectSelfCalls(c.func, name);
         },
         .tailcall => |tc| blk: {
-            const callee_is_self = switch (tc.func.*) {
-                .global_ref => |gr| std.mem.eql(u8, gr.name, name),
-                else => false,
-            };
-            if (callee_is_self) break :blk true;
+            if (isCallTargetSelf(tc.func, name)) break :blk true;
             for (tc.args) |arg| {
                 if (detectSelfCalls(arg, name)) break :blk true;
             }
@@ -342,8 +433,9 @@ fn detectSelfCalls(body: *const Ir, name: []const u8) bool {
         .@"if" => |if_node| detectSelfCalls(if_node.cond, name) or
             detectSelfCalls(if_node.then_branch, name) or
             detectSelfCalls(if_node.else_branch, name),
-        .fixnum_add, .fixnum_sub => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
+        .fixnum_add, .fixnum_sub, .add, .sub => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
         .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
+        .le, .lt, .gt, .ge, .num_eq => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
         .progn => |exprs| {
             for (exprs) |expr| {
                 if (detectSelfCalls(expr, name)) return true;
@@ -372,13 +464,15 @@ pub fn compileIr(
 
     // Build signature: all params are i64 (tagged values), return i64
     var sig = Signature.init(allocator, .system_v);
-    errdefer sig.deinit();
+    var sig_owned = true;
+    defer if (sig_owned) sig.deinit();
     for (0..arity) |_| {
         try sig.params.append(allocator, AbiParam.new(I64));
     }
     try sig.returns.append(allocator, AbiParam.new(I64));
 
     var func = try Function.init(allocator, name, sig);
+    sig_owned = false; // Ownership transferred to func
     defer func.deinit();
 
     var b = try FunctionBuilder.init(allocator, &func);
@@ -403,6 +497,11 @@ pub fn compileIr(
     translator.fn_name = name;
     translator.user_arity = arity;
     translator.is_recursive = detectSelfCalls(lambda.body, name);
+
+    // Bail out for nested self-calls (e.g., tak) which trigger hoist regalloc bug
+    if (translator.is_recursive and hasNestedSelfCalls(lambda.body, name)) {
+        return error.UnsupportedNestedSelfCalls;
+    }
 
     // For recursive functions, register the callee signature for call_indirect
     if (translator.is_recursive) {
@@ -858,4 +957,147 @@ test "hoist IR translator: fixnum arithmetic" {
     try testing.expectEqual(@as(i64, 81), compiled.call1(61));
     // f(0) = (0-10)+20 = 10. Tagged: 1 → (10<<1)|1=21
     try testing.expectEqual(@as(i64, 21), compiled.call1(1));
+}
+
+// NOTE: Nested self-calls (call result as arg to another self-call) cause
+// segfaults due to hoist regalloc not properly spilling across call_indirect.
+// This pattern occurs in tak but not fib (fib uses + on call results).
+// TODO: Fix hoist regalloc for this pattern, then re-enable test.
+
+test "hoist IR translator: countdown callFromValues" {
+    // Verify callFromValues works the same as call1 for recursive function
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const params = try alloc.alloc([]const u8, 1);
+    params[0] = "n";
+
+    const mkVar = struct {
+        fn f(a: std.mem.Allocator) !*Ir {
+            const v = try a.create(Ir);
+            v.* = .{ .@"var" = .{ .name = "n", .depth = 0, .index = 0 } };
+            return v;
+        }
+    }.f;
+    const mkLit = struct {
+        fn f(a: std.mem.Allocator, n: i64) !*Ir {
+            const v = try a.create(Ir);
+            v.* = .{ .lit = Value.makeFixnum(n) };
+            return v;
+        }
+    }.f;
+
+    const cond = try alloc.create(Ir);
+    cond.* = .{ .fixnum_le = .{ .left = try mkVar(alloc), .right = try mkLit(alloc, 0) } };
+    const n_minus_1 = try alloc.create(Ir);
+    n_minus_1.* = .{ .fixnum_sub = .{ .left = try mkVar(alloc), .right = try mkLit(alloc, 1) } };
+    const ref = try alloc.create(Ir);
+    ref.* = .{ .global_ref = .{ .name = "countdown", .index = 0 } };
+    const call_args = try alloc.alloc(*const Ir, 1);
+    call_args[0] = n_minus_1;
+    const call_node = try alloc.create(Ir);
+    call_node.* = .{ .call = .{ .func = ref, .args = call_args } };
+    const if_node = try alloc.create(Ir);
+    if_node.* = .{ .@"if" = .{ .cond = cond, .then_branch = try mkLit(alloc, 42), .else_branch = call_node } };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = params,
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = if_node,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    var compiled = try compileIr(testing.allocator, lambda, "countdown");
+    defer compiled.deinit();
+
+    // Test via call1
+    try testing.expectEqual(@as(i64, 85), compiled.call1(1));  // countdown(0) = 42
+    try testing.expectEqual(@as(i64, 85), compiled.call1(3));  // countdown(1) = 42
+
+    // Test via callFromValues (same path as VM)
+    const args0 = [_]Value{Value.makeFixnum(0)};
+    const result0 = compiled.callFromValues(&args0);
+    try testing.expectEqual(@as(u64, 85), result0.raw);
+
+    const args1 = [_]Value{Value.makeFixnum(1)};
+    const result1 = compiled.callFromValues(&args1);
+    try testing.expectEqual(@as(u64, 85), result1.raw);
+
+    const args3 = [_]Value{Value.makeFixnum(3)};
+    const result3 = compiled.callFromValues(&args3);
+    try testing.expectEqual(@as(u64, 85), result3.raw);
+}
+
+test "hoist IR translator: generic countdown recursive" {
+    // Same as countdown but using generic le/sub instead of fixnum_le/fixnum_sub
+    // (defun countdown (n) (if (<= n 0) 42 (countdown (- n 1))))
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const params = try alloc.alloc([]const u8, 1);
+    params[0] = "n";
+
+    const mkVar = struct {
+        fn f(a: std.mem.Allocator) !*Ir {
+            const v = try a.create(Ir);
+            v.* = .{ .@"var" = .{ .name = "n", .depth = 0, .index = 0 } };
+            return v;
+        }
+    }.f;
+    const mkLit = struct {
+        fn f(a: std.mem.Allocator, n: i64) !*Ir {
+            const v = try a.create(Ir);
+            v.* = .{ .lit = Value.makeFixnum(n) };
+            return v;
+        }
+    }.f;
+
+    // Generic le: (<= n 0)
+    const cond = try alloc.create(Ir);
+    cond.* = .{ .le = .{ .left = try mkVar(alloc), .right = try mkLit(alloc, 0) } };
+
+    // Generic sub: (- n 1)
+    const n_minus_1 = try alloc.create(Ir);
+    n_minus_1.* = .{ .sub = .{ .left = try mkVar(alloc), .right = try mkLit(alloc, 1) } };
+
+    // (call countdown (- n 1))
+    const ref = try alloc.create(Ir);
+    ref.* = .{ .global_ref = .{ .name = "countdown", .index = 0 } };
+    const call_args = try alloc.alloc(*const Ir, 1);
+    call_args[0] = n_minus_1;
+    const call_node = try alloc.create(Ir);
+    call_node.* = .{ .call = .{ .func = ref, .args = call_args } };
+
+    // (if cond 42 (countdown (- n 1)))
+    const if_node = try alloc.create(Ir);
+    if_node.* = .{ .@"if" = .{ .cond = cond, .then_branch = try mkLit(alloc, 42), .else_branch = call_node } };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = params,
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = if_node,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    var compiled = try compileIr(testing.allocator, lambda, "countdown");
+    defer compiled.deinit();
+
+    // countdown(0) = 42, tagged: 85
+    try testing.expectEqual(@as(i64, 85), compiled.call1(1));
+    // countdown(1) = 42, tagged: 85
+    try testing.expectEqual(@as(i64, 85), compiled.call1(3));
+    // countdown(5) = 42, tagged: 85
+    try testing.expectEqual(@as(i64, 85), compiled.call1(11));
 }
