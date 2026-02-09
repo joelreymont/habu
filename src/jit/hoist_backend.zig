@@ -276,68 +276,16 @@ pub const IrTranslator = struct {
         return val;
     }
 
-    const StackSlotData = hoist.stack_slot_data.StackSlotData;
-    const StackSlot = hoist.entities.StackSlot;
-
-    /// Emit a stack_store instruction (no result value).
-    fn emitStackStore(self: *IrTranslator, val: HoistValue, slot: StackSlot) !void {
-        const block = self.b.current_block orelse return error.NoCurrentBlock;
-        const inst_data = InstructionData{ .stack_store = .{
-            .opcode = .stack_store,
-            .arg = val,
-            .stack_slot = slot,
-            .offset = 0,
-        } };
-        const inst = try self.func.dfg.makeInst(inst_data);
-        try self.func.layout.appendInst(inst, block);
-    }
-
-    /// Emit a stack_load instruction (returns loaded value).
-    fn emitStackLoad(self: *IrTranslator, slot: StackSlot) !HoistValue {
-        const block = self.b.current_block orelse return error.NoCurrentBlock;
-        const inst_data = InstructionData{ .stack_load = .{
-            .opcode = .stack_load,
-            .stack_slot = slot,
-            .offset = 0,
-        } };
-        const inst = try self.func.dfg.makeInst(inst_data);
-        try self.func.layout.appendInst(inst, block);
-        return try self.func.dfg.appendInstResult(inst, I64);
-    }
-
     fn translateLoop(self: *IrTranslator, cond_ir: *const Ir, body_ir: *const Ir) anyerror!HoistValue {
         // Collect all variable indices mutated inside the loop body
         var mutated_indices = std.ArrayList(u16){};
         defer mutated_indices.deinit(self.allocator);
         try collectMutatedVars(body_ir, &mutated_indices, self.allocator);
 
-        const n_vars = mutated_indices.items.len;
-        if (n_vars > 16) return error.TooManyLoopVars;
+        const n_phis = mutated_indices.items.len;
+        if (n_phis > 16) return error.TooManyLoopVars;
 
-        // Workaround for hoist block-param phi bug (#4):
-        // Use stack slots for mutable loop variables instead of block parameters.
-        // Less optimal (memory load/store each iteration) but avoids the phi
-        // codegen bug that produces wrong register assignments for I64 loops.
-
-        // Create stack slot per mutable variable
-        var slots: [16]StackSlot = undefined;
-        for (0..n_vars) |i| {
-            slots[i] = try self.func.stack_slots.push(
-                StackSlotData.init(.explicit_slot, 8, 3), // 8 bytes, 8-byte aligned
-            );
-        }
-
-        // Store initial values into stack slots
-        for (mutated_indices.items, 0..) |idx, i| {
-            const init_val = if (idx < self.locals.items.len)
-                self.locals.items[idx]
-            else
-                try self.b.iconst(I64, @as(i64, @bitCast(Value.nil.raw)));
-            try self.emitStackStore(init_val, slots[i]);
-        }
-
-        // Create loop blocks using low-level API (no sealing needed since we
-        // use stack slots instead of the builder's SSA variable mechanism)
+        // Create blocks using low-level API
         const header = try self.func.dfg.addBlock();
         try self.func.layout.appendBlock(header);
         const loop_body = try self.func.dfg.addBlock();
@@ -345,44 +293,54 @@ pub const IrTranslator = struct {
         const loop_exit = try self.func.dfg.addBlock();
         try self.func.layout.appendBlock(loop_exit);
 
-        // Jump from current block to header
-        try self.b.jump(header);
+        // Add block params for header (phi nodes for mutated variables)
+        // Save values immediately — they're stable SSA value indices.
+        var phi_vals: [16]HoistValue = undefined;
+        for (0..n_phis) |pi| {
+            phi_vals[pi] = try self.func.dfg.appendBlockParam(header, I64);
+        }
 
-        // Header: load variables from stack, evaluate condition
+        // Jump from current block to header with initial values
+        var init_vals: [16]HoistValue = undefined;
+        for (mutated_indices.items, 0..) |idx, i| {
+            init_vals[i] = if (idx < self.locals.items.len)
+                self.locals.items[idx]
+            else
+                try self.b.iconst(I64, @as(i64, @bitCast(Value.nil.raw)));
+        }
+        try self.b.jumpArgs(header, init_vals[0..n_phis]);
+
+        // Header block: install phi values and evaluate condition
         self.b.switchToBlock(header);
-
-        // Load current variable values from stack slots
         for (mutated_indices.items, 0..) |idx, i| {
             while (self.locals.items.len <= idx) {
                 try self.locals.append(self.allocator, HoistValue.new(0));
             }
-            self.locals.items[idx] = try self.emitStackLoad(slots[i]);
+            self.locals.items[idx] = phi_vals[i];
         }
 
         const cond_val = try self.translate(cond_ir);
         try self.b.brif(cond_val, loop_body, loop_exit);
 
-        // Body: execute body statements, store updated values, jump back to header
+        // Body: execute body, then jump back to header with updated values
         self.b.switchToBlock(loop_body);
         _ = try self.translate(body_ir);
 
-        // Store updated variable values to stack slots
+        var updated_vals: [16]HoistValue = undefined;
         for (mutated_indices.items, 0..) |idx, i| {
-            const updated_val = if (idx < self.locals.items.len)
+            updated_vals[i] = if (idx < self.locals.items.len)
                 self.locals.items[idx]
             else
                 try self.b.iconst(I64, @as(i64, @bitCast(Value.nil.raw)));
-            try self.emitStackStore(updated_val, slots[i]);
         }
-
-        try self.b.jump(header);
+        try self.b.jumpArgs(header, updated_vals[0..n_phis]);
 
         // Exit block
         self.b.switchToBlock(loop_exit);
 
-        // After loop, load final values from stack
+        // After loop, locals point to phi values (correct on exit)
         for (mutated_indices.items, 0..) |idx, i| {
-            self.locals.items[idx] = try self.emitStackLoad(slots[i]);
+            self.locals.items[idx] = phi_vals[i];
         }
 
         // Return nil (while loop doesn't produce a value in CL)
@@ -1436,4 +1394,103 @@ test "hoist IR translator: generic countdown recursive" {
     try testing.expectEqual(@as(i64, 85), compiled.call1(3));
     // countdown(5) = 42, tagged: 85
     try testing.expectEqual(@as(i64, 85), compiled.call1(11));
+}
+
+test "hoist phi loop: dump codegen for debugging" {
+    // Compile phi loop and dump machine code (don't execute — known infinite loop).
+    const allocator = testing.allocator;
+
+    var sig = Signature.init(allocator, .system_v);
+    try sig.returns.append(allocator, AbiParam.new(I64));
+
+    var func = try Function.init(allocator, "phi_sum", sig);
+    defer func.deinit();
+    var b = try FunctionBuilder.init(allocator, &func);
+    defer b.deinit();
+
+    const entry = try func.dfg.addBlock();
+    try func.layout.appendBlock(entry);
+
+    const header = try func.dfg.addBlock();
+    try func.layout.appendBlock(header);
+    const phi_acc = try func.dfg.appendBlockParam(header, I64);
+    const phi_i = try func.dfg.appendBlockParam(header, I64);
+
+    const body_blk = try func.dfg.addBlock();
+    try func.layout.appendBlock(body_blk);
+    const exit_blk = try func.dfg.addBlock();
+    try func.layout.appendBlock(exit_blk);
+
+    // Entry: acc=1(tagged 0), i=1(tagged 0)
+    b.switchToBlock(entry);
+    const zero_t = try b.iconst(I64, 1);
+    try b.jumpArgs(header, &.{ zero_t, zero_t });
+
+    // Header: if i < 21 then body else exit
+    b.switchToBlock(header);
+    const limit = try b.iconst(I64, 21);
+    const cmp = try b.icmp(I8, .slt, phi_i, limit);
+    try b.brif(cmp, body_blk, exit_blk);
+
+    // Body: new_acc = acc+i-1, new_i = i+3-1 (fixnum tagged ops)
+    b.switchToBlock(body_blk);
+    const sum_raw = try b.iadd(I64, phi_acc, phi_i);
+    const one_a = try b.iconst(I64, 1);
+    const new_acc = try b.isub(I64, sum_raw, one_a);
+    const three = try b.iconst(I64, 3);
+    const inc_raw = try b.iadd(I64, phi_i, three);
+    const one_b = try b.iconst(I64, 1);
+    const new_i = try b.isub(I64, inc_raw, one_b);
+    try b.jumpArgs(header, &.{ new_acc, new_i });
+
+    // Exit: return acc
+    b.switchToBlock(exit_blk);
+    try b.retValues(&.{phi_acc});
+
+    // Print IR (debug)
+    if (false) {
+        var pp_buf: [8192]u8 = undefined;
+        var pp_fbs = std.io.fixedBufferStream(&pp_buf);
+        hoist.ir_print.writeFunction(pp_fbs.writer(), &func, .{}) catch {};
+        std.debug.print("[phi-ir]\n{s}\n", .{pp_buf[0..pp_fbs.pos]});
+    }
+
+    // Compile
+    var ctx_builder = ContextBuilder.init(allocator);
+    _ = try ctx_builder.targetNative();
+    var ctx = ctx_builder.optLevel(.none).callConv(.system_v).verification(true).build();
+
+    var code = ctx.compileFunction(&func) catch |err| {
+        std.debug.print("Phi compile error: {s}\n", .{@errorName(err)});
+        return err;
+    };
+    defer code.deinit();
+
+    // Dump machine code (debug)
+    if (false) {
+        std.debug.print("[phi-asm] {d} bytes:", .{code.code.items.len});
+        for (code.code.items, 0..) |byte, idx| {
+            if (idx % 4 == 0) std.debug.print(" ", .{});
+            if (idx % 16 == 0) std.debug.print("\n  {x:0>4}: ", .{idx});
+            std.debug.print("{x:0>2}", .{byte});
+        }
+        std.debug.print("\n", .{});
+    }
+
+    // Execute the compiled code
+    var mem = try allocator.create(JitMem);
+    mem.* = try JitMem.init(allocator, code.code.items.len);
+    defer {
+        mem.deinit();
+        allocator.destroy(mem);
+    }
+
+    const buf = try mem.alloc(code.code.items.len, 16);
+    try mem.writeExec(buf, code.code.items);
+    try mem.setExec(true);
+
+    const f: *const fn () callconv(.c) i64 = @ptrCast(@alignCast(buf.ptr));
+    const result = f();
+    // sum(0..9) = 45, tagged = 91
+    try testing.expectEqual(@as(i64, 91), result);
 }
