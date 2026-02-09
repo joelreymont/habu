@@ -130,6 +130,9 @@ pub const IrTranslator = struct {
     /// SigRef for the self-call signature (for call_indirect).
     self_sig_ref: SigRef,
 
+    /// Cache for iconst values — reuse across blocks (LICM for constants).
+    const_cache: std.AutoHashMap(i64, HoistValue),
+
     pub fn init(allocator: std.mem.Allocator, func: *Function, builder: *FunctionBuilder) IrTranslator {
         return .{
             .allocator = allocator,
@@ -142,11 +145,23 @@ pub const IrTranslator = struct {
             .user_arity = 0,
             .self_ptr_placeholder = 0x0BADF00DDEADBEEF,
             .self_sig_ref = SigRef.new(0),
+            .const_cache = std.AutoHashMap(i64, HoistValue).init(allocator),
         };
     }
 
     pub fn deinit(self: *IrTranslator) void {
         self.locals.deinit(self.allocator);
+        self.const_cache.deinit();
+    }
+
+    /// Emit an iconst, reusing a previously emitted value for the same constant.
+    /// This provides LICM for loop-invariant constants: a constant emitted in the
+    /// entry block is reusable in all subsequent blocks (SSA dominance).
+    fn cachedIconst(self: *IrTranslator, val: i64) !HoistValue {
+        if (self.const_cache.get(val)) |cached| return cached;
+        const result = try self.b.iconst(I64, val);
+        try self.const_cache.put(val, result);
+        return result;
     }
 
     /// Translate a Habu IR node to Hoist SSA, returning the SSA value produced.
@@ -186,7 +201,7 @@ pub const IrTranslator = struct {
     }
 
     fn translateLit(self: *IrTranslator, val: Value) anyerror!HoistValue {
-        return try self.b.iconst(I64, @as(i64, @bitCast(val.raw)));
+        return try self.cachedIconst(@as(i64, @bitCast(val.raw)));
     }
 
     fn translateVar(self: *IrTranslator, v: anytype) HoistValue {
@@ -209,18 +224,18 @@ pub const IrTranslator = struct {
         // When one operand is a constant, fold: iadd(x, const - 1)
         if (getFixnumLit(right)) |r_const| {
             const l = try self.translate(left);
-            const folded = try self.b.iconst(I64, r_const - 1);
+            const folded = try self.cachedIconst(r_const - 1);
             return try self.b.iadd(I64, l, folded);
         }
         if (getFixnumLit(left)) |l_const| {
             const r = try self.translate(right);
-            const folded = try self.b.iconst(I64, l_const - 1);
+            const folded = try self.cachedIconst(l_const - 1);
             return try self.b.iadd(I64, r, folded);
         }
         const l = try self.translate(left);
         const r = try self.translate(right);
         const sum = try self.b.iadd(I64, l, r);
-        const one = try self.b.iconst(I64, 1);
+        const one = try self.cachedIconst(1);
         return try self.b.isub(I64, sum, one);
     }
 
@@ -229,13 +244,13 @@ pub const IrTranslator = struct {
         // When right is a constant, fold: isub(x, const - 1)
         if (getFixnumLit(right)) |r_const| {
             const l = try self.translate(left);
-            const folded = try self.b.iconst(I64, r_const - 1);
+            const folded = try self.cachedIconst(r_const - 1);
             return try self.b.isub(I64, l, folded);
         }
         const l = try self.translate(left);
         const r = try self.translate(right);
         const diff = try self.b.isub(I64, l, r);
-        const one = try self.b.iconst(I64, 1);
+        const one = try self.cachedIconst(1);
         return try self.b.iadd(I64, diff, one);
     }
 
@@ -301,6 +316,45 @@ pub const IrTranslator = struct {
         return val;
     }
 
+    /// Pre-emit all literal constants found in an IR tree into the current block.
+    /// This effectively performs LICM for constants when called before entering a loop.
+    fn preEmitConstants(self: *IrTranslator, ir: *const Ir) !void {
+        switch (ir.*) {
+            .lit => |v| {
+                _ = try self.cachedIconst(@as(i64, @bitCast(v.raw)));
+            },
+            .fixnum_add, .fixnum_sub, .add, .sub => |op| {
+                // Also pre-emit the folded constant for fixnum ops with literal operands
+                if (getFixnumLit(op.right)) |r_const| {
+                    _ = try self.cachedIconst(r_const - 1);
+                } else if (getFixnumLit(op.left)) |l_const| {
+                    _ = try self.cachedIconst(l_const - 1);
+                }
+                try self.preEmitConstants(op.left);
+                try self.preEmitConstants(op.right);
+            },
+            .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq => |op| {
+                try self.preEmitConstants(op.left);
+                try self.preEmitConstants(op.right);
+            },
+            .le, .lt, .gt, .ge, .num_eq => |op| {
+                try self.preEmitConstants(op.left);
+                try self.preEmitConstants(op.right);
+            },
+            .@"if" => |n| {
+                try self.preEmitConstants(n.cond);
+                try self.preEmitConstants(n.then_branch);
+                try self.preEmitConstants(n.else_branch);
+            },
+            .progn => |exprs| {
+                for (exprs) |expr| try self.preEmitConstants(expr);
+            },
+            .set => |n| try self.preEmitConstants(n.value),
+            .assert_fixnum => |n| try self.preEmitConstants(n.operand),
+            else => {},
+        }
+    }
+
     fn translateLoop(self: *IrTranslator, cond_ir: *const Ir, body_ir: *const Ir) anyerror!HoistValue {
         // Collect all variable indices mutated inside the loop body
         var mutated_indices = std.ArrayList(u16){};
@@ -309,6 +363,12 @@ pub const IrTranslator = struct {
 
         const n_phis = mutated_indices.items.len;
         if (n_phis > 16) return error.TooManyLoopVars;
+
+        // LICM: Pre-emit all constants from the loop condition and body in the
+        // current (pre-loop) block. These dominate the loop and will be kept in
+        // registers by the allocator, avoiding re-materialization each iteration.
+        try self.preEmitConstants(cond_ir);
+        try self.preEmitConstants(body_ir);
 
         // Create blocks using low-level API
         const header = try self.func.dfg.addBlock();
@@ -331,7 +391,7 @@ pub const IrTranslator = struct {
             init_vals[i] = if (idx < self.locals.items.len)
                 self.locals.items[idx]
             else
-                try self.b.iconst(I64, @as(i64, @bitCast(Value.nil.raw)));
+                try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
         }
         try self.b.jumpArgs(header, init_vals[0..n_phis]);
 
@@ -356,7 +416,7 @@ pub const IrTranslator = struct {
             updated_vals[i] = if (idx < self.locals.items.len)
                 self.locals.items[idx]
             else
-                try self.b.iconst(I64, @as(i64, @bitCast(Value.nil.raw)));
+                try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
         }
         try self.b.jumpArgs(header, updated_vals[0..n_phis]);
 
@@ -369,7 +429,7 @@ pub const IrTranslator = struct {
         }
 
         // Return nil (while loop doesn't produce a value in CL)
-        return try self.b.iconst(I64, @as(i64, @bitCast(Value.nil.raw)));
+        return try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
     }
 
     fn translateCall(self: *IrTranslator, func_ir: *const Ir, args: []const *const Ir) anyerror!HoistValue {
