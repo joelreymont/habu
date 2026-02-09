@@ -307,3 +307,29 @@ To emit self-recursive calls via `call_indirect`, embed a placeholder constant `
 
 ### Hoist Aggressive Optimization Removes Recursive Calls
 With `optLevel(.aggressive)`, hoist's optimizer removes `call_indirect` instructions to functions with no observable side effects. Recursive fib calls get eliminated because the optimizer can't prove they terminate. Use `optLevel(.none)` for functions with recursive calls.
+
+### Compiler IR vs Test IR: Symbol Representation Mismatch
+**Bug**: Hoist backend unit tests used `.global_ref` for function references in self-calls, but the actual REPL compiler produces `.lit` (symbol value) for the same purpose. `detectSelfCalls` only checked `.global_ref`, so recursive functions compiled from the REPL were treated as non-recursive — the self-call was replaced with `nil`.
+
+**Fix**: Added `isCallTargetSelf()` that checks both `.global_ref` (name match) and `.lit` (symbol value with qualified/unqualified name matching). Qualified names like `"CL-USER:MYFIB"` must match unqualified symbol names like `"MYFIB"` by checking suffix after `:`.
+
+**Lesson**: Always test the actual compilation pipeline end-to-end, not just hand-crafted IR. The compiler's output may use different IR nodes than what you expect.
+
+### Multiple REPL Compilation Paths
+**Bug**: Hoist compilation was only wired into the stdlib loading path (`compileAndRun`) but not the interactive REPL path (`evalCapturingError`). User-defined functions with `(declare (optimize (speed 3)))` never got hoist-compiled.
+
+**Fix**: Added `tryHoistCompileLambdas` call to `evalCapturingError` after bytecode emission.
+
+**Lesson**: In a REPL with multiple expression evaluation paths (file loading, interactive input, eval-when), new passes must be added to ALL paths.
+
+### Signature Ownership Double-Free
+**Bug**: `errdefer sig.deinit()` + later `defer func.deinit()` double-freed signature arrays when `Function.init(sig)` consumed the sig by value. If compilation failed after func creation, both deferred ops ran.
+
+**Fix**: Track ownership with a boolean: `var sig_owned = true; defer if (sig_owned) sig.deinit(); ... sig_owned = false; // after func takes ownership`.
+
+### Nested Self-Calls Cause Regalloc Segfaults
+**Pattern**: When a self-call's result is passed as an argument to another self-call (e.g., `(tak (tak ...) (tak ...) (tak ...))`), hoist's regalloc fails to properly spill values across nested `call_indirect` instructions, causing segfaults.
+
+**Workaround**: Detect nested self-calls (`hasNestedSelfCalls`) and refuse to hoist-compile such functions, falling back to bytecode VM.
+
+**Affected benchmarks**: tak (nested), NOT fib (fib passes self-call results to `+`, not to another self-call).
