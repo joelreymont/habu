@@ -870,6 +870,11 @@ pub fn compileIr(
         }
     }
 
+    // Peephole: replace dead cset with NOP in fused cmp+cset+b.cc sequences.
+    // The icmp emits cmp+cset, and fused brif emits b.cc using flags directly.
+    // The cset result is dead but still executes.
+    eliminateDeadCset(code.code.items);
+
     // Fix parallel copy conflicts in call argument setup.
     // Hoist's lowering emits sequential mov instructions for call arguments
     // which can clobber source registers before they're consumed.
@@ -896,6 +901,31 @@ pub fn compileIr(
         .arity = arity,
         .allocator = allocator,
     };
+}
+
+/// Replace dead CSET instructions with NOP when followed by a B.cond.
+/// Pattern: CMP; CSET; B.cond → CMP; NOP; B.cond
+/// The CSET result is dead because B.cond reads flags directly from CMP.
+fn eliminateDeadCset(code: []u8) void {
+    const n_insns = code.len / 4;
+    if (n_insns < 3) return;
+
+    var i: usize = 0;
+    while (i + 2 < n_insns) : (i += 1) {
+        const insn0 = readInsn(code, i);
+        const insn1 = readInsn(code, i + 1);
+        const insn2 = readInsn(code, i + 2);
+
+        // Check pattern: CMP Xn, Xm (subs xzr); CSET Wd, cc; B.cond
+        const is_cmp = (insn0 & 0xFFE0FC1F) == 0xEB00001F; // CMP (shifted register)
+        const is_cset = (insn1 & 0xFFE00C00) == 0x1A800000; // CSET/CSINC
+        const is_bcond = (insn2 & 0xFF000010) == 0x54000000; // B.cond
+
+        if (is_cmp and is_cset and is_bcond) {
+            // Replace CSET with NOP (0xD503201F)
+            writeInsn(code, i + 1, 0xD503201F);
+        }
+    }
 }
 
 /// Fix parallel copy conflicts in AArch64 call argument setup.

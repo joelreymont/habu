@@ -364,3 +364,9 @@ For tagged fixnum arithmetic where one operand is a constant, fold the tag adjus
 
 ### LICM via Constant Cache
 Without a full LICM pass in the backend, achieve the same effect for constants by maintaining a cache (`i64 → HoistValue`) in the translator. Pre-scan loop bodies for literal values and emit them in the entry block before the loop. The SSA value is then available in all dominated blocks. Combined with `optLevel(.none)` which prevents re-materialization, this keeps loop-invariant constants in registers.
+
+### Post-Emission Parallel Copy Fixup for Call Arguments
+When a compiler backend (like hoist) emits sequential `mov` instructions for call argument setup without a parallel copy resolver, source registers can be clobbered before they're consumed. Instead of fixing the backend's regalloc (deep architectural change), post-process the emitted machine code: scan backwards from each `blr` instruction, collect the preceding `mov` instructions to ABI registers (x0-x7), and topologically sort them so that a move whose destination is still needed as a source by another move is emitted last. This approach is simple, correct, and avoids modifying the backend. The key insight: the "ready" criterion for topological sort is "no remaining move reads from my destination register."
+
+### Stack Slot Offsets Must Account for Full Frame Layout
+Stack slot offsets baked into lowered code must account for ALL frame components: FP/LR save area, callee-saved register area, and outgoing stack space. If offsets only account for FP/LR (16 bytes), they overlap with callee-saved registers saved at SP+16..SP+N. During lowering, the callee-save count isn't finalized (determined by regalloc), creating a chicken-and-egg problem. Conservative reservation (assuming max callee saves) works but wastes stack space.
