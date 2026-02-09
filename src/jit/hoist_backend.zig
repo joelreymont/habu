@@ -269,34 +269,45 @@ pub const IrTranslator = struct {
 
         const then_blk = try self.b.createBlock();
         const else_blk = try self.b.createBlock();
+        const merge_blk = try self.b.createBlock();
+
+        // Merge block has one param: the phi result (I64)
+        const merge_param = try self.b.appendBlockParam(merge_blk, I64);
 
         try self.b.brif(cond_val, then_blk, else_blk);
 
-        // Then branch: emit ret directly
+        // Then branch
         self.b.switchToBlock(then_blk);
         try self.b.sealBlock(then_blk);
         const then_val = try self.translate(then_ir);
-        const then_ty = self.func.dfg.valueType(then_val) orelse I64;
-        const then_i64 = if (then_ty.raw == I8.raw)
-            try self.b.uextend(I64, then_val)
-        else
-            then_val;
-        try self.b.retValues(&.{then_i64});
+        // If the then-branch already terminated (nested if that returned),
+        // don't emit another jump
+        if (self.b.current_block != null) {
+            const then_ty = self.func.dfg.valueType(then_val) orelse I64;
+            const then_i64 = if (then_ty.raw == I8.raw)
+                try self.b.uextend(I64, then_val)
+            else
+                then_val;
+            try self.b.jumpArgs(merge_blk, &.{then_i64});
+        }
 
-        // Else branch: emit ret directly
+        // Else branch
         self.b.switchToBlock(else_blk);
         try self.b.sealBlock(else_blk);
         const else_val = try self.translate(else_ir);
-        const else_ty = self.func.dfg.valueType(else_val) orelse I64;
-        const else_i64 = if (else_ty.raw == I8.raw)
-            try self.b.uextend(I64, else_val)
-        else
-            else_val;
-        try self.b.retValues(&.{else_i64});
+        if (self.b.current_block != null) {
+            const else_ty = self.func.dfg.valueType(else_val) orelse I64;
+            const else_i64 = if (else_ty.raw == I8.raw)
+                try self.b.uextend(I64, else_val)
+            else
+                else_val;
+            try self.b.jumpArgs(merge_blk, &.{else_i64});
+        }
 
-        // Both branches returned — clear current block
-        self.b.current_block = null;
-        return then_i64; // sentinel, won't be used
+        // Continue in merge block
+        self.b.switchToBlock(merge_blk);
+        try self.b.sealBlock(merge_blk);
+        return merge_param;
     }
 
     fn translateLet(self: *IrTranslator, bindings: []const Ir.Binding, body: *const Ir) anyerror!HoistValue {
@@ -807,15 +818,13 @@ pub fn compileIr(
         return err;
     };
 
-    // If the body is an if-expression, it already emitted returns.
-    if (b.current_block != null) {
-        const result_ty = func.dfg.valueType(result) orelse I64;
-        const result_i64 = if (result_ty.raw == I8.raw)
-            try b.uextend(I64, result)
-        else
-            result;
-        try b.retValues(&.{result_i64});
-    }
+    // Emit ret with the result value
+    const result_ty = func.dfg.valueType(result) orelse I64;
+    const result_i64 = if (result_ty.raw == I8.raw)
+        try b.uextend(I64, result)
+    else
+        result;
+    try b.retValues(&.{result_i64});
 
     // Compile with Hoist
     var ctx_builder = ContextBuilder.init(allocator);
@@ -827,7 +836,7 @@ pub fn compileIr(
         .build();
 
     // Print function for debug
-    if (false) {
+    if (std.posix.getenv("HABU_DUMP_HOIST") != null) {
         var pp_buf: [8192]u8 = undefined;
         var pp_fbs = std.io.fixedBufferStream(&pp_buf);
         hoist.ir_print.writeFunction(pp_fbs.writer(), &func, .{}) catch {};
@@ -840,7 +849,7 @@ pub fn compileIr(
     defer code.deinit();
 
     // Debug: dump machine code
-    if (false) {
+    if (std.posix.getenv("HABU_DUMP_HOIST") != null) {
         std.debug.print("[hoist-asm] {d} bytes:", .{code.code.items.len});
         for (code.code.items, 0..) |byte, i| {
             if (i % 4 == 0) std.debug.print(" ", .{});
@@ -873,7 +882,9 @@ pub fn compileIr(
     // Peephole: replace dead cset with NOP in fused cmp+cset+b.cc sequences.
     // The icmp emits cmp+cset, and fused brif emits b.cc using flags directly.
     // The cset result is dead but still executes.
-    eliminateDeadCset(code.code.items);
+    if (std.posix.getenv("HABU_NO_CSET_ELIM") == null) {
+        eliminateDeadCset(code.code.items);
+    }
 
     // Fix parallel copy conflicts in call argument setup.
     // Hoist's lowering emits sequential mov instructions for call arguments
@@ -892,7 +903,38 @@ pub fn compileIr(
         }
     }
 
+    // Debug: dump final machine code before making executable
+    if (std.posix.getenv("HABU_DUMP_HOIST") != null) {
+        std.debug.print("[hoist-asm-final] {d} bytes:\n", .{code.code.items.len});
+        var dbg_i: usize = 0;
+        while (dbg_i + 4 <= code.code.items.len) : (dbg_i += 4) {
+            const w = @as(u32, code.code.items[dbg_i]) |
+                (@as(u32, code.code.items[dbg_i + 1]) << 8) |
+                (@as(u32, code.code.items[dbg_i + 2]) << 16) |
+                (@as(u32, code.code.items[dbg_i + 3]) << 24);
+            std.debug.print("  {x:0>4}: {x:0>8}\n", .{ dbg_i, w });
+        }
+    }
+
     try mem.writeExec(buf, code.code.items);
+
+    // Debug: verify self-pointer in executable buffer
+    if (std.posix.getenv("HABU_DUMP_HOIST") != null) {
+        std.debug.print("[hoist-exec] fn_ptr=0x{x}\n", .{@intFromPtr(buf.ptr)});
+        // Read self-ptr from offset 0x38 in the code
+        if (translator.is_recursive and code.code.items.len >= 0x48) {
+            const w0 = std.mem.readInt(u32, code.code.items[0x38..0x3c], .little);
+            const w1 = std.mem.readInt(u32, code.code.items[0x3c..0x40], .little);
+            const w2 = std.mem.readInt(u32, code.code.items[0x40..0x44], .little);
+            const w3 = std.mem.readInt(u32, code.code.items[0x44..0x48], .little);
+            const imm0 = @as(u64, (w0 >> 5) & 0xFFFF);
+            const imm1 = @as(u64, (w1 >> 5) & 0xFFFF) << 16;
+            const imm2 = @as(u64, (w2 >> 5) & 0xFFFF) << 32;
+            const imm3 = @as(u64, (w3 >> 5) & 0xFFFF) << 48;
+            std.debug.print("[hoist-exec] self-ptr decoded: 0x{x}\n", .{imm0 | imm1 | imm2 | imm3});
+        }
+    }
+
     try mem.setExec(true);
 
     return .{
@@ -902,6 +944,7 @@ pub fn compileIr(
         .allocator = allocator,
     };
 }
+
 
 /// Replace dead CSET instructions with NOP when followed by a B.cond.
 /// Pattern: CMP; CSET; B.cond → CMP; NOP; B.cond
@@ -1251,6 +1294,146 @@ test "hoist IR translator: non-recursive if" {
     try testing.expectEqual(@as(i64, 85), compiled.call1(11));
 }
 
+test "hoist IR translator: nested if in expression" {
+    // (lambda (n) (+ (if (<= n 1) n 100) 10))
+    // n=0 (tagged 1): (+ 0 10) = 10, tagged 21
+    // n=5 (tagged 11): (+ 100 10) = 110, tagged 221
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const params = try alloc.alloc([]const u8, 1);
+    params[0] = "n";
+
+    const var_n = try alloc.create(Ir);
+    var_n.* = .{ .@"var" = .{ .name = "n", .depth = 0, .index = 0 } };
+    const var_n2 = try alloc.create(Ir);
+    var_n2.* = .{ .@"var" = .{ .name = "n", .depth = 0, .index = 0 } };
+    const lit_1 = try alloc.create(Ir);
+    lit_1.* = .{ .lit = Value.makeFixnum(1) };
+    const lit_100 = try alloc.create(Ir);
+    lit_100.* = .{ .lit = Value.makeFixnum(100) };
+    const lit_10 = try alloc.create(Ir);
+    lit_10.* = .{ .lit = Value.makeFixnum(10) };
+
+    const cond = try alloc.create(Ir);
+    cond.* = .{ .fixnum_le = .{ .left = var_n, .right = lit_1 } };
+    const if_node = try alloc.create(Ir);
+    if_node.* = .{ .@"if" = .{ .cond = cond, .then_branch = var_n2, .else_branch = lit_100 } };
+    const add_node = try alloc.create(Ir);
+    add_node.* = .{ .fixnum_add = .{ .left = if_node, .right = lit_10 } };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = params,
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = add_node,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    var compiled = try compileIr(testing.allocator, lambda, "nested_if");
+    defer compiled.deinit();
+
+    // n=0 (tagged=1): if true → 0, then 0+10=10, tagged 21
+    const r0 = compiled.call1(1);
+    std.debug.print("nested_if(0) = {d} (expected 21)\n", .{r0});
+    try testing.expectEqual(@as(i64, 21), r0);
+    // n=5 (tagged=11): if false → 100, then 100+10=110, tagged 221
+    const r5 = compiled.call1(11);
+    std.debug.print("nested_if(5) = {d} (expected 221)\n", .{r5});
+    try testing.expectEqual(@as(i64, 221), r5);
+}
+
+test "hoist IR translator: double recursive call" {
+    // (defun f (n) (if (<= n 1) n (+ (f (- n 1)) (f (- n 2)))))
+    // This is fib, testing specifically the double-call pattern with merge blocks
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const params = try alloc.alloc([]const u8, 1);
+    params[0] = "n";
+
+    const mkVar = struct {
+        fn f(a: std.mem.Allocator) !*Ir {
+            const v = try a.create(Ir);
+            v.* = .{ .@"var" = .{ .name = "n", .depth = 0, .index = 0 } };
+            return v;
+        }
+    }.f;
+
+    const var_n = try mkVar(alloc);
+    const var_n2 = try mkVar(alloc);
+    const var_n3 = try mkVar(alloc);
+    const var_n4 = try mkVar(alloc);
+    const lit_1 = try alloc.create(Ir);
+    lit_1.* = .{ .lit = Value.makeFixnum(1) };
+    const lit_2 = try alloc.create(Ir);
+    lit_2.* = .{ .lit = Value.makeFixnum(2) };
+
+    // f(n-1)
+    const sub1 = try alloc.create(Ir);
+    sub1.* = .{ .fixnum_sub = .{ .left = var_n, .right = lit_1 } };
+    const self1 = try alloc.create(Ir);
+    self1.* = .{ .global_ref = .{ .name = "f", .index = 0 } };
+    const args1 = try alloc.alloc(*const Ir, 1);
+    args1[0] = sub1;
+    const call1 = try alloc.create(Ir);
+    call1.* = .{ .call = .{ .func = self1, .args = args1 } };
+
+    // f(n-2)
+    const sub2 = try alloc.create(Ir);
+    sub2.* = .{ .fixnum_sub = .{ .left = var_n3, .right = lit_2 } };
+    const self2 = try alloc.create(Ir);
+    self2.* = .{ .global_ref = .{ .name = "f", .index = 0 } };
+    const args2 = try alloc.alloc(*const Ir, 1);
+    args2[0] = sub2;
+    const call2 = try alloc.create(Ir);
+    call2.* = .{ .call = .{ .func = self2, .args = args2 } };
+
+    // f(n-1) + f(n-2)
+    const add_ir = try alloc.create(Ir);
+    add_ir.* = .{ .fixnum_add = .{ .left = call1, .right = call2 } };
+
+    // (if (<= n 1) n (f(n-1) + f(n-2)))
+    const cond = try alloc.create(Ir);
+    cond.* = .{ .fixnum_le = .{ .left = var_n2, .right = lit_1 } };
+    const body = try alloc.create(Ir);
+    body.* = .{ .@"if" = .{ .cond = cond, .then_branch = var_n4, .else_branch = add_ir } };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = params,
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = body,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    var compiled = try compileIr(testing.allocator, lambda, "f");
+    defer compiled.deinit();
+
+    // f(0) = 0, tagged: 1
+    const r0 = compiled.call1(1);
+    std.debug.print("f(0) = {d} (raw), untagged = {d}\n", .{ r0, @divTrunc(r0, 2) });
+    try testing.expectEqual(@as(i64, 1), r0);
+    // f(1) = 1, tagged: 3
+    const r1 = compiled.call1(3);
+    std.debug.print("f(1) = {d} (raw), untagged = {d}\n", .{ r1, @divTrunc(r1, 2) });
+    try testing.expectEqual(@as(i64, 3), r1);
+    // f(2) = 1, tagged: 3
+    const r2 = compiled.call1(5);
+    std.debug.print("f(2) = {d} (raw), untagged = {d}\n", .{ r2, @divTrunc(r2, 2) });
+    try testing.expectEqual(@as(i64, 3), r2);
+}
+
 test "hoist IR translator: countdown recursive" {
     // (defun countdown (n) (if (<= n 0) 0 (countdown (- n 1))))
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
@@ -1397,9 +1580,21 @@ test "hoist IR translator: fib recursive" {
     defer compiled.deinit();
 
     // fib(0) = 0, tagged: 1 → 1
-    try testing.expectEqual(@as(i64, 1), compiled.call1(1));
+    const fib0 = compiled.call1(1);
+    std.debug.print("fib(0) = {d} (expected 1)\n", .{fib0});
+    try testing.expectEqual(@as(i64, 1), fib0);
     // fib(1) = 1, tagged: 3 → 3
-    try testing.expectEqual(@as(i64, 3), compiled.call1(3));
+    const fib1 = compiled.call1(3);
+    std.debug.print("fib(1) = {d} (expected 3)\n", .{fib1});
+    try testing.expectEqual(@as(i64, 3), fib1);
+    // fib(2) = 1, tagged: 5 → 3
+    const fib2 = compiled.call1(5);
+    std.debug.print("fib(2) = {d} (expected 3)\n", .{fib2});
+    try testing.expectEqual(@as(i64, 3), fib2);
+    // fib(3) = 2, tagged: 7 → 5
+    const fib3 = compiled.call1(7);
+    std.debug.print("fib(3) = {d} (expected 5)\n", .{fib3});
+    try testing.expectEqual(@as(i64, 5), fib3);
     // fib(5) = 5, tagged: 11 → 11
     try testing.expectEqual(@as(i64, 11), compiled.call1(11));
     // fib(10) = 55, tagged: (10<<1)|1=21 → (55<<1)|1=111
