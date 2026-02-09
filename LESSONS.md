@@ -276,14 +276,34 @@ Two ways to handle phis in Hoist: (1) block params (`setBlockParams` + `jumpArgs
 
 **Caveat**: Block param phis don't work correctly with hoist's current codegen. The merge block param values get assigned to wrong registers. Workaround: emit `ret` directly from both branches (no merge block). This limits if-expressions to top-level position (can't be nested inside arithmetic). Future fix: fix hoist's block param → register mapping.
 
-### Hoist Register Allocator: No Caller-Saved Handling
-Hoist's linear scan register allocator (`src/regalloc/linear_scan.zig`) does NOT save caller-saved registers across `call` or `call_indirect` instructions. The liveness analysis doesn't mark registers as clobbered by calls, so values in caller-saved registers (x0-x18 on AArch64) are silently destroyed after any call.
+### Hoist Register Allocator: Caller-Saved Handling (FIXED)
+**Bug**: Hoist's linear scan allocator didn't know that calls clobber caller-saved registers (x0-x18). Values in caller-saved regs were silently destroyed after calls.
 
-**Impact**: Recursive functions produce incorrect results — values computed before a call get clobbered and are not reloaded. Also, `stack_store` is not implemented in the AArch64 codegen, so manual spilling isn't possible.
+**Fix**: Added `call_positions` tracking to `LivenessInfo`. Both `computeLiveness` and `computeLivenessWithCFG` now record instruction indices of call/call_indirect/blr instructions. The allocator's `tryAllocateReg` checks `spansCall()` — if a live range spans a call, only callee-saved registers (x19-x28) are considered. Required adding `isCall()` to all backend instruction types.
 
-**Workaround**: For recursive functions, use the stencil JIT (which handles its own save/restore). Use hoist only for leaf functions and straight-line arithmetic code.
+**Key subtlety**: A value whose last use IS the call (it's a call argument) doesn't need to "survive" the call. The span check uses `call_pos >= start AND call_pos < end` (strict less-than on end). Using `<=` for end would incorrectly force call arguments into callee-saved regs.
 
-**Fix needed**: Add call-clobber modeling to `linear_scan.zig`. When processing a `call` instruction, mark all caller-saved registers as dead at the call point. This forces the register allocator to spill values that are live across calls to callee-saved registers or stack slots. Also implement `stack_store` in the AArch64 backend.
+### Hoist AArch64 Emitter: V-Bit Bug in STR/LDR (FIXED)
+**Bug**: `emitStr` and `emitLdr` (unscaled immediate forms) had bit 26 (the V flag) set to 1, generating SIMD `STUR Dt`/`LDUR Dt` instead of integer `STUR Xt`/`LDUR Xt`. Template `0b11111000000` should have been `0b11110000000` (bit 6 in the 11-bit constant maps to bit 26 in the instruction).
+
+**Manifestation**: Callee-saved register save/restore wrote to SIMD register D19 instead of integer register X19. The restore instruction `LDUR D19` with the wrong encoding (`opc=10, size=11`) was an UNDEFINED encoding → "Illegal instruction" trap.
+
+**Debugging approach**: Hex-dumped JIT code, manually decoded AArch64 instructions, compared bit patterns against ARM Architecture Reference Manual. The V flag (bit 26) distinguishes integer (`V=0`) from SIMD/FP (`V=1`) in all load/store encodings.
+
+### Hoist AArch64 Emitter: LDP Encoding Bug (FIXED)
+**Bug**: `emitLdp` used template `(0b1010011 << 23)` which gives `[25:23]=011` (pre-index variant) with `L=0` (store). This generated STP pre-index instead of LDP signed-offset. Two errors in one constant:
+1. Wrong variant: 011 (pre-index) instead of 010 (signed offset)
+2. Missing L bit: L=0 (STP) instead of L=1 (LDP)
+
+**Fix**: Replaced opaque bitfield constant with explicit field composition:
+```zig
+(0b101 << 27) | (0b010 << 23) | (0b1 << 22)
+```
+
+**Lesson**: Never use magic bit constants for instruction encoding. Compose from named fields so each bit's purpose is visible and verifiable against the architecture manual.
+
+### Self-Pointer Patching for Recursive JIT
+To emit self-recursive calls via `call_indirect`, embed a placeholder constant `0x0BADF00DDEADBEEF` as an `iconst`. After compilation, scan the generated code for the MOVZ+MOVK+MOVK+MOVK sequence matching the placeholder and patch with the actual function address. Patch BEFORE `writeExec` so the I-cache flush covers the patched code (on AArch64, D-cache writes are not visible to I-cache without explicit flush).
 
 ### Hoist Aggressive Optimization Removes Recursive Calls
-With `optLevel(.aggressive)`, hoist's optimizer removes `call_indirect` instructions to functions with no observable side effects. Recursive fib calls get eliminated because the optimizer can't prove they terminate. Use `optLevel(.none)` for functions with recursive calls. (This is secondary to the regalloc issue above.)
+With `optLevel(.aggressive)`, hoist's optimizer removes `call_indirect` instructions to functions with no observable side effects. Recursive fib calls get eliminated because the optimizer can't prove they terminate. Use `optLevel(.none)` for functions with recursive calls.
