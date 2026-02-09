@@ -6,6 +6,8 @@ const compiler_mod = @import("../compiler/compiler.zig");
 const bytecode = @import("../bytecode/bytecode.zig");
 const interp = @import("../interp/interp.zig");
 const specialize = @import("../compiler/passes/p07c_specialize.zig");
+const hoist_backend = @import("../jit/hoist_backend.zig");
+const Ir = compiler_mod.ir.Ir;
 
 const Heap = runtime.Heap;
 const Chunk = runtime.Chunk;
@@ -91,6 +93,63 @@ pub fn compileChunk(
     const chunk_ptr = chunk.toPtr(Chunk);
     patchChunkIndices(chunk_ptr, chunk_base);
     vm.setChunkPool(chunk_pool.items);
+
+    // Try hoist SSA JIT compilation for eligible lambdas
+    tryHoistCompile(allocator, specialized, child_chunks, chunk_base, vm);
+
     return chunk_ptr;
+}
+
+fn tryHoistCompile(
+    allocator: std.mem.Allocator,
+    ir_node: *const Ir,
+    child_chunks: []const runtime.value.Value,
+    chunk_base: u16,
+    vm: *Vm,
+) void {
+    _ = chunk_base;
+    const define = switch (ir_node.*) {
+        .define => |d| d,
+        .progn => |exprs| blk: {
+            // Look for define in progn (e.g., (progn (defun fib ...) (fib 35)))
+            for (exprs) |expr| {
+                switch (expr.*) {
+                    .define => |d| break :blk d,
+                    else => {},
+                }
+            }
+            return;
+        },
+        else => return,
+    };
+    const lambda_ir = switch (define.value.*) {
+        .lambda => define.value,
+        else => return,
+    };
+    const lambda = lambda_ir.lambda;
+
+    if (lambda.speed < 3 or lambda.safety > 0) return;
+    if (lambda.captures.len > 0) return;
+    if (lambda.optional_params.len > 0) return;
+    if (lambda.key_params.len > 0) return;
+    if (lambda.rest_param != null) return;
+    if (child_chunks.len == 0) return;
+
+    const chunk_val = child_chunks[0];
+    const chunk_ptr = chunk_val.toPtr(Chunk);
+
+    var compiled = hoist_backend.compileIr(allocator, lambda_ir, define.name) catch {
+        return;
+    };
+    const persistent = allocator.create(hoist_backend.CompiledFn) catch {
+        compiled.deinit();
+        return;
+    };
+    persistent.* = compiled;
+    vm.registerHoistFn(chunk_ptr, persistent) catch {
+        persistent.deinit();
+        allocator.destroy(persistent);
+        return;
+    };
 }
 
