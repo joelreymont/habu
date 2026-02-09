@@ -79,6 +79,12 @@ pub const CompiledFn = struct {
     }
 
     /// Call with 1 tagged i64 arg, returns tagged i64.
+    /// Call with 0 args, returns tagged i64.
+    pub fn call0(self: *const CompiledFn) i64 {
+        const f: *const fn () callconv(.c) i64 = @ptrCast(@alignCast(self.fn_ptr));
+        return f();
+    }
+
     pub fn call1(self: *const CompiledFn, arg: i64) i64 {
         const f: *const fn (i64) callconv(.c) i64 = @ptrCast(@alignCast(self.fn_ptr));
         return f(arg);
@@ -162,6 +168,13 @@ pub const IrTranslator = struct {
             .num_eq => |op| try self.translateFixnumCmp(.eq, op.left, op.right),
             .@"if" => |if_node| try self.translateIf(if_node.cond, if_node.then_branch, if_node.else_branch),
             .progn => |exprs| try self.translateProgn(exprs),
+            .let => |let_node| try self.translateLet(let_node.bindings, let_node.body),
+            .set => |set_node| try self.translateSet(set_node.index, set_node.value),
+            // Loop translation disabled: hoist's block param phi codegen produces wrong results.
+            // The IR we generate is correct (verified via printing), but the AArch64 lowerer
+            // doesn't properly handle I64 block parameters with back-edges.
+            // Re-enable once hoist fixes loop phi codegen.
+            // .loop => |loop_node| try self.translateLoop(loop_node.cond, loop_node.body),
             .assert_fixnum => |op| try self.translate(op.operand), // At safety 0, just pass through
             .global_ref => |_| try self.translateLit(Value.nil), // TODO: general global refs
             .call => |call_node| try self.translateCall(call_node.func, call_node.args),
@@ -240,6 +253,101 @@ pub const IrTranslator = struct {
         // Both branches returned — clear current block
         self.b.current_block = null;
         return then_i64; // sentinel, won't be used
+    }
+
+    fn translateLet(self: *IrTranslator, bindings: []const Ir.Binding, body: *const Ir) anyerror!HoistValue {
+        // Evaluate each binding and add to locals
+        for (bindings) |binding| {
+            const val = try self.translate(binding.value);
+            // Extend locals array if needed
+            while (self.locals.items.len <= binding.index) {
+                try self.locals.append(self.allocator, HoistValue.new(0)); // placeholder
+            }
+            self.locals.items[binding.index] = val;
+        }
+        return try self.translate(body);
+    }
+
+    fn translateSet(self: *IrTranslator, index: u16, value_ir: *const Ir) anyerror!HoistValue {
+        const val = try self.translate(value_ir);
+        if (index < self.locals.items.len) {
+            self.locals.items[index] = val;
+        }
+        return val;
+    }
+
+    fn translateLoop(self: *IrTranslator, cond_ir: *const Ir, body_ir: *const Ir) anyerror!HoistValue {
+        // Collect all variable indices mutated inside the loop body
+        var mutated_indices = std.ArrayList(u16){};
+        defer mutated_indices.deinit(self.allocator);
+        try collectMutatedVars(body_ir, &mutated_indices, self.allocator);
+
+        const n_phis = mutated_indices.items.len;
+        if (n_phis > 16) return error.TooManyLoopVars;
+
+        // Create blocks using low-level API (avoids builder's sealBlock issues)
+        const header = try self.func.dfg.addBlock();
+        try self.func.layout.appendBlock(header);
+        const loop_body = try self.func.dfg.addBlock();
+        try self.func.layout.appendBlock(loop_body);
+        const loop_exit = try self.func.dfg.addBlock();
+        try self.func.layout.appendBlock(loop_exit);
+
+        // Add block params for header (phi nodes for mutated variables)
+        // Save the param values immediately — they're stable SSA value indices.
+        var phi_vals: [16]HoistValue = undefined;
+        for (0..n_phis) |pi| {
+            phi_vals[pi] = try self.func.dfg.appendBlockParam(header, I64);
+        }
+
+        // Jump from current block to header with initial values
+        var init_vals: [16]HoistValue = undefined;
+        for (mutated_indices.items, 0..) |idx, i| {
+            init_vals[i] = if (idx < self.locals.items.len)
+                self.locals.items[idx]
+            else
+                try self.b.iconst(I64, @as(i64, @bitCast(Value.nil.raw)));
+        }
+        try self.b.jumpArgs(header, init_vals[0..n_phis]);
+
+        // Header block: evaluate condition
+        self.b.switchToBlock(header);
+
+        // Install header block params as current variable values
+        for (mutated_indices.items, 0..) |idx, i| {
+            while (self.locals.items.len <= idx) {
+                try self.locals.append(self.allocator, HoistValue.new(0));
+            }
+            self.locals.items[idx] = phi_vals[i];
+        }
+
+        const cond_val = try self.translate(cond_ir);
+        try self.b.brif(cond_val, loop_body, loop_exit);
+
+        // Body: execute body statements, then jump back to header
+        self.b.switchToBlock(loop_body);
+        _ = try self.translate(body_ir);
+
+        // Collect updated values for back-edge jump
+        var updated_vals: [16]HoistValue = undefined;
+        for (mutated_indices.items, 0..) |idx, i| {
+            updated_vals[i] = if (idx < self.locals.items.len)
+                self.locals.items[idx]
+            else
+                try self.b.iconst(I64, @as(i64, @bitCast(Value.nil.raw)));
+        }
+        try self.b.jumpArgs(header, updated_vals[0..n_phis]);
+
+        // Exit block: return to caller
+        self.b.switchToBlock(loop_exit);
+
+        // After loop, locals point to header phi vals (final loop values)
+        for (mutated_indices.items, 0..) |idx, i| {
+            self.locals.items[idx] = phi_vals[i];
+        }
+
+        // Return nil (while loop doesn't produce a value in CL)
+        return try self.b.iconst(I64, @as(i64, @bitCast(Value.nil.raw)));
     }
 
     fn translateCall(self: *IrTranslator, func_ir: *const Ir, args: []const *const Ir) anyerror!HoistValue {
@@ -340,6 +448,57 @@ fn patchPlaceholder(buf: []u8, placeholder: u64, target: u64) bool {
         }
     }
     return found;
+}
+
+/// Recursively collect all variable indices that are assigned (set) within an IR subtree.
+fn collectMutatedVars(ir: *const Ir, indices: *std.ArrayList(u16), allocator: std.mem.Allocator) !void {
+    switch (ir.*) {
+        .set => |s| {
+            // Add index if not already present
+            for (indices.items) |existing| {
+                if (existing == s.index) return;
+            }
+            try indices.append(allocator, s.index);
+            try collectMutatedVars(s.value, indices, allocator);
+        },
+        .progn => |exprs| {
+            for (exprs) |expr| {
+                try collectMutatedVars(expr, indices, allocator);
+            }
+        },
+        .@"if" => |f| {
+            try collectMutatedVars(f.cond, indices, allocator);
+            try collectMutatedVars(f.then_branch, indices, allocator);
+            try collectMutatedVars(f.else_branch, indices, allocator);
+        },
+        .let => |l| {
+            for (l.bindings) |binding| {
+                try collectMutatedVars(binding.value, indices, allocator);
+            }
+            try collectMutatedVars(l.body, indices, allocator);
+        },
+        .loop => |l| {
+            try collectMutatedVars(l.cond, indices, allocator);
+            try collectMutatedVars(l.body, indices, allocator);
+        },
+        .fixnum_add, .fixnum_sub, .add, .sub => |op| {
+            try collectMutatedVars(op.left, indices, allocator);
+            try collectMutatedVars(op.right, indices, allocator);
+        },
+        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq => |op| {
+            try collectMutatedVars(op.left, indices, allocator);
+            try collectMutatedVars(op.right, indices, allocator);
+        },
+        .le, .lt, .gt, .ge, .num_eq => |op| {
+            try collectMutatedVars(op.left, indices, allocator);
+            try collectMutatedVars(op.right, indices, allocator);
+        },
+        .assert_fixnum => |op| try collectMutatedVars(op.operand, indices, allocator),
+        .call => |c| {
+            for (c.args) |arg| try collectMutatedVars(arg, indices, allocator);
+        },
+        else => {},
+    }
 }
 
 /// Check if a call target matches the current function name.
@@ -543,6 +702,14 @@ pub fn compileIr(
         .callConv(.system_v)
         .verification(true)
         .build();
+
+    // Print function for debug
+    if (false) {
+        var pp_buf: [8192]u8 = undefined;
+        var pp_fbs = std.io.fixedBufferStream(&pp_buf);
+        hoist.ir_print.writeFunction(pp_fbs.writer(), &func, .{}) catch {};
+        std.debug.print("[hoist-ir]\n{s}\n", .{pp_buf[0..pp_fbs.pos]});
+    }
 
     var code = ctx.compileFunction(&func) catch |err| {
         return err;
@@ -957,6 +1124,101 @@ test "hoist IR translator: fixnum arithmetic" {
     try testing.expectEqual(@as(i64, 81), compiled.call1(61));
     // f(0) = (0-10)+20 = 10. Tagged: 1 → (10<<1)|1=21
     try testing.expectEqual(@as(i64, 21), compiled.call1(1));
+}
+
+// TODO: Loop phi codegen produces wrong results in hoist.
+// The IR is correct (verified by printing) but the lowerer/regalloc
+// generates incorrect code for I64 block parameters in loops.
+// Hoist's e2e_loops.zig only tests compilation, not execution.
+// Re-enable once hoist's loop codegen is verified.
+test "hoist IR translator: simple loop (let + while + setq) DISABLED" {
+    return error.SkipZigTest;
+}
+
+test "hoist IR translator: simple loop (let + while + setq)" {
+    if (true) return error.SkipZigTest; // Disabled — hoist loop phi codegen bug
+    // (defun f () (let ((i 0) (acc 0)) (while (< i 10) (setq acc (+ acc i)) (setq i (+ i 1))) acc))
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const params = try alloc.alloc([]const u8, 0);
+
+    const mkVar = struct {
+        fn f(a: std.mem.Allocator, name: []const u8, idx: u16) !*Ir {
+            const v = try a.create(Ir);
+            v.* = .{ .@"var" = .{ .name = name, .depth = 0, .index = idx } };
+            return v;
+        }
+    }.f;
+    const mkLit = struct {
+        fn f(a: std.mem.Allocator, n: i64) !*Ir {
+            const v = try a.create(Ir);
+            v.* = .{ .lit = Value.makeFixnum(n) };
+            return v;
+        }
+    }.f;
+
+    // (setq acc (+ acc i))
+    const add_node = try alloc.create(Ir);
+    add_node.* = .{ .fixnum_add = .{ .left = try mkVar(alloc, "acc", 1), .right = try mkVar(alloc, "i", 0) } };
+    const set_acc = try alloc.create(Ir);
+    set_acc.* = .{ .set = .{ .name = "acc", .depth = 0, .index = 1, .value = add_node } };
+
+    // (setq i (+ i 1))
+    const inc_node = try alloc.create(Ir);
+    inc_node.* = .{ .fixnum_add = .{ .left = try mkVar(alloc, "i", 0), .right = try mkLit(alloc, 1) } };
+    const set_i = try alloc.create(Ir);
+    set_i.* = .{ .set = .{ .name = "i", .depth = 0, .index = 0, .value = inc_node } };
+
+    // body: (progn (setq acc ...) (setq i ...))
+    const body_exprs = try alloc.alloc(*const Ir, 2);
+    body_exprs[0] = set_acc;
+    body_exprs[1] = set_i;
+    const body = try alloc.create(Ir);
+    body.* = .{ .progn = body_exprs };
+
+    // cond: (< i 10)
+    const cond = try alloc.create(Ir);
+    cond.* = .{ .fixnum_lt = .{ .left = try mkVar(alloc, "i", 0), .right = try mkLit(alloc, 10) } };
+
+    // loop: (while cond body)
+    const loop_node = try alloc.create(Ir);
+    loop_node.* = .{ .loop = .{ .cond = cond, .body = body } };
+
+    // let body: (progn loop acc)
+    const let_body_exprs = try alloc.alloc(*const Ir, 2);
+    let_body_exprs[0] = loop_node;
+    let_body_exprs[1] = try mkVar(alloc, "acc", 1);
+    const let_body = try alloc.create(Ir);
+    let_body.* = .{ .progn = let_body_exprs };
+
+    // let bindings: i=0, acc=0
+    const bindings = try alloc.alloc(Ir.Binding, 2);
+    bindings[0] = .{ .name = "i", .value = try mkLit(alloc, 0), .index = 0 };
+    bindings[1] = .{ .name = "acc", .value = try mkLit(alloc, 0), .index = 1 };
+
+    const let_node = try alloc.create(Ir);
+    let_node.* = .{ .let = .{ .bindings = bindings, .body = let_body } };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = params,
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = let_node,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    var compiled = try compileIr(testing.allocator, lambda, "loop_test");
+    defer compiled.deinit();
+
+    // sum(0..9) = 45. Tagged: (45<<1)|1 = 91
+    const result = compiled.call0();
+    try testing.expectEqual(@as(i64, 91), result);
 }
 
 // NOTE: Nested self-calls (call result as arg to another self-call) cause
