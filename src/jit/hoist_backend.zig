@@ -196,19 +196,44 @@ pub const IrTranslator = struct {
         unreachable; // TODO: closure captures
     }
 
+    /// Extract a constant tagged fixnum value from an IR node, if it's a literal.
+    fn getFixnumLit(ir: *const Ir) ?i64 {
+        return switch (ir.*) {
+            .lit => |v| if (v.isFixnum()) @bitCast(v.raw) else null,
+            else => null,
+        };
+    }
+
     fn translateFixnumAdd(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
+        // Tagged fixnum add: result_raw = l_raw + r_raw - 1
+        // When one operand is a constant, fold: iadd(x, const - 1)
+        if (getFixnumLit(right)) |r_const| {
+            const l = try self.translate(left);
+            const folded = try self.b.iconst(I64, r_const - 1);
+            return try self.b.iadd(I64, l, folded);
+        }
+        if (getFixnumLit(left)) |l_const| {
+            const r = try self.translate(right);
+            const folded = try self.b.iconst(I64, l_const - 1);
+            return try self.b.iadd(I64, r, folded);
+        }
         const l = try self.translate(left);
         const r = try self.translate(right);
-        // Tagged fixnum add: result_raw = l_raw + r_raw - 1
         const sum = try self.b.iadd(I64, l, r);
         const one = try self.b.iconst(I64, 1);
         return try self.b.isub(I64, sum, one);
     }
 
     fn translateFixnumSub(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
+        // Tagged fixnum sub: result_raw = l_raw - r_raw + 1
+        // When right is a constant, fold: isub(x, const - 1)
+        if (getFixnumLit(right)) |r_const| {
+            const l = try self.translate(left);
+            const folded = try self.b.iconst(I64, r_const - 1);
+            return try self.b.isub(I64, l, folded);
+        }
         const l = try self.translate(left);
         const r = try self.translate(right);
-        // Tagged fixnum sub: result_raw = l_raw - r_raw + 1
         const diff = try self.b.isub(I64, l, r);
         const one = try self.b.iconst(I64, 1);
         return try self.b.iadd(I64, diff, one);
@@ -688,7 +713,9 @@ pub fn compileIr(
     translator.is_recursive = detectSelfCalls(lambda.body, name);
     translator.has_loops = detectLoops(lambda.body);
 
-    // Bail out for nested self-calls (e.g., tak) which trigger hoist regalloc bug
+    // Bail out for nested self-calls (e.g., tak) which trigger hoist regalloc bug.
+    // The regalloc doesn't properly spill values across multiple call_indirect
+    // instructions where results are passed as args to another call_indirect.
     if (translator.is_recursive and hasNestedSelfCalls(lambda.body, name)) {
         return error.UnsupportedNestedSelfCalls;
     }

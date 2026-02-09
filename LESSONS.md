@@ -334,28 +334,27 @@ With `optLevel(.aggressive)`, hoist's optimizer removes `call_indirect` instruct
 
 **Affected benchmarks**: tak (nested), NOT fib (fib passes self-call results to `+`, not to another self-call).
 
-### Hoist Loop Phi Codegen: Wrong Results for I64 Block Params
-**Bug**: The loop IR translation generates correct SSA (verified by printing): loop header with block parameters (phi nodes), entry jump with initial values, back-edge jump with updated values. But hoist's AArch64 lowerer produces incorrect native code — results are garbage (e.g., expected 91, got 6124199872).
+### Hoist Loop Phi Codegen: Three Bugs
+**Root cause**: Three separate bugs conspired to make loops fail:
 
-**Evidence**: Hoist's own `e2e_loops.zig` test only verifies that loop code COMPILES (non-zero output), not that it EXECUTES correctly. The bug may be specific to I64 (the test uses I32).
+1. **Jump phi resolution missing** (FIXED): Hoist's AArch64 `jump` lowering emitted a bare `B` instruction without generating moves for `jumpArgs` values. When `jump block1(v7, v11)` was lowered, v7 and v11 were never moved into the registers assigned to block1's params. Fix: emit parallel copies (`mov`) before the branch for each arg→param pair.
 
-**Workaround**: Disabled loop translation in hoist backend. Functions with `while` loops fall back to bytecode VM.
+2. **Frame layout clobbers FP/LR** (FIXED): `stackSlotOffset()` started at offset 0, which overlaps with the FP/LR save area written by `STP x29, x30, [SP, #-frame_size]!`. Stack stores at `[SP, #0]` overwrote the saved return address, causing "Bus error at address 0x15" (= 21 = the tagged fixnum 10, which was the loop limit stored over LR). Fix: start `stackSlotOffset` at `out_stack_max + 16`.
 
-**Impact**: fixnum_loop benchmark stays at 52ms (15.5x slower than SBCL's 3.4ms). Once fixed, expect major speedup since the IR is correct.
+3. **stack_store lowering missing** (FIXED): The AArch64 lowerer had no case for `.stack_store`, causing `LoweringFailed`. `stack_load` was handled but not its counterpart. Fix: add `.stack_store` handler with STR instruction emission.
 
-### SSA Loop Header Sealing Order
-In SSA construction with explicit block sealing, a loop header must NOT be sealed before all predecessors are connected. The header has two predecessors: the entry edge and the back-edge. Sealing the header after the entry jump but before the back-edge causes hoist's SSA construction to miss the second predecessor, leading to incorrect phi resolution.
+**Impact**: fixnum_loop 52ms → 8ms (6.5x speedup).
 
-**Correct order**:
-1. Create header, body, exit blocks
-2. Jump from current block to header (entry edge)
-3. Switch to header, emit condition + brif
-4. Switch to body, emit body, jump back to header (back-edge)
-5. **NOW** seal header (both predecessors connected)
-6. Switch to exit block
+**Lesson**: When debugging "wrong results", don't assume a single bug. The first fix (stack_store handler) revealed the second (frame layout), which when combined with the initial approach (phi) revealed the third (missing parallel copies). Test each layer independently.
+
+### Parallel Copy for Jump Args (SSA Phi Resolution)
+In SSA-based codegen, `jump block(v1, v2)` where `block` has parameters `(p1, p2)` requires generating `mov p1, v1; mov p2, v2` BEFORE the branch instruction. This is the "parallel copy" problem — values must be moved to their target registers atomically. Simple sequential moves work when there are no circular dependencies (which is true for our case since loop variables are computed into fresh SSA values before the jump).
 
 ### blockParams() Returns Stale Pointers
 `func.dfg.blockParams(block)` returns a slice into internal storage. If the DFG grows (by appending instructions or values) between creating block params and reading them, the slice becomes dangling. **Save block param values immediately** after `appendBlockParam()` into a local array instead of calling `blockParams()` later.
 
 ### End-to-End Testing Reveals Integration Gaps
 Unit tests for the hoist translator worked perfectly (hand-crafted IR with `global_ref` nodes), but real REPL-compiled IR used `lit` nodes for function references. Similarly, hoist's loop tests only verified compilation, not execution. Always run the actual pipeline end-to-end before declaring a feature complete.
+
+### Machine Code Disassembly Is Essential for JIT Debugging
+When JIT code produces wrong results, dump the generated machine code and decode it instruction-by-instruction. In the phi fix, disassembly immediately revealed: (1) missing parallel copies before back-edge jumps, (2) stack stores clobbering FP/LR at SP+0. Print hex + manual ARM64 decode is faster than adding tracing to the compiler pipeline.
