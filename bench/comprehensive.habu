@@ -1,0 +1,213 @@
+;;;; Comprehensive CL Benchmark — Habu expressions
+;;;;
+;;;; Format:
+;;;;   ;;; name — description
+;;;;   ;;; :setup            (optional: definitions evaluated once before timing)
+;;;;   (defun ...)
+;;;;   ;;; :bench            (marks start of timed expression)
+;;;;   (call ...)
+;;;;
+;;;; Benchmarks without :setup/:bench are timed as-is.
+
+;;; ========== arith ==========
+
+;;; fixnum_loop — Sum 0..1M
+(let ((i 0) (acc 0))
+  (while (< i 1000000) (setq acc (+ acc i)) (setq i (+ i 1)))
+  acc)
+
+;;; fixnum_mul — Multiply-accumulate loop 1M
+(let ((i 0) (acc 1))
+  (while (< i 1000000)
+    (setq acc (logand (+ acc (* (+ i 1) 3)) #xffffff))
+    (setq i (+ i 1)))
+  acc)
+
+;;; gcd — GCD of 100K pairs
+(let ((i 0) (sum 0))
+  (while (< i 100000)
+    (setq sum (+ sum (gcd (+ i 17) (+ i 31))))
+    (setq i (+ i 1)))
+  sum)
+
+;;; ========== float ==========
+
+;;; float_sum — Sum 100K floats
+(let ((i 0) (acc 0.0))
+  (while (< i 100000)
+    (setq acc (+ acc (* (float i) 0.001)))
+    (setq i (+ i 1)))
+  (round acc))
+
+;;; float_sqrt — Sqrt 100K doubles
+(let ((i 0) (acc 0.0))
+  (while (< i 100000)
+    (setq acc (+ acc (sqrt (+ 1.0 (float i)))))
+    (setq i (+ i 1)))
+  (round acc))
+
+;;; ========== recurse ==========
+
+;;; fib30 — Fibonacci 30
+;;; :setup
+(defun fib (n) (if (<= n 1) n (+ (fib (- n 1)) (fib (- n 2)))))
+;;; :bench
+(fib 30)
+
+;;; tak — Takeuchi
+;;; :setup
+(defun tak (x y z) (if (<= x y) z (tak (tak (- x 1) y z) (tak (- y 1) z x) (tak (- z 1) x y))))
+;;; :bench
+(tak 18 12 6)
+
+;;; ack — Ackermann 3,5
+;;; :setup
+(defun ack (m n) (cond ((= m 0) (+ n 1)) ((= n 0) (ack (- m 1) 1)) (t (ack (- m 1) (ack m (- n 1))))))
+;;; :bench
+(ack 3 5)
+
+;;; nqueens10 — N-Queens 10
+;;; :setup
+(defun nqueens-safe-p (col placed row)
+  (if (null placed) t
+      (let ((c (car placed)))
+        (if (not (= c col))
+            (if (not (= (abs (- c col)) row))
+                (nqueens-safe-p col (cdr placed) (+ row 1))
+                nil)
+            nil))))
+(defun nqueens-solve (n row placed)
+  (if (= row n) 1
+      (let ((count 0) (col 0))
+        (while (< col n)
+          (when (nqueens-safe-p col placed 1)
+            (setq count (+ count (nqueens-solve n (+ row 1) (cons col placed)))))
+          (setq col (+ col 1)))
+        count)))
+(defun nqueens (n) (nqueens-solve n 0 nil))
+;;; :bench
+(nqueens 10)
+
+;;; ========== list ==========
+
+;;; list_build — Build 100K list
+(let ((xs nil) (i 0))
+  (while (< i 100000) (setq xs (cons i xs)) (setq i (+ i 1)))
+  (length xs))
+
+;;; list_reverse — Build+reverse 100K list
+(let ((xs nil) (i 0))
+  (while (< i 100000) (setq xs (cons i xs)) (setq i (+ i 1)))
+  (length (nreverse xs)))
+
+;;; list_append — Append 1K 100-elem lists
+(let ((base (let ((xs nil) (i 0)) (while (< i 100) (setq xs (cons i xs)) (setq i (+ i 1))) xs))
+      (result nil)
+      (i 0))
+  (while (< i 1000)
+    (setq result (append base result))
+    (setq i (+ i 1)))
+  (length result))
+
+;;; assoc — Lookup in 100-elem alist 50K times
+(let ((al (let ((xs nil) (i 0))
+            (while (< i 100) (setq xs (cons (cons i (* i i)) xs)) (setq i (+ i 1))) xs))
+      (sum 0) (i 0))
+  (while (< i 50000)
+    (let ((pair (assoc (mod i 100) al)))
+      (when pair (setq sum (+ sum (cdr pair)))))
+    (setq i (+ i 1)))
+  sum)
+
+;;; ========== hof ==========
+
+;;; mapcar — map over 10K list
+(let ((xs (let ((r nil) (i 0)) (while (< i 10000) (setq r (cons i r)) (setq i (+ i 1))) r)))
+  (length (mapcar (lambda (x) (+ x 1)) xs)))
+
+;;; reduce — reduce + over 10K list
+(let ((xs (let ((r nil) (i 0)) (while (< i 10000) (setq r (cons i r)) (setq i (+ i 1))) r)))
+  (reduce #'+ xs))
+
+;;; remove_if — filter 10K list manually
+(let ((xs (let ((r nil) (i 0)) (while (< i 10000) (setq r (cons i r)) (setq i (+ i 1))) r))
+      (result nil) (rest nil))
+  (setq rest xs)
+  (while rest
+    (when (not (oddp (car rest)))
+      (setq result (cons (car rest) result)))
+    (setq rest (cdr rest)))
+  (length result))
+
+;;; ========== hash ==========
+
+;;; hash_insert — Insert 20K entries
+(let ((h (make-hash-table :size 256)) (i 0))
+  (while (< i 20000) (setf (gethash i h) i) (setq i (+ i 1)))
+  (hash-table-count h))
+
+;;; hash_lookup — Lookup 50K in 20K-entry table
+(let ((h (make-hash-table :size 256)) (i 0) (sum 0))
+  (while (< i 20000) (setf (gethash i h) i) (setq i (+ i 1)))
+  (setq i 0)
+  (while (< i 50000)
+    (let ((v (gethash (mod i 20000) h)))
+      (when v (setq sum (+ sum v))))
+    (setq i (+ i 1)))
+  sum)
+
+;;; ========== string ==========
+
+;;; string_concat — Concat 1K strings
+(let ((result "") (i 0))
+  (while (< i 1000)
+    (setq result (concatenate 'string result "x"))
+    (setq i (+ i 1)))
+  (length result))
+
+;;; string_search — Search in 10K string 1K times
+(let ((haystack (make-string 10000 :initial-element #\a))
+      (count 0) (i 0))
+  (setf (char haystack 9999) #\b)
+  (while (< i 1000)
+    (when (position #\b haystack) (setq count (+ count 1)))
+    (setq i (+ i 1)))
+  count)
+
+;;; ========== sort ==========
+
+;;; sort_fixnum — Sort 100 fixnums (stack-limited)
+(let ((xs (let ((r nil) (i 100)) (while (> i 0) (setq r (cons i r)) (setq i (- i 1))) r)))
+  (length (sort xs #'<)))
+
+;;; sort_string — Sort 100 strings (stack-limited)
+(let ((xs (let ((r nil) (i 0))
+            (while (< i 100)
+              (setq r (cons (format nil "~6,'0d" (- 100 i)) r))
+              (setq i (+ i 1)))
+            r)))
+  (length (sort xs #'string<)))
+
+;;; ========== gc ==========
+
+;;; gc_cons — Allocate 100K cons cells (ephemeral)
+(let ((i 0) (last nil))
+  (while (< i 100000) (setq last (cons i nil)) (setq i (+ i 1)))
+  last)
+
+;;; gc_vector — Allocate 10K small vectors
+(let ((v nil) (i 0))
+  (while (< i 10000)
+    (setq v (make-array 4 :initial-element i))
+    (setq i (+ i 1)))
+  (aref v 0))
+
+;;; ========== symbol ==========
+
+;;; intern — Intern 10K symbols
+(let ((count 0) (i 0))
+  (while (< i 10000)
+    (intern (format nil "BENCH-SYM-~d" i))
+    (setq count (+ count 1))
+    (setq i (+ i 1)))
+  count)

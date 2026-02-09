@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""Comprehensive benchmark: Habu (interpreter) vs SBCL
+Usage: tools/comprehensive-bench [--iters=N] [--json]
+"""
+import subprocess, json, re, sys, math, os
+
+ITERS = 3
+JSON = False
+for arg in sys.argv[1:]:
+    if arg.startswith("--iters="):
+        ITERS = int(arg.split("=")[1])
+    elif arg == "--json":
+        JSON = True
+
+os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+# Run Habu benchmark
+print("Building & running Habu benchmarks...", file=sys.stderr)
+habu_result = subprocess.run(
+    ["zig", "build", "bench-comp", "--", "--json", f"--iters={ITERS}"],
+    capture_output=True, text=True, timeout=600
+)
+try:
+    habu_data = json.loads(habu_result.stdout)
+except (json.JSONDecodeError, ValueError):
+    print(f"Habu output: {habu_result.stdout[:500]}", file=sys.stderr)
+    print(f"Habu stderr: {habu_result.stderr[:500]}", file=sys.stderr)
+    sys.exit(1)
+
+habu_ns = {}
+habu_err = {}
+for b in habu_data.get("benches", []):
+    if b.get("error"):
+        habu_err[b["name"]] = b["error"]
+    else:
+        habu_ns[b["name"]] = b["ns"]
+
+# Run SBCL benchmark
+print("Running SBCL benchmarks...", file=sys.stderr)
+try:
+    sbcl_result = subprocess.run(
+        ["sbcl", "--script", "bench/comprehensive.lisp", "--json", f"--iters={ITERS}"],
+        capture_output=True, text=True, timeout=300
+    )
+    sbcl_data = json.loads(sbcl_result.stdout)
+    sbcl_ns = {b["name"]: b["ns"] for b in sbcl_data.get("benches", [])}
+except Exception as e:
+    print(f"SBCL failed: {e}", file=sys.stderr)
+    sbcl_ns = {}
+
+# Get ordered benchmark names from Habu output
+names = [b["name"] for b in habu_data.get("benches", [])]
+
+if JSON:
+    out = {
+        "habu": habu_data,
+        "sbcl": {"benches": [{"name": n, "ns": sbcl_ns.get(n, 0)} for n in names]}
+    }
+    print(json.dumps(out))
+    sys.exit(0)
+
+# Print results
+print()
+hdr = f"{'Benchmark':<24s} {'Habu':>12s} {'SBCL':>12s} {'Ratio':>8s}"
+print(hdr)
+print("=" * len(hdr))
+
+wins = losses = ties = errors = 0
+ratios = []
+
+for name in names:
+    h = habu_ns.get(name)
+    s = sbcl_ns.get(name)
+    
+    if name in habu_err:
+        s_str = f"{s/1e6:.3f} ms" if s else "?"
+        print(f"{name:<24s} {'ERR':>12s} {s_str:>12s} {'-':>8s}")
+        errors += 1
+        continue
+    
+    if h is None:
+        continue
+    
+    h_str = f"{h/1e6:.3f} ms"
+    s_str = f"{s/1e6:.3f} ms" if s else "?"
+    
+    if s and h:
+        r = h / s
+        ratios.append(r)
+        # Color-code for terminal
+        if r < 0.9:
+            indicator = "✓"
+            wins += 1
+        elif r > 2.0:
+            indicator = "✗"
+            losses += 1
+        elif r > 1.1:
+            indicator = "~"
+            losses += 1
+        else:
+            indicator = "="
+            ties += 1
+        r_str = f"{r:.1f}x {indicator}"
+    else:
+        r_str = "-"
+    
+    print(f"{name:<24s} {h_str:>12s} {s_str:>12s} {r_str:>10s}")
+
+print()
+total = wins + ties + losses
+print(f"Faster  (<0.9x SBCL):  {wins:>3d}/{total}")
+print(f"Similar (0.9x—1.1x):   {ties:>3d}/{total}")
+print(f"Slower  (>1.1x SBCL):  {losses:>3d}/{total}")
+if errors:
+    print(f"Errors:                 {errors:>3d}")
+
+if ratios:
+    geo = math.exp(sum(math.log(r) for r in ratios) / len(ratios))
+    print(f"\nGeometric mean: {geo:.2f}x  ({len(ratios)} benchmarks)")
+    print(f"(1.0x = same as SBCL, lower is better)")
