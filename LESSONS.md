@@ -333,3 +333,29 @@ With `optLevel(.aggressive)`, hoist's optimizer removes `call_indirect` instruct
 **Workaround**: Detect nested self-calls (`hasNestedSelfCalls`) and refuse to hoist-compile such functions, falling back to bytecode VM.
 
 **Affected benchmarks**: tak (nested), NOT fib (fib passes self-call results to `+`, not to another self-call).
+
+### Hoist Loop Phi Codegen: Wrong Results for I64 Block Params
+**Bug**: The loop IR translation generates correct SSA (verified by printing): loop header with block parameters (phi nodes), entry jump with initial values, back-edge jump with updated values. But hoist's AArch64 lowerer produces incorrect native code — results are garbage (e.g., expected 91, got 6124199872).
+
+**Evidence**: Hoist's own `e2e_loops.zig` test only verifies that loop code COMPILES (non-zero output), not that it EXECUTES correctly. The bug may be specific to I64 (the test uses I32).
+
+**Workaround**: Disabled loop translation in hoist backend. Functions with `while` loops fall back to bytecode VM.
+
+**Impact**: fixnum_loop benchmark stays at 52ms (15.5x slower than SBCL's 3.4ms). Once fixed, expect major speedup since the IR is correct.
+
+### SSA Loop Header Sealing Order
+In SSA construction with explicit block sealing, a loop header must NOT be sealed before all predecessors are connected. The header has two predecessors: the entry edge and the back-edge. Sealing the header after the entry jump but before the back-edge causes hoist's SSA construction to miss the second predecessor, leading to incorrect phi resolution.
+
+**Correct order**:
+1. Create header, body, exit blocks
+2. Jump from current block to header (entry edge)
+3. Switch to header, emit condition + brif
+4. Switch to body, emit body, jump back to header (back-edge)
+5. **NOW** seal header (both predecessors connected)
+6. Switch to exit block
+
+### blockParams() Returns Stale Pointers
+`func.dfg.blockParams(block)` returns a slice into internal storage. If the DFG grows (by appending instructions or values) between creating block params and reading them, the slice becomes dangling. **Save block param values immediately** after `appendBlockParam()` into a local array instead of calling `blockParams()` later.
+
+### End-to-End Testing Reveals Integration Gaps
+Unit tests for the hoist translator worked perfectly (hand-crafted IR with `global_ref` nodes), but real REPL-compiled IR used `lit` nodes for function references. Similarly, hoist's loop tests only verified compilation, not execution. Always run the actual pipeline end-to-end before declaring a feature complete.
