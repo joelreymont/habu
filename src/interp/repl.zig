@@ -1820,16 +1820,36 @@ pub const Repl = struct {
         chunk_base: u16,
     ) bool {
         _ = chunk_base;
+        const trace = std.posix.getenv("HABU_TRACE_JIT") != null;
         // Only handle top-level (define name lambda) for now
         const define = switch (ir_node.*) {
             .define => |d| d,
-            else => return false,
+            .progn => |exprs| blk: {
+                // Also search progn for defines (e.g., (progn (defun ...) (call)))
+                for (exprs) |expr| {
+                    switch (expr.*) {
+                        .define => |d| break :blk d,
+                        else => {},
+                    }
+                }
+                if (trace) std.debug.print("JIT: no define found in progn\n", .{});
+                return false;
+            },
+            else => {
+                if (trace) std.debug.print("JIT: top-level IR is not define (is {s})\n", .{@tagName(ir_node.*)});
+                return false;
+            },
         };
         const lambda_ir = switch (define.value.*) {
             .lambda => define.value,
-            else => return false,
+            else => {
+                if (trace) std.debug.print("JIT: define value is not lambda for '{s}'\n", .{define.name});
+                return false;
+            },
         };
         const lambda = lambda_ir.lambda;
+
+        if (trace) std.debug.print("JIT: considering '{s}' speed={d} safety={d} captures={d} opt={d} key={d} rest={}\n", .{ define.name, lambda.speed, lambda.safety, lambda.captures.len, lambda.optional_params.len, lambda.key_params.len, lambda.rest_param != null });
 
         // Only compile speed=3, safety=0 functions
         if (lambda.speed < 3 or lambda.safety > 0) return false;
@@ -1855,7 +1875,10 @@ pub const Repl = struct {
         name: []const u8,
         chunk_ptr: *const runtime.objects.Chunk,
     ) bool {
-        var compiled = hoist_backend.compileIr(self.allocator, lambda_ir, name) catch {
+        var compiled = hoist_backend.compileIr(self.allocator, lambda_ir, name) catch |err| {
+            if (std.posix.getenv("HABU_TRACE_JIT") != null) {
+                std.debug.print("JIT: hoist compile failed for '{s}': {s}\n", .{ name, @errorName(err) });
+            }
             return false;
         };
         const persistent = self.allocator.create(hoist_backend.CompiledFn) catch {

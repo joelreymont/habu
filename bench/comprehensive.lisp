@@ -70,7 +70,7 @@
 
 (defun bench-fib ()
   (declare (optimize (speed 3) (safety 0)))
-  (fib 30))
+  (fib 35))
 
 (defun tak (x y z)
   (declare (type fixnum x y z)
@@ -286,7 +286,7 @@
     ("float_sum"     bench-float-sum)
     ("float_sqrt"    bench-float-sqrt)
     ;; recurse
-    ("fib30"         bench-fib)
+    ("fib35"         bench-fib)
     ("tak"           bench-tak)
     ("ack"           bench-ack)
     ("nqueens10"     bench-nqueens)
