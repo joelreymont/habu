@@ -133,6 +133,10 @@ pub const IrTranslator = struct {
     /// Cache for iconst values — reuse across blocks (LICM for constants).
     const_cache: std.AutoHashMap(i64, HoistValue),
 
+    /// True when the function has nested self-calls (e.g., tak pattern)
+    /// that require post-emission parallel copy fixup for call arguments.
+    needs_call_spill: bool = false,
+
     pub fn init(allocator: std.mem.Allocator, func: *Function, builder: *FunctionBuilder) IrTranslator {
         return .{
             .allocator = allocator,
@@ -476,6 +480,8 @@ pub const IrTranslator = struct {
         return call_result;
     }
 
+
+
     fn translateProgn(self: *IrTranslator, exprs: []const *const Ir) anyerror!HoistValue {
         var result: HoistValue = undefined;
         for (exprs) |expr| {
@@ -773,11 +779,10 @@ pub fn compileIr(
     translator.is_recursive = detectSelfCalls(lambda.body, name);
     translator.has_loops = detectLoops(lambda.body);
 
-    // Bail out for nested self-calls (e.g., tak) which trigger hoist regalloc bug.
-    // The regalloc doesn't properly spill values across multiple call_indirect
-    // instructions where results are passed as args to another call_indirect.
+    // Enable call result spilling for nested self-calls (e.g., tak pattern)
+    // to break parallel copy conflicts in the regalloc.
     if (translator.is_recursive and hasNestedSelfCalls(lambda.body, name)) {
-        return error.UnsupportedNestedSelfCalls;
+        translator.needs_call_spill = true;
     }
 
     // For recursive functions, register the callee signature for call_indirect
@@ -865,6 +870,23 @@ pub fn compileIr(
         }
     }
 
+    // Fix parallel copy conflicts in call argument setup.
+    // Hoist's lowering emits sequential mov instructions for call arguments
+    // which can clobber source registers before they're consumed.
+    if (translator.needs_call_spill) {
+        fixCallArgMoves(code.code.items);
+        // Debug: dump patched machine code
+        if (false) {
+            std.debug.print("[hoist-asm-patched] {d} bytes: ", .{code.code.items.len});
+            for (code.code.items, 0..) |byte, ii| {
+                if (ii % 4 == 0) std.debug.print(" ", .{});
+                if (ii % 16 == 0) std.debug.print("\n  {x:0>4}: ", .{ii});
+                std.debug.print("{x:0>2}", .{byte});
+            }
+            std.debug.print("\n", .{});
+        }
+    }
+
     try mem.writeExec(buf, code.code.items);
     try mem.setExec(true);
 
@@ -874,6 +896,148 @@ pub fn compileIr(
         .arity = arity,
         .allocator = allocator,
     };
+}
+
+/// Fix parallel copy conflicts in AArch64 call argument setup.
+///
+/// Scans for `blr` instructions and checks the preceding `mov` instructions
+/// for conflicts where a source register is overwritten before it's consumed.
+/// Resolves conflicts by reordering the mov instructions.
+///
+/// Example conflict:
+///   mov x0, x23    ; overwrites x0
+///   mov x1, x24
+///   mov x2, x0     ; reads x0, but x0 was already overwritten!
+///   blr x9
+///
+/// Fixed:
+///   mov x2, x0     ; read x0 first (before it's overwritten)
+///   mov x0, x23
+///   mov x1, x24
+///   blr x9
+fn fixCallArgMoves(code: []u8) void {
+    if (code.len < 8) return;
+    const n_insns = code.len / 4;
+
+    var i: usize = 0;
+    while (i < n_insns) : (i += 1) {
+        const insn = readInsn(code, i);
+
+        // Check for BLR instruction: 1101 0110 0011 1111 0000 00xx xxx0 0000
+        if (insn & 0xFFFFFC1F != 0xD63F0000) continue;
+
+        // Found a BLR. Scan backwards for mov instructions (up to 8).
+        const MovInfo = struct { src: u5, dst: u5, pos: usize };
+        var movs: [8]MovInfo = undefined;
+        var n_movs: usize = 0;
+
+        var j = i;
+        while (j > 0 and n_movs < 8) {
+            j -= 1;
+            const prev = readInsn(code, j);
+            // Check for MOV Xd, Xm (ORR Xd, XZR, Xm): 0xAA0003E0 mask 0xFFE0FFE0
+            if (prev & 0xFFE0FFE0 == 0xAA0003E0) {
+                const rd: u5 = @truncate(prev & 0x1F);
+                const rm: u5 = @truncate((prev >> 16) & 0x1F);
+                // Only include moves to x0-x7 (ABI argument registers)
+                // in the parallel copy resolution.
+                if (rd <= 7) {
+                    movs[n_movs] = .{ .src = rm, .dst = rd, .pos = j };
+                    n_movs += 1;
+                } else {
+                    break; // Non-argument move, stop scanning
+                }
+            } else {
+                break; // Stop at non-mov instruction
+            }
+        }
+
+        if (n_movs < 2) continue;
+
+        // Check for conflicts: a mov reads from a register that's been
+        // overwritten by an earlier (lower index) mov in the sequence.
+        // Note: movs[] is in reverse order (movs[0] is closest to blr).
+        // The execution order is movs[n-1], movs[n-2], ..., movs[0], blr.
+        var has_conflict = false;
+        for (0..n_movs) |a| {
+            for (a + 1..n_movs) |b| {
+                // movs[b] executes BEFORE movs[a] (farther from blr = earlier)
+                // Check if movs[b] writes a register that movs[a] reads
+                if (movs[b].dst == movs[a].src) {
+                    has_conflict = true;
+                    break;
+                }
+            }
+            if (has_conflict) break;
+        }
+
+        if (!has_conflict) continue;
+
+        // Reorder using topological sort on the dependency graph.
+        // Edge: move A depends on move B if B's destination = A's source
+        // (A must execute before B to read the value B overwrites).
+        // A move is "ready" when its destination is NOT the source of any
+        // remaining (un-emitted) move.
+        var new_order: [8]MovInfo = undefined;
+        var emitted: [8]bool = .{ false, false, false, false, false, false, false, false };
+        var n_emitted: usize = 0;
+
+        while (n_emitted < n_movs) {
+            var found = false;
+            for (0..n_movs) |a| {
+                if (emitted[a]) continue;
+                // Check if this move's DESTINATION is needed as SOURCE by any remaining move.
+                // If no remaining move reads from our destination, we can emit safely.
+                var dst_needed = false;
+                for (0..n_movs) |b| {
+                    if (a == b or emitted[b]) continue;
+                    if (movs[b].src == movs[a].dst) {
+                        dst_needed = true;
+                        break;
+                    }
+                }
+                if (!dst_needed) {
+                    new_order[n_emitted] = movs[a];
+                    emitted[a] = true;
+                    n_emitted += 1;
+                    found = true;
+                    break; // restart scan
+                }
+            }
+            if (!found) {
+                // Cycle detected - emit remaining in original order
+                for (0..n_movs) |a| {
+                    if (!emitted[a]) {
+                        new_order[n_emitted] = movs[a];
+                        emitted[a] = true;
+                        n_emitted += 1;
+                    }
+                }
+            }
+        }
+
+        // Write reordered instructions back.
+        // The positions in the code buffer are: movs[n-1].pos, movs[n-2].pos, ..., movs[0].pos
+        // We need to write new_order[0..n_movs] into these positions (in execution order).
+        // Execution order: position = movs[n_movs - 1 - k].pos for k-th emitted move.
+        for (0..n_emitted) |k| {
+            const pos = movs[n_movs - 1 - k].pos;
+            const new_insn: u32 = 0xAA0003E0 |
+                @as(u32, new_order[k].dst) |
+                (@as(u32, new_order[k].src) << 16);
+            writeInsn(code, pos, new_insn);
+        }
+    }
+}
+
+fn readInsn(code: []const u8, idx: usize) u32 {
+    const off = idx * 4;
+    return std.mem.readInt(u32, code[off..][0..4], .little);
+}
+
+fn writeInsn(code: []u8, idx: usize, val: u32) void {
+    const off = idx * 4;
+    std.mem.writeInt(u32, code[off..][0..4], val, .little);
 }
 
 // ============================================================================

@@ -358,3 +358,9 @@ Unit tests for the hoist translator worked perfectly (hand-crafted IR with `glob
 
 ### Machine Code Disassembly Is Essential for JIT Debugging
 When JIT code produces wrong results, dump the generated machine code and decode it instruction-by-instruction. In the phi fix, disassembly immediately revealed: (1) missing parallel copies before back-edge jumps, (2) stack stores clobbering FP/LR at SP+0. Print hex + manual ARM64 decode is faster than adding tracing to the compiler pipeline.
+
+### Constant Folding at IR Translation Level
+For tagged fixnum arithmetic where one operand is a constant, fold the tag adjustment into the constant at the IR translator level. Instead of emitting `iadd(x, tagged_n); isub(result, 1)` (3 instructions), emit `iadd(x, tagged_n - 1)` (1 instruction). This saves 2 instructions per fixnum operation with a constant operand.
+
+### LICM via Constant Cache
+Without a full LICM pass in the backend, achieve the same effect for constants by maintaining a cache (`i64 → HoistValue`) in the translator. Pre-scan loop bodies for literal values and emit them in the entry block before the loop. The SSA value is then available in all dominated blocks. Combined with `optLevel(.none)` which prevents re-materialization, this keeps loop-invariant constants in registers.
