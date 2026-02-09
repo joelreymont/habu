@@ -115,6 +115,9 @@ pub const IrTranslator = struct {
     /// Whether we're compiling a self-recursive function.
     is_recursive: bool,
 
+    /// Whether the function contains loops (while).
+    has_loops: bool,
+
     /// Name of the function being compiled (for self-call detection).
     fn_name: []const u8,
 
@@ -134,6 +137,7 @@ pub const IrTranslator = struct {
             .b = builder,
             .locals = std.ArrayList(HoistValue){},
             .is_recursive = false,
+            .has_loops = false,
             .fn_name = "",
             .user_arity = 0,
             .self_ptr_placeholder = 0x0BADF00DDEADBEEF,
@@ -170,11 +174,7 @@ pub const IrTranslator = struct {
             .progn => |exprs| try self.translateProgn(exprs),
             .let => |let_node| try self.translateLet(let_node.bindings, let_node.body),
             .set => |set_node| try self.translateSet(set_node.index, set_node.value),
-            // Loop translation disabled: hoist's block param phi codegen produces wrong results.
-            // The IR we generate is correct (verified via printing), but the AArch64 lowerer
-            // doesn't properly handle I64 block parameters with back-edges.
-            // Re-enable once hoist fixes loop phi codegen.
-            // .loop => |loop_node| try self.translateLoop(loop_node.cond, loop_node.body),
+            .loop => |loop_node| try self.translateLoop(loop_node.cond, loop_node.body),
             .assert_fixnum => |op| try self.translate(op.operand), // At safety 0, just pass through
             .global_ref => |_| try self.translateLit(Value.nil), // TODO: general global refs
             .call => |call_node| try self.translateCall(call_node.func, call_node.args),
@@ -276,16 +276,68 @@ pub const IrTranslator = struct {
         return val;
     }
 
+    const StackSlotData = hoist.stack_slot_data.StackSlotData;
+    const StackSlot = hoist.entities.StackSlot;
+
+    /// Emit a stack_store instruction (no result value).
+    fn emitStackStore(self: *IrTranslator, val: HoistValue, slot: StackSlot) !void {
+        const block = self.b.current_block orelse return error.NoCurrentBlock;
+        const inst_data = InstructionData{ .stack_store = .{
+            .opcode = .stack_store,
+            .arg = val,
+            .stack_slot = slot,
+            .offset = 0,
+        } };
+        const inst = try self.func.dfg.makeInst(inst_data);
+        try self.func.layout.appendInst(inst, block);
+    }
+
+    /// Emit a stack_load instruction (returns loaded value).
+    fn emitStackLoad(self: *IrTranslator, slot: StackSlot) !HoistValue {
+        const block = self.b.current_block orelse return error.NoCurrentBlock;
+        const inst_data = InstructionData{ .stack_load = .{
+            .opcode = .stack_load,
+            .stack_slot = slot,
+            .offset = 0,
+        } };
+        const inst = try self.func.dfg.makeInst(inst_data);
+        try self.func.layout.appendInst(inst, block);
+        return try self.func.dfg.appendInstResult(inst, I64);
+    }
+
     fn translateLoop(self: *IrTranslator, cond_ir: *const Ir, body_ir: *const Ir) anyerror!HoistValue {
         // Collect all variable indices mutated inside the loop body
         var mutated_indices = std.ArrayList(u16){};
         defer mutated_indices.deinit(self.allocator);
         try collectMutatedVars(body_ir, &mutated_indices, self.allocator);
 
-        const n_phis = mutated_indices.items.len;
-        if (n_phis > 16) return error.TooManyLoopVars;
+        const n_vars = mutated_indices.items.len;
+        if (n_vars > 16) return error.TooManyLoopVars;
 
-        // Create blocks using low-level API (avoids builder's sealBlock issues)
+        // Workaround for hoist block-param phi bug (#4):
+        // Use stack slots for mutable loop variables instead of block parameters.
+        // Less optimal (memory load/store each iteration) but avoids the phi
+        // codegen bug that produces wrong register assignments for I64 loops.
+
+        // Create stack slot per mutable variable
+        var slots: [16]StackSlot = undefined;
+        for (0..n_vars) |i| {
+            slots[i] = try self.func.stack_slots.push(
+                StackSlotData.init(.explicit_slot, 8, 3), // 8 bytes, 8-byte aligned
+            );
+        }
+
+        // Store initial values into stack slots
+        for (mutated_indices.items, 0..) |idx, i| {
+            const init_val = if (idx < self.locals.items.len)
+                self.locals.items[idx]
+            else
+                try self.b.iconst(I64, @as(i64, @bitCast(Value.nil.raw)));
+            try self.emitStackStore(init_val, slots[i]);
+        }
+
+        // Create loop blocks using low-level API (no sealing needed since we
+        // use stack slots instead of the builder's SSA variable mechanism)
         const header = try self.func.dfg.addBlock();
         try self.func.layout.appendBlock(header);
         const loop_body = try self.func.dfg.addBlock();
@@ -293,57 +345,44 @@ pub const IrTranslator = struct {
         const loop_exit = try self.func.dfg.addBlock();
         try self.func.layout.appendBlock(loop_exit);
 
-        // Add block params for header (phi nodes for mutated variables)
-        // Save the param values immediately — they're stable SSA value indices.
-        var phi_vals: [16]HoistValue = undefined;
-        for (0..n_phis) |pi| {
-            phi_vals[pi] = try self.func.dfg.appendBlockParam(header, I64);
-        }
+        // Jump from current block to header
+        try self.b.jump(header);
 
-        // Jump from current block to header with initial values
-        var init_vals: [16]HoistValue = undefined;
-        for (mutated_indices.items, 0..) |idx, i| {
-            init_vals[i] = if (idx < self.locals.items.len)
-                self.locals.items[idx]
-            else
-                try self.b.iconst(I64, @as(i64, @bitCast(Value.nil.raw)));
-        }
-        try self.b.jumpArgs(header, init_vals[0..n_phis]);
-
-        // Header block: evaluate condition
+        // Header: load variables from stack, evaluate condition
         self.b.switchToBlock(header);
 
-        // Install header block params as current variable values
+        // Load current variable values from stack slots
         for (mutated_indices.items, 0..) |idx, i| {
             while (self.locals.items.len <= idx) {
                 try self.locals.append(self.allocator, HoistValue.new(0));
             }
-            self.locals.items[idx] = phi_vals[i];
+            self.locals.items[idx] = try self.emitStackLoad(slots[i]);
         }
 
         const cond_val = try self.translate(cond_ir);
         try self.b.brif(cond_val, loop_body, loop_exit);
 
-        // Body: execute body statements, then jump back to header
+        // Body: execute body statements, store updated values, jump back to header
         self.b.switchToBlock(loop_body);
         _ = try self.translate(body_ir);
 
-        // Collect updated values for back-edge jump
-        var updated_vals: [16]HoistValue = undefined;
+        // Store updated variable values to stack slots
         for (mutated_indices.items, 0..) |idx, i| {
-            updated_vals[i] = if (idx < self.locals.items.len)
+            const updated_val = if (idx < self.locals.items.len)
                 self.locals.items[idx]
             else
                 try self.b.iconst(I64, @as(i64, @bitCast(Value.nil.raw)));
+            try self.emitStackStore(updated_val, slots[i]);
         }
-        try self.b.jumpArgs(header, updated_vals[0..n_phis]);
 
-        // Exit block: return to caller
+        try self.b.jump(header);
+
+        // Exit block
         self.b.switchToBlock(loop_exit);
 
-        // After loop, locals point to header phi vals (final loop values)
+        // After loop, load final values from stack
         for (mutated_indices.items, 0..) |idx, i| {
-            self.locals.items[idx] = phi_vals[i];
+            self.locals.items[idx] = try self.emitStackLoad(slots[i]);
         }
 
         // Return nil (while loop doesn't produce a value in CL)
@@ -606,6 +645,39 @@ fn detectSelfCalls(body: *const Ir, name: []const u8) bool {
     };
 }
 
+/// Detect whether a function body contains loop constructs.
+fn detectLoops(body: *const Ir) bool {
+    return switch (body.*) {
+        .loop => true,
+        .@"if" => |n| detectLoops(n.cond) or detectLoops(n.then_branch) or detectLoops(n.else_branch),
+        .progn => |exprs| {
+            for (exprs) |expr| {
+                if (detectLoops(expr)) return true;
+            }
+            return false;
+        },
+        .let => |n| detectLoops(n.body),
+        .fixnum_add, .fixnum_sub, .add, .sub => |n| detectLoops(n.left) or detectLoops(n.right),
+        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq => |n| detectLoops(n.left) or detectLoops(n.right),
+        .le, .lt, .gt, .ge, .num_eq => |n| detectLoops(n.left) or detectLoops(n.right),
+        .call => |c| {
+            for (c.args) |arg| {
+                if (detectLoops(arg)) return true;
+            }
+            return false;
+        },
+        .tailcall => |tc| {
+            for (tc.args) |arg| {
+                if (detectLoops(arg)) return true;
+            }
+            return false;
+        },
+        .assert_fixnum => |n| detectLoops(n.operand),
+        .set => |n| detectLoops(n.value),
+        else => false,
+    };
+}
+
 /// Compile a Habu IR lambda to native code via Hoist SSA.
 /// Returns error.UnsupportedRecursiveCall for functions with recursive calls
 /// (due to hoist regalloc limitation — use stencil JIT as fallback).
@@ -656,6 +728,7 @@ pub fn compileIr(
     translator.fn_name = name;
     translator.user_arity = arity;
     translator.is_recursive = detectSelfCalls(lambda.body, name);
+    translator.has_loops = detectLoops(lambda.body);
 
     // Bail out for nested self-calls (e.g., tak) which trigger hoist regalloc bug
     if (translator.is_recursive and hasNestedSelfCalls(lambda.body, name)) {
@@ -698,7 +771,7 @@ pub fn compileIr(
     var ctx_builder = ContextBuilder.init(allocator);
     _ = try ctx_builder.targetNative();
     var ctx = ctx_builder
-        .optLevel(if (translator.is_recursive) .none else .aggressive)
+        .optLevel(if (translator.is_recursive or translator.has_loops) .none else .aggressive)
         .callConv(.system_v)
         .verification(true)
         .build();
@@ -715,6 +788,17 @@ pub fn compileIr(
         return err;
     };
     defer code.deinit();
+
+    // Debug: dump machine code
+    if (false) {
+        std.debug.print("[hoist-asm] {d} bytes:", .{code.code.items.len});
+        for (code.code.items, 0..) |byte, i| {
+            if (i % 4 == 0) std.debug.print(" ", .{});
+            if (i % 16 == 0) std.debug.print("\n  {x:0>4}: ", .{i});
+            std.debug.print("{x:0>2}", .{byte});
+        }
+        std.debug.print("\n", .{});
+    }
 
     // Allocate executable memory
     var mem = try allocator.create(JitMem);
@@ -1126,17 +1210,7 @@ test "hoist IR translator: fixnum arithmetic" {
     try testing.expectEqual(@as(i64, 21), compiled.call1(1));
 }
 
-// TODO: Loop phi codegen produces wrong results in hoist.
-// The IR is correct (verified by printing) but the lowerer/regalloc
-// generates incorrect code for I64 block parameters in loops.
-// Hoist's e2e_loops.zig only tests compilation, not execution.
-// Re-enable once hoist's loop codegen is verified.
-test "hoist IR translator: simple loop (let + while + setq) DISABLED" {
-    return error.SkipZigTest;
-}
-
 test "hoist IR translator: simple loop (let + while + setq)" {
-    if (true) return error.SkipZigTest; // Disabled — hoist loop phi codegen bug
     // (defun f () (let ((i 0) (acc 0)) (while (< i 10) (setq acc (+ acc i)) (setq i (+ i 1))) acc))
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
