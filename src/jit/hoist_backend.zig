@@ -1643,11 +1643,15 @@ pub fn compileIrWithKnownFns(
     // Fix parallel copy conflicts in function entry (param register shuffling).
     // When hoist's regalloc copies params from x0-x7 to work registers,
     // sequential moves can clobber params before they're consumed.
-    // Fix parallel copy conflicts in entry (param register shuffling) for untagged mode.
-    // In untagged mode, the SSHR untag instructions immediately follow MOV param copies,
-    // creating clobber opportunities. For tagged mode, hoist saves params to callee-saved
-    // regs first (no clobber risk in the initial MOV sequence).
-    if (translator.untagged and arity > 1) {
+    // Fix parallel copy conflicts in entry (param register shuffling).
+    // Hoist's regalloc may emit sequential MOV instructions that clobber source
+    // registers before they're consumed. Common cases:
+    //   - Untagged mode: SSHR follows MOVs immediately
+    //   - .aggressive leaf functions: MOV x2,x1; MOV x3,x2 clobbers x2
+    // For .none recursive functions, params are saved to callee-saved regs
+    // first (x8+) so no conflicts occur — fixEntryParamMoves detects this
+    // and returns early (no conflict found).
+    if (arity > 1) {
         fixEntryParamMoves(code.code.items);
     }
 
