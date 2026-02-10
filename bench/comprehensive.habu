@@ -69,6 +69,7 @@
 ;;; nqueens10 — N-Queens 10
 ;;; :setup
 (defun nqueens-safe-p (col placed row)
+  (declare (optimize (speed 3) (safety 0)))
   (if (null placed) t
       (let ((c (car placed)))
         (if (not (= c col))
