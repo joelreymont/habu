@@ -2090,6 +2090,12 @@ pub fn compileIrWithKnownFns(
     // Fuse MUL+ADD into MADD where possible.
     fuseMulAdd(code.code.items);
 
+    // Eliminate prologue/epilogue for leaf functions (no BLR/BL calls).
+    // After TCO, recursive functions become loops and don't need frame setup.
+    if (!translator.is_recursive) {
+        eliminateLeafPrologue(code.code.items);
+    }
+
     // Remove all NOP instructions and fix branch offsets.
     // Must run LAST after all other peephole passes that introduce NOPs.
     compactNops(code.code.items, &code.code);
@@ -2235,6 +2241,66 @@ fn fuseMulAdd(code: []u8) void {
 /// Remove all NOP instructions from emitted code and fix branch offsets.
 /// After all peephole passes introduce NOPs (dead cset elimination, mov coalescing,
 /// B .+4 elimination, branch inversion), this pass compacts the code.
+/// Eliminate prologue/epilogue for leaf functions (no BLR/BL calls).
+/// Scans for BLR (0xD63F0xxx) and BL (0x94xxxxxx) instructions.
+/// If none found, replaces STP x29,x30,[SP,#-frame]! + MOV x29,SP at start
+/// and LDP x29,x30,[SP],#frame before RET at end with NOPs.
+fn eliminateLeafPrologue(code: []u8) void {
+    const n_insns = code.len / 4;
+    if (n_insns < 4) return;
+
+    // Check if function has any calls (BLR or BL)
+    for (0..n_insns) |i| {
+        const insn = readInsn(code, i);
+        // BLR: 1101 0110 0011 1111 0000 00xx xxx0 0000
+        if (insn & 0xFFFFFC1F == 0xD63F0000) return; // Has BLR — not a leaf
+        // BL: 1001 01xx xxxx xxxx xxxx xxxx xxxx xxxx
+        if (insn & 0xFC000000 == 0x94000000) return; // Has BL — not a leaf
+    }
+
+    // Leaf function — check for standard prologue pattern
+    const insn0 = readInsn(code, 0);
+    const insn1 = readInsn(code, 1);
+
+    // STP x29, x30, [SP, #-imm]! (pre-indexed store pair, 64-bit)
+    // Encoding: 10 101 001 1 iiiiiii 11110 11111 11101
+    // Mask out imm7 (bits 15-21): check opc=10, STP=101, pre-indexed=0011, Rt2=x30, Rn=SP, Rt=x29
+    const is_stp = (insn0 & 0xFFC07FFF) == 0xA9807BFD;
+    // MOV x29, SP (ORR x29, XZR, SP) or MOV x29, SP alias
+    const is_mov_fp = (insn1 == 0xAA1F03FD) or (insn1 == 0x910003FD);
+
+    if (!is_stp or !is_mov_fp) return;
+
+    // Find the LDP + RET at the end
+    // LDP x29, x30, [SP], #imm (post-indexed load pair)
+    // RET = 0xD65F03C0
+    var ldp_pos: ?usize = null;
+    var i: usize = n_insns;
+    while (i > 0) {
+        i -= 1;
+        const insn = readInsn(code, i);
+        if (insn == 0xD65F03C0) { // RET
+            if (i > 0) {
+                const prev = readInsn(code, i - 1);
+                if ((prev & 0xFFC07FFF) == 0xA8C07BFD) { // LDP x29, x30, [SP], #imm
+                    ldp_pos = i - 1;
+                }
+            }
+            break;
+        }
+    }
+
+    if (ldp_pos == null) return;
+
+    // Replace prologue with NOPs
+    const nop: u32 = 0xD503201F;
+    writeInsn(code, 0, nop); // Replace STP
+    writeInsn(code, 1, nop); // Replace MOV FP, SP
+
+    // Replace epilogue with NOP (keep RET)
+    writeInsn(code, ldp_pos.?, nop); // Replace LDP
+}
+
 fn compactNops(code: []u8, list: *std.ArrayList(u8)) void {
     const n_insns = code.len / 4;
     if (n_insns == 0) return;
