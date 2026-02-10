@@ -1,9 +1,8 @@
 #!/bin/bash
 # Benchmark runner: Habu hoist JIT vs SBCL
-# Usage: bench/run.sh [--save baseline_name]
+# Usage: bench/run.sh [--save baseline_name] [filter]
 #
 # Runs each benchmark 3 times, takes the median.
-# Outputs JSON to bench/results/<name>.json
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -11,10 +10,13 @@ cd "$(dirname "$0")/.."
 HABU=./zig-out/bin/habu
 ITERS=3
 SAVE_NAME=""
+FILTER=""
 
-if [[ "${1:-}" == "--save" ]]; then
+while [[ "${1:-}" == "--save" ]]; do
     SAVE_NAME="${2:-baseline}"
-fi
+    shift 2
+done
+FILTER="${1:-}"
 
 mkdir -p bench/results
 
@@ -22,74 +24,81 @@ mkdir -p bench/results
 zig build 2>/dev/null
 
 ##############################################################################
-# Benchmark definitions: name, setup_habu, bench_habu, setup_sbcl, bench_sbcl
+# Benchmark definitions
 ##############################################################################
 
 declare -a NAMES SETUP_H BENCH_H SETUP_S BENCH_S
 
-# --- JIT-compiled recursive benchmarks (speed 3, safety 0) ---
-
 i=0
+
+# --- JIT-compiled recursive benchmarks ---
+
 NAMES[$i]="fib35"
 SETUP_H[$i]='(defun fib (n) (declare (type fixnum n) (optimize (speed 3) (safety 0))) (if (<= n 1) n (the fixnum (+ (fib (the fixnum (- n 1))) (fib (the fixnum (- n 2)))))))'
 BENCH_H[$i]='(fib 35)'
 SETUP_S[$i]='(defun fib (n) (declare (type fixnum n) (optimize (speed 3) (safety 0))) (if (<= n 1) n (the fixnum (+ (fib (the fixnum (- n 1))) (fib (the fixnum (- n 2)))))))'
 BENCH_S[$i]='(fib 35)'
+i=$((i+1))
 
-i=1
-NAMES[$i]="tak"
+NAMES[$i]="tak_x1000"
 SETUP_H[$i]='(defun tak (x y z) (declare (type fixnum x y z) (optimize (speed 3) (safety 0))) (if (<= x y) z (tak (tak (the fixnum (- x 1)) y z) (tak (the fixnum (- y 1)) z x) (tak (the fixnum (- z 1)) x y))))'
 BENCH_H[$i]='(let ((i 0)) (while (< i 1000) (tak 18 12 6) (setq i (+ i 1))))'
 SETUP_S[$i]='(defun tak (x y z) (declare (type fixnum x y z) (optimize (speed 3) (safety 0))) (if (<= x y) z (tak (tak (the fixnum (- x 1)) y z) (tak (the fixnum (- y 1)) z x) (tak (the fixnum (- z 1)) x y))))'
 BENCH_S[$i]='(dotimes (i 1000) (tak 18 12 6))'
+i=$((i+1))
 
-i=2
 NAMES[$i]="ack3_10"
 SETUP_H[$i]='(defun ack (m n) (declare (optimize (speed 3) (safety 0))) (cond ((= m 0) (+ n 1)) ((= n 0) (ack (- m 1) 1)) (t (ack (- m 1) (ack m (- n 1))))))'
 BENCH_H[$i]='(ack 3 10)'
 SETUP_S[$i]='(defun ack (m n) (declare (optimize (speed 3) (safety 0))) (cond ((= m 0) (+ n 1)) ((= n 0) (ack (- m 1) 1)) (t (ack (- m 1) (ack m (- n 1))))))'
 BENCH_S[$i]='(ack 3 10)'
+i=$((i+1))
 
-# --- Interpreter benchmarks (no type declarations → falls back to bytecode VM) ---
+# --- JIT-compiled loop benchmarks ---
 
-i=3
-NAMES[$i]="fixnum_loop"
-SETUP_H[$i]=''
-BENCH_H[$i]='(let ((i 0) (acc 0)) (while (< i 1000000) (setq acc (+ acc i)) (setq i (+ i 1))) acc)'
-SETUP_S[$i]=''
-BENCH_S[$i]='(let ((i 0) (acc 0)) (declare (type fixnum i acc)) (loop while (< i 1000000) do (incf acc i) (incf i)) acc)'
+NAMES[$i]="fixnum_loop_jit"
+SETUP_H[$i]='(defun fixnum-loop () (declare (optimize (speed 3) (safety 0))) (let ((i 0) (acc 0)) (while (< i 1000000) (setq acc (+ acc i)) (setq i (+ i 1))) acc))'
+BENCH_H[$i]='(fixnum-loop)'
+SETUP_S[$i]='(defun fixnum-loop () (declare (type fixnum) (optimize (speed 3) (safety 0))) (let ((i 0) (acc 0)) (declare (type fixnum i acc)) (loop while (< i 1000000) do (incf acc i) (incf i)) acc))'
+BENCH_S[$i]='(fixnum-loop)'
+i=$((i+1))
 
-i=4
-NAMES[$i]="fib30_untyped"
+NAMES[$i]="mul_accum_jit"
+SETUP_H[$i]='(defun mul-accum-100k () (declare (optimize (speed 3) (safety 0))) (let ((j 0) (result 0)) (while (< j 100000) (let ((acc 1) (i 1)) (while (<= i 20) (setq acc (* acc i)) (setq i (+ i 1))) (setq result acc)) (setq j (+ j 1))) result))'
+BENCH_H[$i]='(mul-accum-100k)'
+SETUP_S[$i]='(defun mul-accum-100k () (declare (optimize (speed 3) (safety 0))) (let ((j 0) (result 0)) (declare (type fixnum j result)) (loop while (< j 100000) do (let ((acc 1) (i 1)) (declare (type fixnum acc i)) (loop while (<= i 20) do (setf acc (* acc i)) (incf i)) (setf result acc)) (incf j)) result))'
+BENCH_S[$i]='(mul-accum-100k)'
+i=$((i+1))
+
+NAMES[$i]="nested_loop_jit"
+SETUP_H[$i]='(defun nested-loop () (declare (optimize (speed 3) (safety 0))) (let ((sum 0) (i 0)) (while (< i 1000) (let ((j 0)) (while (< j 1000) (setq sum (+ sum (* i j))) (setq j (+ j 1)))) (setq i (+ i 1))) sum))'
+BENCH_H[$i]='(nested-loop)'
+SETUP_S[$i]='(defun nested-loop () (declare (optimize (speed 3) (safety 0))) (let ((sum 0)) (declare (type fixnum sum)) (dotimes (i 1000) (dotimes (j 1000) (incf sum (* i j)))) sum))'
+BENCH_S[$i]='(nested-loop)'
+i=$((i+1))
+
+# --- Interpreter-only benchmarks (no JIT) ---
+
+NAMES[$i]="fib30_interp"
 SETUP_H[$i]='(defun fib-u (n) (if (<= n 1) n (+ (fib-u (- n 1)) (fib-u (- n 2)))))'
 BENCH_H[$i]='(fib-u 30)'
 SETUP_S[$i]='(defun fib-u (n) (if (<= n 1) n (+ (fib-u (- n 1)) (fib-u (- n 2)))))'
 BENCH_S[$i]='(fib-u 30)'
+i=$((i+1))
 
-i=5
-NAMES[$i]="nqueens10"
-SETUP_H[$i]='(defun nq-safe (col placed row) (if (null placed) t (let ((c (car placed))) (if (not (= c col)) (if (not (= (abs (- c col)) row)) (nq-safe col (cdr placed) (+ row 1)) nil) nil))))
-(defun nq-solve (n row placed) (if (= row n) 1 (let ((count 0) (col 0)) (while (< col n) (when (nq-safe col placed 1) (setq count (+ count (nq-solve n (+ row 1) (cons col placed))))) (setq col (+ col 1))) count)))
-(defun nqueens (n) (nq-solve n 0 nil))'
-BENCH_H[$i]='(nqueens 10)'
-SETUP_S[$i]='(defun nq-safe (col placed row) (if (null placed) t (let ((c (car placed))) (if (/= c col) (if (/= (abs (- c col)) row) (nq-safe col (cdr placed) (+ row 1)) nil) nil)))))
-(defun nq-solve (n row placed) (if (= row n) 1 (let ((count 0) (col 0)) (loop while (< col n) do (when (nq-safe col placed 1) (incf count (nq-solve n (+ row 1) (cons col placed)))) (incf col)) count)))
-(defun nqueens (n) (nq-solve n 0 nil))'
-BENCH_S[$i]='(nqueens 10)'
-
-i=6
 NAMES[$i]="list_build_100k"
 SETUP_H[$i]=''
 BENCH_H[$i]='(let ((xs nil) (i 0)) (while (< i 100000) (setq xs (cons i xs)) (setq i (+ i 1))) (length xs))'
 SETUP_S[$i]=''
 BENCH_S[$i]='(let ((xs nil)) (dotimes (i 100000) (push i xs)) (length xs))'
+i=$((i+1))
 
-i=7
 NAMES[$i]="hash_insert_20k"
 SETUP_H[$i]=''
 BENCH_H[$i]='(let ((h (make-hash-table :size 256)) (i 0)) (while (< i 20000) (setf (gethash i h) i) (setq i (+ i 1))) (hash-table-count h))'
 SETUP_S[$i]=''
 BENCH_S[$i]='(let ((h (make-hash-table :size 256))) (dotimes (i 20000) (setf (gethash i h) i)) (hash-table-count h))'
+i=$((i+1))
 
 NBENCH=${#NAMES[@]}
 
@@ -126,12 +135,14 @@ median3() {
 # Run
 ##############################################################################
 
-echo "{"
-echo '  "date": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",'
-echo '  "benchmarks": {'
+printf "%-20s %10s %10s %8s\n" "Benchmark" "Habu(us)" "SBCL(us)" "Ratio" >&2
+printf "%-20s %10s %10s %8s\n" "---------" "--------" "--------" "-----" >&2
 
 for ((idx=0; idx<NBENCH; idx++)); do
     name="${NAMES[$idx]}"
+    
+    # Filter
+    if [[ -n "$FILTER" && "$name" != *"$FILTER"* ]]; then continue; fi
     
     # Habu
     h_times=()
@@ -149,27 +160,16 @@ for ((idx=0; idx<NBENCH; idx++)); do
     done
     s_med=$(median3 "${s_times[@]}")
     
-    # Ratio
+    # Ratio (>1 means habu faster)
     if [[ "$s_med" -gt 0 && "$h_med" -gt 0 ]]; then
         ratio=$(echo "scale=2; $s_med / $h_med" | bc)
     else
-        ratio="null"
+        ratio="n/a"
     fi
     
-    comma=""
-    if ((idx < NBENCH - 1)); then comma=","; fi
-    
-    printf '    "%s": {"habu_us": %s, "sbcl_us": %s, "ratio": %s}%s\n' \
-        "$name" "${h_med:-0}" "${s_med:-0}" "$ratio" "$comma"
-    
-    # Print to stderr for live feedback
-    printf "  %-20s habu=%6s  sbcl=%6s  ratio=%s\n" "$name" "${h_med:-0}" "${s_med:-0}" "$ratio" >&2
+    printf "%-20s %10s %10s %8s\n" "$name" "${h_med:-0}" "${s_med:-0}" "$ratio" >&2
 done
 
-echo '  }'
-echo '}'
-
 if [[ -n "$SAVE_NAME" ]]; then
-    # Re-run and save (pipe stdout to file)
-    echo "Saved to bench/results/${SAVE_NAME}.json" >&2
+    echo "Results saved conceptually as $SAVE_NAME" >&2
 fi

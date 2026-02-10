@@ -1,0 +1,20 @@
+{
+  "date": "2026-02-08T18:15:00Z",
+  "note": "After mul/eq support + canTranslate fast-reject",
+  "benchmarks": {
+    "fib35":           {"habu_us": 47901, "sbcl_us": 57343, "ratio": 1.19, "engine": "hoist", "note": "1.19x faster"},
+    "tak_x1000":       {"habu_us": 94635, "sbcl_us": 96053, "ratio": 1.01, "engine": "hoist", "note": "equal"},
+    "ack3_10":         {"habu_us": 194076, "sbcl_us": 390143, "ratio": 2.01, "engine": "hoist", "note": "2x faster"},
+    "fixnum_loop_jit": {"habu_us": 627, "sbcl_us": 342, "ratio": 0.54, "engine": "hoist", "note": "SBCL 1.8x faster (unboxed loops)"},
+    "mul_accum_jit":   {"habu_us": 1417, "sbcl_us": 755, "ratio": 0.53, "engine": "hoist", "note": "SBCL 1.9x faster (unboxed loops)"},
+    "nested_loop_jit": {"habu_us": 738, "sbcl_us": 320, "ratio": 0.43, "engine": "hoist", "note": "SBCL 2.3x faster (unboxed loops)"},
+    "fib30_interp":    {"habu_us": 6717849, "sbcl_us": 21373, "ratio": 0.003, "engine": "interp"},
+    "list_build_100k": {"habu_us": 79943, "sbcl_us": 205, "ratio": 0.003, "engine": "interp"},
+    "hash_insert_20k": {"habu_us": 16633, "sbcl_us": 513, "ratio": 0.03, "engine": "interp"}
+  },
+  "summary": {
+    "jit_recursive": "1-2x faster than SBCL (call overhead dominates, no boxing overhead)",
+    "jit_loops": "SBCL 2-2.5x faster (tagged vs unboxed fixnum arithmetic)", 
+    "interpreter": "38-314x slower than SBCL (bytecode vs native)"
+  }
+}
