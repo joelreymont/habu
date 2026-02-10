@@ -469,6 +469,16 @@ pub const Heap = struct {
         return @intFromPtr(self.alloc_ptr);
     }
 
+    /// Get address of alloc_ptr field (for JIT inline cons).
+    pub fn getAllocPtrAddr(self: *Heap) u64 {
+        return @intFromPtr(&self.alloc_ptr);
+    }
+
+    /// Get address of from_end field (for JIT inline cons).
+    pub fn getFromEndAddr(self: *Heap) u64 {
+        return @intFromPtr(&self.from_end);
+    }
+
     /// Get bytes used in from-space
     pub fn bytesUsed(self: *const Heap) usize {
         return @intFromPtr(self.alloc_ptr) - @intFromPtr(self.from_start);

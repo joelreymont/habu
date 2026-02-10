@@ -50,16 +50,46 @@ var g_heap: ?*Heap = null;
 /// Set the global heap pointer for JIT allocation.
 pub fn setHeap(heap: *Heap) void {
     g_heap = heap;
+    jitConsRefreshCache();
 }
 
 /// C-ABI cons function callable from JIT-compiled code.
 /// Takes (car_raw: u64, cdr_raw: u64) → cons_raw: u64
 /// Performs bump allocation without GC. Returns nil (0) on OOM.
+/// Fast inline cons: bump-allocate from a pre-cached region.
+/// Falls back to heap.allocCons on overflow.
+var g_alloc_ptr: u64 = 0;
+var g_alloc_end: u64 = 0;
+
+fn jitConsRefreshCache() void {
+    if (g_heap) |heap| {
+        g_alloc_ptr = @intFromPtr(heap.alloc_ptr);
+        g_alloc_end = @intFromPtr(heap.from_end);
+    }
+}
+
 fn jitCons(car_raw: u64, cdr_raw: u64) callconv(.c) u64 {
+    const ptr = g_alloc_ptr;
+    const next = ptr + 16;
+    if (next <= g_alloc_end) {
+        // Fast path: inline bump allocation
+        const p: [*]u64 = @ptrFromInt(ptr);
+        p[0] = car_raw; // car at offset 0
+        p[1] = cdr_raw; // cdr at offset 8
+        g_alloc_ptr = next;
+        // Update heap's alloc_ptr to stay in sync
+        if (g_heap) |heap| {
+            heap.alloc_ptr = @ptrFromInt(next);
+        }
+        return ptr; // cons tag = 0, so raw = ptr
+    }
+    // Slow path: full allocation with potential GC
     const heap = g_heap orelse return 0;
     const car = Value{ .raw = car_raw };
     const cdr = Value{ .raw = cdr_raw };
     const result = heap.allocCons(car, cdr) catch return 0;
+    // Refresh cache after potential GC
+    jitConsRefreshCache();
     return result.raw;
 }
 
@@ -960,25 +990,21 @@ pub const IrTranslator = struct {
         return self.translateCdr(operand_ir);
     }
 
-    /// cons: allocate a cons cell via C-ABI runtime call.
-    /// Calls jitCons(car_raw, cdr_raw) → cons_raw.
+    /// cons: inline bump allocation with C-ABI slow path fallback.
+    /// Fast path: load alloc_ptr, store car+cdr, bump pointer.
+    /// Slow path: call jitCons() for GC + allocate.
     fn translateCons(self: *IrTranslator, car_ir: *const Ir, cdr_ir: *const Ir) anyerror!HoistValue {
         const car_val = try self.translate(car_ir);
         const cdr_val = try self.translate(cdr_ir);
 
-        // Get or create the cons function signature: (fn_ptr: i64, car: i64, cdr: i64) -> i64
+        // Simple approach: just use the C-ABI call with cached alloc pointer.
+        // The jitCons function already has the fast path (cached bump allocation).
         const cons_sig = try self.getConsSigRef();
-
-        // Load the jitCons function pointer
         const fn_ptr = try self.cachedIconst(@as(i64, @bitCast(getJitConsPtr())));
-
-        // Build call args: [fn_ptr, car, cdr]
         var call_args = ValueList.default();
         try self.func.dfg.value_lists.push(&call_args, fn_ptr);
         try self.func.dfg.value_lists.push(&call_args, car_val);
         try self.func.dfg.value_lists.push(&call_args, cdr_val);
-
-        // Emit call_indirect
         const call_data = InstructionData{
             .call_indirect = .{
                 .opcode = .call_indirect,
@@ -1253,6 +1279,46 @@ fn hasNestedSelfCalls(body: *const Ir, name: []const u8) bool {
 
 /// Detect whether a function body contains non-self calls (cross-function calls).
 /// These are not yet supported by the JIT backend.
+/// Check if an IR tree contains any cons operations (which emit call_indirect to jitCons).
+fn containsCons(body: *const Ir) bool {
+    return switch (body.*) {
+        .cons => true,
+        .@"if" => |i| containsCons(i.cond) or containsCons(i.then_branch) or containsCons(i.else_branch),
+        .let => |l| blk: {
+            for (l.bindings) |binding| {
+                if (containsCons(binding.value)) break :blk true;
+            }
+            break :blk containsCons(l.body);
+        },
+        .set => |s| containsCons(s.value),
+        .progn => |exprs| blk: {
+            for (exprs) |e| {
+                if (containsCons(e)) break :blk true;
+            }
+            break :blk false;
+        },
+        .loop => |l| containsCons(l.cond) or containsCons(l.body),
+        .call => |c| blk: {
+            for (c.args) |arg| {
+                if (containsCons(arg)) break :blk true;
+            }
+            break :blk false;
+        },
+        .tailcall => |tc| blk: {
+            for (tc.args) |arg| {
+                if (containsCons(arg)) break :blk true;
+            }
+            break :blk false;
+        },
+        .fixnum_add, .fixnum_sub, .add, .sub, .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
+        .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq,
+        => |op| containsCons(op.left) or containsCons(op.right),
+        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
+        => |op| containsCons(op.operand),
+        else => false,
+    };
+}
+
 pub fn hasNonSelfCalls(body: *const Ir, name: []const u8) bool {
     return switch (body.*) {
         .call => |c| blk: {
@@ -1433,7 +1499,8 @@ pub fn compileIrWithKnownFns(
 
     translator.fn_name = name;
     translator.known_fns = known_fns;
-    translator.has_cross_calls = if (known_fns) |kf| kf.count() > 0 and hasNonSelfCalls(lambda.body, name) else false;
+    translator.has_cross_calls = containsCons(lambda.body) or
+        (if (known_fns) |kf| kf.count() > 0 and hasNonSelfCalls(lambda.body, name) else false);
 
     translator.user_arity = arity;
     translator.is_recursive = detectSelfCalls(lambda.body, name);
