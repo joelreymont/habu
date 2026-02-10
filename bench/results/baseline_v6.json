@@ -1,0 +1,45 @@
+{
+  "date": "2026-02-08",
+  "platform": "ARM64 Apple Silicon M4",
+  "zig_version": "0.15.2",
+  "habu_version": "v0.1.0",
+  "notes": "After TCO, not/nilp branch optimization, leaf prologue elimination, circular dep fix",
+  "sbcl_version": "2.5.10",
+  "benchmarks": {
+    "fib_35_jit": {
+      "habu_us": 46000,
+      "sbcl_us": 52000,
+      "ratio": 1.13,
+      "notes": "Habu faster. Pure recursive, no TCO (non-tail self-calls)."
+    },
+    "tak_18_12_6_x1000_jit": {
+      "habu_us": 100500,
+      "sbcl_us": 92000,
+      "ratio": 0.92,
+      "notes": "Improved from 110ms by not-branch optimization (not (< y x) → swap branches)."
+    },
+    "ack_3_10_jit": {
+      "habu_us": 171000,
+      "sbcl_us": 373000,
+      "ratio": 2.18,
+      "notes": "Habu much faster. Pure recursive."
+    },
+    "nqueens_10_jit": {
+      "habu_us": 3800,
+      "sbcl_us": 3000,
+      "ratio": 0.79,
+      "notes": "TCO for safe-p (tail-recursive → loop). Leaf prologue eliminated. Cross-call + cons overhead remaining."
+    }
+  },
+  "changelog": {
+    "v5_to_v6": [
+      "TCO for pure tail-recursive functions (safe-p: 350K recursive calls → loop)",
+      "Branch inversion for (not expr) conditions — swap then/else instead of computing not",
+      "Direct icmp for (nilp expr) conditions — skip select(t, nil)",
+      "Leaf prologue/epilogue elimination (STP/LDP x29,x30 + MOV FP)",
+      "Circular dependency handling in fixEntryParamMoves",
+      ".aggressive optimization disabled for functions with loads (car/cdr)",
+      "nqueens(10): 6.3ms → 3.8ms (1.66x improvement)"
+    ]
+  }
+}
