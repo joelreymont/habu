@@ -1434,6 +1434,7 @@ pub fn compileIrWithKnownFns(
     translator.fn_name = name;
     translator.known_fns = known_fns;
     translator.has_cross_calls = if (known_fns) |kf| kf.count() > 0 and hasNonSelfCalls(lambda.body, name) else false;
+
     translator.user_arity = arity;
     translator.is_recursive = detectSelfCalls(lambda.body, name);
     translator.has_loops = detectLoops(lambda.body);
@@ -1506,10 +1507,10 @@ pub fn compileIrWithKnownFns(
     // Compile with Hoist
     var ctx_builder = ContextBuilder.init(allocator);
     _ = try ctx_builder.targetNative();
+    // Use .none for functions with calls (cross or recursive) — aggressive
+    // optimizations can incorrectly eliminate call_indirect instructions.
+    // Only use .aggressive for leaf functions (no calls at all).
     var ctx = ctx_builder
-        // Use .none for functions with calls (cross or recursive) — aggressive
-        // optimizations can incorrectly eliminate call_indirect instructions.
-        // Only use .aggressive for leaf functions (no calls at all).
         .optLevel(if (translator.is_recursive or translator.has_cross_calls) .none else .aggressive)
         .callConv(.system_v)
         .verification(true)
@@ -1574,7 +1575,6 @@ pub fn compileIrWithKnownFns(
     }
 
     // Coalesce: replace `op rD, rA, rB; mov rC, rD` with `op rC, rA, rB; nop`
-    // when rD is not used after the mov. This eliminates phi-copy overhead in loops.
     coalesceMovs(code.code.items);
 
     // Eliminate B .+4 (jump to next instruction = NOP).
@@ -1582,7 +1582,6 @@ pub fn compileIrWithKnownFns(
     eliminateUselessBranches(code.code.items);
 
     // Invert `b.cond .+8; b target` → `b.inv_cond target; nop`.
-    // Removes one branch from the loop hot path.
     invertBranchOverBranch(code.code.items);
 
     // Fix parallel copy conflicts in call argument setup.
@@ -2147,13 +2146,37 @@ fn coalesceMovs(code: []u8) void {
 
             const mi = mov_idx orelse continue;
 
-            // Check that rd0 is not used between the ALU op and the mov
-            // (we already checked above — the loop breaks on any use of rd0)
-            // Check that mov_dst is not written between ALU op and mov
+            // Check that rd0 is not used AFTER the mov (before next write or branch).
+            // If rd0 has other consumers after the MOV, coalescing would break them.
             var safe = true;
-            j = i + 1;
-            while (j < mi) : (j += 1) {
-                const between = readInsn(code, j);
+            var k = mi + 1;
+            while (k < n_insns) : (k += 1) {
+                const after = readInsn(code, k);
+                if (after == 0xD503201F) continue; // NOP
+                const rn_a: u5 = @truncate((after >> 5) & 0x1F);
+                const rm_a: u5 = @truncate((after >> 16) & 0x1F);
+                const rd_a: u5 = @truncate(after & 0x1F);
+                // Check for MOV Xd, Xm where Xm == rd0 (another consumer)
+                if (after & 0xFFE0FFE0 == 0xAA0003E0) {
+                    const mov_src: u5 = @truncate((after >> 16) & 0x1F);
+                    if (mov_src == rd0) { safe = false; break; }
+                }
+                // If rd0 is used as source operand
+                if (rn_a == rd0 or rm_a == rd0) { safe = false; break; }
+                // If rd0 is redefined, no more consumers can see old value
+                if (rd_a == rd0) break;
+                // Stop at branch/ret (control flow boundary)
+                if (after & 0xFC000000 == 0x14000000 or
+                    after & 0xFF000000 == 0x54000000 or
+                    after & 0xFFFFFC1F == 0xD65F0000 or
+                    after & 0xFFFFFC1F == 0xD63F0000) break;
+            }
+            if (!safe) continue;
+
+            // Also check that mov_dst is not written between ALU op and mov
+            var j2 = i + 1;
+            while (j2 < mi) : (j2 += 1) {
+                const between = readInsn(code, j2);
                 if (between == 0xD503201F) continue; // NOP
                 const rd_b: u5 = @truncate(between & 0x1F);
                 if (rd_b == mov_dst) {
