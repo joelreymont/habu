@@ -476,8 +476,26 @@ pub const IrTranslator = struct {
         return try self.b.select(I64, val, t_val, nil_val);
     }
 
-    fn translateIf(self: *IrTranslator, cond: *const Ir, then_ir: *const Ir, else_ir: *const Ir) anyerror!HoistValue {
-        const cond_val = try self.translate(cond);
+    fn translateIf(self: *IrTranslator, cond_ir: *const Ir, then_ir_orig: *const Ir, else_ir_orig: *const Ir) anyerror!HoistValue {
+        // Optimize condition patterns to avoid redundant conversions:
+        // - (not expr): swap branches, translate expr directly
+        // - (nilp expr) / (null expr): compare expr with 0, avoid select
+        var actual_cond = cond_ir;
+        var then_ir = then_ir_orig;
+        var else_ir = else_ir_orig;
+        while (actual_cond.* == .not) {
+            actual_cond = actual_cond.not.operand;
+            const tmp = then_ir;
+            then_ir = else_ir;
+            else_ir = tmp;
+        }
+        // For nilp as condition: emit icmp eq(val, 0) directly (I8)
+        // instead of icmp + select(t, nil) + brif(tagged)
+        const cond_val = if (actual_cond.* == .nilp) blk: {
+            const inner_val = try self.translate(actual_cond.nilp.operand);
+            const zero = try self.cachedIconst(0);
+            break :blk try self.b.icmp(I8, IntCC.eq, inner_val, zero);
+        } else try self.translate(actual_cond);
 
         const then_blk = try self.b.createBlock();
         const else_blk = try self.b.createBlock();
@@ -959,12 +977,25 @@ pub const IrTranslator = struct {
                 return try self.translateCall(tc.func, tc.args);
             },
             .@"if" => |i| {
-                // Translate condition (non-tail)
-                const cond = try self.translate(i.cond);
+                // Optimize condition: (not expr) → swap branches, (nilp expr) → icmp directly
+                var cond_ir = i.cond;
+                var then_branch = i.then_branch;
+                var else_branch = i.else_branch;
+                while (cond_ir.* == .not) {
+                    cond_ir = cond_ir.not.operand;
+                    const tmp = then_branch;
+                    then_branch = else_branch;
+                    else_branch = tmp;
+                }
+                const cond = if (cond_ir.* == .nilp) blk: {
+                    const inner_val = try self.translate(cond_ir.nilp.operand);
+                    const zero = try self.cachedIconst(0);
+                    break :blk try self.b.icmp(I8, IntCC.eq, inner_val, zero);
+                } else try self.translate(cond_ir);
 
                 // Check if both branches are tail — if so, no merge needed
-                const then_is_tail = isTailCall(i.then_branch, self.fn_name);
-                const else_is_tail = isTailCall(i.else_branch, self.fn_name);
+                const then_is_tail = isTailCall(then_branch, self.fn_name);
+                const else_is_tail = isTailCall(else_branch, self.fn_name);
 
                 if (then_is_tail and else_is_tail) {
                     // Both branches are tail calls — no merge block needed
@@ -976,10 +1007,10 @@ pub const IrTranslator = struct {
                     try self.b.brif(cond, then_blk, else_blk);
 
                     self.b.switchToBlock(then_blk);
-                    _ = try self.translateTCOExpr(i.then_branch);
+                    _ = try self.translateTCOExpr(then_branch);
 
                     self.b.switchToBlock(else_blk);
-                    _ = try self.translateTCOExpr(i.else_branch);
+                    _ = try self.translateTCOExpr(else_branch);
 
                     // Both branches terminated — current_block is null.
                     // Return dummy (caller checks current_block).
@@ -996,10 +1027,10 @@ pub const IrTranslator = struct {
                     try self.b.brif(cond, then_blk, else_blk);
 
                     self.b.switchToBlock(then_blk);
-                    _ = try self.translateTCOExpr(i.then_branch);
+                    _ = try self.translateTCOExpr(then_branch);
 
                     self.b.switchToBlock(else_blk);
-                    return try self.translateTCOExpr(i.else_branch);
+                    return try self.translateTCOExpr(else_branch);
                 }
 
                 if (else_is_tail) {
@@ -1012,15 +1043,15 @@ pub const IrTranslator = struct {
                     try self.b.brif(cond, then_blk, else_blk);
 
                     self.b.switchToBlock(else_blk);
-                    _ = try self.translateTCOExpr(i.else_branch);
+                    _ = try self.translateTCOExpr(else_branch);
 
                     self.b.switchToBlock(then_blk);
-                    return try self.translateTCOExpr(i.then_branch);
+                    return try self.translateTCOExpr(then_branch);
                 }
 
                 // Neither branch is immediate tail — but may contain tail calls deeper.
                 // Create merge block and translate both branches with TCO context.
-                return try self.translateTCOIf(cond, i.then_branch, i.else_branch);
+                return try self.translateTCOIf(cond, then_branch, else_branch);
             },
             .let => |l| {
                 // Translate bindings (non-tail)
