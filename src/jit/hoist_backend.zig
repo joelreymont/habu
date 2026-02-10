@@ -505,7 +505,6 @@ pub const IrTranslator = struct {
         try self.func.layout.appendBlock(loop_exit);
 
         // Add block params for header (phi nodes for mutated variables)
-        // Save values immediately — they're stable SSA value indices.
         var phi_vals: [16]HoistValue = undefined;
         for (0..n_phis) |pi| {
             phi_vals[pi] = try self.func.dfg.appendBlockParam(header, I64);
@@ -1072,6 +1071,10 @@ pub fn compileIr(
     // Must run AFTER coalescing since coalescing uses branches as scan barriers.
     eliminateUselessBranches(code.code.items);
 
+    // Invert `b.cond .+8; b target` → `b.inv_cond target; nop`.
+    // Removes one branch from the loop hot path.
+    invertBranchOverBranch(code.code.items);
+
     // Fix parallel copy conflicts in call argument setup.
     // Hoist's lowering emits sequential mov instructions for call arguments
     // which can clobber source registers before they're consumed.
@@ -1088,6 +1091,13 @@ pub fn compileIr(
             std.debug.print("\n", .{});
         }
     }
+
+    // Fuse MUL+ADD into MADD where possible.
+    fuseMulAdd(code.code.items);
+
+    // Remove all NOP instructions and fix branch offsets.
+    // Must run LAST after all other peephole passes that introduce NOPs.
+    compactNops(code.code.items, &code.code);
 
     // Debug: dump final machine code before making executable
     if (std.posix.getenv("HABU_DUMP_HOIST") != null) {
@@ -1147,13 +1157,260 @@ fn eliminateDeadCset(code: []u8) void {
 
         // Check pattern: CMP Xn, Xm (subs xzr); CSET Wd, cc; B.cond
         const is_cmp = (insn0 & 0xFFE0FC1F) == 0xEB00001F; // CMP (shifted register)
-        const is_cset = (insn1 & 0xFFE00C00) == 0x1A800000; // CSET/CSINC
+        // CSET is an alias for CSINC (op2 bit 10 = 1): 0x1A800400
+        const is_cset = (insn1 & 0xFFE00C00) == 0x1A800400; // CSINC (CSET alias)
         const is_bcond = (insn2 & 0xFF000010) == 0x54000000; // B.cond
 
         if (is_cmp and is_cset and is_bcond) {
             // Replace CSET with NOP (0xD503201F)
             writeInsn(code, i + 1, 0xD503201F);
         }
+    }
+}
+
+/// Fuse MUL+ADD into MADD: `mul rD, rA, rB; add rC, rD, rX` → `madd rC, rA, rB, rX; nop`
+/// MADD: Rd = Ra + Rn * Rm. Encoding: sf 00 11011 000 Rm 0 Ra Rn Rd
+fn fuseMulAdd(code: []u8) void {
+    const n_insns = code.len / 4;
+    if (n_insns < 2) return;
+
+    var i: usize = 0;
+    while (i + 1 < n_insns) : (i += 1) {
+        const insn0 = readInsn(code, i);
+        const insn1 = readInsn(code, i + 1);
+
+        // Check insn0 is MADD with Ra=XZR (= MUL alias)
+        // MUL Xd, Xn, Xm = MADD Xd, Xn, Xm, XZR
+        // Encoding: 1 00 11011 000 Rm 0 11111 Rn Rd
+        if (insn0 & 0xFFE0FC00 != 0x9B007C00) continue;
+        const mul_rd: u5 = @truncate(insn0 & 0x1F);
+        const mul_rn: u5 = @truncate((insn0 >> 5) & 0x1F);
+        const mul_rm: u5 = @truncate((insn0 >> 16) & 0x1F);
+
+        // Check insn1 is ADD Xd, Rn, Rm (shifted register, 64-bit)
+        if (insn1 & 0xFF200000 != 0x8B000000) continue;
+        const add_rd: u5 = @truncate(insn1 & 0x1F);
+        const add_rn: u5 = @truncate((insn1 >> 5) & 0x1F);
+        const add_rm: u5 = @truncate((insn1 >> 16) & 0x1F);
+
+        // Pattern 1: add rC, mul_rd, rX → madd rC, mul_rn, mul_rm, rX
+        // Pattern 2: add rC, rX, mul_rd → madd rC, mul_rn, mul_rm, rX
+        var ra: u5 = undefined; // the addend (non-mul operand)
+        if (add_rn == mul_rd) {
+            ra = add_rm;
+        } else if (add_rm == mul_rd) {
+            ra = add_rn;
+        } else continue;
+
+        // Don't fuse if mul_rd is used later (besides this add)
+        var mul_rd_used_later = false;
+        var j = i + 2;
+        while (j < n_insns) : (j += 1) {
+            const next = readInsn(code, j);
+            if (next == 0xD503201F) continue;
+            const rn_next: u5 = @truncate((next >> 5) & 0x1F);
+            const rm_next: u5 = @truncate((next >> 16) & 0x1F);
+            const rd_next: u5 = @truncate(next & 0x1F);
+            if (rn_next == mul_rd or rm_next == mul_rd) {
+                mul_rd_used_later = true;
+                break;
+            }
+            if (rd_next == mul_rd) break; // overwritten, safe
+            if (next & 0xFC000000 == 0x14000000 or
+                next & 0xFF000010 == 0x54000000 or
+                next & 0xFFFFFC1F == 0xD65F0000) break;
+        }
+        if (mul_rd_used_later) continue;
+
+        // Encode MADD: 1 00 11011 000 Rm 0 Ra Rn Rd
+        const madd: u32 = 0x9B000000 |
+            (@as(u32, mul_rm) << 16) |
+            (@as(u32, ra) << 10) |
+            (@as(u32, mul_rn) << 5) |
+            @as(u32, add_rd);
+        writeInsn(code, i, madd);
+        writeInsn(code, i + 1, 0xD503201F); // NOP
+    }
+}
+
+/// Remove all NOP instructions from emitted code and fix branch offsets.
+/// After all peephole passes introduce NOPs (dead cset elimination, mov coalescing,
+/// B .+4 elimination, branch inversion), this pass compacts the code.
+fn compactNops(code: []u8, list: *std.ArrayList(u8)) void {
+    const n_insns = code.len / 4;
+    if (n_insns == 0) return;
+
+    // Count NOPs — skip if none
+    var nop_count: usize = 0;
+    for (0..n_insns) |i| {
+        if (readInsn(code, i) == 0xD503201F) nop_count += 1;
+    }
+    if (nop_count == 0) return;
+
+    // Build old_pos → new_pos mapping (in instruction indices, not bytes)
+    // For a NOP at old position i, new_pos[i] maps to the next non-NOP.
+    // We use a stack-allocated array for small functions (<512 insns).
+    var map_buf: [512]u32 = undefined;
+    if (n_insns > map_buf.len) return; // too large, skip compaction
+    const old_to_new = map_buf[0..n_insns];
+
+    var new_pos: u32 = 0;
+    for (0..n_insns) |i| {
+        old_to_new[i] = new_pos;
+        if (readInsn(code, i) != 0xD503201F) {
+            new_pos += 1;
+        }
+    }
+    const new_n_insns = new_pos;
+
+    // Fix branch offsets before compacting.
+    // For each branch instruction, adjust its relative offset.
+    for (0..n_insns) |i| {
+        const insn = readInsn(code, i);
+        if (insn == 0xD503201F) continue; // skip NOPs
+
+        const new_src = old_to_new[i];
+
+        // B imm26: bits 31:26 = 000101
+        if (insn & 0xFC000000 == 0x14000000) {
+            const imm26_raw: u32 = insn & 0x03FFFFFF;
+            const old_offset: i32 = if (imm26_raw & 0x02000000 != 0)
+                @bitCast(imm26_raw | 0xFC000000)
+            else
+                @intCast(imm26_raw);
+            const old_target: i32 = @as(i32, @intCast(i)) + old_offset;
+            if (old_target < 0 or old_target >= @as(i32, @intCast(n_insns))) continue;
+            const new_target = old_to_new[@intCast(old_target)];
+            const new_offset: i32 = @as(i32, @intCast(new_target)) - @as(i32, @intCast(new_src));
+            const new_imm26: u32 = @as(u32, @bitCast(new_offset)) & 0x03FFFFFF;
+            writeInsn(code, i, (insn & 0xFC000000) | new_imm26);
+            continue;
+        }
+
+        // BL imm26: bits 31:26 = 100101
+        if (insn & 0xFC000000 == 0x94000000) {
+            const imm26_raw: u32 = insn & 0x03FFFFFF;
+            const old_offset: i32 = if (imm26_raw & 0x02000000 != 0)
+                @bitCast(imm26_raw | 0xFC000000)
+            else
+                @intCast(imm26_raw);
+            const old_target: i32 = @as(i32, @intCast(i)) + old_offset;
+            if (old_target < 0 or old_target >= @as(i32, @intCast(n_insns))) continue;
+            const new_target = old_to_new[@intCast(old_target)];
+            const new_offset: i32 = @as(i32, @intCast(new_target)) - @as(i32, @intCast(new_src));
+            const new_imm26: u32 = @as(u32, @bitCast(new_offset)) & 0x03FFFFFF;
+            writeInsn(code, i, (insn & 0xFC000000) | new_imm26);
+            continue;
+        }
+
+        // B.cond imm19: 0101 0100 imm19:0 cond
+        if (insn & 0xFF000010 == 0x54000000) {
+            const imm19_raw: u32 = (insn >> 5) & 0x7FFFF;
+            const old_offset: i32 = if (imm19_raw & 0x40000 != 0)
+                @bitCast((imm19_raw | 0xFFF80000))
+            else
+                @intCast(imm19_raw);
+            const old_target: i32 = @as(i32, @intCast(i)) + old_offset;
+            if (old_target < 0 or old_target >= @as(i32, @intCast(n_insns))) continue;
+            const new_target = old_to_new[@intCast(old_target)];
+            const new_offset: i32 = @as(i32, @intCast(new_target)) - @as(i32, @intCast(new_src));
+            const new_imm19: u32 = @as(u32, @bitCast(new_offset)) & 0x7FFFF;
+            writeInsn(code, i, (insn & 0xFF00001F) | (new_imm19 << 5));
+            continue;
+        }
+
+        // CBZ/CBNZ imm19: sf 011 010 op imm19 Rt
+        if (insn & 0x7E000000 == 0x34000000) {
+            const imm19_raw: u32 = (insn >> 5) & 0x7FFFF;
+            const old_offset: i32 = if (imm19_raw & 0x40000 != 0)
+                @bitCast((imm19_raw | 0xFFF80000))
+            else
+                @intCast(imm19_raw);
+            const old_target: i32 = @as(i32, @intCast(i)) + old_offset;
+            if (old_target < 0 or old_target >= @as(i32, @intCast(n_insns))) continue;
+            const new_target = old_to_new[@intCast(old_target)];
+            const new_offset: i32 = @as(i32, @intCast(new_target)) - @as(i32, @intCast(new_src));
+            const new_imm19: u32 = @as(u32, @bitCast(new_offset)) & 0x7FFFF;
+            writeInsn(code, i, (insn & 0xFF00001F) | (new_imm19 << 5));
+            continue;
+        }
+
+        // TBZ/TBNZ imm14: b5 011 011 op b40 imm14 Rt
+        if (insn & 0x7E000000 == 0x36000000) {
+            const imm14_raw: u32 = (insn >> 5) & 0x3FFF;
+            const old_offset: i32 = if (imm14_raw & 0x2000 != 0)
+                @bitCast((imm14_raw | 0xFFFFC000))
+            else
+                @intCast(imm14_raw);
+            const old_target: i32 = @as(i32, @intCast(i)) + old_offset;
+            if (old_target < 0 or old_target >= @as(i32, @intCast(n_insns))) continue;
+            const new_target = old_to_new[@intCast(old_target)];
+            const new_offset: i32 = @as(i32, @intCast(new_target)) - @as(i32, @intCast(new_src));
+            const new_imm14: u32 = @as(u32, @bitCast(new_offset)) & 0x3FFF;
+            writeInsn(code, i, (insn & 0xFFF8001F) | (new_imm14 << 5));
+            continue;
+        }
+    }
+
+    // Compact: copy non-NOP instructions to output positions
+    var write_pos: usize = 0;
+    for (0..n_insns) |i| {
+        const insn = readInsn(code, i);
+        if (insn != 0xD503201F) {
+            if (write_pos != i) {
+                writeInsn(code, write_pos, insn);
+            }
+            write_pos += 1;
+        }
+    }
+
+    // Truncate the code buffer
+    list.shrinkRetainingCapacity(new_n_insns * 4);
+}
+
+/// Replace `b.cond .+8; b target` with `b.inv_cond target; nop`.
+/// The pattern arises when hoist emits `brif` as a conditional branch to the
+/// then-block followed by an unconditional branch to the else-block, and the
+/// then-block immediately follows. Inverting removes one branch from the hot path.
+fn invertBranchOverBranch(code: []u8) void {
+    const n_insns = code.len / 4;
+    if (n_insns < 2) return;
+
+    var i: usize = 0;
+    while (i + 1 < n_insns) : (i += 1) {
+        const insn0 = readInsn(code, i);
+        const insn1 = readInsn(code, i + 1);
+
+        // Check: insn0 is B.cond with offset +8 (skip one instruction)
+        // B.cond encoding: 0101 0100 imm19 0 cond
+        if (insn0 & 0xFF000010 != 0x54000000) continue;
+        const bcond_imm19: i32 = @as(i32, @bitCast(insn0 & 0x00FFFFE0)) >> 5;
+        if (bcond_imm19 != 2) continue; // offset 2 words = +8 bytes = skip 1 insn
+
+        // Check: insn1 is unconditional B (not BL)
+        if (insn1 & 0xFC000000 != 0x14000000) continue;
+
+        // Extract the unconditional branch's offset and the condition code
+        const b_imm26_raw: u32 = insn1 & 0x03FFFFFF;
+        // Sign-extend 26-bit offset
+        const b_offset: i32 = if (b_imm26_raw & 0x02000000 != 0)
+            @bitCast(b_imm26_raw | 0xFC000000)
+        else
+            @intCast(b_imm26_raw);
+        // Adjust: the target was relative to insn1's position (i+1).
+        // New branch is at position i, so add 1 to the offset.
+        const new_offset: i32 = b_offset + 1;
+
+        // Invert the condition code (flip bit 0 of the 4-bit cond field)
+        const cond: u4 = @truncate(insn0 & 0xF);
+        const inv_cond: u4 = cond ^ 1;
+
+        // Encode new B.cond with inverted condition and far target
+        const new_imm19: u32 = @bitCast(@as(i32, new_offset) << 5);
+        const new_bcond: u32 = 0x54000000 | (new_imm19 & 0x00FFFFE0) | @as(u32, inv_cond);
+
+        writeInsn(code, i, new_bcond);
+        writeInsn(code, i + 1, 0xD503201F); // NOP
     }
 }
 

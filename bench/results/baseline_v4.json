@@ -1,0 +1,42 @@
+{
+  "date": "2026-02-08T23:30:00Z",
+  "note": "Fix cset mask + branch inversion + NOP compaction + MADD fusion",
+  "benchmarks": {
+    "fib35":           {"habu_us": 38040, "sbcl_us": 57024, "ratio": 1.49, "engine": "hoist", "note": "1.49x faster than SBCL"},
+    "tak_x1000":       {"habu_us": 86983, "sbcl_us": 96680, "ratio": 1.11, "engine": "hoist", "note": "1.11x faster than SBCL"},
+    "ack3_10":         {"habu_us": 181563, "sbcl_us": 384428, "ratio": 2.11, "engine": "hoist", "note": "2.11x faster than SBCL"},
+    "fixnum_loop_jit": {"habu_us": 309, "sbcl_us": 337, "ratio": 1.09, "engine": "hoist", "note": "1.09x faster than SBCL!"},
+    "mul_accum_jit":   {"habu_us": 755, "sbcl_us": 750, "ratio": 0.99, "engine": "hoist", "note": "Parity with SBCL"},
+    "nested_loop_jit": {"habu_us": 336, "sbcl_us": 321, "ratio": 0.95, "engine": "hoist", "note": "~parity with SBCL"},
+    "fib30_interp":    {"habu_us": 6591518, "sbcl_us": 21360, "ratio": 0.003, "engine": "bytecode", "note": "Interpreter baseline"},
+    "list_build_100k": {"habu_us": 78984, "sbcl_us": 245, "ratio": 0.003, "engine": "bytecode", "note": "GC-intensive"},
+    "hash_insert_20k": {"habu_us": 16282, "sbcl_us": 481, "ratio": 0.03, "engine": "bytecode", "note": "Hash table"}
+  },
+  "improvements_from_v3": {
+    "fib35": "42.4ms -> 38.0ms (10% faster)",
+    "tak": "91.5ms -> 87.0ms (5% faster)",
+    "ack": "189ms -> 182ms (4% faster)",
+    "fixnum_loop": "607us -> 309us (49% faster, now 1.09x SBCL!)",
+    "mul_accum": "1384us -> 755us (45% faster, now parity)",
+    "nested_loop": "619us -> 336us (46% faster, now ~parity)"
+  },
+  "improvements_from_v2": {
+    "fib35": "47.9ms -> 38.0ms (21% faster)",
+    "tak": "95ms -> 87ms (8% faster)",
+    "ack": "195ms -> 182ms (7% faster)",
+    "fixnum_loop": "607us -> 309us (49% faster)",
+    "mul_accum": "1384us -> 755us (45% faster)",
+    "nested_loop": "619us -> 336us (46% faster)"
+  },
+  "changes": [
+    "Fix 1: Correct CSET elimination mask (0x1A800000 -> 0x1A800400)",
+    "Fix 2: Branch inversion (b.cond +8; b target -> b.inv target; nop)",
+    "Fix 3: NOP compaction pass (remove all NOPs, fix branch offsets)",
+    "Fix 5: MADD fusion (mul+add -> madd, saves 1 insn for multiply-accumulate)"
+  ],
+  "loop_hot_path_insns": {
+    "fixnum_loop": "5 (cmp, b.ge, add, add, b) — was 9",
+    "mul_accum": "6 (cmp, b.ge, mul, add, add, b) — was 10",
+    "nested_loop_inner": "5 (cmp, b.ge, madd, add, b) — was 9"
+  }
+}
