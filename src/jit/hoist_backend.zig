@@ -207,6 +207,9 @@ pub const IrTranslator = struct {
             .fixnum_mul => |op| canTranslate(op.left) and canTranslate(op.right),
             .mul => |op| canTranslate(op.left) and canTranslate(op.right),
             .eq => |op| canTranslate(op.left) and canTranslate(op.right),
+            // List / predicate operations (inline, no heap access needed)
+            .nilp, .not, .consp, .abs => |op| canTranslate(op.operand),
+            .car, .cdr, .unsafe_car, .unsafe_cdr => |op| canTranslate(op.operand),
             else => false,
         };
     }
@@ -242,6 +245,15 @@ pub const IrTranslator = struct {
             .loop => |loop_node| try self.translateLoop(loop_node.cond, loop_node.body),
             .assert_fixnum => |op| try self.translate(op.operand), // At safety 0, just pass through
             .global_ref => |_| try self.translateLit(Value.nil), // TODO: general global refs
+            // List / predicate operations (inline, no heap access needed)
+            .nilp => |op| try self.translateNilp(op.operand),
+            .not => |op| try self.translateNot(op.operand),
+            .consp => |op| try self.translateConsp(op.operand),
+            .car => |op| try self.translateCar(op.operand),
+            .cdr => |op| try self.translateCdr(op.operand),
+            .unsafe_car => |op| try self.translateUnsafeCar(op.operand),
+            .unsafe_cdr => |op| try self.translateUnsafeCdr(op.operand),
+            .abs => |op| try self.translateAbs(op.operand),
             .call => |call_node| try self.translateCall(call_node.func, call_node.args),
             .tailcall => |tc| try self.translateCall(tc.func, tc.args),
             else => {
@@ -477,6 +489,30 @@ pub const IrTranslator = struct {
             },
             .set => |n| try self.preEmitConstants(n.value),
             .assert_fixnum => |n| try self.preEmitConstants(n.operand),
+            // List / predicate ops — pre-emit constants used in inline translation
+            .nilp, .not => |n| {
+                _ = try self.cachedIconst(0); // nil
+                _ = try self.cachedIconst(@as(i64, @bitCast(Value.t.raw))); // t
+                try self.preEmitConstants(n.operand);
+            },
+            .consp => |n| {
+                _ = try self.cachedIconst(0); // nil
+                _ = try self.cachedIconst(0xF); // tag mask
+                _ = try self.cachedIconst(@as(i64, @bitCast(Value.t.raw))); // t
+                try self.preEmitConstants(n.operand);
+            },
+            .car, .unsafe_car => |n| {
+                try self.preEmitConstants(n.operand);
+            },
+            .cdr, .unsafe_cdr => |n| {
+                _ = try self.cachedIconst(8); // cdr offset
+                try self.preEmitConstants(n.operand);
+            },
+            .abs => |n| {
+                _ = try self.cachedIconst(1); // for sge comparison
+                _ = try self.cachedIconst(2); // for 2 - raw
+                try self.preEmitConstants(n.operand);
+            },
             else => {},
         }
     }
@@ -626,6 +662,80 @@ pub const IrTranslator = struct {
         }
         return result;
     }
+
+    // ── List / predicate operations (inline, no heap access) ──
+
+    /// nilp: val == 0 → t (raw 2), else nil (raw 0)
+    fn translateNilp(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
+        const val = try self.translate(operand_ir);
+        const zero = try self.cachedIconst(0);
+        const cond = try self.b.icmp(I8, IntCC.eq, val, zero);
+        const t_val = try self.cachedIconst(@as(i64, @bitCast(Value.t.raw)));
+        const nil_val = try self.cachedIconst(0);
+        return try self.b.select(I64, cond, t_val, nil_val);
+    }
+
+    /// not: identical to nilp in CL semantics
+    fn translateNot(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
+        return self.translateNilp(operand_ir);
+    }
+
+    /// consp: (val & 0xF) == 0 && val != 0
+    /// Cons tag is 0b0000 (pointer with bit0=0, bits1-3=000).
+    /// nil is also 0b0000 but nil.raw == 0, so we need both checks.
+    fn translateConsp(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
+        const val = try self.translate(operand_ir);
+        const mask = try self.cachedIconst(0xF);
+        const tag_bits = try self.b.band(I64, val, mask);
+        const zero = try self.cachedIconst(0);
+        const tag_ok = try self.b.icmp(I8, IntCC.eq, tag_bits, zero);
+        const not_nil = try self.b.icmp(I8, IntCC.ne, val, zero);
+        // Both conditions must be true: tag is cons AND not nil
+        const both = try self.b.band(I8, tag_ok, not_nil);
+        const t_val = try self.cachedIconst(@as(i64, @bitCast(Value.t.raw)));
+        const nil_val = try self.cachedIconst(0);
+        return try self.b.select(I64, both, t_val, nil_val);
+    }
+
+    /// car: load [val + 0]
+    /// At safety=0 (JIT requirement), no nil check needed.
+    /// Cons tag is 0 so val.raw IS the pointer. Car is at offset 0.
+    fn translateCar(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
+        const val = try self.translate(operand_ir);
+        return try self.b.load(I64, val, hoist.memflags.MemFlags.heap());
+    }
+
+    /// cdr: load [val + 8]
+    /// At safety=0 (JIT requirement), no nil check needed.
+    /// Cdr is at offset 8 (after car field).
+    fn translateCdr(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
+        const val = try self.translate(operand_ir);
+        const eight = try self.cachedIconst(8);
+        const cdr_addr = try self.b.iadd(I64, val, eight);
+        return try self.b.load(I64, cdr_addr, hoist.memflags.MemFlags.heap());
+    }
+
+    /// unsafe_car: same as car (both are unchecked at safety=0)
+    fn translateUnsafeCar(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
+        return self.translateCar(operand_ir);
+    }
+
+    /// unsafe_cdr: same as cdr (both are unchecked at safety=0)
+    fn translateUnsafeCdr(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
+        return self.translateCdr(operand_ir);
+    }
+
+    /// abs for tagged fixnums.
+    /// Tagged: raw = val*2+1. If val >= 0 (raw >= 1), return raw.
+    /// If val < 0 (raw < 1), return 2 - raw.
+    fn translateAbs(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
+        const val = try self.translate(operand_ir);
+        const one = try self.cachedIconst(1);
+        const is_non_neg = try self.b.icmp(I8, IntCC.sge, val, one);
+        const two = try self.cachedIconst(2);
+        const negated = try self.b.isub(I64, two, val);
+        return try self.b.select(I64, is_non_neg, val, negated);
+    }
 };
 
 /// Patch all occurrences of a 64-bit placeholder value in the code buffer.
@@ -718,7 +828,9 @@ fn collectMutatedVars(ir: *const Ir, indices: *std.ArrayList(u16), allocator: st
             try collectMutatedVars(op.left, indices, allocator);
             try collectMutatedVars(op.right, indices, allocator);
         },
-        .assert_fixnum => |op| try collectMutatedVars(op.operand, indices, allocator),
+        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs => |op| {
+            try collectMutatedVars(op.operand, indices, allocator);
+        },
         .call => |c| {
             for (c.args) |arg| try collectMutatedVars(arg, indices, allocator);
         },
@@ -792,7 +904,7 @@ fn hasNestedSelfCalls(body: *const Ir, name: []const u8) bool {
             }
             return false;
         },
-        .assert_fixnum => |op| hasNestedSelfCalls(op.operand, name),
+        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs => |op| hasNestedSelfCalls(op.operand, name),
         else => false,
     };
 }
@@ -826,7 +938,7 @@ fn detectSelfCalls(body: *const Ir, name: []const u8) bool {
             }
             return false;
         },
-        .assert_fixnum => |op| detectSelfCalls(op.operand, name),
+        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs => |op| detectSelfCalls(op.operand, name),
         else => false,
     };
 }
@@ -858,7 +970,7 @@ fn detectLoops(body: *const Ir) bool {
             }
             return false;
         },
-        .assert_fixnum => |n| detectLoops(n.operand),
+        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs => |n| detectLoops(n.operand),
         .set => |n| detectLoops(n.value),
         else => false,
     };
