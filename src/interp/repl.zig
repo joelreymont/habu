@@ -1886,12 +1886,19 @@ pub const Repl = struct {
             return false;
         };
         persistent.* = compiled;
-        const vm = self.activeVm();
-        vm.registerHoistFn(chunk_ptr, persistent) catch {
+        // Always register on the primary VM - activeVm() may return a context VM
+        // that gets destroyed after file loading, losing the registration.
+        self.vm.registerHoistFn(chunk_ptr, persistent) catch {
             persistent.deinit();
             self.allocator.destroy(persistent);
             return false;
         };
+        if (std.posix.getenv("HABU_TRACE_JIT") != null) {
+            std.debug.print("JIT: hoist compiled '{s}' OK (arity={d}, fn_ptr={*}, chunk=0x{x}, map_count={d})\n", .{
+                name, compiled.arity, compiled.fn_ptr,
+                @intFromPtr(chunk_ptr), self.vm.hoist_fns.count(),
+            });
+        }
         return true;
     }
 

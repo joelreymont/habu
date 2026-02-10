@@ -3005,6 +3005,7 @@ pub const Vm = struct {
                 }
                 try self.doCall(argc, false);
                 // Check for hoist-compiled function
+
                 if (self.tryCallHoist(argc)) |result| {
                     // Pop the call frame and push result
                     self.fp -= 1;

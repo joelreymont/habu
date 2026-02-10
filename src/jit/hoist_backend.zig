@@ -813,6 +813,10 @@ pub fn compileIr(
         try translator.locals.append(allocator, block_params[i]);
     }
 
+    // Pre-emit all constants in the entry block so they dominate all uses.
+    // Without this, cachedIconst can return values from wrong blocks.
+    try translator.preEmitConstants(lambda.body);
+
     // Translate body
     const result = translator.translate(lambda.body) catch |err| {
         return err;
@@ -1600,6 +1604,184 @@ test "hoist IR translator: fib recursive" {
     // fib(10) = 55, tagged: (10<<1)|1=21 → (55<<1)|1=111
     const result = compiled.call1(21);
     try testing.expectEqual(@as(i64, 55), @as(i64, result) >> 1);
+}
+
+test "hoist IR translator: two-arg add" {
+    // (lambda (a b) (+ a b))
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const params = try alloc.alloc([]const u8, 2);
+    params[0] = "a";
+    params[1] = "b";
+
+    const var_a = try alloc.create(Ir);
+    var_a.* = .{ .@"var" = .{ .name = "a", .depth = 0, .index = 0 } };
+    const var_b = try alloc.create(Ir);
+    var_b.* = .{ .@"var" = .{ .name = "b", .depth = 0, .index = 1 } };
+    const add = try alloc.create(Ir);
+    add.* = .{ .fixnum_add = .{ .left = var_a, .right = var_b } };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = params,
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = add,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    var compiled = try compileIr(testing.allocator, lambda, "add2");
+    defer compiled.deinit();
+
+    // (+ 3 4) = 7. Tagged: 3→7, 4→9, 7→15
+    const r = compiled.call2(7, 9);
+    std.debug.print("add2(3,4) = {d} (expected 15)\n", .{r});
+    try testing.expectEqual(@as(i64, 15), r);
+
+    // (+ 0 0) = 0. Tagged: 0→1, 0→1, 0→1
+    try testing.expectEqual(@as(i64, 1), compiled.call2(1, 1));
+}
+
+test "hoist IR translator: ackermann 2-arg recursive" {
+    // (lambda (m n)
+    //   (if (= m 0) (+ n 1)
+    //     (if (= n 0) (ack (- m 1) 1)
+    //       (ack (- m 1) (ack m (- n 1))))))
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const params = try alloc.alloc([]const u8, 2);
+    params[0] = "m";
+    params[1] = "n";
+
+    const var_m = try alloc.create(Ir);
+    var_m.* = .{ .@"var" = .{ .name = "m", .depth = 0, .index = 0 } };
+    const var_n = try alloc.create(Ir);
+    var_n.* = .{ .@"var" = .{ .name = "n", .depth = 0, .index = 1 } };
+    const lit_0 = try alloc.create(Ir);
+    lit_0.* = .{ .lit = Value.makeFixnum(0) };
+    const lit_1 = try alloc.create(Ir);
+    lit_1.* = .{ .lit = Value.makeFixnum(1) };
+
+    // (= m 0)
+    const m_eq_0 = try alloc.create(Ir);
+    m_eq_0.* = .{ .fixnum_eq = .{ .left = var_m, .right = lit_0 } };
+
+    // (+ n 1) — base case
+    const n_plus_1 = try alloc.create(Ir);
+    n_plus_1.* = .{ .fixnum_add = .{ .left = var_n, .right = lit_1 } };
+
+    // (= n 0)
+    const n_eq_0 = try alloc.create(Ir);
+    n_eq_0.* = .{ .fixnum_eq = .{ .left = var_n, .right = lit_0 } };
+
+    // (- m 1)
+    const m_minus_1 = try alloc.create(Ir);
+    m_minus_1.* = .{ .fixnum_sub = .{ .left = var_m, .right = lit_1 } };
+
+    // (- n 1)
+    const n_minus_1 = try alloc.create(Ir);
+    n_minus_1.* = .{ .fixnum_sub = .{ .left = var_n, .right = lit_1 } };
+
+    // Self-call references
+    const self1 = try alloc.create(Ir);
+    self1.* = .{ .global_ref = .{ .name = "ack", .index = 0 } };
+    const self2 = try alloc.create(Ir);
+    self2.* = .{ .global_ref = .{ .name = "ack", .index = 0 } };
+    const self3 = try alloc.create(Ir);
+    self3.* = .{ .global_ref = .{ .name = "ack", .index = 0 } };
+
+    // (ack (- m 1) 1)
+    const args1 = try alloc.alloc(*const Ir, 2);
+    args1[0] = m_minus_1;
+    args1[1] = lit_1;
+    const call_ack1 = try alloc.create(Ir);
+    call_ack1.* = .{ .call = .{ .func = self1, .args = args1 } };
+
+    // Need fresh copies of (- m 1) and (- n 1) and var_m for inner calls
+    const m_minus_1_2 = try alloc.create(Ir);
+    m_minus_1_2.* = .{ .fixnum_sub = .{ .left = var_m, .right = lit_1 } };
+    const n_minus_1_2 = try alloc.create(Ir);
+    n_minus_1_2.* = .{ .fixnum_sub = .{ .left = var_n, .right = lit_1 } };
+
+    // (ack m (- n 1))
+    const args2 = try alloc.alloc(*const Ir, 2);
+    args2[0] = var_m;
+    args2[1] = n_minus_1_2;
+    const call_ack2 = try alloc.create(Ir);
+    call_ack2.* = .{ .call = .{ .func = self2, .args = args2 } };
+
+    // (ack (- m 1) (ack m (- n 1)))
+    const args3 = try alloc.alloc(*const Ir, 2);
+    args3[0] = m_minus_1_2;
+    args3[1] = call_ack2;
+    const call_ack3 = try alloc.create(Ir);
+    call_ack3.* = .{ .call = .{ .func = self3, .args = args3 } };
+
+    // (if (= n 0) (ack (- m 1) 1) (ack (- m 1) (ack m (- n 1))))
+    const inner_if = try alloc.create(Ir);
+    inner_if.* = .{ .@"if" = .{
+        .cond = n_eq_0,
+        .then_branch = call_ack1,
+        .else_branch = call_ack3,
+    } };
+
+    // (if (= m 0) (+ n 1) inner_if)
+    const outer_if = try alloc.create(Ir);
+    outer_if.* = .{ .@"if" = .{
+        .cond = m_eq_0,
+        .then_branch = n_plus_1,
+        .else_branch = inner_if,
+    } };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = params,
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = outer_if,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    var compiled = try compileIr(testing.allocator, lambda, "ack");
+    defer compiled.deinit();
+
+    // ack(0, 0) = 1, tagged: (0→1, 0→1) → (1→3)
+    const r00 = compiled.call2(1, 1);
+    std.debug.print("ack(0,0) = {d} (expected 3)\n", .{r00});
+    try testing.expectEqual(@as(i64, 3), r00);
+
+    // ack(0, 5) = 6, tagged: (0→1, 5→11) → (6→13)
+    try testing.expectEqual(@as(i64, 13), compiled.call2(1, 11));
+
+    // ack(1, 0) = 2, tagged: (1→3, 0→1) → (2→5)
+    const r10 = compiled.call2(3, 1);
+    std.debug.print("ack(1,0) = {d} (expected 5)\n", .{r10});
+    try testing.expectEqual(@as(i64, 5), r10);
+
+    // ack(1, 1) = 3, tagged: (1→3, 1→3) → (3→7)
+    const r11 = compiled.call2(3, 3);
+    std.debug.print("ack(1,1) = {d} (expected 7)\n", .{r11});
+    try testing.expectEqual(@as(i64, 7), r11);
+
+    // ack(2, 3) = 9, tagged: (2→5, 3→7) → (9→19)
+    const r23 = compiled.call2(5, 7);
+    std.debug.print("ack(2,3) = {d} (expected 19)\n", .{r23});
+    try testing.expectEqual(@as(i64, 19), r23);
+
+    // ack(3, 3) = 61, tagged: (3→7, 3→7) → (61→123)
+    const r33 = compiled.call2(7, 7);
+    std.debug.print("ack(3,3) = {d} (expected 123)\n", .{r33});
+    try testing.expectEqual(@as(i64, 123), r33);
 }
 
 test "hoist IR translator: fixnum arithmetic" {
