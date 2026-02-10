@@ -223,6 +223,7 @@ pub const IrTranslator = struct {
     /// Self-calls use untagged convention (no tag/untag at call boundary).
     untagged: bool = false,
 
+
     pub fn init(allocator: std.mem.Allocator, func: *Function, builder: *FunctionBuilder) IrTranslator {
         return .{
             .allocator = allocator,
@@ -1547,6 +1548,11 @@ pub fn compileIrWithKnownFns(
         }
     }
 
+    // TCO disabled: hoist's codegen doesn't emit phi copies for jump args to
+    // return merge blocks. The block param in the return block gets the wrong
+    // register. This is a hoist upstream bug. See docs/hoist-issues.md.
+    // TODO: fix hoist jump arg phi copy emission, then re-enable TCO.
+
     // Pre-emit all constants in the entry block so they dominate all uses.
     // Without this, cachedIconst can return values from wrong blocks.
     try translator.preEmitConstants(lambda.body);
@@ -1637,6 +1643,10 @@ pub fn compileIrWithKnownFns(
     // Fix parallel copy conflicts in function entry (param register shuffling).
     // When hoist's regalloc copies params from x0-x7 to work registers,
     // sequential moves can clobber params before they're consumed.
+    // Fix parallel copy conflicts in entry (param register shuffling) for untagged mode.
+    // In untagged mode, the SSHR untag instructions immediately follow MOV param copies,
+    // creating clobber opportunities. For tagged mode, hoist saves params to callee-saved
+    // regs first (no clobber risk in the initial MOV sequence).
     if (translator.untagged and arity > 1) {
         fixEntryParamMoves(code.code.items);
     }

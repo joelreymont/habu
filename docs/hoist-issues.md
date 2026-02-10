@@ -60,3 +60,19 @@ that need to be fixed upstream or worked around in habu.
 ### 7. Missing verification of SSA dominance
 - **Symptom:** Invalid IR (values used outside dominating block) compiles silently and produces wrong machine code.
 - **Proper fix:** Add dominance tree computation and SSA validation to `verification(true)` mode.
+
+### 8. Jump args to block params don't emit phi copies
+- **File:** hoist `src/codegen/compile.zig` (jump handler)
+- **Symptom:** When a `jump block(v1, v2)` carries values to a block with block params, the codegen doesn't emit MOV instructions to copy the argument registers to the parameter registers. The block params get mapped to wrong registers by the register allocator.
+- **Example:** `jump block4(v13)` where v13 is in x4, but block4's param v11 is mapped to x6. No `MOV x6, x4` is emitted.
+- **Impact:** Blocks TCO implementation (tail-call to loop conversion) and any SSA pattern where values flow through block params from non-dominating blocks.
+- **Workaround:** None — TCO is disabled in habu.
+- **Proper fix:** Ensure the jump handler in codegen emits parallel copies from jump args to block params, similar to how `brifArgs` should handle it (issue #9).
+
+### 9. Entry param shuffle bug for .aggressive 3-param leaf functions
+- **File:** hoist `src/codegen/compile.zig` or regalloc
+- **Symptom:** When `.aggressive` optimization compiles a 3-param function with no calls, the register allocator may assign overlapping source/destination registers for the initial param copy. Sequential `MOV x2, x1; MOV x3, x2` clobbers x2 (originally c) before x3 reads it.
+- **Example:** `(defun f (a b c) (if (= c 0) (+ a b) 0))` returns wrong values.
+- **Impact:** Correctness bug for leaf functions with 3+ params under `.aggressive` optimization.
+- **Workaround:** Such functions currently fall through to bytecode interpreter (they don't have `safety 0` or aren't leaf). Functions compiled with `.none` (recursive/calling) save to callee-saved regs first, avoiding the conflict.
+- **Proper fix:** Use parallel copy algorithm for entry param shuffling, or ensure regalloc doesn't create overlapping assignments for ABI parameter registers.
