@@ -1854,6 +1854,9 @@ pub const Repl = struct {
         // Only compile speed=3, safety=0 functions
         // Safety > 0 needs runtime type checks that hoist backend doesn't emit
         if (lambda.safety > 0) return false;
+        // Skip functions whose body is just a type assertion (e.g. (the fixnum x)).
+        // These may receive non-fixnum types; the untagged JIT would corrupt them.
+        if (lambda.body.* == .assert_fixnum) return false;
         // Skip functions that the hoist backend can't translate (fast reject)
         if (!hoist_backend.IrTranslator.canTranslate(lambda.body)) return false;
 

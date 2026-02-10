@@ -1,0 +1,28 @@
+{
+  "date": "2026-02-08T22:00:00Z",
+  "note": "Untagged fixnum mode for loops + mov coalescing + B.+4 elimination",
+  "benchmarks": {
+    "fib35":           {"habu_us": 42447, "sbcl_us": 56905, "ratio": 1.34, "engine": "hoist", "note": "1.34x faster than SBCL"},
+    "tak_x1000":       {"habu_us": 91467, "sbcl_us": 96135, "ratio": 1.05, "engine": "hoist", "note": "1.05x faster than SBCL"},
+    "ack3_10":         {"habu_us": 187169, "sbcl_us": 383866, "ratio": 2.05, "engine": "hoist", "note": "2.05x faster than SBCL"},
+    "fixnum_loop_jit": {"habu_us": 607, "sbcl_us": 337, "ratio": 0.55, "engine": "hoist", "note": "Loop overhead: NOPs from phi coalesce"},
+    "mul_accum_jit":   {"habu_us": 1384, "sbcl_us": 751, "ratio": 0.54, "engine": "hoist", "note": "Loop overhead"},
+    "nested_loop_jit": {"habu_us": 619, "sbcl_us": 321, "ratio": 0.51, "engine": "hoist", "note": "Loop overhead"},
+    "fib30_interp":    {"habu_us": 6587074, "sbcl_us": 20837, "ratio": 0.003, "engine": "bytecode", "note": "Interpreter baseline"},
+    "list_build_100k": {"habu_us": 77966, "sbcl_us": 205, "ratio": 0.003, "engine": "bytecode", "note": "GC-intensive"},
+    "hash_insert_20k": {"habu_us": 16189, "sbcl_us": 431, "ratio": 0.03, "engine": "bytecode", "note": "Hash table"}
+  },
+  "improvements_from_v2": {
+    "fib35": "47.9ms → 42.4ms (11% faster, from B.+4 elimination in prologue)",
+    "tak": "95ms → 91.5ms (4% faster)",
+    "ack": "195ms → 187ms (4% faster)",
+    "loops": "No change - bottleneck is hoist loop codegen structure"
+  },
+  "changes": [
+    "Untagged fixnum mode: loops untag params at entry, retag at return",
+    "Only enabled for loop functions (not recursive - retag overhead at self-calls)",
+    "Mov coalescing: op rD + mov rC,rD → op rC + NOP (eliminates phi-copy movs)",
+    "B .+4 elimination: useless jumps to next instruction NOPed",
+    "fixEntryParamMoves: fixes parallel copy conflicts in 2+ param entry"
+  ]
+}

@@ -137,6 +137,11 @@ pub const IrTranslator = struct {
     /// that require post-emission parallel copy fixup for call arguments.
     needs_call_spill: bool = false,
 
+    /// When true, all internal values are untagged plain i64.
+    /// Params are untagged at entry, result is re-tagged at return.
+    /// Self-calls use untagged convention (no tag/untag at call boundary).
+    untagged: bool = false,
+
     pub fn init(allocator: std.mem.Allocator, func: *Function, builder: *FunctionBuilder) IrTranslator {
         return .{
             .allocator = allocator,
@@ -246,6 +251,9 @@ pub const IrTranslator = struct {
     }
 
     fn translateLit(self: *IrTranslator, val: Value) anyerror!HoistValue {
+        if (self.untagged and val.isFixnum()) {
+            return try self.cachedIconst(val.toFixnum());
+        }
         return try self.cachedIconst(@as(i64, @bitCast(val.raw)));
     }
 
@@ -265,6 +273,11 @@ pub const IrTranslator = struct {
     }
 
     fn translateFixnumAdd(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
+        if (self.untagged) {
+            const l = try self.translate(left);
+            const r = try self.translate(right);
+            return try self.b.iadd(I64, l, r);
+        }
         // Tagged fixnum add: result_raw = l_raw + r_raw - 1
         // When one operand is a constant, fold: iadd(x, const - 1)
         if (getFixnumLit(right)) |r_const| {
@@ -285,6 +298,11 @@ pub const IrTranslator = struct {
     }
 
     fn translateFixnumSub(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
+        if (self.untagged) {
+            const l = try self.translate(left);
+            const r = try self.translate(right);
+            return try self.b.isub(I64, l, r);
+        }
         // Tagged fixnum sub: result_raw = l_raw - r_raw + 1
         // When right is a constant, fold: isub(x, const - 1)
         if (getFixnumLit(right)) |r_const| {
@@ -300,6 +318,11 @@ pub const IrTranslator = struct {
     }
 
     fn translateFixnumMul(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
+        if (self.untagged) {
+            const l = try self.translate(left);
+            const r = try self.translate(right);
+            return try self.b.imul(I64, l, r);
+        }
         // Tagged fixnum mul: result = sshr(a, 1) * (b - 1) + 1
         // Proof: a=2va+1, b=2vb+1. sshr(a,1)=va. b-1=2vb. va*2vb=2*va*vb. +1 = tagged(va*vb).
         // When one operand is a constant, fold: sshr(a,1) * (const_raw - 1) + 1
@@ -406,25 +429,33 @@ pub const IrTranslator = struct {
     fn preEmitConstants(self: *IrTranslator, ir: *const Ir) !void {
         switch (ir.*) {
             .lit => |v| {
-                _ = try self.cachedIconst(@as(i64, @bitCast(v.raw)));
+                if (self.untagged and v.isFixnum()) {
+                    _ = try self.cachedIconst(v.toFixnum());
+                } else {
+                    _ = try self.cachedIconst(@as(i64, @bitCast(v.raw)));
+                }
             },
             .fixnum_add, .fixnum_sub, .add, .sub => |op| {
-                // Also pre-emit the folded constant for fixnum ops with literal operands
-                if (getFixnumLit(op.right)) |r_const| {
-                    _ = try self.cachedIconst(r_const - 1);
-                } else if (getFixnumLit(op.left)) |l_const| {
-                    _ = try self.cachedIconst(l_const - 1);
+                if (!self.untagged) {
+                    // Pre-emit the folded constant for tagged fixnum ops
+                    if (getFixnumLit(op.right)) |r_const| {
+                        _ = try self.cachedIconst(r_const - 1);
+                    } else if (getFixnumLit(op.left)) |l_const| {
+                        _ = try self.cachedIconst(l_const - 1);
+                    }
                 }
                 try self.preEmitConstants(op.left);
                 try self.preEmitConstants(op.right);
             },
             .fixnum_mul, .mul => |op| {
-                if (getFixnumLit(op.right)) |r_const| {
-                    _ = try self.cachedIconst(r_const - 1);
-                } else if (getFixnumLit(op.left)) |l_const| {
-                    _ = try self.cachedIconst(l_const - 1);
+                if (!self.untagged) {
+                    if (getFixnumLit(op.right)) |r_const| {
+                        _ = try self.cachedIconst(r_const - 1);
+                    } else if (getFixnumLit(op.left)) |l_const| {
+                        _ = try self.cachedIconst(l_const - 1);
+                    }
+                    _ = try self.cachedIconst(1); // for sshr
                 }
-                _ = try self.cachedIconst(1); // for sshr
                 try self.preEmitConstants(op.left);
                 try self.preEmitConstants(op.right);
             },
@@ -544,6 +575,16 @@ pub const IrTranslator = struct {
             translated_args[i] = try self.translate(arg);
         }
 
+        // In untagged mode, re-tag args before self-call since the function
+        // entry always untags. Result also comes back tagged, so untag it.
+        if (self.untagged) {
+            const one = try self.cachedIconst(1);
+            for (0..args.len) |i| {
+                const shifted = try self.b.ishl(I64, translated_args[i], one);
+                translated_args[i] = try self.b.bor(I64, shifted, one);
+            }
+        }
+
         // Emit self_ptr iconst (after arg evaluation to avoid register interference)
         const self_ptr = try self.b.iconst(I64, self.self_ptr_placeholder);
 
@@ -567,6 +608,12 @@ pub const IrTranslator = struct {
         const call_result = try self.func.dfg.appendInstResult(call_inst, I64);
         const block = self.b.current_block orelse return error.NoCurrentBlock;
         try self.func.layout.appendInst(call_inst, block);
+
+        // In untagged mode, the self-call returns a tagged result. Untag it.
+        if (self.untagged) {
+            const one = try self.cachedIconst(1);
+            return try self.b.sshr(I64, call_result, one);
+        }
 
         return call_result;
     }
@@ -889,11 +936,29 @@ pub fn compileIr(
         translator.self_sig_ref = try func.addSignature(indirect_sig);
     }
 
-    // Map params to SSA values
+    // Enable untagged mode: work with plain i64 inside the function body.
+    // Params are untagged at entry (sshr 1), result is re-tagged at return.
+    // Self-calls use untagged calling convention (no tag/untag overhead).
+    // Only use untagged mode for functions with loops (no call overhead).
+    // Recursive functions pay retag/untag at every self-call, which is worse.
+    translator.untagged = translator.has_loops and !translator.is_recursive;
+
+    // Map params to SSA values, untagging at entry in untagged mode.
     const block_params = func.dfg.blockParams(entry);
     try translator.locals.ensureTotalCapacity(allocator, arity);
-    for (0..arity) |i| {
-        try translator.locals.append(allocator, block_params[i]);
+    if (translator.untagged) {
+        const one = try translator.cachedIconst(1);
+        // Untag all params. For multi-param functions, the hoist regalloc
+        // has a parallel copy bug where sequential moves clobber later params.
+        // We work around this in fixEntryParamMoves post-pass.
+        for (0..arity) |i| {
+            const untagged = try b.sshr(I64, block_params[i], one);
+            try translator.locals.append(allocator, untagged);
+        }
+    } else {
+        for (0..arity) |i| {
+            try translator.locals.append(allocator, block_params[i]);
+        }
     }
 
     // Pre-emit all constants in the entry block so they dominate all uses.
@@ -905,19 +970,38 @@ pub fn compileIr(
         return err;
     };
 
-    // Emit ret with the result value
+    // Emit ret with the result value, re-tagging if in untagged mode
     const result_ty = func.dfg.valueType(result) orelse I64;
-    const result_i64 = if (result_ty.raw == I8.raw)
+    var result_i64 = if (result_ty.raw == I8.raw)
         try b.uextend(I64, result)
     else
         result;
+    if (translator.untagged) {
+        // Re-tag: tagged = val * 2 + 1 = (val << 1) | 1
+        // For i8 results (comparisons returning t/nil), we need special handling:
+        // 0 → nil (0x0), 1 → t (0x2). But these are already special values...
+        // Actually in untagged mode, comparisons still return I8 0/1 for brif.
+        // At return point, if the result is I8, it came from a cmp (boolean).
+        // We need to map: 0 → nil raw (0), 1 → t raw (2).
+        if (result_ty.raw == I8.raw) {
+            // Boolean result: 0 → nil, nonzero → t
+            // t.raw = 2, nil.raw = 0. So: result_i64 * 2 = uextend then ishl.
+            const one = try translator.cachedIconst(1);
+            result_i64 = try b.ishl(I64, result_i64, one);
+        } else {
+            // Fixnum result: re-tag with (val << 1) | 1
+            const one = try translator.cachedIconst(1);
+            const shifted = try b.ishl(I64, result_i64, one);
+            result_i64 = try b.bor(I64, shifted, one);
+        }
+    }
     try b.retValues(&.{result_i64});
 
     // Compile with Hoist
     var ctx_builder = ContextBuilder.init(allocator);
     _ = try ctx_builder.targetNative();
     var ctx = ctx_builder
-        .optLevel(if (translator.is_recursive or translator.has_loops) .none else .aggressive)
+        .optLevel(if (translator.is_recursive) .none else .aggressive)
         .callConv(.system_v)
         .verification(true)
         .build();
@@ -972,6 +1056,21 @@ pub fn compileIr(
     if (std.posix.getenv("HABU_NO_CSET_ELIM") == null) {
         eliminateDeadCset(code.code.items);
     }
+
+    // Fix parallel copy conflicts in function entry (param register shuffling).
+    // When hoist's regalloc copies params from x0-x7 to work registers,
+    // sequential moves can clobber params before they're consumed.
+    if (translator.untagged and arity > 1) {
+        fixEntryParamMoves(code.code.items);
+    }
+
+    // Coalesce: replace `op rD, rA, rB; mov rC, rD` with `op rC, rA, rB; nop`
+    // when rD is not used after the mov. This eliminates phi-copy overhead in loops.
+    coalesceMovs(code.code.items);
+
+    // Eliminate B .+4 (jump to next instruction = NOP).
+    // Must run AFTER coalescing since coalescing uses branches as scan barriers.
+    eliminateUselessBranches(code.code.items);
 
     // Fix parallel copy conflicts in call argument setup.
     // Hoist's lowering emits sequential mov instructions for call arguments
@@ -1075,6 +1174,231 @@ fn eliminateDeadCset(code: []u8) void {
 ///   mov x0, x23
 ///   mov x1, x24
 ///   blr x9
+/// Fix parallel copy conflicts in function entry parameter moves.
+/// Pattern: after prologue, hoist emits sequential `mov xD, xS` to copy
+/// params from ABI registers to work registers. If a later move reads from
+/// a register that an earlier move already overwrote, we reorder the moves.
+fn fixEntryParamMoves(code: []u8) void {
+    if (code.len < 16) return;
+    const n_insns = code.len / 4;
+
+    // Find the first mov after prologue (skip stp, mov fp,sp, and stp callee-saves)
+    var first_mov: usize = 0;
+    for (0..@min(n_insns, 16)) |i| {
+        const insn = readInsn(code, i);
+        // Look for MOV Xd, Xm (ORR Xd, XZR, Xm): 0xAA0003E0 mask 0xFFE0FFE0
+        if (insn & 0xFFE0FFE0 == 0xAA0003E0) {
+            const rm: u5 = @truncate((insn >> 16) & 0x1F);
+            // Must be reading from an ABI arg register (x0-x7)
+            if (rm <= 7) {
+                first_mov = i;
+                break;
+            }
+        }
+    }
+    if (first_mov == 0) return;
+
+    // Collect consecutive mov instructions from param registers
+    const MovInfo = struct { src: u5, dst: u5, pos: usize };
+    var movs: [8]MovInfo = undefined;
+    var n_movs: usize = 0;
+
+    var i = first_mov;
+    while (i < @min(n_insns, first_mov + 8) and n_movs < 8) : (i += 1) {
+        const insn = readInsn(code, i);
+        if (insn & 0xFFE0FFE0 == 0xAA0003E0) {
+            const rd: u5 = @truncate(insn & 0x1F);
+            const rm: u5 = @truncate((insn >> 16) & 0x1F);
+            if (rm <= 7) {
+                movs[n_movs] = .{ .src = rm, .dst = rd, .pos = i };
+                n_movs += 1;
+            } else break;
+        } else break;
+    }
+
+    if (n_movs < 2) return;
+
+    // Check for conflicts: mov[a] reads from a register that mov[b] (b < a, earlier)
+    // has already written.
+    var has_conflict = false;
+    for (1..n_movs) |a| {
+        for (0..a) |b_idx| {
+            if (movs[b_idx].dst == movs[a].src) {
+                has_conflict = true;
+                break;
+            }
+        }
+        if (has_conflict) break;
+    }
+
+    if (!has_conflict) return;
+
+    // Simple fix for 2-3 params: use x9 as scratch.
+    // Save the later params first using scratch, then do the moves.
+    // For 2 params: mov x9, x1; mov xA, x0; mov xB, x9
+    if (n_movs == 2) {
+        // movs[0] = first mov, movs[1] = second mov
+        // The conflict is movs[0] clobbers a source of movs[1]
+        // Fix: swap the order (do movs[1] first, then movs[0])
+        const insn0 = makeMovInsn(movs[0].dst, movs[0].src);
+        const insn1 = makeMovInsn(movs[1].dst, movs[1].src);
+        writeInsn(code, movs[0].pos, insn1);
+        writeInsn(code, movs[1].pos, insn0);
+    } else {
+        // General case: save all param values to scratch regs first
+        // Use x9-x15 as scratch (these are caller-saved temporaries)
+        // Phase 1: copy params to scratch
+        // Phase 2: copy scratch to destinations
+        // This requires 2*n instructions, but we only have n slots.
+        // Alternative: use topological sort like fixCallArgMoves.
+        
+        // Find the conflicting pair and swap just those two
+        for (1..n_movs) |a| {
+            for (0..a) |b_idx| {
+                if (movs[b_idx].dst == movs[a].src) {
+                    // Swap movs[a] and movs[b_idx] in execution order
+                    const insn_a = makeMovInsn(movs[a].dst, movs[a].src);
+                    const insn_b = makeMovInsn(movs[b_idx].dst, movs[b_idx].src);
+                    // But after swap, movs[a] (now first) writes to movs[b_idx].src?
+                    // No — the source is movs[a].src which is the param reg.
+                    // After swap: movs[b_idx] position executes movs[a] first.
+                    // movs[a].src reads from the original param reg (untouched).
+                    // Then movs[a] position executes movs[b_idx], which reads from
+                    // movs[b_idx].src — but we need to check it's not clobbered.
+                    
+                    // Simpler: use x9 as scratch for the conflicting value
+                    // Replace: mov xA, x0; mov xB, x1 (where xA=x1)
+                    // With:    mov x9, x1; mov xA, x0; mov xB, x9
+                    // But we have exactly 2 instruction slots, need 3.
+                    // Instead: swap the two instructions if safe.
+                    // After swap: mov xB, x1; mov xA, x0
+                    // Check: does xB == x0? If not, this is safe.
+                    if (movs[a].dst != movs[b_idx].src) {
+                        writeInsn(code, movs[b_idx].pos, insn_a);
+                        writeInsn(code, movs[a].pos, insn_b);
+                    } else {
+                        // Circular dependency. Use x9 as scratch.
+                        // We need to NOP one and insert two, but can't grow code.
+                        // Use: mov x9, xS_a; mov xD_b, xS_b; then later mov xD_a, x9
+                        // This needs an extra slot. For now, panic.
+                        // This case is rare (circular dep between exactly 2 params).
+                        @panic("fixEntryParamMoves: circular dependency not yet handled");
+                    }
+                    return;
+                }
+            }
+        }
+    }
+}
+
+fn makeMovInsn(rd: u5, rm: u5) u32 {
+    // MOV Xd, Xm = ORR Xd, XZR, Xm
+    return 0xAA0003E0 | @as(u32, rd) | (@as(u32, rm) << 16);
+}
+
+/// Coalesce: replace `op rD, rA, rB; mov rC, rD` with `op rC, rA, rB; nop`
+/// when rD is not used elsewhere after the mov. This eliminates phi-copy moves.
+/// Eliminate B .+4 instructions (unconditional jump to next instruction = NOP)
+fn eliminateUselessBranches(code: []u8) void {
+    const n_insns = code.len / 4;
+    var i: usize = 0;
+    while (i < n_insns) : (i += 1) {
+        const insn = readInsn(code, i);
+        // B imm26: 0x14000000 | offset. B .+4 means offset=1 → 0x14000001
+        if (insn == 0x14000001) {
+            writeInsn(code, i, 0xD503201F); // NOP
+        }
+    }
+}
+
+/// Coalesce: for ALU ops where the result is only used by a later mov,
+/// change the ALU op's destination to the mov's destination and NOP the mov.
+/// Handles non-adjacent pairs: `add rD, rA, rB; ...; mov rC, rD` → `add rC, rA, rB; ...; nop`
+fn coalesceMovs(code: []u8) void {
+    if (code.len < 8) return;
+    const n_insns = code.len / 4;
+
+    // Process in multiple passes since coalescing one pair may enable others
+    var changed = true;
+    while (changed) {
+        changed = false;
+        var i: usize = 0;
+        while (i < n_insns) : (i += 1) {
+            const insn0 = readInsn(code, i);
+
+            // Only consider safe ALU ops
+            const op_class = insn0 >> 24;
+            const is_safe_alu = (op_class == 0x8B or // ADD
+                op_class == 0xCB or // SUB
+                op_class == 0x9B); // MADD/MUL
+            if (!is_safe_alu) continue;
+
+            const rd0: u5 = @truncate(insn0 & 0x1F);
+
+            // Look ahead for a MOV that copies rd0
+            var mov_idx: ?usize = null;
+            var mov_dst: u5 = 0;
+            var j = i + 1;
+            while (j < n_insns) : (j += 1) {
+                const next = readInsn(code, j);
+
+                // Check for NOP (skip)
+                if (next == 0xD503201F) continue;
+
+                // Check for MOV Xd, rd0
+                if (next & 0xFFE0FFE0 == 0xAA0003E0) {
+                    const ms: u5 = @truncate((next >> 16) & 0x1F);
+                    const md: u5 = @truncate(next & 0x1F);
+                    if (ms == rd0 and md < 28) {
+                        mov_idx = j;
+                        mov_dst = md;
+                        break;
+                    }
+                }
+
+                // If rd0 is read as a source, can't coalesce
+                const rn: u5 = @truncate((next >> 5) & 0x1F);
+                const rm: u5 = @truncate((next >> 16) & 0x1F);
+                if (rn == rd0 or rm == rd0) break;
+
+                // If rd0 is overwritten, stop
+                const rd_next: u5 = @truncate(next & 0x1F);
+                if (rd_next == rd0) break;
+
+                // Stop at branch/ret
+                if (next & 0xFC000000 == 0x14000000 or
+                    next & 0xFF000000 == 0x54000000 or
+                    next & 0xFFFFFC1F == 0xD65F0000 or
+                    next & 0xFFFFFC1F == 0xD63F0000) break;
+            }
+
+            const mi = mov_idx orelse continue;
+
+            // Check that rd0 is not used between the ALU op and the mov
+            // (we already checked above — the loop breaks on any use of rd0)
+            // Check that mov_dst is not written between ALU op and mov
+            var safe = true;
+            j = i + 1;
+            while (j < mi) : (j += 1) {
+                const between = readInsn(code, j);
+                if (between == 0xD503201F) continue; // NOP
+                const rd_b: u5 = @truncate(between & 0x1F);
+                if (rd_b == mov_dst) {
+                    safe = false;
+                    break;
+                }
+            }
+            if (!safe) continue;
+
+            // Coalesce: change ALU destination to mov_dst, NOP the mov
+            const patched = (insn0 & ~@as(u32, 0x1F)) | @as(u32, mov_dst);
+            writeInsn(code, i, patched);
+            writeInsn(code, mi, 0xD503201F); // NOP
+            changed = true;
+        }
+    }
+}
+
 fn fixCallArgMoves(code: []u8) void {
     if (code.len < 8) return;
     const n_insns = code.len / 4;
