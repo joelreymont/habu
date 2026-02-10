@@ -552,6 +552,13 @@ pub const Vm = struct {
         if (self.jit) |*j| {
             j.deinit();
         }
+        // Clean up hoist-compiled functions
+        var it = self.hoist_fns.valueIterator();
+        while (it.next()) |compiled_ptr| {
+            compiled_ptr.*.deinit();
+            self.allocator.destroy(compiled_ptr.*);
+        }
+        self.hoist_fns.deinit();
         self.gc_slots.deinit(self.allocator);
         self.gc_vals.deinit(self.allocator);
     }

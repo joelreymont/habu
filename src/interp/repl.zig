@@ -1852,7 +1852,11 @@ pub const Repl = struct {
         if (trace) std.debug.print("JIT: considering '{s}' speed={d} safety={d} captures={d} opt={d} key={d} rest={}\n", .{ define.name, lambda.speed, lambda.safety, lambda.captures.len, lambda.optional_params.len, lambda.key_params.len, lambda.rest_param != null });
 
         // Only compile speed=3, safety=0 functions
-        if (lambda.speed < 3 or lambda.safety > 0) return false;
+        // Safety > 0 needs runtime type checks that hoist backend doesn't emit
+        if (lambda.safety > 0) return false;
+        // Skip functions that the hoist backend can't translate (fast reject)
+        if (!hoist_backend.IrTranslator.canTranslate(lambda.body)) return false;
+
         // Only simple functions without captures, optional, key, or rest params
         if (lambda.captures.len > 0) return false;
         if (lambda.optional_params.len > 0) return false;

@@ -1,5 +1,16 @@
 # Hoist Issues Tracker
 
+## Performance vs SBCL (2026-02-08)
+
+All benchmarks: `(declare (optimize (speed 3) (safety 0)))`, ARM64 Apple Silicon.
+
+| Benchmark | Habu Hoist JIT | SBCL 2.5.10 | Ratio |
+|-----------|---------------|-------------|-------|
+| fib(35) | 46ms | 52ms | **1.13x faster** |
+| tak(18,12,6) x1000 | 95ms | 92ms | ~equal |
+| ack(3,10) | 179ms | 373ms | **2.08x faster** |
+
+
 Issues discovered in the [hoist](https://github.com/[...]/hoist) SSA JIT backend
 that need to be fixed upstream or worked around in habu.
 

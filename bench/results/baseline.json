@@ -1,0 +1,14 @@
+{
+  "date": "2026-02-08T17:31:49Z",
+  "note": "First baseline after LDUR fix + preEmitConstants + VM registration fix",
+  "benchmarks": {
+    "fib35":           {"habu_us": 47801, "sbcl_us": 57951, "ratio": 1.21, "engine": "hoist"},
+    "tak_x1000":       {"habu_us": 94425, "sbcl_us": 95565, "ratio": 1.01, "engine": "hoist"},
+    "ack3_10":         {"habu_us": 189184, "sbcl_us": 384978, "ratio": 2.03, "engine": "hoist"},
+    "fixnum_loop_1M":  {"habu_us": 756981, "sbcl_us": 315, "ratio": 0.0004, "engine": "interp"},
+    "fib30_untyped":   {"habu_us": 6680547, "sbcl_us": 20903, "ratio": 0.003, "engine": "interp"},
+    "nqueens10":       {"habu_us": 3162216, "sbcl_us": 0, "ratio": null, "engine": "interp"},
+    "list_build_100k": {"habu_us": 79542, "sbcl_us": 206, "ratio": 0.003, "engine": "interp"},
+    "hash_insert_20k": {"habu_us": 16554, "sbcl_us": 438, "ratio": 0.03, "engine": "interp"}
+  }
+}

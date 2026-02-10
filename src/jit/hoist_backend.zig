@@ -168,6 +168,44 @@ pub const IrTranslator = struct {
         return result;
     }
 
+    /// Fast check: can we translate all nodes in this IR tree?
+    /// Returns false if any unsupported node is found.
+    pub fn canTranslate(ir: *const Ir) bool {
+        return switch (ir.*) {
+            .lit, .@"var", .global_ref => true,
+            .fixnum_add, .fixnum_sub, .add, .sub => |op| canTranslate(op.left) and canTranslate(op.right),
+            .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
+            .le, .lt, .gt, .ge, .num_eq,
+            => |op| canTranslate(op.left) and canTranslate(op.right),
+            .@"if" => |f| canTranslate(f.cond) and canTranslate(f.then_branch) and canTranslate(f.else_branch),
+            .progn => |exprs| {
+                for (exprs) |e| if (!canTranslate(e)) return false;
+                return true;
+            },
+            .let => |l| {
+                for (l.bindings) |b| if (!canTranslate(b.value)) return false;
+                return canTranslate(l.body);
+            },
+            .set => |s| canTranslate(s.value),
+            .loop => |l| canTranslate(l.cond) and canTranslate(l.body),
+            .assert_fixnum => |op| canTranslate(op.operand),
+            .call => |c| {
+                if (!canTranslate(c.func)) return false;
+                for (c.args) |a| if (!canTranslate(a)) return false;
+                return true;
+            },
+            .tailcall => |tc| {
+                if (!canTranslate(tc.func)) return false;
+                for (tc.args) |a| if (!canTranslate(a)) return false;
+                return true;
+            },
+            .fixnum_mul => |op| canTranslate(op.left) and canTranslate(op.right),
+            .mul => |op| canTranslate(op.left) and canTranslate(op.right),
+            .eq => |op| canTranslate(op.left) and canTranslate(op.right),
+            else => false,
+        };
+    }
+
     /// Translate a Habu IR node to Hoist SSA, returning the SSA value produced.
     pub fn translate(self: *IrTranslator, ir: *const Ir) anyerror!HoistValue {
         return switch (ir.*) {
@@ -189,6 +227,9 @@ pub const IrTranslator = struct {
             .gt => |op| try self.translateFixnumCmp(.sgt, op.left, op.right),
             .ge => |op| try self.translateFixnumCmp(.sge, op.left, op.right),
             .num_eq => |op| try self.translateFixnumCmp(.eq, op.left, op.right),
+            .eq => |op| try self.translateFixnumCmp(.eq, op.left, op.right),
+            .fixnum_mul => |op| try self.translateFixnumMul(op.left, op.right),
+            .mul => |op| try self.translateFixnumMul(op.left, op.right),
             .@"if" => |if_node| try self.translateIf(if_node.cond, if_node.then_branch, if_node.else_branch),
             .progn => |exprs| try self.translateProgn(exprs),
             .let => |let_node| try self.translateLet(let_node.bindings, let_node.body),
@@ -256,6 +297,35 @@ pub const IrTranslator = struct {
         const diff = try self.b.isub(I64, l, r);
         const one = try self.cachedIconst(1);
         return try self.b.iadd(I64, diff, one);
+    }
+
+    fn translateFixnumMul(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
+        // Tagged fixnum mul: result = sshr(a, 1) * (b - 1) + 1
+        // Proof: a=2va+1, b=2vb+1. sshr(a,1)=va. b-1=2vb. va*2vb=2*va*vb. +1 = tagged(va*vb).
+        // When one operand is a constant, fold: sshr(a,1) * (const_raw - 1) + 1
+        if (getFixnumLit(right)) |r_const| {
+            const l = try self.translate(left);
+            const one = try self.cachedIconst(1);
+            const l_val = try self.b.sshr(I64, l, one);
+            const r_untagged = try self.cachedIconst(r_const - 1); // 2 * r_value
+            const prod = try self.b.imul(I64, l_val, r_untagged);
+            return try self.b.iadd(I64, prod, one);
+        }
+        if (getFixnumLit(left)) |l_const| {
+            const r = try self.translate(right);
+            const one = try self.cachedIconst(1);
+            const r_val = try self.b.sshr(I64, r, one);
+            const l_untagged = try self.cachedIconst(l_const - 1);
+            const prod = try self.b.imul(I64, r_val, l_untagged);
+            return try self.b.iadd(I64, prod, one);
+        }
+        const l = try self.translate(left);
+        const r = try self.translate(right);
+        const one = try self.cachedIconst(1);
+        const l_val = try self.b.sshr(I64, l, one);
+        const r_minus_1 = try self.b.isub(I64, r, one);
+        const prod = try self.b.imul(I64, l_val, r_minus_1);
+        return try self.b.iadd(I64, prod, one);
     }
 
     fn translateFixnumCmp(self: *IrTranslator, cc: IntCC, left: *const Ir, right: *const Ir) anyerror!HoistValue {
@@ -348,7 +418,17 @@ pub const IrTranslator = struct {
                 try self.preEmitConstants(op.left);
                 try self.preEmitConstants(op.right);
             },
-            .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq => |op| {
+            .fixnum_mul, .mul => |op| {
+                if (getFixnumLit(op.right)) |r_const| {
+                    _ = try self.cachedIconst(r_const - 1);
+                } else if (getFixnumLit(op.left)) |l_const| {
+                    _ = try self.cachedIconst(l_const - 1);
+                }
+                _ = try self.cachedIconst(1); // for sshr
+                try self.preEmitConstants(op.left);
+                try self.preEmitConstants(op.right);
+            },
+            .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq, .eq => |op| {
                 try self.preEmitConstants(op.left);
                 try self.preEmitConstants(op.right);
             },
@@ -580,11 +660,11 @@ fn collectMutatedVars(ir: *const Ir, indices: *std.ArrayList(u16), allocator: st
             try collectMutatedVars(l.cond, indices, allocator);
             try collectMutatedVars(l.body, indices, allocator);
         },
-        .fixnum_add, .fixnum_sub, .add, .sub => |op| {
+        .fixnum_add, .fixnum_sub, .fixnum_mul, .add, .sub, .mul => |op| {
             try collectMutatedVars(op.left, indices, allocator);
             try collectMutatedVars(op.right, indices, allocator);
         },
-        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq => |op| {
+        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq, .eq => |op| {
             try collectMutatedVars(op.left, indices, allocator);
             try collectMutatedVars(op.right, indices, allocator);
         },
@@ -657,8 +737,8 @@ fn hasNestedSelfCalls(body: *const Ir, name: []const u8) bool {
         .@"if" => |if_node| hasNestedSelfCalls(if_node.cond, name) or
             hasNestedSelfCalls(if_node.then_branch, name) or
             hasNestedSelfCalls(if_node.else_branch, name),
-        .fixnum_add, .fixnum_sub, .add, .sub => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
-        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
+        .fixnum_add, .fixnum_sub, .fixnum_mul, .add, .sub, .mul => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
+        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq, .eq => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
         .le, .lt, .gt, .ge, .num_eq => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
         .progn => |exprs| {
             for (exprs) |expr| {
@@ -691,8 +771,8 @@ fn detectSelfCalls(body: *const Ir, name: []const u8) bool {
         .@"if" => |if_node| detectSelfCalls(if_node.cond, name) or
             detectSelfCalls(if_node.then_branch, name) or
             detectSelfCalls(if_node.else_branch, name),
-        .fixnum_add, .fixnum_sub, .add, .sub => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
-        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
+        .fixnum_add, .fixnum_sub, .fixnum_mul, .add, .sub, .mul => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
+        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq, .eq => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
         .le, .lt, .gt, .ge, .num_eq => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
         .progn => |exprs| {
             for (exprs) |expr| {
@@ -717,8 +797,8 @@ fn detectLoops(body: *const Ir) bool {
             return false;
         },
         .let => |n| detectLoops(n.body),
-        .fixnum_add, .fixnum_sub, .add, .sub => |n| detectLoops(n.left) or detectLoops(n.right),
-        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq => |n| detectLoops(n.left) or detectLoops(n.right),
+        .fixnum_add, .fixnum_sub, .fixnum_mul, .add, .sub, .mul => |n| detectLoops(n.left) or detectLoops(n.right),
+        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq, .eq => |n| detectLoops(n.left) or detectLoops(n.right),
         .le, .lt, .gt, .ge, .num_eq => |n| detectLoops(n.left) or detectLoops(n.right),
         .call => |c| {
             for (c.args) |arg| {
@@ -750,6 +830,9 @@ pub fn compileIr(
         .lambda => |l| l,
         else => return error.ExpectedLambda,
     };
+
+    // Fast reject: check if all IR nodes are supported before allocating
+    if (!IrTranslator.canTranslate(lambda.body)) return error.UnsupportedIrNode;
 
     const arity: u32 = @intCast(lambda.params.len);
 
