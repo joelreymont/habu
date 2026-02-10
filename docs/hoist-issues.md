@@ -46,12 +46,13 @@ that need to be fixed upstream or worked around in habu.
 - **Workaround:** None in habu; such functions fall back to bytecode interpreter.
 - **Proper fix:** Implement spill slot allocation and reload insertion in the linear scan allocator.
 
-### 5. No optimization passes for recursive functions
-- **File:** hoist codegen pipeline
-- **Symptom:** Recursive functions are compiled with `.none` optimization to avoid issues, missing out on constant folding, dead code elimination, etc.
-- **Impact:** Generated code is larger and slower than necessary.
-- **Workaround:** Set `.none` for recursive/looping functions in habu's `compileIr`.
-- **Proper fix:** Fix whatever optimization pass bug causes issues with recursive IR and enable `.aggressive` for all functions.
+### 5. `.aggressive` optimization eliminates load instructions
+- **File:** hoist optimization passes
+- **Symptom:** Functions with `load` instructions (e.g., car/cdr dereferencing cons cells) produce wrong code under `.aggressive` optimization. The load is eliminated and replaced with NOP, causing comparisons to use wrong values.
+- **Example:** `(= (car placed) 42)` — the `load [placed+0]` is removed, comparing the pointer `placed` directly with 42.
+- **Impact:** Any function with memory loads must use `.none` optimization.
+- **Workaround:** `containsLoads()` detector in habu forces `.none` for functions with car/cdr.
+- **Proper fix:** Fix the aggressive optimization pass to not eliminate load instructions with side effects or whose results are used.
 
 ### 6. No loop optimizations (LICM, strength reduction)
 - **Impact:** Loops re-compute invariant values each iteration.
@@ -61,13 +62,10 @@ that need to be fixed upstream or worked around in habu.
 - **Symptom:** Invalid IR (values used outside dominating block) compiles silently and produces wrong machine code.
 - **Proper fix:** Add dominance tree computation and SSA validation to `verification(true)` mode.
 
-### 8. Jump args to block params don't emit phi copies
-- **File:** hoist `src/codegen/compile.zig` (jump handler)
-- **Symptom:** When a `jump block(v1, v2)` carries values to a block with block params, the codegen doesn't emit MOV instructions to copy the argument registers to the parameter registers. The block params get mapped to wrong registers by the register allocator.
-- **Example:** `jump block4(v13)` where v13 is in x4, but block4's param v11 is mapped to x6. No `MOV x6, x4` is emitted.
-- **Impact:** Blocks TCO implementation (tail-call to loop conversion) and any SSA pattern where values flow through block params from non-dominating blocks.
-- **Workaround:** None — TCO is disabled in habu.
-- **Proper fix:** Ensure the jump handler in codegen emits parallel copies from jump args to block params, similar to how `brifArgs` should handle it (issue #9).
+### 8. ~~Jump args to block params don't emit phi copies~~ [NOT A BUG]
+- **Status:** RESOLVED — was misdiagnosed. The test was executing code from non-executable memory (heap buffer instead of JIT mmap), causing Bus Error. Hoist's phi copy emission IS correct for `jumpArgs` to `appendBlockParam` blocks.
+- **Evidence:** Added `e2e_merge.zig` tests: simple merge, TCO factorial, 3-param TCO all pass when using `JitMem` for executable memory.
+- **TCO now works in habu:** safe-p tail recursion → loop via hoist block params.
 
 ### 9. Entry param shuffle bug for .aggressive 3-param leaf functions
 - **File:** hoist `src/codegen/compile.zig` or regalloc
