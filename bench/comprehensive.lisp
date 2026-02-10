@@ -80,7 +80,8 @@
            (tak (the fixnum (1- y)) z x)
            (tak (the fixnum (1- z)) x y))))
 
-(defun bench-tak () (tak 18 12 6))
+(defun bench-tak ()
+  (dotimes (i 1000) (tak 18 12 6)))
 
 (defun ack (m n)
   (declare (type fixnum m n)
@@ -89,7 +90,7 @@
         ((zerop n) (ack (the fixnum (1- m)) 1))
         (t (ack (the fixnum (1- m)) (ack m (the fixnum (1- n)))))))
 
-(defun bench-ack () (ack 3 5))
+(defun bench-ack () (ack 3 10))
 
 (defun nqueens (n)
   "Count solutions to N-queens"
