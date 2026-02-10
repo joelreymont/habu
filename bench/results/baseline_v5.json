@@ -1,0 +1,50 @@
+{
+  "date": "2026-02-08",
+  "description": "Full JIT with nqueens-solve, spill rebase fix, coalescing safety fix",
+  "platform": "ARM64 Apple Silicon",
+  "benchmarks": {
+    "fib_35": {
+      "habu_jit_us": 46892,
+      "sbcl_us": 57000,
+      "ratio": 1.22,
+      "note": "habu faster"
+    },
+    "tak_18_12_6_x1000": {
+      "habu_jit_us": 115915,
+      "sbcl_us": 97000,
+      "ratio": 0.84,
+      "note": "sbcl faster"
+    },
+    "ack_3_10": {
+      "habu_jit_us": 171086,
+      "sbcl_us": 384000,
+      "ratio": 2.24,
+      "note": "habu faster"
+    },
+    "fixnum_loop_1M": {
+      "habu_jit_us": 309,
+      "sbcl_us": 337,
+      "ratio": 1.09,
+      "note": "habu faster"
+    },
+    "mul_accum_100k_iter": {
+      "habu_jit_us": 305,
+      "sbcl_us": 750,
+      "ratio": 2.46,
+      "note": "habu faster"
+    },
+    "nested_loop_1M": {
+      "habu_jit_us": 333,
+      "sbcl_us": 321,
+      "ratio": 0.96,
+      "note": "~parity"
+    },
+    "nqueens_10": {
+      "habu_jit_us": 7400,
+      "sbcl_us": 3000,
+      "ratio": 0.41,
+      "note": "sbcl faster, first full JIT nqueens"
+    }
+  },
+  "summary": "7 JIT benchmarks. Habu beats SBCL on fib, ack, fixnum_loop, mul_accum. SBCL wins on tak, nqueens. Parity on nested_loop."
+}
