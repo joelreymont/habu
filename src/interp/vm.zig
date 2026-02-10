@@ -864,6 +864,9 @@ pub const Vm = struct {
         const compiled = self.hoist_fns.get(@intFromPtr(chunk)) orelse return null;
         if (compiled.arity != argc) return null;
 
+        // Set global heap pointer so JIT cons can allocate
+        hoist_backend.setHeap(self.heap);
+
         // Extract args from the VM stack (they're above the callee frame)
         const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
         const args = self.stack[bp .. bp + argc];

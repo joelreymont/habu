@@ -36,8 +36,43 @@ const habu_value = @import("../runtime/value.zig");
 const Symbol = @import("../runtime/objects.zig").Symbol;
 const Value = habu_value.Value;
 
+const runtime = @import("../runtime/runtime.zig");
+const Heap = runtime.Heap;
+const Cons = runtime.Cons;
+
 const I64 = HoistType.I64;
 const I8 = HoistType.I8;
+
+// ── Global heap pointer for JIT cons allocation ──
+// Set by the VM before calling JIT functions that may allocate.
+var g_heap: ?*Heap = null;
+
+/// Set the global heap pointer for JIT allocation.
+pub fn setHeap(heap: *Heap) void {
+    g_heap = heap;
+}
+
+/// C-ABI cons function callable from JIT-compiled code.
+/// Takes (car_raw: u64, cdr_raw: u64) → cons_raw: u64
+/// Performs bump allocation without GC. Returns nil (0) on OOM.
+fn jitCons(car_raw: u64, cdr_raw: u64) callconv(.c) u64 {
+    const heap = g_heap orelse return 0;
+    const car = Value{ .raw = car_raw };
+    const cdr = Value{ .raw = cdr_raw };
+    const result = heap.allocCons(car, cdr) catch return 0;
+    return result.raw;
+}
+
+/// Address of the jitCons function, usable as call target.
+pub fn getJitConsPtr() u64 {
+    return @intFromPtr(&jitCons);
+}
+
+/// Known JIT-compiled function info for cross-function calls.
+pub const KnownFn = struct {
+    fn_ptr: u64,
+    arity: u32,
+};
 
 /// Result of compiling a Habu function to native code.
 pub const CompiledFn = struct {
@@ -49,8 +84,11 @@ pub const CompiledFn = struct {
     arity: u32,
     /// Allocator used (for cleanup).
     allocator: std.mem.Allocator,
+    /// Function name (for cross-function call lookup).
+    name: []const u8 = "",
 
     pub fn deinit(self: *CompiledFn) void {
+        if (self.name.len > 0) self.allocator.free(self.name);
         self.mem.deinit();
         self.allocator.destroy(self.mem);
     }
@@ -137,6 +175,19 @@ pub const IrTranslator = struct {
     /// that require post-emission parallel copy fixup for call arguments.
     needs_call_spill: bool = false,
 
+    /// SigRef for calling jitCons (call_indirect).
+    cons_sig_ref: ?SigRef = null,
+
+    /// Map of known JIT-compiled function names → (fn_ptr, arity).
+    /// Used for cross-function calls via call_indirect.
+    known_fns: ?*const std.StringHashMap(KnownFn) = null,
+
+    /// Whether the function has cross-function calls (non-self call_indirect).
+    has_cross_calls: bool = false,
+
+    /// Cache for cross-function call signatures (keyed by arity).
+    call_sigs: [8]?SigRef = .{null} ** 8,
+
     /// When true, all internal values are untagged plain i64.
     /// Params are untagged at entry, result is re-tagged at return.
     /// Self-calls use untagged convention (no tag/untag at call boundary).
@@ -195,6 +246,9 @@ pub const IrTranslator = struct {
             .loop => |l| canTranslate(l.cond) and canTranslate(l.body),
             .assert_fixnum => |op| canTranslate(op.operand),
             .call => |c| {
+                // Only self-recursive calls are supported; cross-function calls are not yet.
+                // canTranslate is called without fn_name context, so we can't check self-call here.
+                // We allow all calls to pass canTranslate and handle non-self calls gracefully in translate.
                 if (!canTranslate(c.func)) return false;
                 for (c.args) |a| if (!canTranslate(a)) return false;
                 return true;
@@ -210,6 +264,7 @@ pub const IrTranslator = struct {
             // List / predicate operations (inline, no heap access needed)
             .nilp, .not, .consp, .abs => |op| canTranslate(op.operand),
             .car, .cdr, .unsafe_car, .unsafe_cdr => |op| canTranslate(op.operand),
+            .cons => |op| canTranslate(op.left) and canTranslate(op.right),
             else => false,
         };
     }
@@ -254,6 +309,8 @@ pub const IrTranslator = struct {
             .unsafe_car => |op| try self.translateUnsafeCar(op.operand),
             .unsafe_cdr => |op| try self.translateUnsafeCdr(op.operand),
             .abs => |op| try self.translateAbs(op.operand),
+            // Heap allocation (calls C-ABI runtime function)
+            .cons => |op| try self.translateCons(op.left, op.right),
             .call => |call_node| try self.translateCall(call_node.func, call_node.args),
             .tailcall => |tc| try self.translateCall(tc.func, tc.args),
             else => {
@@ -389,18 +446,61 @@ pub const IrTranslator = struct {
         // Merge block has one param: the phi result (I64)
         const merge_param = try self.b.appendBlockParam(merge_blk, I64);
 
+        // Find locals mutated in either branch that are IN SCOPE (already in locals).
+        // Variables created by `let` inside a branch are local to that branch.
+        const num_in_scope: u16 = @intCast(self.locals.items.len);
+        var mutated_indices = std.ArrayList(u16){};
+        defer mutated_indices.deinit(self.allocator);
+        try collectMutatedVars(then_ir, &mutated_indices, self.allocator);
+        try collectMutatedVars(else_ir, &mutated_indices, self.allocator);
+        // Deduplicate and filter to in-scope only
+        std.mem.sort(u16, mutated_indices.items, {}, std.sort.asc(u16));
+        var deduped_count: usize = 0;
+        for (mutated_indices.items) |idx| {
+            if (idx >= num_in_scope) continue; // Not in scope yet
+            if (deduped_count == 0 or mutated_indices.items[deduped_count - 1] != idx) {
+                mutated_indices.items[deduped_count] = idx;
+                deduped_count += 1;
+            }
+        }
+        mutated_indices.shrinkRetainingCapacity(deduped_count);
+
+        // Add merge block params for each mutated local
+        var merge_local_params = std.ArrayList(HoistValue){};
+        defer merge_local_params.deinit(self.allocator);
+        for (mutated_indices.items) |_| {
+            const p = try self.b.appendBlockParam(merge_blk, I64);
+            try merge_local_params.append(self.allocator, p);
+        }
+
+        // Save locals before branching
+        const saved_locals = try self.allocator.alloc(HoistValue, self.locals.items.len);
+        defer self.allocator.free(saved_locals);
+        @memcpy(saved_locals, self.locals.items);
+
         try self.b.brif(cond_val, then_blk, else_blk);
 
         // Then branch
         self.b.switchToBlock(then_blk);
         try self.b.sealBlock(then_blk);
         const then_val = try self.translate(then_ir);
-        // If the then-branch already terminated (nested if that returned),
-        // don't emit another jump
         if (self.b.current_block != null) {
             const then_i64 = try self.boolToTagged(then_val);
-            try self.b.jumpArgs(merge_blk, &.{then_i64});
+            // Build jump args: [result, mutated_locals...]
+            var then_args = std.ArrayList(HoistValue){};
+            defer then_args.deinit(self.allocator);
+            try then_args.append(self.allocator, then_i64);
+            for (mutated_indices.items) |idx| {
+                try then_args.append(self.allocator, self.locals.items[idx]);
+            }
+            try self.b.jumpArgs(merge_blk, then_args.items);
         }
+
+        // Record then-branch locals, restore saved for else branch
+        const then_locals = try self.allocator.alloc(HoistValue, self.locals.items.len);
+        defer self.allocator.free(then_locals);
+        @memcpy(then_locals, self.locals.items);
+        @memcpy(self.locals.items, saved_locals);
 
         // Else branch
         self.b.switchToBlock(else_blk);
@@ -408,12 +508,22 @@ pub const IrTranslator = struct {
         const else_val = try self.translate(else_ir);
         if (self.b.current_block != null) {
             const else_i64 = try self.boolToTagged(else_val);
-            try self.b.jumpArgs(merge_blk, &.{else_i64});
+            var else_args = std.ArrayList(HoistValue){};
+            defer else_args.deinit(self.allocator);
+            try else_args.append(self.allocator, else_i64);
+            for (mutated_indices.items) |idx| {
+                try else_args.append(self.allocator, self.locals.items[idx]);
+            }
+            try self.b.jumpArgs(merge_blk, else_args.items);
         }
 
-        // Continue in merge block
+        // Continue in merge block — update locals from merge params
         self.b.switchToBlock(merge_blk);
         try self.b.sealBlock(merge_blk);
+        for (mutated_indices.items, 0..) |idx, i| {
+            self.locals.items[idx] = merge_local_params.items[i];
+        }
+
         return merge_param;
     }
 
@@ -519,6 +629,41 @@ pub const IrTranslator = struct {
                 _ = try self.cachedIconst(2); // for 2 - raw
                 try self.preEmitConstants(n.operand);
             },
+            .cons => |n| {
+                _ = try self.cachedIconst(@as(i64, @bitCast(getJitConsPtr()))); // cons fn ptr
+                try self.preEmitConstants(n.left);
+                try self.preEmitConstants(n.right);
+            },
+            .call => |c| {
+                // Pre-emit self-call pointer
+                if (self.is_recursive and isCallTargetSelf(c.func, self.fn_name)) {
+                    _ = try self.cachedIconst(self.self_ptr_placeholder);
+                } else if (self.known_fns) |kf| {
+                    // Pre-emit cross-call function pointer
+                    if (getCallTargetName(c.func)) |target_name| {
+                        if (kf.get(target_name)) |known| {
+                            _ = try self.cachedIconst(@as(i64, @bitCast(known.fn_ptr)));
+                        }
+                    }
+                }
+                for (c.args) |arg| try self.preEmitConstants(arg);
+            },
+            .tailcall => |tc| {
+                if (self.is_recursive and isCallTargetSelf(tc.func, self.fn_name)) {
+                    _ = try self.cachedIconst(self.self_ptr_placeholder);
+                } else if (self.known_fns) |kf| {
+                    if (getCallTargetName(tc.func)) |target_name| {
+                        if (kf.get(target_name)) |known| {
+                            _ = try self.cachedIconst(@as(i64, @bitCast(known.fn_ptr)));
+                        }
+                    }
+                }
+                for (tc.args) |arg| try self.preEmitConstants(arg);
+            },
+            .let => |l| {
+                for (l.bindings) |binding| try self.preEmitConstants(binding.value);
+                try self.preEmitConstants(l.body);
+            },
             else => {},
         }
     }
@@ -605,8 +750,92 @@ pub const IrTranslator = struct {
             return try self.translateSelfCall(args);
         }
 
-        // TODO: general function calls (via runtime)
+        // Check for cross-function call to known JIT-compiled function
+        if (self.known_fns) |kf| {
+            if (getCallTargetName(func_ir)) |target_name| {
+                if (self.lookupKnownFn(kf, target_name)) |known| {
+                    return try self.translateCrossCall(known, args);
+                }
+            }
+        }
+
+        // Unsupported call — should have been rejected by hasNonSelfCalls
         return try self.b.iconst(I64, 0); // placeholder nil
+    }
+
+    fn translateCrossCall(self: *IrTranslator, known: KnownFn, args: []const *const Ir) anyerror!HoistValue {
+        // Translate all arguments
+        var translated_args: [16]HoistValue = undefined;
+        for (args, 0..) |arg, i| {
+            translated_args[i] = try self.translate(arg);
+        }
+
+        // Get or create signature for this arity
+        const arity: u32 = @intCast(args.len);
+        const sig = try self.getCallSigForArity(arity);
+
+        // Load the target function pointer
+        const fn_ptr = try self.cachedIconst(@as(i64, @bitCast(known.fn_ptr)));
+
+        // Build argument list: [fn_ptr, arg0, arg1, ...]
+        var call_args = ValueList.default();
+        try self.func.dfg.value_lists.push(&call_args, fn_ptr);
+        for (0..arity) |i| {
+            try self.func.dfg.value_lists.push(&call_args, translated_args[i]);
+        }
+
+        // Emit call_indirect
+        const call_data = InstructionData{
+            .call_indirect = .{
+                .opcode = .call_indirect,
+                .sig_ref = sig,
+                .args = call_args,
+            },
+        };
+        const call_inst = try self.func.dfg.makeInst(call_data);
+        const call_result = try self.func.dfg.appendInstResult(call_inst, I64);
+        const block = self.b.current_block orelse return error.NoCurrentBlock;
+        try self.func.layout.appendInst(call_inst, block);
+
+        return call_result;
+    }
+
+    fn lookupKnownFn(self: *IrTranslator, kf: *const std.StringHashMap(KnownFn), target_name: []const u8) ?KnownFn {
+        _ = self;
+        // Direct lookup
+        if (kf.get(target_name)) |known| return known;
+        // Try short name from qualified "PKG:SYM"
+        if (std.mem.indexOfScalar(u8, target_name, ':')) |colon_pos| {
+            const short_name = target_name[colon_pos + 1 ..];
+            if (kf.get(short_name)) |known| return known;
+        }
+        // Try matching known qualified names against unqualified target
+        var iter = kf.iterator();
+        while (iter.next()) |entry| {
+            const kn = entry.key_ptr.*;
+            if (std.mem.indexOfScalar(u8, kn, ':')) |colon_pos| {
+                if (std.mem.eql(u8, kn[colon_pos + 1 ..], target_name)) return entry.value_ptr.*;
+            }
+        }
+        return null;
+    }
+
+    fn getCallSigForArity(self: *IrTranslator, arity: u32) !SigRef {
+        if (arity < 8) {
+            if (self.call_sigs[arity]) |sr| return sr;
+        }
+
+        var sig = Signature.init(self.allocator, .system_v);
+        for (0..arity) |_| {
+            try sig.params.append(self.allocator, AbiParam.new(I64));
+        }
+        try sig.returns.append(self.allocator, AbiParam.new(I64));
+        const sr = try self.func.addSignature(sig);
+
+        if (arity < 8) {
+            self.call_sigs[arity] = sr;
+        }
+        return sr;
     }
 
     fn translateSelfCall(self: *IrTranslator, args: []const *const Ir) anyerror!HoistValue {
@@ -731,6 +960,55 @@ pub const IrTranslator = struct {
         return self.translateCdr(operand_ir);
     }
 
+    /// cons: allocate a cons cell via C-ABI runtime call.
+    /// Calls jitCons(car_raw, cdr_raw) → cons_raw.
+    fn translateCons(self: *IrTranslator, car_ir: *const Ir, cdr_ir: *const Ir) anyerror!HoistValue {
+        const car_val = try self.translate(car_ir);
+        const cdr_val = try self.translate(cdr_ir);
+
+        // Get or create the cons function signature: (fn_ptr: i64, car: i64, cdr: i64) -> i64
+        const cons_sig = try self.getConsSigRef();
+
+        // Load the jitCons function pointer
+        const fn_ptr = try self.cachedIconst(@as(i64, @bitCast(getJitConsPtr())));
+
+        // Build call args: [fn_ptr, car, cdr]
+        var call_args = ValueList.default();
+        try self.func.dfg.value_lists.push(&call_args, fn_ptr);
+        try self.func.dfg.value_lists.push(&call_args, car_val);
+        try self.func.dfg.value_lists.push(&call_args, cdr_val);
+
+        // Emit call_indirect
+        const call_data = InstructionData{
+            .call_indirect = .{
+                .opcode = .call_indirect,
+                .sig_ref = cons_sig,
+                .args = call_args,
+            },
+        };
+        const call_inst = try self.func.dfg.makeInst(call_data);
+        const call_result = try self.func.dfg.appendInstResult(call_inst, I64);
+        const block = self.b.current_block orelse return error.NoCurrentBlock;
+        try self.func.layout.appendInst(call_inst, block);
+
+        return call_result;
+    }
+
+    /// Get or create the SigRef for the cons call: (i64, i64) -> i64
+    fn getConsSigRef(self: *IrTranslator) !SigRef {
+        if (self.cons_sig_ref) |sr| return sr;
+
+        // Cons takes 2 user args (car, cdr). fn_ptr is separate (call_indirect 1st value).
+        var sig = Signature.init(self.allocator, .system_v);
+        try sig.params.append(self.allocator, AbiParam.new(I64)); // car
+        try sig.params.append(self.allocator, AbiParam.new(I64)); // cdr
+        try sig.returns.append(self.allocator, AbiParam.new(I64)); // result cons
+
+        const sr = try self.func.addSignature(sig);
+        self.cons_sig_ref = sr;
+        return sr;
+    }
+
     /// abs for tagged fixnums.
     /// Tagged: raw = val*2+1. If val >= 0 (raw >= 1), return raw.
     /// If val < 0 (raw < 1), return 2 - raw.
@@ -837,6 +1115,10 @@ fn collectMutatedVars(ir: *const Ir, indices: *std.ArrayList(u16), allocator: st
         .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs => |op| {
             try collectMutatedVars(op.operand, indices, allocator);
         },
+        .cons => |op| {
+            try collectMutatedVars(op.left, indices, allocator);
+            try collectMutatedVars(op.right, indices, allocator);
+        },
         .call => |c| {
             for (c.args) |arg| try collectMutatedVars(arg, indices, allocator);
         },
@@ -849,23 +1131,68 @@ fn collectMutatedVars(ir: *const Ir, indices: *std.ArrayList(u16), allocator: st
 /// For lit-symbol, the symbol name is unqualified ("MYCD") while the
 /// function name is qualified ("CL-USER:MYCD"), so we check if the
 /// qualified name ends with ":" + symbol_name.
+/// Check if a call target is resolvable (self-call or known JIT function).
+pub fn isCallResolvable(func_ir: *const Ir, self_name: []const u8, known: *const std.StringHashMap(void)) bool {
+    if (isCallTargetSelf(func_ir, self_name)) return true;
+    if (getCallTargetName(func_ir)) |target_name| {
+        if (known.get(target_name) != null) return true;
+        // Check qualified name: "PKG:SYM" might match known "SYM" or vice versa
+        if (std.mem.indexOfScalar(u8, target_name, ':')) |colon_pos| {
+            const short_name = target_name[colon_pos + 1 ..];
+            if (known.get(short_name) != null) return true;
+        }
+        // Check if any known name ends with ":TARGET_NAME"
+        var iter = known.iterator();
+        while (iter.next()) |entry| {
+            const kn = entry.key_ptr.*;
+            if (std.mem.indexOfScalar(u8, kn, ':')) |colon_pos| {
+                if (std.mem.eql(u8, kn[colon_pos + 1 ..], target_name)) return true;
+            }
+        }
+    }
+    return false;
+}
+
+/// Extract the target function name from a call's func IR node.
+fn getCallTargetName(func_ir: *const Ir) ?[]const u8 {
+    return switch (func_ir.*) {
+        .global_ref => |gr| gr.name,
+        .lit => |v| blk: {
+            if (!v.isSymbol()) break :blk null;
+            if (v.isNil()) break :blk null;
+            break :blk v.toPtr(Symbol).getName();
+        },
+        else => null,
+    };
+}
+
+fn namesMatch(a: []const u8, b: []const u8) bool {
+    // Exact match
+    if (std.mem.eql(u8, a, b)) return true;
+    // Qualified match: "PKG:SYM" matches "SYM"
+    if (a.len > b.len + 1) {
+        const suffix_start = a.len - b.len;
+        if (a[suffix_start - 1] == ':' and
+            std.mem.eql(u8, a[suffix_start..], b))
+            return true;
+    }
+    if (b.len > a.len + 1) {
+        const suffix_start = b.len - a.len;
+        if (b[suffix_start - 1] == ':' and
+            std.mem.eql(u8, b[suffix_start..], a))
+            return true;
+    }
+    return false;
+}
+
 fn isCallTargetSelf(func_ir: *const Ir, name: []const u8) bool {
     return switch (func_ir.*) {
-        .global_ref => |gr| std.mem.eql(u8, gr.name, name),
+        .global_ref => |gr| namesMatch(gr.name, name),
         .lit => |v| blk: {
             if (!v.isSymbol()) break :blk false;
             if (v.isNil()) break :blk false;
             const sym_name = v.toPtr(Symbol).getName();
-            // Exact match
-            if (std.mem.eql(u8, sym_name, name)) break :blk true;
-            // Qualified match: name = "PKG:SYM" and sym_name = "SYM"
-            if (name.len > sym_name.len + 1) {
-                const suffix_start = name.len - sym_name.len;
-                if (name[suffix_start - 1] == ':' and
-                    std.mem.eql(u8, name[suffix_start..], sym_name))
-                    break :blk true;
-            }
-            break :blk false;
+            break :blk namesMatch(sym_name, name);
         },
         else => false,
     };
@@ -911,6 +1238,7 @@ fn hasNestedSelfCalls(body: *const Ir, name: []const u8) bool {
             return false;
         },
         .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs => |op| hasNestedSelfCalls(op.operand, name),
+        .cons => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
         .let => |l| blk: {
             for (l.bindings) |binding| {
                 if (hasNestedSelfCalls(binding.value, name)) break :blk true;
@@ -918,6 +1246,51 @@ fn hasNestedSelfCalls(body: *const Ir, name: []const u8) bool {
             break :blk hasNestedSelfCalls(l.body, name);
         },
         .set => |s| hasNestedSelfCalls(s.value, name),
+        .loop => |l| hasNestedSelfCalls(l.cond, name) or hasNestedSelfCalls(l.body, name),
+        else => false,
+    };
+}
+
+/// Detect whether a function body contains non-self calls (cross-function calls).
+/// These are not yet supported by the JIT backend.
+pub fn hasNonSelfCalls(body: *const Ir, name: []const u8) bool {
+    return switch (body.*) {
+        .call => |c| blk: {
+            // Self-call is OK, non-self-call is not
+            if (!isCallTargetSelf(c.func, name)) break :blk true;
+            for (c.args) |arg| {
+                if (hasNonSelfCalls(arg, name)) break :blk true;
+            }
+            break :blk false;
+        },
+        .tailcall => |tc| blk: {
+            if (!isCallTargetSelf(tc.func, name)) break :blk true;
+            for (tc.args) |arg| {
+                if (hasNonSelfCalls(arg, name)) break :blk true;
+            }
+            break :blk false;
+        },
+        .@"if" => |i| hasNonSelfCalls(i.cond, name) or hasNonSelfCalls(i.then_branch, name) or hasNonSelfCalls(i.else_branch, name),
+        .let => |l| blk: {
+            for (l.bindings) |binding| {
+                if (hasNonSelfCalls(binding.value, name)) break :blk true;
+            }
+            break :blk hasNonSelfCalls(l.body, name);
+        },
+        .set => |s| hasNonSelfCalls(s.value, name),
+        .progn => |exprs| blk: {
+            for (exprs) |e| {
+                if (hasNonSelfCalls(e, name)) break :blk true;
+            }
+            break :blk false;
+        },
+        .loop => |l| hasNonSelfCalls(l.cond, name) or hasNonSelfCalls(l.body, name),
+        .fixnum_add, .fixnum_sub, .add, .sub, .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
+        .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
+        => |op| hasNonSelfCalls(op.left, name) or hasNonSelfCalls(op.right, name),
+        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
+        => |op| hasNonSelfCalls(op.operand, name),
+        .lit, .@"var", .global_ref => false,
         else => false,
     };
 }
@@ -952,6 +1325,7 @@ fn detectSelfCalls(body: *const Ir, name: []const u8) bool {
             return false;
         },
         .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs => |op| detectSelfCalls(op.operand, name),
+        .cons => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
         .let => |l| blk: {
             for (l.bindings) |binding| {
                 if (detectSelfCalls(binding.value, name)) break :blk true;
@@ -959,6 +1333,7 @@ fn detectSelfCalls(body: *const Ir, name: []const u8) bool {
             break :blk detectSelfCalls(l.body, name);
         },
         .set => |s| detectSelfCalls(s.value, name),
+        .loop => |l| detectSelfCalls(l.cond, name) or detectSelfCalls(l.body, name),
         else => false,
     };
 }
@@ -991,6 +1366,7 @@ fn detectLoops(body: *const Ir) bool {
             return false;
         },
         .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs => |n| detectLoops(n.operand),
+        .cons => |n| detectLoops(n.left) or detectLoops(n.right),
         .set => |n| detectLoops(n.value),
         else => false,
     };
@@ -1003,6 +1379,15 @@ pub fn compileIr(
     allocator: std.mem.Allocator,
     ir: *const Ir,
     name: []const u8,
+) !CompiledFn {
+    return compileIrWithKnownFns(allocator, ir, name, null);
+}
+
+pub fn compileIrWithKnownFns(
+    allocator: std.mem.Allocator,
+    ir: *const Ir,
+    name: []const u8,
+    known_fns: ?*const std.StringHashMap(KnownFn),
 ) !CompiledFn {
     const lambda = switch (ir.*) {
         .lambda => |l| l,
@@ -1047,6 +1432,8 @@ pub fn compileIr(
     defer translator.deinit();
 
     translator.fn_name = name;
+    translator.known_fns = known_fns;
+    translator.has_cross_calls = if (known_fns) |kf| kf.count() > 0 and hasNonSelfCalls(lambda.body, name) else false;
     translator.user_arity = arity;
     translator.is_recursive = detectSelfCalls(lambda.body, name);
     translator.has_loops = detectLoops(lambda.body);
@@ -1120,7 +1507,10 @@ pub fn compileIr(
     var ctx_builder = ContextBuilder.init(allocator);
     _ = try ctx_builder.targetNative();
     var ctx = ctx_builder
-        .optLevel(if (translator.is_recursive) .none else .aggressive)
+        // Use .none for functions with calls (cross or recursive) — aggressive
+        // optimizations can incorrectly eliminate call_indirect instructions.
+        // Only use .aggressive for leaf functions (no calls at all).
+        .optLevel(if (translator.is_recursive or translator.has_cross_calls) .none else .aggressive)
         .callConv(.system_v)
         .verification(true)
         .build();
@@ -1255,11 +1645,15 @@ pub fn compileIr(
 
     try mem.setExec(true);
 
+    // Copy name to persistent storage — the IR arena may be freed after compilation.
+    const owned_name = try allocator.dupe(u8, name);
+
     return .{
         .mem = mem,
         .fn_ptr = @ptrCast(buf.ptr),
         .arity = arity,
         .allocator = allocator,
+        .name = owned_name,
     };
 }
 

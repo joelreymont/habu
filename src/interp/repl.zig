@@ -1813,6 +1813,52 @@ pub const Repl = struct {
     /// Try to compile lambda nodes via Hoist SSA JIT and register with the VM.
     /// Called after bytecode emission, before arena reset.
     /// Returns true if hoist compilation succeeded, false otherwise.
+    /// Check if an IR body has calls that can't be resolved to JIT targets.
+    fn hasUnresolvableCalls(body: *const Ir, self_name: []const u8, known: *const std.StringHashMap(void)) bool {
+        return switch (body.*) {
+            .call => |c| blk: {
+                if (!hoist_backend.isCallResolvable(c.func, self_name, known))
+                    break :blk true;
+                for (c.args) |arg| {
+                    if (hasUnresolvableCalls(arg, self_name, known)) break :blk true;
+                }
+                break :blk false;
+            },
+            .tailcall => |tc| blk: {
+                if (!hoist_backend.isCallResolvable(tc.func, self_name, known))
+                    break :blk true;
+                for (tc.args) |arg| {
+                    if (hasUnresolvableCalls(arg, self_name, known)) break :blk true;
+                }
+                break :blk false;
+            },
+            .@"if" => |i| hasUnresolvableCalls(i.cond, self_name, known) or
+                hasUnresolvableCalls(i.then_branch, self_name, known) or
+                hasUnresolvableCalls(i.else_branch, self_name, known),
+            .let => |l| blk: {
+                for (l.bindings) |binding| {
+                    if (hasUnresolvableCalls(binding.value, self_name, known)) break :blk true;
+                }
+                break :blk hasUnresolvableCalls(l.body, self_name, known);
+            },
+            .set => |s| hasUnresolvableCalls(s.value, self_name, known),
+            .progn => |exprs| blk: {
+                for (exprs) |e| {
+                    if (hasUnresolvableCalls(e, self_name, known)) break :blk true;
+                }
+                break :blk false;
+            },
+            .loop => |l| hasUnresolvableCalls(l.cond, self_name, known) or hasUnresolvableCalls(l.body, self_name, known),
+            .fixnum_add, .fixnum_sub, .add, .sub, .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
+            .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
+            => |op| hasUnresolvableCalls(op.left, self_name, known) or hasUnresolvableCalls(op.right, self_name, known),
+            .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
+            => |op| hasUnresolvableCalls(op.operand, self_name, known),
+            .lit, .@"var", .global_ref => false,
+            else => false,
+        };
+    }
+
     fn tryHoistCompileLambdas(
         self: *Repl,
         ir_node: *const Ir,
@@ -1858,7 +1904,25 @@ pub const Repl = struct {
         // These may receive non-fixnum types; the untagged JIT would corrupt them.
         if (lambda.body.* == .assert_fixnum) return false;
         // Skip functions that the hoist backend can't translate (fast reject)
-        if (!hoist_backend.IrTranslator.canTranslate(lambda.body)) return false;
+        if (!hoist_backend.IrTranslator.canTranslate(lambda.body)) {
+            if (trace) std.debug.print("JIT: canTranslate failed for '{s}' (body tag: {s})\n", .{ define.name, @tagName(lambda.body.*) });
+            return false;
+        }
+        // Skip functions with non-self calls that have no known JIT target.
+        // Build temporary known_fns set for the check.
+        {
+            var kf_check = std.StringHashMap(void).init(self.allocator);
+            defer kf_check.deinit();
+            var iter = self.vm.hoist_fns.iterator();
+            while (iter.next()) |entry| {
+                const cfn = entry.value_ptr.*;
+                kf_check.put(cfn.name, {}) catch {};
+            }
+            if (hasUnresolvableCalls(lambda.body, define.name, &kf_check)) {
+                if (trace) std.debug.print("JIT: skipping '{s}' — has unresolvable calls\n", .{define.name});
+                return false;
+            }
+        }
 
         // Only simple functions without captures, optional, key, or rest params
         if (lambda.captures.len > 0) return false;
@@ -1867,7 +1931,10 @@ pub const Repl = struct {
         if (lambda.rest_param != null) return false;
 
         // The first child chunk is the lambda's chunk
-        if (child_chunks.len == 0) return false;
+        if (child_chunks.len == 0) {
+            if (trace) std.debug.print("JIT: no child chunks for '{s}'\n", .{define.name});
+            return false;
+        }
         const chunk_val = child_chunks[0];
         const chunk_ptr = chunk_val.toPtr(runtime.objects.Chunk);
 
@@ -1882,8 +1949,23 @@ pub const Repl = struct {
         name: []const u8,
         chunk_ptr: *const runtime.objects.Chunk,
     ) bool {
-        var compiled = hoist_backend.compileIr(self.allocator, lambda_ir, name) catch |err| {
-            if (std.posix.getenv("HABU_TRACE_JIT") != null) {
+        // Build known_fns map from existing hoist-compiled functions
+        var known_fns = std.StringHashMap(hoist_backend.KnownFn).init(self.allocator);
+        defer known_fns.deinit();
+        {
+            var iter = self.vm.hoist_fns.iterator();
+            while (iter.next()) |entry| {
+                const cfn = entry.value_ptr.*;
+                known_fns.put(cfn.name, .{
+                    .fn_ptr = @intFromPtr(cfn.fn_ptr),
+                    .arity = cfn.arity,
+                }) catch {};
+            }
+        }
+
+        const trace = std.posix.getenv("HABU_TRACE_JIT") != null;
+        var compiled = hoist_backend.compileIrWithKnownFns(self.allocator, lambda_ir, name, &known_fns) catch |err| {
+            if (trace) {
                 std.debug.print("JIT: hoist compile failed for '{s}': {s}\n", .{ name, @errorName(err) });
             }
             return false;
