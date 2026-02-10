@@ -1867,10 +1867,7 @@ pub const Repl = struct {
         if (lambda.rest_param != null) return false;
 
         // The first child chunk is the lambda's chunk
-        if (child_chunks.len == 0) {
-            if (trace) std.debug.print("JIT: no child chunks for '{s}'\n", .{define.name});
-            return false;
-        }
+        if (child_chunks.len == 0) return false;
         const chunk_val = child_chunks[0];
         const chunk_ptr = chunk_val.toPtr(runtime.objects.Chunk);
 

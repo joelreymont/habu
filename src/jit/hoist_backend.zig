@@ -369,6 +369,16 @@ pub const IrTranslator = struct {
         return try self.b.icmp(I8, cc, l, r);
     }
 
+    /// Convert an I8 boolean (0/1) to a tagged Lisp value (nil=0, t=2).
+    /// Used when a comparison result is needed as a Lisp value (not just a branch condition).
+    fn boolToTagged(self: *IrTranslator, val: HoistValue) anyerror!HoistValue {
+        const val_ty = self.func.dfg.valueType(val) orelse I64;
+        if (val_ty.raw != I8.raw) return val; // Already I64
+        const t_val = try self.cachedIconst(@as(i64, @bitCast(Value.t.raw)));
+        const nil_val = try self.cachedIconst(0);
+        return try self.b.select(I64, val, t_val, nil_val);
+    }
+
     fn translateIf(self: *IrTranslator, cond: *const Ir, then_ir: *const Ir, else_ir: *const Ir) anyerror!HoistValue {
         const cond_val = try self.translate(cond);
 
@@ -388,11 +398,7 @@ pub const IrTranslator = struct {
         // If the then-branch already terminated (nested if that returned),
         // don't emit another jump
         if (self.b.current_block != null) {
-            const then_ty = self.func.dfg.valueType(then_val) orelse I64;
-            const then_i64 = if (then_ty.raw == I8.raw)
-                try self.b.uextend(I64, then_val)
-            else
-                then_val;
+            const then_i64 = try self.boolToTagged(then_val);
             try self.b.jumpArgs(merge_blk, &.{then_i64});
         }
 
@@ -401,11 +407,7 @@ pub const IrTranslator = struct {
         try self.b.sealBlock(else_blk);
         const else_val = try self.translate(else_ir);
         if (self.b.current_block != null) {
-            const else_ty = self.func.dfg.valueType(else_val) orelse I64;
-            const else_i64 = if (else_ty.raw == I8.raw)
-                try self.b.uextend(I64, else_val)
-            else
-                else_val;
+            const else_i64 = try self.boolToTagged(else_val);
             try self.b.jumpArgs(merge_blk, &.{else_i64});
         }
 
@@ -472,10 +474,14 @@ pub const IrTranslator = struct {
                 try self.preEmitConstants(op.right);
             },
             .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq, .eq => |op| {
+                _ = try self.cachedIconst(0); // nil
+                _ = try self.cachedIconst(@as(i64, @bitCast(Value.t.raw))); // t
                 try self.preEmitConstants(op.left);
                 try self.preEmitConstants(op.right);
             },
             .le, .lt, .gt, .ge, .num_eq => |op| {
+                _ = try self.cachedIconst(0); // nil
+                _ = try self.cachedIconst(@as(i64, @bitCast(Value.t.raw))); // t
                 try self.preEmitConstants(op.left);
                 try self.preEmitConstants(op.right);
             },
@@ -905,6 +911,13 @@ fn hasNestedSelfCalls(body: *const Ir, name: []const u8) bool {
             return false;
         },
         .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs => |op| hasNestedSelfCalls(op.operand, name),
+        .let => |l| blk: {
+            for (l.bindings) |binding| {
+                if (hasNestedSelfCalls(binding.value, name)) break :blk true;
+            }
+            break :blk hasNestedSelfCalls(l.body, name);
+        },
+        .set => |s| hasNestedSelfCalls(s.value, name),
         else => false,
     };
 }
@@ -939,6 +952,13 @@ fn detectSelfCalls(body: *const Ir, name: []const u8) bool {
             return false;
         },
         .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs => |op| detectSelfCalls(op.operand, name),
+        .let => |l| blk: {
+            for (l.bindings) |binding| {
+                if (detectSelfCalls(binding.value, name)) break :blk true;
+            }
+            break :blk detectSelfCalls(l.body, name);
+        },
+        .set => |s| detectSelfCalls(s.value, name),
         else => false,
     };
 }
@@ -1081,25 +1101,13 @@ pub fn compileIr(
         return err;
     };
 
-    // Emit ret with the result value, re-tagging if in untagged mode
-    const result_ty = func.dfg.valueType(result) orelse I64;
-    var result_i64 = if (result_ty.raw == I8.raw)
-        try b.uextend(I64, result)
-    else
-        result;
+    // Emit ret with the result value.
+    // I8 boolean results (from comparisons) must be converted to tagged Lisp values (nil=0, t=2).
+    // In untagged mode, fixnum results must be re-tagged.
+    var result_i64 = try translator.boolToTagged(result);
     if (translator.untagged) {
-        // Re-tag: tagged = val * 2 + 1 = (val << 1) | 1
-        // For i8 results (comparisons returning t/nil), we need special handling:
-        // 0 → nil (0x0), 1 → t (0x2). But these are already special values...
-        // Actually in untagged mode, comparisons still return I8 0/1 for brif.
-        // At return point, if the result is I8, it came from a cmp (boolean).
-        // We need to map: 0 → nil raw (0), 1 → t raw (2).
-        if (result_ty.raw == I8.raw) {
-            // Boolean result: 0 → nil, nonzero → t
-            // t.raw = 2, nil.raw = 0. So: result_i64 * 2 = uextend then ishl.
-            const one = try translator.cachedIconst(1);
-            result_i64 = try b.ishl(I64, result_i64, one);
-        } else {
+        const result_ty = func.dfg.valueType(result) orelse I64;
+        if (result_ty.raw != I8.raw) {
             // Fixnum result: re-tag with (val << 1) | 1
             const one = try translator.cachedIconst(1);
             const shifted = try b.ishl(I64, result_i64, one);
@@ -1190,7 +1198,9 @@ pub fn compileIr(
     // Fix parallel copy conflicts in call argument setup.
     // Hoist's lowering emits sequential mov instructions for call arguments
     // which can clobber source registers before they're consumed.
-    if (translator.needs_call_spill) {
+    // Always run for recursive functions (even without nested self-calls)
+    // because 3+ params create dependency chains in the arg move sequence.
+    if (translator.is_recursive) {
         fixCallArgMoves(code.code.items);
         // Debug: dump patched machine code
         if (false) {
