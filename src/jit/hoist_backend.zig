@@ -669,7 +669,7 @@ pub const IrTranslator = struct {
                 if (self.is_recursive and isCallTargetSelf(c.func, self.fn_name)) {
                     _ = try self.cachedIconst(self.self_ptr_placeholder);
                 } else if (self.known_fns) |kf| {
-                    // Pre-emit cross-call function pointer
+                    // Pre-emit cross-call function pointer (with qualified name matching)
                     if (getCallTargetName(c.func)) |target_name| {
                         if (kf.get(target_name)) |known| {
                             _ = try self.cachedIconst(@as(i64, @bitCast(known.fn_ptr)));
