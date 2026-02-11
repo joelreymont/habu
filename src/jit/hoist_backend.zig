@@ -1635,8 +1635,26 @@ pub const IrTranslator = struct {
     /// cdr: load [val + 8]
     /// At safety=0 (JIT requirement), no nil check needed.
     /// Cdr is at offset 8 (after car field).
+    /// Uses load with offset=8 to emit LDR [base, #8] directly when not in
+    /// TCO mode (backward phi copies have a hoist regalloc issue with offsets).
     fn translateCdr(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
         const val = try self.translate(operand_ir);
+        if (self.tco_header == null) {
+            // Non-TCO: use load with offset=8 directly — generates LDR [base, #8]
+            const inst_data = hoist.instruction_data.InstructionData{
+                .load = hoist.instruction_data.LoadData.init(
+                    .load,
+                    hoist.memflags.MemFlags.heap(),
+                    val,
+                    8,
+                ),
+            };
+            const inst = try self.func.dfg.makeInst(inst_data);
+            const block = self.b.current_block orelse return error.NoCurrentBlock;
+            try self.func.layout.appendInst(inst, block);
+            return try self.func.dfg.appendInstResult(inst, I64);
+        }
+        // TCO: use iadd + load (offset in hoist load causes regalloc issues with backward phis)
         const eight = try self.cachedIconst(8);
         const cdr_addr = try self.b.iadd(I64, val, eight);
         return try self.b.load(I64, cdr_addr, hoist.memflags.MemFlags.heap());
@@ -2589,6 +2607,9 @@ pub fn compileIrWithKnownFns(
         fixEntryParamMoves(code.code.items);
     }
 
+    // Fuse MOVZ+CMP into CMP immediate (eliminates MOVZ for small constants)
+    fuseCmpImmediate(code.code.items);
+
     // Fuse CMP+CSET...CMP+CSEL into CMP...CSEL with original condition.
     // Pattern: CMP sets flags → CSET materializes bool → later CMP tests bool → CSEL.
     // Replace with: CMP sets flags → NOP → ... → NOP → CSEL(original cond).
@@ -2705,6 +2726,107 @@ pub fn compileIrWithKnownFns(
 ///   i+k+1: CSEL Xd, Xa, Xb, NE (condition 1)
 ///
 /// Result: NOP the CSET, NOP the CMP Wc,WZR, change CSEL cond from NE to original cond
+/// Fuse MOVZ+CMP register into CMP immediate.
+/// Pattern: MOVZ xN, #imm; ...; CMP xM, xN → CMP xM, #imm; NOP (MOVZ if dead)
+/// ARM64 CMP immediate: SUBS XZR, Xn, #imm12 = 0xF100_0000 | (imm12 << 10) | (Rn << 5) | 0x1F
+fn fuseCmpImmediate(code: []u8) void {
+    const NOP = @as(u32, 0xD503201F);
+    const n_insns = code.len / 4;
+    if (n_insns < 2) return;
+
+    var i: usize = 0;
+    while (i + 1 < n_insns) : (i += 1) {
+        const insn_cmp = readInsn(code, i);
+
+        // Match CMP Xn, Xm (64-bit): 0xEB00001F with Rm in [20:16], Rn in [9:5]
+        if (insn_cmp & 0xFFE0001F != 0xEB00001F) continue;
+        const rn: u5 = @truncate((insn_cmp >> 5) & 0x1F);
+        const rm: u5 = @truncate((insn_cmp >> 16) & 0x1F);
+        if (rm == 31) continue; // CMP with XZR is already immediate-like
+
+        // Scan backward for MOVZ rm, #imm where imm fits in 12 bits
+        var found = false;
+        var j: usize = i;
+        while (j > 0) {
+            j -= 1;
+            const insn_j = readInsn(code, j);
+            if (insn_j == NOP) continue;
+
+            // MOVZ Xd, #imm16: 0xD2800000 | (imm16 << 5) | Rd
+            if (insn_j & 0xFFE00000 == 0xD2800000) {
+                const movz_rd: u5 = @truncate(insn_j & 0x1F);
+                if (movz_rd != rm) {
+                    // Different register — not our target, keep scanning
+                    continue;
+                }
+                const movz_imm: u16 = @truncate((insn_j >> 5) & 0xFFFF);
+                if (movz_imm > 4095) break; // Doesn't fit in CMP imm12
+
+                // Check that rm is not used between MOVZ and CMP (other than by the CMP)
+                var rm_used_between = false;
+                var k = j + 1;
+                while (k < i) : (k += 1) {
+                    const insn_k = readInsn(code, k);
+                    if (insn_k == NOP) continue;
+                    // Check if rm appears as Rn (bits 9-5) or Rm (bits 20-16)
+                    const k_rn: u5 = @truncate((insn_k >> 5) & 0x1F);
+                    const k_rm: u5 = @truncate((insn_k >> 16) & 0x1F);
+                    if (k_rn == rm or k_rm == rm) {
+                        rm_used_between = true;
+                        break;
+                    }
+                }
+
+                // Replace CMP register with CMP immediate
+                // CMP Xn, #imm12 = SUBS XZR, Xn, #imm12{shift=0}
+                // Encoding: 1 1 1 1 0001 00 imm12 Rn 11111
+                const cmp_imm: u32 = 0xF100001F | (@as(u32, movz_imm) << 10) | (@as(u32, rn) << 5);
+                writeInsn(code, i, cmp_imm);
+
+                // NOP the MOVZ if rm is not used elsewhere
+                if (!rm_used_between) {
+                    // Check if rm is used AFTER the CMP
+                    var rm_used_after = false;
+                    k = i + 1;
+                    while (k < n_insns) : (k += 1) {
+                        const insn_k = readInsn(code, k);
+                        if (insn_k == NOP) continue;
+                        const k_rn_a: u5 = @truncate((insn_k >> 5) & 0x1F);
+                        const k_rm_a: u5 = @truncate((insn_k >> 16) & 0x1F);
+                        const k_rd: u5 = @truncate(insn_k & 0x1F);
+                        if (k_rn_a == rm or k_rm_a == rm) {
+                            rm_used_after = true;
+                            break;
+                        }
+                        // If rd overwrites rm, rm is dead
+                        if (k_rd == rm) break;
+                    }
+                    if (!rm_used_after) {
+                        writeInsn(code, j, NOP);
+                    }
+                }
+                found = true;
+                break;
+            }
+
+            // Any non-MOVZ instruction that writes rm stops the scan
+            // (MOVZ is handled above)
+            if (insn_j & 0xFFE00000 != 0xD2800000) {
+                const j_rd: u5 = @truncate(insn_j & 0x1F);
+                if (j_rd == rm) break;
+            }
+
+            // Branches stop the scan
+            if (insn_j & 0xFC000000 == 0x14000000 or // B
+                insn_j & 0xFC000000 == 0x94000000 or // BL
+                insn_j & 0xFF000010 == 0x54000000 or // B.cond
+                insn_j & 0xFFFFFC1F == 0xD63F0000 or // BLR
+                insn_j & 0xFFFFFC1F == 0xD65F0000) break; // RET
+        }
+        if (found) {}
+    }
+}
+
 fn fuseSelectCondition(code: []u8) void {
     const NOP = @as(u32, 0xD503201F);
     const n_insns = code.len / 4;
@@ -2716,9 +2838,12 @@ fn fuseSelectCondition(code: []u8) void {
         const insn1 = readInsn(code, i + 1);
 
         // insn0: must be a CMP (SUBS with Rd=XZR/WZR)
-        // 64-bit: EB..001F or 32-bit: 6B..001F
-        const is_cmp = (insn0 & 0x7FE0001F == 0x6B00001F) or // SUBS Wd,Wn,Wm (CMP)
-            (insn0 & 0xFFE0001F == 0xEB00001F); // SUBS Xd,Xn,Xm (CMP)
+        // Register: 64-bit EB..001F, 32-bit 6B..001F
+        // Immediate: 64-bit F1..001F, 32-bit 71..001F
+        const is_cmp = (insn0 & 0x7FE0001F == 0x6B00001F) or // SUBS reg Wd/Xd
+            (insn0 & 0xFFE0001F == 0xEB00001F) or // SUBS reg Xd
+            (insn0 & 0x7F80001F == 0x7100001F) or // SUBS imm Wd/Xd
+            (insn0 & 0xFF80001F == 0xF100001F); // SUBS imm Xd
         if (!is_cmp) continue;
 
         // insn1: CSET Xc, cond = CSINC Xc, XZR, XZR, inv_cond
