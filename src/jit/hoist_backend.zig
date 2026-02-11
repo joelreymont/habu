@@ -1176,8 +1176,8 @@ pub const IrTranslator = struct {
                 return try self.translateInlinedCall(params, body, args);
             }
 
-            // Try inlining tail-recursive functions as loops
-            // TEMP: disabled - bug in inlined TCO phi resolution
+            // Inline TCO disabled: hoist regalloc phi copy bug for nested loops.
+            // Cross-call works correctly with ~5% overhead.
             if (false and countIrNodes(body) <= 40 and known.callee_name.len > 0 and
                 hasSelfTailCalls(body, known.callee_name) and
                 !hasNonTailSelfCalls(body, known.callee_name))
@@ -4018,11 +4018,13 @@ fn coalesceMovs(code: []u8) void {
                 if (rn_a == rd0 or rm_a == rd0) { safe = false; break; }
                 // If rd0 is redefined, no more consumers can see old value
                 if (rd_a == rd0) break;
-                // Stop at branch/ret (control flow boundary)
-                if (after & 0xFC000000 == 0x14000000 or
-                    after & 0xFF000000 == 0x54000000 or
-                    after & 0xFFFFFC1F == 0xD65F0000 or
-                    after & 0xFFFFFC1F == 0xD63F0000) break;
+                // Stop at branch/ret/call (control flow boundary).
+                // Conservatively assume rd0 may be used by branch targets.
+                if (after & 0xFC000000 == 0x14000000 or // B
+                    after & 0xFF000000 == 0x54000000 or // B.cond
+                    after & 0xFFFFFC1F == 0xD65F0000 or // RET
+                    after & 0xFFFFFC1F == 0xD63F0000) // BLR
+                { safe = false; break; }
             }
             if (!safe) continue;
 
