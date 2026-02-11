@@ -1838,22 +1838,9 @@ pub const IrTranslator = struct {
     /// TCO mode (backward phi copies have a hoist regalloc issue with offsets).
     fn translateCdr(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
         const val = try self.translate(operand_ir);
-        if (self.tco_header == null) {
-            // Non-TCO: use load with offset=8 directly — generates LDR [base, #8]
-            const inst_data = hoist.instruction_data.InstructionData{
-                .load = hoist.instruction_data.LoadData.init(
-                    .load,
-                    hoist.memflags.MemFlags.heap(),
-                    val,
-                    8,
-                ),
-            };
-            const inst = try self.func.dfg.makeInst(inst_data);
-            const block = self.b.current_block orelse return error.NoCurrentBlock;
-            try self.func.layout.appendInst(inst, block);
-            return try self.func.dfg.appendInstResult(inst, I64);
-        }
-        // TCO: use iadd + load (offset in hoist load causes regalloc issues with backward phis)
+        // Always use iadd + load to prevent hoist LDP merging with car load.
+        // Hoist's LDP register assignment has a bug: Rt2 destination doesn't
+        // match the regalloc's expected register for the second value.
         const eight = try self.cachedIconst(8);
         const cdr_addr = try self.b.iadd(I64, val, eight);
         return try self.b.load(I64, cdr_addr, hoist.memflags.MemFlags.heap());
@@ -1873,8 +1860,24 @@ pub const IrTranslator = struct {
     /// Fast path: load alloc_ptr, store car+cdr, bump pointer.
     /// Slow path: call jitCons() for GC + allocate.
     fn translateCons(self: *IrTranslator, car_ir: *const Ir, cdr_ir: *const Ir) anyerror!HoistValue {
-        const car_val = try self.translate(car_ir);
-        const cdr_val = try self.translate(cdr_ir);
+        var car_val = try self.translate(car_ir);
+        var cdr_val = try self.translate(cdr_ir);
+
+        // In untagged mode, cons cells must store TAGGED values (they're runtime
+        // objects read by the interpreter and other functions). Re-tag fixnum
+        // arguments: tagged_raw = (untagged << 1) | 1.
+        if (self.untagged) {
+            if (producesFixnum(car_ir)) {
+                const one = try self.cachedIconst(1);
+                const shifted = try self.b.ishl(I64, car_val, one);
+                car_val = try self.b.bor(I64, shifted, one);
+            }
+            if (producesFixnum(cdr_ir)) {
+                const one = try self.cachedIconst(1);
+                const shifted = try self.b.ishl(I64, cdr_val, one);
+                cdr_val = try self.b.bor(I64, shifted, one);
+            }
+        }
 
         // Inline bump allocation directly in hoist IR to avoid call_indirect
         // register swap issues. Loads g_alloc_ptr, stores car+cdr, bumps pointer.
@@ -1897,7 +1900,23 @@ pub const IrTranslator = struct {
         try self.b.store(new_ptr, alloc_ptr_addr, mf);
 
         // Return ptr as cons value (cons tag = 0, so raw = ptr)
+        // In untagged mode, the cons pointer is NOT a fixnum — it's already
+        // a tagged cons (tag=0, raw=ptr). Don't untag it.
         return ptr;
+    }
+
+    /// Check if an IR expression produces a fixnum value (needs retagging in untagged mode).
+    fn producesFixnum(ir: *const Ir) bool {
+        return switch (ir.*) {
+            .lit => |v| v.isFixnum(),
+            .fixnum_add, .fixnum_sub, .fixnum_mul, .add, .sub, .mul => true,
+            .@"var" => true, // Variables in untagged mode hold untagged fixnums
+            .car, .unsafe_car => false, // car returns tagged values from cons cells
+            .cdr, .unsafe_cdr => false, // cdr returns tagged values from cons cells
+            .length => true, // length is a fixnum
+            .cons => false, // cons returns a pointer
+            else => true, // Conservative: assume fixnum
+        };
     }
 
     /// Get or create the SigRef for the cons call: (i64, i64) -> i64
@@ -2895,7 +2914,11 @@ pub fn compileIrWithKnownFns(
     // Self-calls use untagged calling convention (no tag/untag overhead).
     // Only use untagged mode for functions with loops (no call overhead).
     // Recursive functions pay retag/untag at every self-call, which is worse.
-    translator.untagged = translator.has_loops and !translator.is_recursive;
+    // Untagged mode: work with plain i64 inside the function.
+    // Disabled when function uses cons/car/cdr because cons cells store tagged
+    // values, creating a tagged/untagged boundary that requires conversions.
+    translator.untagged = translator.has_loops and !translator.is_recursive and
+        !containsCons(lambda.body) and !containsLoads(lambda.body);
 
     // Map params to SSA values, untagging at entry in untagged mode.
     const block_params = func.dfg.blockParams(entry);
