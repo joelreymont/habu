@@ -1961,6 +1961,7 @@ pub const Repl = struct {
                     .arity = cfn.arity,
                     .ir_body = cfn.ir_body,
                     .param_names = cfn.param_names,
+                    .callee_name = cfn.name,
                 }) catch {};
             }
         }

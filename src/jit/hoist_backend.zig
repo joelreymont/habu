@@ -249,6 +249,8 @@ pub const KnownFn = struct {
     ir_body: ?*const Ir = null,
     /// Callee parameter names for inlining (null if not available).
     param_names: ?[]const []const u8 = null,
+    /// Callee function name (for detecting self-calls during inlined TCO).
+    callee_name: []const u8 = "",
 };
 
 /// Result of compiling a Habu function to native code.
@@ -1005,15 +1007,22 @@ pub const IrTranslator = struct {
     }
 
     fn translateCrossCall(self: *IrTranslator, known: KnownFn, args: []const *const Ir) anyerror!HoistValue {
-        // Try inlining small non-recursive functions
         if (known.ir_body != null and known.param_names != null) {
             const body = known.ir_body.?;
             const params = known.param_names.?;
-            // Only inline if: small enough, arity matches, and callee is NOT recursive
-            if (params.len == args.len and countIrNodes(body) <= 30 and
-                !callsItself(body))
-            {
+            if (params.len != args.len) return try self.emitCrossCallIndirect(known, args);
+
+            // Try inlining small non-recursive functions directly
+            if (countIrNodes(body) <= 30 and !callsItself(body)) {
                 return try self.translateInlinedCall(params, body, args);
+            }
+
+            // Try inlining tail-recursive functions as loops
+            if (countIrNodes(body) <= 40 and known.callee_name.len > 0 and
+                hasSelfTailCalls(body, known.callee_name) and
+                !hasNonTailSelfCalls(body, known.callee_name))
+            {
+                return try self.translateInlinedTCOCall(known, params, body, args);
             }
         }
 
@@ -1056,6 +1065,89 @@ pub const IrTranslator = struct {
         try self.func.layout.appendInst(call_inst, block);
 
         return call_result;
+    }
+
+    /// Inline a tail-recursive cross-function call as a loop.
+    /// Creates header/exit blocks similar to translateTCOBody, but within the
+    /// caller's function. The callee's tail calls become jumps to the header.
+    fn translateInlinedTCOCall(
+        self: *IrTranslator,
+        known: KnownFn,
+        callee_params: []const []const u8,
+        callee_body: *const Ir,
+        args: []const *const Ir,
+    ) anyerror!HoistValue {
+        const arity = callee_params.len;
+        if (arity > 8) return try self.emitCrossCallIndirect(known, args);
+
+        // Translate all arguments first (in caller's scope)
+        var translated_args: [8]HoistValue = undefined;
+        for (args, 0..) |arg, i| {
+            translated_args[i] = try self.translate(arg);
+        }
+
+        // Create loop header with phi params for callee's parameters
+        const header = try self.func.dfg.addBlock();
+        try self.func.layout.appendBlock(header);
+
+        var phi_vals: [8]HoistValue = undefined;
+        for (0..arity) |pi| {
+            phi_vals[pi] = try self.func.dfg.appendBlockParam(header, I64);
+        }
+
+        // Create exit block with result phi
+        const exit = try self.func.dfg.addBlock();
+        try self.func.layout.appendBlock(exit);
+        const exit_param = try self.func.dfg.appendBlockParam(exit, I64);
+
+        // Jump from current block to header with initial arg values
+        try self.b.jumpArgs(header, translated_args[0..arity]);
+
+        // Switch to header block
+        self.b.switchToBlock(header);
+
+        // Push inline scope: callee locals start after caller's locals
+        const base = self.locals.items.len;
+        for (0..arity) |i| {
+            try self.locals.append(self.allocator, phi_vals[i]);
+        }
+        try self.inline_scopes.append(self.allocator, .{
+            .base = base,
+            .count = arity,
+        });
+
+        // Pre-emit constants in header block (dominating position for loop body)
+        try self.preEmitConstants(callee_body);
+
+        // Save and override TCO state + fn_name for callee context
+        const saved_tco_header = self.tco_header;
+        const saved_tco_exit = self.tco_exit;
+        const saved_fn_name = self.fn_name;
+        self.tco_header = header;
+        self.tco_exit = exit;
+        self.fn_name = known.callee_name;
+
+        // Translate body in TCO context
+        const body_result = try self.translateTCOExpr(callee_body);
+
+        // If body produces a value (non-tail path), jump to exit
+        if (self.b.current_block != null) {
+            const result_tagged = try self.boolToTagged(body_result);
+            try self.b.jumpArgs(exit, &.{result_tagged});
+        }
+
+        // Restore TCO state + fn_name
+        self.tco_header = saved_tco_header;
+        self.tco_exit = saved_tco_exit;
+        self.fn_name = saved_fn_name;
+
+        // Pop inline scope
+        _ = self.inline_scopes.pop();
+        self.locals.shrinkRetainingCapacity(base);
+
+        // Switch to exit block and return the result
+        self.b.switchToBlock(exit);
+        return exit_param;
     }
 
     /// Inline a cross-function call by translating the callee's IR body directly.
