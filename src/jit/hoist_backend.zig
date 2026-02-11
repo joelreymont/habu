@@ -513,6 +513,9 @@ pub const IrTranslator = struct {
     /// Params are untagged at entry, result is re-tagged at return.
     /// Self-calls use untagged convention (no tag/untag at call boundary).
     untagged: bool = false,
+    /// Set during translateLoop's LICM preEmitConstants to enable hoisting
+    /// of inline cons constants (g_alloc_ptr, 16, 8) out of loops.
+    in_loop_preemit: bool = false,
 
     /// Whether the function contains load instructions (car, cdr).
     /// .aggressive optimization incorrectly eliminates loads.
@@ -1026,6 +1029,8 @@ pub const IrTranslator = struct {
             .length => |n| {
                 _ = try self.cachedIconst(0); // nil
                 _ = try self.cachedIconst(1); // tagged 0
+                _ = try self.cachedIconst(2); // tagged increment (+1 raw)
+                _ = try self.cachedIconst(8); // cdr offset
                 try self.preEmitConstants(n.operand);
             },
             .logand => |n| {
@@ -1038,7 +1043,14 @@ pub const IrTranslator = struct {
                 try self.preEmitConstants(n.right);
             },
             .cons => |n| {
-                _ = try self.cachedIconst(@as(i64, @bitCast(getJitConsPtr()))); // cons fn ptr
+                // Pre-emit inline cons constants for loop LICM, but only when not
+                // in a recursive function (which has high register pressure from
+                // callee-saved regs, cross-calls, self-calls).
+                if (self.in_loop_preemit and !self.is_recursive) {
+                    _ = try self.cachedIconst(@as(i64, @bitCast(@intFromPtr(&g_alloc_ptr))));
+                    _ = try self.cachedIconst(16);
+                    _ = try self.cachedIconst(8);
+                }
                 try self.preEmitConstants(n.left);
                 try self.preEmitConstants(n.right);
             },
@@ -1075,8 +1087,10 @@ pub const IrTranslator = struct {
         // LICM: Pre-emit all constants from the loop condition and body in the
         // current (pre-loop) block. These dominate the loop and will be kept in
         // registers by the allocator, avoiding re-materialization each iteration.
+        self.in_loop_preemit = true;
         try self.preEmitConstants(cond_ir);
         try self.preEmitConstants(body_ir);
+        self.in_loop_preemit = false;
 
         // Create blocks using low-level API
         const header = try self.func.dfg.addBlock();
@@ -2075,10 +2089,10 @@ pub const IrTranslator = struct {
 
         // Body: count += 2 (tagged increment), ptr = cdr(ptr)
         self.b.switchToBlock(body);
-        const two = try self.b.iconst(I64, 2); // tagged 1 increment = 2 in raw
+        const two = try self.cachedIconst(2); // tagged 1 increment = 2 in raw
         const new_count = try self.b.iadd(I64, count_param, two);
         // cdr is at offset 8 from cons pointer (cons tag is 0, raw = pointer)
-        const eight = try self.b.iconst(I64, 8);
+        const eight = try self.cachedIconst(8);
         const cdr_addr = try self.b.iadd(I64, ptr_param, eight);
         const next_ptr = try self.b.load(I64, cdr_addr, hoist.memflags.MemFlags.heap());
         try self.b.jumpArgs(header, &.{ next_ptr, new_count });
@@ -3961,6 +3975,21 @@ fn eliminateUselessBranches(code: []u8) void {
 /// Coalesce: for ALU ops where the result is only used by a later mov,
 /// change the ALU op's destination to the mov's destination and NOP the mov.
 /// Handles non-adjacent pairs: `add rD, rA, rB; ...; mov rC, rD` → `add rC, rA, rB; ...; nop`
+/// Check if there are any call instructions (BLR/BL) between two instruction indices.
+/// Used to determine if a loop body contains calls (which makes backward branch
+/// coalescing unsafe due to callee-clobbered registers).
+fn has_calls_in_loop(code: []u8, from: usize, to: usize) bool {
+    const n_insns = code.len / 4;
+    var idx = from;
+    while (idx < to and idx < n_insns) : (idx += 1) {
+        const insn = readInsn(code, idx);
+        if (insn & 0xFFFFFC1F == 0xD63F0000 or // BLR
+            insn & 0xFC000000 == 0x94000000) // BL
+            return true;
+    }
+    return false;
+}
+
 fn coalesceMovs(code: []u8) void {
     if (code.len < 8) return;
     const n_insns = code.len / 4;
@@ -4044,15 +4073,17 @@ fn coalesceMovs(code: []u8) void {
                 if (rn_a == rd0 or rm_a == rd0) { safe = false; break; }
                 // If rd0 is redefined, no more consumers can see old value
                 if (rd_a == rd0) break;
-                // At control flow boundaries, check if rd0 is used by branch targets.
-                // For backward unconditional branches (loop backedges), rd0 is a
-                // temporary that was just phi-copied to mov_dst — the loop header
-                // reads mov_dst, not rd0. So backward branches are safe.
+                // At control flow boundaries, check if rd0 is used by targets.
                 if (after & 0xFC000000 == 0x14000000) { // B imm26
+                    // Backward branches (loop backedges): rd0 is a temporary that
+                    // was just phi-copied to mov_dst. The loop header reads mov_dst,
+                    // not rd0. Only safe for loops without calls (simple loops).
                     const imm26: u32 = after & 0x03FFFFFF;
-                    const is_backward = (imm26 & 0x02000000) != 0; // sign bit
-                    if (!is_backward) { safe = false; break; }
-                    // Backward branch: rd0 is dead (phi copy already captured it)
+                    const is_backward = (imm26 & 0x02000000) != 0;
+                    if (is_backward and !has_calls_in_loop(code, i, k)) {
+                        break; // safe: rd0 dead at loop header
+                    }
+                    safe = false;
                     break;
                 }
                 if (after & 0xFF000000 == 0x54000000 or // B.cond
