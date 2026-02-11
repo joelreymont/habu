@@ -3002,8 +3002,13 @@ pub fn compileIrWithKnownFns(
     // Untagged mode: work with plain i64 inside the function.
     // Disabled when function uses cons/car/cdr because cons cells store tagged
     // values, creating a tagged/untagged boundary that requires conversions.
+    // Untagged mode: work with plain i64 inside the function.
+    // Disabled when function uses:
+    // - cons/car/cdr: cons cells store tagged values
+    // - primitive calls (gcd, nreverse, append, assoc): expect tagged args
     translator.untagged = translator.has_loops and !translator.is_recursive and
-        !containsCons(lambda.body) and !containsLoads(lambda.body);
+        !containsCons(lambda.body) and !containsLoads(lambda.body) and
+        !containsPrimitiveCalls(lambda.body, name);
 
     // Map params to SSA values, untagging at entry in untagged mode.
     const block_params = func.dfg.blockParams(entry);
