@@ -1,16 +1,10 @@
-//! Hoist SSA JIT Backend
+//! JIT Backend (ARM64 via Hoist SSA)
 //!
-//! Translates Habu compiler IR to Hoist SSA IR, which then goes through:
-//!   Optimize → Lower (ISLE) → Register Allocate → Emit AArch64
-//!
-//! This is the
-//! SSA compiler that keeps values in registers.
-//!
-//! Pipeline: Lisp → IR (tree) → Hoist SSA → Optimize → Lower → RegAlloc → Native
+//! Translates Habu compiler IR to Hoist SSA IR, then compiles to native code:
+//!   IR (tree) → Hoist SSA → Optimize → Lower (ISLE) → RegAlloc → AArch64
 //!
 //! Supports recursive functions via call_indirect with self-pointer patching.
-//! The function address placeholder 0x0BADF00DDEADBEEF is embedded as an iconst
-//! and patched with the actual code address after compilation.
+//! The placeholder 0x0BADF00DDEADBEEF is patched with the actual code address.
 
 const std = @import("std");
 const hoist = @import("hoist");
@@ -104,11 +98,6 @@ fn jitCons(cdr_raw: u64, car_raw: u64) callconv(.c) u64 {
     return result.raw;
 }
 
-/// Address of the jitCons function, usable as call target.
-pub fn getJitConsPtr() u64 {
-    return @intFromPtr(&jitCons);
-}
-
 // ── Global-state C-ABI wrappers for runtime primitives ──
 // These can be called from JIT code via call_indirect without JitContext.
 
@@ -194,7 +183,6 @@ fn stripPackagePrefix(name: []const u8) []const u8 {
 }
 
 /// Get function pointer for runtime primitive by name.
-/// Returns null if not a known primitive.
 fn getJitPrimitivePtr(name: []const u8) ?u64 {
     return getJitPrimitivePtrWithArity(name, null);
 }
@@ -233,95 +221,80 @@ fn isSimpleValue(ir: *const Ir) bool {
 
 /// Check if a function body calls itself (has self-recursive calls or tailcalls).
 /// Used to prevent inlining recursive functions.
-fn callsItself(body: *const Ir) bool {
-    return switch (body.*) {
-        .call, .tailcall => true, // Any call/tailcall in the body means it might be recursive
-        .@"if" => |i| callsItself(i.cond) or callsItself(i.then_branch) or callsItself(i.else_branch),
-        .let => |l| blk: {
-            for (l.bindings) |b| {
-                if (callsItself(b.value)) break :blk true;
-            }
-            break :blk callsItself(l.body);
+// ── Generic IR tree walker ──
+// Most analysis functions need the same recursive descent over IR nodes.
+// This generic walker handles the structural recursion; callers only supply
+// a predicate for leaf/call nodes.
+
+/// Walk an IR tree depth-first, returning true if `pred` returns true for any node.
+/// The predicate receives each node; structural children are walked automatically.
+fn irAny(ir: *const Ir, pred: anytype) bool {
+    if (pred.check(ir)) return true;
+    return switch (ir.*) {
+        .@"if" => |n| irAny(n.cond, pred) or irAny(n.then_branch, pred) or irAny(n.else_branch, pred),
+        .let => |n| blk: {
+            for (n.bindings) |b| if (irAny(b.value, pred)) break :blk true;
+            break :blk irAny(n.body, pred);
         },
-        .set => |s| callsItself(s.value),
+        .set => |n| irAny(n.value, pred),
         .progn => |exprs| blk: {
-            for (exprs) |e| {
-                if (callsItself(e)) break :blk true;
-            }
+            for (exprs) |e| if (irAny(e, pred)) break :blk true;
             break :blk false;
         },
-        .loop => |l| callsItself(l.cond) or callsItself(l.body),
+        .loop => |n| irAny(n.cond, pred) or irAny(n.body, pred),
+        .call => |c| blk: {
+            for (c.args) |a| if (irAny(a, pred)) break :blk true;
+            break :blk false;
+        },
+        .tailcall => |tc| blk: {
+            for (tc.args) |a| if (irAny(a, pred)) break :blk true;
+            break :blk false;
+        },
+        // Binary ops
         .fixnum_add, .fixnum_sub, .add, .sub,
         .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
         .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
-        .logand, .mod, .rem,
-        => |op| callsItself(op.left) or callsItself(op.right),
+        .logand, .mod, .rem, .append, .assoc,
+        => |op| irAny(op.left, pred) or irAny(op.right, pred),
+        // Unary ops
         .assert_fixnum, .nilp, .not, .consp, .abs,
         .car, .cdr, .unsafe_car, .unsafe_cdr,
         .zerop, .oddp, .evenp, .length,
-        => |op| callsItself(op.operand),
+        => |op| irAny(op.operand, pred),
         else => false,
     };
+}
+
+/// Check if a function body calls itself (has any call/tailcall nodes).
+fn callsItself(body: *const Ir) bool {
+    return irAny(body, struct {
+        fn check(_: @This(), ir: *const Ir) bool {
+            return ir.* == .call or ir.* == .tailcall;
+        }
+    }{});
 }
 
 /// Check if any cross-function calls in the body would inline code containing loads.
 fn crossCallsContainLoads(body: *const Ir, self_name: []const u8, kf: *const std.StringHashMap(KnownFn)) bool {
-    return switch (body.*) {
-        .call => |c| blk: {
-            // Check if this call targets a known function with loads in its body
-            if (getCallTargetName(c.func)) |target_name| {
-                if (!namesMatch(target_name, self_name)) {
-                    if (lookupKnownFnStatic(kf, target_name)) |known| {
-                        if (known.ir_body) |ir_body| {
-                            if (countIrNodes(ir_body) <= 30 and containsLoads(ir_body))
-                                break :blk true;
-                        }
-                    }
-                }
-            }
-            for (c.args) |arg| {
-                if (crossCallsContainLoads(arg, self_name, kf)) break :blk true;
-            }
-            break :blk false;
-        },
-        .@"if" => |i| crossCallsContainLoads(i.cond, self_name, kf) or
-            crossCallsContainLoads(i.then_branch, self_name, kf) or
-            crossCallsContainLoads(i.else_branch, self_name, kf),
-        .let => |l| blk: {
-            for (l.bindings) |b| {
-                if (crossCallsContainLoads(b.value, self_name, kf)) break :blk true;
-            }
-            break :blk crossCallsContainLoads(l.body, self_name, kf);
-        },
-        .set => |s| crossCallsContainLoads(s.value, self_name, kf),
-        .progn => |exprs| blk: {
-            for (exprs) |e| {
-                if (crossCallsContainLoads(e, self_name, kf)) break :blk true;
-            }
-            break :blk false;
-        },
-        .loop => |l| crossCallsContainLoads(l.cond, self_name, kf) or
-            crossCallsContainLoads(l.body, self_name, kf),
-        .fixnum_add, .fixnum_sub, .add, .sub,
-        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
-        .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
-        .logand, .mod, .rem,
-        => |op| crossCallsContainLoads(op.left, self_name, kf) or
-            crossCallsContainLoads(op.right, self_name, kf),
-        .assert_fixnum, .nilp, .not, .consp, .abs,
-        .car, .cdr, .unsafe_car, .unsafe_cdr,
-        .zerop, .oddp, .evenp, .length,
-        => |op| crossCallsContainLoads(op.operand, self_name, kf),
-        else => false,
-    };
+    return irAny(body, struct {
+        name: []const u8,
+        known: *const std.StringHashMap(KnownFn),
+        fn check(self: @This(), ir: *const Ir) bool {
+            if (ir.* != .call) return false;
+            const c = ir.call;
+            const target_name = getCallTargetName(c.func) orelse return false;
+            if (namesMatch(target_name, self.name)) return false;
+            const kfn = lookupKnownFnByName(self.known, target_name) orelse return false;
+            const ir_body = kfn.ir_body orelse return false;
+            return countIrNodes(ir_body) <= 30 and containsLoads(ir_body);
+        }
+    }{ .name = self_name, .known = kf });
 }
 
-/// Static version of lookupKnownFn (no self parameter needed).
-fn lookupKnownFnStatic(kf: *const std.StringHashMap(KnownFn), target_name: []const u8) ?KnownFn {
-    // Direct lookup
+/// Lookup a KnownFn by name, handling package-qualified names.
+fn lookupKnownFnByName(kf: *const std.StringHashMap(KnownFn), target_name: []const u8) ?KnownFn {
     if (kf.get(target_name)) |v| return v;
-    // Try with/without package prefix
-    if (std.mem.indexOf(u8, target_name, ":")) |colon_pos| {
+    if (std.mem.indexOfScalar(u8, target_name, ':')) |colon_pos| {
         if (kf.get(target_name[colon_pos + 1 ..])) |v| return v;
     }
     var it = kf.iterator();
@@ -331,47 +304,41 @@ fn lookupKnownFnStatic(kf: *const std.StringHashMap(KnownFn), target_name: []con
     return null;
 }
 
-/// Count the number of IR nodes in a tree (for inlining threshold).
+/// Count IR nodes (for inlining threshold decisions).
 fn countIrNodes(node: *const Ir) usize {
-    return switch (node.*) {
-        .lit, .@"var", .global_ref => 1,
+    var count: usize = 1;
+    switch (node.*) {
+        .@"if" => |n| count += countIrNodes(n.cond) + countIrNodes(n.then_branch) + countIrNodes(n.else_branch),
+        .let => |n| {
+            for (n.bindings) |b| count += countIrNodes(b.value);
+            count += countIrNodes(n.body);
+        },
+        .set => |n| count += countIrNodes(n.value),
+        .progn => |exprs| for (exprs) |e| {
+            count += countIrNodes(e);
+        },
+        .loop => |n| count += countIrNodes(n.cond) + countIrNodes(n.body),
+        .call => |c| {
+            count += countIrNodes(c.func);
+            for (c.args) |a| count += countIrNodes(a);
+        },
+        .tailcall => |tc| {
+            count += countIrNodes(tc.func);
+            for (tc.args) |a| count += countIrNodes(a);
+        },
         .fixnum_add, .fixnum_sub, .add, .sub,
         .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
         .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
-        .logand, .mod, .rem,
-        => |op| 1 + countIrNodes(op.left) + countIrNodes(op.right),
+        .logand, .mod, .rem, .append, .assoc,
+        => |op| count += countIrNodes(op.left) + countIrNodes(op.right),
         .assert_fixnum, .nilp, .not, .consp, .abs,
         .car, .cdr, .unsafe_car, .unsafe_cdr,
         .zerop, .oddp, .evenp, .length,
-        => |op| 1 + countIrNodes(op.operand),
-        .@"if" => |f| 1 + countIrNodes(f.cond) + countIrNodes(f.then_branch) + countIrNodes(f.else_branch),
-        .progn => |exprs| blk: {
-            var c: usize = 1;
-            for (exprs) |e| c += countIrNodes(e);
-            break :blk c;
-        },
-        .let => |l| blk: {
-            var c: usize = 1;
-            for (l.bindings) |b| c += countIrNodes(b.value);
-            c += countIrNodes(l.body);
-            break :blk c;
-        },
-        .set => |s| 1 + countIrNodes(s.value),
-        .loop => |l| 1 + countIrNodes(l.cond) + countIrNodes(l.body),
-        .call => |c| blk: {
-            var n: usize = 1 + countIrNodes(c.func);
-            for (c.args) |a| n += countIrNodes(a);
-            break :blk n;
-        },
-        .tailcall => |tc| blk: {
-            var n: usize = 1 + countIrNodes(tc.func);
-            for (tc.args) |a| n += countIrNodes(a);
-            break :blk n;
-        },
-        else => 1,
-    };
+        => |op| count += countIrNodes(op.operand),
+        else => {},
+    }
+    return count;
 }
-
 /// Scope for an inlined function call. Maps callee local indices to hoist values.
 const InlineScope = struct {
     /// Base index in the caller's locals array where callee locals start.
@@ -506,9 +473,6 @@ pub const IrTranslator = struct {
     /// True when the function has nested self-calls (e.g., tak pattern)
     /// that require post-emission parallel copy fixup for call arguments.
     needs_call_spill: bool = false,
-
-    /// SigRef for calling jitCons (call_indirect).
-    cons_sig_ref: ?SigRef = null,
 
     /// Map of known JIT-compiled function names → (fn_ptr, arity).
     /// Used for cross-function calls via call_indirect.
@@ -1260,45 +1224,19 @@ pub const IrTranslator = struct {
 
     /// Emit a cross-function call as call_indirect (non-inlined path).
     fn emitCrossCallIndirect(self: *IrTranslator, known: KnownFn, args: []const *const Ir) anyerror!HoistValue {
-        // Translate all arguments
-        var translated_args: [16]HoistValue = undefined;
-        for (args, 0..) |arg, i| {
-            translated_args[i] = try self.translate(arg);
-        }
-
-        // Get or create signature for this arity
-        const arity: u32 = @intCast(args.len);
-        const sig = try self.getCallSigForArity(arity);
-
-        // Load the target function pointer
+        // Cross-call fn pointers are cached (hoistable); primitive ptrs are local
         const fn_ptr = try self.cachedIconst(@as(i64, @bitCast(known.fn_ptr)));
-
-        // Build argument list: [fn_ptr, arg0, arg1, ...]
-        var call_args = ValueList.default();
-        try self.func.dfg.value_lists.push(&call_args, fn_ptr);
-        for (0..arity) |i| {
-            try self.func.dfg.value_lists.push(&call_args, translated_args[i]);
-        }
-
-        // Emit call_indirect
-        const call_data = InstructionData{
-            .call_indirect = .{
-                .opcode = .call_indirect,
-                .sig_ref = sig,
-                .args = call_args,
-            },
-        };
-        const call_inst = try self.func.dfg.makeInst(call_data);
-        const call_result = try self.func.dfg.appendInstResult(call_inst, I64);
-        const block = self.b.current_block orelse return error.NoCurrentBlock;
-        try self.func.layout.appendInst(call_inst, block);
-
-        return call_result;
+        return try self.emitIndirectCall(fn_ptr, args);
     }
 
-    /// Emit a call to a runtime primitive via call_indirect.
-    /// The primitive uses the same convention as jitCons: raw u64 args, raw u64 return.
     fn emitPrimitiveCall(self: *IrTranslator, prim_ptr: u64, args: []const *const Ir) anyerror!HoistValue {
+        // Primitive fn pointers are emitted locally (not pre-emitted/cached)
+        const fn_ptr = try self.b.iconst(I64, @as(i64, @bitCast(prim_ptr)));
+        return try self.emitIndirectCall(fn_ptr, args);
+    }
+
+    /// Emit call_indirect with a pre-loaded function pointer and IR argument list.
+    fn emitIndirectCall(self: *IrTranslator, fn_ptr: HoistValue, args: []const *const Ir) anyerror!HoistValue {
         var translated_args: [16]HoistValue = undefined;
         for (args, 0..) |arg, i| {
             translated_args[i] = try self.translate(arg);
@@ -1306,9 +1244,6 @@ pub const IrTranslator = struct {
 
         const arity: u32 = @intCast(args.len);
         const sig = try self.getCallSigForArity(arity);
-
-        // Load primitive fn pointer (emitted locally, not pre-emitted)
-        const fn_ptr = try self.b.iconst(I64, @as(i64, @bitCast(prim_ptr)));
 
         var call_args = ValueList.default();
         try self.func.dfg.value_lists.push(&call_args, fn_ptr);
@@ -1449,24 +1384,8 @@ pub const IrTranslator = struct {
         return result;
     }
 
-    fn lookupKnownFn(self: *IrTranslator, kf: *const std.StringHashMap(KnownFn), target_name: []const u8) ?KnownFn {
-        _ = self;
-        // Direct lookup
-        if (kf.get(target_name)) |known| return known;
-        // Try short name from qualified "PKG:SYM"
-        if (std.mem.indexOfScalar(u8, target_name, ':')) |colon_pos| {
-            const short_name = target_name[colon_pos + 1 ..];
-            if (kf.get(short_name)) |known| return known;
-        }
-        // Try matching known qualified names against unqualified target
-        var iter = kf.iterator();
-        while (iter.next()) |entry| {
-            const kn = entry.key_ptr.*;
-            if (std.mem.indexOfScalar(u8, kn, ':')) |colon_pos| {
-                if (std.mem.eql(u8, kn[colon_pos + 1 ..], target_name)) return entry.value_ptr.*;
-            }
-        }
-        return null;
+    fn lookupKnownFn(_: *IrTranslator, kf: *const std.StringHashMap(KnownFn), target_name: []const u8) ?KnownFn {
+        return lookupKnownFnByName(kf, target_name);
     }
 
     fn getCallSigForArity(self: *IrTranslator, arity: u32) !SigRef {
@@ -1988,20 +1907,6 @@ pub const IrTranslator = struct {
         };
     }
 
-    /// Get or create the SigRef for the cons call: (i64, i64) -> i64
-    fn getConsSigRef(self: *IrTranslator) !SigRef {
-        if (self.cons_sig_ref) |sr| return sr;
-
-        // Cons takes 2 user args (car, cdr). fn_ptr is separate (call_indirect 1st value).
-        var sig = Signature.init(self.allocator, .system_v);
-        try sig.params.append(self.allocator, AbiParam.new(I64)); // car
-        try sig.params.append(self.allocator, AbiParam.new(I64)); // cdr
-        try sig.returns.append(self.allocator, AbiParam.new(I64)); // result cons
-
-        const sr = try self.func.addSignature(sig);
-        self.cons_sig_ref = sr;
-        return sr;
-    }
 
     /// abs for tagged fixnums.
     /// Tagged: raw = val*2+1. If val >= 0 (raw >= 1), return raw.
@@ -2101,69 +2006,6 @@ pub const IrTranslator = struct {
         const rem_val = try self.b.isub(I64, a_val, prod);
         // Retag: (rem_val << 1) | 1
         const shifted = try self.b.ishl(I64, rem_val, one);
-        return try self.b.bor(I64, shifted, one);
-    }
-
-    /// Inline GCD: Euclidean algorithm as a hoist loop.
-    /// gcd(a, b) = untag args, abs, loop: while b!=0: r=a%b, a=b, b=r; retag(a)
-    fn translateInlineGcd(self: *IrTranslator, left_ir: *const Ir, right_ir: *const Ir) anyerror!HoistValue {
-        const a_tagged = try self.translate(left_ir);
-        const b_tagged = try self.translate(right_ir);
-
-        const one = try self.cachedIconst(1);
-        const zero = try self.cachedIconst(0);
-
-        // Untag: val >> 1 (arithmetic shift for signed fixnums)
-        const a_untagged = try self.b.sshr(I64, a_tagged, one);
-        const b_untagged = try self.b.sshr(I64, b_tagged, one);
-
-        // abs(a) and abs(b): negate if negative, select max(x, -x)
-        const neg_a = try self.b.isub(I64, zero, a_untagged);
-        const a_is_neg = try self.b.icmp(I8, IntCC.slt, a_untagged, zero);
-        const a_abs = try self.b.select(I64, a_is_neg, neg_a, a_untagged);
-
-        const neg_b = try self.b.isub(I64, zero, b_untagged);
-        const b_is_neg = try self.b.icmp(I8, IntCC.slt, b_untagged, zero);
-        const b_abs = try self.b.select(I64, b_is_neg, neg_b, b_untagged);
-
-        // Create loop: header(a_param, b_param), body, exit(result)
-        const header = try self.func.dfg.addBlock();
-        const body = try self.func.dfg.addBlock();
-        const exit = try self.func.dfg.addBlock();
-
-        try self.func.layout.appendBlock(header);
-        try self.func.layout.appendBlock(body);
-        try self.func.layout.appendBlock(exit);
-
-        const a_param = try self.func.dfg.appendBlockParam(header, I64);
-        const b_param = try self.func.dfg.appendBlockParam(header, I64);
-        const exit_param = try self.func.dfg.appendBlockParam(exit, I64);
-
-        // Jump to header with initial abs values
-        try self.b.jumpArgs(header, &.{ a_abs, b_abs });
-
-        // Header: if b == 0, exit with a; else enter body
-        self.b.switchToBlock(header);
-        const b_is_zero = try self.b.icmp(I8, IntCC.eq, b_param, zero);
-
-        const exit_tramp = try self.func.dfg.addBlock();
-        try self.func.layout.appendBlock(exit_tramp);
-        try self.b.brif(b_is_zero, exit_tramp, body);
-
-        self.b.switchToBlock(exit_tramp);
-        try self.b.jumpArgs(exit, &.{a_param});
-
-        // Body: r = a % b; loop back with (b, r)
-        self.b.switchToBlock(body);
-        // a % b using sdiv + mul + sub
-        const quot = try self.b.sdiv(I64, a_param, b_param);
-        const prod = try self.b.imul(I64, quot, b_param);
-        const rem_val = try self.b.isub(I64, a_param, prod);
-        try self.b.jumpArgs(header, &.{ b_param, rem_val });
-
-        // Exit: retag the result
-        self.b.switchToBlock(exit);
-        const shifted = try self.b.ishl(I64, exit_param, one);
         return try self.b.bor(I64, shifted, one);
     }
 
@@ -2432,13 +2274,18 @@ fn patchPlaceholder(buf: []u8, placeholder: u64, target: u64) bool {
 /// sequence (6 instructions) and replaces with NOP...NOP + BL (1 instruction).
 /// Called from the REPL after all functions in a batch are compiled.
 pub fn patchCrossCallsToBL(code_ptr: [*]u8, code_len: usize, caller_base: usize) void {
+    const buf = code_ptr[0..code_len];
+    patchCrossCallsToBLSlice(buf, caller_base);
+}
+
+fn patchCrossCallsToBLSlice(buf: []u8, caller_base: usize) void {
     const NOP: u32 = 0xD503201F;
-    if (code_len < 24) return; // Need at least 6 instructions
-    const n_insns = code_len / 4;
+    if (buf.len < 24) return;
+    const n_insns = buf.len / 4;
 
     var i: usize = 0;
     while (i < n_insns) : (i += 1) {
-        const insn = readInsnPtr(code_ptr, i);
+        const insn = readInsn(buf, i);
         // Look for BLR xN (any register, not just x9)
         if (insn & 0xFFFFFC1F != 0xD63F0000) continue;
         const blr_reg: u5 = @truncate((insn >> 5) & 0x1F);
@@ -2451,7 +2298,7 @@ pub fn patchCrossCallsToBL(code_ptr: [*]u8, code_len: usize, caller_base: usize)
             var scan: usize = 0;
             while (j > 0 and scan < 8) : (scan += 1) {
                 j -= 1;
-                const prev = readInsnPtr(code_ptr, j);
+                const prev = readInsn(buf, j);
                 if (prev == NOP) continue;
                 // MOV blr_reg, rN = ORR blr_reg, xzr, rN
                 const expected_low: u32 = 0xAA0003E0 | @as(u32, blr_reg);
@@ -2477,14 +2324,14 @@ pub fn patchCrossCallsToBL(code_ptr: [*]u8, code_len: usize, caller_base: usize)
             var j = start_j;
             while (j > 0 and scan_count < 50) : (scan_count += 1) {
                 j -= 1;
-                const w0 = readInsnPtr(code_ptr, j);
+                const w0 = readInsn(buf, j);
                 if (w0 == NOP) continue;
                 // Check if this is MOVZ with hw=0 writing to src_reg
                 const is_movz = (w0 & 0xFFE00000) == 0xD2800000;
                 const w0_rd: u5 = @truncate(w0 & 0x1F);
                 if (is_movz and w0_rd == src_reg and j + 2 < start_j) {
-                    const w1 = readInsnPtr(code_ptr, j + 1);
-                    const w2 = readInsnPtr(code_ptr, j + 2);
+                    const w1 = readInsn(buf, j + 1);
+                    const w2 = readInsn(buf, j + 2);
                     if ((w1 & 0xFFE00000) == 0xF2A00000 and @as(u5, @truncate(w1 & 0x1F)) == src_reg and
                         (w2 & 0xFFE00000) == 0xF2C00000 and @as(u5, @truncate(w2 & 0x1F)) == src_reg)
                     {
@@ -2512,29 +2359,14 @@ pub fn patchCrossCallsToBL(code_ptr: [*]u8, code_len: usize, caller_base: usize)
         // Patch: NOP the MOVZ/MOVK/MOVK sequence, NOP the MOV, replace BLR with BL
         const rel_offset: i32 = @intCast(@divExact(diff, 4));
         const imm26: u32 = @as(u32, @bitCast(rel_offset)) & 0x03FFFFFF;
-        writeInsnPtr(code_ptr, load_idx.?, NOP);
-        writeInsnPtr(code_ptr, load_idx.? + 1, NOP);
-        writeInsnPtr(code_ptr, load_idx.? + 2, NOP);
-        writeInsnPtr(code_ptr, mov_idx.?, NOP);
-        writeInsnPtr(code_ptr, i, 0x94000000 | imm26);
+        writeInsn(buf, load_idx.?, NOP);
+        writeInsn(buf, load_idx.? + 1, NOP);
+        writeInsn(buf, load_idx.? + 2, NOP);
+        writeInsn(buf, mov_idx.?, NOP);
+        writeInsn(buf, i, 0x94000000 | imm26);
     }
 }
 
-fn readInsnPtr(ptr: [*]u8, idx: usize) u32 {
-    const off = idx * 4;
-    return @as(u32, ptr[off]) |
-        (@as(u32, ptr[off + 1]) << 8) |
-        (@as(u32, ptr[off + 2]) << 16) |
-        (@as(u32, ptr[off + 3]) << 24);
-}
-
-fn writeInsnPtr(ptr: [*]u8, idx: usize, val: u32) void {
-    const off = idx * 4;
-    ptr[off] = @truncate(val);
-    ptr[off + 1] = @truncate(val >> 8);
-    ptr[off + 2] = @truncate(val >> 16);
-    ptr[off + 3] = @truncate(val >> 24);
-}
 
 /// Recursively collect all variable indices that are assigned (set) within an IR subtree.
 fn collectMutatedVars(ir: *const Ir, indices: *std.ArrayList(u16), allocator: std.mem.Allocator) !void {
@@ -2602,56 +2434,135 @@ fn collectMutatedVars(ir: *const Ir, indices: *std.ArrayList(u16), allocator: st
 /// qualified name ends with ":" + symbol_name.
 /// Check if a call target is resolvable (self-call or known JIT function).
 /// Check if IR tree contains calls to known runtime primitives (gcd, nreverse, etc.)
+/// Check if IR tree contains calls to known runtime primitives (gcd, nreverse, etc.)
 fn containsPrimitiveCalls(body: *const Ir, self_name: []const u8) bool {
-    return switch (body.*) {
-        .call => |c| blk: {
-            if (!isCallTargetSelf(c.func, self_name)) {
-                if (getCallTargetName(c.func)) |target_name| {
-                    if (getJitPrimitivePtr(target_name) != null) break :blk true;
-                }
+    return irAny(body, struct {
+        name: []const u8,
+        fn check(self: @This(), ir: *const Ir) bool {
+            const func_ir = switch (ir.*) {
+                .call => |c| c.func,
+                .tailcall => |tc| tc.func,
+                else => return false,
+            };
+            if (isCallTargetSelf(func_ir, self.name)) return false;
+            const target = getCallTargetName(func_ir) orelse return false;
+            return getJitPrimitivePtr(target) != null;
+        }
+    }{ .name = self_name });
+}
+
+/// Detect if a self-call appears as an argument to another self-call.
+/// This pattern (e.g., tak) causes segfaults due to hoist regalloc bug.
+fn hasNestedSelfCalls(body: *const Ir, name: []const u8) bool {
+    return irAny(body, struct {
+        name: []const u8,
+        fn check(self: @This(), ir: *const Ir) bool {
+            const func_ir, const args = switch (ir.*) {
+                .call => |c| .{ c.func, c.args },
+                .tailcall => |tc| .{ tc.func, tc.args },
+                else => return false,
+            };
+            if (!isCallTargetSelf(func_ir, self.name)) return false;
+            for (args) |arg| {
+                if (detectSelfCalls(arg, self.name)) return true;
             }
-            for (c.args) |arg| {
-                if (containsPrimitiveCalls(arg, self_name)) break :blk true;
-            }
-            break :blk false;
-        },
-        .tailcall => |tc| blk: {
-            if (!isCallTargetSelf(tc.func, self_name)) {
-                if (getCallTargetName(tc.func)) |target_name| {
-                    if (getJitPrimitivePtr(target_name) != null) break :blk true;
-                }
-            }
-            for (tc.args) |arg| {
-                if (containsPrimitiveCalls(arg, self_name)) break :blk true;
-            }
-            break :blk false;
-        },
-        .@"if" => |i| containsPrimitiveCalls(i.cond, self_name) or containsPrimitiveCalls(i.then_branch, self_name) or containsPrimitiveCalls(i.else_branch, self_name),
-        .let => |l| blk: {
-            for (l.bindings) |b| {
-                if (containsPrimitiveCalls(b.value, self_name)) break :blk true;
-            }
-            break :blk containsPrimitiveCalls(l.body, self_name);
-        },
-        .set => |s| containsPrimitiveCalls(s.value, self_name),
-        .progn => |exprs| blk: {
-            for (exprs) |e| {
-                if (containsPrimitiveCalls(e, self_name)) break :blk true;
-            }
-            break :blk false;
-        },
-        .loop => |l| containsPrimitiveCalls(l.cond, self_name) or containsPrimitiveCalls(l.body, self_name),
-        .fixnum_add, .fixnum_sub, .add, .sub, .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
-        .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
-        .logand, .mod, .rem,
-        => |op| containsPrimitiveCalls(op.left, self_name) or containsPrimitiveCalls(op.right, self_name),
-        .append => true, // append calls jitAppend runtime function
-        .assoc => true, // assoc calls jitAssoc runtime function
-        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
-        .zerop, .oddp, .evenp, .length,
-        => |op| containsPrimitiveCalls(op.operand, self_name),
+            return false;
+        }
+    }{ .name = name });
+}
+
+/// Check if IR tree contains cons/append operations.
+fn containsCons(body: *const Ir) bool {
+    return irAny(body, struct {
+        fn check(_: @This(), ir: *const Ir) bool {
+            return ir.* == .cons or ir.* == .append;
+        }
+    }{});
+}
+
+/// Detect whether a function body contains unresolvable non-self calls.
+pub fn hasNonSelfCalls(body: *const Ir, name: []const u8) bool {
+    return irAny(body, struct {
+        name: []const u8,
+        fn check(self: @This(), ir: *const Ir) bool {
+            const func_ir = switch (ir.*) {
+                .call => |c| c.func,
+                .tailcall => |tc| tc.func,
+                else => return false,
+            };
+            if (isCallTargetSelf(func_ir, self.name)) return false;
+            const target = getCallTargetName(func_ir) orelse return true;
+            return getJitPrimitivePtr(target) == null;
+        }
+    }{ .name = name });
+}
+
+/// Detect whether a function body contains self-recursive calls.
+fn detectSelfCalls(body: *const Ir, name: []const u8) bool {
+    return irAny(body, struct {
+        name: []const u8,
+        fn check(self: @This(), ir: *const Ir) bool {
+            return switch (ir.*) {
+                .call => |c| isCallTargetSelf(c.func, self.name),
+                .tailcall => |tc| isCallTargetSelf(tc.func, self.name),
+                else => false,
+            };
+        }
+    }{ .name = name });
+}
+
+/// Detect whether an IR tree contains load-generating operations (car, cdr, length).
+fn containsLoads(body: *const Ir) bool {
+    return irAny(body, struct {
+        fn check(_: @This(), ir: *const Ir) bool {
+            return switch (ir.*) {
+                .car, .cdr, .unsafe_car, .unsafe_cdr, .length => true,
+                else => false,
+            };
+        }
+    }{});
+}
+
+/// Check if an expression is a self-tail-call (immediate, not nested).
+fn isTailCall(ir: *const Ir, name: []const u8) bool {
+    return switch (ir.*) {
+        .tailcall => |tc| isCallTargetSelf(tc.func, name),
         else => false,
     };
+}
+
+/// Detect whether a function body has self-recursive tail calls.
+/// Walks only tail positions (if branches, let body, last progn expr).
+fn hasSelfTailCalls(body: *const Ir, name: []const u8) bool {
+    return switch (body.*) {
+        .tailcall => |tc| isCallTargetSelf(tc.func, name),
+        .@"if" => |i| hasSelfTailCalls(i.then_branch, name) or hasSelfTailCalls(i.else_branch, name),
+        .let => |l| hasSelfTailCalls(l.body, name),
+        .progn => |exprs| if (exprs.len == 0) false else hasSelfTailCalls(exprs[exprs.len - 1], name),
+        else => false,
+    };
+}
+
+/// Detect if a function body has non-tail self-calls (.call nodes targeting self).
+fn hasNonTailSelfCalls(body: *const Ir, name: []const u8) bool {
+    return irAny(body, struct {
+        name: []const u8,
+        fn check(self: @This(), ir: *const Ir) bool {
+            return switch (ir.*) {
+                .call => |c| isCallTargetSelf(c.func, self.name),
+                else => false,
+            };
+        }
+    }{ .name = name });
+}
+
+/// Detect whether a function body contains loop constructs.
+fn detectLoops(body: *const Ir) bool {
+    return irAny(body, struct {
+        fn check(_: @This(), ir: *const Ir) bool {
+            return ir.* == .loop;
+        }
+    }{});
 }
 
 pub fn isCallResolvable(func_ir: *const Ir, self_name: []const u8, known: *const std.StringHashMap(void)) bool {
@@ -2723,361 +2634,7 @@ fn isCallTargetSelf(func_ir: *const Ir, name: []const u8) bool {
     };
 }
 
-/// Detect if a self-call appears as an argument to another self-call.
-/// This pattern (e.g., tak) causes segfaults due to hoist regalloc bug
-/// with call_indirect spilling. Returns true if the pattern is found.
-fn hasNestedSelfCalls(body: *const Ir, name: []const u8) bool {
-    return switch (body.*) {
-        .call => |c| blk: {
-            if (isCallTargetSelf(c.func, name)) {
-                for (c.args) |arg| {
-                    if (detectSelfCalls(arg, name)) break :blk true;
-                }
-            }
-            for (c.args) |arg| {
-                if (hasNestedSelfCalls(arg, name)) break :blk true;
-            }
-            break :blk false;
-        },
-        .tailcall => |tc| blk: {
-            if (isCallTargetSelf(tc.func, name)) {
-                for (tc.args) |arg| {
-                    if (detectSelfCalls(arg, name)) break :blk true;
-                }
-            }
-            for (tc.args) |arg| {
-                if (hasNestedSelfCalls(arg, name)) break :blk true;
-            }
-            break :blk false;
-        },
-        .@"if" => |if_node| hasNestedSelfCalls(if_node.cond, name) or
-            hasNestedSelfCalls(if_node.then_branch, name) or
-            hasNestedSelfCalls(if_node.else_branch, name),
-        .fixnum_add, .fixnum_sub, .fixnum_mul, .add, .sub, .mul => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
-        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq, .eq => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
-        .le, .lt, .gt, .ge, .num_eq => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
-        .progn => |exprs| {
-            for (exprs) |expr| {
-                if (hasNestedSelfCalls(expr, name)) return true;
-            }
-            return false;
-        },
-        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
-        .zerop, .oddp, .evenp, .length,
-        => |op| hasNestedSelfCalls(op.operand, name),
-        .cons, .logand, .mod, .rem, .append, .assoc => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
-        .let => |l| blk: {
-            for (l.bindings) |binding| {
-                if (hasNestedSelfCalls(binding.value, name)) break :blk true;
-            }
-            break :blk hasNestedSelfCalls(l.body, name);
-        },
-        .set => |s| hasNestedSelfCalls(s.value, name),
-        .loop => |l| hasNestedSelfCalls(l.cond, name) or hasNestedSelfCalls(l.body, name),
-        else => false,
-    };
-}
 
-/// Detect whether a function body contains non-self calls (cross-function calls).
-/// These are not yet supported by the JIT backend.
-/// Check if an IR tree contains any cons operations (which emit call_indirect to jitCons).
-fn containsCons(body: *const Ir) bool {
-    return switch (body.*) {
-        .cons, .append => true,
-        .@"if" => |i| containsCons(i.cond) or containsCons(i.then_branch) or containsCons(i.else_branch),
-        .let => |l| blk: {
-            for (l.bindings) |binding| {
-                if (containsCons(binding.value)) break :blk true;
-            }
-            break :blk containsCons(l.body);
-        },
-        .set => |s| containsCons(s.value),
-        .progn => |exprs| blk: {
-            for (exprs) |e| {
-                if (containsCons(e)) break :blk true;
-            }
-            break :blk false;
-        },
-        .loop => |l| containsCons(l.cond) or containsCons(l.body),
-        .call => |c| blk: {
-            for (c.args) |arg| {
-                if (containsCons(arg)) break :blk true;
-            }
-            break :blk false;
-        },
-        .tailcall => |tc| blk: {
-            for (tc.args) |arg| {
-                if (containsCons(arg)) break :blk true;
-            }
-            break :blk false;
-        },
-        .fixnum_add, .fixnum_sub, .add, .sub, .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
-        .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq,
-        .logand, .mod, .rem,
-        => |op| containsCons(op.left) or containsCons(op.right),
-        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
-        .zerop, .oddp, .evenp, .length,
-        => |op| containsCons(op.operand),
-        else => false,
-    };
-}
-
-pub fn hasNonSelfCalls(body: *const Ir, name: []const u8) bool {
-    return switch (body.*) {
-        .call => |c| blk: {
-            // Self-call is OK, non-self-call is not
-            if (!isCallTargetSelf(c.func, name)) {
-                // Known runtime primitive is also OK
-                if (getCallTargetName(c.func)) |target_name| {
-                    if (getJitPrimitivePtr(target_name) != null) {
-                        // Primitive call — check args recursively
-                        for (c.args) |arg| {
-                            if (hasNonSelfCalls(arg, name)) break :blk true;
-                        }
-                        break :blk false;
-                    }
-                }
-                break :blk true;
-            }
-            for (c.args) |arg| {
-                if (hasNonSelfCalls(arg, name)) break :blk true;
-            }
-            break :blk false;
-        },
-        .tailcall => |tc| blk: {
-            if (!isCallTargetSelf(tc.func, name)) {
-                if (getCallTargetName(tc.func)) |target_name| {
-                    if (getJitPrimitivePtr(target_name) != null) {
-                        for (tc.args) |arg| {
-                            if (hasNonSelfCalls(arg, name)) break :blk true;
-                        }
-                        break :blk false;
-                    }
-                }
-                break :blk true;
-            }
-            for (tc.args) |arg| {
-                if (hasNonSelfCalls(arg, name)) break :blk true;
-            }
-            break :blk false;
-        },
-        .@"if" => |i| hasNonSelfCalls(i.cond, name) or hasNonSelfCalls(i.then_branch, name) or hasNonSelfCalls(i.else_branch, name),
-        .let => |l| blk: {
-            for (l.bindings) |binding| {
-                if (hasNonSelfCalls(binding.value, name)) break :blk true;
-            }
-            break :blk hasNonSelfCalls(l.body, name);
-        },
-        .set => |s| hasNonSelfCalls(s.value, name),
-        .progn => |exprs| blk: {
-            for (exprs) |e| {
-                if (hasNonSelfCalls(e, name)) break :blk true;
-            }
-            break :blk false;
-        },
-        .loop => |l| hasNonSelfCalls(l.cond, name) or hasNonSelfCalls(l.body, name),
-        .fixnum_add, .fixnum_sub, .add, .sub, .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
-        .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
-        .logand, .mod, .rem,
-        => |op| hasNonSelfCalls(op.left, name) or hasNonSelfCalls(op.right, name),
-        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
-        .zerop, .oddp, .evenp, .length,
-        => |op| hasNonSelfCalls(op.operand, name),
-        .lit, .@"var", .global_ref => false,
-        else => false,
-    };
-}
-
-/// Detect whether a function body contains self-recursive calls.
-fn detectSelfCalls(body: *const Ir, name: []const u8) bool {
-    return switch (body.*) {
-        .call => |c| blk: {
-            if (isCallTargetSelf(c.func, name)) break :blk true;
-            for (c.args) |arg| {
-                if (detectSelfCalls(arg, name)) break :blk true;
-            }
-            break :blk detectSelfCalls(c.func, name);
-        },
-        .tailcall => |tc| blk: {
-            if (isCallTargetSelf(tc.func, name)) break :blk true;
-            for (tc.args) |arg| {
-                if (detectSelfCalls(arg, name)) break :blk true;
-            }
-            break :blk detectSelfCalls(tc.func, name);
-        },
-        .@"if" => |if_node| detectSelfCalls(if_node.cond, name) or
-            detectSelfCalls(if_node.then_branch, name) or
-            detectSelfCalls(if_node.else_branch, name),
-        .fixnum_add, .fixnum_sub, .fixnum_mul, .add, .sub, .mul => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
-        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq, .eq => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
-        .le, .lt, .gt, .ge, .num_eq => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
-        .progn => |exprs| {
-            for (exprs) |expr| {
-                if (detectSelfCalls(expr, name)) return true;
-            }
-            return false;
-        },
-        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
-        .zerop, .oddp, .evenp, .length,
-        => |op| detectSelfCalls(op.operand, name),
-        .cons, .logand, .mod, .rem, .append, .assoc => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
-        .let => |l| blk: {
-            for (l.bindings) |binding| {
-                if (detectSelfCalls(binding.value, name)) break :blk true;
-            }
-            break :blk detectSelfCalls(l.body, name);
-        },
-        .set => |s| detectSelfCalls(s.value, name),
-        .loop => |l| detectSelfCalls(l.cond, name) or detectSelfCalls(l.body, name),
-        else => false,
-    };
-}
-
-/// Detect whether an IR tree contains load-generating operations (car, cdr).
-/// Used to disable .aggressive optimization which incorrectly eliminates loads.
-fn containsLoads(body: *const Ir) bool {
-    return switch (body.*) {
-        .car, .cdr, .unsafe_car, .unsafe_cdr => true,
-        .@"if" => |i| containsLoads(i.cond) or containsLoads(i.then_branch) or containsLoads(i.else_branch),
-        .let => |l| blk: {
-            for (l.bindings) |binding| {
-                if (containsLoads(binding.value)) break :blk true;
-            }
-            break :blk containsLoads(l.body);
-        },
-        .set => |s| containsLoads(s.value),
-        .progn => |exprs| blk: {
-            for (exprs) |e| {
-                if (containsLoads(e)) break :blk true;
-            }
-            break :blk false;
-        },
-        .loop => |l| containsLoads(l.cond) or containsLoads(l.body),
-        .length => true, // length walks cdr chain = loads
-        .fixnum_add, .fixnum_sub, .add, .sub, .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
-        .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
-        .logand, .mod, .rem,
-        => |op| containsLoads(op.left) or containsLoads(op.right),
-        .assert_fixnum, .nilp, .not, .consp, .abs,
-        .zerop, .oddp, .evenp,
-        => |op| containsLoads(op.operand),
-        .call => |c| blk: {
-            for (c.args) |arg| {
-                if (containsLoads(arg)) break :blk true;
-            }
-            break :blk false;
-        },
-        .tailcall => |tc| blk: {
-            for (tc.args) |arg| {
-                if (containsLoads(arg)) break :blk true;
-            }
-            break :blk false;
-        },
-        else => false,
-    };
-}
-
-/// Check if an expression is a self-tail-call (immediate, not nested).
-fn isTailCall(ir: *const Ir, name: []const u8) bool {
-    return switch (ir.*) {
-        .tailcall => |tc| isCallTargetSelf(tc.func, name),
-        else => false,
-    };
-}
-
-/// Detect whether a function body has self-recursive tail calls.
-/// Walks only tail positions (if branches, let body, last progn expr).
-fn hasSelfTailCalls(body: *const Ir, name: []const u8) bool {
-    return switch (body.*) {
-        .tailcall => |tc| isCallTargetSelf(tc.func, name),
-        .@"if" => |i| hasSelfTailCalls(i.then_branch, name) or hasSelfTailCalls(i.else_branch, name),
-        .let => |l| hasSelfTailCalls(l.body, name),
-        .progn => |exprs| if (exprs.len == 0) false else hasSelfTailCalls(exprs[exprs.len - 1], name),
-        else => false,
-    };
-}
-
-/// Detect if a function body has non-tail self-calls (.call nodes).
-fn hasNonTailSelfCalls(body: *const Ir, name: []const u8) bool {
-    return switch (body.*) {
-        .call => |c| blk: {
-            if (isCallTargetSelf(c.func, name)) break :blk true;
-            for (c.args) |arg| {
-                if (hasNonTailSelfCalls(arg, name)) break :blk true;
-            }
-            break :blk false;
-        },
-        .tailcall => |tc| blk: {
-            for (tc.args) |arg| {
-                if (hasNonTailSelfCalls(arg, name)) break :blk true;
-            }
-            break :blk false;
-        },
-        .@"if" => |i| hasNonTailSelfCalls(i.cond, name) or hasNonTailSelfCalls(i.then_branch, name) or hasNonTailSelfCalls(i.else_branch, name),
-        .let => |l| blk: {
-            for (l.bindings) |binding| {
-                if (hasNonTailSelfCalls(binding.value, name)) break :blk true;
-            }
-            break :blk hasNonTailSelfCalls(l.body, name);
-        },
-        .set => |s| hasNonTailSelfCalls(s.value, name),
-        .progn => |exprs| blk: {
-            for (exprs) |e| {
-                if (hasNonTailSelfCalls(e, name)) break :blk true;
-            }
-            break :blk false;
-        },
-        .loop => |l| hasNonTailSelfCalls(l.cond, name) or hasNonTailSelfCalls(l.body, name),
-        .fixnum_add, .fixnum_sub, .add, .sub, .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
-        .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
-        .logand, .mod, .rem,
-        => |op| hasNonTailSelfCalls(op.left, name) or hasNonTailSelfCalls(op.right, name),
-        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
-        .zerop, .oddp, .evenp, .length,
-        => |op| hasNonTailSelfCalls(op.operand, name),
-        else => false,
-    };
-}
-
-/// Detect whether a function body contains loop constructs.
-fn detectLoops(body: *const Ir) bool {
-    return switch (body.*) {
-        .loop => true,
-        .@"if" => |n| detectLoops(n.cond) or detectLoops(n.then_branch) or detectLoops(n.else_branch),
-        .progn => |exprs| {
-            for (exprs) |expr| {
-                if (detectLoops(expr)) return true;
-            }
-            return false;
-        },
-        .let => |n| detectLoops(n.body),
-        .fixnum_add, .fixnum_sub, .fixnum_mul, .add, .sub, .mul => |n| detectLoops(n.left) or detectLoops(n.right),
-        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq, .eq => |n| detectLoops(n.left) or detectLoops(n.right),
-        .le, .lt, .gt, .ge, .num_eq => |n| detectLoops(n.left) or detectLoops(n.right),
-        .call => |c| {
-            for (c.args) |arg| {
-                if (detectLoops(arg)) return true;
-            }
-            return false;
-        },
-        .tailcall => |tc| {
-            for (tc.args) |arg| {
-                if (detectLoops(arg)) return true;
-            }
-            return false;
-        },
-        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
-        .zerop, .oddp, .evenp, .length,
-        => |n| detectLoops(n.operand),
-        .cons, .logand, .mod, .rem, .append, .assoc => |n| detectLoops(n.left) or detectLoops(n.right),
-        .set => |n| detectLoops(n.value),
-        else => false,
-    };
-}
-
-/// Compile a Habu IR lambda to native code via Hoist SSA.
-/// Returns error.UnsupportedRecursiveCall for functions with recursive calls
-/// (due to hoist regalloc limitation).
 pub fn compileIr(
     allocator: std.mem.Allocator,
     ir: *const Ir,

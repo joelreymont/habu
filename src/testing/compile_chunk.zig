@@ -6,7 +6,7 @@ const compiler_mod = @import("../compiler/compiler.zig");
 const bytecode = @import("../bytecode/bytecode.zig");
 const interp = @import("../interp/interp.zig");
 const specialize = @import("../compiler/passes/p07c_specialize.zig");
-const hoist_backend = @import("../jit/hoist_backend.zig");
+const jit_backend = @import("../jit/backend.zig");
 const Ir = compiler_mod.ir.Ir;
 
 const Heap = runtime.Heap;
@@ -138,15 +138,15 @@ fn tryHoistCompile(
     const chunk_val = child_chunks[0];
     const chunk_ptr = chunk_val.toPtr(Chunk);
 
-    var compiled = hoist_backend.compileIr(allocator, lambda_ir, define.name) catch {
+    var compiled = jit_backend.compileIr(allocator, lambda_ir, define.name) catch {
         return;
     };
-    const persistent = allocator.create(hoist_backend.CompiledFn) catch {
+    const persistent = allocator.create(jit_backend.CompiledFn) catch {
         compiled.deinit();
         return;
     };
     persistent.* = compiled;
-    vm.registerHoistFn(chunk_ptr, persistent) catch {
+    vm.registerJitFn(chunk_ptr, persistent) catch {
         persistent.deinit();
         allocator.destroy(persistent);
         return;

@@ -16,7 +16,7 @@ const ir = @import("../compiler/ir.zig");
 const Ir = ir.Ir;
 const IrBuilder = ir.IrBuilder;
 const passes = @import("../compiler/passes/passes.zig");
-const hoist_backend = @import("../jit/hoist_backend.zig");
+const jit_backend = @import("../jit/backend.zig");
 const bytecode = @import("../bytecode/bytecode.zig");
 const Emitter = bytecode.Emitter;
 const Op = bytecode.Op;
@@ -1817,7 +1817,7 @@ pub const Repl = struct {
     fn hasUnresolvableCalls(body: *const Ir, self_name: []const u8, known: *const std.StringHashMap(void)) bool {
         return switch (body.*) {
             .call => |c| blk: {
-                if (!hoist_backend.isCallResolvable(c.func, self_name, known))
+                if (!jit_backend.isCallResolvable(c.func, self_name, known))
                     break :blk true;
                 for (c.args) |arg| {
                     if (hasUnresolvableCalls(arg, self_name, known)) break :blk true;
@@ -1825,7 +1825,7 @@ pub const Repl = struct {
                 break :blk false;
             },
             .tailcall => |tc| blk: {
-                if (!hoist_backend.isCallResolvable(tc.func, self_name, known))
+                if (!jit_backend.isCallResolvable(tc.func, self_name, known))
                     break :blk true;
                 for (tc.args) |arg| {
                     if (hasUnresolvableCalls(arg, self_name, known)) break :blk true;
@@ -1906,7 +1906,7 @@ pub const Repl = struct {
         // These may receive non-fixnum types; the untagged JIT would corrupt them.
         if (lambda.body.* == .assert_fixnum) return false;
         // Skip functions that the hoist backend can't translate (fast reject)
-        if (!hoist_backend.IrTranslator.canTranslate(lambda.body)) {
+        if (!jit_backend.IrTranslator.canTranslate(lambda.body)) {
             if (trace) std.debug.print("JIT: canTranslate failed for '{s}' (body tag: {s})\n", .{ define.name, @tagName(lambda.body.*) });
             return false;
         }
@@ -1915,7 +1915,7 @@ pub const Repl = struct {
         {
             var kf_check = std.StringHashMap(void).init(self.allocator);
             defer kf_check.deinit();
-            var iter = self.vm.hoist_fns.iterator();
+            var iter = self.vm.jit_fns.iterator();
             while (iter.next()) |entry| {
                 const cfn = entry.value_ptr.*;
                 kf_check.put(cfn.name, {}) catch {};
@@ -1952,10 +1952,10 @@ pub const Repl = struct {
         chunk_ptr: *const runtime.objects.Chunk,
     ) bool {
         // Build known_fns map from existing hoist-compiled functions
-        var known_fns = std.StringHashMap(hoist_backend.KnownFn).init(self.allocator);
+        var known_fns = std.StringHashMap(jit_backend.KnownFn).init(self.allocator);
         defer known_fns.deinit();
         {
-            var iter = self.vm.hoist_fns.iterator();
+            var iter = self.vm.jit_fns.iterator();
             while (iter.next()) |entry| {
                 const cfn = entry.value_ptr.*;
                 known_fns.put(cfn.name, .{
@@ -1969,13 +1969,13 @@ pub const Repl = struct {
         }
 
         const trace = std.posix.getenv("HABU_TRACE_JIT") != null;
-        var compiled = hoist_backend.compileIrWithKnownFns(self.allocator, lambda_ir, name, &known_fns) catch |err| {
+        var compiled = jit_backend.compileIrWithKnownFns(self.allocator, lambda_ir, name, &known_fns) catch |err| {
             if (trace) {
                 std.debug.print("JIT: hoist compile failed for '{s}': {s}\n", .{ name, @errorName(err) });
             }
             return false;
         };
-        const persistent = self.allocator.create(hoist_backend.CompiledFn) catch {
+        const persistent = self.allocator.create(jit_backend.CompiledFn) catch {
             compiled.deinit();
             return false;
         };
@@ -1999,7 +1999,7 @@ pub const Repl = struct {
                 self.allocator.destroy(ir_arena);
                 persistent.ir_arena = null;
                 // Non-fatal: function still works, just can't be inlined
-                self.vm.registerHoistFn(chunk_ptr, persistent) catch {
+                self.vm.registerJitFn(chunk_ptr, persistent) catch {
                     persistent.deinit();
                     self.allocator.destroy(persistent);
                     return false;
@@ -2010,7 +2010,7 @@ pub const Repl = struct {
                 ir_arena.deinit();
                 self.allocator.destroy(ir_arena);
                 persistent.ir_arena = null;
-                self.vm.registerHoistFn(chunk_ptr, persistent) catch {
+                self.vm.registerJitFn(chunk_ptr, persistent) catch {
                     persistent.deinit();
                     self.allocator.destroy(persistent);
                     return false;
@@ -2022,7 +2022,7 @@ pub const Repl = struct {
                     ir_arena.deinit();
                     self.allocator.destroy(ir_arena);
                     persistent.ir_arena = null;
-                    self.vm.registerHoistFn(chunk_ptr, persistent) catch {
+                    self.vm.registerJitFn(chunk_ptr, persistent) catch {
                         persistent.deinit();
                         self.allocator.destroy(persistent);
                         return false;
@@ -2037,7 +2037,7 @@ pub const Repl = struct {
 
         // Always register on the primary VM - activeVm() may return a context VM
         // that gets destroyed after file loading, losing the registration.
-        self.vm.registerHoistFn(chunk_ptr, persistent) catch {
+        self.vm.registerJitFn(chunk_ptr, persistent) catch {
             persistent.deinit();
             self.allocator.destroy(persistent);
             return false;
@@ -2053,7 +2053,7 @@ pub const Repl = struct {
             const fn_base = @intFromPtr(code_ptr);
             // Make writable for patching
             jit_mem.setExec(false) catch {};
-            hoist_backend.patchCrossCallsToBL(code_ptr, code_len, fn_base);
+            jit_backend.patchCrossCallsToBL(code_ptr, code_len, fn_base);
             // Flush icache and restore exec permission
             jit_mem.flushCacheRange(code_ptr, code_len);
             jit_mem.setExec(true) catch {};
@@ -2062,7 +2062,7 @@ pub const Repl = struct {
         if (std.posix.getenv("HABU_TRACE_JIT") != null) {
             std.debug.print("JIT: hoist compiled '{s}' OK (arity={d}, fn_ptr={*}, chunk=0x{x}, map_count={d})\n", .{
                 name, compiled.arity, compiled.fn_ptr,
-                @intFromPtr(chunk_ptr), self.vm.hoist_fns.count(),
+                @intFromPtr(chunk_ptr), self.vm.jit_fns.count(),
             });
         }
         return true;

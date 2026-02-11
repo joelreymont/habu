@@ -35,7 +35,7 @@ const compiler = @import("../compiler/compiler.zig");
 const GlobalEnv = compiler.GlobalEnv;
 const Parser = @import("../reader/parser.zig").Parser;
 const BuiltinSymbols = @import("../runtime/builtins.zig").BuiltinSymbols;
-const hoist_backend = @import("../jit/hoist_backend.zig");
+const jit_backend = @import("../jit/backend.zig");
 
 pub const Error = anyerror;
 
@@ -398,7 +398,7 @@ pub const Vm = struct {
     ext_roots: []Value,
 
     /// Hoist SSA JIT: maps chunk address to compiled native function.
-    hoist_fns: std.AutoHashMap(usize, *hoist_backend.CompiledFn),
+    jit_fns: std.AutoHashMap(usize, *jit_backend.CompiledFn),
 
     /// Pre-interned builtin symbols for fast dispatch
     builtins: BuiltinSymbols,
@@ -512,7 +512,7 @@ pub const Vm = struct {
             .current_closure = null,
             .current_argc = 0,
             .ext_roots = &[_]Value{},
-            .hoist_fns = std.AutoHashMap(usize, *hoist_backend.CompiledFn).init(allocator),
+            .jit_fns = std.AutoHashMap(usize, *jit_backend.CompiledFn).init(allocator),
             .builtins = try BuiltinSymbols.init(heap),
             .type_syms = try type_mod.TypeSymbols.init(heap),
         };
@@ -525,12 +525,12 @@ pub const Vm = struct {
 
     pub fn deinit(self: *Vm) void {
         // Clean up hoist-compiled functions
-        var it = self.hoist_fns.valueIterator();
+        var it = self.jit_fns.valueIterator();
         while (it.next()) |compiled_ptr| {
             compiled_ptr.*.deinit();
             self.allocator.destroy(compiled_ptr.*);
         }
-        self.hoist_fns.deinit();
+        self.jit_fns.deinit();
         self.gc_slots.deinit(self.allocator);
         self.gc_vals.deinit(self.allocator);
     }
@@ -671,24 +671,24 @@ pub const Vm = struct {
     }
 
     /// Register a hoist-compiled native function for a chunk.
-    pub fn registerHoistFn(self: *Vm, chunk: *const Chunk, compiled: *hoist_backend.CompiledFn) !void {
-        try self.hoist_fns.put(@intFromPtr(chunk), compiled);
+    pub fn registerJitFn(self: *Vm, chunk: *const Chunk, compiled: *jit_backend.CompiledFn) !void {
+        try self.jit_fns.put(@intFromPtr(chunk), compiled);
     }
 
     /// Look up hoist-compiled function for a chunk.
-    pub fn lookupHoistFn(self: *Vm, chunk: *const Chunk) ?*const hoist_backend.CompiledFn {
-        return self.hoist_fns.get(@intFromPtr(chunk));
+    pub fn lookupJitFn(self: *Vm, chunk: *const Chunk) ?*const jit_backend.CompiledFn {
+        return self.jit_fns.get(@intFromPtr(chunk));
     }
 
     /// Try to call a closure via hoist-compiled native code.
     /// Returns the result of calling it, or null if not hoist-compiled.
-    fn tryCallHoist(self: *Vm, argc: u8) ?Value {
+    fn tryCallJit(self: *Vm, argc: u8) ?Value {
         const chunk = self.chunk;
-        const compiled = self.hoist_fns.get(@intFromPtr(chunk)) orelse return null;
+        const compiled = self.jit_fns.get(@intFromPtr(chunk)) orelse return null;
         if (compiled.arity != argc) return null;
 
         // Set global heap pointer so JIT cons can allocate
-        hoist_backend.setHeap(self.heap);
+        jit_backend.setHeap(self.heap);
 
         // Extract args from the VM stack (they're above the callee frame)
         const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
@@ -697,7 +697,7 @@ pub const Vm = struct {
 
         // Sync heap alloc_ptr back from JIT global (inline cons updates g_alloc_ptr
         // but not heap.alloc_ptr directly)
-        hoist_backend.syncHeapFromGlobal(self.heap);
+        jit_backend.syncHeapFromGlobal(self.heap);
 
         return result;
     }
@@ -1352,7 +1352,7 @@ pub const Vm = struct {
 
         // After doCall, self.chunk is the callee's chunk.
         // Try hoist SSA JIT for native execution.
-        if (self.tryCallHoist(argc)) |result| {
+        if (self.tryCallJit(argc)) |result| {
             // Hoist call succeeded — unwind frame and return result
             self.fp -= 1;
             self.sp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
@@ -2728,7 +2728,7 @@ pub const Vm = struct {
                 try self.doCall(argc, false);
                 // Check for hoist-compiled function
 
-                if (self.tryCallHoist(argc)) |result| {
+                if (self.tryCallJit(argc)) |result| {
                     // Pop the call frame and push result
                     self.fp -= 1;
                     const caller_frame = self.frames[self.fp];
