@@ -98,6 +98,107 @@ pub fn getJitConsPtr() u64 {
     return @intFromPtr(&jitCons);
 }
 
+// ── Global-state C-ABI wrappers for runtime primitives ──
+// These can be called from JIT code via call_indirect without JitContext.
+
+/// GCD of two tagged fixnums. Returns tagged fixnum.
+fn jitGcd(a_raw: u64, b_raw: u64) callconv(.c) u64 {
+    const a = Value{ .raw = a_raw };
+    const b = Value{ .raw = b_raw };
+    if (!a.isFixnum() or !b.isFixnum()) return Value.nil.raw;
+    var x = @abs(a.toFixnum());
+    var y = @abs(b.toFixnum());
+    while (y != 0) {
+        const t = y;
+        y = x % y;
+        x = t;
+    }
+    return Value.makeFixnum(@intCast(x)).raw;
+}
+
+/// nreverse: destructively reverse a list. Returns tagged value.
+fn jitNreverse(list_raw: u64) callconv(.c) u64 {
+    var prev = Value.nil;
+    var curr = Value{ .raw = list_raw };
+    while (curr.isCons()) {
+        const cell = curr.toPtr(runtime.Cons);
+        const next = cell.cdr;
+        cell.cdr = prev;
+        prev = curr;
+        curr = next;
+    }
+    return prev.raw;
+}
+
+/// append two lists. Returns tagged value. Allocates new cons cells.
+fn jitAppend(list1_raw: u64, list2_raw: u64) callconv(.c) u64 {
+    const list1 = Value{ .raw = list1_raw };
+    const list2 = Value{ .raw = list2_raw };
+    if (!list1.isCons()) return list2.raw;
+    // Build reversed copy of list1, then reverse-cons onto list2
+    var rev = Value.nil;
+    var curr = list1;
+    while (curr.isCons()) {
+        const cell = curr.toPtr(runtime.Cons);
+        const new_cell = jitCons(cell.car.raw, rev.raw);
+        if (new_cell == 0) return 0; // OOM
+        rev = Value{ .raw = new_cell };
+        curr = cell.cdr;
+    }
+    // Now rev is reversed list1. Reverse-cons onto list2.
+    var result = list2;
+    curr = rev;
+    while (curr.isCons()) {
+        const cell = curr.toPtr(runtime.Cons);
+        const new_cell = jitCons(cell.car.raw, result.raw);
+        if (new_cell == 0) return 0; // OOM
+        result = Value{ .raw = new_cell };
+        curr = cell.cdr;
+    }
+    return result.raw;
+}
+
+/// assoc: lookup in alist by eq. Returns tagged value (pair or nil).
+fn jitAssoc(key_raw: u64, alist_raw: u64) callconv(.c) u64 {
+    var curr = Value{ .raw = alist_raw };
+    while (curr.isCons()) {
+        const cell = curr.toPtr(runtime.Cons);
+        if (cell.car.isCons()) {
+            const pair = cell.car.toPtr(runtime.Cons);
+            if (pair.car.raw == key_raw) return cell.car.raw;
+        }
+        curr = cell.cdr;
+    }
+    return Value.nil.raw;
+}
+
+/// Strip package prefix from a qualified name.
+/// "COMMON-LISP:GCD" → "GCD", "CL-USER:FOO" → "FOO", "GCD" → "GCD"
+fn stripPackagePrefix(name: []const u8) []const u8 {
+    if (std.mem.indexOf(u8, name, ":")) |colon_pos| {
+        return name[colon_pos + 1 ..];
+    }
+    return name;
+}
+
+/// Get function pointer for runtime primitive by name.
+/// Returns null if not a known primitive.
+fn getJitPrimitivePtr(name: []const u8) ?u64 {
+    const bare = stripPackagePrefix(name);
+    const Entry = struct { n: []const u8, p: *const anyopaque };
+    // Note: only list primitives without &rest params.
+    // gcd/append/assoc are &rest or keyword — compiler passes args differently.
+    const table = [_]Entry{
+        .{ .n = "NREVERSE", .p = @ptrCast(&jitNreverse) },
+        .{ .n = "%APPEND2", .p = @ptrCast(&jitAppend) },
+        .{ .n = "GCD2", .p = @ptrCast(&jitGcd) },
+    };
+    for (table) |entry| {
+        if (std.mem.eql(u8, bare, entry.n)) return @intFromPtr(entry.p);
+    }
+    return null;
+}
+
 /// Known JIT-compiled function info for cross-function calls.
 /// Check if an IR node is a simple value (literal or variable reference).
 /// Used to optimize TCO branches that just return a constant.
@@ -1042,6 +1143,13 @@ pub const IrTranslator = struct {
             }
         }
 
+        // Check for known runtime primitive (gcd, nreverse, append, assoc, etc.)
+        if (getCallTargetName(func_ir)) |target_name| {
+            if (getJitPrimitivePtr(target_name)) |prim_ptr| {
+                return try self.emitPrimitiveCall(prim_ptr, args);
+            }
+        }
+
         // Unsupported call — should have been rejected by hasNonSelfCalls
         return try self.b.iconst(I64, 0); // placeholder nil
     }
@@ -1092,6 +1200,41 @@ pub const IrTranslator = struct {
         }
 
         // Emit call_indirect
+        const call_data = InstructionData{
+            .call_indirect = .{
+                .opcode = .call_indirect,
+                .sig_ref = sig,
+                .args = call_args,
+            },
+        };
+        const call_inst = try self.func.dfg.makeInst(call_data);
+        const call_result = try self.func.dfg.appendInstResult(call_inst, I64);
+        const block = self.b.current_block orelse return error.NoCurrentBlock;
+        try self.func.layout.appendInst(call_inst, block);
+
+        return call_result;
+    }
+
+    /// Emit a call to a runtime primitive via call_indirect.
+    /// The primitive uses the same convention as jitCons: raw u64 args, raw u64 return.
+    fn emitPrimitiveCall(self: *IrTranslator, prim_ptr: u64, args: []const *const Ir) anyerror!HoistValue {
+        var translated_args: [16]HoistValue = undefined;
+        for (args, 0..) |arg, i| {
+            translated_args[i] = try self.translate(arg);
+        }
+
+        const arity: u32 = @intCast(args.len);
+        const sig = try self.getCallSigForArity(arity);
+
+        // Load primitive fn pointer (emitted locally, not pre-emitted)
+        const fn_ptr = try self.b.iconst(I64, @as(i64, @bitCast(prim_ptr)));
+
+        var call_args = ValueList.default();
+        try self.func.dfg.value_lists.push(&call_args, fn_ptr);
+        for (0..arity) |i| {
+            try self.func.dfg.value_lists.push(&call_args, translated_args[i]);
+        }
+
         const call_data = InstructionData{
             .call_indirect = .{
                 .opcode = .call_indirect,
@@ -2171,9 +2314,61 @@ fn collectMutatedVars(ir: *const Ir, indices: *std.ArrayList(u16), allocator: st
 /// function name is qualified ("CL-USER:MYCD"), so we check if the
 /// qualified name ends with ":" + symbol_name.
 /// Check if a call target is resolvable (self-call or known JIT function).
+/// Check if IR tree contains calls to known runtime primitives (gcd, nreverse, etc.)
+fn containsPrimitiveCalls(body: *const Ir, self_name: []const u8) bool {
+    return switch (body.*) {
+        .call => |c| blk: {
+            if (!isCallTargetSelf(c.func, self_name)) {
+                if (getCallTargetName(c.func)) |target_name| {
+                    if (getJitPrimitivePtr(target_name) != null) break :blk true;
+                }
+            }
+            for (c.args) |arg| {
+                if (containsPrimitiveCalls(arg, self_name)) break :blk true;
+            }
+            break :blk false;
+        },
+        .tailcall => |tc| blk: {
+            if (!isCallTargetSelf(tc.func, self_name)) {
+                if (getCallTargetName(tc.func)) |target_name| {
+                    if (getJitPrimitivePtr(target_name) != null) break :blk true;
+                }
+            }
+            for (tc.args) |arg| {
+                if (containsPrimitiveCalls(arg, self_name)) break :blk true;
+            }
+            break :blk false;
+        },
+        .@"if" => |i| containsPrimitiveCalls(i.cond, self_name) or containsPrimitiveCalls(i.then_branch, self_name) or containsPrimitiveCalls(i.else_branch, self_name),
+        .let => |l| blk: {
+            for (l.bindings) |b| {
+                if (containsPrimitiveCalls(b.value, self_name)) break :blk true;
+            }
+            break :blk containsPrimitiveCalls(l.body, self_name);
+        },
+        .set => |s| containsPrimitiveCalls(s.value, self_name),
+        .progn => |exprs| blk: {
+            for (exprs) |e| {
+                if (containsPrimitiveCalls(e, self_name)) break :blk true;
+            }
+            break :blk false;
+        },
+        .loop => |l| containsPrimitiveCalls(l.cond, self_name) or containsPrimitiveCalls(l.body, self_name),
+        .fixnum_add, .fixnum_sub, .add, .sub, .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
+        .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
+        .logand, .mod, .rem,
+        => |op| containsPrimitiveCalls(op.left, self_name) or containsPrimitiveCalls(op.right, self_name),
+        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
+        .zerop, .oddp, .evenp, .length,
+        => |op| containsPrimitiveCalls(op.operand, self_name),
+        else => false,
+    };
+}
+
 pub fn isCallResolvable(func_ir: *const Ir, self_name: []const u8, known: *const std.StringHashMap(void)) bool {
     if (isCallTargetSelf(func_ir, self_name)) return true;
     if (getCallTargetName(func_ir)) |target_name| {
+        // Check known JIT-compiled functions
         if (known.get(target_name) != null) return true;
         // Check qualified name: "PKG:SYM" might match known "SYM" or vice versa
         if (std.mem.indexOfScalar(u8, target_name, ':')) |colon_pos| {
@@ -2188,6 +2383,8 @@ pub fn isCallResolvable(func_ir: *const Ir, self_name: []const u8, known: *const
                 if (std.mem.eql(u8, kn[colon_pos + 1 ..], target_name)) return true;
             }
         }
+        // Check known runtime primitives (gcd, nreverse, append, assoc, etc.)
+        if (getJitPrimitivePtr(target_name) != null) return true;
     }
     return false;
 }
@@ -2340,14 +2537,36 @@ pub fn hasNonSelfCalls(body: *const Ir, name: []const u8) bool {
     return switch (body.*) {
         .call => |c| blk: {
             // Self-call is OK, non-self-call is not
-            if (!isCallTargetSelf(c.func, name)) break :blk true;
+            if (!isCallTargetSelf(c.func, name)) {
+                // Known runtime primitive is also OK
+                if (getCallTargetName(c.func)) |target_name| {
+                    if (getJitPrimitivePtr(target_name) != null) {
+                        // Primitive call — check args recursively
+                        for (c.args) |arg| {
+                            if (hasNonSelfCalls(arg, name)) break :blk true;
+                        }
+                        break :blk false;
+                    }
+                }
+                break :blk true;
+            }
             for (c.args) |arg| {
                 if (hasNonSelfCalls(arg, name)) break :blk true;
             }
             break :blk false;
         },
         .tailcall => |tc| blk: {
-            if (!isCallTargetSelf(tc.func, name)) break :blk true;
+            if (!isCallTargetSelf(tc.func, name)) {
+                if (getCallTargetName(tc.func)) |target_name| {
+                    if (getJitPrimitivePtr(target_name) != null) {
+                        for (tc.args) |arg| {
+                            if (hasNonSelfCalls(arg, name)) break :blk true;
+                        }
+                        break :blk false;
+                    }
+                }
+                break :blk true;
+            }
             for (tc.args) |arg| {
                 if (hasNonSelfCalls(arg, name)) break :blk true;
             }
@@ -2629,6 +2848,7 @@ pub fn compileIrWithKnownFns(
     translator.fn_name = name;
     translator.known_fns = known_fns;
     translator.has_cross_calls = containsCons(lambda.body) or
+        containsPrimitiveCalls(lambda.body, name) or
         (if (known_fns) |kf| kf.count() > 0 and hasNonSelfCalls(lambda.body, name) else false);
 
     translator.user_arity = arity;
@@ -2694,6 +2914,7 @@ pub fn compileIrWithKnownFns(
         translator.is_recursive = false;
         // But may still have cross-calls (cons, known functions)
         translator.has_cross_calls = containsCons(lambda.body) or
+            containsPrimitiveCalls(lambda.body, name) or
             (if (known_fns) |kf| kf.count() > 0 and hasNonSelfCalls(lambda.body, name) else false);
     }
 
