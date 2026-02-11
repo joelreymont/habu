@@ -147,11 +147,12 @@ fn jitAppend(list1_raw: u64, list2_raw: u64) callconv(.c) u64 {
     const list2 = Value{ .raw = list2_raw };
     if (!list1.isCons()) return list2.raw;
     // Build reversed copy of list1, then reverse-cons onto list2
+    // jitCons takes (cdr_raw, car_raw) — reversed parameter order!
     var rev = Value.nil;
     var curr = list1;
     while (curr.isCons()) {
         const cell = curr.toPtr(runtime.Cons);
-        const new_cell = jitCons(cell.car.raw, rev.raw);
+        const new_cell = jitCons(rev.raw, cell.car.raw);
         if (new_cell == 0) return 0; // OOM
         rev = Value{ .raw = new_cell };
         curr = cell.cdr;
@@ -161,7 +162,7 @@ fn jitAppend(list1_raw: u64, list2_raw: u64) callconv(.c) u64 {
     curr = rev;
     while (curr.isCons()) {
         const cell = curr.toPtr(runtime.Cons);
-        const new_cell = jitCons(cell.car.raw, result.raw);
+        const new_cell = jitCons(result.raw, cell.car.raw);
         if (new_cell == 0) return 0; // OOM
         result = Value{ .raw = new_cell };
         curr = cell.cdr;
@@ -195,17 +196,27 @@ fn stripPackagePrefix(name: []const u8) []const u8 {
 /// Get function pointer for runtime primitive by name.
 /// Returns null if not a known primitive.
 fn getJitPrimitivePtr(name: []const u8) ?u64 {
+    return getJitPrimitivePtrWithArity(name, null);
+}
+
+fn getJitPrimitivePtrWithArity(name: []const u8, arity: ?usize) ?u64 {
     const bare = stripPackagePrefix(name);
-    const Entry = struct { n: []const u8, p: *const anyopaque };
-    // Note: only list primitives without &rest params.
-    // gcd/append/assoc are &rest or keyword — compiler passes args differently.
+    const Entry = struct { n: []const u8, p: *const anyopaque, a: usize };
     const table = [_]Entry{
-        .{ .n = "NREVERSE", .p = @ptrCast(&jitNreverse) },
-        .{ .n = "%APPEND2", .p = @ptrCast(&jitAppend) },
-        .{ .n = "GCD2", .p = @ptrCast(&jitGcd) },
+        .{ .n = "NREVERSE", .p = @ptrCast(&jitNreverse), .a = 1 },
+        .{ .n = "GCD", .p = @ptrCast(&jitGcd), .a = 2 },
+        .{ .n = "GCD2", .p = @ptrCast(&jitGcd), .a = 2 },
+        .{ .n = "APPEND", .p = @ptrCast(&jitAppend), .a = 2 },
+        .{ .n = "%APPEND2", .p = @ptrCast(&jitAppend), .a = 2 },
+        .{ .n = "ASSOC", .p = @ptrCast(&jitAssoc), .a = 2 },
     };
     for (table) |entry| {
-        if (std.mem.eql(u8, bare, entry.n)) return @intFromPtr(entry.p);
+        if (std.mem.eql(u8, bare, entry.n)) {
+            if (arity) |a| {
+                if (a != entry.a) continue; // arity mismatch
+            }
+            return @intFromPtr(entry.p);
+        }
     }
     return null;
 }
@@ -605,6 +616,8 @@ pub const IrTranslator = struct {
             .cons => |op| canTranslate(op.left) and canTranslate(op.right),
             .logand => |op| canTranslate(op.left) and canTranslate(op.right),
             .mod, .rem => |op| canTranslate(op.left) and canTranslate(op.right),
+            .append => |op| canTranslate(op.left) and canTranslate(op.right),
+            .assoc => |op| canTranslate(op.left) and canTranslate(op.right),
             else => false,
         };
     }
@@ -659,6 +672,8 @@ pub const IrTranslator = struct {
             .rem => |op| try self.translateRem(op.left, op.right),
             // Heap allocation (calls C-ABI runtime function)
             .cons => |op| try self.translateCons(op.left, op.right),
+            .append => |op| try self.translateAppend(op.left, op.right),
+            .assoc => |op| try self.translateAssoc(op.left, op.right),
             .call => |call_node| try self.translateCall(call_node.func, call_node.args),
             .tailcall => |tc| try self.translateCall(tc.func, tc.args),
             else => {
@@ -1054,6 +1069,16 @@ pub const IrTranslator = struct {
                 try self.preEmitConstants(n.left);
                 try self.preEmitConstants(n.right);
             },
+            .append => |n| {
+                // Append calls jitAppend — fn ptr emitted locally by translateAppend
+                try self.preEmitConstants(n.left);
+                try self.preEmitConstants(n.right);
+            },
+            .assoc => |n| {
+                // Assoc calls jitAssoc — fn ptr emitted locally
+                try self.preEmitConstants(n.left);
+                try self.preEmitConstants(n.right);
+            },
             .call => |c| {
                 // Don't pre-emit call function pointers — they'll be emitted locally
                 // in the block where the call happens. Pre-emitting them in the
@@ -1170,7 +1195,7 @@ pub const IrTranslator = struct {
 
         // Check for known runtime primitive (gcd, nreverse, append, assoc, etc.)
         if (getCallTargetName(func_ir)) |target_name| {
-            if (getJitPrimitivePtr(target_name)) |prim_ptr| {
+            if (getJitPrimitivePtrWithArity(target_name, args.len)) |prim_ptr| {
                 return try self.emitPrimitiveCall(prim_ptr, args);
             }
         }
@@ -2049,6 +2074,20 @@ pub const IrTranslator = struct {
         return try self.b.bor(I64, shifted, one);
     }
 
+    /// append: call jitAppend runtime function (allocates new cons cells)
+    fn translateAppend(self: *IrTranslator, left_ir: *const Ir, right_ir: *const Ir) anyerror!HoistValue {
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitAppend)));
+        const args = [_]*const Ir{ left_ir, right_ir };
+        return try self.emitPrimitiveCall(prim_ptr, &args);
+    }
+
+    /// assoc: call jitAssoc runtime function (linear search)
+    fn translateAssoc(self: *IrTranslator, left_ir: *const Ir, right_ir: *const Ir) anyerror!HoistValue {
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitAssoc)));
+        const args = [_]*const Ir{ left_ir, right_ir };
+        return try self.emitPrimitiveCall(prim_ptr, &args);
+    }
+
     /// length: count cons cells by walking cdr chain.
     /// Emits a loop: count=0, ptr=list; while ptr!=nil: count++, ptr=cdr(ptr); return tagged(count)
     fn translateLength(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
@@ -2343,7 +2382,7 @@ fn collectMutatedVars(ir: *const Ir, indices: *std.ArrayList(u16), allocator: st
         => |op| {
             try collectMutatedVars(op.operand, indices, allocator);
         },
-        .cons, .logand, .mod, .rem => |op| {
+        .cons, .logand, .mod, .rem, .append, .assoc => |op| {
             try collectMutatedVars(op.left, indices, allocator);
             try collectMutatedVars(op.right, indices, allocator);
         },
@@ -2404,6 +2443,8 @@ fn containsPrimitiveCalls(body: *const Ir, self_name: []const u8) bool {
         .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
         .logand, .mod, .rem,
         => |op| containsPrimitiveCalls(op.left, self_name) or containsPrimitiveCalls(op.right, self_name),
+        .append => true, // append calls jitAppend runtime function
+        .assoc => true, // assoc calls jitAssoc runtime function
         .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
         .zerop, .oddp, .evenp, .length,
         => |op| containsPrimitiveCalls(op.operand, self_name),
@@ -2522,7 +2563,7 @@ fn hasNestedSelfCalls(body: *const Ir, name: []const u8) bool {
         .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
         .zerop, .oddp, .evenp, .length,
         => |op| hasNestedSelfCalls(op.operand, name),
-        .cons, .logand, .mod, .rem => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
+        .cons, .logand, .mod, .rem, .append, .assoc => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
         .let => |l| blk: {
             for (l.bindings) |binding| {
                 if (hasNestedSelfCalls(binding.value, name)) break :blk true;
@@ -2540,7 +2581,7 @@ fn hasNestedSelfCalls(body: *const Ir, name: []const u8) bool {
 /// Check if an IR tree contains any cons operations (which emit call_indirect to jitCons).
 fn containsCons(body: *const Ir) bool {
     return switch (body.*) {
-        .cons => true,
+        .cons, .append => true,
         .@"if" => |i| containsCons(i.cond) or containsCons(i.then_branch) or containsCons(i.else_branch),
         .let => |l| blk: {
             for (l.bindings) |binding| {
@@ -2677,7 +2718,7 @@ fn detectSelfCalls(body: *const Ir, name: []const u8) bool {
         .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
         .zerop, .oddp, .evenp, .length,
         => |op| detectSelfCalls(op.operand, name),
-        .cons, .logand, .mod, .rem => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
+        .cons, .logand, .mod, .rem, .append, .assoc => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
         .let => |l| blk: {
             for (l.bindings) |binding| {
                 if (detectSelfCalls(binding.value, name)) break :blk true;
@@ -2826,7 +2867,7 @@ fn detectLoops(body: *const Ir) bool {
         .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
         .zerop, .oddp, .evenp, .length,
         => |n| detectLoops(n.operand),
-        .cons, .logand, .mod, .rem => |n| detectLoops(n.left) or detectLoops(n.right),
+        .cons, .logand, .mod, .rem, .append, .assoc => |n| detectLoops(n.left) or detectLoops(n.right),
         .set => |n| detectLoops(n.value),
         else => false,
     };
