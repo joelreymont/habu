@@ -1096,6 +1096,10 @@ pub const IrTranslator = struct {
         try self.func.layout.appendBlock(exit);
         const exit_param = try self.func.dfg.appendBlockParam(exit, I64);
 
+        // Pre-emit constants BEFORE jump to header (in caller's current block).
+        // Constants dominate the loop body but aren't re-executed each iteration.
+        try self.preEmitConstants(callee_body);
+
         // Jump from current block to header with initial arg values
         try self.b.jumpArgs(header, translated_args[0..arity]);
 
@@ -1111,9 +1115,6 @@ pub const IrTranslator = struct {
             .base = base,
             .count = arity,
         });
-
-        // Pre-emit constants in header block (dominating position for loop body)
-        try self.preEmitConstants(callee_body);
 
         // Save and override TCO state + fn_name for callee context
         const saved_tco_header = self.tco_header;
@@ -1240,6 +1241,11 @@ pub const IrTranslator = struct {
         try self.func.layout.appendBlock(exit);
         const exit_param = try self.func.dfg.appendBlockParam(exit, I64);
 
+        // Pre-emit constants in ENTRY block (before jump to header).
+        // This ensures constants dominate the loop body but are NOT inside the
+        // loop — they're executed once at function entry, not every iteration.
+        try self.preEmitConstants(body_ir);
+
         // Jump from entry to header with initial param values
         var init_vals: [8]HoistValue = undefined;
         for (0..arity) |i| {
@@ -1252,9 +1258,6 @@ pub const IrTranslator = struct {
         for (0..arity) |i| {
             self.locals.items[i] = phi_vals[i];
         }
-
-        // Pre-emit constants in header block (dominating position for loop body)
-        try self.preEmitConstants(body_ir);
 
         // Enable TCO mode
         self.tco_header = header;
