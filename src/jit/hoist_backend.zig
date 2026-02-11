@@ -131,9 +131,11 @@ fn callsItself(body: *const Ir) bool {
         .fixnum_add, .fixnum_sub, .add, .sub,
         .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
         .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
+        .logand, .mod, .rem,
         => |op| callsItself(op.left) or callsItself(op.right),
         .assert_fixnum, .nilp, .not, .consp, .abs,
         .car, .cdr, .unsafe_car, .unsafe_cdr,
+        .zerop, .oddp, .evenp, .length,
         => |op| callsItself(op.operand),
         else => false,
     };
@@ -180,10 +182,12 @@ fn crossCallsContainLoads(body: *const Ir, self_name: []const u8, kf: *const std
         .fixnum_add, .fixnum_sub, .add, .sub,
         .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
         .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
+        .logand, .mod, .rem,
         => |op| crossCallsContainLoads(op.left, self_name, kf) or
             crossCallsContainLoads(op.right, self_name, kf),
         .assert_fixnum, .nilp, .not, .consp, .abs,
         .car, .cdr, .unsafe_car, .unsafe_cdr,
+        .zerop, .oddp, .evenp, .length,
         => |op| crossCallsContainLoads(op.operand, self_name, kf),
         else => false,
     };
@@ -211,9 +215,11 @@ fn countIrNodes(node: *const Ir) usize {
         .fixnum_add, .fixnum_sub, .add, .sub,
         .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
         .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
+        .logand, .mod, .rem,
         => |op| 1 + countIrNodes(op.left) + countIrNodes(op.right),
         .assert_fixnum, .nilp, .not, .consp, .abs,
         .car, .cdr, .unsafe_car, .unsafe_cdr,
+        .zerop, .oddp, .evenp, .length,
         => |op| 1 + countIrNodes(op.operand),
         .@"if" => |f| 1 + countIrNodes(f.cond) + countIrNodes(f.then_branch) + countIrNodes(f.else_branch),
         .progn => |exprs| blk: {
@@ -478,8 +484,12 @@ pub const IrTranslator = struct {
             .eq => |op| canTranslate(op.left) and canTranslate(op.right),
             // List / predicate operations (inline, no heap access needed)
             .nilp, .not, .consp, .abs => |op| canTranslate(op.operand),
+            .zerop, .oddp, .evenp => |op| canTranslate(op.operand),
             .car, .cdr, .unsafe_car, .unsafe_cdr => |op| canTranslate(op.operand),
+            .length => |op| canTranslate(op.operand),
             .cons => |op| canTranslate(op.left) and canTranslate(op.right),
+            .logand => |op| canTranslate(op.left) and canTranslate(op.right),
+            .mod, .rem => |op| canTranslate(op.left) and canTranslate(op.right),
             else => false,
         };
     }
@@ -524,6 +534,14 @@ pub const IrTranslator = struct {
             .unsafe_car => |op| try self.translateUnsafeCar(op.operand),
             .unsafe_cdr => |op| try self.translateUnsafeCdr(op.operand),
             .abs => |op| try self.translateAbs(op.operand),
+            .zerop => |op| try self.translateZerop(op.operand),
+            .oddp => |op| try self.translateOddp(op.operand),
+            .evenp => |op| try self.translateEvenp(op.operand),
+            .length => |op| try self.translateLength(op.operand),
+            // Binary: bitwise/modular
+            .logand => |op| try self.translateLogand(op.left, op.right),
+            .mod => |op| try self.translateMod(op.left, op.right),
+            .rem => |op| try self.translateRem(op.left, op.right),
             // Heap allocation (calls C-ABI runtime function)
             .cons => |op| try self.translateCons(op.left, op.right),
             .call => |call_node| try self.translateCall(call_node.func, call_node.args),
@@ -880,6 +898,32 @@ pub const IrTranslator = struct {
                 _ = try self.cachedIconst(1); // for sge comparison
                 _ = try self.cachedIconst(2); // for 2 - raw
                 try self.preEmitConstants(n.operand);
+            },
+            .zerop => |n| {
+                _ = try self.cachedIconst(1); // tagged 0
+                _ = try self.cachedIconst(0); // nil
+                _ = try self.cachedIconst(@as(i64, @bitCast(Value.t.raw))); // t
+                try self.preEmitConstants(n.operand);
+            },
+            .oddp, .evenp => |n| {
+                _ = try self.cachedIconst(2); // bit mask for bit 1
+                _ = try self.cachedIconst(0); // nil/zero
+                _ = try self.cachedIconst(@as(i64, @bitCast(Value.t.raw))); // t
+                try self.preEmitConstants(n.operand);
+            },
+            .length => |n| {
+                _ = try self.cachedIconst(0); // nil
+                _ = try self.cachedIconst(1); // tagged 0
+                try self.preEmitConstants(n.operand);
+            },
+            .logand => |n| {
+                try self.preEmitConstants(n.left);
+                try self.preEmitConstants(n.right);
+            },
+            .mod, .rem => |n| {
+                _ = try self.cachedIconst(1); // for shift
+                try self.preEmitConstants(n.left);
+                try self.preEmitConstants(n.right);
             },
             .cons => |n| {
                 _ = try self.cachedIconst(@as(i64, @bitCast(getJitConsPtr()))); // cons fn ptr
@@ -1726,6 +1770,148 @@ pub const IrTranslator = struct {
         const negated = try self.b.isub(I64, two, val);
         return try self.b.select(I64, is_non_neg, val, negated);
     }
+
+    /// zerop: (= n 0) → tagged 0 is raw 1
+    fn translateZerop(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
+        const val = try self.translate(operand_ir);
+        const tagged_zero = try self.cachedIconst(1); // tagged 0 = (0<<1)|1 = 1
+        const cond = try self.b.icmp(I8, IntCC.eq, val, tagged_zero);
+        const t_val = try self.cachedIconst(@as(i64, @bitCast(Value.t.raw)));
+        const nil_val = try self.cachedIconst(0);
+        return try self.b.select(I64, cond, t_val, nil_val);
+    }
+
+    /// oddp: test bit 1 of tagged fixnum. Tagged (n<<1)|1, so bit 1 = n's LSB.
+    fn translateOddp(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
+        const val = try self.translate(operand_ir);
+        const two = try self.cachedIconst(2); // bit mask for bit 1
+        const bit = try self.b.band(I64, val, two);
+        const zero = try self.cachedIconst(0);
+        const cond = try self.b.icmp(I8, IntCC.ne, bit, zero);
+        const t_val = try self.cachedIconst(@as(i64, @bitCast(Value.t.raw)));
+        const nil_val = try self.cachedIconst(0);
+        return try self.b.select(I64, cond, t_val, nil_val);
+    }
+
+    /// evenp: inverse of oddp
+    fn translateEvenp(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
+        const val = try self.translate(operand_ir);
+        const two = try self.cachedIconst(2);
+        const bit = try self.b.band(I64, val, two);
+        const zero = try self.cachedIconst(0);
+        const cond = try self.b.icmp(I8, IntCC.eq, bit, zero);
+        const t_val = try self.cachedIconst(@as(i64, @bitCast(Value.t.raw)));
+        const nil_val = try self.cachedIconst(0);
+        return try self.b.select(I64, cond, t_val, nil_val);
+    }
+
+    /// logand: bitwise AND. For tagged fixnums (n<<1)|1, AND preserves the tag bit
+    /// since both operands have bit 0 = 1.
+    fn translateLogand(self: *IrTranslator, left_ir: *const Ir, right_ir: *const Ir) anyerror!HoistValue {
+        const left = try self.translate(left_ir);
+        const right = try self.translate(right_ir);
+        return try self.b.band(I64, left, right);
+    }
+
+    /// mod: modulus with floor division semantics (result sign matches divisor).
+    /// Untag both operands, SDIV, MSUB for remainder, adjust sign, retag.
+    /// For tagged fixnums: a_val = a_raw >> 1, b_val = b_raw >> 1
+    /// result_raw = ((a_val mod b_val) << 1) | 1
+    fn translateMod(self: *IrTranslator, left_ir: *const Ir, right_ir: *const Ir) anyerror!HoistValue {
+        const a = try self.translate(left_ir);
+        const b = try self.translate(right_ir);
+        const one = try self.cachedIconst(1);
+        // Arithmetic shift right by 1 to untag
+        const a_val = try self.b.sshr(I64, a, one);
+        const b_val = try self.b.sshr(I64, b, one);
+        // SDIV + MSUB = remainder (truncating division)
+        const quot = try self.b.sdiv(I64, a_val, b_val);
+        const prod = try self.b.imul(I64, quot, b_val);
+        const rem_val = try self.b.isub(I64, a_val, prod);
+        // Floor mod adjustment: if rem != 0 and sign(rem) != sign(b), add b
+        const zero = try self.cachedIconst(0);
+        const rem_ne_zero = try self.b.icmp(I8, IntCC.ne, rem_val, zero);
+        // XOR signs: if (rem ^ b) < 0, signs differ
+        const xor_signs = try self.b.bxor(I64, rem_val, b_val);
+        const signs_differ = try self.b.icmp(I8, IntCC.slt, xor_signs, zero);
+        // need_adjust = rem != 0 && signs differ
+        const need_adjust = try self.b.band(I8, rem_ne_zero, signs_differ);
+        // adjusted = rem + b (if needed), else rem
+        const adjusted = try self.b.iadd(I64, rem_val, b_val);
+        const mod_val = try self.b.select(I64, need_adjust, adjusted, rem_val);
+        // Retag: (mod_val << 1) | 1
+        const shifted = try self.b.ishl(I64, mod_val, one);
+        return try self.b.bor(I64, shifted, one);
+    }
+
+    /// rem: truncating remainder (result sign matches dividend).
+    /// Simpler than mod — no sign adjustment needed.
+    fn translateRem(self: *IrTranslator, left_ir: *const Ir, right_ir: *const Ir) anyerror!HoistValue {
+        const a = try self.translate(left_ir);
+        const b = try self.translate(right_ir);
+        const one = try self.cachedIconst(1);
+        const a_val = try self.b.sshr(I64, a, one);
+        const b_val = try self.b.sshr(I64, b, one);
+        const quot = try self.b.sdiv(I64, a_val, b_val);
+        const prod = try self.b.imul(I64, quot, b_val);
+        const rem_val = try self.b.isub(I64, a_val, prod);
+        // Retag: (rem_val << 1) | 1
+        const shifted = try self.b.ishl(I64, rem_val, one);
+        return try self.b.bor(I64, shifted, one);
+    }
+
+    /// length: count cons cells by walking cdr chain.
+    /// Emits a loop: count=0, ptr=list; while ptr!=nil: count++, ptr=cdr(ptr); return tagged(count)
+    fn translateLength(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
+        const list_val = try self.translate(operand_ir);
+
+        // Create blocks: header (loop test), body (increment), exit (return count)
+        const header = try self.func.dfg.blocks.add();
+        const body = try self.func.dfg.blocks.add();
+        const exit = try self.func.dfg.blocks.add();
+
+        try self.func.layout.appendBlock(header);
+        try self.func.layout.appendBlock(body);
+        try self.func.layout.appendBlock(exit);
+
+        // Header block params: ptr (I64), count (I64)
+        const ptr_param = try self.func.dfg.appendBlockParam(header, I64);
+        const count_param = try self.func.dfg.appendBlockParam(header, I64);
+
+        // Exit block param for final count
+        const exit_count = try self.func.dfg.appendBlockParam(exit, I64);
+
+        // Jump from current block to header with initial values
+        const zero = try self.cachedIconst(0);
+        const tagged_zero = try self.cachedIconst(1); // tagged 0
+        try self.b.jumpArgs(header, &.{ list_val, tagged_zero });
+
+        // Header: test if ptr is nil (== 0)
+        self.b.switchToBlock(header);
+        const is_nil = try self.b.icmp(I8, IntCC.eq, ptr_param, zero);
+        // brif to exit passes count via trampoline (brifArgs broken)
+        const exit_tramp = try self.func.dfg.blocks.add();
+        try self.func.layout.appendBlock(exit_tramp);
+        try self.b.brif(is_nil, exit_tramp, body);
+
+        // Exit trampoline: jump to exit with current count
+        self.b.switchToBlock(exit_tramp);
+        try self.b.jumpArgs(exit, &.{count_param});
+
+        // Body: count += 2 (tagged increment), ptr = cdr(ptr)
+        self.b.switchToBlock(body);
+        const two = try self.b.iconst(I64, 2); // tagged 1 increment = 2 in raw
+        const new_count = try self.b.iadd(I64, count_param, two);
+        // cdr is at offset 8 from cons pointer (cons tag is 0, raw = pointer)
+        const eight = try self.b.iconst(I64, 8);
+        const cdr_addr = try self.b.iadd(I64, ptr_param, eight);
+        const next_ptr = try self.b.load(I64, cdr_addr, hoist.memflags.MemFlags.heap());
+        try self.b.jumpArgs(header, &.{ next_ptr, new_count });
+
+        // Continue in exit block — return count
+        self.b.switchToBlock(exit);
+        return exit_count;
+    }
 };
 
 /// Patch all occurrences of a 64-bit placeholder value in the code buffer.
@@ -1963,10 +2149,12 @@ fn collectMutatedVars(ir: *const Ir, indices: *std.ArrayList(u16), allocator: st
             try collectMutatedVars(op.left, indices, allocator);
             try collectMutatedVars(op.right, indices, allocator);
         },
-        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs => |op| {
+        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
+        .zerop, .oddp, .evenp, .length,
+        => |op| {
             try collectMutatedVars(op.operand, indices, allocator);
         },
-        .cons => |op| {
+        .cons, .logand, .mod, .rem => |op| {
             try collectMutatedVars(op.left, indices, allocator);
             try collectMutatedVars(op.right, indices, allocator);
         },
@@ -2088,8 +2276,10 @@ fn hasNestedSelfCalls(body: *const Ir, name: []const u8) bool {
             }
             return false;
         },
-        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs => |op| hasNestedSelfCalls(op.operand, name),
-        .cons => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
+        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
+        .zerop, .oddp, .evenp, .length,
+        => |op| hasNestedSelfCalls(op.operand, name),
+        .cons, .logand, .mod, .rem => |op| hasNestedSelfCalls(op.left, name) or hasNestedSelfCalls(op.right, name),
         .let => |l| blk: {
             for (l.bindings) |binding| {
                 if (hasNestedSelfCalls(binding.value, name)) break :blk true;
@@ -2137,8 +2327,10 @@ fn containsCons(body: *const Ir) bool {
         },
         .fixnum_add, .fixnum_sub, .add, .sub, .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
         .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq,
+        .logand, .mod, .rem,
         => |op| containsCons(op.left) or containsCons(op.right),
         .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
+        .zerop, .oddp, .evenp, .length,
         => |op| containsCons(op.operand),
         else => false,
     };
@@ -2178,8 +2370,10 @@ pub fn hasNonSelfCalls(body: *const Ir, name: []const u8) bool {
         .loop => |l| hasNonSelfCalls(l.cond, name) or hasNonSelfCalls(l.body, name),
         .fixnum_add, .fixnum_sub, .add, .sub, .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
         .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
+        .logand, .mod, .rem,
         => |op| hasNonSelfCalls(op.left, name) or hasNonSelfCalls(op.right, name),
         .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
+        .zerop, .oddp, .evenp, .length,
         => |op| hasNonSelfCalls(op.operand, name),
         .lit, .@"var", .global_ref => false,
         else => false,
@@ -2215,8 +2409,10 @@ fn detectSelfCalls(body: *const Ir, name: []const u8) bool {
             }
             return false;
         },
-        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs => |op| detectSelfCalls(op.operand, name),
-        .cons => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
+        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
+        .zerop, .oddp, .evenp, .length,
+        => |op| detectSelfCalls(op.operand, name),
+        .cons, .logand, .mod, .rem => |op| detectSelfCalls(op.left, name) or detectSelfCalls(op.right, name),
         .let => |l| blk: {
             for (l.bindings) |binding| {
                 if (detectSelfCalls(binding.value, name)) break :blk true;
@@ -2249,10 +2445,13 @@ fn containsLoads(body: *const Ir) bool {
             break :blk false;
         },
         .loop => |l| containsLoads(l.cond) or containsLoads(l.body),
+        .length => true, // length walks cdr chain = loads
         .fixnum_add, .fixnum_sub, .add, .sub, .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
         .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
+        .logand, .mod, .rem,
         => |op| containsLoads(op.left) or containsLoads(op.right),
         .assert_fixnum, .nilp, .not, .consp, .abs,
+        .zerop, .oddp, .evenp,
         => |op| containsLoads(op.operand),
         .call => |c| blk: {
             for (c.args) |arg| {
@@ -2323,8 +2522,10 @@ fn hasNonTailSelfCalls(body: *const Ir, name: []const u8) bool {
         .loop => |l| hasNonTailSelfCalls(l.cond, name) or hasNonTailSelfCalls(l.body, name),
         .fixnum_add, .fixnum_sub, .add, .sub, .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
         .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
+        .logand, .mod, .rem,
         => |op| hasNonTailSelfCalls(op.left, name) or hasNonTailSelfCalls(op.right, name),
         .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
+        .zerop, .oddp, .evenp, .length,
         => |op| hasNonTailSelfCalls(op.operand, name),
         else => false,
     };
@@ -2357,8 +2558,10 @@ fn detectLoops(body: *const Ir) bool {
             }
             return false;
         },
-        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs => |n| detectLoops(n.operand),
-        .cons => |n| detectLoops(n.left) or detectLoops(n.right),
+        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
+        .zerop, .oddp, .evenp, .length,
+        => |n| detectLoops(n.operand),
+        .cons, .logand, .mod, .rem => |n| detectLoops(n.left) or detectLoops(n.right),
         .set => |n| detectLoops(n.value),
         else => false,
     };
