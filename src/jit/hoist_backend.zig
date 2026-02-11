@@ -99,9 +99,156 @@ pub fn getJitConsPtr() u64 {
 }
 
 /// Known JIT-compiled function info for cross-function calls.
+/// Check if a function body calls itself (has self-recursive calls or tailcalls).
+/// Used to prevent inlining recursive functions.
+fn callsItself(body: *const Ir) bool {
+    return switch (body.*) {
+        .call, .tailcall => true, // Any call/tailcall in the body means it might be recursive
+        .@"if" => |i| callsItself(i.cond) or callsItself(i.then_branch) or callsItself(i.else_branch),
+        .let => |l| blk: {
+            for (l.bindings) |b| {
+                if (callsItself(b.value)) break :blk true;
+            }
+            break :blk callsItself(l.body);
+        },
+        .set => |s| callsItself(s.value),
+        .progn => |exprs| blk: {
+            for (exprs) |e| {
+                if (callsItself(e)) break :blk true;
+            }
+            break :blk false;
+        },
+        .loop => |l| callsItself(l.cond) or callsItself(l.body),
+        .fixnum_add, .fixnum_sub, .add, .sub,
+        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
+        .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
+        => |op| callsItself(op.left) or callsItself(op.right),
+        .assert_fixnum, .nilp, .not, .consp, .abs,
+        .car, .cdr, .unsafe_car, .unsafe_cdr,
+        => |op| callsItself(op.operand),
+        else => false,
+    };
+}
+
+/// Check if any cross-function calls in the body would inline code containing loads.
+fn crossCallsContainLoads(body: *const Ir, self_name: []const u8, kf: *const std.StringHashMap(KnownFn)) bool {
+    return switch (body.*) {
+        .call => |c| blk: {
+            // Check if this call targets a known function with loads in its body
+            if (getCallTargetName(c.func)) |target_name| {
+                if (!namesMatch(target_name, self_name)) {
+                    if (lookupKnownFnStatic(kf, target_name)) |known| {
+                        if (known.ir_body) |ir_body| {
+                            if (countIrNodes(ir_body) <= 30 and containsLoads(ir_body))
+                                break :blk true;
+                        }
+                    }
+                }
+            }
+            for (c.args) |arg| {
+                if (crossCallsContainLoads(arg, self_name, kf)) break :blk true;
+            }
+            break :blk false;
+        },
+        .@"if" => |i| crossCallsContainLoads(i.cond, self_name, kf) or
+            crossCallsContainLoads(i.then_branch, self_name, kf) or
+            crossCallsContainLoads(i.else_branch, self_name, kf),
+        .let => |l| blk: {
+            for (l.bindings) |b| {
+                if (crossCallsContainLoads(b.value, self_name, kf)) break :blk true;
+            }
+            break :blk crossCallsContainLoads(l.body, self_name, kf);
+        },
+        .set => |s| crossCallsContainLoads(s.value, self_name, kf),
+        .progn => |exprs| blk: {
+            for (exprs) |e| {
+                if (crossCallsContainLoads(e, self_name, kf)) break :blk true;
+            }
+            break :blk false;
+        },
+        .loop => |l| crossCallsContainLoads(l.cond, self_name, kf) or
+            crossCallsContainLoads(l.body, self_name, kf),
+        .fixnum_add, .fixnum_sub, .add, .sub,
+        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
+        .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
+        => |op| crossCallsContainLoads(op.left, self_name, kf) or
+            crossCallsContainLoads(op.right, self_name, kf),
+        .assert_fixnum, .nilp, .not, .consp, .abs,
+        .car, .cdr, .unsafe_car, .unsafe_cdr,
+        => |op| crossCallsContainLoads(op.operand, self_name, kf),
+        else => false,
+    };
+}
+
+/// Static version of lookupKnownFn (no self parameter needed).
+fn lookupKnownFnStatic(kf: *const std.StringHashMap(KnownFn), target_name: []const u8) ?KnownFn {
+    // Direct lookup
+    if (kf.get(target_name)) |v| return v;
+    // Try with/without package prefix
+    if (std.mem.indexOf(u8, target_name, ":")) |colon_pos| {
+        if (kf.get(target_name[colon_pos + 1 ..])) |v| return v;
+    }
+    var it = kf.iterator();
+    while (it.next()) |entry| {
+        if (namesMatch(target_name, entry.key_ptr.*)) return entry.value_ptr.*;
+    }
+    return null;
+}
+
+/// Count the number of IR nodes in a tree (for inlining threshold).
+fn countIrNodes(node: *const Ir) usize {
+    return switch (node.*) {
+        .lit, .@"var", .global_ref => 1,
+        .fixnum_add, .fixnum_sub, .add, .sub,
+        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
+        .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
+        => |op| 1 + countIrNodes(op.left) + countIrNodes(op.right),
+        .assert_fixnum, .nilp, .not, .consp, .abs,
+        .car, .cdr, .unsafe_car, .unsafe_cdr,
+        => |op| 1 + countIrNodes(op.operand),
+        .@"if" => |f| 1 + countIrNodes(f.cond) + countIrNodes(f.then_branch) + countIrNodes(f.else_branch),
+        .progn => |exprs| blk: {
+            var c: usize = 1;
+            for (exprs) |e| c += countIrNodes(e);
+            break :blk c;
+        },
+        .let => |l| blk: {
+            var c: usize = 1;
+            for (l.bindings) |b| c += countIrNodes(b.value);
+            c += countIrNodes(l.body);
+            break :blk c;
+        },
+        .set => |s| 1 + countIrNodes(s.value),
+        .loop => |l| 1 + countIrNodes(l.cond) + countIrNodes(l.body),
+        .call => |c| blk: {
+            var n: usize = 1 + countIrNodes(c.func);
+            for (c.args) |a| n += countIrNodes(a);
+            break :blk n;
+        },
+        .tailcall => |tc| blk: {
+            var n: usize = 1 + countIrNodes(tc.func);
+            for (tc.args) |a| n += countIrNodes(a);
+            break :blk n;
+        },
+        else => 1,
+    };
+}
+
+/// Scope for an inlined function call. Maps callee local indices to hoist values.
+const InlineScope = struct {
+    /// Base index in the caller's locals array where callee locals start.
+    base: usize,
+    /// Number of callee locals.
+    count: usize,
+};
+
 pub const KnownFn = struct {
     fn_ptr: u64,
     arity: u32,
+    /// Callee IR body for inlining (null if not available).
+    ir_body: ?*const Ir = null,
+    /// Callee parameter names for inlining (null if not available).
+    param_names: ?[]const []const u8 = null,
 };
 
 /// Result of compiling a Habu function to native code.
@@ -116,9 +263,19 @@ pub const CompiledFn = struct {
     allocator: std.mem.Allocator,
     /// Function name (for cross-function call lookup).
     name: []const u8 = "",
+    /// IR arena kept alive for inlining. Null if not needed.
+    ir_arena: ?*std.heap.ArenaAllocator = null,
+    /// Lambda IR body for inlining (lives in ir_arena).
+    ir_body: ?*const Ir = null,
+    /// Parameter names for inlining (lives in ir_arena).
+    param_names: ?[]const []const u8 = null,
 
     pub fn deinit(self: *CompiledFn) void {
         if (self.name.len > 0) self.allocator.free(self.name);
+        if (self.ir_arena) |arena| {
+            arena.deinit();
+            self.allocator.destroy(arena);
+        }
         self.mem.deinit();
         self.allocator.destroy(self.mem);
     }
@@ -180,6 +337,11 @@ pub const IrTranslator = struct {
     /// Maps local variable index → current SSA value.
     locals: std.ArrayList(HoistValue),
 
+    /// Stack of inline scopes for inlined function calls.
+    /// Each scope maps the callee's local indices to hoist values.
+    /// When non-empty, variable lookups check the top scope first.
+    inline_scopes: std.ArrayList(InlineScope),
+
     /// Whether we're compiling a self-recursive function.
     is_recursive: bool,
 
@@ -239,6 +401,7 @@ pub const IrTranslator = struct {
             .func = func,
             .b = builder,
             .locals = std.ArrayList(HoistValue){},
+            .inline_scopes = std.ArrayList(InlineScope){},
             .is_recursive = false,
             .has_loops = false,
             .fn_name = "",
@@ -251,6 +414,7 @@ pub const IrTranslator = struct {
 
     pub fn deinit(self: *IrTranslator) void {
         self.locals.deinit(self.allocator);
+        self.inline_scopes.deinit(self.allocator);
         self.const_cache.deinit();
     }
 
@@ -368,6 +532,14 @@ pub const IrTranslator = struct {
 
     fn translateVar(self: *IrTranslator, v: anytype) HoistValue {
         if (v.depth == 0) {
+            // If we're inside an inlined call, remap indices
+            if (self.inline_scopes.items.len > 0) {
+                const scope = self.inline_scopes.items[self.inline_scopes.items.len - 1];
+                const idx = scope.base + v.index;
+                if (idx < self.locals.items.len) {
+                    return self.locals.items[idx];
+                }
+            }
             return self.locals.items[v.index];
         }
         unreachable; // TODO: closure captures
@@ -587,21 +759,32 @@ pub const IrTranslator = struct {
 
     fn translateLet(self: *IrTranslator, bindings: []const Ir.Binding, body: *const Ir) anyerror!HoistValue {
         // Evaluate each binding and add to locals
+        // Remap indices through inline scope if active
+        const scope_base: usize = if (self.inline_scopes.items.len > 0)
+            self.inline_scopes.items[self.inline_scopes.items.len - 1].base
+        else
+            0;
         for (bindings) |binding| {
             const val = try self.translate(binding.value);
+            const actual_index = scope_base + binding.index;
             // Extend locals array if needed
-            while (self.locals.items.len <= binding.index) {
+            while (self.locals.items.len <= actual_index) {
                 try self.locals.append(self.allocator, HoistValue.new(0)); // placeholder
             }
-            self.locals.items[binding.index] = val;
+            self.locals.items[actual_index] = val;
         }
         return try self.translate(body);
     }
 
     fn translateSet(self: *IrTranslator, index: u16, value_ir: *const Ir) anyerror!HoistValue {
         const val = try self.translate(value_ir);
-        if (index < self.locals.items.len) {
-            self.locals.items[index] = val;
+        // Remap index through inline scope if active
+        const actual_index: usize = if (self.inline_scopes.items.len > 0)
+            self.inline_scopes.items[self.inline_scopes.items.len - 1].base + index
+        else
+            index;
+        if (actual_index < self.locals.items.len) {
+            self.locals.items[actual_index] = val;
         }
         return val;
     }
@@ -822,6 +1005,23 @@ pub const IrTranslator = struct {
     }
 
     fn translateCrossCall(self: *IrTranslator, known: KnownFn, args: []const *const Ir) anyerror!HoistValue {
+        // Try inlining small non-recursive functions
+        if (known.ir_body != null and known.param_names != null) {
+            const body = known.ir_body.?;
+            const params = known.param_names.?;
+            // Only inline if: small enough, arity matches, and callee is NOT recursive
+            if (params.len == args.len and countIrNodes(body) <= 30 and
+                !callsItself(body))
+            {
+                return try self.translateInlinedCall(params, body, args);
+            }
+        }
+
+        return try self.emitCrossCallIndirect(known, args);
+    }
+
+    /// Emit a cross-function call as call_indirect (non-inlined path).
+    fn emitCrossCallIndirect(self: *IrTranslator, known: KnownFn, args: []const *const Ir) anyerror!HoistValue {
         // Translate all arguments
         var translated_args: [16]HoistValue = undefined;
         for (args, 0..) |arg, i| {
@@ -856,6 +1056,40 @@ pub const IrTranslator = struct {
         try self.func.layout.appendInst(call_inst, block);
 
         return call_result;
+    }
+
+    /// Inline a cross-function call by translating the callee's IR body directly.
+    /// Maps callee parameters to translated argument values via inline scopes.
+    fn translateInlinedCall(
+        self: *IrTranslator,
+        callee_params: []const []const u8,
+        callee_body: *const Ir,
+        args: []const *const Ir,
+    ) anyerror!HoistValue {
+        // Translate all arguments first (in caller's scope)
+        var translated_args: [16]HoistValue = undefined;
+        for (args, 0..) |arg, i| {
+            translated_args[i] = try self.translate(arg);
+        }
+
+        // Push callee params onto locals array and create inline scope
+        const base = self.locals.items.len;
+        for (0..callee_params.len) |i| {
+            try self.locals.append(self.allocator, translated_args[i]);
+        }
+        try self.inline_scopes.append(self.allocator, .{
+            .base = base,
+            .count = callee_params.len,
+        });
+
+        // Translate the callee body (variables will resolve via inline scope)
+        const result = try self.translate(callee_body);
+
+        // Pop inline scope and callee locals
+        _ = self.inline_scopes.pop();
+        self.locals.shrinkRetainingCapacity(base);
+
+        return result;
     }
 
     fn lookupKnownFn(self: *IrTranslator, kf: *const std.StringHashMap(KnownFn), target_name: []const u8) ?KnownFn {
@@ -1896,6 +2130,11 @@ pub fn compileIrWithKnownFns(
     translator.is_recursive = detectSelfCalls(lambda.body, name);
     translator.has_loops = detectLoops(lambda.body);
     translator.has_loads = containsLoads(lambda.body);
+
+    // Check if any inlinable cross-function calls contain loads
+    if (!translator.has_loads and known_fns != null) {
+        translator.has_loads = crossCallsContainLoads(lambda.body, name, known_fns.?);
+    }
 
     // Enable call result spilling for nested self-calls (e.g., tak pattern)
     // to break parallel copy conflicts in the regalloc.

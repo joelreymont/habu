@@ -1959,6 +1959,8 @@ pub const Repl = struct {
                 known_fns.put(cfn.name, .{
                     .fn_ptr = @intFromPtr(cfn.fn_ptr),
                     .arity = cfn.arity,
+                    .ir_body = cfn.ir_body,
+                    .param_names = cfn.param_names,
                 }) catch {};
             }
         }
@@ -1975,6 +1977,61 @@ pub const Repl = struct {
             return false;
         };
         persistent.* = compiled;
+
+        // Deep-copy IR body for potential inlining by callers.
+        // The original IR lives on a temporary arena that will be freed.
+        if (lambda_ir.* == .lambda) {
+            const lambda = lambda_ir.lambda;
+            // Create a dedicated arena for the IR copy
+            const ir_arena = self.allocator.create(std.heap.ArenaAllocator) catch {
+                persistent.deinit();
+                self.allocator.destroy(persistent);
+                return false;
+            };
+            ir_arena.* = std.heap.ArenaAllocator.init(self.allocator);
+            const ir_alloc = ir_arena.allocator();
+
+            const body_copy = ir.deepCopyIr(ir_alloc, lambda.body) catch {
+                ir_arena.deinit();
+                self.allocator.destroy(ir_arena);
+                persistent.ir_arena = null;
+                // Non-fatal: function still works, just can't be inlined
+                self.vm.registerHoistFn(chunk_ptr, persistent) catch {
+                    persistent.deinit();
+                    self.allocator.destroy(persistent);
+                    return false;
+                };
+                return true;
+            };
+            const params_copy = ir_alloc.alloc([]const u8, lambda.params.len) catch {
+                ir_arena.deinit();
+                self.allocator.destroy(ir_arena);
+                persistent.ir_arena = null;
+                self.vm.registerHoistFn(chunk_ptr, persistent) catch {
+                    persistent.deinit();
+                    self.allocator.destroy(persistent);
+                    return false;
+                };
+                return true;
+            };
+            for (lambda.params, 0..) |p, pi| {
+                params_copy[pi] = ir_alloc.dupe(u8, p) catch {
+                    ir_arena.deinit();
+                    self.allocator.destroy(ir_arena);
+                    persistent.ir_arena = null;
+                    self.vm.registerHoistFn(chunk_ptr, persistent) catch {
+                        persistent.deinit();
+                        self.allocator.destroy(persistent);
+                        return false;
+                    };
+                    return true;
+                };
+            }
+            persistent.ir_arena = ir_arena;
+            persistent.ir_body = body_copy;
+            persistent.param_names = params_copy;
+        }
+
         // Always register on the primary VM - activeVm() may return a context VM
         // that gets destroyed after file loading, losing the registration.
         self.vm.registerHoistFn(chunk_ptr, persistent) catch {

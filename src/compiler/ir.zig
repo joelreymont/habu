@@ -2888,6 +2888,98 @@ pub const IrBuilder = struct {
 };
 
 // ============================================================================
+// Deep copy (for JIT inlining — keeps callee IR alive after arena is freed)
+// ============================================================================
+
+/// Deep-copy an IR tree to a new allocator. Handles the subset of nodes
+/// that pass IrTranslator.canTranslate. Returns null for unsupported nodes.
+pub fn deepCopyIr(allocator: std.mem.Allocator, src: *const Ir) !*const Ir {
+    const node = try allocator.create(Ir);
+    node.* = switch (src.*) {
+        .lit => |v| .{ .lit = v },
+        .@"var" => |v| .{ .@"var" = .{
+            .name = try allocator.dupe(u8, v.name),
+            .depth = v.depth,
+            .index = v.index,
+        } },
+        .global_ref => |g| .{ .global_ref = .{
+            .name = try allocator.dupe(u8, g.name),
+            .index = g.index,
+        } },
+        .set => |s| .{ .set = .{
+            .name = try allocator.dupe(u8, s.name),
+            .depth = s.depth,
+            .index = s.index,
+            .value = try deepCopyIr(allocator, s.value),
+        } },
+        .@"if" => |f| .{ .@"if" = .{
+            .cond = try deepCopyIr(allocator, f.cond),
+            .then_branch = try deepCopyIr(allocator, f.then_branch),
+            .else_branch = try deepCopyIr(allocator, f.else_branch),
+        } },
+        .progn => |exprs| blk: {
+            const new_exprs = try allocator.alloc(*const Ir, exprs.len);
+            for (exprs, 0..) |e, i| new_exprs[i] = try deepCopyIr(allocator, e);
+            break :blk .{ .progn = new_exprs };
+        },
+        .let => |l| blk: {
+            const new_bindings = try allocator.alloc(Ir.Binding, l.bindings.len);
+            for (l.bindings, 0..) |b, i| {
+                new_bindings[i] = .{
+                    .name = try allocator.dupe(u8, b.name),
+                    .value = try deepCopyIr(allocator, b.value),
+                    .index = b.index,
+                };
+            }
+            break :blk .{ .let = .{
+                .bindings = new_bindings,
+                .body = try deepCopyIr(allocator, l.body),
+            } };
+        },
+        .loop => |l| .{ .loop = .{
+            .cond = try deepCopyIr(allocator, l.cond),
+            .body = try deepCopyIr(allocator, l.body),
+        } },
+        .call => |c| blk: {
+            const new_args = try allocator.alloc(*const Ir, c.args.len);
+            for (c.args, 0..) |a, i| new_args[i] = try deepCopyIr(allocator, a);
+            break :blk .{ .call = .{
+                .func = try deepCopyIr(allocator, c.func),
+                .args = new_args,
+            } };
+        },
+        .tailcall => |tc| blk: {
+            const new_args = try allocator.alloc(*const Ir, tc.args.len);
+            for (tc.args, 0..) |a, i| new_args[i] = try deepCopyIr(allocator, a);
+            break :blk .{ .tailcall = .{
+                .func = try deepCopyIr(allocator, tc.func),
+                .args = new_args,
+            } };
+        },
+        .cons => |op| .{ .cons = .{
+            .left = try deepCopyIr(allocator, op.left),
+            .right = try deepCopyIr(allocator, op.right),
+        } },
+        // All binary ops
+        inline .fixnum_add, .fixnum_sub, .add, .sub,
+        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
+        .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq,
+        => |op, tag| @unionInit(Ir, @tagName(tag), .{
+            .left = try deepCopyIr(allocator, op.left),
+            .right = try deepCopyIr(allocator, op.right),
+        }),
+        // All unary ops
+        inline .assert_fixnum, .nilp, .not, .consp, .abs,
+        .car, .cdr, .unsafe_car, .unsafe_cdr,
+        => |op, tag| @unionInit(Ir, @tagName(tag), .{
+            .operand = try deepCopyIr(allocator, op.operand),
+        }),
+        else => return error.UnsupportedIrNode,
+    };
+    return node;
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
