@@ -2090,6 +2090,11 @@ pub fn compileIrWithKnownFns(
     // Fuse MUL+ADD into MADD where possible.
     fuseMulAdd(code.code.items);
 
+    // Eliminate round-trip MOV pairs: MOV xA, xB; ... MOV xB, xA → NOP both.
+    // Common in TCO functions where entry params are copied to intermediate regs
+    // and then immediately copied back for the loop header phis.
+    eliminateRoundTripMovs(code.code.items);
+
     // Eliminate prologue/epilogue for leaf functions (no BLR/BL calls).
     // After TCO, recursive functions become loops and don't need frame setup.
     if (!translator.is_recursive) {
@@ -2241,6 +2246,63 @@ fn fuseMulAdd(code: []u8) void {
 /// Remove all NOP instructions from emitted code and fix branch offsets.
 /// After all peephole passes introduce NOPs (dead cset elimination, mov coalescing,
 /// B .+4 elimination, branch inversion), this pass compacts the code.
+/// Eliminate round-trip MOV pairs at function entry.
+/// Pattern: MOV xA, xB; MOV xB, xA (with no other use of xA between them).
+/// Common in TCO functions where entry→header jump copies params to intermediates
+/// and the header immediately copies back. Both MOVs become NOPs.
+fn eliminateRoundTripMovs(code: []u8) void {
+    const n_insns = code.len / 4;
+    if (n_insns < 4) return;
+
+    const nop: u32 = 0xD503201F;
+
+    // Only scan the first ~20 instructions (entry region)
+    const scan_limit = @min(n_insns, 20);
+    var i: usize = 0;
+    while (i < scan_limit) : (i += 1) {
+        const insn_i = readInsn(code, i);
+        // Must be MOV Xd, Xm (ORR Xd, XZR, Xm)
+        if (insn_i & 0xFFE0FFE0 != 0xAA0003E0) continue;
+
+        const rd_i: u5 = @truncate(insn_i & 0x1F);
+        const rm_i: u5 = @truncate((insn_i >> 16) & 0x1F);
+        if (rd_i == rm_i) continue; // MOV xA, xA is already a NOP
+
+        // Look for reverse MOV (MOV rm_i, rd_i) within the next few instructions
+        var j = i + 1;
+        while (j < scan_limit) : (j += 1) {
+            const insn_j = readInsn(code, j);
+            if (insn_j & 0xFFE0FFE0 != 0xAA0003E0) continue;
+
+            const rd_j: u5 = @truncate(insn_j & 0x1F);
+            const rm_j: u5 = @truncate((insn_j >> 16) & 0x1F);
+
+            // Check for reverse pair: rd_j == rm_i AND rm_j == rd_i
+            if (rd_j == rm_i and rm_j == rd_i) {
+                // Check that rd_i is not used or redefined between i and j
+                var used = false;
+                for (i + 1..j) |k| {
+                    const insn_k = readInsn(code, k);
+                    const rd_k: u5 = @truncate(insn_k & 0x1F);
+                    const rn_k: u5 = @truncate((insn_k >> 5) & 0x1F);
+                    const rm_k: u5 = @truncate((insn_k >> 16) & 0x1F);
+                    // rd_i is used as source (rn, rm) or written as dest (rd)
+                    if (rd_k == rd_i or rn_k == rd_i or rm_k == rd_i) {
+                        used = true;
+                        break;
+                    }
+                }
+                if (!used) {
+                    // Safe to eliminate both MOVs
+                    writeInsn(code, i, nop);
+                    writeInsn(code, j, nop);
+                    break; // Move to next i
+                }
+            }
+        }
+    }
+}
+
 /// Eliminate prologue/epilogue for leaf functions (no BLR/BL calls).
 /// Scans for BLR (0xD63F0xxx) and BL (0x94xxxxxx) instructions.
 /// If none found, replaces STP x29,x30,[SP,#-frame]! + MOV x29,SP at start
