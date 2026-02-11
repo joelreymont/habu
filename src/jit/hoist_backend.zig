@@ -1722,6 +1722,151 @@ pub const IrTranslator = struct {
 
 /// Patch all occurrences of a 64-bit placeholder value in the code buffer.
 /// On AArch64, a 64-bit constant is loaded via MOVZ+MOVK+MOVK+MOVK sequence.
+/// Replace self-pointer indirect calls (BLR x9) with direct branch-and-link (BL).
+///
+/// Strategy: find each BLR x9, scan backward to find MOV x9, rN that feeds it,
+/// then check if rN was loaded from a MOVZ+MOVK+MOVK+MOVK placeholder sequence.
+/// Replace BLR with BL to function entry, NOP out the MOV and (if unused) the loads.
+///
+/// This handles cases where MOVZ is in the entry block (preEmitConstants) but BLR
+/// is deep in the function body. Also handles hoist CSE sharing one load across
+/// multiple call sites.
+fn patchSelfCallsToBL(buf: []u8, placeholder: u64) bool {
+    const NOP = @as(u32, 0xD503201F);
+    const n_insns = buf.len / 4;
+    if (n_insns < 6) return false;
+
+    // Precompute placeholder halfwords
+    const ph = [4]u16{
+        @truncate(placeholder),
+        @truncate(placeholder >> 16),
+        @truncate(placeholder >> 32),
+        @truncate(placeholder >> 48),
+    };
+
+    // Helper: check if instruction at idx is MOVZ with placeholder halfword 0
+    const isPlaceholderLoad = struct {
+        fn check(b: []const u8, idx: usize, p: [4]u16) ?u5 {
+            const ni = b.len / 4;
+            if (idx + 3 >= ni) return null;
+            const w0 = readInsn(b, idx);
+            if ((w0 & 0xFFE00000) != 0xD2800000) return null;
+            if (@as(u16, @truncate((w0 >> 5) & 0xFFFF)) != p[0]) return null;
+            const w1 = readInsn(b, idx + 1);
+            const w2 = readInsn(b, idx + 2);
+            const w3 = readInsn(b, idx + 3);
+            if ((w1 & 0xFFE00000) != 0xF2A00000 or @as(u16, @truncate((w1 >> 5) & 0xFFFF)) != p[1]) return null;
+            if ((w2 & 0xFFE00000) != 0xF2C00000 or @as(u16, @truncate((w2 >> 5) & 0xFFFF)) != p[2]) return null;
+            if ((w3 & 0xFFE00000) != 0xF2E00000 or @as(u16, @truncate((w3 >> 5) & 0xFFFF)) != p[3]) return null;
+            return @truncate(w0 & 0x1F);
+        }
+    }.check;
+
+    var found = false;
+
+    // For each BLR x9, convert to BL if it's a self-call
+    var i: usize = 0;
+    while (i < n_insns) : (i += 1) {
+        const insn = readInsn(buf, i);
+        if (insn != 0xD63F0120) continue; // BLR x9
+
+        // Scan backward for MOV x9, rN (up to 12 instructions — arg setup can be long)
+        var mov_idx: ?usize = null;
+        var src_reg: u5 = undefined;
+        {
+            var j = i;
+            var scan: usize = 0;
+            while (j > 0 and scan < 12) : (scan += 1) {
+                j -= 1;
+                const prev = readInsn(buf, j);
+                // MOV x9, rN = ORR x9, xzr, rN: low 16 bits = 0x03E9, mask top
+                if (prev & 0xFFE0FFFF == 0xAA0003E9) {
+                    mov_idx = j;
+                    src_reg = @truncate((prev >> 16) & 0x1F);
+                    break;
+                }
+            }
+        }
+        if (mov_idx == null) continue;
+
+        // Scan backward from MOV for the MOVZ+MOVK sequence that loaded src_reg.
+        // It could be anywhere earlier in the function (preEmitConstants puts it in entry).
+        var load_idx: ?usize = null;
+        {
+            var j: usize = mov_idx.?;
+            while (j >= 4) {
+                j -= 1;
+                if (isPlaceholderLoad(buf, j, ph)) |rd| {
+                    if (rd == src_reg) {
+                        load_idx = j;
+                        break;
+                    }
+                }
+                if (j == 0) break;
+            }
+        }
+        if (load_idx == null) continue;
+
+        // Replace BLR x9 with BL to function entry (offset 0)
+        const rel_offset: i32 = -@as(i32, @intCast(i));
+        const imm26: u32 = @as(u32, @bitCast(rel_offset)) & 0x03FFFFFF;
+        writeInsn(buf, i, 0x94000000 | imm26);
+
+        // NOP out the MOV x9, rN
+        writeInsn(buf, mov_idx.?, NOP);
+
+        found = true;
+    }
+
+    // Second pass: NOP out placeholder load sequences whose registers are no longer used.
+    // A load can be NOP'd if no non-NOP instruction reads its dest register.
+    {
+        var li: usize = 0;
+        while (li + 3 < n_insns) : (li += 1) {
+            if (isPlaceholderLoad(buf, li, ph)) |rd| {
+                // Check if any instruction after the load uses rd as source
+                var used = false;
+                // Only check instructions AFTER the load (li+4..) — instructions
+                // before the load read the register from a different definition.
+                for (li + 4..n_insns) |k| {
+                    const kinst = readInsn(buf, k);
+                    if (kinst == NOP) continue;
+                    // If rd is written by this instruction (as dest), stop — load is dead
+                    const rd_k: u5 = @truncate(kinst & 0x1F);
+                    // Check for MOVZ/MOV/SUB/ADD writing to rd (overwrites before any read)
+                    if (rd_k == rd and kinst != NOP) {
+                        // Check if this instruction also READS rd (e.g., ADD rd, rd, rn)
+                        const rn_k: u5 = @truncate((kinst >> 5) & 0x1F);
+                        const rm_k: u5 = @truncate((kinst >> 16) & 0x1F);
+                        if (rn_k != rd and rm_k != rd) break; // pure write, load is dead
+                    }
+                    // Check MOV xD, rd: ORR xD, xzr, rd
+                    if (kinst & 0xFFE0FFE0 == 0xAA0003E0 and @as(u5, @truncate((kinst >> 16) & 0x1F)) == rd) {
+                        used = true;
+                        break;
+                    }
+                    // Check any instruction that reads rd as rn or rm
+                    const rn_k: u5 = @truncate((kinst >> 5) & 0x1F);
+                    const rm_k: u5 = @truncate((kinst >> 16) & 0x1F);
+                    if (rn_k == rd or rm_k == rd) {
+                        used = true;
+                        break;
+                    }
+                }
+                if (!used) {
+                    writeInsn(buf, li, NOP);
+                    writeInsn(buf, li + 1, NOP);
+                    writeInsn(buf, li + 2, NOP);
+                    writeInsn(buf, li + 3, NOP);
+                }
+                li += 3;
+            }
+        }
+    }
+
+    return found;
+}
+
 fn patchPlaceholder(buf: []u8, placeholder: u64, target: u64) bool {
     var found = false;
     const ph_0 = @as(u16, @truncate(placeholder));
@@ -2414,13 +2559,19 @@ pub fn compileIrWithKnownFns(
 
     const buf = try mem.alloc(code.code.items.len, 16);
 
-    // Patch self-pointer placeholder BEFORE writeExec so I-cache flush covers it.
-    // On AArch64, D-cache writes are not visible to I-cache without explicit flush.
+    // Patch self-pointer placeholder and convert indirect calls (BLR) to direct
+    // branch-and-link (BL) for self-calls. On AArch64, BL uses a 26-bit relative
+    // offset (±128MB range), eliminating the need to load a 64-bit address via
+    // 4 MOVZ/MOVK instructions. This saves 5 instructions per self-call
+    // (4 MOVZ/MOVK + MOV → NOP, BLR → BL).
     if (translator.is_recursive) {
         const func_addr = @intFromPtr(buf.ptr);
         const placeholder: u64 = @bitCast(translator.self_ptr_placeholder);
-        if (!patchPlaceholder(code.code.items, placeholder, func_addr)) {
-            return error.SelfPointerPatchFailed;
+        // Try BL optimization first, fall back to address patching
+        if (!patchSelfCallsToBL(code.code.items, placeholder)) {
+            if (!patchPlaceholder(code.code.items, placeholder, func_addr)) {
+                return error.SelfPointerPatchFailed;
+            }
         }
     }
 
@@ -3177,11 +3328,12 @@ fn coalesceMovs(code: []u8) void {
                 const rd_next: u5 = @truncate(next & 0x1F);
                 if (rd_next == rd0) break;
 
-                // Stop at branch/ret
-                if (next & 0xFC000000 == 0x14000000 or
-                    next & 0xFF000000 == 0x54000000 or
-                    next & 0xFFFFFC1F == 0xD65F0000 or
-                    next & 0xFFFFFC1F == 0xD63F0000) break;
+                // Stop at branch/ret/call
+                if (next & 0xFC000000 == 0x14000000 or // B
+                    next & 0xFF000000 == 0x54000000 or // B.cond
+                    next & 0xFFFFFC1F == 0xD65F0000 or // RET
+                    next & 0xFFFFFC1F == 0xD63F0000 or // BLR
+                    next & 0xFC000000 == 0x94000000) break; // BL
             }
 
             const mi = mov_idx orelse continue;
@@ -3243,10 +3395,12 @@ fn fixCallArgMoves(code: []u8) void {
     while (i < n_insns) : (i += 1) {
         const insn = readInsn(code, i);
 
-        // Check for BLR instruction: 1101 0110 0011 1111 0000 00xx xxx0 0000
-        if (insn & 0xFFFFFC1F != 0xD63F0000) continue;
+        // Check for BLR (indirect) or BL (direct) call instruction
+        const is_blr = (insn & 0xFFFFFC1F == 0xD63F0000);
+        const is_bl = (insn & 0xFC000000 == 0x94000000);
+        if (!is_blr and !is_bl) continue;
 
-        // Found a BLR. Scan backwards for mov instructions (up to 8).
+        // Found a call. Scan backwards for mov instructions (up to 8).
         const MovInfo = struct { src: u5, dst: u5, pos: usize };
         var movs: [8]MovInfo = undefined;
         var n_movs: usize = 0;
