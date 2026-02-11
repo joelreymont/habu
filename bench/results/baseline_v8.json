@@ -1,0 +1,39 @@
+{
+  "date": "2026-02-08",
+  "description": "Post loop phi coalescing, direct predicate conditions, gcd/append/assoc primitives, untagged mode fix",
+  "note": "Harness results include ~0.6ms eval overhead per benchmark. REPL (time ...) is fairer comparison.",
+  "results": {
+    "fixnum_loop": { "habu_ms": 0.863, "sbcl_ms": 0.324, "ratio_harness": 0.38, "habu_repl_ms": 0.30, "ratio_repl": 1.08 },
+    "fixnum_mul": { "habu_ms": 1.668, "sbcl_ms": 0.593, "ratio": 0.36 },
+    "gcd": { "habu_ms": 3.791, "sbcl_ms": 0.891, "ratio": 0.24, "note": "C-ABI call, inline blocked by hoist regalloc" },
+    "float_sum": { "habu_ms": 324, "sbcl_ms": 0.085, "ratio": 0.00, "note": "interpreter" },
+    "float_sqrt": { "habu_ms": 330, "sbcl_ms": 0.086, "ratio": 0.00, "note": "interpreter" },
+    "fib35": { "habu_ms": 38.9, "sbcl_ms": 52.3, "ratio": 1.35 },
+    "tak": { "habu_ms": 81.9, "sbcl_ms": 89.4, "ratio": 1.09 },
+    "ack": { "habu_ms": 166, "sbcl_ms": 129, "ratio": 0.78 },
+    "nqueens10": { "habu_ms": 3.82, "sbcl_ms": 2.83, "ratio": 0.74 },
+    "list_build": { "habu_ms": 0.918, "sbcl_ms": 0.277, "ratio": 0.30, "habu_repl_ms": 0.30, "ratio_repl": 0.92 },
+    "list_reverse": { "habu_ms": 2.193, "sbcl_ms": 0.379, "ratio": 0.17 },
+    "list_append": { "habu_ms": 4.612, "sbcl_ms": 0.287, "ratio": 0.06 },
+    "assoc": { "habu_ms": 65.6, "sbcl_ms": 2.64, "ratio": 0.04 },
+    "mapcar": { "habu_ms": 121, "sbcl_ms": 0.061, "ratio": 0.00, "note": "interpreter - needs closures" },
+    "reduce": { "habu_ms": 48.9, "sbcl_ms": 0.094, "ratio": 0.00, "note": "interpreter - needs closures" },
+    "remove_if": { "habu_ms": 0.713, "sbcl_ms": 0.036, "ratio": 0.05, "habu_repl_ms": 0.042, "ratio_repl": 0.86 },
+    "hash_insert": { "habu_ms": 15.4, "sbcl_ms": 0.469, "ratio": 0.03, "note": "interpreter" },
+    "hash_lookup": { "habu_ms": 73.1, "sbcl_ms": 0.861, "ratio": 0.01, "note": "interpreter" },
+    "string_concat": { "habu_ms": 603, "sbcl_ms": 0.173, "ratio": 0.00, "note": "interpreter" },
+    "string_search": { "habu_ms": 198, "sbcl_ms": 0.859, "ratio": 0.00, "note": "interpreter" },
+    "sort_fixnum": { "habu_ms": 4.28, "sbcl_ms": 0.003, "ratio": 0.00, "note": "interpreter" },
+    "sort_string": { "habu_ms": 7.09, "sbcl_ms": 0.021, "ratio": 0.00, "note": "interpreter" },
+    "gc_cons": { "habu_ms": 0.859, "sbcl_ms": 0.203, "ratio": 0.24, "habu_repl_ms": 0.19, "ratio_repl": 1.07 },
+    "gc_vector": { "habu_ms": 7.69, "sbcl_ms": 0.534, "ratio": 0.07, "note": "interpreter" },
+    "intern": { "habu_ms": 164, "sbcl_ms": 2.86, "ratio": 0.02, "note": "interpreter" }
+  },
+  "summary": {
+    "faster_than_sbcl_repl": 5,
+    "faster_than_sbcl_harness": 2,
+    "jit_compiled": 14,
+    "interpreter_only": 11,
+    "notable": "fixnum_loop 1.08x SBCL (REPL), gc_cons 1.07x SBCL (REPL), remove_if 0.86x SBCL (REPL), gcd/append/assoc now JIT'd"
+  }
+}

@@ -25,7 +25,6 @@ const Opts = struct {
     heap_mb: usize = 256,
     iters: usize = 3,
     json: bool = false,
-    jit: bool = true,
 };
 
 fn usage(w: anytype) !void {
@@ -55,8 +54,6 @@ fn parseArgs() !Opts {
             opts.heap_mb = try std.fmt.parseInt(usize, arg["--heap-mb=".len..], 10);
         } else if (std.mem.startsWith(u8, arg, "--iters=")) {
             opts.iters = try std.fmt.parseInt(usize, arg["--iters=".len..], 10);
-        } else if (std.mem.eql(u8, arg, "--no-jit")) {
-            opts.jit = false;
         } else {
             return error.InvalidArgs;
         }
@@ -129,10 +126,7 @@ pub fn main() !void {
     defer chunk_pool.deinit(allocator);
     vm.setChunkPool(chunk_pool.items);
 
-    // Enable JIT: hot=1 means warmup call triggers compilation
-    if (opts.jit) {
-        vm.enableJit(16 * 1024 * 1024, 1) catch {};
-    }
+
 
     var timer = try std.time.Timer.start();
 
@@ -171,7 +165,7 @@ pub fn main() !void {
     var out = std.fs.File.stdout().writer(&out_buf);
     const w = &out.interface;
 
-    const mode: []const u8 = if (vm.jit_on) "jit" else "interp";
+    const mode: []const u8 = "interp";
 
     if (opts.json) {
         try w.print("{{\"engine\":\"habu\",\"mode\":\"{s}\",\"benches\":[", .{mode});

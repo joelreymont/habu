@@ -3,7 +3,7 @@
 //! Translates Habu compiler IR to Hoist SSA IR, which then goes through:
 //!   Optimize → Lower (ISLE) → Register Allocate → Emit AArch64
 //!
-//! This replaces the stencil-based stack-machine JIT with a proper
+//! This is the
 //! SSA compiler that keeps values in registers.
 //!
 //! Pipeline: Lisp → IR (tree) → Hoist SSA → Optimize → Lower → RegAlloc → Native
@@ -2104,6 +2104,69 @@ pub const IrTranslator = struct {
         return try self.b.bor(I64, shifted, one);
     }
 
+    /// Inline GCD: Euclidean algorithm as a hoist loop.
+    /// gcd(a, b) = untag args, abs, loop: while b!=0: r=a%b, a=b, b=r; retag(a)
+    fn translateInlineGcd(self: *IrTranslator, left_ir: *const Ir, right_ir: *const Ir) anyerror!HoistValue {
+        const a_tagged = try self.translate(left_ir);
+        const b_tagged = try self.translate(right_ir);
+
+        const one = try self.cachedIconst(1);
+        const zero = try self.cachedIconst(0);
+
+        // Untag: val >> 1 (arithmetic shift for signed fixnums)
+        const a_untagged = try self.b.sshr(I64, a_tagged, one);
+        const b_untagged = try self.b.sshr(I64, b_tagged, one);
+
+        // abs(a) and abs(b): negate if negative, select max(x, -x)
+        const neg_a = try self.b.isub(I64, zero, a_untagged);
+        const a_is_neg = try self.b.icmp(I8, IntCC.slt, a_untagged, zero);
+        const a_abs = try self.b.select(I64, a_is_neg, neg_a, a_untagged);
+
+        const neg_b = try self.b.isub(I64, zero, b_untagged);
+        const b_is_neg = try self.b.icmp(I8, IntCC.slt, b_untagged, zero);
+        const b_abs = try self.b.select(I64, b_is_neg, neg_b, b_untagged);
+
+        // Create loop: header(a_param, b_param), body, exit(result)
+        const header = try self.func.dfg.addBlock();
+        const body = try self.func.dfg.addBlock();
+        const exit = try self.func.dfg.addBlock();
+
+        try self.func.layout.appendBlock(header);
+        try self.func.layout.appendBlock(body);
+        try self.func.layout.appendBlock(exit);
+
+        const a_param = try self.func.dfg.appendBlockParam(header, I64);
+        const b_param = try self.func.dfg.appendBlockParam(header, I64);
+        const exit_param = try self.func.dfg.appendBlockParam(exit, I64);
+
+        // Jump to header with initial abs values
+        try self.b.jumpArgs(header, &.{ a_abs, b_abs });
+
+        // Header: if b == 0, exit with a; else enter body
+        self.b.switchToBlock(header);
+        const b_is_zero = try self.b.icmp(I8, IntCC.eq, b_param, zero);
+
+        const exit_tramp = try self.func.dfg.addBlock();
+        try self.func.layout.appendBlock(exit_tramp);
+        try self.b.brif(b_is_zero, exit_tramp, body);
+
+        self.b.switchToBlock(exit_tramp);
+        try self.b.jumpArgs(exit, &.{a_param});
+
+        // Body: r = a % b; loop back with (b, r)
+        self.b.switchToBlock(body);
+        // a % b using sdiv + mul + sub
+        const quot = try self.b.sdiv(I64, a_param, b_param);
+        const prod = try self.b.imul(I64, quot, b_param);
+        const rem_val = try self.b.isub(I64, a_param, prod);
+        try self.b.jumpArgs(header, &.{ b_param, rem_val });
+
+        // Exit: retag the result
+        self.b.switchToBlock(exit);
+        const shifted = try self.b.ishl(I64, exit_param, one);
+        return try self.b.bor(I64, shifted, one);
+    }
+
     /// append: call jitAppend runtime function (allocates new cons cells)
     fn translateAppend(self: *IrTranslator, left_ir: *const Ir, right_ir: *const Ir) anyerror!HoistValue {
         const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitAppend)));
@@ -2362,6 +2425,115 @@ fn patchPlaceholder(buf: []u8, placeholder: u64, target: u64) bool {
         }
     }
     return found;
+}
+
+/// Patch cross-function call_indirect (BLR) to direct BL when the target address
+/// is within BL range (±128MB). This eliminates the MOVZ/MOVK/MOVK + MOV + BLR
+/// sequence (6 instructions) and replaces with NOP...NOP + BL (1 instruction).
+/// Called from the REPL after all functions in a batch are compiled.
+pub fn patchCrossCallsToBL(code_ptr: [*]u8, code_len: usize, caller_base: usize) void {
+    const NOP: u32 = 0xD503201F;
+    if (code_len < 24) return; // Need at least 6 instructions
+    const n_insns = code_len / 4;
+
+    var i: usize = 0;
+    while (i < n_insns) : (i += 1) {
+        const insn = readInsnPtr(code_ptr, i);
+        // Look for BLR xN (any register, not just x9)
+        if (insn & 0xFFFFFC1F != 0xD63F0000) continue;
+        const blr_reg: u5 = @truncate((insn >> 5) & 0x1F);
+
+        // Scan backward for MOV blr_reg, rN
+        var mov_idx: ?usize = null;
+        var src_reg: u5 = undefined;
+        {
+            var j = i;
+            var scan: usize = 0;
+            while (j > 0 and scan < 8) : (scan += 1) {
+                j -= 1;
+                const prev = readInsnPtr(code_ptr, j);
+                if (prev == NOP) continue;
+                // MOV blr_reg, rN = ORR blr_reg, xzr, rN
+                const expected_low: u32 = 0xAA0003E0 | @as(u32, blr_reg);
+                if (prev & 0xFFE0FFFF == expected_low) {
+                    mov_idx = j;
+                    src_reg = @truncate((prev >> 16) & 0x1F);
+                    break;
+                }
+                // If we hit an instruction that writes to blr_reg, stop
+                if (@as(u5, @truncate(prev & 0x1F)) == blr_reg) break;
+            }
+        }
+        if (mov_idx == null) continue;
+
+        // Scan backward from MOV for MOVZ rN, #imm16 + MOVK + MOVK (3-instruction 48-bit load)
+        var load_idx: ?usize = null;
+        var loaded_addr: u64 = 0;
+        {
+            // Scan backward from MOV looking for MOVZ+MOVK+MOVK loading src_reg.
+            // The MOVZ/MOVK sequence may be in the function prologue (pre-emitted constants).
+            const start_j = mov_idx.?;
+            var scan_count: usize = 0;
+            var j = start_j;
+            while (j > 0 and scan_count < 50) : (scan_count += 1) {
+                j -= 1;
+                const w0 = readInsnPtr(code_ptr, j);
+                if (w0 == NOP) continue;
+                // Check if this is MOVZ with hw=0 writing to src_reg
+                const is_movz = (w0 & 0xFFE00000) == 0xD2800000;
+                const w0_rd: u5 = @truncate(w0 & 0x1F);
+                if (is_movz and w0_rd == src_reg and j + 2 < start_j) {
+                    const w1 = readInsnPtr(code_ptr, j + 1);
+                    const w2 = readInsnPtr(code_ptr, j + 2);
+                    if ((w1 & 0xFFE00000) == 0xF2A00000 and @as(u5, @truncate(w1 & 0x1F)) == src_reg and
+                        (w2 & 0xFFE00000) == 0xF2C00000 and @as(u5, @truncate(w2 & 0x1F)) == src_reg)
+                    {
+                        const imm0 = @as(u64, (w0 >> 5) & 0xFFFF);
+                        const imm1 = @as(u64, (w1 >> 5) & 0xFFFF) << 16;
+                        const imm2 = @as(u64, (w2 >> 5) & 0xFFFF) << 32;
+                        loaded_addr = imm0 | imm1 | imm2;
+                        load_idx = j;
+                        break;
+                    }
+                }
+                // Stop on non-MOVZ/non-MOVK write to src_reg
+                const is_movk = (w0 & 0xFF800000) == 0xF2800000;
+                if (!is_movz and !is_movk and w0_rd == src_reg) break;
+            }
+        }
+        if (load_idx == null or loaded_addr == 0) continue;
+
+        // Check BL range: ±128MB
+        const blr_addr = caller_base + i * 4;
+        const target = loaded_addr;
+        const diff = @as(i64, @intCast(target)) - @as(i64, @intCast(blr_addr));
+        if (diff < -128 * 1024 * 1024 or diff > 128 * 1024 * 1024) continue;
+
+        // Patch: NOP the MOVZ/MOVK/MOVK sequence, NOP the MOV, replace BLR with BL
+        const rel_offset: i32 = @intCast(@divExact(diff, 4));
+        const imm26: u32 = @as(u32, @bitCast(rel_offset)) & 0x03FFFFFF;
+        writeInsnPtr(code_ptr, load_idx.?, NOP);
+        writeInsnPtr(code_ptr, load_idx.? + 1, NOP);
+        writeInsnPtr(code_ptr, load_idx.? + 2, NOP);
+        writeInsnPtr(code_ptr, mov_idx.?, NOP);
+        writeInsnPtr(code_ptr, i, 0x94000000 | imm26);
+    }
+}
+
+fn readInsnPtr(ptr: [*]u8, idx: usize) u32 {
+    const off = idx * 4;
+    return @as(u32, ptr[off]) |
+        (@as(u32, ptr[off + 1]) << 8) |
+        (@as(u32, ptr[off + 2]) << 16) |
+        (@as(u32, ptr[off + 3]) << 24);
+}
+
+fn writeInsnPtr(ptr: [*]u8, idx: usize, val: u32) void {
+    const off = idx * 4;
+    ptr[off] = @truncate(val);
+    ptr[off + 1] = @truncate(val >> 8);
+    ptr[off + 2] = @truncate(val >> 16);
+    ptr[off + 3] = @truncate(val >> 24);
 }
 
 /// Recursively collect all variable indices that are assigned (set) within an IR subtree.
@@ -2905,7 +3077,7 @@ fn detectLoops(body: *const Ir) bool {
 
 /// Compile a Habu IR lambda to native code via Hoist SSA.
 /// Returns error.UnsupportedRecursiveCall for functions with recursive calls
-/// (due to hoist regalloc limitation — use stencil JIT as fallback).
+/// (due to hoist regalloc limitation).
 pub fn compileIr(
     allocator: std.mem.Allocator,
     ir: *const Ir,

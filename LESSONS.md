@@ -429,3 +429,48 @@ The `coalesceMovs` peephole pass must only coalesce MOV instructions that follow
 10. fuseSelectCondition
 11. eliminateLeafPrologue (if !recursive)
 12. compactNops (LAST)
+
+## 2026-02-08 (continued): JIT Performance Optimizations
+
+### Backward Branch Coalescing for Loop Phi Copies
+- `coalesceMovs` now treats backward `B` (loop backedge) as safe for rd0
+  when there are no BLR/BL calls between the ALU op and the branch.
+- Key insight: phi copies before a loop backedge capture rd0's value into
+  mov_dst. The loop header reads mov_dst, not rd0. So rd0 is dead.
+- Unsafe for loops with calls: callee may clobber registers.
+- fixnum_loop improved from 0.37x to 1.08x SBCL.
+
+### Cons Constants LICM (Loop-Invariant Code Motion)
+- Inline cons uses g_alloc_ptr address (48-bit), 16, and 8 constants.
+- Pre-emit these constants before the loop (via `in_loop_preemit` flag).
+- ONLY for non-recursive functions — recursive functions have too much
+  register pressure; adding 3 more constants causes spill issues.
+- list_build improved from 1ms to 300µs (matching SBCL).
+- gc_cons improved to 193µs (1.07x SBCL).
+
+### Direct Predicate Conditions in translateIf
+- oddp/evenp/zerop/consp as if-conditions emit direct I8 comparisons.
+- Eliminates 3-5 instructions: tagged select + brif on tagged value.
+- Pattern: `(if (oddp x) ...)` → `band(x,2); icmp ne; brif`
+- remove_if improved from 700µs to 42µs (0.86x SBCL).
+
+### Untagged Mode Incompatibilities
+- Untagged mode disabled for functions with:
+  - cons/car/cdr (cons cells store tagged values)
+  - Primitive calls (gcd/nreverse/append/assoc expect tagged args)
+  - Loads (car/cdr return tagged from cons cells)
+- Each incompatibility caught by separate `contains*()` check.
+- Missing check caused gcd benchmark to return wrong answer (235704 vs 278574).
+
+### Inline GCD Blocked by Hoist Regalloc
+- Euclidean algorithm as hoist loop: `while b!=0: r=a%b, a=b, b=r`
+- Requires swap of phi parameters (a←b, b←r) at loop backedge.
+- Hoist regalloc doesn't emit phi copies for this swap → infinite loop.
+- Same fundamental issue as partial TCO phi copies.
+- Fallback: C-ABI jitGcd call (3.3ms vs SBCL 0.89ms).
+
+### Hoist LDP Register Mismatch (Root Cause)
+- When hoist merges `load [x, #0]` and `load [x, #8]` into LDP, the Rt2
+  register assignment doesn't match the regalloc's expected register.
+- Example: regalloc assigns cdr load to x2, but LDP puts it in Rt2=x19.
+- Workaround: always use `iadd + load offset=0` for cdr.

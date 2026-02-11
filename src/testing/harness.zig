@@ -55,9 +55,6 @@ pub const Runner = struct {
         return try self.vm.run(chunk);
     }
 
-    pub fn enableJit(self: *Runner, code_buf_size: usize, hot: u32) !void {
-        return try self.vm.enableJit(code_buf_size, hot);
-    }
 };
 
 pub fn eval(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {

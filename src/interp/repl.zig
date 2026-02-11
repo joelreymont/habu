@@ -2042,6 +2042,23 @@ pub const Repl = struct {
             self.allocator.destroy(persistent);
             return false;
         };
+
+        // Post-registration: patch cross-calls from BLR to BL (direct call).
+        // Now that this function is registered, patch any of its cross-calls
+        // to known functions with direct BL instructions.
+        {
+            const jit_mem = persistent.mem;
+            const code_ptr = jit_mem.ptr;
+            const code_len = jit_mem.used;
+            const fn_base = @intFromPtr(code_ptr);
+            // Make writable for patching
+            jit_mem.setExec(false) catch {};
+            hoist_backend.patchCrossCallsToBL(code_ptr, code_len, fn_base);
+            // Flush icache and restore exec permission
+            jit_mem.flushCacheRange(code_ptr, code_len);
+            jit_mem.setExec(true) catch {};
+        }
+
         if (std.posix.getenv("HABU_TRACE_JIT") != null) {
             std.debug.print("JIT: hoist compiled '{s}' OK (arity={d}, fn_ptr={*}, chunk=0x{x}, map_count={d})\n", .{
                 name, compiled.arity, compiled.fn_ptr,
