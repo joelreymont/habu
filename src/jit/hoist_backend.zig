@@ -887,29 +887,16 @@ pub const IrTranslator = struct {
                 try self.preEmitConstants(n.right);
             },
             .call => |c| {
-                // Pre-emit self-call pointer
-                if (self.is_recursive and isCallTargetSelf(c.func, self.fn_name)) {
-                    _ = try self.cachedIconst(self.self_ptr_placeholder);
-                } else if (self.known_fns) |kf| {
-                    // Pre-emit cross-call function pointer (with qualified name matching)
-                    if (getCallTargetName(c.func)) |target_name| {
-                        if (kf.get(target_name)) |known| {
-                            _ = try self.cachedIconst(@as(i64, @bitCast(known.fn_ptr)));
-                        }
-                    }
-                }
+                // Don't pre-emit call function pointers — they'll be emitted locally
+                // in the block where the call happens. Pre-emitting them in the
+                // header/entry block creates register pressure by keeping the pointer
+                // live across the entire function.
                 for (c.args) |arg| try self.preEmitConstants(arg);
             },
             .tailcall => |tc| {
-                if (self.is_recursive and isCallTargetSelf(tc.func, self.fn_name)) {
-                    _ = try self.cachedIconst(self.self_ptr_placeholder);
-                } else if (self.known_fns) |kf| {
-                    if (getCallTargetName(tc.func)) |target_name| {
-                        if (kf.get(target_name)) |known| {
-                            _ = try self.cachedIconst(@as(i64, @bitCast(known.fn_ptr)));
-                        }
-                    }
-                }
+                // Don't pre-emit function pointers for tailcalls either.
+                // In TCO mode, self-tailcalls become jumps (no pointer needed).
+                // Non-TCO tailcalls emit the pointer locally.
                 for (tc.args) |arg| try self.preEmitConstants(arg);
             },
             .let => |l| {
@@ -2473,8 +2460,8 @@ pub fn compileIrWithKnownFns(
 
     // Tail-call optimization: pure tail-recursive functions → loop.
     // Only if: has tail self-calls AND no non-tail self-calls.
-    // Partial TCO (mixed tail/non-tail) is not supported yet due to hoist
-    // backward-jump phi copy issues.
+    // Partial TCO (mixed tail/non-tail) blocked by hoist phi copy issues
+    // for backward jumps with block params in presence of register pressure.
     const use_tco = hasSelfTailCalls(lambda.body, name) and
         !hasNonTailSelfCalls(lambda.body, name);
 
@@ -2599,6 +2586,11 @@ pub fn compileIrWithKnownFns(
         fixEntryParamMoves(code.code.items);
     }
 
+    // Fuse CMP+CSET...CMP+CSEL into CMP...CSEL with original condition.
+    // Pattern: CMP sets flags → CSET materializes bool → later CMP tests bool → CSEL.
+    // Replace with: CMP sets flags → NOP → ... → NOP → CSEL(original cond).
+    fuseSelectCondition(code.code.items);
+
     // Coalesce: replace `op rD, rA, rB; mov rC, rD` with `op rC, rA, rB; nop`
     coalesceMovs(code.code.items);
 
@@ -2696,6 +2688,112 @@ pub fn compileIrWithKnownFns(
 /// Replace dead CSET instructions with NOP when followed by a B.cond.
 /// Pattern: CMP; CSET; B.cond → CMP; NOP; B.cond
 /// The CSET result is dead because B.cond reads flags directly from CMP.
+/// Fuse CMP+CSET...CMP+CSEL patterns into CMP...CSEL.
+///
+/// Hoist generates: CMP Xn,Xm; CSET Xc,cond; ...; CMP Wc,WZR; CSEL Xd,Xa,Xb,NE
+/// This pass eliminates the CSET and second CMP, replacing CSEL's condition
+/// with the original condition from the first CMP.
+///
+/// Pattern:
+///   i+0: CMP (any CMP/SUBS setting flags)
+///   i+1: CSET Xc, cond
+///   ...  (instructions that don't set flags — no CMP/ADDS/SUBS)
+///   i+k: CMP Wc, WZR (6B1F001F with Wc in bits 5-9)
+///   i+k+1: CSEL Xd, Xa, Xb, NE (condition 1)
+///
+/// Result: NOP the CSET, NOP the CMP Wc,WZR, change CSEL cond from NE to original cond
+fn fuseSelectCondition(code: []u8) void {
+    const NOP = @as(u32, 0xD503201F);
+    const n_insns = code.len / 4;
+    if (n_insns < 4) return;
+
+    var i: usize = 0;
+    while (i + 3 < n_insns) : (i += 1) {
+        const insn0 = readInsn(code, i);
+        const insn1 = readInsn(code, i + 1);
+
+        // insn0: must be a CMP (SUBS with Rd=XZR/WZR)
+        // 64-bit: EB..001F or 32-bit: 6B..001F
+        const is_cmp = (insn0 & 0x7FE0001F == 0x6B00001F) or // SUBS Wd,Wn,Wm (CMP)
+            (insn0 & 0xFFE0001F == 0xEB00001F); // SUBS Xd,Xn,Xm (CMP)
+        if (!is_cmp) continue;
+
+        // insn1: CSET Xc, cond = CSINC Xc, XZR, XZR, inv_cond
+        // Encoding: 1001 1010 100 1 inv_cond:4 0 01 11111 Rd:5
+        // Mask: 0xFFFFF7E0, check: 0x9A9F07E0 (64-bit CSINC with Rn=Rm=XZR)
+        // Actually: CSET Xd, cond = CSINC Xd, XZR, XZR, invert(cond)
+        // Format: 1 00 11010100 Rm:5 cond:4 0 1 Rn:5 Rd:5
+        // With Rn=XZR(31), Rm=XZR(31): 0x9A9F_cond_07FF & mask
+        // CSET Xd/Wd, cond = CSINC Xd/Wd, XZR/WZR, XZR/WZR, inv_cond
+        // Fixed bits mask: everything except cond (bits 15-12) and Rd (bits 4-0)
+        // 64-bit: 0x9A9F07E0, 32-bit: 0x1A9F07E0
+        const cset_mask: u32 = 0xFFFF0FE0;
+        const is_cset_64 = (insn1 & cset_mask == 0x9A9F07E0);
+        const is_cset_32 = (insn1 & cset_mask == 0x1A9F07E0);
+        if (!is_cset_64 and !is_cset_32) continue;
+        const cset_rd: u5 = @truncate(insn1 & 0x1F);
+        // Extract the inverted condition from CSET (bits 12-15)
+        const inv_cond: u4 = @truncate((insn1 >> 12) & 0xF);
+        // The original condition is the inversion of inv_cond (flip bit 0)
+        const orig_cond: u4 = inv_cond ^ 1;
+
+        // Scan forward for CMP Wc, WZR followed by CSEL with NE condition
+        var j = i + 2;
+        var found = false;
+        while (j + 1 < n_insns) : (j += 1) {
+            const insn_j = readInsn(code, j);
+
+            // Skip NOPs
+            if (insn_j == NOP) continue;
+
+            // Stop if flags are modified (any ADDS/SUBS/CMP/CMN/ANDS)
+            const top8 = insn_j >> 24;
+            if (top8 == 0x6B or top8 == 0xEB or // SUBS/CMP
+                top8 == 0x2B or top8 == 0xAB or // ADDS/CMN
+                top8 == 0x72 or top8 == 0xF2 or // ANDS (32/64)
+                top8 == 0x6A or top8 == 0xEA) // ANDS reg
+            {
+                // Check if this is our CMP Wc, WZR
+                // CMP Wn, #0 = SUBS WZR, Wn, #0 = 0x6B1F001F with Rn in bits 5-9
+                // Actually CMP Wc, WZR (register form) = SUBS WZR, Wc, WZR
+                // = 0x6B1F001F | (cset_rd << 5)
+                const expected_cmp = @as(u32, 0x6B1F001F) | (@as(u32, cset_rd) << 5);
+                if (insn_j == expected_cmp) {
+                    // Next must be CSEL with NE condition (cond=1)
+                    if (j + 1 < n_insns) {
+                        const insn_csel = readInsn(code, j + 1);
+                        // CSEL Xd, Xn, Xm, cond: 1001 1010 100 Rm cond 00 Rn Rd
+                        // Check it's a CSEL (not CSINC etc) with cond=NE(1)
+                        if (insn_csel & 0xFFC00C00 == 0x9A800000) {
+                            const csel_cond: u4 = @truncate((insn_csel >> 12) & 0xF);
+                            if (csel_cond == 1) { // NE
+                                // Replace CSEL condition with orig_cond
+                                const new_csel = (insn_csel & 0xFFFF0FFF) | (@as(u32, orig_cond) << 12);
+                                writeInsn(code, j + 1, new_csel);
+                                // NOP the CSET and the CMP Wc, WZR
+                                writeInsn(code, i + 1, NOP);
+                                writeInsn(code, j, NOP);
+                                found = true;
+                            }
+                        }
+                    }
+                }
+                break; // Any flag-setting instruction stops the scan
+            }
+
+            // Also stop at branches
+            if (insn_j & 0xFC000000 == 0x14000000 or // B
+                insn_j & 0xFC000000 == 0x94000000 or // BL
+                insn_j & 0xFF000010 == 0x54000000 or // B.cond
+                insn_j & 0xFFFFFC1F == 0xD63F0000 or // BLR
+                insn_j & 0xFFFFFC1F == 0xD65F0000) break; // RET
+        }
+        if (found) {
+            i += 1; // skip past the NOP'd CSET
+        }
+    }
+}
+
 fn eliminateDeadCset(code: []u8) void {
     const n_insns = code.len / 4;
     if (n_insns < 3) return;
