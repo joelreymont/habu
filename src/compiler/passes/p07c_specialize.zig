@@ -222,7 +222,49 @@ fn specializeWithEnv(allocator: std.mem.Allocator, node: *const Ir, env: *TypeEn
         .lt => |op| return try specializeCmp(allocator, .fixnum_lt, .lt, op.left, op.right, env) orelse node,
         .gt => |op| return try specializeCmp(allocator, .fixnum_gt, .gt, op.left, op.right, env) orelse node,
         .ge => |op| return try specializeCmp(allocator, .fixnum_ge, .ge, op.left, op.right, env) orelse node,
-        .num_eq => |op| return try specializeCmp(allocator, .fixnum_eq, .num_eq, op.left, op.right, env) orelse node,
+        .num_eq => |op| {
+            // Optimize (= (abs (- a b)) c) → (if (= (- a b) c) t (= (- b a) c))
+            // when all operands are fixnum. Eliminates abs (7 ARM64 insns) in favor
+            // of a second comparison (3 insns).
+            if (op.left.* == .abs) {
+                const abs_inner = op.left.abs.operand;
+                if (abs_inner.* == .sub or abs_inner.* == .fixnum_sub) {
+                    const a = switch (abs_inner.*) {
+                        .sub => |s| s.left,
+                        .fixnum_sub => |s| s.left,
+                        else => unreachable,
+                    };
+                    const b = switch (abs_inner.*) {
+                        .sub => |s| s.right,
+                        .fixnum_sub => |s| s.right,
+                        else => unreachable,
+                    };
+                    const c = op.right;
+                    const sa = try specializeWithEnv(allocator, a, env);
+                    const sb = try specializeWithEnv(allocator, b, env);
+                    const sc = try specializeWithEnv(allocator, c, env);
+
+                    if (isProvenFixnum(sa, env) and isProvenFixnum(sb, env) and isProvenFixnum(sc, env)) {
+                        // Build: (if (fixnum_eq (fixnum_sub a b) c) t (fixnum_eq (fixnum_sub b a) c))
+                        const sub_ab = try allocator.create(Ir);
+                        sub_ab.* = .{ .fixnum_sub = .{ .left = sa, .right = sb } };
+                        const eq1 = try allocator.create(Ir);
+                        eq1.* = .{ .fixnum_eq = .{ .left = sub_ab, .right = sc } };
+                        const sub_ba = try allocator.create(Ir);
+                        sub_ba.* = .{ .fixnum_sub = .{ .left = sb, .right = sa } };
+                        const eq2 = try allocator.create(Ir);
+                        eq2.* = .{ .fixnum_eq = .{ .left = sub_ba, .right = sc } };
+                        const t_node = try allocator.create(Ir);
+                        const Value = @import("../../runtime/value.zig").Value;
+                        t_node.* = .{ .lit = Value.t };
+                        const result = try allocator.create(Ir);
+                        result.* = .{ .@"if" = .{ .cond = eq1, .then_branch = t_node, .else_branch = eq2 } };
+                        return result;
+                    }
+                }
+            }
+            return try specializeCmp(allocator, .fixnum_eq, .num_eq, op.left, op.right, env) orelse node;
+        },
 
         // Compound forms with type environment propagation
         .@"if" => |i| {

@@ -2473,6 +2473,8 @@ pub fn compileIrWithKnownFns(
 
     // Tail-call optimization: pure tail-recursive functions → loop.
     // Only if: has tail self-calls AND no non-tail self-calls.
+    // Partial TCO (mixed tail/non-tail) is not supported yet due to hoist
+    // backward-jump phi copy issues.
     const use_tco = hasSelfTailCalls(lambda.body, name) and
         !hasNonTailSelfCalls(lambda.body, name);
 
