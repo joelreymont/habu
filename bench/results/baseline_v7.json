@@ -1,0 +1,37 @@
+{
+  "date": "2026-02-08",
+  "description": "Post entry-param parallel copy fix, coalesceMovs cross-branch fix, LDP Rt2 fix, untagged cons disabled",
+  "results": {
+    "fixnum_loop": { "habu_ms": 0.866, "sbcl_ms": 0.324, "ratio": 0.37 },
+    "fixnum_mul": { "habu_ms": 1.677, "sbcl_ms": 0.593, "ratio": 0.35 },
+    "gcd": { "habu_ms": 1605, "sbcl_ms": 0.891, "ratio": 0.00 },
+    "float_sum": { "habu_ms": 326, "sbcl_ms": 0.085, "ratio": 0.00 },
+    "float_sqrt": { "habu_ms": 332, "sbcl_ms": 0.086, "ratio": 0.00 },
+    "fib35": { "habu_ms": 39.1, "sbcl_ms": 52.3, "ratio": 1.34 },
+    "tak": { "habu_ms": 81.9, "sbcl_ms": 89.4, "ratio": 1.09 },
+    "ack": { "habu_ms": 168, "sbcl_ms": 129, "ratio": 0.77 },
+    "nqueens10": { "habu_ms": 3.80, "sbcl_ms": 2.83, "ratio": 0.74 },
+    "list_build": { "habu_ms": 1.00, "sbcl_ms": 0.277, "ratio": 0.28 },
+    "list_reverse": { "habu_ms": 2.21, "sbcl_ms": 0.379, "ratio": 0.17 },
+    "list_append": { "habu_ms": 12.3, "sbcl_ms": 0.287, "ratio": 0.02 },
+    "assoc": { "habu_ms": 135, "sbcl_ms": 2.64, "ratio": 0.02 },
+    "mapcar": { "habu_ms": 123, "sbcl_ms": 0.061, "ratio": 0.00 },
+    "reduce": { "habu_ms": 48.7, "sbcl_ms": 0.094, "ratio": 0.00 },
+    "remove_if": { "habu_ms": 0.712, "sbcl_ms": 0.036, "ratio": 0.05 },
+    "hash_insert": { "habu_ms": 15.3, "sbcl_ms": 0.469, "ratio": 0.03 },
+    "hash_lookup": { "habu_ms": 73.5, "sbcl_ms": 0.861, "ratio": 0.01 },
+    "string_concat": { "habu_ms": 605, "sbcl_ms": 0.173, "ratio": 0.00 },
+    "string_search": { "habu_ms": 203, "sbcl_ms": 0.859, "ratio": 0.00 },
+    "sort_fixnum": { "habu_ms": 4.27, "sbcl_ms": 0.003, "ratio": 0.00 },
+    "sort_string": { "habu_ms": 7.09, "sbcl_ms": 0.021, "ratio": 0.00 },
+    "gc_cons": { "habu_ms": 0.877, "sbcl_ms": 0.203, "ratio": 0.23 },
+    "gc_vector": { "habu_ms": 7.72, "sbcl_ms": 0.534, "ratio": 0.07 },
+    "intern": { "habu_ms": 164, "sbcl_ms": 2.86, "ratio": 0.02 }
+  },
+  "summary": {
+    "faster_than_sbcl": 2,
+    "matching_sbcl": 0,
+    "slower_than_sbcl": 23,
+    "notable": "tak fixed to 1.09x SBCL (was wrong results), remove_if now JIT'd at 0.712ms, 3 critical correctness bugs fixed"
+  }
+}

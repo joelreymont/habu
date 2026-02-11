@@ -3977,7 +3977,10 @@ fn coalesceMovs(code: []u8) void {
             const op_class = insn0 >> 24;
             const is_safe_alu = (op_class == 0x8B or // ADD
                 op_class == 0xCB or // SUB
-                op_class == 0x9B); // MADD/MUL
+                op_class == 0x9B or // MADD/MUL
+                op_class == 0x8A or // AND (shifted reg)
+                op_class == 0x92 or // AND (immediate)
+                op_class == 0xD3); // LSL/LSR/ASR (shift imm)
             if (!is_safe_alu) continue;
 
             const rd0: u5 = @truncate(insn0 & 0x1F);
@@ -4041,10 +4044,18 @@ fn coalesceMovs(code: []u8) void {
                 if (rn_a == rd0 or rm_a == rd0) { safe = false; break; }
                 // If rd0 is redefined, no more consumers can see old value
                 if (rd_a == rd0) break;
-                // Stop at branch/ret/call (control flow boundary).
-                // Conservatively assume rd0 may be used by branch targets.
-                if (after & 0xFC000000 == 0x14000000 or // B
-                    after & 0xFF000000 == 0x54000000 or // B.cond
+                // At control flow boundaries, check if rd0 is used by branch targets.
+                // For backward unconditional branches (loop backedges), rd0 is a
+                // temporary that was just phi-copied to mov_dst — the loop header
+                // reads mov_dst, not rd0. So backward branches are safe.
+                if (after & 0xFC000000 == 0x14000000) { // B imm26
+                    const imm26: u32 = after & 0x03FFFFFF;
+                    const is_backward = (imm26 & 0x02000000) != 0; // sign bit
+                    if (!is_backward) { safe = false; break; }
+                    // Backward branch: rd0 is dead (phi copy already captured it)
+                    break;
+                }
+                if (after & 0xFF000000 == 0x54000000 or // B.cond
                     after & 0xFFFFFC1F == 0xD65F0000 or // RET
                     after & 0xFFFFFC1F == 0xD63F0000) // BLR
                 { safe = false; break; }

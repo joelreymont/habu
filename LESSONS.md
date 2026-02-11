@@ -385,3 +385,47 @@ To inline a function compiled in a previous REPL form, the callee's IR must surv
 
 ### coalesceMovs Only for Safe ALU Ops
 The `coalesceMovs` peephole pass must only coalesce MOV instructions that follow safe ALU operations (ADD, SUB, MADD). Coalescing MOV after conditional operations (CSET, SELECT) or across control flow boundaries breaks correctness because multiple branches may write to the same destination register.
+
+## 2026-02-08: Critical JIT Bug Fixes
+
+### Entry Param Parallel Copy (fixEntryParamMoves)
+- Hoist's regalloc emits sequential MOVs for entry block param copies: `MOV xD, xS`
+- For 3+ params with circular dependencies, sequential MOVs clobber values
+- Fix: proper parallel copy algorithm with topological sort + x9 scratch for cycles
+- `fixEntryParamMovesAlloc` can insert extra instructions via ArrayList
+- Previously, `eliminateRoundTripMovs` was incorrectly NOPing broken swap pairs
+  in the entry region — now skips the entry region entirely
+
+### coalesceMovs Cross-Branch Liveness Bug
+- Post-MOV consumer scan treated branch instructions as "rd0 is dead"
+- But branch targets may read rd0 (e.g., phi copies in merge blocks)
+- Fix: conservatively mark rd0 as potentially live when hitting a branch
+- This caused TCO functions to return wrong values (e.g., f3(a,b,c))
+
+### Hoist LDP Rt2 Register Mismatch
+- When hoist merges two adjacent loads (car + cdr) into LDP, the Rt2 register
+  doesn't match the regalloc's expected register for the second value
+- Workaround: always use `iadd + load offset=0` for cdr instead of `load offset=8`
+- This prevents hoist from merging car/cdr into LDP
+- Affected ALL functions using car + cdr (sum-list, while loops over lists, etc.)
+
+### Untagged Mode + Cons Incompatibility
+- Untagged mode works with plain i64 inside function body (params untagged at entry)
+- Cons cells store TAGGED values (runtime objects read by interpreter/other functions)
+- In untagged mode, storing untagged values into cons cells corrupts data
+- Similarly, car/cdr return tagged values that don't mix with untagged arithmetic
+- Fix: disable untagged mode for functions with cons/car/cdr (`containsLoads`)
+
+### Key Peephole Pass Ordering
+1. eliminateDeadCset
+2. fixEntryParamMovesAlloc (can insert instructions)
+3. fuseCmpImmediate
+4. eliminateRoundTripMovs (skips entry region)
+5. coalesceMovs (conservative at branches)
+6. eliminateUselessBranches
+7. invertBranchOverBranch
+8. fixCallArgMoves (if recursive)
+9. fuseMulAdd
+10. fuseSelectCondition
+11. eliminateLeafPrologue (if !recursive)
+12. compactNops (LAST)
