@@ -99,6 +99,15 @@ pub fn getJitConsPtr() u64 {
 }
 
 /// Known JIT-compiled function info for cross-function calls.
+/// Check if an IR node is a simple value (literal or variable reference).
+/// Used to optimize TCO branches that just return a constant.
+fn isSimpleValue(ir: *const Ir) bool {
+    return switch (ir.*) {
+        .lit, .@"var", .global_ref => true,
+        else => false,
+    };
+}
+
 /// Check if a function body calls itself (has self-recursive calls or tailcalls).
 /// Used to prevent inlining recursive functions.
 fn callsItself(body: *const Ir) bool {
@@ -1343,8 +1352,14 @@ pub const IrTranslator = struct {
                     return HoistValue.new(0);
                 }
 
-                if (then_is_tail) {
-                    // Then is tail, else produces value → merge from else only
+                // Optimization: if a branch is a simple exit value (literal)
+                // and we have a tco_exit, jump directly to exit. This eliminates
+                // trampoline blocks in patterns like (if test recurse nil).
+                const then_is_simple_exit = isSimpleValue(then_branch);
+                const else_is_simple_exit = isSimpleValue(else_branch);
+
+                if ((then_is_tail or then_is_simple_exit) and (else_is_tail or else_is_simple_exit)) {
+                    // Both branches terminate (tail call or simple exit)
                     const then_blk = try self.func.dfg.addBlock();
                     try self.func.layout.appendBlock(then_blk);
                     const else_blk = try self.func.dfg.addBlock();
@@ -1353,14 +1368,50 @@ pub const IrTranslator = struct {
                     try self.b.brif(cond, then_blk, else_blk);
 
                     self.b.switchToBlock(then_blk);
-                    _ = try self.translateTCOExpr(then_branch);
+                    if (then_is_simple_exit and self.tco_exit != null) {
+                        const val = try self.translate(then_branch);
+                        try self.b.jumpArgs(self.tco_exit.?, &.{val});
+                        self.b.current_block = null;
+                    } else {
+                        _ = try self.translateTCOExpr(then_branch);
+                    }
+
+                    self.b.switchToBlock(else_blk);
+                    if (else_is_simple_exit and self.tco_exit != null) {
+                        const val = try self.translate(else_branch);
+                        try self.b.jumpArgs(self.tco_exit.?, &.{val});
+                        self.b.current_block = null;
+                    } else {
+                        _ = try self.translateTCOExpr(else_branch);
+                    }
+
+                    return HoistValue.new(0);
+                }
+
+                if (then_is_tail or then_is_simple_exit) {
+                    // Then terminates, else produces value
+                    const then_blk = try self.func.dfg.addBlock();
+                    try self.func.layout.appendBlock(then_blk);
+                    const else_blk = try self.func.dfg.addBlock();
+                    try self.func.layout.appendBlock(else_blk);
+
+                    try self.b.brif(cond, then_blk, else_blk);
+
+                    self.b.switchToBlock(then_blk);
+                    if (then_is_simple_exit and self.tco_exit != null) {
+                        const val = try self.translate(then_branch);
+                        try self.b.jumpArgs(self.tco_exit.?, &.{val});
+                        self.b.current_block = null;
+                    } else {
+                        _ = try self.translateTCOExpr(then_branch);
+                    }
 
                     self.b.switchToBlock(else_blk);
                     return try self.translateTCOExpr(else_branch);
                 }
 
-                if (else_is_tail) {
-                    // Else is tail, then produces value → merge from then only
+                if (else_is_tail or else_is_simple_exit) {
+                    // Else terminates, then produces value
                     const then_blk = try self.func.dfg.addBlock();
                     try self.func.layout.appendBlock(then_blk);
                     const else_blk = try self.func.dfg.addBlock();
@@ -1369,7 +1420,13 @@ pub const IrTranslator = struct {
                     try self.b.brif(cond, then_blk, else_blk);
 
                     self.b.switchToBlock(else_blk);
-                    _ = try self.translateTCOExpr(else_branch);
+                    if (else_is_simple_exit and self.tco_exit != null) {
+                        const val = try self.translate(else_branch);
+                        try self.b.jumpArgs(self.tco_exit.?, &.{val});
+                        self.b.current_block = null;
+                    } else {
+                        _ = try self.translateTCOExpr(else_branch);
+                    }
 
                     self.b.switchToBlock(then_blk);
                     return try self.translateTCOExpr(then_branch);
