@@ -53,6 +53,15 @@ pub fn setHeap(heap: *Heap) void {
     jitConsRefreshCache();
 }
 
+/// Sync heap.alloc_ptr from the JIT global g_alloc_ptr.
+/// Must be called after JIT execution to keep heap state consistent
+/// (inline cons updates g_alloc_ptr but not heap.alloc_ptr directly).
+pub fn syncHeapFromGlobal(heap: *Heap) void {
+    if (g_alloc_ptr != 0) {
+        heap.alloc_ptr = @ptrFromInt(g_alloc_ptr);
+    }
+}
+
 /// C-ABI cons function callable from JIT-compiled code.
 /// Takes (car_raw: u64, cdr_raw: u64) → cons_raw: u64
 /// Performs bump allocation without GC. Returns nil (0) on OOM.
@@ -68,7 +77,9 @@ fn jitConsRefreshCache() void {
     }
 }
 
-fn jitCons(car_raw: u64, cdr_raw: u64) callconv(.c) u64 {
+/// Takes (cdr, car) order to avoid register swap when nesting cons calls.
+/// Inner cons result stays in x0 (arg0=cdr position) naturally.
+fn jitCons(cdr_raw: u64, car_raw: u64) callconv(.c) u64 {
     const ptr = g_alloc_ptr;
     const next = ptr + 16;
     if (next <= g_alloc_end) {
@@ -1166,7 +1177,8 @@ pub const IrTranslator = struct {
             }
 
             // Try inlining tail-recursive functions as loops
-            if (countIrNodes(body) <= 40 and known.callee_name.len > 0 and
+            // TEMP: disabled - bug in inlined TCO phi resolution
+            if (false and countIrNodes(body) <= 40 and known.callee_name.len > 0 and
                 hasSelfTailCalls(body, known.callee_name) and
                 !hasNonTailSelfCalls(body, known.callee_name))
             {
@@ -1864,27 +1876,28 @@ pub const IrTranslator = struct {
         const car_val = try self.translate(car_ir);
         const cdr_val = try self.translate(cdr_ir);
 
-        // Simple approach: just use the C-ABI call with cached alloc pointer.
-        // The jitCons function already has the fast path (cached bump allocation).
-        const cons_sig = try self.getConsSigRef();
-        const fn_ptr = try self.cachedIconst(@as(i64, @bitCast(getJitConsPtr())));
-        var call_args = ValueList.default();
-        try self.func.dfg.value_lists.push(&call_args, fn_ptr);
-        try self.func.dfg.value_lists.push(&call_args, car_val);
-        try self.func.dfg.value_lists.push(&call_args, cdr_val);
-        const call_data = InstructionData{
-            .call_indirect = .{
-                .opcode = .call_indirect,
-                .sig_ref = cons_sig,
-                .args = call_args,
-            },
-        };
-        const call_inst = try self.func.dfg.makeInst(call_data);
-        const call_result = try self.func.dfg.appendInstResult(call_inst, I64);
-        const block = self.b.current_block orelse return error.NoCurrentBlock;
-        try self.func.layout.appendInst(call_inst, block);
+        // Inline bump allocation directly in hoist IR to avoid call_indirect
+        // register swap issues. Loads g_alloc_ptr, stores car+cdr, bumps pointer.
+        // No GC check — relies on sufficient heap space (same as jitCons fast path).
+        const alloc_ptr_addr = try self.cachedIconst(@as(i64, @bitCast(@intFromPtr(&g_alloc_ptr))));
+        const sixteen = try self.cachedIconst(16);
+        const eight = try self.cachedIconst(8);
 
-        return call_result;
+        const mf = hoist.memflags.MemFlags.default();
+
+        // Load current allocation pointer
+        const ptr = try self.b.load(I64, alloc_ptr_addr, mf);
+        // Store car at [ptr+0]
+        try self.b.store(car_val, ptr, mf);
+        // Store cdr at [ptr+8]
+        const ptr_plus_8 = try self.b.iadd(I64, ptr, eight);
+        try self.b.store(cdr_val, ptr_plus_8, mf);
+        // Bump allocation pointer
+        const new_ptr = try self.b.iadd(I64, ptr, sixteen);
+        try self.b.store(new_ptr, alloc_ptr_addr, mf);
+
+        // Return ptr as cons value (cons tag = 0, so raw = ptr)
+        return ptr;
     }
 
     /// Get or create the SigRef for the cons call: (i64, i64) -> i64
@@ -3028,7 +3041,7 @@ pub fn compileIrWithKnownFns(
     // first (x8+) so no conflicts occur — fixEntryParamMoves detects this
     // and returns early (no conflict found).
     if (arity > 1) {
-        fixEntryParamMoves(code.code.items);
+        try fixEntryParamMovesAlloc(allocator, &code.code);
     }
 
     // Fuse MOVZ+CMP into CMP immediate (eliminates MOVZ for small constants)
@@ -3447,9 +3460,24 @@ fn eliminateRoundTripMovs(code: []u8) void {
 
     const nop: u32 = 0xD503201F;
 
-    // Only scan the first ~20 instructions (entry region)
+    // Find the first non-prologue/non-MOV instruction to determine entry region end.
+    // Don't eliminate round-trips in the entry param copy region — those are
+    // hoist's broken parallel copies for parameter shuffles (swap attempts).
+    var entry_end: usize = 0;
+    for (0..@min(n_insns, 16)) |idx| {
+        const insn = readInsn(code, idx);
+        const is_stp = (insn & 0xFFC07FFF) == 0xA9807BFD;
+        const is_mov_fp = (insn == 0xAA1F03FD) or (insn == 0x910003FD);
+        const is_mov = (insn & 0xFFE0FFE0 == 0xAA0003E0);
+        const is_stp_callee = (insn & 0xFFC003E0) == 0xA90003E0; // STP pair callee-saved
+        if (is_stp or is_mov_fp or is_mov or is_stp_callee) {
+            entry_end = idx + 1;
+        } else break;
+    }
+
+    // Only scan after the entry region
     const scan_limit = @min(n_insns, 20);
-    var i: usize = 0;
+    var i: usize = entry_end;
     while (i < scan_limit) : (i += 1) {
         const insn_i = readInsn(code, i);
         // Must be MOV Xd, Xm (ORR Xd, XZR, Xm)
@@ -3750,158 +3778,139 @@ fn invertBranchOverBranch(code: []u8) void {
 ///   mov x1, x24
 ///   blr x9
 /// Fix parallel copy conflicts in function entry parameter moves.
-/// Pattern: after prologue, hoist emits sequential `mov xD, xS` to copy
-/// params from ABI registers to work registers. If a later move reads from
-/// a register that an earlier move already overwrote, we reorder the moves.
-fn fixEntryParamMoves(code: []u8) void {
+/// Hoist emits sequential `MOV xD, xS` to copy params from ABI registers (x0-x7)
+/// to work registers. If a later MOV reads a register that an earlier MOV already
+/// wrote, we have a conflict. For circular dependencies (swap), we insert an extra
+/// instruction using x9 as scratch.
+fn fixEntryParamMovesAlloc(allocator: std.mem.Allocator, code_list: *std.ArrayList(u8)) !void {
+    const code = code_list.items;
     if (code.len < 16) return;
     const n_insns = code.len / 4;
 
-    // Find the first mov after prologue (skip stp, mov fp,sp, and stp callee-saves)
+    // Find first MOV from ABI param register after prologue
     var first_mov: usize = 0;
-    for (0..@min(n_insns, 16)) |i| {
-        const insn = readInsn(code, i);
-        // Look for MOV Xd, Xm (ORR Xd, XZR, Xm): 0xAA0003E0 mask 0xFFE0FFE0
+    for (0..@min(n_insns, 16)) |idx| {
+        const insn = readInsn(code, idx);
         if (insn & 0xFFE0FFE0 == 0xAA0003E0) {
             const rm: u5 = @truncate((insn >> 16) & 0x1F);
-            // Must be reading from an ABI arg register (x0-x7)
-            if (rm <= 7) {
-                first_mov = i;
-                break;
-            }
+            if (rm <= 7) { first_mov = idx; break; }
         }
     }
     if (first_mov == 0) return;
 
-    // Collect consecutive mov instructions from param registers
+    // Collect consecutive param MOVs
     const MovInfo = struct { src: u5, dst: u5, pos: usize };
     var movs: [8]MovInfo = undefined;
     var n_movs: usize = 0;
-
-    var i = first_mov;
-    while (i < @min(n_insns, first_mov + 8) and n_movs < 8) : (i += 1) {
-        const insn = readInsn(code, i);
+    var idx = first_mov;
+    while (idx < @min(n_insns, first_mov + 8) and n_movs < 8) : (idx += 1) {
+        const insn = readInsn(code, idx);
         if (insn & 0xFFE0FFE0 == 0xAA0003E0) {
             const rd: u5 = @truncate(insn & 0x1F);
             const rm: u5 = @truncate((insn >> 16) & 0x1F);
             if (rm <= 7) {
-                movs[n_movs] = .{ .src = rm, .dst = rd, .pos = i };
+                movs[n_movs] = .{ .src = rm, .dst = rd, .pos = idx };
                 n_movs += 1;
             } else break;
         } else break;
     }
-
     if (n_movs < 2) return;
 
-    // Check for conflicts: mov[a] reads from a register that mov[b] (b < a, earlier)
-    // has already written.
+    // Check for conflicts
     var has_conflict = false;
     for (1..n_movs) |a| {
-        for (0..a) |b_idx| {
-            if (movs[b_idx].dst == movs[a].src) {
-                has_conflict = true;
-                break;
-            }
+        for (0..a) |b| {
+            if (movs[b].dst == movs[a].src) { has_conflict = true; break; }
         }
         if (has_conflict) break;
     }
-
     if (!has_conflict) return;
 
-    // Simple fix for 2-3 params: use x9 as scratch.
-    // Save the later params first using scratch, then do the moves.
-    // For 2 params: mov x9, x1; mov xA, x0; mov xB, x9
-    if (n_movs == 2) {
-        // movs[0] = first mov, movs[1] = second mov
-        // The conflict is movs[0] clobbers a source of movs[1]
-        // Fix: swap the order (do movs[1] first, then movs[0])
-        const insn0 = makeMovInsn(movs[0].dst, movs[0].src);
-        const insn1 = makeMovInsn(movs[1].dst, movs[1].src);
-        writeInsn(code, movs[0].pos, insn1);
-        writeInsn(code, movs[1].pos, insn0);
-    } else {
-        // General case: save all param values to scratch regs first
-        // Use x9-x15 as scratch (these are caller-saved temporaries)
-        // Phase 1: copy params to scratch
-        // Phase 2: copy scratch to destinations
-        // This requires 2*n instructions, but we only have n slots.
-        // Alternative: use topological sort like fixCallArgMoves.
-        
-        // Find the conflicting pair and swap just those two
-        for (1..n_movs) |a| {
-            for (0..a) |b_idx| {
-                if (movs[b_idx].dst == movs[a].src) {
-                    // Swap movs[a] and movs[b_idx] in execution order
-                    const insn_a = makeMovInsn(movs[a].dst, movs[a].src);
-                    const insn_b = makeMovInsn(movs[b_idx].dst, movs[b_idx].src);
-                    // But after swap, movs[a] (now first) writes to movs[b_idx].src?
-                    // No — the source is movs[a].src which is the param reg.
-                    // After swap: movs[b_idx] position executes movs[a] first.
-                    // movs[a].src reads from the original param reg (untouched).
-                    // Then movs[a] position executes movs[b_idx], which reads from
-                    // movs[b_idx].src — but we need to check it's not clobbered.
-                    
-                    // Simpler: use x9 as scratch for the conflicting value
-                    // Replace: mov xA, x0; mov xB, x1 (where xA=x1)
-                    // With:    mov x9, x1; mov xA, x0; mov xB, x9
-                    // But we have exactly 2 instruction slots, need 3.
-                    // Instead: swap the two instructions if safe.
-                    // After swap: mov xB, x1; mov xA, x0
-                    // Check: does xB == x0? If not, this is safe.
-                    if (movs[a].dst != movs[b_idx].src) {
-                        writeInsn(code, movs[b_idx].pos, insn_a);
-                        writeInsn(code, movs[a].pos, insn_b);
-                    } else {
-                        // Circular dependency: movs[a].dst == movs[b_idx].src AND
-                        // movs[b_idx].dst == movs[a].src. Use x9 as scratch.
-                        // Replace: mov xA, xS_a; mov xB, xS_b (circular)
-                        // With:    mov x9, xS_a; mov xA, xS_b; then need mov xB, x9
-                        // For n_movs >= 3, reuse a later slot for the x9 copy.
-                        // For n_movs == 2, look for a NOP or instruction we can replace.
-                        
-                        // Simple 2-move circular: XOR-swap
-                        // mov xA, xS_a (where xA == xS_b)
-                        // mov xB, xS_b (where xB == xS_a)
-                        // After swap: both read from each other's destination.
-                        // Use x9 as temp:
-                        //   slot[b]: mov x9, xS_b     (save the value that will be clobbered)
-                        //   slot[a]: mov xA, xS_a      (this clobbers xS_b since xA==xS_b)
-                        //   Need extra slot for: mov xB, x9
-                        
-                        // If there's a NOP or iconst after the MOVs, overwrite it
-                        const scratch: u5 = 9;
-                        var found_slot: ?usize = null;
-                        // Look for a NOP (0xd503201f) right after the MOVs.
-                        // Do NOT overwrite MOVZ — those are real constants!
-                        var search_pos = movs[n_movs - 1].pos + 1;
-                        const max_search = @min(n_insns, search_pos + 4);
-                        while (search_pos < max_search) : (search_pos += 1) {
-                            const probe = readInsn(code, search_pos);
-                            if (probe == 0xd503201f) { // NOP only
-                                found_slot = search_pos;
-                                break;
-                            }
-                        }
-                        
-                        if (found_slot) |slot| {
-                            // Parallel copy for circular pair:
-                            // a wants: a.dst = a.src (which is b.dst)
-                            // b wants: b.dst = b.src (which is a.dst)
-                            // Fix: save a.src (=b.dst) to scratch, do b, then a from scratch
-                            writeInsn(code, movs[b_idx].pos, makeMovInsn(scratch, movs[a].src)); // Save the value that b will clobber
-                            writeInsn(code, movs[a].pos, makeMovInsn(movs[b_idx].dst, movs[b_idx].src)); // Do b's move
-                            writeInsn(code, slot, makeMovInsn(movs[a].dst, scratch)); // Do a's move from scratch
-                        } else {
-                            // Last resort: use EOR-swap (no extra slot needed)
-                            // EOR xA, xA, xB; EOR xB, xB, xA; EOR xA, xA, xB
-                            // But this needs 3 slots and we only have 2.
-                            // For now, fall back to no fix — better than panic.
-                            return;
-                        }
-                    }
-                    return;
+    // Resolve using parallel copy algorithm with x9 as scratch.
+    // Build the desired assignment: for each MOV, we want dst = original_param[src].
+    // Topological sort: emit MOVs whose dst is not anyone's src first.
+    // For cycles, break with scratch register.
+    var emitted: [8]bool = .{ false, false, false, false, false, false, false, false };
+    var result: [12]u32 = undefined; // up to 8 + scratch overhead
+    var n_result: usize = 0;
+
+    // Repeatedly emit MOVs that don't clobber any unresolved source
+    var progress = true;
+    while (progress) {
+        progress = false;
+        for (0..n_movs) |mi| {
+            if (emitted[mi]) continue;
+            // Check: does this MOV's dst clobber a source that's still needed?
+            var clobbers_needed = false;
+            for (0..n_movs) |other| {
+                if (other == mi or emitted[other]) continue;
+                if (movs[mi].dst == movs[other].src) {
+                    clobbers_needed = true;
+                    break;
                 }
             }
+            if (!clobbers_needed) {
+                result[n_result] = makeMovInsn(movs[mi].dst, movs[mi].src);
+                n_result += 1;
+                emitted[mi] = true;
+                progress = true;
+            }
+        }
+    }
+
+    // Remaining unemitted MOVs form cycles. Break each with scratch (x9).
+    const scratch: u5 = 9;
+    for (0..n_movs) |mi| {
+        if (emitted[mi]) continue;
+        // Start of a cycle: mi -> ... -> mi
+        // Save mi's source to scratch, then emit chain, then emit last from scratch.
+        result[n_result] = makeMovInsn(scratch, movs[mi].src);
+        n_result += 1;
+        emitted[mi] = true;
+
+        // Follow the chain: find who reads from mi.dst
+        var current_dst = movs[mi].dst;
+        var found = true;
+        while (found) {
+            found = false;
+            for (0..n_movs) |nj| {
+                if (emitted[nj]) continue;
+                if (movs[nj].src == current_dst) {
+                    result[n_result] = makeMovInsn(movs[nj].dst, movs[nj].src);
+                    n_result += 1;
+                    emitted[nj] = true;
+                    current_dst = movs[nj].dst;
+                    found = true;
+                    break;
+                }
+            }
+        }
+        // Close cycle: the last destination gets scratch (original mi.src)
+        result[n_result] = makeMovInsn(movs[mi].dst, scratch);
+        n_result += 1;
+    }
+
+    // Replace original MOV slots with result instructions.
+    // If n_result <= n_movs, write in-place (pad with NOP if needed).
+    // If n_result > n_movs, we need to insert extra instructions.
+    if (n_result <= n_movs) {
+        for (0..n_movs) |mi| {
+            if (mi < n_result) {
+                writeInsn(code, movs[mi].pos, result[mi]);
+            } else {
+                writeInsn(code, movs[mi].pos, 0xD503201F); // NOP
+            }
+        }
+    } else {
+        // Write first n_movs results into existing slots
+        for (0..n_movs) |mi| {
+            writeInsn(code, movs[mi].pos, result[mi]);
+        }
+        // Insert remaining instructions after the last MOV position
+        const insert_byte_pos = (movs[n_movs - 1].pos + 1) * 4;
+        for (n_movs..n_result) |ri| {
+            const bytes: [4]u8 = @bitCast(result[ri]);
+            try code_list.insertSlice(allocator, insert_byte_pos + (ri - n_movs) * 4, &bytes);
         }
     }
 }

@@ -870,7 +870,13 @@ pub const Vm = struct {
         // Extract args from the VM stack (they're above the callee frame)
         const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
         const args = self.stack[bp .. bp + argc];
-        return compiled.callFromValues(args);
+        const result = compiled.callFromValues(args);
+
+        // Sync heap alloc_ptr back from JIT global (inline cons updates g_alloc_ptr
+        // but not heap.alloc_ptr directly)
+        hoist_backend.syncHeapFromGlobal(self.heap);
+
+        return result;
     }
 
     /// Try to JIT-compile a chunk if it's hot enough. Returns the compiled
