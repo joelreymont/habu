@@ -43,6 +43,8 @@ const BenchDef = struct {
     category: []const u8,
     /// Setup for JIT mode (defun with speed 3 safety 0 declarations)
     setup_jit: ?[]const u8 = null,
+    /// Additional JIT setup (evaluated separately so JIT fires per-defun)
+    setup_jit2: ?[]const u8 = null,
     /// Setup for interp mode (defun without optimization declarations)
     setup_interp: ?[]const u8 = null,
     /// Expression to time.
@@ -101,18 +103,13 @@ const bench_defs = [_]BenchDef{
     .{
         .name = "tak", .category = "recurse",
         .setup_jit =
-        \\(progn
-        \\  (defun tak (x y z) (declare (type fixnum x y z) (optimize (speed 3) (safety 0)))
+        \\(defun tak (x y z) (declare (type fixnum x y z) (optimize (speed 3) (safety 0)))
         \\    (if (<= x y) z (tak (tak (the fixnum (- x 1)) y z) (tak (the fixnum (- y 1)) z x) (tak (the fixnum (- z 1)) x y))))
-        \\  (defun bench-tak () (declare (optimize (speed 3) (safety 0)))
-        \\    (let ((i 0)) (while (< i 1000) (tak 18 12 6) (setq i (+ i 1))))))
         ,
         .setup_interp =
-        \\(progn
-        \\  (defun tak (x y z) (if (<= x y) z (tak (tak (- x 1) y z) (tak (- y 1) z x) (tak (- z 1) x y))))
-        \\  (defun bench-tak () (let ((i 0)) (while (< i 1000) (tak 18 12 6) (setq i (+ i 1))))))
+        \\(defun tak (x y z) (if (<= x y) z (tak (tak (- x 1) y z) (tak (- y 1) z x) (tak (- z 1) x y))))
         ,
-        .expr = "(bench-tak)",
+        .expr = "(let ((i 0)) (while (< i 1000) (tak 18 12 6) (setq i (+ i 1))))",
     },
     .{
         .name = "ack", .category = "recurse",
@@ -123,8 +120,7 @@ const bench_defs = [_]BenchDef{
     .{
         .name = "nqueens10", .category = "recurse",
         .setup_jit =
-        \\(progn
-        \\  (defun nqueens-safe-p (col placed row)
+        \\(defun nqueens-safe-p (col placed row)
         \\    (declare (optimize (speed 3) (safety 0)))
         \\    (if (null placed) t
         \\        (let ((c (car placed)))
@@ -133,6 +129,9 @@ const bench_defs = [_]BenchDef{
         \\                  (nqueens-safe-p col (cdr placed) (+ row 1))
         \\                  nil)
         \\              nil))))
+        ,
+        .setup_jit2 =
+        \\(progn
         \\  (defun nqueens-solve (n row placed)
         \\    (declare (optimize (speed 3) (safety 0)))
         \\    (if (= row n) 1
@@ -142,9 +141,7 @@ const bench_defs = [_]BenchDef{
         \\              (setq count (+ count (nqueens-solve n (+ row 1) (cons col placed)))))
         \\            (setq col (+ col 1)))
         \\          count)))
-        \\  (defun nqueens (n)
-        \\    (declare (optimize (speed 3) (safety 0)))
-        \\    (nqueens-solve n 0 nil)))
+        \\  (defun nqueens (n) (nqueens-solve n 0 nil)))
         ,
         .setup_interp =
         \\(progn
@@ -346,10 +343,15 @@ pub fn main() !void {
             w.interface.flush() catch {};
         }
 
-        // Choose setup based on mode
-        const setup = if (opts.mode == .jit) def.setup_jit else def.setup_interp;
-
-        if (setup) |s| {
+        // Choose setup based on mode — evaluate each defun separately so JIT fires per form
+        const setups: [3]?[]const u8 = .{
+            if (opts.mode == .jit) def.setup_jit else def.setup_interp,
+            if (opts.mode == .jit) def.setup_jit2 else null,
+            null,
+        };
+        var setup_failed = false;
+        for (setups) |maybe_s| {
+            const s = maybe_s orelse continue;
             _ = repl.eval(s) catch |err| {
                 benches[i] = .{ .name = def.name, .ns = 0, .err_name = @errorName(err), .category = def.category };
                 {
@@ -358,9 +360,11 @@ pub fn main() !void {
                     w.interface.print(" ERR(setup): {s}\n", .{@errorName(err)}) catch {};
                     w.interface.flush() catch {};
                 }
-                continue;
+                setup_failed = true;
+                break;
             };
         }
+        if (setup_failed) continue;
 
         // Warmup
         _ = repl.eval(def.expr) catch |err| {
