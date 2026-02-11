@@ -321,6 +321,47 @@ fn getPredicateOperand(node: *const Ir) ?*const Ir {
 - Prefer slices over ArrayList when size is known
 - Use comptime for constant data
 
+### Benchmarks - TWO MODES (BLOCKING REQUIREMENT)
+
+**Every benchmark MUST have BOTH a JIT and an interpreter variant.**
+
+The benchmark harness (`bench/comprehensive_bench.zig`) runs in two modes:
+- `--jit` (default): Uses `setup_jit` — every `defun` MUST include `(declare (optimize (speed 3) (safety 0)))` to trigger JIT compilation
+- `--interp`: Uses `setup_interp` — plain `defun` without optimization declarations
+
+**Rules:**
+
+1. **Every `BenchDef` MUST populate both `setup_jit` and `setup_interp`**
+2. **`setup_jit` MUST wrap the body in `(defun name () (declare (optimize (speed 3) (safety 0))) ...)`**
+3. **`setup_interp` MUST wrap the body in `(defun name () ...)`** (no declare)
+4. **The `expr` field is shared between modes** — it calls the defined function
+5. **Never benchmark raw expressions** — always wrap in a `defun` so JIT can compile it
+6. **Multi-function benchmarks** (e.g., nqueens): each `defun` in `setup_jit` needs its own `(declare (optimize (speed 3) (safety 0)))`. Use `setup_jit2` for additional definitions that need separate eval (JIT fires per top-level form).
+
+```zig
+// WRONG - missing setup_jit, won't JIT-compile
+.{ .name = "my_bench", .category = "arith",
+   .setup_interp = "(defun my-bench () (+ 1 2))",
+   .expr = "(my-bench)" },
+
+// WRONG - setup_jit missing declare, runs interpreted even in JIT mode
+.{ .name = "my_bench", .category = "arith",
+   .setup_jit = "(defun my-bench () (+ 1 2))",
+   .setup_interp = "(defun my-bench () (+ 1 2))",
+   .expr = "(my-bench)" },
+
+// RIGHT - both modes, JIT has speed 3 safety 0
+.{ .name = "my_bench", .category = "arith",
+   .setup_jit = "(defun my-bench () " ++ decl_jit ++ " (+ 1 2))",
+   .setup_interp = "(defun my-bench () (+ 1 2))",
+   .expr = "(my-bench)" },
+```
+
+**Why this matters:**
+- Without `(declare (optimize (speed 3) (safety 0)))`, JIT mode silently runs interpreted — benchmark numbers are meaningless
+- Comparing JIT vs interp reveals which benchmarks benefit from compilation and where to focus optimization effort
+- SBCL comparisons (`bench/comprehensive.lisp`) use `(declare (optimize (speed 3) (safety 0)))` — Habu must match
+
 ### Task Tracking - MANDATORY (BLOCKING REQUIREMENT)
 
 **ALWAYS create dots for new multi-step work. This is non-negotiable.**

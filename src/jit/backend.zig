@@ -2757,17 +2757,19 @@ pub fn compileIrWithKnownFns(
         }
     }
 
-    // Tail-call optimization: pure tail-recursive functions → loop.
-    // Only if: has tail self-calls AND no non-tail self-calls.
-    // Partial TCO (mixed tail/non-tail) blocked by hoist phi copy issues
-    // for backward jumps with block params in presence of register pressure.
-    const use_tco = hasSelfTailCalls(lambda.body, name) and
-        !hasNonTailSelfCalls(lambda.body, name);
+    // Tail-call optimization: functions with self-tail-calls → loop.
+    // Partial TCO: tail self-calls become jumps to header, non-tail self-calls
+    // remain as call_indirect. This eliminates prologue/epilogue overhead for
+    // tail calls while keeping non-tail calls correct.
+    const use_tco = hasSelfTailCalls(lambda.body, name);
 
     if (use_tco) {
-        // TCO converts recursion to a loop — function is no longer recursive
-        translator.is_recursive = false;
-        // But may still have cross-calls (cons, known functions)
+        // Partial TCO: tail self-calls become jumps. If there are still non-tail
+        // self-calls, the function remains recursive (needs self-pointer).
+        if (!hasNonTailSelfCalls(lambda.body, name)) {
+            translator.is_recursive = false;
+        }
+        // May still have cross-calls (cons, known functions)
         translator.has_cross_calls = containsCons(lambda.body) or
             containsPrimitiveCalls(lambda.body, name) or
             (if (known_fns) |kf| kf.count() > 0 and hasNonSelfCalls(lambda.body, name) else false);
