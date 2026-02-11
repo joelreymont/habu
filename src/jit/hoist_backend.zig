@@ -820,12 +820,42 @@ pub const IrTranslator = struct {
             then_ir = else_ir;
             else_ir = tmp;
         }
-        // For nilp as condition: emit icmp eq(val, 0) directly (I8)
-        // instead of icmp + select(t, nil) + brif(tagged)
+        // For predicate conditions, emit direct I8 comparisons instead of
+        // the full tagged select + brif chain.
         const cond_val = if (actual_cond.* == .nilp) blk: {
+            // nilp: icmp eq(val, 0)
             const inner_val = try self.translate(actual_cond.nilp.operand);
             const zero = try self.cachedIconst(0);
             break :blk try self.b.icmp(I8, IntCC.eq, inner_val, zero);
+        } else if (actual_cond.* == .oddp) blk: {
+            // oddp: band(val, 2) != 0 → test bit 1 of tagged value
+            const inner_val = try self.translate(actual_cond.oddp.operand);
+            const two = try self.cachedIconst(2);
+            const bit = try self.b.band(I64, inner_val, two);
+            const zero = try self.cachedIconst(0);
+            break :blk try self.b.icmp(I8, IntCC.ne, bit, zero);
+        } else if (actual_cond.* == .evenp) blk: {
+            // evenp: band(val, 2) == 0 → test bit 1 of tagged value
+            const inner_val = try self.translate(actual_cond.evenp.operand);
+            const two = try self.cachedIconst(2);
+            const bit = try self.b.band(I64, inner_val, two);
+            const zero = try self.cachedIconst(0);
+            break :blk try self.b.icmp(I8, IntCC.eq, bit, zero);
+        } else if (actual_cond.* == .zerop) blk: {
+            // zerop: val == tagged_zero (1)
+            const inner_val = try self.translate(actual_cond.zerop.operand);
+            const tagged_zero = try self.cachedIconst(1);
+            break :blk try self.b.icmp(I8, IntCC.eq, inner_val, tagged_zero);
+        } else if (actual_cond.* == .consp) blk: {
+            // consp: (val & 0xF == 0) && val != 0
+            // For branch condition, just check val != 0 && low bits clear
+            const inner_val = try self.translate(actual_cond.consp.operand);
+            const mask = try self.cachedIconst(0xF);
+            const tag_bits = try self.b.band(I64, inner_val, mask);
+            const zero = try self.cachedIconst(0);
+            const is_tagged_zero = try self.b.icmp(I8, IntCC.eq, tag_bits, zero);
+            const is_non_nil = try self.b.icmp(I8, IntCC.ne, inner_val, zero);
+            break :blk try self.b.band(I8, is_tagged_zero, is_non_nil);
         } else try self.translate(actual_cond);
 
         const then_blk = try self.b.createBlock();
