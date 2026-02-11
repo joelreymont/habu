@@ -370,3 +370,18 @@ When a compiler backend (like hoist) emits sequential `mov` instructions for cal
 
 ### Stack Slot Offsets Must Account for Full Frame Layout
 Stack slot offsets baked into lowered code must account for ALL frame components: FP/LR save area, callee-saved register area, and outgoing stack space. If offsets only account for FP/LR (16 bytes), they overlap with callee-saved registers saved at SP+16..SP+N. During lowering, the callee-save count isn't finalized (determined by regalloc), creating a chicken-and-egg problem. Conservative reservation (assuming max callee saves) works but wastes stack space.
+
+### Inlining Tail-Recursive Functions as Loops
+Cross-function inlining for tail-recursive callees requires converting the callee's body to a loop at the hoist IR level. Key steps: (1) Create header block with phi params for callee parameters. (2) Jump from caller to header with translated arguments. (3) Set `tco_header`/`tco_exit` and `fn_name` to callee's name. (4) Translate callee body via `translateTCOExpr` — tail calls become jumps to header. (5) Non-tail exits jump to exit block. (6) Restore caller's TCO state. This eliminated ~350K BLR/RET pairs for nqueens-safe-p, reducing nqueens(10) from 3.75ms to 3.45ms.
+
+### TCO Exit Trampoline Elimination
+Nested if-expressions in TCO context generate trampoline blocks: `block14 → block11 → block8` for each return path. Detect "simple exit" branches (literals, variable refs) and jump directly to `tco_exit` instead of through merge blocks. This reduced nqueens(10) from 3.45ms to 3.37ms and eliminated 3 blocks from the IR.
+
+### Peephole Safety: Round-Trip MOV Detection
+When detecting `MOV xA,xB; MOV xB,xA` round-trip pairs for elimination, check ALL register references (rd, rn, rm) of intermediate instructions, not just MOV sources. Non-MOV instructions (CSET, CMP, etc.) may write to or read from the intermediate register. Only NOP both MOVs when the intermediate register is truly dead between them.
+
+### IR Deep Copy for Cross-Function Inlining
+To inline a function compiled in a previous REPL form, the callee's IR must survive arena deallocation. Create a dedicated `ArenaAllocator` per compiled function, deep-copy the IR body and parameter names into it, and store the arena in `CompiledFn`. The `deepCopyIr` function only needs to handle the subset of IR nodes that pass `canTranslate`.
+
+### coalesceMovs Only for Safe ALU Ops
+The `coalesceMovs` peephole pass must only coalesce MOV instructions that follow safe ALU operations (ADD, SUB, MADD). Coalescing MOV after conditional operations (CSET, SELECT) or across control flow boundaries breaks correctness because multiple branches may write to the same destination register.
