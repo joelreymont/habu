@@ -488,6 +488,16 @@ pub const IrTranslator = struct {
     /// Params are untagged at entry, result is re-tagged at return.
     /// Self-calls use untagged convention (no tag/untag at call boundary).
     untagged: bool = false,
+
+    /// When true, emit fresh small constants in blocks containing calls.
+    /// Hoist's LICM moves cached constants to block0, forcing callee-saved regs.
+    /// We still cache in the loop header (hot path), but emit fresh copies in
+    /// blocks that contain call_indirect to avoid cross-call liveness.
+    local_consts: bool = false,
+
+    /// Tracks whether the current block will contain a call_indirect.
+    /// Set before translating a block that contains non-tail self-calls.
+    in_call_block: bool = false,
     /// Set during translateLoop's LICM preEmitConstants to enable hoisting
     /// of inline cons constants (g_alloc_ptr, 16, 8) out of loops.
     in_loop_preemit: bool = false,
@@ -528,7 +538,24 @@ pub const IrTranslator = struct {
     /// Emit an iconst, reusing a previously emitted value for the same constant.
     /// This provides LICM for loop-invariant constants: a constant emitted in the
     /// entry block is reusable in all subsequent blocks (SSA dominance).
+    ///
+    /// When `local_consts` is set (functions with calls), small constants
+    /// (fitting in a single MOV immediate) are emitted fresh at each use-site
+    /// to avoid hoist LICM hoisting them to block0 and forcing callee-saved regs.
+    /// Large constants (function pointers, 3+ instruction MOVZ/MOVK sequences)
+    /// are still cached since saving/restoring is cheaper than rematerializing.
     fn cachedIconst(self: *IrTranslator, val: i64) !HoistValue {
+        // When local_consts is set, don't cache small constants at all.
+        // This ensures each block gets its own iconst that the regalloc
+        // can handle locally, avoiding callee-saved register pressure.
+        // Large constants (function pointers: >16-bit) are still cached
+        // since 3-instruction MOVZ+MOVK+MOVK is expensive to rematerialize.
+        if (self.local_consts) {
+            const uval: u64 = @bitCast(val);
+            if (uval <= 0xFFFF or (~uval) <= 0xFFFF) {
+                return try self.b.iconst(I64, val);
+            }
+        }
         if (self.const_cache.get(val)) |cached| return cached;
         const result = try self.b.iconst(I64, val);
         try self.const_cache.put(val, result);
@@ -1431,7 +1458,14 @@ pub const IrTranslator = struct {
         // Pre-emit constants in ENTRY block (before jump to header).
         // This ensures constants dominate the loop body but are NOT inside the
         // loop — they're executed once at function entry, not every iteration.
-        try self.preEmitConstants(body_ir);
+        //
+        // Skip for functions with calls in the loop (local_consts): pre-emitted
+        // constants in block0 force callee-saved registers since their live ranges
+        // span the entire loop including call sites. Instead, let translate()
+        // emit them on-demand in the blocks that use them.
+        if (!self.local_consts) {
+            try self.preEmitConstants(body_ir);
+        }
 
         // Jump from entry to header with initial param values
         var init_vals: [8]HoistValue = undefined;
@@ -1471,11 +1505,28 @@ pub const IrTranslator = struct {
         switch (ir.*) {
             .tailcall => |tc| {
                 if (isCallTargetSelf(tc.func, self.fn_name)) {
+                    // If any tail-call arg contains a non-tail self-call (call_indirect),
+                    // mark this block so cachedIconst emits fresh small constants.
+                    // This prevents constants from being shared with the loop header,
+                    // which would force them into callee-saved regs across the call.
+                    if (self.local_consts) {
+                        for (tc.args) |arg| {
+                            if (detectSelfCalls(arg, self.fn_name)) {
+                                self.in_call_block = true;
+                                break;
+                            }
+                        }
+                    }
+
                     // Tail call → jump to header with new args
                     var arg_vals: [8]HoistValue = undefined;
                     for (tc.args, 0..) |arg, i| {
                         arg_vals[i] = try self.translate(arg);
                     }
+
+                    // Reset call block flag after translating args
+                    self.in_call_block = false;
+
                     try self.b.jumpArgs(self.tco_header.?, arg_vals[0..tc.args.len]);
 
                     // Signal that this code path terminated — no value flows forward.
@@ -1718,11 +1769,18 @@ pub const IrTranslator = struct {
     }
 
     fn translateSelfCall(self: *IrTranslator, args: []const *const Ir) anyerror!HoistValue {
+        // Mark this block as containing a call so cachedIconst emits fresh
+        // small constants instead of reusing cached values from loop header.
+        const was_in_call = self.in_call_block;
+        if (self.local_consts) self.in_call_block = true;
+
         // Translate user args first (while parameter registers are still valid)
         var translated_args: [16]HoistValue = undefined;
         for (args, 0..) |arg, i| {
             translated_args[i] = try self.translate(arg);
         }
+
+        self.in_call_block = was_in_call;
 
         // In untagged mode, re-tag args before self-call since the function
         // entry always untags. Result also comes back tagged, so untag it.
@@ -2774,6 +2832,12 @@ pub fn compileIrWithKnownFns(
             containsPrimitiveCalls(lambda.body, name) or
             (if (known_fns) |kf| kf.count() > 0 and hasNonSelfCalls(lambda.body, name) else false);
     }
+
+    // Emit small constants locally (not cached) when a TCO function has
+    // non-tail self-calls. Hoist's optimizer moves cached constants to block0,
+    // forcing callee-saved registers since their live ranges span call sites.
+    // Only enabled for TCO functions where the loop header creates the problem.
+    translator.local_consts = use_tco and hasNonTailSelfCalls(lambda.body, name);
 
     var result_i64: HoistValue = undefined;
 
