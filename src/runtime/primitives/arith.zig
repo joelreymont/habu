@@ -344,6 +344,28 @@ pub fn min_val(a: Value, b: Value) Error!Value {
 
 /// Numeric equality
 pub fn numEq(a: Value, b: Value) bool {
+    // Complex comparison
+    if (a.typeKind() == .complex or b.typeKind() == .complex) {
+        if (a.typeKind() != .complex or b.typeKind() != .complex) return false;
+        const ca = a.toPtr(objects.Complex);
+        const cb = b.toPtr(objects.Complex);
+        return ca.real == cb.real and ca.imag == cb.imag;
+    }
+
+    // Float comparison (contagion)
+    if (isFloatKind(a) or isFloatKind(b)) {
+        const af = toNumber(a) catch return false;
+        const bf = toNumber(b) catch return false;
+        return af == bf;
+    }
+
+    // Rational comparison
+    if (a.typeKind() == .rational or b.typeKind() == .rational) {
+        const ra = toRational(a) catch return false;
+        const rb = toRational(b) catch return false;
+        return ra.num == rb.num and ra.den == rb.den;
+    }
+
     // Handle bignum comparisons
     if (a.isBignum() or b.isBignum()) {
         if (!a.isFixnum() and !a.isBignum()) return false;
@@ -363,6 +385,14 @@ pub fn lt(a: Value, b: Value) Error!bool {
         const af = try toNumber(a);
         const bf = try toNumber(b);
         return af < bf;
+    }
+
+    // Rational comparison
+    if (a.typeKind() == .rational or b.typeKind() == .rational) {
+        const ra = try toRational(a);
+        const rb = try toRational(b);
+        // a/b < c/d iff a*d < c*b (when b,d > 0, which normalize ensures)
+        return ra.num * rb.den < rb.num * ra.den;
     }
 
     // Handle bignum comparisons
@@ -386,6 +416,13 @@ pub fn gt(a: Value, b: Value) Error!bool {
         return af > bf;
     }
 
+    // Rational comparison
+    if (a.typeKind() == .rational or b.typeKind() == .rational) {
+        const ra = try toRational(a);
+        const rb = try toRational(b);
+        return ra.num * rb.den > rb.num * ra.den;
+    }
+
     // Handle bignum comparisons
     if (a.isBignum() or b.isBignum()) {
         if (!a.isFixnum() and !a.isBignum()) return false;
@@ -407,6 +444,13 @@ pub fn le(a: Value, b: Value) Error!bool {
         return af <= bf;
     }
 
+    // Rational comparison
+    if (a.typeKind() == .rational or b.typeKind() == .rational) {
+        const ra = try toRational(a);
+        const rb = try toRational(b);
+        return ra.num * rb.den <= rb.num * ra.den;
+    }
+
     // Handle bignum comparisons
     if (a.isBignum() or b.isBignum()) {
         if (!a.isFixnum() and !a.isBignum()) return false;
@@ -426,6 +470,13 @@ pub fn ge(a: Value, b: Value) Error!bool {
         const af = try toNumber(a);
         const bf = try toNumber(b);
         return af >= bf;
+    }
+
+    // Rational comparison
+    if (a.typeKind() == .rational or b.typeKind() == .rational) {
+        const ra = try toRational(a);
+        const rb = try toRational(b);
+        return ra.num * rb.den >= rb.num * ra.den;
     }
 
     // Handle bignum comparisons
@@ -1160,6 +1211,8 @@ fn divRational(heap: *Heap, a: Value, b: Value) Error!Value {
     const den = ra.den * rb.num;
 
     const rat = objects.Rational.make(num, den);
+    // If denominator is 1 after normalization, return fixnum
+    if (rat.denominator == 1) return Value.makeFixnum(rat.numerator);
     const ptr = try heap.alloc(objects.Rational);
     ptr.* = rat;
     return Value.makeRational(ptr);

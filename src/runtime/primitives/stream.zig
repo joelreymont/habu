@@ -68,7 +68,29 @@ pub fn primReadLine(heap: *Heap, args: []const Value) !Value {
 
     if (stream.closed) return error.StreamClosed;
     if (!stream.isInput()) return error.NotInputStreamError;
-    if (stream.stream_type != .file) return error.InvalidArgument;
+
+    // Handle string input streams
+    if (stream.stream_type == .string) {
+        if (stream.data_ptr == 0) return error.InvalidArgument;
+        const data: [*]const u8 = @ptrFromInt(stream.data_ptr);
+        const len = stream.length;
+        const pos = stream.position;
+
+        if (pos >= len) {
+            return try heap.allocBaseString("");
+        }
+
+        var line_end = pos;
+        while (line_end < len and data[line_end] != '\n') : (line_end += 1) {}
+
+        const line = data[pos..line_end];
+        stream.position = if (line_end < len) line_end + 1 else line_end;
+
+        return try heap.allocBaseString(line);
+    }
+
+    if (stream.stream_type != .file and stream.stream_type != .stdin)
+        return error.InvalidArgument;
 
     const file = std.fs.File{ .handle = stream.file_fd };
 
@@ -437,7 +459,7 @@ pub fn primWriteString(heap: *Heap, args: []const Value) !Value {
 }
 
 /// Write bytes to a string output stream, growing buffer if needed
-fn streamWriteBytes(heap: *Heap, stream: *Stream, data: []const u8) !void {
+fn streamWriteBytes(_: *Heap, stream: *Stream, data: []const u8) !void {
     const new_len = stream.length + data.len;
 
     // Check if we need to grow the buffer
@@ -449,12 +471,12 @@ fn streamWriteBytes(heap: *Heap, stream: *Stream, data: []const u8) !void {
         else
             null;
 
-        const new_buf = try heap.backing_allocator.alloc(u8, new_capacity);
+        const new_buf = try std.heap.page_allocator.alloc(u8, new_capacity);
 
         // Copy old data if any
         if (old_buf) |old| {
             @memcpy(new_buf[0..stream.length], old[0..stream.length]);
-            heap.backing_allocator.free(old[0..stream.position]);
+            std.heap.page_allocator.free(old[0..stream.position]);
         }
 
         stream.data_ptr = @intFromPtr(new_buf.ptr);
@@ -480,10 +502,10 @@ pub fn primGetOutputStreamString(heap: *Heap, args: []const Value) !Value {
         return error.InvalidArgument;
     }
 
-    if (stream.data_ptr == 0) {
+    if (stream.data_ptr == 0 or stream.length == 0) {
         return try heap.allocBaseString("");
     }
 
-    const buf: *std.ArrayList(u8) = @ptrFromInt(stream.data_ptr);
-    return try heap.allocBaseString(buf.items);
+    const buf: [*]u8 = @ptrFromInt(stream.data_ptr);
+    return try heap.allocBaseString(buf[0..stream.length]);
 }

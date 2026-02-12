@@ -2133,7 +2133,13 @@ pub const Repl = struct {
             // Parens balanced - evaluate
             const trimmed_input = std.mem.trim(u8, input_buf.items, " \t\r\n");
             if (trimmed_input.len > 0) {
-                try self.evalPrint(trimmed_input, writer);
+                self.evalPrint(trimmed_input, writer) catch |err| {
+                    // Evaluation errors (user error, unhandled throw, type mismatch, etc.)
+                    // are already printed by evalPrint. Continue the REPL.
+                    // Only propagate fatal errors.
+                    if (err == error.OutOfMemory) return err;
+                    // Non-fatal: continue REPL
+                };
                 try writer.flush();
             }
             input_buf.clearRetainingCapacity();
@@ -2229,7 +2235,22 @@ pub const Repl = struct {
         var err_info: ?ErrorInfo = null;
         const result = if (self.evalCapturingError(source, &err_info)) |value| value else |err| {
             if (err_info) |info| {
-                try self.printDiagnostic(source, info, writer);
+                // For user errors / unhandled throws, try to show the actual message
+                if (info.kind == .runtime_user_error and !self.vm.last_error_value.isNil()) {
+                    const msg = self.vm.last_error_value;
+                    self.vm.last_error_value = Value.nil;
+                    if (msg.isString()) {
+                        try writer.print("\x1b[1;31merror\x1b[0m: ", .{});
+                        try self.printValue(msg, writer);
+                        try writer.writeAll("\n");
+                    } else {
+                        try writer.print("\x1b[1;31merror\x1b[0m: ", .{});
+                        try self.printValue(msg, writer);
+                        try writer.writeAll("\n");
+                    }
+                } else {
+                    try self.printDiagnostic(source, info, writer);
+                }
             } else {
                 try writer.print("Error: {s}\n", .{@errorName(err)});
             }
@@ -2411,8 +2432,12 @@ pub const Repl = struct {
         self.syncChunkPools(&self.vm);
 
         const result = if (self.runVmPreserveMacroState(&self.vm, chunk.toPtr(runtime.objects.Chunk))) |value| value else |err| {
+            const kind: ErrorKind = if (err == error.UserError or err == error.UnhandledThrow)
+                .runtime_user_error
+            else
+                .runtime_type_mismatch;
             err_info.* = .{
-                .kind = if (err == error.UserError) .runtime_user_error else .runtime_type_mismatch,
+                .kind = kind,
                 .line = 1,
                 .column = 1,
                 .text = "",
@@ -2436,7 +2461,7 @@ pub const Repl = struct {
             .t => try writer.writeAll("t"),
             .unbound => try writer.writeAll("#<unbound>"),
             .fixnum => try io.writeFixnumTo(val.toFixnum(), writer),
-            .float => try writer.print("{d}", .{val.toFloat()}),
+            .float => try io.writeFloatTo(val.toFloat(), writer),
             .char => {
                 const cp = val.toCharacter();
                 if (cp == ' ') {

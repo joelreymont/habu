@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""Habu Performance Regression Test.
+
+Runs benchmarks and compares against baseline timings in tests/perf-baseline.json.
+
+Usage:
+    tools/perf-test            # Run and compare
+    tools/perf-test --update   # Run and update baselines
+    tools/perf-test --verbose  # Show detailed output
+    tools/perf-test --iters=5  # Number of iterations (default 3)
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASELINE = os.path.join(ROOT, "tests", "perf-baseline.json")
+HABU = os.path.join(ROOT, "zig-out", "bin", "habu")
+
+
+def parse_args():
+    update = False
+    verbose = False
+    iters = 1  # Single iteration to avoid heap exhaustion on long benchmarks
+    for arg in sys.argv[1:]:
+        if arg == "--update":
+            update = True
+        elif arg == "--verbose":
+            verbose = True
+        elif arg.startswith("--iters="):
+            iters = int(arg.split("=")[1])
+    return update, verbose, iters
+
+
+def run_habu(lisp_code: str, timeout_s: int = 120) -> str | None:
+    """Run Lisp code through habu REPL, return the last non-empty result line."""
+    try:
+        result = subprocess.run(
+            [HABU],
+            input=lisp_code,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+        )
+        # Extract all "🐍 <value>" lines, skip banner and empty
+        values = []
+        for line in result.stdout.split("\n"):
+            m = re.match(r"^🐍\s*(.*)", line)
+            if m:
+                val = m.group(1).strip()
+                if val and not val.startswith("Habu Lisp"):
+                    values.append(val)
+        return values[-1] if values else None
+    except subprocess.TimeoutExpired:
+        return None
+    except Exception:
+        return None
+
+
+def build():
+    subprocess.run(["zig", "build"], cwd=ROOT, capture_output=True)
+
+
+def main():
+    update, verbose, iters = parse_args()
+
+    build()
+
+    if not os.path.exists(HABU):
+        print(f"ERROR: {HABU} not found. Run 'zig build' first.")
+        sys.exit(1)
+
+    with open(BASELINE) as f:
+        data = json.load(f)
+
+    tolerance = data.get("tolerance_pct", 30)
+    benchmarks = data["benchmarks"]
+
+    total = 0
+    passed = 0
+    failed = 0
+    failures = []
+    new_values = {}
+
+    for name, spec in benchmarks.items():
+        total += 1
+        setup = spec.get("setup") or ""
+        expr = spec["expr"]
+        baseline_us = spec["us"]
+
+        # Build timing code: run expr `iters` times, report best time in microseconds
+        # IMPORTANT: REPL reads line-by-line, so we must put each form on a single line
+        lines = []
+        if setup:
+            if isinstance(setup, list):
+                for s in setup:
+                    lines.append(" ".join(s.split()))
+            else:
+                lines.append(" ".join(setup.split()))  # flatten to one line
+
+        timing_expr = f"(let ((best 999999999999)) (dotimes (iter {iters} best) (let ((start (get-internal-real-time))) {expr} (let ((elapsed (- (get-internal-real-time) start))) (when (< elapsed best) (setq best elapsed))))))"
+        lines.append(" ".join(timing_expr.split()))
+        timing_code = "\n".join(lines) + "\n"
+
+        raw = run_habu(timing_code)
+
+        if raw is None or not raw.isdigit():
+            failed += 1
+            failures.append(f"  ✗ {name}: failed to get timing (got: {raw!r})")
+            continue
+
+        actual_us = int(raw)
+        new_values[name] = actual_us
+
+        threshold_us = int(baseline_us * (1 + tolerance / 100.0))
+        ratio = actual_us / baseline_us if baseline_us > 0 else float("inf")
+
+        if actual_us <= threshold_us:
+            passed += 1
+            if verbose:
+                ms_actual = actual_us / 1000
+                ms_baseline = baseline_us / 1000
+                print(f"  ✓ {name}: {ms_actual:.1f}ms (baseline: {ms_baseline:.1f}ms, {ratio:.2f}x)")
+        else:
+            failed += 1
+            ms_actual = actual_us / 1000
+            ms_baseline = baseline_us / 1000
+            ms_threshold = threshold_us / 1000
+            msg = f"  ✗ {name}: {ms_actual:.1f}ms > {ms_threshold:.1f}ms threshold (baseline: {ms_baseline:.1f}ms, {ratio:.2f}x)"
+            failures.append(msg)
+            if verbose:
+                print(msg)
+
+    print()
+    print(f"Performance tests: {total} total, {passed} passed, {failed} failed (tolerance: {tolerance}%)")
+
+    if failures:
+        print()
+        print("Regressions:")
+        for f in failures:
+            print(f)
+
+    if update:
+        print()
+        print("Updating baselines...")
+        for name, us in new_values.items():
+            if name in benchmarks:
+                benchmarks[name]["us"] = us
+        with open(BASELINE, "w") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
+        print(f"Updated {len(new_values)} baselines in {BASELINE}")
+
+    if failed > 0:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

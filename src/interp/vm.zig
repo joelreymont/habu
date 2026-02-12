@@ -343,6 +343,10 @@ pub const Vm = struct {
     pending_error: ?anyerror,
     is_unwinding: bool,
 
+    /// Last condition value from (error ...) for REPL diagnostics.
+    /// Set by error_user before doThrow; cleared on successful catch.
+    last_error_value: Value,
+
     /// Saved return-from state for unwinding through unwind-protect
     pending_block_name: Value,
     pending_block_value: Value,
@@ -488,6 +492,7 @@ pub const Vm = struct {
             .pending_throw_value = Value.nil,
             .pending_error = null,
             .is_unwinding = false,
+            .last_error_value = Value.nil,
             .pending_block_name = Value.nil,
             .pending_block_value = Value.nil,
             .is_returning_from_block = false,
@@ -756,6 +761,21 @@ pub const Vm = struct {
     }
 
     /// Allocate an uninitialized string, running GC if needed
+    /// Get string bytes from a string designator (string, symbol, or character).
+    fn getStringDesignator(self: *Vm, val: Value) Error![]const u8 {
+        _ = self;
+        if (val.isString()) {
+            return val.toPtr(String).bytes();
+        } else if (val.isSymbol()) {
+            return val.toPtr(runtime.Symbol).getName();
+        } else if (val.isCharacter()) {
+            // Single character - return as 1-byte slice (only for ASCII)
+            return error.TypeMismatch; // TODO: support character designators
+        } else {
+            return error.TypeMismatch;
+        }
+    }
+
     pub fn allocStringUninitialized(self: *Vm, length: usize) error{ OutOfMemory, Overflow }!Value {
         return if (self.heap.allocStringUninitialized(length)) |val| val else |err| switch (err) {
             error.OutOfMemory => {
@@ -2079,9 +2099,12 @@ pub const Vm = struct {
 
             .error_user => {
                 const msg_val = try self.pop();
-                // Accept any value (not just strings) for flexibility
-                _ = msg_val;
-                return error.UserError;
+                // Store for REPL diagnostics in case throw is unhandled
+                self.last_error_value = msg_val;
+                // Signal as CL simple-error condition: (simple-error . (format-control . format-args))
+                const payload = try self.allocCons(msg_val, Value.nil);
+                const condition = try self.allocCons(self.builtins.sym_simple_error, payload);
+                try self.doThrow(self.builtins.sym_condition_tag, condition);
             },
 
             .list_last => {
@@ -2576,12 +2599,12 @@ pub const Vm = struct {
                     .string => {
                         const str = str_val.toPtr(runtime.String);
                         if (idx >= str.length) return error.TypeMismatch;
-                        try self.push(Value.makeFixnum(str.bytes()[idx]));
+                        try self.push(Value.makeCharacter(str.bytes()[idx]));
                     },
                     .string32 => {
                         const str32 = str_val.toPtr(runtime.String32);
                         if (idx >= str32.length) return error.TypeMismatch;
-                        try self.push(Value.makeFixnum(@intCast(str32.codepoints()[idx])));
+                        try self.push(Value.makeCharacter(@intCast(str32.codepoints()[idx])));
                     },
                     else => return error.TypeMismatch,
                 }
@@ -3348,15 +3371,12 @@ pub const Vm = struct {
                 if (self.sp < 1) return error.StackUnderflow;
                 const str_idx = self.sp - 1;
                 const str_val = self.stack[str_idx];
-                if (!str_val.isString()) return error.TypeMismatch;
-                const src_len = str_val.toPtr(String).length;
+                const src_bytes = try self.getStringDesignator(str_val);
+                const src_len = src_bytes.len;
                 const result = try self.allocStringUninitialized(src_len);
                 const dst = result.toPtr(String);
-                const src = self.stack[str_idx].toPtr(String);
-                const src_bytes = src.bytes();
-                std.debug.assert(src_bytes.len == src_len);
-                for (src_bytes, 0..) |c, i| {
-                    dst.data[i] = std.ascii.toUpper(c);
+                for (src_bytes, 0..) |c, idx| {
+                    dst.data[idx] = std.ascii.toUpper(c);
                 }
                 self.sp -= 1;
                 try self.push(result);
@@ -3365,15 +3385,12 @@ pub const Vm = struct {
                 if (self.sp < 1) return error.StackUnderflow;
                 const str_idx = self.sp - 1;
                 const str_val = self.stack[str_idx];
-                if (!str_val.isString()) return error.TypeMismatch;
-                const src_len = str_val.toPtr(String).length;
-                const result = try self.allocStringUninitialized(src_len);
+                const src_bytes_dc = try self.getStringDesignator(str_val);
+                const src_len_dc = src_bytes_dc.len;
+                const result = try self.allocStringUninitialized(src_len_dc);
                 const dst = result.toPtr(String);
-                const src = self.stack[str_idx].toPtr(String);
-                const src_bytes = src.bytes();
-                std.debug.assert(src_bytes.len == src_len);
-                for (src_bytes, 0..) |c, i| {
-                    dst.data[i] = std.ascii.toLower(c);
+                for (src_bytes_dc, 0..) |c, idx| {
+                    dst.data[idx] = std.ascii.toLower(c);
                 }
                 self.sp -= 1;
                 try self.push(result);
@@ -3405,6 +3422,10 @@ pub const Vm = struct {
                     else => return error.TypeMismatch,
                 };
                 try self.push(sym);
+                // Secondary value: status keyword (:internal)
+                const kw_internal = try self.heap.internKeyword("internal");
+                self.secondary_values[0] = kw_internal;
+                self.secondary_values_count = 1;
             },
             .make_symbol => {
                 const name_val = try self.pop();
@@ -3914,20 +3935,21 @@ pub const Vm = struct {
 
             .mv_bind => {
                 const count = self.readU8();
+                const start_index = self.readU8();
                 const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
 
-                // Primary value is already on stack - store to local 0
+                // Primary value is already on stack - store to start_index
                 const primary = try self.pop();
-                self.stack[bp] = primary;
+                self.stack[bp + start_index] = primary;
 
-                // Store secondary values (or nil if not enough) to locals 1..count-1
+                // Store secondary values (or nil if not enough) to subsequent locals
                 var i: usize = 1;
                 while (i < count) : (i += 1) {
                     const val = if (i - 1 < self.secondary_values_count)
                         self.secondary_values[i - 1]
                     else
                         Value.nil;
-                    self.stack[bp + i] = val;
+                    self.stack[bp + start_index + i] = val;
                 }
 
                 // Clear secondary values
@@ -3936,7 +3958,6 @@ pub const Vm = struct {
 
             .mv_list => {
                 // Primary value is on stack, secondaries in buffer
-                // Create a list of all values: (primary secondary1 secondary2 ...)
                 const primary = try self.pop();
 
                 // Build list in reverse: start with nil, cons secondaries, then cons primary
@@ -4027,7 +4048,14 @@ pub const Vm = struct {
                 const ht_val = try self.pop();
                 if (!ht_val.isHashTable()) return error.TypeMismatch;
                 const ht = ht_val.toPtr(HashTable);
-                try self.push(ht.get(key) orelse Value.nil);
+                if (ht.get(key)) |val| {
+                    try self.push(val);
+                    self.secondary_values[0] = Value.t;
+                } else {
+                    try self.push(Value.nil);
+                    self.secondary_values[0] = Value.nil;
+                }
+                self.secondary_values_count = 1;
             },
             .sxhash => {
                 const obj = try self.pop();
@@ -5781,7 +5809,7 @@ pub const Vm = struct {
             },
 
             .read_from_string => {
-                // Parse a string into a Lisp value
+                // Parse a string into a Lisp value, return position as secondary value
                 const str_val = try self.pop();
                 if (str_val.isString()) {
                     const str = str_val.toPtr(String);
@@ -5789,6 +5817,10 @@ pub const Vm = struct {
                     defer parser.deinit();
                     const result = try parser.parse();
                     try self.push(result);
+                    // Set secondary value: position after parsed form
+                    // token_start points to where the NEXT token scan would begin
+                    self.secondary_values[0] = Value.makeFixnum(@intCast(parser.lexer.token_start));
+                    self.secondary_values_count = 1;
                 } else if (str_val.isString32()) {
                     const s32 = str_val.toPtr(runtime.String32);
                     var utf8 = std.ArrayList(u8){};
@@ -5803,6 +5835,8 @@ pub const Vm = struct {
                     defer parser.deinit();
                     const result = try parser.parse();
                     try self.push(result);
+                    self.secondary_values[0] = Value.makeFixnum(@intCast(parser.lexer.pos));
+                    self.secondary_values_count = 1;
                 } else {
                     return error.TypeMismatch;
                 }
@@ -6051,11 +6085,23 @@ pub const Vm = struct {
             // Numeric predicates
             .abs => {
                 const val = try self.pop();
-                if (!val.isFixnum()) return error.TypeMismatch;
-                const n = val.toFixnum();
-                // abs(minInt) overflows
-                if (n == std.math.minInt(i64)) return error.TypeMismatch;
-                try self.push(Value.makeFixnum(if (n < 0) -n else n));
+                if (val.isFixnum()) {
+                    const n = val.toFixnum();
+                    // abs(minInt) overflows
+                    if (n == std.math.minInt(i64)) return error.TypeMismatch;
+                    try self.push(Value.makeFixnum(if (n < 0) -n else n));
+                } else if (val.isFloat()) {
+                    try self.push(Value.makeFloat(@abs(val.toFloat())));
+                } else if (val.typeKind() == .rational) {
+                    const rat = val.toPtr(runtime.Rational);
+                    if (rat.numerator < 0) {
+                        const new_rat = try self.heap.alloc(runtime.Rational);
+                        new_rat.* = runtime.Rational.make(-rat.numerator, rat.denominator);
+                        try self.push(Value.makeRational(new_rat));
+                    } else {
+                        try self.push(val);
+                    }
+                } else return error.TypeMismatch;
             },
             .zerop => {
                 const val = try self.pop();
@@ -6121,21 +6167,61 @@ pub const Vm = struct {
             },
             .floor => {
                 const val = try self.pop();
-                const f = try valToFloat(val);
-                const floored: i64 = @intFromFloat(@floor(f));
-                try self.push(Value.makeFixnum(floored));
+                if (val.isFixnum()) {
+                    // Integer floor is identity, remainder 0
+                    try self.push(val);
+                    self.secondary_values[0] = Value.makeFixnum(0);
+                    self.secondary_values_count = 1;
+                } else {
+                    const f = try valToFloat(val);
+                    const floored = @floor(f);
+                    const q: i64 = @intFromFloat(floored);
+                    try self.push(Value.makeFixnum(q));
+                    self.secondary_values[0] = Value.makeFloat(f - floored);
+                    self.secondary_values_count = 1;
+                }
             },
             .ceiling => {
                 const val = try self.pop();
-                const f = try valToFloat(val);
-                const ceiled: i64 = @intFromFloat(@ceil(f));
-                try self.push(Value.makeFixnum(ceiled));
+                if (val.isFixnum()) {
+                    try self.push(val);
+                    self.secondary_values[0] = Value.makeFixnum(0);
+                    self.secondary_values_count = 1;
+                } else {
+                    const f = try valToFloat(val);
+                    const ceiled = @ceil(f);
+                    const q: i64 = @intFromFloat(ceiled);
+                    try self.push(Value.makeFixnum(q));
+                    self.secondary_values[0] = Value.makeFloat(f - ceiled);
+                    self.secondary_values_count = 1;
+                }
             },
             .round => {
                 const val = try self.pop();
-                const f = try valToFloat(val);
-                const rounded: i64 = @intFromFloat(@round(f));
-                try self.push(Value.makeFixnum(rounded));
+                if (val.isFixnum()) {
+                    try self.push(val);
+                    self.secondary_values[0] = Value.makeFixnum(0);
+                    self.secondary_values_count = 1;
+                } else {
+                    const f = try valToFloat(val);
+                    // CL round: round to nearest even (banker's rounding)
+                    const rounded = blk: {
+                        const r = @round(f);
+                        // @round uses half-away-from-zero; fix half-integer cases
+                        if (@abs(f - r) == 0.5) {
+                            const ri: i64 = @intFromFloat(r);
+                            if (@mod(ri, @as(i64, 2)) != 0) {
+                                // Odd result — adjust toward zero to get even
+                                break :blk if (f > 0) r - 1.0 else r + 1.0;
+                            }
+                        }
+                        break :blk r;
+                    };
+                    const q: i64 = @intFromFloat(rounded);
+                    try self.push(Value.makeFixnum(q));
+                    self.secondary_values[0] = Value.makeFloat(f - rounded);
+                    self.secondary_values_count = 1;
+                }
             },
 
             // ================================================================
@@ -6220,9 +6306,16 @@ pub const Vm = struct {
             .halt => return error.Halt,
         }
 
-        // Clear stale secondary values after each op (except ops that set/preserve them)
-        if (op != .values and op != .values_list and op != .ret and op != .get_decoded_time and op != .decode_universal_time and op != .function_lambda_expression) {
-            self.secondary_values_count = 0;
+        // Clear stale secondary values after each op UNLESS the op:
+        // - Produces multiple values (values, values_list, get_decoded_time, etc.)
+        // - Is control flow that doesn't produce a value (jmp, jmp_nil, jmp_not_nil)
+        // - Consumes multiple values (mv_list, mv_bind — they clear it themselves)
+        // - Returns from a function (ret — caller may need secondary values)
+        switch (op) {
+            .values, .values_list, .ret, .get_decoded_time, .decode_universal_time, .function_lambda_expression, .jmp, .jmp_nil, .jmp_not_nil, .mv_list, .mv_bind, .floor, .ceiling, .round, .call, .tail_call, .read_from_string, .hash_get, .intern => {},
+            else => {
+                self.secondary_values_count = 0;
+            },
         }
     }
 
@@ -6354,11 +6447,49 @@ pub const Vm = struct {
         if (handler_type.raw == Value.t.raw) return true;
         if (handler_type.raw == condition_type.raw) return true;
 
-        // Minimal condition hierarchy support: handlers on CONDITION/ERROR
-        // catch all condition-tag throws (program-error, type-error, etc.).
-        if (handler_type.raw == self.builtins.sym_error.raw) return true;
-        if (handler_type.raw == self.builtins.sym_condition.raw) return true;
+        // CL condition type hierarchy:
+        //   condition
+        //     serious-condition
+        //       error
+        //         simple-error, type-error, cell-error, arithmetic-error,
+        //         program-error, control-error, package-error, stream-error,
+        //         file-error, parse-error, print-not-readable
+        //       storage-condition
+        //     warning
+        //       simple-warning, style-warning
+        //     simple-condition
+        //   arithmetic-error > division-by-zero, floating-point-*
+        //   cell-error > unbound-variable, undefined-function, unbound-slot
+        const b = self.builtins;
 
+        // error catches all error subtypes
+        if (handler_type.raw == b.sym_error.raw) {
+            return self.isErrorSubtype(condition_type);
+        }
+        // condition catches everything
+        if (handler_type.raw == b.sym_condition.raw) return true;
+        // serious-condition catches all errors
+        if (handler_type.raw == b.sym_serious_condition.raw) {
+            return self.isErrorSubtype(condition_type);
+        }
+        // arithmetic-error catches division-by-zero
+        if (handler_type.raw == b.sym_arithmetic_error.raw) {
+            return condition_type.raw == b.sym_division_by_zero.raw or
+                condition_type.raw == b.sym_arithmetic_error.raw;
+        }
+        // cell-error catches unbound-variable, undefined-function
+        if (handler_type.raw == b.sym_cell_error.raw) {
+            return condition_type.raw == b.sym_unbound_variable.raw or
+                condition_type.raw == b.sym_undefined_function.raw or
+                condition_type.raw == b.sym_cell_error.raw;
+        }
+        // warning catches simple-warning
+        if (handler_type.raw == b.sym_warning.raw) {
+            return condition_type.raw == b.sym_warning.raw or
+                condition_type.raw == b.sym_simple_warning.raw;
+        }
+
+        // List of types: match any
         if (handler_type.isCons()) {
             var list = handler_type;
             while (list.isCons()) {
@@ -6368,6 +6499,26 @@ pub const Vm = struct {
             }
         }
         return false;
+    }
+
+    /// Check if condition_type is a subtype of ERROR in the CL hierarchy.
+    fn isErrorSubtype(self: *const Vm, condition_type: Value) bool {
+        const b = self.builtins;
+        return condition_type.raw == b.sym_error.raw or
+            condition_type.raw == b.sym_simple_error.raw or
+            condition_type.raw == b.sym_type_error.raw or
+            condition_type.raw == b.sym_program_error.raw or
+            condition_type.raw == b.sym_control_error.raw or
+            condition_type.raw == b.sym_arithmetic_error.raw or
+            condition_type.raw == b.sym_division_by_zero.raw or
+            condition_type.raw == b.sym_cell_error.raw or
+            condition_type.raw == b.sym_unbound_variable.raw or
+            condition_type.raw == b.sym_undefined_function.raw or
+            condition_type.raw == b.sym_package_error.raw or
+            condition_type.raw == b.sym_stream_error.raw or
+            condition_type.raw == b.sym_file_error.raw or
+            condition_type.raw == b.sym_parse_error.raw or
+            condition_type.raw == b.sym_end_of_file.raw;
     }
 
     fn globalNameMatches(sym_name: []const u8, global_name: []const u8) bool {
@@ -6562,6 +6713,8 @@ pub const Vm = struct {
     }
 
     /// Handle an error by running unwind-protect cleanup if needed.
+    /// Note: trySignalCondition is called FIRST by the execute loop (line ~1487).
+    /// doError is only reached for errors that no handler caught.
     fn doError(self: *Vm, err: anyerror) Error {
         // Check if there's an unwind-protect that needs cleanup
         if (self.unwind_sp > 0) {
@@ -6592,21 +6745,30 @@ pub const Vm = struct {
         return self.mapError(err);
     }
 
-    /// Map Zig VM errors to CL condition type names.
-    fn zigErrorToCondition(_: *const Vm, err: anyerror) ?[]const u8 {
-        if (err == error.TypeMismatch) return "type-error";
-        if (err == error.DivisionByZero) return "division-by-zero";
-        if (err == error.UnboundSymbol) return "unbound-variable";
+    /// Map Zig VM errors to CL condition type symbols.
+    fn zigErrorToConditionSym(self: *const Vm, err: anyerror) ?Value {
+        const b = self.builtins;
+        if (err == error.TypeMismatch) return b.sym_type_error;
+        if (err == error.DivisionByZero) return b.sym_division_by_zero;
+        if (err == error.UnboundSymbol) return b.sym_unbound_variable;
+        if (err == error.FileNotFound) return b.sym_file_error;
+        if (err == error.InvalidSyntax) return b.sym_parse_error;
+        if (err == error.StackOverflow) return b.sym_control_error;
+        if (err == error.Overflow) return b.sym_arithmetic_error;
+        if (err == error.UserError) return b.sym_simple_error;
+        // Don't map internal VM errors — these must propagate as Zig errors
         return null;
     }
 
     /// Try to signal a Zig error as a CL condition via doThrow.
     /// Returns true if a handler/catch was found and execution should continue.
     fn trySignalCondition(self: *Vm, err: anyerror) bool {
-        if (self.handler_sp == 0 and self.catch_sp == 0) return false;
-        const condition_name = zigErrorToCondition(self, err) orelse return false;
-        const condition_type = self.intern(condition_name) catch return false;
-        const condition_pair = self.allocCons(condition_type, Value.nil) catch return false;
+        if (self.catch_sp == 0 and self.handler_sp == 0) return false;
+        const condition_type = self.zigErrorToConditionSym(err) orelse return false;
+        // Build condition pair: (type . (error-name . nil))
+        const err_name_str = self.allocString(@errorName(err)) catch return false;
+        const payload = self.allocCons(err_name_str, Value.nil) catch return false;
+        const condition_pair = self.allocCons(condition_type, payload) catch return false;
         self.doThrow(self.builtins.sym_condition_tag, condition_pair) catch return false;
         return true;
     }
@@ -6816,6 +6978,9 @@ pub const Vm = struct {
             if (fmt[i] == '~' and i + 1 < fmt.len) {
                 // Scan ahead to find directive char (might have params/modifiers before it)
                 var scan_idx = i + 1;
+                var has_colon = false;
+                var has_at = false;
+                var has_v_param = false;
                 while (scan_idx < fmt.len) {
                     const ch = fmt[scan_idx];
                     if (ch >= '0' and ch <= '9') {
@@ -6824,7 +6989,14 @@ pub const Vm = struct {
                         scan_idx += 1;
                     } else if (ch == '\'' and scan_idx + 1 < fmt.len) {
                         scan_idx += 2; // Skip quote and next char
-                    } else if (ch == ':' or ch == '@') {
+                    } else if (ch == ':') {
+                        has_colon = true;
+                        scan_idx += 1;
+                    } else if (ch == '@') {
+                        has_at = true;
+                        scan_idx += 1;
+                    } else if (ch == 'V' or ch == 'v') {
+                        has_v_param = true;
                         scan_idx += 1;
                     } else {
                         break;
@@ -6833,48 +7005,93 @@ pub const Vm = struct {
                 const directive = if (scan_idx < fmt.len) fmt[scan_idx] else fmt[i + 1];
                 switch (directive) {
                     'A', 'a' => {
-                        // Aesthetic - print without quotes
+                        // Aesthetic - print without quotes, with optional min-width padding
                         if (arg_idx < args.len) {
+                            var min_width: usize = 0;
+                            if (has_v_param and arg_idx < args.len) {
+                                // ~VA: width comes from an arg
+                                const w = args[arg_idx];
+                                arg_idx += 1;
+                                if (w.isFixnum()) min_width = @intCast(@max(0, w.toFixnum()));
+                            } else {
+                                min_width = self.parseFormatWidth(fmt[i + 1 .. scan_idx]);
+                            }
+                            const start_len = result.items.len;
                             try self.formatValueAesthetic(args[arg_idx], &result);
+                            if (min_width > 0) {
+                                const written = result.items.len - start_len;
+                                if (written < min_width) {
+                                    var pad_count = min_width - written;
+                                    while (pad_count > 0) : (pad_count -= 1) {
+                                        try result.append(self.allocator, ' ');
+                                    }
+                                }
+                            }
                             arg_idx += 1;
                         }
-                        i += 2;
+                        i = scan_idx + 1;
                     },
-                    'S', 's' => {
-                        // Standard - print with quotes for strings
+                    'S', 's', 'W', 'w' => {
+                        // Standard - print with quotes for strings, with optional min-width
+                        // ~W is "write" which is the same as ~S in CL
                         if (arg_idx < args.len) {
+                            const min_width = self.parseFormatWidth(fmt[i + 1 .. scan_idx]);
+                            const start_len = result.items.len;
                             try self.formatValueStandard(args[arg_idx], &result);
+                            if (min_width > 0) {
+                                const written = result.items.len - start_len;
+                                if (written < min_width) {
+                                    var pad_count = min_width - written;
+                                    while (pad_count > 0) : (pad_count -= 1) {
+                                        try result.append(self.allocator, ' ');
+                                    }
+                                }
+                            }
                             arg_idx += 1;
                         }
-                        i += 2;
+                        i = scan_idx + 1;
                     },
                     'D', 'd' => {
                         if (arg_idx < args.len) {
+                            const min_width = self.parseFormatWidth(fmt[i + 1 .. scan_idx]);
+                            const start_len = result.items.len;
                             try self.formatFixnumBase(args[arg_idx], 10, &result);
+                            if (min_width > 0) {
+                                const written = result.items.len - start_len;
+                                if (written < min_width) {
+                                    // Pad with spaces on the LEFT for numbers
+                                    const pad_count = min_width - written;
+                                    // Insert spaces at start_len
+                                    var j: usize = 0;
+                                    while (j < pad_count) : (j += 1) {
+                                        try result.insert(self.allocator, start_len, ' ');
+                                    }
+                                }
+                            }
                             arg_idx += 1;
                         }
-                        i += 2;
+                        i = scan_idx + 1;
                     },
                     'X', 'x' => {
                         if (arg_idx < args.len) {
                             try self.formatFixnumBase(args[arg_idx], 16, &result);
                             arg_idx += 1;
                         }
-                        i += 2;
+                        i = scan_idx + 1;
                     },
                     'B', 'b' => {
                         if (arg_idx < args.len) {
                             try self.formatFixnumBase(args[arg_idx], 2, &result);
                             arg_idx += 1;
                         }
-                        i += 2;
+                        i = scan_idx + 1;
                     },
                     'O', 'o' => {
                         if (arg_idx < args.len) {
                             try self.formatFixnumBase(args[arg_idx], 8, &result);
                             arg_idx += 1;
                         }
-                        i += 2;
+                        i = scan_idx + 1;
                     },
                     'C', 'c' => {
                         // Character
@@ -6893,12 +7110,12 @@ pub const Vm = struct {
                             }
                             arg_idx += 1;
                         }
-                        i += 2;
+                        i = scan_idx + 1;
                     },
                     '%' => {
                         // Newline
                         try result.append(self.allocator, '\n');
-                        i += 2;
+                        i = scan_idx + 1;
                     },
                     '&' => {
                         // Fresh line - newline only if not at start of line
@@ -6913,28 +7130,21 @@ pub const Vm = struct {
                         var mincol: usize = 1; // Default: tab to next column
                         var colinc: usize = 1; // Default: increment by 1
 
-                        const j = i + 2;
-                        // Check for numeric parameters before T
-                        var param_start = i + 1;
-                        while (param_start > 0 and fmt[param_start - 1] >= '0' and fmt[param_start - 1] <= '9') {
-                            param_start -= 1;
-                        }
-
-                        if (param_start < i + 1) {
-                            // Parse mincol
-                            const param_str = fmt[param_start .. i + 1];
+                        // Parameters are between ~ and T: fmt[i+1..scan_idx]
+                        const param_str = fmt[i + 1 .. scan_idx];
+                        if (param_str.len > 0) {
                             if (std.mem.indexOf(u8, param_str, ",")) |comma_pos| {
                                 // Both mincol and colinc
                                 if (comma_pos > 0) {
-                                    mincol = try std.fmt.parseInt(usize, param_str[0..comma_pos], 10);
+                                    mincol = std.fmt.parseInt(usize, param_str[0..comma_pos], 10) catch 1;
                                 }
                                 if (comma_pos + 1 < param_str.len) {
-                                    colinc = try std.fmt.parseInt(usize, param_str[comma_pos + 1 ..], 10);
+                                    colinc = std.fmt.parseInt(usize, param_str[comma_pos + 1 ..], 10) catch 1;
                                 }
                             } else {
                                 // Just mincol
                                 if (param_str.len > 0) {
-                                    mincol = try std.fmt.parseInt(usize, param_str, 10);
+                                    mincol = std.fmt.parseInt(usize, param_str, 10) catch 1;
                                 }
                             }
                         }
@@ -6963,7 +7173,7 @@ pub const Vm = struct {
                             try result.append(self.allocator, ' ');
                         }
 
-                        i = j;
+                        i = scan_idx + 1;
                     },
                     '~' => {
                         // Literal tilde
@@ -6998,31 +7208,29 @@ pub const Vm = struct {
                         i += 2;
                     },
                     'P', 'p' => {
-                        // Plural - print 's' if arg != 1, else nothing
-                        if (arg_idx < args.len) {
-                            const val = args[arg_idx];
-                            var should_plural = false;
-
-                            if (val.isFixnum()) {
-                                const n = val.toFixnum();
-                                should_plural = (n != 1);
-                            } else {
-                                // Non-numbers are considered plural
-                                should_plural = true;
-                            }
-
-                            if (should_plural) {
-                                try result.append(self.allocator, 's');
-                            }
-
+                        // ~P: plural - 's' if arg != 1
+                        // ~:P: use previous arg (don't consume)
+                        const val = if (has_colon) blk: {
+                            // Use previous arg
+                            break :blk if (arg_idx > 0) args[arg_idx - 1] else Value.nil;
+                        } else blk: {
+                            // Consume next arg
+                            const v = if (arg_idx < args.len) args[arg_idx] else Value.nil;
                             arg_idx += 1;
+                            break :blk v;
+                        };
+
+                        const should_plural = if (val.isFixnum()) val.toFixnum() != 1 else true;
+                        if (should_plural) {
+                            try result.append(self.allocator, 's');
                         }
-                        i += 2;
+
+                        i = scan_idx + 1;
                     },
                     '(' => {
                         // Case conversion: ~(...~)
                         // Find matching ~)
-                        const start = i + 2;
+                        const start = scan_idx + 1;
                         var depth: usize = 1;
                         var end = start;
                         while (end < fmt.len and depth > 0) {
@@ -7047,25 +7255,56 @@ pub const Vm = struct {
                             continue;
                         }
 
-                        // Process the body and apply downcase
                         const body = fmt[start..end];
-                        const body_start = result.items.len;
 
-                        // Recursively format the body
-                        var j: usize = 0;
-                        while (j < body.len) {
-                            if (body[j] == '~' and j + 1 < body.len) {
-                                // Handle nested directives (simplified - just copy for now)
-                                try result.append(self.allocator, body[j]);
-                                j += 1;
+                        // Recursively format the body — process directives inline
+                        const body_start_len = result.items.len;
+                        var bj: usize = 0;
+                        while (bj < body.len) {
+                            if (body[bj] == '~' and bj + 1 < body.len) {
+                                switch (body[bj + 1]) {
+                                    'A', 'a' => {
+                                        if (arg_idx < args.len) {
+                                            try self.formatValueAesthetic(args[arg_idx], &result);
+                                            arg_idx += 1;
+                                        }
+                                        bj += 2;
+                                    },
+                                    'S', 's' => {
+                                        if (arg_idx < args.len) {
+                                            // Write value with escape (prin1 style)
+                                            var buf: [256]u8 = undefined;
+                                            var fbs = std.io.fixedBufferStream(&buf);
+                                            try io.writeValueToBuffer(args[arg_idx], fbs.writer().any());
+                                            try result.appendSlice(self.allocator, fbs.getWritten());
+                                            arg_idx += 1;
+                                        }
+                                        bj += 2;
+                                    },
+                                    'D', 'd' => {
+                                        if (arg_idx < args.len) {
+                                            try self.formatValueAesthetic(args[arg_idx], &result);
+                                            arg_idx += 1;
+                                        }
+                                        bj += 2;
+                                    },
+                                    '%' => {
+                                        try result.append(self.allocator, '\n');
+                                        bj += 2;
+                                    },
+                                    else => {
+                                        try result.append(self.allocator, body[bj]);
+                                        bj += 1;
+                                    },
+                                }
                             } else {
-                                try result.append(self.allocator, body[j]);
-                                j += 1;
+                                try result.append(self.allocator, body[bj]);
+                                bj += 1;
                             }
                         }
 
-                        // Apply downcase to the added segment
-                        const segment = result.items[body_start..];
+                        // Apply case conversion to the added segment
+                        const segment = result.items[body_start_len..];
                         for (segment) |*c| {
                             if (c.* >= 'A' and c.* <= 'Z') {
                                 c.* = c.* + ('a' - 'A');
@@ -7079,9 +7318,9 @@ pub const Vm = struct {
                         i += 2;
                     },
                     '{' => {
-                        // Iteration: ~{...~} processes a list
+                        // Iteration: ~{...~} or ~:{...~} processes a list
                         // Find matching ~}
-                        const start = i + 2;
+                        const start = scan_idx + 1;
                         var depth: usize = 1;
                         var end = start;
                         while (end < fmt.len and depth > 0) {
@@ -7106,12 +7345,33 @@ pub const Vm = struct {
                             continue;
                         }
                         const body = fmt[start..end];
-                        // Get list argument
-                        if (arg_idx < args.len) {
+                        if (has_at) {
+                            // ~@{body~} - use remaining args directly as iteration elements
+                            // Build a list from remaining args
+                            var remaining_list = Value.nil;
+                            var j2: usize = args.len;
+                            while (j2 > arg_idx) {
+                                j2 -= 1;
+                                remaining_list = try self.heap.allocCons(args[j2], remaining_list);
+                            }
+                            try self.formatIteration(remaining_list, body, &result);
+                            arg_idx = args.len; // All args consumed
+                        } else if (arg_idx < args.len) {
                             const list_arg = args[arg_idx];
                             arg_idx += 1;
-                            // Iterate over list
-                            try self.formatIteration(list_arg, body, &result);
+                            if (has_colon) {
+                                // ~:{body~} - iterate over sublists
+                                var current = list_arg;
+                                var iter_count: usize = 0;
+                                while (current.isCons() and iter_count < MAX_FORMAT_DEPTH) : (iter_count += 1) {
+                                    const cons = current.toPtr(runtime.Cons);
+                                    try self.formatIteration(cons.car, body, &result);
+                                    current = cons.cdr;
+                                }
+                            } else {
+                                // ~{body~} - iterate over flat list
+                                try self.formatIteration(list_arg, body, &result);
+                            }
                         }
                         i = end + 2; // Skip past ~}
                     },
@@ -7119,85 +7379,45 @@ pub const Vm = struct {
                         // End of iteration - should not be reached at top level
                         i += 2;
                     },
+                    '?' => {
+                        // Indirect: ~? takes a format string and a list of arguments
+                        if (arg_idx + 1 < args.len) {
+                            const sub_fmt_val = args[arg_idx];
+                            const sub_args_val = args[arg_idx + 1];
+                            arg_idx += 2;
+                            // Get the sub-format string
+                            if (sub_fmt_val.isString()) {
+                                const sub_fmt_str = sub_fmt_val.toPtr(runtime.String);
+                                // Collect sub-args
+                                var sub_args = std.ArrayList(Value){};
+                                defer sub_args.deinit(self.allocator);
+                                var cur = sub_args_val;
+                                while (cur.isCons()) {
+                                    const c = cur.toPtr(runtime.Cons);
+                                    try sub_args.append(self.allocator, c.car);
+                                    cur = c.cdr;
+                                }
+                                // Recursive format
+                                const sub_result = try self.doFormat(Value.nil, sub_fmt_val, sub_args.items);
+                                _ = sub_fmt_str;
+                                if (sub_result.isString()) {
+                                    try result.appendSlice(self.allocator, sub_result.toPtr(runtime.String).bytes());
+                                }
+                            }
+                        }
+                        i = scan_idx + 1;
+                    },
                     '^' => {
                         // Escape from iteration - only valid inside ~{...~}
                         // At top level, just skip it
                         i += 2;
                     },
-                    ':' => {
-                        // Check for ~:[ (boolean conditional)
-                        if (i + 2 < fmt.len and fmt[i + 2] == '[') {
-                            // Handle as boolean conditional - parse same as ~[ but interpret as nil/non-nil
-                            const start = i + 3;
-                            var depth: usize = 1;
-                            var end = start;
-                            while (end < fmt.len and depth > 0) {
-                                if (end + 1 < fmt.len and fmt[end] == '~') {
-                                    if (fmt[end + 1] == '[') {
-                                        depth += 1;
-                                        end += 2;
-                                    } else if (fmt[end + 1] == ']') {
-                                        depth -= 1;
-                                        if (depth == 0) break;
-                                        end += 2;
-                                    } else {
-                                        end += 1;
-                                    }
-                                } else {
-                                    end += 1;
-                                }
-                            }
-                            if (depth != 0) {
-                                i += 3;
-                                continue;
-                            }
-                            const body = fmt[start..end];
-                            // Split into exactly 2 clauses by ~;
-                            var clauses = std.ArrayList([]const u8){};
-                            defer clauses.deinit(self.allocator);
-                            var clause_start: usize = 0;
-                            var j: usize = 0;
-                            var clause_depth: usize = 0;
-                            while (j < body.len) {
-                                if (j + 1 < body.len and body[j] == '~') {
-                                    if (body[j + 1] == '[') {
-                                        clause_depth += 1;
-                                        j += 2;
-                                    } else if (body[j + 1] == ']') {
-                                        if (clause_depth > 0) clause_depth -= 1;
-                                        j += 2;
-                                    } else if (body[j + 1] == ';' and clause_depth == 0) {
-                                        try clauses.append(self.allocator, body[clause_start..j]);
-                                        clause_start = j + 2;
-                                        j += 2;
-                                    } else {
-                                        j += 1;
-                                    }
-                                } else {
-                                    j += 1;
-                                }
-                            }
-                            try clauses.append(self.allocator, body[clause_start..]);
-                            // Get selector for boolean conditional
-                            if (arg_idx < args.len) {
-                                const selector = args[arg_idx];
-                                arg_idx += 1;
-                                // nil = clause 0, non-nil = clause 1
-                                const clause_idx: usize = if (selector.isNil()) 0 else 1;
-                                if (clause_idx < clauses.items.len) {
-                                    try result.appendSlice(self.allocator, clauses.items[clause_idx]);
-                                }
-                            }
-                            i = end + 2;
-                        } else {
-                            // Unknown :X directive, skip
-                            i += 2;
-                        }
-                    },
+                    // Note: ~:X directives handled via has_colon flag
+                    // (scanner consumes : modifier before directive char)
                     '[' => {
                         // Conditional: ~[clause0~;clause1~;...~] or ~:[false~;true~]
                         // Find matching ~]
-                        const start = i + 2;
+                        const start = scan_idx + 1;
                         var depth: usize = 1;
                         var end = start;
                         while (end < fmt.len and depth > 0) {
@@ -7541,6 +7761,85 @@ pub const Vm = struct {
 
                         i = end + 2;
                     },
+                    'F', 'f' => {
+                        // Fixed-format floating-point
+                        if (arg_idx < args.len) {
+                            const val = args[arg_idx];
+                            const fval: f64 = if (val.isFixnum())
+                                @floatFromInt(val.toFixnum())
+                            else if (val.isFloat())
+                                val.toFloat()
+                            else if (val.typeKind() == .rational) blk: {
+                                const rat = val.toPtr(runtime.Rational);
+                                break :blk @as(f64, @floatFromInt(rat.numerator)) / @as(f64, @floatFromInt(rat.denominator));
+                            } else 0.0;
+                            // Use shortest representation via Zig's float formatting
+                            var buf: [64]u8 = undefined;
+                            const formatted = try std.fmt.bufPrint(&buf, "{d:.6}", .{fval});
+                            // Trim trailing zeros after decimal point
+                            var flen = formatted.len;
+                            if (std.mem.indexOf(u8, formatted, ".")) |_| {
+                                while (flen > 1 and formatted[flen - 1] == '0') flen -= 1;
+                                if (flen > 0 and formatted[flen - 1] == '.') flen += 1; // Keep at least one decimal
+                            }
+                            try result.appendSlice(self.allocator, formatted[0..flen]);
+                            arg_idx += 1;
+                        }
+                        i = scan_idx + 1;
+                    },
+                    'E', 'e' => {
+                        // Exponential floating-point
+                        if (arg_idx < args.len) {
+                            const val = args[arg_idx];
+                            const fval: f64 = if (val.isFixnum())
+                                @floatFromInt(val.toFixnum())
+                            else if (val.isFloat())
+                                val.toFloat()
+                            else
+                                0.0;
+                            var buf: [64]u8 = undefined;
+                            const formatted = try std.fmt.bufPrint(&buf, "{e}", .{fval});
+                            try result.appendSlice(self.allocator, formatted);
+                            arg_idx += 1;
+                        }
+                        i = scan_idx + 1;
+                    },
+                    'R', 'r' => {
+                        // Radix: ~R prints in English, ~nR prints in base n
+                        if (arg_idx < args.len) {
+                            const val = args[arg_idx];
+                            if (val.isFixnum()) {
+                                const n = val.toFixnum();
+                                // Check if there's a radix parameter
+                                const param_str = fmt[i + 1 .. scan_idx];
+                                var has_radix = false;
+                                var colon_mod = false;
+                                for (param_str) |ch| {
+                                    if (ch >= '0' and ch <= '9') has_radix = true;
+                                    if (ch == ':') colon_mod = true;
+                                }
+                                if (has_radix) {
+                                    // ~nR: print in base n
+                                    var radix: u8 = 10;
+                                    var ps = param_str;
+                                    // Strip modifiers
+                                    while (ps.len > 0 and (ps[ps.len - 1] == ':' or ps[ps.len - 1] == '@')) ps = ps[0 .. ps.len - 1];
+                                    if (ps.len > 0) {
+                                        radix = std.fmt.parseInt(u8, ps, 10) catch 10;
+                                    }
+                                    try self.formatFixnumRadix(n, radix, &result);
+                                } else if (colon_mod) {
+                                    // ~:R ordinal (1st, 2nd, etc.)
+                                    try self.formatOrdinal(n, &result);
+                                } else {
+                                    // ~R cardinal English
+                                    try self.formatCardinal(n, &result);
+                                }
+                            }
+                            arg_idx += 1;
+                        }
+                        i = scan_idx + 1;
+                    },
                     else => {
                         // Unknown directive, output as-is
                         try result.append(self.allocator, fmt[i]);
@@ -7557,8 +7856,12 @@ pub const Vm = struct {
         if (dest.isNil()) {
             // Return as string
             return try self.allocString(result.items);
+        } else if (dest.isStream()) {
+            // Stream object - write to it
+            try primitives.io.writeBytesToStream(dest, result.items);
+            return Value.nil;
         } else {
-            // Print to stdout (dest = t)
+            // Print to stdout (dest = t or unrecognized)
             const stdout_file = std.fs.File.stdout();
             var buf: [4096]u8 = undefined;
             var file_writer = stdout_file.writer(&buf);
@@ -7581,8 +7884,14 @@ pub const Vm = struct {
             },
             .float => {
                 var buf: [64]u8 = undefined;
-                const num_str = try std.fmt.bufPrint(&buf, "{d}", .{val.toFloat()});
+                const num_str = std.fmt.bufPrint(&buf, "{d}", .{val.toFloat()}) catch "0.0";
                 try result.appendSlice(self.allocator, num_str);
+                // Ensure decimal point for CL compliance
+                var has_dot = false;
+                for (num_str) |c| {
+                    if (c == '.' or c == 'e' or c == 'E') { has_dot = true; break; }
+                }
+                if (!has_dot) try result.appendSlice(self.allocator, ".0");
             },
             .char => {
                 const cp = val.toCharacter();
@@ -7641,6 +7950,17 @@ pub const Vm = struct {
         }
     }
 
+    /// Parse numeric width from format parameter string (e.g., "10" from "~10A")
+    /// Returns 0 if no width specified.
+    fn parseFormatWidth(_: *Vm, params: []const u8) usize {
+        if (params.len == 0) return 0;
+        // Strip trailing modifiers (: and @)
+        var end = params.len;
+        while (end > 0 and (params[end - 1] == ':' or params[end - 1] == '@')) end -= 1;
+        if (end == 0) return 0;
+        return std.fmt.parseInt(usize, params[0..end], 10) catch 0;
+    }
+
     fn formatFixnumBase(self: *Vm, val: Value, comptime base: u8, result: *std.ArrayList(u8)) Error!void {
         if (!val.isFixnum()) return;
         const n = val.toFixnum();
@@ -7657,6 +7977,113 @@ pub const Vm = struct {
         else
             try std.fmt.bufPrint(&buf, "-" ++ spec, .{@as(u64, @intCast(-n))});
         try result.appendSlice(self.allocator, num_str);
+    }
+
+    fn formatFixnumRadix(self: *Vm, n: i64, radix: u8, result: *std.ArrayList(u8)) Error!void {
+        if (radix < 2 or radix > 36) return;
+        if (n == 0) {
+            try result.append(self.allocator, '0');
+            return;
+        }
+        var buf: [80]u8 = undefined;
+        var pos: usize = 80;
+        var val: u64 = if (n < 0) @intCast(-n) else @intCast(n);
+        const digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        while (val > 0) {
+            pos -= 1;
+            buf[pos] = digits[@intCast(val % radix)];
+            val /= radix;
+        }
+        if (n < 0) {
+            pos -= 1;
+            buf[pos] = '-';
+        }
+        try result.appendSlice(self.allocator, buf[pos..]);
+    }
+
+    fn formatCardinal(self: *Vm, n: i64, result: *std.ArrayList(u8)) Error!void {
+        if (n == 0) {
+            try result.appendSlice(self.allocator, "zero");
+            return;
+        }
+        if (n < 0) {
+            try result.appendSlice(self.allocator, "negative ");
+            try self.formatCardinal(-n, result);
+            return;
+        }
+        const ones = [_][]const u8{ "", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen" };
+        const tens = [_][]const u8{ "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety" };
+        var v: u64 = @intCast(n);
+        var first = true;
+        if (v >= 1000000000) {
+            try self.formatCardinalHelper(v / 1000000000, &ones, &tens, first, result);
+            try result.appendSlice(self.allocator, " billion");
+            v %= 1000000000;
+            first = false;
+        }
+        if (v >= 1000000) {
+            if (!first) try result.append(self.allocator, ' ');
+            try self.formatCardinalHelper(v / 1000000, &ones, &tens, true, result);
+            try result.appendSlice(self.allocator, " million");
+            v %= 1000000;
+            first = false;
+        }
+        if (v >= 1000) {
+            if (!first) try result.append(self.allocator, ' ');
+            try self.formatCardinalHelper(v / 1000, &ones, &tens, true, result);
+            try result.appendSlice(self.allocator, " thousand");
+            v %= 1000;
+            first = false;
+        }
+        if (v > 0) {
+            if (!first) try result.append(self.allocator, ' ');
+            try self.formatCardinalHelper(v, &ones, &tens, true, result);
+        }
+    }
+
+    fn formatCardinalHelper(self: *Vm, n: u64, ones: []const []const u8, tens_arr: []const []const u8, first_in: bool, result: *std.ArrayList(u8)) Error!void {
+        var v = n;
+        var first = first_in;
+        if (v >= 100) {
+            if (!first) try result.append(self.allocator, ' ');
+            try result.appendSlice(self.allocator, ones[v / 100]);
+            try result.appendSlice(self.allocator, " hundred");
+            v %= 100;
+            first = false;
+        }
+        if (v >= 20) {
+            if (!first) try result.append(self.allocator, ' ');
+            try result.appendSlice(self.allocator, tens_arr[v / 10]);
+            v %= 10;
+            if (v > 0) {
+                try result.append(self.allocator, '-');
+                try result.appendSlice(self.allocator, ones[v]);
+            }
+        } else if (v > 0) {
+            if (!first) try result.append(self.allocator, ' ');
+            try result.appendSlice(self.allocator, ones[v]);
+        }
+    }
+
+    fn formatOrdinal(self: *Vm, n: i64, result: *std.ArrayList(u8)) Error!void {
+        // Simple ordinal: append th/st/nd/rd suffix
+        var buf: [24]u8 = undefined;
+        const num_str = try std.fmt.bufPrint(&buf, "{d}", .{n});
+        try result.appendSlice(self.allocator, num_str);
+        const abs_n: u64 = if (n < 0) @intCast(-n) else @intCast(n);
+        const rem100 = abs_n % 100;
+        const rem10 = abs_n % 10;
+        if (rem100 >= 11 and rem100 <= 13) {
+            try result.appendSlice(self.allocator, "th");
+        } else if (rem10 == 1) {
+            try result.appendSlice(self.allocator, "st");
+        } else if (rem10 == 2) {
+            try result.appendSlice(self.allocator, "nd");
+        } else if (rem10 == 3) {
+            try result.appendSlice(self.allocator, "rd");
+        } else {
+            try result.appendSlice(self.allocator, "th");
+        }
     }
 
     const MAX_FORMAT_DEPTH = 1000;
@@ -7689,36 +8116,52 @@ pub const Vm = struct {
     /// Format iteration: process body for each element of a list
     /// Handles ~^ (escape) directive within the body
     fn formatIteration(self: *Vm, list: Value, body: []const u8, result: *std.ArrayList(u8)) Error!void {
+        // Collect list elements into array for indexed access
+        var elems = std.ArrayList(Value){};
+        defer elems.deinit(self.allocator);
         var current = list;
+        while (current.isCons()) {
+            const cons = current.toPtr(runtime.Cons);
+            try elems.append(self.allocator, cons.car);
+            current = cons.cdr;
+        }
+
+        var elem_idx: usize = 0;
         var depth: usize = 0;
 
-        while (current.isCons()) {
+        while (elem_idx < elems.items.len) {
             depth += 1;
             if (depth > MAX_FORMAT_DEPTH) break;
 
-            const cons = current.toPtr(runtime.Cons);
-            const elem = cons.car;
-            const remaining = cons.cdr;
-
-            // Process body for this element
+            // Process body, consuming elements from the flat list
             var i: usize = 0;
             while (i < body.len) {
                 if (body[i] == '~' and i + 1 < body.len) {
                     const directive = body[i + 1];
                     switch (directive) {
                         'A', 'a' => {
-                            try self.formatValueAesthetic(elem, result);
+                            if (elem_idx < elems.items.len) {
+                                try self.formatValueAesthetic(elems.items[elem_idx], result);
+                                elem_idx += 1;
+                            }
                             i += 2;
                         },
                         'S', 's' => {
-                            try self.formatValueStandard(elem, result);
+                            if (elem_idx < elems.items.len) {
+                                try self.formatValueStandard(elems.items[elem_idx], result);
+                                elem_idx += 1;
+                            }
                             i += 2;
                         },
                         'D', 'd' => {
-                            if (elem.isFixnum()) {
-                                var buf: [32]u8 = undefined;
-                                const num_str = try std.fmt.bufPrint(&buf, "{d}", .{elem.toFixnum()});
-                                try result.appendSlice(self.allocator, num_str);
+                            if (elem_idx < elems.items.len) {
+                                const elem = elems.items[elem_idx];
+                                elem_idx += 1;
+                                if (elem.isFixnum()) {
+                                    var buf: [32]u8 = undefined;
+                                    const num_str = try std.fmt.bufPrint(&buf, "{d}", .{elem.toFixnum()});
+                                    try result.appendSlice(self.allocator, num_str);
+                                }
                             }
                             i += 2;
                         },
@@ -7732,10 +8175,23 @@ pub const Vm = struct {
                         },
                         '^' => {
                             // Escape: exit iteration if no more elements
-                            if (remaining.isNil()) {
+                            if (elem_idx >= elems.items.len) {
                                 return; // Exit iteration
                             }
                             i += 2;
+                        },
+                        ':' => {
+                            // Handle ~:^ (colon modifier + caret)
+                            if (i + 2 < body.len and body[i + 2] == '^') {
+                                // ~:^ - exit iteration if no more elements
+                                if (elem_idx >= elems.items.len) {
+                                    return;
+                                }
+                                i += 3;
+                            } else {
+                                try result.append(self.allocator, body[i]);
+                                i += 1;
+                            }
                         },
                         else => {
                             try result.append(self.allocator, body[i]);
@@ -7748,7 +8204,6 @@ pub const Vm = struct {
                 }
             }
 
-            current = remaining;
         }
     }
 

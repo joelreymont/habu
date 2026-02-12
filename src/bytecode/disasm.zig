@@ -455,14 +455,14 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         },
 
         // 1 byte operand
-        .load_local, .store_local, .load_capture, .call, .tail_call, .make_list, .make_vec_n, .values, .mv_bind, .format, .enter_scope, .exit_scope, .pop_restarts, .open, .make_array, .aref, .aset, .make_pathname, .encode_universal_time, .make_broadcast_stream, .make_concatenated_stream => {
+        .load_local, .store_local, .load_capture, .call, .tail_call, .make_list, .make_vec_n, .values, .format, .enter_scope, .exit_scope, .pop_restarts, .open, .make_array, .aref, .aset, .make_pathname, .encode_universal_time, .make_broadcast_stream, .make_concatenated_stream => {
             const operand = chunk.readU8(offset + 2);
             try writer.print("{s} {d}\n", .{ op.name(), operand });
             return offset + 3;
         },
 
         // 2 byte operand (u16)
-        .push_const, .load_global, .store_global, .make_vec, .make_hash, .find_key, .check_or, .return_from => {
+        .push_const, .load_global, .store_global, .make_vec, .mv_bind, .make_hash, .find_key, .check_or, .return_from => {
             const operand = chunk.readU16(offset + 2);
             try writer.print("{s} {d}\n", .{ op.name(), operand });
             return offset + 4;

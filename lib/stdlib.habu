@@ -406,6 +406,7 @@
 (defun zerop (n) (= n 0))
 (defun plusp (n) (> n 0))
 (defun minusp (n) (< n 0))
+(defun /= (a b) (not (= a b)))
 (defun evenp (n) (= (mod n 2) 0))
 (defun oddp (n) (= (mod n 2) 1))
 (defun abs (n) (if (< n 0) (- 0 n) n))
@@ -435,14 +436,19 @@
     (t nil)))
 
 ; Error signaling - simplified stub
-; Accept CL-style (error datum &rest args) to avoid arity traps in callers.
+; CL error function: signal a simple-error condition.
+; (error format-control &rest format-arguments)
+; (error condition-type &rest initargs) — simplified, treats first arg as message
 (defun error (datum &rest arguments)
-  (print datum)
-  (let ((cur arguments))
-    (while (consp cur)
-      (print (car cur))
-      (setq cur (cdr cur))))
-  nil)
+  (if (stringp datum)
+      ;; (error "format-string" args...) — format the message and signal
+      (let ((msg (if arguments
+                     (apply #'format nil datum arguments)
+                     datum)))
+        (%error msg))
+      ;; (error 'condition-type ...) — signal with type name as message
+      (let ((msg (format nil "~A" datum)))
+        (%error msg))))
 
 ;;; ============================================================================
 ;;; Missing arithmetic functions
@@ -519,6 +525,14 @@
 ; are implemented as primitives in compile.zig
 
 ; float-digits - number of digits in significand
+(defun float (number &optional prototype)
+  (declare (ignore prototype))
+  (if (floatp number) number
+      (if (integerp number) (+ number 0.0)
+          (if (rationalp number)
+              (+ (/ (numerator number) (denominator number)) 0.0)
+              (error "Cannot convert to float: ~A" number)))))
+
 (defun float-digits (float)
   (declare (ignore float))
   53) ; IEEE 754 double precision
@@ -566,6 +580,7 @@
 ;;; ============================================================================
 
 ; array-dimensions - get list of dimensions
+; TODO: multi-dimensional arrays need proper primitive support
 (defun array-dimensions (array)
   (list (length array)))
 
@@ -606,12 +621,18 @@
   (declare (ignore array))
   (values nil 0))
 
-; adjust-array - resize array
-(defun adjust-array (array new-dimensions &rest args)
-  (let ((init-elem (getf args :initial-element nil)))
-    (if (numberp new-dimensions)
-        (%adjust-array array new-dimensions init-elem)
-        array)))
+; %make-array-contents - create array and fill from initial-contents list
+(defun %make-array-contents (dim contents)
+  (let ((a (make-array dim))
+        (i 0)
+        (c contents))
+    (while (and (< i dim) c)
+      (setf (aref a i) (car c))
+      (setq i (+ i 1))
+      (setq c (cdr c)))
+    a))
+
+; adjust-array - defined later (after getf/min are available)
 
 ; upgraded-array-element-type - actual element type used
 (defun upgraded-array-element-type (typespec &optional environment)
@@ -931,10 +952,12 @@
 
 ; Mapc - like map but for side effects, returns nil
 (defun mapc (f lst)
-  (if (null lst)
-      nil
-      (progn (funcall f (car lst))
-             (mapc f (cdr lst)))))
+  "Apply F to each element of LST for side effects. Returns LST."
+  (let ((remaining lst))
+    (while remaining
+      (funcall f (car remaining))
+      (setq remaining (cdr remaining))))
+  lst)
 
 ; Filter (keeps elements where pred is true)
 (defun filter (pred lst)
@@ -1000,7 +1023,12 @@
       (car lst)
       (nth (dec n) (cdr lst))))
 
-; last is a primitive that returns the last cons cell
+; last - return the last n cons cells (default 1)
+(defun last (lst &optional (n 1))
+  (let ((len (length lst)))
+    (if (>= n len)
+        lst
+        (nthcdr (- len n) lst))))
 
 ; butlast - return copy of list without last n elements (default 1)
 (defun butlast (lst &optional (n 1))
@@ -1058,6 +1086,18 @@
                  (funcall test item (car pair)))
             pair
             (assoc item (cdr alist) :test test)))))
+
+(defun assoc-if (predicate alist &key key)
+  (if (null alist)
+      nil
+      (let* ((pair (car alist))
+             (k (if key (funcall key (car pair)) (car pair))))
+        (if (and (consp pair) (funcall predicate k))
+            pair
+            (assoc-if predicate (cdr alist) :key key)))))
+
+(defun assoc-if-not (predicate alist &key key)
+  (assoc-if (lambda (x) (not (funcall predicate x))) alist :key key))
 
 ; list* - like list but last arg is tail
 ; list* - creates improper list with last arg as tail
@@ -1454,6 +1494,16 @@
   (declare (ignore package))
   (funcall #'%intern-core (string name)))
 
+(defun find-symbol (name &optional (package *package*))
+  ;; Simple implementation: intern looks up or creates, so we use it
+  ;; then check if the resulting symbol was pre-existing by checking
+  ;; its name matches. CL find-symbol should NOT intern, but our
+  ;; intern is idempotent for existing symbols.
+  (let ((sym (intern name package)))
+    (if sym
+        (values sym :internal)
+        (values nil nil))))
+
 ; Bootstrap function cells for core primitives so (symbol-function 'car) works.
 (setf (fdefinition 'car) #'car)
 (setf (fdefinition 'cdr) #'cdr)
@@ -1723,15 +1773,42 @@
 
 ; nsubstitute - destructive substitute (for now, same as substitute)
 (defun nsubstitute (new old seq &key (test #'eql))
-  (substitute new old seq :test test))
+  (if (listp seq)
+      (let ((current seq))
+        (while current
+          (when (funcall test (car current) old)
+            (rplaca current new))
+          (setq current (cdr current)))
+        seq)
+      (dotimes (i (length seq) seq)
+        (when (funcall test (elt seq i) old)
+          (setf (elt seq i) new)))))
 
 ; nsubstitute-if - destructive substitute-if
 (defun nsubstitute-if (new pred seq)
-  (substitute-if new pred seq))
+  (if (listp seq)
+      (let ((current seq))
+        (while current
+          (when (funcall pred (car current))
+            (rplaca current new))
+          (setq current (cdr current)))
+        seq)
+      (dotimes (i (length seq) seq)
+        (when (funcall pred (elt seq i))
+          (setf (elt seq i) new)))))
 
 ; nsubstitute-if-not - destructive substitute-if-not
 (defun nsubstitute-if-not (new pred seq)
-  (substitute-if-not new pred seq))
+  (if (listp seq)
+      (let ((current seq))
+        (while current
+          (unless (funcall pred (car current))
+            (rplaca current new))
+          (setq current (cdr current)))
+        seq)
+      (dotimes (i (length seq) seq)
+        (unless (funcall pred (elt seq i))
+          (setf (elt seq i) new)))))
 
 ;; ============================================================
 ;; Destructuring
@@ -1821,16 +1898,18 @@
 
 ; string< - lexicographic less-than
 (defun string< (s1 s2)
-  (let ((len1 (string-length s1))
-        (len2 (string-length s2)))
-    (string<-aux s1 s2 0 len1 len2)))
+  (let* ((str1 (string s1))
+         (str2 (string s2))
+         (len1 (string-length str1))
+         (len2 (string-length str2)))
+    (string<-aux str1 str2 0 len1 len2)))
 
 (defun string<-aux (s1 s2 i len1 len2)
   (cond
-    ((>= i len1) (< len1 len2))  ; s1 exhausted, true if s2 longer
+    ((>= i len1) (if (< len1 len2) i nil))  ; s1 exhausted, mismatch index if s2 longer
     ((>= i len2) nil)             ; s2 exhausted first, false
-    ((< (char s1 i) (char s2 i)) t)
-    ((> (char s1 i) (char s2 i)) nil)
+    ((char< (char s1 i) (char s2 i)) i)
+    ((char> (char s1 i) (char s2 i)) nil)
     (t (string<-aux s1 s2 (+ i 1) len1 len2))))
 
 ; string> - lexicographic greater-than
@@ -1856,7 +1935,7 @@
 (defun member-num (n lst)
   (if (null lst)
       nil
-    (if (= n (car lst))
+    (if (eql n (car lst))
         lst
       (member-num n (cdr lst)))))
 
@@ -2134,6 +2213,24 @@
     ; Character to string
     ((and (eq rtype :string) (characterp object))
      (make-string 1 object))
+    ; Numeric coercions
+    ((or (eq result-type 'float) (eq result-type 'single-float)
+         (eq result-type 'double-float) (eq result-type 'short-float)
+         (eq result-type 'long-float))
+     (float object))
+    ((and (eq result-type 'character) (integerp object))
+     (code-char object))
+    ((and (eq result-type 'character) (stringp object))
+     (if (= (length object) 1)
+         (char object 0)
+         (error "Cannot coerce multi-char string to character")))
+    ; Function coercion
+    ((and (eq result-type 'function) (symbolp object))
+     (fdefinition object))
+    ((and (eq result-type 'function) (functionp object))
+     object)
+    ; If object already matches the type, return it
+    ((typep object result-type) object)
     (t (error "Cannot coerce to type")))))
 
 ; (setf (subseq ...)) writer used by ANSI suite helpers
@@ -2175,14 +2272,13 @@
 ; multiple-value-setq - set variables from multiple values
 (defmacro multiple-value-setq (vars form)
   (let ((vals (gensym "VALS"))
-        (i 0))
+        (i 0)
+        (setqs nil))
+    (dolist (var vars)
+      (setq setqs (cons (list 'setq var (list 'nth i vals)) setqs))
+      (setq i (+ i 1)))
     (list 'let (list (list vals (list 'multiple-value-list form)))
-          (cons 'progn
-                (mapcar (lambda (var)
-                          (prog1
-                              (list 'setq var (list 'nth i vals))
-                            (setq i (+ i 1))))
-                        vars)))))
+          (cons 'progn (nreverse setqs)))))
 
 ; nth-value - get nth value from multiple-value form
 (defmacro nth-value (n form)
@@ -2236,9 +2332,9 @@
 ; fill - fill sequence with value
 (defun fill (seq item &key (start 0) end)
   (let ((real-end (or end (length seq))))
-    (if (vectorp seq)
+    (if (or (vectorp seq) (arrayp seq))
         (dotimes (i (- real-end start) seq)
-          (setf (svref seq (+ start i)) item))
+          (setf (aref seq (+ start i)) item))
         ; For lists, destructively modify in place
         (let ((tail (nthcdr start seq))
               (count (- real-end start)))
@@ -2363,15 +2459,17 @@
 (defmacro with-hash-table-iterator (spec &rest body)
   (let ((name (car spec))
         (table (cadr spec))
-        (state-var (gensym)))
+        (state-var (gensym))
+        (fn-var (gensym)))
     `(let* ((,state-var (cons (hash-table-alist ,table) nil))
-            (,name (lambda ()
-                     (if (car ,state-var)
-                         (let ((entry (car (car ,state-var))))
-                           (setf (car ,state-var) (cdr (car ,state-var)))
-                           (values t (car entry) (cdr entry)))
-                         (values nil nil nil)))))
-       ,@body)))
+            (,fn-var (lambda ()
+                       (if (car ,state-var)
+                           (let ((entry (car (car ,state-var))))
+                             (setf (car ,state-var) (cdr (car ,state-var)))
+                             (values t (car entry) (cdr entry)))
+                           (values nil nil nil)))))
+       (flet ((,name () (funcall ,fn-var)))
+         ,@body))))
 
 ;; ============================================================
 ;; CLOS Introspection
@@ -3040,13 +3138,15 @@
 
 ; isqrt - integer square root
 (defun isqrt (n)
-  (if (< n 2)
-      n
-      (let ((small (isqrt (ash n -2))))
-        (let ((large (ash (+ small 1) 1)))
-          (if (> (* large large) n)
-              (- large 1)
-              large)))))
+  (cond
+    ((< n 0) (error "ISQRT: negative argument ~A" n))
+    ((< n 2) n)
+    (t (let ((x n))
+         (let ((y (truncate (+ x 1) 2)))
+           (while (< y x)
+             (setq x y)
+             (setq y (truncate (+ x (truncate n x)) 2)))
+           x)))))
 
 ; signum - sign of number
 (defun signum (n)
@@ -3055,48 +3155,59 @@
         (t 0)))
 
 ; truncate - truncate toward zero, returns (values quotient remainder)
-(defun truncate (number &optional (divisor 1))
+; truncate - truncation division, returns (values quotient remainder)
+; Note: uses helper to avoid if-values bug (if doesn't propagate secondary values)
+(defun %truncate-impl (number divisor)
   (if (or (floatp number) (floatp divisor))
       (let* ((q-float (/ number divisor))
              (q (if (< q-float 0)
-                    (ceiling q-float)
-                    (floor q-float)))
+                    (%ceiling q-float)
+                    (%floor q-float)))
              (r (- number (* q divisor))))
         (values q r))
       (let* ((q (quot number divisor))
              (r (- number (* q divisor))))
         (values q r))))
 
+(defun truncate (number &optional (divisor 1))
+  (%truncate-impl number divisor))
+
 ; floor - floor division, returns (values quotient remainder)
-(defun floor (number &optional (divisor 1))
-  (let* ((q (truncate number divisor))
-         (r (- number (* q divisor))))
+(defun %floor-impl (number divisor)
+  (multiple-value-bind (q r) (%truncate-impl number divisor)
     (if (and (not (zerop r))
              (if (< divisor 0) (> number 0) (< number 0)))
         (values (- q 1) (+ r divisor))
         (values q r))))
 
+(defun floor (number &optional (divisor 1))
+  (%floor-impl number divisor))
+
 ; ceiling - ceiling division, returns (values quotient remainder)
-(defun ceiling (number &optional (divisor 1))
-  (let* ((q (truncate number divisor))
-         (r (- number (* q divisor))))
+(defun %ceiling-impl (number divisor)
+  (multiple-value-bind (q r) (%truncate-impl number divisor)
     (if (and (not (zerop r))
              (if (< divisor 0) (< number 0) (> number 0)))
         (values (+ q 1) (- r divisor))
         (values q r))))
 
+(defun ceiling (number &optional (divisor 1))
+  (%ceiling-impl number divisor))
+
 ; round - round to nearest, returns (values quotient remainder)
-(defun round (number &optional (divisor 1))
-  (let* ((q (truncate number divisor))
-         (r (- number (* q divisor)))
-         (abs-r (abs r))
-         (half (/ (abs divisor) 2)))
-    (let ((rq (cond
-                ((< abs-r half) q)
-                ((> abs-r half) (if (< (* number divisor) 0) (- q 1) (+ q 1)))
-                ((evenp q) q)  ; Round to even
-                (t (if (< (* number divisor) 0) (- q 1) (+ q 1))))))
+(defun %round-impl (number divisor)
+  (multiple-value-bind (q r) (%truncate-impl number divisor)
+    (let* ((abs-r (abs r))
+           (half (/ (abs divisor) 2))
+           (rq (cond
+                 ((< abs-r half) q)
+                 ((> abs-r half) (if (< (* number divisor) 0) (- q 1) (+ q 1)))
+                 ((evenp q) q)
+                 (t (if (< (* number divisor) 0) (- q 1) (+ q 1))))))
       (values rq (- number (* rq divisor))))))
+
+(defun round (number &optional (divisor 1))
+  (%round-impl number divisor))
 
 (defun ffloor (number &optional (divisor 1))
   (float (floor number divisor)))
@@ -3222,6 +3333,20 @@
 (defun char-int (c)
   (char-code c))
 
+(defun digit-char-p (c &optional (radix 10))
+  (let ((cc (char-code c)))
+    (cond
+      ((and (>= cc 48) (<= cc 57))  ; 0-9
+       (let ((d (- cc 48)))
+         (if (< d radix) d nil)))
+      ((and (>= cc 65) (<= cc 90))  ; A-Z
+       (let ((d (+ 10 (- cc 65))))
+         (if (< d radix) d nil)))
+      ((and (>= cc 97) (<= cc 122)) ; a-z
+       (let ((d (+ 10 (- cc 97))))
+         (if (< d radix) d nil)))
+      (t nil))))
+
 (defun digit-char (weight &optional (radix 10))
   (if (and (>= weight 0) (< weight radix) (< radix 37))
       (cond
@@ -3321,7 +3446,7 @@
 (defun string-capitalize-aux (s i len cap-next acc)
   (if (>= i len)
       (coerce (nreverse acc) 'string)
-      (let ((c (code-char (char s i))))
+      (let ((c (char s i)))
         (if (alpha-char-p c)
             (string-capitalize-aux s (+ i 1) len nil
                                    (cons (if cap-next (char-upcase c) (char-downcase c)) acc))
@@ -3360,6 +3485,30 @@
     (t (nth index sequence))))
 
 ; (setf elt) is handled by setf expansion
+
+(defun map-into (result-sequence function &rest sequences)
+  (let ((len (length result-sequence))
+        (is-list (listp result-sequence)))
+    (labels ((set-result (idx val)
+               (if is-list
+                   (setf (nth idx result-sequence) val)
+                   (setf (aref result-sequence idx) val))))
+      (cond
+        ((null sequences)
+         (dotimes (j len result-sequence)
+           (set-result j (funcall function))))
+        ((null (cdr sequences))
+         (let ((src (car sequences))
+               (src-len (length (car sequences))))
+           (dotimes (j (min len src-len) result-sequence)
+             (set-result j (funcall function (elt src j))))))
+        (t
+         (let ((min-len len))
+           (dolist (s sequences)
+             (setq min-len (min min-len (length s))))
+           (dotimes (j min-len result-sequence)
+             (set-result j
+                         (apply function (mapcar (lambda (s) (elt s j)) sequences))))))))))
 
 ; make-sequence - create sequence of given type
 (defun make-sequence (type size &key initial-element)
@@ -3430,12 +3579,19 @@
 
 ; nconc - destructive append (for now, use non-destructive approach)
 ; Helper to fold binary append over a list of lists
+(defun nconc-2 (a b)
+  "Destructively concatenate two lists."
+  (if (null a) b
+      (progn
+        (let ((tail a))
+          (while (cdr tail) (setq tail (cdr tail)))
+          (rplacd tail b))
+        a)))
+
 (defun nconc-helper (lists)
-  (if (null lists)
-      nil
-    (if (null (cdr lists))
-        (car lists)
-      (append (car lists) (nconc-helper (cdr lists))))))
+  (if (null lists) nil
+      (if (null (cdr lists)) (car lists)
+          (nconc-2 (car lists) (nconc-helper (cdr lists))))))
 
 (defun nconc (&rest lists)
   (nconc-helper lists))
@@ -3573,6 +3729,28 @@
   string)
 
 ; read-line - read line from input
+; read - optionally from a stream
+(defun read (&optional stream (eof-error-p t) eof-value recursive-p)
+  (declare (ignore recursive-p))
+  (if stream
+      ;; Read from stream: collect chars until we have a complete form
+      (let ((chars nil)
+            (done nil))
+        (loop
+          (let ((c (read-char stream nil nil)))
+            (when (null c)
+              (setq done t)
+              (return))
+            (push c chars)))
+        (if chars
+            (let ((str (coerce (nreverse chars) 'string)))
+              (read-from-string str))
+            (if eof-error-p
+                (error "End of file on stream")
+                eof-value)))
+      ;; Read from stdin (use primitive)
+      (%read)))
+
 (defun read-line (&optional stream eof-error-p eof-value)
   (declare (ignore eof-error-p))
   (if stream
@@ -3655,6 +3833,44 @@
   (let ((*print-escape* t))
     (write-to-string object)))
 
+; parse-integer with keyword arguments
+; The primitive parse-integer only handles simple cases.
+; This wrapper adds :start, :end, :radix, :junk-allowed support.
+(defun parse-integer (string &key (start 0) end (radix 10) junk-allowed)
+  (declare (ignore junk-allowed))
+  (let* ((end (or end (length string)))
+         (i start)
+         (result 0)
+         (negative nil)
+         (found-digit nil))
+    ;; skip leading whitespace
+    (do ()
+        ((or (>= i end) (let ((cc (char-code (char string i))))
+                           (not (or (= cc 32) (= cc 9) (= cc 10))))))
+      (setq i (+ i 1)))
+    ;; check sign
+    (when (< i end)
+      (let ((cc (char-code (char string i))))
+        (cond
+          ((= cc 45) (setq negative t) (setq i (+ i 1)))  ; #\-
+          ((= cc 43) (setq i (+ i 1))))))                  ; #\+
+    ;; parse digits
+    (do ()
+        ((>= i end))
+      (let* ((cc (char-code (char string i)))
+             (digit (cond
+                      ((and (>= cc 48) (<= cc 57)) (- cc 48))      ; 0-9
+                      ((and (>= cc 97) (<= cc 122)) (- cc 87))     ; a-z
+                      ((and (>= cc 65) (<= cc 90)) (- cc 55))      ; A-Z
+                      (t nil))))
+        (if (and digit (< digit radix))
+            (progn
+              (setq result (+ (* result radix) digit))
+              (setq found-digit t)
+              (setq i (+ i 1)))
+            (return nil))))
+    (values (if found-digit (if negative (- result) result) nil) i)))
+
 ; stream-princ - write object to stream without escaping
 (defun stream-princ (object stream)
   (write-to-stream (if (stringp object)
@@ -3727,6 +3943,41 @@
 ; putf - helper to set property in plist (returns new plist)
 (defun putf (plist indicator value)
   (cons indicator (cons value plist)))
+
+; adjust-array - resize array (creates new array, copies elements)
+(defun adjust-array (array new-dimensions &rest args)
+  (let ((init-elem (getf args :initial-element nil))
+        (old-size (array-total-size array))
+        (new-size (if (numberp new-dimensions) new-dimensions (car new-dimensions))))
+    (let ((new-arr (make-array new-size :initial-element init-elem))
+          (copy-len (min old-size new-size)))
+      (dotimes (i copy-len)
+        (setf (aref new-arr i) (aref array i)))
+      new-arr)))
+
+; string-upcase - with optional :start/:end
+(defun string-upcase (str &rest args)
+  (let* ((s (string str))
+         (start (getf args :start 0))
+         (end (getf args :end (length s))))
+    (if (and (= start 0) (= end (length s)))
+        (%string-upcase s)
+        (concatenate 'string
+                     (subseq s 0 start)
+                     (%string-upcase (subseq s start end))
+                     (subseq s end)))))
+
+; string-downcase - with optional :start/:end
+(defun string-downcase (str &rest args)
+  (let* ((s (string str))
+         (start (getf args :start 0))
+         (end (getf args :end (length s))))
+    (if (and (= start 0) (= end (length s)))
+        (%string-downcase s)
+        (concatenate 'string
+                     (subseq s 0 start)
+                     (%string-downcase (subseq s start end))
+                     (subseq s end)))))
 
 ; remf-helper - helper for remf, removes property and returns new plist
 (defun remf-helper (plist indicator)
@@ -4096,7 +4347,7 @@
 
 ; Generate loop code from parsed components
 (defun loop-generate-code (vars step-forms end-tests body-forms
-                           collect-var collect-forms
+                           collect-var collect-forms named-collects
                            sum-var sum-forms
                            count-var count-forms
                            append-var append-forms
@@ -4123,6 +4374,9 @@
     ; Add accumulator variables
     (when has-collect
       (push (list collect-var nil) all-vars))
+    ;; Add named collect variables
+    (dolist (nc named-collects)
+      (push (list (car nc) nil) all-vars))
     (when has-sum
       (push (list sum-var 0) all-vars))
     (when has-count
@@ -4163,17 +4417,30 @@
       (let ((end-test-forms (when end-test
                               (list (list 'when end-test (list 'return-from block-name result-expr)))))
             (main-body body-forms)  ; Already in correct order from DO clause
-            (collect-body (mapcar (lambda (expr)
-                                    ; Handle conditional forms: (when test val) or (unless test val)
-                                    (if (and (consp expr) (member (car expr) '(when unless)))
-                                        ; Wrap setq inside conditional
-                                        (list (car expr) (cadr expr)
-                                              (list 'setq collect-var
-                                                    (list 'nconc collect-var (list 'list (caddr expr)))))
-                                        ; Normal form
-                                        (list 'setq collect-var
-                                              (list 'nconc collect-var (list 'list expr)))))
-                                  (nreverse collect-forms)))
+            (collect-body (append
+                           ;; Default collect forms
+                           (mapcar (lambda (expr)
+                                     (if (and (consp expr) (member (car expr) '(when unless)))
+                                         (list (car expr) (cadr expr)
+                                               (list 'setq collect-var
+                                                     (list 'nconc collect-var (list 'list (caddr expr)))))
+                                         (list 'setq collect-var
+                                               (list 'nconc collect-var (list 'list expr)))))
+                                   (nreverse collect-forms))
+                           ;; Named collect forms
+                           (let ((nc-body nil))
+                             (dolist (nc named-collects)
+                               (let ((var (car nc))
+                                     (forms (cdr nc)))
+                                 (dolist (expr (nreverse forms))
+                                   (push (if (and (consp expr) (member (car expr) '(when unless)))
+                                             (list (car expr) (cadr expr)
+                                                   (list 'setq var
+                                                         (list 'nconc var (list 'list (caddr expr)))))
+                                             (list 'setq var
+                                                   (list 'nconc var (list 'list expr))))
+                                         nc-body))))
+                             (nreverse nc-body))))
             (sum-body (mapcar (lambda (expr)
                                 (if (and (consp expr) (member (car expr) '(when unless)))
                                     (list (car expr) (cadr expr)
@@ -4251,7 +4518,7 @@
                                             (list 'when val-var
                                                   (list 'return-from block-name val-var)))))
                                   (nreverse thereis-forms)))
-            (step-body (nreverse step-forms)))
+            (step-body (loop-group-parallel-steps (nreverse step-forms))))
         (setq loop-body
               (append end-test-forms
                       (append main-body
@@ -4289,13 +4556,48 @@
   (return-from nil nil))
 
 ; Expand loop clauses into code
+;; Convert step-forms with :and markers into parallel psetq groups.
+;; Input: ((setq a ea) :and (setq b eb) (setq c ec))
+;; Output: ((psetq a ea b eb) (setq c ec))
+;; The :and marker between two setqs means they should be parallel.
+(defun loop-group-parallel-steps (forms)
+  (let ((result nil)
+        (current-group nil))
+    (dolist (f forms)
+      (cond
+        ((eq f :and)
+         ;; Next step form should be in same parallel group
+         ;; If current-group is empty, take the last result item
+         (when (and (null current-group) result)
+           (setq current-group (list (pop result)))))
+        (t
+         (if current-group
+             ;; Add to parallel group
+             (push f current-group)
+             ;; Start fresh
+             (push f result)))))
+    ;; Flush remaining parallel group
+    (when current-group
+      (let ((group (nreverse current-group)))
+        (if (= (length group) 1)
+            (push (car group) result)
+            ;; Convert ((setq a ea) (setq b eb)) → (psetq a ea b eb)
+            (let ((psetq-args nil))
+              (dolist (sf group)
+                (when (and (consp sf) (eq (car sf) 'setq))
+                  (push (cadr sf) psetq-args)
+                  (push (caddr sf) psetq-args)))
+              (push (cons 'psetq (nreverse psetq-args)) result)))))
+    (nreverse result)))
+
 (defun loop-expand (clauses)
   (let ((vars nil)           ; ((var init) ...)
         (step-forms nil)     ; (setq var step-expr) ...
         (end-tests nil)      ; test expressions for termination
         (body-forms nil)     ; do/doing body
-        (collect-var nil)    ; variable for collect
-        (collect-forms nil)  ; collected expressions
+        (collect-var nil)    ; variable for default collect
+        (collect-forms nil)  ; collected expressions for default
+        (named-collects nil) ; alist of (var . (cond-forms)) for collect INTO
         (sum-var nil)        ; variable for sum
         (sum-forms nil)      ; summed expressions
         (count-var nil)      ; variable for count
@@ -4315,6 +4617,7 @@
         (finally-forms nil)  ; finally body
         (initially-forms nil) ; initially body
         (and-context nil)     ; tracks FOR/WITH chains split by AND
+        (current-step-group nil)  ; step-forms for current AND chain
         (rest clauses))
 
     ; Parse all clauses using while loop
@@ -4586,6 +4889,7 @@
 
           ; AND separator for parallel FOR/WITH clauses
           ((:and)
+           (push :and step-forms)  ; marker for parallel grouping
            (let ((next-kw (loop-kw-canon (cadr rest))))
              (cond
                ((member next-kw '(:for :as :with))
@@ -4633,11 +4937,15 @@
                  (then-rest (cddr rest))
                  (then-action nil)
                  (else-action nil))
-             ; Parse THEN clause
+             ; Parse THEN clause (including optional INTO for collect/sum/etc)
              (case (loop-kw-canon (car then-rest))
                ((:do :collect :sum :count :append :nconc :maximize :minimize :return)
                 (setq then-action (list (car then-rest) (cadr then-rest)))
-                (setq then-rest (cddr then-rest)))
+                (setq then-rest (cddr then-rest))
+                ;; Check for INTO after collect/sum/count/append/nconc
+                (when (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :into))
+                  (setq then-action (append then-action (list (car then-rest) (cadr then-rest))))
+                  (setq then-rest (cddr then-rest))))
                (t (error "IF requires DO/COLLECT/SUM/COUNT/etc")))
              ; Check for ELSE
              (when (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :else))
@@ -4657,10 +4965,21 @@
                 (when else-action
                   (push (list 'unless test (cadr else-action)) body-forms)))
                ((:collect)
-                ; Ensure collect-var exists
-                (unless collect-var
-                  (setq collect-var (gensym "collect")))
-                (push (list 'when test (cadr then-action)) collect-forms)
+                ;; Check if then-action has INTO: (collect expr into var)
+                (let ((into-var (when (and (>= (length then-action) 4)
+                                          (eq (loop-kw-canon (caddr then-action)) :into))
+                                  (cadddr then-action))))
+                  (if into-var
+                      ;; Named collect: add to named-collects
+                      (let ((entry (assoc into-var named-collects)))
+                        (if entry
+                            (push (list 'when test (cadr then-action)) (cdr entry))
+                            (push (cons into-var (list (list 'when test (cadr then-action)))) named-collects)))
+                      ;; Default collect
+                      (progn
+                        (unless collect-var
+                          (setq collect-var (gensym "collect")))
+                        (push (list 'when test (cadr then-action)) collect-forms))))
                 (when else-action
                   (push (list 'unless test (cadr else-action)) collect-forms)))
                ((:sum)
@@ -4771,13 +5090,22 @@
           ; COLLECT/COLLECTING expr [INTO var]
           ((:collect :collecting)
            (let ((expr (cadr rest))
-                 (into-rest (cddr rest)))
+                 (into-rest (cddr rest))
+                 (into-var nil))
              (when (and (consp into-rest) (eq (loop-kw-canon (car into-rest)) :into))
-               (setq collect-var (cadr into-rest))
+               (setq into-var (cadr into-rest))
                (setq into-rest (cddr into-rest)))
-             (unless collect-var
-               (setq collect-var (gensym "collect")))
-             (push expr collect-forms)
+             (if into-var
+                 ;; Named collect: add to named-collects alist
+                 (let ((entry (assoc into-var named-collects)))
+                   (if entry
+                       (push expr (cdr entry))
+                       (push (cons into-var (list expr)) named-collects)))
+                 ;; Default collect
+                 (progn
+                   (unless collect-var
+                     (setq collect-var (gensym "collect")))
+                   (push expr collect-forms)))
              (setq rest into-rest)))
 
           ; SUM/SUMMING expr [INTO var]
@@ -4897,7 +5225,7 @@
 
     ; Generate the loop code
     (loop-generate-code vars step-forms end-tests body-forms
-                        collect-var collect-forms
+                        collect-var collect-forms named-collects
                         sum-var sum-forms
                         count-var count-forms
                         append-var append-forms
@@ -5520,8 +5848,9 @@
   (declare (ignore initargs class))
   nil)
 
-(defun initialize-instance (instance &rest initargs)
-  "Initialize an instance (stub)"
+(defgeneric initialize-instance (instance &rest initargs))
+(defmethod initialize-instance ((instance t) &rest initargs)
+  "Default method: return instance unchanged"
   (declare (ignore initargs))
   instance)
 
@@ -5728,8 +6057,9 @@
   (error "Unhandled condition in debugger"))
 
 ; print-object - CLOS print method (simplified)
-(defun print-object (object stream)
-  "Print OBJECT to STREAM (default method)"
+(defgeneric print-object (object stream))
+(defmethod print-object ((object t) stream)
+  "Default: print OBJECT to STREAM via write"
   (write object :stream stream)
   object)
 

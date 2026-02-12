@@ -903,6 +903,28 @@ pub const Parser = struct {
             }
         }
 
+        // If all codepoints are ASCII, downgrade to base String for compatibility
+        if (!has_unicode) {
+            var all_ascii = true;
+            for (buffer[0..out_idx]) |cp| {
+                if (cp >= 128) {
+                    all_ascii = false;
+                    break;
+                }
+            }
+            if (all_ascii) {
+                // Convert to base string (u8 bytes)
+                var ascii_buf: [1024]u8 = undefined;
+                if (out_idx <= ascii_buf.len) {
+                    for (buffer[0..out_idx], 0..) |cp, j| {
+                        ascii_buf[j] = @intCast(cp);
+                    }
+                    return try self.heap.allocBaseString(ascii_buf[0..out_idx]);
+                }
+                // Fall through to String32 for very long strings
+            }
+        }
+
         return str_val;
     }
 

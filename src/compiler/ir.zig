@@ -232,6 +232,7 @@ pub const Ir = union(enum) {
     /// Multiple-value-bind: (multiple-value-bind (vars...) expr body...)
     mv_bind: struct {
         vars: []const []const u8,
+        start_index: u16, // absolute local index of first variable
         expr: *const Ir,
         body: *const Ir,
     },
@@ -1442,10 +1443,10 @@ pub const IrBuilder = struct {
         return node;
     }
 
-    pub fn mvBind(self: IrBuilder, vars: []const []const u8, expr: *const Ir, body: *const Ir) !*Ir {
+    pub fn mvBind(self: IrBuilder, vars: []const []const u8, start_index: u16, expr: *const Ir, body: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         const vars_copy = try self.allocator.dupe([]const u8, vars);
-        node.* = .{ .mv_bind = .{ .vars = vars_copy, .expr = expr, .body = body } };
+        node.* = .{ .mv_bind = .{ .vars = vars_copy, .start_index = start_index, .expr = expr, .body = body } };
         return node;
     }
 

@@ -244,9 +244,9 @@ pub const Emitter = struct {
             },
             .go => {},
             .mv_bind => |m| {
-                // Reserve slots for all vars (they start at index 0)
-                const var_count: u8 = @intCast(m.vars.len);
-                max_idx = @max(max_idx, var_count);
+                // Reserve slots for vars starting at start_index
+                const end_idx: u8 = @intCast(m.start_index + @as(u16, @intCast(m.vars.len)));
+                max_idx = @max(max_idx, end_idx);
                 max_idx = computeMaxLocalIndexImpl(m.expr, max_idx);
                 max_idx = computeMaxLocalIndexImpl(m.body, max_idx);
             },
@@ -2208,11 +2208,13 @@ pub const Emitter = struct {
         // This may produce a `values` opcode that stores secondary values
         try self.emit(m.expr);
 
-        // Emit mv_bind opcode with count
-        // This pops primary, stores all values to bp+0..bp+count-1
+        // Emit mv_bind opcode with count and start_index
+        // This pops primary, stores all values to bp+start_index..bp+start_index+count-1
         if (m.vars.len > 255) return error.TooManyLocals;
+        if (m.start_index > 255) return error.TooManyLocals;
         try self.emitOp(.mv_bind);
         try self.emitU8(@intCast(m.vars.len));
+        try self.emitU8(@intCast(m.start_index));
 
         // Emit body - variables are now bound to locals by VM
         try self.emit(m.body);

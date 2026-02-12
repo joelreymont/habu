@@ -48,13 +48,11 @@ test "oracle: arithmetic expressions" {
         try testing.expectEqual(tc.expected, result.toFixnum());
     }
 
-    // Test division returns rational
+    // Test division: 150/3 = 50 (fixnum, evenly divisible)
     {
         const result = try harness.eval(allocator, &heap, "(/ (+ 100 50) 3)");
-        try testing.expect(result.typeKind() == .rational);
-        const rat = result.toPtr(runtime.objects.Rational);
-        try testing.expectEqual(@as(i64, 50), rat.numerator);
-        try testing.expectEqual(@as(i64, 1), rat.denominator);
+        try testing.expect(result.isFixnum());
+        try testing.expectEqual(@as(i64, 50), result.toFixnum());
     }
 }
 

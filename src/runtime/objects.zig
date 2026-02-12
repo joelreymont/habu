@@ -409,10 +409,9 @@ pub const Stream = extern struct {
             self.file_fd = -1;
         }
 
+        // String output stream buffers are freed by heap.deinit() which has the allocator.
+        // Just mark as closed here.
         if (self.stream_type == .string and self.direction == .output and self.data_ptr != 0) {
-            const buf: *OutputBuffer = @ptrFromInt(self.data_ptr);
-            buf.list.deinit(buf.allocator);
-            buf.allocator.destroy(buf);
             self.data_ptr = 0;
             self.length = 0;
             self.position = 0;

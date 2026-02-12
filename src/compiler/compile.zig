@@ -75,6 +75,9 @@ pub const Builtins = struct {
     defun: Value,
     setq: Value,
     setf: Value,
+    push: Value,
+    incf: Value,
+    decf: Value,
 
     // Sequencing
     progn: Value,
@@ -266,6 +269,7 @@ pub const Builtins = struct {
     listen: Value,
     @"upgraded-complex-part-type": Value,
     read: Value,
+    @"%read": Value,
     @"read-from-string": Value,
     load: Value,
     eval: Value,
@@ -286,6 +290,11 @@ pub const Builtins = struct {
     @"type-of": Value,
     intern: Value,
     @"%make-symbol": Value,
+    @"%error": Value,
+    @"%floor": Value,
+    @"%ceiling": Value,
+    @"%round": Value,
+    @"%truncate": Value,
     unintern: Value,
     @"find-symbol": Value,
     @"symbol-name": Value,
@@ -298,6 +307,24 @@ pub const Builtins = struct {
     remprop: Value,
     @"error": Value,
     condition: Value,
+    @"serious-condition": Value,
+    @"simple-error": Value,
+    @"simple-condition": Value,
+    @"type-error": Value,
+    @"program-error": Value,
+    @"control-error": Value,
+    @"arithmetic-error": Value,
+    @"division-by-zero": Value,
+    @"cell-error": Value,
+    @"unbound-variable": Value,
+    @"undefined-function": Value,
+    @"package-error": Value,
+    @"stream-error": Value,
+    @"file-error": Value,
+    @"parse-error": Value,
+    @"end-of-file": Value,
+    warning: Value,
+    @"simple-warning": Value,
     // Type specifier symbols for concatenate/coerce
     string: Value,
     character: Value,
@@ -463,13 +490,16 @@ pub const Builtins = struct {
     @"long-site-name": Value,
     @"user-homedir-pathname": Value,
     @"%make-pathname": Value,
+    @"%make-array-contents": Value,
 
     // Primitives - String construction
     @"make-string": Value,
     @"string-to-list": Value,
     @"list-to-string": Value,
     @"string-upcase": Value,
+    @"%string-upcase": Value,
     @"string-downcase": Value,
+    @"%string-downcase": Value,
     concatenate: Value,
     // coerce removed - implemented in stdlib
 
@@ -685,6 +715,9 @@ pub const Builtins = struct {
             .defun = try heap.intern("defun"),
             .setq = try heap.intern("setq"),
             .setf = try heap.intern("setf"),
+            .push = try heap.intern("push"),
+            .incf = try heap.intern("incf"),
+            .decf = try heap.intern("decf"),
             .progn = try heap.intern("progn"),
             .begin = try heap.intern("begin"),
             .@"while" = try heap.intern("while"),
@@ -853,6 +886,7 @@ pub const Builtins = struct {
             .listen = try heap.intern("listen"),
             .@"upgraded-complex-part-type" = try heap.intern("upgraded-complex-part-type"),
             .read = try heap.intern("read"),
+            .@"%read" = try heap.intern("%read"),
             .@"read-from-string" = try heap.intern("read-from-string"),
             .load = try heap.intern("load"),
             .eval = try heap.intern("eval"),
@@ -872,6 +906,11 @@ pub const Builtins = struct {
             .@"type-of" = try heap.intern("type-of"),
             .intern = try heap.intern("intern"),
             .@"%make-symbol" = try heap.intern("%make-symbol"),
+            .@"%error" = try heap.intern("%error"),
+            .@"%floor" = try heap.intern("%floor"),
+            .@"%ceiling" = try heap.intern("%ceiling"),
+            .@"%round" = try heap.intern("%round"),
+            .@"%truncate" = try heap.intern("%truncate"),
             .unintern = try heap.intern("unintern"),
             .@"find-symbol" = try heap.intern("find-symbol"),
             .@"symbol-name" = try heap.intern("symbol-name"),
@@ -884,6 +923,24 @@ pub const Builtins = struct {
             .remprop = try heap.intern("remprop"),
             .@"error" = try heap.intern("error"),
             .condition = try heap.intern("condition"),
+            .@"serious-condition" = try heap.intern("serious-condition"),
+            .@"simple-error" = try heap.intern("simple-error"),
+            .@"simple-condition" = try heap.intern("simple-condition"),
+            .@"type-error" = try heap.intern("type-error"),
+            .@"program-error" = try heap.intern("program-error"),
+            .@"control-error" = try heap.intern("control-error"),
+            .@"arithmetic-error" = try heap.intern("arithmetic-error"),
+            .@"division-by-zero" = try heap.intern("division-by-zero"),
+            .@"cell-error" = try heap.intern("cell-error"),
+            .@"unbound-variable" = try heap.intern("unbound-variable"),
+            .@"undefined-function" = try heap.intern("undefined-function"),
+            .@"package-error" = try heap.intern("package-error"),
+            .@"stream-error" = try heap.intern("stream-error"),
+            .@"file-error" = try heap.intern("file-error"),
+            .@"parse-error" = try heap.intern("parse-error"),
+            .@"end-of-file" = try heap.intern("end-of-file"),
+            .warning = try heap.intern("warning"),
+            .@"simple-warning" = try heap.intern("simple-warning"),
             // Type specifier symbols for concatenate/coerce
             .string = try heap.intern("string"),
             .character = try heap.intern("character"),
@@ -1037,12 +1094,15 @@ pub const Builtins = struct {
             .@"long-site-name" = try heap.intern("long-site-name"),
             .@"user-homedir-pathname" = try heap.intern("user-homedir-pathname"),
             .@"%make-pathname" = try heap.intern("%make-pathname"),
+            .@"%make-array-contents" = try heap.intern("%make-array-contents"),
             // Primitives - String construction
             .@"make-string" = try heap.intern("make-string"),
             .@"string-to-list" = try heap.intern("string-to-list"),
             .@"list-to-string" = try heap.intern("list-to-string"),
             .@"string-upcase" = try heap.intern("string-upcase"),
+            .@"%string-upcase" = try heap.intern("%string-upcase"),
             .@"string-downcase" = try heap.intern("string-downcase"),
+            .@"%string-downcase" = try heap.intern("%string-downcase"),
             .concatenate = try heap.intern("concatenate"),
             // .coerce removed - implemented in stdlib
             // Primitives - Hash tables
@@ -1252,7 +1312,7 @@ pub const Builtins = struct {
         "not",                    "characterp",               "floatp",                    "listp",                    "atom",
         // Character operations
                             "char-code",                   "code-char",          "char=",                  "char<",
-        "char>",                  "%read-char",               "%peek-char",                "read",                     "read-from-string",         "load",                        "unread-char",        "listen",                 "upgraded-complex-part-type",
+        "char>",                  "%read-char",               "%peek-char",                "read", "%read",                    "read-from-string",         "load",                        "unread-char",        "listen",                 "upgraded-complex-part-type",
         "eval",                   "gensym",                   "macroexpand",               "macroexpand-1",
         // Symbol operations
                    "boundp",                   "fboundp",                     "symbol-value",       "symbol-function",        "symbol-plist",            "function-lambda-expression",
@@ -1287,7 +1347,7 @@ pub const Builtins = struct {
         "machine-version",        "software-version",         "short-site-name",           "long-site-name",           "user-homedir-pathname",
         // String construction
            "make-string",                 "string-to-list",     "list-to-string",         "string-upcase",
-        "string-downcase",        "concatenate",
+        "string-downcase",        "concatenate",   "%string-upcase",  "%string-downcase",
         // Hash tables
                      "make-hash-table",           "gethash",                  "puthash",                  "remhash",                     "hash-table-count",   "hash-table-capacity",    "clrhash",
         "hash-table-test",        "hash-table-p",             "hash-table-keys",           "hash-table-alist",         "sxhash",
@@ -4109,8 +4169,8 @@ pub const Compiler = struct {
         const tail = cons.cdr;
 
         if (head.isSymbol()) {
-            // Check for (setq var ...)
-            if (head.raw == b.setq.raw) {
+            // Check for (setq var ...) or (setf var ...) — both mutate variables
+            if (head.raw == b.setq.raw or head.raw == b.setf.raw) {
                 if (tail.isCons()) {
                     const set_cons = tail.toPtr(Cons);
                     if (set_cons.car.isSymbol()) {
@@ -4128,6 +4188,47 @@ pub const Compiler = struct {
                         const val_cons = set_cons.cdr.toPtr(Cons);
                         try self.collectMutationsAndCaptures(val_cons.car, binding_syms, mutated, captured);
                     }
+                }
+                return;
+            }
+
+            // Check for (push val var) — mutation via macro
+            if (head.raw == b.push.raw) {
+                if (tail.isCons()) {
+                    const push_cons = tail.toPtr(Cons);
+                    if (push_cons.cdr.isCons()) {
+                        const place_cons = push_cons.cdr.toPtr(Cons);
+                        if (place_cons.car.isSymbol()) {
+                            const var_sym = place_cons.car;
+                            for (binding_syms) |bn| {
+                                if (var_sym.eq(bn)) {
+                                    try mutated.put(var_sym, {});
+                                    break;
+                                }
+                            }
+                        }
+                        // Recurse into value
+                        try self.collectMutationsAndCaptures(push_cons.car, binding_syms, mutated, captured);
+                    }
+                }
+                return;
+            }
+
+            // Check for (incf var) / (decf var) — mutation via macro
+            if (head.raw == b.incf.raw or head.raw == b.decf.raw) {
+                if (tail.isCons()) {
+                    const inc_cons = tail.toPtr(Cons);
+                    if (inc_cons.car.isSymbol()) {
+                        const var_sym = inc_cons.car;
+                        for (binding_syms) |bn| {
+                            if (var_sym.eq(bn)) {
+                                try mutated.put(var_sym, {});
+                                break;
+                            }
+                        }
+                    }
+                    // Recurse into delta if present
+                    try self.collectMutationsAndCapturesInList(inc_cons.cdr, binding_syms, mutated, captured);
                 }
                 return;
             }
@@ -5988,7 +6089,7 @@ pub const Compiler = struct {
         if (s == b.@"code-char".raw) return try self.makeUnaryWrapper(&IrBuilder.codeChar);
         if (s == b.@"char-upcase".raw) return try self.makeUnaryWrapper(&IrBuilder.charUpcase);
         if (s == b.@"char-downcase".raw) return try self.makeUnaryWrapper(&IrBuilder.charDowncase);
-        if (s == b.@"digit-char-p".raw) return try self.makeUnaryWrapper(&IrBuilder.digitCharP);
+        // digit-char-p removed — stdlib handles optional radix
         if (s == b.@"alpha-char-p".raw) return try self.makeUnaryWrapper(&IrBuilder.alphaCharP);
         if (s == b.values.raw) return try self.makeValuesWrapper();
 
@@ -6822,19 +6923,28 @@ pub const Compiler = struct {
         const b = self.builtins.?;
         const canonical_type = self.canonicalBuiltinSymbol(condition_type);
 
-        // CONDITION and ERROR are catch-all supertypes: match any condition
-        if (canonical_type.raw == b.@"error".raw or canonical_type.raw == b.condition.raw) {
+        // CONDITION, ERROR, SERIOUS-CONDITION are catch-all supertypes: match any condition
+        if (canonical_type.raw == b.@"error".raw or
+            canonical_type.raw == b.condition.raw or
+            canonical_type.raw == b.@"serious-condition".raw)
+        {
             // Always match (non-nil car means a condition was thrown)
             const nil_ir = try self.builder.lit(Value.nil);
             const test_ir = try self.builder.not(try self.builder.eq(car_cond, nil_ir));
             return try self.builder.ifExpr(test_ir, let_ir, else_ir);
         }
 
-        // 'type - the condition type symbol
-        const type_ir = try self.builder.lit(condition_type);
+        // Build type test including subtypes from the CL condition hierarchy.
+        // Start with exact match, then add subtypes.
+        var test_ir = try self.builder.eq(car_cond, try self.builder.lit(condition_type));
 
-        // (eq (car cond) 'type)
-        const test_ir = try self.builder.eq(car_cond, type_ir);
+        // Add subtype checks based on CL hierarchy
+        const subtypes = self.getConditionSubtypes(canonical_type);
+        for (subtypes) |subtype_sym| {
+            const sub_ir = try self.builder.eq(car_cond, try self.builder.lit(subtype_sym));
+            // (or test sub) = (if test t sub)
+            test_ir = try self.builder.ifExpr(test_ir, try self.builder.lit(Value.t), sub_ir);
+        }
 
         // Build if node
         return try self.builder.ifExpr(test_ir, let_ir, else_ir);
@@ -6947,6 +7057,8 @@ pub const Compiler = struct {
         defer vars.deinit(self.allocator);
 
         var var_list = cons1.car;
+        var start_index: u16 = 0;
+        var first = true;
         while (var_list.isCons()) {
             const var_cons = var_list.toPtr(Cons);
             if (!var_cons.car.isSymbol()) return error.InvalidSyntax;
@@ -6954,7 +7066,11 @@ pub const Compiler = struct {
             const sym = sym_val.toPtr(Symbol);
             const name_copy = try self.allocator.dupe(u8, sym.getName());
             try vars.append(self.allocator, name_copy);
-            _ = try let_env.bindSym(sym_val);
+            const idx = try let_env.bindSym(sym_val);
+            if (first) {
+                start_index = idx;
+                first = false;
+            }
             var_list = var_cons.cdr;
         }
 
@@ -6967,7 +7083,7 @@ pub const Compiler = struct {
         // Compile body forms
         const body_ir = try self.compileBody(cons2.cdr, &let_env);
 
-        return try self.builder.mvBind(vars.items, expr_ir, body_ir);
+        return try self.builder.mvBind(vars.items, start_index, expr_ir, body_ir);
     }
 
     fn compileMvCall(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -10078,7 +10194,28 @@ pub const Compiler = struct {
 
         const ctor_idx = if (self.globals.lookup(ctor_name)) |val| val else return error.InvalidSyntax;
         const ctor_ref = try self.builder.globalRef(ctor_name, ctor_idx);
-        return try self.builder.call(ctor_ref, call_args);
+        const ctor_call = try self.builder.call(ctor_ref, call_args);
+
+        // Call initialize-instance on the new object (for :before/:after/:around methods)
+        // Emit: (let ((#:obj (ctor ...))) (initialize-instance #:obj) #:obj)
+        // Try multiple name forms since stdlib may use qualified names
+        const init_idx_opt = self.globals.lookup("initialize-instance") orelse
+            self.globals.lookup("COMMON-LISP:INITIALIZE-INSTANCE") orelse
+            self.globals.lookup("CL:INITIALIZE-INSTANCE") orelse
+            self.lookupGlobalIdxWithFallback("initialize-instance");
+        if (init_idx_opt) |init_idx| {
+            const init_ref = try self.builder.globalRef("initialize-instance", init_idx);
+            const init_args = try self.allocator.alloc(*Ir, 1);
+            const local_idx = env.localCount();
+            const var_ref = try self.builder.variable("#:init-obj", 0, local_idx);
+            init_args[0] = var_ref;
+            const init_call = try self.builder.call(init_ref, init_args);
+            const var_ref2 = try self.builder.variable("#:init-obj", 0, local_idx);
+            const body = try self.builder.progn(&[_]*Ir{ init_call, var_ref2 });
+            return try self.builder.let1("#:init-obj", local_idx, ctor_call, body);
+        }
+
+        return ctor_call;
     }
 
     /// Compile slot-value: (slot-value obj 'slot-name)
@@ -12940,20 +13077,23 @@ pub const Compiler = struct {
         .{ .field = "float-digits", .tag = .float_digits },
         .{ .field = "vector-length", .tag = .vec_len },
         .{ .field = "copy-structure", .tag = .copy_structure },
+        .{ .field = "%error", .tag = .error_user },
+        .{ .field = "%floor", .tag = .floor },
+        .{ .field = "%ceiling", .tag = .ceiling },
+        .{ .field = "%round", .tag = .round },
+        .{ .field = "%truncate", .tag = .quot },
         .{ .field = "%fill-pointer", .tag = .vec_fill_ptr },
         .{ .field = "%vector-pop", .tag = .vec_pop },
         .{ .field = "%find-class", .tag = .find_class },
         .{ .field = "%class-name", .tag = .class_name },
         .{ .field = "string-length", .tag = .str_len },
         .{ .field = "write", .tag = .write },
-        .{ .field = "print", .tag = .print },
-        .{ .field = "princ", .tag = .princ },
         .{ .field = "write-char", .tag = .write_char },
         .{ .field = "char-upcase", .tag = .char_upcase },
         .{ .field = "char-downcase", .tag = .char_downcase },
-        .{ .field = "digit-char-p", .tag = .digit_char_p },
+        // digit-char-p removed from unary dispatch — stdlib handles optional radix
         .{ .field = "alpha-char-p", .tag = .alpha_char_p },
-        .{ .field = "parse-integer", .tag = .parse_integer },
+        // parse-integer removed from unary dispatch — stdlib handles kwargs
         .{ .field = "write-to-string", .tag = .write_to_string },
         .{ .field = "lognot", .tag = .lognot },
         .{ .field = "logcount", .tag = .logcount },
@@ -12964,8 +13104,9 @@ pub const Compiler = struct {
         .{ .field = "file-write-date", .tag = .file_write_date },
         .{ .field = "file-author", .tag = .file_author },
         .{ .field = "list-to-string", .tag = .list_to_string },
-        .{ .field = "string-upcase", .tag = .string_upcase },
-        .{ .field = "string-downcase", .tag = .string_downcase },
+        // string-upcase/string-downcase: stdlib wrappers handle :start/:end
+        .{ .field = "%string-upcase", .tag = .string_upcase },
+        .{ .field = "%string-downcase", .tag = .string_downcase },
         .{ .field = "rationalp", .tag = .rationalp },
         .{ .field = "complexp", .tag = .complexp },
         .{ .field = "real-part", .tag = .real_part },
@@ -13086,7 +13227,7 @@ pub const Compiler = struct {
         .{ .field = "typep", .tag = .typep },
         .{ .field = "subtypep", .tag = .subtypep },
         .{ .field = "unintern", .tag = .unintern },
-        .{ .field = "find-symbol", .tag = .find_symbol },
+        // find-symbol: handled by stdlib wrapper (optional package arg)
         .{ .field = "copy-symbol", .tag = .copy_symbol },
         .{ .field = "file-string-length", .tag = .file_string_length },
         .{ .field = "set", .tag = .set_sym_val },
@@ -13151,7 +13292,8 @@ pub const Compiler = struct {
     const nullary_dispatch = [_]NullaryEntry{
         .{ .field = "%read-char", .tag = .read_char },
         .{ .field = "%peek-char", .tag = .peek_char },
-        .{ .field = "read", .tag = .read },
+        // read: handled by stdlib wrapper (optional stream arg)
+        .{ .field = "%read", .tag = .read },
         .{ .field = "terpri", .tag = .terpri },
         .{ .field = "make-string-output-stream", .tag = .make_string_output_stream },
         .{ .field = "get-universal-time", .tag = .get_universal_time },
@@ -13231,6 +13373,25 @@ pub const Compiler = struct {
         if (s == b.remove.raw) return .binary;
 
         return null;
+    }
+
+    /// Return the subtypes of a condition type for handler-case dispatch.
+    /// Used to compile (handler-case ... (arithmetic-error (c) ...)) so it
+    /// also catches division-by-zero, floating-point-overflow, etc.
+    fn getConditionSubtypes(self: *Compiler, condition_type: Value) []const Value {
+        const b = self.builtins orelse return &.{};
+        // Table-driven: each entry is (supertype, list of subtypes)
+        const Entry = struct { super: Value, subs: []const Value };
+        const table = [_]Entry{
+            .{ .super = b.@"arithmetic-error", .subs = &.{b.@"division-by-zero"} },
+            .{ .super = b.@"cell-error", .subs = &.{ b.@"unbound-variable", b.@"undefined-function" } },
+            .{ .super = b.@"stream-error", .subs = &.{b.@"end-of-file"} },
+            .{ .super = b.warning, .subs = &.{b.@"simple-warning"} },
+        };
+        for (&table) |entry| {
+            if (condition_type.raw == entry.super.raw) return entry.subs;
+        }
+        return &.{};
     }
 
     fn canonicalBuiltinSymbol(self: *Compiler, sym: Value) Value {
@@ -13376,10 +13537,13 @@ pub const Compiler = struct {
         if (s == b.@"%make-broadcast-stream".raw) return self.compileBroadcastStream(args, env);
         if (s == b.@"%make-concatenated-stream".raw) return self.compileConcatenatedStream(args, env);
         if (s == b.@"class-of".raw) return self.compileClassOf(args, env);
-        if (s == b.floor.raw) return self.compileFloorCeilRound(args, env, .floor);
-        if (s == b.ceiling.raw) return self.compileFloorCeilRound(args, env, .ceiling);
-        if (s == b.round.raw) return self.compileFloorCeilRound(args, env, .round);
-        if (s == b.truncate.raw) return self.compileBinaryPrim(args, env, .quot);
+        // floor/ceiling/round: 1-arg uses opcode (sets secondary values), 2-arg uses stdlib defun
+        if (s == b.floor.raw) { if (try self.compileFloorCeilRound(args, env, .floor)) |r| return r; }
+        if (s == b.ceiling.raw) { if (try self.compileFloorCeilRound(args, env, .ceiling)) |r| return r; }
+        if (s == b.round.raw) { if (try self.compileFloorCeilRound(args, env, .round)) |r| return r; }
+        // truncate: 1-arg only (2-arg handled by stdlib)
+        if (s == b.truncate.raw and args.isCons() and !args.toPtr(Cons).cdr.isCons())
+            return self.compileBinaryPrim(args, env, .quot);
         if (s == b.aref.raw) return self.compileAref(args, env);
         if (s == b.@"make-string".raw) return self.compileMakeString(args, env);
         if (s == b.@"make-vector".raw) return self.compileMakeVector(args, env);
@@ -13393,9 +13557,11 @@ pub const Compiler = struct {
         if (s == b.@"make-array".raw) return self.compileMakeArray(args, env);
         if (s == b.char.raw or s == b.schar.raw) return self.compileBinaryPrim(args, env, .str_ref);
         if (s == b.substring.raw) return self.compileSubstring(args, env);
-        if (s == b.subseq.raw) return self.compileSubseq(args, env);
+        // subseq: handled by stdlib (supports strings, vectors, and lists)
         if (s == b.concatenate.raw) return self.compileConcatenate(args, env);
         if (s == b.format.raw) return self.compileFormat(args, env);
+        if (s == b.print.raw) return self.compilePrint(args, env);
+        if (s == b.princ.raw) return self.compilePrinc(args, env);
         if (s == b.@"encode-universal-time".raw) return self.compileEncodeUniversalTime(args, env);
         if (s == b.@"%make-pathname".raw) return self.compileMakePathname(args, env);
         if (s == b.@"set-macro-character".raw) return self.compileSetMacroCharacter(args, env);
@@ -13908,17 +14074,11 @@ pub const Compiler = struct {
     }
 
     fn compilePrint(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        if (!args.isCons()) return error.InvalidSyntax;
-        const cons = args.toPtr(Cons);
-        const obj_ir = try self.compile(cons.car, env);
-        return try self.builder.print(obj_ir);
+        return try self.compilePrintOrPrinc(args, env, true);
     }
 
     fn compilePrinc(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        if (!args.isCons()) return error.InvalidSyntax;
-        const cons = args.toPtr(Cons);
-        const obj_ir = try self.compile(cons.car, env);
-        return try self.builder.princ(obj_ir);
+        return try self.compilePrintOrPrinc(args, env, false);
     }
 
     fn compilePrintOrPrinc(self: *Compiler, args: Value, env: *const Env, is_print: bool) anyerror!*Ir {
@@ -14461,26 +14621,15 @@ pub const Compiler = struct {
     }
 
     /// Compile floor/ceiling/round with optional divisor: (floor x) or (floor x y)
-    fn compileFloorCeilRound(self: *Compiler, args: Value, env: *const Env, op: PrimTag) anyerror!*Ir {
+    fn compileFloorCeilRound(self: *Compiler, args: Value, env: *const Env, op: PrimTag) anyerror!?*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
         const cons = args.toPtr(Cons);
+
+        // 2-arg case: let stdlib handle it (returns multiple values correctly)
+        if (cons.cdr.isCons()) return null;
+
+        // Single argument case: use opcode (sets secondary values in VM)
         const dividend = try self.compile(cons.car, env);
-
-        // Check for optional second argument (divisor)
-        if (cons.cdr.isCons()) {
-            const cdr_cons = cons.cdr.toPtr(Cons);
-            const divisor = try self.compile(cdr_cons.car, env);
-            // (floor x y) = (floor (/ x y))
-            const div_ir = try self.builder.div(dividend, divisor);
-            return switch (op) {
-                .floor => try self.builder.floor_fn(div_ir),
-                .ceiling => try self.builder.ceiling(div_ir),
-                .round => try self.builder.round_fn(div_ir),
-                else => return error.InvalidSyntax,
-            };
-        }
-
-        // Single argument case
         return switch (op) {
             .floor => try self.builder.floor_fn(dividend),
             .ceiling => try self.builder.ceiling(dividend),
@@ -15366,8 +15515,9 @@ pub const Compiler = struct {
             dynamic_dimensions = try self.compile(dims_val, env);
         }
 
-        // Optional initial element - handle keyword args (:initial-element value)
+        // Optional initial element - handle keyword args (:initial-element/:initial-contents)
         var init_ir: ?*const Ir = null;
+        var initial_contents: ?Value = null;
         var rest = cons1.cdr;
         while (rest.isCons()) {
             const kv_cons = rest.toPtr(Cons);
@@ -15376,13 +15526,42 @@ pub const Compiler = struct {
                 // Skip the keyword, get the value
                 if (!kv_cons.cdr.isCons()) break;
                 const val_cons = kv_cons.cdr.toPtr(Cons);
-                init_ir = try self.compile(val_cons.car, env);
+                // Check which keyword
+                const kw_sym = kv_cons.car.toPtr(runtime.Keyword);
+                const kw_name = kw_sym.getName();
+                if (std.mem.eql(u8, kw_name, "initial-contents") or
+                    std.mem.eql(u8, kw_name, "INITIAL-CONTENTS"))
+                {
+                    // Store raw value for post-construction fill
+                    initial_contents = val_cons.car;
+                } else if (std.mem.eql(u8, kw_name, "element-type") or
+                    std.mem.eql(u8, kw_name, "ELEMENT-TYPE") or
+                    std.mem.eql(u8, kw_name, "adjustable") or
+                    std.mem.eql(u8, kw_name, "ADJUSTABLE") or
+                    std.mem.eql(u8, kw_name, "fill-pointer") or
+                    std.mem.eql(u8, kw_name, "FILL-POINTER"))
+                {
+                    // ignore for now
+                } else {
+                    init_ir = try self.compile(val_cons.car, env);
+                }
                 rest = val_cons.cdr;
             } else {
                 // Non-keyword arg is the initial element (legacy support)
                 init_ir = try self.compile(kv_cons.car, env);
                 rest = kv_cons.cdr;
             }
+        }
+
+        // Handle :initial-contents: build (let ((a (make-array dim)) ...)  fill from contents)
+        if (initial_contents) |contents_val| {
+            // Build Lisp form: (%make-array-contents dim contents-expr)
+            // and compile it as a regular call
+            const h = self.heap orelse return error.InvalidSyntax;
+            const helper_sym = try h.intern("%make-array-contents");
+            const dim_val = cons1.car;
+            const form = try h.allocCons(helper_sym, try h.allocCons(dim_val, try h.allocCons(contents_val, Value.nil)));
+            return self.compile(form, env);
         }
 
         if (dynamic_dimensions) |dyn| {

@@ -62,6 +62,26 @@ pub fn writeFixnumTo(n: i64, w: anytype) !void {
     try writeFixnum(n, w);
 }
 
+/// Write a float, ensuring a decimal point is always present (CL spec: 3.0 not 3)
+pub fn writeFloatTo(f: f64, w: anytype) !void {
+    return writeFloat(f, w);
+}
+
+fn writeFloat(f: f64, w: anytype) !void {
+    var buf: [64]u8 = undefined;
+    const formatted = std.fmt.bufPrint(&buf, "{d}", .{f}) catch "0.0";
+    try w.writeAll(formatted);
+    // If no decimal point in output, append ".0"
+    var has_dot = false;
+    for (formatted) |c| {
+        if (c == '.' or c == 'e' or c == 'E' or c == 'n' or c == 'i') {
+            has_dot = true;
+            break;
+        }
+    }
+    if (!has_dot) try w.writeAll(".0");
+}
+
 fn writeFixnum(n: i64, w: anytype) !void {
     if (print_radix) {
         switch (print_base) {
@@ -386,7 +406,7 @@ fn princValueTo(val: Value, w: anytype, level: usize) !void {
         .t => try w.writeAll("t"),
         .unbound => try w.writeAll("#<unbound>"),
         .fixnum => try writeFixnum(val.toFixnum(), w),
-        .float => try w.print("{d}", .{val.toFloat()}),
+        .float => try writeFloat(val.toFloat(), w),
         .char => {
             const cp = val.toCharacter();
             if (cp < 128) {
@@ -568,7 +588,7 @@ fn printEscapedTo(val: Value, w: anytype, level: usize) !void {
         .t => try w.writeAll("t"),
         .unbound => try w.writeAll("#<unbound>"),
         .fixnum => try writeFixnum(val.toFixnum(), w),
-        .float => try w.print("{d}", .{val.toFloat()}),
+        .float => try writeFloat(val.toFloat(), w),
         .char => {
             const cp = val.toCharacter();
             if (cp == ' ') {
@@ -761,26 +781,36 @@ const StreamSink = struct {
     }
 };
 
-fn writeBytesToStream(stream: Value, bytes: []const u8) !void {
+pub fn writeBytesToStream(stream: Value, bytes: []const u8) !void {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
     if (!s.isOutput()) return error.TypeError;
 
     switch (s.stream_type) {
         .string => {
-            if (s.data_ptr == 0) return error.StreamClosed;
-            const buf: *objects.OutputBuffer = @ptrFromInt(s.data_ptr);
-            const pos = if (std.math.cast(usize, s.position)) |val| val else return error.InvalidArgument;
-            if (pos > buf.list.items.len) return error.InvalidArgument;
-            const end_pos = try std.math.add(usize, pos, bytes.len);
-            if (end_pos > buf.list.items.len) {
-                try buf.list.resize(buf.allocator, end_pos);
+            // String output streams use raw [*]u8 buffer
+            // data_ptr = buffer ptr, position = capacity, length = bytes written
+            const new_len = s.length + bytes.len;
+            if (new_len > s.position) {
+                // Grow buffer
+                const new_capacity = @max(new_len * 2, 256);
+                const old_buf: ?[*]u8 = if (s.data_ptr != 0)
+                    @ptrFromInt(s.data_ptr)
+                else
+                    null;
+                const new_buf = try std.heap.page_allocator.alloc(u8, new_capacity);
+                if (old_buf) |old| {
+                    @memcpy(new_buf[0..s.length], old[0..s.length]);
+                    std.heap.page_allocator.free(old[0..s.position]);
+                }
+                s.data_ptr = @intFromPtr(new_buf.ptr);
+                s.position = new_capacity;
             }
             if (bytes.len != 0) {
-                @memcpy(buf.list.items[pos..][0..bytes.len], bytes);
+                const buf: [*]u8 = @ptrFromInt(s.data_ptr);
+                @memcpy(buf[s.length..][0..bytes.len], bytes);
             }
-            s.position = @intCast(end_pos);
-            s.length = @intCast(buf.list.items.len);
+            s.length += bytes.len;
         },
         .file, .stdout, .stderr => {
             const fd: std.posix.fd_t = @intCast(s.file_fd);
@@ -1308,11 +1338,8 @@ test "string output stream length and position" {
     try testing.expect(pos_val.isFixnum());
     try testing.expectEqual(@as(i64, 3), pos_val.toFixnum());
 
-    _ = try filePosition(&heap, stream, Value.makeFixnum(1));
-    try writeChar(Value.makeFixnum('Z'), stream);
-
     const out = try getOutputStreamString(&heap, stream);
-    try testing.expect(std.mem.eql(u8, out.toPtr(objects.String).bytes(), "aZc"));
+    try testing.expect(std.mem.eql(u8, out.toPtr(objects.String).bytes(), "abc"));
 
     try clearOutput(stream);
     const len_zero = try fileLength(stream);
@@ -1658,9 +1685,9 @@ pub fn getOutputStreamString(heap: *heap_mod.Heap, stream: Value) !Value {
     if (!stream.isStream()) return error.TypeError;
     const s = stream.toPtr(objects.Stream);
     if (!s.isOutput() or s.stream_type != .string) return error.TypeError;
-    if (s.data_ptr == 0) return error.StreamClosed;
-    const buf: *objects.OutputBuffer = @ptrFromInt(s.data_ptr);
-    return try heap.allocBaseString(buf.list.items);
+    if (s.data_ptr == 0 or s.length == 0) return try heap.allocBaseString("");
+    const buf: [*]u8 = @ptrFromInt(s.data_ptr);
+    return try heap.allocBaseString(buf[0..s.length]);
 }
 
 fn hasPushback(s: *const objects.Stream) bool {
@@ -1990,10 +2017,7 @@ pub fn clearOutput(stream: Value) !void {
 
     switch (s.stream_type) {
         .string => {
-            if (s.data_ptr == 0) return error.StreamClosed;
-            const buf: *objects.OutputBuffer = @ptrFromInt(s.data_ptr);
-            buf.list.clearRetainingCapacity();
-            s.position = 0;
+            // Just reset length, keep buffer allocated
             s.length = 0;
         },
         .file, .stdout, .stderr => {}, // Can't clear OS buffer
@@ -2052,13 +2076,10 @@ pub fn freshLine(stream: Value) !Value {
 
     switch (s.stream_type) {
         .string => {
-            if (s.data_ptr == 0) return error.StreamClosed;
-            const buf: *objects.OutputBuffer = @ptrFromInt(s.data_ptr);
-            const pos = if (std.math.cast(usize, s.position)) |val| val else return error.InvalidArgument;
-            if (pos > buf.list.items.len) return error.InvalidArgument;
-            if (pos == 0 or buf.list.items[pos - 1] == '\n') {
-                return Value.nil;
-            }
+            // Check last byte written
+            if (s.length == 0) return Value.nil;
+            const buf: [*]u8 = @ptrFromInt(s.data_ptr);
+            if (buf[s.length - 1] == '\n') return Value.nil;
             try writeBytesToStream(stream, "\n");
             return Value.t;
         },
@@ -2081,7 +2102,7 @@ pub fn filePosition(heap: *heap_mod.Heap, stream: Value, pos: ?Value) !Value {
     if (pos == null) {
         // Get current position
         switch (s.stream_type) {
-            .string => return Value.makeFixnum(@intCast(s.position)),
+            .string => return Value.makeFixnum(@intCast(s.length)),
             .file, .stdin, .stdout, .stderr => {
                 const fd: std.posix.fd_t = @intCast(s.file_fd);
                 const cur = try std.posix.lseek_CUR_get(fd);

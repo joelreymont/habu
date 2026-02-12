@@ -1,0 +1,40 @@
+{
+  "comment": "Performance baselines for regression detection. Times in microseconds (us). Updated by tools/perf-test --update. internal-time-units-per-second = 1000000.",
+  "tolerance_pct": 30,
+  "benchmarks": {
+    "fib_30": {
+      "us": 6526813,
+      "setup": "(defun fib (n) (if (<= n 1) n (+ (fib (- n 1)) (fib (- n 2)))))",
+      "expr": "(fib 30)"
+    },
+    "tak": {
+      "us": 139453,
+      "setup": "(defun tak (x y z) (if (<= x y) z (tak (tak (- x 1) y z) (tak (- y 1) z x) (tak (- z 1) x y))))",
+      "expr": "(tak 18 12 6)"
+    },
+    "loop_1m": {
+      "us": 631457,
+      "setup": null,
+      "expr": "(let ((i 0) (acc 0)) (while (< i 1000000) (setq acc (+ acc i)) (setq i (+ i 1))) acc)"
+    },
+    "list_build_100k": {
+      "us": 70785,
+      "setup": null,
+      "expr": "(let ((l nil) (i 0)) (while (< i 100000) (setq l (cons i l)) (setq i (+ i 1))) (length l))"
+    },
+    "gcd_100k": {
+      "us": 1588211,
+      "setup": null,
+      "expr": "(let ((i 0) (sum 0)) (while (< i 100000) (setq sum (+ sum (gcd (+ i 17) (+ i 31)))) (setq i (+ i 1))) sum)"
+    },
+    "nqueens_8": {
+      "us": 75085,
+      "setup": [
+        "(defun nq-safe (q cols) (if (null cols) t (let ((c (car cols)) (d (length cols))) (and (not (= q c)) (not (= q (+ c d))) (not (= q (- c d))) (nq-safe q (cdr cols))))))",
+        "(defun nq-solve (n cols) (if (= (length cols) n) 1 (let ((count 0)) (dotimes (q n count) (when (nq-safe q cols) (setq count (+ count (nq-solve n (cons q cols)))))))))",
+        "(defun nqueens (n) (nq-solve n nil))"
+      ],
+      "expr": "(nqueens 8)"
+    }
+  }
+}

@@ -106,7 +106,8 @@ Benefits:
 - Faster: one computed jump vs chain of comparisons
 
 ### Zig 0.15 Patterns
-- See `docs/zig-0.15-api.md` for API reference
+- See `~/.agents/docs/zig.md` for global Zig rules and API reference
+- See `docs/zig-0.15-api.md` for project-specific API notes
 - ArrayList is unmanaged: `var list = std.ArrayList(T){};` + pass allocator to methods
 - Alignment enum: `alignedAlloc(u8, .@"16", size)`
 - I/O: `std.fs.File.stdout()` not `std.io.getStdOut()`

@@ -124,11 +124,9 @@ test "eval division" {
     defer heap.deinit();
 
     const result = try evalExpr(allocator, &heap, "(/ 20 4)");
-    // Division now returns rational
-    try testing.expect(result.typeKind() == .rational);
-    const rat = result.toPtr(runtime.objects.Rational);
-    try testing.expectEqual(@as(i64, 5), rat.numerator);
-    try testing.expectEqual(@as(i64, 1), rat.denominator);
+    // Division returns fixnum when evenly divisible
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 5), result.toFixnum());
 }
 
 test "eval nested arithmetic" {
@@ -4505,4 +4503,477 @@ test "ansi repro encode-universal-time returns fixnum" {
     const result = try repl.eval("(encode-universal-time 0 0 0 1 1 1900 0)");
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 0), result.toFixnum());
+}
+
+// ============================================================================
+// Multiple values: comprehensive tests for secondary values propagation
+// ============================================================================
+
+// Helper: setup REPL with stdlib loaded
+fn initReplWithStdlib(allocator: std.mem.Allocator) !struct { repl: Repl, heap: *Heap } {
+    const heap = try allocator.create(Heap);
+    heap.* = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, heap, .{});
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    return .{ .repl = repl, .heap = heap };
+}
+
+fn deinitReplWithStdlib(allocator: std.mem.Allocator, state: *@TypeOf(initReplWithStdlib(undefined) catch unreachable)) void {
+    state.repl.deinit();
+    state.heap.deinit();
+    allocator.destroy(state.heap);
+}
+
+// --- Secondary values through control flow ---
+
+test "mv: values through if (then branch)" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    // secondary values must survive through jmp in if's then branch
+    const result = try repl.eval(
+        \\(multiple-value-bind (a b c)
+        \\    (if t (values 1 2 3) nil)
+        \\  (list a b c))
+    );
+    try testing.expect(result.isCons());
+    const c1 = result.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 1), c1.car.toFixnum());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 2), c2.car.toFixnum());
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 3), c3.car.toFixnum());
+}
+
+test "mv: values through if (else branch)" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(multiple-value-bind (a b)
+        \\    (if nil (values 1 2) (values 3 4))
+        \\  (list a b))
+    );
+    try testing.expect(result.isCons());
+    const c1 = result.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 3), c1.car.toFixnum());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 4), c2.car.toFixnum());
+}
+
+test "mv: values from function call" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    // values must survive through function return (ret opcode)
+    _ = try repl.eval("(defun ret-mv () (values 10 20 30))");
+    const result = try repl.eval(
+        \\(multiple-value-bind (a b c) (ret-mv)
+        \\  (list a b c))
+    );
+    try testing.expect(result.isCons());
+    const c1 = result.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 10), c1.car.toFixnum());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 20), c2.car.toFixnum());
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 30), c3.car.toFixnum());
+}
+
+test "mv: values from function with if inside" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    // values from if inside a function must propagate through ret
+    _ = try repl.eval("(defun mv-if (x) (if (> x 0) (values x 1) (values x -1)))");
+    const r1 = try repl.eval(
+        \\(multiple-value-bind (a b) (mv-if 5) (list a b))
+    );
+    try testing.expect(r1.isCons());
+    try testing.expectEqual(@as(i64, 5), r1.toPtr(Cons).car.toFixnum());
+    try testing.expectEqual(@as(i64, 1), r1.toPtr(Cons).cdr.toPtr(Cons).car.toFixnum());
+
+    const r2 = try repl.eval(
+        \\(multiple-value-bind (a b) (mv-if -3) (list a b))
+    );
+    try testing.expect(r2.isCons());
+    try testing.expectEqual(@as(i64, -3), r2.toPtr(Cons).car.toFixnum());
+    try testing.expectEqual(@as(i64, -1), r2.toPtr(Cons).cdr.toPtr(Cons).car.toFixnum());
+}
+
+test "mv: mv-bind with function parameters (start_index)" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    // mv-bind must use correct start_index (not overwrite function params)
+    _ = try repl.eval(
+        \\(defun test-mvb-params (x y)
+        \\  (multiple-value-bind (q r) (values 10 20)
+        \\    (list x y q r)))
+    );
+    const result = try repl.eval("(test-mvb-params 1 2)");
+    try testing.expect(result.isCons());
+    const c1 = result.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 1), c1.car.toFixnum());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 2), c2.car.toFixnum());
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 10), c3.car.toFixnum());
+    const c4 = c3.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 20), c4.car.toFixnum());
+}
+
+test "mv: mv-bind inside let" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    // mv-bind after let bindings must not clobber let locals
+    const result = try repl.eval(
+        \\(let ((x 100))
+        \\  (multiple-value-bind (a b) (values 1 2)
+        \\    (list x a b)))
+    );
+    try testing.expect(result.isCons());
+    const c1 = result.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 100), c1.car.toFixnum());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 1), c2.car.toFixnum());
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 2), c3.car.toFixnum());
+}
+
+test "mv: multiple-value-list through if" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval("(multiple-value-list (if t (values 1 2 3) nil))");
+    // Should be (1 2 3)
+    try testing.expect(result.isCons());
+    const c1 = result.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 1), c1.car.toFixnum());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 2), c2.car.toFixnum());
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 3), c3.car.toFixnum());
+}
+
+test "mv: values through nested function calls" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    // Inner function returns MV, outer function wraps with mv-bind
+    _ = try repl.eval("(defun inner () (values 7 8))");
+    _ = try repl.eval(
+        \\(defun outer ()
+        \\  (multiple-value-bind (a b) (inner)
+        \\    (+ a b)))
+    );
+    const result = try repl.eval("(outer)");
+    try testing.expectEqual(@as(i64, 15), result.toFixnum());
+}
+
+test "mv: values through conditional jumps (jmp_nil/jmp_not_nil)" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    // (when ...) expands to (if ... nil) — values from body must survive
+    const result = try repl.eval(
+        \\(multiple-value-bind (a b)
+        \\    (when t (values 5 6))
+        \\  (list a b))
+    );
+    try testing.expect(result.isCons());
+    try testing.expectEqual(@as(i64, 5), result.toPtr(Cons).car.toFixnum());
+    try testing.expectEqual(@as(i64, 6), result.toPtr(Cons).cdr.toPtr(Cons).car.toFixnum());
+}
+
+// --- Floor/ceiling/round/truncate multiple values ---
+
+test "mv: floor 1-arg float" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    const result = try state.repl.eval(
+        \\(multiple-value-bind (q r) (floor 3.7) (list q r))
+    );
+    try testing.expect(result.isCons());
+    try testing.expectEqual(@as(i64, 3), result.toPtr(Cons).car.toFixnum());
+    // r should be ~0.7 (float)
+    try testing.expect(result.toPtr(Cons).cdr.toPtr(Cons).car.isFloat());
+}
+
+test "mv: floor 2-arg integers" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    const result = try state.repl.eval(
+        \\(multiple-value-bind (q r) (floor 17 5) (list q r))
+    );
+    try testing.expect(result.isCons());
+    try testing.expectEqual(@as(i64, 3), result.toPtr(Cons).car.toFixnum());
+    try testing.expectEqual(@as(i64, 2), result.toPtr(Cons).cdr.toPtr(Cons).car.toFixnum());
+}
+
+test "mv: floor negative dividend" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    // CL: (floor -7 2) => -4, 1
+    const result = try state.repl.eval(
+        \\(multiple-value-bind (q r) (floor -7 2) (list q r))
+    );
+    try testing.expect(result.isCons());
+    try testing.expectEqual(@as(i64, -4), result.toPtr(Cons).car.toFixnum());
+    try testing.expectEqual(@as(i64, 1), result.toPtr(Cons).cdr.toPtr(Cons).car.toFixnum());
+}
+
+test "mv: truncate 2-arg" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    // CL: (truncate 7 2) => 3, 1
+    const result = try state.repl.eval(
+        \\(multiple-value-bind (q r) (truncate 7 2) (list q r))
+    );
+    try testing.expect(result.isCons());
+    try testing.expectEqual(@as(i64, 3), result.toPtr(Cons).car.toFixnum());
+    try testing.expectEqual(@as(i64, 1), result.toPtr(Cons).cdr.toPtr(Cons).car.toFixnum());
+}
+
+test "mv: ceiling 2-arg" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    // CL: (ceiling 7 2) => 4, -1
+    const result = try state.repl.eval(
+        \\(multiple-value-bind (q r) (ceiling 7 2) (list q r))
+    );
+    try testing.expect(result.isCons());
+    try testing.expectEqual(@as(i64, 4), result.toPtr(Cons).car.toFixnum());
+    try testing.expectEqual(@as(i64, -1), result.toPtr(Cons).cdr.toPtr(Cons).car.toFixnum());
+}
+
+test "mv: round to nearest even" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    // CL: (round 2.5) => 2, 0.5 (banker's rounding)
+    const result = try state.repl.eval(
+        \\(multiple-value-bind (q r) (round 2.5) (list q r))
+    );
+    try testing.expect(result.isCons());
+    try testing.expectEqual(@as(i64, 2), result.toPtr(Cons).car.toFixnum());
+    // r should be 0.5
+    try testing.expect(result.toPtr(Cons).cdr.toPtr(Cons).car.isFloat());
+}
+
+test "mv: round 2-arg" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    // CL: (round 7 2) => 4, -1 (7/2 = 3.5, rounds to 4)
+    const result = try state.repl.eval(
+        \\(multiple-value-bind (q r) (round 7 2) (list q r))
+    );
+    try testing.expect(result.isCons());
+    try testing.expectEqual(@as(i64, 4), result.toPtr(Cons).car.toFixnum());
+    try testing.expectEqual(@as(i64, -1), result.toPtr(Cons).cdr.toPtr(Cons).car.toFixnum());
+}
+
+test "mv: floor in function with params" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    // The critical regression: mv-bind inside function with params
+    _ = try state.repl.eval(
+        \\(defun my-divmod (n d)
+        \\  (multiple-value-bind (q r) (floor n d) (list q r)))
+    );
+    const result = try state.repl.eval("(my-divmod 17 5)");
+    try testing.expect(result.isCons());
+    try testing.expectEqual(@as(i64, 3), result.toPtr(Cons).car.toFixnum());
+    try testing.expectEqual(@as(i64, 2), result.toPtr(Cons).cdr.toPtr(Cons).car.toFixnum());
+}
+
+test "mv: mod and rem" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    // mod uses floor, rem uses truncate
+    const r1 = try state.repl.eval("(mod 17 5)");
+    try testing.expectEqual(@as(i64, 2), r1.toFixnum());
+
+    const r2 = try state.repl.eval("(rem 17 5)");
+    try testing.expectEqual(@as(i64, 2), r2.toFixnum());
+
+    // Negative: mod and rem differ
+    const r3 = try state.repl.eval("(mod -7 2)");
+    try testing.expectEqual(@as(i64, 1), r3.toFixnum());
+
+    const r4 = try state.repl.eval("(rem -7 2)");
+    try testing.expectEqual(@as(i64, -1), r4.toFixnum());
+}
+
+test "mv: floor 1-arg integer identity" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    // (floor 10) => 10, 0
+    const result = try state.repl.eval(
+        \\(multiple-value-bind (q r) (floor 10) (list q r))
+    );
+    try testing.expect(result.isCons());
+    try testing.expectEqual(@as(i64, 10), result.toPtr(Cons).car.toFixnum());
+    try testing.expectEqual(@as(i64, 0), result.toPtr(Cons).cdr.toPtr(Cons).car.toFixnum());
+}
+
+test "mv: multiple-value-list floor" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    // (multiple-value-list (floor 17 5)) => (3 2)
+    const result = try state.repl.eval("(multiple-value-list (floor 17 5))");
+    try testing.expect(result.isCons());
+    try testing.expectEqual(@as(i64, 3), result.toPtr(Cons).car.toFixnum());
+    try testing.expectEqual(@as(i64, 2), result.toPtr(Cons).cdr.toPtr(Cons).car.toFixnum());
+}
+
+// --- Error/condition system ---
+
+test "error: handler-case catches error" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    const result = try state.repl.eval(
+        \\(handler-case
+        \\    (error "test error")
+        \\  (error (e) (list :caught e)))
+    );
+    // Should return (:CAUGHT (SIMPLE-ERROR ...))
+    try testing.expect(result.isCons());
+}
+
+test "error: handler-case type-error" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    const result = try state.repl.eval(
+        \\(handler-case
+        \\    (+ 1 "a")
+        \\  (type-error (e) :type-error))
+    );
+    try testing.expect(result.isKeyword());
+}
+
+test "error: handler-case division-by-zero" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    const result = try state.repl.eval(
+        \\(handler-case
+        \\    (/ 1 0)
+        \\  (division-by-zero (e) :div-zero))
+    );
+    try testing.expect(result.isKeyword());
+}
+
+// --- Round-to-even edge cases ---
+
+test "mv: round 3.5 to even" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    // (round 3.5) => 4 (3.5 rounds to 4, the nearest even)
+    const result = try state.repl.eval(
+        \\(multiple-value-bind (q r) (round 3.5) q)
+    );
+    try testing.expectEqual(@as(i64, 4), result.toFixnum());
+}
+
+test "mv: round 0.5 to even" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    // (round 0.5) => 0 (0.5 rounds to 0, the nearest even)
+    const result = try state.repl.eval(
+        \\(multiple-value-bind (q r) (round 0.5) q)
+    );
+    try testing.expectEqual(@as(i64, 0), result.toFixnum());
+}
+
+test "mv: round -2.5 to even" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    // (round -2.5) => -2 (nearest even)
+    const result = try state.repl.eval(
+        \\(multiple-value-bind (q r) (round -2.5) q)
+    );
+    try testing.expectEqual(@as(i64, -2), result.toFixnum());
 }

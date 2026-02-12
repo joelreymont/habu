@@ -1,0 +1,52 @@
+#!/bin/bash
+# Run all Habu test suites:
+#   1. Zig unit tests (src/tests/)
+#   2. Lisp snapshot tests (tests/snapshots.lisp)
+#   3. Performance regression tests (tests/perf-baseline.json)
+#
+# Usage: tools/test-all [--verbose] [--skip-perf]
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+VERBOSE=""
+SKIP_PERF=0
+for arg in "$@"; do
+    case "$arg" in
+        --verbose) VERBOSE="--verbose" ;;
+        --skip-perf) SKIP_PERF=1 ;;
+    esac
+done
+
+echo "Building..."
+zig build 2>&1 | head -5
+
+echo ""
+echo "━━━ Zig Unit Tests ━━━"
+if zig build test 2>&1; then
+    echo "✓ All Zig tests passed"
+else
+    echo "✗ Zig tests FAILED"
+    exit 1
+fi
+
+echo ""
+echo "━━━ Lisp Snapshot Tests ━━━"
+if tools/snapshot-test $VERBOSE; then
+    :
+else
+    exit 1
+fi
+
+if [ $SKIP_PERF -eq 0 ]; then
+    echo ""
+    echo "━━━ Performance Regression Tests ━━━"
+    if tools/perf-test $VERBOSE; then
+        :
+    else
+        exit 1
+    fi
+fi
+
+echo ""
+echo "═══ All tests passed ═══"

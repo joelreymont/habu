@@ -1,0 +1,137 @@
+#!/bin/bash
+# Habu Snapshot Test Runner
+# Runs tests/snapshots.lisp and compares output against expected values.
+#
+# Usage:
+#   tools/snapshot-test            # Run all tests
+#   tools/snapshot-test --update   # Update expected values (fix multi-line)
+#   tools/snapshot-test --verbose  # Show each test as it runs
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+SNAPSHOT_FILE="tests/snapshots.lisp"
+HABU="./zig-out/bin/habu"
+VERBOSE="${1:-}"
+
+# Build first
+zig build 2>&1 | head -5
+
+if [ ! -f "$HABU" ]; then
+    echo "ERROR: $HABU not found. Run 'zig build' first."
+    exit 1
+fi
+
+pass=0
+fail=0
+skip=0
+errors=""
+
+# Parse the snapshot file: extract (test_name, expression, expected)
+current_test=""
+current_expr=""
+current_expected=""
+in_expected=0
+line_num=0
+
+run_test() {
+    local name="$1"
+    local expr="$2"
+    local expected="$3"
+
+    if [ -z "$expr" ] || [ -z "$expected" ]; then
+        return
+    fi
+
+    # Run the expression through habu
+    actual=$(echo "$expr" | timeout 30 "$HABU" 2>/dev/null | \
+             sed -n '/^🐍 /{ s/^🐍 //; p; }' | tail -1 | \
+             sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+
+    # Normalize whitespace for comparison
+    norm_expected=$(echo "$expected" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+    norm_actual=$(echo "$actual" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+
+    if [ "$norm_actual" = "$norm_expected" ]; then
+        pass=$((pass + 1))
+        if [ "$VERBOSE" = "--verbose" ]; then
+            echo "  ✓ $name"
+        fi
+    else
+        fail=$((fail + 1))
+        errors="${errors}\n  ✗ $name\n    expected: $norm_expected\n    actual:   $norm_actual"
+        if [ "$VERBOSE" = "--verbose" ]; then
+            echo "  ✗ $name"
+            echo "    expected: $norm_expected"
+            echo "    actual:   $norm_actual"
+        fi
+    fi
+}
+
+while IFS= read -r line || [ -n "$line" ]; do
+    line_num=$((line_num + 1))
+
+    # Check for test header
+    if [[ "$line" =~ ^";;; TEST: "(.*) ]]; then
+        # Run previous test if any
+        if [ -n "$current_test" ]; then
+            run_test "$current_test" "$current_expr" "$current_expected"
+        fi
+        current_test="${BASH_REMATCH[1]}"
+        current_expr=""
+        current_expected=""
+        in_expected=0
+        continue
+    fi
+
+    # Check for expected output marker
+    if [[ "$line" =~ ^";;; => "(.*) ]]; then
+        in_expected=1
+        current_expected="${BASH_REMATCH[1]}"
+        continue
+    fi
+
+    # Continuation of multi-line expected (;;; <text>)
+    if [ $in_expected -eq 1 ] && [[ "$line" =~ ^";;; "(.*) ]]; then
+        current_expected="${current_expected}
+${BASH_REMATCH[1]}"
+        continue
+    fi
+
+    # Non-comment, non-empty line while collecting expression
+    if [ $in_expected -eq 0 ] && [ -n "$current_test" ]; then
+        # Skip pure comment lines and blank lines before expression
+        if [[ "$line" =~ ^";;;" ]] || [ -z "$line" ]; then
+            continue
+        fi
+        if [ -z "$current_expr" ]; then
+            current_expr="$line"
+        else
+            current_expr="${current_expr}
+${line}"
+        fi
+    fi
+
+    # If we hit a non-continuation line after expected, the expected is done
+    if [ $in_expected -eq 1 ] && ! [[ "$line" =~ ^";;;" ]]; then
+        in_expected=0
+    fi
+
+done < "$SNAPSHOT_FILE"
+
+# Run last test
+if [ -n "$current_test" ]; then
+    run_test "$current_test" "$current_expr" "$current_expected"
+fi
+
+total=$((pass + fail))
+echo ""
+echo "Snapshot tests: $total total, $pass passed, $fail failed"
+
+if [ $fail -gt 0 ]; then
+    echo ""
+    echo "Failures:"
+    echo -e "$errors"
+    echo ""
+    exit 1
+fi

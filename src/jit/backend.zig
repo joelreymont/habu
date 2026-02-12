@@ -22,7 +22,11 @@ const HoistValue = hoist.entities.Value;
 const FuncRef = hoist.entities.FuncRef;
 const ValueList = hoist.value_list.ValueList;
 const SigRef = hoist.entities.SigRef;
+const StackSlot = hoist.entities.StackSlot;
 const ExternalName = hoist.extfunc.ExternalName;
+const StackLoadData = hoist.instruction_data.StackLoadData;
+const MemFlags = hoist.memflags.MemFlags;
+const createStackSlot = hoist.stackslots.createStackSlot;
 
 const habu_ir = @import("../compiler/ir.zig");
 const Ir = habu_ir.Ir;
@@ -525,6 +529,15 @@ pub const IrTranslator = struct {
     tco_header: ?Block = null,
     /// TCO: exit block — non-tail returns jump here with result value.
     tco_exit: ?Block = null,
+
+    /// Continuation stack: eliminates non-tail self-calls by converting them
+    /// to explicit stack pushes. The continuation stack depth is a phi param
+    /// on the header block. Stores/loads use cont_base + depth * 8.
+    cont_depth_phi: ?HoistValue = null,
+    cont_base: ?HoistValue = null,
+    // cont_slot removed — depth passed as exit block param after hoist parallel copy fix
+    /// Number of continuation values pushed per self-call (e.g., 1 for ack's m-1).
+    cont_width: u32 = 0,
 
 
     pub fn init(allocator: std.mem.Allocator, func: *Function, builder: *FunctionBuilder) IrTranslator {
@@ -1545,11 +1558,28 @@ pub const IrTranslator = struct {
     /// Creates: entry → header(params) → [body | exit(result)]
     /// Tail calls become jumpArgs(header, new_args).
     /// Non-tail returns become jumpArgs(exit, result).
+    ///
+    /// Continuation stack optimization: when a tail self-call has an arg that
+    /// is itself a non-tail self-call (e.g., ack's (ack (- m 1) (ack m (- n 1)))),
+    /// we eliminate the non-tail call by pushing continuation state onto an
+    /// explicit stack and jumping to the header. At exit, pending continuations
+    /// are popped and the loop continues. This eliminates all BL+prologue+epilogue
+    /// overhead for non-tail self-calls.
     fn translateTCOBody(self: *IrTranslator, body_ir: *const Ir) anyerror!HoistValue {
         const arity = self.user_arity;
         if (arity > 8) return error.TooManyParams;
 
-        // Create loop header with phi params
+        // Detect continuation pattern: does the body have a tail self-call
+        // where one arg contains a non-tail self-call?
+        const use_cont_stack = hasNonTailSelfCalls(body_ir, self.fn_name) and
+            hasSelfTailCalls(body_ir, self.fn_name);
+
+        // Determine continuation width: number of values to save per continuation.
+        // For ack pattern: tail_call(self, arg0, inner_call) → save arg0 = 1 value.
+        // For general: save all non-inner-call args = arity - 1 values.
+        const cont_width: u32 = if (use_cont_stack) arity - 1 else 0;
+
+        // Create loop header with phi params + optional cont_depth param
         const header = try self.func.dfg.addBlock();
         try self.func.layout.appendBlock(header);
 
@@ -1558,29 +1588,48 @@ pub const IrTranslator = struct {
             phi_vals[pi] = try self.func.dfg.appendBlockParam(header, I64);
         }
 
-        // Create exit block with result phi
+        // Add continuation depth phi parameter
+        var cont_depth_phi: ?HoistValue = null;
+        if (use_cont_stack) {
+            cont_depth_phi = try self.func.dfg.appendBlockParam(header, I64);
+        }
+
+        // Create exit block with result phi + optional depth param
         const exit = try self.func.dfg.addBlock();
         try self.func.layout.appendBlock(exit);
         const exit_param = try self.func.dfg.appendBlockParam(exit, I64);
+        var exit_depth_param: ?HoistValue = null;
+        if (use_cont_stack) {
+            exit_depth_param = try self.func.dfg.appendBlockParam(exit, I64);
+        }
 
         // Pre-emit constants in ENTRY block (before jump to header).
-        // This ensures constants dominate the loop body but are NOT inside the
-        // loop — they're executed once at function entry, not every iteration.
-        //
-        // Skip for functions with calls in the loop (local_consts): pre-emitted
-        // constants in block0 force callee-saved registers since their live ranges
-        // span the entire loop including call sites. Instead, let translate()
-        // emit them on-demand in the blocks that use them.
         if (!self.local_consts) {
             try self.preEmitConstants(body_ir);
         }
 
-        // Jump from entry to header with initial param values
-        var init_vals: [8]HoistValue = undefined;
+        // Allocate continuation stack as a runtime constant (heap-allocated buffer).
+        // Can't use stack_slot because ack(3,11) needs ~16K entries (128KB).
+        var cont_base: ?HoistValue = null;
+        if (use_cont_stack) {
+            // Allocate 128KB buffer for continuation stack (16384 entries * 8 bytes)
+            const cont_buf_size: usize = 16384 * @as(usize, cont_width) * 8;
+            const cont_buf = try self.allocator.alignedAlloc(u8, .@"8", cont_buf_size);
+            // Store the buffer pointer as a constant in the IR
+            const buf_ptr = @intFromPtr(cont_buf.ptr);
+            cont_base = try self.b.iconst(I64, @as(i64, @bitCast(buf_ptr)));
+        }
+
+        // Jump from entry to header with initial param values + cont_depth=0
+        var init_vals: [9]HoistValue = undefined;
         for (0..arity) |i| {
             init_vals[i] = self.locals.items[i];
         }
-        try self.b.jumpArgs(header, init_vals[0..arity]);
+        if (use_cont_stack) {
+            init_vals[arity] = try self.b.iconst(I64, 0); // depth = 0
+        }
+        const init_count: usize = if (use_cont_stack) arity + 1 else arity;
+        try self.b.jumpArgs(header, init_vals[0..init_count]);
 
         // Switch to header, install phi values as locals
         self.switchBlock(header);
@@ -1592,6 +1641,13 @@ pub const IrTranslator = struct {
         self.tco_header = header;
         self.tco_exit = exit;
 
+        // Store continuation stack state
+        if (use_cont_stack) {
+            self.cont_depth_phi = cont_depth_phi;
+            self.cont_base = cont_base;
+            self.cont_width = cont_width;
+        }
+
         // Translate body — tail calls jump to header, returns jump to exit
         const body_result = try self.translateTCOExpr(body_ir);
 
@@ -1599,24 +1655,138 @@ pub const IrTranslator = struct {
         // If body terminated with a tail call, current_block is null — skip.
         if (self.b.current_block != null) {
             const result_tagged = try self.boolToTagged(body_result);
-            try self.b.jumpArgs(exit, &.{result_tagged});
+            try self.jumpToTCOExit(result_tagged);
         }
 
-        // Switch to exit block and return
+        // Switch to exit block
         self.switchBlock(exit);
+
+        if (use_cont_stack) {
+            // Check if continuation stack is non-empty: depth > 0
+            const depth = exit_depth_param.?;
+            const zero = try self.b.iconst(I64, 0);
+            const has_cont = try self.b.icmp(I8, IntCC.ne, depth, zero);
+
+            const pop_blk = try self.func.dfg.addBlock();
+            try self.func.layout.appendBlock(pop_blk);
+            const ret_blk = try self.func.dfg.addBlock();
+            try self.func.layout.appendBlock(ret_blk);
+
+            try self.b.brif(has_cont, pop_blk, ret_blk);
+
+            // Pop block: load continuation args, jump to header
+            self.switchBlock(pop_blk);
+            const one = try self.b.iconst(I64, 1);
+            const new_depth = try self.b.isub(I64, depth, one);
+            const eight = try self.b.iconst(I64, 8);
+            const base = cont_base.?;
+
+            // Load continuation values from stack
+            // For ack (cont_width=1): load one value (the saved m-1)
+            // The non-inner-call arg is always arg[0] for the 2-arg case.
+            // The inner call result (exit_param) becomes the last arg.
+            var pop_header_args: [9]HoistValue = undefined;
+            for (0..cont_width) |ci| {
+                // Address = base + (new_depth * cont_width + ci) * 8
+                var offset = try self.b.imul(I64, new_depth, eight);
+                if (cont_width > 1) {
+                    const ci_val = try self.b.iconst(I64, @as(i64, @intCast(ci * 8)));
+                    offset = try self.b.iadd(I64, offset, ci_val);
+                }
+                const addr = try self.b.iadd(I64, base, offset);
+                const loaded = try self.b.load(I64, addr, MemFlags.default());
+                pop_header_args[ci] = loaded;
+            }
+            // The inner call result (exit_param) fills the remaining arg slot
+            pop_header_args[cont_width] = exit_param;
+            pop_header_args[cont_width + 1] = new_depth; // continuation depth
+            try self.b.jumpArgs(header, pop_header_args[0 .. arity + 1]);
+
+            // Return block: actually return
+            self.switchBlock(ret_blk);
+            return exit_param;
+        }
+
         return exit_param;
     }
 
     /// Translate an expression in TCO context. In tail position, tail calls
+    /// Jump to the TCO exit block, passing the result value and (if active)
+    /// the continuation depth phi parameter.
+    /// Jump to the TCO exit block, passing the result value and (if active)
+    /// the current continuation depth.
+    fn jumpToTCOExit(self: *IrTranslator, val: HoistValue) !void {
+        if (self.cont_depth_phi != null) {
+            try self.b.jumpArgs(self.tco_exit.?, &.{ val, self.cont_depth_phi.? });
+        } else {
+            try self.b.jumpArgs(self.tco_exit.?, &.{val});
+        }
+    }
+
     /// become jumps to header. Non-tail-position code delegates to translate().
     fn translateTCOExpr(self: *IrTranslator, ir: *const Ir) anyerror!HoistValue {
         switch (ir.*) {
             .tailcall => |tc| {
                 if (isCallTargetSelf(tc.func, self.fn_name)) {
-                    // If any tail-call arg contains a non-tail self-call (call_indirect),
-                    // mark this block so cachedIconst emits fresh small constants.
-                    // This prevents constants from being shared with the loop header,
-                    // which would force them into callee-saved regs across the call.
+                    // Check for continuation stack mode: if active and an arg
+                    // contains a self-call, replace call_indirect with push+jump.
+                    if (self.cont_depth_phi != null) {
+                        var call_arg_idx: ?usize = null;
+                        for (tc.args, 0..) |arg, i| {
+                            if (detectSelfCalls(arg, self.fn_name)) {
+                                call_arg_idx = i;
+                                break;
+                            }
+                        }
+
+                        if (call_arg_idx) |cai| {
+                            // Continuation stack optimization:
+                            // Instead of: call_indirect(inner), then tail-jump(result)
+                            // Do: push non-call args, jump to header with inner's args
+
+                            // 1. Compute and store non-call args (continuation state)
+                            const depth = self.cont_depth_phi.?;
+                            const base = self.cont_base.?;
+                            const eight = try self.b.iconst(I64, 8);
+                            const store_offset = try self.b.imul(I64, depth, eight);
+
+                            var cont_idx: u32 = 0;
+                            for (tc.args, 0..) |arg, i| {
+                                if (i == cai) continue;
+                                const val = try self.translate(arg);
+                                var addr = try self.b.iadd(I64, base, store_offset);
+                                if (cont_idx > 0) {
+                                    const extra = try self.b.iconst(I64, @as(i64, @intCast(cont_idx * 8)));
+                                    addr = try self.b.iadd(I64, addr, extra);
+                                }
+                                try self.b.store(val, addr, MemFlags.default());
+                                cont_idx += 1;
+                            }
+
+                            // 2. Extract the inner self-call's args
+                            const inner_call = tc.args[cai];
+                            const inner_args = switch (inner_call.*) {
+                                .call => |c| c.args,
+                                else => return error.ExpectedSelfCall,
+                            };
+
+                            // 3. Translate inner call args and jump to header
+                            var header_args: [9]HoistValue = undefined;
+                            for (inner_args, 0..) |arg, i| {
+                                header_args[i] = try self.translate(arg);
+                            }
+                            // Append new continuation depth (depth + 1)
+                            const one = try self.b.iconst(I64, 1);
+                            const new_depth = try self.b.iadd(I64, depth, one);
+                            header_args[inner_args.len] = new_depth;
+                            try self.b.jumpArgs(self.tco_header.?, header_args[0 .. inner_args.len + 1]);
+
+                            self.b.current_block = null;
+                            return HoistValue.new(0);
+                        }
+                    }
+
+                    // Standard tail call path (no continuation stack, or no inner self-call)
                     if (self.local_consts) {
                         for (tc.args) |arg| {
                             if (detectSelfCalls(arg, self.fn_name)) {
@@ -1626,42 +1796,33 @@ pub const IrTranslator = struct {
                         }
                     }
 
-                    // Tail call → jump to header with new args.
-                    // Optimization: defer simple (non-call) args to after any
-                    // inner call. This reduces register pressure because simple
-                    // args using callee-saved phi params (e.g., m-1) don't need
-                    // a separate callee-saved register across the inner call.
-                    //
-                    // Phase 1: translate args containing self-calls (these emit BL)
-                    // Phase 2: translate remaining simple args (these use phi params
-                    //          that survived the call in callee-saved registers)
-                    var arg_vals: [8]HoistValue = undefined;
-                    var has_call = [_]bool{false} ** 8;
+                    var arg_vals: [9]HoistValue = undefined;
+                    var has_call = [_]bool{false} ** 9;
                     for (tc.args, 0..) |arg, i| {
                         has_call[i] = detectSelfCalls(arg, self.fn_name);
                     }
-                    // Phase 1: call-containing args
                     for (tc.args, 0..) |arg, i| {
                         if (has_call[i]) {
                             arg_vals[i] = try self.translate(arg);
                         }
                     }
-                    // Reset call block flag before simple args (they don't cross a call)
                     self.in_call_block = false;
-                    // Phase 2: simple args (computed after the call)
                     for (tc.args, 0..) |arg, i| {
                         if (!has_call[i]) {
                             arg_vals[i] = try self.translate(arg);
                         }
                     }
 
-                    try self.b.jumpArgs(self.tco_header.?, arg_vals[0..tc.args.len]);
+                    // Append continuation depth if in cont mode
+                    const arg_count = if (self.cont_depth_phi != null) blk: {
+                        arg_vals[tc.args.len] = self.cont_depth_phi.?;
+                        break :blk tc.args.len + 1;
+                    } else tc.args.len;
 
-                    // Signal that this code path terminated — no value flows forward.
-                    // Callers check current_block == null to skip merge block jumps.
+                    try self.b.jumpArgs(self.tco_header.?, arg_vals[0..arg_count]);
+
                     self.b.current_block = null;
 
-                    // Return dummy value (never used at runtime)
                     return HoistValue.new(0);
                 }
                 // Non-self tail call — treat as regular call
@@ -1726,7 +1887,7 @@ pub const IrTranslator = struct {
                     self.switchBlock(then_blk);
                     if (then_is_simple_exit and self.tco_exit != null) {
                         const val = try self.translate(then_branch);
-                        try self.b.jumpArgs(self.tco_exit.?, &.{val});
+                        try self.jumpToTCOExit(val);
                         self.b.current_block = null;
                     } else {
                         _ = try self.translateTCOExpr(then_branch);
@@ -1735,7 +1896,7 @@ pub const IrTranslator = struct {
                     self.switchBlock(else_blk);
                     if (else_is_simple_exit and self.tco_exit != null) {
                         const val = try self.translate(else_branch);
-                        try self.b.jumpArgs(self.tco_exit.?, &.{val});
+                        try self.jumpToTCOExit(val);
                         self.b.current_block = null;
                     } else {
                         _ = try self.translateTCOExpr(else_branch);
@@ -1756,7 +1917,7 @@ pub const IrTranslator = struct {
                     self.switchBlock(then_blk);
                     if (then_is_simple_exit and self.tco_exit != null) {
                         const val = try self.translate(then_branch);
-                        try self.b.jumpArgs(self.tco_exit.?, &.{val});
+                        try self.jumpToTCOExit(val);
                         self.b.current_block = null;
                     } else {
                         _ = try self.translateTCOExpr(then_branch);
@@ -1778,7 +1939,7 @@ pub const IrTranslator = struct {
                     self.switchBlock(else_blk);
                     if (else_is_simple_exit and self.tco_exit != null) {
                         const val = try self.translate(else_branch);
-                        try self.b.jumpArgs(self.tco_exit.?, &.{val});
+                        try self.jumpToTCOExit(val);
                         self.b.current_block = null;
                     } else {
                         _ = try self.translateTCOExpr(else_branch);

@@ -457,6 +457,14 @@ pub const Heap = struct {
         }
         self.dispatch_readtable.deinit(self.backing_allocator);
         for (self.stream_list.items) |stream| {
+            // Free string output stream buffers before finalize
+            if (stream.stream_type == .string and stream.direction == .output and stream.data_ptr != 0 and stream.position > 0) {
+                const buf: [*]u8 = @ptrFromInt(stream.data_ptr);
+                std.heap.page_allocator.free(buf[0..stream.position]);
+                stream.data_ptr = 0;
+                stream.position = 0;
+                stream.length = 0;
+            }
             stream.finalize();
         }
         self.stream_list.deinit(self.backing_allocator);
@@ -633,22 +641,20 @@ pub const Heap = struct {
 
     /// Allocate a string output stream
     pub fn allocStringOutputStream(self: *Heap) error{OutOfMemory}!Value {
-        const buf = try self.backing_allocator.create(objects.OutputBuffer);
-        buf.* = .{
-            .list = std.ArrayList(u8){},
-            .allocator = self.backing_allocator,
-        };
-
         const stream = try self.alloc(objects.Stream);
         stream.* = .{
             .kind = .stream,
             .direction = .output,
             .stream_type = .string,
             .closed = false,
-            .position = 0,
-            .data_ptr = @intFromPtr(buf),
-            .length = 0,
+            ._padding = 0,
+            .position = 0, // capacity
+            .data_ptr = 0, // raw buffer, allocated on first write
+            .length = 0, // bytes written
             .file_fd = -1,
+            .pushback_char = 0xFF,
+            ._padding2 = [_]u8{0} ** 3,
+            .source_value = Value.nil,
         };
         try self.trackStream(stream);
         return Value.makeStream(stream);
