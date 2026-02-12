@@ -436,6 +436,13 @@ pub const CompiledFn = struct {
 };
 
 /// Translates Habu IR to Hoist SSA IR and compiles to native code.
+const CseOp = enum(u8) { iadd, isub, imul, band, bor };
+const CseKey = struct {
+    op: CseOp,
+    lhs: u32,
+    rhs: u32,
+};
+
 pub const IrTranslator = struct {
     allocator: std.mem.Allocator,
     func: *Function,
@@ -469,6 +476,11 @@ pub const IrTranslator = struct {
 
     /// Cache for iconst values — reuse across blocks (LICM for constants).
     const_cache: std.AutoHashMap(i64, HoistValue),
+
+    /// Simple CSE cache: (op, lhs.val, rhs.val) → result.
+    /// Only caches within the same block (cleared on block switch).
+    /// Eliminates duplicate computations like (+ i 1) in loop bodies.
+    cse_cache: std.AutoHashMap(CseKey, HoistValue),
 
     /// True when the function has nested self-calls (e.g., tak pattern)
     /// that require post-emission parallel copy fixup for call arguments.
@@ -526,6 +538,7 @@ pub const IrTranslator = struct {
             .self_ptr_placeholder = 0x0BADF00DDEADBEEF,
             .self_sig_ref = SigRef.new(0),
             .const_cache = std.AutoHashMap(i64, HoistValue).init(allocator),
+            .cse_cache = std.AutoHashMap(CseKey, HoistValue).init(allocator),
         };
     }
 
@@ -533,6 +546,23 @@ pub const IrTranslator = struct {
         self.locals.deinit(self.allocator);
         self.inline_scopes.deinit(self.allocator);
         self.const_cache.deinit();
+        self.cse_cache.deinit();
+    }
+
+    /// Check CSE cache for a binary operation result.
+    fn cseLookup(self: *IrTranslator, op: CseOp, lhs: HoistValue, rhs: HoistValue) ?HoistValue {
+        return self.cse_cache.get(.{ .op = op, .lhs = lhs.index, .rhs = rhs.index });
+    }
+
+    /// Record a binary operation result in the CSE cache.
+    fn cseRecord(self: *IrTranslator, op: CseOp, lhs: HoistValue, rhs: HoistValue, result: HoistValue) void {
+        self.cse_cache.put(.{ .op = op, .lhs = lhs.index, .rhs = rhs.index }, result) catch {};
+    }
+
+    /// Switch to a new block, clearing the CSE cache (SSA values don't dominate across blocks).
+    fn switchBlock(self: *IrTranslator, blk: anytype) void {
+        self.b.switchToBlock(blk);
+        self.cse_cache.clearRetainingCapacity();
     }
 
     /// Emit an iconst, reusing a previously emitted value for the same constant.
@@ -707,19 +737,28 @@ pub const IrTranslator = struct {
         if (self.untagged) {
             const l = try self.translate(left);
             const r = try self.translate(right);
-            return try self.b.iadd(I64, l, r);
+            if (self.cseLookup(.iadd, l, r)) |cached| return cached;
+            const result = try self.b.iadd(I64, l, r);
+            self.cseRecord(.iadd, l, r, result);
+            return result;
         }
         // Tagged fixnum add: result_raw = l_raw + r_raw - 1
         // When one operand is a constant, fold: iadd(x, const - 1)
         if (getFixnumLit(right)) |r_const| {
             const l = try self.translate(left);
             const folded = try self.cachedIconst(r_const - 1);
-            return try self.b.iadd(I64, l, folded);
+            if (self.cseLookup(.iadd, l, folded)) |cached| return cached;
+            const result = try self.b.iadd(I64, l, folded);
+            self.cseRecord(.iadd, l, folded, result);
+            return result;
         }
         if (getFixnumLit(left)) |l_const| {
             const r = try self.translate(right);
             const folded = try self.cachedIconst(l_const - 1);
-            return try self.b.iadd(I64, r, folded);
+            if (self.cseLookup(.iadd, r, folded)) |cached| return cached;
+            const result = try self.b.iadd(I64, r, folded);
+            self.cseRecord(.iadd, r, folded, result);
+            return result;
         }
         const l = try self.translate(left);
         const r = try self.translate(right);
@@ -891,7 +930,7 @@ pub const IrTranslator = struct {
         try self.b.brif(cond_val, then_blk, else_blk);
 
         // Then branch
-        self.b.switchToBlock(then_blk);
+        self.switchBlock(then_blk);
         try self.b.sealBlock(then_blk);
         const then_val = try self.translate(then_ir);
         if (self.b.current_block != null) {
@@ -913,7 +952,7 @@ pub const IrTranslator = struct {
         @memcpy(self.locals.items, saved_locals);
 
         // Else branch
-        self.b.switchToBlock(else_blk);
+        self.switchBlock(else_blk);
         try self.b.sealBlock(else_blk);
         const else_val = try self.translate(else_ir);
         if (self.b.current_block != null) {
@@ -928,7 +967,7 @@ pub const IrTranslator = struct {
         }
 
         // Continue in merge block — update locals from merge params
-        self.b.switchToBlock(merge_blk);
+        self.switchBlock(merge_blk);
         try self.b.sealBlock(merge_blk);
         for (mutated_indices.items, 0..) |idx, i| {
             self.locals.items[idx] = merge_local_params.items[i];
@@ -1163,7 +1202,7 @@ pub const IrTranslator = struct {
         try self.b.jumpArgs(header, init_vals[0..n_phis]);
 
         // Header block: install phi values and evaluate condition
-        self.b.switchToBlock(header);
+        self.switchBlock(header);
         for (mutated_indices.items, 0..) |idx, i| {
             while (self.locals.items.len <= idx) {
                 try self.locals.append(self.allocator, HoistValue.new(0));
@@ -1175,7 +1214,7 @@ pub const IrTranslator = struct {
         try self.b.brif(cond_val, loop_body, loop_exit);
 
         // Body: execute body, then jump back to header with updated values
-        self.b.switchToBlock(loop_body);
+        self.switchBlock(loop_body);
         _ = try self.translate(body_ir);
 
         var updated_vals: [16]HoistValue = undefined;
@@ -1188,7 +1227,7 @@ pub const IrTranslator = struct {
         try self.b.jumpArgs(header, updated_vals[0..n_phis]);
 
         // Exit block
-        self.b.switchToBlock(loop_exit);
+        self.switchBlock(loop_exit);
 
         // After loop, locals point to phi values (correct on exit)
         for (mutated_indices.items, 0..) |idx, i| {
@@ -1334,7 +1373,7 @@ pub const IrTranslator = struct {
         try self.b.jumpArgs(header, translated_args[0..arity]);
 
         // Switch to header block
-        self.b.switchToBlock(header);
+        self.switchBlock(header);
 
         // Push inline scope: callee locals start after caller's locals
         const base = self.locals.items.len;
@@ -1373,7 +1412,7 @@ pub const IrTranslator = struct {
         self.locals.shrinkRetainingCapacity(base);
 
         // Switch to exit block and return the result
-        self.b.switchToBlock(exit);
+        self.switchBlock(exit);
         return exit_param;
     }
 
@@ -1475,7 +1514,7 @@ pub const IrTranslator = struct {
         try self.b.jumpArgs(header, init_vals[0..arity]);
 
         // Switch to header, install phi values as locals
-        self.b.switchToBlock(header);
+        self.switchBlock(header);
         for (0..arity) |i| {
             self.locals.items[i] = phi_vals[i];
         }
@@ -1495,7 +1534,7 @@ pub const IrTranslator = struct {
         }
 
         // Switch to exit block and return
-        self.b.switchToBlock(exit);
+        self.switchBlock(exit);
         return exit_param;
     }
 
@@ -1569,10 +1608,10 @@ pub const IrTranslator = struct {
 
                     try self.b.brif(cond, then_blk, else_blk);
 
-                    self.b.switchToBlock(then_blk);
+                    self.switchBlock(then_blk);
                     _ = try self.translateTCOExpr(then_branch);
 
-                    self.b.switchToBlock(else_blk);
+                    self.switchBlock(else_blk);
                     _ = try self.translateTCOExpr(else_branch);
 
                     // Both branches terminated — current_block is null.
@@ -1595,7 +1634,7 @@ pub const IrTranslator = struct {
 
                     try self.b.brif(cond, then_blk, else_blk);
 
-                    self.b.switchToBlock(then_blk);
+                    self.switchBlock(then_blk);
                     if (then_is_simple_exit and self.tco_exit != null) {
                         const val = try self.translate(then_branch);
                         try self.b.jumpArgs(self.tco_exit.?, &.{val});
@@ -1604,7 +1643,7 @@ pub const IrTranslator = struct {
                         _ = try self.translateTCOExpr(then_branch);
                     }
 
-                    self.b.switchToBlock(else_blk);
+                    self.switchBlock(else_blk);
                     if (else_is_simple_exit and self.tco_exit != null) {
                         const val = try self.translate(else_branch);
                         try self.b.jumpArgs(self.tco_exit.?, &.{val});
@@ -1625,7 +1664,7 @@ pub const IrTranslator = struct {
 
                     try self.b.brif(cond, then_blk, else_blk);
 
-                    self.b.switchToBlock(then_blk);
+                    self.switchBlock(then_blk);
                     if (then_is_simple_exit and self.tco_exit != null) {
                         const val = try self.translate(then_branch);
                         try self.b.jumpArgs(self.tco_exit.?, &.{val});
@@ -1634,7 +1673,7 @@ pub const IrTranslator = struct {
                         _ = try self.translateTCOExpr(then_branch);
                     }
 
-                    self.b.switchToBlock(else_blk);
+                    self.switchBlock(else_blk);
                     return try self.translateTCOExpr(else_branch);
                 }
 
@@ -1647,7 +1686,7 @@ pub const IrTranslator = struct {
 
                     try self.b.brif(cond, then_blk, else_blk);
 
-                    self.b.switchToBlock(else_blk);
+                    self.switchBlock(else_blk);
                     if (else_is_simple_exit and self.tco_exit != null) {
                         const val = try self.translate(else_branch);
                         try self.b.jumpArgs(self.tco_exit.?, &.{val});
@@ -1656,7 +1695,7 @@ pub const IrTranslator = struct {
                         _ = try self.translateTCOExpr(else_branch);
                     }
 
-                    self.b.switchToBlock(then_blk);
+                    self.switchBlock(then_blk);
                     return try self.translateTCOExpr(then_branch);
                 }
 
@@ -1732,7 +1771,7 @@ pub const IrTranslator = struct {
         try self.b.brif(cond_val, then_blk, else_blk);
 
         // Then branch (with TCO context)
-        self.b.switchToBlock(then_blk);
+        self.switchBlock(then_blk);
         const then_val = try self.translateTCOExpr(then_ir);
         if (self.b.current_block != null) {
             const then_i64 = try self.boolToTagged(then_val);
@@ -1747,7 +1786,7 @@ pub const IrTranslator = struct {
 
         // Else branch (with TCO context)
         @memcpy(self.locals.items, saved_locals);
-        self.b.switchToBlock(else_blk);
+        self.switchBlock(else_blk);
         const else_val = try self.translateTCOExpr(else_ir);
         if (self.b.current_block != null) {
             const else_i64 = try self.boolToTagged(else_val);
@@ -1761,7 +1800,7 @@ pub const IrTranslator = struct {
         }
 
         // Merge
-        self.b.switchToBlock(merge_blk);
+        self.switchBlock(merge_blk);
         for (mutated_indices.items, 0..) |idx, mi| {
             self.locals.items[idx] = merge_local_params.items[mi];
         }
@@ -2108,7 +2147,7 @@ pub const IrTranslator = struct {
         try self.b.jumpArgs(header, &.{ list_val, tagged_zero });
 
         // Header: test if ptr is nil (== 0)
-        self.b.switchToBlock(header);
+        self.switchBlock(header);
         const is_nil = try self.b.icmp(I8, IntCC.eq, ptr_param, zero);
         // brif to exit passes count via trampoline (brifArgs broken)
         const exit_tramp = try self.func.dfg.blocks.add();
@@ -2116,11 +2155,11 @@ pub const IrTranslator = struct {
         try self.b.brif(is_nil, exit_tramp, body);
 
         // Exit trampoline: jump to exit with current count
-        self.b.switchToBlock(exit_tramp);
+        self.switchBlock(exit_tramp);
         try self.b.jumpArgs(exit, &.{count_param});
 
         // Body: count += 2 (tagged increment), ptr = cdr(ptr)
-        self.b.switchToBlock(body);
+        self.switchBlock(body);
         const two = try self.cachedIconst(2); // tagged 1 increment = 2 in raw
         const new_count = try self.b.iadd(I64, count_param, two);
         // cdr is at offset 8 from cons pointer (cons tag is 0, raw = pointer)
@@ -2130,7 +2169,7 @@ pub const IrTranslator = struct {
         try self.b.jumpArgs(header, &.{ next_ptr, new_count });
 
         // Continue in exit block — return count
-        self.b.switchToBlock(exit);
+        self.switchBlock(exit);
         return exit_count;
     }
 };
@@ -2871,9 +2910,9 @@ pub fn compileIrWithKnownFns(
     // Compile with Hoist
     var ctx_builder = ContextBuilder.init(allocator);
     _ = try ctx_builder.targetNative();
-    // Use .none for functions with calls (cross or recursive) — aggressive
-    // optimizations can incorrectly eliminate call_indirect instructions.
-    // Only use .aggressive for leaf functions (no calls at all).
+    // Use .none for functions with calls (cross or recursive) — hoist optimizer
+    // incorrectly eliminates call_indirect instructions at any opt level > none.
+    // Use .aggressive for leaf functions (no calls at all).
     var ctx = ctx_builder
         .optLevel(if (translator.is_recursive or translator.has_cross_calls or translator.has_loads) .none else .aggressive)
         .callConv(.system_v)
