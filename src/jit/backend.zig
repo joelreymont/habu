@@ -1623,14 +1623,34 @@ pub const IrTranslator = struct {
                         }
                     }
 
-                    // Tail call → jump to header with new args
+                    // Tail call → jump to header with new args.
+                    // Optimization: defer simple (non-call) args to after any
+                    // inner call. This reduces register pressure because simple
+                    // args using callee-saved phi params (e.g., m-1) don't need
+                    // a separate callee-saved register across the inner call.
+                    //
+                    // Phase 1: translate args containing self-calls (these emit BL)
+                    // Phase 2: translate remaining simple args (these use phi params
+                    //          that survived the call in callee-saved registers)
                     var arg_vals: [8]HoistValue = undefined;
+                    var has_call = [_]bool{false} ** 8;
                     for (tc.args, 0..) |arg, i| {
-                        arg_vals[i] = try self.translate(arg);
+                        has_call[i] = detectSelfCalls(arg, self.fn_name);
                     }
-
-                    // Reset call block flag after translating args
+                    // Phase 1: call-containing args
+                    for (tc.args, 0..) |arg, i| {
+                        if (has_call[i]) {
+                            arg_vals[i] = try self.translate(arg);
+                        }
+                    }
+                    // Reset call block flag before simple args (they don't cross a call)
                     self.in_call_block = false;
+                    // Phase 2: simple args (computed after the call)
+                    for (tc.args, 0..) |arg, i| {
+                        if (!has_call[i]) {
+                            arg_vals[i] = try self.translate(arg);
+                        }
+                    }
 
                     try self.b.jumpArgs(self.tco_header.?, arg_vals[0..tc.args.len]);
 
