@@ -1239,6 +1239,10 @@ pub const IrTranslator = struct {
         try self.preEmitConstants(body_ir);
         self.in_loop_preemit = false;
 
+        // Standard header-tested loop structure.
+        // Loop rotation was attempted but hoist's phi coalescing doesn't
+        // eliminate the copy MOVs on the back-edge, making it slower.
+
         // Create blocks using low-level API
         const header = try self.func.dfg.addBlock();
         try self.func.layout.appendBlock(header);
@@ -2973,7 +2977,7 @@ pub fn compileIrWithKnownFns(
     var ctx_builder = ContextBuilder.init(allocator);
     _ = try ctx_builder.targetNative();
     // Use .none for functions with calls (cross or recursive) — hoist optimizer
-    // incorrectly eliminates call_indirect instructions at any opt level > none.
+    // hangs or produces incorrect results for call_indirect at any opt level > none.
     // Use .aggressive for leaf functions (no calls at all).
     var ctx = ctx_builder
         .optLevel(if (translator.is_recursive or translator.has_cross_calls or translator.has_loads) .none else .aggressive)
@@ -3070,6 +3074,10 @@ pub fn compileIrWithKnownFns(
 
     // Invert `b.cond .+8; b target` → `b.inv_cond target; nop`.
     invertBranchOverBranch(code.code.items);
+
+    // Note: LSL+ADD fusion (ADD Xd,Xn,Xm,LSL #K) was tested but is SLOWER
+    // on Apple M-series (~10% regression). The wide OoO engine dispatches
+    // separate LSL+ADD to parallel units faster than a single shifted-ADD.
 
     // Fix parallel copy conflicts in call argument setup.
     // Hoist's lowering emits sequential mov instructions for call arguments
@@ -3768,6 +3776,7 @@ fn invertBranchOverBranch(code: []u8) void {
         writeInsn(code, i + 1, 0xD503201F); // NOP
     }
 }
+
 
 /// Fix parallel copy conflicts in AArch64 call argument setup.
 ///
