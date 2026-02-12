@@ -3156,8 +3156,12 @@ pub fn compileIrWithKnownFns(
     eliminateDeadMovz(code.code.items);
     compactNops(code.code.items, &code.code);
 
-    // After NOP compaction, B→B chains may emerge (from eliminated MOVs).
-    // Simplify them: B target where target is B target2 → B target2.
+    // Eliminate dead MOV x29, xzr in prologue (hoist clears frame pointer
+    // after saving it, but we don't use x29 as frame pointer).
+    eliminateDeadFramePointerClear(code.code.items);
+
+    // Final pass: compact any new NOPs and simplify branch chains.
+    compactNops(code.code.items, &code.code);
     eliminateUselessBranches(code.code.items);
 
     // Debug: dump final machine code before making executable
@@ -3779,6 +3783,44 @@ fn compactNops(code: []u8, list: *std.ArrayList(u8)) void {
 /// The pattern arises when hoist emits `brif` as a conditional branch to the
 /// then-block followed by an unconditional branch to the else-block, and the
 /// then-block immediately follows. Inverting removes one branch from the hot path.
+/// Eliminate dead MOV x29, xzr (clear frame pointer) in prologue.
+/// Hoist emits this after STP x29,x30,[sp,...] but we don't use x29.
+/// Eliminate dead MOV x29, xzr in prologue. Hoist clears the frame pointer after
+/// saving it with STP, but we never use x29 as a frame pointer. The epilogue LDP
+/// restores x29, so the MOV is dead. Safe because our generated code never
+/// references x29 between prologue and epilogue.
+fn eliminateDeadFramePointerClear(code: []u8) void {
+    const n = code.len / 4;
+    if (n < 2) return;
+    // Look for MOV x29, xzr (= ORR x29, xzr, xzr = 0xAA1F03FD) in first 4 insns
+    const limit = @min(n, 4);
+    for (0..limit) |i| {
+        if (readInsn(code, i) == 0xAA1F03FD) {
+            // Verify x29 is not used as source in any instruction (excluding prologue/epilogue)
+            var used = false;
+            for (0..n) |j| {
+                const insn = readInsn(code, j);
+                // Skip STP/LDP (prologue/epilogue save/restore)
+                if (insn & 0x7F000000 == 0x29000000 or // STP/LDP signed offset
+                    insn & 0x7F000000 == 0x28000000 or // STP/LDP post-index
+                    insn & 0x7F800000 == 0x29800000) // STP/LDP pre-index
+                    continue;
+                if (insn == 0xAA1F03FD) continue; // the MOV itself
+                if (insn == 0xD503201F) continue; // NOP
+                // Check if any other instruction reads x29
+                if (insnReadsReg(insn, 29)) {
+                    used = true;
+                    break;
+                }
+            }
+            if (!used) {
+                writeInsn(code, i, 0xD503201F); // NOP
+            }
+            return;
+        }
+    }
+}
+
 fn invertBranchOverBranch(code: []u8) void {
     const n_insns = code.len / 4;
     if (n_insns < 2) return;
