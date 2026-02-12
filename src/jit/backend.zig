@@ -3129,6 +3129,9 @@ pub fn compileIrWithKnownFns(
     // Fuse MUL+ADD into MADD where possible.
     fuseMulAdd(code.code.items);
 
+    // Fuse MOVZ+ALU into ALU-immediate and MOVZ+MOV into MOVZ-retarget.
+    fuseMovzAlu(code.code.items);
+
     // Eliminate round-trip MOV pairs: MOV xA, xB; ... MOV xB, xA → NOP both.
     // Common in TCO functions where entry params are copied to intermediate regs
     // and then immediately copied back for the loop header phis.
@@ -3140,8 +3143,17 @@ pub fn compileIrWithKnownFns(
         eliminateLeafPrologue(code.code.items);
     }
 
+    // Eliminate dead MOVZ instructions where the dest is overwritten before read.
+    eliminateDeadMovz(code.code.items);
+
     // Remove all NOP instructions and fix branch offsets.
     // Must run LAST after all other peephole passes that introduce NOPs.
+    compactNops(code.code.items, &code.code);
+
+    // After NOP compaction, new adjacent MOVZ+ALU pairs may emerge.
+    // Also dead MOVZ may be exposed. Run all MOVZ optimizations again.
+    fuseMovzAlu(code.code.items);
+    eliminateDeadMovz(code.code.items);
     compactNops(code.code.items, &code.code);
 
     // After NOP compaction, B→B chains may emerge (from eliminated MOVs).
@@ -3811,6 +3823,348 @@ fn invertBranchOverBranch(code: []u8) void {
 
 /// Eliminate dead MOV instructions that appear before unconditional branches.
 /// Pattern: `MOV Xd, Xs; B target` where target is:
+/// Check if MOVZ dest reg is safe to eliminate (dead after consumer).
+/// Uses deep analysis first, falls back to basic-block-local check.
+fn isMovzRegDead(code: []const u8, alu_idx: usize, reg: u5) bool {
+    return isRegDeadAfter(code, alu_idx, reg) or isRegDeadInBlock(code, alu_idx, reg);
+}
+
+/// Fuse adjacent MOVZ+ALU pairs into ALU-immediate form.
+/// Patterns:
+///   MOVZ Rn, #imm; ADD Rd, Rm, Rn  → ADD Rd, Rm, #imm; NOP
+///   MOVZ Rn, #imm; SUB Rd, Rm, Rn  → SUB Rd, Rm, #imm; NOP
+///   MOVZ Rn, #imm; MOV Rd, Rn      → MOVZ Rd, #imm; NOP
+/// Only when:
+///   - imm fits in 12 bits (0..4095)
+///   - Rn (MOVZ dest) is dead after the ALU op (not read before overwrite)
+fn fuseMovzAlu(code: []u8) void {
+    const NOP: u32 = 0xD503201F;
+    const n = code.len / 4;
+    if (n < 2) return;
+
+    var i: usize = 0;
+    while (i + 1 < n) : (i += 1) {
+        const insn0 = readInsn(code, i);
+        const insn1 = readInsn(code, i + 1);
+
+        // Check insn0 is MOVZ Xd, #imm16 (64-bit): 1_10_100101_00_imm16_Rd
+        if (insn0 & 0xFF800000 != 0xD2800000) continue;
+        const movz_rd: u5 = @truncate(insn0 & 0x1F);
+        const imm16: u32 = (insn0 >> 5) & 0xFFFF;
+
+        // Only fuse small immediates that fit in 12-bit immediate field
+        if (imm16 > 4095) continue;
+
+        // Pattern 1: ADD Xd, Xn, Xm where Xm == movz_rd
+        // ADD (shifted reg): 1_00_01011_sh_0_Rm_imm6_Rn_Rd
+        if (insn1 & 0xFF200000 == 0x8B000000) {
+            const alu_rm: u5 = @truncate((insn1 >> 16) & 0x1F);
+            const alu_rn: u5 = @truncate((insn1 >> 5) & 0x1F);
+            const alu_rd: u5 = @truncate(insn1 & 0x1F);
+            const shift_imm6 = (insn1 >> 10) & 0x3F;
+            if (alu_rm == movz_rd and shift_imm6 == 0) {
+                // Check movz_rd is dead after this ADD
+                if (isMovzRegDead(code, i + 1, movz_rd)) {
+                    // ADD Xd, Xn, #imm12: 1_00_100010_0_imm12_Rn_Rd
+                    const new_insn: u32 = 0x91000000 | (imm16 << 10) | (@as(u32, alu_rn) << 5) | @as(u32, alu_rd);
+                    writeInsn(code, i, NOP);
+                    writeInsn(code, i + 1, new_insn);
+                    i += 1;
+                    continue;
+                }
+            }
+            // Also check Xn == movz_rd (commutative): ADD Xd, Xmovz, Xother
+            if (alu_rn == movz_rd and shift_imm6 == 0 and alu_rm != movz_rd) {
+                if (isMovzRegDead(code, i + 1, movz_rd)) {
+                    const new_insn: u32 = 0x91000000 | (imm16 << 10) | (@as(u32, alu_rm) << 5) | @as(u32, alu_rd);
+                    writeInsn(code, i, NOP);
+                    writeInsn(code, i + 1, new_insn);
+                    i += 1;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern 2: SUB Xd, Xn, Xm where Xm == movz_rd
+        // SUB (shifted reg): 1_10_01011_sh_0_Rm_imm6_Rn_Rd
+        if (insn1 & 0xFF200000 == 0xCB000000) {
+            const alu_rm: u5 = @truncate((insn1 >> 16) & 0x1F);
+            const alu_rn: u5 = @truncate((insn1 >> 5) & 0x1F);
+            const alu_rd: u5 = @truncate(insn1 & 0x1F);
+            const shift_imm6 = (insn1 >> 10) & 0x3F;
+            if (alu_rm == movz_rd and shift_imm6 == 0) {
+                if (isMovzRegDead(code, i + 1, movz_rd)) {
+                    // SUB Xd, Xn, #imm12: 1_10_100010_0_imm12_Rn_Rd
+                    const new_insn: u32 = 0xD1000000 | (imm16 << 10) | (@as(u32, alu_rn) << 5) | @as(u32, alu_rd);
+                    writeInsn(code, i, NOP);
+                    writeInsn(code, i + 1, new_insn);
+                    i += 1;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern 3: CMP Xn, Xm (SUBS XZR, Xn, Xm) where Xm == movz_rd
+        // SUBS (shifted reg): 1_11_01011_sh_0_Rm_imm6_Rn_Rd
+        if (insn1 & 0xFF200000 == 0xEB000000) {
+            const alu_rm: u5 = @truncate((insn1 >> 16) & 0x1F);
+            const alu_rn: u5 = @truncate((insn1 >> 5) & 0x1F);
+            const alu_rd: u5 = @truncate(insn1 & 0x1F);
+            const shift_imm6 = (insn1 >> 10) & 0x3F;
+            if (alu_rm == movz_rd and shift_imm6 == 0) {
+                if (isMovzRegDead(code, i + 1, movz_rd)) {
+                    // SUBS Xd, Xn, #imm12: 1_11_100010_0_imm12_Rn_Rd
+                    const new_insn: u32 = 0xF1000000 | (imm16 << 10) | (@as(u32, alu_rn) << 5) | @as(u32, alu_rd);
+                    writeInsn(code, i, NOP);
+                    writeInsn(code, i + 1, new_insn);
+                    i += 1;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern 4: MOV Rd, Rn where Rn == movz_rd → MOVZ Rd, #imm
+        // MOV is ORR Rd, XZR, Rm: 1_01_01010_00_0_Rm_000000_11111_Rd
+        if (insn1 & 0xFFE0FFE0 == 0xAA0003E0) {
+            const mov_rm: u5 = @truncate((insn1 >> 16) & 0x1F);
+            const mov_rd: u5 = @truncate(insn1 & 0x1F);
+            if (mov_rm == movz_rd) {
+                if (isMovzRegDead(code, i + 1, movz_rd)) {
+                    // MOVZ Xd, #imm16: 1_10_100101_00_imm16_Rd
+                    const new_insn: u32 = 0xD2800000 | (imm16 << 5) | @as(u32, mov_rd);
+                    writeInsn(code, i, NOP);
+                    writeInsn(code, i + 1, new_insn);
+                    i += 1;
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+/// Check if register `reg` is dead after instruction at `idx`.
+/// Scans forward following branches up to depth limit.
+/// Returns true if reg is overwritten before any read.
+fn isRegDeadAfter(code: []const u8, idx: usize, reg: u5) bool {
+    return isRegDeadFrom(code, idx + 1, reg, 0);
+}
+
+/// Check if register `reg` is dead within the current basic block after `idx`.
+/// Does NOT follow branches — only scans to next branch/call/ret.
+/// Returns true if reg is overwritten or unused within the block.
+fn isRegDeadInBlock(code: []const u8, idx: usize, reg: u5) bool {
+    const n = code.len / 4;
+    var j: usize = idx + 1;
+    while (j < n) : (j += 1) {
+        const insn = readInsn(code, j);
+        if (insn == 0xD503201F) continue; // NOP
+        // Stop at any branch/call/ret
+        if (insn & 0xFC000000 == 0x14000000 or // B
+            insn & 0xFF000000 == 0x54000000 or // B.cond
+            insn & 0xFC000000 == 0x94000000 or // BL
+            insn & 0xFFFFFC1F == 0xD63F0000 or // BLR
+            insn == 0xD65F03C0) // RET
+        {
+            return true; // reached end of basic block without reading reg
+        }
+        if (insnReadsReg(insn, reg)) return false;
+        if (insnWritesReg(insn, reg)) return true;
+    }
+    return true; // end of function
+}
+
+/// Check if register `reg` is dead starting from instruction `start_idx`.
+/// `depth` prevents infinite recursion through branch chains.
+fn isRegDeadFrom(code: []const u8, start_idx: usize, reg: u5, depth: u8) bool {
+    if (depth > 8) return false;
+    const n = code.len / 4;
+    var j: usize = start_idx;
+    const limit = @min(j + 20, n);
+    while (j < limit) : (j += 1) {
+        const insn = readInsn(code, j);
+
+        // Stop at branches (control flow makes liveness uncertain)
+        // B, B.cond, BL, BLR, RET
+        if (insn & 0xFC000000 == 0x14000000) {
+            // Unconditional B: follow the target and continue scanning there.
+            const imm26_raw = insn & 0x3FFFFFF;
+            const imm26: i32 = if (imm26_raw & 0x2000000 != 0)
+                @as(i32, @intCast(imm26_raw)) - 0x4000000
+            else
+                @intCast(imm26_raw);
+            const target: i32 = @as(i32, @intCast(j)) + imm26;
+            if (target >= 0 and target < @as(i32, @intCast(n))) {
+                return isRegDeadFrom(code, @intCast(target), reg, depth + 1);
+            }
+            return false; // unknown target
+        }
+        if (insn & 0xFF000000 == 0x54000000) {
+            // B.cond: check if reg is dead on BOTH paths.
+            const cond_imm19_raw = (insn >> 5) & 0x7FFFF;
+            const cond_offset: i32 = if (cond_imm19_raw & 0x40000 != 0)
+                @as(i32, @intCast(cond_imm19_raw)) - 0x80000
+            else
+                @intCast(cond_imm19_raw);
+            const taken_target: i32 = @as(i32, @intCast(j)) + cond_offset;
+            var taken_dead = false;
+            if (taken_target >= 0 and taken_target < @as(i32, @intCast(n))) {
+                taken_dead = isRegDeadFrom(code, @intCast(taken_target), reg, depth + 1);
+            }
+            // Fall-through is next instruction
+            const fallthrough_dead = if (j + 1 < n)
+                isRegDeadFrom(code, j + 1, reg, depth + 1)
+            else
+                false;
+            return taken_dead and fallthrough_dead;
+        }
+        if (insn & 0xFC000000 == 0x94000000) { // BL: x0-x17 caller-saved → dead
+            return reg <= 17;
+        }
+        if (insn & 0xFFFFFC1F == 0xD63F0000) { // BLR: same as BL
+            return reg <= 17;
+        }
+        if (insn == 0xD65F03C0) return true; // RET: reg dead
+        if (insn == 0xD503201F) continue; // NOP: skip
+
+        // Check if this instruction WRITES reg (makes it dead)
+        const writes_reg = insnWritesReg(insn, reg);
+        // Check if this instruction READS reg (makes it live)
+        const reads_reg = insnReadsReg(insn, reg);
+
+        if (reads_reg) return false; // reg is used, can't eliminate
+        if (writes_reg) return true; // reg overwritten, it was dead
+    }
+    return false; // conservative: don't know
+}
+
+/// Check if an ARM64 instruction writes to a specific register.
+fn insnWritesReg(insn: u32, reg: u5) bool {
+    // Most data-processing instructions write to Rd (bits 4:0)
+    const rd: u5 = @truncate(insn & 0x1F);
+
+    // MOVZ/MOVK/MOVN: writes Rd
+    if (insn & 0x1F800000 == 0x12800000) return rd == reg; // MOVN
+    if (insn & 0x1F800000 == 0x12000000) return rd == reg; // ORR-imm (used for MOV bitmask)
+    if (insn & 0xFF800000 == 0xD2800000) return rd == reg; // MOVZ 64-bit
+    if (insn & 0xFF800000 == 0xF2800000) return rd == reg; // MOVK 64-bit
+
+    // ADD/SUB (shifted reg and immediate): writes Rd
+    if (insn & 0x1F000000 == 0x0B000000) return rd == reg; // ADD/SUB shifted
+    if (insn & 0x1F000000 == 0x11000000) return rd == reg; // ADD/SUB immediate
+
+    // Logical (shifted reg): writes Rd
+    if (insn & 0x1F000000 == 0x0A000000) return rd == reg; // AND/ORR/EOR/etc (includes MOV)
+
+    // MUL/MADD/MSUB: writes Rd
+    if (insn & 0x1F800000 == 0x1B000000) return rd == reg;
+
+    // Load: writes Rt (bits 4:0)
+    if (insn & 0x3B000000 == 0x39000000) return rd == reg; // LDR unsigned offset
+    if (insn & 0x3B200C00 == 0x38000400) return rd == reg; // LDR post-index
+    if (insn & 0x3B200C00 == 0x38000C00) return rd == reg; // LDR pre-index
+
+    // LDP: writes Rt (bits 4:0) AND Rt2 (bits 14:10)
+    if (insn & 0x7FC00000 == 0xA9400000 or insn & 0x7FE00000 == 0xA8C00000 or
+        insn & 0x7FC00000 == 0xA9C00000)
+    {
+        const rt: u5 = @truncate(insn & 0x1F);
+        const rt2: u5 = @truncate((insn >> 10) & 0x1F);
+        return rt == reg or rt2 == reg;
+    }
+
+    // CSEL/CSINC/CSNEG: writes Rd
+    if (insn & 0x1FE00000 == 0x1A800000) return rd == reg;
+
+    return false;
+}
+
+/// Check if an ARM64 instruction reads a specific register.
+fn insnReadsReg(insn: u32, reg: u5) bool {
+    // ADD/SUB (shifted reg): reads Rn (bits 9:5) and Rm (bits 20:16)
+    if (insn & 0x1F000000 == 0x0B000000) {
+        const rn: u5 = @truncate((insn >> 5) & 0x1F);
+        const rm: u5 = @truncate((insn >> 16) & 0x1F);
+        return rn == reg or rm == reg;
+    }
+
+    // ADD/SUB (immediate): reads Rn (bits 9:5)
+    if (insn & 0x1F000000 == 0x11000000) {
+        const rn: u5 = @truncate((insn >> 5) & 0x1F);
+        return rn == reg;
+    }
+
+    // Logical (shifted reg): reads Rn and Rm
+    if (insn & 0x1F000000 == 0x0A000000) {
+        const rn: u5 = @truncate((insn >> 5) & 0x1F);
+        const rm: u5 = @truncate((insn >> 16) & 0x1F);
+        return rn == reg or rm == reg;
+    }
+
+    // MUL/MADD/MSUB: reads Rn, Rm, Ra
+    if (insn & 0x1F800000 == 0x1B000000) {
+        const rn: u5 = @truncate((insn >> 5) & 0x1F);
+        const rm: u5 = @truncate((insn >> 16) & 0x1F);
+        const ra: u5 = @truncate((insn >> 10) & 0x1F);
+        return rn == reg or rm == reg or ra == reg;
+    }
+
+    // Store: reads Rt (data) and Rn (address base)
+    if (insn & 0x3B000000 == 0x39000000 and insn & 0x00C00000 == 0x00000000) {
+        // STR unsigned offset
+        const rt: u5 = @truncate(insn & 0x1F);
+        const rn: u5 = @truncate((insn >> 5) & 0x1F);
+        return rt == reg or rn == reg;
+    }
+
+    // STP: reads Rt, Rt2, Rn
+    if (insn & 0x7FC00000 == 0xA9000000 or insn & 0x7FE00000 == 0xA9800000) {
+        const rt: u5 = @truncate(insn & 0x1F);
+        const rt2: u5 = @truncate((insn >> 10) & 0x1F);
+        const rn: u5 = @truncate((insn >> 5) & 0x1F);
+        return rt == reg or rt2 == reg or rn == reg;
+    }
+
+    // CSEL/CSINC/CSNEG: reads Rn and Rm
+    if (insn & 0x1FE00000 == 0x1A800000) {
+        const rn: u5 = @truncate((insn >> 5) & 0x1F);
+        const rm: u5 = @truncate((insn >> 16) & 0x1F);
+        return rn == reg or rm == reg;
+    }
+
+    // Load with register: reads Rn (base)
+    if (insn & 0x3B000000 == 0x39000000) {
+        const rn: u5 = @truncate((insn >> 5) & 0x1F);
+        return rn == reg;
+    }
+
+    // MOVZ/MOVK/MOVN: only writes, doesn't read (except MOVK reads Rd implicitly)
+    if (insn & 0xFF800000 == 0xF2800000) { // MOVK reads Rd
+        const rd: u5 = @truncate(insn & 0x1F);
+        return rd == reg;
+    }
+
+    return false;
+}
+
+/// Eliminate dead MOVZ instructions where the dest register is overwritten
+/// before being read. Common when hoist materializes constants that CMP
+/// already uses as immediates.
+fn eliminateDeadMovz(code: []u8) void {
+    const NOP: u32 = 0xD503201F;
+    const n = code.len / 4;
+
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        const insn = readInsn(code, i);
+        // Check for MOVZ Xd, #imm16: 1_10_100101_00_imm16_Rd
+        if (insn & 0xFF800000 != 0xD2800000) continue;
+        const rd: u5 = @truncate(insn & 0x1F);
+        if (isRegDeadAfter(code, i, rd)) {
+            writeInsn(code, i, NOP);
+        }
+    }
+}
+
 ///   1. The epilogue (LDP; LDP; RET) — Xd is dead
 ///   2. Another `MOV Xd2, Xs2; B target2` chain — Xd is dead if Xd != Xs2
 /// These arise from hoist's trampoline blocks that insert unnecessary phi copies.
@@ -4115,8 +4469,10 @@ fn coalesceMovs(code: []u8) void {
 
             // Only consider safe ALU ops
             const op_class = insn0 >> 24;
-            const is_safe_alu = (op_class == 0x8B or // ADD
-                op_class == 0xCB or // SUB
+            const is_safe_alu = (op_class == 0x8B or // ADD (shifted reg)
+                op_class == 0xCB or // SUB (shifted reg)
+                op_class == 0x91 or // ADD (immediate)
+                op_class == 0xD1 or // SUB (immediate)
                 op_class == 0x9B or // MADD/MUL
                 op_class == 0x8A or // AND (shifted reg)
                 op_class == 0x92 or // AND (immediate)
