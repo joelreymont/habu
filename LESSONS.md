@@ -474,3 +474,30 @@ The `coalesceMovs` peephole pass must only coalesce MOV instructions that follow
   register assignment doesn't match the regalloc's expected register.
 - Example: regalloc assigns cdr load to x2, but LDP puts it in Rt2=x19.
 - Workaround: always use `iadd + load offset=0` for cdr.
+
+### JIT Performance Optimization Session (2026-02-08)
+
+**Partial TCO**: Enabling TCO for functions with BOTH tail and non-tail self-calls
+is safe and gives significant speedup. The key: tail calls become jumps (zero overhead),
+non-tail calls remain as call_indirect. For ack: 720ms→592ms (18% faster).
+Guard: when partial TCO leaves non-tail self-calls, keep `is_recursive = true`.
+
+**Local Constants for Call-Heavy Functions**: Hoist's optimizer LICM-moves constants from
+loop body to entry block (block0), forcing them into callee-saved registers since their
+live ranges span call sites. Fix: skip `preEmitConstants` for TCO functions with non-tail
+self-calls, and use `local_consts` flag in `cachedIconst` to emit fresh small constants
+per use-site (only in call-containing blocks). Large constants (function pointers) still cached.
+
+**Translation-Level CSE**: Hoist's optimizer can't CSE across loop iterations (even same-block
+duplicate iadd). Fix: maintain a `cse_cache` mapping `(op, lhs.index, rhs.index) → result`
+during translation. Clear on block switch for SSA dominance safety. Eliminated duplicate
+`(+ i 1)` in fixnum_mul: 1170µs→1091µs (7% faster).
+
+**Hoist Call_indirect Bug**: Hoist's e-graph optimizer (any opt level > .none) incorrectly
+eliminates call_indirect instructions. Must use `.none` for functions with calls.
+This prevents CSE, GVN, LICM from applying. Upstream hoist fix needed.
+
+**MOV Coalescing Limits**: The post-emission MOV coalescing pass can't eliminate phi-copy
+moves when the source register is consumed by another instruction between the ALU op
+and the MOV. Example: `ADD x5,x0,x4; MADD x7,x5,...; MOV x0,x5` — can't coalesce because
+MADD reads x5. This costs 1 extra instruction per loop iteration.
