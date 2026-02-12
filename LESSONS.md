@@ -501,3 +501,34 @@ This prevents CSE, GVN, LICM from applying. Upstream hoist fix needed.
 moves when the source register is consumed by another instruction between the ALU op
 and the MOV. Example: `ADD x5,x0,x4; MADD x7,x5,...; MOV x0,x5` — can't coalesce because
 MADD reads x5. This costs 1 extra instruction per loop iteration.
+
+**Multiply-by-Constant Strength Reduction**: ARM64 MADD has 3-cycle latency on Apple M-series.
+Replace `imul(x, const)` with shift-add sequences: `x*3 = x + (x<<1)`, `x*5 = x + (x<<2)`,
+`x*(2^n) = x<<n`, `x*(2^n+1) = x + (x<<n)`, `x*(2^n-1) = (x<<n) - x`.
+Hoist's ISLE lowering has `iadd(x, ishl(y, K)) → ADD Xd, Xn, Xm, LSL #K` rules, but
+they don't fire due to forward lowering order (ishl lowered before iadd can absorb it).
+The shift-add still wins: 2 instructions at 1+1=2 cycles vs 1 MADD at 3 cycles.
+Result: fixnum_mul 1140µs→600µs (47% faster).
+
+**LSL+ADD Fusion Anti-Pattern on Apple Silicon**: `ADD Xd, Xn, Xm, LSL #K` (fused shifted-ADD)
+is ~10% SLOWER than separate `LSL + ADD` on Apple M-series. The wide OoO engine (8+ dispatch
+slots) parallelizes two simple operations faster than one complex one. Don't fuse.
+
+**Loop Rotation Blocked by Phi Copies**: Bottom-tested loops (SBCL-style) save 1 unconditional
+branch per iteration. But hoist's regalloc inserts MOV instructions for phi parameter copies
+on the back-edge, adding 2+ instructions that offset the savings. Needs hoist phi coalescing.
+
+**Hoist brifArgs Parameter Bug**: `brifArgs` (conditional branch with block arguments)
+doesn't correctly insert phi copies — the target block's parameter register doesn't match
+the source value's register. Workaround: use separate trampoline blocks with explicit
+`jumpArgs`. This adds overhead but is correct.
+
+**Defer TCO Args After Inner Call**: For `(ack (- m 1) (ack m (- n 1)))`, computing `m-1`
+before the inner call forces a callee-saved register to hold the result. Computing it
+AFTER the call reuses the phi param register (still intact as callee-saved). Saves 1 STP
+pair in prologue. Implemented by splitting arg translation: call-containing args first,
+then simple args after.
+
+**getFixnumLit Returns Raw Tagged Value**: In untagged mode, `getFixnumLit` returns the
+raw tagged value (e.g., 7 for literal 3). Must shift right by 1 to get the actual numeric
+value for strength reduction in untagged mode. Bug caused multiply-by-7 instead of by-3.
