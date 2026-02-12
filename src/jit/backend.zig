@@ -791,6 +791,17 @@ pub const IrTranslator = struct {
         if (self.untagged) {
             const l = try self.translate(left);
             const r = try self.translate(right);
+            // Try strength reduction for multiply-by-constant (untagged)
+            // In untagged mode, getFixnumLit returns raw tagged value;
+            // the actual numeric value is raw >> 1 (fixnum tag is bit 0).
+            if (getFixnumLit(right)) |r_raw| {
+                const val = @as(i64, @intCast(r_raw >> 1));
+                if (try self.mulByConst(l, val)) |result| return result;
+            }
+            if (getFixnumLit(left)) |l_raw| {
+                const val = @as(i64, @intCast(l_raw >> 1));
+                if (try self.mulByConst(r, val)) |result| return result;
+            }
             return try self.b.imul(I64, l, r);
         }
         // Tagged fixnum mul: result = sshr(a, 1) * (b - 1) + 1
@@ -800,16 +811,25 @@ pub const IrTranslator = struct {
             const l = try self.translate(left);
             const one = try self.cachedIconst(1);
             const l_val = try self.b.sshr(I64, l, one);
-            const r_untagged = try self.cachedIconst(r_const - 1); // 2 * r_value
-            const prod = try self.b.imul(I64, l_val, r_untagged);
+            const r_untagged: i64 = @intCast(r_const - 1); // 2 * r_value
+            // Try strength reduction: l_val * r_untagged using shift-add
+            if (try self.mulByConst(l_val, r_untagged)) |prod| {
+                return try self.b.iadd(I64, prod, one);
+            }
+            const r_iconst = try self.cachedIconst(r_untagged);
+            const prod = try self.b.imul(I64, l_val, r_iconst);
             return try self.b.iadd(I64, prod, one);
         }
         if (getFixnumLit(left)) |l_const| {
             const r = try self.translate(right);
             const one = try self.cachedIconst(1);
             const r_val = try self.b.sshr(I64, r, one);
-            const l_untagged = try self.cachedIconst(l_const - 1);
-            const prod = try self.b.imul(I64, r_val, l_untagged);
+            const l_untagged: i64 = @intCast(l_const - 1);
+            if (try self.mulByConst(r_val, l_untagged)) |prod| {
+                return try self.b.iadd(I64, prod, one);
+            }
+            const l_iconst = try self.cachedIconst(l_untagged);
+            const prod = try self.b.imul(I64, r_val, l_iconst);
             return try self.b.iadd(I64, prod, one);
         }
         const l = try self.translate(left);
@@ -819,6 +839,48 @@ pub const IrTranslator = struct {
         const r_minus_1 = try self.b.isub(I64, r, one);
         const prod = try self.b.imul(I64, l_val, r_minus_1);
         return try self.b.iadd(I64, prod, one);
+    }
+
+    /// Multiply-by-constant strength reduction: replace imul with shift-add sequences.
+    /// Returns null if the constant doesn't match a known pattern.
+    /// Hoist's ISLE lowers iadd(x, ishl(y, K)) → ADD Xd, Xn, Xm, LSL #K (1 cycle).
+    /// This replaces MADD (3-cycle latency on Apple Silicon).
+    fn mulByConst(self: *IrTranslator, x: HoistValue, k: i64) anyerror!?HoistValue {
+        // Power of 2 → single shift
+        if (k > 0 and k & (k - 1) == 0) {
+            const shift = @ctz(@as(u64, @bitCast(k)));
+            if (shift == 0) return x; // multiply by 1
+            const s = try self.cachedIconst(@intCast(shift));
+            return try self.b.ishl(I64, x, s);
+        }
+        // k = 2^n + 1 → ADD Xd, Xn, Xm, LSL #n (single insn via ISLE)
+        if (k > 2 and (k - 1) & (k - 2) == 0) {
+            const shift = @ctz(@as(u64, @bitCast(k - 1)));
+            const s = try self.cachedIconst(@intCast(shift));
+            const shifted = try self.b.ishl(I64, x, s);
+            return try self.b.iadd(I64, x, shifted);
+        }
+        // k = 2^n - 1 → RSB-like: (x << n) - x
+        if (k > 2 and (k + 1) & k == 0) {
+            const shift = @ctz(@as(u64, @bitCast(k + 1)));
+            const s = try self.cachedIconst(@intCast(shift));
+            const shifted = try self.b.ishl(I64, x, s);
+            return try self.b.isub(I64, shifted, x);
+        }
+        // k = 2^n (already handled above as power of 2)
+        // k = 2 * (2^n + 1) → (x + x << n) << 1 = 2 insns
+        if (k > 4 and k & 1 == 0) {
+            const half = @divExact(k, 2);
+            if (half > 2 and (half - 1) & (half - 2) == 0) {
+                const shift = @ctz(@as(u64, @bitCast(half - 1)));
+                const s = try self.cachedIconst(@intCast(shift));
+                const shifted = try self.b.ishl(I64, x, s);
+                const sum = try self.b.iadd(I64, x, shifted);
+                const one_val = try self.cachedIconst(1);
+                return try self.b.ishl(I64, sum, one_val);
+            }
+        }
+        return null;
     }
 
     fn translateFixnumCmp(self: *IrTranslator, cc: IntCC, left: *const Ir, right: *const Ir) anyerror!HoistValue {
