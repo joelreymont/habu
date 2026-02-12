@@ -213,6 +213,9 @@ fn getJitPrimitivePtrWithArity(name: []const u8, arity: ?usize) ?u64 {
 /// Check if an IR node is a simple value (literal or variable reference).
 /// Used to optimize TCO branches that just return a constant.
 fn isSimpleValue(ir: *const Ir) bool {
+    // Note: expanding this to include fixnum_add/sub causes incorrect results
+    // due to hoist regalloc bug: block parameter register assignment fails
+    // when jumping from a computation block directly to exit.
     return switch (ir.*) {
         .lit, .@"var", .global_ref => true,
         else => false,
@@ -3095,6 +3098,11 @@ pub fn compileIrWithKnownFns(
     // Invert `b.cond .+8; b target` → `b.inv_cond target; nop`.
     invertBranchOverBranch(code.code.items);
 
+    // Eliminate dead MOV before unconditional B when MOV dest is never read.
+    // Pattern: MOV Xd, Xs; B target where target is a chain ending at epilogue.
+    // The MOV is a phi copy from the trampoline that's never consumed.
+    eliminateDeadMovBeforeBranch(code.code.items);
+
     // Note: LSL+ADD fusion (ADD Xd,Xn,Xm,LSL #K) was tested but is SLOWER
     // on Apple M-series (~10% regression). The wide OoO engine dispatches
     // separate LSL+ADD to parallel units faster than a single shifted-ADD.
@@ -3135,6 +3143,10 @@ pub fn compileIrWithKnownFns(
     // Remove all NOP instructions and fix branch offsets.
     // Must run LAST after all other peephole passes that introduce NOPs.
     compactNops(code.code.items, &code.code);
+
+    // After NOP compaction, B→B chains may emerge (from eliminated MOVs).
+    // Simplify them: B target where target is B target2 → B target2.
+    eliminateUselessBranches(code.code.items);
 
     // Debug: dump final machine code before making executable
     if (std.posix.getenv("HABU_DUMP_HOIST") != null) {
@@ -3797,6 +3809,69 @@ fn invertBranchOverBranch(code: []u8) void {
     }
 }
 
+/// Eliminate dead MOV instructions that appear before unconditional branches.
+/// Pattern: `MOV Xd, Xs; B target` where target is:
+///   1. The epilogue (LDP; LDP; RET) — Xd is dead
+///   2. Another `MOV Xd2, Xs2; B target2` chain — Xd is dead if Xd != Xs2
+/// These arise from hoist's trampoline blocks that insert unnecessary phi copies.
+fn eliminateDeadMovBeforeBranch(code: []u8) void {
+    const NOP: u32 = 0xD503201F;
+    const n = code.len / 4;
+    if (n < 2) return;
+
+    var i: usize = 0;
+    while (i + 1 < n) : (i += 1) {
+        const insn0 = readInsn(code, i);
+        const insn1 = readInsn(code, i + 1);
+
+        // Check insn0 is MOV Xd, Xm: ORR Xd, XZR, Xm
+        // Encoding: 1_01_01010_00_0_Rm_000000_11111_Rd
+        if (insn0 & 0xFFE0FFE0 != 0xAA0003E0) continue;
+        const rd: u5 = @truncate(insn0 & 0x1F);
+
+        // Check insn1 is unconditional B
+        if (insn1 & 0xFC000000 != 0x14000000) continue;
+
+        // Resolve the B target
+        const imm26_raw = insn1 & 0x3FFFFFF;
+        const imm26: i32 = if (imm26_raw & 0x2000000 != 0)
+            @as(i32, @intCast(imm26_raw)) - 0x4000000
+        else
+            @intCast(imm26_raw);
+        const target_idx: i32 = @intCast(i + 1);
+        const target: i32 = target_idx + imm26;
+        if (target < 0 or target >= @as(i32, @intCast(n))) continue;
+        const tidx: usize = @intCast(target);
+
+        // Check if rd is dead at target:
+        // 1. Target is epilogue (starts with LDP)
+        const target_insn = readInsn(code, tidx);
+        const is_ldp = (target_insn & 0xFFC00000 == 0xA9400000) or // LDP signed offset
+            (target_insn & 0xFFE00000 == 0xA8C00000); // LDP post-index
+
+        if (is_ldp) {
+            // Epilogue: rd is dead (only x0 matters for return)
+            if (rd != 0) { // don't NOP if rd is x0 (return value)
+                writeInsn(code, i, NOP);
+            }
+            continue;
+        }
+
+        // 2. Target is another MOV; B chain
+        if (tidx + 1 < n) {
+            const t0 = readInsn(code, tidx);
+            const t1 = readInsn(code, tidx + 1);
+            if (t0 & 0xFFE0FFE0 == 0xAA0003E0 and t1 & 0xFC000000 == 0x14000000) {
+                // Target is MOV Xd2, Xs2; B
+                const xs2: u5 = @truncate((t0 >> 16) & 0x1F);
+                if (rd != xs2 and rd != 0) {
+                    // rd is not read at target (target reads xs2, writes xd2)
+                    writeInsn(code, i, NOP);
+                }
+            }
+        }
+    }
+}
 
 /// Fix parallel copy conflicts in AArch64 call argument setup.
 ///
@@ -3962,13 +4037,48 @@ fn makeMovInsn(rd: u5, rm: u5) u32 {
 /// when rD is not used elsewhere after the mov. This eliminates phi-copy moves.
 /// Eliminate B .+4 instructions (unconditional jump to next instruction = NOP)
 fn eliminateUselessBranches(code: []u8) void {
+    const NOP: u32 = 0xD503201F;
     const n_insns = code.len / 4;
     var i: usize = 0;
     while (i < n_insns) : (i += 1) {
         const insn = readInsn(code, i);
-        // B imm26: 0x14000000 | offset. B .+4 means offset=1 → 0x14000001
+        // B .+4: branch to next instruction → NOP
         if (insn == 0x14000001) {
-            writeInsn(code, i, 0xD503201F); // NOP
+            writeInsn(code, i, NOP);
+            continue;
+        }
+        // Branch chain: B target where target is also B target2 → B target2
+        if (insn & 0xFC000000 == 0x14000000) {
+            const imm26_raw = insn & 0x3FFFFFF;
+            const imm26: i32 = if (imm26_raw & 0x2000000 != 0)
+                @as(i32, @intCast(imm26_raw)) - 0x4000000
+            else
+                @intCast(imm26_raw);
+            const target: i32 = @as(i32, @intCast(i)) + imm26;
+            if (target < 0 or target >= @as(i32, @intCast(n_insns))) continue;
+            const tidx: usize = @intCast(target);
+            const target_insn = readInsn(code, tidx);
+            // Skip NOPs at target
+            if (target_insn == NOP and tidx + 1 < n_insns) {
+                // Follow NOP to next instruction
+                continue;
+            }
+            // Check if target is another unconditional B
+            if (target_insn & 0xFC000000 == 0x14000000) {
+                // Resolve target's offset
+                const t_imm26_raw = target_insn & 0x3FFFFFF;
+                const t_imm26: i32 = if (t_imm26_raw & 0x2000000 != 0)
+                    @as(i32, @intCast(t_imm26_raw)) - 0x4000000
+                else
+                    @intCast(t_imm26_raw);
+                const final_target: i32 = @as(i32, @intCast(tidx)) + t_imm26;
+                // Compute new offset from i to final_target
+                const new_offset: i32 = final_target - @as(i32, @intCast(i));
+                if (new_offset >= -0x2000000 and new_offset < 0x2000000) {
+                    const new_imm26: u32 = @as(u32, @bitCast(new_offset)) & 0x3FFFFFF;
+                    writeInsn(code, i, 0x14000000 | new_imm26);
+                }
+            }
         }
     }
 }
