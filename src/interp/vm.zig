@@ -6323,6 +6323,17 @@ pub const Vm = struct {
     // Exception handling
     // ========================================================================
 
+    /// Throw a simple-error condition with an error name string.
+    /// Used to convert Zig compilation/evaluation errors into CL conditions
+    /// so that handler-case can catch them.
+    pub fn throwSimpleError(self: *Vm, heap: *Heap, err_name: []const u8) Error!void {
+        const msg_val = try heap.allocBaseString(err_name);
+        self.last_error_value = msg_val;
+        const payload = try self.allocCons(msg_val, Value.nil);
+        const condition = try self.allocCons(self.builtins.sym_simple_error, payload);
+        try self.doThrow(self.builtins.sym_condition_tag, condition);
+    }
+
     fn doThrow(self: *Vm, tag: Value, value: Value) Error!void {
         // First, check if there's an unwind-protect that needs cleanup
         // Unwind frames take precedence - we must run cleanup before continuing
@@ -7459,6 +7470,11 @@ pub const Vm = struct {
                                     try clauses.append(self.allocator, body[clause_start..j]);
                                     clause_start = j + 2;
                                     j += 2;
+                                } else if (body[j + 1] == ':' and j + 2 < body.len and body[j + 2] == ';' and clause_depth == 0) {
+                                    // ~:; is the default clause separator
+                                    try clauses.append(self.allocator, body[clause_start..j]);
+                                    clause_start = j + 3;
+                                    j += 3;
                                 } else {
                                     j += 1;
                                 }
@@ -7486,8 +7502,10 @@ pub const Vm = struct {
                             }
                             if (clause_idx < clauses.items.len) {
                                 // Append the selected clause text directly
-                                // (for full CL compat, would need recursive format processing)
                                 try result.appendSlice(self.allocator, clauses.items[clause_idx]);
+                            } else if (clauses.items.len > 0) {
+                                // Default: use last clause (CL ~:; default clause)
+                                try result.appendSlice(self.allocator, clauses.items[clauses.items.len - 1]);
                             }
                         }
                         i = end + 2;

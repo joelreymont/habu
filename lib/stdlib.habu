@@ -1077,6 +1077,18 @@
               (member x (cdr lst) :test test)
               (member x (cdr lst))))))
 
+(defun member-if (pred lst)
+  "Return tail of LST starting at first element satisfying PRED."
+  (if (null lst) nil
+      (if (funcall pred (car lst)) lst
+          (member-if pred (cdr lst)))))
+
+(defun member-if-not (pred lst)
+  "Return tail of LST starting at first element not satisfying PRED."
+  (if (null lst) nil
+      (if (not (funcall pred (car lst))) lst
+          (member-if-not pred (cdr lst)))))
+
 ; Assoc - find pair in alist by key (supports :test)
 (defun assoc (item alist &key (test #'eql))
   (if (null alist)
@@ -1394,6 +1406,7 @@
                  (let ((plist (car args))
                        (key (car (cdr args))))
                    (if (symbolp plist)
+                       ;; Simple variable case
                        (let ((k (gensym "K"))
                              (store (gensym "STORE")))
                          (list (list k)
@@ -1405,7 +1418,19 @@
                                            (list 'setq plist (list 'cons k (list 'cons store plist)))
                                            store))
                                (list 'getf plist k)))
-                     (error "get-setf-expansion: getf place must be a variable"))))
+                       ;; Compound place case: evaluate place, update, write back
+                       (let ((tmp (gensym "TMP"))
+                             (k (gensym "K"))
+                             (store (gensym "STORE")))
+                         (list (list tmp k)
+                               (list plist key)
+                               (list store)
+                               (list 'if (list '%plist-update! tmp k store)
+                                     store
+                                     (list 'progn
+                                           (list 'setf plist (list 'cons k (list 'cons store tmp)))
+                                           store))
+                               (list 'getf tmp k))))))
                 (elt
                  (let ((seq (gensym "SEQ"))
                        (idx (gensym "IDX"))
@@ -1649,10 +1674,18 @@
     ((funcall pred (car lst)) (car lst))
     (t (find-if-aux pred (cdr lst)))))
 
-(defun find-if (pred seq)
-  (if (stringp seq)
-      (find-if-aux pred (coerce seq 'list))
-      (find-if-aux pred seq)))
+(defun find-if (pred seq &key key)
+  (if key
+      (let ((lst (if (stringp seq) (coerce seq 'list) seq)))
+        (block found
+          (let ((remaining lst))
+            (while remaining
+              (when (funcall pred (funcall key (car remaining)))
+                (return-from found (car remaining)))
+              (setq remaining (cdr remaining))))))
+      (if (stringp seq)
+          (find-if-aux pred (coerce seq 'list))
+          (find-if-aux pred seq))))
 
 ; find-if-not - find first element NOT satisfying predicate
 (defun find-if-not (pred lst)
@@ -4953,7 +4986,11 @@
                (case (loop-kw-canon (car then-rest))
                  ((:do :collect :sum :count :append :nconc :maximize :minimize :return)
                   (setq else-action (list (car then-rest) (cadr then-rest)))
-                  (setq then-rest (cddr then-rest)))
+                  (setq then-rest (cddr then-rest))
+                  ;; Check for INTO after else action
+                  (when (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :into))
+                    (setq else-action (append else-action (list (car then-rest) (cadr then-rest))))
+                    (setq then-rest (cddr then-rest))))
                  (t (error "ELSE requires DO/COLLECT/SUM/COUNT/etc"))))
              ; Skip END if present
              (when (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :end))
@@ -4980,8 +5017,25 @@
                         (unless collect-var
                           (setq collect-var (gensym "collect")))
                         (push (list 'when test (cadr then-action)) collect-forms))))
+                ;; Handle ELSE action (may have its own INTO)
                 (when else-action
-                  (push (list 'unless test (cadr else-action)) collect-forms)))
+                  (let ((else-into (when (and (>= (length else-action) 4)
+                                             (eq (loop-kw-canon (caddr else-action)) :into))
+                                    (cadddr else-action)))
+                        (else-kw (loop-kw-canon (car else-action))))
+                    (case else-kw
+                      ((:collect)
+                       (if else-into
+                           (let ((entry (assoc else-into named-collects)))
+                             (if entry
+                                 (push (list 'unless test (cadr else-action)) (cdr entry))
+                                 (push (cons else-into (list (list 'unless test (cadr else-action)))) named-collects)))
+                           (progn
+                             (unless collect-var (setq collect-var (gensym "collect")))
+                             (push (list 'unless test (cadr else-action)) collect-forms))))
+                      (t
+                       (unless collect-var (setq collect-var (gensym "collect")))
+                       (push (list 'unless test (cadr else-action)) collect-forms))))))
                ((:sum)
                 ; Ensure sum-var exists
                 (unless sum-var
@@ -5030,61 +5084,117 @@
                   (push (list 'unless test (list 'return-from block-name (cadr else-action))) body-forms))))
              (setq rest then-rest)))
 
-          ; UNLESS test clause [END]
+          ; UNLESS test clause [ELSE clause] [END]
           ((:unless)
            (let ((test (cadr rest))
                  (then-rest (cddr rest))
-                 (then-action nil))
-             ; Parse clause
+                 (then-action nil)
+                 (else-action nil))
+             ; Parse THEN clause
              (case (loop-kw-canon (car then-rest))
                ((:do :collect :sum :count :append :nconc :maximize :minimize :return)
                 (setq then-action (list (car then-rest) (cadr then-rest)))
                 (setq then-rest (cddr then-rest)))
                (t (error "UNLESS requires DO/COLLECT/SUM/COUNT/etc")))
+             ; Check for ELSE
+             (when (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :else))
+               (setq then-rest (cdr then-rest))
+               ; Parse ELSE clause - may be WHEN/UNLESS or direct action
+               (case (loop-kw-canon (car then-rest))
+                 ((:do :collect :sum :count :append :nconc :maximize :minimize :return)
+                  (setq else-action (list (car then-rest) (cadr then-rest)))
+                  (setq then-rest (cddr then-rest)))
+                 ((:when)
+                  ;; ELSE WHEN sub-test clause [ELSE ...]
+                  (let ((sub-test (cadr then-rest))
+                        (sub-rest (cddr then-rest)))
+                    (case (loop-kw-canon (car sub-rest))
+                      ((:do :collect :sum :count :append :nconc :maximize :minimize :return)
+                       (setq else-action (list (car sub-rest) (cadr sub-rest)))
+                       ;; Wrap in (when sub-test ...) - handled below
+                       (setq else-action (list :when-else sub-test else-action))
+                       (setq then-rest (cddr sub-rest))
+                       ;; Check for another ELSE after this WHEN
+                       (when (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :else))
+                         (setq then-rest (cdr then-rest))
+                         (case (loop-kw-canon (car then-rest))
+                           ((:do :collect :sum :count :append :nconc :maximize :minimize :return)
+                            ;; else-else: another fallback
+                            (let ((else2 (list (car then-rest) (cadr then-rest))))
+                              (setq else-action (list :when-else-else sub-test (caddr else-action) else2))
+                              (setq then-rest (cddr then-rest)))))))
+                      (t (error "ELSE WHEN requires DO/COLLECT/etc")))))
+                 (t (error "ELSE requires DO/COLLECT/SUM/COUNT/WHEN/etc"))))
              ; Skip END if present
              (when (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :end))
                (setq then-rest (cdr then-rest)))
-             ; Generate conditional forms
+             ; Generate conditional forms -- for UNLESS: (unless test action) = (when (not test) action)
+             ; ELSE clause = (when test else-action)
              (case (loop-kw-canon (car then-action))
                ((:do)
-                (push (list 'unless test (cadr then-action)) body-forms))
+                (push (list 'unless test (cadr then-action)) body-forms)
+                (when else-action
+                  (if (and (consp else-action) (eq (car else-action) :when-else))
+                      (push (list 'when (list 'and test (cadr else-action))
+                                  (cadr (caddr else-action))) body-forms)
+                      (if (and (consp else-action) (eq (car else-action) :when-else-else))
+                          (progn
+                            (push (list 'when (list 'and test (cadr else-action))
+                                        (cadr (caddr else-action))) body-forms)
+                            (push (list 'when (list 'and test (not (cadr else-action)))
+                                        (cadr (cadddr else-action))) body-forms))
+                          (push (list 'when test (cadr else-action)) body-forms)))))
                ((:collect)
-                ; Ensure collect-var exists
-                (unless collect-var
-                  (setq collect-var (gensym "collect")))
-                (push (list 'unless test (cadr then-action)) collect-forms))
-               ((:sum)
-                ; Ensure sum-var exists
-                (unless sum-var
-                  (setq sum-var (gensym "sum")))
-                (push (list 'unless test (cadr then-action)) sum-forms))
-               ((:count)
-                ; Ensure count-var exists
-                (unless count-var
-                  (setq count-var (gensym "count")))
-                (push (list 'unless test (cadr then-action)) count-forms))
-               ((:append)
-                ; Ensure append-var exists
-                (unless append-var
-                  (setq append-var (gensym "append")))
-                (push (list 'unless test (cadr then-action)) append-forms))
+                (unless collect-var (setq collect-var (gensym "collect")))
+                (push (list 'unless test (cadr then-action)) collect-forms)
+                (when else-action
+                  (if (and (consp else-action) (eq (car else-action) :when-else))
+                      (push (list 'when (list 'and test (cadr else-action))
+                                  (cadr (caddr else-action))) collect-forms)
+                      (if (and (consp else-action) (eq (car else-action) :when-else-else))
+                          (progn
+                            (push (list 'when (list 'and test (cadr else-action))
+                                        (cadr (caddr else-action))) collect-forms)
+                            (push (list 'when (list 'and test (not (cadr else-action)))
+                                        (cadr (cadddr else-action))) collect-forms))
+                          (push (list 'when test (cadr else-action)) collect-forms)))))
                ((:nconc)
-                ; Ensure nconc-var exists
-                (unless nconc-var
-                  (setq nconc-var (gensym "nconc")))
-                (push (list 'unless test (cadr then-action)) nconc-forms))
+                (unless nconc-var (setq nconc-var (gensym "nconc")))
+                (push (list 'unless test (cadr then-action)) nconc-forms)
+                (when else-action
+                  (if (and (consp else-action) (eq (car else-action) :when-else))
+                      (push (list 'when (list 'and test (cadr else-action))
+                                  (cadr (caddr else-action))) nconc-forms)
+                      (push (list 'when test (cadr else-action)) nconc-forms))))
+               ((:sum)
+                (unless sum-var (setq sum-var (gensym "sum")))
+                (push (list 'unless test (cadr then-action)) sum-forms)
+                (when else-action
+                  (push (list 'when test (cadr else-action)) sum-forms)))
+               ((:count)
+                (unless count-var (setq count-var (gensym "count")))
+                (push (list 'unless test (cadr then-action)) count-forms)
+                (when else-action
+                  (push (list 'when test (cadr else-action)) count-forms)))
+               ((:append)
+                (unless append-var (setq append-var (gensym "append")))
+                (push (list 'unless test (cadr then-action)) append-forms)
+                (when else-action
+                  (push (list 'when test (cadr else-action)) append-forms)))
                ((:maximize)
-                ; Ensure max-var exists
-                (unless max-var
-                  (setq max-var (gensym "max")))
-                (push (list 'unless test (cadr then-action)) max-forms))
+                (unless max-var (setq max-var (gensym "max")))
+                (push (list 'unless test (cadr then-action)) max-forms)
+                (when else-action
+                  (push (list 'when test (cadr else-action)) max-forms)))
                ((:minimize)
-                ; Ensure min-var exists
-                (unless min-var
-                  (setq min-var (gensym "min")))
-                (push (list 'unless test (cadr then-action)) min-forms))
+                (unless min-var (setq min-var (gensym "min")))
+                (push (list 'unless test (cadr then-action)) min-forms)
+                (when else-action
+                  (push (list 'when test (cadr else-action)) min-forms)))
                ((:return)
-                (push (list 'unless test (list 'return-from block-name (cadr then-action))) body-forms)))
+                (push (list 'unless test (list 'return-from block-name (cadr then-action))) body-forms)
+                (when else-action
+                  (push (list 'when test (list 'return-from block-name (cadr else-action))) body-forms))))
              (setq rest then-rest)))
 
           ; COLLECT/COLLECTING expr [INTO var]
@@ -5404,14 +5514,38 @@
         (options (cddr spec))
         (stream (gensym "STREAM"))
         (abort (gensym "ABORT")))
-    `(let* ((,stream (open ,filespec ,@options))
-            (,abort t))
-       (unwind-protect
-           (progn
-             (let ((,var ,stream))
-               (setq ,abort nil)
-               ,@body))
-         (close ,stream ,abort)))))
+    ;; Check for :if-does-not-exist nil
+    (let ((if-dne (getf options :if-does-not-exist :signal))
+          (clean-options options))
+      ;; Remove :if-does-not-exist from options passed to open
+      (when (not (eq if-dne :signal))
+        (setq clean-options nil)
+        (let ((rest options))
+          (while rest
+            (if (eq (car rest) :if-does-not-exist)
+                (setq rest (cddr rest))
+                (progn
+                  (setq clean-options (append clean-options (list (car rest) (cadr rest))))
+                  (setq rest (cddr rest)))))))
+      (if (null if-dne)
+          ;; :if-does-not-exist nil - catch file errors, bind nil
+          `(let ((,stream (handler-case (open ,filespec ,@clean-options)
+                            (file-error (c) nil)))
+                 (,abort t))
+             (unwind-protect
+                 (let ((,var ,stream))
+                   (setq ,abort nil)
+                   ,@body)
+               (when ,stream (close ,stream ,abort))))
+          ;; Normal case
+          `(let* ((,stream (open ,filespec ,@clean-options))
+                  (,abort t))
+             (unwind-protect
+                 (progn
+                   (let ((,var ,stream))
+                     (setq ,abort nil)
+                     ,@body))
+               (close ,stream ,abort)))))))
 
 (defmacro with-input-from-string (spec &body body)
   (let ((var (car spec))

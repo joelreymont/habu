@@ -2056,3 +2056,199 @@
 ;;; TEST: handler-bind
 (handler-case (handler-bind ((error (lambda (c) (invoke-restart 'continue)))) 42) (error (e) :err))
 ;;; => 42
+
+;;; TEST: member-if
+(member-if #'evenp '(1 3 5 4 7))
+;;; => (4 7)
+
+;;; TEST: member-if-not
+(member-if-not #'oddp '(1 3 5 4 7))
+;;; => (4 7)
+
+;;; TEST: coerce vector to list
+(coerce #(1 2 3) 'list)
+;;; => (1 2 3)
+
+;;; TEST: coerce char-list to string
+(coerce '(#\a #\b #\c) 'string)
+;;; => "abc"
+
+;;; TEST: with-open-file if-does-not-exist nil
+(with-open-file (s "/tmp/nonexistent-snap.txt" :direction :input :if-does-not-exist nil) (if s 'found 'not-found))
+;;; => NOT-FOUND
+
+;;; TEST: rassoc
+(rassoc 2 '((a . 1) (b . 2) (c . 3)))
+;;; => (B . 2)
+
+;;; TEST: mismatch
+(mismatch "abcdef" "abcxyz")
+;;; => 3
+
+;;; TEST: nthcdr
+(nthcdr 2 '(a b c d e))
+;;; => (C D E)
+
+;;; TEST: endp
+(list (endp nil) (endp '(1)))
+;;; => (t nil)
+
+;;; TEST: char-name
+(char-name #\Space)
+;;; => "Space"
+
+;;; TEST: name-char
+(name-char "Space")
+;;; => #\space
+
+;;; TEST: adjoin no-dup
+(adjoin 3 '(1 2 3 4))
+;;; => (1 2 3 4)
+
+;;; TEST: adjoin new
+(adjoin 5 '(1 2 3 4))
+;;; => (5 1 2 3 4)
+
+;;; TEST: format ~:; default clause
+(format nil "~[zero~;one~;two~:;many~]" 99)
+;;; => "many"
+
+;;; TEST: format ~[~] in range
+(format nil "~[zero~;one~;two~:;many~]" 1)
+;;; => "one"
+
+;;; TEST: rotatef
+(let ((a 1) (b 2) (c 3)) (rotatef a b c) (list a b c))
+;;; => (2 3 1)
+
+;;; TEST: shiftf
+(let ((a 1) (b 2) (c 3)) (let ((old (shiftf a b c 99))) (list old a b c)))
+;;; => (1 2 3 99)
+
+;;; TEST: check-type passes
+(let ((x 42)) (check-type x integer) x)
+;;; => 42
+
+;;; TEST: assert passes
+(progn (assert (= 1 1)) 'ok)
+;;; => OK
+
+;;; TEST: loop on
+(loop for tail on '(1 2 3) collect (car tail))
+;;; => (1 2 3)
+
+;;; TEST: loop append
+(loop for i in '((1 2) (3 4) (5 6)) append i)
+;;; => (1 2 3 4 5 6)
+
+;;; TEST: loop nconc
+(loop for i in '((1 2) (3 4)) nconc (copy-list i))
+;;; => (1 2 3 4)
+
+;;; TEST: loop finally return
+(loop for i from 1 to 5 sum i into total finally (return (* total 2)))
+;;; => 30
+
+;;; TEST: progv
+(progn (defvar *pv-snap* 10) (progv '(*pv-snap*) '(99) *pv-snap*))
+;;; => 99
+
+;;; TEST: format ~R one hundred
+(format nil "~R" 100)
+;;; => "one hundred"
+
+;;; TEST: find-if :key
+(find-if #'evenp '((1 . a) (2 . b) (3 . c)) :key #'car)
+;;; => (2 . B)
+
+;;; TEST: loop while
+(loop for i from 1 while (< i 5) collect i)
+;;; => (1 2 3 4)
+
+;;; TEST: loop until
+(loop for i from 1 until (> i 5) collect i)
+;;; => (1 2 3 4 5)
+
+;;; TEST: loop repeat
+(loop repeat 3 collect 'x)
+;;; => (X X X)
+
+;;; TEST: handler-case multiple types
+(handler-case (error "test") (type-error (e) 'type) (simple-error (e) 'simple) (error (e) 'general))
+;;; => SIMPLE
+
+;;; TEST: cerror continuable
+(handler-bind ((simple-error (lambda (c) (invoke-restart 'continue)))) (cerror "ok" "err") 42)
+;;; => 42
+
+;;; TEST: fboundp
+(list (fboundp 'car) (fboundp 'nonexistent-fn-xyz))
+;;; => (t nil)
+
+;;; TEST: char-int
+(char-int #\A)
+;;; => 65
+
+;;; TEST: format ~< justify
+(format nil "~20<left~;right~>")
+;;; => "left           right"
+
+;;; TEST: sort strings
+(sort (list "banana" "apple" "cherry") #'string<)
+;;; => ("apple" "banana" "cherry")
+
+;;; TEST: remove-duplicates :test
+(remove-duplicates '("a" "b" "A" "c") :test #'string-equal)
+;;; => ("b" "A" "c")
+
+;;; TEST: print-unreadable-object
+(with-output-to-string (s) (print-unreadable-object (42 s :type t :identity nil) (format s "val")))
+;;; => "#<FIXNUM val>"
+
+;;; TEST: loop unless...else collect
+(loop for x in '(1 2 3 4) unless (evenp x) collect x else collect (* x 10))
+;;; => (1 20 3 40)
+
+;;; TEST: loop unless collect
+(loop for x in '(1 2 3 4 5) unless (evenp x) collect x)
+;;; => (1 3 5)
+
+;;; TEST: defpackage keyword name
+(handler-case (progn (defpackage :snap-test-pkg (:use :cl)) t) (error (e) nil))
+;;; => t
+
+;;; TEST: nested quasiquote comma-comma
+(let ((x 42)) `(a `(b ,,x)))
+;;; => (A (QUASIQUOTE (B (UNQUOTE 42))))
+
+;;; TEST: nested quasiquote macro expansion
+(progn (defmacro def-op (name arg-type op &optional return-type) (declare (ignore return-type arg-type)) `(defmacro ,name (&rest args) `(,',op ,@args))) (def-op qq-f+ fixnum +) (qq-f+ 3 4))
+;;; => 7
+
+;;; TEST: nested quasiquote splicing
+(progn (defmacro def-list-builder (name &rest defaults) `(defmacro ,name (&rest items) `(list ,@',defaults ,@items))) (def-list-builder qq-bl 10 20) (qq-bl 30 40))
+;;; => (10 20 30 40)
+
+;;; TEST: setf macro-function get
+(progn (setf (macro-function 'snap-mymac) #'(lambda (form env) (declare (ignore env)) (cons '+ (cdr form)))) (functionp (macro-function 'snap-mymac)))
+;;; => t
+
+;;; TEST: loop when collect into else collect into
+(loop for x in '(1 2 3 4 5) when (evenp x) collect x into evens else collect x into odds finally (return (list evens odds)))
+;;; => ((2 4) (1 3 5))
+
+;;; TEST: loop when collect into finally
+(loop for v in '(a b c) when t collect v into body finally (return body))
+;;; => (A B C)
+
+;;; TEST: eval-when defun+call in same block
+(eval-when (:compile-toplevel :load-toplevel :execute) (defun snap-ew-ret () 99) (snap-ew-ret))
+;;; => 99
+
+;;; TEST: eval-when closure
+(eval-when (:compile-toplevel :load-toplevel :execute) (defun snap-ew-adder (n) #'(lambda (x) (+ x n))) (funcall (snap-ew-adder 10) 5))
+;;; => 15
+
+;;; TEST: eval-when setf macro-function via make-operation
+(progn (eval-when (:compile-toplevel :load-toplevel :execute) (defun snap-mk-op2 (op) #'(lambda (form env) (declare (ignore env)) (cons op (cdr form)))) (setf (macro-function 'snap-qadd2) (snap-mk-op2 '+))) (snap-qadd2 10 20))
+;;; => 30

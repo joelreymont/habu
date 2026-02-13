@@ -2980,6 +2980,13 @@ pub const Compiler = struct {
         try self.refreshBuiltins();
         const b = if (self.builtins) |val| val else return error.InvalidSyntax;
 
+        // If macro_def is a closure (set via (setf (macro-function ...) fn)),
+        // call it directly with (whole-form nil) per CL spec
+        if (macro_def.isClosure()) {
+            const call_args = [_]Value{ whole_form, Value.nil };
+            return vm.callFromStack(macro_def, &call_args) catch |err| return err;
+        }
+
         // macro_def is ((params...) body...)
         // Transform destructured params before creating lambda
         if (!macro_def.isCons()) return error.InvalidSyntax;
@@ -5346,6 +5353,24 @@ pub const Compiler = struct {
             const place_args = place_cons.cdr;
 
             if (head.isSymbol()) {
+                // If the place head is a macro, expand it and retry setf.
+                // E.g., (setf (symbol-array x) v) where symbol-array is a macro
+                //   expanding to (get x 'array) -> (setf (get x 'array) v)
+                if (self.lookupMacroDef(head)) |macro_def| {
+                    if (!macro_def.isNil()) {
+                        if (self.vm) |vm| {
+                            const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+                            // Expand the place macro: (symbol-array x) -> (get x 'array)
+                            const expanded_place = self.expandMacro(macro_def, place_args, place, vm) catch place;
+                            if (!expanded_place.eq(place)) {
+                                // Rebuild (setf expanded-place value-expr) and retry
+                                const new_args = try heap.allocCons(expanded_place, cons1.cdr);
+                                return self.compileSetf(new_args, env);
+                            }
+                        }
+                    }
+                }
+
                 const b = if (self.builtins) |val| val else return error.InvalidSyntax;
                 const dispatch_head = self.canonicalBuiltinSymbol(head);
                 const h = dispatch_head.raw;
@@ -5566,6 +5591,27 @@ pub const Compiler = struct {
                     const node = try self.allocator.create(Ir);
                     node.* = .{ .put = .{ .first = sym_ir, .second = key_ir, .third = val_ir } };
                     return node;
+                }
+
+                // (setf (macro-function 'name) fn)
+                // -> (setf (get name 'macro-function) fn) for property list storage
+                if (head.isSymbol()) {
+                    const head_name = head.toPtr(Symbol).getName();
+                    if (std.mem.eql(u8, head_name, "MACRO-FUNCTION") or
+                        std.mem.eql(u8, head_name, "macro-function"))
+                    {
+                        // (macro-function sym-expr [env]) -> rewrite to (get sym-expr 'macro-function)
+                        if (!place_args.isCons()) return error.InvalidSyntax;
+                        const sym_expr = place_args.toPtr(Cons).car;
+                        const sym_ir = try self.compile(sym_expr, env);
+                        const heap2 = if (self.heap) |val| val else return error.InvalidSyntax;
+                        const mf_sym = try heap2.intern("MACRO-FUNCTION");
+                        const key_ir = try self.builder.lit(mf_sym);
+                        const val_ir = try self.compile(value_expr, env);
+                        const node = try self.allocator.create(Ir);
+                        node.* = .{ .put = .{ .first = sym_ir, .second = key_ir, .third = val_ir } };
+                        return node;
+                    }
                 }
 
                 // (setf (find-class name [errorp [environment]]) val)
@@ -6353,11 +6399,12 @@ pub const Compiler = struct {
         const cons = args.toPtr(Cons);
         const expr = cons.car;
 
-        return self.quasiquoteExpr(expr, env);
+        return self.quasiquoteExpr(expr, env, 0);
     }
 
-    /// Process an expression inside quasiquote
-    fn quasiquoteExpr(self: *Compiler, expr: Value, env: *const Env) anyerror!*Ir {
+    /// Process an expression inside quasiquote at given nesting depth.
+    /// At depth 0, unquotes are evaluated. At depth > 0, they're left as forms.
+    fn quasiquoteExpr(self: *Compiler, expr: Value, env: *const Env, depth: u32) anyerror!*Ir {
         // Non-list: return as quoted literal
         if (!expr.isCons()) {
             return try self.builder.lit(expr);
@@ -6366,28 +6413,56 @@ pub const Compiler = struct {
         const cons = expr.toPtr(Cons);
         const head = cons.car;
 
-        // Check for (unquote x) - evaluate x (use symbol identity)
+        // Check for special forms (unquote, unquote-splicing, quasiquote)
         if (head.isSymbol()) {
             const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
             const dispatch_head = self.canonicalBuiltinSymbol(head);
             if (dispatch_head.raw == b.unquote.raw) {
-                // (unquote x) -> compile x
                 if (!cons.cdr.isCons()) return error.InvalidSyntax;
                 const unquoted = cons.cdr.toPtr(Cons).car;
-                return self.compile(unquoted, env);
+                if (depth == 0) {
+                    // At outermost level: evaluate the expression
+                    return self.compile(unquoted, env);
+                } else {
+                    // Nested: build (unquote <processed>) form at runtime
+                    // Process the argument at depth-1
+                    const inner = try self.quasiquoteExpr(unquoted, env, depth - 1);
+                    return try self.buildList2(try self.builder.lit(head), inner);
+                }
             }
             if (dispatch_head.raw == b.@"unquote-splicing".raw) {
-                // unquote-splicing outside of list context is an error
-                return error.InvalidSyntax;
+                if (depth == 0) {
+                    // unquote-splicing outside of list context at depth 0 is an error
+                    return error.InvalidSyntax;
+                } else {
+                    if (!cons.cdr.isCons()) return error.InvalidSyntax;
+                    const unquoted = cons.cdr.toPtr(Cons).car;
+                    const inner = try self.quasiquoteExpr(unquoted, env, depth - 1);
+                    return try self.buildList2(try self.builder.lit(head), inner);
+                }
+            }
+            if (dispatch_head.raw == b.quasiquote.raw) {
+                // Nested quasiquote: increment depth
+                if (!cons.cdr.isCons()) return error.InvalidSyntax;
+                const nested_expr = cons.cdr.toPtr(Cons).car;
+                const inner = try self.quasiquoteExpr(nested_expr, env, depth + 1);
+                return try self.buildList2(try self.builder.lit(head), inner);
             }
         }
 
         // Regular list: build with cons at runtime
-        return self.quasiquoteList(expr, env);
+        return self.quasiquoteList(expr, env, depth);
+    }
+
+    /// Helper: build a 2-element list (a b) -> (cons a (cons b nil))
+    fn buildList2(self: *Compiler, a: *Ir, b: *Ir) anyerror!*Ir {
+        const nil_ir = try self.builder.lit(Value.nil);
+        const inner_cons = try self.builder.cons(b, nil_ir);
+        return try self.builder.cons(a, inner_cons);
     }
 
     /// Build a list from quasiquoted elements using cons/append
-    fn quasiquoteList(self: *Compiler, list: Value, env: *const Env) anyerror!*Ir {
+    fn quasiquoteList(self: *Compiler, list: Value, env: *const Env, depth: u32) anyerror!*Ir {
         if (list.isNil()) {
             return try self.builder.lit(Value.nil);
         }
@@ -6401,28 +6476,34 @@ pub const Compiler = struct {
         const head = cons.car;
         const tail = cons.cdr;
 
-        // Check for (unquote-splicing x) - splice x into result (use symbol identity)
+        // Check for (unquote-splicing x) - splice x into result
         if (head.isCons()) {
             const head_cons = head.toPtr(Cons);
             if (head_cons.car.isSymbol()) {
                 const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
                 const dispatch_head = self.canonicalBuiltinSymbol(head_cons.car);
                 if (dispatch_head.raw == b.@"unquote-splicing".raw) {
-                    // (,@x ...) -> (append x (quasiquote-list ...))
                     if (!head_cons.cdr.isCons()) return error.InvalidSyntax;
                     const spliced = head_cons.cdr.toPtr(Cons).car;
-                    const spliced_ir = try self.compile(spliced, env);
-                    const rest_ir = try self.quasiquoteList(tail, env);
-
-                    // Build (append spliced rest)
-                    return try self.builder.append(spliced_ir, rest_ir);
+                    if (depth == 0) {
+                        // At outermost: (,@x ...) -> (append x (quasiquote-list ...))
+                        const spliced_ir = try self.compile(spliced, env);
+                        const rest_ir = try self.quasiquoteList(tail, env, depth);
+                        return try self.builder.append(spliced_ir, rest_ir);
+                    } else {
+                        // Nested: build (unquote-splicing <processed>) as a list element
+                        const inner = try self.quasiquoteExpr(spliced, env, depth - 1);
+                        const splice_form = try self.buildList2(try self.builder.lit(head_cons.car), inner);
+                        const tail_ir = try self.quasiquoteList(tail, env, depth);
+                        return try self.builder.cons(splice_form, tail_ir);
+                    }
                 }
             }
         }
 
         // Regular element: (cons (quasiquote head) (quasiquote-list tail))
-        const head_ir = try self.quasiquoteExpr(head, env);
-        const tail_ir = try self.quasiquoteList(tail, env);
+        const head_ir = try self.quasiquoteExpr(head, env, depth);
+        const tail_ir = try self.quasiquoteList(tail, env, depth);
 
         return try self.builder.cons(head_ir, tail_ir);
     }
@@ -7362,6 +7443,57 @@ pub const Compiler = struct {
                 in_optional = false;
                 in_rest = false;
                 in_key = true;
+            } else if (param.eq(b.@"&aux")) {
+                // &aux: collect remaining params as aux bindings, stop param scanning
+                var aux_rest = p_cons.cdr;
+                var aux_bindings = std.ArrayList(Value){};
+                defer aux_bindings.deinit(self.allocator);
+                while (aux_rest.isCons()) {
+                    const aux_cons = aux_rest.toPtr(Cons);
+                    try aux_bindings.append(self.allocator, aux_cons.car);
+                    aux_rest = aux_cons.cdr;
+                }
+                // Wrap body in (let* ((var1 nil) (var2 nil) ...) body...)
+                if (aux_bindings.items.len > 0) {
+                    var let_bindings = std.ArrayList(Value){};
+                    defer let_bindings.deinit(self.allocator);
+                    for (aux_bindings.items) |ab| {
+                        if (ab.isCons()) {
+                            // (var init-form) - keep as-is
+                            try let_bindings.append(self.allocator, ab);
+                        } else {
+                            // bare symbol - bind to nil
+                            try let_bindings.append(self.allocator, try heap.allocCons(ab, try heap.allocCons(Value.nil, Value.nil)));
+                        }
+                    }
+                    const bindings_list = try self.listFromSlice(let_bindings.items);
+                    const let_star_sym = try heap.intern("let*");
+                    // (let* bindings body...)
+                    const new_body = try heap.allocCons(let_star_sym, try heap.allocCons(bindings_list, body));
+                    // Rebuild with params up to &aux and new body
+                    const new_params_list = try self.listFromSlice(new_params.items);
+
+                    // If we have destructuring bindings, wrap further
+                    if (bindings.items.len > 0) {
+                        var wrapped = try heap.allocCons(new_body, Value.nil);
+                        var bi = bindings.items.len;
+                        while (bi >= 2) {
+                            bi -= 2;
+                            const pattern = bindings.items[bi];
+                            const g = bindings.items[bi + 1];
+                            const db_sym = try heap.intern("destructuring-bind");
+                            const progn_sym = try heap.intern("progn");
+                            const progn_body = try heap.allocCons(progn_sym, wrapped);
+                            const progn_cell = try heap.allocCons(progn_body, Value.nil);
+                            const g_cell = try heap.allocCons(g, progn_cell);
+                            const pat_cell = try heap.allocCons(pattern, g_cell);
+                            wrapped = try heap.allocCons(try heap.allocCons(db_sym, pat_cell), Value.nil);
+                        }
+                        return try heap.allocCons(new_params_list, wrapped);
+                    }
+                    return try heap.allocCons(new_params_list, try heap.allocCons(new_body, Value.nil));
+                }
+                break;
             } else if (param.eq(b.@"&whole") or param.eq(b.@"&environment")) {
                 // &whole and &environment are handled in expandMacro - keep as-is
                 try new_params.append(self.allocator, param);
@@ -7369,18 +7501,12 @@ pub const Compiler = struct {
                 switch (param.typeKind()) {
                     .cons => {
                         if (!in_optional and !in_rest and !in_key) {
-                            // Check if this is destructured (car is cons) or typed (car is symbol)
-                            const param_cons = param.toPtr(Cons);
-                            if (param_cons.car.isCons()) {
-                                // Destructured param: ((a b)) - car is cons
-                                const g = try prims.gensym(heap, null);
-                                try new_params.append(self.allocator, g);
-                                try bindings.append(self.allocator, param);
-                                try bindings.append(self.allocator, g);
-                            } else {
-                                // Typed param: (x fixnum) - car is symbol, keep as-is
-                                try new_params.append(self.allocator, param);
-                            }
+                            // All cons params in macro lambda lists are destructuring.
+                            // E.g., (a b) or (a . b) — bind parts of the argument.
+                            const g = try prims.gensym(heap, null);
+                            try new_params.append(self.allocator, g);
+                            try bindings.append(self.allocator, param);
+                            try bindings.append(self.allocator, g);
                         } else {
                             // Normal param or &optional/&key param with default: keep as-is
                             try new_params.append(self.allocator, param);
@@ -8094,6 +8220,7 @@ pub const Compiler = struct {
         const pkg_name = switch (pkg_name_val.typeKind()) {
             .string => pkg_name_val.toPtr(runtime.String).bytes(),
             .symbol => pkg_name_val.toPtr(Symbol).getName(),
+            .keyword => pkg_name_val.toPtr(runtime.Keyword).getName(),
             else => return error.InvalidSyntax,
         };
 
@@ -13408,6 +13535,32 @@ pub const Compiler = struct {
         const canonical = self.canonicalBuiltinSymbol(sym);
         if (canonical.raw != sym.raw) {
             if (self.macro_table.get(canonical)) |def| return def;
+        }
+        // Also check symbol property list for macro-function (set via setf)
+        if (sym.isSymbol()) {
+            const sym_ptr = sym.toPtr(Symbol);
+            if (sym_ptr.plist.isCons()) {
+                // Search plist for 'macro-function key
+                // Plist stored as alist: ((key . val) (key . val) ...)
+                var plist = sym_ptr.plist;
+                while (plist.isCons()) {
+                    const pc = plist.toPtr(Cons);
+                    const entry = pc.car;
+                    if (entry.isCons()) {
+                        const entry_cons = entry.toPtr(Cons);
+                        if (entry_cons.car.isSymbol()) {
+                            const key_name = entry_cons.car.toPtr(Symbol).getName();
+                            if (std.mem.eql(u8, key_name, "MACRO-FUNCTION") or
+                                std.mem.eql(u8, key_name, "macro-function"))
+                            {
+                                const val = entry_cons.cdr;
+                                if (val.isClosure()) return val;
+                            }
+                        }
+                    }
+                    plist = pc.cdr;
+                }
+            }
         }
         return null;
     }

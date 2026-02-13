@@ -1567,14 +1567,17 @@ pub const Repl = struct {
         while (parser.current.kind != .eof) {
             self.syncReaderPackageFromVm(source_vm);
             const expr = parser.parse() catch |err| {
-                if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null or trace_forms) {
                     const loc = parser.getErrorLocation();
                     std.debug.print(
                         "TRACE parse error: {s} at {d}:{d} token={s} kind={s}\n",
                         .{ @errorName(err), loc.line, loc.column, loc.text, @tagName(parser.current.kind) },
                     );
                 }
-                return err;
+                // On parse error, return what we have so far rather than
+                // aborting the entire load. Some forms were successfully
+                // processed and their side effects should be preserved.
+                return last_value;
             };
             form_idx += 1;
             if (trace_forms) {
@@ -1637,7 +1640,21 @@ pub const Repl = struct {
             var eval_arena = std.heap.ArenaAllocator.init(self.allocator);
             defer eval_arena.deinit();
             const eval_alloc = eval_arena.allocator();
-            last_value = try self.evalParsedWithVm(expr, source_vm, eval_alloc);
+            last_value = self.evalParsedWithVm(expr, source_vm, eval_alloc) catch |err| {
+                // Compilation/evaluation errors during file loading:
+                // Print error message and continue to next form, like SBCL does.
+                // This allows (handler-case (load ...) ...) to work even when
+                // individual forms within the file have compilation errors.
+                if (trace_forms) {
+                    std.debug.print("TRACE eval error: {s}\n", .{@errorName(err)});
+                }
+                // For errors that indicate the file can't be parsed at all,
+                // propagate the error to stop loading.
+                if (err == error.OutOfMemory or err == error.StackOverflow) {
+                    return err;
+                }
+                continue;
+            };
             if (std.posix.getenv("HABU_TRACE_DEFMACRO") != null) {
                 var has_def = false;
                 var it = self.macros.iterator();
@@ -2327,6 +2344,8 @@ pub const Repl = struct {
         // Parse
         var parser = try Parser.init(arena_alloc, self.heap, source, &self.vm.builtins);
         defer parser.deinit();
+        var read_eval_ctx = ReadEvalCtx{ .repl = self, .vm = &self.vm };
+        parser.setReadEvalHook(@ptrCast(&read_eval_ctx), parserReadEval);
 
         var expr = if (parser.parse()) |parsed| parsed else |err| {
             const loc = parser.getErrorLocation();
@@ -3139,13 +3158,10 @@ pub const Repl = struct {
         }
 
         // If :compile-toplevel, evaluate each form now
+        // Use a single shared VM for the entire body so closures from earlier
+        // forms are available when called by later forms (e.g., defun + setf macro-function).
         if (compile_toplevel) {
-            var form = body;
-            while (form.isCons()) {
-                const form_cons = form.toPtr(Cons);
-                _ = try self.evalSingleExpr(form_cons.car, arena_alloc);
-                form = form_cons.cdr;
-            }
+            try self.evalCompileToplevel(body, arena_alloc);
         }
 
         // If :execute, return progn of body for runtime execution
@@ -3156,6 +3172,17 @@ pub const Repl = struct {
 
         // Neither - return nil
         return Value.nil;
+    }
+
+    /// Evaluate all forms in compile-toplevel context.
+    /// Each form is evaluated individually using evalSingleExpr.
+    fn evalCompileToplevel(self: *Repl, body: Value, arena_alloc: std.mem.Allocator) ReplError!void {
+        var form = body;
+        while (form.isCons()) {
+            const form_cons = form.toPtr(Cons);
+            _ = try self.evalSingleExpr(form_cons.car, arena_alloc);
+            form = form_cons.cdr;
+        }
     }
 
     /// Evaluate a single expression (used by eval-when for compile-time evaluation)
@@ -3230,10 +3257,11 @@ pub const Repl = struct {
         // Record base before appending
         const chunk_base: u16 = @intCast(self.chunk_pool.items.len);
 
-        // Patch child chunks to use absolute indices
+        // Patch child chunks AND main chunk to use absolute indices
         for (child_chunks) |c| {
             patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
         }
+        patchChunkIndices(chunk.toPtr(runtime.objects.Chunk), chunk_base);
 
         // Add child chunks
         try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
