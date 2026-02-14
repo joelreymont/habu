@@ -383,6 +383,8 @@ pub const CompiledFn = struct {
     ir_body: ?*const Ir = null,
     /// Parameter names for inlining (lives in ir_arena).
     param_names: ?[]const []const u8 = null,
+    /// Continuation stack buffer (heap-allocated, used by cont-stack JIT).
+    cont_buf: ?[]align(8) u8 = null,
 
     pub fn deinit(self: *CompiledFn) void {
         if (self.name.len > 0) self.allocator.free(self.name);
@@ -390,6 +392,7 @@ pub const CompiledFn = struct {
             arena.deinit();
             self.allocator.destroy(arena);
         }
+        if (self.cont_buf) |buf| self.allocator.free(buf);
         self.mem.deinit();
         self.allocator.destroy(self.mem);
     }
@@ -466,6 +469,10 @@ pub const IrTranslator = struct {
     /// Whether we're compiling a self-recursive function.
     is_recursive: bool,
 
+    /// Whether all self-calls were converted to jumps (continuation stack).
+    /// When true, no call_indirect was emitted, so self-pointer patching is skipped.
+    all_calls_converted: bool,
+
     /// Whether the function contains loops (while).
     has_loops: bool,
 
@@ -538,6 +545,8 @@ pub const IrTranslator = struct {
     // cont_slot removed — depth passed as exit block param after hoist parallel copy fix
     /// Number of continuation values pushed per self-call (e.g., 1 for ack's m-1).
     cont_width: u32 = 0,
+    /// Heap-allocated continuation stack buffer (ownership transferred to CompiledFn).
+    cont_buf_alloc: ?[]align(8) u8 = null,
 
 
     pub fn init(allocator: std.mem.Allocator, func: *Function, builder: *FunctionBuilder) IrTranslator {
@@ -548,6 +557,7 @@ pub const IrTranslator = struct {
             .locals = std.ArrayList(HoistValue){},
             .inline_scopes = std.ArrayList(InlineScope){},
             .is_recursive = false,
+            .all_calls_converted = false,
             .has_loops = false,
             .fn_name = "",
             .user_arity = 0,
@@ -1570,9 +1580,11 @@ pub const IrTranslator = struct {
         if (arity > 8) return error.TooManyParams;
 
         // Detect continuation pattern: does the body have a tail self-call
-        // where one arg contains a non-tail self-call?
+        // where exactly ONE arg contains a non-tail self-call?
+        // Multiple inner self-calls (like tak) are not supported by cont stack.
         const use_cont_stack = hasNonTailSelfCalls(body_ir, self.fn_name) and
-            hasSelfTailCalls(body_ir, self.fn_name);
+            hasSelfTailCalls(body_ir, self.fn_name) and
+            hasSingleInnerSelfCall(body_ir, self.fn_name);
 
         // Determine continuation width: number of values to save per continuation.
         // For ack pattern: tail_call(self, arg0, inner_call) → save arg0 = 1 value.
@@ -1610,11 +1622,13 @@ pub const IrTranslator = struct {
 
         // Allocate continuation stack as a runtime constant (heap-allocated buffer).
         // Can't use stack_slot because ack(3,11) needs ~16K entries (128KB).
+        // Ownership transfers to CompiledFn for cleanup.
         var cont_base: ?HoistValue = null;
         if (use_cont_stack) {
             // Allocate 128KB buffer for continuation stack (16384 entries * 8 bytes)
             const cont_buf_size: usize = 16384 * @as(usize, cont_width) * 8;
             const cont_buf = try self.allocator.alignedAlloc(u8, .@"8", cont_buf_size);
+            self.cont_buf_alloc = cont_buf;
             // Store the buffer pointer as a constant in the IR
             const buf_ptr = @intFromPtr(cont_buf.ptr);
             cont_base = try self.b.iconst(I64, @as(i64, @bitCast(buf_ptr)));
@@ -1646,6 +1660,9 @@ pub const IrTranslator = struct {
             self.cont_depth_phi = cont_depth_phi;
             self.cont_base = cont_base;
             self.cont_width = cont_width;
+            // All self-calls are converted to jumps (both tail and non-tail),
+            // so no call_indirect is emitted — skip self-pointer patching.
+            self.all_calls_converted = true;
         }
 
         // Translate body — tail calls jump to header, returns jump to exit
@@ -2890,6 +2907,25 @@ fn hasSelfTailCalls(body: *const Ir, name: []const u8) bool {
     };
 }
 
+/// Check if the continuation stack pattern applies: exactly one tail-call arg
+/// contains a self-call. Multiple self-call args (like tak) aren't supported.
+fn hasSingleInnerSelfCall(body: *const Ir, name: []const u8) bool {
+    return switch (body.*) {
+        .tailcall => |tc| blk: {
+            if (!isCallTargetSelf(tc.func, name)) break :blk false;
+            var count: u32 = 0;
+            for (tc.args) |arg| {
+                if (detectSelfCalls(arg, name)) count += 1;
+            }
+            break :blk count == 1;
+        },
+        .@"if" => |i| hasSingleInnerSelfCall(i.then_branch, name) or hasSingleInnerSelfCall(i.else_branch, name),
+        .let => |l| hasSingleInnerSelfCall(l.body, name),
+        .progn => |exprs| if (exprs.len == 0) false else hasSingleInnerSelfCall(exprs[exprs.len - 1], name),
+        else => false,
+    };
+}
+
 /// Detect if a function body has non-tail self-calls (.call nodes targeting self).
 fn hasNonTailSelfCalls(body: *const Ir, name: []const u8) bool {
     return irAny(body, struct {
@@ -3208,7 +3244,7 @@ pub fn compileIrWithKnownFns(
     // offset (±128MB range), eliminating the need to load a 64-bit address via
     // 4 MOVZ/MOVK instructions. This saves 5 instructions per self-call
     // (4 MOVZ/MOVK + MOV → NOP, BLR → BL).
-    if (translator.is_recursive) {
+    if (translator.is_recursive and !translator.all_calls_converted) {
         const func_addr = @intFromPtr(buf.ptr);
         const placeholder: u64 = @bitCast(translator.self_ptr_placeholder);
         // Try BL optimization first, fall back to address patching
@@ -3300,7 +3336,7 @@ pub fn compileIrWithKnownFns(
 
     // Eliminate prologue/epilogue for leaf functions (no BLR/BL calls).
     // After TCO, recursive functions become loops and don't need frame setup.
-    if (!translator.is_recursive) {
+    if (!translator.is_recursive or translator.all_calls_converted) {
         eliminateLeafPrologue(code.code.items);
     }
 
@@ -3368,6 +3404,7 @@ pub fn compileIrWithKnownFns(
         .arity = arity,
         .allocator = allocator,
         .name = owned_name,
+        .cont_buf = translator.cont_buf_alloc,
     };
 }
 

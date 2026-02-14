@@ -2687,7 +2687,7 @@ pub const Compiler = struct {
     };
 
     /// Comptime dispatch table for special forms
-    const special_forms = std.StaticStringMap(SpecialForm).initComptime(.{
+    pub const special_forms = std.StaticStringMap(SpecialForm).initComptime(.{
         .{ "IF", .@"if" },
         .{ "LET", .let },
         .{ "LETREC", .letrec },
@@ -4113,6 +4113,14 @@ pub const Compiler = struct {
                     return; // Quoted expressions have no free variables
                 }
 
+                if (head.raw == b.quasiquote.raw) {
+                    // Quasiquote: walk looking for unquoted expressions
+                    if (tail.isCons()) {
+                        try self.collectFreeVarsInQuasiquote(tail.toPtr(Cons).car, env, captures, 0);
+                    }
+                    return;
+                }
+
                 // Function position can reference lexical function namespace bindings.
                 try self.collectFreeFunctionCapture(head, env, captures);
             }
@@ -4130,6 +4138,61 @@ pub const Compiler = struct {
             const cons = current.toPtr(Cons);
             try self.collectFreeVars(cons.car, env, captures);
             current = cons.cdr;
+        }
+    }
+
+    /// Walk a quasiquoted form looking for unquoted expressions that contain free variables.
+    /// At depth 0, (unquote x) evaluates x and (unquote-splicing x) evaluates x.
+    /// At depth > 0, nested quasiquotes increment depth and unquotes decrement.
+    fn collectFreeVarsInQuasiquote(self: *Compiler, expr: Value, env: *const Env, captures: *CaptureSet, depth: u32) error{OutOfMemory}!void {
+        if (!expr.isCons()) return;
+
+        const cons = expr.toPtr(Cons);
+        const head = cons.car;
+
+        if (head.isSymbol()) {
+            const b = if (self.builtins) |val| val else return;
+            const dh = self.canonicalBuiltinSymbol(head);
+
+            if (dh.raw == b.unquote.raw or dh.raw == b.@"unquote-splicing".raw) {
+                if (depth == 0) {
+                    // At outermost level: the unquoted expression is evaluated
+                    if (cons.cdr.isCons()) {
+                        try self.collectFreeVars(cons.cdr.toPtr(Cons).car, env, captures);
+                    }
+                } else {
+                    // Nested: process at depth-1
+                    if (cons.cdr.isCons()) {
+                        try self.collectFreeVarsInQuasiquote(cons.cdr.toPtr(Cons).car, env, captures, depth - 1);
+                    }
+                }
+                return;
+            }
+
+            if (dh.raw == b.quasiquote.raw) {
+                // Nested quasiquote: increment depth
+                if (cons.cdr.isCons()) {
+                    try self.collectFreeVarsInQuasiquote(cons.cdr.toPtr(Cons).car, env, captures, depth + 1);
+                }
+                return;
+            }
+
+            if (dh.raw == b.quote.raw) {
+                // (quote ...) inside quasiquote: still need to look inside
+                // because (quote (unquote x)) = ',x is a valid pattern
+                if (cons.cdr.isCons()) {
+                    try self.collectFreeVarsInQuasiquote(cons.cdr.toPtr(Cons).car, env, captures, depth);
+                }
+                return;
+            }
+        }
+
+        // General list: recurse on all elements
+        var current: Value = expr;
+        while (current.isCons()) {
+            const c = current.toPtr(Cons);
+            try self.collectFreeVarsInQuasiquote(c.car, env, captures, depth);
+            current = c.cdr;
         }
     }
 
@@ -6475,6 +6538,25 @@ pub const Compiler = struct {
         const cons = list.toPtr(Cons);
         const head = cons.car;
         const tail = cons.cdr;
+
+        // Handle dotted pair unquote: (a b . ,x) where list = (UNQUOTE x)
+        // The car is the UNQUOTE symbol and cdr is (x).
+        if (head.isSymbol()) {
+            const b_dot = if (self.builtins) |val| val else return error.UninitializedBuiltins;
+            const dh_dot = self.canonicalBuiltinSymbol(head);
+            if (dh_dot.raw == b_dot.unquote.raw) {
+                if (!tail.isCons()) return error.InvalidSyntax;
+                const unquoted = tail.toPtr(Cons).car;
+                if (depth == 0) {
+                    // Evaluate the unquoted expression (it becomes the tail)
+                    return self.compile(unquoted, env);
+                } else {
+                    // Nested: build (unquote <processed>) form
+                    const inner = try self.quasiquoteExpr(unquoted, env, depth - 1);
+                    return try self.buildList2(try self.builder.lit(head), inner);
+                }
+            }
+        }
 
         // Check for (unquote-splicing x) - splice x into result
         if (head.isCons()) {

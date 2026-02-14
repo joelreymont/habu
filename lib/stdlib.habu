@@ -1245,6 +1245,8 @@
 ; do - general iteration macro (parallel binding)
 ; (do ((var init step) ...) (end-test result...) body...)
 ; Uses while instead of loop to avoid forward reference
+;; do uses tagbody/go internally to avoid circular expansion with user 'while' macros.
+;; Standard CL pattern: (block nil (let vars (tagbody loop (if end return) body step (go loop))))
 (defmacro do (bindings end-clause &rest body)
   (let* ((vars (mapcar (lambda (b) (car b)) bindings))
          (inits (mapcar (lambda (b) (cadr b)) bindings))
@@ -1252,13 +1254,17 @@
          (end-test (car end-clause))
          (result (cdr end-clause))
          (var-inits (mapcar (lambda (v i) (list v i)) vars inits))
-         (var-steps (mapcar (lambda (v s) (list v s)) vars steps)))
+         (var-steps (mapcar (lambda (v s) (list v s)) vars steps))
+         (loop-tag (gensym "DO-LOOP")))
     (list 'block nil
           (list 'let var-inits
-                (list 'while (list 'not end-test)
-                      (cons 'progn body)
-                      (list* 'psetq (flatten1 var-steps)))
-                (cons 'progn (if result result (list nil)))))))
+                (list* 'tagbody
+                       loop-tag
+                       (list 'if end-test
+                             (cons 'return (if result result (list nil))))
+                       (append body
+                               (list (list* 'psetq (flatten1 var-steps))
+                                     (list 'go loop-tag))))))))
 
 ; do* - general iteration macro (sequential binding)
 ; (do* ((var init step) ...) (end-test result...) body...)
@@ -1269,12 +1275,17 @@
          (end-test (car end-clause))
          (result (cdr end-clause))
          (var-inits (mapcar (lambda (v i) (list v i)) vars inits))
-         (setqs (mapcar (lambda (v s) (list 'setq v s)) vars steps)))
+         (setqs (mapcar (lambda (v s) (list 'setq v s)) vars steps))
+         (loop-tag (gensym "DO*-LOOP")))
     (list 'block nil
           (list 'let* var-inits
-                (list 'while (list 'not end-test)
-                      (cons 'progn body)
-                      (cons 'progn setqs))
+                (list* 'tagbody
+                       loop-tag
+                       (list 'if end-test
+                             (cons 'return (if result result (list nil))))
+                       (append body
+                               (list (cons 'progn setqs)
+                                     (list 'go loop-tag))))
                 (cons 'progn (if result result (list nil)))))))
 
 ; setf expander registry

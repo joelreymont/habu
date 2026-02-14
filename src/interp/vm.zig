@@ -410,9 +410,9 @@ pub const Vm = struct {
     /// Pre-interned type symbols for runtime type dispatch
     type_syms: type_mod.TypeSymbols,
 
-    const STACK_SIZE = 4096;
+    const STACK_SIZE = 8192;
     const MAX_SECONDARY_VALUES = 20;
-    const MAX_FRAMES = 256;
+    const MAX_FRAMES = 1024;
     const MAX_GLOBALS = 16384;
     const MAX_CATCHES = 32;
     const MAX_UNWINDS = 32;
@@ -420,7 +420,7 @@ pub const Vm = struct {
     const MAX_BLOCKS = 64;
     const MAX_PROGVS = 32;
     const MAX_HANDLERS = 64;
-    const MAX_SAVED_CHUNKS = 256;
+    const MAX_SAVED_CHUNKS = 1024;
 
     fn chunkRoot(ptr: *const Chunk) Value {
         const addr = @intFromPtr(ptr);

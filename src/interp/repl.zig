@@ -3094,6 +3094,19 @@ pub const Repl = struct {
         try self.pinPersistentPair(macro_sym, closure);
         try self.pinPersistentPair(macro_sym, transformed_rest2);
 
+        // Also store closure on symbol plist under MACRO-FUNCTION so that
+        // (macro-function 'name) returns the closure per CL spec.
+        if (macro_sym.isSymbol()) {
+            const mf_key = try self.heap.intern("MACRO-FUNCTION");
+            const sym_ptr = macro_sym.toPtr(runtime.Symbol);
+            // Build new plist entry (MACRO-FUNCTION . closure)
+            const entry = try self.heap.allocCons(mf_key, closure);
+            // Prepend to existing plist
+            const old_plist = sym_ptr.plist;
+            const new_plist = try self.heap.allocCons(entry, old_plist);
+            sym_ptr.plist = new_plist;
+        }
+
         if (std.posix.getenv("HABU_TRACE_DEFMACRO") != null and macro_sym.isSymbol()) {
             const macro_name = macro_sym.toPtr(Symbol).getName();
             if (std.mem.eql(u8, macro_name, "DEFTEST")) {
@@ -3408,6 +3421,7 @@ pub const Repl = struct {
                     return expr;
                 }
             }
+
 
             if (self.lookupMacroEntry(head)) |macro_entry| {
                 if (std.posix.getenv("HABU_TRACE_MACRO_DEPTH") != null and depth >= 480) {

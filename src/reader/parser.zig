@@ -1034,9 +1034,8 @@ pub const Parser = struct {
             };
             break :blk (self.heap.findPackage(native_name) orelse return error.UnexpectedToken);
         } else blk: {
-            // Keep reader/package behavior consistent for native-only packages
-            // created via compiler special forms (e.g. DEFPACKAGE in test files).
-            break :blk (self.heap.findPackage(upper.slice) orelse return error.UnexpectedToken);
+            // Auto-create missing packages for forward references (e.g., intl:gettext).
+            break :blk try self.heap.findOrCreatePackage(upper.slice);
         };
         return try native_pkg.intern(self.heap, sym_name);
     }

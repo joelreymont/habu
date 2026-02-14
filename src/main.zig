@@ -22,6 +22,23 @@ fn resolveHeapSize() usize {
 }
 
 pub fn main() !void {
+    // Run on a thread with 64MB stack to handle deep recursive parsing/compilation
+    // of large Lisp files (e.g., Maxima's 3500-line simp.lisp).
+    const thread = try std.Thread.spawn(.{ .stack_size = 64 * 1024 * 1024 }, mainImpl, .{});
+    thread.join();
+}
+
+fn mainImpl() void {
+    mainInner() catch |err| {
+        const stderr = fs.File.stderr();
+        var buf: [4096]u8 = undefined;
+        var stderr_writer = stderr.writer(&buf);
+        stderr_writer.interface.print("Fatal error: {s}\n", .{@errorName(err)}) catch {};
+        stderr_writer.interface.flush() catch {};
+    };
+}
+
+fn mainInner() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
