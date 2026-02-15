@@ -4215,11 +4215,12 @@
 
 ; special-operator-p - check if symbol names a special operator
 (defun special-operator-p (symbol)
-  (member symbol '(block catch eval-when flet function go if labels
-                   let let* load-time-value locally macrolet
-                   multiple-value-call multiple-value-prog1 progn progv
-                   quote return-from setq symbol-macrolet tagbody the
-                   throw unwind-protect)))
+  (if (member symbol '(block catch eval-when flet function go if labels
+                       let let* load-time-value locally macrolet
+                       multiple-value-call multiple-value-prog1 progn progv
+                       quote return-from setq symbol-macrolet tagbody the
+                       throw unwind-protect))
+      t nil))
 
 ; pathnamep - check if object is a pathname
 (defun pathnamep (x)
