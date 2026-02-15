@@ -24,7 +24,7 @@ fn resolveHeapSize() usize {
 pub fn main() !void {
     // Run on a thread with 64MB stack to handle deep recursive parsing/compilation
     // of large Lisp files (e.g., Maxima's 3500-line simp.lisp).
-    const thread = try std.Thread.spawn(.{ .stack_size = 64 * 1024 * 1024 }, mainImpl, .{});
+    const thread = try std.Thread.spawn(.{ .stack_size = 512 * 1024 * 1024 }, mainImpl, .{});
     thread.join();
 }
 
