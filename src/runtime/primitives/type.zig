@@ -659,7 +659,7 @@ pub fn typeOf(heap: *Heap, val: Value) !Value {
         .t => heap.intern("boolean"),
         .unbound => heap.intern("symbol"),
         .fixnum => heap.intern("fixnum"),
-        .float => heap.intern("float"),
+        .float => heap.intern("double-float"),
         .char => heap.intern("character"),
         .cons => heap.intern("cons"),
         .symbol => heap.intern("symbol"),
