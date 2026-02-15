@@ -702,7 +702,12 @@ pub const Parser = struct {
             }
         }
 
-        const n = try std.fmt.parseInt(i64, text, 10);
+        // CL spec: trailing dot on integer (e.g., "55.") means integer 55
+        var num_text = text;
+        if (num_text.len > 0 and num_text[num_text.len - 1] == '.') {
+            num_text = num_text[0 .. num_text.len - 1];
+        }
+        const n = try std.fmt.parseInt(i64, num_text, 10);
         return Value.makeFixnum(n);
     }
 

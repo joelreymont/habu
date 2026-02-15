@@ -221,6 +221,12 @@ pub const Lexer = struct {
             return self.makeToken(.rational);
         }
 
+        // CL spec: trailing dot on integer (e.g., "55.") means integer 55
+        if (self.peek() == '.' and (isDelimiter(self.peekNext()) or self.peekNext() == 0)) {
+            _ = self.advance(); // consume trailing dot
+            return self.makeToken(.number);
+        }
+
         // Check for decimal point followed by digits
         if (self.peek() == '.' and isDigit(self.peekNext())) {
             _ = self.advance(); // consume '.'
