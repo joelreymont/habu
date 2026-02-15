@@ -68,8 +68,13 @@ pub fn writeFloatTo(f: f64, w: anytype) !void {
 }
 
 fn writeFloat(f: f64, w: anytype) !void {
-    var buf: [64]u8 = undefined;
-    const formatted = std.fmt.bufPrint(&buf, "{d}", .{f}) catch "0.0";
+    var buf: [400]u8 = undefined;
+    const abs_f = @abs(f);
+    // Use scientific notation for very large/small values to avoid buffer overflow
+    const formatted = if (abs_f != 0 and (abs_f >= 1e15 or abs_f < 1e-3))
+        std.fmt.bufPrint(&buf, "{e}", .{f}) catch "0.0"
+    else
+        std.fmt.bufPrint(&buf, "{d}", .{f}) catch "0.0";
     try w.writeAll(formatted);
     // If no decimal point in output, append ".0"
     var has_dot = false;
