@@ -7976,15 +7976,10 @@ pub const Vm = struct {
                 try result.appendSlice(self.allocator, num_str);
             },
             .float => {
-                const fv = val.toFloat();
-                const abs_fv = @abs(fv);
                 var buf: [400]u8 = undefined;
-                // Use scientific notation for very large/small values
-                // to avoid buffer overflow with decimal format
-                const num_str = if (abs_fv != 0 and (abs_fv >= 1e15 or abs_fv < 1e-3))
-                    std.fmt.bufPrint(&buf, "{e}", .{fv}) catch "0.0"
-                else
-                    std.fmt.bufPrint(&buf, "{d}", .{fv}) catch "0.0";
+                const num_str = std.fmt.bufPrint(&buf, "{d}", .{val.toFloat()}) catch blk: {
+                    break :blk std.fmt.bufPrint(&buf, "{e}", .{val.toFloat()}) catch "0.0";
+                };
                 try result.appendSlice(self.allocator, num_str);
                 // Ensure decimal point for CL compliance
                 var has_dot = false;
