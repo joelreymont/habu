@@ -362,7 +362,7 @@ pub const Vm = struct {
     secondary_values_count: usize,
 
     /// Global environment for boundp/fboundp lookups
-    global_env: ?*const GlobalEnv,
+    global_env: ?*GlobalEnv,
 
     /// Callback for (load "filename") - set by REPL
     load_callback: ?*const fn ([]const u8, *anyopaque) Error!Value,
@@ -553,7 +553,7 @@ pub const Vm = struct {
     }
 
     /// Set the global environment for boundp/fboundp lookups
-    pub fn setGlobalEnv(self: *Vm, env: *const GlobalEnv) void {
+    pub fn setGlobalEnv(self: *Vm, env: *GlobalEnv) void {
         self.global_env = env;
     }
 
@@ -3553,6 +3553,32 @@ pub const Vm = struct {
                     },
                     else => try self.signalTypeError(),
                 }
+            },
+            .set_symbol_function => {
+                const func = try self.pop();
+                const sym = try self.pop();
+                switch (sym.typeKind()) {
+                    .symbol => {
+                        const sym_obj = sym.toPtr(Symbol);
+                        if (try self.lookupSymbolGlobalIndex(sym_obj)) |idx| {
+                            self.globals[idx] = func;
+                        } else if (self.global_env) |env| {
+                            // Create a new global slot for this symbol
+                            var qual_buf: [512]u8 = undefined;
+                            const q = try qual_name.qualSym(self.allocator, sym_obj, &qual_buf);
+                            defer if (q.owned) self.allocator.free(q.name);
+                            const idx = try env.define(q.name);
+                            if (idx < self.globals.len) {
+                                self.globals[idx] = func;
+                                if (idx >= self.num_globals) {
+                                    self.num_globals = idx + 1;
+                                }
+                            }
+                        }
+                    },
+                    else => try self.signalTypeErrorDatumExpected(sym, self.builtins.sym_symbol),
+                }
+                try self.push(func);
             },
             .set_symbol_plist => {
                 const plist = try self.pop();

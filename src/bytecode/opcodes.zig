@@ -882,6 +882,10 @@ pub const Op = enum(u16) {
     /// ( symbol -- plist )
     symbol_plist = 0x190,
 
+    /// Set symbol's function binding
+    /// ( symbol function -- function )
+    set_symbol_function = 0x192,
+
     /// Set symbol's property list
     /// ( symbol plist -- plist )
     set_symbol_plist = 0x191,
@@ -1988,6 +1992,7 @@ pub const Op = enum(u16) {
             .symbol_value,
             .symbol_function,
             .symbol_plist,
+            .set_symbol_function,
             .set_symbol_plist,
             .function_lambda_expression,
             .typep,

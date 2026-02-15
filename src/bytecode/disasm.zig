@@ -292,6 +292,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .fboundp,
         .symbol_value,
         .symbol_function,
+        .set_symbol_function,
         .symbol_plist,
         .set_symbol_plist,
         .typep,

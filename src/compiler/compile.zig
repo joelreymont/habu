@@ -5454,6 +5454,34 @@ pub const Compiler = struct {
                     return try self.builder.rplacd(obj_ir, val_ir);
                 }
 
+                // (setf (symbol-function 'sym) val) -> set_symbol_function
+                // When the argument is a quoted symbol, we can resolve the global
+                // at compile time (like defun). Otherwise emit the runtime opcode.
+                if (h == b.@"symbol-function".raw) {
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const sym_arg = place_args.toPtr(Cons).car;
+                    // Try to extract quoted symbol for compile-time global resolution
+                    if (sym_arg.isCons()) {
+                        const qa = sym_arg.toPtr(Cons);
+                        if (qa.car.isSymbol() and qa.car.raw == b.quote.raw and qa.cdr.isCons()) {
+                            const sym_val = qa.cdr.toPtr(Cons).car;
+                            if (sym_val.isSymbol()) {
+                                const sym = sym_val.toPtr(Symbol);
+                                var qual_buf: [256]u8 = undefined;
+                                const q = try self.getQualifiedName(sym, &qual_buf);
+                                defer if (q.owned) self.allocator.free(q.name);
+                                const idx = try self.globals.define(q.name);
+                                const val_ir = try self.compile(value_expr, env);
+                                return try self.builder.define(q.name, idx, val_ir);
+                            }
+                        }
+                    }
+                    // Dynamic case: emit runtime set_symbol_function opcode
+                    const sym_ir = try self.compile(sym_arg, env);
+                    const val_ir = try self.compile(value_expr, env);
+                    return try self.builder.setSymbolFunction(sym_ir, val_ir);
+                }
+
                 // (setf (slot-value obj 'slot) val) -> set_slot_value
                 if (h == b.@"slot-value".raw) {
                     if (!place_args.isCons()) return error.InvalidSyntax;
@@ -12971,6 +12999,7 @@ pub const Compiler = struct {
         fboundp,
         symbol_value,
         symbol_function,
+        set_symbol_function,
         symbol_plist,
         set_symbol_plist,
         function_lambda_expression,
@@ -14148,6 +14177,7 @@ pub const Compiler = struct {
                 node.* = .{ .set_sym_val = .{ .left = left, .right = right } };
                 break :blk node;
             },
+            .set_symbol_function => try self.builder.setSymbolFunction(left, right),
             .set_symbol_plist => try self.builder.setSymbolPlist(left, right),
             .write_to_stream => try self.builder.writeToStream(left, right),
             .merge_pathnames => blk: {

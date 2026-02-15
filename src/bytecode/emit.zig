@@ -951,6 +951,7 @@ pub const Emitter = struct {
             .fboundp => |op| try self.emitUnaryOp(op.operand, .fboundp),
             .symbol_value => |op| try self.emitUnaryOp(op.operand, .symbol_value),
             .symbol_function => |op| try self.emitUnaryOp(op.operand, .symbol_function),
+            .set_symbol_function => |op| try self.emitBinaryOp(op, .set_symbol_function),
             .symbol_plist => |op| try self.emitUnaryOp(op.operand, .symbol_plist),
             .set_symbol_plist => |op| try self.emitBinaryOp(op, .set_symbol_plist),
             .function_lambda_expression => |op| try self.emitUnaryOp(op.operand, .function_lambda_expression),
