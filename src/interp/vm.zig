@@ -3756,7 +3756,15 @@ pub const Vm = struct {
             .throw => {
                 const value = try self.pop();
                 const tag = try self.pop();
-                try self.doThrow(tag, value);
+                self.doThrow(tag, value) catch |err| {
+                    if (err == error.UnhandledThrow) {
+                        // Per CL spec: THROW with no matching CATCH signals CONTROL-ERROR.
+                        // Convert to a CL condition that handler-case can catch.
+                        try self.throwSimpleError(self.heap, "No catch tag for THROW");
+                    } else {
+                        return err;
+                    }
+                };
             },
 
             .push_progv => {
@@ -6482,32 +6490,39 @@ pub const Vm = struct {
         }
 
         // No unwind frames - search for matching catch frame
-        while (self.catch_sp > 0) {
-            self.catch_sp -= 1;
-            const frame = self.catch_stack[self.catch_sp];
+        // Use local index to avoid destructively consuming catch frames
+        // when the tag doesn't match (so handler-case can still work).
+        {
+            var ci = self.catch_sp;
+            while (ci > 0) {
+                ci -= 1;
+                const frame = self.catch_stack[ci];
 
-            // Check if tag matches (using eq comparison)
-            if (tag.raw == frame.tag.raw) {
-                // Found matching catch - restore state and jump
-                // Validate before restore to guard against corruption
-                if (frame.catch_sp > STACK_SIZE or frame.catch_fp > MAX_FRAMES) {
-                    return error.InvalidOpcode;
+                // Check if tag matches (using eq comparison)
+                if (tag.raw == frame.tag.raw) {
+                    // Found matching catch - restore state and jump
+                    // Pop catch stack down to (and including) this frame
+                    self.catch_sp = ci;
+                    // Validate before restore to guard against corruption
+                    if (frame.catch_sp > STACK_SIZE or frame.catch_fp > MAX_FRAMES) {
+                        return error.InvalidOpcode;
+                    }
+                    while (self.progv_sp > frame.progv_depth) {
+                        try self.popProgvFrame();
+                    }
+                    self.chunk = frame.chunk;
+                    self.ip = frame.catch_ip;
+                    self.sp = frame.catch_sp;
+                    self.fp = frame.catch_fp;
+                    self.block_sp = frame.block_depth;
+                    self.unwind_sp = frame.unwind_depth;
+                    self.restart_sp = frame.restart_depth;
+                    self.handler_sp = frame.handler_depth;
+                    self.pending_handler_restore_depth = null;
+                    // Push the thrown value as result
+                    try self.push(value);
+                    return;
                 }
-                while (self.progv_sp > frame.progv_depth) {
-                    try self.popProgvFrame();
-                }
-                self.chunk = frame.chunk;
-                self.ip = frame.catch_ip;
-                self.sp = frame.catch_sp;
-                self.fp = frame.catch_fp;
-                self.block_sp = frame.block_depth;
-                self.unwind_sp = frame.unwind_depth;
-                self.restart_sp = frame.restart_depth;
-                self.handler_sp = frame.handler_depth;
-                self.pending_handler_restore_depth = null;
-                // Push the thrown value as result
-                try self.push(value);
-                return;
             }
         }
         // No matching catch found

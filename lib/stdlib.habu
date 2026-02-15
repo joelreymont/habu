@@ -6212,11 +6212,23 @@
   (write object :stream stream)
   object)
 
-; compiler-macro-function - get compiler macro
+; %set-elt - runtime setter for (setf (elt ...))
+(defun %set-elt (seq idx val)
+  "Set element at IDX in SEQ to VAL. Works on both lists and vectors."
+  (if (listp seq)
+      (progn (rplaca (nthcdr idx seq) val) val)
+    (progn (setf (aref seq idx) val) val)))
+
+; compiler-macro-function - get/set compiler macro
 (defun compiler-macro-function (name &optional env)
   "Return the compiler-macro function for NAME, or NIL"
   (declare (ignore name env))
   nil)
+(defun set-compiler-macro-function (name value)
+  "Set the compiler-macro function for NAME (stub - always succeeds)"
+  (declare (ignore name value))
+  nil)
+(put 'compiler-macro-function 'setf-function 'set-compiler-macro-function)
 
 ; read-sequence - read into sequence (stub)
 (defun read-sequence (sequence stream &key (start 0) end)

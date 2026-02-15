@@ -5460,6 +5460,23 @@ pub const Compiler = struct {
                     return try self.builder.rplacd(obj_ir, val_ir);
                 }
 
+                // (setf (elt seq idx) val) -> (%set-elt seq idx val)
+                // Must dispatch at runtime since elt works on both lists and vectors.
+                if (h == b.elt.raw) {
+                    const heap = if (self.heap) |hval| hval else return error.InvalidSyntax;
+                    if (!place_args.isCons()) return error.InvalidSyntax;
+                    const seq_arg = place_args.toPtr(Cons).car;
+                    if (!place_args.toPtr(Cons).cdr.isCons()) return error.InvalidSyntax;
+                    const idx_arg = place_args.toPtr(Cons).cdr.toPtr(Cons).car;
+                    // Build (%set-elt seq idx val) call
+                    const set_elt_sym = try heap.intern("%set-elt");
+                    const form = try heap.allocCons(set_elt_sym,
+                        try heap.allocCons(seq_arg,
+                            try heap.allocCons(idx_arg,
+                                try heap.allocCons(value_expr, Value.nil))));
+                    return self.compile(form, env);
+                }
+
                 // (setf (symbol-function 'sym) val) -> set_symbol_function
                 // When the argument is a quoted symbol, we can resolve the global
                 // at compile time (like defun). Otherwise emit the runtime opcode.
