@@ -636,6 +636,14 @@ pub const Op = enum(u16) {
     /// ( array -- dimensions-list )
     array_dimensions = 0x1E,
 
+    /// Get array rank (number of dimensions)
+    /// ( array -- rank )
+    array_rank = 0x193,
+
+    /// Get array total size (product of dimensions)
+    /// ( array -- total-size )
+    array_total_size = 0x194,
+
     /// Make pathname from components (operand: u8 flags)
     /// ( [components...] -- pathname )
     /// Flags indicate which components are on stack
@@ -2136,6 +2144,8 @@ pub const Op = enum(u16) {
             .get_output_stream_string,
             .array_dimension,
             .array_dimensions,
+            .array_rank,
+            .array_total_size,
             .pathname,
             .parse_namestring,
             .namestring,

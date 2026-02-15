@@ -580,23 +580,21 @@
 ;;; ============================================================================
 
 ; array-dimensions - get list of dimensions
-; TODO: multi-dimensional arrays need proper primitive support
+; Uses the array_dimensions opcode which handles both vectors and multi-dim arrays
 (defun array-dimensions (array)
-  (list (length array)))
+  (%array-dimensions array))
 
 ; array-dimension - get specific dimension
 (defun array-dimension (array axis)
-  (declare (ignore axis))
-  (length array))
+  (nth axis (array-dimensions array)))
 
 ; array-rank - number of dimensions
 (defun array-rank (array)
-  (declare (ignore array))
-  1) ; vectors only
+  (%array-rank array))
 
 ; array-total-size - total number of elements
 (defun array-total-size (array)
-  (length array))
+  (%array-total-size array))
 
 ; array-element-type - element type
 (defun array-element-type (array)
@@ -605,12 +603,17 @@
 
 ; array-row-major-index - convert indices to linear index
 (defun array-row-major-index (array &rest subscripts)
-  (declare (ignore array))
-  (car subscripts))
+  (let ((dims (array-dimensions array))
+        (idx 0))
+    (dolist (s subscripts idx)
+      (setq idx (+ (* idx (car dims)) s))
+      (setq dims (cdr dims)))))
 
 ; array-in-bounds-p - check if indices are in bounds
 (defun array-in-bounds-p (array &rest subscripts)
-  (every (lambda (i) (and (>= i 0) (< i (length array)))) subscripts))
+  (let ((dims (array-dimensions array)))
+    (and (= (length subscripts) (length dims))
+         (every (lambda (s d) (and (>= s 0) (< s d))) subscripts dims))))
 
 ; row-major-aref - access by row-major index
 (defun row-major-aref (array index)

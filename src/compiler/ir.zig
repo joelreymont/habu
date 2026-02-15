@@ -751,6 +751,9 @@ pub const Ir = union(enum) {
     boundp: UnaryOp, // Check if symbol has global binding
     fboundp: UnaryOp, // Check if symbol has function binding
     symbol_value: UnaryOp, // Get symbol's global value
+    array_rank: UnaryOp, // Get array rank
+    array_total_size: UnaryOp, // Get array total size
+    array_dimensions: UnaryOp, // Get array dimensions as list
     symbol_function: UnaryOp, // Get symbol's function binding
     set_symbol_function: BinaryOp, // Set symbol's function binding
     symbol_plist: UnaryOp, // Get symbol's property list
@@ -2421,6 +2424,24 @@ pub const IrBuilder = struct {
     pub fn symbolValue(self: IrBuilder, sym: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .symbol_value = .{ .operand = sym } };
+        return node;
+    }
+
+    pub fn arrayRank(self: IrBuilder, arr: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .array_rank = .{ .operand = arr } };
+        return node;
+    }
+
+    pub fn arrayTotalSize(self: IrBuilder, arr: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .array_total_size = .{ .operand = arr } };
+        return node;
+    }
+
+    pub fn arrayDimensions(self: IrBuilder, arr: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .array_dimensions = .{ .operand = arr } };
         return node;
     }
 

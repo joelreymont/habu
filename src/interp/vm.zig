@@ -5253,24 +5253,58 @@ pub const Vm = struct {
             .array_dimensions => {
                 const arr_val = try self.pop();
 
-                if (!arr_val.isArray()) return error.TypeMismatch;
-
-                const arr = arr_val.toPtr(runtime.Array);
-                const rank = arr.rank;
-                var dims: [8]u64 = undefined;
-                for (0..rank) |i| dims[i] = arr.dimensions[i];
-
-                // Build list of dimensions from right to left
-                var result = Value.nil;
-                var i: usize = rank;
-                while (i > 0) {
-                    i -= 1;
-                    if (dims[i] > std.math.maxInt(i64)) return error.Overflow;
-                    const dim: i64 = @intCast(dims[i]);
-                    result = try self.allocCons(Value.makeFixnum(dim), result);
+                switch (arr_val.typeKind()) {
+                    .vector => {
+                        const vec = arr_val.toPtr(runtime.Vector);
+                        const len_val = Value.makeFixnum(@intCast(vec.length));
+                        try self.push(try self.allocCons(len_val, Value.nil));
+                    },
+                    .array => {
+                        const arr = arr_val.toPtr(runtime.Array);
+                        var result = Value.nil;
+                        var i: usize = arr.rank;
+                        while (i > 0) {
+                            i -= 1;
+                            if (arr.dimensions[i] > std.math.maxInt(i64)) return error.Overflow;
+                            const dim: i64 = @intCast(arr.dimensions[i]);
+                            result = try self.allocCons(Value.makeFixnum(dim), result);
+                        }
+                        try self.push(result);
+                    },
+                    else => return error.TypeMismatch,
                 }
+            },
 
-                try self.push(result);
+            .array_rank => {
+                const arr_val = try self.pop();
+                switch (arr_val.typeKind()) {
+                    .vector, .string => try self.push(Value.makeFixnum(1)),
+                    .array => {
+                        const arr = arr_val.toPtr(runtime.Array);
+                        try self.push(Value.makeFixnum(@intCast(arr.rank)));
+                    },
+                    else => return error.TypeMismatch,
+                }
+            },
+
+            .array_total_size => {
+                const arr_val = try self.pop();
+                switch (arr_val.typeKind()) {
+                    .vector => {
+                        const vec = arr_val.toPtr(runtime.Vector);
+                        try self.push(Value.makeFixnum(@intCast(vec.length)));
+                    },
+                    .string => {
+                        const str = arr_val.toPtr(runtime.String);
+                        try self.push(Value.makeFixnum(@intCast(str.length)));
+                    },
+                    .array => {
+                        const arr = arr_val.toPtr(runtime.Array);
+                        if (arr.total_size > std.math.maxInt(i64)) return error.Overflow;
+                        try self.push(Value.makeFixnum(@intCast(arr.total_size)));
+                    },
+                    else => return error.TypeMismatch,
+                }
             },
 
             // Pathname operations
