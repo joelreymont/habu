@@ -3420,6 +3420,25 @@ pub const Repl = struct {
                     }
                     return expr;
                 }
+
+                // handler-case: expand only the protected expression,
+                // NOT the handler clause lambda lists (they contain variable names
+                // that might shadow user macros like (defmacro e ...))
+                if (dispatch_head.raw == b.@"handler-case".raw) {
+                    const args = tail;
+                    if (args.isCons()) {
+                        const args_cons = args.toPtr(Cons);
+                        const protected_expr = args_cons.car;
+                        const clauses = args_cons.cdr;
+                        // Expand the protected expression
+                        const expanded_protected = try self.expandMacrosWithDepth(protected_expr, depth + 1);
+                        // Expand handler clause bodies but NOT lambda lists
+                        const expanded_clauses = try self.expandHandlerCaseClauses(clauses, depth + 1);
+                        const new_args = try self.heap.allocCons(expanded_protected, expanded_clauses);
+                        return try self.heap.allocCons(head, new_args);
+                    }
+                    return expr;
+                }
             }
 
 
@@ -3462,6 +3481,35 @@ pub const Repl = struct {
     /// Expand macros in a list (for cdr of cons)
     fn expandMacroList(self: *Repl, list: Value) ReplError!Value {
         return self.expandMacroListWithDepth(list, 0);
+    }
+
+    /// Expand handler-case clauses, preserving lambda lists (variable bindings)
+    /// Each clause is (type (var) body...) — only expand body forms, not (var).
+    fn expandHandlerCaseClauses(self: *Repl, clauses: Value, depth: u32) ReplError!Value {
+        if (!clauses.isCons()) return clauses;
+        const cons = clauses.toPtr(Cons);
+        const clause = cons.car;
+        const rest = cons.cdr;
+
+        const expanded_clause = blk: {
+            if (!clause.isCons()) break :blk clause;
+            const cc = clause.toPtr(Cons);
+            const cond_type = cc.car;
+            const clause_rest = cc.cdr;
+            if (!clause_rest.isCons()) break :blk clause;
+            const cr = clause_rest.toPtr(Cons);
+            const lambda_list = cr.car; // (var) — DO NOT expand
+            const body = cr.cdr;
+            // Only expand body forms
+            const expanded_body = try self.expandMacroListWithDepth(body, depth);
+            if (expanded_body.raw == body.raw) break :blk clause;
+            const new_rest = try self.heap.allocCons(lambda_list, expanded_body);
+            break :blk try self.heap.allocCons(cond_type, new_rest);
+        };
+
+        const expanded_rest = try self.expandHandlerCaseClauses(rest, depth);
+        if (expanded_clause.raw == clause.raw and expanded_rest.raw == rest.raw) return clauses;
+        return try self.heap.allocCons(expanded_clause, expanded_rest);
     }
 
     fn expandMacroListWithDepth(self: *Repl, list: Value, depth: u32) ReplError!Value {
