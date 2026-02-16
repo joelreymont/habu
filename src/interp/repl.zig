@@ -1223,6 +1223,15 @@ pub const Repl = struct {
         const load_bindings = self.bindLoadGlobals(source_vm, load_path);
         defer self.restoreLoadGlobals(source_vm, load_bindings);
 
+        // CL spec: *PACKAGE* is rebound by LOAD — save and restore after.
+        const saved_pkg_native = self.heap.current_package;
+        const saved_pkg_globals = self.savePackageGlobals(source_vm);
+        defer {
+            self.heap.current_package = saved_pkg_native;
+            self.restorePackageGlobals(source_vm, saved_pkg_globals);
+            self.syncReaderPackageFromVm(source_vm);
+        }
+
         // Evaluate all expressions and return the last value.
         // Some ANSI harnesses hand us host-generated .fasl files; if parsing
         // fails, fall back to sibling source file when available.
@@ -1377,6 +1386,43 @@ pub const Repl = struct {
                 if (idx >= vm.num_globals) vm.num_globals = idx + 1;
             }
         }
+    }
+
+    const PackageGlobalBindings = struct {
+        pkg_cl: ?struct { idx: usize, prev: Value } = null,
+        pkg_cl2: ?struct { idx: usize, prev: Value } = null,
+        pkg_user: ?struct { idx: usize, prev: Value } = null,
+        pkg_plain: ?struct { idx: usize, prev: Value } = null,
+    };
+
+    fn savePackageGlobals(self: *Repl, vm: *Vm) PackageGlobalBindings {
+        var bindings: PackageGlobalBindings = .{};
+        const names = [_]struct { field: enum { cl, cl2, user, plain }, name: []const u8 }{
+            .{ .field = .cl, .name = "COMMON-LISP:*PACKAGE*" },
+            .{ .field = .cl2, .name = "CL:*PACKAGE*" },
+            .{ .field = .user, .name = "CL-USER:*PACKAGE*" },
+            .{ .field = .plain, .name = "*PACKAGE*" },
+        };
+        for (names) |entry| {
+            if (self.compiler.globals.lookup(entry.name)) |idx| {
+                const prev = if (idx < vm.num_globals) vm.globals[idx] else Value.nil;
+                switch (entry.field) {
+                    .cl => bindings.pkg_cl = .{ .idx = idx, .prev = prev },
+                    .cl2 => bindings.pkg_cl2 = .{ .idx = idx, .prev = prev },
+                    .user => bindings.pkg_user = .{ .idx = idx, .prev = prev },
+                    .plain => bindings.pkg_plain = .{ .idx = idx, .prev = prev },
+                }
+            }
+        }
+        return bindings;
+    }
+
+    fn restorePackageGlobals(self: *Repl, vm: *Vm, bindings: PackageGlobalBindings) void {
+        _ = self;
+        if (bindings.pkg_cl) |e| vm.globals[e.idx] = e.prev;
+        if (bindings.pkg_cl2) |e| vm.globals[e.idx] = e.prev;
+        if (bindings.pkg_user) |e| vm.globals[e.idx] = e.prev;
+        if (bindings.pkg_plain) |e| vm.globals[e.idx] = e.prev;
     }
 
     fn syncReaderPackageFromVm(self: *Repl, vm: *const Vm) void {
@@ -1640,11 +1686,23 @@ pub const Repl = struct {
             var eval_arena = std.heap.ArenaAllocator.init(self.allocator);
             defer eval_arena.deinit();
             const eval_alloc = eval_arena.allocator();
+
+            // During file loading, temporarily hide outer CL condition
+            // handlers so that errors from individual forms don't escape
+            // to handler-case frames wrapped around the (load ...) call.
+            // Forms that set up their OWN handlers (handler-case within
+            // the file) still work because they push on top of 0.
+            const saved_handler_sp = source_vm.handler_sp;
+            const saved_catch_sp = source_vm.catch_sp;
+            source_vm.handler_sp = 0;
+            source_vm.catch_sp = 0;
+
             last_value = self.evalParsedWithVm(expr, source_vm, eval_alloc) catch |err| {
+                // Restore handler state on error
+                source_vm.handler_sp = saved_handler_sp;
+                source_vm.catch_sp = saved_catch_sp;
                 // Compilation/evaluation errors during file loading:
                 // Print error message and continue to next form, like SBCL does.
-                // This allows (handler-case (load ...) ...) to work even when
-                // individual forms within the file have compilation errors.
                 if (trace_forms) {
                     std.debug.print("TRACE eval error: {s}\n", .{@errorName(err)});
                 }
@@ -1655,6 +1713,10 @@ pub const Repl = struct {
                 }
                 continue;
             };
+
+            // Restore outer handler state after successful evaluation
+            source_vm.handler_sp = saved_handler_sp;
+            source_vm.catch_sp = saved_catch_sp;
             if (std.posix.getenv("HABU_TRACE_DEFMACRO") != null) {
                 var has_def = false;
                 var it = self.macros.iterator();

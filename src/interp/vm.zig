@@ -8772,7 +8772,15 @@ pub const Vm = struct {
                     self.fp,
                 });
             }
-            fn_val = (try self.resolveFunctionValue(fn_val)) orelse return error.UnboundSymbol;
+            fn_val = (try self.resolveFunctionValue(fn_val)) orelse {
+                if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                    const fn_name = self.stack[self.sp - argc - 1];
+                    if (fn_name.isSymbol()) {
+                        std.debug.print("TRACE unbound function: {s}\n", .{fn_name.toPtr(Symbol).getName()});
+                    }
+                }
+                return error.UnboundSymbol;
+            };
             self.stack[self.sp - argc - 1] = fn_val;
         }
 
@@ -9084,7 +9092,14 @@ pub const Vm = struct {
                     self.fp,
                 });
             }
-            callable = (try self.resolveFunctionValue(callable)) orelse return error.UnboundSymbol;
+            callable = (try self.resolveFunctionValue(callable)) orelse {
+                if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                    if (callable.isSymbol()) {
+                        std.debug.print("TRACE unbound apply-callable: {s}\n", .{callable.toPtr(Symbol).getName()});
+                    }
+                }
+                return error.UnboundSymbol;
+            };
         }
 
         // Generic function designator resolves to dispatcher closure.
