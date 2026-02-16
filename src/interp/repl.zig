@@ -353,7 +353,6 @@ pub const Repl = struct {
             if (!key.isSymbol()) continue;
             if (!self.isLiveValue(key) or !self.isLiveValue(val)) continue;
             if (val.isClosure()) {
-                // Closure-valued compiler macros must still point at a valid chunk.
                 const closure = val.toPtr(runtime.Closure);
                 if (!closure.code.isChunk()) continue;
                 if (!self.isLiveValue(closure.code)) continue;
@@ -376,6 +375,101 @@ pub const Repl = struct {
                 .key = key,
                 .val = val,
             });
+        }
+    }
+
+    /// Resolve a potentially-stale symbol Value to its current live address.
+    /// After GC, symbols may have been moved and the old location has a
+    /// forwarding pointer. We follow one level of forwarding, then look up
+    /// the symbol by name in its home package (which IS updated by GC).
+    fn resolveStaleSymbol(self: *Repl, sym_val: Value) Value {
+        if (!sym_val.isSymbol()) return sym_val;
+        if (self.isLiveValue(sym_val)) return sym_val; // Not stale
+
+        // The symbol was moved by GC. The old location may have a forwarding
+        // pointer. Follow it to find the live copy.
+        const addr = sym_val.toPtrAddr();
+        if (addr == 0) return sym_val;
+        const first_word: *const Value = @ptrFromInt(addr);
+        if (first_word.isForwarding()) {
+            const new_addr = first_word.toPtrAddr();
+            const tag = sym_val.getTag();
+            return .{ .raw = new_addr | @as(u64, @intFromEnum(tag)) };
+        }
+        // No forwarding pointer — can't resolve (multi-GC scenario)
+        return sym_val;
+    }
+
+    /// Refresh all macro map keys to their current GC-safe addresses.
+    /// After VM execution (which may trigger GC), symbol addresses in our
+    /// Zig-managed hash maps become stale. We resolve stale keys through
+    /// forwarding pointers left by the most recent GC.
+    fn refreshMacroKeys(self: *Repl) !void {
+        // Refresh REPL macros
+        {
+            var updates = std.ArrayList(struct { old: Value, new: Value, entry: MacroEntry }){};
+            defer updates.deinit(self.allocator);
+            var it = self.macros.iterator();
+            while (it.next()) |entry| {
+                const key = entry.key_ptr.*;
+                if (!key.isSymbol()) continue;
+                const current = self.resolveStaleSymbol(key);
+                if (current.raw != key.raw) {
+                    try updates.append(self.allocator, .{
+                        .old = key,
+                        .new = current,
+                        .entry = entry.value_ptr.*,
+                    });
+                }
+            }
+            for (updates.items) |upd| {
+                _ = self.macros.remove(upd.old);
+                try self.macros.put(upd.new, upd.entry);
+            }
+        }
+        // Refresh compiler macros
+        {
+            var updates = std.ArrayList(struct { old: Value, new: Value, val: Value }){};
+            defer updates.deinit(self.allocator);
+            var it = self.compiler.macro_table.iterator();
+            while (it.next()) |entry| {
+                const key = entry.key_ptr.*;
+                if (!key.isSymbol()) continue;
+                const current = self.resolveStaleSymbol(key);
+                if (current.raw != key.raw) {
+                    try updates.append(self.allocator, .{
+                        .old = key,
+                        .new = current,
+                        .val = entry.value_ptr.*,
+                    });
+                }
+            }
+            for (updates.items) |upd| {
+                _ = self.compiler.macro_table.remove(upd.old);
+                try self.compiler.macro_table.put(upd.new, upd.val);
+            }
+        }
+        // Refresh symbol macros
+        {
+            var updates = std.ArrayList(struct { old: Value, new: Value, val: Value }){};
+            defer updates.deinit(self.allocator);
+            var it = self.compiler.symbol_macros.iterator();
+            while (it.next()) |entry| {
+                const key = entry.key_ptr.*;
+                if (!key.isSymbol()) continue;
+                const current = self.resolveStaleSymbol(key);
+                if (current.raw != key.raw) {
+                    try updates.append(self.allocator, .{
+                        .old = key,
+                        .new = current,
+                        .val = entry.value_ptr.*,
+                    });
+                }
+            }
+            for (updates.items) |upd| {
+                _ = self.compiler.symbol_macros.remove(upd.old);
+                try self.compiler.symbol_macros.put(upd.new, upd.val);
+            }
         }
     }
 
@@ -423,6 +517,7 @@ pub const Repl = struct {
             try self.compiler.macro_table.put(key, val);
         }
         for (live_compiler_macros) |pair| {
+            // Keys already resolved by collectCompilerMacroPairs
             const gop = try self.compiler.macro_table.getOrPut(pair.key);
             if (!gop.found_existing) {
                 gop.value_ptr.* = pair.val;
@@ -440,6 +535,7 @@ pub const Repl = struct {
             try self.compiler.symbol_macros.put(key, val);
         }
         for (live_symbol_macros) |pair| {
+            // Keys already resolved by collectSymbolMacroPairs
             const gop = try self.compiler.symbol_macros.getOrPut(pair.key);
             if (!gop.found_existing) {
                 gop.value_ptr.* = pair.val;
@@ -462,6 +558,7 @@ pub const Repl = struct {
             });
         }
         for (live_repl_macros) |pair| {
+            // Keys already resolved by collectReplMacroPairs
             const gop = try self.macros.getOrPut(pair.key);
             if (!gop.found_existing) {
                 gop.value_ptr.* = .{
@@ -566,6 +663,7 @@ pub const Repl = struct {
             const closure = try self.heap.allocClosure(chunk_val, chunk_ptr.arity, &[_]Value{});
             const call_base = vm.sp;
             break :blk vm.callFromStackAt(call_base, closure, &[_]Value{}) catch |run_err| {
+                try self.refreshMacroKeys();
                 try self.collectCompilerMacroPairs(&live_compiler_macros);
                 try self.collectSymbolMacroPairs(&live_symbol_macros);
                 try self.collectReplMacroPairs(&live_repl_macros);
@@ -584,6 +682,7 @@ pub const Repl = struct {
                 return run_err;
             };
         } else vm.run(chunk_ptr) catch |run_err| {
+            try self.refreshMacroKeys();
             try self.collectCompilerMacroPairs(&live_compiler_macros);
             try self.collectSymbolMacroPairs(&live_symbol_macros);
             try self.collectReplMacroPairs(&live_repl_macros);
@@ -602,6 +701,7 @@ pub const Repl = struct {
             return run_err;
         };
 
+        try self.refreshMacroKeys();
         try self.collectCompilerMacroPairs(&live_compiler_macros);
         try self.collectSymbolMacroPairs(&live_symbol_macros);
         try self.collectReplMacroPairs(&live_repl_macros);
@@ -2946,7 +3046,10 @@ pub const Repl = struct {
             // Respect package-qualified symbols: do not fall back to current package
             // lookup by name, which can hijack CL:FOO with local FOO macros.
             const canonical = self.canonicalMacroSymbol(sym);
-            if (canonical.raw == sym.raw) return null;
+            if (canonical.raw == sym.raw) {
+                // Last resort: scan by name for stale-key entries (post-GC)
+                return self.lookupMacroByName(name);
+            }
             return self.macros.get(canonical);
         }
 
@@ -2961,6 +3064,25 @@ pub const Repl = struct {
         const canonical = self.canonicalMacroSymbol(sym);
         if (canonical.raw != sym.raw) {
             if (self.macros.get(canonical)) |entry| return entry;
+        }
+
+        // Final fallback: scan by name for stale-key entries (post-GC)
+        return self.lookupMacroByName(name);
+    }
+
+    /// Brute-force lookup: scan all macro entries comparing symbol names.
+    /// Used as fallback when GC has moved symbols, making hash keys stale.
+    fn lookupMacroByName(self: *Repl, name: []const u8) ?MacroEntry {
+        var it = self.macros.iterator();
+        while (it.next()) |entry| {
+            const k = entry.key_ptr.*;
+            if (!k.isSymbol()) continue;
+            // Stale keys may have forwarding pointers overlaying their name.
+            // Only compare names of symbols that are still in from-space.
+            if (!self.isLiveValue(k)) continue;
+            if (std.mem.eql(u8, k.toPtr(Symbol).getName(), name)) {
+                return entry.value_ptr.*;
+            }
         }
         return null;
     }
@@ -3133,16 +3255,29 @@ pub const Repl = struct {
         macro_vm.num_globals = source_vm.num_globals;
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
+        // Save macro name as a Zig string BEFORE VM execution, because
+        // cons2.car (the parsed symbol) lives on the arena allocator and its
+        // Value fields won't be updated if GC runs during runVmPreserveMacroState.
+        const macro_name_saved = try self.allocator.dupe(u8, cons2.car.toPtr(runtime.Symbol).getName());
+        defer self.allocator.free(macro_name_saved);
+
         const closure = try self.runVmPreserveMacroState(&macro_vm, chunk_ptr);
 
         if (!closure.isClosure()) return error.CompileError;
 
-        var macro_sym = cons2.car;
+        // Re-resolve the macro symbol from the package using the saved name.
+        // After VM execution (which may trigger GC), the original parsed symbol
+        // Values are stale.
+        var macro_sym: Value = undefined;
         if (self.heap.current_package) |pkg| {
-            const macro_name = cons2.car.toPtr(Symbol).getName();
-            if (pkg.symbols.get(macro_name)) |local_sym| {
+            if (pkg.symbols.get(macro_name_saved)) |local_sym| {
                 macro_sym = local_sym;
+            } else {
+                // Symbol not in current package — intern it
+                macro_sym = try pkg.intern(self.heap, macro_name_saved);
             }
+        } else {
+            macro_sym = try self.heap.intern(macro_name_saved);
         }
 
         // Store the closure in REPL macro table for pre-compilation macro expansion
@@ -3167,6 +3302,7 @@ pub const Repl = struct {
             const old_plist = sym_ptr.plist;
             const new_plist = try self.heap.allocCons(entry, old_plist);
             sym_ptr.plist = new_plist;
+
         }
 
         if (std.posix.getenv("HABU_TRACE_DEFMACRO") != null and macro_sym.isSymbol()) {
@@ -3731,6 +3867,19 @@ pub const Repl = struct {
                             try self.heap.putLispPackage(name_val, created);
                             break :blk created;
                         };
+                    } else {
+                        // Package doesn't exist — auto-create with CL use-list.
+                        // CL spec says in-package should signal package-error,
+                        // but auto-creation is more practical for file loading.
+                        const native_pkg = try self.heap.findOrCreatePackage(name);
+                        // Add CL to use-list so standard symbols are accessible
+                        if (self.heap.cl_package) |cl_pkg| {
+                            try native_pkg.usePackage(cl_pkg);
+                        }
+                        const name_val = try self.heap.allocBaseString(native_pkg.name);
+                        const created = try self.heap.allocPackage(name_val, Value.nil, Value.nil, false);
+                        try self.heap.putLispPackage(name_val, created);
+                        pkg_val_opt = created;
                     }
                 }
             }
