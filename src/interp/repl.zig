@@ -3047,8 +3047,10 @@ pub const Repl = struct {
             // lookup by name, which can hijack CL:FOO with local FOO macros.
             const canonical = self.canonicalMacroSymbol(sym);
             if (canonical.raw == sym.raw) {
-                // Last resort: scan by name for stale-key entries (post-GC)
-                return self.lookupMacroByName(name);
+                // Last resort: scan by name for stale-key entries (post-GC),
+                // but scope to same package to avoid cross-package collisions
+                // (e.g. CL:FLOAT vs MAXIMA::FLOAT).
+                return self.lookupMacroByNameInPackage2(pkg, name);
             }
             return self.macros.get(canonical);
         }
@@ -3082,6 +3084,27 @@ pub const Repl = struct {
             if (!self.isLiveValue(k)) continue;
             if (std.mem.eql(u8, k.toPtr(Symbol).getName(), name)) {
                 return entry.value_ptr.*;
+            }
+        }
+        return null;
+    }
+
+    /// Package-scoped brute-force lookup: scan macro entries for symbols
+    /// with matching name that belong to the given package (or its use-list).
+    /// Prevents cross-package name collisions (CL:FLOAT vs MAXIMA::FLOAT).
+    fn lookupMacroByNameInPackage2(self: *Repl, pkg: *runtime.heap.Package, name: []const u8) ?MacroEntry {
+        var it = self.macros.iterator();
+        while (it.next()) |entry| {
+            const k = entry.key_ptr.*;
+            if (!k.isSymbol()) continue;
+            if (!self.isLiveValue(k)) continue;
+            if (!std.mem.eql(u8, k.toPtr(Symbol).getName(), name)) continue;
+            // Check that the symbol belongs to the target package
+            const sym_pkg = symbolPackage(k.toPtr(Symbol)) orelse continue;
+            if (sym_pkg == pkg) return entry.value_ptr.*;
+            // Also check used packages
+            for (pkg.use_list.items) |used_pkg| {
+                if (sym_pkg == used_pkg) return entry.value_ptr.*;
             }
         }
         return null;

@@ -1511,6 +1511,25 @@ pub const Heap = struct {
         return try pkg.intern(self, sym_name);
     }
 
+    /// Create a new shadow symbol in a package, preventing inheritance of the
+    /// same-named symbol from used packages.  If the symbol already exists
+    /// locally it is returned unchanged.
+    pub fn shadowInPackage(self: *Heap, pkg: *Package, name: []const u8) !Value {
+        var upper_buf: [256]u8 = undefined;
+        const upper = try upperNameAlloc(self.backing_allocator, name, upper_buf[0..]);
+        defer freeUpperName(self.backing_allocator, upper);
+        const upper_name = upper.slice;
+
+        // If already present locally, nothing to do
+        if (pkg.symbols.get(upper_name)) |existing| return existing;
+
+        // Create a new symbol owned by this package
+        const sym = try self.allocSymbol(upper_name);
+        sym.toPtr(objects.Symbol).reserved = @intFromPtr(pkg);
+        try pkg.symbols.put(upper_name, sym);
+        return sym;
+    }
+
     /// Find a package by name
     pub fn findPackage(self: *Heap, name: []const u8) ?*Package {
         if (self.packages.get(name)) |pkg| {

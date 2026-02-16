@@ -671,6 +671,7 @@ pub const Builtins = struct {
     @"kw_compile-toplevel": Value,
     kw_use: Value,
     kw_export: Value,
+    kw_shadow: Value,
     kw_size: Value,
     kw_test: Value,
     kw_key: Value,
@@ -1270,6 +1271,7 @@ pub const Builtins = struct {
             .@"kw_compile-toplevel" = try heap.internKeyword("compile-toplevel"),
             .kw_use = try heap.internKeyword("use"),
             .kw_export = try heap.internKeyword("export"),
+            .kw_shadow = try heap.internKeyword("shadow"),
             .kw_size = try heap.internKeyword("size"),
             .kw_test = try heap.internKeyword("test"),
             .kw_key = try heap.internKeyword("key"),
@@ -7348,21 +7350,36 @@ pub const Compiler = struct {
         var name = q.name;
         var idx_opt = self.globals.lookup(name);
         if (idx_opt == null) {
-            if (self.globals.lookup(local_name)) |idx| {
-                idx_opt = idx;
-                name = local_name;
-            } else {
-                const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
-                var full_buf: [640]u8 = undefined;
-                for (prefixes) |prefix| {
-                    if (prefix.len + local_name.len > full_buf.len) continue;
-                    @memcpy(full_buf[0..prefix.len], prefix);
-                    @memcpy(full_buf[prefix.len .. prefix.len + local_name.len], local_name);
-                    const candidate = full_buf[0 .. prefix.len + local_name.len];
-                    if (self.globals.lookup(candidate)) |idx| {
-                        idx_opt = idx;
-                        name = candidate;
-                        break;
+            // Check if this symbol is from a non-CL package with a shadow.
+            // If so, do NOT fall back to CL globals — the shadow creates a
+            // distinct symbol that must have its own global slot.
+            const is_shadowed = blk: {
+                const heap = if (self.heap) |val| val else break :blk false;
+                const cl_pkg = if (heap.cl_package) |val| val else break :blk false;
+                const sym_pkg_bits = name_sym.reserved;
+                if (sym_pkg_bits == 0 or (sym_pkg_bits & 1) != 0) break :blk false;
+                const sym_pkg: *runtime.heap.Package = @ptrFromInt(sym_pkg_bits);
+                // Shadow: symbol is in a non-CL package AND CL has a symbol
+                // with the same name (i.e., the new symbol shadows a CL one)
+                break :blk sym_pkg != cl_pkg and cl_pkg.findAccessibleUpper(local_name) != null;
+            };
+            if (!is_shadowed) {
+                if (self.globals.lookup(local_name)) |idx| {
+                    idx_opt = idx;
+                    name = local_name;
+                } else {
+                    const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
+                    var full_buf: [640]u8 = undefined;
+                    for (prefixes) |prefix| {
+                        if (prefix.len + local_name.len > full_buf.len) continue;
+                        @memcpy(full_buf[0..prefix.len], prefix);
+                        @memcpy(full_buf[prefix.len .. prefix.len + local_name.len], local_name);
+                        const candidate = full_buf[0 .. prefix.len + local_name.len];
+                        if (self.globals.lookup(candidate)) |idx| {
+                            idx_opt = idx;
+                            name = candidate;
+                            break;
+                        }
                     }
                 }
             }
@@ -8390,6 +8407,15 @@ pub const Compiler = struct {
                             const export_name = if (self.getStringOrSymbolName(export_cons.car)) |val| val else return error.InvalidSyntax;
                             try pkg.exportSymbol(export_name);
                             export_list = export_cons.cdr;
+                        }
+                    } else if (kw.raw == b.kw_shadow.raw) {
+                        // (:shadow sym1 sym2 ...)
+                        var shadow_list = opt_list.cdr;
+                        while (shadow_list.isCons()) {
+                            const shadow_cons = shadow_list.toPtr(Cons);
+                            const shadow_name = if (self.getStringOrSymbolName(shadow_cons.car)) |val| val else return error.InvalidSyntax;
+                            _ = try heap.shadowInPackage(pkg, shadow_name);
+                            shadow_list = shadow_cons.cdr;
                         }
                     }
                 }
