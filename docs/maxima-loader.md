@@ -24,6 +24,10 @@ Run the loader explicitly:
 ## Notes
 
 - Loader is intentionally manual-entrypoint only; it does not auto-run on file import.
+- Loader auto-detects source roots from:
+  - `/tmp/maxima/src/`
+  - `/tmp/maxima/src/src/`
+  - `/tmp/maxima/`
 - Recent package-system fixes removed the prior `StackOverflow` path in deep
   Maxima loads (`db.lisp`, `compar.lisp`, `limit.lisp`) by correcting
   `defpackage`/`shadow`/inherited-symbol behavior.
@@ -39,5 +43,7 @@ Run the loader explicitly:
   must be `nil` after `lib/maxima-stubs.lisp` is loaded.
 - Integration tests in `src/tests/integration.zig` skip Maxima-specific gates
   when `/tmp/maxima/src/lmdcls.lisp` is missing (no Maxima source checkout).
+- `maxima-load-all` now fails fast with a single summary when the detected
+  root lacks `lmdcls.lisp`, instead of emitting per-file `FileNotFound` spam.
 - Keep stream formwise probes (`with-open-file` + `read`) as advisory only
   until stream `read` semantics are fully fixed.

@@ -3,7 +3,17 @@
 ;; Loads a broad ordered subset of Maxima source files with per-file
 ;; error reporting so we can iteratively raise compatibility.
 
-(defparameter *maxima-source-dir* "/tmp/maxima/src/")
+(defparameter *maxima-source-candidates*
+  '("/tmp/maxima/src/" "/tmp/maxima/src/src/" "/tmp/maxima/"))
+
+(defun maxima-source-has-core-p (dir)
+  (probe-file (concatenate 'string dir "lmdcls.lisp")))
+
+(defun detect-maxima-source-dir ()
+  (or (find-if #'maxima-source-has-core-p *maxima-source-candidates*)
+      (car *maxima-source-candidates*)))
+
+(defparameter *maxima-source-dir* (detect-maxima-source-dir))
 (defparameter *maxima-package-init* (concatenate 'string *maxima-source-dir* "maxima-package.lisp"))
 
 ;; Prefer upstream package definitions when available so package semantics
@@ -86,6 +96,14 @@
         nil))))
 
 (defun maxima-load-all ()
+  (unless (maxima-source-has-core-p *maxima-source-dir*)
+    (let ((total (length *maxima-files*)))
+      (format t "~%=== Maxima Loader Summary ===~%")
+      (format t "source: ~A~%" *maxima-source-dir*)
+      (format t "loaded: 0/~D~%" total)
+      (format t "failed: ~D~%" total)
+      (format t "missing source root: expected lmdcls.lisp under one of ~S~%" *maxima-source-candidates*)
+      (return-from maxima-load-all (values 0 total total))))
   (setq *maxima-ok-count* 0)
   (setq *maxima-failed* nil)
   (dolist (name *maxima-files*)

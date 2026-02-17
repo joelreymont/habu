@@ -667,3 +667,5 @@ Environment guard:
   Guard Maxima integration tests with a source-presence check
   (`/tmp/maxima/src/lmdcls.lisp`) and `error.SkipZigTest` so non-Maxima
   environments still run the rest of the suite deterministically.
+- Prefer candidate-root probing (`/tmp/maxima/src/`, `/tmp/maxima/src/src/`,
+  `/tmp/maxima/`) in both loader and tests to avoid path drift regressions.

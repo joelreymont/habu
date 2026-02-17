@@ -5313,7 +5313,16 @@ test "smallest heap: loop when collecting into" {
 }
 
 fn ensureMaximaSources() !void {
-    std.fs.accessAbsolute("/tmp/maxima/src/lmdcls.lisp", .{}) catch return error.SkipZigTest;
+    const candidates = [_][]const u8{
+        "/tmp/maxima/src/lmdcls.lisp",
+        "/tmp/maxima/src/src/lmdcls.lisp",
+        "/tmp/maxima/lmdcls.lisp",
+    };
+    for (candidates) |path| {
+        std.fs.accessAbsolute(path, .{}) catch continue;
+        return;
+    }
+    return error.SkipZigTest;
 }
 
 test "maxima core subset loader binds CAS entrypoints" {
