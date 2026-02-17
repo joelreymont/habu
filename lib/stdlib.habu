@@ -4987,7 +4987,9 @@
                  (else-action nil))
              ; Parse THEN clause (including optional INTO for collect/sum/etc)
              (case (loop-kw-canon (car then-rest))
-               ((:do :collect :sum :count :append :nconc :maximize :minimize :return)
+               ((:do :collect :collecting :sum :summing :count :counting
+                 :append :appending :nconc :nconcing :maximize :maximizing
+                 :minimize :minimizing :return)
                 (setq then-action (list (car then-rest) (cadr then-rest)))
                 (setq then-rest (cddr then-rest))
                 ;; Check for INTO after collect/sum/count/append/nconc
@@ -4999,7 +5001,9 @@
              (when (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :else))
                (setq then-rest (cdr then-rest))
                (case (loop-kw-canon (car then-rest))
-                 ((:do :collect :sum :count :append :nconc :maximize :minimize :return)
+                 ((:do :collect :collecting :sum :summing :count :counting
+                   :append :appending :nconc :nconcing :maximize :maximizing
+                   :minimize :minimizing :return)
                   (setq else-action (list (car then-rest) (cadr then-rest)))
                   (setq then-rest (cddr then-rest))
                   ;; Check for INTO after else action
@@ -5016,7 +5020,7 @@
                 (push (list 'when test (cadr then-action)) body-forms)
                 (when else-action
                   (push (list 'unless test (cadr else-action)) body-forms)))
-               ((:collect)
+               ((:collect :collecting)
                 ;; Check if then-action has INTO: (collect expr into var)
                 (let ((into-var (when (and (>= (length then-action) 4)
                                           (eq (loop-kw-canon (caddr then-action)) :into))
@@ -5039,7 +5043,7 @@
                                     (cadddr else-action)))
                         (else-kw (loop-kw-canon (car else-action))))
                     (case else-kw
-                      ((:collect)
+                      ((:collect :collecting)
                        (if else-into
                            (let ((entry (assoc else-into named-collects)))
                              (if entry
