@@ -4654,11 +4654,18 @@ pub const Compiler = struct {
         in_tail: bool,
     ) anyerror!?*Ir {
         if (!bindings_expr.isCons()) return null;
+        const heap = if (self.heap) |h| h else return error.InvalidLet;
+        const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
 
-        var syms = std.ArrayList(Value){};
-        defer syms.deinit(self.allocator);
-        var vals = std.ArrayList(*const Ir){};
-        defer vals.deinit(self.allocator);
+        var special_syms = std.ArrayList(Value){};
+        defer special_syms.deinit(self.allocator);
+        var special_inits = std.ArrayList(Value){};
+        defer special_inits.deinit(self.allocator);
+        var special_temps = std.ArrayList(Value){};
+        defer special_temps.deinit(self.allocator);
+        var rewritten_bindings = std.ArrayList(Value){};
+        defer rewritten_bindings.deinit(self.allocator);
+        var has_lexical = false;
 
         var bindings = bindings_expr;
         while (bindings.isCons()) {
@@ -4668,37 +4675,73 @@ pub const Compiler = struct {
             const sym = if (binding.isSymbolLike()) blk: {
                 break :blk binding;
             } else if (binding.isCons()) blk: {
-                const b = binding.toPtr(Cons);
-                if (!b.car.isSymbolLike()) return null;
-                break :blk b.car;
+                const bind_pair = binding.toPtr(Cons);
+                if (!bind_pair.car.isSymbolLike()) return null;
+                break :blk bind_pair.car;
             } else {
                 return null;
             };
 
-            if (!self.isSpecialBindingSym(sym)) return null;
-
-            const init_ir = if (binding.isSymbolLike()) blk: {
-                break :blk try self.builder.lit(Value.nil);
+            const init_expr = if (binding.isSymbolLike()) blk: {
+                break :blk Value.nil;
             } else blk: {
-                const b = binding.toPtr(Cons);
-                if (b.cdr.isNil()) break :blk try self.builder.lit(Value.nil);
-                if (!b.cdr.isCons()) return error.InvalidLet;
-                break :blk try self.compile(b.cdr.toPtr(Cons).car, env);
+                const bind_pair = binding.toPtr(Cons);
+                if (bind_pair.cdr.isNil()) break :blk Value.nil;
+                if (!bind_pair.cdr.isCons()) return error.InvalidLet;
+                break :blk bind_pair.cdr.toPtr(Cons).car;
             };
 
-            try syms.append(self.allocator, sym);
-            try vals.append(self.allocator, init_ir);
+            if (self.isSpecialBindingSym(sym)) {
+                const temp_sym = try prims.gensym(heap, null);
+                const init_tail = try heap.allocCons(init_expr, Value.nil);
+                const temp_binding = try heap.allocCons(temp_sym, init_tail);
+
+                try special_syms.append(self.allocator, sym);
+                try special_inits.append(self.allocator, init_expr);
+                try special_temps.append(self.allocator, temp_sym);
+                try rewritten_bindings.append(self.allocator, temp_binding);
+            } else {
+                has_lexical = true;
+                try rewritten_bindings.append(self.allocator, binding);
+            }
+
             bindings = bind_cons.cdr;
         }
 
         if (!bindings.isNil()) return error.InvalidLet;
-        if (syms.items.len == 0) return null;
+        if (special_syms.items.len == 0) return null;
 
-        const sym_list = try self.listFromSlice(syms.items);
-        const symbols_ir = try self.builder.lit(sym_list);
-        const values_ir = try self.buildIrList(vals.items);
-        const body_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
-        return try self.builder.progv(symbols_ir, values_ir, body_ir);
+        // Fast path: all bindings are special.
+        if (!has_lexical) {
+            var vals = std.ArrayList(*const Ir){};
+            defer vals.deinit(self.allocator);
+            for (special_inits.items) |init_expr| {
+                const init_ir = try self.compile(init_expr, env);
+                try vals.append(self.allocator, init_ir);
+            }
+            const sym_list = try self.listFromSlice(special_syms.items);
+            const symbols_ir = try self.builder.lit(sym_list);
+            const values_ir = try self.buildIrList(vals.items);
+            const body_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
+            return try self.builder.progv(symbols_ir, values_ir, body_ir);
+        }
+
+        // Mixed path: evaluate all init forms once in an outer lexical LET, then
+        // dynamically bind the special subset with PROGV around the body.
+        const rewritten_bindings_list = try self.listFromSlice(rewritten_bindings.items);
+        const special_sym_list = try self.listFromSlice(special_syms.items);
+        const temp_args = try self.listFromSlice(special_temps.items);
+
+        const quote_tail = try heap.allocCons(special_sym_list, Value.nil);
+        const quoted_specials = try heap.allocCons(b.quote, quote_tail);
+        const list_form = try heap.allocCons(b.list, temp_args);
+        const progv_values_tail = try heap.allocCons(list_form, body_exprs);
+        const progv_args = try heap.allocCons(quoted_specials, progv_values_tail);
+        const progv_form = try heap.allocCons(b.progv, progv_args);
+        const let_body = try heap.allocCons(progv_form, Value.nil);
+        const let_args = try heap.allocCons(rewritten_bindings_list, let_body);
+        const let_form = try heap.allocCons(b.let, let_args);
+        return self.compileWithTail(let_form, env, in_tail);
     }
 
     fn compileLetrecWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) anyerror!*Ir {

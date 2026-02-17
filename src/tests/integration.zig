@@ -5168,13 +5168,14 @@ test "maxima core subset loader binds CAS entrypoints" {
         \\    '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
         \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "opers"
         \\      "utils" "merror" "mutils" "mlisp" "mmacro" "buildq" "sumcon"
-        \\      "sublis" "mformt" "outmis" "ar" "comm" "comm2" "simp"
-        \\      "lesfac" "factor" "algfac" "nalgfa" "rat3a" "rat3b" "rat3c"
+        \\      "sublis" "mformt" "outmis" "ar" "comm" "comm2" "db" "simp"
+        \\      "compar" "lesfac" "factor" "algfac" "nalgfa" "rat3a" "rat3b" "rat3c"
         \\      "rat3d" "rat3e" "nrat4" "ratout"))
         \\  (multiple-value-bind (ok total fail) (maxima-load-all)
         \\    (list ok total fail
         \\          (if (fboundp 'simplifya) 1 0)
         \\          (if (fboundp '$diff) 1 0)
+        \\          (if (fboundp 'kindp) 1 0)
         \\          (if (fboundp '$integrate) 1 0)
         \\          (if (fboundp '$factor) 1 0)
         \\          (if (fboundp '$ratsimp) 1 0)
@@ -5183,7 +5184,7 @@ test "maxima core subset loader binds CAS entrypoints" {
 
     try testing.expect(status.isCons());
     var cur = status;
-    const expected = [_]i64{ 39, 39, 0, 1, 1, 1, 1, 1, 1 };
+    const expected = [_]i64{ 41, 41, 0, 1, 1, 1, 1, 1, 1, 1 };
     for (expected) |want| {
         try testing.expect(cur.isCons());
         const cell = cur.toPtr(Cons);
@@ -5192,4 +5193,59 @@ test "maxima core subset loader binds CAS entrypoints" {
         cur = cell.cdr;
     }
     try testing.expect(cur.isNil());
+}
+
+test "let mixed lexical and special bindings stay dynamically visible" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const mixed = try repl.eval(
+        \\(progn
+        \\  (defvar *mix-special* 1)
+        \\  (defun mix-special-set (v) (setq *mix-special* v))
+        \\  (let ((a 1) (*mix-special* 2))
+        \\    (mix-special-set 9)
+        \\    (list a *mix-special*)))
+    );
+    try testing.expect(mixed.isCons());
+    const c0 = mixed.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 1), c0.car.toFixnum());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 9), c1.car.toFixnum());
+
+    const global = try repl.eval("*mix-special*");
+    try testing.expectEqual(@as(i64, 1), global.toFixnum());
+}
+
+test "maxima letmac destructuring-let expands and runs" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(progn
+        \\  (load "lib/maxima-loader.lisp")
+        \\  (setq *maxima-files* '("lmdcls" "letmac"))
+        \\  (maxima-load-all)
+        \\  (in-package :maxima)
+        \\  (destructuring-let (((a b) '(1 2))) (list a b)))
+    );
+    try testing.expect(result.isCons());
+    const c0 = result.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 1), c0.car.toFixnum());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 2), c1.car.toFixnum());
 }

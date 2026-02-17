@@ -16,12 +16,17 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
   - inherited lookup using native exports when Lisp export tables are sparse,
   - keyword nickname handling in package creation.
 - Validating with the same Maxima subset gate used by integration (`lib/maxima-loader.lisp`, 39 files) gave a concrete pass criterion: `(39 39 0 1 1 1 1 1 1)`.
+- Isolating Maxima `destructuring-let` failure to a language-level repro (`let` with mixed lexical + special vars) exposed the true compiler bug quickly:
+  - `(let ((a 1) (*x* 2)) ...)` leaked writes to global `*x*` instead of dynamic binding.
+  - Fixing mixed special/lexical lowering in `src/compiler/compile.zig` (specials via `progv` with temp bindings) removed the `LET-MACRO-HAIR` crash path.
+- Adding dedicated integration regressions in `src/tests/integration.zig` for mixed special `let` and Maxima `letmac` keeps this class of bug from regressing.
 
 ### Did Not Work
 - Using stdlib `find-symbol` as a debugging oracle was misleading; its previous shim semantics masked package-state bugs.
 - Assuming Lisp package export hash tables mirror native exports caused false negatives in inherited symbol classification.
 - Accepting keyword nicknames in validation while later calling `nameBytes` (string/symbol-only) produced delayed `TypeError` in `eval-when`, not at option parse time.
 - Relying on a single long `zig build test -Dtest-filter=...` run was unreliable in this environment; targeted tests plus direct REPL gate runs were more deterministic.
+- Assuming a Maxima runtime failure (`$ratsimp`) was a setf-expander bug was wrong; after dependency fixes, the failure moved and the real issue was mixed special/lexical `let` compilation semantics.
 
 ---
 

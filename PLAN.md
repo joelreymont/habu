@@ -79,10 +79,16 @@
 
 ### 5. Maxima Continuation
 - [x] `habu-increase-default-heap-44a06bce` Increase default heap and build comprehensive Maxima loader.
-- [ ] `habu-maxima-end-to-efe58661` Maxima end-to-end integration test. Depends on `habu-cut-gc-root-25d3bb03` and `habu-fix-hoist-compile-9a100641`.
+- [ ] `habu-fix-maxima-cas-a491af14` Fix Maxima CAS operations: integrate, solve, factor, limit, ratsimp, det.
+  - [x] `habu-maxima-subset-load-e9db9bb5` Maxima subset: load `db`/`compar` deps so `kindp` exists on CAS paths.
+  - [x] `habu-rca-and-fix-4a4ea5d5` RCA and fix `$ratsimp` `setf: unsupported place` root cause.
+  - [x] `habu-add-maxima-cas-1807f8ae` Add end-to-end CAS regression checks in integration tests.
+  - [ ] `habu-maxima-loader-fix-d654483f` Maxima loader: fix `server`/`coerce` crash so full module load can continue.
+  - [ ] `habu-maxima-integrate-path-b786024b` Maxima integrate path: resolve unbound-symbol dependency chain.
+  - [ ] `habu-maxima-factor-ratsimp-521dd2ca` Maxima factor/ratsimp path: fix TypeMismatch and ProgramError roots.
   - [x] `habu-maxima-core-loader-999c7eb3` Add Maxima core subset loader + entrypoint binding integration gate.
   - [x] `habu-rca-load-stackoverflow-e3d4f5d8` RCA and fix load stack overflow path for Maxima large source files.
-- [ ] `habu-fix-maxima-cas-a491af14` Fix Maxima CAS operations: integrate, solve, factor, limit, ratsimp, det. Depends on `habu-maxima-end-to-efe58661`.
+- [ ] `habu-maxima-end-to-efe58661` Maxima end-to-end integration test continuation. Depends on `habu-fix-maxima-cas-a491af14`, `habu-maxima-subset-load-e9db9bb5`, `habu-rca-and-fix-4a4ea5d5`, `habu-add-maxima-cas-1807f8ae`, `habu-cut-gc-root-25d3bb03`, and `habu-fix-hoist-compile-9a100641`.
 
 ## Execution Loop
 1. Pick the first unblocked unchecked leaf.
