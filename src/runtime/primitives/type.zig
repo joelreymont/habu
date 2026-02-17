@@ -333,6 +333,26 @@ pub fn typep(heap: *Heap, syms: *const TypeSymbols, obj: Value, type_spec: Value
             return true;
         }
 
+        // (cons [car-type [cdr-type]]) - proper cons type specifier
+        if (head.eq(syms.cons)) {
+            if (!obj.isCons()) return false;
+            const obj_cons = obj.toPtr(@import("../objects.zig").Cons);
+            const rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
+            if (rest.isNil()) return true;
+            if (!rest.isCons()) return error.InvalidTypeSpecifier;
+
+            const args1 = rest.toPtr(@import("../objects.zig").Cons);
+            const car_spec = args1.car;
+            const car_ok = try typep(heap, syms, obj_cons.car, car_spec);
+            if (!car_ok) return false;
+
+            if (args1.cdr.isNil()) return true;
+            if (!args1.cdr.isCons()) return error.InvalidTypeSpecifier;
+            const args2 = args1.cdr.toPtr(@import("../objects.zig").Cons);
+            if (!args2.cdr.isNil()) return error.InvalidTypeSpecifier;
+            return try typep(heap, syms, obj_cons.cdr, args2.car);
+        }
+
         if (head.eq(syms.integer)) {
             if (!obj.isFixnum() and !obj.isBignum()) return false;
             const rest = type_spec.toPtr(@import("../objects.zig").Cons).cdr;
@@ -752,6 +772,46 @@ test "typep compound types" {
     );
     try testing.expect(try typep(&heap, &syms, fixnum, and_spec));
     try testing.expect(!try typep(&heap, &syms, str, and_spec));
+}
+
+test "typep cons type specifier" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    var syms = try TypeSymbols.init(&heap);
+
+    const car_val = try heap.intern("foo");
+    const cdr_val = Value.makeFixnum(7);
+    const pair = try heap.allocCons(car_val, cdr_val);
+
+    const cons_sym = try heap.intern("cons");
+    const sym_sym = try heap.intern("symbol");
+    const int_sym = try heap.intern("integer");
+    const str_sym = try heap.intern("string");
+
+    const spec_car_only = try heap.allocCons(
+        cons_sym,
+        try heap.allocCons(sym_sym, Value.nil),
+    );
+    try testing.expect(try typep(&heap, &syms, pair, spec_car_only));
+
+    const spec_car_cdr = try heap.allocCons(
+        cons_sym,
+        try heap.allocCons(
+            sym_sym,
+            try heap.allocCons(int_sym, Value.nil),
+        ),
+    );
+    try testing.expect(try typep(&heap, &syms, pair, spec_car_cdr));
+
+    const bad_spec = try heap.allocCons(
+        cons_sym,
+        try heap.allocCons(
+            str_sym,
+            try heap.allocCons(int_sym, Value.nil),
+        ),
+    );
+    try testing.expect(!try typep(&heap, &syms, pair, bad_spec));
 }
 
 test "typep integer range" {

@@ -6242,16 +6242,12 @@ pub const Compiler = struct {
         const cons = args.toPtr(Cons);
         const func_spec = cons.car;
 
-        // (function symbol) - look up function binding or wrap primitive
+        // (function symbol) - look up function binding or resolve at runtime
         if (func_spec.isSymbol()) {
             if (env.lookupFunctionSym(func_spec)) |binding| {
                 const name = func_spec.toPtr(Symbol).getName();
                 const fn_ref = try self.builder.variable(name, binding.depth, binding.index);
                 return try self.maybeBoxRefFunction(func_spec, fn_ref);
-            }
-            // Check if it's a primitive that needs wrapping
-            if (try self.compilePrimitiveFunctionRef(func_spec)) |wrapper| {
-                return wrapper;
             }
             // Resolve global symbols through function namespace semantics.
             // This keeps #'SYMBOL aligned with SYMBOL-FUNCTION/FDEFINITION
@@ -6294,7 +6290,6 @@ pub const Compiler = struct {
         if (s == b.@"<=".raw) return try self.makeBinaryWrapper(&IrBuilder.le);
         if (s == b.@">=".raw) return try self.makeBinaryWrapper(&IrBuilder.ge);
         if (s == b.@"=".raw) return try self.makeBinaryWrapper(&IrBuilder.numEq);
-        if (s == b.append.raw) return try self.makeBinaryWrapper(&IrBuilder.append);
 
         // Unary primitives: (lambda (a) (prim a))
         if (s == b.car.raw or s == b.first.raw) return try self.makeUnaryWrapper(&IrBuilder.car);
@@ -16292,9 +16287,6 @@ pub const Compiler = struct {
 
             // Function position uses function namespace, not value namespace.
             // Emit symbol designator so VM resolves fdefinition/builtin wrappers.
-            if (try self.compilePrimitiveFunctionRef(func_expr)) |wrapper| {
-                break :blk wrapper;
-            }
             break :blk try self.builder.lit(func_expr);
         } else try self.compile(func_expr, env);
 

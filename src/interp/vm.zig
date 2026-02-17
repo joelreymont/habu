@@ -3579,6 +3579,9 @@ pub const Vm = struct {
                         const sym_obj = sym.toPtr(Symbol);
                         if (try self.lookupSymbolGlobalIndex(sym_obj)) |idx| {
                             self.globals[idx] = func;
+                            if (idx >= self.num_globals) {
+                                self.num_globals = idx + 1;
+                            }
                         } else if (self.global_env) |env| {
                             // Create a new global slot for this symbol
                             var qual_buf: [512]u8 = undefined;

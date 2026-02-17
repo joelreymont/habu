@@ -447,6 +447,62 @@ test "stdlib symbol-function primitive wrapper count" {
     try testing.expectEqual(@as(i64, 2), result.toFixnum());
 }
 
+test "stdlib append function designators stay variadic" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const r1 = try repl.eval("(equal (funcall #'append '(a) '(b) '(c)) '(a b c))");
+    try testing.expect(r1.raw == Value.t.raw);
+
+    const r2 = try repl.eval("(equal (funcall (symbol-function 'append) '(a) '(b) '(c)) '(a b c))");
+    try testing.expect(r2.raw == Value.t.raw);
+}
+
+test "stdlib mapc supports variadic list dispatch" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(and
+        \\  (equal
+        \\    (mapc #'(lambda (a b c) (+ a b c))
+        \\          '(1 2 3)
+        \\          '(10 20 30)
+        \\          '(100 200 300))
+        \\    '(1 2 3))
+        \\  (let ((acc nil))
+        \\    (mapc #'(lambda (a b c) (push (+ a b c) acc))
+        \\          '(1 2 3)
+        \\          '(10 20 30)
+        \\          '(100 200 300))
+        \\    (equal (nreverse acc) '(111 222 333)))
+        \\  (let ((*mapc-a* nil)
+        \\        (*mapc-b* nil))
+        \\    (mapc #'(lambda (v x) (setf (symbol-value v) x))
+        \\          '(*mapc-a* *mapc-b*)
+        \\          '(7 8))
+        \\    (and (eql *mapc-a* 7)
+        \\         (eql *mapc-b* 8))))
+    );
+    try testing.expect(result.raw == Value.t.raw);
+}
+
 test "stdlib symbol-function eval-dispatch wrapper encode-universal-time" {
     const allocator = testing.allocator;
 
@@ -1080,6 +1136,32 @@ test "eval defmacro with quasiquote" {
     // Test false branch
     const result2 = try repl.eval("(when (> 1 2) 42)");
     try testing.expect(result2.isNil());
+}
+
+test "macro names do not expand in let binding positions" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval("(defmacro a (row col) `(list ,row ,col))");
+
+    const bound = try repl.eval("(let ((a 7)) a)");
+    try testing.expect(bound.isFixnum());
+    try testing.expectEqual(@as(i64, 7), bound.toFixnum());
+
+    const macro_call = try repl.eval("(a 1 2)");
+    try testing.expect(macro_call.isCons());
+    const c0 = macro_call.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 1), c0.car.toFixnum());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 2), c1.car.toFixnum());
 }
 
 test "quasiquote preserves package-qualified symbol identity" {
@@ -3583,6 +3665,50 @@ test "ansi repro macrolet.36 supports whole destructuring pattern" {
     try testing.expect(c4.cdr.isNil());
 }
 
+test "coerce supports lambda expression designator for function" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(let ((f (coerce '(lambda (x y)
+        \\                    (+ x y))
+        \\                  'function)))
+        \\  (and (functionp f)
+        \\       (= (funcall f 3 4) 7)
+        \\       (= (funcall f 9 11) 20)))
+    );
+    try testing.expect(result.eq(Value.t));
+}
+
+test "coerce lambda designator supports optional env arity" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(let ((f (coerce '(lambda (x &optional env)
+        \\                    (declare (ignore env))
+        \\                    x)
+        \\                  'function)))
+        \\  (and (functionp f)
+        \\       (= (funcall f 77 nil) 77)))
+    );
+    try testing.expect(result.eq(Value.t));
+}
+
 test "ansi repro top-level setq undeclared special defines global" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
@@ -5186,7 +5312,12 @@ test "smallest heap: loop when collecting into" {
     try testing.expectEqual(@as(i64, 3), result.toFixnum());
 }
 
+fn ensureMaximaSources() !void {
+    std.fs.accessAbsolute("/tmp/maxima/src/lmdcls.lisp", .{}) catch return error.SkipZigTest;
+}
+
 test "maxima core subset loader binds CAS entrypoints" {
+    try ensureMaximaSources();
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
     defer heap.deinit();
@@ -5203,16 +5334,20 @@ test "maxima core subset loader binds CAS entrypoints" {
         \\  (setq *maxima-files*
         \\    '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
         \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "opers"
-        \\      "utils" "merror" "mutils" "mlisp" "mmacro" "buildq" "sumcon"
-        \\      "sublis" "mformt" "outmis" "ar" "comm" "comm2" "db" "simp"
+        \\      "utils" "merror" "mutils" "sumcon" "sublis" "mformt" "outmis" "ar"
+        \\      "comm" "comm2" "mlisp" "mmacro" "buildq"
+        \\      "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
+        \\      "inmis" "db"
         \\      "compar" "lesfac" "factor" "algfac" "nalgfa" "rat3a" "rat3b" "rat3c"
-        \\      "rat3d" "rat3e" "nrat4" "ratout"))
+        \\      "rat3d" "rat3e" "nrat4" "ratout" "acall"))
         \\  (multiple-value-bind (ok total fail) (maxima-load-all)
         \\    (list ok total fail
         \\          (if (fboundp 'simplifya) 1 0)
         \\          (if (fboundp '$diff) 1 0)
         \\          (if (fboundp 'kindp) 1 0)
         \\          (if (fboundp '$integrate) 1 0)
+        \\          (if (fboundp 'mfuncall) 1 0)
+        \\          (if (fboundp 'mformat) 1 0)
         \\          (if (fboundp '$factor) 1 0)
         \\          (if (fboundp '$ratsimp) 1 0)
         \\          (if (fboundp '$expand) 1 0))))
@@ -5220,7 +5355,7 @@ test "maxima core subset loader binds CAS entrypoints" {
 
     try testing.expect(status.isCons());
     var cur = status;
-    const expected = [_]i64{ 41, 41, 0, 1, 1, 1, 1, 1, 1, 1 };
+    const expected = [_]i64{ 42, 42, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
     for (expected) |want| {
         try testing.expect(cur.isCons());
         const cell = cur.toPtr(Cons);
@@ -5229,6 +5364,124 @@ test "maxima core subset loader binds CAS entrypoints" {
         cur = cell.cdr;
     }
     try testing.expect(cur.isNil());
+}
+
+test "maxima db subset binds addf and mode macros" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    const status = try repl.eval(
+        \\(progn
+        \\  (setq *maxima-files*
+        \\    '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
+        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "opers"
+        \\      "utils" "merror" "mutils" "sumcon" "sublis" "mformt" "outmis" "ar"
+        \\      "comm" "comm2" "mlisp" "mmacro" "buildq"
+        \\      "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
+        \\      "inmis" "db"))
+        \\  (multiple-value-bind (ok total fail) (maxima-load-all)
+        \\    (declare (ignore ok total fail))
+        \\    (in-package :maxima)
+        \\    (list
+        \\      (if (fboundp 'addf) 1 0)
+        \\      (if (fboundp 'kindp) 1 0)
+        \\      (if (macro-function 'c-type) 1 0)
+        \\      (if (macro-function 's-type) 1 0)
+        \\      (if (macro-function 'a-type) 1 0))))
+    );
+
+    try testing.expect(status.isCons());
+    var cur = status;
+    const expected = [_]i64{ 1, 1, 1, 1, 1 };
+    for (expected) |want| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(want, cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
+test "maxima integrate dependency chain binds matcher and partition symbols" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 256 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    const status = try repl.eval(
+        \\(progn
+        \\  (setq *maxima-files*
+        \\    '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
+        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "opers"
+        \\      "utils" "merror" "mutils" "sumcon" "sublis" "mformt" "outmis" "ar"
+        \\      "comm" "comm2" "mlisp" "mmacro" "buildq"
+        \\      "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
+        \\      "suprv1" "inmis" "db"
+        \\      "compar" "lesfac" "factor" "algfac" "nalgfa" "rat3a" "rat3b" "rat3c"
+        \\      "rat3d" "rat3e" "nrat4" "ratout" "acall" "schatc" "sinint" "sin"))
+        \\  (maxima-load-all)
+        \\  (in-package :maxima)
+        \\  (list
+        \\    (if (fboundp 'partition) 1 0)
+        \\    (if (fboundp 'm2) 1 0)
+        \\    (if (macro-function 'schatchen-cond) 1 0)
+        \\    (if (fboundp 'alias) 1 0)
+        \\    (if (fboundp 'sinint) 1 0)
+        \\    (if ($integrate '((mexpt) $x 2) '$x) 1 0)))
+    );
+
+    try testing.expect(status.isCons());
+    var cur = status;
+    const expected = [_]i64{ 1, 1, 1, 1, 1, 1 };
+    for (expected) |want| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(want, cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
+test "maxima defun-maclisp old narg syntax defines callable function" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(progn
+        \\  (load "lib/maxima-loader.lisp")
+        \\  (setq *maxima-files* '("lmdcls" "letmac" "clmacs" "commac"))
+        \\  (maxima-load-all)
+        \\  (in-package :maxima)
+        \\  (defun-maclisp foo n (arg 1))
+        \\  (foo 42))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
 test "let mixed lexical and special bindings stay dynamically visible" {
@@ -5261,6 +5514,7 @@ test "let mixed lexical and special bindings stay dynamically visible" {
 }
 
 test "maxima letmac destructuring-let expands and runs" {
+    try ensureMaximaSources();
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
     defer heap.deinit();

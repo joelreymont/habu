@@ -18,13 +18,17 @@
     ;; bootstrap
     "lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
     "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "opers"
-    "utils" "merror" "mutils" "mlisp"
+    "utils" "merror" "mutils"
 
     ;; core language/runtime
-    "mmacro" "buildq" "sumcon" "sublis" "mformt" "outmis" "ar"
-    "comm" "comm2" "db" "simp" "float" "csimp" "csimp2" "zero"
+    "sumcon" "sublis" "mformt" "outmis" "ar"
+    "comm" "comm2" "mlisp" "mmacro" "buildq"
+    "simp" "float" "csimp" "csimp2" "zero"
     "logarc" "rpart" "numeric" "server" "macsys" "mload"
     "suprv1" "mactex" "dskfn"
+
+    ;; algebraic database
+    "inmis" "db"
 
     ;; factoring / rational
     "compar" "askp" "lesfac" "factor" "algfac" "nalgfa" "ufact"
@@ -86,6 +90,17 @@
   (setq *maxima-failed* nil)
   (dolist (name *maxima-files*)
     (maxima-try-load name))
+  ;; DB initializes MAXIMA::CONTEXT to GLOBAL while globals/compar use
+  ;; MAXIMA::$CONTEXT/$CONTEXTS with $GLOBAL. Keep them aligned for
+  ;; with-new-context users (e.g. $integrate path via mfuncall/$supcontext).
+  (when (and (boundp 'maxima::context)
+             (boundp 'maxima::$context)
+             (boundp 'maxima::$contexts)
+             (symbolp maxima::$context)
+             (consp maxima::$contexts)
+             (null (member maxima::context maxima::$contexts :test #'eq))
+             (member maxima::$context maxima::$contexts :test #'eq))
+    (setf maxima::context maxima::$context))
   (let ((total (length *maxima-files*))
         (fail (length *maxima-failed*)))
     (format t "~%=== Maxima Loader Summary ===~%")

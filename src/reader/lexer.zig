@@ -109,7 +109,7 @@ pub const Lexer = struct {
             ')' => self.makeToken(.rparen),
             '\'' => self.makeToken(.quote),
             '`' => self.makeToken(.backquote),
-            ',' => if (self.match('@')) self.makeToken(.comma_at) else self.makeToken(.comma),
+            ',' => if (self.match('@') or self.match('.')) self.makeToken(.comma_at) else self.makeToken(.comma),
             '"' => self.readString(.string),
             ':' => self.readKeyword(),
             '|' => self.readEscapedSymbol(),
@@ -685,6 +685,17 @@ test "lex simple tokens" {
     try testing.expectEqual(TokenKind.backquote, lexer.next().kind);
     try testing.expectEqual(TokenKind.comma, lexer.next().kind);
     try testing.expectEqual(TokenKind.comma_at, lexer.next().kind);
+    try testing.expectEqual(TokenKind.eof, lexer.next().kind);
+}
+
+test "lex comma dot as unquote-splicing" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init(",.x");
+    try testing.expectEqual(TokenKind.comma_at, lexer.next().kind);
+    const sym = lexer.next();
+    try testing.expectEqual(TokenKind.symbol, sym.kind);
+    try testing.expectEqualStrings("x", sym.text);
     try testing.expectEqual(TokenKind.eof, lexer.next().kind);
 }
 

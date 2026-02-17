@@ -9,7 +9,14 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-17)
 
 ### Worked Well
+- Following Maxima source to the exact failing semantic operation (`mrgmac.lisp` `defc/defs/defa`: `(coerce \`(lambda ...) 'function)`) gave a generic CL fix in `lib/stdlib.habu` (`coerce-to-function`) instead of a Maxima-specific patch.
+- Converting temporary root-cause traces into focused regression tests (`src/tests/integration.zig`: function-designator coercion, optional `env` lambda designator arity) preserved behavior while allowing debug instrumentation to be removed cleanly from hot compiler/VM paths.
+- Aligning `lib/maxima-loader.lisp` file order with upstream `src/maxima.system` module ordering (not ad-hoc sequencing) removed dependency-order regressions (`PUTOPR`/`SPECREPCHECK` class) and gave a principled path for loader parity.
+- VM mismatch tracing (`HABU_TRACE_CALL_MISMATCH=1`, `HABU_TRACE_ERROR_CONTEXT=1`) exposed a generic CL semantic bug quickly: `MAPC` was fixed-arity in `lib/stdlib.habu` and failed in Maxima `$errormsg` multi-list dispatch.
+- Replacing `mapc` with variadic CL semantics (`lib/stdlib.habu`) and adding focused regression coverage (`src/tests/integration.zig`: `stdlib mapc supports variadic list dispatch`) removed the callback-arity crash class without Maxima-specific patches.
+- Persisting probe results to files (`/tmp/*.result`) after non-interactive `(load "...")` runs gave stable signal where REPL output was noisy; this exposed that integrate blockers were advancing from MAPC arity into missing module chain (`m2`/`schatchen-cond` unbound when `schatc` not loaded).
 - Form-level tracing (`HABU_TRACE_FORMS=1`) isolated the failing loader site to `lib/maxima-stubs.lisp` form 24 (`eval-when`) quickly.
+- Cross-checking Maxima symbol state through file-based reports (`with-open-file`) avoided terminal overwrite noise and made root-cause data stable (`/tmp/maxima-subset42-report.txt`).
 - Reproducing with minimal Lisp snippets (outside full Maxima load) made package bugs obvious and testable.
 - Adding focused regression tests in `src/runtime/primitives/package.zig` caught real root causes:
   - stale inherited-symbol replacement in native tables,
@@ -26,7 +33,12 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Fixing `%shadowing-import` replacement semantics in `src/runtime/primitives/package.zig` (replace conflicting local/native entries before import) aligned behavior with CL expectations and unblocked real package forms.
 
 ### Did Not Work
+- Driving long Maxima probes via non-interactive `./zig-out/bin/habu < script` in this environment was unreliable for deterministic pass/fail capture; targeted integration tests were more trustworthy for regression signal.
+- Using `./zig-out/bin/habu <script-file-arg>` as a multi-form probe source was misleading in this environment; only the final top-level form was reliably observed, so probe conclusions must come from integration tests or controlled REPL eval paths.
+- Assuming `mapc` was already CL-compatible because `mapcar`/`mapl` were variadic was wrong; missing variadic support in one mapping combinator can break large Lisp packages in non-obvious error-reporting paths.
+- Driving large multi-form scripts by piping raw lines into the interactive REPL produced misleading output corruption; loading a script file and writing explicit probe artifacts was required for trustworthy RCA.
 - Using stdlib `find-symbol` as a debugging oracle was misleading; its previous shim semantics masked package-state bugs.
+- Trusting `maxima-load-all` success counters alone was misleading: `sin.lisp` can leave `MAXIMA::SININT` unbound while reporting `(ok=total, fail=0)`, so binding checks (`fboundp`) are required for critical entrypoints.
 - Assuming Lisp package export hash tables mirror native exports caused false negatives in inherited symbol classification.
 - Accepting keyword nicknames in validation while later calling `nameBytes` (string/symbol-only) produced delayed `TypeError` in `eval-when`, not at option parse time.
 - Relying on a single long `zig build test -Dtest-filter=...` run was unreliable in this environment; targeted tests plus direct REPL gate runs were more deterministic.
@@ -630,3 +642,28 @@ Impact on Maxima loader debugging:
 Actionable takeaway:
 - Do not use stream-`read` loops as a fallback loader path until stream `read`
   is fixed to consume one form at a time.
+
+### Maxima Integrate Chain Needs Runtime-Callable Dependencies (2026-02-17)
+
+`fboundp '$integrate` is not a sufficient gate for integration readiness.
+With a reduced subset, `$integrate` can still fail at runtime with
+`(UNBOUND-VARIABLE UnboundSymbol)` due to missing transitive call targets.
+
+Evidence from targeted tracing:
+- `TRACE unbound function: ALIAS`
+- `TRACE unbound function: SININT`
+
+Fix pattern:
+- include `suprv1` (defines `alias`) and `sinint`/`sin` in the integrate subset,
+  plus existing `schatc` chain (`partition`, `m2`, `schatchen-cond`).
+
+Testing rule:
+- integration gate must execute a real call
+  `($integrate '((mexpt) $x 2) '$x)` in `src/tests/integration.zig`,
+  not just symbol/macro presence checks.
+
+Environment guard:
+- Maxima-source fixtures can disappear or change layout under `/tmp/maxima`.
+  Guard Maxima integration tests with a source-presence check
+  (`/tmp/maxima/src/lmdcls.lisp`) and `error.SkipZigTest` so non-Maxima
+  environments still run the rest of the suite deterministically.

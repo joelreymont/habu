@@ -1813,7 +1813,7 @@ pub const Repl = struct {
                 }
                 continue;
             };
-
+            
             // Restore outer handler state after successful evaluation
             source_vm.handler_sp = saved_handler_sp;
             source_vm.catch_sp = saved_catch_sp;
@@ -1899,10 +1899,9 @@ pub const Repl = struct {
             expr = result;
         }
 
-        // Expand macros
-        expr = if (self.expandMacros(expr)) |expanded| expanded else |err| {
-            return err;
-        };
+        // Let the compiler drive macro expansion with form-aware contexts.
+        // Pre-expanding here is context-free and can incorrectly expand symbols
+        // in binding positions (e.g. LET vars) as macro calls.
 
         // Desugar (let* → let, cond → if, etc.)
         expr = try self.desugarExpr(expr);
@@ -2564,10 +2563,9 @@ pub const Repl = struct {
             expr = result;
         }
 
-        // Expand macros before compilation
-        expr = if (self.expandMacros(expr)) |expanded| expanded else |err| {
-            return err;
-        };
+        // Let the compiler drive macro expansion with form-aware contexts.
+        // Pre-expanding here is context-free and can incorrectly expand symbols
+        // in binding positions (e.g. LET vars) as macro calls.
 
         // Desugar (let* → let, cond → if, etc.)
         expr = try self.desugarExpr(expr);

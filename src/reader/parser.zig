@@ -1071,6 +1071,9 @@ pub const Parser = struct {
         if (std.ascii.eqlIgnoreCase(char_part, "backspace")) return Value.makeCharacter(0x08);
         if (std.ascii.eqlIgnoreCase(char_part, "linefeed")) return Value.makeCharacter('\n');
         if (std.ascii.eqlIgnoreCase(char_part, "page")) return Value.makeCharacter(0x0C);
+        if (std.ascii.eqlIgnoreCase(char_part, "vt")) return Value.makeCharacter(0x0B);
+        if (std.ascii.eqlIgnoreCase(char_part, "vertical-tab")) return Value.makeCharacter(0x0B);
+        if (std.ascii.eqlIgnoreCase(char_part, "code11")) return Value.makeCharacter(0x0B);
         if (std.ascii.eqlIgnoreCase(char_part, "rubout")) return Value.makeCharacter(0x7F);
         if (std.ascii.eqlIgnoreCase(char_part, "nul") or std.ascii.eqlIgnoreCase(char_part, "null")) return Value.makeCharacter(0);
 
@@ -1416,6 +1419,26 @@ test "feature conditional skip handles pathname forms" {
     try testing.expect(list.cdr(body).isNil());
 }
 
+test "feature conditional with vertical-tab character parses" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+    var parser = try Parser.init(
+        testing.allocator,
+        &heap,
+        "(member #\\space '(#\\linefeed #\\return #\\space #\\tab #\\page #-(or clisp gcl openmcl abcl) #\\vt #+clisp #\\code11) :test #'char=)",
+        &vm.builtins,
+    );
+    defer parser.deinit();
+
+    const expr = try parser.parse();
+    try testing.expect(expr.isCons());
+}
+
 test "parse uninterned symbols are fresh values" {
     const testing = std.testing;
     const list = @import("../runtime/primitives/list.zig");
@@ -1656,6 +1679,21 @@ test "parse sharp dot fallback expression" {
 
     const string = @import("../runtime/primitives/string.zig");
     try testing.expectEqualStrings("+", string.symbolNameBytes(head).?);
+}
+
+test "parse comma dot as unquote-splicing" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(testing.allocator, &heap);
+    defer vm.deinit();
+    var parser = try Parser.init(testing.allocator, &heap, "`((%derivative) ,expr ,.(nreverse old-wrt))", &vm.builtins);
+    defer parser.deinit();
+
+    const expr = try parser.parse();
+    try testing.expect(expr.isCons());
 }
 
 test "symbol interning" {

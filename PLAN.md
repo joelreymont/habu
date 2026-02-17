@@ -6,7 +6,38 @@
 - A task is complete only when its dot is closed.
 - Work order is top-to-bottom unless an explicit dependency says otherwise.
 
+## Maxima Fast Targets
+- Correctness gate: `maxima-load-all` has zero hard failures and all critical entrypoints are bound (`$integrate`, `$ratsimp`, `$factor`, `$solve`, `$limit`, `$determinant`).
+- Genericity gate: fixes are CL-semantic and reusable across non-Maxima Lisp code (no Maxima-only patch paths).
+- Performance gate: 2x speedup on Maxima workload suite versus current baseline (tracked in reproducible scripts).
+- Stability gate: no JIT indirect-call crashes, no masked errors, no fallback-only behavior.
+- Drift gate: Habu detects `../hoist` API changes with explicit contract tests.
+
 ## Tree
+
+### A. Maxima Fast Track
+- [ ] `habu-maxima-fast-exec-049ee786` Maxima fast execution plan.
+  - [ ] `habu-define-maxima-gates-aca4e665` Define machine-checkable Maxima correctness and perf gates.
+  - [ ] `habu-audit-loader-failures-fda25dca` Audit and expose loader per-form failures and binding gaps. Depends on `habu-define-maxima-gates-aca4e665`.
+  - [ ] `habu-close-cl-semantic-dac2c058` Close CL semantic gaps blocking generic Maxima execution. Depends on `habu-audit-loader-failures-fda25dca`.
+    - [x] `habu-fix-fn-designators-c2cf5df2` Fix function designator semantics (`coerce`/`fdefinition`) with regressions.
+    - [ ] `habu-fix-pkg-semantics-949bd125` Fix package semantics mismatches (`defpackage`/import/shadow/use).
+    - [ ] `habu-fix-macro-expansion-35b2e63f` Fix macro expansion edge semantics for large sources.
+  - [ ] `habu-reader-parser-parity-a7ceffb7` Close reader/parser parity gaps (`#.` and `#nA` terminal parsing). Depends on `habu-define-maxima-gates-aca4e665`.
+  - [ ] `habu-stabilize-eval-vm-d1c1c5cc` Stabilize eval/VM paths under macro-heavy Maxima workloads. Depends on `habu-close-cl-semantic-dac2c058`.
+    - [ ] `habu-rca-indirect-call-d9f594ad` RCA and fix JIT indirect-call path root cause (no workaround).
+    - [ ] `habu-fix-nested-eval-420ba9e0` Fix nested eval/non-local exit frame restoration. Depends on `habu-rca-indirect-call-d9f594ad`.
+  - [ ] `habu-maxima-load-to-e6d01b9c` Drive Maxima loader and critical symbol binds to green. Depends on `habu-stabilize-eval-vm-d1c1c5cc`.
+  - [ ] `habu-profile-maxima-hotspots-977ac23d` Profile real Maxima hotspots in interpreter and JIT modes. Depends on `habu-maxima-load-to-e6d01b9c`.
+  - [ ] `habu-raise-jit-coverage-4bfef8eb` Raise JIT coverage for Maxima hotspot call/data paths. Depends on `habu-profile-maxima-hotspots-977ac23d`.
+    - [ ] `habu-jit-missing-call-7abc44ab` Add generic JIT lowering for missing call-target patterns.
+    - [ ] `habu-jit-missing-data-714eb838` Add generic JIT lowering for missing vector/hash/string hot ops.
+  - [ ] `habu-cut-vm-gc-511ec7d3` Cut VM/GC overhead in long CAS workloads. Depends on `habu-raise-jit-coverage-4bfef8eb`.
+    - [ ] `habu-reduce-gc-root-04a18d48` Reduce GC root assembly overhead in collection paths.
+    - [ ] `habu-shrink-transient-allocs-d4dbcf28` Shrink transient allocations in hot eval/VM paths.
+  - [ ] `habu-lock-hoist-api-0d6259d1` Lock `../hoist` API drift handling in Habu-side contract checks.
+    - [ ] `habu-hoist-api-contract-6bac1b3e` Add compile/runtime contract probes for hoist interface.
+  - [ ] `habu-perf-ci-and-2b7ac2f9` Add perf regression gates and unified docs. Depends on `habu-cut-vm-gc-511ec7d3`, `habu-lock-hoist-api-0d6259d1`.
 
 ### 0. Plan Control
 - [ ] `habu-unify-plan-and-1848633e` Unify plan and dot tree.
@@ -72,10 +103,10 @@
 - [ ] `habu-fix-clos-superclass-2aa44685` Fix CLOS superclass alias resolution.
 - [ ] `habu-fix-warn-apply-fe791fc7` Fix warn/apply nil callee path.
 - [ ] `habu-fix-ansi-deftest-faa1296f` Fix ANSI DEFTEST TypeMismatch root cause.
-  - [ ] `habu-trace-first-ansi-b16c4bd5` Trace first uncaught ANSI TypeMismatch.
-  - [ ] `habu-patch-typemismatch-root-b693b071` Patch root cause.
-  - [ ] `habu-add-regression-for-1c3dfe97` Add focused regression.
-  - [ ] `habu-verify-ansi-progression-d3af8a76` Verify ANSI progression and update baseline artifacts.
+  - [ ] `habu-trace-first-ansi-3501b989` Trace first uncaught ANSI TypeMismatch.
+  - [ ] `habu-patch-ansi-typemismatch-dae30cf8` Patch root cause.
+  - [ ] `habu-add-ansi-typemismatch-817bda8d` Add focused regression.
+  - [ ] `habu-verify-ansi-progression-56a3eae2` Verify ANSI progression and update baseline artifacts.
 
 ### 5. Maxima Continuation
 - [x] `habu-increase-default-heap-44a06bce` Increase default heap and build comprehensive Maxima loader.
@@ -84,10 +115,13 @@
   - [x] `habu-rca-and-fix-4a4ea5d5` RCA and fix `$ratsimp` `setf: unsupported place` root cause.
   - [x] `habu-add-maxima-cas-1807f8ae` Add end-to-end CAS regression checks in integration tests.
   - [x] `habu-maxima-loader-fix-d654483f` Maxima loader: fix `server`/`coerce` crash so full module load can continue.
-  - [ ] `habu-maxima-integrate-path-b786024b` Maxima integrate path: resolve unbound-symbol dependency chain.
+  - [x] `habu-investigate-mapcar-cb-ad5def1b` RCA callback crash in Maxima `$errormsg`: fix stdlib `mapc` to CL variadic semantics and add regression.
+  - [ ] `habu-maxima-integrate-path-b786024b` Maxima integrate path: resolve post-loader integrate failure chain. Depends on `habu-investigate-mapcar-cb-ad5def1b`, `habu-fix-fn-designators-c2cf5df2`.
+    - [x] `habu-trace-integrate-unbound-53804676` Trace integrate unbound-variable root and lock dependency-chain regression (`alias`/`sinint` + live `$integrate` call).
   - [ ] `habu-maxima-factor-ratsimp-521dd2ca` Maxima factor/ratsimp path: fix TypeMismatch and ProgramError roots.
   - [x] `habu-maxima-core-loader-999c7eb3` Add Maxima core subset loader + entrypoint binding integration gate.
   - [x] `habu-rca-load-stackoverflow-e3d4f5d8` RCA and fix load stack overflow path for Maxima large source files.
+  - [ ] `habu-fix-sin-lisp-b34b817f` Fix `sin.lisp` load root so `SININT` is bound and integrate path can complete. Ensure `schatc` dependency chain is loaded (`m2`/`schatchen-cond` present) before integrate execution.
 - [ ] `habu-maxima-end-to-efe58661` Maxima end-to-end integration test continuation. Depends on `habu-fix-maxima-cas-a491af14`, `habu-maxima-subset-load-e9db9bb5`, `habu-rca-and-fix-4a4ea5d5`, `habu-add-maxima-cas-1807f8ae`, `habu-cut-gc-root-25d3bb03`, and `habu-fix-hoist-compile-9a100641`.
 
 ## Execution Loop

@@ -161,32 +161,52 @@
     `(defun ,(car name) ,@body)
     `(defun ,name ,@body)))
 
-;; Simplified def-simplifier: (def-simplifier NAME (args...) body...)
-;; Expands to defun for the simplifier and sets the operators property
-(defmacro def-simplifier (base-name lambda-list &body body)
-  (let* ((noun-name (intern (concatenate 'string "%" (string base-name))))
-         (verb-name (intern (concatenate 'string "$" (string base-name))))
-         (simp-name (intern (concatenate 'string "SIMP-" (string noun-name))))
-         (form-arg (intern "FORM"))
-         (z-arg (intern "%%SIMPFLAG"))
-         (unused-arg (gensym "UNUSED-"))
-         (arg-forms (loop for arg in lambda-list
-                          for count from 1
-                          collect (list arg `(simpcheck (nth ,count ,form-arg) ,z-arg)))))
-    `(progn
-       (defmfun ,verb-name (,@lambda-list)
-         (ftake ',noun-name ,@lambda-list))
-       (defprop ,verb-name ,noun-name alias)
-       (defprop ,noun-name ,verb-name reversealias)
-       (defprop ,noun-name ,simp-name operators)
-       (defprop ,noun-name ,verb-name noun)
-       (defprop ,verb-name ,noun-name verb)
-       (defun ,simp-name (,form-arg ,unused-arg ,z-arg)
-         (declare (ignore ,unused-arg)
-                  (ignorable ,z-arg))
-         (arg-count-check ,(length lambda-list) ,form-arg nil)
-         (let ,arg-forms
-           (flet ((give-up (&key (noun-name ',noun-name)
-                                 (args (list ,@lambda-list)))
-                    (eqtest (list* (list noun-name) args) ,form-arg)))
-             ,@body))))))
+;; def-simplifier compatible with Maxima defmfun-check semantics used by
+;; simplification modules (supports options used in core Maxima files).
+(defmacro def-simplifier (base-name-and-options lambda-list &body body)
+  (destructuring-bind (base-name
+                       &key
+                       (simpcheck :default)
+                       (custom-defmfun nil)
+                       (skip-properties nil))
+      (if (symbolp base-name-and-options)
+          (list base-name-and-options)
+          base-name-and-options)
+    (let* ((noun-name (intern (concatenate 'string "%" (string base-name))))
+           (verb-name (intern (concatenate 'string "$" (string base-name))))
+           (simp-name (intern (concatenate 'string "SIMP-" (string noun-name))))
+           (form-arg (intern "FORM"))
+           (z-arg (intern "%%SIMPFLAG"))
+           (unused-arg (gensym "UNUSED-"))
+           (arg-forms
+             (cond
+               ((eq simpcheck :custom)
+                (loop for arg in lambda-list
+                      for count from 1
+                      collect (list arg `(nth ,count ,form-arg))))
+               ((eq simpcheck :default)
+                (loop for arg in lambda-list
+                      for count from 1
+                      collect (list arg `(simpcheck (nth ,count ,form-arg) ,z-arg))))
+               (t
+                (error "Unsupported def-simplifier :simpcheck option: ~S" simpcheck)))))
+      `(progn
+         ,@(unless custom-defmfun
+             `((defmfun ,verb-name (,@lambda-list)
+                 (ftake ',noun-name ,@lambda-list))))
+         ,@(unless (member 'alias skip-properties)
+             `((defprop ,verb-name ,noun-name alias)))
+         ,@(unless (member 'reversealias skip-properties)
+             `((defprop ,noun-name ,verb-name reversealias)))
+         (defprop ,noun-name ,simp-name operators)
+         (defprop ,noun-name ,verb-name noun)
+         (defprop ,verb-name ,noun-name verb)
+         (defun ,simp-name (,form-arg ,unused-arg ,z-arg)
+           (declare (ignore ,unused-arg)
+                    (ignorable ,z-arg))
+           (arg-count-check ,(length lambda-list) ,form-arg nil)
+           (let ,arg-forms
+             (flet ((give-up (&key (noun-name ',noun-name)
+                                   (args (list ,@lambda-list)))
+                      (eqtest (list* (list noun-name) args) ,form-arg)))
+               ,@body)))))))
