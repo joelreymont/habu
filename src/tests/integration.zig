@@ -2026,7 +2026,7 @@ test "nested unwind-protect" {
 // test "unwind-protect with error - SKIP until VM error handling is implemented" {
 //     const allocator = testing.allocator;
 //
-//     var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+//     var heap = try Heap.init(allocator, .{ .total_size = 2 * 1024 * 1024 });
 //     defer heap.deinit();
 //
 //     var repl = try Repl.init(allocator, &heap, .{});
@@ -2454,7 +2454,7 @@ test "stdlib compiles" {
     return error.SkipZigTest;
     // const allocator = testing.allocator;
 
-    // var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    // var heap = try Heap.init(allocator, .{ .total_size = 2 * 1024 * 1024 });
     // defer heap.deinit();
 
     // var repl = try Repl.init(allocator, &heap, .{});
@@ -4976,4 +4976,176 @@ test "mv: round -2.5 to even" {
         \\(multiple-value-bind (q r) (round -2.5) q)
     );
     try testing.expectEqual(@as(i64, -2), result.toFixnum());
+}
+
+// --- Smallest-heap regression tests for CL compliance bugs ---
+// These exercise patterns from Maxima that exposed compiler/runtime bugs.
+// Using 4MB heap (half normal) to maximize GC pressure during stdlib load.
+
+test "smallest heap: multi-pair setq" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    // Multi-pair setq: all pairs must be assigned
+    const result = try repl.eval(
+        \\(let ((a 0) (b 0) (c 0))
+        \\  (setq a 10 b 20 c 30)
+        \\  (+ a b c))
+    );
+    try testing.expectEqual(@as(i64, 60), result.toFixnum());
+}
+
+test "smallest heap: &aux parameter slots" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    // &aux must not clobber parameter slots
+    const result = try repl.eval(
+        \\(progn
+        \\  (defun aux-test (a b c &aux d e)
+        \\    (setq d (+ a b))
+        \\    (setq e (+ b c))
+        \\    (+ a b c d e))
+        \\  (aux-test 1 2 3))
+    );
+    // a=1 b=2 c=3 d=3 e=5 => sum=14
+    try testing.expectEqual(@as(i64, 14), result.toFixnum());
+}
+
+test "smallest heap: rplaca returns modified cons" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    // rplaca/rplacd must return the cons, not the new value
+    const result = try repl.eval(
+        \\(let ((x (cons 1 2)))
+        \\  (let ((r (rplaca x 10)))
+        \\    (and (eq r x) (= (car x) 10) (= (cdr x) 2))))
+    );
+    try testing.expect(result.isT());
+}
+
+test "smallest heap: rplacd returns modified cons" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(let ((x (cons 1 2)))
+        \\  (let ((r (rplacd x 20)))
+        \\    (and (eq r x) (= (car x) 1) (= (cdr x) 20))))
+    );
+    try testing.expect(result.isT());
+}
+
+test "smallest heap: rplaca chain preserves structure" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    // Maxima eqtest pattern: rplaca on nested list, check full structure kept
+    const result = try repl.eval(
+        \\(let ((x (list (list 'op) 'a 'b 'c)))
+        \\  (rplaca x (list 'op 'simp))
+        \\  (length x))
+    );
+    try testing.expectEqual(@as(i64, 4), result.toFixnum());
+}
+
+test "smallest heap: setq side-effect in cond condition" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    // Pattern from Maxima tms: setq inside and/or in cond test,
+    // condition is false but side-effect persists for later branches.
+    // Returns (car product) which should be 42.
+    const result = try repl.eval(
+        \\(progn
+        \\  (defun tms-pattern (product)
+        \\    (cond ((and (null product)
+        \\                (or nil (and (setq product (list 42)) nil)))
+        \\           'branch1)
+        \\          (t (car product))))
+        \\  (tms-pattern nil))
+    );
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "smallest heap: &aux with let and setq under GC pressure" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    // Maxima timesin pattern: prog vars + multi-setq + rplacd under GC
+    const result = try repl.eval(
+        \\(progn
+        \\  (defun timesin-pattern (x y w)
+        \\    (let ((fm nil) (temp nil))
+        \\      (setq temp x
+        \\            fm y)
+        \\      (rplacd fm (cons (car (list temp 1)) (cdr fm)))
+        \\      y))
+        \\  (let ((y (list 1)))
+        \\    (timesin-pattern 'a y 1)
+        \\    (length y)))
+    );
+    try testing.expectEqual(@as(i64, 2), result.toFixnum());
+}
+
+test "smallest heap: loop when collecting into" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    // Return length of collected list to avoid string comparison
+    const result = try repl.eval(
+        \\(length (loop for v in '(1 2 3 4 5)
+        \\  when (oddp v) collecting v into odds
+        \\  finally (return odds)))
+    );
+    try testing.expectEqual(@as(i64, 3), result.toFixnum());
 }
