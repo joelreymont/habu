@@ -33,7 +33,9 @@ const HashTable = runtime.HashTable;
 const Vector = runtime.Vector;
 const compiler = @import("../compiler/compiler.zig");
 const GlobalEnv = compiler.GlobalEnv;
-const Parser = @import("../reader/parser.zig").Parser;
+const parser_mod = @import("../reader/parser.zig");
+const Parser = parser_mod.Parser;
+const ParseError = parser_mod.Error;
 const BuiltinSymbols = @import("../runtime/builtins.zig").BuiltinSymbols;
 const jit_backend = @import("../jit/backend.zig");
 
@@ -254,6 +256,21 @@ pub const State = struct {
 };
 
 /// Virtual Machine
+/// Bridge between the VM's eval callback and the parser's ReadEvalFn.
+/// Stored on the stack during read_from_string so the parser can call
+/// back into the VM/REPL to evaluate #. expressions.
+const ReadEvalBridge = struct {
+    callback: ?*const fn (Value, *anyopaque) Error!Value,
+    context: ?*anyopaque,
+};
+
+fn readEvalBridge(ctx: *anyopaque, expr: Value) ParseError!Value {
+    const bridge: *ReadEvalBridge = @ptrCast(@alignCast(ctx));
+    const callback = bridge.callback orelse return error.UnexpectedToken;
+    const eval_ctx = bridge.context orelse return error.UnexpectedToken;
+    return callback(expr, eval_ctx) catch return error.UnexpectedToken;
+}
+
 pub const Vm = struct {
     /// Value stack
     stack: [STACK_SIZE]Value,
@@ -5879,14 +5896,36 @@ pub const Vm = struct {
             .read_from_string => {
                 // Parse a string into a Lisp value, return position as secondary value
                 const str_val = try self.pop();
-                if (str_val.isString()) {
+
+                // CL *read-suppress*: when true, return nil without parsing
+                const read_suppress = blk: {
+                    if (self.global_env) |ge| {
+                        const names = [_][]const u8{ "COMMON-LISP:*READ-SUPPRESS*", "CL:*READ-SUPPRESS*", "*READ-SUPPRESS*" };
+                        for (names) |gname| {
+                            if (ge.lookup(gname)) |idx| {
+                                if (idx < self.num_globals and !self.globals[idx].isNil()) break :blk true;
+                            }
+                        }
+                    }
+                    break :blk false;
+                };
+
+                if (read_suppress) {
+                    // CL *read-suppress*: return nil without parsing
+                    try self.push(Value.nil);
+                    self.secondary_values[0] = Value.makeFixnum(0);
+                    self.secondary_values_count = 1;
+                } else if (str_val.isString()) {
                     const str = str_val.toPtr(String);
                     var parser = try Parser.init(self.allocator, self.heap, str.bytes(), &self.builtins);
                     defer parser.deinit();
+                    // Enable #. read-eval via the VM's eval callback
+                    var re_ctx = ReadEvalBridge{ .callback = self.eval_callback, .context = self.eval_context };
+                    if (self.eval_callback != null) {
+                        parser.setReadEvalHook(@ptrCast(&re_ctx), readEvalBridge);
+                    }
                     const result = try parser.parse();
                     try self.push(result);
-                    // Set secondary value: position after parsed form
-                    // token_start points to where the NEXT token scan would begin
                     self.secondary_values[0] = Value.makeFixnum(@intCast(parser.lexer.token_start));
                     self.secondary_values_count = 1;
                 } else if (str_val.isString32()) {
@@ -5901,6 +5940,10 @@ pub const Vm = struct {
                     }
                     var parser = try Parser.init(self.allocator, self.heap, utf8.items, &self.builtins);
                     defer parser.deinit();
+                    var re_ctx32 = ReadEvalBridge{ .callback = self.eval_callback, .context = self.eval_context };
+                    if (self.eval_callback != null) {
+                        parser.setReadEvalHook(@ptrCast(&re_ctx32), readEvalBridge);
+                    }
                     const result = try parser.parse();
                     try self.push(result);
                     self.secondary_values[0] = Value.makeFixnum(@intCast(parser.lexer.pos));
