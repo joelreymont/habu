@@ -2102,7 +2102,7 @@ pub const Vm = struct {
                 if (!cons_val.isCons()) return error.TypeMismatch;
                 const c = cons_val.toPtr(Cons);
                 c.car = new_car;
-                try self.push(new_car);
+                try self.push(cons_val); // CL: rplaca returns the modified cons
             },
 
             .rplacd => {
@@ -2111,7 +2111,7 @@ pub const Vm = struct {
                 if (!cons_val.isCons()) return error.TypeMismatch;
                 const c = cons_val.toPtr(Cons);
                 c.cdr = new_cdr;
-                try self.push(new_cdr);
+                try self.push(cons_val); // CL: rplacd returns the modified cons
             },
 
             .error_user => {
