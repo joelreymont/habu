@@ -79,6 +79,7 @@
 ### 5. Maxima Continuation
 - [x] `habu-increase-default-heap-44a06bce` Increase default heap and build comprehensive Maxima loader.
 - [ ] `habu-maxima-end-to-efe58661` Maxima end-to-end integration test. Depends on `habu-cut-gc-root-25d3bb03` and `habu-fix-hoist-compile-9a100641`.
+  - [x] `habu-maxima-core-loader-999c7eb3` Add Maxima core subset loader + entrypoint binding integration gate.
 - [ ] `habu-fix-maxima-cas-a491af14` Fix Maxima CAS operations: integrate, solve, factor, limit, ratsimp, det. Depends on `habu-maxima-end-to-efe58661`.
 
 ## Execution Loop
