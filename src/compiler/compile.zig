@@ -2824,7 +2824,7 @@ pub const Compiler = struct {
                     .@"or" => self.compileOr(tail, env),
                     .funcall => self.compileFuncall(tail, env),
                     .apply => self.compileApply(tail, env),
-                    .setq => self.compileSet(tail, env),
+                    .setq => self.compileMultiSetq(tail, env),
                     .setf => self.compileSetf(tail, env),
                     .quote => self.compileQuote(tail),
                     .function => self.compileFunction(tail, env),
@@ -3554,19 +3554,19 @@ pub const Compiler = struct {
                     const name = try self.allocator.dupe(u8, name_raw);
 
                     if (in_aux) {
-                        // Aux variable with nil default
+                        // Aux variable with nil default — use absolute slot
+                        // index from the lambda env so it doesn't collide
+                        // with parameter slots.
                         const nil_ir = try self.builder.lit(Value.nil);
-                        const idx: u16 = @intCast(aux_bindings.items.len);
+                        const abs_idx = if (param_item.typeKind() == .symbol)
+                            try lambda_env.bindSym(param_item)
+                        else
+                            try lambda_env.bindName(name);
                         try aux_bindings.append(self.allocator, .{
                             .name = name,
                             .value = nil_ir,
-                            .index = idx,
+                            .index = abs_idx,
                         });
-                        if (param_item.typeKind() == .symbol) {
-                            _ = try lambda_env.bindSym(param_item);
-                        } else {
-                            _ = try lambda_env.bindName(name);
-                        }
                     } else if (in_key) {
                         // Key parameter with nil default, keyword = name
                         try key_params.append(self.allocator, .{
@@ -3614,17 +3614,15 @@ pub const Compiler = struct {
                             const init_cons = typed.cdr.toPtr(Cons);
                             init_ir = try self.compile(init_cons.car, env);
                         }
-                        const idx: u16 = @intCast(aux_bindings.items.len);
+                        const abs_idx = if (typed.car.typeKind() == .symbol)
+                            try lambda_env.bindSym(typed.car)
+                        else
+                            try lambda_env.bindName(name);
                         try aux_bindings.append(self.allocator, .{
                             .name = name,
                             .value = init_ir,
-                            .index = idx,
+                            .index = abs_idx,
                         });
-                        if (typed.car.typeKind() == .symbol) {
-                            _ = try lambda_env.bindSym(typed.car);
-                        } else {
-                            _ = try lambda_env.bindName(name);
-                        }
                     } else if (in_key) {
                         // Key parameter supports both (var default) and
                         // ((:keyword var) default) CL lambda-list syntax.
@@ -5251,6 +5249,38 @@ pub const Compiler = struct {
         const node = try self.allocator.create(ir.Ir);
         node.* = .{ .apply = .{ .func = fn_ir, .args = combined } };
         return node;
+    }
+
+    /// CL multi-setq: (setq a 1 b 2 c 3) → (progn (setq a 1) (setq b 2) (setq c 3))
+    fn compileMultiSetq(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        if (!args.isCons()) return error.InvalidSet;
+
+        // Check if this is a simple single-pair setq
+        const cons1 = args.toPtr(Cons);
+        if (!cons1.cdr.isCons()) return error.InvalidSet;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        if (cons2.cdr.isNil()) {
+            // Single pair: (setq var value) — compile directly
+            return self.compileSet(args, env);
+        }
+
+        // Multi-pair: collect each pair as a progn body
+        var forms = std.ArrayList(*const Ir){};
+        defer forms.deinit(self.allocator);
+        var rest = args;
+        while (rest.isCons()) {
+            const c1 = rest.toPtr(Cons);
+            if (!c1.cdr.isCons()) return error.InvalidSet;
+            const c2 = c1.cdr.toPtr(Cons);
+            // Build a two-element list (var value) for compileSet
+            const heap = self.heap orelse return error.InvalidSet;
+            const pair = try heap.allocCons(c1.car, try heap.allocCons(c2.car, Value.nil));
+            try forms.append(self.allocator, try self.compileSet(pair, env));
+            rest = c2.cdr;
+        }
+        if (forms.items.len == 1) return @constCast(forms.items[0]);
+        const body = try self.allocator.dupe(*const Ir, forms.items);
+        return try self.builder.progn(body);
     }
 
     fn compileSet(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
