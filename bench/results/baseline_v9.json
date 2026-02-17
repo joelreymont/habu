@@ -1,0 +1,48 @@
+{
+  "date": "2026-02-17",
+  "description": "Post-hoist API sync rebaseline after JIT indirect-call postpass fixes",
+  "artifacts": {
+    "comprehensive_jit": "bench/results/comprehensive_jit_20260217_115850.json",
+    "comprehensive_interp": "bench/results/comprehensive_interp_20260217_115850.json",
+    "vm_microbench": "bench/results/vm_20260217_115850.json",
+    "gc_bench": "bench/results/gc_20260217_115850.json"
+  },
+  "jit_summary": {
+    "bench_count": 25,
+    "avg_ns": 91298019.92,
+    "median_ns": 16035541
+  },
+  "interp_summary": {
+    "errors": [
+      {
+        "name": "ack",
+        "error": "StackOverflow"
+      }
+    ]
+  },
+  "jit_vs_interp_speedup": {
+    "fixnum_loop": 669.8088964059197,
+    "fixnum_mul": 820.721195367091,
+    "gcd": 406.183185148637,
+    "fib35": 1860.5376572847179,
+    "tak": 1875.3265259317488,
+    "nqueens10": 846.3082360402914
+  },
+  "vm_mops_per_sec": {
+    "fixnum": 1.505388321,
+    "cons": 1.378451665,
+    "hash": 1.5560041910000002,
+    "string": 0.927990632
+  },
+  "gc_summary": {
+    "avg_pause_ns": 104011995,
+    "p95_pause_ns": 104581375,
+    "live_bytes": 16785184
+  },
+  "delta_vs_v8_habu_ms": {
+    "ack_pct": -66.97376987951806,
+    "fixnum_mul_pct": -21.71013189448442,
+    "gcd_pct": 6.924294381429696,
+    "string_concat_pct": 8.4485696517413
+  }
+}

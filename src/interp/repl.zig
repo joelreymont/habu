@@ -93,8 +93,8 @@ pub const Repl = struct {
     config: Config,
     /// Persistent compiler for global definitions
     compiler: Compiler,
-    /// Persistent chunk pool for closures (GC updates pointers in-place via Vm.chunk_pool roots)
-    chunk_pool: std.ArrayList(*runtime.objects.Chunk),
+    /// Persistent chunk pool for closures (boxed chunk roots)
+    chunk_pool: std.ArrayList(Value),
     /// Macro definitions: symbol -> closure
     macros: std.AutoHashMap(Value, MacroEntry),
     /// Line editor for interactive input
@@ -113,7 +113,7 @@ pub const Repl = struct {
             .vm = undefined,
             .config = config,
             .compiler = undefined,
-            .chunk_pool = std.ArrayList(*runtime.objects.Chunk){},
+            .chunk_pool = std.ArrayList(Value){},
             .macros = std.AutoHashMap(Value, MacroEntry).init(allocator),
             .line_editor = LineEditor.init(allocator),
             .current_vm = null,
@@ -1272,7 +1272,7 @@ pub const Repl = struct {
         // Store child chunks for closures
         try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
         for (child_chunks) |c| {
-            self.chunk_pool.appendAssumeCapacity(c.toPtr(runtime.objects.Chunk));
+            self.chunk_pool.appendAssumeCapacity(c);
         }
 
         // Run through the same VM using a nested call frame. This preserves
@@ -1946,7 +1946,7 @@ pub const Repl = struct {
         // Store chunks persistently
         try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
         for (child_chunks) |child_chunk| {
-            self.chunk_pool.appendAssumeCapacity(child_chunk.toPtr(runtime.objects.Chunk));
+            self.chunk_pool.appendAssumeCapacity(child_chunk);
         }
 
         // Try hoist SSA JIT compilation for eligible lambda nodes
@@ -2086,7 +2086,10 @@ pub const Repl = struct {
         if (lambda.body.* == .assert_fixnum) return false;
         // Skip functions that the hoist backend can't translate (fast reject)
         if (!jit_backend.IrTranslator.canTranslate(lambda.body)) {
-            if (trace) std.debug.print("JIT: canTranslate failed for '{s}' (body tag: {s})\n", .{ define.name, @tagName(lambda.body.*) });
+            if (trace) {
+                const bad_tag = jit_backend.IrTranslator.firstUnsupportedTag(lambda.body) orelse std.meta.activeTag(lambda.body.*);
+                std.debug.print("JIT: canTranslate failed for '{s}' (body tag: {s}, first unsupported: {s})\n", .{ define.name, @tagName(lambda.body.*), @tagName(bad_tag) });
+            }
             return false;
         }
         // Skip functions with non-self calls that have no known JIT target.
@@ -2231,11 +2234,27 @@ pub const Repl = struct {
             const code_len = jit_mem.used;
             const fn_base = @intFromPtr(code_ptr);
             // Make writable for patching
-            jit_mem.setExec(false) catch {};
+            jit_mem.setExec(false) catch |err| {
+                if (trace) {
+                    std.debug.print("JIT: setExec(false) failed for '{s}': {s}\n", .{ name, @errorName(err) });
+                }
+                _ = self.vm.jit_fns.remove(@intFromPtr(chunk_ptr));
+                persistent.deinit();
+                self.allocator.destroy(persistent);
+                return false;
+            };
             jit_backend.patchCrossCallsToBL(code_ptr, code_len, fn_base);
             // Flush icache and restore exec permission
             jit_mem.flushCacheRange(code_ptr, code_len);
-            jit_mem.setExec(true) catch {};
+            jit_mem.setExec(true) catch |err| {
+                if (trace) {
+                    std.debug.print("JIT: setExec(true) failed for '{s}': {s}\n", .{ name, @errorName(err) });
+                }
+                _ = self.vm.jit_fns.remove(@intFromPtr(chunk_ptr));
+                persistent.deinit();
+                self.allocator.destroy(persistent);
+                return false;
+            };
         }
 
         if (std.posix.getenv("HABU_TRACE_JIT") != null) {
@@ -2601,7 +2620,7 @@ pub const Repl = struct {
         // Store child chunks persistently (closures need them beyond this eval)
         try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
         for (child_chunks) |c| {
-            self.chunk_pool.appendAssumeCapacity(c.toPtr(runtime.objects.Chunk));
+            self.chunk_pool.appendAssumeCapacity(c);
         }
 
         // Try hoist SSA JIT compilation for eligible lambda nodes
@@ -3253,7 +3272,7 @@ pub const Repl = struct {
         // Add child chunks
         try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
         for (child_chunks) |c| {
-            self.chunk_pool.appendAssumeCapacity(c.toPtr(runtime.objects.Chunk));
+            self.chunk_pool.appendAssumeCapacity(c);
         }
 
         // Use a separate VM to avoid corrupting the main VM's state
@@ -3500,7 +3519,7 @@ pub const Repl = struct {
         // Add child chunks
         try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
         for (child_chunks) |c| {
-            self.chunk_pool.appendAssumeCapacity(c.toPtr(runtime.objects.Chunk));
+            self.chunk_pool.appendAssumeCapacity(c);
         }
 
         // Use a separate VM to avoid corrupting the main VM's state

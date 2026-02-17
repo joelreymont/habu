@@ -44,7 +44,7 @@ pub fn compileChunk(
     heap: *Heap,
     vm: *Vm,
     comp: *Compiler,
-    chunk_pool: *std.ArrayList(*Chunk),
+    chunk_pool: *std.ArrayList(runtime.Value),
     source: []const u8,
 ) !*Chunk {
     var arena = std.heap.ArenaAllocator.init(allocator);
@@ -87,7 +87,7 @@ pub fn compileChunk(
 
     try chunk_pool.ensureUnusedCapacity(allocator, child_chunks.len);
     for (child_chunks) |c| {
-        chunk_pool.appendAssumeCapacity(c.toPtr(Chunk));
+        chunk_pool.appendAssumeCapacity(c);
     }
 
     const chunk_ptr = chunk.toPtr(Chunk);
@@ -152,4 +152,3 @@ fn tryHoistCompile(
         return;
     };
 }
-

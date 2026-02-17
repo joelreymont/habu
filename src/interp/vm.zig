@@ -185,7 +185,7 @@ pub const State = struct {
     handler_sp: usize,
     progv_sp: usize,
     pending_handler_restore_depth: ?usize,
-    chunk_pool: []*Chunk,
+    chunk_pool: []Value,
     chunk_base: usize,
     current_closure: ?*const runtime.Closure,
     current_argc: u8,
@@ -297,7 +297,6 @@ pub const Vm = struct {
 
     /// Reusable buffers for GC root tracking.
     gc_slots: std.ArrayList(*Value),
-    gc_vals: std.ArrayList(Value),
 
     /// Global variables (indexed by constant pool index)
     globals: [MAX_GLOBALS]Value,
@@ -307,8 +306,8 @@ pub const Vm = struct {
     /// Current package (special variable)
     current_package: Value,
 
-    /// Chunk pool for closures (pointers to individually allocated chunks)
-    chunk_pool: []*Chunk,
+    /// Chunk pool for closures (boxed chunk values)
+    chunk_pool: []Value,
     /// Base offset for current eval's chunks
     chunk_base: usize,
 
@@ -482,11 +481,10 @@ pub const Vm = struct {
             .heap = heap,
             .allocator = allocator,
             .gc_slots = std.ArrayList(*Value){},
-            .gc_vals = std.ArrayList(Value){},
             .globals = undefined,
             .num_globals = 0,
             .current_package = Value.nil,
-            .chunk_pool = &[_]*Chunk{},
+            .chunk_pool = &[_]Value{},
             .chunk_base = 0,
             .saved_chunks = undefined,
             .saved_chunk_sp = 0,
@@ -554,17 +552,16 @@ pub const Vm = struct {
         }
         self.jit_fns.deinit();
         self.gc_slots.deinit(self.allocator);
-        self.gc_vals.deinit(self.allocator);
     }
 
     /// Set the chunk pool for closures with a base offset (deprecated)
-    pub fn setChunkPoolWithBase(self: *Vm, chunks: []*Chunk, base: usize) void {
+    pub fn setChunkPoolWithBase(self: *Vm, chunks: []Value, base: usize) void {
         self.chunk_pool = chunks;
         self.chunk_base = base;
     }
 
     /// Set the chunk pool for closures (indices are absolute)
-    pub fn setChunkPool(self: *Vm, chunks: []*Chunk) void {
+    pub fn setChunkPool(self: *Vm, chunks: []Value) void {
         self.chunk_pool = chunks;
         self.chunk_base = 0;
     }
@@ -1065,87 +1062,96 @@ pub const Vm = struct {
 
     fn collectGarbageExtra(self: *Vm, extra_roots: []Value) !usize {
         self.gc_slots.clearRetainingCapacity();
-        self.gc_vals.clearRetainingCapacity();
 
+        var frame_closure_roots: [MAX_FRAMES]Value = undefined;
+        var current_closure_root = Value.nil;
+        var catch_chunk_roots: [MAX_CATCHES]Value = undefined;
+        var unwind_chunk_roots: [MAX_UNWINDS]Value = undefined;
+        var block_chunk_roots: [MAX_BLOCKS]Value = undefined;
+        var restart_chunk_roots: [MAX_RESTARTS]Value = undefined;
+        var current_chunk_root = chunkRoot(self.chunk);
+        var frame_chunk_roots: [MAX_FRAMES]Value = undefined;
+
+        const frame_closure_count: usize = blk: {
+            var n: usize = 0;
+            for (self.frames[0..self.fp]) |frame| {
+                if (frame.closure != null) n += 1;
+            }
+            break :blk n;
+        };
+        const has_current_closure = self.current_closure != null;
         const slots_need: usize = self.catch_sp +
             self.block_sp +
             self.restart_sp +
             self.progv_sp +
             self.handler_sp * 2 +
-            7;
-        try self.gc_slots.ensureTotalCapacity(self.allocator, slots_need);
-
-        for (self.catch_stack[0..self.catch_sp]) |*frame| {
-            try self.gc_slots.append(self.allocator, &frame.tag);
-        }
-        for (self.block_stack[0..self.block_sp]) |*frame| {
-            try self.gc_slots.append(self.allocator, &frame.name_raw);
-        }
-        for (self.restart_stack[0..self.restart_sp]) |*frame| {
-            try self.gc_slots.append(self.allocator, &frame.name);
-        }
-        for (self.progv_stack[0..self.progv_sp]) |*frame| {
-            try self.gc_slots.append(self.allocator, &frame.saved_bindings);
-        }
-        for (self.handler_stack[0..self.handler_sp]) |*frame| {
-            try self.gc_slots.append(self.allocator, &frame.condition_type);
-            try self.gc_slots.append(self.allocator, &frame.handler_fn);
-        }
-
-        try self.gc_slots.append(self.allocator, &self.pending_throw_tag);
-        try self.gc_slots.append(self.allocator, &self.pending_throw_value);
-        try self.gc_slots.append(self.allocator, &self.pending_block_name);
-        try self.gc_slots.append(self.allocator, &self.pending_block_value);
-        try self.gc_slots.append(self.allocator, &self.current_package);
-
-        const vals_need: usize = self.catch_sp +
+            7 +
+            frame_closure_count +
+            (if (has_current_closure) @as(usize, 1) else 0) +
+            self.catch_sp +
             self.unwind_sp +
             self.block_sp +
             self.restart_sp +
             1 +
-            self.fp +
-            self.chunk_pool.len +
-            self.fp +
-            (if (self.current_closure != null) @as(usize, 1) else 0);
-        try self.gc_vals.ensureTotalCapacity(self.allocator, vals_need);
+            self.fp;
+        try self.gc_slots.ensureTotalCapacity(self.allocator, slots_need);
 
-        const closure_start = self.gc_vals.items.len;
+        for (self.catch_stack[0..self.catch_sp]) |*frame| {
+            self.gc_slots.appendAssumeCapacity(&frame.tag);
+        }
+        for (self.block_stack[0..self.block_sp]) |*frame| {
+            self.gc_slots.appendAssumeCapacity(&frame.name_raw);
+        }
+        for (self.restart_stack[0..self.restart_sp]) |*frame| {
+            self.gc_slots.appendAssumeCapacity(&frame.name);
+        }
+        for (self.progv_stack[0..self.progv_sp]) |*frame| {
+            self.gc_slots.appendAssumeCapacity(&frame.saved_bindings);
+        }
+        for (self.handler_stack[0..self.handler_sp]) |*frame| {
+            self.gc_slots.appendAssumeCapacity(&frame.condition_type);
+            self.gc_slots.appendAssumeCapacity(&frame.handler_fn);
+        }
+
+        self.gc_slots.appendAssumeCapacity(&self.pending_throw_tag);
+        self.gc_slots.appendAssumeCapacity(&self.pending_throw_value);
+        self.gc_slots.appendAssumeCapacity(&self.pending_block_name);
+        self.gc_slots.appendAssumeCapacity(&self.pending_block_value);
+        self.gc_slots.appendAssumeCapacity(&self.current_package);
+
+        var closure_idx: usize = 0;
         for (self.frames[0..self.fp]) |frame| {
             if (frame.closure) |c| {
-                try self.gc_vals.append(self.allocator, Value.makeClosure(c));
+                frame_closure_roots[closure_idx] = Value.makeClosure(c);
+                self.gc_slots.appendAssumeCapacity(&frame_closure_roots[closure_idx]);
+                closure_idx += 1;
             }
         }
-        const current_closure_idx = self.gc_vals.items.len;
-        const has_current_closure = self.current_closure != null;
         if (self.current_closure) |c| {
-            try self.gc_vals.append(self.allocator, Value.makeClosure(c));
+            current_closure_root = Value.makeClosure(c);
+            self.gc_slots.appendAssumeCapacity(&current_closure_root);
         }
 
-        const catch_chunk_start = self.gc_vals.items.len;
-        for (self.catch_stack[0..self.catch_sp]) |frame| {
-            try self.gc_vals.append(self.allocator, chunkRoot(frame.chunk));
+        for (self.catch_stack[0..self.catch_sp], 0..) |frame, i| {
+            catch_chunk_roots[i] = chunkRoot(frame.chunk);
+            self.gc_slots.appendAssumeCapacity(&catch_chunk_roots[i]);
         }
-        const unwind_chunk_start = self.gc_vals.items.len;
-        for (self.unwind_stack[0..self.unwind_sp]) |frame| {
-            try self.gc_vals.append(self.allocator, chunkRoot(frame.chunk));
+        for (self.unwind_stack[0..self.unwind_sp], 0..) |frame, i| {
+            unwind_chunk_roots[i] = chunkRoot(frame.chunk);
+            self.gc_slots.appendAssumeCapacity(&unwind_chunk_roots[i]);
         }
-        const block_chunk_start = self.gc_vals.items.len;
-        for (self.block_stack[0..self.block_sp]) |frame| {
-            try self.gc_vals.append(self.allocator, chunkRoot(frame.chunk));
+        for (self.block_stack[0..self.block_sp], 0..) |frame, i| {
+            block_chunk_roots[i] = chunkRoot(frame.chunk);
+            self.gc_slots.appendAssumeCapacity(&block_chunk_roots[i]);
         }
-        const restart_chunk_start = self.gc_vals.items.len;
-        for (self.restart_stack[0..self.restart_sp]) |frame| {
-            try self.gc_vals.append(self.allocator, chunkRoot(frame.chunk));
+        for (self.restart_stack[0..self.restart_sp], 0..) |frame, i| {
+            restart_chunk_roots[i] = chunkRoot(frame.chunk);
+            self.gc_slots.appendAssumeCapacity(&restart_chunk_roots[i]);
         }
-        const current_chunk_idx = self.gc_vals.items.len;
-        try self.gc_vals.append(self.allocator, chunkRoot(self.chunk));
-        const frame_chunk_start = self.gc_vals.items.len;
-        for (self.frames[0..self.fp]) |frame| {
-            try self.gc_vals.append(self.allocator, chunkRoot(frame.chunk));
-        }
-        const chunk_pool_start = self.gc_vals.items.len;
-        for (self.chunk_pool) |chunk| {
-            try self.gc_vals.append(self.allocator, chunkRoot(chunk));
+        self.gc_slots.appendAssumeCapacity(&current_chunk_root);
+        for (self.frames[0..self.fp], 0..) |frame, i| {
+            frame_chunk_roots[i] = chunkRoot(frame.chunk);
+            self.gc_slots.appendAssumeCapacity(&frame_chunk_roots[i]);
         }
 
         var ranges: [12]roots_mod.RootRange = undefined;
@@ -1176,6 +1182,10 @@ pub const Vm = struct {
             ranges[range_len] = .{ .ptr = type_roots.ptr, .len = type_roots.len };
             range_len += 1;
         }
+        if (self.chunk_pool.len != 0) {
+            ranges[range_len] = .{ .ptr = self.chunk_pool.ptr, .len = self.chunk_pool.len };
+            range_len += 1;
+        }
         if (self.ext_roots.len != 0) {
             ranges[range_len] = .{ .ptr = self.ext_roots.ptr, .len = self.ext_roots.len };
             range_len += 1;
@@ -1184,29 +1194,25 @@ pub const Vm = struct {
             ranges[range_len] = .{ .ptr = extra_roots.ptr, .len = extra_roots.len };
             range_len += 1;
         }
-        if (self.gc_vals.items.len != 0) {
-            ranges[range_len] = .{ .ptr = self.gc_vals.items.ptr, .len = self.gc_vals.items.len };
-            range_len += 1;
-        }
 
         const reclaimed = try self.heap.collectGarbageRootSet(.{
             .ranges = ranges[0..range_len],
             .slots = self.gc_slots.items,
         });
 
-        var closure_idx: usize = 0;
+        closure_idx = 0;
         for (self.frames[0..self.fp]) |*frame| {
             if (frame.closure != null) {
-                frame.closure = self.gc_vals.items[closure_start + closure_idx].toPtr(runtime.Closure);
+                frame.closure = frame_closure_roots[closure_idx].toPtr(runtime.Closure);
                 closure_idx += 1;
             }
         }
         if (has_current_closure) {
-            self.current_closure = self.gc_vals.items[current_closure_idx].toPtr(runtime.Closure);
+            self.current_closure = current_closure_root.toPtr(runtime.Closure);
         }
 
         for (self.catch_stack[0..self.catch_sp], 0..) |*frame, i| {
-            const chunk_val = self.gc_vals.items[catch_chunk_start + i];
+            const chunk_val = catch_chunk_roots[i];
             if (!chunk_val.isNil()) {
                 if (self.chunkFromValue(chunk_val)) |chunk| {
                     frame.chunk = chunk;
@@ -1214,7 +1220,7 @@ pub const Vm = struct {
             }
         }
         for (self.unwind_stack[0..self.unwind_sp], 0..) |*frame, i| {
-            const chunk_val = self.gc_vals.items[unwind_chunk_start + i];
+            const chunk_val = unwind_chunk_roots[i];
             if (!chunk_val.isNil()) {
                 if (self.chunkFromValue(chunk_val)) |chunk| {
                     frame.chunk = chunk;
@@ -1222,7 +1228,7 @@ pub const Vm = struct {
             }
         }
         for (self.block_stack[0..self.block_sp], 0..) |*frame, i| {
-            const chunk_val = self.gc_vals.items[block_chunk_start + i];
+            const chunk_val = block_chunk_roots[i];
             if (!chunk_val.isNil()) {
                 if (self.chunkFromValue(chunk_val)) |chunk| {
                     frame.chunk = chunk;
@@ -1230,7 +1236,7 @@ pub const Vm = struct {
             }
         }
         for (self.restart_stack[0..self.restart_sp], 0..) |*frame, i| {
-            const chunk_val = self.gc_vals.items[restart_chunk_start + i];
+            const chunk_val = restart_chunk_roots[i];
             if (!chunk_val.isNil()) {
                 if (self.chunkFromValue(chunk_val)) |chunk| {
                     frame.chunk = chunk;
@@ -1238,25 +1244,17 @@ pub const Vm = struct {
             }
         }
 
-        const current_chunk_val = self.gc_vals.items[current_chunk_idx];
+        const current_chunk_val = current_chunk_root;
         if (!current_chunk_val.isNil()) {
             if (self.chunkFromValue(current_chunk_val)) |chunk| {
                 self.chunk = chunk;
             }
         }
         for (self.frames[0..self.fp], 0..) |*frame, i| {
-            const chunk_val = self.gc_vals.items[frame_chunk_start + i];
+            const chunk_val = frame_chunk_roots[i];
             if (!chunk_val.isNil()) {
                 if (self.chunkFromValue(chunk_val)) |chunk| {
                     frame.chunk = chunk;
-                }
-            }
-        }
-        for (self.chunk_pool, 0..) |*chunk, i| {
-            const chunk_val = self.gc_vals.items[chunk_pool_start + i];
-            if (!chunk_val.isNil()) {
-                if (self.chunkFromValue(chunk_val)) |new_chunk| {
-                    chunk.* = @constCast(new_chunk);
                 }
             }
         }
@@ -2829,7 +2827,9 @@ pub const Vm = struct {
                 // Get the chunk from the pool (offset by base for this eval)
                 const abs_idx = self.chunk_base + chunk_idx;
                 if (abs_idx >= self.chunk_pool.len) return error.InvalidConstant;
-                const closure_chunk = self.chunk_pool[abs_idx];
+                const closure_chunk_val = self.chunk_pool[abs_idx];
+                if (closure_chunk_val.isNil()) return error.InvalidConstant;
+                const closure_chunk = closure_chunk_val.toPtr(Chunk);
 
                 if (num_captures > 64) return error.StackOverflow;
                 if (num_captures > self.sp) return error.StackUnderflow;
@@ -8576,7 +8576,11 @@ pub const Vm = struct {
                             const cidx = @as(u16, code[pos + 2]) | (@as(u16, code[pos + 3]) << 8);
                             std.debug.print(" idx={d}", .{cidx});
                             if (cidx < self.chunk_pool.len) {
-                                const callee = self.chunk_pool[cidx];
+                                const callee_val = self.chunk_pool[cidx];
+                                if (callee_val.isNil()) {
+                                    std.debug.print(" callee=nil", .{});
+                                } else {
+                                    const callee = callee_val.toPtr(Chunk);
                                 std.debug.print(" arity={d} opt={d} key={d} rest={any}", .{
                                     callee.arity,
                                     callee.opt_count,
@@ -8603,6 +8607,7 @@ pub const Vm = struct {
                                     };
                                     cw.flush() catch {};
                                     std.debug.print("CALL_MISMATCH callee-disasm idx={d} end\n", .{cidx});
+                                }
                                 }
                             }
                         } else if (sz > 0) {
@@ -10980,7 +10985,7 @@ test "vm collectGarbage relocates chunk pointers" {
     };
     vm.restart_sp = 1;
 
-    var pool = [_]*Chunk{pool_ptr};
+    var pool = [_]Value{Value.makeChunk(pool_ptr)};
     vm.setChunkPool(pool[0..]);
 
     _ = try vm.collectGarbage();
@@ -11012,7 +11017,7 @@ test "vm collectGarbage relocates chunk pointers" {
     try testing.expect(restart_after >= start and restart_after < end);
     try testing.expect(restart_after != @intFromPtr(restart_ptr));
 
-    const pool_after = @intFromPtr(pool[0]);
+    const pool_after = @intFromPtr(pool[0].toPtr(Chunk));
     try testing.expect(pool_after >= start and pool_after < end);
     try testing.expect(pool_after != @intFromPtr(pool_ptr));
 }
@@ -11053,7 +11058,7 @@ test "vm collectGarbage updates ext roots" {
     try testing.expect(ptr >= start and ptr < end);
 }
 
-test "vm collectGarbage reuses gc_vals buffer" {
+test "vm collectGarbage reuses gc_slots buffer" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
@@ -11064,11 +11069,11 @@ test "vm collectGarbage reuses gc_vals buffer" {
     defer vm.deinit();
 
     _ = try vm.collectGarbage();
-    const cap1 = vm.gc_vals.capacity;
+    const cap1 = vm.gc_slots.capacity;
     try testing.expect(cap1 > 0);
 
     _ = try vm.collectGarbage();
-    try testing.expectEqual(cap1, vm.gc_vals.capacity);
+    try testing.expectEqual(cap1, vm.gc_slots.capacity);
 }
 
 test "vm collectGarbage roots slot-tracked values" {

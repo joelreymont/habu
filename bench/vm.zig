@@ -10,6 +10,7 @@ const compiler_mod = habu.compiler;
 const Heap = runtime.Heap;
 const Vm = interp.Vm;
 const Compiler = compiler_mod.Compiler;
+const Value = runtime.Value;
 
 const Bench = struct {
     name: []const u8,
@@ -121,7 +122,7 @@ pub fn main() !void {
     defer comp.deinit();
     vm.setGlobalEnv(&comp.globals);
 
-    var chunk_pool = std.ArrayList(*runtime.objects.Chunk){};
+    var chunk_pool = std.ArrayList(Value){};
     defer chunk_pool.deinit(allocator);
     vm.setChunkPool(chunk_pool.items);
 
@@ -152,7 +153,7 @@ pub fn main() !void {
 
     const str_src = try std.fmt.bufPrint(
         &src_buf,
-        "(let ((i 0) (s \"\")) (while (< i {d}) (setq s (concatenate 'string s \"a\")) (setq i (+ i 1))) s)",
+        "(let ((i 0) (acc 0)) (while (< i {d}) (let ((s (make-string 8 :initial-element #\\a))) (setq acc (+ acc (length s)))) (setq i (+ i 1))) acc)",
         .{opts.str_n},
     );
     const str_chunk = try common.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool, str_src);

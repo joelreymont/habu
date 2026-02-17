@@ -17,7 +17,7 @@ Each relocation entry records:
 - `kind`: absolute64, branch26, branch19, ldr_literal, etc.
 - `target`: address or symbol id.
 
-Store in a side table owned by `patch.CodeBuffer` or `jit.Jit`.
+Store in a side table owned by `jit_backend.CompiledFn` / Hoist JIT memory state.
 
 ## Patch lifecycle
 
@@ -35,9 +35,9 @@ Store in a side table owned by `patch.CodeBuffer` or `jit.Jit`.
 
 ## Integration points
 
-- `src/jit/patch.zig`: add relocation table and apply routines.
-- `src/jit/jit.zig`: record relocations for stencils that embed addresses.
-- `src/jit/stencils.zig`: annotate which holes need relocation records.
+- `src/jit/backend.zig`: maintain patch-site metadata for direct-call rewrites.
+- `src/jit/backend.zig`: record and reapply self-pointer / branch patch locations.
+- `../hoist/src/codegen/compile.zig`: expose relocation details needed by embedders.
 
 ## Testing
 

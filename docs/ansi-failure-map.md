@@ -49,7 +49,7 @@ Test IDs:
 Owner files:
 - `src/interp/vm.zig`
 - `src/runtime/primitives/symbol.zig`
-- `src/runtime/primitives/predicates.zig`
+- `src/runtime/primitives/type.zig`
 
 Test IDs:
 - `EQUAL.13`

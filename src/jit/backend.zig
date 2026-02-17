@@ -177,6 +177,368 @@ fn jitAssoc(key_raw: u64, alist_raw: u64) callconv(.c) u64 {
     return Value.nil.raw;
 }
 
+fn jitToFloat(v: Value) ?f64 {
+    if (v.isFixnum()) return @floatFromInt(v.toFixnum());
+    if (v.isFloat()) return v.toFloat();
+    if (v.isRational()) {
+        const rat = v.toPtr(runtime.Rational);
+        const num: f64 = @floatFromInt(rat.numerator);
+        const den: f64 = @floatFromInt(rat.denominator);
+        return num / den;
+    }
+    return null;
+}
+
+fn jitSqrt(a_raw: u64) callconv(.c) u64 {
+    const a = Value{ .raw = a_raw };
+    const f = jitToFloat(a) orelse return Value.nil.raw;
+    if (f < 0) {
+        const heap = g_heap orelse return Value.nil.raw;
+        const cplx = heap.allocComplex(0.0, @sqrt(-f)) catch return Value.nil.raw;
+        return cplx.raw;
+    }
+    return Value.makeFloat(@sqrt(f)).raw;
+}
+
+fn jitRound(a_raw: u64) callconv(.c) u64 {
+    const a = Value{ .raw = a_raw };
+    if (a.isFixnum()) return a.raw;
+    const f = jitToFloat(a) orelse return Value.nil.raw;
+
+    // CL round: ties to even.
+    const rounded = blk: {
+        const r = @round(f);
+        if (@abs(f - r) == 0.5) {
+            const ri: i64 = @intFromFloat(r);
+            if (@mod(ri, @as(i64, 2)) != 0) {
+                break :blk if (f > 0) r - 1.0 else r + 1.0;
+            }
+        }
+        break :blk r;
+    };
+    const q: i64 = @intFromFloat(rounded);
+    return Value.makeFixnum(q).raw;
+}
+
+fn jitMakeHash(capacity_raw: u64, test_raw: u64) callconv(.c) u64 {
+    const cap_val = Value{ .raw = capacity_raw };
+    const test_val = Value{ .raw = test_raw };
+    if (!cap_val.isFixnum() or !test_val.isFixnum()) return Value.nil.raw;
+    const cap_i = cap_val.toFixnum();
+    if (cap_i < 0) return Value.nil.raw;
+    const cap: usize = @intCast(cap_i);
+    const test_i = test_val.toFixnum();
+    const test_type: runtime.HashTest = switch (test_i) {
+        0 => .eq,
+        1 => .eql,
+        2 => .equal,
+        3 => .equalp,
+        else => return Value.nil.raw,
+    };
+    const heap = g_heap orelse return Value.nil.raw;
+    const ht = heap.allocHashTable(cap, test_type) catch return Value.nil.raw;
+    return ht.raw;
+}
+
+fn jitHashGet(table_raw: u64, key_raw: u64, default_raw: u64) callconv(.c) u64 {
+    const table = Value{ .raw = table_raw };
+    if (!table.isHashTable()) return Value.nil.raw;
+    const ht = table.toPtr(runtime.HashTable);
+    const key = Value{ .raw = key_raw };
+    if (ht.get(key)) |v| return v.raw;
+    return default_raw;
+}
+
+fn jitHashSet(table_raw: u64, key_raw: u64, value_raw: u64) callconv(.c) u64 {
+    const table = Value{ .raw = table_raw };
+    if (!table.isHashTable()) return Value.nil.raw;
+    const ht = table.toPtr(runtime.HashTable);
+    const key = Value{ .raw = key_raw };
+    const value = Value{ .raw = value_raw };
+    const heap = g_heap orelse return Value.nil.raw;
+
+    while (true) {
+        ht.put(key, value) catch |err| switch (err) {
+            error.HashTableNeedsGrowth, error.HashTableFull => {
+                const cap: usize = @intCast(ht.capacity);
+                const new_cap = std.math.mul(usize, cap, 2) catch return Value.nil.raw;
+                heap.growHashTableInPlace(ht, new_cap) catch return Value.nil.raw;
+                continue;
+            },
+        };
+        return value_raw;
+    }
+}
+
+fn jitHashCount(table_raw: u64) callconv(.c) u64 {
+    const table = Value{ .raw = table_raw };
+    if (!table.isHashTable()) return Value.nil.raw;
+    const ht = table.toPtr(runtime.HashTable);
+    return Value.makeFixnum(@intCast(ht.count)).raw;
+}
+
+fn jitMakeString(len_raw: u64, char_raw: u64) callconv(.c) u64 {
+    const len_val = Value{ .raw = len_raw };
+    const char_val = Value{ .raw = char_raw };
+    if (!len_val.isFixnum()) return Value.nil.raw;
+    const len_signed = len_val.toFixnum();
+    if (len_signed < 0) return Value.nil.raw;
+    const len: usize = @intCast(len_signed);
+    const fill_char: u8 = if (char_val.isCharacter()) blk: {
+        const cp = char_val.toCharacter();
+        if (cp > 255) return Value.nil.raw;
+        break :blk @intCast(cp);
+    } else if (char_val.isNil()) ' ' else return Value.nil.raw;
+
+    const heap = g_heap orelse return Value.nil.raw;
+    const str = heap.allocStringUninitialized(len) catch return Value.nil.raw;
+    const str_obj = str.toPtr(runtime.String);
+    @memset(str_obj.data[0..len], fill_char);
+    return str.raw;
+}
+
+fn jitInternName(name: []const u8) u64 {
+    const heap = g_heap orelse return Value.nil.raw;
+    const stable = heap.backing_allocator.dupe(u8, name) catch return Value.nil.raw;
+    defer heap.backing_allocator.free(stable);
+    const sym = heap.intern(stable) catch return Value.nil.raw;
+    return sym.raw;
+}
+
+fn jitIntern(name_raw: u64) callconv(.c) u64 {
+    const name_val = Value{ .raw = name_raw };
+    switch (name_val.typeKind()) {
+        .string => return jitInternName(name_val.toPtr(runtime.String).bytes()),
+        .symbol => return jitInternName(name_val.toPtr(Symbol).getName()),
+        .keyword => return jitInternName(name_val.toPtr(runtime.Keyword).getName()),
+        .nil => return jitInternName("nil"),
+        .t => return jitInternName("t"),
+        .fixnum => {
+            const byte = [_]u8{@intCast(@mod(name_val.toFixnum(), 256))};
+            return jitInternName(&byte);
+        },
+        else => return Value.nil.raw,
+    }
+}
+
+fn jitMakeArray1(dim_raw: u64, init_raw: u64) callconv(.c) u64 {
+    const dim_val = Value{ .raw = dim_raw };
+    if (!dim_val.isFixnum()) return Value.nil.raw;
+    const dim_signed = dim_val.toFixnum();
+    if (dim_signed < 0) return Value.nil.raw;
+    const dim: u64 = @intCast(dim_signed);
+    const heap = g_heap orelse return Value.nil.raw;
+    const dims = [_]u64{dim};
+    const arr_val = heap.allocArray(&dims) catch return Value.nil.raw;
+    const arr = arr_val.toPtr(runtime.Array);
+    const data: [*]Value = @ptrFromInt(arr.data_ptr);
+    const init_val = Value{ .raw = init_raw };
+    for (0..arr.total_size) |i| data[i] = init_val;
+    return arr_val.raw;
+}
+
+fn jitAref1(arr_raw: u64, idx_raw: u64) callconv(.c) u64 {
+    const arr_val = Value{ .raw = arr_raw };
+    const idx_val = Value{ .raw = idx_raw };
+    if (!idx_val.isFixnum()) return Value.nil.raw;
+    const idx_signed = idx_val.toFixnum();
+    if (idx_signed < 0) return Value.nil.raw;
+    const idx: usize = @intCast(idx_signed);
+
+    return switch (arr_val.typeKind()) {
+        .vector => blk: {
+            const vec = arr_val.toPtr(runtime.Vector);
+            if (idx >= vec.length) break :blk Value.nil.raw;
+            break :blk vec.get(idx).raw;
+        },
+        .string => blk: {
+            const str = arr_val.toPtr(runtime.String);
+            if (idx >= str.length) break :blk Value.nil.raw;
+            break :blk Value.makeCharacter(@intCast(str.bytes()[idx])).raw;
+        },
+        .string32 => blk: {
+            const str32 = arr_val.toPtr(runtime.String32);
+            if (idx >= str32.length) break :blk Value.nil.raw;
+            break :blk Value.makeCharacter(@intCast(str32.codepoints()[idx])).raw;
+        },
+        .array => blk: {
+            const arr = arr_val.toPtr(runtime.Array);
+            if (arr.rank != 1) break :blk Value.nil.raw;
+            if (@as(u64, @intCast(idx)) >= arr.dimensions[0]) break :blk Value.nil.raw;
+            const data: [*]Value = @ptrFromInt(arr.data_ptr);
+            break :blk data[idx].raw;
+        },
+        else => Value.nil.raw,
+    };
+}
+
+fn jitStrSet(str_raw: u64, idx_raw: u64, char_raw: u64) callconv(.c) u64 {
+    const str_val = Value{ .raw = str_raw };
+    const idx_val = Value{ .raw = idx_raw };
+    const char_val = Value{ .raw = char_raw };
+    if (!idx_val.isFixnum()) return Value.nil.raw;
+    const idx_signed = idx_val.toFixnum();
+    if (idx_signed < 0) return Value.nil.raw;
+    const idx: usize = @intCast(idx_signed);
+    const char_int: i64 = switch (char_val.typeKind()) {
+        .fixnum => char_val.toFixnum(),
+        .char => @as(i64, @intCast(char_val.toCharacter())),
+        else => return Value.nil.raw,
+    };
+    if (char_int < 0) return Value.nil.raw;
+
+    switch (str_val.typeKind()) {
+        .string => {
+            const str = str_val.toPtr(runtime.String);
+            if (idx >= str.length) return Value.nil.raw;
+            if (char_int > 255) return Value.nil.raw;
+            str.mutableBytes()[idx] = @intCast(char_int);
+            return str_val.raw;
+        },
+        .string32 => {
+            const str32 = str_val.toPtr(runtime.String32);
+            if (idx >= str32.length) return Value.nil.raw;
+            if (char_int > std.math.maxInt(u21)) return Value.nil.raw;
+            str32.mutableCodepoints()[idx] = @intCast(char_int);
+            return str_val.raw;
+        },
+        else => return Value.nil.raw,
+    }
+}
+
+fn jitPosition(item_raw: u64, seq_raw: u64) callconv(.c) u64 {
+    const item = Value{ .raw = item_raw };
+    const seq = Value{ .raw = seq_raw };
+
+    switch (seq.typeKind()) {
+        .string => {
+            const cp: u21 = switch (item.typeKind()) {
+                .char => item.toCharacter(),
+                .fixnum => blk: {
+                    const n = item.toFixnum();
+                    if (n < 0 or n > std.math.maxInt(u21)) return Value.nil.raw;
+                    break :blk @intCast(n);
+                },
+                else => return Value.nil.raw,
+            };
+            if (cp > 255) return Value.nil.raw;
+            const needle: u8 = @intCast(cp);
+            const str = seq.toPtr(runtime.String);
+            for (str.bytes(), 0..) |b, i| {
+                if (b == needle) return Value.makeFixnum(@intCast(i)).raw;
+            }
+            return Value.nil.raw;
+        },
+        .string32 => {
+            const cp: u21 = switch (item.typeKind()) {
+                .char => item.toCharacter(),
+                .fixnum => blk: {
+                    const n = item.toFixnum();
+                    if (n < 0 or n > std.math.maxInt(u21)) return Value.nil.raw;
+                    break :blk @intCast(n);
+                },
+                else => return Value.nil.raw,
+            };
+            const str32 = seq.toPtr(runtime.String32);
+            for (str32.codepoints(), 0..) |c, i| {
+                if (c == cp) return Value.makeFixnum(@intCast(i)).raw;
+            }
+            return Value.nil.raw;
+        },
+        .nil, .cons => {
+            var cur = seq;
+            var idx: i64 = 0;
+            while (cur.isCons()) {
+                const cell = cur.toPtr(runtime.Cons);
+                if (cell.car.raw == item_raw) return Value.makeFixnum(idx).raw;
+                idx += 1;
+                cur = cell.cdr;
+            }
+            return Value.nil.raw;
+        },
+        else => return Value.nil.raw,
+    }
+}
+
+fn jitFormatSimple(dest_raw: u64, control_raw: u64, arg_raw: u64, argc_raw: u64) callconv(.c) u64 {
+    const dest = Value{ .raw = dest_raw };
+    const control = Value{ .raw = control_raw };
+    const argc_val = Value{ .raw = argc_raw };
+    if (!dest.isNil()) return Value.nil.raw;
+    if (!control.isString()) return Value.nil.raw;
+    if (!argc_val.isFixnum()) return Value.nil.raw;
+    const argc = argc_val.toFixnum();
+    if (argc < 0 or argc > 1) return Value.nil.raw;
+
+    const heap = g_heap orelse return Value.nil.raw;
+    const bytes = control.toPtr(runtime.String).bytes();
+    var out = std.ArrayList(u8){};
+    defer out.deinit(heap.backing_allocator);
+
+    var i: usize = 0;
+    var arg_used = false;
+    while (i < bytes.len) {
+        if (bytes[i] != '~') {
+            out.append(heap.backing_allocator, bytes[i]) catch return Value.nil.raw;
+            i += 1;
+            continue;
+        }
+        i += 1;
+        if (i >= bytes.len) return Value.nil.raw;
+
+        var width: ?usize = null;
+        var pad: u8 = ' ';
+
+        const width_start = i;
+        while (i < bytes.len and std.ascii.isDigit(bytes[i])) : (i += 1) {}
+        if (i > width_start) {
+            width = std.fmt.parseInt(usize, bytes[width_start..i], 10) catch return Value.nil.raw;
+        }
+
+        if (i + 2 < bytes.len and bytes[i] == ',' and bytes[i + 1] == '\'') {
+            pad = bytes[i + 2];
+            i += 3;
+        }
+        if (i >= bytes.len) return Value.nil.raw;
+
+        const directive = std.ascii.toLower(bytes[i]);
+        i += 1;
+        switch (directive) {
+            'd' => {
+                if (argc != 1 or arg_used) return Value.nil.raw;
+                const arg = Value{ .raw = arg_raw };
+                if (!arg.isFixnum()) return Value.nil.raw;
+                const n = arg.toFixnum();
+
+                var num_buf: [64]u8 = undefined;
+                const printed = std.fmt.bufPrint(&num_buf, "{d}", .{n}) catch return Value.nil.raw;
+                if (width) |w| {
+                    if (printed.len < w) {
+                        const pad_count = w - printed.len;
+                        if (pad == '0' and printed[0] == '-') {
+                            out.append(heap.backing_allocator, '-') catch return Value.nil.raw;
+                            for (0..pad_count) |_| out.append(heap.backing_allocator, '0') catch return Value.nil.raw;
+                            out.appendSlice(heap.backing_allocator, printed[1..]) catch return Value.nil.raw;
+                        } else {
+                            for (0..pad_count) |_| out.append(heap.backing_allocator, pad) catch return Value.nil.raw;
+                            out.appendSlice(heap.backing_allocator, printed) catch return Value.nil.raw;
+                        }
+                    } else {
+                        out.appendSlice(heap.backing_allocator, printed) catch return Value.nil.raw;
+                    }
+                } else {
+                    out.appendSlice(heap.backing_allocator, printed) catch return Value.nil.raw;
+                }
+                arg_used = true;
+            },
+            else => return Value.nil.raw,
+        }
+    }
+
+    const result = heap.allocBaseString(out.items) catch return Value.nil.raw;
+    return result.raw;
+}
+
 /// Strip package prefix from a qualified name.
 /// "COMMON-LISP:GCD" → "GCD", "CL-USER:FOO" → "FOO", "GCD" → "GCD"
 fn stripPackagePrefix(name: []const u8) []const u8 {
@@ -661,11 +1023,102 @@ pub const IrTranslator = struct {
             .car, .cdr, .unsafe_car, .unsafe_cdr => |op| canTranslate(op.operand),
             .length => |op| canTranslate(op.operand),
             .cons => |op| canTranslate(op.left) and canTranslate(op.right),
+            .sqrt, .round, .intern => |op| canTranslate(op.operand),
+            .hash_count => |h| canTranslate(h.operand),
+            .make_hash => true,
+            .hash_get => |h| canTranslate(h.table) and canTranslate(h.key) and
+                (if (h.default) |d| canTranslate(d) else true),
+            .hash_set => |h| canTranslate(h.table) and canTranslate(h.key) and canTranslate(h.value),
+            .format => |f| blk: {
+                if (f.args.len > 1) break :blk false;
+                if (!canTranslate(f.dest) or !canTranslate(f.control)) break :blk false;
+                for (f.args) |a| if (!canTranslate(a)) break :blk false;
+                break :blk true;
+            },
+            .make_string => |op| canTranslate(op.left) and canTranslate(op.right),
+            .str_set => |s| canTranslate(s.str) and canTranslate(s.index) and canTranslate(s.value),
+            .position, .position_eq, .position_equal => |op| canTranslate(op.left) and canTranslate(op.right),
+            .arr_new => |a| blk: {
+                if (a.dimensions.len != 1) break :blk false;
+                if (!canTranslate(a.dimensions[0])) break :blk false;
+                if (a.init) |v| break :blk canTranslate(v);
+                break :blk true;
+            },
+            .arr_ref => |a| blk: {
+                if (a.subscripts.len != 1) break :blk false;
+                break :blk canTranslate(a.array) and canTranslate(a.subscripts[0]);
+            },
             .logand => |op| canTranslate(op.left) and canTranslate(op.right),
             .mod, .rem => |op| canTranslate(op.left) and canTranslate(op.right),
             .append => |op| canTranslate(op.left) and canTranslate(op.right),
             .assoc => |op| canTranslate(op.left) and canTranslate(op.right),
             else => false,
+        };
+    }
+
+    /// Return the first unsupported node tag in depth-first order.
+    /// Useful for JIT coverage diagnostics when canTranslate() rejects a body.
+    pub fn firstUnsupportedTag(ir: *const Ir) ?std.meta.Tag(Ir) {
+        return switch (ir.*) {
+            .lit, .@"var", .global_ref => null,
+            .fixnum_add, .fixnum_sub, .add, .sub,
+            .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
+            .le, .lt, .gt, .ge, .num_eq,
+            .fixnum_mul, .mul, .eq, .cons, .logand, .mod, .rem, .append, .assoc,
+            => |op| firstUnsupportedTag(op.left) orelse firstUnsupportedTag(op.right),
+            .@"if" => |f| firstUnsupportedTag(f.cond) orelse firstUnsupportedTag(f.then_branch) orelse firstUnsupportedTag(f.else_branch),
+            .progn => |exprs| blk: {
+                for (exprs) |e| if (firstUnsupportedTag(e)) |tag| break :blk tag;
+                break :blk null;
+            },
+            .let => |l| blk: {
+                for (l.bindings) |b| if (firstUnsupportedTag(b.value)) |tag| break :blk tag;
+                break :blk firstUnsupportedTag(l.body);
+            },
+            .set => |s| firstUnsupportedTag(s.value),
+            .loop => |l| firstUnsupportedTag(l.cond) orelse firstUnsupportedTag(l.body),
+            .assert_fixnum => |op| firstUnsupportedTag(op.operand),
+            .call => |c| blk: {
+                if (firstUnsupportedTag(c.func)) |tag| break :blk tag;
+                for (c.args) |a| if (firstUnsupportedTag(a)) |tag| break :blk tag;
+                break :blk null;
+            },
+            .tailcall => |tc| blk: {
+                if (firstUnsupportedTag(tc.func)) |tag| break :blk tag;
+                for (tc.args) |a| if (firstUnsupportedTag(a)) |tag| break :blk tag;
+                break :blk null;
+            },
+            .nilp, .not, .consp, .abs, .zerop, .oddp, .evenp,
+            .car, .cdr, .unsafe_car, .unsafe_cdr, .length,
+            .sqrt, .round, .intern,
+            => |op| firstUnsupportedTag(op.operand),
+            .hash_count => |h| firstUnsupportedTag(h.operand),
+            .make_hash => null,
+            .hash_get => |h| firstUnsupportedTag(h.table) orelse
+                firstUnsupportedTag(h.key) orelse
+                (if (h.default) |d| firstUnsupportedTag(d) else null),
+            .hash_set => |h| firstUnsupportedTag(h.table) orelse firstUnsupportedTag(h.key) orelse firstUnsupportedTag(h.value),
+            .format => |f| blk: {
+                if (f.args.len > 1) break :blk .format;
+                if (firstUnsupportedTag(f.dest)) |tag| break :blk tag;
+                if (firstUnsupportedTag(f.control)) |tag| break :blk tag;
+                for (f.args) |a| if (firstUnsupportedTag(a)) |tag| break :blk tag;
+                break :blk null;
+            },
+            .make_string => |op| firstUnsupportedTag(op.left) orelse firstUnsupportedTag(op.right),
+            .str_set => |s| firstUnsupportedTag(s.str) orelse firstUnsupportedTag(s.index) orelse firstUnsupportedTag(s.value),
+            .position, .position_eq, .position_equal => |op| firstUnsupportedTag(op.left) orelse firstUnsupportedTag(op.right),
+            .arr_new => |a| blk: {
+                if (a.dimensions.len != 1) break :blk .arr_new;
+                if (firstUnsupportedTag(a.dimensions[0])) |tag| break :blk tag;
+                if (a.init) |v| break :blk firstUnsupportedTag(v);
+                break :blk null;
+            },
+            .arr_ref => |a| blk: {
+                if (a.subscripts.len != 1) break :blk .arr_ref;
+                break :blk firstUnsupportedTag(a.array) orelse firstUnsupportedTag(a.subscripts[0]);
+            },
+            else => std.meta.activeTag(ir.*),
         };
     }
 
@@ -713,6 +1166,19 @@ pub const IrTranslator = struct {
             .oddp => |op| try self.translateOddp(op.operand),
             .evenp => |op| try self.translateEvenp(op.operand),
             .length => |op| try self.translateLength(op.operand),
+            .sqrt => |op| try self.translateSqrt(op.operand),
+            .round => |op| try self.translateRound(op.operand),
+            .make_hash => |h| try self.translateMakeHash(h.capacity, h.test_type),
+            .hash_get => |h| try self.translateHashGet(h.table, h.key, h.default),
+            .hash_set => |h| try self.translateHashSet(h.table, h.key, h.value),
+            .hash_count => |h| try self.translateHashCount(h.operand),
+            .format => |f| try self.translateFormat(f.dest, f.control, f.args),
+            .make_string => |op| try self.translateMakeString(op.left, op.right),
+            .str_set => |s| try self.translateStrSet(s.str, s.index, s.value),
+            .position, .position_eq, .position_equal => |op| try self.translatePosition(op.left, op.right),
+            .intern => |op| try self.translateIntern(op.operand),
+            .arr_new => |a| try self.translateArrNew(a.dimensions, a.init),
+            .arr_ref => |a| try self.translateArrRef(a.array, a.subscripts),
             // Binary: bitwise/modular
             .logand => |op| try self.translateLogand(op.left, op.right),
             .mod => |op| try self.translateMod(op.left, op.right),
@@ -1352,8 +1818,7 @@ pub const IrTranslator = struct {
             }
         }
 
-        // Unsupported call — should have been rejected by hasNonSelfCalls
-        return try self.b.iconst(I64, 0); // placeholder nil
+        return error.UnsupportedCallTarget;
     }
 
     fn translateCrossCall(self: *IrTranslator, known: KnownFn, args: []const *const Ir) anyerror!HoistValue {
@@ -1393,20 +1858,28 @@ pub const IrTranslator = struct {
         return try self.emitIndirectCall(fn_ptr, args);
     }
 
+    fn emitPrimitiveCallValues(self: *IrTranslator, prim_ptr: u64, args: []const HoistValue) anyerror!HoistValue {
+        const fn_ptr = try self.b.iconst(I64, @as(i64, @bitCast(prim_ptr)));
+        return try self.emitIndirectCallValues(fn_ptr, args);
+    }
+
     /// Emit call_indirect with a pre-loaded function pointer and IR argument list.
     fn emitIndirectCall(self: *IrTranslator, fn_ptr: HoistValue, args: []const *const Ir) anyerror!HoistValue {
         var translated_args: [16]HoistValue = undefined;
         for (args, 0..) |arg, i| {
             translated_args[i] = try self.translate(arg);
         }
+        return try self.emitIndirectCallValues(fn_ptr, translated_args[0..args.len]);
+    }
 
+    fn emitIndirectCallValues(self: *IrTranslator, fn_ptr: HoistValue, args: []const HoistValue) anyerror!HoistValue {
         const arity: u32 = @intCast(args.len);
         const sig = try self.getCallSigForArity(arity);
 
         var call_args = ValueList.default();
         try self.func.dfg.value_lists.push(&call_args, fn_ptr);
         for (0..arity) |i| {
-            try self.func.dfg.value_lists.push(&call_args, translated_args[i]);
+            try self.func.dfg.value_lists.push(&call_args, args[i]);
         }
 
         const call_data = InstructionData{
@@ -2387,6 +2860,110 @@ pub const IrTranslator = struct {
         return try self.emitPrimitiveCall(prim_ptr, &args);
     }
 
+    fn translateSqrt(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
+        const v = try self.translate(operand_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitSqrt)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{v});
+    }
+
+    fn translateRound(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
+        const v = try self.translate(operand_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitRound)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{v});
+    }
+
+    fn translateMakeHash(self: *IrTranslator, capacity: u16, test_type: runtime.HashTest) anyerror!HoistValue {
+        const cap = try self.cachedIconst(@as(i64, @bitCast(Value.makeFixnum(@intCast(capacity)).raw)));
+        const test_val = try self.cachedIconst(@as(i64, @bitCast(Value.makeFixnum(@intFromEnum(test_type)).raw)));
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitMakeHash)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ cap, test_val });
+    }
+
+    fn translateHashGet(self: *IrTranslator, table_ir: *const Ir, key_ir: *const Ir, default_ir: ?*const Ir) anyerror!HoistValue {
+        const table = try self.translate(table_ir);
+        const key = try self.translate(key_ir);
+        const def = if (default_ir) |d|
+            try self.translate(d)
+        else
+            try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitHashGet)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ table, key, def });
+    }
+
+    fn translateHashSet(self: *IrTranslator, table_ir: *const Ir, key_ir: *const Ir, value_ir: *const Ir) anyerror!HoistValue {
+        const table = try self.translate(table_ir);
+        const key = try self.translate(key_ir);
+        const value = try self.translate(value_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitHashSet)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ table, key, value });
+    }
+
+    fn translateHashCount(self: *IrTranslator, table_ir: *const Ir) anyerror!HoistValue {
+        const table = try self.translate(table_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitHashCount)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{table});
+    }
+
+    fn translateFormat(self: *IrTranslator, dest_ir: *const Ir, control_ir: *const Ir, args: []const *const Ir) anyerror!HoistValue {
+        if (args.len > 1) return error.UnsupportedIrNode;
+        const dest = try self.translate(dest_ir);
+        const control = try self.translate(control_ir);
+        const arg = if (args.len == 1)
+            try self.translate(args[0])
+        else
+            try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
+        const argc = try self.cachedIconst(@as(i64, @bitCast(Value.makeFixnum(@intCast(args.len)).raw)));
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitFormatSimple)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ dest, control, arg, argc });
+    }
+
+    fn translateMakeString(self: *IrTranslator, len_ir: *const Ir, char_ir: *const Ir) anyerror!HoistValue {
+        const len = try self.translate(len_ir);
+        const ch = try self.translate(char_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitMakeString)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ len, ch });
+    }
+
+    fn translateStrSet(self: *IrTranslator, str_ir: *const Ir, idx_ir: *const Ir, value_ir: *const Ir) anyerror!HoistValue {
+        const s = try self.translate(str_ir);
+        const idx = try self.translate(idx_ir);
+        const v = try self.translate(value_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitStrSet)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ s, idx, v });
+    }
+
+    fn translateIntern(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
+        const name = try self.translate(operand_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitIntern)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{name});
+    }
+
+    fn translateArrNew(self: *IrTranslator, dimensions: []const *const Ir, init_ir: ?*const Ir) anyerror!HoistValue {
+        if (dimensions.len != 1) return error.UnsupportedIrNode;
+        const dim = try self.translate(dimensions[0]);
+        const init_val = if (init_ir) |v|
+            try self.translate(v)
+        else
+            try self.cachedIconst(@as(i64, @bitCast(Value.nil.raw)));
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitMakeArray1)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ dim, init_val });
+    }
+
+    fn translateArrRef(self: *IrTranslator, array_ir: *const Ir, subscripts: []const *const Ir) anyerror!HoistValue {
+        if (subscripts.len != 1) return error.UnsupportedIrNode;
+        const arr = try self.translate(array_ir);
+        const idx = try self.translate(subscripts[0]);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitAref1)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ arr, idx });
+    }
+
+    fn translatePosition(self: *IrTranslator, item_ir: *const Ir, seq_ir: *const Ir) anyerror!HoistValue {
+        const item = try self.translate(item_ir);
+        const seq = try self.translate(seq_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitPosition)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{ item, seq });
+    }
+
     /// length: count cons cells by walking cdr chain.
     /// Emits a loop: count=0, ptr=list; while ptr!=nil: count++, ptr=cdr(ptr); return tagged(count)
     fn translateLength(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
@@ -2844,6 +3421,21 @@ fn containsCons(body: *const Ir) bool {
     }{});
 }
 
+/// Detect IR nodes lowered to C-ABI helper calls in this backend.
+fn containsHelperCalls(body: *const Ir) bool {
+    return irAny(body, struct {
+        fn check(_: @This(), ir: *const Ir) bool {
+            return switch (ir.*) {
+                .sqrt, .round, .make_hash, .hash_get, .hash_set, .hash_count,
+                .make_string, .intern, .arr_new, .arr_ref, .str_set,
+                .position, .position_eq, .position_equal, .format,
+                => true,
+                else => false,
+            };
+        }
+    }{});
+}
+
 /// Detect whether a function body contains unresolvable non-self calls.
 pub fn hasNonSelfCalls(body: *const Ir, name: []const u8) bool {
     return irAny(body, struct {
@@ -2857,6 +3449,21 @@ pub fn hasNonSelfCalls(body: *const Ir, name: []const u8) bool {
             if (isCallTargetSelf(func_ir, self.name)) return false;
             const target = getCallTargetName(func_ir) orelse return true;
             return getJitPrimitivePtr(target) == null;
+        }
+    }{ .name = name });
+}
+
+/// Detect whether a function body contains any non-self call.
+pub fn hasAnyNonSelfCalls(body: *const Ir, name: []const u8) bool {
+    return irAny(body, struct {
+        name: []const u8,
+        fn check(self: @This(), ir: *const Ir) bool {
+            const func_ir = switch (ir.*) {
+                .call => |c| c.func,
+                .tailcall => |tc| tc.func,
+                else => return false,
+            };
+            return !isCallTargetSelf(func_ir, self.name);
         }
     }{ .name = name });
 }
@@ -3077,6 +3684,7 @@ pub fn compileIrWithKnownFns(
     translator.fn_name = name;
     translator.known_fns = known_fns;
     translator.has_cross_calls = containsCons(lambda.body) or
+        containsHelperCalls(lambda.body) or
         containsPrimitiveCalls(lambda.body, name) or
         (if (known_fns) |kf| kf.count() > 0 and hasNonSelfCalls(lambda.body, name) else false);
 
@@ -3120,6 +3728,7 @@ pub fn compileIrWithKnownFns(
     // - primitive calls (gcd, nreverse, append, assoc): expect tagged args
     translator.untagged = translator.has_loops and !translator.is_recursive and
         !containsCons(lambda.body) and !containsLoads(lambda.body) and
+        !containsHelperCalls(lambda.body) and
         !containsPrimitiveCalls(lambda.body, name);
 
     // Map params to SSA values, untagging at entry in untagged mode.
@@ -3154,6 +3763,7 @@ pub fn compileIrWithKnownFns(
         }
         // May still have cross-calls (cons, known functions)
         translator.has_cross_calls = containsCons(lambda.body) or
+            containsHelperCalls(lambda.body) or
             containsPrimitiveCalls(lambda.body, name) or
             (if (known_fns) |kf| kf.count() > 0 and hasNonSelfCalls(lambda.body, name) else false);
     }
@@ -3204,6 +3814,7 @@ pub fn compileIrWithKnownFns(
         .callConv(.system_v)
         .verification(true)
         .build();
+    defer ctx.deinit();
 
     // Print function for debug
     if (std.posix.getenv("HABU_DUMP_HOIST") != null) {
@@ -4066,7 +4677,7 @@ fn invertBranchOverBranch(code: []u8) void {
 /// Check if MOVZ dest reg is safe to eliminate (dead after consumer).
 /// Uses deep analysis first, falls back to basic-block-local check.
 fn isMovzRegDead(code: []const u8, alu_idx: usize, reg: u5) bool {
-    return isRegDeadAfter(code, alu_idx, reg) or isRegDeadInBlock(code, alu_idx, reg);
+    return isRegDeadAfter(code, alu_idx, reg);
 }
 
 /// Fuse adjacent MOVZ+ALU pairs into ALU-immediate form.
@@ -4257,11 +4868,23 @@ fn isRegDeadFrom(code: []const u8, start_idx: usize, reg: u5, depth: u8) bool {
                 false;
             return taken_dead and fallthrough_dead;
         }
-        if (insn & 0xFC000000 == 0x94000000) { // BL: x0-x17 caller-saved → dead
-            return reg <= 17;
+        if (insn & 0xFC000000 == 0x94000000) { // BL
+            // Calls may read argument/sret registers.
+            // x0-x7: integer args, x8: indirect return pointer.
+            if (reg <= 8) return false;
+            // Other caller-saved GPRs are clobbered by the call.
+            if (reg <= 17) return true;
+            // Callee-saved / unknown regs: be conservative.
+            return false;
         }
-        if (insn & 0xFFFFFC1F == 0xD63F0000) { // BLR: same as BL
-            return reg <= 17;
+        if (insn & 0xFFFFFC1F == 0xD63F0000) { // BLR
+            // BLR reads the branch target register in bits [9:5].
+            const target: u5 = @truncate((insn >> 5) & 0x1F);
+            if (reg == target) return false;
+            // Calls may also read argument/sret registers.
+            if (reg <= 8) return false;
+            if (reg <= 17) return true;
+            return false;
         }
         if (insn == 0xD65F03C0) return true; // RET: reg dead
         if (insn == 0xD503201F) continue; // NOP: skip
@@ -4695,6 +5318,35 @@ fn has_calls_in_loop(code: []u8, from: usize, to: usize) bool {
     return false;
 }
 
+/// Return true if `reg` is used as a BLR target before being overwritten.
+/// Coalescing into such a register can destroy indirect-call targets.
+fn usedAsBlrTargetBeforeRedef(code: []u8, from: usize, reg: u5) bool {
+    const n_insns = code.len / 4;
+    var i = from;
+    while (i < n_insns) : (i += 1) {
+        const insn = readInsn(code, i);
+        if (insn == 0xD503201F) continue; // NOP
+
+        // BLR Xn: opcode mask 0xFFFFFC1F, register in bits [9:5]
+        if (insn & 0xFFFFFC1F == 0xD63F0000) {
+            const target: u5 = @truncate((insn >> 5) & 0x1F);
+            return target == reg;
+        }
+
+        // Stop at control-flow boundaries.
+        if (insn & 0xFC000000 == 0x14000000 or // B
+            insn & 0xFF000000 == 0x54000000 or // B.cond
+            insn & 0xFFFFFC1F == 0xD65F0000 or // RET
+            insn & 0xFC000000 == 0x94000000) // BL
+            return false;
+
+        // If register is overwritten first, BLR target use is no longer relevant.
+        const rd: u5 = @truncate(insn & 0x1F);
+        if (rd == reg) return false;
+    }
+    return false;
+}
+
 fn coalesceMovs(code: []u8) void {
     if (code.len < 8) return;
     const n_insns = code.len / 4;
@@ -4806,12 +5458,22 @@ fn coalesceMovs(code: []u8) void {
                 const between = readInsn(code, j2);
                 if (between == 0xD503201F) continue; // NOP
                 const rd_b: u5 = @truncate(between & 0x1F);
+                const rn_b: u5 = @truncate((between >> 5) & 0x1F);
+                const rm_b: u5 = @truncate((between >> 16) & 0x1F);
+                // Moving the write to mov_dst earlier must not clobber a live value.
+                if (rn_b == mov_dst or rm_b == mov_dst) {
+                    safe = false;
+                    break;
+                }
                 if (rd_b == mov_dst) {
                     safe = false;
                     break;
                 }
             }
             if (!safe) continue;
+
+            // Don't coalesce if mov_dst is the upcoming indirect-call target.
+            if (usedAsBlrTargetBeforeRedef(code, mi + 1, mov_dst)) continue;
 
             // Coalesce: change ALU destination to mov_dst, NOP the mov
             const patched = (insn0 & ~@as(u32, 0x1F)) | @as(u32, mov_dst);
@@ -4960,6 +5622,7 @@ fn compileAndLoad(allocator: std.mem.Allocator, func: *Function) !struct { fn_pt
     var ctx_builder = ContextBuilder.init(allocator);
     _ = try ctx_builder.targetNative();
     var ctx = ctx_builder.optLevel(.aggressive).callConv(.system_v).verification(true).build();
+    defer ctx.deinit();
 
     var code = ctx.compileFunction(func) catch |err| {
         return err;
@@ -5658,6 +6321,47 @@ test "hoist IR translator: fixnum arithmetic" {
     try testing.expectEqual(@as(i64, 21), compiled.call1(1));
 }
 
+test "hoist IR translator: primitive gcd call" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const params = try alloc.alloc([]const u8, 0);
+
+    const mkLit = struct {
+        fn f(a: std.mem.Allocator, n: i64) !*Ir {
+            const v = try a.create(Ir);
+            v.* = .{ .lit = Value.makeFixnum(n) };
+            return v;
+        }
+    }.f;
+
+    const gcd_ref = try alloc.create(Ir);
+    gcd_ref.* = .{ .global_ref = .{ .name = "GCD", .index = 0 } };
+    const call_args = try alloc.alloc(*const Ir, 2);
+    call_args[0] = try mkLit(alloc, 39);
+    call_args[1] = try mkLit(alloc, 21);
+    const call_node = try alloc.create(Ir);
+    call_node.* = .{ .call = .{ .func = gcd_ref, .args = call_args } };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = params,
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = call_node,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    var compiled = try compileIr(testing.allocator, lambda, "gcd_once");
+    defer compiled.deinit();
+
+    try testing.expectEqual(@as(i64, 7), compiled.call0());
+}
+
 test "hoist IR translator: simple loop (let + while + setq)" {
     // (defun f () (let ((i 0) (acc 0)) (while (< i 10) (setq acc (+ acc i)) (setq i (+ i 1))) acc))
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
@@ -5949,6 +6653,7 @@ test "hoist phi loop: dump codegen for debugging" {
     var ctx_builder = ContextBuilder.init(allocator);
     _ = try ctx_builder.targetNative();
     var ctx = ctx_builder.optLevel(.none).callConv(.system_v).verification(true).build();
+    defer ctx.deinit();
 
     var code = ctx.compileFunction(&func) catch |err| {
         std.debug.print("Phi compile error: {s}\n", .{@errorName(err)});

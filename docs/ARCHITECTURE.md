@@ -74,9 +74,8 @@ src/
 │   ├── repl.zig          # Interactive REPL
 │   └── lineedit.zig      # Line editing
 └── jit/
-    ├── stencils.zig      # ARM64 code templates
-    ├── patch.zig         # Hole patching
-    └── jit.zig           # JIT compiler
+    ├── backend.zig       # Hoist SSA backend integration
+    └── mod.zig           # JIT module exports
 ```
 
 ## Value Representation

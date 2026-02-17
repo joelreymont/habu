@@ -3166,11 +3166,11 @@ pub const Compiler = struct {
             saved_pool.len + 5 + (macro_entries.items.len * 2) + (symbol_macro_entries.items.len * 2),
         );
         defer self.allocator.free(macro_roots);
-        const chunk_ptrs = try self.allocator.alloc(*Chunk, saved_pool.len + child_chunks.len);
-        defer self.allocator.free(chunk_ptrs);
-        for (saved_pool, 0..) |ptr, i| {
-            macro_roots[i] = Value.makeChunk(ptr);
-            chunk_ptrs[i] = ptr;
+        const chunk_roots = try self.allocator.alloc(Value, saved_pool.len + child_chunks.len);
+        defer self.allocator.free(chunk_roots);
+        for (saved_pool, 0..) |saved_chunk_val, i| {
+            macro_roots[i] = saved_chunk_val;
+            chunk_roots[i] = saved_chunk_val;
         }
         macro_roots[root_chunk_idx] = chunk_val;
         macro_roots[root_closure_idx] = Value.nil;
@@ -3198,20 +3198,17 @@ pub const Compiler = struct {
             if (macro_chunk_base > 0) {
                 patchChunkClosureIndices(child_ptr, macro_chunk_base);
             }
-            chunk_ptrs[saved_pool.len + i] = child_ptr;
+            chunk_roots[saved_pool.len + i] = cv;
         }
 
         vm.setExtRoots(macro_roots);
         vm.setGlobalEnv(&self.globals);
-        vm.setChunkPool(chunk_ptrs);
+        vm.setChunkPool(chunk_roots);
         defer {
             // Keep the previous chunk pool slice up-to-date across GC that may run
             // while we temporarily replace vm.chunk_pool for macro expansion.
             for (saved_pool, 0..) |*slot, i| {
-                const v = macro_roots[i];
-                if (!v.isNil()) {
-                    slot.* = v.toPtr(Chunk);
-                }
+                slot.* = macro_roots[i];
             }
 
             vm.setExtRoots(saved_ext);
@@ -8347,25 +8344,19 @@ pub const Compiler = struct {
         const saved_ext = vm.ext_roots;
         const saved_pool = vm.chunk_pool;
 
-        const pool_roots = try self.allocator.alloc(Value, saved_pool.len);
+        const pool_roots = try self.allocator.dupe(Value, saved_pool);
         defer self.allocator.free(pool_roots);
-        const chunk_ptrs = try self.allocator.alloc(*Chunk, child_chunks.len);
-        defer self.allocator.free(chunk_ptrs);
-        for (saved_pool, 0..) |ptr, i| {
-            pool_roots[i] = Value.makeChunk(ptr);
-        }
+        const chunk_roots = try self.allocator.alloc(Value, child_chunks.len);
+        defer self.allocator.free(chunk_roots);
         for (child_chunks, 0..) |cv, i| {
-            chunk_ptrs[i] = cv.toPtr(Chunk);
+            chunk_roots[i] = cv;
         }
 
         vm.setExtRoots(pool_roots);
-        vm.setChunkPool(chunk_ptrs);
+        vm.setChunkPool(chunk_roots);
         defer {
             for (saved_pool, 0..) |*slot, i| {
-                const v = pool_roots[i];
-                if (!v.isNil()) {
-                    slot.* = v.toPtr(Chunk);
-                }
+                slot.* = pool_roots[i];
             }
 
             vm.setExtRoots(saved_ext);

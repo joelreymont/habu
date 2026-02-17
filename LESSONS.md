@@ -207,6 +207,16 @@ const abs_fn_idx = (@intFromPtr(c.frame_base) - @intFromPtr(c.vm.stack[0..].ptr)
 ```
 Bug manifestation: recursive functions returning wrong results (e.g., fib(10) → -7 instead of 55).
 
+### Helper-Lowered IR Must Disable Untagged Mode
+When adding IR nodes lowered through C-ABI helper calls (`make_hash`, `hash_*`, `make_string`, `arr_*`, `str_set`, `position`, `format`, `intern`), keep `translator.untagged = false` for those bodies. Untagged mode assumes fixnum-only locals; boxed/string/hash values will be corrupted if untagged remains enabled.
+
+### Coverage Work: Add Translation + Reachability Together
+JIT coverage work needs three updates in lockstep:
+1. `canTranslate` / `firstUnsupportedTag` node acceptance,
+2. `translate(...)` lowering implementation,
+3. call-safety classification (`has_cross_calls`, untagged gating).
+Skipping (3) causes post-emit/liveness issues even if translation compiles.
+
 ### JIT Tests Must Use VM Stack, Not Local Buffers
 Tests that manually create `JitContext` must use `vm.stack` as the stack buffer, not a local `var stack_buf: [32]Value`. When `callFast` converts frame-relative to absolute indices, it assumes `frame_base` points into `vm.stack`. A separate buffer produces garbage indices.
 
@@ -532,3 +542,39 @@ then simple args after.
 **getFixnumLit Returns Raw Tagged Value**: In untagged mode, `getFixnumLit` returns the
 raw tagged value (e.g., 7 for literal 3). Must shift right by 1 to get the actual numeric
 value for strength reduction in untagged mode. Bug caused multiply-by-7 instead of by-3.
+
+### Backend Migration + Perf Audit Session (2026-02-17)
+
+**Dead Legacy Backend Surface**: `src/lib.zig` exported `src/ir/ir.zig` even though runtime
+paths use Hoist via `src/jit/backend.zig`. Keeping dead exports preserves stale APIs and
+needlessly compiles abandoned code. Remove the export and delete dead backend modules.
+
+**Benchmark Harness Must Avoid Stdlib-Only Calls**: `bench/vm.zig` used
+`(concatenate 'string ...)` without loading stdlib, causing `UnboundSymbol` in VM bench
+(`src/interp/vm.zig:8825`). VM microbenches should use primitives guaranteed available in
+the bare compiler/VM setup (e.g., `make-string` + `length`) or explicitly load stdlib.
+
+**Perf Gating Requires Stable Bench Runners**: `bench-comp` currently crashes in JIT mode
+on `gcd` (`src/interp/vm.zig:718` calling `CompiledFn.callFromValues`). Before optimizing
+hot paths, lock down benchmark stability; otherwise perf regressions/improvements are noisy.
+
+**Doc Drift Is a Real Performance Risk**: stale file references (`src/jit/jit.zig`,
+`src/jit/stencils.zig`, `src/jit/patch.zig`, `src/jit/ctx.zig`, `src/jit/rt.zig`) mislead
+optimization work and waste cycles. Keep docs path-valid against both `src/` and `../hoist/src/`.
+
+**Post-Emit Liveness Must Model Call ABI Reads**: peephole dead-code elimination in
+`src/jit/backend.zig` removed MOVZ arg setup before `blr`, because liveness treated call
+boundaries as "reg dead". On AArch64, indirect/direct calls read x0-x7 (args), x8 (sret),
+and `blr` also reads its target register. If that is not modeled, optimizers can turn
+correct indirect calls into wrong-result or crashy code paths.
+
+**VM GC Root Churn Drops By Using Slots Over Mirror Arrays**: `collectGarbageExtra`
+in `src/interp/vm.zig` no longer builds a temporary `ArrayList(Value)` (`gc_vals`) for
+frame closure/chunk roots. Using stack-local `Value` roots registered as `slots` avoids
+dynamic buffer growth and copy-back indexing complexity while preserving pointer re-derive
+after GC (`chunkFromValue` / `toPtr(Closure)`).
+
+**Maxima Loader Must Not Auto-Execute At File Load**: loading a broad Maxima module set
+can hit VM `StackOverflow` that is not recoverable through Lisp-level `handler-case`.
+Keep `lib/maxima-loader.lisp` as a callable API (`maxima-load-all`) and avoid auto-running
+the full load sequence during file import.

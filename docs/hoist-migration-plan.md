@@ -8,7 +8,7 @@
 
 2. **Post-hoist peephole passes** (~2550 lines, 3395–5949): ARM64 machine code peephole optimizations operating on raw bytes AFTER hoist compiles. These DUPLICATE what hoist should be doing internally.
 
-Additionally, hoist has a **phi copy bug**: jump instructions with block arguments emit sequential MOV instructions that can create physical register conflicts after register allocation. Hoist already has `src/machinst/parallel_copy.zig` with a proper resolver, but it's not used in the aarch64 lowering path.
+Additionally, hoist has a **phi copy bug**: jump instructions with block arguments emit sequential MOV instructions that can create physical register conflicts after register allocation. Hoist already has `../hoist/src/machinst/parallel_copy.zig` with a proper resolver, but it's not used in the aarch64 lowering path.
 
 ## Root Cause
 
@@ -24,11 +24,11 @@ Habu worked around every gap by post-processing the raw machine code bytes — a
 
 ### Phase 1: Fix phi copy resolution in hoist (BLOCKING)
 
-**File:** `src/codegen/compile.zig` (jump handler, ~line 5700)
+**File:** `../hoist/src/codegen/compile.zig` (jump handler, ~line 5700)
 
 **Current code:** Emits sequential `mov_rr` instructions for jump args → block params. After register allocation rewrites vregs to pregs, these can conflict.
 
-**Fix:** Use hoist's existing `src/machinst/parallel_copy.zig` resolver. After `rewriteRegisters` maps vregs→pregs, scan each block's trailing MOV+B sequence, build a `parallel_copy.Move` list from the physical registers, call `parallel_copy.resolve()` with x16 as temp, and rewrite the MOV sequence.
+**Fix:** Use hoist's existing `../hoist/src/machinst/parallel_copy.zig` resolver. After `rewriteRegisters` maps vregs→pregs, scan each block's trailing MOV+B sequence, build a `parallel_copy.Move` list from the physical registers, call `parallel_copy.resolve()` with x16 as temp, and rewrite the MOV sequence.
 
 **Specifically:**
 1. In `rewriteRegisters` (aarch64 case), after rewriting all instructions, call a new `resolvePhiCopies()` function
@@ -41,7 +41,7 @@ Habu worked around every gap by post-processing the raw machine code bytes — a
 
 ### Phase 2: Move peephole optimizations into hoist
 
-Each habu peephole pass should become a hoist aarch64 backend pass. Target file: `src/backends/aarch64/peephole.zig` (exists, currently 382 lines).
+Each habu peephole pass should become a hoist aarch64 backend pass. Target file: `../hoist/src/backends/aarch64/peephole.zig` (exists, currently 382 lines).
 
 | Habu function | What it does | Hoist equivalent |
 |---|---|---|

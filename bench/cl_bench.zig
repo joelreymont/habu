@@ -11,6 +11,7 @@ const Heap = runtime.Heap;
 const Vm = interp.Vm;
 const Compiler = compiler_mod.Compiler;
 const Chunk = runtime.Chunk;
+const Value = runtime.Value;
 
 const Bench = struct {
     name: []const u8,
@@ -122,7 +123,7 @@ pub fn main() !void {
     defer comp.deinit();
     vm.setGlobalEnv(&comp.globals);
 
-    var chunk_pool = std.ArrayList(*Chunk){};
+    var chunk_pool = std.ArrayList(Value){};
     defer chunk_pool.deinit(allocator);
     vm.setChunkPool(chunk_pool.items);
 

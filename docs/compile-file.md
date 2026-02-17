@@ -111,7 +111,7 @@ FASL handles circular structures (e.g., `(setf (cdr x) x)`):
 
 ## Implementation Files
 
-- `src/compiler/fasl.zig` - FASL serialization/deserialization
+- `src/interp/repl.zig` - FASL fallback handling during `load` (`.fasl` / `.hfasl`)
 - `src/compiler/compile.zig` - File compiler (compile-file)
 - `src/runtime/primitives/io.zig` - Enhanced load with FASL support
 

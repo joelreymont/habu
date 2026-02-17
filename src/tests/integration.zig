@@ -31,7 +31,7 @@ fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Valu
 
     vm.setGlobalEnv(&comp.globals);
 
-    var chunk_pool = std.ArrayList(*Chunk){};
+    var chunk_pool = std.ArrayList(Value){};
     defer chunk_pool.deinit(allocator);
     vm.setChunkPool(chunk_pool.items);
 

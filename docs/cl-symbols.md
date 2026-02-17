@@ -1089,7 +1089,7 @@ Audit: `python3 tools/cl_symbols_audit.py`
 | fmakunbound | ✓ | primitives/symbol.zig:218 | Unbind function cell |
 | ftype | ✓ | compile.zig:9549 | Function type declaration |
 | funcall | ✓ | compile.zig:4126 | Call function |
-| function-lambda-expression | ✓ | src/compiler/compile.zig, src/compiler/ir.zig, src/bytecode/emit.zig, src/bytecode/opcodes.zig, src/interp/vm.zig, src/jit/rt.zig, src/runtime/objects.zig, src/tests/integration.zig | Closure introspection |
+| function-lambda-expression | ✓ | src/compiler/compile.zig, src/compiler/ir.zig, src/bytecode/emit.zig, src/bytecode/opcodes.zig, src/interp/vm.zig, src/jit/backend.zig, src/runtime/objects.zig, src/tests/integration.zig | Closure introspection |
 | functionp | ✓ | lib/stdlib.habu:3190 | Callable predicate |
 | get-setf-expansion | ✓ | lib/stdlib.habu:1106 | SETF expander API |
 | identity | ✓ | lib/stdlib.habu:204 | Return argument unchanged |

@@ -18,7 +18,7 @@ pub const Runner = struct {
     heap: *Heap,
     vm: Vm,
     comp: Compiler,
-    chunk_pool: std.ArrayList(*Chunk),
+    chunk_pool: std.ArrayList(Value),
 
     pub fn init(self: *Runner, allocator: std.mem.Allocator, heap: *Heap) !void {
         self.* = .{
@@ -26,7 +26,7 @@ pub const Runner = struct {
             .heap = heap,
             .vm = undefined,
             .comp = undefined,
-            .chunk_pool = std.ArrayList(*Chunk){},
+            .chunk_pool = std.ArrayList(Value){},
         };
 
         self.vm = try Vm.init(allocator, heap);

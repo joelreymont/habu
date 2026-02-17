@@ -23,13 +23,16 @@ Related:
 
 ## Current State (What Exists Today)
 
-- VM GC uses explicit root buffers built on demand (stack/globals/frames copied into an `ArrayList(Value)`, then written back after GC).
-- JIT runtime helpers (`src/jit/rt.zig`) collect roots by copying `frame_base..sp` and `const_pool[0..const_count]` into a temporary `ArrayList(Value)` and using `vm.ext_roots`.
+- VM GC now builds roots as:
+  - root ranges for contiguous `[]Value` regions (`stack`, `globals`, `secondary_values`, `saved_chunks`, `chunk_pool`, `ext_roots`);
+  - root slots (`*Value`) for irregular fields and temporary pointer-derived roots (frame closures/chunks, control-stack chunk pointers).
+- VM no longer uses a temporary `ArrayList(Value)` mirror for chunk/closure roots during collection.
+- JIT helper GC still uses `vm.ext_roots` and helper-side root materialization (no safepoint metadata yet).
 - There is no safepoint metadata; "GC happens" only inside helper calls that catch `error.OutOfMemory` and invoke `vm.collectGarbage()`.
 
-This works but is not Cranelift-class:
-- It allocates on GC slow paths.
-- It requires copying root data into/out of temporary buffers.
+This is better but still not Cranelift-class:
+- No safepoint table / stack-map metadata.
+- JIT still relies on helper-root plumbing, not compiler-emitted safepoints.
 - It cannot scale to register allocation (live `Value`s in registers would not be updated).
 
 ## Design: Unified Root Enumeration API

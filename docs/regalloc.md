@@ -2,7 +2,7 @@
 
 This document sketches the design for a register allocator that enables
 Cranelift-class codegen in the Habu JIT. It targets the SSA IR in
-`src/jit/ir.zig` and AArch64 codegen first.
+`../hoist/src/ir/function.zig` and AArch64 codegen first.
 
 ## Goals
 
@@ -19,7 +19,7 @@ Cranelift-class codegen in the Habu JIT. It targets the SSA IR in
 
 ## Register classes
 
-Define register classes in `src/jit/regalloc.zig`:
+Define register classes in `../hoist/src/regalloc/linear_scan.zig`:
 
 - GPR: x0-x28 (x29 FP, x30 LR reserved)
 - SCRATCH: x0-x7 for call-clobbered
@@ -70,9 +70,9 @@ Follow-up: priority-based allocator (use counts + loop depth).
 
 ## Integration points
 
-- `src/jit/ir.zig`: add per-value id, block order.
-- `src/jit/verify.zig`: validate allocation correctness.
-- `src/jit/jit.zig`: replace fixed reg emission with allocation results.
+- `../hoist/src/regalloc/linear_scan.zig`: allocation policy and spill behavior.
+- `../hoist/src/codegen/compile.zig`: consume allocation results in lowering.
+- `src/jit/backend.zig`: keep Habu IR → Hoist SSA translation aligned with regalloc constraints.
 
 ## Testing
 

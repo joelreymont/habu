@@ -215,7 +215,7 @@ pub const Package = struct {
 /// Heap configuration
 pub const Config = struct {
     /// Total heap size (both semispaces combined)
-    total_size: usize = 64 * 1024 * 1024, // 64MB default
+    total_size: usize = 256 * 1024 * 1024, // 256MB default
     /// GC threshold (trigger GC when from-space is this full)
     gc_threshold: f32 = 0.9,
 };

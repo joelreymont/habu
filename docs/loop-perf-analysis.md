@@ -68,7 +68,7 @@ bottom-tested loop, no dead cset, no NOPs.
 
 ### Fix 1: Correct the dead CSET elimination mask (trivial)
 
-**File:** `src/jit/hoist_backend.zig` — `eliminateDeadCset()`
+**File:** `src/jit/backend.zig` — `eliminateDeadCset()`
 **Effort:** 1 line change
 **Saves:** 1 instruction per loop iteration
 
@@ -86,7 +86,7 @@ After fix: dead cset becomes NOP → removed by compaction (Fix 3).
 
 ### Fix 2: Branch inversion peephole (easy, ~15 lines)
 
-**File:** `src/jit/hoist_backend.zig` — new function `invertBranchOverBranch()`
+**File:** `src/jit/backend.zig` — new function `invertBranchOverBranch()`
 **Effort:** ~15 lines
 **Saves:** 1 instruction per loop iteration
 
@@ -109,7 +109,7 @@ ARM64 condition code inversion table:
 
 ### Fix 3: NOP compaction pass (medium, ~80 lines)
 
-**File:** `src/jit/hoist_backend.zig` — new function `compactNops()`
+**File:** `src/jit/backend.zig` — new function `compactNops()`
 **Effort:** ~80 lines
 **Saves:** 2-4 NOPs per loop iteration (biggest single win)
 
@@ -140,7 +140,7 @@ Edge cases:
 
 ### Fix 4: Loop rotation in IR generation (hard, ~80 lines in translateLoop)
 
-**File:** `src/jit/hoist_backend.zig` — modify `translateLoop()`
+**File:** `src/jit/backend.zig` — modify `translateLoop()`
 **Effort:** ~80 lines (restructure IR block generation)
 **Saves:** 1 branch per loop iteration (the unconditional back-branch)
 
@@ -188,7 +188,7 @@ body:
 
 ### Fix 5: MADD fusion for `acc += x * y` pattern (medium, ~30 lines)
 
-**File:** `src/jit/hoist_backend.zig` — modify `translateFixnumAdd()`
+**File:** `src/jit/backend.zig` — modify `translateFixnumAdd()`
 **Effort:** ~30 lines
 **Saves:** 1 instruction for multiply-accumulate patterns (nested_loop)
 

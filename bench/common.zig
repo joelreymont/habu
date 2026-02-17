@@ -10,6 +10,7 @@ const Heap = runtime.Heap;
 const Vm = interp.Vm;
 const Compiler = compiler_mod.Compiler;
 const Chunk = runtime.Chunk;
+const Value = runtime.Value;
 
 pub fn opsPerSec(ops: u64, ns: u64) f64 {
     if (ns == 0) return 0;
@@ -22,7 +23,7 @@ pub fn compileChunk(
     heap: *Heap,
     vm: *Vm,
     comp: *Compiler,
-    chunk_pool: *std.ArrayList(*Chunk),
+    chunk_pool: *std.ArrayList(Value),
     source: []const u8,
 ) !*Chunk {
     return try compile_chunk.compileChunk(allocator, heap, vm, comp, chunk_pool, source);

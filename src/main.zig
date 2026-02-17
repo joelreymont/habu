@@ -3,7 +3,7 @@
 //! A Lisp implementation in Zig with:
 //! - Bytecode compiler
 //! - Stack-based VM (WASM compatible)
-//! - Copy-and-patch JIT (native platforms)
+//! - Hoist SSA JIT (native platforms)
 //! - Gradual typing with occurrence typing
 
 const std = @import("std");
@@ -14,7 +14,7 @@ const repl_mod = @import("interp/repl.zig");
 const Repl = repl_mod.Repl;
 
 fn resolveHeapSize() usize {
-    const default_size = 64 * 1024 * 1024;
+    const default_size = 256 * 1024 * 1024;
     const heap_mb_c = std.posix.getenv("HABU_HEAP_MB") orelse return default_size;
     const heap_mb = std.fmt.parseUnsigned(usize, std.mem.sliceTo(heap_mb_c, 0), 10) catch return default_size;
     if (heap_mb == 0) return default_size;
@@ -43,7 +43,7 @@ fn mainInner() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Initialize heap (64MB default, overridable via HABU_HEAP_MB)
+    // Initialize heap (256MB default, overridable via HABU_HEAP_MB)
     var heap = try Heap.init(allocator, .{ .total_size = resolveHeapSize() });
     defer heap.deinit();
 
