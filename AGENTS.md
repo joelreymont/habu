@@ -8,6 +8,15 @@ machine code than to try to optimize whatever significant amount of code you hav
 generated. You dot all tasks and commit after each significant change or feature.
 You keep track of what works and what doesn't in `LESSONS.md`.
 
+## LESSONS.md Discipline (Required)
+
+- Read `LESSONS.md` before starting any new dot.
+- Re-read relevant sections while debugging or changing subsystem boundaries.
+- Update `LESSONS.md` at the end of each session with:
+  - what worked well,
+  - what did not work,
+  - file/line references for root causes and fixes.
+
 ## Current Status (2024-12-25)
 
 Habu is being rewritten from Common Lisp to Zig.

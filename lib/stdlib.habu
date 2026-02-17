@@ -1534,14 +1534,7 @@
   (funcall #'%intern-core (string name)))
 
 (defun find-symbol (name &optional (package *package*))
-  ;; Simple implementation: intern looks up or creates, so we use it
-  ;; then check if the resulting symbol was pre-existing by checking
-  ;; its name matches. CL find-symbol should NOT intern, but our
-  ;; intern is idempotent for existing symbols.
-  (let ((sym (intern name package)))
-    (if sym
-        (values sym :internal)
-        (values nil nil))))
+  (%find-symbol name (%ensure-package package)))
 
 ; Bootstrap function cells for core primitives so (symbol-function 'car) works.
 (setf (fdefinition 'car) #'car)

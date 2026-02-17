@@ -6,6 +6,25 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ---
 
+## Session Notes (2026-02-17)
+
+### Worked Well
+- Form-level tracing (`HABU_TRACE_FORMS=1`) isolated the failing loader site to `lib/maxima-stubs.lisp` form 24 (`eval-when`) quickly.
+- Reproducing with minimal Lisp snippets (outside full Maxima load) made package bugs obvious and testable.
+- Adding focused regression tests in `src/runtime/primitives/package.zig` caught real root causes:
+  - stale inherited-symbol replacement in native tables,
+  - inherited lookup using native exports when Lisp export tables are sparse,
+  - keyword nickname handling in package creation.
+- Validating with the same Maxima subset gate used by integration (`lib/maxima-loader.lisp`, 39 files) gave a concrete pass criterion: `(39 39 0 1 1 1 1 1 1)`.
+
+### Did Not Work
+- Using stdlib `find-symbol` as a debugging oracle was misleading; its previous shim semantics masked package-state bugs.
+- Assuming Lisp package export hash tables mirror native exports caused false negatives in inherited symbol classification.
+- Accepting keyword nicknames in validation while later calling `nameBytes` (string/symbol-only) produced delayed `TypeError` in `eval-when`, not at option parse time.
+- Relying on a single long `zig build test -Dtest-filter=...` run was unreliable in this environment; targeted tests plus direct REPL gate runs were more deterministic.
+
+---
+
 ## Anti-Patterns (What Goes Wrong)
 
 ### 1. "Already Exists" Discovery (793 occurrences)
@@ -578,3 +597,25 @@ after GC (`chunkFromValue` / `toPtr(Closure)`).
 can hit VM `StackOverflow` that is not recoverable through Lisp-level `handler-case`.
 Keep `lib/maxima-loader.lisp` as a callable API (`maxima-load-all`) and avoid auto-running
 the full load sequence during file import.
+
+### Stream READ Semantics Can Invalidate Loader RCA (2026-02-17)
+
+`lib/stdlib.habu` currently defines stream `read` by consuming the entire
+stream into a string and then parsing once:
+- first `(read s ...)` returns the first form
+- second and later reads return `:EOF`
+
+Evidence:
+- `/tmp/read_many_target.lisp` with forms `1 2 3` produced `R1=1, R2=:EOF`.
+
+Impact on Maxima loader debugging:
+- "formwise read/eval" probes that appeared to succeed (`DONE forms=1 ok=1`)
+  were not trustworthy for multi-form files because stream `read` never
+  advanced past the first form.
+- Removing `handler_sp/catch_sp` clobber in `evalFileContentSeparateVm` did
+  not fix `db/compar/limit` load overflows and introduced new regressions
+  (`mlisp` load failure), so that change was reverted.
+
+Actionable takeaway:
+- Do not use stream-`read` loops as a fallback loader path until stream `read`
+  is fixed to consume one form at a time.

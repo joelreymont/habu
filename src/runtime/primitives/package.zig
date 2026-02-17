@@ -134,9 +134,24 @@ fn ensureLocalShadowSymbol(heap: *Heap, native_pkg: *heap_mod.Package, name: []c
     const upper = try heap_mod.upperNameAlloc(heap.backing_allocator, name, upper_buf[0..]);
     defer heap_mod.freeUpperName(heap.backing_allocator, upper);
     const upper_name = upper.slice;
+    var replace_existing = false;
 
     if (native_pkg.symbols.get(upper_name)) |existing| {
-        return existing;
+        if (existing.isSymbol()) {
+            // Keep an existing symbol only when it is already local to this package.
+            // Inherited symbols can be present in the native symbol table; SHADOW
+            // must replace those with a fresh local symbol.
+            if (existing.toPtr(objects.Symbol).reserved == @intFromPtr(native_pkg)) {
+                return existing;
+            }
+            replace_existing = true;
+        } else {
+            return existing;
+        }
+    }
+
+    if (replace_existing) {
+        _ = native_pkg.symbols.remove(upper_name);
     }
 
     const sym = try heap.allocSymbol(upper_name);
@@ -257,7 +272,7 @@ pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value
                 else => return error.TypeError,
             }
             if (try heap.findLispPackage(nick)) |_| return error.PackageExists;
-            const nick_name = try nameBytes(nick);
+            const nick_name = try nameBytesWithKeyword(nick);
             if (heap.findPackage(nick_name)) |existing_nick_pkg| {
                 if (reused_native) |native| {
                     if (existing_nick_pkg != native) return error.PackageExists;
@@ -308,7 +323,7 @@ pub fn makePackage(heap: *Heap, name: Value, nicknames: ?Value, use_list: ?Value
             errdefer {
                 _ = heap.removeLispPackageKey(nick_key);
             }
-            const nick_name = try nameBytes(nick);
+            const nick_name = try nameBytesWithKeyword(nick);
             if (heap.package_aliases.get(nick_name)) |existing_alias| {
                 if (existing_alias != native_pkg) return error.PackageExists;
             } else {
@@ -549,22 +564,9 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
             }
         }
 
-        // Check used packages for exported symbols
-        var use = p.use_list;
-        while (use.raw != Value.nil.raw) {
-            if (!use.isCons()) break;
-            const used_pkg = use.toPtr(objects.Cons).car;
-            if (used_pkg.isPackage()) {
-                const up = used_pkg.toPtr(objects.Package);
-                if (up.exports.raw != Value.nil.raw) {
-                    const found = hashTableLookup(up.exports, sym);
-                    if (found.raw != Value.nil.raw) {
-                        const status = try heap.internKeyword("INHERITED");
-                        return try heap.allocCons(found, try heap.allocCons(status, Value.nil));
-                    }
-                }
-            }
-            use = use.toPtr(objects.Cons).cdr;
+        if (try findInheritedSymbol(heap, p, sym)) |found| {
+            const status = try heap.internKeyword("INHERITED");
+            return try heap.allocCons(found, try heap.allocCons(status, Value.nil));
         }
     }
 
@@ -608,6 +610,28 @@ fn insertHashTable(heap: *Heap, table: Value, key: Value, value: Value) !void {
     }
 }
 
+fn findInheritedSymbol(heap: *Heap, p: *objects.Package, sym: Value) !?Value {
+    if (!sym.isSymbol()) return null;
+    const sym_name = sym.toPtr(objects.Symbol).getName();
+    var use = p.use_list;
+    while (use.raw != Value.nil.raw) {
+        if (!use.isCons()) break;
+        const used_pkg = use.toPtr(objects.Cons).car;
+        if (used_pkg.isPackage()) {
+            const up = used_pkg.toPtr(objects.Package);
+            if (up.exports.raw != Value.nil.raw) {
+                const found = hashTableLookup(up.exports, sym);
+                if (found.raw != Value.nil.raw) return found;
+            }
+            if (nativePkgFor(heap, used_pkg)) |native_use| {
+                if (native_use.exports.get(sym_name) != null) return sym;
+            } else |_| {}
+        }
+        use = use.toPtr(objects.Cons).cdr;
+    }
+    return null;
+}
+
 /// Find a symbol in a package
 /// Returns (values symbol status) where status is :internal/:external/:inherited/nil
 pub fn findSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
@@ -635,22 +659,9 @@ pub fn findSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
             }
         }
 
-        // Check used packages for exported symbols
-        var use = p.use_list;
-        while (use.raw != Value.nil.raw) {
-            if (!use.isCons()) break;
-            const used_pkg = use.toPtr(objects.Cons).car;
-            if (used_pkg.isPackage()) {
-                const up = used_pkg.toPtr(objects.Package);
-                if (up.exports.raw != Value.nil.raw) {
-                    const found = hashTableLookup(up.exports, sym);
-                    if (found.raw != Value.nil.raw) {
-                        const status = try heap.internKeyword("INHERITED");
-                        return try heap.allocCons(found, try heap.allocCons(status, Value.nil));
-                    }
-                }
-            }
-            use = use.toPtr(objects.Cons).cdr;
+        if (try findInheritedSymbol(heap, p, sym)) |found| {
+            const status = try heap.internKeyword("INHERITED");
+            return try heap.allocCons(found, try heap.allocCons(status, Value.nil));
         }
     }
 
@@ -955,7 +966,7 @@ pub fn deletePackage(heap: *Heap, designator: Value) !bool {
         if (!nicks.isCons()) break;
         const nick = nicks.toPtr(Cons).car;
         _ = try heap.removeLispPackage(nick);
-        const nick_name = try nameBytes(nick);
+        const nick_name = try nameBytesWithKeyword(nick);
         if (heap.package_aliases.fetchRemove(nick_name)) |removed| {
             heap.backing_allocator.free(removed.key);
         }
@@ -990,7 +1001,7 @@ pub fn deletePackage(heap: *Heap, designator: Value) !bool {
 pub fn renamePackage(heap: *Heap, pkg: Value, new_name: Value, new_nicknames: ?Value) !Value {
     if (!pkg.isPackage()) return error.TypeError;
     switch (new_name.typeKind()) {
-        .string, .symbol => {},
+        .string, .symbol, .keyword => {},
         else => return error.TypeError,
     }
 
@@ -1001,7 +1012,7 @@ pub fn renamePackage(heap: *Heap, pkg: Value, new_name: Value, new_nicknames: ?V
         if (existing.raw != pkg.raw) return error.PackageExists;
     }
 
-    const new_name_bytes = try nameBytes(new_name);
+    const new_name_bytes = try nameBytesWithKeyword(new_name);
     if (heap.findPackage(new_name_bytes)) |existing_native| {
         if (existing_native != native_pkg) return error.PackageExists;
     }
@@ -1012,13 +1023,13 @@ pub fn renamePackage(heap: *Heap, pkg: Value, new_name: Value, new_nicknames: ?V
             if (!nicks.isCons()) return error.TypeError;
             const nick = nicks.toPtr(Cons).car;
             switch (nick.typeKind()) {
-                .string, .symbol => {},
+                .string, .symbol, .keyword => {},
                 else => return error.TypeError,
             }
             if (try heap.findLispPackage(nick)) |existing_pkg| {
                 if (existing_pkg.raw != pkg.raw) return error.PackageExists;
             }
-            const nick_name = try nameBytes(nick);
+            const nick_name = try nameBytesWithKeyword(nick);
             if (heap.findPackage(nick_name)) |existing_native| {
                 if (existing_native != native_pkg) return error.PackageExists;
             }
@@ -1050,7 +1061,7 @@ pub fn renamePackage(heap: *Heap, pkg: Value, new_name: Value, new_nicknames: ?V
             if (!old_nicks.isCons()) break;
             const nick = old_nicks.toPtr(Cons).car;
             _ = try heap.removeLispPackage(nick);
-            const nick_name = try nameBytes(nick);
+            const nick_name = try nameBytesWithKeyword(nick);
             if (heap.package_aliases.fetchRemove(nick_name)) |removed| {
                 heap.backing_allocator.free(removed.key);
             }
@@ -1063,7 +1074,7 @@ pub fn renamePackage(heap: *Heap, pkg: Value, new_name: Value, new_nicknames: ?V
             if (!nicks.isCons()) break;
             const nick = nicks.toPtr(Cons).car;
             try heap.putLispPackage(nick, pkg);
-            const nick_name = try nameBytes(nick);
+            const nick_name = try nameBytesWithKeyword(nick);
             const alias_key = try heap.backing_allocator.dupe(u8, nick_name);
             try heap.package_aliases.put(heap.backing_allocator, alias_key, native_pkg);
             nicks = nicks.toPtr(Cons).cdr;
@@ -1512,6 +1523,67 @@ test "shadow creates local symbol that masks inherited symbol" {
     try testing.expectEqualStrings("INTERNAL", status.toPtr(objects.Keyword).getName());
 }
 
+test "shadow replaces inherited symbol entry in native table" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const provider = try makePackage(&heap, try heap.allocBaseString("PROVIDER-SHADOW"), null, null);
+    const pkg = try makePackage(&heap, try heap.allocBaseString("TEST-SHADOW-REPLACE"), null, null);
+    try usePackage(&heap, provider, pkg);
+
+    const sym_name = try heap.allocBaseString("MASKED");
+    const provider_intern = try internSymbol(&heap, sym_name, provider);
+    const provider_sym = provider_intern.toPtr(Cons).car;
+    try exportSymbols(&heap, provider_sym, provider);
+
+    const before = try findSymbol(&heap, sym_name, pkg);
+    const inherited_sym = before.toPtr(Cons).car;
+    const before_status = before.toPtr(Cons).cdr.toPtr(Cons).car;
+    try testing.expect(inherited_sym.isSymbol());
+    try testing.expect(before_status.isKeyword());
+    try testing.expectEqualStrings("INHERITED", before_status.toPtr(objects.Keyword).getName());
+
+    const native_pkg = try nativePkgFor(&heap, pkg);
+    try native_pkg.symbols.put("MASKED", inherited_sym);
+
+    try shadowSymbols(&heap, sym_name, pkg);
+
+    const after = try findSymbol(&heap, sym_name, pkg);
+    const local_sym = after.toPtr(Cons).car;
+    const after_status = after.toPtr(Cons).cdr.toPtr(Cons).car;
+    try testing.expect(local_sym.isSymbol());
+    try testing.expect(local_sym.raw != inherited_sym.raw);
+    try testing.expect(after_status.isKeyword());
+    try testing.expectEqualStrings("INTERNAL", after_status.toPtr(objects.Keyword).getName());
+}
+
+test "findSymbol uses native exports for inherited status" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const provider = try makePackage(&heap, try heap.allocBaseString("PROVIDER-NATIVE"), null, null);
+    const pkg = try makePackage(&heap, try heap.allocBaseString("TEST-NATIVE-INH"), null, null);
+    try usePackage(&heap, provider, pkg);
+
+    const name = try heap.allocBaseString("FOO");
+    const provider_intern = try internSymbol(&heap, name, provider);
+    const provider_sym = provider_intern.toPtr(Cons).car;
+    try exportSymbols(&heap, provider_sym, provider);
+
+    // Simulate package objects that do not mirror native exports exactly.
+    provider.toPtr(objects.Package).exports = Value.nil;
+
+    const found = try findSymbol(&heap, name, pkg);
+    const found_sym = found.toPtr(Cons).car;
+    const found_status = found.toPtr(Cons).cdr.toPtr(Cons).car;
+    try testing.expect(found_sym.isSymbol());
+    try testing.expect(found_sym.raw == provider_sym.raw);
+    try testing.expect(found_status.isKeyword());
+    try testing.expectEqualStrings("INHERITED", found_status.toPtr(objects.Keyword).getName());
+}
+
 test "packageSymbolsList accepts keyword name" {
     const testing = std.testing;
     var heap = try Heap.init(testing.allocator, .{});
@@ -1552,6 +1624,22 @@ test "makePackage rejects existing nickname" {
     try testing.expectError(error.PackageExists, makePackage(&heap, foo, nick_list, null));
     const found = try heap.findLispPackage(foo);
     try testing.expect(found == null);
+}
+
+test "makePackage supports keyword nicknames" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const name = try heap.allocBaseString("KW-NICK-PKG");
+    const nick = try heap.internKeyword("KW-NICK");
+    const nick_list = try heap.allocCons(nick, Value.nil);
+    const pkg = try makePackage(&heap, name, nick_list, null);
+    try testing.expect(pkg.isPackage());
+
+    const found = try findPackage(&heap, nick);
+    try testing.expect(found != null);
+    try testing.expect(found.?.raw == pkg.raw);
 }
 
 test "makePackage reuses native placeholder package" {

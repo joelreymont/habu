@@ -670,6 +670,7 @@ pub const Builtins = struct {
     @"kw_load-toplevel": Value,
     @"kw_compile-toplevel": Value,
     kw_use: Value,
+    kw_nicknames: Value,
     kw_export: Value,
     kw_shadow: Value,
     kw_size: Value,
@@ -1270,6 +1271,7 @@ pub const Builtins = struct {
             .@"kw_load-toplevel" = try heap.internKeyword("load-toplevel"),
             .@"kw_compile-toplevel" = try heap.internKeyword("compile-toplevel"),
             .kw_use = try heap.internKeyword("use"),
+            .kw_nicknames = try heap.internKeyword("nicknames"),
             .kw_export = try heap.internKeyword("export"),
             .kw_shadow = try heap.internKeyword("shadow"),
             .kw_size = try heap.internKeyword("size"),
@@ -8386,19 +8388,17 @@ pub const Compiler = struct {
 
         const cons1 = args.toPtr(Cons);
         const pkg_name_val = cons1.car;
-
-        // Get package name from string or symbol
-        const pkg_name = switch (pkg_name_val.typeKind()) {
-            .string => pkg_name_val.toPtr(runtime.String).bytes(),
-            .symbol => pkg_name_val.toPtr(Symbol).getName(),
-            .keyword => pkg_name_val.toPtr(runtime.Keyword).getName(),
+        switch (pkg_name_val.typeKind()) {
+            .string, .symbol, .keyword => {},
             else => return error.InvalidSyntax,
-        };
+        }
 
-        // Create or find the package
-        const pkg = try heap.findOrCreatePackage(pkg_name);
+        var nick_rev = Value.nil;
+        var use_rev = Value.nil;
+        var export_rev = Value.nil;
+        var shadow_rev = Value.nil;
 
-        // Process options: (:use ...) (:export ...)
+        const b = self.builtins.?;
         var options = cons1.cdr;
         while (options.isCons()) {
             const opt_cons = options.toPtr(Cons);
@@ -8408,44 +8408,84 @@ pub const Compiler = struct {
                 const opt_list = opt.toPtr(Cons);
                 if (opt_list.car.isKeyword()) {
                     const kw = opt_list.car;
-                    const b = self.builtins.?;
-
                     if (kw.raw == b.kw_use.raw) {
-                        // (:use "pkg1" "pkg2" ...)
-                        var use_list = opt_list.cdr;
-                        while (use_list.isCons()) {
-                            const use_cons = use_list.toPtr(Cons);
-                            const use_pkg_name = if (self.getStringOrSymbolName(use_cons.car)) |val| val else return error.InvalidSyntax;
-                            const use_pkg = try heap.findOrCreatePackage(use_pkg_name);
-                            try pkg.usePackage(use_pkg);
-                            use_list = use_cons.cdr;
-                        }
+                        try self.collectDefpackageDesignatorsRev(&use_rev, opt_list.cdr);
+                    } else if (kw.raw == b.kw_nicknames.raw) {
+                        try self.collectDefpackageDesignatorsRev(&nick_rev, opt_list.cdr);
                     } else if (kw.raw == b.kw_export.raw) {
-                        // (:export "sym1" "sym2" ...)
-                        var export_list = opt_list.cdr;
-                        while (export_list.isCons()) {
-                            const export_cons = export_list.toPtr(Cons);
-                            const export_name = if (self.getStringOrSymbolName(export_cons.car)) |val| val else return error.InvalidSyntax;
-                            try pkg.exportSymbol(export_name);
-                            export_list = export_cons.cdr;
-                        }
+                        try self.collectDefpackageDesignatorsRev(&export_rev, opt_list.cdr);
                     } else if (kw.raw == b.kw_shadow.raw) {
-                        // (:shadow sym1 sym2 ...)
-                        var shadow_list = opt_list.cdr;
-                        while (shadow_list.isCons()) {
-                            const shadow_cons = shadow_list.toPtr(Cons);
-                            const shadow_name = if (self.getStringOrSymbolName(shadow_cons.car)) |val| val else return error.InvalidSyntax;
-                            _ = try heap.shadowInPackage(pkg, shadow_name);
-                            shadow_list = shadow_cons.cdr;
-                        }
+                        try self.collectDefpackageDesignatorsRev(&shadow_rev, opt_list.cdr);
                     }
                 }
             }
             options = opt_cons.cdr;
         }
 
-        // Return the package name as a symbol
+        const nicknames = try self.reverseDefpackageList(nick_rev);
+        const use_list = try self.reverseDefpackageList(use_rev);
+        const export_names = try self.reverseDefpackageList(export_rev);
+        const shadow_names = try self.reverseDefpackageList(shadow_rev);
+
+        const pkg = if (try primitives.package.findPackage(heap, pkg_name_val)) |existing|
+            existing
+        else
+            try primitives.package.makePackage(
+                heap,
+                pkg_name_val,
+                if (nicknames.raw == Value.nil.raw) null else nicknames,
+                null,
+            );
+
+        if (use_list.raw != Value.nil.raw) {
+            try primitives.package.usePackage(heap, use_list, pkg);
+        }
+
+        if (export_names.raw != Value.nil.raw) {
+            var export_cur = export_names;
+            while (export_cur.raw != Value.nil.raw) {
+                if (!export_cur.isCons()) return error.InvalidSyntax;
+                const name_val = export_cur.toPtr(Cons).car;
+                const interned = try primitives.package.internSymbol(heap, name_val, pkg);
+                const sym = interned.toPtr(Cons).car;
+                try primitives.package.exportSymbols(heap, sym, pkg);
+                export_cur = export_cur.toPtr(Cons).cdr;
+            }
+        }
+
+        if (shadow_names.raw != Value.nil.raw) {
+            try primitives.package.shadowSymbols(heap, shadow_names, pkg);
+        }
+
+        const pkg_name = if (self.getStringOrSymbolName(pkg_name_val)) |name| name else return error.InvalidSyntax;
         return try self.builder.lit(try heap.intern(pkg_name));
+    }
+
+    fn collectDefpackageDesignatorsRev(self: *Compiler, rev: *Value, items: Value) !void {
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+        var cur = items;
+        while (cur.raw != Value.nil.raw) {
+            if (!cur.isCons()) return error.InvalidSyntax;
+            const item = cur.toPtr(Cons).car;
+            switch (item.typeKind()) {
+                .string, .symbol, .keyword => {},
+                else => return error.InvalidSyntax,
+            }
+            rev.* = try heap.allocCons(item, rev.*);
+            cur = cur.toPtr(Cons).cdr;
+        }
+    }
+
+    fn reverseDefpackageList(self: *Compiler, list: Value) !Value {
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+        var out = Value.nil;
+        var cur = list;
+        while (cur.raw != Value.nil.raw) {
+            if (!cur.isCons()) return error.InvalidSyntax;
+            out = try heap.allocCons(cur.toPtr(Cons).car, out);
+            cur = cur.toPtr(Cons).cdr;
+        }
+        return out;
     }
 
     /// Compile in-package: (in-package "name")
@@ -17730,6 +17770,7 @@ test "compile defpackage names" {
     try testing.expect(ir_str.* == .lit);
     try testing.expect(ir_str.lit.isSymbol());
     try testing.expectEqualStrings("FOO", ir_str.lit.toPtr(Symbol).getName());
+    try testing.expect((try primitives.package.findPackage(&heap, pkg_str)) != null);
 
     const bar_sym = try heap.intern("bar");
     const args_sym = try heap.allocCons(bar_sym, Value.nil);
@@ -17739,6 +17780,22 @@ test "compile defpackage names" {
     try testing.expect(ir_sym.* == .lit);
     try testing.expect(ir_sym.lit.isSymbol());
     try testing.expectEqualStrings("BAR", ir_sym.lit.toPtr(Symbol).getName());
+
+    const baz_name = try heap.allocBaseString("baz");
+    const nick_kw = try heap.internKeyword("nicknames");
+    const use_kw = try heap.internKeyword("use");
+    const nick_name = try heap.allocBaseString("bz");
+    const cl_name = try heap.allocBaseString("COMMON-LISP");
+    const nick_opt = try heap.allocCons(nick_kw, try heap.allocCons(nick_name, Value.nil));
+    const use_opt = try heap.allocCons(use_kw, try heap.allocCons(cl_name, Value.nil));
+    const opts = try heap.allocCons(nick_opt, try heap.allocCons(use_opt, Value.nil));
+    const args_opts = try heap.allocCons(baz_name, opts);
+    const ir_opts = try compiler.compileDefpackage(args_opts);
+    defer arena_alloc.destroy(ir_opts);
+    try testing.expect(ir_opts.* == .lit);
+    try testing.expectEqualStrings("BAZ", ir_opts.lit.toPtr(Symbol).getName());
+    try testing.expect((try primitives.package.findPackage(&heap, baz_name)) != null);
+    try testing.expect((try primitives.package.findPackage(&heap, nick_name)) != null);
 }
 
 test "parseTypeExpr function type" {

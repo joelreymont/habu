@@ -53,6 +53,19 @@
 (defpackage :mt19937 (:use :common-lisp)
   (:export #:make-random-state #:random-state-p))
 
+;; Maxima expects these names to be shadowed in :maxima (see
+;; /tmp/maxima/src/maxima-package.lisp). Without this, files like commac.lisp
+;; redefine CL symbols (notably FUNCTIONP), which breaks later loads.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (unless (find-package :maxima)
+    (defpackage :maxima
+      (:use :common-lisp)
+      (:nicknames :cl-macsyma :cl-maxima :macsyma)))
+  (shadow '(continue float functionp array exp signum
+            asin acos asinh acosh atanh tanh cosh sinh tan
+            break gcd)
+          :maxima))
+
 (in-package :maxima)
 
 ;; Note: shadowed CL symbols (float, exp, signum, etc.) are redefined by

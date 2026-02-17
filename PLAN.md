@@ -43,6 +43,7 @@
     - [ ] `habu-intern-bench-jit-1a268ee9` Finish intern benchmark JIT wiring end-to-end.
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
+  - [ ] `habu-reverify-hoist-compile-b48554f1` Reverify hoist compile gate after latest upstream rebuild.
 
 ### 2. Compiler Core
 - [ ] `habu-fix-loop-macro-c7a41441` Fix LOOP macro dispatch.
@@ -80,6 +81,7 @@
 - [x] `habu-increase-default-heap-44a06bce` Increase default heap and build comprehensive Maxima loader.
 - [ ] `habu-maxima-end-to-efe58661` Maxima end-to-end integration test. Depends on `habu-cut-gc-root-25d3bb03` and `habu-fix-hoist-compile-9a100641`.
   - [x] `habu-maxima-core-loader-999c7eb3` Add Maxima core subset loader + entrypoint binding integration gate.
+  - [x] `habu-rca-load-stackoverflow-e3d4f5d8` RCA and fix load stack overflow path for Maxima large source files.
 - [ ] `habu-fix-maxima-cas-a491af14` Fix Maxima CAS operations: integrate, solve, factor, limit, ratsimp, det. Depends on `habu-maxima-end-to-efe58661`.
 
 ## Execution Loop
