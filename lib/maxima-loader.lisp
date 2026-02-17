@@ -3,9 +3,15 @@
 ;; Loads a broad ordered subset of Maxima source files with per-file
 ;; error reporting so we can iteratively raise compatibility.
 
-(load "lib/maxima-stubs.lisp")
-
 (defparameter *maxima-source-dir* "/tmp/maxima/src/")
+(defparameter *maxima-package-init* (concatenate 'string *maxima-source-dir* "maxima-package.lisp"))
+
+;; Prefer upstream package definitions when available so package semantics
+;; match Maxima source without local rewrites.
+(when (probe-file *maxima-package-init*)
+  (load *maxima-package-init*))
+
+(load "lib/maxima-stubs.lisp")
 
 (defparameter *maxima-files*
   '(

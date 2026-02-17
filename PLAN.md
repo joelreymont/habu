@@ -83,7 +83,7 @@
   - [x] `habu-maxima-subset-load-e9db9bb5` Maxima subset: load `db`/`compar` deps so `kindp` exists on CAS paths.
   - [x] `habu-rca-and-fix-4a4ea5d5` RCA and fix `$ratsimp` `setf: unsupported place` root cause.
   - [x] `habu-add-maxima-cas-1807f8ae` Add end-to-end CAS regression checks in integration tests.
-  - [ ] `habu-maxima-loader-fix-d654483f` Maxima loader: fix `server`/`coerce` crash so full module load can continue.
+  - [x] `habu-maxima-loader-fix-d654483f` Maxima loader: fix `server`/`coerce` crash so full module load can continue.
   - [ ] `habu-maxima-integrate-path-b786024b` Maxima integrate path: resolve unbound-symbol dependency chain.
   - [ ] `habu-maxima-factor-ratsimp-521dd2ca` Maxima factor/ratsimp path: fix TypeMismatch and ProgramError roots.
   - [x] `habu-maxima-core-loader-999c7eb3` Add Maxima core subset loader + entrypoint binding integration gate.

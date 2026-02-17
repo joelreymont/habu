@@ -20,6 +20,10 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
   - `(let ((a 1) (*x* 2)) ...)` leaked writes to global `*x*` instead of dynamic binding.
   - Fixing mixed special/lexical lowering in `src/compiler/compile.zig` (specials via `progv` with temp bindings) removed the `LET-MACRO-HAIR` crash path.
 - Adding dedicated integration regressions in `src/tests/integration.zig` for mixed special `let` and Maxima `letmac` keeps this class of bug from regressing.
+- Treating `defpackage` as a strict semantic boundary (parse and apply `:import-from` / `:shadowing-import-from` instead of ignoring them) removed cross-package symbol alias bugs without Maxima-specific rewrites.
+- Loading upstream Maxima package definitions first (`lib/maxima-loader.lisp` + `maxima-package.lisp`) and using stubs only as guarded fallbacks preserved symbol/package intent across diverse source files.
+- Running package-form compilation in an arena-scoped compiler context (`src/interp/repl.zig` `evalPackageForm`) eliminated persistent IR node leaks on repeated `defpackage` evaluations.
+- Fixing `%shadowing-import` replacement semantics in `src/runtime/primitives/package.zig` (replace conflicting local/native entries before import) aligned behavior with CL expectations and unblocked real package forms.
 
 ### Did Not Work
 - Using stdlib `find-symbol` as a debugging oracle was misleading; its previous shim semantics masked package-state bugs.
@@ -27,6 +31,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Accepting keyword nicknames in validation while later calling `nameBytes` (string/symbol-only) produced delayed `TypeError` in `eval-when`, not at option parse time.
 - Relying on a single long `zig build test -Dtest-filter=...` run was unreliable in this environment; targeted tests plus direct REPL gate runs were more deterministic.
 - Assuming a Maxima runtime failure (`$ratsimp`) was a setf-expander bug was wrong; after dependency fixes, the failure moved and the real issue was mixed special/lexical `let` compilation semantics.
+- Silently ignoring unknown/unsupported `defpackage` options in `compileDefpackage` was a shortcut that hid root causes and led to hard-to-trace runtime recursion/dispatch failures.
+- Implementing `shadowing-import` by delegating to plain `importSymbols` first was incorrect when same-name local symbols already existed; it caused native symbol-table conflicts instead of required replacement.
 
 ---
 

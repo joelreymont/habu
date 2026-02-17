@@ -673,6 +673,8 @@ pub const Builtins = struct {
     kw_nicknames: Value,
     kw_export: Value,
     kw_shadow: Value,
+    @"kw_import-from": Value,
+    @"kw_shadowing-import-from": Value,
     kw_size: Value,
     kw_test: Value,
     kw_key: Value,
@@ -1274,6 +1276,8 @@ pub const Builtins = struct {
             .kw_nicknames = try heap.internKeyword("nicknames"),
             .kw_export = try heap.internKeyword("export"),
             .kw_shadow = try heap.internKeyword("shadow"),
+            .@"kw_import-from" = try heap.internKeyword("import-from"),
+            .@"kw_shadowing-import-from" = try heap.internKeyword("shadowing-import-from"),
             .kw_size = try heap.internKeyword("size"),
             .kw_test = try heap.internKeyword("test"),
             .kw_key = try heap.internKeyword("key"),
@@ -8440,6 +8444,8 @@ pub const Compiler = struct {
         var use_rev = Value.nil;
         var export_rev = Value.nil;
         var shadow_rev = Value.nil;
+        var import_from_rev = Value.nil;
+        var shadowing_import_from_rev = Value.nil;
 
         const b = self.builtins.?;
         var options = cons1.cdr;
@@ -8447,28 +8453,36 @@ pub const Compiler = struct {
             const opt_cons = options.toPtr(Cons);
             const opt = opt_cons.car;
 
-            if (opt.isCons()) {
-                const opt_list = opt.toPtr(Cons);
-                if (opt_list.car.isKeyword()) {
-                    const kw = opt_list.car;
-                    if (kw.raw == b.kw_use.raw) {
-                        try self.collectDefpackageDesignatorsRev(&use_rev, opt_list.cdr);
-                    } else if (kw.raw == b.kw_nicknames.raw) {
-                        try self.collectDefpackageDesignatorsRev(&nick_rev, opt_list.cdr);
-                    } else if (kw.raw == b.kw_export.raw) {
-                        try self.collectDefpackageDesignatorsRev(&export_rev, opt_list.cdr);
-                    } else if (kw.raw == b.kw_shadow.raw) {
-                        try self.collectDefpackageDesignatorsRev(&shadow_rev, opt_list.cdr);
-                    }
-                }
+            if (!opt.isCons()) return error.InvalidSyntax;
+            const opt_list = opt.toPtr(Cons);
+            if (!opt_list.car.isKeyword()) return error.InvalidSyntax;
+
+            const kw = opt_list.car;
+            if (kw.raw == b.kw_use.raw) {
+                try self.collectDefpackageDesignatorsRev(&use_rev, opt_list.cdr);
+            } else if (kw.raw == b.kw_nicknames.raw) {
+                try self.collectDefpackageDesignatorsRev(&nick_rev, opt_list.cdr);
+            } else if (kw.raw == b.kw_export.raw) {
+                try self.collectDefpackageDesignatorsRev(&export_rev, opt_list.cdr);
+            } else if (kw.raw == b.kw_shadow.raw) {
+                try self.collectDefpackageDesignatorsRev(&shadow_rev, opt_list.cdr);
+            } else if (kw.raw == b.@"kw_import-from".raw) {
+                try self.collectDefpackageFromOptionRev(&import_from_rev, opt_list.cdr);
+            } else if (kw.raw == b.@"kw_shadowing-import-from".raw) {
+                try self.collectDefpackageFromOptionRev(&shadowing_import_from_rev, opt_list.cdr);
+            } else {
+                return error.InvalidSyntax;
             }
             options = opt_cons.cdr;
         }
+        if (!options.isNil()) return error.InvalidSyntax;
 
         const nicknames = try self.reverseDefpackageList(nick_rev);
         const use_list = try self.reverseDefpackageList(use_rev);
         const export_names = try self.reverseDefpackageList(export_rev);
         const shadow_names = try self.reverseDefpackageList(shadow_rev);
+        const import_from_specs = try self.reverseDefpackageList(import_from_rev);
+        const shadowing_import_from_specs = try self.reverseDefpackageList(shadowing_import_from_rev);
 
         const pkg = if (try primitives.package.findPackage(heap, pkg_name_val)) |existing|
             existing
@@ -8500,6 +8514,14 @@ pub const Compiler = struct {
             try primitives.package.shadowSymbols(heap, shadow_names, pkg);
         }
 
+        if (import_from_specs.raw != Value.nil.raw) {
+            try self.applyDefpackageImportSpecs(pkg, import_from_specs, false);
+        }
+
+        if (shadowing_import_from_specs.raw != Value.nil.raw) {
+            try self.applyDefpackageImportSpecs(pkg, shadowing_import_from_specs, true);
+        }
+
         const pkg_name = if (self.getStringOrSymbolName(pkg_name_val)) |name| name else return error.InvalidSyntax;
         return try self.builder.lit(try heap.intern(pkg_name));
     }
@@ -8516,6 +8538,62 @@ pub const Compiler = struct {
             }
             rev.* = try heap.allocCons(item, rev.*);
             cur = cur.toPtr(Cons).cdr;
+        }
+    }
+
+    fn collectDefpackageFromOptionRev(self: *Compiler, rev: *Value, items: Value) !void {
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+        if (!items.isCons()) return error.InvalidSyntax;
+
+        const from_cons = items.toPtr(Cons);
+        const pkg_designator = from_cons.car;
+        switch (pkg_designator.typeKind()) {
+            .string, .symbol, .keyword => {},
+            else => return error.InvalidSyntax,
+        }
+
+        var names_rev = Value.nil;
+        try self.collectDefpackageDesignatorsRev(&names_rev, from_cons.cdr);
+        const names = try self.reverseDefpackageList(names_rev);
+        const spec = try heap.allocCons(pkg_designator, names);
+        rev.* = try heap.allocCons(spec, rev.*);
+    }
+
+    fn applyDefpackageImportSpecs(self: *Compiler, pkg: Value, specs: Value, shadowing: bool) !void {
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+
+        var spec_cur = specs;
+        while (spec_cur.raw != Value.nil.raw) {
+            if (!spec_cur.isCons()) return error.InvalidSyntax;
+            const spec = spec_cur.toPtr(Cons).car;
+            if (!spec.isCons()) return error.InvalidSyntax;
+
+            const spec_pair = spec.toPtr(Cons);
+            const from_pkg_designator = spec_pair.car;
+            const from_pkg = (try primitives.package.findPackage(heap, from_pkg_designator)) orelse
+                return error.InvalidSyntax;
+
+            var names_cur = spec_pair.cdr;
+            while (names_cur.raw != Value.nil.raw) {
+                if (!names_cur.isCons()) return error.InvalidSyntax;
+                const name_designator = names_cur.toPtr(Cons).car;
+                switch (name_designator.typeKind()) {
+                    .string, .symbol, .keyword => {},
+                    else => return error.InvalidSyntax,
+                }
+
+                const interned = try primitives.package.internSymbol(heap, name_designator, from_pkg);
+                const sym = interned.toPtr(Cons).car;
+                if (shadowing) {
+                    try primitives.package.shadowingImport(heap, sym, pkg);
+                } else {
+                    try primitives.package.importSymbols(heap, sym, pkg);
+                }
+
+                names_cur = names_cur.toPtr(Cons).cdr;
+            }
+
+            spec_cur = spec_cur.toPtr(Cons).cdr;
         }
     }
 

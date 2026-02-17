@@ -4259,6 +4259,42 @@ test "load in-package updates reader package for following forms" {
     try testing.expect(!result.isNil());
 }
 
+test "defpackage supports import-from and shadowing-import-from" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(defpackage \"DP-PROVIDER\" (:use \"COMMON-LISP\") (:export \"HOOK\"))");
+    _ = try repl.eval("(in-package \"DP-PROVIDER\")");
+    _ = try repl.eval("(defun hook (x) (+ x 10))");
+    _ = try repl.eval("(in-package \"CL-USER\")");
+
+    _ = try repl.eval("(defpackage \"DP-IMPORT\" (:use \"COMMON-LISP\") (:import-from \"DP-PROVIDER\" \"HOOK\"))");
+    _ = try repl.eval("(in-package \"DP-IMPORT\")");
+    const import_eq = try repl.eval("(eq 'hook 'dp-provider::hook)");
+    try testing.expect(!import_eq.isNil());
+    const import_call = try repl.eval("(hook 1)");
+    try testing.expect(import_call.isFixnum());
+    try testing.expectEqual(@as(i64, 11), import_call.toFixnum());
+
+    _ = try repl.eval("(in-package \"CL-USER\")");
+    _ = try repl.eval(
+        "(defpackage \"DP-SHADOW\" (:use \"COMMON-LISP\") (:shadow \"HOOK\") (:shadowing-import-from \"DP-PROVIDER\" \"HOOK\"))",
+    );
+    _ = try repl.eval("(in-package \"DP-SHADOW\")");
+    const shadow_eq = try repl.eval("(eq 'hook 'dp-provider::hook)");
+    try testing.expect(!shadow_eq.isNil());
+    const shadow_call = try repl.eval("(hook 1)");
+    try testing.expect(shadow_call.isFixnum());
+    try testing.expectEqual(@as(i64, 11), shadow_call.toFixnum());
+}
+
 test "setf sbit on make-array uses aset path" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });

@@ -3991,6 +3991,24 @@ pub const Repl = struct {
         // The compiler will call heap.setCurrentPackage which affects future reads
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
+
+        const saved_builder = self.compiler.builder;
+        const saved_allocator = self.compiler.allocator;
+        const saved_compiler_vm = self.compiler.vm;
+        const target_vm = self.current_vm orelse &self.vm;
+        self.compiler.setVm(target_vm);
+        self.compiler.builder = ir.IrBuilder.init(arena_alloc);
+        self.compiler.allocator = arena_alloc;
+        defer {
+            if (saved_compiler_vm) |saved_vm| {
+                self.compiler.setVm(saved_vm);
+            } else {
+                self.compiler.vm = null;
+            }
+            self.compiler.builder = saved_builder;
+            self.compiler.allocator = saved_allocator;
+        }
+
         const ir_node = try self.compiler.compile(expr, &env);
         const specialized = try self.specializeIr(ir_node);
 
@@ -4006,7 +4024,6 @@ pub const Repl = struct {
         // During nested LOAD/EVAL this must be the nested VM so subsequent
         // reader sync sees updated *PACKAGE* from that VM's globals.
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        const target_vm = self.current_vm orelse &self.vm;
         const result = try self.runVmPreserveMacroState(target_vm, chunk_ptr);
         self.syncReaderPackageFromVm(target_vm);
 

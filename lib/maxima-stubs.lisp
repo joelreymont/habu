@@ -1,8 +1,10 @@
 ;; Stubs for missing packages
-(defpackage :intl (:use :common-lisp)
-  (:export #:gettext #:ngettext #:dgettext #:dngettext
-           #:setlocale #:textdomain #:*locale* #:*locale-directories*
-           #:*default-domain* #:read-translatable-string))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (unless (find-package :intl)
+    (defpackage :intl (:use :common-lisp)
+      (:export #:gettext #:ngettext #:dgettext #:dngettext
+               #:setlocale #:textdomain #:*locale* #:*locale-directories*
+               #:*default-domain* #:read-translatable-string))))
 (in-package :intl)
 (defun gettext (s) s)
 (defun ngettext (s p n) (if (= n 1) s p))
@@ -17,9 +19,11 @@
           ((eql c #\N) (read-char stream t nil t) nil)
           (t '_))))
 
-(defpackage :pregexp (:use :common-lisp)
-  (:export #:pregexp #:pregexp-match-positions #:pregexp-match
-           #:pregexp-replace #:pregexp-quote))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (unless (find-package :pregexp)
+    (defpackage :pregexp (:use :common-lisp)
+      (:export #:pregexp #:pregexp-match-positions #:pregexp-match
+               #:pregexp-replace #:pregexp-quote))))
 (in-package :pregexp)
 (defun pregexp (pat) pat)
 (defun pregexp-match-positions (pat str &optional start end)
@@ -29,29 +33,83 @@
 (defun pregexp-replace (pat str repl) (declare (ignore pat str repl)) "")
 (defun pregexp-quote (str) str)
 
-;; Bigfloat package (referenced 215 times across Maxima)
-(defpackage :bigfloat (:use :common-lisp)
-  (:export #:to #:signum #:+ #:- #:* #:/ #:= #:< #:> #:<= #:>= #:/=
-           #:1+ #:1- #:zerop #:plusp #:minusp #:abs #:expt #:sqrt
-           #:log #:exp #:sin #:cos #:tan #:asin #:acos #:atan
-           #:sinh #:cosh #:tanh #:asinh #:acosh #:atanh
-           #:floor #:ceiling #:truncate #:round #:realpart #:imagpart
-           #:complex #:conjugate #:random #:max #:min #:scale-float
-           #:integer-decode-float #:float #:rationalize))
+;; Bigfloat package setup.
+;; Mirror Maxima's maxima-package.lisp shadowing model so BIGFLOAT's
+;; arithmetic symbols are distinct from COMMON-LISP symbols.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (unless (find-package :bigfloat)
+    (defpackage :bigfloat-impl
+      (:use :common-lisp)
+      (:shadow #:+ #:- #:* #:/ #:1+ #:1- #:zerop #:plusp #:minusp #:abs
+               #:sqrt #:log #:exp #:sin #:cos #:tan #:asin #:acos #:atan
+               #:sinh #:cosh #:tanh #:asinh #:acosh #:atanh #:expt #:=
+               #:/= #:< #:> #:<= #:>= #:scale-float #:realpart #:imagpart
+               #:complex #:conjugate #:max #:min #:cis #:phase #:floor
+               #:ffloor #:incf #:decf #:realp #:complexp #:numberp
+               #:integer-decode-float #:decode-float #:float #:ceiling
+               #:fceiling #:truncate #:ftruncate #:round #:fround #:random
+               #:signum #:float-sign #:float-digits #:rational
+               #:rationalize #:coerce)
+      (:export #:bigfloat #:complex-bigfloat #:to #:maybe-to #:epsilon #:%pi #:%e
+               #:+ #:- #:* #:/ #:1+ #:1- #:zerop #:plusp #:minusp #:abs
+               #:sqrt #:log #:exp #:sin #:cos #:tan #:asin #:acos #:atan
+               #:sinh #:cosh #:tanh #:asinh #:acosh #:atanh #:expt #:=
+               #:/= #:< #:> #:<= #:>= #:scale-float #:realpart #:imagpart
+               #:complex #:conjugate #:max #:min #:cis #:phase #:floor
+               #:ffloor #:incf #:decf #:realp #:complexp #:numberp
+               #:integer-decode-float #:decode-float #:float #:ceiling
+               #:fceiling #:truncate #:ftruncate #:round #:fround #:random
+               #:signum #:float-sign #:float-digits #:rational
+               #:rationalize #:coerce))
+
+    (defpackage :bigfloat
+      (:use :common-lisp :bigfloat-impl)
+      (:export #:lentz #:sum-power-series #:format-e #:format-f #:format-g))
+
+    (shadowing-import
+     '(bigfloat-impl:+ bigfloat-impl:- bigfloat-impl:* bigfloat-impl:/
+       bigfloat-impl:1+ bigfloat-impl:1- bigfloat-impl:zerop
+       bigfloat-impl:plusp bigfloat-impl:minusp bigfloat-impl:abs
+       bigfloat-impl:sqrt bigfloat-impl:log bigfloat-impl:exp
+       bigfloat-impl:sin bigfloat-impl:cos bigfloat-impl:tan
+       bigfloat-impl:asin bigfloat-impl:acos bigfloat-impl:atan
+       bigfloat-impl:sinh bigfloat-impl:cosh bigfloat-impl:tanh
+       bigfloat-impl:asinh bigfloat-impl:acosh bigfloat-impl:atanh
+       bigfloat-impl:expt bigfloat-impl:= bigfloat-impl:/=
+       bigfloat-impl:< bigfloat-impl:> bigfloat-impl:<= bigfloat-impl:>=
+       bigfloat-impl:scale-float bigfloat-impl:realpart bigfloat-impl:imagpart
+       bigfloat-impl:complex bigfloat-impl:conjugate bigfloat-impl:max
+       bigfloat-impl:min bigfloat-impl:cis bigfloat-impl:phase
+       bigfloat-impl:floor bigfloat-impl:ffloor bigfloat-impl:incf
+       bigfloat-impl:decf bigfloat-impl:realp bigfloat-impl:complexp
+       bigfloat-impl:numberp bigfloat-impl:integer-decode-float
+       bigfloat-impl:decode-float bigfloat-impl:float bigfloat-impl:ceiling
+       bigfloat-impl:fceiling bigfloat-impl:truncate bigfloat-impl:ftruncate
+       bigfloat-impl:round bigfloat-impl:fround bigfloat-impl:random
+       bigfloat-impl:signum bigfloat-impl:float-sign bigfloat-impl:float-digits
+       bigfloat-impl:rational bigfloat-impl:rationalize bigfloat-impl:coerce)
+     :bigfloat)
+    (do-external-symbols (s '#:bigfloat-impl)
+      (export s '#:bigfloat))))
+
 (in-package :bigfloat)
 ;; Stub: bigfloat:to just returns its argument (identity)
 (defun to (x) x)
+;; Stub: bigfloat:maybe-to just returns its argument (identity)
+(defun maybe-to (x) x)
 ;; Stub: bigfloat:signum delegates to cl:signum
 (defun signum (x) (cl:signum x))
 
 ;; Other packages referenced in Maxima
-(defpackage :cl-info (:use :common-lisp)
-  (:export #:get-cl-info-hashtable))
-
-(defpackage :slatec (:use :common-lisp))
-
-(defpackage :mt19937 (:use :common-lisp)
-  (:export #:make-random-state #:random-state-p))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (unless (find-package :cl-info)
+    (defpackage :cl-info (:use :common-lisp)
+      (:export #:get-cl-info-hashtable)))
+  (unless (find-package :slatec)
+    (defpackage :slatec (:use :common-lisp)))
+  (unless (find-package :mt19937)
+    (defpackage :mt19937 (:use :common-lisp)
+      (:export #:make-random-state #:random-state-p))))
 
 ;; Maxima expects these names to be shadowed in :maxima (see
 ;; /tmp/maxima/src/maxima-package.lisp). Without this, files like commac.lisp

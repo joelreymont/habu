@@ -775,10 +775,35 @@ pub fn shadowSymbols(heap: *Heap, names: Value, pkg: Value) !void {
 pub fn shadowingImport(heap: *Heap, symbols: Value, pkg: Value) !void {
     const resolved_pkg = try resolvePkg(heap, pkg);
     const p = resolved_pkg.toPtr(objects.Package);
-    try importSymbols(heap, symbols, resolved_pkg);
+    const native_pkg = try nativePkgFor(heap, resolved_pkg);
+    try ensureLispSymbolTable(heap, p);
+
+    const replace_local = struct {
+        fn one(heap2: *Heap, pkg_obj: *objects.Package, native: *heap_mod.Package, sym: Value) !void {
+            if (!sym.isSymbol()) return error.TypeError;
+            const sym_name = sym.toPtr(objects.Symbol).getName();
+            if (native.symbols.get(sym_name)) |existing| {
+                if (existing.raw != sym.raw) {
+                    if (pkg_obj.symbols.raw != Value.nil.raw) {
+                        try removeFromHashTable(pkg_obj.symbols.toPtr(objects.HashTable), existing);
+                    }
+                    if (pkg_obj.exports.raw != Value.nil.raw) {
+                        try removeFromHashTable(pkg_obj.exports.toPtr(objects.HashTable), existing);
+                    }
+                    removeNativeExport(native, sym_name);
+                    removeNativeSymbol(native, existing);
+                } else {
+                    return;
+                }
+            }
+            try insertHashTable(heap2, pkg_obj.symbols, sym, sym);
+            try addNativeSymbol(native, sym);
+        }
+    };
 
     switch (symbols.typeKind()) {
         .symbol => {
+            try replace_local.one(heap, p, native_pkg, symbols);
             try addShadowingSymbol(heap, p, symbols);
         },
         .nil => return,
@@ -788,6 +813,7 @@ pub fn shadowingImport(heap: *Heap, symbols: Value, pkg: Value) !void {
                 if (!list.isCons()) return error.TypeError;
                 const sym = list.toPtr(objects.Cons).car;
                 if (!sym.isSymbol()) return error.TypeError;
+                try replace_local.one(heap, p, native_pkg, sym);
                 try addShadowingSymbol(heap, p, sym);
                 list = list.toPtr(objects.Cons).cdr;
             }
