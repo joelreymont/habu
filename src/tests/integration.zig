@@ -5149,3 +5149,47 @@ test "smallest heap: loop when collecting into" {
     );
     try testing.expectEqual(@as(i64, 3), result.toFixnum());
 }
+
+test "maxima core subset loader binds CAS entrypoints" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    const status = try repl.eval(
+        \\(progn
+        \\  (setq *maxima-files*
+        \\    '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
+        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "opers"
+        \\      "utils" "merror" "mutils" "mlisp" "mmacro" "buildq" "sumcon"
+        \\      "sublis" "mformt" "outmis" "ar" "comm" "comm2" "simp"
+        \\      "lesfac" "factor" "algfac" "nalgfa" "rat3a" "rat3b" "rat3c"
+        \\      "rat3d" "rat3e" "nrat4" "ratout"))
+        \\  (multiple-value-bind (ok total fail) (maxima-load-all)
+        \\    (list ok total fail
+        \\          (if (fboundp 'simplifya) 1 0)
+        \\          (if (fboundp '$diff) 1 0)
+        \\          (if (fboundp '$integrate) 1 0)
+        \\          (if (fboundp '$factor) 1 0)
+        \\          (if (fboundp '$ratsimp) 1 0)
+        \\          (if (fboundp '$expand) 1 0))))
+    );
+
+    try testing.expect(status.isCons());
+    var cur = status;
+    const expected = [_]i64{ 39, 39, 0, 1, 1, 1, 1, 1, 1 };
+    for (expected) |want| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(want, cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
