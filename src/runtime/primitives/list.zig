@@ -58,17 +58,19 @@ pub fn length(val: Value) i64 {
 }
 
 /// Set the car of a cons cell
-pub fn setCar(val: Value, new_car: Value) void {
+pub fn setCar(heap: *Heap, val: Value, new_car: Value) void {
     if (!val.isCons()) return;
     const c = val.toPtr(objects.Cons);
     c.car = new_car;
+    heap.writeBarrier(val, new_car);
 }
 
 /// Set the cdr of a cons cell
-pub fn setCdr(val: Value, new_cdr: Value) void {
+pub fn setCdr(heap: *Heap, val: Value, new_cdr: Value) void {
     if (!val.isCons()) return;
     const c = val.toPtr(objects.Cons);
     c.cdr = new_cdr;
+    heap.writeBarrier(val, new_cdr);
 }
 
 /// Get nth element of a list (0-indexed)
@@ -241,8 +243,8 @@ test "setcar setcdr" {
 
     const cell = try cons(&heap, Value.makeFixnum(1), Value.makeFixnum(2));
 
-    setCar(cell, Value.makeFixnum(100));
-    setCdr(cell, Value.makeFixnum(200));
+    setCar(&heap, cell, Value.makeFixnum(100));
+    setCdr(&heap, cell, Value.makeFixnum(200));
 
     try testing.expectEqual(@as(i64, 100), car(cell).toFixnum());
     try testing.expectEqual(@as(i64, 200), cdr(cell).toFixnum());
@@ -362,6 +364,7 @@ pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
                 // Found - update value (modify cdr of pair)
                 const new_pair = try heap.allocCons(indicator, value);
                 entry.car = new_pair;
+                heap.writeBarrier(current, new_pair);
                 return value;
             }
         }
@@ -373,13 +376,14 @@ pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
     const new_pair = try heap.allocCons(indicator, value);
     const new_entry = try heap.allocCons(new_pair, symbol.plist);
     symbol.plist = new_entry;
+    heap.writeBarrier(sym, new_entry);
 
     return value;
 }
 
 /// Remove property from symbol's property list
 /// (remprop symbol indicator) -> t if removed, nil otherwise
-pub fn remprop(sym: Value, indicator: Value) !Value {
+pub fn remprop(heap: *Heap, sym: Value, indicator: Value) !Value {
     if (!sym.isSymbolLike()) return error.TypeMismatch;
     if (sym.isNil() or sym.isT()) return Value.nil; // Can't modify magic symbols
 
@@ -396,6 +400,7 @@ pub fn remprop(sym: Value, indicator: Value) !Value {
             if (pair_cons.car.eq(indicator)) {
                 // Remove first entry
                 symbol.plist = first.cdr;
+                heap.writeBarrier(sym, first.cdr);
                 return Value.t;
             }
         }
@@ -416,6 +421,7 @@ pub fn remprop(sym: Value, indicator: Value) !Value {
                 if (pair_cons.car.eq(indicator)) {
                     // Remove by skipping over current
                     prev_cons.cdr = curr_cons.cdr;
+                    heap.writeBarrier(prev, curr_cons.cdr);
                     return Value.t;
                 }
             }

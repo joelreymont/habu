@@ -161,6 +161,7 @@ pub fn setSlotValue(heap: *Heap, args: Value) !Value {
             const vec_idx = idx + 1;
             if (vec_idx >= vec.length) return error.InvalidArgument;
             vec.data[vec_idx] = new_value;
+            heap.writeBarrier(obj, new_value);
             return new_value;
         }
     }
@@ -359,6 +360,7 @@ pub fn slotMakunbound(heap: *Heap, args: Value) !Value {
             const vec_idx = idx + 1;
             if (vec_idx >= vec.length) return error.InvalidArgument;
             vec.data[vec_idx] = Value.unbound;
+            heap.writeBarrier(obj, Value.unbound);
             return obj;
         }
     }
@@ -709,6 +711,7 @@ pub fn addMethod(heap: *Heap, args: Value) !Value {
     }
 
     gf.methods = try heap.allocCons(method_val, gf.methods);
+    heap.writeBarrier(gf_val, gf.methods);
     return gf_val;
 }
 

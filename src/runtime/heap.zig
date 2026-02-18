@@ -16,6 +16,8 @@ const GC = @import("gc.zig").GC;
 const roots_mod = @import("roots.zig");
 
 pub const ALIGNMENT: usize = 16;
+pub const CARD_SHIFT: u6 = 9; // 512-byte cards
+pub const CARD_SIZE: usize = 1 << CARD_SHIFT;
 
 /// Interned symbol table for eq comparison
 pub const SymbolTable = struct {
@@ -289,6 +291,8 @@ pub const Heap = struct {
     /// Structural signature of root-bearing tables.
     gc_root_sig: GcRootSig,
     gc_root_sig_valid: bool,
+    /// Card table for old->young write barriers (generational scaffold).
+    card_table: []u8,
     /// Persistent collector state reused across GC cycles.
     gc: GC,
     /// Backing allocator (for the memory buffer itself)
@@ -368,6 +372,7 @@ pub const Heap = struct {
         gc_copy_ns: u64 = 0,
         gc_finalize_ns: u64 = 0,
         gc_root_vals: usize = 0,
+        wb_marks: usize = 0,
     };
 
     const GcRootSig = struct {
@@ -460,6 +465,10 @@ pub const Heap = struct {
         // Zig 0.15: alignment is an enum, .@"16" for 16-byte alignment
         const memory = try allocator.alignedAlloc(u8, .@"16", config.total_size);
         errdefer allocator.free(memory);
+        const card_len = (config.total_size + CARD_SIZE - 1) / CARD_SIZE;
+        const card_table = try allocator.alloc(u8, card_len);
+        errdefer allocator.free(card_table);
+        @memset(card_table, 0);
 
         const layout = try buildLayout(memory, config);
         const space_size = layout.nursery_from.len();
@@ -479,6 +488,7 @@ pub const Heap = struct {
             .gc_internal_slots = std.ArrayList(*Value){},
             .gc_root_sig = .{},
             .gc_root_sig_valid = false,
+            .card_table = card_table,
             .gc = GC.init(allocator),
             .backing_allocator = allocator,
             .stats = .{},
@@ -619,6 +629,7 @@ pub const Heap = struct {
         self.gc_slots.deinit(self.backing_allocator);
         self.gc_internal_slots.deinit(self.backing_allocator);
         self.gc.deinit();
+        self.backing_allocator.free(self.card_table);
         self.backing_allocator.free(self.memory);
     }
 
@@ -655,6 +666,52 @@ pub const Heap = struct {
 
     pub fn losRegion(self: *const Heap) ?Region {
         return self.layout.los;
+    }
+
+    fn containsAddr(self: *const Heap, addr: usize) bool {
+        const start = @intFromPtr(self.memory.ptr);
+        const end = start + self.memory.len;
+        return addr >= start and addr < end;
+    }
+
+    fn regionContains(r: Region, addr: usize) bool {
+        return addr >= @intFromPtr(r.start) and addr < @intFromPtr(r.end);
+    }
+
+    pub fn isInNurseryAddr(self: *const Heap, addr: usize) bool {
+        return regionContains(self.layout.nursery_from, addr) or regionContains(self.layout.nursery_to, addr);
+    }
+
+    fn cardIndexForAddr(self: *const Heap, addr: usize) ?usize {
+        if (!self.containsAddr(addr)) return null;
+        const base = @intFromPtr(self.memory.ptr);
+        return (addr - base) >> CARD_SHIFT;
+    }
+
+    pub fn clearCardTable(self: *Heap) void {
+        @memset(self.card_table, 0);
+    }
+
+    pub fn isCardMarkedForAddr(self: *const Heap, addr: usize) bool {
+        const idx = self.cardIndexForAddr(addr) orelse return false;
+        return self.card_table[idx] != 0;
+    }
+
+    pub fn writeBarrier(self: *Heap, owner: Value, stored: Value) void {
+        if (self.layout.mode != .generational) return;
+        if (!owner.isPointer() or !stored.isPointer()) return;
+
+        const owner_addr = owner.toPtrAddr();
+        const stored_addr = stored.toPtrAddr();
+        if (!self.containsAddr(owner_addr) or !self.containsAddr(stored_addr)) return;
+        if (self.isInNurseryAddr(owner_addr)) return;
+        if (!self.isInNurseryAddr(stored_addr)) return;
+
+        const card_idx = self.cardIndexForAddr(owner_addr) orelse return;
+        if (self.card_table[card_idx] == 0) {
+            self.card_table[card_idx] = 1;
+            self.stats.wb_marks +%= 1;
+        }
     }
 
     /// Get bytes used in from-space
@@ -2155,6 +2212,46 @@ test "heap init supports generational layout scaffold" {
     const los = heap.losRegion().?;
     try testing.expect(tenured.len() > 0);
     try testing.expectEqual(@intFromPtr(tenured.end), @intFromPtr(los.start));
+}
+
+test "heap writeBarrier marks old-to-young cards in generational mode" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+        },
+    });
+    defer heap.deinit();
+
+    const tenured = heap.tenuredRegion().?;
+    const owner_addr = @intFromPtr(tenured.start);
+    const fake_owner = Value{ .raw = owner_addr };
+    const young = try heap.allocCons(Value.makeFixnum(1), Value.nil);
+
+    heap.clearCardTable();
+    try testing.expect(!heap.isCardMarkedForAddr(owner_addr));
+    heap.writeBarrier(fake_owner, young);
+    try testing.expect(heap.isCardMarkedForAddr(owner_addr));
+    try testing.expect(heap.stats.wb_marks > 0);
+}
+
+test "heap writeBarrier is disabled for semispace mode" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const owner = try heap.allocCons(Value.makeFixnum(1), Value.nil);
+    const young = try heap.allocCons(Value.makeFixnum(2), Value.nil);
+    const owner_addr = owner.toPtrAddr();
+
+    heap.clearCardTable();
+    heap.writeBarrier(owner, young);
+    try testing.expect(!heap.isCardMarkedForAddr(owner_addr));
 }
 
 test "heap collectGarbage reuses gc_slots buffer" {

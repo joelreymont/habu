@@ -6,6 +6,7 @@ const std = @import("std");
 const Value = @import("../value.zig").Value;
 const Heap = @import("../heap.zig").Heap;
 const objects = @import("../objects.zig");
+const list_prims = @import("list.zig");
 
 const NameBuf = struct {
     name: []const u8,
@@ -121,11 +122,91 @@ pub fn symbolPackage(sym: Value) !Value {
     return s.package;
 }
 
+fn plistLooksLikeAList(plist: Value) bool {
+    if (!plist.isCons()) return false;
+    const first = plist.toPtr(objects.Cons);
+    return first.car.isCons();
+}
+
+fn alistToFlat(heap: *Heap, plist: Value) !Value {
+    var elems = std.ArrayList(Value){};
+    defer elems.deinit(heap.backing_allocator);
+
+    var cur = plist;
+    while (cur.isCons()) {
+        const node = cur.toPtr(objects.Cons);
+        const entry = node.car;
+
+        if (entry.isCons()) {
+            const pair = entry.toPtr(objects.Cons);
+            try elems.append(heap.backing_allocator, pair.car);
+            try elems.append(heap.backing_allocator, pair.cdr);
+        } else {
+            try elems.append(heap.backing_allocator, entry);
+            try elems.append(heap.backing_allocator, Value.nil);
+        }
+
+        cur = node.cdr;
+    }
+
+    if (!cur.isNil()) {
+        try elems.append(heap.backing_allocator, cur);
+        try elems.append(heap.backing_allocator, Value.nil);
+    }
+
+    var out = Value.nil;
+    var i = elems.items.len;
+    while (i > 0) {
+        i -= 1;
+        out = try heap.allocCons(elems.items[i], out);
+    }
+    return out;
+}
+
+fn flatToAList(heap: *Heap, plist: Value) !Value {
+    var entries = std.ArrayList(Value){};
+    defer entries.deinit(heap.backing_allocator);
+
+    var cur = plist;
+    while (cur.isCons()) {
+        const ind_cell = cur.toPtr(objects.Cons);
+        const indicator = ind_cell.car;
+
+        var value = Value.nil;
+        var next = Value.nil;
+        if (ind_cell.cdr.isCons()) {
+            const val_cell = ind_cell.cdr.toPtr(objects.Cons);
+            value = val_cell.car;
+            next = val_cell.cdr;
+        }
+
+        const pair = try heap.allocCons(indicator, value);
+        try entries.append(heap.backing_allocator, pair);
+        cur = next;
+    }
+
+    if (!cur.isNil()) {
+        const pair = try heap.allocCons(cur, Value.nil);
+        try entries.append(heap.backing_allocator, pair);
+    }
+
+    var out = Value.nil;
+    var i = entries.items.len;
+    while (i > 0) {
+        i -= 1;
+        out = try heap.allocCons(entries.items[i], out);
+    }
+    return out;
+}
+
 /// Get symbol's property list
-pub fn symbolPlist(sym: Value) !Value {
+pub fn symbolPlist(heap: *Heap, sym: Value) !Value {
     if (!sym.isSymbol()) return error.TypeError;
     const s = sym.toPtr(objects.Symbol);
-    return s.plist;
+    const plist = s.plist;
+    if (plist.isNil()) return Value.nil;
+    if (plistLooksLikeAList(plist)) return try alistToFlat(heap, plist);
+    return plist;
 }
 
 /// Get symbol's function binding
@@ -150,7 +231,7 @@ pub fn setSymbolValue(sym: Value, val: Value) !void {
 }
 
 /// Set symbol's property list
-pub fn setSymbolPlist(sym: Value, plist: Value) !void {
+pub fn setSymbolPlist(heap: *Heap, sym: Value, plist: Value) !void {
     if (!sym.isSymbol()) {
         if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
             std.debug.print("TRACE setSymbolPlist type-mismatch kind={s} raw=0x{x} plist_raw=0x{x}\n", .{
@@ -162,7 +243,20 @@ pub fn setSymbolPlist(sym: Value, plist: Value) !void {
         return error.TypeError;
     }
     const s = sym.toPtr(objects.Symbol);
-    s.plist = plist;
+    if (plist.isNil() or !plist.isCons()) {
+        s.plist = plist;
+        heap.writeBarrier(sym, plist);
+        return;
+    }
+
+    if (plistLooksLikeAList(plist)) {
+        s.plist = plist;
+        heap.writeBarrier(sym, plist);
+        return;
+    }
+
+    s.plist = try flatToAList(heap, plist);
+    heap.writeBarrier(sym, s.plist);
 }
 
 /// Test if symbol has value binding
@@ -220,6 +314,40 @@ test "gensym accepts symbol prefix" {
     const sym = try gensym(&heap, prefix_sym);
     const name = sym.toPtr(objects.Symbol).getName();
     try testing.expect(std.mem.startsWith(u8, name, "PRE"));
+}
+
+test "symbol-plist exposes flat plist for CL consumers" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const sym = try heap.intern("PLIST-SYM");
+    const k1 = try heap.intern("K1");
+    const k2 = try heap.intern("K2");
+
+    _ = try list_prims.put(&heap, sym, k1, Value.makeFixnum(11));
+    _ = try list_prims.put(&heap, sym, k2, Value.makeFixnum(22));
+
+    const plist = try symbolPlist(&heap, sym);
+    try testing.expect(plist.isCons());
+    const c0 = plist.toPtr(objects.Cons);
+    try testing.expect(c0.car.eq(k2));
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(objects.Cons);
+    try testing.expectEqual(@as(i64, 22), c1.car.toFixnum());
+    try testing.expect(c1.cdr.isCons());
+    const c2 = c1.cdr.toPtr(objects.Cons);
+    try testing.expect(c2.car.eq(k1));
+    try testing.expect(c2.cdr.isCons());
+    const c3 = c2.cdr.toPtr(objects.Cons);
+    try testing.expectEqual(@as(i64, 11), c3.car.toFixnum());
+
+    try setSymbolPlist(&heap, sym, plist);
+    const got_k1 = try list_prims.get(sym, k1);
+    const got_k2 = try list_prims.get(sym, k2);
+    try testing.expectEqual(@as(i64, 11), got_k1.toFixnum());
+    try testing.expectEqual(@as(i64, 22), got_k2.toFixnum());
 }
 
 /// Test if symbol has function binding

@@ -77,7 +77,7 @@ pub fn primGethash(_: *Heap, args: []const Value) !Value {
 
 /// (puthash key value hash-table) - set value in hash table
 /// Returns value
-pub fn primPuthash(_: *Heap, args: []const Value) !Value {
+pub fn primPuthash(heap: *Heap, args: []const Value) !Value {
     if (args.len != 3) return error.TypeMismatch;
 
     const key = args[0];
@@ -88,6 +88,8 @@ pub fn primPuthash(_: *Heap, args: []const Value) !Value {
 
     const ht = ht_val.toPtr(HashTable);
     try ht.put(key, value);
+    heap.writeBarrier(ht_val, key);
+    heap.writeBarrier(ht_val, value);
     return value;
 }
 

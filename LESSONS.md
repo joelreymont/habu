@@ -32,6 +32,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding phase counters to `src/runtime/heap.zig`/`src/runtime/gc.zig` and surfacing them in `bench/gc.zig` gave actionable GC slices (`build/root/copy/finalize`) and enabled structural perf gates in `bench/check.zig`.
 - Caching internal GC root slots in `src/runtime/heap.zig` (`gc_internal_slots` + `calcGcRootSig`) removed per-collection full table walks; using `SymbolTable.version` in the signature prevented stale-cache reuse when symbol maps mutate without net count change.
 - Adding explicit heap layout scaffolding (`GcLayoutMode`, `HeapLayout`, `Region`) in `src/runtime/heap.zig` made nursery/tenured/LOS boundaries concrete without changing current semispace behavior; this keeps incremental generational work isolated and testable.
+- Adding a no-allocation write barrier in `src/runtime/heap.zig` (card table + `writeBarrier`) and calling it at VM/primitives pointer-store sites (`src/interp/vm.zig`, `src/runtime/primitives/list.zig`, `src/runtime/primitives/hash.zig`, `src/runtime/primitives/clos.zig`, `src/runtime/primitives/symbol.zig`) provided generational-safe mutation hooks without changing non-generational behavior.
 
 ### Did Not Work
 - Caching compiled macro expanders by storing closures in `macro_table` is not safe with current chunk-pool/index patching: cached closures retain expansion-time chunk index assumptions and can mis-dispatch nested lambdas later.
@@ -48,6 +49,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Using `std.time.Timer.start()` inside GC internals widened the GC error set (`TimerUnsupported`) and broke call-site error contracts in `src/interp/vm.zig`; use `std.time.nanoTimestamp()` deltas in hot/runtime internals when error signatures must stay stable.
 - Root-cache signatures based only on table counts are not enough; equal counts can still hide map-entry churn. Include mutation/version signals (for symbol tables) or stronger structure signatures.
 - Generational scaffolding must not silently change default capacity assumptions; keep default mode semispace and prove unchanged behavior with existing bench-check gates before moving to barrier/minor-GC dots.
+- Barrier coverage needs grep-driven audits after each refactor (`.car=`, `.cdr=`, `vec.set`, hash puts); it is easy to miss direct stores in VM helpers and primitive paths.
 
 ## Session Notes (2026-02-17)
 

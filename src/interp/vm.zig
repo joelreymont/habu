@@ -1500,13 +1500,11 @@ pub const Vm = struct {
         self.ip = 0;
 
         const argc: u8 = @intCast(args.len);
-        try self.doCall(argc, false);
-        return self.execute() catch |run_err| {
-            if (run_err == error.NestedNonLocalExit) {
+        self.doCall(argc, false) catch |call_err| {
+            if (call_err == error.NestedNonLocalExit) {
                 const relay_tag = self.relay_throw_tag;
                 const relay_value = self.relay_throw_value;
-                self.relay_throw_tag = Value.nil;
-                self.relay_throw_value = Value.nil;
+                if (relay_tag.isNil()) return error.NestedNonLocalExit;
 
                 const chunk_val = self.saved_chunks[saved_idx];
                 self.saved_chunk_sp = saved_idx;
@@ -1519,7 +1517,39 @@ pub const Vm = struct {
                 should_restore = false;
 
                 self.throw_barrier_depth = saved_barrier;
-                try self.doThrow(relay_tag, relay_value);
+                self.doThrow(relay_tag, relay_value) catch |throw_err| {
+                    if (throw_err == error.NestedNonLocalExit) return throw_err;
+                    return throw_err;
+                };
+                self.relay_throw_tag = Value.nil;
+                self.relay_throw_value = Value.nil;
+                return error.ControlTransfer;
+            }
+            return call_err;
+        };
+        return self.execute() catch |run_err| {
+            if (run_err == error.NestedNonLocalExit) {
+                const relay_tag = self.relay_throw_tag;
+                const relay_value = self.relay_throw_value;
+                if (relay_tag.isNil()) return error.NestedNonLocalExit;
+
+                const chunk_val = self.saved_chunks[saved_idx];
+                self.saved_chunk_sp = saved_idx;
+                saved_state.restore(self);
+                if (!chunk_val.isNil()) {
+                    if (self.chunkFromValue(chunk_val)) |chunk| {
+                        self.chunk = chunk;
+                    }
+                }
+                should_restore = false;
+
+                self.throw_barrier_depth = saved_barrier;
+                self.doThrow(relay_tag, relay_value) catch |throw_err| {
+                    if (throw_err == error.NestedNonLocalExit) return throw_err;
+                    return throw_err;
+                };
+                self.relay_throw_tag = Value.nil;
+                self.relay_throw_value = Value.nil;
                 return error.ControlTransfer;
             }
             return run_err;
@@ -1563,7 +1593,33 @@ pub const Vm = struct {
         self.ip = 0;
 
         const argc: u8 = @intCast(args.len);
-        try self.doCall(argc, false);
+        self.doCall(argc, false) catch |call_err| {
+            if (call_err == error.NestedNonLocalExit) {
+                const relay_tag = self.relay_throw_tag;
+                const relay_value = self.relay_throw_value;
+                if (relay_tag.isNil()) return error.NestedNonLocalExit;
+
+                const chunk_val = self.saved_chunks[saved_idx];
+                self.saved_chunk_sp = saved_idx;
+                saved_state.restore(self);
+                if (!chunk_val.isNil()) {
+                    if (self.chunkFromValue(chunk_val)) |chunk| {
+                        self.chunk = chunk;
+                    }
+                }
+                should_restore = false;
+
+                self.throw_barrier_depth = saved_barrier;
+                self.doThrow(relay_tag, relay_value) catch |throw_err| {
+                    if (throw_err == error.NestedNonLocalExit) return throw_err;
+                    return throw_err;
+                };
+                self.relay_throw_tag = Value.nil;
+                self.relay_throw_value = Value.nil;
+                return error.ControlTransfer;
+            }
+            return call_err;
+        };
 
         // After doCall, self.chunk is the callee's chunk.
         // Try hoist SSA JIT for native execution.
@@ -1578,8 +1634,7 @@ pub const Vm = struct {
             if (run_err == error.NestedNonLocalExit) {
                 const relay_tag = self.relay_throw_tag;
                 const relay_value = self.relay_throw_value;
-                self.relay_throw_tag = Value.nil;
-                self.relay_throw_value = Value.nil;
+                if (relay_tag.isNil()) return error.NestedNonLocalExit;
 
                 const chunk_val = self.saved_chunks[saved_idx];
                 self.saved_chunk_sp = saved_idx;
@@ -1592,7 +1647,12 @@ pub const Vm = struct {
                 should_restore = false;
 
                 self.throw_barrier_depth = saved_barrier;
-                try self.doThrow(relay_tag, relay_value);
+                self.doThrow(relay_tag, relay_value) catch |throw_err| {
+                    if (throw_err == error.NestedNonLocalExit) return throw_err;
+                    return throw_err;
+                };
+                self.relay_throw_tag = Value.nil;
+                self.relay_throw_value = Value.nil;
                 return error.ControlTransfer;
             }
             return run_err;
@@ -1645,16 +1705,22 @@ pub const Vm = struct {
         if (saved_idx >= MAX_SAVED_CHUNKS) return error.StackOverflow;
         self.saved_chunks[saved_idx] = chunkRoot(saved_state.chunk);
         self.saved_chunk_sp = saved_idx + 1;
+        var should_restore = true;
         defer {
-            const chunk_val = self.saved_chunks[saved_idx];
-            self.saved_chunk_sp = saved_idx;
-            saved_state.restore(self);
-            if (!chunk_val.isNil()) {
-                if (self.chunkFromValue(chunk_val)) |chunk| {
-                    self.chunk = chunk;
+            if (should_restore) {
+                const chunk_val = self.saved_chunks[saved_idx];
+                self.saved_chunk_sp = saved_idx;
+                saved_state.restore(self);
+                if (!chunk_val.isNil()) {
+                    if (self.chunkFromValue(chunk_val)) |chunk| {
+                        self.chunk = chunk;
+                    }
                 }
             }
         }
+        const saved_barrier = self.throw_barrier_depth;
+        self.throw_barrier_depth = saved_state.catch_sp;
+        defer self.throw_barrier_depth = saved_barrier;
 
         if (base + 2 > self.stack.len) return error.StackOverflow;
         self.stack[base] = fn_val;
@@ -1664,8 +1730,60 @@ pub const Vm = struct {
         self.chunk = &halt_chunk;
         self.ip = 0;
 
-        try self.doApply();
-        return try self.execute();
+        self.doApply() catch |apply_err| {
+            if (apply_err == error.NestedNonLocalExit) {
+                const relay_tag = self.relay_throw_tag;
+                const relay_value = self.relay_throw_value;
+                if (relay_tag.isNil()) return error.NestedNonLocalExit;
+
+                const chunk_val = self.saved_chunks[saved_idx];
+                self.saved_chunk_sp = saved_idx;
+                saved_state.restore(self);
+                if (!chunk_val.isNil()) {
+                    if (self.chunkFromValue(chunk_val)) |chunk| {
+                        self.chunk = chunk;
+                    }
+                }
+                should_restore = false;
+
+                self.throw_barrier_depth = saved_barrier;
+                self.doThrow(relay_tag, relay_value) catch |throw_err| {
+                    if (throw_err == error.NestedNonLocalExit) return throw_err;
+                    return throw_err;
+                };
+                self.relay_throw_tag = Value.nil;
+                self.relay_throw_value = Value.nil;
+                return error.ControlTransfer;
+            }
+            return apply_err;
+        };
+        return self.execute() catch |run_err| {
+            if (run_err == error.NestedNonLocalExit) {
+                const relay_tag = self.relay_throw_tag;
+                const relay_value = self.relay_throw_value;
+                if (relay_tag.isNil()) return error.NestedNonLocalExit;
+
+                const chunk_val = self.saved_chunks[saved_idx];
+                self.saved_chunk_sp = saved_idx;
+                saved_state.restore(self);
+                if (!chunk_val.isNil()) {
+                    if (self.chunkFromValue(chunk_val)) |chunk| {
+                        self.chunk = chunk;
+                    }
+                }
+                should_restore = false;
+
+                self.throw_barrier_depth = saved_barrier;
+                self.doThrow(relay_tag, relay_value) catch |throw_err| {
+                    if (throw_err == error.NestedNonLocalExit) return throw_err;
+                    return throw_err;
+                };
+                self.relay_throw_tag = Value.nil;
+                self.relay_throw_value = Value.nil;
+                return error.ControlTransfer;
+            }
+            return run_err;
+        };
     }
 
     /// Run a chunk to completion
@@ -1730,6 +1848,21 @@ pub const Vm = struct {
                     // Program terminated - return result from stack
                     std.debug.assert(self.sp > 0);
                     return try self.pop();
+                }
+                if (err == error.NestedNonLocalExit) {
+                    const relay_tag = self.relay_throw_tag;
+                    const relay_value = self.relay_throw_value;
+                    if (relay_tag.isNil()) return err;
+                    const saved_barrier = self.throw_barrier_depth;
+                    self.throw_barrier_depth = 0;
+                    defer self.throw_barrier_depth = saved_barrier;
+                    self.doThrow(relay_tag, relay_value) catch |throw_err| {
+                        if (throw_err == error.NestedNonLocalExit) return throw_err;
+                        return throw_err;
+                    };
+                    self.relay_throw_tag = Value.nil;
+                    self.relay_throw_value = Value.nil;
+                    continue;
                 }
                 if (err == error.ControlTransfer) {
                     continue;
@@ -1958,6 +2091,7 @@ pub const Vm = struct {
                         // Note: captures array is mutable
                         const captures: [*]Value = @constCast(c.captures);
                         captures[index] = val;
+                        self.heap.writeBarrier(Value.makeClosure(@constCast(c)), val);
                     } else {
                         if (std.posix.getenv("HABU_TRACE_UPVALUE") != null) {
                             if (c.code.isChunk()) {
@@ -2208,6 +2342,7 @@ pub const Vm = struct {
                             const tail_val = self.stack[tail_idx];
                             if (tail_val.isCons()) {
                                 tail_val.toPtr(Cons).cdr = new_cell;
+                                self.heap.writeBarrier(tail_val, new_cell);
                             } else {
                                 self.stack[head_idx] = new_cell;
                             }
@@ -2219,6 +2354,7 @@ pub const Vm = struct {
                         const tail_val = self.stack[tail_idx];
                         if (tail_val.isCons()) {
                             tail_val.toPtr(Cons).cdr = list2;
+                            self.heap.writeBarrier(tail_val, list2);
                         }
                         const result = self.stack[head_idx];
                         self.sp = list1_idx;
@@ -2327,6 +2463,7 @@ pub const Vm = struct {
                 if (!cons_val.isCons()) return error.TypeMismatch;
                 const c = cons_val.toPtr(Cons);
                 c.car = new_car;
+                self.heap.writeBarrier(cons_val, new_car);
                 try self.push(cons_val); // CL: rplaca returns the modified cons
             },
 
@@ -2336,6 +2473,7 @@ pub const Vm = struct {
                 if (!cons_val.isCons()) return error.TypeMismatch;
                 const c = cons_val.toPtr(Cons);
                 c.cdr = new_cdr;
+                self.heap.writeBarrier(cons_val, new_cdr);
                 try self.push(cons_val); // CL: rplacd returns the modified cons
             },
 
@@ -2546,6 +2684,7 @@ pub const Vm = struct {
                 const idx: usize = @intCast(idx_signed);
                 if (idx >= vec.length) return error.TypeMismatch;
                 vec.set(idx, val);
+                self.heap.writeBarrier(vec_val, val);
                 try self.push(val); // Return the value that was set
             },
             .elt_set => {
@@ -2563,6 +2702,7 @@ pub const Vm = struct {
                         const vec = seq_val.toPtr(runtime.Vector);
                         if (idx >= vec.length) return error.TypeMismatch;
                         vec.set(idx, val);
+                        self.heap.writeBarrier(seq_val, val);
                         try self.push(val);
                     },
                     .string => {
@@ -2591,6 +2731,7 @@ pub const Vm = struct {
                         }
                         if (!list.isCons()) return error.TypeMismatch;
                         list.toPtr(runtime.Cons).car = val;
+                        self.heap.writeBarrier(list, val);
                         try self.push(val);
                     },
                     else => return error.TypeMismatch,
@@ -2809,6 +2950,7 @@ pub const Vm = struct {
                 const val = self.stack[self.sp - 1];
                 const vec = box.toPtr(runtime.Vector);
                 vec.set(0, val);
+                self.heap.writeBarrier(box, val);
                 self.sp -= 1;
                 try self.push(box);
             },
@@ -2826,6 +2968,7 @@ pub const Vm = struct {
                 const vec = box.toPtr(runtime.Vector);
                 if (vec.length < 1) return error.TypeMismatch;
                 vec.set(0, val);
+                self.heap.writeBarrier(box, val);
                 try self.push(val); // Return the value written
             },
 
@@ -3857,7 +4000,7 @@ pub const Vm = struct {
                         // Keep nil/t immutable in runtime storage; allow setf protocol to proceed.
                     },
                     .symbol => {
-                        primitives.symbol.setSymbolPlist(sym, plist) catch |err| switch (err) {
+                        primitives.symbol.setSymbolPlist(self.heap, sym, plist) catch |err| switch (err) {
                             error.TypeError => try self.signalTypeErrorDatumExpected(sym, self.builtins.sym_symbol),
                             else => return err,
                         };
@@ -4411,6 +4554,8 @@ pub const Vm = struct {
                         },
                         else => return err,
                     };
+                    self.heap.writeBarrier(self.stack[ht_idx], key);
+                    self.heap.writeBarrier(self.stack[ht_idx], value);
                     break;
                 }
 
@@ -4868,7 +5013,7 @@ pub const Vm = struct {
             .remprop => {
                 const indicator = try self.pop();
                 const sym = try self.pop();
-                const result = try primitives.list.remprop(sym, indicator);
+                const result = try primitives.list.remprop(self.heap, sym, indicator);
                 try self.push(result);
             },
             // Stream operations
@@ -5481,6 +5626,7 @@ pub const Vm = struct {
                         const idx: usize = @intCast(subscripts[0]);
                         if (idx >= vec.length) return error.TypeMismatch;
                         vec.set(idx, new_val);
+                        self.heap.writeBarrier(arr_val, new_val);
                         try self.push(new_val);
                     },
                     .string => {
@@ -5526,6 +5672,7 @@ pub const Vm = struct {
                         // Set element
                         const data: [*]Value = @ptrFromInt(arr.data_ptr);
                         data[index] = new_val;
+                        self.heap.writeBarrier(arr_val, new_val);
 
                         // Return the value (Common Lisp setf semantics)
                         try self.push(new_val);
@@ -6424,7 +6571,7 @@ pub const Vm = struct {
                 const val = try self.pop();
                 switch (val.typeKind()) {
                     .nil, .t => try self.push(Value.nil),
-                    .symbol => try self.push(try primitives.symbol.symbolPlist(val)),
+                    .symbol => try self.push(try primitives.symbol.symbolPlist(self.heap, val)),
                     else => try self.signalTypeErrorDatumExpected(val, self.builtins.sym_symbol),
                 }
             },
@@ -6723,6 +6870,20 @@ pub const Vm = struct {
     }
 
     fn doThrow(self: *Vm, tag: Value, value: Value) Error!void {
+        const trace_throw = std.posix.getenv("HABU_TRACE_THROW") != null;
+        if (trace_throw) {
+            std.debug.print(
+                "TRACE throw: catch_sp={d} barrier={d} handler_sp={d} unwind_sp={d} block_sp={d}\n",
+                .{ self.catch_sp, self.throw_barrier_depth, self.handler_sp, self.unwind_sp, self.block_sp },
+            );
+            std.debug.print("  tag=", .{});
+            tracePrintValue(tag);
+            std.debug.print("\n", .{});
+            std.debug.print("  value=", .{});
+            tracePrintValue(value);
+            std.debug.print("\n", .{});
+        }
+
         // First, check if there's an unwind-protect that needs cleanup
         // Unwind frames take precedence - we must run cleanup before continuing
         if (self.unwind_sp > 0) {
@@ -6821,9 +6982,21 @@ pub const Vm = struct {
                 // Check if tag matches (using eq comparison)
                 if (tag.raw == frame.tag.raw) {
                     if (ci < self.throw_barrier_depth) {
+                        if (trace_throw) {
+                            std.debug.print(
+                                "  throw relay: catch_idx={d} < barrier={d}\n",
+                                .{ ci, self.throw_barrier_depth },
+                            );
+                        }
                         self.relay_throw_tag = tag;
                         self.relay_throw_value = value;
                         return error.NestedNonLocalExit;
+                    }
+                    if (trace_throw) {
+                        std.debug.print(
+                            "  throw catch match: catch_idx={d} catch_ip={d} catch_sp={d} catch_fp={d}\n",
+                            .{ ci, frame.catch_ip, frame.catch_sp, frame.catch_fp },
+                        );
                     }
                     // Found matching catch - restore state and jump
                     // Pop catch stack down to (and including) this frame
@@ -6851,6 +7024,9 @@ pub const Vm = struct {
             }
         }
         // No matching catch found
+        if (trace_throw) {
+            std.debug.print("  throw unhandled\n", .{});
+        }
         return error.UnhandledThrow;
     }
 
@@ -8644,12 +8820,50 @@ pub const Vm = struct {
             });
             if (fn_val.isClosure()) {
                 const closure = fn_val.toPtr(runtime.Closure);
+                std.debug.print(" closure-arity={d} code-kind={s}", .{
+                    closure.arity,
+                    @tagName(closure.code.typeKind()),
+                });
                 if (closure.code.isChunk()) {
                     const chunk = closure.code.toPtr(Chunk);
+                    std.debug.print(
+                        " chunk-arity={d} opt={d} key={d} rest={any} code-len={d} consts={d}",
+                        .{ chunk.arity, chunk.opt_count, chunk.key_count, chunk.has_rest != 0, chunk.code_len, chunk.const_count },
+                    );
                     switch (chunk.name.typeKind()) {
                         .symbol => std.debug.print(" chunk={s}", .{chunk.name.toPtr(Symbol).getName()}),
                         .string => std.debug.print(" chunk={s}", .{chunk.name.toPtr(runtime.String).bytes()}),
                         else => {},
+                    }
+                    if (std.posix.getenv("HABU_TRACE_CALL_MISMATCH_FN_DISASM") != null) {
+                        std.debug.print("\nCALL_MISMATCH fn-disasm begin\n", .{});
+                        if (chunk.code_len > 0) {
+                            const fcode = chunk.getCode();
+                            std.debug.print("CALL_MISMATCH fn-code:", .{});
+                            for (fcode) |b| {
+                                std.debug.print(" {x:0>2}", .{b});
+                            }
+                            std.debug.print("\n", .{});
+                        }
+                        if (chunk.const_count > 0) {
+                            const fconsts = chunk.getConstants();
+                            var ci: usize = 0;
+                            while (ci < fconsts.len) : (ci += 1) {
+                                const cv = fconsts[ci];
+                                std.debug.print("CALL_MISMATCH fn-const[{d}]=", .{ci});
+                                tracePrintValue(cv);
+                                std.debug.print("\n", .{});
+                            }
+                        }
+                        const stdout_file = std.fs.File.stdout();
+                        var cbuf: [8192]u8 = undefined;
+                        var cwriter = stdout_file.writer(&cbuf);
+                        const cw = &cwriter.interface;
+                        disasm.disassembleRuntime(chunk, cw) catch |err| {
+                            std.debug.print("CALL_MISMATCH fn-disasm error={s}\n", .{@errorName(err)});
+                        };
+                        cw.flush() catch {};
+                        std.debug.print("CALL_MISMATCH fn-disasm end\n", .{});
                     }
                 }
             }
@@ -8660,12 +8874,81 @@ pub const Vm = struct {
             }
             std.debug.print(" ip={d}\n", .{self.ip});
 
+            if (self.global_env) |env| {
+                var found_fn_global = false;
+                var gi: usize = 0;
+                while (gi < self.num_globals and gi < MAX_GLOBALS) : (gi += 1) {
+                    if (self.globals[gi].raw == fn_val.raw) {
+                        found_fn_global = true;
+                        std.debug.print("CALL_MISMATCH fn-global idx={d}\n", .{gi});
+                        var it_names = env.bindings.iterator();
+                        var shown_names: usize = 0;
+                        while (it_names.next()) |entry| {
+                            if (entry.value_ptr.* == gi) {
+                                std.debug.print("  fn-global name={s}\n", .{entry.key_ptr.*});
+                                shown_names += 1;
+                                if (shown_names >= 12) break;
+                            }
+                        }
+                    }
+                }
+                if (!found_fn_global) {
+                    std.debug.print("CALL_MISMATCH fn-global none\n", .{});
+                }
+            }
+
             if (self.sp >= @as(usize, argc) + 1) {
                 const fn_slot = self.sp - argc - 1;
                 const raw_fn = self.stack[fn_slot];
                 std.debug.print("CALL_MISMATCH stack-fn-kind={s}\n", .{@tagName(raw_fn.typeKind())});
                 if (raw_fn.isSymbol()) {
                     std.debug.print("CALL_MISMATCH stack-fn-symbol={s}\n", .{raw_fn.toPtr(Symbol).getName()});
+                } else if (raw_fn.isClosure()) {
+                    const stack_cl = raw_fn.toPtr(runtime.Closure);
+                    std.debug.print("CALL_MISMATCH stack-fn-closure arity={d} code-kind={s}", .{
+                        stack_cl.arity,
+                        @tagName(stack_cl.code.typeKind()),
+                    });
+                    if (stack_cl.code.isChunk()) {
+                        const stack_chunk = stack_cl.code.toPtr(Chunk);
+                        std.debug.print(
+                            " chunk-arity={d} opt={d} key={d} rest={any}",
+                            .{
+                                stack_chunk.arity,
+                                stack_chunk.opt_count,
+                                stack_chunk.key_count,
+                                stack_chunk.has_rest != 0,
+                            },
+                        );
+                        switch (stack_chunk.name.typeKind()) {
+                            .symbol => std.debug.print(" chunk={s}", .{stack_chunk.name.toPtr(Symbol).getName()}),
+                            .string => std.debug.print(" chunk={s}", .{stack_chunk.name.toPtr(runtime.String).bytes()}),
+                            else => {},
+                        }
+                    }
+                    std.debug.print("\n", .{});
+                }
+                if (self.global_env) |env| {
+                    var found_stack_global = false;
+                    var gi: usize = 0;
+                    while (gi < self.num_globals and gi < MAX_GLOBALS) : (gi += 1) {
+                        if (self.globals[gi].raw == raw_fn.raw) {
+                            found_stack_global = true;
+                            std.debug.print("CALL_MISMATCH stack-fn-global idx={d}\n", .{gi});
+                            var it_names = env.bindings.iterator();
+                            var shown_names: usize = 0;
+                            while (it_names.next()) |entry| {
+                                if (entry.value_ptr.* == gi) {
+                                    std.debug.print("  stack-fn-global name={s}\n", .{entry.key_ptr.*});
+                                    shown_names += 1;
+                                    if (shown_names >= 12) break;
+                                }
+                            }
+                        }
+                    }
+                    if (!found_stack_global) {
+                        std.debug.print("CALL_MISMATCH stack-fn-global none\n", .{});
+                    }
                 }
                 var i: usize = 0;
                 while (i < argc and i < 8) : (i += 1) {
@@ -9805,6 +10088,7 @@ pub const Vm = struct {
             const tail_val = self.stack[tail_idx];
             if (tail_val.isCons()) {
                 tail_val.toPtr(Cons).cdr = new_cons;
+                self.heap.writeBarrier(tail_val, new_cons);
             } else {
                 self.stack[result_idx] = new_cons;
             }
