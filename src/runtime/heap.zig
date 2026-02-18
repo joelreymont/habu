@@ -248,6 +248,8 @@ pub const GenerationalConfig = struct {
     nursery_each: ?usize = null,
     /// Optional large-object-space size.
     los_size: ?usize = null,
+    /// Allocate objects at/above this size in LOS (non-moving).
+    los_threshold: usize = 32 * 1024,
     /// Promote pointer-free survivors at/above this size.
     promote_threshold: usize = 1024,
 };
@@ -303,6 +305,11 @@ pub const Heap = struct {
     tenured_objs: std.ArrayList(TenuredObj),
     /// Free spans reclaimed by tenured sweep (non-moving reuse).
     tenured_free: std.ArrayList(FreeSpan),
+    /// LOS bump pointer and metadata.
+    los_alloc_ptr: ?[*]align(ALIGNMENT) u8,
+    los_threshold: usize,
+    los_objs: std.ArrayList(TenuredObj),
+    los_free: std.ArrayList(FreeSpan),
     /// Persistent collector state reused across GC cycles.
     gc: GC,
     /// Backing allocator (for the memory buffer itself)
@@ -516,6 +523,10 @@ pub const Heap = struct {
             .promote_threshold = config.generational.promote_threshold,
             .tenured_objs = std.ArrayList(TenuredObj){},
             .tenured_free = std.ArrayList(FreeSpan){},
+            .los_alloc_ptr = if (layout.los) |r| r.start else null,
+            .los_threshold = config.generational.los_threshold,
+            .los_objs = std.ArrayList(TenuredObj){},
+            .los_free = std.ArrayList(FreeSpan){},
             .gc = GC.init(allocator),
             .backing_allocator = allocator,
             .stats = .{},
@@ -657,6 +668,8 @@ pub const Heap = struct {
         self.gc_internal_slots.deinit(self.backing_allocator);
         self.tenured_objs.deinit(self.backing_allocator);
         self.tenured_free.deinit(self.backing_allocator);
+        self.los_objs.deinit(self.backing_allocator);
+        self.los_free.deinit(self.backing_allocator);
         self.gc.deinit();
         self.backing_allocator.free(self.card_table);
         self.backing_allocator.free(self.memory);
@@ -913,10 +926,137 @@ pub const Heap = struct {
         self.coalesceTenuredFree();
     }
 
+    fn shouldAllocLos(self: *const Heap, aligned_size: usize) bool {
+        return self.layout.mode == .generational and
+            self.layout.los != null and
+            aligned_size >= self.los_threshold;
+    }
+
+    pub fn allocLosRaw(self: *Heap, size: usize) error{OutOfMemory}![*]align(ALIGNMENT) u8 {
+        const aligned_size = std.mem.alignForward(usize, size, ALIGNMENT);
+
+        // Reuse reclaimed spans first.
+        var i: usize = 0;
+        while (i < self.los_free.items.len) : (i += 1) {
+            const span = &self.los_free.items[i];
+            if (span.size < aligned_size) continue;
+            const out_addr = span.addr;
+            if (span.size == aligned_size) {
+                _ = self.los_free.swapRemove(i);
+            } else {
+                span.addr += aligned_size;
+                span.size -= aligned_size;
+            }
+            self.stats.allocations +%= 1;
+            self.stats.bytes_allocated +%= aligned_size;
+            return @ptrFromInt(out_addr);
+        }
+
+        const los = self.layout.los orelse return error.OutOfMemory;
+        const cur_ptr = self.los_alloc_ptr orelse return error.OutOfMemory;
+        const cur = @intFromPtr(cur_ptr);
+        const end = @intFromPtr(los.end);
+        if (cur > end) return error.OutOfMemory;
+        if (aligned_size > end - cur) return error.OutOfMemory;
+
+        const out = cur_ptr;
+        self.los_alloc_ptr = @ptrFromInt(cur + aligned_size);
+        self.stats.allocations +%= 1;
+        self.stats.bytes_allocated +%= aligned_size;
+        return out;
+    }
+
+    pub fn recordLosObject(self: *Heap, addr: usize, tag: Tag, size: usize) !void {
+        const item: TenuredObj = .{ .addr = addr, .tag = tag, .size = size, .marked = false };
+        try self.los_objs.append(self.backing_allocator, item);
+    }
+
+    pub fn clearLosMarks(self: *Heap) void {
+        for (self.los_objs.items) |*obj| {
+            obj.marked = false;
+        }
+    }
+
+    pub const MarkResult = enum {
+        none,
+        already,
+        newly,
+    };
+
+    pub fn markLosObject(self: *Heap, addr: usize) MarkResult {
+        const los = self.layout.los orelse return .none;
+        if (addr < @intFromPtr(los.start) or addr >= @intFromPtr(los.end)) return .none;
+        for (self.los_objs.items) |*obj| {
+            if (obj.addr == addr) {
+                if (obj.marked) return .already;
+                obj.marked = true;
+                return .newly;
+            }
+        }
+        return .none;
+    }
+
+    fn coalesceLosFree(self: *Heap) void {
+        if (self.los_free.items.len < 2) return;
+        std.mem.sort(FreeSpan, self.los_free.items, {}, struct {
+            fn lessThan(_: void, a: FreeSpan, b: FreeSpan) bool {
+                return a.addr < b.addr;
+            }
+        }.lessThan);
+
+        var write: usize = 0;
+        var cur = self.los_free.items[0];
+        var i: usize = 1;
+        while (i < self.los_free.items.len) : (i += 1) {
+            const next = self.los_free.items[i];
+            if (cur.addr + cur.size == next.addr) {
+                cur.size += next.size;
+                continue;
+            }
+            self.los_free.items[write] = cur;
+            write += 1;
+            cur = next;
+        }
+        self.los_free.items[write] = cur;
+        self.los_free.items.len = write + 1;
+    }
+
+    pub fn sweepLos(self: *Heap) !void {
+        if (self.layout.mode != .generational) return;
+
+        var dead_count: usize = 0;
+        for (self.los_objs.items) |obj| {
+            if (!obj.marked) dead_count += 1;
+        }
+        if (dead_count == 0) return;
+
+        try self.los_free.ensureUnusedCapacity(self.backing_allocator, dead_count);
+
+        var write: usize = 0;
+        for (self.los_objs.items) |obj| {
+            if (obj.marked) {
+                var live = obj;
+                live.marked = false;
+                self.los_objs.items[write] = live;
+                write += 1;
+                continue;
+            }
+            self.los_free.appendAssumeCapacity(.{ .addr = obj.addr, .size = obj.size });
+        }
+        self.los_objs.items.len = write;
+        self.coalesceLosFree();
+    }
+
     pub fn tenuredBytesUsed(self: *const Heap) usize {
         const tenured = self.layout.tenured orelse return 0;
         const ptr = self.tenured_alloc_ptr orelse return 0;
         return @intFromPtr(ptr) - @intFromPtr(tenured.start);
+    }
+
+    pub fn losBytesUsed(self: *const Heap) usize {
+        const los = self.layout.los orelse return 0;
+        const ptr = self.los_alloc_ptr orelse return 0;
+        return @intFromPtr(ptr) - @intFromPtr(los.start);
     }
 
     /// Get bytes used in from-space
@@ -1271,8 +1411,9 @@ pub const Heap = struct {
         // Allocate header + data array together
         const data_size = try std.math.mul(usize, capacity, @sizeOf(Value));
         const total_size = try std.math.add(usize, @sizeOf(objects.Vector), data_size);
-
-        const ptr = try self.allocRaw(total_size);
+        const aligned_size = std.mem.alignForward(usize, total_size, ALIGNMENT);
+        const use_los = self.shouldAllocLos(aligned_size);
+        const ptr = if (use_los) try self.allocLosRaw(aligned_size) else try self.allocRaw(total_size);
         const vec: *objects.Vector = @ptrCast(@alignCast(ptr));
 
         // Data follows immediately after header
@@ -1289,6 +1430,10 @@ pub const Heap = struct {
             .data = data_ptr,
             .fill_pointer = 0xFFFFFFFFFFFFFFFF, // no fill-pointer by default
         };
+
+        if (use_los) {
+            try self.recordLosObject(@intFromPtr(ptr), .vector, aligned_size);
+        }
 
         return Value.makeVector(vec);
     }
@@ -1308,7 +1453,9 @@ pub const Heap = struct {
         const header_size = @sizeOf(objects.Array);
         const alloc_size = try std.math.add(u64, header_size, data_size);
 
-        const ptr = try self.allocRaw(alloc_size);
+        const aligned_size = std.mem.alignForward(usize, alloc_size, ALIGNMENT);
+        const use_los = self.shouldAllocLos(aligned_size);
+        const ptr = if (use_los) try self.allocLosRaw(aligned_size) else try self.allocRaw(alloc_size);
         const arr: *objects.Array = @ptrCast(@alignCast(ptr));
 
         // Data follows immediately after header
@@ -1332,6 +1479,10 @@ pub const Heap = struct {
             arr.dimensions[i] = dim;
         }
 
+        if (use_los) {
+            try self.recordLosObject(@intFromPtr(ptr), .boxed, aligned_size);
+        }
+
         return Value.makeArray(arr);
     }
 
@@ -1340,7 +1491,9 @@ pub const Heap = struct {
         const aligned_len = std.mem.alignForward(usize, bytes.len, 8);
         const total_size = try std.math.add(usize, @sizeOf(objects.String), aligned_len);
 
-        const ptr = try self.allocRaw(total_size);
+        const aligned_size = std.mem.alignForward(usize, total_size, ALIGNMENT);
+        const use_los = self.shouldAllocLos(aligned_size);
+        const ptr = if (use_los) try self.allocLosRaw(aligned_size) else try self.allocRaw(total_size);
         const str: *objects.String = @ptrCast(@alignCast(ptr));
 
         // Data follows immediately after header
@@ -1354,6 +1507,10 @@ pub const Heap = struct {
             .data = data_ptr,
         };
 
+        if (use_los) {
+            try self.recordLosObject(@intFromPtr(ptr), .string, aligned_size);
+        }
+
         return Value.makeString(str);
     }
 
@@ -1362,7 +1519,9 @@ pub const Heap = struct {
         const aligned_len = std.mem.alignForward(usize, len, 8);
         const total_size = try std.math.add(usize, @sizeOf(objects.String), aligned_len);
 
-        const ptr = try self.allocRaw(total_size);
+        const aligned_size = std.mem.alignForward(usize, total_size, ALIGNMENT);
+        const use_los = self.shouldAllocLos(aligned_size);
+        const ptr = if (use_los) try self.allocLosRaw(aligned_size) else try self.allocRaw(total_size);
         const str: *objects.String = @ptrCast(@alignCast(ptr));
 
         // Data follows immediately after header
@@ -1373,6 +1532,10 @@ pub const Heap = struct {
             .data = data_ptr,
         };
 
+        if (use_los) {
+            try self.recordLosObject(@intFromPtr(ptr), .string, aligned_size);
+        }
+
         return Value.makeString(str);
     }
 
@@ -1382,7 +1545,9 @@ pub const Heap = struct {
         const aligned_len = std.mem.alignForward(usize, byte_len, 8);
         const total_size = try std.math.add(usize, @sizeOf(objects.String32), aligned_len);
 
-        const ptr = try self.allocRaw(total_size);
+        const aligned_size = std.mem.alignForward(usize, total_size, ALIGNMENT);
+        const use_los = self.shouldAllocLos(aligned_size);
+        const ptr = if (use_los) try self.allocLosRaw(aligned_size) else try self.allocRaw(total_size);
         const s32: *objects.String32 = @ptrCast(@alignCast(ptr));
 
         // Data follows immediately after header
@@ -1396,6 +1561,10 @@ pub const Heap = struct {
             .data = data_ptr,
         };
 
+        if (use_los) {
+            try self.recordLosObject(@intFromPtr(ptr), .boxed, aligned_size);
+        }
+
         return Value.makeString32(s32);
     }
 
@@ -1405,7 +1574,9 @@ pub const Heap = struct {
         const aligned_len = std.mem.alignForward(usize, byte_len, 8);
         const total_size = try std.math.add(usize, @sizeOf(objects.String32), aligned_len);
 
-        const ptr = try self.allocRaw(total_size);
+        const aligned_size = std.mem.alignForward(usize, total_size, ALIGNMENT);
+        const use_los = self.shouldAllocLos(aligned_size);
+        const ptr = if (use_los) try self.allocLosRaw(aligned_size) else try self.allocRaw(total_size);
         const s32: *objects.String32 = @ptrCast(@alignCast(ptr));
 
         // Data follows immediately after header
@@ -1415,6 +1586,10 @@ pub const Heap = struct {
             .length = @intCast(len),
             .data = data_ptr,
         };
+
+        if (use_los) {
+            try self.recordLosObject(@intFromPtr(ptr), .boxed, aligned_size);
+        }
 
         return Value.makeString32(s32);
     }
@@ -1499,7 +1674,9 @@ pub const Heap = struct {
         const aligned_len = std.mem.alignForward(usize, byte_len, 8);
         const total_size = try std.math.add(usize, @sizeOf(objects.String32), aligned_len);
 
-        const ptr = try self.allocRaw(total_size);
+        const aligned_size = std.mem.alignForward(usize, total_size, ALIGNMENT);
+        const use_los = self.shouldAllocLos(aligned_size);
+        const ptr = if (use_los) try self.allocLosRaw(aligned_size) else try self.allocRaw(total_size);
         const s32: *objects.String32 = @ptrCast(@alignCast(ptr));
 
         // Data follows immediately after header
@@ -1534,6 +1711,10 @@ pub const Heap = struct {
             .data = data_ptr,
         };
 
+        if (use_los) {
+            try self.recordLosObject(@intFromPtr(ptr), .boxed, aligned_size);
+        }
+
         return Value.makeString32(s32);
     }
 
@@ -1542,7 +1723,9 @@ pub const Heap = struct {
         const captures_size = try std.math.mul(usize, captures.len, @sizeOf(Value));
         const total_size = try std.math.add(usize, @sizeOf(objects.Closure), captures_size);
 
-        const ptr = try self.allocRaw(total_size);
+        const aligned_size = std.mem.alignForward(usize, total_size, ALIGNMENT);
+        const use_los = self.shouldAllocLos(aligned_size);
+        const ptr = if (use_los) try self.allocLosRaw(aligned_size) else try self.allocRaw(total_size);
         const closure: *objects.Closure = @ptrCast(@alignCast(ptr));
 
         // Captures follow immediately after header
@@ -1559,6 +1742,10 @@ pub const Heap = struct {
             .num_captures = @intCast(captures.len),
             .captures = captures_ptr,
         };
+
+        if (use_los) {
+            try self.recordLosObject(@intFromPtr(ptr), .closure, aligned_size);
+        }
 
         return Value.makeClosure(closure);
     }
@@ -1689,7 +1876,9 @@ pub const Heap = struct {
         const code_size = std.mem.alignForward(usize, code.len, 8);
         const total = @sizeOf(objects.Chunk) + const_size + code_size;
 
-        const ptr = try self.allocRaw(total);
+        const aligned_size = std.mem.alignForward(usize, total, ALIGNMENT);
+        const use_los = self.shouldAllocLos(aligned_size);
+        const ptr = if (use_los) try self.allocLosRaw(aligned_size) else try self.allocRaw(total);
         const chunk: *objects.Chunk = @ptrCast(@alignCast(ptr));
 
         const const_ptr: [*]Value = @ptrCast(@alignCast(ptr + @sizeOf(objects.Chunk)));
@@ -1710,6 +1899,10 @@ pub const Heap = struct {
             .const_pool = const_ptr,
             .code = code_ptr,
         };
+
+        if (use_los) {
+            try self.recordLosObject(@intFromPtr(ptr), .boxed, aligned_size);
+        }
 
         return Value.makeChunk(chunk);
     }
@@ -2417,6 +2610,27 @@ test "heap init supports generational layout scaffold" {
     const los = heap.losRegion().?;
     try testing.expect(tenured.len() > 0);
     try testing.expectEqual(@intFromPtr(tenured.end), @intFromPtr(los.start));
+}
+
+test "heap allocates large objects in LOS" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .los_threshold = 256,
+        },
+    });
+    defer heap.deinit();
+
+    const los0 = heap.los_objs.items.len;
+    const vec = try heap.allocVector(1, 64);
+    try testing.expect(!heap.isInNurseryAddr(vec.toPtrAddr()));
+    try testing.expect(heap.losBytesUsed() > 0);
+    try testing.expectEqual(los0 + 1, heap.los_objs.items.len);
 }
 
 test "heap writeBarrier marks old-to-young cards in generational mode" {

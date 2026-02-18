@@ -173,6 +173,8 @@ pub const GC = struct {
         self.work_list.clearRetainingCapacity();
         self.work_peak = 0;
         var alloc_ptr = heap.to_start;
+        heap.clearTenuredMarks();
+        heap.clearLosMarks();
         var root_vals: usize = roots.slots.len;
         for (roots.ranges) |r| root_vals +%= r.len;
 
@@ -190,6 +192,11 @@ pub const GC = struct {
         var rem_scanned: usize = 0;
         if (heap.markedCardCount() > 0) {
             for (heap.tenured_objs.items) |obj| {
+                if (!heap.hasMarkedCardInAddrRange(obj.addr, obj.addr + obj.size)) continue;
+                try self.scanObject(heap, obj.addr, obj.tag, &alloc_ptr);
+                rem_scanned +%= 1;
+            }
+            for (heap.los_objs.items) |obj| {
                 if (!heap.hasMarkedCardInAddrRange(obj.addr, obj.addr + obj.size)) continue;
                 try self.scanObject(heap, obj.addr, obj.tag, &alloc_ptr);
                 rem_scanned +%= 1;
@@ -212,6 +219,8 @@ pub const GC = struct {
 
         const finalize_start = std.time.nanoTimestamp();
         self.finalizeUnreachable(heap, old_alloc_ptr);
+        try heap.sweepTenured();
+        try heap.sweepLos();
         const finalize_ns = elapsedNsSince(finalize_start);
 
         heap.stats.gc_count +%= 1;
@@ -357,6 +366,15 @@ pub const GC = struct {
         if (obj_addr < from_start or obj_addr >= from_end) {
             if (heap.gcLayoutMode() == .generational) {
                 _ = heap.markTenuredObject(obj_addr);
+                switch (heap.markLosObject(obj_addr)) {
+                    .newly => {
+                        const old_tag = val.getTag();
+                        if (objectHasRefsAtAddr(old_tag, obj_addr)) {
+                            try self.pushWork(obj_addr, old_tag);
+                        }
+                    },
+                    .already, .none => {},
+                }
             }
             // Object is not in from-space (might be static), don't copy
             return val;
@@ -1212,4 +1230,70 @@ test "tenured marking follows nursery references" {
     const cons = c.toPtr(objects.Cons);
     try testing.expect(cons.car.isString());
     try testing.expectEqual(s_addr, cons.car.toPtrAddr());
+}
+
+test "los object scan updates nursery references" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .los_threshold = 256,
+            .promote_threshold = 1024 * 1024,
+        },
+    });
+    defer heap.deinit();
+
+    const owner = try heap.allocVector(1, 64);
+    const owner_ptr = owner.toPtr(objects.Vector);
+    owner_ptr.set(0, try heap.allocCons(Value.makeFixnum(1), Value.nil));
+
+    var roots = [_]Value{owner};
+    _ = try heap.collectGarbage(&roots);
+    const owner1 = roots[0].toPtr(objects.Vector);
+    const child1 = owner1.get(0);
+    try testing.expect(child1.isCons());
+    const child1_raw = child1.raw;
+
+    _ = try heap.collectGarbage(&roots);
+    const owner2 = roots[0].toPtr(objects.Vector);
+    const child2 = owner2.get(0);
+    try testing.expect(child2.isCons());
+    try testing.expect(child2.raw != child1_raw);
+    try testing.expect(heap.isInNurseryAddr(child2.toPtrAddr()));
+}
+
+test "los sweep reclaims unreachable large objects" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .los_threshold = 256,
+            .promote_threshold = 1024 * 1024,
+        },
+    });
+    defer heap.deinit();
+
+    const los0 = heap.los_objs.items.len;
+    var v1 = try heap.allocVector(1, 64);
+    var v2 = try heap.allocVector(1, 64);
+    const v2_addr = v2.toPtrAddr();
+
+    var roots12 = [_]Value{ v1, v2 };
+    _ = try heap.collectGarbage(&roots12);
+    v1 = roots12[0];
+
+    var roots1 = [_]Value{v1};
+    _ = try heap.collectGarbage(&roots1);
+    try testing.expectEqual(los0 + 1, heap.los_objs.items.len);
+
+    const v3 = try heap.allocVector(1, 64);
+    try testing.expectEqual(v2_addr, v3.toPtrAddr());
 }
