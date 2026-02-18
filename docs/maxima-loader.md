@@ -21,6 +21,17 @@ Run the loader explicitly:
 (maxima-load-all)
 ```
 
+Run with internal/system-only controls:
+
+```lisp
+(maxima-load-all
+  :files '("lmdcls" "letmac")
+  :verbose nil
+  :habu-stop-on-error t
+  :habu-trace t
+  :habu-required-bindings '(maxima::partition maxima::$integrate))
+```
+
 ## Notes
 
 - Loader is intentionally manual-entrypoint only; it does not auto-run on file import.
@@ -35,6 +46,13 @@ Run the loader explicitly:
 - For live `$integrate` execution (not just `fboundp` checks), the working
   subset must include `suprv1`, `sinint`, and `sin` in addition to the
   `schatc` dependency chain (`m2`/`schatchen-cond`).
+- Internal/system-only keyword controls are supported on `maxima-load-all`:
+  - `:habu-stop-on-error` stops at first failed module load.
+  - `:habu-trace` prints per-module source path traces.
+  - `:habu-reset-context` toggles `MAXIMA::CONTEXT` realignment.
+  - `:habu-required-bindings` computes missing function/macro bindings and
+    returns them as an extra value (`*maxima-last-missing-bindings*`).
+  - `:verbose` toggles summary/log printing.
 
 ## Troubleshooting
 
@@ -45,5 +63,7 @@ Run the loader explicitly:
   when `/tmp/maxima/src/lmdcls.lisp` is missing (no Maxima source checkout).
 - `maxima-load-all` now fails fast with a single summary when the detected
   root lacks `lmdcls.lisp`, instead of emitting per-file `FileNotFound` spam.
+- `maxima-load-all` returns additional internal values after `(ok total fail)`:
+  missing requested bindings, then attempted file count.
 - Keep stream formwise probes (`with-open-file` + `read`) as advisory only
   until stream `read` semantics are fully fixed.

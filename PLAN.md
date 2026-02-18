@@ -119,11 +119,14 @@
   - [ ] `habu-maxima-integrate-path-b786024b` Maxima integrate path: resolve post-loader integrate failure chain. Depends on `habu-investigate-mapcar-cb-ad5def1b`, `habu-fix-fn-designators-c2cf5df2`.
     - [x] `habu-trace-integrate-unbound-53804676` Trace integrate unbound-variable root and lock dependency-chain regression (`alias`/`sinint` + live `$integrate` call).
     - [x] `habu-auto-detect-maxima-d2876566` Auto-detect Maxima source root and fail fast when source fixtures are missing.
-    - [ ] `habu-revalidate-integrate-with-0874ce3e` Revalidate integrate path end-to-end once real Maxima source fixtures are present again.
+    - [x] `habu-fix-cond-signal-4f85b2c8` Fix `(signal ...)` lowering so unhandled conditions return nil instead of THROW control-error.
+    - [x] `habu-fix-declare-top-e3668a14` Honor proclaimed `special` lambda params via dynamic bindings (`progv`) so `declare-top` state is visible in helper callees (`define-mode`/`defs1`) and `db.lisp` `defmode`/`clear` load path no longer fails at function-definition time.
+    - [ ] `habu-revalidate-integrate-with-0874ce3e` Revalidate integrate path end-to-end once real Maxima source fixtures are present again. Depends on `habu-fix-declare-top-e3668a14`.
   - [ ] `habu-maxima-factor-ratsimp-521dd2ca` Maxima factor/ratsimp path: fix TypeMismatch and ProgramError roots.
   - [x] `habu-maxima-core-loader-999c7eb3` Add Maxima core subset loader + entrypoint binding integration gate.
   - [x] `habu-rca-load-stackoverflow-e3d4f5d8` RCA and fix load stack overflow path for Maxima large source files.
   - [x] `habu-fix-sin-lisp-b34b817f` Fix `sin.lisp` load root so `SININT` is bound and integrate path can complete. Ensure `schatc` dependency chain is loaded (`m2`/`schatchen-cond` present) before integrate execution.
+  - [ ] `habu-add-internal-option-8cbd6feb` Add system-only/internal keyword controls for loader diagnostics and bind checks. Dependency for `habu-maxima-end-to-efe58661`.
 - [ ] `habu-maxima-end-to-efe58661` Maxima end-to-end integration test continuation. Depends on `habu-fix-maxima-cas-a491af14`, `habu-maxima-subset-load-e9db9bb5`, `habu-rca-and-fix-4a4ea5d5`, `habu-add-maxima-cas-1807f8ae`, `habu-cut-gc-root-25d3bb03`, and `habu-fix-hoist-compile-9a100641`.
 
 ## Execution Loop

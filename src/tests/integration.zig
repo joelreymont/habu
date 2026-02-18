@@ -11,6 +11,7 @@ const Value = runtime.Value;
 const Heap = runtime.Heap;
 const Chunk = runtime.Chunk;
 const Cons = runtime.Cons;
+const Symbol = runtime.Symbol;
 
 const compiler = @import("../compiler/compiler.zig");
 const Compiler = compiler.Compiler;
@@ -1209,6 +1210,33 @@ test "eval defmacro unless" {
     try testing.expectEqual(@as(i64, 99), result.toFixnum());
 }
 
+test "do binding normalizer accepts symbol shorthand" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const normalized = try repl.eval("(%do-normalize-binding 'fact)");
+    try testing.expect(normalized.isCons());
+    const c0 = normalized.toPtr(Cons);
+    try testing.expect(c0.car.isSymbol());
+    try testing.expectEqualStrings("FACT", c0.car.toPtr(Symbol).getName());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.isNil());
+    try testing.expect(c1.cdr.isCons());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(c2.car.isSymbol());
+    try testing.expectEqualStrings("FACT", c2.car.toPtr(Symbol).getName());
+    try testing.expect(c2.cdr.isNil());
+}
+
 test "declare optimize safety controls type assertions" {
     const allocator = testing.allocator;
 
@@ -2003,6 +2031,41 @@ test "cond with multiple body expressions" {
     const result = try repl.eval("(cond (t 1 2))");
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 2), result.toFixnum());
+}
+
+test "cond test-only clause returns test value" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(let ((n 0))
+        \\  (list
+        \\    (cond ((progn (setq n (+ n 1)) (list 'ok n)))
+        \\          (t 'bad))
+        \\    n))
+    );
+    try testing.expect(result.isCons());
+    const c0 = result.toPtr(Cons);
+    try testing.expect(c0.car.isCons());
+    const payload = c0.car.toPtr(Cons);
+    try testing.expect(payload.car.isSymbol());
+    try testing.expectEqualStrings("OK", payload.car.toPtr(Symbol).getName());
+    try testing.expect(payload.cdr.isCons());
+    const payload2 = payload.cdr.toPtr(Cons);
+    try testing.expect(payload2.car.isFixnum());
+    try testing.expectEqual(@as(i64, 1), payload2.car.toFixnum());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.isFixnum());
+    try testing.expectEqual(@as(i64, 1), c1.car.toFixnum());
+    try testing.expect(c1.cdr.isNil());
 }
 
 test "nested blocks" {
@@ -4182,6 +4245,31 @@ test "ansi repro cerror.6 continue restart resumes" {
     try testing.expectEqual(@as(i64, 10), result.toFixnum());
 }
 
+test "signal without handlers returns nil and handler-case can catch" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const unhandled = try repl.eval("(signal 'simple-error 'boom)");
+    try testing.expect(unhandled.isNil());
+
+    const handled = try repl.eval(
+        \\(handler-case
+        \\  (signal 'simple-error 'boom)
+        \\  (simple-error (c)
+        \\    (declare (ignore c))
+        \\    42))
+    );
+    try testing.expect(handled.isFixnum());
+    try testing.expectEqual(@as(i64, 42), handled.toFixnum());
+}
+
 test "ansi repro pathname-host.1 accepts pathname designator" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
@@ -5375,6 +5463,48 @@ test "maxima core subset loader binds CAS entrypoints" {
     try testing.expect(cur.isNil());
 }
 
+test "maxima loader accepts internal keyword controls" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const status = try repl.eval(
+        \\(progn
+        \\  (load "lib/maxima-loader.lisp")
+        \\  (multiple-value-bind (ok total fail missing attempted)
+        \\      (maxima-load-all
+        \\        :files '("lmdcls")
+        \\        :verbose nil
+        \\        :habu-stop-on-error t
+        \\        :habu-trace nil
+        \\        :habu-required-bindings '(maxima::habu-missing-probe))
+        \\    (list ok total fail attempted
+        \\          (if (and (consp missing)
+        \\                   (eq (car missing) 'maxima::habu-missing-probe)
+        \\                   (null (cdr missing)))
+        \\              1
+        \\              0))))
+    );
+
+    try testing.expect(status.isCons());
+    var cur = status;
+    const expected = [_]i64{ 1, 1, 0, 1, 1 };
+    for (expected) |want| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(want, cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
 test "maxima db subset binds addf and mode macros" {
     try ensureMaximaSources();
     const allocator = testing.allocator;
@@ -5399,13 +5529,12 @@ test "maxima db subset binds addf and mode macros" {
         \\      "inmis" "db"))
         \\  (multiple-value-bind (ok total fail) (maxima-load-all)
         \\    (declare (ignore ok total fail))
-        \\    (in-package :maxima)
         \\    (list
-        \\      (if (fboundp 'addf) 1 0)
-        \\      (if (fboundp 'kindp) 1 0)
-        \\      (if (macro-function 'c-type) 1 0)
-        \\      (if (macro-function 's-type) 1 0)
-        \\      (if (macro-function 'a-type) 1 0))))
+        \\      (if (fboundp 'maxima::addf) 1 0)
+        \\      (if (fboundp 'maxima::kindp) 1 0)
+        \\      (if (macro-function 'maxima::c-type) 1 0)
+        \\      (if (macro-function 'maxima::s-type) 1 0)
+        \\      (if (macro-function 'maxima::a-type) 1 0))))
     );
 
     try testing.expect(status.isCons());
@@ -5444,21 +5573,21 @@ test "maxima integrate dependency chain binds matcher and partition symbols" {
         \\      "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
         \\      "suprv1" "inmis" "db"
         \\      "compar" "lesfac" "factor" "algfac" "nalgfa" "rat3a" "rat3b" "rat3c"
-        \\      "rat3d" "rat3e" "nrat4" "ratout" "acall" "schatc" "sinint" "sin"))
+        \\      "rat3d" "rat3e" "nrat4" "ratout" "acall" "nset" "schatc" "sinint" "sin"))
         \\  (maxima-load-all)
-        \\  (in-package :maxima)
         \\  (list
-        \\    (if (fboundp 'partition) 1 0)
-        \\    (if (fboundp 'm2) 1 0)
-        \\    (if (macro-function 'schatchen-cond) 1 0)
-        \\    (if (fboundp 'alias) 1 0)
-        \\    (if (fboundp 'sinint) 1 0)
-        \\    (if ($integrate '((mexpt) $x 2) '$x) 1 0)))
+        \\    (if (fboundp 'maxima::partition) 1 0)
+        \\    (if (fboundp 'maxima::m2) 1 0)
+        \\    (if (macro-function 'maxima::schatchen-cond) 1 0)
+        \\    (if (fboundp 'maxima::alias) 1 0)
+        \\    (if (fboundp 'maxima::$setp) 1 0)
+        \\    (if (fboundp 'maxima::sinint) 1 0)
+        \\    (if (maxima::$integrate '((maxima::mexpt) maxima::$x 2) 'maxima::$x) 1 0)))
     );
 
     try testing.expect(status.isCons());
     var cur = status;
-    const expected = [_]i64{ 1, 1, 1, 1, 1, 1 };
+    const expected = [_]i64{ 1, 1, 1, 1, 1, 1, 1 };
     for (expected) |want| {
         try testing.expect(cur.isCons());
         const cell = cur.toPtr(Cons);
@@ -5486,11 +5615,44 @@ test "maxima defun-maclisp old narg syntax defines callable function" {
         \\  (setq *maxima-files* '("lmdcls" "letmac" "clmacs" "commac"))
         \\  (maxima-load-all)
         \\  (in-package :maxima)
-        \\  (defun-maclisp foo n (arg 1))
-        \\  (foo 42))
+        \\  (defun-maclisp foo n (listify n))
+        \\  (foo 10 20 30))
     );
-    try testing.expect(result.isFixnum());
-    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+    try testing.expect(result.isCons());
+    const c0 = result.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 10), c0.car.toFixnum());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 20), c1.car.toFixnum());
+    try testing.expect(c1.cdr.isCons());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 30), c2.car.toFixnum());
+    try testing.expect(c2.cdr.isNil());
+}
+
+test "lambda aux initializer can reference prior rest param" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(progn
+        \\  (defun test-aux-scope (&rest args &aux (n (length args)))
+        \\    (list n (length args)))
+        \\  (test-aux-scope 1 2 3))
+    );
+    try testing.expect(result.isCons());
+    const c0 = result.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 3), c0.car.toFixnum());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expectEqual(@as(i64, 3), c1.car.toFixnum());
+    try testing.expect(c1.cdr.isNil());
 }
 
 test "let mixed lexical and special bindings stay dynamically visible" {
@@ -5520,6 +5682,28 @@ test "let mixed lexical and special bindings stay dynamically visible" {
 
     const global = try repl.eval("*mix-special*");
     try testing.expectEqual(@as(i64, 1), global.toFixnum());
+}
+
+test "proclaimed special lambda params are dynamically visible in callees" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(progn
+        \\  (proclaim '(special foo))
+        \\  (defun inner-special-param () foo)
+        \\  (defun outer-special-param (foo) (inner-special-param))
+        \\  (outer-special-param 42))
+    );
+
+    try testing.expect(out.isFixnum());
+    try testing.expectEqual(@as(i64, 42), out.toFixnum());
 }
 
 test "maxima letmac destructuring-let expands and runs" {

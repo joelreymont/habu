@@ -6,6 +6,19 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ---
 
+## Session Notes (2026-02-18)
+
+### Worked Well
+- Tracing Maxima load with per-form names (`TRACE defun ...`) made the real blocker obvious: `db.lisp` `defun clear` failed only because preceding `defmode` setup failed.
+- Reducing the failure to a minimal repro (`defmode` + `putprop` arg probe) exposed the root semantic bug: proclaimed `special` lambda params were compiled lexically, so helper callees saw `name=nil`.
+- Fixing lambda-parameter special semantics generically in `src/compiler/compile.zig` (dynamic `progv` wrapper for globally proclaimed special params) restored `declare-top` behavior across Maxima macros without Maxima-specific patches.
+- Adding a focused regression in `src/tests/integration.zig` (`proclaimed special lambda params are dynamically visible in callees`) locks this dynamic-scope contract.
+- Adding system-only/internal keywords on `maxima-load-all` (`:habu-stop-on-error`, `:habu-required-bindings`) enabled stronger diagnostics without bending CL-facing defaults.
+
+### Did Not Work
+- Chasing downstream `SIMPLE-ERROR` output first was noisy; until `defmode`/special-parameter semantics were fixed, later integrate traces were mostly secondary fallout.
+- Running long `zig build test -Dtest-filter=\"...maxima...\"` invocations remained unreliable/hang-prone in this environment; short focused filters and direct scripted repros gave more deterministic signal.
+
 ## Session Notes (2026-02-17)
 
 ### Worked Well
