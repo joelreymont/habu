@@ -27,6 +27,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Tracking proclaimed specials by symbol identity (`Value.raw`) instead of bare names in `src/compiler/compile.zig` prevents cross-package special-variable leakage.
 - Fixing nested callback non-local exits in `src/interp/vm.zig` (`callFromStackAt`/`doThrow`) removed a root semantic bug where `handler-case` around `(load ...)` could catch an error and still resume the loaded file.
 - Adding dual regressions in `src/interp/repl.zig` for direct eval and script-driven `handler-case (load ...)` closed the gap that only appeared when `load` ran inside another loaded script.
+- Keeping GC state persistent in `src/runtime/heap.zig` (`Heap.gc`) and routing collection through `self.gc.collectRootSet(...)` eliminated per-collection `GC.init/deinit` churn from the hot path.
+- Refactoring `src/runtime/gc.zig` to pass `heap` explicitly into `collect/collectRootSet/copyValue/scanObject` made collector lifetime safe and enabled queue reuse; GC benchmark p95 dropped to ~7.49ms from ~7.72ms on `bench-check`.
 
 ### Did Not Work
 - Caching compiled macro expanders by storing closures in `macro_table` is not safe with current chunk-pool/index patching: cached closures retain expansion-time chunk index assumptions and can mis-dispatch nested lambdas later.
@@ -39,6 +41,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Using multiline piped REPL scripts for loader RCA gave misleading/garbled diagnostics; `habu <script-file>` probes and targeted tests were more trustworthy.
 - Name-only special-declaration matching in the compiler was too coarse; package-unaware declaration lookup can silently destabilize unrelated lexical bindings.
 - Testing only direct `(handler-case (load ...))` eval was insufficient; script-level `loadFilePublic` execution has different callback boundaries and must be covered explicitly.
+- Blind regex rewrites on function-call signatures in `src/runtime/gc.zig` briefly produced duplicate arguments (`self.copyValue(heap, heap, ...)`); immediate compile/test loops are required right after broad replacements.
 
 ## Session Notes (2026-02-17)
 

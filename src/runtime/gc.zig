@@ -28,7 +28,6 @@ const builtin = @import("builtin");
 
 /// Garbage collector state
 pub const GC = struct {
-    heap: *heap_mod.Heap,
     /// Allocator for work list
     allocator: std.mem.Allocator,
     /// Work list of objects to scan (preallocated, reused across collections)
@@ -38,10 +37,9 @@ pub const GC = struct {
     /// Debug: flag set during GC trace/copy phase
     gc_in_progress: if (builtin.mode == .Debug) bool else void,
 
-    /// Initialize GC with heap
-    pub fn init(allocator: std.mem.Allocator, heap: *heap_mod.Heap) GC {
+    /// Initialize GC state
+    pub fn init(allocator: std.mem.Allocator) GC {
         return .{
-            .heap = heap,
             .allocator = allocator,
             .work_list = std.ArrayList(WorkItem){},
             .work_peak = 0,
@@ -55,17 +53,17 @@ pub const GC = struct {
 
     /// Calculate initial capacity for work queues based on heap size
     /// Sizing: space_size / 64 as a heuristic (1.5% of semispace)
-    fn calculateInitialCapacity(self: *const GC) usize {
+    fn calculateInitialCapacity(_: *const GC, heap: *const heap_mod.Heap) usize {
         const min_cap = 256;
-        const cap = self.heap.space_size / 64;
+        const cap = heap.space_size / 64;
         return @max(min_cap, cap);
     }
 
     /// Run a garbage collection cycle
     /// Returns the number of bytes copied, or error on OOM during work list allocation
-    pub fn collect(self: *GC, roots: []Value) !usize {
+    pub fn collect(self: *GC, heap: *heap_mod.Heap, roots: []Value) !usize {
         var ranges = [_]roots_mod.RootRange{.{ .ptr = roots.ptr, .len = roots.len }};
-        return try self.collectRootSet(.{
+        return try self.collectRootSet(heap, .{
             .ranges = ranges[0..],
             .slots = &[_]*Value{},
         });
@@ -73,10 +71,10 @@ pub const GC = struct {
 
     /// Run a garbage collection cycle with a precise root set (slot/range addresses).
     /// Returns the number of bytes copied, or error on OOM during work list allocation.
-    pub fn collectRootSet(self: *GC, roots: roots_mod.RootSet) !usize {
+    pub fn collectRootSet(self: *GC, heap: *heap_mod.Heap, roots: roots_mod.RootSet) !usize {
         // Preallocate work queue if first collection
         if (self.work_list.capacity == 0) {
-            const init_cap = self.calculateInitialCapacity();
+            const init_cap = self.calculateInitialCapacity(heap);
             try self.work_list.ensureTotalCapacity(self.allocator, init_cap);
         }
 
@@ -89,41 +87,41 @@ pub const GC = struct {
         // Clear work list, retaining capacity from previous collections
         self.work_list.clearRetainingCapacity();
         self.work_peak = 0;
-        var alloc_ptr = self.heap.to_start;
+        var alloc_ptr = heap.to_start;
 
         // Phase 1: Copy roots
         for (roots.ranges) |r| {
             for (r.ptr[0..r.len]) |*root| {
-                root.* = try self.copyValue(root.*, &alloc_ptr);
+                root.* = try self.copyValue(heap, root.*, &alloc_ptr);
             }
         }
         for (roots.slots) |slot| {
-            slot.* = try self.copyValue(slot.*, &alloc_ptr);
+            slot.* = try self.copyValue(heap, slot.*, &alloc_ptr);
         }
 
         // Phase 2: Process work list, scanning objects and copying references
         while (self.work_list.items.len > 0) {
             const item = self.work_list.items[self.work_list.items.len - 1];
             self.work_list.items.len -= 1;
-            try self.scanObject(item.addr, item.tag, &alloc_ptr);
+            try self.scanObject(heap, item.addr, item.tag, &alloc_ptr);
         }
 
         // Calculate bytes copied
-        const bytes_copied = @intFromPtr(alloc_ptr) - @intFromPtr(self.heap.to_start);
+        const bytes_copied = @intFromPtr(alloc_ptr) - @intFromPtr(heap.to_start);
 
         // Save old alloc_ptr before swap for finalization
-        const old_alloc_ptr = self.heap.alloc_ptr;
+        const old_alloc_ptr = heap.alloc_ptr;
 
         // Phase 3: Swap spaces
-        self.heap.swapSpaces();
-        self.heap.resetAllocPtr(@ptrCast(@alignCast(self.heap.from_start + bytes_copied)));
+        heap.swapSpaces();
+        heap.resetAllocPtr(@ptrCast(@alignCast(heap.from_start + bytes_copied)));
 
         // Phase 4: Finalize unreachable objects with resources (uses old space)
-        self.finalizeUnreachable(old_alloc_ptr);
+        self.finalizeUnreachable(heap, old_alloc_ptr);
 
         // Update stats
-        self.heap.stats.gc_count += 1;
-        self.heap.stats.bytes_copied += bytes_copied;
+        heap.stats.gc_count += 1;
+        heap.stats.bytes_copied += bytes_copied;
 
         // Phase 5: Grow queues AFTER collection completes if needed
         try self.maybeGrowQueues();
@@ -164,31 +162,31 @@ pub const GC = struct {
     /// Finalize unreachable objects that hold resources (e.g., file handles)
     /// This walks the from-space and closes any open streams that weren't copied
     /// old_alloc_ptr: the alloc_ptr value BEFORE swapSpaces was called
-    fn finalizeUnreachable(self: *GC, old_alloc_ptr: [*]align(heap_mod.ALIGNMENT) u8) void {
-        const old_start = @intFromPtr(self.heap.to_start);
+    fn finalizeUnreachable(_: *GC, heap: *heap_mod.Heap, old_alloc_ptr: [*]align(heap_mod.ALIGNMENT) u8) void {
+        const old_start = @intFromPtr(heap.to_start);
         const old_end = @intFromPtr(old_alloc_ptr);
 
         var i: usize = 0;
-        while (i < self.heap.stream_list.items.len) {
-            const stream = self.heap.stream_list.items[i];
+        while (i < heap.stream_list.items.len) {
+            const stream = heap.stream_list.items[i];
             const addr = @intFromPtr(stream);
 
             if (addr >= old_start and addr < old_end) {
                 const first_word: *Value = @ptrFromInt(addr);
                 if (first_word.isForwarding()) {
                     const new_addr = first_word.toPtrAddr();
-                    const new_start = @intFromPtr(self.heap.from_start);
-                    const new_end = @intFromPtr(self.heap.from_end);
+                    const new_start = @intFromPtr(heap.from_start);
+                    const new_end = @intFromPtr(heap.from_end);
                     // Forwarding pointers must point into the new from-space.
                     if (new_addr >= new_start and new_addr < new_end) {
-                        self.heap.stream_list.items[i] = @ptrFromInt(new_addr);
+                        heap.stream_list.items[i] = @ptrFromInt(new_addr);
                         i += 1;
                         continue;
                     }
                 }
 
                 stream.finalize();
-                _ = self.heap.stream_list.swapRemove(i);
+                _ = heap.stream_list.swapRemove(i);
             } else {
                 i += 1;
             }
@@ -196,7 +194,7 @@ pub const GC = struct {
     }
 
     /// Copy a value to to-space if needed
-    fn copyValue(self: *GC, val: Value, alloc_ptr: *[*]align(heap_mod.ALIGNMENT) u8) !Value {
+    fn copyValue(self: *GC, heap: *heap_mod.Heap, val: Value, alloc_ptr: *[*]align(heap_mod.ALIGNMENT) u8) !Value {
         // Immediates don't need copying: nil, fixnums, floats, characters
         if (val.isNil() or val.isFixnum() or val.isFloat() or val.isCharacter()) {
             return val;
@@ -209,8 +207,8 @@ pub const GC = struct {
 
         // Check if object is in from-space
         const obj_addr = val.toPtrAddr();
-        const from_start = @intFromPtr(self.heap.from_start);
-        const from_end = @intFromPtr(self.heap.from_end);
+        const from_start = @intFromPtr(heap.from_start);
+        const from_end = @intFromPtr(heap.from_end);
 
         if (obj_addr < from_start or obj_addr >= from_end) {
             // Object is not in from-space (might be static), don't copy
@@ -226,12 +224,12 @@ pub const GC = struct {
             // length). Those header words can coincidentally look like a forwarding Value, so we
             // validate both forwarding target and stored object size.
             const new_addr = first_word.toPtrAddr();
-            const to_start = @intFromPtr(self.heap.to_start);
-            const to_end = to_start + self.heap.space_size;
+            const to_start = @intFromPtr(heap.to_start);
+            const to_end = to_start + heap.space_size;
             const forwarded_size_ptr: *const usize = @ptrFromInt(obj_addr + @sizeOf(Value));
             const forwarded_size = forwarded_size_ptr.*;
             const forwarded_size_ok = forwarded_size > 0 and
-                forwarded_size <= self.heap.space_size and
+                forwarded_size <= heap.space_size and
                 std.mem.isAligned(forwarded_size, heap_mod.ALIGNMENT);
             const forwarded_range_ok = new_addr >= to_start and new_addr <= to_end and
                 forwarded_size <= to_end - new_addr;
@@ -348,7 +346,7 @@ pub const GC = struct {
     }
 
     /// Scan an object and copy its referenced values
-    fn scanObject(self: *GC, addr: usize, tag: Tag, alloc_ptr: *[*]align(heap_mod.ALIGNMENT) u8) !void {
+    fn scanObject(self: *GC, heap: *heap_mod.Heap, addr: usize, tag: Tag, alloc_ptr: *[*]align(heap_mod.ALIGNMENT) u8) !void {
         switch (tag) {
             .cons => {
                 // Scan car and cdr
@@ -356,17 +354,17 @@ pub const GC = struct {
                 const cdr_ptr: *Value = @ptrFromInt(addr + @sizeOf(Value));
 
                 if (car_ptr.isPointer() and !car_ptr.isNil()) {
-                    car_ptr.* = try self.copyValue(car_ptr.*, alloc_ptr);
+                    car_ptr.* = try self.copyValue(heap, car_ptr.*, alloc_ptr);
                 }
                 if (cdr_ptr.isPointer() and !cdr_ptr.isNil()) {
-                    cdr_ptr.* = try self.copyValue(cdr_ptr.*, alloc_ptr);
+                    cdr_ptr.* = try self.copyValue(heap, cdr_ptr.*, alloc_ptr);
                 }
             },
             .symbol => {
                 // Scan plist (offset 16: after name_len and name_ptr)
                 const plist_ptr: *Value = @ptrFromInt(addr + 16);
                 if (plist_ptr.isPointer() and !plist_ptr.isNil()) {
-                    plist_ptr.* = try self.copyValue(plist_ptr.*, alloc_ptr);
+                    plist_ptr.* = try self.copyValue(heap, plist_ptr.*, alloc_ptr);
                 }
             },
             .vector => {
@@ -375,7 +373,7 @@ pub const GC = struct {
                 const scan_len = @min(vec.length, vec.capacity);
                 for (vec.data[0..scan_len]) |*item| {
                     if (item.isPointer() and !item.isNil()) {
-                        item.* = try self.copyValue(item.*, alloc_ptr);
+                        item.* = try self.copyValue(heap, item.*, alloc_ptr);
                     }
                 }
             },
@@ -383,11 +381,11 @@ pub const GC = struct {
                 // Scan code Value and captured values
                 const cls: *objects.Closure = @ptrFromInt(addr);
                 if (cls.code.isPointer() and !cls.code.isNil()) {
-                    cls.code = try self.copyValue(cls.code, alloc_ptr);
+                    cls.code = try self.copyValue(heap, cls.code, alloc_ptr);
                 }
                 for (cls.getCapturedValues()) |*cap| {
                     if (cap.isPointer() and !cap.isNil()) {
-                        cap.* = try self.copyValue(cap.*, alloc_ptr);
+                        cap.* = try self.copyValue(heap, cap.*, alloc_ptr);
                     }
                 }
             },
@@ -399,7 +397,7 @@ pub const GC = struct {
                         // Scan entries vector (which scans keys/values transitively)
                         const ht: *objects.HashTable = @ptrFromInt(addr);
                         if (ht.entries_vec.isPointer() and !ht.entries_vec.isNil()) {
-                            ht.entries_vec = try self.copyValue(ht.entries_vec, alloc_ptr);
+                            ht.entries_vec = try self.copyValue(heap, ht.entries_vec, alloc_ptr);
                         }
                     },
                     .array => {
@@ -408,7 +406,7 @@ pub const GC = struct {
                         const data: [*]Value = @ptrFromInt(arr.data_ptr);
                         for (0..arr.total_size) |i| {
                             if (data[i].isPointer() and !data[i].isNil()) {
-                                data[i] = try self.copyValue(data[i], alloc_ptr);
+                                data[i] = try self.copyValue(heap, data[i], alloc_ptr);
                             }
                         }
                     },
@@ -416,70 +414,70 @@ pub const GC = struct {
                         // Scan all pathname component values
                         const pn: *objects.Pathname = @ptrFromInt(addr);
                         if (pn.host.isPointer() and !pn.host.isNil()) {
-                            pn.host = try self.copyValue(pn.host, alloc_ptr);
+                            pn.host = try self.copyValue(heap, pn.host, alloc_ptr);
                         }
                         if (pn.device.isPointer() and !pn.device.isNil()) {
-                            pn.device = try self.copyValue(pn.device, alloc_ptr);
+                            pn.device = try self.copyValue(heap, pn.device, alloc_ptr);
                         }
                         if (pn.directory.isPointer() and !pn.directory.isNil()) {
-                            pn.directory = try self.copyValue(pn.directory, alloc_ptr);
+                            pn.directory = try self.copyValue(heap, pn.directory, alloc_ptr);
                         }
                         if (pn.name.isPointer() and !pn.name.isNil()) {
-                            pn.name = try self.copyValue(pn.name, alloc_ptr);
+                            pn.name = try self.copyValue(heap, pn.name, alloc_ptr);
                         }
                         if (pn.type.isPointer() and !pn.type.isNil()) {
-                            pn.type = try self.copyValue(pn.type, alloc_ptr);
+                            pn.type = try self.copyValue(heap, pn.type, alloc_ptr);
                         }
                         if (pn.version.isPointer() and !pn.version.isNil()) {
-                            pn.version = try self.copyValue(pn.version, alloc_ptr);
+                            pn.version = try self.copyValue(heap, pn.version, alloc_ptr);
                         }
                     },
                     .package => {
                         // Scan all package fields
                         const pkg: *objects.Package = @ptrFromInt(addr);
                         if (pkg.name.isPointer() and !pkg.name.isNil()) {
-                            pkg.name = try self.copyValue(pkg.name, alloc_ptr);
+                            pkg.name = try self.copyValue(heap, pkg.name, alloc_ptr);
                         }
                         if (pkg.nicknames.isPointer() and !pkg.nicknames.isNil()) {
-                            pkg.nicknames = try self.copyValue(pkg.nicknames, alloc_ptr);
+                            pkg.nicknames = try self.copyValue(heap, pkg.nicknames, alloc_ptr);
                         }
                         if (pkg.use_list.isPointer() and !pkg.use_list.isNil()) {
-                            pkg.use_list = try self.copyValue(pkg.use_list, alloc_ptr);
+                            pkg.use_list = try self.copyValue(heap, pkg.use_list, alloc_ptr);
                         }
                         if (pkg.exports.isPointer() and !pkg.exports.isNil()) {
-                            pkg.exports = try self.copyValue(pkg.exports, alloc_ptr);
+                            pkg.exports = try self.copyValue(heap, pkg.exports, alloc_ptr);
                         }
                         if (pkg.symbols.isPointer() and !pkg.symbols.isNil()) {
-                            pkg.symbols = try self.copyValue(pkg.symbols, alloc_ptr);
+                            pkg.symbols = try self.copyValue(heap, pkg.symbols, alloc_ptr);
                         }
                         if (pkg.shadowing.isPointer() and !pkg.shadowing.isNil()) {
-                            pkg.shadowing = try self.copyValue(pkg.shadowing, alloc_ptr);
+                            pkg.shadowing = try self.copyValue(heap, pkg.shadowing, alloc_ptr);
                         }
                     },
                     .macro_env => {
                         const env: *objects.MacroEnv = @ptrFromInt(addr);
                         if (env.macros.isPointer() and !env.macros.isNil()) {
-                            env.macros = try self.copyValue(env.macros, alloc_ptr);
+                            env.macros = try self.copyValue(heap, env.macros, alloc_ptr);
                         }
                         if (env.symbol_macros.isPointer() and !env.symbol_macros.isNil()) {
-                            env.symbol_macros = try self.copyValue(env.symbol_macros, alloc_ptr);
+                            env.symbol_macros = try self.copyValue(heap, env.symbol_macros, alloc_ptr);
                         }
                     },
                     .chunk => {
                         // Scan chunk metadata + all constants in the constant pool
                         const chunk: *objects.Chunk = @ptrFromInt(addr);
                         if (chunk.lambda_expr.isPointer() and !chunk.lambda_expr.isNil()) {
-                            chunk.lambda_expr = try self.copyValue(chunk.lambda_expr, alloc_ptr);
+                            chunk.lambda_expr = try self.copyValue(heap, chunk.lambda_expr, alloc_ptr);
                         }
                         if (chunk.name.isPointer() and !chunk.name.isNil()) {
-                            chunk.name = try self.copyValue(chunk.name, alloc_ptr);
+                            chunk.name = try self.copyValue(heap, chunk.name, alloc_ptr);
                         }
                         if (chunk.allowed_keywords.isPointer() and !chunk.allowed_keywords.isNil()) {
-                            chunk.allowed_keywords = try self.copyValue(chunk.allowed_keywords, alloc_ptr);
+                            chunk.allowed_keywords = try self.copyValue(heap, chunk.allowed_keywords, alloc_ptr);
                         }
                         for (chunk.getConstants()) |*const_val| {
                             if (const_val.isPointer() and !const_val.isNil()) {
-                                const_val.* = try self.copyValue(const_val.*, alloc_ptr);
+                                const_val.* = try self.copyValue(heap, const_val.*, alloc_ptr);
                             }
                         }
                     },
@@ -490,39 +488,39 @@ pub const GC = struct {
                         // Scan condition Value references
                         const cond: *objects.Condition = @ptrFromInt(addr);
                         if (cond.type_sym.isPointer() and !cond.type_sym.isNil()) {
-                            cond.type_sym = try self.copyValue(cond.type_sym, alloc_ptr);
+                            cond.type_sym = try self.copyValue(heap, cond.type_sym, alloc_ptr);
                         }
                         if (cond.format_control.isPointer() and !cond.format_control.isNil()) {
-                            cond.format_control = try self.copyValue(cond.format_control, alloc_ptr);
+                            cond.format_control = try self.copyValue(heap, cond.format_control, alloc_ptr);
                         }
                         if (cond.format_args.isPointer() and !cond.format_args.isNil()) {
-                            cond.format_args = try self.copyValue(cond.format_args, alloc_ptr);
+                            cond.format_args = try self.copyValue(heap, cond.format_args, alloc_ptr);
                         }
                     },
                     .class => {
                         // Scan class Value references
                         const cls: *objects.Class = @ptrFromInt(addr);
                         if (cls.name.isPointer() and !cls.name.isNil()) {
-                            cls.name = try self.copyValue(cls.name, alloc_ptr);
+                            cls.name = try self.copyValue(heap, cls.name, alloc_ptr);
                         }
                         if (cls.direct_supers.isPointer() and !cls.direct_supers.isNil()) {
-                            cls.direct_supers = try self.copyValue(cls.direct_supers, alloc_ptr);
+                            cls.direct_supers = try self.copyValue(heap, cls.direct_supers, alloc_ptr);
                         }
                         if (cls.cpl.isPointer() and !cls.cpl.isNil()) {
-                            cls.cpl = try self.copyValue(cls.cpl, alloc_ptr);
+                            cls.cpl = try self.copyValue(heap, cls.cpl, alloc_ptr);
                         }
                         if (cls.direct_slots.isPointer() and !cls.direct_slots.isNil()) {
-                            cls.direct_slots = try self.copyValue(cls.direct_slots, alloc_ptr);
+                            cls.direct_slots = try self.copyValue(heap, cls.direct_slots, alloc_ptr);
                         }
                         if (cls.slots.isPointer() and !cls.slots.isNil()) {
-                            cls.slots = try self.copyValue(cls.slots, alloc_ptr);
+                            cls.slots = try self.copyValue(heap, cls.slots, alloc_ptr);
                         }
                         if (cls.metaclass.isPointer() and !cls.metaclass.isNil()) {
-                            cls.metaclass = try self.copyValue(cls.metaclass, alloc_ptr);
+                            cls.metaclass = try self.copyValue(heap, cls.metaclass, alloc_ptr);
                         }
                         for (cls.shared_slots[0..cls.num_shared]) |*slot_val| {
                             if (slot_val.isPointer() and !slot_val.isNil()) {
-                                slot_val.* = try self.copyValue(slot_val.*, alloc_ptr);
+                                slot_val.* = try self.copyValue(heap, slot_val.*, alloc_ptr);
                             }
                         }
                     },
@@ -530,7 +528,7 @@ pub const GC = struct {
                         // Scan source_value if present
                         const stream: *objects.Stream = @ptrFromInt(addr);
                         if (!stream.source_value.isNil() and stream.source_value.isPointer()) {
-                            stream.source_value = try self.copyValue(stream.source_value, alloc_ptr);
+                            stream.source_value = try self.copyValue(heap, stream.source_value, alloc_ptr);
                             // Recompute data_ptr from relocated string
                             if (stream.source_value.typeKind() == .string) {
                                 const str = stream.source_value.toPtr(objects.String);
@@ -542,25 +540,25 @@ pub const GC = struct {
                         // Scan slot definition Value references
                         const slotdef: *objects.SlotDefinition = @ptrFromInt(addr);
                         if (slotdef.name.isPointer() and !slotdef.name.isNil()) {
-                            slotdef.name = try self.copyValue(slotdef.name, alloc_ptr);
+                            slotdef.name = try self.copyValue(heap, slotdef.name, alloc_ptr);
                         }
                         if (slotdef.initform.isPointer() and !slotdef.initform.isNil()) {
-                            slotdef.initform = try self.copyValue(slotdef.initform, alloc_ptr);
+                            slotdef.initform = try self.copyValue(heap, slotdef.initform, alloc_ptr);
                         }
                         if (slotdef.initargs.isPointer() and !slotdef.initargs.isNil()) {
-                            slotdef.initargs = try self.copyValue(slotdef.initargs, alloc_ptr);
+                            slotdef.initargs = try self.copyValue(heap, slotdef.initargs, alloc_ptr);
                         }
                         if (slotdef.readers.isPointer() and !slotdef.readers.isNil()) {
-                            slotdef.readers = try self.copyValue(slotdef.readers, alloc_ptr);
+                            slotdef.readers = try self.copyValue(heap, slotdef.readers, alloc_ptr);
                         }
                         if (slotdef.writers.isPointer() and !slotdef.writers.isNil()) {
-                            slotdef.writers = try self.copyValue(slotdef.writers, alloc_ptr);
+                            slotdef.writers = try self.copyValue(heap, slotdef.writers, alloc_ptr);
                         }
                         if (slotdef.allocation.isPointer() and !slotdef.allocation.isNil()) {
-                            slotdef.allocation = try self.copyValue(slotdef.allocation, alloc_ptr);
+                            slotdef.allocation = try self.copyValue(heap, slotdef.allocation, alloc_ptr);
                         }
                         if (slotdef.slot_type.isPointer() and !slotdef.slot_type.isNil()) {
-                            slotdef.slot_type = try self.copyValue(slotdef.slot_type, alloc_ptr);
+                            slotdef.slot_type = try self.copyValue(heap, slotdef.slot_type, alloc_ptr);
                         }
                     },
                     .string32 => {
@@ -570,32 +568,32 @@ pub const GC = struct {
                         // Scan generic function Value references
                         const gf: *objects.GenericFunction = @ptrFromInt(addr);
                         if (gf.name.isPointer() and !gf.name.isNil()) {
-                            gf.name = try self.copyValue(gf.name, alloc_ptr);
+                            gf.name = try self.copyValue(heap, gf.name, alloc_ptr);
                         }
                         if (gf.lambda_list.isPointer() and !gf.lambda_list.isNil()) {
-                            gf.lambda_list = try self.copyValue(gf.lambda_list, alloc_ptr);
+                            gf.lambda_list = try self.copyValue(heap, gf.lambda_list, alloc_ptr);
                         }
                         if (gf.methods.isPointer() and !gf.methods.isNil()) {
-                            gf.methods = try self.copyValue(gf.methods, alloc_ptr);
+                            gf.methods = try self.copyValue(heap, gf.methods, alloc_ptr);
                         }
                         if (gf.dispatcher.isPointer() and !gf.dispatcher.isNil()) {
-                            gf.dispatcher = try self.copyValue(gf.dispatcher, alloc_ptr);
+                            gf.dispatcher = try self.copyValue(heap, gf.dispatcher, alloc_ptr);
                         }
                     },
                     .method => {
                         // Scan method Value references
                         const method: *objects.Method = @ptrFromInt(addr);
                         if (method.qualifiers.isPointer() and !method.qualifiers.isNil()) {
-                            method.qualifiers = try self.copyValue(method.qualifiers, alloc_ptr);
+                            method.qualifiers = try self.copyValue(heap, method.qualifiers, alloc_ptr);
                         }
                         if (method.specializers.isPointer() and !method.specializers.isNil()) {
-                            method.specializers = try self.copyValue(method.specializers, alloc_ptr);
+                            method.specializers = try self.copyValue(heap, method.specializers, alloc_ptr);
                         }
                         if (method.lambda_list.isPointer() and !method.lambda_list.isNil()) {
-                            method.lambda_list = try self.copyValue(method.lambda_list, alloc_ptr);
+                            method.lambda_list = try self.copyValue(heap, method.lambda_list, alloc_ptr);
                         }
                         if (method.function.isPointer() and !method.function.isNil()) {
-                            method.function = try self.copyValue(method.function, alloc_ptr);
+                            method.function = try self.copyValue(heap, method.function, alloc_ptr);
                         }
                     },
                 }
@@ -620,7 +618,7 @@ test "gc init" {
     var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var gc_inst = GC.init(testing.allocator, &heap);
+    var gc_inst = GC.init(testing.allocator);
     defer gc_inst.deinit();
 }
 
@@ -650,12 +648,12 @@ test "gc collect with cons" {
     // Verify it's valid
     try testing.expect(root.isCons());
 
-    var gc = GC.init(testing.allocator, &heap);
+    var gc = GC.init(testing.allocator);
     defer gc.deinit();
 
     // Collect with root
     var roots = [_]Value{root};
-    const bytes = try gc.collect(&roots);
+    const bytes = try gc.collect(&heap, &roots);
 
     // Should have copied the cons cell
     try testing.expect(bytes >= @sizeOf(objects.Cons));
@@ -679,11 +677,11 @@ test "gc collectRootSet updates slots" {
     var root = try heap.allocCons(Value.makeFixnum(1), Value.makeFixnum(2));
     const raw_before = root.raw;
 
-    var gc = GC.init(testing.allocator, &heap);
+    var gc = GC.init(testing.allocator);
     defer gc.deinit();
 
     var slots = [_]*Value{&root};
-    const bytes = try gc.collectRootSet(.{ .ranges = &[_]roots_mod.RootRange{}, .slots = slots[0..] });
+    const bytes = try gc.collectRootSet(&heap, .{ .ranges = &[_]roots_mod.RootRange{}, .slots = slots[0..] });
 
     try testing.expect(bytes >= @sizeOf(objects.Cons));
     try testing.expect(root.isCons());
@@ -705,11 +703,11 @@ test "gc collect with nested cons" {
     const c2 = try heap.allocCons(Value.makeFixnum(2), c3);
     var root = try heap.allocCons(Value.makeFixnum(1), c2);
 
-    var gc = GC.init(testing.allocator, &heap);
+    var gc = GC.init(testing.allocator);
     defer gc.deinit();
 
     var roots = [_]Value{root};
-    _ = try gc.collect(&roots);
+    _ = try gc.collect(&heap, &roots);
 
     // Verify structure is preserved
     root = roots[0];
@@ -733,7 +731,7 @@ test "gc grows work_list after peak use" {
     var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var gc = GC.init(testing.allocator, &heap);
+    var gc = GC.init(testing.allocator);
     defer gc.deinit();
 
     try gc.work_list.ensureTotalCapacity(testing.allocator, 32);
@@ -748,7 +746,7 @@ test "gc grows work_list after peak use" {
     }
 
     var roots = [_]Value{vec_val};
-    _ = try gc.collect(&roots);
+    _ = try gc.collect(&heap, &roots);
 
     try testing.expectEqual(n, gc.work_peak);
     try testing.expect(gc.work_list.capacity >= cap0 * 2);
@@ -778,12 +776,12 @@ test "gc finalizes unreachable file streams" {
     var root = stream;
     try testing.expectEqual(@as(usize, 1), heap.stream_list.items.len);
 
-    var gc = GC.init(testing.allocator, &heap);
+    var gc = GC.init(testing.allocator);
     defer gc.deinit();
 
     // First GC - stream is reachable, should not be finalized
     var roots = [_]Value{root};
-    _ = try gc.collect(&roots);
+    _ = try gc.collect(&heap, &roots);
     root = roots[0];
     try testing.expectEqual(@as(usize, 1), heap.stream_list.items.len);
 
@@ -792,7 +790,7 @@ test "gc finalizes unreachable file streams" {
 
     // Second GC - stream becomes unreachable (empty roots)
     var empty_roots = [_]Value{};
-    _ = try gc.collect(&empty_roots);
+    _ = try gc.collect(&heap, &empty_roots);
     try testing.expectEqual(@as(usize, 0), heap.stream_list.items.len);
 
     // File descriptor should be closed by finalizer
@@ -812,12 +810,12 @@ test "gc finalizer path coverage" {
     const stream_ptr = stream.toPtr(objects.Stream);
     stream_ptr.closed = true; // Mark as closed so finalizer doesn't try to close
 
-    var gc = GC.init(testing.allocator, &heap);
+    var gc = GC.init(testing.allocator);
     defer gc.deinit();
 
     // Stream becomes unreachable
     var empty_roots = [_]Value{};
-    _ = try gc.collect(&empty_roots);
+    _ = try gc.collect(&heap, &empty_roots);
 
     try testing.expectEqual(@as(usize, 0), heap.stream_list.items.len);
 }
@@ -833,12 +831,12 @@ test "package gc correctness" {
     const pkg = try heap.allocPackage(pkg_name, Value.nil, Value.nil, false);
 
     var root = pkg;
-    var gc = GC.init(testing.allocator, &heap);
+    var gc = GC.init(testing.allocator);
     defer gc.deinit();
 
     // GC with package rooted
     var roots = [_]Value{root};
-    _ = try gc.collect(&roots);
+    _ = try gc.collect(&heap, &roots);
     root = roots[0];
 
     // Verify package structure intact after GC

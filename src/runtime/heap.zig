@@ -238,6 +238,8 @@ pub const Heap = struct {
     gc_threshold: usize,
     /// Reusable buffer for building GC root slot lists.
     gc_slots: std.ArrayList(*Value),
+    /// Persistent collector state reused across GC cycles.
+    gc: GC,
     /// Backing allocator (for the memory buffer itself)
     backing_allocator: std.mem.Allocator,
     /// Statistics
@@ -332,6 +334,7 @@ pub const Heap = struct {
             .from_end = memory.ptr + space_size,
             .gc_threshold = @intFromFloat(@as(f32, @floatFromInt(space_size)) * config.gc_threshold),
             .gc_slots = std.ArrayList(*Value){},
+            .gc = GC.init(allocator),
             .backing_allocator = allocator,
             .stats = .{},
             .symbols = SymbolTable.init(allocator),
@@ -469,6 +472,7 @@ pub const Heap = struct {
         }
         self.stream_list.deinit(self.backing_allocator);
         self.gc_slots.deinit(self.backing_allocator);
+        self.gc.deinit();
         self.backing_allocator.free(self.memory);
     }
 
@@ -1715,9 +1719,7 @@ pub const Heap = struct {
         }
 
         // Run GC
-        var gc = GC.init(self.backing_allocator, self);
-        defer gc.deinit();
-        _ = try gc.collectRootSet(.{
+        _ = try self.gc.collectRootSet(self, .{
             .ranges = external_roots.ranges,
             .slots = self.gc_slots.items,
         });

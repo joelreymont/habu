@@ -36,6 +36,18 @@
   - [ ] `habu-cut-vm-gc-511ec7d3` Cut VM/GC overhead in long CAS workloads. Depends on `habu-raise-jit-coverage-4bfef8eb`.
     - [ ] `habu-reduce-gc-root-04a18d48` Reduce GC root assembly overhead in collection paths.
     - [ ] `habu-shrink-transient-allocs-d4dbcf28` Shrink transient allocations in hot eval/VM paths.
+    - [ ] `habu-gc-architecture-upgrade-4f113b2e` Upgrade GC architecture for lower pause/copy cost and lower RSS.
+      - [ ] `habu-gc-telemetry-gates-1e9aa49f` Add phase-level GC telemetry and Maxima perf gates.
+      - [x] `habu-persist-gc-state-10a4377a` Persist GC state/work queues across collections.
+      - [ ] `habu-root-slot-idx-582a4cc2` Add persistent root-slot index and dirty-epoch rebuild control. Depends on `habu-persist-gc-state-10a4377a`.
+      - [ ] `habu-nursery-layout-scaffold-7aa479dc` Add nursery/tenured/LOS heap layout scaffolding. Depends on `habu-persist-gc-state-10a4377a`.
+      - [ ] `habu-write-barrier-stores-2b8bf449` Add write barriers to all pointer mutators. Depends on `habu-nursery-layout-scaffold-7aa479dc`.
+      - [ ] `habu-remembered-set-c9541b7e` Add card table + remembered set scanning APIs. Depends on `habu-write-barrier-stores-2b8bf449`.
+      - [ ] `habu-minor-gc-collector-2f89a428` Implement minor GC with promotion policy. Depends on `habu-remembered-set-c9541b7e`.
+      - [ ] `habu-tenured-collector-1dc6f7a9` Implement non-moving tenured mark-sweep collector. Depends on `habu-minor-gc-collector-2f89a428`.
+      - [ ] `habu-large-obj-space-a5bd4ea3` Implement large-object space and pinning semantics. Depends on `habu-minor-gc-collector-2f89a428`.
+      - [ ] `habu-vm-jit-barrier-0df52611` Wire VM/JIT store paths to barrier/safepoint hooks. Depends on `habu-write-barrier-stores-2b8bf449`.
+      - [ ] `habu-gc-regression-perf-91ce5f3c` Add GC regression and throughput gates. Depends on `habu-minor-gc-collector-2f89a428`.
   - [ ] `habu-lock-hoist-api-0d6259d1` Lock `../hoist` API drift handling in Habu-side contract checks.
     - [ ] `habu-hoist-api-contract-6bac1b3e` Add compile/runtime contract probes for hoist interface.
   - [ ] `habu-perf-ci-and-2b7ac2f9` Add perf regression gates and unified docs. Depends on `habu-cut-vm-gc-511ec7d3`, `habu-lock-hoist-api-0d6259d1`.
