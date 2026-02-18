@@ -17,6 +17,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Removing per-form error masking in `src/interp/repl.zig` `evalFileContentSeparateVm` (propagate parse/eval errors instead of continuing) made `(load ...)` semantics deterministic and restored reliable file-level failure accounting for Maxima loader gates.
 - Locking strict load semantics with a focused regression (`src/interp/repl.zig` `loadFilePublic aborts on first form error`) prevented silent partial-file success regressions.
 - Fixing `loop` parser support for `FOR ... IN ... BY ...` in `lib/stdlib.habu` removed a generic clause-gap that surfaced as `Unknown loop keyword: BY` in large Lisp packages.
+- Extending `get-setf-expansion` with composed list-place updaters (`cadr`/`cddr`/`caddr`/`cdddr`/aliases) removed a high-frequency `setf: unsupported place` class for macro-heavy code.
 
 ### Did Not Work
 - Chasing downstream `SIMPLE-ERROR` output first was noisy; until `defmode`/special-parameter semantics were fixed, later integrate traces were mostly secondary fallout.

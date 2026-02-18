@@ -4322,6 +4322,36 @@ test "loop for-in supports by step function" {
     try testing.expect(!result.isNil());
 }
 
+test "setf supports composed list places" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try repl.loadFilePublic("lib/stdlib.habu", std.io.null_writer);
+
+    const result = try repl.eval(
+        \\(progn
+        \\  (setq xs (list 10 20 30 40 50))
+        \\  (setf (second xs) 21)
+        \\  (setf (caddr xs) 32)
+        \\  (setf (fourth xs) 43)
+        \\  (setf (cdddr xs) '(44 55))
+        \\  (setq pair (list (cons 1 2)))
+        \\  (setf (caar pair) 9)
+        \\  (setf (cdar pair) 8)
+        \\  (and (equal xs '(10 21 32 44 55))
+        \\       (= (caar pair) 9)
+        \\       (= (cdar pair) 8)))
+    );
+    try testing.expect(!result.isNil());
+}
+
 test "eval parse error sets error info" {
     const testing = std.testing;
     const allocator = testing.allocator;

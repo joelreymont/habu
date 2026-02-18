@@ -1366,6 +1366,15 @@
           (list 'progn (cons writer (append temps (list store))) store)
           (cons reader temps))))
 
+; Composed CAR/CDR place updaters for (setf (c...r ...)).
+(defun %set-caar (x v) (rplaca (car x) v))
+(defun %set-cadr (x v) (rplaca (cdr x) v))
+(defun %set-cdar (x v) (rplacd (car x) v))
+(defun %set-cddr (x v) (rplacd (cdr x) v))
+(defun %set-caddr (x v) (rplaca (cddr x) v))
+(defun %set-cdddr (x v) (rplacd (cddr x) v))
+(defun %set-cadddr (x v) (rplaca (cdddr x) v))
+
 (defun %pair-bindings (vars vals)
   (if (or (null vars) (null vals))
       nil
@@ -1436,6 +1445,16 @@
                 (cdr (%setf-expansion-1 'cdr 'rplacd (car args)))
                 (first (%setf-expansion-1 'car 'rplaca (car args)))
                 (rest (%setf-expansion-1 'cdr 'rplacd (car args)))
+                (caar (%setf-expansion-1 'caar '%set-caar (car args)))
+                (cadr (%setf-expansion-1 'cadr '%set-cadr (car args)))
+                (second (%setf-expansion-1 'cadr '%set-cadr (car args)))
+                (cdar (%setf-expansion-1 'cdar '%set-cdar (car args)))
+                (cddr (%setf-expansion-1 'cddr '%set-cddr (car args)))
+                (caddr (%setf-expansion-1 'caddr '%set-caddr (car args)))
+                (third (%setf-expansion-1 'caddr '%set-caddr (car args)))
+                (cdddr (%setf-expansion-1 'cdddr '%set-cdddr (car args)))
+                (cadddr (%setf-expansion-1 'cadddr '%set-cadddr (car args)))
+                (fourth (%setf-expansion-1 'cadddr '%set-cadddr (car args)))
                 (svref (%setf-expansion-2 'svref '%svset (car args) (car (cdr args))))
                 (aref (%setf-expansion-n 'aref '%aset args))
                 (char (%setf-expansion-2 'char '%sset (car args) (car (cdr args))))
