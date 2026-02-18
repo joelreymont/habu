@@ -143,7 +143,7 @@
     - [x] `habu-fix-declare-top-e3668a14` Honor proclaimed `special` lambda params via dynamic bindings (`progv`) so `declare-top` state is visible in helper callees (`define-mode`/`defs1`) and `db.lisp` `defmode`/`clear` load path no longer fails at function-definition time.
     - [x] `habu-propagate-load-form-d898e591` Propagate load parse/eval errors instead of silently continuing forms; add strict-load regression.
     - [x] `habu-fix-nested-load-d7d28e45` Fix nested `load` non-local exit relay so `handler-case` around `load` aborts on first error instead of resuming later file forms.
-    - [ ] `habu-revalidate-integrate-with-0874ce3e` Revalidate integrate path end-to-end once real Maxima source fixtures are present again. Depends on `habu-fix-declare-top-e3668a14`.
+    - [x] `habu-revalidate-integrate-with-0874ce3e` Revalidate integrate path end-to-end once real Maxima source fixtures are present again. Depends on `habu-fix-declare-top-e3668a14`.
   - [ ] `habu-maxima-factor-ratsimp-521dd2ca` Maxima factor/ratsimp path: fix TypeMismatch and ProgramError roots.
   - [x] `habu-maxima-core-loader-999c7eb3` Add Maxima core subset loader + entrypoint binding integration gate.
   - [x] `habu-rca-load-stackoverflow-e3d4f5d8` RCA and fix load stack overflow path for Maxima large source files.

@@ -147,6 +147,8 @@ pub const Frame = struct {
     closure: ?*const runtime.Closure,
     /// Argument count passed to this function call
     argc: u8,
+    /// Positional arguments consumed before keyword parsing.
+    positional_argc: u8,
     /// Control stack depths at call entry (restored on normal return)
     block_depth: usize,
     catch_depth: usize,
@@ -273,11 +275,30 @@ const ReadEvalBridge = struct {
     context: ?*anyopaque,
 };
 
+const DispatchMacroBridge = struct {
+    vm: *Vm,
+};
+
 fn readEvalBridge(ctx: *anyopaque, expr: Value) ParseError!Value {
     const bridge: *ReadEvalBridge = @ptrCast(@alignCast(ctx));
     const callback = bridge.callback orelse return error.UnexpectedToken;
     const eval_ctx = bridge.context orelse return error.UnexpectedToken;
     return callback(expr, eval_ctx) catch return error.UnexpectedToken;
+}
+
+fn dispatchMacroBridge(
+    ctx: *anyopaque,
+    function: Value,
+    disp_char: u8,
+    sub_char: u8,
+    arg: ?u32,
+    stream: Value,
+) ParseError!Value {
+    _ = disp_char;
+    const bridge: *DispatchMacroBridge = @ptrCast(@alignCast(ctx));
+    const arg_val = if (arg) |n| Value.makeFixnum(@intCast(n)) else Value.nil;
+    const args = [_]Value{ stream, Value.makeCharacter(sub_char), arg_val };
+    return bridge.vm.callFromStackAt(bridge.vm.sp, function, &args) catch return error.UnexpectedToken;
 }
 
 pub const Vm = struct {
@@ -1138,15 +1159,30 @@ pub const Vm = struct {
         defer if (q.owned) self.allocator.free(q.name);
 
         if (env.lookup(q.name)) |idx| return idx;
-        if (env.lookup(local_name)) |idx| return idx;
+        if (self.allowLegacyGlobalFallbackSym(sym)) {
+            if (env.lookup(local_name)) |idx| return idx;
 
-        const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:" };
-        var full_buf: [640]u8 = undefined;
-        for (prefixes) |prefix| {
-            const candidate = std.fmt.bufPrint(&full_buf, "{s}{s}", .{ prefix, local_name }) catch continue;
-            if (env.lookup(candidate)) |idx| return idx;
+            const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:" };
+            var full_buf: [640]u8 = undefined;
+            for (prefixes) |prefix| {
+                const candidate = std.fmt.bufPrint(&full_buf, "{s}{s}", .{ prefix, local_name }) catch continue;
+                if (env.lookup(candidate)) |idx| return idx;
+            }
         }
         return null;
+    }
+
+    fn isLegacyFallbackPackageName(pkg_name: []const u8) bool {
+        return std.mem.eql(u8, pkg_name, "CL-USER") or
+            std.mem.eql(u8, pkg_name, "COMMON-LISP-USER");
+    }
+
+    fn allowLegacyGlobalFallbackSym(self: *const Vm, sym: *const Symbol) bool {
+        _ = self;
+        const pkg_bits = sym.reserved;
+        if (pkg_bits == 0 or (pkg_bits & 1) != 0) return true;
+        const pkg: *runtime.heap.Package = @ptrFromInt(pkg_bits);
+        return isLegacyFallbackPackageName(pkg.name);
     }
 
     fn globalNameForIndex(self: *Vm, idx: u16) ?[]const u8 {
@@ -2126,7 +2162,7 @@ pub const Vm = struct {
             },
             .load_argc => {
                 // Get argc from current frame, or from current_argc if fp=0 (callClosure)
-                const frame_argc = if (self.fp > 0) self.frames[self.fp - 1].argc else self.current_argc;
+                const frame_argc = if (self.fp > 0) self.frames[self.fp - 1].positional_argc else self.current_argc;
                 try self.push(Value.makeFixnum(frame_argc));
             },
             .find_key => {
@@ -2143,9 +2179,9 @@ pub const Vm = struct {
                     // Keyword pairs start after positional + key param slots
                     const max_positional = chunk.arity + chunk.opt_count;
                     const kw_pair_start: usize = max_positional + chunk.key_count;
-                    const frame_argc = f.argc;
-                    const positional_count = @min(frame_argc, max_positional);
-                    const kw_pair_count = frame_argc - positional_count;
+                    const total_argc = f.argc;
+                    const positional_count = f.positional_argc;
+                    const kw_pair_count = total_argc - positional_count;
 
                     // Scan keyword-value pairs
                     var found = false;
@@ -3901,19 +3937,9 @@ pub const Vm = struct {
                     },
                     .symbol => {
                         const sym = sym_val.toPtr(Symbol);
-                        const local_name = sym.getName();
-                        // Build qualified name using symbol's package
-                        var qual_buf: [512]u8 = undefined;
-                        const q = try qual_name.qualSym(self.allocator, sym, &qual_buf);
-                        defer if (q.owned) self.allocator.free(q.name);
-                        const qname = q.name;
-                        // Look up symbol in global environment (qualified or local)
-                        if (self.global_env) |env| {
-                            const idx = env.lookup(qname) orelse env.lookup(local_name);
-                            if (idx) |i| {
-                                if (i < MAX_GLOBALS) {
-                                    self.globals[i] = Value.unbound;
-                                }
+                        if (try self.lookupSymbolGlobalIndex(sym)) |idx| {
+                            if (idx < MAX_GLOBALS) {
+                                self.globals[idx] = Value.unbound;
                             }
                         }
                         try self.push(sym_val);
@@ -3931,21 +3957,11 @@ pub const Vm = struct {
                     },
                     .symbol => {
                         const sym = sym_val.toPtr(Symbol);
-                        const local_name = sym.getName();
-                        // Build qualified name using symbol's package
-                        var qual_buf: [512]u8 = undefined;
-                        const q = try qual_name.qualSym(self.allocator, sym, &qual_buf);
-                        defer if (q.owned) self.allocator.free(q.name);
-                        const qname = q.name;
-                        // Look up symbol in global environment (qualified or local)
-                        if (self.global_env) |env| {
-                            const idx = env.lookup(qname) orelse env.lookup(local_name);
-                            if (idx) |i| {
-                                if (i < MAX_GLOBALS) {
-                                    self.globals[i] = val;
-                                    if (i >= self.num_globals) {
-                                        self.num_globals = i + 1;
-                                    }
+                        if (try self.lookupSymbolGlobalIndex(sym)) |idx| {
+                            if (idx < MAX_GLOBALS) {
+                                self.globals[idx] = val;
+                                if (idx >= self.num_globals) {
+                                    self.num_globals = idx + 1;
                                 }
                             }
                         }
@@ -6289,6 +6305,9 @@ pub const Vm = struct {
 
                 // Parse the S-expression
                 var parser = try Parser.init(self.allocator, self.heap, buffer[0..len], &self.builtins);
+                defer parser.deinit();
+                var dm_ctx = DispatchMacroBridge{ .vm = self };
+                parser.setDispatchMacroHook(@ptrCast(&dm_ctx), dispatchMacroBridge);
                 const result = try parser.parse();
                 try self.push(result);
             },
@@ -6334,6 +6353,8 @@ pub const Vm = struct {
                     const str = str_val.toPtr(String);
                     var parser = try Parser.init(self.allocator, self.heap, str.bytes(), &self.builtins);
                     defer parser.deinit();
+                    var dm_ctx = DispatchMacroBridge{ .vm = self };
+                    parser.setDispatchMacroHook(@ptrCast(&dm_ctx), dispatchMacroBridge);
                     // Enable #. read-eval via the VM's eval callback
                     var re_ctx = ReadEvalBridge{ .callback = self.eval_callback, .context = self.eval_context };
                     if (self.eval_callback != null) {
@@ -6355,6 +6376,8 @@ pub const Vm = struct {
                     }
                     var parser = try Parser.init(self.allocator, self.heap, utf8.items, &self.builtins);
                     defer parser.deinit();
+                    var dm_ctx32 = DispatchMacroBridge{ .vm = self };
+                    parser.setDispatchMacroHook(@ptrCast(&dm_ctx32), dispatchMacroBridge);
                     var re_ctx32 = ReadEvalBridge{ .callback = self.eval_callback, .context = self.eval_context };
                     if (self.eval_callback != null) {
                         parser.setReadEvalHook(@ptrCast(&re_ctx32), readEvalBridge);
@@ -6838,7 +6861,7 @@ pub const Vm = struct {
         // - Consumes multiple values (mv_list, mv_bind — they clear it themselves)
         // - Returns from a function (ret — caller may need secondary values)
         switch (op) {
-            .values, .values_list, .ret, .get_decoded_time, .decode_universal_time, .function_lambda_expression, .jmp, .jmp_nil, .jmp_not_nil, .mv_list, .mv_bind, .floor, .ceiling, .round, .call, .tail_call, .read_from_string, .hash_get, .intern => {},
+            .values, .values_list, .ret, .get_decoded_time, .decode_universal_time, .function_lambda_expression, .jmp, .jmp_nil, .jmp_not_nil, .push_block, .pop_block, .mv_list, .mv_bind, .floor, .ceiling, .round, .call, .tail_call, .read_from_string, .hash_get, .intern => {},
             else => {
                 self.secondary_values_count = 0;
             },
@@ -9511,11 +9534,12 @@ pub const Vm = struct {
             self.sp -= extra_count;
         }
 
-        // Determine how many args to copy as locals
-        // For keyword args, we need to keep ALL args for find_key to scan
-        const actual_argc: u8 = if (key_count > 0) argc else @min(argc, max_positional);
+            // Determine how many args to copy as locals
+            // For keyword args, we need to keep ALL args for find_key to scan
+            const actual_argc: u8 = if (key_count > 0) argc else @min(argc, max_positional);
+            const positional_argc: u8 = if (key_count > 0) actual_positional else actual_argc;
 
-        if (tail) {
+            if (tail) {
             // Tail call: reuse current frame
             // Move arguments to start of current frame
             const current_bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
@@ -9565,11 +9589,12 @@ pub const Vm = struct {
             self.chunk = callee_chunk;
             self.ip = 0;
 
-            // Update closure and argc in current frame
-            if (self.fp > 0) {
-                self.frames[self.fp - 1].closure = closure;
-                self.frames[self.fp - 1].argc = argc;
-            }
+                // Update closure and argc in current frame
+                if (self.fp > 0) {
+                    self.frames[self.fp - 1].closure = closure;
+                    self.frames[self.fp - 1].argc = argc;
+                    self.frames[self.fp - 1].positional_argc = positional_argc;
+                }
 
             // Reserve space for additional locals.
             // For keyword lambdas, keyword-pair slots live above positional/key slots.
@@ -9589,15 +9614,16 @@ pub const Vm = struct {
             }
 
             // Save current state
-            self.frames[self.fp] = .{
-                .chunk = self.chunk,
-                .return_ip = self.ip,
-                .bp = self.sp - actual_argc - 1, // -1 for function value
-                .closure = closure,
-                .argc = argc,
-                .block_depth = self.block_sp,
-                .catch_depth = self.catch_sp,
-                .unwind_depth = self.unwind_sp,
+                self.frames[self.fp] = .{
+                    .chunk = self.chunk,
+                    .return_ip = self.ip,
+                    .bp = self.sp - actual_argc - 1, // -1 for function value
+                    .closure = closure,
+                    .argc = argc,
+                    .positional_argc = positional_argc,
+                    .block_depth = self.block_sp,
+                    .catch_depth = self.catch_sp,
+                    .unwind_depth = self.unwind_sp,
                 .restart_depth = self.restart_sp,
                 .progv_depth = self.progv_sp,
                 .handler_depth = self.handler_sp,
@@ -11495,6 +11521,7 @@ test "vm collectGarbage relocates chunk pointers" {
         .bp = 0,
         .closure = null,
         .argc = 0,
+        .positional_argc = 0,
         .block_depth = 0,
         .catch_depth = 0,
         .unwind_depth = 0,

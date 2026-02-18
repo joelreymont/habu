@@ -11,7 +11,7 @@
 //!   (cond (c1 e1) (c2 e2) (t e3)) → (if c1 e1 (if c2 e2 e3))
 //!   (and a b c) → (if a (if b c nil) nil)
 //!   (or a b) → (let ((g a)) (if g g b))
-//!   (defun f (args) body) → (define f (lambda (args) body))
+//!   (defun f (args) body) → (defun f (args) body')  ; body recursively desugared
 //!   (when test body...) → (if test (progn body...) nil)
 //!   (unless test body...) → (if test nil (progn body...))
 
@@ -223,6 +223,16 @@ pub const Desugarer = struct {
             break :blk false;
         };
 
+        // ANSI CL: a cond clause with no body returns the test value itself.
+        if (then_exprs.isNil()) {
+            const desugared_test = try self.desugar(test_expr);
+            if (is_default) return desugared_test;
+            const temp_sym = try self.gensym();
+            const desugared_else = try self.desugarCond(rest_clauses);
+            const if_expr = try self.makeIf(temp_sym, temp_sym, desugared_else);
+            return self.makeLet(temp_sym, desugared_test, if_expr);
+        }
+
         // Get the body expression - wrap in progn if multiple
         const then_body = try self.makeProgn(then_exprs);
 
@@ -290,34 +300,14 @@ pub const Desugarer = struct {
         return self.makeLet(temp_sym, desugared_first, if_expr);
     }
 
-    /// (defun f (args) body...) → (define f (lambda (args) body...))
-    /// Typed defun (defun (name -> type) ...) is NOT desugared - handled by compiler
+    /// Preserve DEFUN so compile-time DEFUN semantics remain intact.
+    /// The body is recursively desugared, but DEFUN itself is not lowered to DEFINE.
     fn desugarDefun(self: *Desugarer, args: Value) Error!Value {
         if (!args.isCons()) return Value.nil;
 
         const args_cons = args.toPtr(Cons);
-        const name = args_cons.car;
+        const name_spec = args_cons.car;
         const rest = args_cons.cdr;
-
-        // Typed defun: (defun (name -> type) ...) - don't desugar, let compiler handle
-        if (!name.isSymbol()) {
-            // Rebuild (defun name rest...) with desugared body
-            const defun_sym = try self.heap.intern("defun");
-            if (!rest.isCons()) {
-                return try self.heap.allocCons(defun_sym, args);
-            }
-            const rest_cons = rest.toPtr(Cons);
-            const params = rest_cons.car;
-            const body = rest_cons.cdr;
-            const desugared_body = try self.desugarList(body);
-            return try self.heap.allocCons(
-                defun_sym,
-                try self.heap.allocCons(
-                    name,
-                    try self.heap.allocCons(params, desugared_body),
-                ),
-            );
-        }
 
         if (!rest.isCons()) return Value.nil;
 
@@ -327,21 +317,12 @@ pub const Desugarer = struct {
 
         // Desugar body expressions
         const desugared_body = try self.desugarList(body);
-
-        // Build (lambda (params) body...)
-        const lambda_sym = try self.heap.intern("lambda");
-        const lambda_expr = try self.heap.allocCons(
-            lambda_sym,
-            try self.heap.allocCons(params, desugared_body),
-        );
-
-        // Build (define name lambda)
-        const define_sym = try self.heap.intern("define");
+        const defun_sym = try self.heap.intern("defun");
         return try self.heap.allocCons(
-            define_sym,
+            defun_sym,
             try self.heap.allocCons(
-                name,
-                try self.heap.allocCons(lambda_expr, Value.nil),
+                name_spec,
+                try self.heap.allocCons(params, desugared_body),
             ),
         );
     }
@@ -550,7 +531,7 @@ test "desugar - defun" {
     defer vm.deinit();
     var desugarer = Desugarer.init(testing.allocator, &heap, &vm.builtins);
 
-    // (defun square (x) (* x x)) → (define square (lambda (x) (* x x)))
+    // DEFUN should be preserved so compiler-level DEFUN semantics remain active.
     const defun_sym = try heap.intern("defun");
     const name = try heap.intern("square");
     const x_sym = try heap.intern("x");
@@ -566,10 +547,8 @@ test "desugar - defun" {
 
     const result = try desugarer.desugar(defun_expr);
 
-    // Should start with 'define'
+    // Should still start with DEFUN.
     try testing.expect(result.isCons());
     const result_cons = result.toPtr(Cons);
-    try testing.expect(result_cons.car.isSymbol());
-    const result_head = result_cons.car.toPtr(Symbol);
-    try testing.expectEqualStrings("DEFINE", result_head.getName());
+    try testing.expectEqual(defun_sym.raw, result_cons.car.raw);
 }

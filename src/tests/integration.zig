@@ -2076,6 +2076,28 @@ test "return-from in conditional" {
     try testing.expect(result.isSymbol());
 }
 
+test "return-from from defun implicit block" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const result = try repl.eval(
+        \\(progn
+        \\  (defun rf-test (x)
+        \\    (if x (return-from rf-test 99) nil)
+        \\    7)
+        \\  (rf-test t))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 99), result.toFixnum());
+}
+
 test "cond with multiple body expressions" {
     const allocator = testing.allocator;
 
@@ -3553,6 +3575,23 @@ test "copy-structure copies defstruct instance" {
     try testing.expect(cur.isNil());
 }
 
+test "defstruct constructor accepts keyword initargs" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct instream stream (line 0 :type fixnum) stream-name)\n" ++
+        "  (let ((x (make-instream :stream 42 :stream-name \"stdin\")))\n" ++
+        "    (and (instream-p x)\n" ++
+        "         (eql (instream-stream x) 42)\n" ++
+        "         (= (instream-line x) 0)\n" ++
+        "         (string= (instream-stream-name x) \"stdin\"))))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
 test "defstruct with conc-name nil defines copier" {
     const allocator = testing.allocator;
 
@@ -4205,6 +4244,101 @@ test "ansi repro syntax.sharp-c.4 read-time complex helper rational part" {
     try testing.expectApproxEqAbs(@as(f64, 1.0), cplx.imag, 0.0001);
 }
 
+test "read-char-no-hang is bound and works on string streams" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src =
+        \\(let ((s (make-string-input-stream "ab")))
+        \\  (and (characterp (read-char-no-hang s nil nil))
+        \\       (characterp (read-char-no-hang s nil nil))
+        \\       (null (read-char-no-hang s nil nil))))
+    ;
+    const result = try repl.eval(src);
+    try testing.expect(!result.isNil());
+}
+
+test "write-char supports optional stream argument" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src =
+        \\(let ((s (make-string-output-stream)))
+        \\  (write-char #\A s)
+        \\  (write-char #\B s)
+        \\  (equal (get-output-stream-string s) "AB"))
+    ;
+    const result = try repl.eval(src);
+    try testing.expect(!result.isNil());
+}
+
+test "with-output-to-string supports destination string form" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src =
+        \\(let ((buf (make-array 0 :fill-pointer 0 :adjustable t)))
+        \\  (with-output-to-string (s buf)
+        \\    (write-char #\A s)
+        \\    (write-char #\B s))
+        \\  (equal buf "AB"))
+    ;
+    const result = try repl.eval(src);
+    try testing.expect(!result.isNil());
+}
+
+test "dispatch macro character executes during read-from-string" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src =
+        \\(progn
+        \\  (setq *habu-disp-hit* nil)
+        \\  (defun habu-test-dollar-reader (stream sub-char arg)
+        \\    (declare (ignore sub-char arg))
+        \\    (read-char stream)
+        \\    (read-char stream)
+        \\    (read-char stream)
+        \\    (read-char stream)
+        \\    (setq *habu-disp-hit* t)
+        \\    'abc)
+        \\  (set-dispatch-macro-character #\# #\$ #'habu-test-dollar-reader)
+        \\  (setq *habu-disp-hit* nil)
+        \\  (eval (read-from-string "#$abc$" t nil :start 0))
+        \\  *habu-disp-hit*)
+    ;
+    const result = try repl.eval(src);
+    try testing.expect(!result.isNil());
+}
+
 test "ansi repro read-suppress.sharp-dot.1 ignores #. when suppressed" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
@@ -4603,6 +4737,41 @@ test "defpackage supports import-from and shadowing-import-from" {
     const shadow_call = try repl.eval("(hook 1)");
     try testing.expect(shadow_call.isFixnum());
     try testing.expectEqual(@as(i64, 11), shadow_call.toFixnum());
+}
+
+test "package-local functionp does not override cl:functionp" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(defpackage \"PKG-FNP\" (:use \"COMMON-LISP\") (:shadow \"FUNCTIONP\"))");
+    _ = try repl.eval("(in-package \"PKG-FNP\")");
+    const shadowed = try repl.eval("(eq 'functionp 'cl:functionp)");
+    try testing.expect(shadowed.isNil());
+    _ = try repl.eval(
+        \\(defun functionp (x)
+        \\  (cond ((symbolp x) nil)
+        \\        ((cl:functionp x))))
+    );
+    const result = try repl.eval("(list (functionp #'car) (cl:functionp #'car) (functionp 'car))");
+
+    try testing.expect(result.isCons());
+    const c1 = result.toPtr(Cons);
+    try testing.expect(!c1.car.isNil());
+    try testing.expect(c1.cdr.isCons());
+
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(!c2.car.isNil());
+    try testing.expect(c2.cdr.isCons());
+
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expect(c3.car.isNil());
 }
 
 test "setf sbit on make-array uses aset path" {
@@ -5301,6 +5470,45 @@ test "error: handler-case division-by-zero" {
         \\  (division-by-zero (e) :div-zero))
     );
     try testing.expect(result.isKeyword());
+}
+
+test "error: errset catches namestring type mismatch in local binding" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    const result = try state.repl.eval(
+        \\(let (name errset)
+        \\  (errset (setq name (namestring 42)))
+        \\  (and (null name) t))
+    );
+    try testing.expect(!result.isNil());
+}
+
+test "error: errset re-signals when errset variable is true" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    const result = try state.repl.eval(
+        \\(handler-case
+        \\    (let ((errset t))
+        \\      (errset (namestring 42))
+        \\      :miss)
+        \\  (error (e) :caught))
+    );
+    try testing.expect(result.isKeyword());
+}
+
+test "error: errset returns list of values on success" {
+    const allocator = testing.allocator;
+    var state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, &state);
+
+    const result = try state.repl.eval("(let ((errset nil)) (errset (values 1 2)))");
+    try testing.expect(result.isCons());
+    try testing.expectEqual(@as(i64, 1), result.toPtr(Cons).car.toFixnum());
+    try testing.expectEqual(@as(i64, 2), result.toPtr(Cons).cdr.toPtr(Cons).car.toFixnum());
 }
 
 // --- Round-to-even edge cases ---

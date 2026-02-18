@@ -84,11 +84,15 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Locking the fix with a regression (`src/tests/integration.zig:5889`) prevents reintroducing local type declaration leakage.
 - Converting the Maxima end-to-end check into a deterministic readiness vector (`src/tests/integration.zig:5781`) keeps large-package progress measurable without hiding remaining semantic gaps.
 - Splitting large Maxima setup/eval forms into separate `repl.eval` calls reduced parser-noise and made failures attributable to specific steps instead of one monolithic expression.
+- Keeping `defun` intact in desugar (`src/compiler/passes/p02_desugar.zig`) and only desugaring the body restored compiler-level DEFUN semantics (implicit function block), which removed `NoMatchingBlock` failures in real Maxima functions (`add-lineinfo`).
+- Restricting legacy bare-name global fallback to `CL-USER` symbols in both compiler and VM (`src/compiler/compile.zig`, `src/interp/vm.zig`) prevented cross-package function-cell capture (notably `FUNCTIONP` recursion paths while loading Maxima).
+- Preserving secondary values across `pop_block`/`push_block` in VM op post-processing (`src/interp/vm.zig`) fixed a subtle multi-value regression introduced by implicit DEFUN blocks (`(defun f () (values ...))` started returning only the primary value before this fix).
 
 ### Did Not Work
 - Focusing first on mixed special-`let` lowering (`tryCompileSpecialLet`) was a false lead; the actual fault came from type declaration leakage into lexical bindings.
 - Running broad `zig build test -Dtest-filter='maxima '` remains unreliable in this environment (hang-prone); targeted filters for failing gates are more deterministic for RCA.
 - Packing very large module-list setup and operation probes into a single reader input string produced unstable `UnexpectedToken` failures; smaller staged eval forms are safer for large integration probes.
+- Assuming package-qualified names were safe under old fallback logic was wrong: fallback-to-bare-name can silently bind to the wrong package/global slot and manifests later as recursive calls instead of immediate package resolution errors.
 
 ## Session Notes (2026-02-17)
 

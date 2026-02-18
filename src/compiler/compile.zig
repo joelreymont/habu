@@ -3028,19 +3028,21 @@ pub const Compiler = struct {
         if (self.globals.lookup(qname)) |idx| {
             return try self.builder.globalRef(qname, idx);
         }
-        if (self.globals.lookup(name)) |idx| {
-            return try self.builder.globalRef(name, idx);
-        }
+        if (self.allowLegacyGlobalFallbackSym(sym)) {
+            if (self.globals.lookup(name)) |idx| {
+                return try self.builder.globalRef(name, idx);
+            }
 
-        const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
-        var full_buf: [640]u8 = undefined;
-        for (prefixes) |prefix| {
-            if (prefix.len + name.len > full_buf.len) continue;
-            @memcpy(full_buf[0..prefix.len], prefix);
-            @memcpy(full_buf[prefix.len .. prefix.len + name.len], name);
-            const candidate = full_buf[0 .. prefix.len + name.len];
-            if (self.globals.lookup(candidate)) |idx| {
-                return try self.builder.globalRef(candidate, idx);
+            const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
+            var full_buf: [640]u8 = undefined;
+            for (prefixes) |prefix| {
+                if (prefix.len + name.len > full_buf.len) continue;
+                @memcpy(full_buf[0..prefix.len], prefix);
+                @memcpy(full_buf[prefix.len .. prefix.len + name.len], name);
+                const candidate = full_buf[0 .. prefix.len + name.len];
+                if (self.globals.lookup(candidate)) |idx| {
+                    return try self.builder.globalRef(candidate, idx);
+                }
             }
         }
 
@@ -5839,7 +5841,7 @@ pub const Compiler = struct {
 
         var name = global_name;
         var idx_opt = self.globals.lookup(name);
-        if (idx_opt == null) {
+        if (idx_opt == null and self.allowLegacyGlobalFallbackSym(var_sym)) {
             if (self.globals.lookup(local_name)) |idx| {
                 idx_opt = idx;
                 name = local_name;
@@ -5937,7 +5939,7 @@ pub const Compiler = struct {
                     const global_name = q.name;
                     var name = global_name;
                     var idx_opt = self.globals.lookup(name);
-                    if (idx_opt == null) {
+                    if (idx_opt == null and self.allowLegacyGlobalFallbackSym(exp_sym)) {
                         if (self.globals.lookup(exp_name)) |idx| {
                             idx_opt = idx;
                             name = exp_name;
@@ -7965,37 +7967,22 @@ pub const Compiler = struct {
         const local_name = name_sym.getName();
         var name = q.name;
         var idx_opt = self.globals.lookup(name);
-        if (idx_opt == null) {
-            // Check if this symbol is from a non-CL package with a shadow.
-            // If so, do NOT fall back to CL globals — the shadow creates a
-            // distinct symbol that must have its own global slot.
-            const is_shadowed = blk: {
-                const heap = if (self.heap) |val| val else break :blk false;
-                const cl_pkg = if (heap.cl_package) |val| val else break :blk false;
-                const sym_pkg_bits = name_sym.reserved;
-                if (sym_pkg_bits == 0 or (sym_pkg_bits & 1) != 0) break :blk false;
-                const sym_pkg: *runtime.heap.Package = @ptrFromInt(sym_pkg_bits);
-                // Shadow: symbol is in a non-CL package AND CL has a symbol
-                // with the same name (i.e., the new symbol shadows a CL one)
-                break :blk sym_pkg != cl_pkg and cl_pkg.findAccessibleUpper(local_name) != null;
-            };
-            if (!is_shadowed) {
-                if (self.globals.lookup(local_name)) |idx| {
-                    idx_opt = idx;
-                    name = local_name;
-                } else {
-                    const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
-                    var full_buf: [640]u8 = undefined;
-                    for (prefixes) |prefix| {
-                        if (prefix.len + local_name.len > full_buf.len) continue;
-                        @memcpy(full_buf[0..prefix.len], prefix);
-                        @memcpy(full_buf[prefix.len .. prefix.len + local_name.len], local_name);
-                        const candidate = full_buf[0 .. prefix.len + local_name.len];
-                        if (self.globals.lookup(candidate)) |idx| {
-                            idx_opt = idx;
-                            name = candidate;
-                            break;
-                        }
+        if (idx_opt == null and self.allowLegacyGlobalFallbackSym(name_sym)) {
+            if (self.globals.lookup(local_name)) |idx| {
+                idx_opt = idx;
+                name = local_name;
+            } else {
+                const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
+                var full_buf: [640]u8 = undefined;
+                for (prefixes) |prefix| {
+                    if (prefix.len + local_name.len > full_buf.len) continue;
+                    @memcpy(full_buf[0..prefix.len], prefix);
+                    @memcpy(full_buf[prefix.len .. prefix.len + local_name.len], local_name);
+                    const candidate = full_buf[0 .. prefix.len + local_name.len];
+                    if (self.globals.lookup(candidate)) |idx| {
+                        idx_opt = idx;
+                        name = candidate;
+                        break;
                     }
                 }
             }
@@ -8104,8 +8091,13 @@ pub const Compiler = struct {
             name = q.name;
         }
 
+        const allow_legacy_fallback = if (name_sym_saved) |sym|
+            self.allowLegacyGlobalFallbackSym(sym)
+        else
+            self.allowLegacyGlobalFallbackCurrentPackage();
+
         var idx_opt = self.globals.lookup(name);
-        if (idx_opt == null) {
+        if (idx_opt == null and allow_legacy_fallback) {
             if (self.globals.lookup(local_name)) |idx| {
                 idx_opt = idx;
                 name = local_name;
@@ -8131,6 +8123,10 @@ pub const Compiler = struct {
         const lambda_args = cons1.cdr;
         const lambda_ir = try self.compileLambdaWithReturnType(lambda_args, env, return_type);
         if (lambda_ir.* == .lambda) {
+            // CL DEFUN establishes an implicit block named by the function.
+            if (name_val.isSymbol()) {
+                lambda_ir.lambda.body = try self.builder.block(name_val, lambda_ir.lambda.body);
+            }
             lambda_ir.lambda.name = name_val;
         }
 
@@ -9280,6 +9276,25 @@ pub const Compiler = struct {
         return qual_name.qualSym(self.allocator, sym, buf);
     }
 
+    fn isLegacyFallbackPackageName(pkg_name: []const u8) bool {
+        return std.mem.eql(u8, pkg_name, "CL-USER") or
+            std.mem.eql(u8, pkg_name, "COMMON-LISP-USER");
+    }
+
+    fn allowLegacyGlobalFallbackSym(self: *const Compiler, sym: *const Symbol) bool {
+        _ = self;
+        const pkg_bits = sym.reserved;
+        if (pkg_bits == 0 or (pkg_bits & 1) != 0) return true;
+        const pkg: *runtime.heap.Package = @ptrFromInt(pkg_bits);
+        return isLegacyFallbackPackageName(pkg.name);
+    }
+
+    fn allowLegacyGlobalFallbackCurrentPackage(self: *const Compiler) bool {
+        const heap = self.heap orelse return true;
+        const pkg = heap.current_package orelse return true;
+        return isLegacyFallbackPackageName(pkg.name);
+    }
+
     /// Build qualified name from plain name using current package
     fn qualifyName(self: *Compiler, name: []const u8, buf: []u8) !qual_name.QualName {
         const heap = if (self.heap) |val| val else return .{ .name = name, .owned = false };
@@ -9530,6 +9545,7 @@ pub const Compiler = struct {
 
                     // Parse remaining: [init-form] followed by keyword options
                     var field_type: *const types.Type = &types.t_any;
+                    var initform: ?Value = null;
                     var slot_rest = spec_cons.cdr;
 
                     // Check if second element is a keyword option or init-form
@@ -9537,7 +9553,8 @@ pub const Compiler = struct {
                         const next = slot_rest.toPtr(Cons);
                         // If next element is a keyword like :type or :read-only, no init-form
                         if (!next.car.isKeyword()) {
-                            // This is the init-form — skip it (init-forms not compiled yet)
+                            // This is the init-form.
+                            initform = next.car;
                             slot_rest = next.cdr;
                         }
                     }
@@ -9570,6 +9587,7 @@ pub const Compiler = struct {
                         .name = slot_name,
                         .sym = if (slot_name_val.isSymbol()) slot_name_val else Value.nil,
                         .field_type = field_type,
+                        .initform = initform,
                         .initargs = std.ArrayList(Value){},
                         .readers = std.ArrayList(Value){},
                         .writers = std.ArrayList(Value){},
@@ -9922,7 +9940,6 @@ pub const Compiler = struct {
 
     /// Generate constructor: creates a closure that takes args, checks types, returns vector
     fn generateStructConstructor(self: *Compiler, heap: *Heap, make_name: []const u8, struct_name: []const u8, slots: []const SlotSpec, env: *const Env) anyerror!*Ir {
-        _ = env;
         // Qualify the constructor name with current package
         var qual_buf: [512]u8 = undefined;
         const q = try self.qualifyName(make_name, &qual_buf);
@@ -9930,10 +9947,46 @@ pub const Compiler = struct {
         const qualified_name = q.name;
         const global_idx = try self.globals.define(qualified_name);
 
-        // Extract just the names for lambda params
-        const slot_names = try self.allocator.alloc([]const u8, slots.len);
+        const slot_count = slots.len;
+        const nil_lit = try self.builder.lit(Value.nil);
+        const unbound_lit = try self.builder.lit(Value.unbound);
+
+        // Constructor supports both positional and keyword initialization.
+        // Positional values are modeled as optional params (with initform defaults),
+        // keyword values are modeled as &key params (defaulting to UNBOUND),
+        // then merged as: keyword if present, otherwise positional/default.
+        const opt_names = try self.allocator.alloc([]const u8, slot_count);
+        const key_names = try self.allocator.alloc([]const u8, slot_count);
+        const optional_params = try self.allocator.alloc(Ir.OptionalParam, slot_count);
+        const key_params = try self.allocator.alloc(Ir.KeyParam, slot_count);
+
         for (slots, 0..) |spec, i| {
-            slot_names[i] = spec.name;
+            opt_names[i] = try std.fmt.allocPrint(self.allocator, "p{d}", .{i});
+            key_names[i] = try std.fmt.allocPrint(self.allocator, "k{d}", .{i});
+
+            const opt_default = if (spec.initform) |initform_expr|
+                try self.compile(initform_expr, env)
+            else
+                nil_lit;
+
+            optional_params[i] = .{
+                .name = opt_names[i],
+                .default = opt_default,
+            };
+            key_params[i] = .{
+                .keyword = spec.name,
+                .name = key_names[i],
+                .default = unbound_lit,
+            };
+        }
+
+        const merged_values = try self.allocator.alloc(*Ir, slot_count);
+        for (slots, 0..) |_, i| {
+            const key_ref_test = try self.builder.variable(key_names[i], 0, @intCast(slot_count + i));
+            const key_is_unbound = try self.builder.eq(key_ref_test, unbound_lit);
+            const pos_ref = try self.builder.variable(opt_names[i], 0, @intCast(i));
+            const key_ref_val = try self.builder.variable(key_names[i], 0, @intCast(slot_count + i));
+            merged_values[i] = try self.builder.ifExpr(key_is_unbound, pos_ref, key_ref_val);
         }
 
         // Build body: type assertions + vector creation
@@ -9944,11 +9997,11 @@ pub const Compiler = struct {
         }
 
         // Pre-allocate vector args: name_sym + one per slot
-        const vec_args = try self.allocator.alloc(*Ir, 1 + slots.len);
+        const vec_args = try self.allocator.alloc(*Ir, 1 + slot_count);
         const name_sym = try heap.intern(struct_name);
         vec_args[0] = try self.builder.lit(name_sym);
-        for (slots, 0..) |spec, i| {
-            vec_args[1 + i] = try self.builder.variable(spec.name, 0, @intCast(i));
+        for (slots, 0..) |_, i| {
+            vec_args[1 + i] = merged_values[i];
         }
         const vec_ir = try self.builder.vec(vec_args);
 
@@ -9961,8 +10014,7 @@ pub const Compiler = struct {
             for (slots, 0..) |spec, i| {
                 if (!spec.field_type.isAny()) {
                     // Generate type assertion for this field
-                    const var_ref = try self.builder.variable(spec.name, 0, @intCast(i));
-                    progn_items[idx] = try self.generateTypeAssertion(var_ref, spec.field_type, spec.name);
+                    progn_items[idx] = try self.generateTypeAssertion(merged_values[i], spec.field_type, spec.name);
                     idx += 1;
                 }
             }
@@ -9971,9 +10023,9 @@ pub const Compiler = struct {
         }
 
         const lambda_ir = try self.builder.lambda(
-            slot_names,
-            &[_]Ir.OptionalParam{},
-            &[_]Ir.KeyParam{},
+            &[_][]const u8{},
+            optional_params,
+            key_params,
             false,
             null,
             &[_]Ir.Capture{},
@@ -11138,9 +11190,10 @@ pub const Compiler = struct {
     }
 
     /// Compile make-instance: (make-instance 'class-name :slot1 val1 :slot2 val2 ...)
-    /// Calls the appropriate make-class-name constructor with positional args
+    /// Calls the appropriate make-class-name constructor with keyword args
     fn compileMakeInstance(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
 
         const cons1 = args.toPtr(Cons);
         var class_name_expr = cons1.car;
@@ -11159,7 +11212,7 @@ pub const Compiler = struct {
 
         const slot_specs = if (try self.lookupClassMetadataBySymbol(class_sym)) |val| val else return error.InvalidSyntax;
 
-        // Parse keyword arguments and build positional args array
+        // Parse keyword arguments and map to slots
         const slot_values = try self.allocator.alloc(?*Ir, slot_specs.len);
         for (slot_values) |*sv| sv.* = null;
 
@@ -11204,23 +11257,19 @@ pub const Compiler = struct {
         defer if (q.owned) self.allocator.free(q.name);
         const ctor_name = q.name;
 
-        const call_args = try self.allocator.alloc(*Ir, slot_specs.len);
+        var call_args_list = std.ArrayList(*Ir){};
+        defer call_args_list.deinit(self.allocator);
         for (slot_values, 0..) |maybe_val, i| {
             if (maybe_val) |val| {
-                call_args[i] = val;
-            } else {
-                // No value provided - use initform or unbound
-                if (slot_specs[i].initform) |initform_expr| {
-                    call_args[i] = try self.compile(initform_expr, env);
-                } else {
-                    call_args[i] = try self.builder.lit(Value.unbound);
-                }
+                const kw = try heap.internKeyword(slot_specs[i].name);
+                try call_args_list.append(self.allocator, try self.builder.lit(kw));
+                try call_args_list.append(self.allocator, val);
             }
         }
 
         const ctor_idx = if (self.globals.lookup(ctor_name)) |val| val else return error.InvalidSyntax;
         const ctor_ref = try self.builder.globalRef(ctor_name, ctor_idx);
-        const ctor_call = try self.builder.call(ctor_ref, call_args);
+        const ctor_call = try self.builder.call(ctor_ref, try call_args_list.toOwnedSlice(self.allocator));
 
         // Call initialize-instance on the new object (for :before/:after/:around methods)
         // Emit: (let ((#:obj (ctor ...))) (initialize-instance #:obj) #:obj)
