@@ -126,7 +126,7 @@
   - [x] `habu-maxima-core-loader-999c7eb3` Add Maxima core subset loader + entrypoint binding integration gate.
   - [x] `habu-rca-load-stackoverflow-e3d4f5d8` RCA and fix load stack overflow path for Maxima large source files.
   - [x] `habu-fix-sin-lisp-b34b817f` Fix `sin.lisp` load root so `SININT` is bound and integrate path can complete. Ensure `schatc` dependency chain is loaded (`m2`/`schatchen-cond` present) before integrate execution.
-  - [ ] `habu-add-internal-option-8cbd6feb` Add system-only/internal keyword controls for loader diagnostics and bind checks. Dependency for `habu-maxima-end-to-efe58661`.
+  - [x] `habu-add-internal-option-8cbd6feb` Add system-only/internal keyword controls for loader diagnostics and bind checks. Dependency for `habu-maxima-end-to-efe58661`.
 - [ ] `habu-maxima-end-to-efe58661` Maxima end-to-end integration test continuation. Depends on `habu-fix-maxima-cas-a491af14`, `habu-maxima-subset-load-e9db9bb5`, `habu-rca-and-fix-4a4ea5d5`, `habu-add-maxima-cas-1807f8ae`, `habu-cut-gc-root-25d3bb03`, and `habu-fix-hoist-compile-9a100641`.
 
 ## Execution Loop
