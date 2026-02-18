@@ -16,7 +16,7 @@ const ir = @import("../compiler/ir.zig");
 const Ir = ir.Ir;
 const IrBuilder = ir.IrBuilder;
 const passes = @import("../compiler/passes/passes.zig");
-const jit_backend = @import("../jit/backend.zig");
+const jit_backend = @import("../jit/backend_api.zig");
 const bytecode = @import("../bytecode/bytecode.zig");
 const Emitter = bytecode.Emitter;
 const Op = bytecode.Op;
@@ -1715,15 +1715,29 @@ pub const Repl = struct {
             const expr = parser.parse() catch |err| {
                 if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null or trace_forms) {
                     const loc = parser.getErrorLocation();
+                    var load_name: []const u8 = "<unknown>";
+                    if (self.currentLoadTruename(source_vm)) |truename| {
+                        const ns = primitives.pathname.namestring(
+                            self.allocator,
+                            self.heap,
+                            &self.vm.builtins,
+                            truename,
+                        ) catch Value.nil;
+                        if (ns.isString()) load_name = ns.toPtr(runtime.String).bytes();
+                    }
                     std.debug.print(
-                        "TRACE parse error: {s} at {d}:{d} token={s} kind={s}\n",
-                        .{ @errorName(err), loc.line, loc.column, loc.text, @tagName(parser.current.kind) },
+                        "TRACE parse error: {s} file={s} at {d}:{d} token={s} kind={s}\n",
+                        .{
+                            @errorName(err),
+                            load_name,
+                            loc.line,
+                            loc.column,
+                            loc.text,
+                            @tagName(parser.current.kind),
+                        },
                     );
                 }
-                // On parse error, return what we have so far rather than
-                // aborting the entire load. Some forms were successfully
-                // processed and their side effects should be preserved.
-                return last_value;
+                return err;
             };
             form_idx += 1;
             if (trace_forms) {
@@ -1741,6 +1755,32 @@ pub const Repl = struct {
                                     std.debug.print("TRACE deftest {d}: {s}\n", .{ form_idx, test_name.toPtr(Symbol).getName() });
                                 } else {
                                     std.debug.print("TRACE deftest {d}: {s}\n", .{ form_idx, @tagName(test_name.typeKind()) });
+                                }
+                            }
+                        } else if (std.mem.eql(u8, head_name, "DEFUN")) {
+                            const tail = expr.toPtr(Cons).cdr;
+                            if (tail.isCons()) {
+                                const fn_name = tail.toPtr(Cons).car;
+                                switch (fn_name.typeKind()) {
+                                    .symbol => std.debug.print("TRACE defun {d}: {s}\n", .{
+                                        form_idx,
+                                        fn_name.toPtr(Symbol).getName(),
+                                    }),
+                                    .cons => {
+                                        const name_head = fn_name.toPtr(Cons).car;
+                                        if (name_head.isSymbol()) {
+                                            std.debug.print("TRACE defun {d}: ({s} ...)\n", .{
+                                                form_idx,
+                                                name_head.toPtr(Symbol).getName(),
+                                            });
+                                        } else {
+                                            std.debug.print("TRACE defun {d}: cons\n", .{form_idx});
+                                        }
+                                    },
+                                    else => std.debug.print("TRACE defun {d}: {s}\n", .{
+                                        form_idx,
+                                        @tagName(fn_name.typeKind()),
+                                    }),
                                 }
                             }
                         }
@@ -1786,37 +1826,12 @@ pub const Repl = struct {
             var eval_arena = std.heap.ArenaAllocator.init(self.allocator);
             defer eval_arena.deinit();
             const eval_alloc = eval_arena.allocator();
-
-            // During file loading, temporarily hide outer CL condition
-            // handlers so that errors from individual forms don't escape
-            // to handler-case frames wrapped around the (load ...) call.
-            // Forms that set up their OWN handlers (handler-case within
-            // the file) still work because they push on top of 0.
-            const saved_handler_sp = source_vm.handler_sp;
-            const saved_catch_sp = source_vm.catch_sp;
-            source_vm.handler_sp = 0;
-            source_vm.catch_sp = 0;
-
             last_value = self.evalParsedWithVm(expr, source_vm, eval_alloc) catch |err| {
-                // Restore handler state on error
-                source_vm.handler_sp = saved_handler_sp;
-                source_vm.catch_sp = saved_catch_sp;
-                // Compilation/evaluation errors during file loading:
-                // Print error message and continue to next form, like SBCL does.
-                if (trace_forms) {
-                    std.debug.print("TRACE eval error: {s}\n", .{@errorName(err)});
+                if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null or trace_forms) {
+                    std.debug.print("TRACE load eval error: {s} form={d}\n", .{ @errorName(err), form_idx });
                 }
-                // For errors that indicate the file can't be parsed at all,
-                // propagate the error to stop loading.
-                if (err == error.OutOfMemory or err == error.StackOverflow) {
-                    return err;
-                }
-                continue;
+                return err;
             };
-            
-            // Restore outer handler state after successful evaluation
-            source_vm.handler_sp = saved_handler_sp;
-            source_vm.catch_sp = saved_catch_sp;
             if (std.posix.getenv("HABU_TRACE_DEFMACRO") != null) {
                 var has_def = false;
                 var it = self.macros.iterator();
@@ -1876,6 +1891,27 @@ pub const Repl = struct {
                 self.compiler.setVm(saved_vm);
             } else {
                 self.compiler.vm = null;
+            }
+        }
+
+        if (std.posix.getenv("HABU_TRACE_DEFMACRO_DISPATCH") != null and expr.isCons()) {
+            const head = expr.toPtr(Cons).car;
+            if (head.isSymbol()) {
+                const head_name = head.toPtr(Symbol).getName();
+                if (std.mem.eql(u8, head_name, "DEFMACRO")) {
+                    const b = self.compiler.builtins.?;
+                    const canonical = self.canonicalMacroSymbol(head);
+                    std.debug.print(
+                        "TRACE defmacro-dispatch pkg={s} head=0x{x} canon=0x{x} builtin=0x{x} is={any}\n",
+                        .{
+                            self.heap.getCurrentPackageName(),
+                            head.raw,
+                            canonical.raw,
+                            b.defmacro.raw,
+                            canonical.raw == b.defmacro.raw,
+                        },
+                    );
+                }
             }
         }
 
@@ -3010,11 +3046,8 @@ pub const Repl = struct {
         return dispatch_head.raw == b.defpackage.raw;
     }
 
-    fn canonicalMacroSymbol(self: *Repl, sym: Value) Value {
-        if (!sym.isSymbol()) return sym;
-        const cl_pkg = self.heap.cl_package orelse return sym;
-        const name = sym.toPtr(Symbol).getName();
-        if (cl_pkg.findAccessibleUpper(name)) |canonical| return canonical;
+    fn findAccessibleCaseFolded(pkg: *runtime.heap.Package, name: []const u8) ?Value {
+        if (pkg.findAccessibleUpper(name)) |canonical| return canonical;
 
         var needs_upper = false;
         for (name) |ch| {
@@ -3023,12 +3056,25 @@ pub const Repl = struct {
                 break;
             }
         }
-        if (!needs_upper) return sym;
-        if (name.len > 256) return sym;
+        if (!needs_upper or name.len > 256) return null;
 
         var upper_buf: [256]u8 = undefined;
         for (name, 0..) |ch, i| upper_buf[i] = std.ascii.toUpper(ch);
-        return cl_pkg.findAccessibleUpper(upper_buf[0..name.len]) orelse sym;
+        return pkg.findAccessibleUpper(upper_buf[0..name.len]);
+    }
+
+    fn canonicalMacroSymbol(self: *Repl, sym: Value) Value {
+        if (!sym.isSymbol()) return sym;
+        const name = sym.toPtr(Symbol).getName();
+
+        if (self.heap.cl_package) |cl_pkg| {
+            if (findAccessibleCaseFolded(cl_pkg, name)) |canonical| return canonical;
+        }
+        if (self.heap.cl_user_package) |cl_user_pkg| {
+            if (findAccessibleCaseFolded(cl_user_pkg, name)) |canonical| return canonical;
+        }
+
+        return sym;
     }
 
     fn lookupMacroByNameInPackage(self: *Repl, pkg: *runtime.heap.Package, name: []const u8) ?MacroEntry {
@@ -3053,13 +3099,35 @@ pub const Repl = struct {
 
     fn lookupMacroEntry(self: *Repl, sym: Value) ?MacroEntry {
         if (!sym.isSymbol()) return null;
-        if (self.macros.get(sym)) |entry| return entry;
-
         const sym_ptr = sym.toPtr(Symbol);
         const name = sym_ptr.getName();
+        const trace_lookup = blk: {
+            const raw = std.posix.getenv("HABU_TRACE_MACRO_LOOKUP_NAME") orelse break :blk false;
+            const target = std.mem.sliceTo(raw, 0);
+            break :blk std.ascii.eqlIgnoreCase(name, target);
+        };
+
+        if (self.macros.get(sym)) |entry| {
+            if (trace_lookup) {
+                std.debug.print(
+                    "TRACE macro-lookup hit-direct name={s} pkg={s} count={d}\n",
+                    .{ name, self.heap.getCurrentPackageName(), self.macros.count() },
+                );
+            }
+            return entry;
+        }
+        if (trace_lookup) {
+            std.debug.print(
+                "TRACE macro-lookup miss-direct name={s} pkg={s} count={d}\n",
+                .{ name, self.heap.getCurrentPackageName(), self.macros.count() },
+            );
+        }
 
         if (symbolPackage(sym_ptr)) |pkg| {
-            if (self.lookupMacroByNameInPackage(pkg, name)) |entry| return entry;
+            if (self.lookupMacroByNameInPackage(pkg, name)) |entry| {
+                if (trace_lookup) std.debug.print("TRACE macro-lookup hit-pkg name={s}\n", .{name});
+                return entry;
+            }
             // Respect package-qualified symbols: do not fall back to current package
             // lookup by name, which can hijack CL:FOO with local FOO macros.
             const canonical = self.canonicalMacroSymbol(sym);
@@ -3067,26 +3135,50 @@ pub const Repl = struct {
                 // Last resort: scan by name for stale-key entries (post-GC),
                 // but scope to same package to avoid cross-package collisions
                 // (e.g. CL:FLOAT vs MAXIMA::FLOAT).
-                return self.lookupMacroByNameInPackage2(pkg, name);
+                if (self.lookupMacroByNameInPackage2(pkg, name)) |entry| {
+                    if (trace_lookup) std.debug.print("TRACE macro-lookup hit-pkg2 name={s}\n", .{name});
+                    return entry;
+                }
+                if (trace_lookup) std.debug.print("TRACE macro-lookup miss-pkg2 name={s}\n", .{name});
+                return null;
             }
-            return self.macros.get(canonical);
+            if (self.macros.get(canonical)) |entry| {
+                if (trace_lookup) std.debug.print("TRACE macro-lookup hit-canonical name={s}\n", .{name});
+                return entry;
+            }
+            if (trace_lookup) std.debug.print("TRACE macro-lookup miss-canonical name={s}\n", .{name});
+            return null;
         }
 
         // Uninterned symbols can only be resolved by current package context.
         if (self.heap.current_package) |pkg| {
-            if (self.lookupMacroByNameInPackage(pkg, name)) |entry| return entry;
+            if (self.lookupMacroByNameInPackage(pkg, name)) |entry| {
+                if (trace_lookup) std.debug.print("TRACE macro-lookup hit-curpkg name={s}\n", .{name});
+                return entry;
+            }
         }
         if (self.heap.cl_package) |cl_pkg| {
-            if (self.lookupMacroByNameInPackage(cl_pkg, name)) |entry| return entry;
+            if (self.lookupMacroByNameInPackage(cl_pkg, name)) |entry| {
+                if (trace_lookup) std.debug.print("TRACE macro-lookup hit-clpkg name={s}\n", .{name});
+                return entry;
+            }
         }
 
         const canonical = self.canonicalMacroSymbol(sym);
         if (canonical.raw != sym.raw) {
-            if (self.macros.get(canonical)) |entry| return entry;
+            if (self.macros.get(canonical)) |entry| {
+                if (trace_lookup) std.debug.print("TRACE macro-lookup hit-canonical2 name={s}\n", .{name});
+                return entry;
+            }
         }
 
         // Final fallback: scan by name for stale-key entries (post-GC)
-        return self.lookupMacroByName(name);
+        if (self.lookupMacroByName(name)) |entry| {
+            if (trace_lookup) std.debug.print("TRACE macro-lookup hit-name name={s}\n", .{name});
+            return entry;
+        }
+        if (trace_lookup) std.debug.print("TRACE macro-lookup miss-name name={s}\n", .{name});
+        return null;
     }
 
     /// Brute-force lookup: scan all macro entries comparing symbol names.
@@ -3309,7 +3401,8 @@ pub const Repl = struct {
         // After VM execution (which may trigger GC), the original parsed symbol
         // Values are stale.
         var macro_sym: Value = undefined;
-        if (self.heap.current_package) |pkg| {
+        if (self.heap.current_package) |pkg_cur| {
+            const pkg = self.heap.findPackage(pkg_cur.name) orelse pkg_cur;
             if (pkg.symbols.get(macro_name_saved)) |local_sym| {
                 macro_sym = local_sym;
             } else {
@@ -3343,6 +3436,19 @@ pub const Repl = struct {
             const new_plist = try self.heap.allocCons(entry, old_plist);
             sym_ptr.plist = new_plist;
 
+        }
+
+        if (std.posix.getenv("HABU_TRACE_DEFMACRO_DEFINE") != null and macro_sym.isSymbol()) {
+            std.debug.print(
+                "TRACE defmacro-define pkg={s} name={s} plist_nil={any} repl={d} compiler={d}\n",
+                .{
+                    self.heap.getCurrentPackageName(),
+                    macro_sym.toPtr(Symbol).getName(),
+                    macro_sym.toPtr(Symbol).plist.isNil(),
+                    self.macros.count(),
+                    self.compiler.macro_table.count(),
+                },
+            );
         }
 
         if (std.posix.getenv("HABU_TRACE_DEFMACRO") != null and macro_sym.isSymbol()) {
@@ -4170,6 +4276,33 @@ test "eval nested arithmetic" {
     const result = try evalString(allocator, &heap, "(+ (* 3 4) (- 10 5))");
     try testing.expectEqual(@as(i64, 17), result.toFixnum());
 }
+
+test "lambda keyword defaults handle omitted trailing keys" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const call_with_key = try repl.eval(
+        \\(progn
+        \\  (defun kw-probe (&key (a 1) (b 10) (c 20))
+        \\    (+ a b c))
+        \\  (kw-probe :a 2))
+    );
+    try testing.expect(call_with_key.isFixnum());
+    try testing.expectEqual(@as(i64, 32), call_with_key.toFixnum());
+
+    const call_defaults = try repl.eval("(kw-probe)");
+    try testing.expect(call_defaults.isFixnum());
+    try testing.expectEqual(@as(i64, 31), call_defaults.toFixnum());
+}
+
 test "eval parse error sets error info" {
     const testing = std.testing;
     const allocator = testing.allocator;
@@ -4205,6 +4338,46 @@ test "loadFilePublic missing file errors" {
     var buf: [1024]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
     try testing.expectError(error.FileNotFound, repl.loadFilePublic("nope-nope.habu", stream.writer()));
+}
+
+test "loadFilePublic aborts on first form error" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("load-abort.lsp", .{});
+        defer file.close();
+        try file.writeAll(
+            "(defun load-ok () 1)\n" ++
+                "(cdr 1)\n" ++
+                "(defun load-after-error () 2)\n",
+        );
+    }
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const script_abs = try std.fs.path.join(allocator, &.{ base, "load-abort.lsp" });
+    defer allocator.free(script_abs);
+
+    var buf: [1024]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try testing.expectError(error.TypeMismatch, repl.loadFilePublic(script_abs, stream.writer()));
+
+    const before = try repl.eval("(fboundp 'load-ok)");
+    try testing.expect(before.isT());
+    const after = try repl.eval("(fboundp 'load-after-error)");
+    try testing.expect(after.isNil());
 }
 
 test "load resolves relative path with repeated directory prefix" {

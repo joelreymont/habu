@@ -53,6 +53,9 @@ Run with internal/system-only controls:
   - `:habu-required-bindings` computes missing function/macro bindings and
     returns them as an extra value (`*maxima-last-missing-bindings*`).
   - `:verbose` toggles summary/log printing.
+- `(load ...)` now aborts on the first unhandled form error in a file instead
+  of silently skipping failed forms. This keeps per-file loader failure counts
+  and missing-binding reports trustworthy.
 
 ## Troubleshooting
 

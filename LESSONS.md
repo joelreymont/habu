@@ -14,10 +14,13 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Fixing lambda-parameter special semantics generically in `src/compiler/compile.zig` (dynamic `progv` wrapper for globally proclaimed special params) restored `declare-top` behavior across Maxima macros without Maxima-specific patches.
 - Adding a focused regression in `src/tests/integration.zig` (`proclaimed special lambda params are dynamically visible in callees`) locks this dynamic-scope contract.
 - Adding system-only/internal keywords on `maxima-load-all` (`:habu-stop-on-error`, `:habu-required-bindings`) enabled stronger diagnostics without bending CL-facing defaults.
+- Removing per-form error masking in `src/interp/repl.zig` `evalFileContentSeparateVm` (propagate parse/eval errors instead of continuing) made `(load ...)` semantics deterministic and restored reliable file-level failure accounting for Maxima loader gates.
+- Locking strict load semantics with a focused regression (`src/interp/repl.zig` `loadFilePublic aborts on first form error`) prevented silent partial-file success regressions.
 
 ### Did Not Work
 - Chasing downstream `SIMPLE-ERROR` output first was noisy; until `defmode`/special-parameter semantics were fixed, later integrate traces were mostly secondary fallout.
 - Running long `zig build test -Dtest-filter=\"...maxima...\"` invocations remained unreliable/hang-prone in this environment; short focused filters and direct scripted repros gave more deterministic signal.
+- Using multiline piped REPL scripts for loader RCA gave misleading/garbled diagnostics; `habu <script-file>` probes and targeted tests were more trustworthy.
 
 ## Session Notes (2026-02-17)
 

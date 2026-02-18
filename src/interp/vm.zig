@@ -37,7 +37,7 @@ const parser_mod = @import("../reader/parser.zig");
 const Parser = parser_mod.Parser;
 const ParseError = parser_mod.Error;
 const BuiltinSymbols = @import("../runtime/builtins.zig").BuiltinSymbols;
-const jit_backend = @import("../jit/backend.zig");
+const jit_backend = @import("../jit/backend_api.zig");
 
 pub const Error = anyerror;
 
@@ -450,6 +450,137 @@ pub const Vm = struct {
         const chunk = val.toPtr(Chunk);
         if (chunk.kind != .chunk) return null;
         return chunk;
+    }
+
+    fn chunkTraceName(chunk: *const Chunk) []const u8 {
+        return switch (chunk.name.typeKind()) {
+            .symbol => chunk.name.toPtr(Symbol).getName(),
+            .string => chunk.name.toPtr(runtime.String).bytes(),
+            else => "<anon>",
+        };
+    }
+
+    fn csvHasExactToken(csv: []const u8, needle: []const u8) bool {
+        var it = std.mem.splitScalar(u8, csv, ',');
+        while (it.next()) |raw_tok| {
+            const tok = std.mem.trim(u8, raw_tok, " \t\r\n");
+            if (tok.len == 0) continue;
+            if (std.ascii.eqlIgnoreCase(tok, needle)) return true;
+        }
+        return false;
+    }
+
+    fn csvHasSubstringToken(csv: []const u8, haystack: []const u8) bool {
+        var it = std.mem.splitScalar(u8, csv, ',');
+        while (it.next()) |raw_tok| {
+            const tok = std.mem.trim(u8, raw_tok, " \t\r\n");
+            if (tok.len == 0) continue;
+            if (std.ascii.indexOfIgnoreCase(haystack, tok) != null) return true;
+        }
+        return false;
+    }
+
+    fn envTraceCount(name: []const u8, default_count: usize) usize {
+        const raw_c = std.posix.getenv(name) orelse return default_count;
+        const raw = std.mem.trim(u8, std.mem.sliceTo(raw_c, 0), " \t\r\n");
+        if (raw.len == 0) return default_count;
+        const parsed = std.fmt.parseUnsigned(usize, raw, 10) catch return default_count;
+        if (parsed == 0) return default_count;
+        return parsed;
+    }
+
+    fn shouldTraceError(self: *Vm, err: anyerror) bool {
+        if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") == null) return false;
+        if (err == error.Halt and std.posix.getenv("HABU_TRACE_ERROR_INCLUDE_HALT") == null) return false;
+
+        if (std.posix.getenv("HABU_TRACE_ERROR_ONLY")) |raw_c| {
+            if (!csvHasExactToken(std.mem.sliceTo(raw_c, 0), @errorName(err))) return false;
+        }
+        if (std.posix.getenv("HABU_TRACE_CHUNK_ONLY")) |raw_c| {
+            if (!csvHasSubstringToken(std.mem.sliceTo(raw_c, 0), chunkTraceName(self.chunk))) return false;
+        }
+        return true;
+    }
+
+    fn shouldTraceOpError(self: *Vm, op: Op, err: anyerror) bool {
+        if (!shouldTraceError(self, err)) return false;
+        if (std.posix.getenv("HABU_TRACE_OP_ONLY")) |raw_c| {
+            if (!csvHasExactToken(std.mem.sliceTo(raw_c, 0), @tagName(op))) return false;
+        }
+        return true;
+    }
+
+    fn tracePrintAtom(v: Value) void {
+        switch (v.typeKind()) {
+            .nil => std.debug.print("nil", .{}),
+            .t => std.debug.print("t", .{}),
+            .fixnum => std.debug.print("fixnum({d})", .{v.toFixnum()}),
+            .float => std.debug.print("float({d})", .{v.toFloat()}),
+            .char => std.debug.print("char(U+{X:0>4})", .{v.toCharacter()}),
+            .symbol => std.debug.print("symbol({s})", .{v.toPtr(Symbol).getName()}),
+            .keyword => std.debug.print("keyword(:{s})", .{v.toPtr(runtime.Keyword).getName()}),
+            .string => {
+                const s = v.toPtr(String).bytes();
+                const n = @min(s.len, @as(usize, 24));
+                std.debug.print("string(len={d},\"{s}", .{ s.len, s[0..n] });
+                if (s.len > n) std.debug.print("...\"", .{}) else std.debug.print("\"", .{});
+                std.debug.print(")", .{});
+            },
+            else => std.debug.print("{s}(0x{x})", .{ @tagName(v.typeKind()), v.raw }),
+        }
+    }
+
+    fn tracePrintValue(v: Value) void {
+        switch (v.typeKind()) {
+            .cons => {
+                const c = v.toPtr(Cons);
+                std.debug.print("cons(", .{});
+                if (c.car.isCons()) {
+                    const op = c.car.toPtr(Cons);
+                    std.debug.print("caar=", .{});
+                    tracePrintAtom(op.car);
+                } else {
+                    std.debug.print("car=", .{});
+                    tracePrintAtom(c.car);
+                }
+                std.debug.print(",cdr={s})", .{@tagName(c.cdr.typeKind())});
+            },
+            .closure => {
+                const clo = v.toPtr(runtime.Closure);
+                std.debug.print("closure(", .{});
+                if (clo.code.isChunk()) {
+                    std.debug.print("code={s}", .{chunkTraceName(clo.code.toPtr(Chunk))});
+                } else {
+                    std.debug.print("code={s}", .{@tagName(clo.code.typeKind())});
+                }
+                std.debug.print(")", .{});
+            },
+            else => tracePrintAtom(v),
+        }
+    }
+
+    fn traceValueName(v: Value) []const u8 {
+        return switch (v.typeKind()) {
+            .symbol => v.toPtr(Symbol).getName(),
+            .keyword => v.toPtr(runtime.Keyword).getName(),
+            .string => v.toPtr(String).bytes(),
+            else => @tagName(v.typeKind()),
+        };
+    }
+
+    fn shouldTraceCallRet(self: *Vm, fn_designator: ?Value, caller_chunk: *const Chunk, callee_chunk: ?*const Chunk) bool {
+        _ = self;
+        if (std.posix.getenv("HABU_TRACE_CALL_RET") == null) return false;
+        const filter_c = std.posix.getenv("HABU_TRACE_CALL_RET_ONLY") orelse return true;
+        const filter = std.mem.sliceTo(filter_c, 0);
+        if (csvHasSubstringToken(filter, chunkTraceName(caller_chunk))) return true;
+        if (callee_chunk) |c| {
+            if (csvHasSubstringToken(filter, chunkTraceName(c))) return true;
+        }
+        if (fn_designator) |f| {
+            if (csvHasSubstringToken(filter, traceValueName(f))) return true;
+        }
+        return false;
     }
 
     fn valueFieldSlice(comptime T: type, ptr: *T) []Value {
@@ -1498,16 +1629,30 @@ pub const Vm = struct {
 
             // Execute opcode with error handling
             if (self.executeOp(op)) |_| {} else |err| {
-                if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                if (self.shouldTraceOpError(op, err)) {
+                    const chunk_name = chunkTraceName(self.chunk);
                     std.debug.print(
-                        "TRACE op error: op={s} op_ip={d} next_ip={d} sp={d}\n",
-                        .{ @tagName(op), op_ip, self.ip, self.sp },
+                        "TRACE op error: err={s} op={s} chunk={s} op_ip={d} next_ip={d} sp={d} fp={d}\n",
+                        .{ @errorName(err), @tagName(op), chunk_name, op_ip, self.ip, self.sp, self.fp },
                     );
-                    const dump_n = @min(self.sp, @as(usize, 4));
+                    const dump_n = @min(self.sp, envTraceCount("HABU_TRACE_ERROR_STACK", 4));
                     var i: usize = 0;
                     while (i < dump_n) : (i += 1) {
                         const v = self.stack[self.sp - 1 - i];
-                        std.debug.print("  stack[-{d}]={s}\n", .{ i + 1, @tagName(v.typeKind()) });
+                        std.debug.print("  stack[-{d}]=", .{i + 1});
+                        tracePrintValue(v);
+                        std.debug.print("\n", .{});
+                    }
+                    const dump_frames = @min(self.fp, envTraceCount("HABU_TRACE_ERROR_FRAMES", 4));
+                    var fi: usize = 0;
+                    while (fi < dump_frames) : (fi += 1) {
+                        const idx = self.fp - 1 - fi;
+                        const frame = self.frames[idx];
+                        const frame_name = chunkTraceName(frame.chunk);
+                        std.debug.print(
+                            "  frame[-{d}] chunk={s} ret_ip={d} bp={d} argc={d}\n",
+                            .{ fi + 1, frame_name, frame.return_ip, frame.bp, frame.argc },
+                        );
                     }
                 }
                 if (err == error.Halt) {
@@ -1933,7 +2078,15 @@ pub const Vm = struct {
                 switch (pair.typeKind()) {
                     .nil => try self.push(Value.nil), // CL: (cdr nil) => nil
                     .cons => try self.push(pair.toPtr(Cons).cdr),
-                    else => return error.TypeMismatch,
+                    else => {
+                        if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                            std.debug.print(
+                                "TRACE cdr mismatch: raw=0x{x} kind={s}\n",
+                                .{ pair.raw, @tagName(pair.typeKind()) },
+                            );
+                        }
+                        return error.TypeMismatch;
+                    },
                 }
             },
             .make_list => {
@@ -2757,13 +2910,31 @@ pub const Vm = struct {
             // Function calls
             .call => {
                 const argc = self.readU8();
-                if (std.posix.getenv("HABU_TRACE_CALL_RET") != null) {
+                const fn_designator = self.stack[self.sp - argc - 1];
+                const trace_call = self.shouldTraceCallRet(fn_designator, self.chunk, null);
+                if (trace_call) {
+                    const caller = chunkTraceName(self.chunk);
                     std.debug.print(
-                        "TRACE call ip={d} argc={d} fp={d} sp={d} chunk_len={d}\n",
-                        .{ self.ip, argc, self.fp, self.sp, self.chunk.getCode().len },
+                        "TRACE call chunk={s} ip={d} argc={d} fp={d} sp={d} fn=",
+                        .{ caller, self.ip, argc, self.fp, self.sp },
                     );
+                    tracePrintValue(fn_designator);
+                    std.debug.print("\n", .{});
+                    if (std.posix.getenv("HABU_TRACE_CALL_ARGS") != null) {
+                        const dump_n: usize = @min(@as(usize, argc), envTraceCount("HABU_TRACE_CALL_ARGS", 4));
+                        var ai: usize = 0;
+                        while (ai < dump_n) : (ai += 1) {
+                            const arg = self.stack[self.sp - @as(usize, argc) + ai];
+                            std.debug.print("  arg[{d}]=", .{ai});
+                            tracePrintValue(arg);
+                            std.debug.print("\n", .{});
+                        }
+                    }
                 }
                 try self.doCall(argc, false);
+                if (trace_call) {
+                    std.debug.print("TRACE call-enter callee={s} fp={d} sp={d}\n", .{ chunkTraceName(self.chunk), self.fp, self.sp });
+                }
                 // Check for hoist-compiled function
 
                 if (self.tryCallJit(argc)) |result| {
@@ -2786,11 +2957,13 @@ pub const Vm = struct {
             .ret => {
                 const result = try self.pop();
                 if (self.fp == 0) {
-                    if (std.posix.getenv("HABU_TRACE_CALL_RET") != null) {
+                    if (self.shouldTraceCallRet(null, self.chunk, null)) {
                         std.debug.print(
-                            "TRACE ret-top ip={d} sp={d} chunk_len={d}\n",
-                            .{ self.ip, self.sp, self.chunk.getCode().len },
+                            "TRACE ret-top chunk={s} ip={d} sp={d} result=",
+                            .{ chunkTraceName(self.chunk), self.ip, self.sp },
                         );
+                        tracePrintValue(result);
+                        std.debug.print("\n", .{});
                     }
                     // Top level return - push result and halt
                     try self.push(result);
@@ -2799,11 +2972,13 @@ pub const Vm = struct {
                 // Restore caller state
                 self.fp -= 1;
                 const frame = self.frames[self.fp];
-                if (std.posix.getenv("HABU_TRACE_CALL_RET") != null) {
+                if (self.shouldTraceCallRet(null, self.chunk, frame.chunk)) {
                     std.debug.print(
-                        "TRACE ret ip={d} -> return_ip={d} fp={d} sp={d} caller_chunk_len={d}\n",
-                        .{ self.ip, frame.return_ip, self.fp, frame.bp, frame.chunk.getCode().len },
+                        "TRACE ret chunk={s} ip={d} -> caller={s} return_ip={d} fp={d} sp={d} result=",
+                        .{ chunkTraceName(self.chunk), self.ip, chunkTraceName(frame.chunk), frame.return_ip, self.fp, frame.bp },
                     );
+                    tracePrintValue(result);
+                    std.debug.print("\n", .{});
                 }
                 self.sp = frame.bp;
                 self.chunk = frame.chunk;
@@ -3785,6 +3960,31 @@ pub const Vm = struct {
                         return err;
                     }
                 };
+            },
+
+            .signal => {
+                const value = try self.pop();
+                const condition_type = try self.pop();
+                const condition = try self.allocCons(condition_type, value);
+                const prev_chunk = self.chunk;
+                const prev_ip = self.ip;
+                const prev_sp = self.sp;
+                const prev_fp = self.fp;
+                self.doThrow(self.builtins.sym_condition_tag, condition) catch |err| {
+                    if (err == error.UnhandledThrow) {
+                        try self.push(Value.nil);
+                        return;
+                    }
+                    return err;
+                };
+                const transferred =
+                    self.chunk != prev_chunk or
+                    self.ip != prev_ip or
+                    self.sp != prev_sp or
+                    self.fp != prev_fp;
+                if (!transferred) {
+                    try self.push(Value.nil);
+                }
             },
 
             .push_progv => {
@@ -6102,7 +6302,7 @@ pub const Vm = struct {
                         if (try self.lookupSymbolGlobalIndex(sym)) |idx| {
                             try self.push(self.globals[idx]);
                         } else {
-                            if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                            if (self.shouldTraceError(error.UnboundSymbol)) {
                                 std.debug.print(
                                     "TRACE symbol lookup miss op={s} sym={s}\n",
                                     .{ @tagName(op), sym.getName() },
@@ -6112,7 +6312,7 @@ pub const Vm = struct {
                         }
                     },
                     else => {
-                        if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                        if (self.shouldTraceError(error.TypeMismatch)) {
                             std.debug.print(
                                 "TRACE symbol_value non-symbol kind={s} raw=0x{x}\n",
                                 .{ @tagName(val.typeKind()), val.raw },
@@ -6133,7 +6333,7 @@ pub const Vm = struct {
                             try self.push(fn_val);
                         } else {
                             const sym = val.toPtr(Symbol);
-                            if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                            if (self.shouldTraceError(error.UnboundSymbol)) {
                                 std.debug.print(
                                     "TRACE symbol lookup miss op={s} sym={s}\n",
                                     .{ @tagName(op), sym.getName() },
@@ -6906,11 +7106,8 @@ pub const Vm = struct {
     }
 
     fn mapError(self: *Vm, err: anyerror) Error {
-        if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
-            const cur_name = if (self.chunk.name.isSymbol())
-                self.chunk.name.toPtr(runtime.Symbol).getName()
-            else
-                @tagName(self.chunk.name.typeKind());
+        if (self.shouldTraceError(err)) {
+            const cur_name = chunkTraceName(self.chunk);
             const code_ptr = @intFromPtr(self.chunk.code);
             const code_len = self.chunk.code_len;
             std.debug.print(
@@ -6942,10 +7139,7 @@ pub const Vm = struct {
             while (i > 0) {
                 i -= 1;
                 const frame = self.frames[i];
-                const name = if (frame.chunk.name.isSymbol())
-                    frame.chunk.name.toPtr(runtime.Symbol).getName()
-                else
-                    @tagName(frame.chunk.name.typeKind());
+                const name = chunkTraceName(frame.chunk);
                 std.debug.print(
                     "  frame[{d}] chunk={s} ret_ip={d} bp={d} argc={d}\n",
                     .{ i, name, frame.return_ip, frame.bp, frame.argc },
@@ -8824,10 +9018,17 @@ pub const Vm = struct {
                 });
             }
             fn_val = (try self.resolveFunctionValue(fn_val)) orelse {
-                if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                if (self.shouldTraceError(error.UnboundSymbol)) {
                     const fn_name = self.stack[self.sp - argc - 1];
                     if (fn_name.isSymbol()) {
-                        std.debug.print("TRACE unbound function: {s}\n", .{fn_name.toPtr(Symbol).getName()});
+                        const sym = fn_name.toPtr(Symbol);
+                        var pkg_name: []const u8 = "<none>";
+                        const bits = sym.reserved;
+                        if (bits != 0 and (bits & 1) == 0) {
+                            const pkg: *runtime.heap.Package = @ptrFromInt(bits);
+                            pkg_name = pkg.name;
+                        }
+                        std.debug.print("TRACE unbound function: {s} pkg={s}\n", .{ sym.getName(), pkg_name });
                     }
                 }
                 return error.UnboundSymbol;
@@ -9144,7 +9345,7 @@ pub const Vm = struct {
                 });
             }
             callable = (try self.resolveFunctionValue(callable)) orelse {
-                if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
+                if (self.shouldTraceError(error.UnboundSymbol)) {
                     if (callable.isSymbol()) {
                         std.debug.print("TRACE unbound apply-callable: {s}\n", .{callable.toPtr(Symbol).getName()});
                     }
@@ -11296,4 +11497,18 @@ test "vm list_reverse survives GC" {
     }
     try testing.expect(curr.isNil());
     try testing.expect(expect_n == -1);
+}
+
+test "vm trace csv exact token matching is case-insensitive" {
+    const testing = std.testing;
+    try testing.expect(Vm.csvHasExactToken(" TypeMismatch , UnboundSymbol ", "typemismatch"));
+    try testing.expect(Vm.csvHasExactToken("add,mul", "ADD"));
+    try testing.expect(!Vm.csvHasExactToken("add,mul", "sub"));
+}
+
+test "vm trace csv substring matching is case-insensitive" {
+    const testing = std.testing;
+    try testing.expect(Vm.csvHasSubstringToken("powerlist, integrator", "MAXIMA-POWERLIST-PATH"));
+    try testing.expect(Vm.csvHasSubstringToken("mapcar", "MAPCAR"));
+    try testing.expect(!Vm.csvHasSubstringToken("powerlist", "MATCHER"));
 }

@@ -121,6 +121,7 @@
     - [x] `habu-auto-detect-maxima-d2876566` Auto-detect Maxima source root and fail fast when source fixtures are missing.
     - [x] `habu-fix-cond-signal-4f85b2c8` Fix `(signal ...)` lowering so unhandled conditions return nil instead of THROW control-error.
     - [x] `habu-fix-declare-top-e3668a14` Honor proclaimed `special` lambda params via dynamic bindings (`progv`) so `declare-top` state is visible in helper callees (`define-mode`/`defs1`) and `db.lisp` `defmode`/`clear` load path no longer fails at function-definition time.
+    - [x] `habu-propagate-load-form-d898e591` Propagate load parse/eval errors instead of silently continuing forms; add strict-load regression.
     - [ ] `habu-revalidate-integrate-with-0874ce3e` Revalidate integrate path end-to-end once real Maxima source fixtures are present again. Depends on `habu-fix-declare-top-e3668a14`.
   - [ ] `habu-maxima-factor-ratsimp-521dd2ca` Maxima factor/ratsimp path: fix TypeMismatch and ProgramError roots.
   - [x] `habu-maxima-core-loader-999c7eb3` Add Maxima core subset loader + entrypoint binding integration gate.
