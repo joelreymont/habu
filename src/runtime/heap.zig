@@ -87,6 +87,12 @@ pub fn freeUpperName(allocator: std.mem.Allocator, upper: UpperName) void {
     if (upper.owned) |mem| allocator.free(mem);
 }
 
+fn elapsedNsSince(start_ns: i128) u64 {
+    const now_ns = std.time.nanoTimestamp();
+    if (now_ns <= start_ns) return 0;
+    return @intCast(now_ns - start_ns);
+}
+
 /// Package: a namespace for symbols
 pub const Package = struct {
     name: []const u8,
@@ -312,6 +318,11 @@ pub const Heap = struct {
         bytes_allocated: usize = 0,
         gc_count: usize = 0,
         bytes_copied: usize = 0,
+        gc_build_ns: u64 = 0,
+        gc_root_ns: u64 = 0,
+        gc_copy_ns: u64 = 0,
+        gc_finalize_ns: u64 = 0,
+        gc_root_vals: usize = 0,
     };
 
     pub const WarnHandler = *const fn (Value, ?*anyopaque) anyerror!void;
@@ -1647,6 +1658,7 @@ pub const Heap = struct {
     /// Internal heap roots (symbols, packages, readtables, etc.) are always included.
     pub fn collectGarbageRootSet(self: *Heap, external_roots: roots_mod.RootSet) !usize {
         const before = self.bytesUsed();
+        const build_start = std.time.nanoTimestamp();
 
         // Internal roots are tracked by slot address; external roots are passed as a range.
         self.gc_slots.clearRetainingCapacity();
@@ -1717,6 +1729,8 @@ pub const Heap = struct {
         if (self.kw_format_arguments.raw != Value.nil.raw) {
             try self.gc_slots.append(self.backing_allocator, &self.kw_format_arguments);
         }
+
+        self.stats.gc_build_ns +%= elapsedNsSince(build_start);
 
         // Run GC
         _ = try self.gc.collectRootSet(self, .{

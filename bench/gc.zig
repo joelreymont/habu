@@ -109,6 +109,11 @@ pub fn main() !void {
 
     const bytes_copied0 = heap.stats.bytes_copied;
     const gc0 = heap.stats.gc_count;
+    const build_ns0 = heap.stats.gc_build_ns;
+    const root_ns0 = heap.stats.gc_root_ns;
+    const copy_ns0 = heap.stats.gc_copy_ns;
+    const finalize_ns0 = heap.stats.gc_finalize_ns;
+    const root_vals0 = heap.stats.gc_root_vals;
     for (pauses, 0..) |*ns, i| {
         _ = i;
         const t0 = timer.read();
@@ -118,6 +123,11 @@ pub fn main() !void {
     }
     const bytes_copied1 = heap.stats.bytes_copied;
     const gc1 = heap.stats.gc_count;
+    const build_ns1 = heap.stats.gc_build_ns;
+    const root_ns1 = heap.stats.gc_root_ns;
+    const copy_ns1 = heap.stats.gc_copy_ns;
+    const finalize_ns1 = heap.stats.gc_finalize_ns;
+    const root_vals1 = heap.stats.gc_root_vals;
 
     var sum: u128 = 0;
     for (pauses) |ns| sum += ns;
@@ -129,7 +139,17 @@ pub fn main() !void {
 
     const copied_delta = bytes_copied1 - bytes_copied0;
     const gc_delta = gc1 - gc0;
+    const build_delta = build_ns1 - build_ns0;
+    const root_delta = root_ns1 - root_ns0;
+    const copy_delta = copy_ns1 - copy_ns0;
+    const finalize_delta = finalize_ns1 - finalize_ns0;
+    const root_vals_delta = root_vals1 - root_vals0;
     const live_bytes = heap.bytesUsed();
+    const gc_delta_u64: u64 = @intCast(gc_delta);
+    const avg_build_ns = if (gc_delta_u64 == 0) 0 else build_delta / gc_delta_u64;
+    const avg_root_ns = if (gc_delta_u64 == 0) 0 else root_delta / gc_delta_u64;
+    const avg_copy_ns = if (gc_delta_u64 == 0) 0 else copy_delta / gc_delta_u64;
+    const avg_finalize_ns = if (gc_delta_u64 == 0) 0 else finalize_delta / gc_delta_u64;
 
     var out_buf: [4096]u8 = undefined;
     var out = std.fs.File.stdout().writer(&out_buf);
@@ -137,8 +157,8 @@ pub fn main() !void {
 
     if (opts.json) {
         try w.print(
-            "{{\"iters\":{d},\"heap_bytes\":{d},\"live_bytes\":{d},\"avg_pause_ns\":{d},\"p95_pause_ns\":{d},\"gc_count\":{d},\"bytes_copied\":{d}}}\n",
-            .{ opts.iters, heap_bytes, live_bytes, avg_ns, p95_ns, gc_delta, copied_delta },
+            "{{\"iters\":{d},\"heap_bytes\":{d},\"live_bytes\":{d},\"avg_pause_ns\":{d},\"p95_pause_ns\":{d},\"gc_count\":{d},\"bytes_copied\":{d},\"avg_build_ns\":{d},\"avg_root_ns\":{d},\"avg_copy_ns\":{d},\"avg_finalize_ns\":{d},\"root_vals\":{d}}}\n",
+            .{ opts.iters, heap_bytes, live_bytes, avg_ns, p95_ns, gc_delta, copied_delta, avg_build_ns, avg_root_ns, avg_copy_ns, avg_finalize_ns, root_vals_delta },
         );
         try w.flush();
         return;
@@ -156,6 +176,16 @@ pub fn main() !void {
     try w.print("  iters: {d}\n", .{opts.iters});
     try w.print("  pause: avg {d:.3} ms, p95 {d:.3} ms\n", .{ avg_ms, p95_ms });
     try w.print("  copied: {d:.2} MiB total ({d:.2} MiB/GC)\n", .{ copied_mb, copied_mb / gc_delta_f });
+    try w.print(
+        "  phase avg (us): build {d:.2}, root {d:.2}, copy {d:.2}, finalize {d:.2}\n",
+        .{
+            @as(f64, @floatFromInt(avg_build_ns)) / 1000.0,
+            @as(f64, @floatFromInt(avg_root_ns)) / 1000.0,
+            @as(f64, @floatFromInt(avg_copy_ns)) / 1000.0,
+            @as(f64, @floatFromInt(avg_finalize_ns)) / 1000.0,
+        },
+    );
+    try w.print("  root vals visited: {d}\n", .{root_vals_delta});
     try w.print("  gc_count: {d}\n", .{gc_delta});
     try w.flush();
 }

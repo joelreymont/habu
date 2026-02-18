@@ -26,6 +26,12 @@ const WorkItem = struct {
 
 const builtin = @import("builtin");
 
+fn elapsedNsSince(start_ns: i128) u64 {
+    const now_ns = std.time.nanoTimestamp();
+    if (now_ns <= start_ns) return 0;
+    return @intCast(now_ns - start_ns);
+}
+
 /// Garbage collector state
 pub const GC = struct {
     /// Allocator for work list
@@ -72,6 +78,8 @@ pub const GC = struct {
     /// Run a garbage collection cycle with a precise root set (slot/range addresses).
     /// Returns the number of bytes copied, or error on OOM during work list allocation.
     pub fn collectRootSet(self: *GC, heap: *heap_mod.Heap, roots: roots_mod.RootSet) !usize {
+        const phase_start = std.time.nanoTimestamp();
+
         // Preallocate work queue if first collection
         if (self.work_list.capacity == 0) {
             const init_cap = self.calculateInitialCapacity(heap);
@@ -88,6 +96,8 @@ pub const GC = struct {
         self.work_list.clearRetainingCapacity();
         self.work_peak = 0;
         var alloc_ptr = heap.to_start;
+        var root_vals: usize = roots.slots.len;
+        for (roots.ranges) |r| root_vals +%= r.len;
 
         // Phase 1: Copy roots
         for (roots.ranges) |r| {
@@ -98,6 +108,7 @@ pub const GC = struct {
         for (roots.slots) |slot| {
             slot.* = try self.copyValue(heap, slot.*, &alloc_ptr);
         }
+        const root_ns = elapsedNsSince(phase_start);
 
         // Phase 2: Process work list, scanning objects and copying references
         while (self.work_list.items.len > 0) {
@@ -105,6 +116,8 @@ pub const GC = struct {
             self.work_list.items.len -= 1;
             try self.scanObject(heap, item.addr, item.tag, &alloc_ptr);
         }
+        const copy_end_ns = elapsedNsSince(phase_start);
+        const copy_ns = copy_end_ns - root_ns;
 
         // Calculate bytes copied
         const bytes_copied = @intFromPtr(alloc_ptr) - @intFromPtr(heap.to_start);
@@ -117,11 +130,17 @@ pub const GC = struct {
         heap.resetAllocPtr(@ptrCast(@alignCast(heap.from_start + bytes_copied)));
 
         // Phase 4: Finalize unreachable objects with resources (uses old space)
+        const finalize_start = std.time.nanoTimestamp();
         self.finalizeUnreachable(heap, old_alloc_ptr);
+        const finalize_ns = elapsedNsSince(finalize_start);
 
         // Update stats
         heap.stats.gc_count += 1;
         heap.stats.bytes_copied += bytes_copied;
+        heap.stats.gc_root_ns +%= root_ns;
+        heap.stats.gc_copy_ns +%= copy_ns;
+        heap.stats.gc_finalize_ns +%= finalize_ns;
+        heap.stats.gc_root_vals +%= root_vals;
 
         // Phase 5: Grow queues AFTER collection completes if needed
         try self.maybeGrowQueues();

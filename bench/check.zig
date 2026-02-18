@@ -10,6 +10,11 @@ const GcJson = struct {
     p95_pause_ns: u64,
     gc_count: u64,
     bytes_copied: u64,
+    avg_build_ns: u64 = 0,
+    avg_root_ns: u64 = 0,
+    avg_copy_ns: u64 = 0,
+    avg_finalize_ns: u64 = 0,
+    root_vals: u64 = 0,
 };
 
 const VmBench = struct {
@@ -192,6 +197,17 @@ pub fn main() !void {
     if (gc.gc_count != gc.iters) try fail("gc_count {d} != iters {d}", .{ gc.gc_count, gc.iters });
     if (gc.bytes_copied == 0) try fail("gc bytes_copied is 0", .{});
     if (gc.live_bytes == 0) try fail("gc live_bytes is 0", .{});
+    if (gc.avg_build_ns == 0) try fail("gc avg_build_ns is 0", .{});
+    if (gc.avg_root_ns == 0) try fail("gc avg_root_ns is 0", .{});
+    if (gc.avg_copy_ns == 0) try fail("gc avg_copy_ns is 0", .{});
+    if (gc.root_vals == 0) try fail("gc root_vals is 0", .{});
+    if (gc.avg_copy_ns < gc.avg_root_ns) {
+        try fail("gc avg_copy_ns {d} < avg_root_ns {d}", .{ gc.avg_copy_ns, gc.avg_root_ns });
+    }
+    const gc_phase_sum = gc.avg_build_ns + gc.avg_root_ns + gc.avg_copy_ns + gc.avg_finalize_ns;
+    if (gc.avg_pause_ns > 0 and gc_phase_sum > gc.avg_pause_ns * 4) {
+        try fail("gc phase sum {d} > 4x avg_pause_ns {d}", .{ gc_phase_sum, gc.avg_pause_ns });
+    }
     const p95_ms = @as(f64, @floatFromInt(gc.p95_pause_ns)) / 1e6;
     if (p95_ms > opts.max_gc_p95_ms) try fail("gc p95 {d:.3}ms > {d:.3}ms", .{ p95_ms, opts.max_gc_p95_ms });
 
