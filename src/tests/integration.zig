@@ -5778,6 +5778,74 @@ test "maxima integrate dependency chain binds matcher and partition symbols" {
     try testing.expectEqual(@as(i64, 1), got[9]);
 }
 
+test "maxima e2e operation readiness status" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 384 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+    _ = try repl.eval(
+        \\(setq *maxima-files*
+        \\  '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
+        \\    "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "rzmac" "ratmac" "opers"
+        \\    "utils" "merror" "mutils" "sumcon" "sublis" "mformt" "outmis" "ar"
+        \\    "comm" "comm2" "mlisp" "mmacro" "buildq"
+        \\    "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
+        \\    "suprv1" "inmis" "db"
+        \\    "compar" "lesfac" "factor" "algfac" "nalgfa" "rat3a" "rat3b" "rat3c"
+        \\    "rat3d" "rat3e" "nrat4" "ratout" "acall"
+        \\    "schatc" "matcom" "matrun" "nisimp" "nparse" "displm" "displa" "nforma" "grind"
+        \\    "nset" "sinint" "sin"))
+    );
+    const status = try repl.eval(
+        \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\  (declare (ignore ok total))
+        \\  (list
+        \\    fail
+        \\    (if *maxima-failed* 1 0)
+        \\    (if (handler-case (equal (maxima::simplifya '((maxima::mplus) 3 4) t) 7) (error () nil)) 1 0)
+        \\    (if (handler-case (progn (maxima::$diff 0 'maxima::$x) t) (error () nil)) 1 0)
+        \\    (if (handler-case (progn (maxima::$solve 0 'maxima::$x) t) (error () nil)) 1 0)
+        \\    (if (handler-case (equal (maxima::$integrate 0 'maxima::$x) 0) (error () nil)) 1 0)
+        \\    (if (handler-case (progn (maxima::$factor 1) t) (error () nil)) 1 0)
+        \\    (if (handler-case (progn (maxima::$limit 0 'maxima::$x 0) t) (error () nil)) 1 0)
+        \\    (if (handler-case (progn (maxima::$determinant 1) t) (error () nil)) 1 0)
+        \\    (if (handler-case (progn (maxima::$expand 1) t) (error () nil)) 1 0)
+        \\    (if (handler-case (equal (maxima::$sin 0) 0) (error () nil)) 1 0)
+        \\    (if (handler-case (equal (maxima::$cos 0) 1) (error () nil)) 1 0)))
+    );
+
+    try testing.expect(status.isCons());
+    var cur = status;
+    var got: [12]i64 = undefined;
+    for (0..got.len) |i| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        got[i] = cell.car.toFixnum();
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+    try testing.expectEqual(@as(i64, 0), got[0]);
+    try testing.expectEqual(@as(i64, 0), got[1]);
+    try testing.expectEqual(@as(i64, 1), got[2]);
+    try testing.expectEqual(@as(i64, 0), got[3]);
+    try testing.expectEqual(@as(i64, 0), got[4]);
+    try testing.expectEqual(@as(i64, 1), got[5]);
+    try testing.expectEqual(@as(i64, 0), got[6]);
+    try testing.expectEqual(@as(i64, 0), got[7]);
+    try testing.expectEqual(@as(i64, 0), got[8]);
+    try testing.expectEqual(@as(i64, 1), got[9]);
+    try testing.expectEqual(@as(i64, 0), got[10]);
+    try testing.expectEqual(@as(i64, 0), got[11]);
+}
+
 test "maxima defun-maclisp old narg syntax defines callable function" {
     try ensureMaximaSources();
     const allocator = testing.allocator;
