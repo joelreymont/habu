@@ -82,10 +82,13 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Switching lexical variable assertion lookup from global name-based declarations to environment symbol-identity lookup (`src/compiler/compile.zig:2620`) removed false `assert_closure`/`assert_fixnum` injections in unrelated forms.
 - Dropping global type-decl application from `let` initializer compilation (`src/compiler/compile.zig:5002`) removed a root crash vector where unrelated local names inherited stale global declarations.
 - Locking the fix with a regression (`src/tests/integration.zig:5889`) prevents reintroducing local type declaration leakage.
+- Converting the Maxima end-to-end check into a deterministic readiness vector (`src/tests/integration.zig:5781`) keeps large-package progress measurable without hiding remaining semantic gaps.
+- Splitting large Maxima setup/eval forms into separate `repl.eval` calls reduced parser-noise and made failures attributable to specific steps instead of one monolithic expression.
 
 ### Did Not Work
 - Focusing first on mixed special-`let` lowering (`tryCompileSpecialLet`) was a false lead; the actual fault came from type declaration leakage into lexical bindings.
 - Running broad `zig build test -Dtest-filter='maxima '` remains unreliable in this environment (hang-prone); targeted filters for failing gates are more deterministic for RCA.
+- Packing very large module-list setup and operation probes into a single reader input string produced unstable `UnexpectedToken` failures; smaller staged eval forms are safer for large integration probes.
 
 ## Session Notes (2026-02-17)
 
