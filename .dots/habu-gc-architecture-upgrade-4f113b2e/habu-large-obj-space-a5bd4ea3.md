@@ -1,9 +1,11 @@
 ---
 title: Large object space
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-02-18T21:50:53.715891+01:00\""
+created-at: "\"\\\"2026-02-18T21:50:53.715891+01:00\\\"\""
+closed-at: "2026-02-18T23:21:55.317007+01:00"
+close-reason: implemented LOS allocation, mark/scan, and sweep reuse
 blocks:
   - habu-minor-gc-collector-2f89a428
 ---
