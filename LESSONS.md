@@ -43,6 +43,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Extending the same non-moving discipline to LOS (`src/runtime/heap.zig` `allocLosRaw`/`recordLosObject`/`sweepLos`) made large-object allocation and reclamation predictable with stable addresses.
 - Mark-on-touch + work-queue scan for LOS in `src/runtime/gc.zig` `copyValue` prevented stale young pointers inside pinned large containers across minor collections.
 - Switching GC perf benches to generational fixtures (`bench/gc.zig`) is essential; semispace-only benches can pass while generational paths silently regress.
+- Hoist API drift checks must run under `-Duse-hoist=true`; default test mode can otherwise hide interface breakage behind the stub backend.
 
 ### Did Not Work
 - Caching compiled macro expanders by storing closures in `macro_table` is not safe with current chunk-pool/index patching: cached closures retain expansion-time chunk index assumptions and can mis-dispatch nested lambdas later.
@@ -67,6 +68,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Reclaiming tenured holes without a free-list leaves long-running sessions with artificial tenured OOM despite low live set; non-moving sweep must feed allocator reuse paths immediately.
 - LOS tests should assert deltas, not absolute counts: heap bootstrap can legitimately pre-populate LOS metadata when low thresholds are used in tests.
 - Bench checks should assert structural GC invariants (promoted bytes, LOS/tenured liveness, old-space bounds), not just pause time, to catch semantic regressions early.
+- For hoist signatures, ownership is transferred into `Function.init`; calling `sig.deinit()` afterwards double-frees and crashes.
 
 ## Session Notes (2026-02-17)
 
