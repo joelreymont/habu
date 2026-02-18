@@ -27,10 +27,10 @@ This matrix tracks "Cranelift-class" JIT backend capabilities. Each row has:
 | Runtime | Stack maps / GC safepoints | no | n/a | `docs/cranelift-perf.md` (GC pause targets) | n/a | VM GC now uses root ranges + slots (no `gc_vals` mirror array), but JIT still has no safepoint metadata or compiler-inserted stack maps. Design: `docs/stack-maps.md`. |
 | Runtime | Relocations | partial | n/a | n/a | aarch64 | BL/BLR patching and self-pointer fixups live in `src/jit/backend.zig`; no dedicated relocation test yet. |
 | Runtime | Deopt / OSR hooks | no | n/a | n/a | n/a | Typically handled by the embedding runtime. |
-| Runtime | Tiering / profiling hooks | no | n/a | `bench/jit.zig`: `zig build bench-jit -- --json` | aarch64 | No dedicated hot-count tiering harness in-tree today. |
+| Runtime | Tiering / profiling hooks | no | n/a | `bench/jit.zig`: `zig build -Duse-hoist=true bench-jit -- --json` | aarch64 | No dedicated hot-count tiering harness in-tree today. |
 | Debug | DWARF / debug info | no | n/a | n/a | n/a | No debug info emitted. |
 | ISA | Multi-ISA backend | no | n/a | n/a | n/a | AArch64 only. |
-| Memory | W^X / icache management | yes | `src/jit/backend.zig` (`setExec`, `flushCacheRange` call sites) | `bench/jit.zig`: `zig build bench-jit -- --json` (code_bytes, code_bytes_per_op) | aarch64 | macOS MAP_JIT + write-protect; non-mac uses mprotect; aarch64 icache flush. |
+| Memory | W^X / icache management | yes | `src/jit/backend.zig` (`setExec`, `flushCacheRange` call sites) | `bench/jit.zig`: `zig build -Duse-hoist=true bench-jit -- --json` (code_bytes, code_bytes_per_op) | aarch64 | macOS MAP_JIT + write-protect; non-mac uses mprotect; aarch64 icache flush. |
 
 ## 2026-02-17 Rebaseline (Post Hoist Sync)
 

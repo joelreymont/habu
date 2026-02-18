@@ -30,17 +30,14 @@
   - Hoist `src/backends/s390x/inst.zig:313`
   - Hoist `src/regalloc/liveness.zig` fast-path collector usage
 
-### 3) Recheck after latest hoist touch-up (2026-02-17, late)
-- New upstream compile blocker in hoist currently stops all Habu builds.
-- Evidence from `zig build` in Habu:
-  - `../hoist/src/regalloc/linear_scan.zig:337:59` type mismatch
-  - Expected `*RegAllocResult`, found `*const *RegAllocResult`
-  - Failing calls pass `&result` where `result` is already `*RegAllocResult`
-- Affected call sites in hoist:
-  - `../hoist/src/regalloc/linear_scan.zig:322`
-  - `../hoist/src/regalloc/linear_scan.zig:325`
-  - `../hoist/src/regalloc/linear_scan.zig:329`
-- Required upstream fix (in hoist, not Habu): pass `result` (not `&result`) at those call sites.
+### 3) Recheck after latest hoist touch-up (2026-02-19)
+- Upstream compile blocker was fixed in hoist and Habu now rebuilds and runs with hoist enabled.
+- Verification gates run green in Habu:
+  - `zig build`
+  - `zig build -Duse-hoist=true`
+  - `zig build test -Duse-hoist=true -Dtest-filter='hoist API contract probe'`
+  - `zig build -Doptimize=ReleaseFast bench-comp -- --json` (ack path no longer stack-overflowing under JIT mode)
+- Habu build defaults now enable hoist (`build.zig` `use-hoist` defaults to true), so JIT/perf gates no longer silently run against the stub backend.
 
 ### 4) Remaining issues are backend correctness/perf quality, not API breakage
 - Indirect-call argument move ordering still depends on Habu post-pass repair (`fixCallArgMoves`) in `src/jit/backend.zig`.
@@ -52,8 +49,8 @@
 1. API adaptation: complete.
 - No additional Habu import signature migration needed for current hoist revision.
 
-2. Compile blocker dot: reopened by upstream changes.
-- `habu-fix-hoist-compile-9a100641` needs a fresh verification pass after hoist fixes the `linear_scan` pointer mismatch above.
+2. Compile blocker dot: reverified.
+- `habu-reverify-hoist-compile-b48554f1` is satisfied by the verification run above.
 
 3. Follow-up (upstream quality work):
 - Move parallel-copy resolution into hoist aarch64 lowering and delete Habu binary post-pass repairs.

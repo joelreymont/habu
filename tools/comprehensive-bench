@@ -38,7 +38,7 @@ os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 def run_habu(mode, iters):
     """Run Habu benchmarks, return dict of name -> ns."""
-    args = ["zig", "build", "bench-comp", "--", "--json", f"--iters={iters}"]
+    args = ["zig", "build", "-Duse-hoist=true", "bench-comp", "--", "--json", f"--iters={iters}"]
     if mode == "interp":
         args.append("--interp")
     result = subprocess.run(args, capture_output=True, text=True, timeout=600)

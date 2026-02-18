@@ -29,8 +29,8 @@ tools/comprehensive-bench --iters=5
 # JSON output
 tools/comprehensive-bench --json
 
-# Just Habu (via zig build)
-zig build bench-comp -- --iters=3
+# Just Habu (via zig build, hoist-enabled JIT mode)
+zig build -Duse-hoist=true bench-comp -- --iters=3
 
 # Just SBCL
 sbcl --script bench/comprehensive.lisp
@@ -60,8 +60,8 @@ tools/jit-bench
 ## Other Benchmarks
 
 ```bash
-zig build bench-cl    # Original 5-item CL comparison
-zig build bench-jit   # JIT microbenchmarks
-zig build bench-gc    # GC benchmarks
-zig build bench-vm    # VM benchmarks
+zig build bench-cl                           # Original 5-item CL comparison
+zig build -Duse-hoist=true bench-jit        # JIT microbenchmarks
+zig build bench                             # GC benchmarks
+zig build bench-vm                          # VM benchmarks
 ```

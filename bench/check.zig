@@ -1,4 +1,5 @@
 const std = @import("std");
+const build_options = @import("build_options");
 
 const Allocator = std.mem.Allocator;
 
@@ -173,9 +174,16 @@ fn fail(comptime fmt: []const u8, args: anytype) !void {
 
 pub fn main() !void {
     const opts = parseArgs() catch |err| switch (err) {
-        error.InvalidArgs => return,
+        error.InvalidArgs => {
+            var buf: [4096]u8 = undefined;
+            var out = std.fs.File.stderr().writer(&buf);
+            usage(&out.interface) catch {};
+            out.interface.flush() catch {};
+            return error.InvalidArgs;
+        },
         else => return err,
     };
+    if (!build_options.use_hoist) return error.JitDisabled;
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa.deinit() == .ok);

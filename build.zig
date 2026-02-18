@@ -3,6 +3,10 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const use_hoist = b.option(bool, "use-hoist", "Enable Hoist JIT backend") orelse true;
+
+    const build_opts = b.addOptions();
+    build_opts.addOption(bool, "use_hoist", use_hoist);
 
     // Main executable
     const exe = b.addExecutable(.{
@@ -13,13 +17,19 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    exe.root_module.addOptions("build_options", build_opts);
 
-    // Hoist SSA compiler backend
-    const hoist_dep = b.dependency("hoist", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    exe.root_module.addImport("hoist", hoist_dep.artifact("cranelift").root_module);
+    // Hoist SSA compiler backend (default-on; can be disabled with -Duse-hoist=false)
+    var hoist_mod: ?*std.Build.Module = null;
+    if (use_hoist) {
+        const hoist_dep = b.dependency("hoist", .{
+            .target = target,
+            .optimize = optimize,
+        });
+        const m = hoist_dep.artifact("cranelift").root_module;
+        hoist_mod = m;
+        exe.root_module.addImport("hoist", m);
+    }
 
     // Link Z3 for SMT solving (refinement types)
     exe.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
@@ -31,7 +41,6 @@ pub fn build(b: *std.Build) void {
 
     // Run command
     const run_cmd = b.addRunArtifact(exe);
-    run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }
@@ -49,6 +58,7 @@ pub fn build(b: *std.Build) void {
         }),
         .filters = test_filters,
     });
+    lib_tests.root_module.addOptions("build_options", build_opts);
 
     // Add ohsnap for snapshot testing
     if (b.lazyDependency("ohsnap", .{
@@ -59,7 +69,9 @@ pub fn build(b: *std.Build) void {
     }
 
     // Hoist SSA compiler backend for tests
-    lib_tests.root_module.addImport("hoist", hoist_dep.artifact("cranelift").root_module);
+    if (hoist_mod) |m| {
+        lib_tests.root_module.addImport("hoist", m);
+    }
 
     // Link Z3 for SMT solving (refinement types)
     // Z3 is optional - tests that don't use it will still work
@@ -91,6 +103,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    gc_bench.root_module.addOptions("build_options", build_opts);
     gc_bench.root_module.addImport("runtime", b.createModule(.{
         .root_source_file = b.path("src/runtime/runtime.zig"),
         .target = target,
@@ -100,7 +113,6 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(gc_bench);
 
     const bench_run_cmd = b.addRunArtifact(gc_bench);
-    bench_run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         bench_run_cmd.addArgs(args);
     }
@@ -121,8 +133,12 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    habu_bench_mod.addImport("hoist", hoist_dep.artifact("cranelift").root_module);
+    habu_bench_mod.addOptions("build_options", build_opts);
+    if (hoist_mod) |m| {
+        habu_bench_mod.addImport("hoist", m);
+    }
     vm_bench.root_module.addImport("habu", habu_bench_mod);
+    vm_bench.root_module.addOptions("build_options", build_opts);
     // Z3 is required by src/types/smt.zig (imported via src/lib.zig).
     vm_bench.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
     vm_bench.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
@@ -132,12 +148,37 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(vm_bench);
 
     const vm_bench_run_cmd = b.addRunArtifact(vm_bench);
-    vm_bench_run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         vm_bench_run_cmd.addArgs(args);
     }
     const vm_bench_step = b.step("bench-vm", "Run VM microbench");
     vm_bench_step.dependOn(&vm_bench_run_cmd.step);
+
+    // JIT microbench
+    const jit_bench = b.addExecutable(.{
+        .name = "jit_bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/jit.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    jit_bench.root_module.addImport("habu", habu_bench_mod);
+    jit_bench.root_module.addOptions("build_options", build_opts);
+    // Z3 is required by src/types/smt.zig (imported via src/lib.zig).
+    jit_bench.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
+    jit_bench.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
+    jit_bench.root_module.linkSystemLibrary("z3", .{});
+    jit_bench.root_module.linkSystemLibrary("c", .{});
+
+    b.installArtifact(jit_bench);
+
+    const jit_bench_run_cmd = b.addRunArtifact(jit_bench);
+    if (b.args) |args| {
+        jit_bench_run_cmd.addArgs(args);
+    }
+    const jit_bench_step = b.step("bench-jit", "Run JIT microbench");
+    jit_bench_step.dependOn(&jit_bench_run_cmd.step);
 
     // CL comparison bench (Habu vs SBCL)
     const cl_bench = b.addExecutable(.{
@@ -149,6 +190,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     cl_bench.root_module.addImport("habu", habu_bench_mod);
+    cl_bench.root_module.addOptions("build_options", build_opts);
     cl_bench.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
     cl_bench.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
     cl_bench.root_module.linkSystemLibrary("z3", .{});
@@ -157,7 +199,6 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(cl_bench);
 
     const cl_bench_run_cmd = b.addRunArtifact(cl_bench);
-    cl_bench_run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         cl_bench_run_cmd.addArgs(args);
     }
@@ -174,6 +215,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     comp_bench.root_module.addImport("habu", habu_bench_mod);
+    comp_bench.root_module.addOptions("build_options", build_opts);
     comp_bench.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
     comp_bench.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
     comp_bench.root_module.linkSystemLibrary("z3", .{});
@@ -182,7 +224,6 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(comp_bench);
 
     const comp_bench_run_cmd = b.addRunArtifact(comp_bench);
-    comp_bench_run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         comp_bench_run_cmd.addArgs(args);
     }
@@ -198,6 +239,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    bench_check.root_module.addOptions("build_options", build_opts);
     b.installArtifact(bench_check);
 
     const bench_check_run_cmd = b.addRunArtifact(bench_check);

@@ -45,6 +45,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Switching GC perf benches to generational fixtures (`bench/gc.zig`) is essential; semispace-only benches can pass while generational paths silently regress.
 - Hoist API drift checks must run under `-Duse-hoist=true`; default test mode can otherwise hide interface breakage behind the stub backend.
 - In `src/interp/vm.zig` `collectGarbageExtra`, replacing the closure-count prepass with an upper-bound capacity estimate (`self.fp`) and merging frame closure/chunk staging into one pass removed a duplicate frame walk with no semantic change.
+- Reintroducing a source-backed `bench/jit.zig` and wiring `bench-jit` in `build.zig` removed a stale-artifact trap where `bench-check` could read an old `zig-out/bin/jit_bench`.
+- Enforcing strict `bench/check.zig` argument handling (`InvalidArgs` returns non-zero) exposed accidental no-op invocations like `bench-check -- --json /tmp/file`.
 
 ### Did Not Work
 - Caching compiled macro expanders by storing closures in `macro_table` is not safe with current chunk-pool/index patching: cached closures retain expansion-time chunk index assumptions and can mis-dispatch nested lambdas later.
@@ -70,6 +72,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - LOS tests should assert deltas, not absolute counts: heap bootstrap can legitimately pre-populate LOS metadata when low thresholds are used in tests.
 - Bench checks should assert structural GC invariants (promoted bytes, LOS/tenured liveness, old-space bounds), not just pause time, to catch semantic regressions early.
 - For hoist signatures, ownership is transferred into `Function.init`; calling `sig.deinit()` afterwards double-frees and crashes.
+- Leaving `use-hoist` defaulted off while still labeling runs as JIT leads to misleading perf/RCA outcomes (e.g. recursive benchmarks failing under interpreter stack limits while reported as JIT mode).
 
 ## Session Notes (2026-02-17)
 
