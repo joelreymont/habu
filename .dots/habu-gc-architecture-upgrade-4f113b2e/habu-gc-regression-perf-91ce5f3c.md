@@ -1,9 +1,11 @@
 ---
 title: GC regression+perf gates
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-02-18T21:50:53.724832+01:00\""
+created-at: "\"\\\"2026-02-18T21:50:53.724832+01:00\\\"\""
+closed-at: "2026-02-18T23:24:44.603064+01:00"
+close-reason: added generational GC bench/check regression gates
 blocks:
   - habu-minor-gc-collector-2f89a428
 ---
