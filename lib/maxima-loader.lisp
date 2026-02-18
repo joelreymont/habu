@@ -27,7 +27,9 @@
   '(
     ;; bootstrap
     "lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
-    "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "opers"
+    "defcal" "maxmac" "mopers" "mforma" "mrgmac" "rzmac" "strmac"
+    "displm" "safe-recursion" "ratmac"
+    "opers"
     "utils" "merror" "mutils"
 
     ;; core language/runtime
@@ -81,25 +83,25 @@
 (defvar *maxima-attempted-count* 0)
 (defvar *maxima-last-missing-bindings* nil)
 
-(defun maxima-source-path (source-dir name)
-  (concatenate 'string source-dir name ".lisp"))
+(defun maxima-source-path (source-dir module-id)
+  (concatenate 'string source-dir module-id ".lisp"))
 
-(defun maxima-try-load (source-dir name &key (verbose t) (habu-trace nil))
-  (let ((path (maxima-source-path source-dir name)))
+(defun maxima-try-load (source-dir module-id &key (verbose t) (habu-trace nil))
+  (let ((path (maxima-source-path source-dir module-id)))
     (setq *maxima-attempted-count* (+ *maxima-attempted-count* 1))
     (when habu-trace
-      (format t "[TRACE] ~A => ~A~%" name path))
+      (format t "[TRACE] ~A => ~A~%" module-id path))
     (handler-case
         (progn
           (load path)
           (setq *maxima-ok-count* (+ *maxima-ok-count* 1))
           (when verbose
-            (format t "[OK] ~A~%" name))
+            (format t "[OK] ~A~%" module-id))
           t)
       (condition (e)
-        (setq *maxima-failed* (cons (cons name e) *maxima-failed*))
+        (setq *maxima-failed* (cons (cons module-id e) *maxima-failed*))
         (when verbose
-          (format t "[ERR] ~A :: ~A~%" name e))
+          (format t "[ERR] ~A :: ~A~%" module-id e))
         nil))))
 
 (defun %maxima-binding-present-p (sym)
@@ -112,6 +114,12 @@
       (unless (%maxima-binding-present-p sym)
         (setq missing (cons sym missing))))
     (nreverse missing)))
+
+(defun %maxima-proper-list-p (x)
+  (cond
+    ((null x) t)
+    ((consp x) (%maxima-proper-list-p (cdr x)))
+    (t nil)))
 
 (defun maxima-load-all (&key
                          (source-dir *maxima-source-dir*)
@@ -139,8 +147,8 @@
   (setq *maxima-ok-count* 0)
   (setq *maxima-failed* nil)
   (setq *maxima-attempted-count* 0)
-  (dolist (name files)
-    (unless (maxima-try-load source-dir name :verbose verbose :habu-trace habu-trace)
+  (dolist (module-id files)
+    (unless (maxima-try-load source-dir module-id :verbose verbose :habu-trace habu-trace)
       (when habu-stop-on-error
         (return))))
   ;; DB initializes MAXIMA::CONTEXT to GLOBAL while globals/compar use
@@ -151,7 +159,7 @@
              (boundp 'maxima::$context)
              (boundp 'maxima::$contexts)
              (symbolp maxima::$context)
-             (consp maxima::$contexts)
+             (%maxima-proper-list-p maxima::$contexts)
              (null (member maxima::context maxima::$contexts :test #'eq))
              (member maxima::$context maxima::$contexts :test #'eq))
     (setf maxima::context maxima::$context))

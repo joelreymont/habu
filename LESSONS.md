@@ -18,11 +18,14 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Locking strict load semantics with a focused regression (`src/interp/repl.zig` `loadFilePublic aborts on first form error`) prevented silent partial-file success regressions.
 - Fixing `loop` parser support for `FOR ... IN ... BY ...` in `lib/stdlib.habu` removed a generic clause-gap that surfaced as `Unknown loop keyword: BY` in large Lisp packages.
 - Extending `get-setf-expansion` with composed list-place updaters (`cadr`/`cddr`/`caddr`/`cdddr`/aliases) removed a high-frequency `setf: unsupported place` class for macro-heavy code.
+- Reworking LOOP conditional routing to accept `ELSE WHEN ... ELSE ...` in `lib/stdlib.habu` unblocked real-world clause patterns (e.g. `commac.lisp` `maknam`) without Maxima-specific branches.
+- Tracking proclaimed specials by symbol identity (`Value.raw`) instead of bare names in `src/compiler/compile.zig` prevents cross-package special-variable leakage.
 
 ### Did Not Work
 - Chasing downstream `SIMPLE-ERROR` output first was noisy; until `defmode`/special-parameter semantics were fixed, later integrate traces were mostly secondary fallout.
 - Running long `zig build test -Dtest-filter=\"...maxima...\"` invocations remained unreliable/hang-prone in this environment; short focused filters and direct scripted repros gave more deterministic signal.
 - Using multiline piped REPL scripts for loader RCA gave misleading/garbled diagnostics; `habu <script-file>` probes and targeted tests were more trustworthy.
+- Name-only special-declaration matching in the compiler was too coarse; package-unaware declaration lookup can silently destabilize unrelated lexical bindings.
 
 ## Session Notes (2026-02-17)
 

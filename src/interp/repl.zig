@@ -4322,6 +4322,25 @@ test "loop for-in supports by step function" {
     try testing.expect(!result.isNil());
 }
 
+test "loop when else-when else-do chain is accepted" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try repl.loadFilePublic("lib/stdlib.habu", std.io.null_writer);
+
+    const result = try repl.eval(
+        "(equal (loop for v in '(1 \"x\" 2) when (numberp v) collecting v into tem else when (stringp v) collecting (length v) into tem else do (return :bad) finally (return tem)) '(1 1 2))",
+    );
+    try testing.expect(!result.isNil());
+}
+
 test "setf supports composed list places" {
     const testing = std.testing;
     const allocator = testing.allocator;
@@ -4348,6 +4367,25 @@ test "setf supports composed list places" {
         \\  (and (equal xs '(10 21 32 44 55))
         \\       (= (caar pair) 9)
         \\       (= (cdar pair) 8)))
+    );
+    try testing.expect(!result.isNil());
+}
+
+test "dolist supports early return without corrupting iteration state" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try repl.loadFilePublic("lib/stdlib.habu", std.io.null_writer);
+
+    const result = try repl.eval(
+        "(equal (progn (setq seen nil) (list (dolist (x '(1 2 a 3) 'done) (if (numberp x) (push x seen) (return :stop))) (nreverse seen))) '(:stop (1 2)))",
     );
     try testing.expect(!result.isNil());
 }

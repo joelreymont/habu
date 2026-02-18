@@ -79,6 +79,7 @@
 ### 2. Compiler Core
 - [ ] `habu-fix-loop-macro-c7a41441` Fix LOOP macro dispatch.
 - [x] `habu-support-loop-in-84a5efed` Support `loop for ... in ... by ...` step-function clauses.
+- [x] `habu-loop-else-when-9b45625b` Support `loop ... when ... else when ... else ...` conditional routing.
 - [ ] `habu-support-loop-for-6e9d9623` Support LOOP `for ... and ...` clauses. Depends on `habu-fix-loop-macro-c7a41441`.
 - [ ] `habu-support-setf-bit-b72546e8` Support `(setf (bit/sbit ...))` places.
 - [x] `habu-support-setf-composed-7c79e463` Support composed list places in `setf` (`cadr`/`cddr`/`caddr`/`cdddr`/aliases).
@@ -89,6 +90,7 @@
 - [ ] `habu-fix-defstruct-keyword-fe214c20` Fix DEFSTRUCT keyword/`:conc-name` parsing.
 - [ ] `habu-fix-defstruct-invalid-85b8fcf9` Fix remaining DEFSTRUCT InvalidSyntax paths.
 - [ ] `habu-fix-defstruct-copier-952e241d` Fix DEFSTRUCT copier fallback generation.
+- [x] `habu-scope-special-declarations-33d29c18` Scope proclaimed `special` handling by symbol identity (package-aware) to avoid cross-package leakage.
 
 ### 3. Runtime / Package / Stream / Time
 - [ ] `habu-fix-pathname-merge-71b041a8` Fix pathname merge for compile-file-pathname.
