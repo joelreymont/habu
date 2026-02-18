@@ -229,12 +229,47 @@ pub const Config = struct {
     total_size: usize = 256 * 1024 * 1024, // 256MB default
     /// GC threshold (trigger GC when from-space is this full)
     gc_threshold: f32 = 0.9,
+    /// Layout mode (semispace today, generational scaffold for next steps).
+    gc_layout: GcLayoutMode = .semispace,
+    /// Generational scaffold sizing (used when gc_layout = .generational).
+    generational: GenerationalConfig = .{},
+};
+
+pub const GcLayoutMode = enum {
+    semispace,
+    generational,
+};
+
+pub const GenerationalConfig = struct {
+    /// Size of each nursery semispace (from/to).
+    nursery_each: ?usize = null,
+    /// Optional large-object-space size.
+    los_size: ?usize = null,
+};
+
+pub const Region = struct {
+    start: [*]align(ALIGNMENT) u8,
+    end: [*]u8,
+
+    pub fn len(self: Region) usize {
+        return @intFromPtr(self.end) - @intFromPtr(self.start);
+    }
+};
+
+pub const HeapLayout = struct {
+    mode: GcLayoutMode,
+    nursery_from: Region,
+    nursery_to: Region,
+    tenured: ?Region,
+    los: ?Region,
 };
 
 /// Semispace heap with bump allocation
 pub const Heap = struct {
     /// Backing memory (both semispaces)
     memory: []align(ALIGNMENT) u8,
+    /// Reserved region layout (nursery/tenured/LOS scaffold).
+    layout: HeapLayout,
     /// Size of each semispace
     space_size: usize,
     /// Current from-space start
@@ -359,22 +394,86 @@ pub const Heap = struct {
 
     pub const WarnHandler = *const fn (Value, ?*anyopaque) anyerror!void;
 
+    fn alignDown(size: usize) usize {
+        return size & ~(ALIGNMENT - 1);
+    }
+
+    fn buildLayout(memory: []align(ALIGNMENT) u8, config: Config) !HeapLayout {
+        const total = memory.len;
+        const base: [*]align(ALIGNMENT) u8 = @alignCast(memory.ptr);
+
+        switch (config.gc_layout) {
+            .semispace => {
+                const nursery_each = alignDown(total / 2);
+                if (nursery_each == 0) return error.InvalidLayout;
+
+                const from_start = base;
+                const from_end = memory.ptr + nursery_each;
+                const to_start: [*]align(ALIGNMENT) u8 = @alignCast(memory.ptr + nursery_each);
+                const to_end = memory.ptr + nursery_each * 2;
+
+                return .{
+                    .mode = .semispace,
+                    .nursery_from = .{ .start = from_start, .end = from_end },
+                    .nursery_to = .{ .start = to_start, .end = to_end },
+                    .tenured = null,
+                    .los = null,
+                };
+            },
+            .generational => {
+                const nursery_each = alignDown(config.generational.nursery_each orelse (total / 8));
+                const los_size = alignDown(config.generational.los_size orelse (total / 8));
+                if (nursery_each == 0) return error.InvalidLayout;
+                if (los_size >= total) return error.InvalidLayout;
+
+                const nursery_total = nursery_each * 2;
+                if (nursery_total >= total) return error.InvalidLayout;
+                if (nursery_total > total - los_size) return error.InvalidLayout;
+
+                const tenured_size = alignDown(total - nursery_total - los_size);
+                if (tenured_size == 0) return error.InvalidLayout;
+
+                const nursery_from_start = base;
+                const nursery_from_end = memory.ptr + nursery_each;
+                const nursery_to_start: [*]align(ALIGNMENT) u8 = @alignCast(memory.ptr + nursery_each);
+                const nursery_to_end = memory.ptr + nursery_total;
+
+                const tenured_start: [*]align(ALIGNMENT) u8 = @alignCast(memory.ptr + nursery_total);
+                const tenured_end = memory.ptr + nursery_total + tenured_size;
+
+                const los_start: [*]align(ALIGNMENT) u8 = @alignCast(tenured_end);
+                const los_end = tenured_end + los_size;
+
+                return .{
+                    .mode = .generational,
+                    .nursery_from = .{ .start = nursery_from_start, .end = nursery_from_end },
+                    .nursery_to = .{ .start = nursery_to_start, .end = nursery_to_end },
+                    .tenured = .{ .start = tenured_start, .end = tenured_end },
+                    .los = .{ .start = los_start, .end = los_end },
+                };
+            },
+        }
+    }
+
     /// Initialize a new heap
     pub fn init(allocator: std.mem.Allocator, config: Config) !Heap {
-        const space_size = config.total_size / 2;
         // Zig 0.15: alignment is an enum, .@"16" for 16-byte alignment
         const memory = try allocator.alignedAlloc(u8, .@"16", config.total_size);
+        errdefer allocator.free(memory);
 
-        const from_start: [*]align(ALIGNMENT) u8 = @alignCast(memory.ptr);
-        const to_start: [*]align(ALIGNMENT) u8 = @alignCast(memory.ptr + space_size);
+        const layout = try buildLayout(memory, config);
+        const space_size = layout.nursery_from.len();
+        const from_start = layout.nursery_from.start;
+        const to_start = layout.nursery_to.start;
 
         var heap = Heap{
             .memory = memory,
+            .layout = layout,
             .space_size = space_size,
             .from_start = from_start,
             .to_start = to_start,
             .alloc_ptr = from_start,
-            .from_end = memory.ptr + space_size,
+            .from_end = layout.nursery_from.end,
             .gc_threshold = @intFromFloat(@as(f32, @floatFromInt(space_size)) * config.gc_threshold),
             .gc_slots = std.ArrayList(*Value){},
             .gc_internal_slots = std.ArrayList(*Value){},
@@ -536,6 +635,26 @@ pub const Heap = struct {
     /// Get address of from_end field (for JIT inline cons).
     pub fn getFromEndAddr(self: *Heap) u64 {
         return @intFromPtr(&self.from_end);
+    }
+
+    pub fn gcLayoutMode(self: *const Heap) GcLayoutMode {
+        return self.layout.mode;
+    }
+
+    pub fn nurseryFromRegion(self: *const Heap) Region {
+        return self.layout.nursery_from;
+    }
+
+    pub fn nurseryToRegion(self: *const Heap) Region {
+        return self.layout.nursery_to;
+    }
+
+    pub fn tenuredRegion(self: *const Heap) ?Region {
+        return self.layout.tenured;
+    }
+
+    pub fn losRegion(self: *const Heap) ?Region {
+        return self.layout.los;
     }
 
     /// Get bytes used in from-space
@@ -2011,6 +2130,31 @@ test "heap init and deinit" {
     try testing.expectEqual(@as(usize, 512 * 1024), heap.space_size);
     // lisp_packages hash table is allocated during init
     try testing.expect(heap.bytesUsed() > 0);
+}
+
+test "heap init supports generational layout scaffold" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+        },
+    });
+    defer heap.deinit();
+
+    try testing.expectEqual(GcLayoutMode.generational, heap.gcLayoutMode());
+    try testing.expectEqual(@as(usize, 512 * 1024), heap.nurseryFromRegion().len());
+    try testing.expectEqual(@as(usize, 512 * 1024), heap.nurseryToRegion().len());
+    try testing.expect(heap.tenuredRegion() != null);
+    try testing.expect(heap.losRegion() != null);
+
+    const tenured = heap.tenuredRegion().?;
+    const los = heap.losRegion().?;
+    try testing.expect(tenured.len() > 0);
+    try testing.expectEqual(@intFromPtr(tenured.end), @intFromPtr(los.start));
 }
 
 test "heap collectGarbage reuses gc_slots buffer" {

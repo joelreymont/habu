@@ -31,6 +31,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Refactoring `src/runtime/gc.zig` to pass `heap` explicitly into `collect/collectRootSet/copyValue/scanObject` made collector lifetime safe and enabled queue reuse; GC benchmark p95 dropped to ~7.49ms from ~7.72ms on `bench-check`.
 - Adding phase counters to `src/runtime/heap.zig`/`src/runtime/gc.zig` and surfacing them in `bench/gc.zig` gave actionable GC slices (`build/root/copy/finalize`) and enabled structural perf gates in `bench/check.zig`.
 - Caching internal GC root slots in `src/runtime/heap.zig` (`gc_internal_slots` + `calcGcRootSig`) removed per-collection full table walks; using `SymbolTable.version` in the signature prevented stale-cache reuse when symbol maps mutate without net count change.
+- Adding explicit heap layout scaffolding (`GcLayoutMode`, `HeapLayout`, `Region`) in `src/runtime/heap.zig` made nursery/tenured/LOS boundaries concrete without changing current semispace behavior; this keeps incremental generational work isolated and testable.
 
 ### Did Not Work
 - Caching compiled macro expanders by storing closures in `macro_table` is not safe with current chunk-pool/index patching: cached closures retain expansion-time chunk index assumptions and can mis-dispatch nested lambdas later.
@@ -46,6 +47,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Blind regex rewrites on function-call signatures in `src/runtime/gc.zig` briefly produced duplicate arguments (`self.copyValue(heap, heap, ...)`); immediate compile/test loops are required right after broad replacements.
 - Using `std.time.Timer.start()` inside GC internals widened the GC error set (`TimerUnsupported`) and broke call-site error contracts in `src/interp/vm.zig`; use `std.time.nanoTimestamp()` deltas in hot/runtime internals when error signatures must stay stable.
 - Root-cache signatures based only on table counts are not enough; equal counts can still hide map-entry churn. Include mutation/version signals (for symbol tables) or stronger structure signatures.
+- Generational scaffolding must not silently change default capacity assumptions; keep default mode semispace and prove unchanged behavior with existing bench-check gates before moving to barrier/minor-GC dots.
 
 ## Session Notes (2026-02-17)
 
