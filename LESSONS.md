@@ -74,6 +74,19 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - For hoist signatures, ownership is transferred into `Function.init`; calling `sig.deinit()` afterwards double-frees and crashes.
 - Leaving `use-hoist` defaulted off while still labeling runs as JIT leads to misleading perf/RCA outcomes (e.g. recursive benchmarks failing under interpreter stack limits while reported as JIT mode).
 
+## Session Notes (2026-02-19)
+
+### Worked Well
+- Capturing the failing `check_closure` disassembly for the Maxima gate showed the assertion was injected at local `let` binding stores, which pointed directly to declaration scoping instead of JIT/runtime dispatch.
+- Adding lexical declaration storage to `Env` (`src/compiler/compile.zig:1461`, `src/compiler/compile.zig:1587`, `src/compiler/compile.zig:1698`) and routing local `(declare (type ...))` through it (`src/compiler/compile.zig:13037`) stopped cross-form declaration bleed.
+- Switching lexical variable assertion lookup from global name-based declarations to environment symbol-identity lookup (`src/compiler/compile.zig:2620`) removed false `assert_closure`/`assert_fixnum` injections in unrelated forms.
+- Dropping global type-decl application from `let` initializer compilation (`src/compiler/compile.zig:5002`) removed a root crash vector where unrelated local names inherited stale global declarations.
+- Locking the fix with a regression (`src/tests/integration.zig:5889`) prevents reintroducing local type declaration leakage.
+
+### Did Not Work
+- Focusing first on mixed special-`let` lowering (`tryCompileSpecialLet`) was a false lead; the actual fault came from type declaration leakage into lexical bindings.
+- Running broad `zig build test -Dtest-filter='maxima '` remains unreliable in this environment (hang-prone); targeted filters for failing gates are more deterministic for RCA.
+
 ## Session Notes (2026-02-17)
 
 ### Worked Well
