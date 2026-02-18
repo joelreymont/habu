@@ -39,7 +39,7 @@
     - [ ] `habu-gc-architecture-upgrade-4f113b2e` Upgrade GC architecture for lower pause/copy cost and lower RSS.
       - [x] `habu-gc-telemetry-gates-1e9aa49f` Add phase-level GC telemetry and Maxima perf gates.
       - [x] `habu-persist-gc-state-10a4377a` Persist GC state/work queues across collections.
-      - [ ] `habu-root-slot-idx-582a4cc2` Add persistent root-slot index and dirty-epoch rebuild control. Depends on `habu-persist-gc-state-10a4377a`.
+      - [x] `habu-root-slot-idx-582a4cc2` Add persistent root-slot index and dirty-epoch rebuild control. Depends on `habu-persist-gc-state-10a4377a`.
       - [ ] `habu-nursery-layout-scaffold-7aa479dc` Add nursery/tenured/LOS heap layout scaffolding. Depends on `habu-persist-gc-state-10a4377a`.
       - [ ] `habu-write-barrier-stores-2b8bf449` Add write barriers to all pointer mutators. Depends on `habu-nursery-layout-scaffold-7aa479dc`.
       - [ ] `habu-remembered-set-c9541b7e` Add card table + remembered set scanning APIs. Depends on `habu-write-barrier-stores-2b8bf449`.

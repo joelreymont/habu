@@ -23,11 +23,14 @@ pub const SymbolTable = struct {
     map: std.StringHashMapUnmanaged(Value),
     /// Backing allocator for keys
     allocator: std.mem.Allocator,
+    /// Monotonic mutation version for cache invalidation.
+    version: u64,
 
     pub fn init(allocator: std.mem.Allocator) SymbolTable {
         return .{
             .map = .{},
             .allocator = allocator,
+            .version = 0,
         };
     }
 
@@ -48,11 +51,13 @@ pub const SymbolTable = struct {
         const key = try self.allocator.dupe(u8, name);
         errdefer self.allocator.free(key);
         try self.map.put(self.allocator, key, sym);
+        self.version +%= 1;
     }
 
     pub fn remove(self: *SymbolTable, name: []const u8) bool {
         if (self.map.fetchRemove(name)) |removed| {
             self.allocator.free(removed.key);
+            self.version +%= 1;
             return true;
         }
         return false;
@@ -244,6 +249,11 @@ pub const Heap = struct {
     gc_threshold: usize,
     /// Reusable buffer for building GC root slot lists.
     gc_slots: std.ArrayList(*Value),
+    /// Cached internal root slots (symbols/packages/readtables).
+    gc_internal_slots: std.ArrayList(*Value),
+    /// Structural signature of root-bearing tables.
+    gc_root_sig: GcRootSig,
+    gc_root_sig_valid: bool,
     /// Persistent collector state reused across GC cycles.
     gc: GC,
     /// Backing allocator (for the memory buffer itself)
@@ -325,6 +335,28 @@ pub const Heap = struct {
         gc_root_vals: usize = 0,
     };
 
+    const GcRootSig = struct {
+        symbols_ver: u64 = 0,
+        keywords_ver: u64 = 0,
+        packages: usize = 0,
+        package_ptr_sum: usize = 0,
+        pkg_symbols_ver: u64 = 0,
+        readtable: usize = 0,
+        dispatch_tables: usize = 0,
+        dispatch_entries: usize = 0,
+
+        fn eql(a: GcRootSig, b: GcRootSig) bool {
+            return a.symbols_ver == b.symbols_ver and
+                a.keywords_ver == b.keywords_ver and
+                a.packages == b.packages and
+                a.package_ptr_sum == b.package_ptr_sum and
+                a.pkg_symbols_ver == b.pkg_symbols_ver and
+                a.readtable == b.readtable and
+                a.dispatch_tables == b.dispatch_tables and
+                a.dispatch_entries == b.dispatch_entries;
+        }
+    };
+
     pub const WarnHandler = *const fn (Value, ?*anyopaque) anyerror!void;
 
     /// Initialize a new heap
@@ -345,6 +377,9 @@ pub const Heap = struct {
             .from_end = memory.ptr + space_size,
             .gc_threshold = @intFromFloat(@as(f32, @floatFromInt(space_size)) * config.gc_threshold),
             .gc_slots = std.ArrayList(*Value){},
+            .gc_internal_slots = std.ArrayList(*Value){},
+            .gc_root_sig = .{},
+            .gc_root_sig_valid = false,
             .gc = GC.init(allocator),
             .backing_allocator = allocator,
             .stats = .{},
@@ -483,6 +518,7 @@ pub const Heap = struct {
         }
         self.stream_list.deinit(self.backing_allocator);
         self.gc_slots.deinit(self.backing_allocator);
+        self.gc_internal_slots.deinit(self.backing_allocator);
         self.gc.deinit();
         self.backing_allocator.free(self.memory);
     }
@@ -1644,6 +1680,105 @@ pub const Heap = struct {
         self.alloc_ptr = new_ptr;
     }
 
+    fn calcGcRootSig(self: *const Heap) GcRootSig {
+        var pkg_symbols_ver: u64 = 0;
+        var package_ptr_sum: usize = 0;
+        var pkg_it = self.packages.valueIterator();
+        while (pkg_it.next()) |pkg| {
+            pkg_symbols_ver +%= pkg.*.symbols.version;
+            package_ptr_sum +%= @intFromPtr(pkg.*);
+        }
+
+        var dispatch_entries: usize = 0;
+        var drt_it = self.dispatch_readtable.valueIterator();
+        while (drt_it.next()) |sub_table| {
+            dispatch_entries +%= sub_table.count();
+        }
+
+        return .{
+            .symbols_ver = self.symbols.version,
+            .keywords_ver = self.keywords.version,
+            .packages = self.packages.count(),
+            .package_ptr_sum = package_ptr_sum,
+            .pkg_symbols_ver = pkg_symbols_ver,
+            .readtable = self.readtable.count(),
+            .dispatch_tables = self.dispatch_readtable.count(),
+            .dispatch_entries = dispatch_entries,
+        };
+    }
+
+    fn refreshGcInternalSlots(self: *Heap) !void {
+        const sig = self.calcGcRootSig();
+        if (self.gc_root_sig_valid and GcRootSig.eql(self.gc_root_sig, sig)) return;
+
+        self.gc_internal_slots.clearRetainingCapacity();
+
+        // Symbol table values.
+        var sym_it = self.symbols.map.valueIterator();
+        while (sym_it.next()) |v| {
+            try self.gc_internal_slots.append(self.backing_allocator, v);
+        }
+
+        // Keyword table values.
+        var kw_it = self.keywords.map.valueIterator();
+        while (kw_it.next()) |v| {
+            try self.gc_internal_slots.append(self.backing_allocator, v);
+        }
+
+        // Package symbol table values.
+        var pkg_it = self.packages.valueIterator();
+        while (pkg_it.next()) |pkg| {
+            var pkg_sym_it = pkg.*.symbols.map.valueIterator();
+            while (pkg_sym_it.next()) |v| {
+                try self.gc_internal_slots.append(self.backing_allocator, v);
+            }
+        }
+
+        // Readtable function values.
+        var rt_it = self.readtable.valueIterator();
+        while (rt_it.next()) |entry| {
+            try self.gc_internal_slots.append(self.backing_allocator, &entry.function);
+        }
+
+        // Dispatch readtable function values.
+        var drt_it = self.dispatch_readtable.valueIterator();
+        while (drt_it.next()) |sub_table| {
+            var sub_it = sub_table.valueIterator();
+            while (sub_it.next()) |fn_val| {
+                try self.gc_internal_slots.append(self.backing_allocator, fn_val);
+            }
+        }
+
+        // Lisp package/class registries and cached symbols.
+        if (self.lisp_packages.raw != Value.nil.raw) {
+            try self.gc_internal_slots.append(self.backing_allocator, &self.lisp_packages);
+        }
+        if (self.lisp_classes.raw != Value.nil.raw) {
+            try self.gc_internal_slots.append(self.backing_allocator, &self.lisp_classes);
+        }
+        if (self.standard_class.raw != Value.nil.raw) {
+            try self.gc_internal_slots.append(self.backing_allocator, &self.standard_class);
+        }
+        if (self.built_in_class.raw != Value.nil.raw) {
+            try self.gc_internal_slots.append(self.backing_allocator, &self.built_in_class);
+        }
+        if (self.structure_class.raw != Value.nil.raw) {
+            try self.gc_internal_slots.append(self.backing_allocator, &self.structure_class);
+        }
+        if (self.sym_simple_warning.raw != Value.nil.raw) {
+            try self.gc_internal_slots.append(self.backing_allocator, &self.sym_simple_warning);
+        }
+        if (self.kw_format_control.raw != Value.nil.raw) {
+            try self.gc_internal_slots.append(self.backing_allocator, &self.kw_format_control);
+        }
+        if (self.kw_format_arguments.raw != Value.nil.raw) {
+            try self.gc_internal_slots.append(self.backing_allocator, &self.kw_format_arguments);
+        }
+
+        self.gc_root_sig = sig;
+        self.gc_root_sig_valid = true;
+    }
+
     /// Run garbage collection with external roots (from VM stack, globals, etc.)
     /// Returns bytes reclaimed (space_used_before - space_used_after)
     pub fn collectGarbage(self: *Heap, external_roots: []Value) !usize {
@@ -1663,72 +1798,8 @@ pub const Heap = struct {
         // Internal roots are tracked by slot address; external roots are passed as a range.
         self.gc_slots.clearRetainingCapacity();
         try self.gc_slots.appendSlice(self.backing_allocator, external_roots.slots);
-
-        // Add symbol table values.
-        var sym_it = self.symbols.map.valueIterator();
-        while (sym_it.next()) |v| {
-            try self.gc_slots.append(self.backing_allocator, v);
-        }
-
-        // Add keyword table values.
-        var kw_it = self.keywords.map.valueIterator();
-        while (kw_it.next()) |v| {
-            try self.gc_slots.append(self.backing_allocator, v);
-        }
-
-        // Add package symbol table values.
-        var pkg_it = self.packages.valueIterator();
-        while (pkg_it.next()) |pkg| {
-            var pkg_sym_it = pkg.*.symbols.map.valueIterator();
-            while (pkg_sym_it.next()) |v| {
-                try self.gc_slots.append(self.backing_allocator, v);
-            }
-        }
-
-        // Add readtable function values.
-        var rt_it = self.readtable.valueIterator();
-        while (rt_it.next()) |entry| {
-            try self.gc_slots.append(self.backing_allocator, &entry.function);
-        }
-
-        // Add dispatch readtable function values.
-        var drt_it = self.dispatch_readtable.valueIterator();
-        while (drt_it.next()) |sub_table| {
-            var sub_it = sub_table.valueIterator();
-            while (sub_it.next()) |fn_val| {
-                try self.gc_slots.append(self.backing_allocator, fn_val);
-            }
-        }
-
-        // Lisp package registry.
-        if (self.lisp_packages.raw != Value.nil.raw) {
-            try self.gc_slots.append(self.backing_allocator, &self.lisp_packages);
-        }
-        if (self.lisp_classes.raw != Value.nil.raw) {
-            try self.gc_slots.append(self.backing_allocator, &self.lisp_classes);
-        }
-
-        // Metaclass roots.
-        if (self.standard_class.raw != Value.nil.raw) {
-            try self.gc_slots.append(self.backing_allocator, &self.standard_class);
-        }
-        if (self.built_in_class.raw != Value.nil.raw) {
-            try self.gc_slots.append(self.backing_allocator, &self.built_in_class);
-        }
-        if (self.structure_class.raw != Value.nil.raw) {
-            try self.gc_slots.append(self.backing_allocator, &self.structure_class);
-        }
-
-        // Cached condition symbols/keywords.
-        if (self.sym_simple_warning.raw != Value.nil.raw) {
-            try self.gc_slots.append(self.backing_allocator, &self.sym_simple_warning);
-        }
-        if (self.kw_format_control.raw != Value.nil.raw) {
-            try self.gc_slots.append(self.backing_allocator, &self.kw_format_control);
-        }
-        if (self.kw_format_arguments.raw != Value.nil.raw) {
-            try self.gc_slots.append(self.backing_allocator, &self.kw_format_arguments);
-        }
+        try self.refreshGcInternalSlots();
+        try self.gc_slots.appendSlice(self.backing_allocator, self.gc_internal_slots.items);
 
         self.stats.gc_build_ns +%= elapsedNsSince(build_start);
 
@@ -1955,6 +2026,29 @@ test "heap collectGarbage reuses gc_slots buffer" {
 
     _ = try heap.collectGarbage(&roots);
     try testing.expectEqual(cap1, heap.gc_slots.capacity);
+}
+
+test "heap collectGarbage caches internal roots by signature" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var roots = [_]Value{};
+    _ = try heap.collectGarbage(&roots);
+    const sig0 = heap.gc_root_sig;
+    const slot_len0 = heap.gc_internal_slots.items.len;
+    try testing.expect(slot_len0 > 0);
+
+    _ = try heap.collectGarbage(&roots);
+    try testing.expectEqual(slot_len0, heap.gc_internal_slots.items.len);
+    try testing.expectEqual(sig0.symbols_ver, heap.gc_root_sig.symbols_ver);
+    try testing.expectEqual(sig0.pkg_symbols_ver, heap.gc_root_sig.pkg_symbols_ver);
+
+    _ = try heap.intern("GC-CACHE-SIG-ROOT");
+    _ = try heap.collectGarbage(&roots);
+    try testing.expect(heap.gc_root_sig.pkg_symbols_ver > sig0.pkg_symbols_ver);
+    try testing.expect(heap.gc_internal_slots.items.len >= slot_len0 + 1);
 }
 
 test "heap collectGarbageRootSet updates multi-range" {
