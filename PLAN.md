@@ -78,6 +78,7 @@
 
 ### 2. Compiler Core
 - [ ] `habu-fix-loop-macro-c7a41441` Fix LOOP macro dispatch.
+- [x] `habu-support-loop-in-84a5efed` Support `loop for ... in ... by ...` step-function clauses.
 - [ ] `habu-support-loop-for-6e9d9623` Support LOOP `for ... and ...` clauses. Depends on `habu-fix-loop-macro-c7a41441`.
 - [ ] `habu-support-setf-bit-b72546e8` Support `(setf (bit/sbit ...))` places.
 - [ ] `habu-support-setf-generic-67036246` Support generic names `(setf foo)` in DEFGENERIC/DEFMETHOD.

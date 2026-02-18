@@ -4303,6 +4303,25 @@ test "lambda keyword defaults handle omitted trailing keys" {
     try testing.expectEqual(@as(i64, 31), call_defaults.toFixnum());
 }
 
+test "loop for-in supports by step function" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try repl.loadFilePublic("lib/stdlib.habu", std.io.null_writer);
+
+    const result = try repl.eval(
+        "(equal (loop for x in '(1 2 3 4 5 6) by #'cddr collect x) '(1 3 5))",
+    );
+    try testing.expect(!result.isNil());
+}
+
 test "eval parse error sets error info" {
     const testing = std.testing;
     const allocator = testing.allocator;

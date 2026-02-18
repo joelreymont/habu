@@ -1268,10 +1268,22 @@
 ; Uses while instead of loop to avoid forward reference
 ;; do uses tagbody/go internally to avoid circular expansion with user 'while' macros.
 ;; Standard CL pattern: (block nil (let vars (tagbody loop (if end return) body step (go loop))))
+(defun %do-normalize-binding (binding)
+  (cond
+    ((symbolp binding)
+     (list binding nil binding))
+    ((consp binding)
+     (let ((var (car binding))
+           (init (if (cdr binding) (cadr binding) nil)))
+       (list var init (if (cddr binding) (caddr binding) var))))
+    (t
+     (error "do: invalid binding"))))
+
 (defmacro do (bindings end-clause &rest body)
-  (let* ((vars (mapcar (lambda (b) (car b)) bindings))
-         (inits (mapcar (lambda (b) (cadr b)) bindings))
-         (steps (mapcar (lambda (b) (if (cddr b) (caddr b) (car b))) bindings))
+  (let* ((normalized (mapcar #'%do-normalize-binding bindings))
+         (vars (mapcar #'car normalized))
+         (inits (mapcar #'cadr normalized))
+         (steps (mapcar #'caddr normalized))
          (end-test (car end-clause))
          (result (cdr end-clause))
          (result-form (if result (cons 'progn result) nil))
@@ -1291,9 +1303,10 @@
 ; do* - general iteration macro (sequential binding)
 ; (do* ((var init step) ...) (end-test result...) body...)
 (defmacro do* (bindings end-clause &rest body)
-  (let* ((vars (mapcar (lambda (b) (car b)) bindings))
-         (inits (mapcar (lambda (b) (cadr b)) bindings))
-         (steps (mapcar (lambda (b) (if (cddr b) (caddr b) (car b))) bindings))
+  (let* ((normalized (mapcar #'%do-normalize-binding bindings))
+         (vars (mapcar #'car normalized))
+         (inits (mapcar #'cadr normalized))
+         (steps (mapcar #'caddr normalized))
          (end-test (car end-clause))
          (result (cdr end-clause))
          (result-form (if result (cons 'progn result) nil))
@@ -4728,10 +4741,16 @@
                     (push (cadddr parsed) end-tests))
                   (setq rest (car (cddddr parsed)))))
 
-               ; FOR var IN list
+               ; FOR var IN list [BY step-fn]
                ((:in)
-                (let ((list-var (gensym "list")))
-                  (push (list list-var (cadddr rest)) vars)
+                (let ((list-var (gensym "list"))
+                      (list-expr (cadddr rest))
+                      (in-rest (cddddr rest))
+                      (step-fn 'cdr))
+                  (when (and (consp in-rest) (eq (loop-kw-canon (car in-rest)) :by))
+                    (setq step-fn (cadr in-rest))
+                    (setq in-rest (cddr in-rest)))
+                  (push (list list-var list-expr) vars)
                   ; Check if var is a list (destructuring) or a symbol
                   (if (consp var)
                       ; Destructuring case: (for (a b) in list ...)
@@ -4745,18 +4764,18 @@
                                 (append (list (list 'setq tmp-var (list 'car list-var)))
                                         assign-forms
                                         body-forms)))
-                        (push (list 'setq list-var (list 'cdr list-var)) step-forms)
+                        (push (list 'setq list-var (list step-fn list-var)) step-forms)
                         (push (list 'null list-var) end-tests)
-                        (setq rest (cddddr rest)))
+                        (setq rest in-rest))
                     ; Simple case: for x in list
                     (progn
                       ; Keep VAR in sync via init + step so dependent FOR clauses
                       ; see the current element in the same iteration.
                       (push (list var (list 'car list-var)) vars)
-                      (push (list 'setq list-var (list 'cdr list-var)) step-forms)
+                      (push (list 'setq list-var (list step-fn list-var)) step-forms)
                       (push (list 'setq var (list 'car list-var)) step-forms)
                       (push (list 'null list-var) end-tests)
-                      (setq rest (cddddr rest))))))
+                      (setq rest in-rest)))))
 
                ; FOR var ON list [BY step-fn]
                ((:on)
