@@ -33,6 +33,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Caching internal GC root slots in `src/runtime/heap.zig` (`gc_internal_slots` + `calcGcRootSig`) removed per-collection full table walks; using `SymbolTable.version` in the signature prevented stale-cache reuse when symbol maps mutate without net count change.
 - Adding explicit heap layout scaffolding (`GcLayoutMode`, `HeapLayout`, `Region`) in `src/runtime/heap.zig` made nursery/tenured/LOS boundaries concrete without changing current semispace behavior; this keeps incremental generational work isolated and testable.
 - Adding a no-allocation write barrier in `src/runtime/heap.zig` (card table + `writeBarrier`) and calling it at VM/primitives pointer-store sites (`src/interp/vm.zig`, `src/runtime/primitives/list.zig`, `src/runtime/primitives/hash.zig`, `src/runtime/primitives/clos.zig`, `src/runtime/primitives/symbol.zig`) provided generational-safe mutation hooks without changing non-generational behavior.
+- Exposing remembered-set APIs (`markedCardCount`, `appendMarkedCards`, `appendMarkedCardRanges`, `clearMarkedCards`) in `src/runtime/heap.zig` made barrier output directly consumable for upcoming minor-GC root scanning and added deterministic tests for mark/enumerate/clear flow.
 
 ### Did Not Work
 - Caching compiled macro expanders by storing closures in `macro_table` is not safe with current chunk-pool/index patching: cached closures retain expansion-time chunk index assumptions and can mis-dispatch nested lambdas later.
@@ -50,6 +51,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Root-cache signatures based only on table counts are not enough; equal counts can still hide map-entry churn. Include mutation/version signals (for symbol tables) or stronger structure signatures.
 - Generational scaffolding must not silently change default capacity assumptions; keep default mode semispace and prove unchanged behavior with existing bench-check gates before moving to barrier/minor-GC dots.
 - Barrier coverage needs grep-driven audits after each refactor (`.car=`, `.cdr=`, `vec.set`, hash puts); it is easy to miss direct stores in VM helpers and primitive paths.
+- Remembered-set APIs should be allocation-free on hot mutation paths and only allocate during explicit scan/export calls; keep the write barrier itself side-effect-light.
 
 ## Session Notes (2026-02-17)
 

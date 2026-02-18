@@ -697,6 +697,48 @@ pub const Heap = struct {
         return self.card_table[idx] != 0;
     }
 
+    pub fn markedCardCount(self: *const Heap) usize {
+        var n: usize = 0;
+        for (self.card_table) |v| {
+            if (v != 0) n += 1;
+        }
+        return n;
+    }
+
+    pub fn cardRange(self: *const Heap, card_idx: usize) ?Region {
+        if (card_idx >= self.card_table.len) return null;
+        const base = @intFromPtr(self.memory.ptr);
+        const mem_end = base + self.memory.len;
+        const start_addr = base + card_idx * CARD_SIZE;
+        var end_addr = start_addr + CARD_SIZE;
+        if (end_addr > mem_end) end_addr = mem_end;
+        return .{
+            .start = @ptrFromInt(start_addr),
+            .end = @ptrFromInt(end_addr),
+        };
+    }
+
+    pub fn appendMarkedCards(self: *const Heap, allocator: std.mem.Allocator, out: *std.ArrayList(usize)) !void {
+        for (self.card_table, 0..) |v, idx| {
+            if (v != 0) try out.append(allocator, idx);
+        }
+    }
+
+    pub fn appendMarkedCardRanges(self: *const Heap, allocator: std.mem.Allocator, out: *std.ArrayList(Region)) !void {
+        for (self.card_table, 0..) |v, idx| {
+            if (v == 0) continue;
+            if (self.cardRange(idx)) |r| {
+                try out.append(allocator, r);
+            }
+        }
+    }
+
+    pub fn clearMarkedCards(self: *Heap, cards: []const usize) void {
+        for (cards) |idx| {
+            if (idx < self.card_table.len) self.card_table[idx] = 0;
+        }
+    }
+
     pub fn writeBarrier(self: *Heap, owner: Value, stored: Value) void {
         if (self.layout.mode != .generational) return;
         if (!owner.isPointer() or !stored.isPointer()) return;
@@ -2252,6 +2294,46 @@ test "heap writeBarrier is disabled for semispace mode" {
     heap.clearCardTable();
     heap.writeBarrier(owner, young);
     try testing.expect(!heap.isCardMarkedForAddr(owner_addr));
+}
+
+test "heap remembered set APIs enumerate and clear marked cards" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+        },
+    });
+    defer heap.deinit();
+
+    const tenured = heap.tenuredRegion().?;
+    const owner_a = Value{ .raw = @intFromPtr(tenured.start) };
+    const owner_b = Value{ .raw = @intFromPtr(tenured.start) + CARD_SIZE * 2 };
+    const young = try heap.allocCons(Value.makeFixnum(7), Value.nil);
+
+    heap.clearCardTable();
+    heap.writeBarrier(owner_a, young);
+    heap.writeBarrier(owner_b, young);
+    try testing.expectEqual(@as(usize, 2), heap.markedCardCount());
+
+    var cards = std.ArrayList(usize){};
+    defer cards.deinit(testing.allocator);
+    try heap.appendMarkedCards(testing.allocator, &cards);
+    try testing.expectEqual(@as(usize, 2), cards.items.len);
+
+    var ranges = std.ArrayList(Region){};
+    defer ranges.deinit(testing.allocator);
+    try heap.appendMarkedCardRanges(testing.allocator, &ranges);
+    try testing.expectEqual(@as(usize, 2), ranges.items.len);
+    for (ranges.items) |r| {
+        try testing.expect(r.len() > 0);
+    }
+
+    heap.clearMarkedCards(cards.items);
+    try testing.expectEqual(@as(usize, 0), heap.markedCardCount());
 }
 
 test "heap collectGarbage reuses gc_slots buffer" {
