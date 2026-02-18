@@ -9,6 +9,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-18)
 
 ### Worked Well
+- Sampling the long-running integrate gate (`sample` on the live test PID) immediately identified the real hot region (`expandMacro`/`compileCondWithTail`) instead of guessing.
+- Checking process state during long `zig build test` runs distinguished real runtime hotspots from external build contention and avoided chasing false "hang" causes.
 - In `lib/stdlib.habu`, parsing `IF/WHEN/UNLESS ... DO` actions with the same keyword-boundary rule as top-level `DO` fixed a real parser bug where trailing forms (for example `(loop-finish)`) were misclassified as top-level LOOP clauses.
 - Rewriting `loop-finish` calls at LOOP codegen time (after `result-expr` is known) preserved generic accumulation semantics while avoiding Maxima-specific behavior.
 - Tracing Maxima load with per-form names (`TRACE defun ...`) made the real blocker obvious: `db.lisp` `defun clear` failed only because preceding `defmode` setup failed.
@@ -26,6 +28,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding dual regressions in `src/interp/repl.zig` for direct eval and script-driven `handler-case (load ...)` closed the gap that only appeared when `load` ran inside another loaded script.
 
 ### Did Not Work
+- Caching compiled macro expanders by storing closures in `macro_table` is not safe with current chunk-pool/index patching: cached closures retain expansion-time chunk index assumptions and can mis-dispatch nested lambdas later.
+- "Tagged cached macro" wrappers still failed because macro closures compiled in one expansion context are not context-free artifacts under current VM/compiler coupling (chunk indices + expansion-time global/macro state assumptions).
 - Treating conditional `DO` boundaries as only `ELSE/END/AND` was wrong: it consumed subsequent LOOP clauses (like `COLLECT`) and silently changed loop results.
 - Defining `loop-finish` as a global macro caused expansion timing issues; keeping it as a callable symbol and lowering it inside LOOP expansion was more reliable here.
 - Chasing downstream `SIMPLE-ERROR` output first was noisy; until `defmode`/special-parameter semantics were fixed, later integrate traces were mostly secondary fallout.

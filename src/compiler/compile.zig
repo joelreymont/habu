@@ -54,6 +54,16 @@ pub const Error = error{
     UninitializedBuiltins, // Builtins not set when required
 };
 
+fn restoreVmStatePreserveRelay(vm: *Vm, saved_state: vm_mod.State) void {
+    const relay_tag = vm.relay_throw_tag;
+    const relay_value = vm.relay_throw_value;
+    saved_state.restore(vm);
+    if (!relay_tag.isNil()) {
+        vm.relay_throw_tag = relay_tag;
+        vm.relay_throw_value = relay_value;
+    }
+}
+
 /// Pre-interned special form symbols for identity comparison
 pub const Builtins = struct {
     // Control flow
@@ -1695,8 +1705,35 @@ pub const BoxingSet = struct {
         try self.names.put(sym, {});
     }
 
+    fn sameLexicalSymbol(a: Value, b: Value) bool {
+        if (a.raw == b.raw) return true;
+        if (!a.isSymbol() or !b.isSymbol()) return false;
+
+        const sa = a.toPtr(Symbol);
+        const sb = b.toPtr(Symbol);
+        const ba = sa.reserved;
+        const bb = sb.reserved;
+
+        // Uninterned symbols carry a stable uid in reserved>>1.
+        if ((ba & 1) != 0 and (bb & 1) != 0) {
+            return (ba >> 1) == (bb >> 1);
+        }
+
+        // Interned symbols compare by package + printed name.
+        const pkg_a: usize = if (ba != 0 and (ba & 1) == 0) @intCast(ba) else 0;
+        const pkg_b: usize = if (bb != 0 and (bb & 1) == 0) @intCast(bb) else 0;
+        if (pkg_a != pkg_b) return false;
+        return std.mem.eql(u8, sa.getName(), sb.getName());
+    }
+
     pub fn contains(self: *const BoxingSet, sym: Value) bool {
-        return self.names.contains(sym);
+        if (self.names.contains(sym)) return true;
+        if (!sym.isSymbol()) return false;
+        var it = self.names.keyIterator();
+        while (it.next()) |existing| {
+            if (sameLexicalSymbol(existing.*, sym)) return true;
+        }
+        return false;
     }
 };
 
@@ -3225,7 +3262,7 @@ pub const Compiler = struct {
 
             vm.setExtRoots(saved_ext);
             vm.global_env = saved_env;
-            saved_state.restore(vm);
+            restoreVmStatePreserveRelay(vm, saved_state);
         }
 
         const chunk_ptr = macro_roots[root_chunk_idx].toPtr(Chunk);
@@ -4726,10 +4763,31 @@ pub const Compiler = struct {
             binding_list = binding_cons.cdr;
         }
 
-        // Set boxed_vars so that variable refs and set! use box operations
+        // Set boxed_vars so variable refs/set! in nested lexical scopes can
+        // see both current and outer boxed bindings.
         const saved_boxed = self.boxed_vars;
+        var merged_boxed: ?*BoxingSet = null;
+        defer if (merged_boxed) |mb| {
+            mb.deinit();
+            self.allocator.destroy(mb);
+        };
         if (boxed.names.count() > 0) {
-            self.boxed_vars = boxed;
+            if (saved_boxed) |outer_boxed| {
+                const merged = try self.allocator.create(BoxingSet);
+                merged.* = BoxingSet.init(self.allocator);
+                var outer_it = outer_boxed.names.keyIterator();
+                while (outer_it.next()) |sym| {
+                    try merged.add(sym.*);
+                }
+                var local_it = boxed.names.keyIterator();
+                while (local_it.next()) |sym| {
+                    try merged.add(sym.*);
+                }
+                merged_boxed = merged;
+                self.boxed_vars = merged;
+            } else {
+                self.boxed_vars = boxed;
+            }
         }
         // Restore on error before defer frees boxed
         errdefer self.boxed_vars = saved_boxed;
@@ -5193,69 +5251,82 @@ pub const Compiler = struct {
 
     fn compileCondWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
         // (cond (test1 expr1...) (test2 expr2...) ... [(t exprN...)])
-        // Transform to nested ifs
-        if (args.isNil()) {
-            return try self.builder.lit(Value.nil);
+        // Build nested IFs iteratively from tail to head to avoid deep recursion
+        // on large COND clause sets.
+        if (args.isNil()) return try self.builder.lit(Value.nil);
+
+        var clauses = std.ArrayList(Value){};
+        defer clauses.deinit(self.allocator);
+
+        var cur = args;
+        while (cur.isCons()) {
+            const cell = cur.toPtr(Cons);
+            try clauses.append(self.allocator, cell.car);
+            cur = cell.cdr;
+        }
+        if (!cur.isNil()) return error.InvalidSyntax;
+
+        var result_ir = try self.builder.lit(Value.nil);
+        var i = clauses.items.len;
+        while (i > 0) {
+            i -= 1;
+            const clause = clauses.items[i];
+            if (!clause.isCons()) return error.InvalidSyntax;
+            const clause_cons = clause.toPtr(Cons);
+            const test_expr = clause_cons.car;
+            const body_exprs = clause_cons.cdr;
+
+            // Check for default clause (t or else) - use symbol identity
+            const is_default = blk: {
+                // t is magic value, else is interned symbol
+                if (test_expr.raw == Value.t.raw) break :blk true;
+                const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
+                if (test_expr.raw == b.@"else".raw) break :blk true;
+                break :blk false;
+            };
+
+            if (std.posix.getenv("HABU_TRACE_COND_COMPILE") != null) {
+                const body_kind = @tagName(body_exprs.typeKind());
+                const body_car_kind = if (body_exprs.isCons())
+                    @tagName(body_exprs.toPtr(Cons).car.typeKind())
+                else
+                    "-";
+                std.debug.print(
+                    "TRACE cond-compile: default={} body_nil={} body_kind={s} body_car={s}\n",
+                    .{ is_default, body_exprs.isNil(), body_kind, body_car_kind },
+                );
+            }
+
+            if (is_default) {
+                result_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
+                continue;
+            }
+
+            const test_ir = try self.compile(test_expr, env);
+
+            // ANSI CL: a cond clause with no body returns the primary value
+            // of the test form itself, not NIL.
+            if (body_exprs.isNil()) {
+                const tmp_name = "__cond_tmp";
+                var tmp_env = Env.initLet(self.allocator, env);
+                defer tmp_env.deinit();
+                const tmp_idx = try tmp_env.bindName(tmp_name);
+
+                const bindings = try self.allocator.alloc(ir.Ir.Binding, 1);
+                bindings[0] = .{ .name = tmp_name, .value = test_ir, .index = tmp_idx };
+
+                const tmp_cond = try self.builder.variable(tmp_name, 0, tmp_idx);
+                const tmp_then = try self.builder.variable(tmp_name, 0, tmp_idx);
+                const body = try self.builder.ifExpr(tmp_cond, tmp_then, result_ir);
+                result_ir = try self.builder.letExpr(bindings, body);
+                continue;
+            }
+
+            const then_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
+            result_ir = try self.builder.ifExpr(test_ir, then_ir, result_ir);
         }
 
-        if (!args.isCons()) return error.InvalidSyntax;
-
-        const cons = args.toPtr(Cons);
-        const clause = cons.car;
-        const rest_clauses = cons.cdr;
-
-        if (!clause.isCons()) return error.InvalidSyntax;
-        const clause_cons = clause.toPtr(Cons);
-        const test_expr = clause_cons.car;
-        const body_exprs = clause_cons.cdr;
-
-        // Check for default clause (t or else) - use symbol identity
-        const is_default = blk: {
-            // t is magic value, else is interned symbol
-            if (test_expr.raw == Value.t.raw) break :blk true;
-            const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
-            if (test_expr.raw == b.@"else".raw) break :blk true;
-            break :blk false;
-        };
-
-        if (std.posix.getenv("HABU_TRACE_COND_COMPILE") != null) {
-            const body_kind = @tagName(body_exprs.typeKind());
-            const body_car_kind = if (body_exprs.isCons())
-                @tagName(body_exprs.toPtr(Cons).car.typeKind())
-            else
-                "-";
-            std.debug.print(
-                "TRACE cond-compile: default={} body_nil={} body_kind={s} body_car={s}\n",
-                .{ is_default, body_exprs.isNil(), body_kind, body_car_kind },
-            );
-        }
-
-        if (is_default) {
-            return self.compileBodyWithTail(body_exprs, env, in_tail);
-        }
-
-        const else_ir = try self.compileCondWithTail(rest_clauses, env, in_tail);
-        const test_ir = try self.compile(test_expr, env);
-
-        // ANSI CL: a cond clause with no body returns the primary value
-        // of the test form itself, not NIL.
-        if (body_exprs.isNil()) {
-            const tmp_name = "__cond_tmp";
-            var tmp_env = Env.initLet(self.allocator, env);
-            defer tmp_env.deinit();
-            const tmp_idx = try tmp_env.bindName(tmp_name);
-
-            const bindings = try self.allocator.alloc(ir.Ir.Binding, 1);
-            bindings[0] = .{ .name = tmp_name, .value = test_ir, .index = tmp_idx };
-
-            const tmp_cond = try self.builder.variable(tmp_name, 0, tmp_idx);
-            const tmp_then = try self.builder.variable(tmp_name, 0, tmp_idx);
-            const body = try self.builder.ifExpr(tmp_cond, tmp_then, else_ir);
-            return try self.builder.letExpr(bindings, body);
-        }
-
-        const then_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
-        return try self.builder.ifExpr(test_ir, then_ir, else_ir);
+        return result_ir;
     }
 
     fn compileAnd(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -6092,8 +6163,31 @@ pub const Compiler = struct {
                                     // Build (setf fn-name) list
                                     const setf_fn_list = try heap.allocCons(b.setf, try heap.allocCons(fn_name_val, Value.nil));
                                     // Build #'(setf fn-name) -> (function (setf fn-name))
-                                    const fn_ref = try heap.allocCons(b.function, try heap.allocCons(setf_fn_list, Value.nil));
-                                    // Build (apply #'(setf fn-name) val args...)
+                                    var fn_ref = try heap.allocCons(b.function, try heap.allocCons(setf_fn_list, Value.nil));
+
+                                    // Builtin setter wrappers keep apply/setf argument order CL-correct
+                                    // for primitives that use internal value-last updaters.
+                                    if (self.builtins) |bb| {
+                                        const canonical = self.canonicalBuiltinSymbol(fn_name_val);
+                                        var wrapper_sym: ?Value = null;
+                                        if (canonical.raw == bb.aref.raw) {
+                                            wrapper_sym = try heap.internInPackage("COMMON-LISP", "%setf-aref");
+                                        } else if (canonical.raw == bb.svref.raw) {
+                                            wrapper_sym = try heap.internInPackage("COMMON-LISP", "%setf-svref");
+                                        } else if (canonical.raw == bb.char.raw) {
+                                            wrapper_sym = try heap.internInPackage("COMMON-LISP", "%setf-char");
+                                        }
+                                        if (wrapper_sym) |ws| {
+                                            if (std.posix.getenv("HABU_TRACE_SETF_APPLY") != null and ws.isSymbol()) {
+                                                std.debug.print("TRACE setf-apply wrapper={s}\n", .{ws.toPtr(Symbol).getName()});
+                                            }
+                                            fn_ref = try heap.allocCons(b.function, try heap.allocCons(ws, Value.nil));
+                                        } else if (std.posix.getenv("HABU_TRACE_SETF_APPLY") != null and canonical.isSymbol()) {
+                                            std.debug.print("TRACE setf-apply setf-fn={s}\n", .{canonical.toPtr(Symbol).getName()});
+                                        }
+                                    }
+
+                                    // Build (apply <setter-fn> val args...)
                                     var apply_args = try heap.allocCons(fn_ref, try heap.allocCons(value_expr, fn_cons.cdr));
                                     const apply_form = try heap.allocCons(b.apply, apply_args);
                                     _ = &apply_args;
@@ -6405,6 +6499,61 @@ pub const Compiler = struct {
             if (inner.car.isSymbol()) {
                 if (self.builtins) |b| {
                     const canonical_head = self.canonicalBuiltinSymbol(inner.car);
+                    if (canonical_head.raw == b.setf.raw) {
+                        if (inner.cdr.isCons()) {
+                            const setf_tail = inner.cdr.toPtr(Cons);
+                            const target = setf_tail.car;
+                            if (target.isSymbol() and setf_tail.cdr.isNil()) {
+                                const target_name = target.toPtr(Symbol).getName();
+                                const setf_name = try std.fmt.allocPrint(self.allocator, "(SETF {s})", .{target_name});
+                                defer self.allocator.free(setf_name);
+
+                                if (self.globals.lookup(setf_name)) |idx| {
+                                    return try self.builder.globalRef(setf_name, idx);
+                                }
+
+                                var qual_buf: [512]u8 = undefined;
+                                const q_upper = try self.qualifyName(setf_name, &qual_buf);
+                                defer if (q_upper.owned) self.allocator.free(q_upper.name);
+                                if (self.globals.lookup(q_upper.name)) |idx| {
+                                    return try self.builder.globalRef(q_upper.name, idx);
+                                }
+
+                                const setf_name_lower = try std.fmt.allocPrint(self.allocator, "(setf {s})", .{target_name});
+                                defer self.allocator.free(setf_name_lower);
+                                if (self.globals.lookup(setf_name_lower)) |idx| {
+                                    return try self.builder.globalRef(setf_name_lower, idx);
+                                }
+
+                                var qual_lower_buf: [512]u8 = undefined;
+                                const q_lower = try self.qualifyName(setf_name_lower, &qual_lower_buf);
+                                defer if (q_lower.owned) self.allocator.free(q_lower.name);
+                                if (self.globals.lookup(q_lower.name)) |idx| {
+                                    return try self.builder.globalRef(q_lower.name, idx);
+                                }
+
+                                const prefixes = [_][]const u8{ "COMMON-LISP:", "CL:", "CL-USER:", "COMMON-LISP-USER:" };
+                                for (prefixes) |prefix| {
+                                    const q_name = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ prefix, setf_name });
+                                    defer self.allocator.free(q_name);
+                                    if (self.globals.lookup(q_name)) |idx| {
+                                        return try self.builder.globalRef(q_name, idx);
+                                    }
+
+                                    const q_name_lower = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ prefix, setf_name_lower });
+                                    defer self.allocator.free(q_name_lower);
+                                    if (self.globals.lookup(q_name_lower)) |idx| {
+                                        return try self.builder.globalRef(q_name_lower, idx);
+                                    }
+                                }
+
+                                const heap = if (self.heap) |h| h else return error.InvalidSyntax;
+                                const setf_sym = try heap.intern(setf_name);
+                                return try self.builder.symbolFunction(try self.builder.lit(setf_sym));
+                            }
+                        }
+                        return error.InvalidSyntax;
+                    }
                     if (canonical_head.raw == b.lambda.raw or canonical_head.raw == b.@"fn".raw) {
                         return self.compileLambda(inner.cdr, env);
                     }
@@ -7760,6 +7909,17 @@ pub const Compiler = struct {
         return result;
     }
 
+    fn listFromSliceWithTail(self: *Compiler, items: []const Value, tail: Value) !Value {
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+        var result = tail;
+        var i = items.len;
+        while (i > 0) {
+            i -= 1;
+            result = try heap.allocCons(items[i], result);
+        }
+        return result;
+    }
+
     /// Transform destructured params: ((a b) &body c) -> (g123 &body c) + wrap body
     /// Returns ((new-params...) wrapped-body...)
     pub fn transformDestructuredParams(self: *Compiler, lambda_args: Value) !Value {
@@ -7781,6 +7941,7 @@ pub const Compiler = struct {
         var in_optional = false;
         var in_rest = false;
         var in_key = false;
+        var dotted_tail: ?Value = null;
 
         while (p.isCons()) {
             const p_cons = p.toPtr(Cons);
@@ -7879,6 +8040,9 @@ pub const Compiler = struct {
 
             p = p_cons.cdr;
         }
+        if (!p.isNil()) {
+            dotted_tail = p;
+        }
 
         // If no bindings, return original
         if (bindings.items.len == 0) {
@@ -7886,7 +8050,10 @@ pub const Compiler = struct {
         }
 
         // Build new params list
-        const new_params_list = try self.listFromSlice(new_params.items);
+        const new_params_list = if (dotted_tail) |tail|
+            try self.listFromSliceWithTail(new_params.items, tail)
+        else
+            try self.listFromSlice(new_params.items);
 
         // Wrap body with (destructuring-bind pattern gensym ...) for each binding
         var wrapped_body = body;
@@ -8542,7 +8709,7 @@ pub const Compiler = struct {
 
             vm.setExtRoots(saved_ext);
             vm.global_env = saved_env;
-            saved_state.restore(vm);
+            restoreVmStatePreserveRelay(vm, saved_state);
         }
 
         const chunk_ptr = chunk_val.toPtr(Chunk);
@@ -17895,6 +18062,42 @@ test "transformDestructuredParams nested" {
 
     const g_arg = db_args.cdr.toPtr(Cons).car;
     try testing.expect(g_arg.eq(g_sym));
+}
+
+test "transformDestructuredParams preserves dotted rest tail" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    const op_sym = try heap.intern("op");
+    const lbp_rbp_sym = try heap.intern("lbp-rbp");
+    const bvl_sym = try heap.intern("bvl");
+    const body_sym = try heap.intern("body");
+
+    // ((op . lbp-rbp) bvl . body)
+    const destruct = try heap.allocCons(op_sym, lbp_rbp_sym);
+    const params = try heap.allocCons(destruct, try heap.allocCons(bvl_sym, body_sym));
+    const body = try heap.allocCons(body_sym, Value.nil);
+    const lambda_args = try heap.allocCons(params, body);
+
+    const transformed = try compiler.transformDestructuredParams(lambda_args);
+    try testing.expect(transformed.isCons());
+
+    const new_params = transformed.toPtr(Cons).car;
+    try testing.expect(new_params.isCons());
+    const p0 = new_params.toPtr(Cons);
+    try testing.expect(p0.car.isSymbol()); // gensym replacement
+    try testing.expect(p0.cdr.isCons());
+    const p1 = p0.cdr.toPtr(Cons);
+    try testing.expect(p1.car.eq(bvl_sym));
+    try testing.expect(p1.cdr.eq(body_sym)); // dotted rest tail must survive
 }
 
 test "genDestructBindings nested" {

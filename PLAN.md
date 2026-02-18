@@ -27,6 +27,7 @@
   - [ ] `habu-stabilize-eval-vm-d1c1c5cc` Stabilize eval/VM paths under macro-heavy Maxima workloads. Depends on `habu-close-cl-semantic-dac2c058`.
     - [ ] `habu-rca-indirect-call-d9f594ad` RCA and fix JIT indirect-call path root cause (no workaround).
     - [ ] `habu-fix-nested-eval-420ba9e0` Fix nested eval/non-local exit frame restoration. Depends on `habu-rca-indirect-call-d9f594ad`.
+    - [ ] `habu-design-safe-macro-e2cbd352` Design/implement safe macro-expander caching with stable chunk/index semantics (no transient chunk-pool assumptions).
   - [ ] `habu-maxima-load-to-e6d01b9c` Drive Maxima loader and critical symbol binds to green. Depends on `habu-stabilize-eval-vm-d1c1c5cc`.
   - [ ] `habu-profile-maxima-hotspots-977ac23d` Profile real Maxima hotspots in interpreter and JIT modes. Depends on `habu-maxima-load-to-e6d01b9c`.
   - [ ] `habu-raise-jit-coverage-4bfef8eb` Raise JIT coverage for Maxima hotspot call/data paths. Depends on `habu-profile-maxima-hotspots-977ac23d`.
@@ -81,6 +82,7 @@
 - [x] `habu-fix-loop-loop-daf318dd` Fix LOOP conditional `DO` multi-form parsing and `loop-finish` lowering in extended clauses. Depends on `habu-fix-loop-macro-c7a41441`.
 - [x] `habu-support-loop-in-84a5efed` Support `loop for ... in ... by ...` step-function clauses.
 - [x] `habu-loop-else-when-9b45625b` Support `loop ... when ... else when ... else ...` conditional routing.
+- [x] `habu-iterative-cond-lowering-fa7ea387` Lower large COND forms iteratively to reduce compiler recursion overhead.
 - [ ] `habu-support-loop-for-6e9d9623` Support LOOP `for ... and ...` clauses. Depends on `habu-fix-loop-macro-c7a41441`.
 - [ ] `habu-support-setf-bit-b72546e8` Support `(setf (bit/sbit ...))` places.
 - [x] `habu-support-setf-composed-7c79e463` Support composed list places in `setf` (`cadr`/`cddr`/`caddr`/`cdddr`/aliases).
