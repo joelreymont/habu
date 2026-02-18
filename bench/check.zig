@@ -15,6 +15,12 @@ const GcJson = struct {
     avg_copy_ns: u64 = 0,
     avg_finalize_ns: u64 = 0,
     root_vals: u64 = 0,
+    promoted_bytes: u64 = 0,
+    wb_marks: u64 = 0,
+    tenured_live: u64 = 0,
+    los_live: u64 = 0,
+    tenured_bytes: u64 = 0,
+    los_bytes: u64 = 0,
 };
 
 const VmBench = struct {
@@ -203,6 +209,15 @@ pub fn main() !void {
     if (gc.root_vals == 0) try fail("gc root_vals is 0", .{});
     if (gc.avg_copy_ns < gc.avg_root_ns) {
         try fail("gc avg_copy_ns {d} < avg_root_ns {d}", .{ gc.avg_copy_ns, gc.avg_root_ns });
+    }
+    if (gc.promoted_bytes == 0) try fail("gc promoted_bytes is 0", .{});
+    if (gc.wb_marks == 0) try fail("gc wb_marks is 0", .{});
+    if (gc.tenured_live == 0) try fail("gc tenured_live is 0", .{});
+    if (gc.los_live == 0) try fail("gc los_live is 0", .{});
+    if (gc.tenured_bytes == 0) try fail("gc tenured_bytes is 0", .{});
+    if (gc.los_bytes == 0) try fail("gc los_bytes is 0", .{});
+    if (gc.tenured_bytes + gc.los_bytes > gc.heap_bytes) {
+        try fail("gc old-space bytes {d} > heap_bytes {d}", .{ gc.tenured_bytes + gc.los_bytes, gc.heap_bytes });
     }
     const gc_phase_sum = gc.avg_build_ns + gc.avg_root_ns + gc.avg_copy_ns + gc.avg_finalize_ns;
     if (gc.avg_pause_ns > 0 and gc_phase_sum > gc.avg_pause_ns * 4) {

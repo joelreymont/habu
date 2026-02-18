@@ -1,11 +1,11 @@
 ---
 title: GC regression+perf gates
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-02-18T21:50:53.724832+01:00"
+created-at: "\"2026-02-18T21:50:53.724832+01:00\""
 blocks:
   - habu-minor-gc-collector-2f89a428
 ---
 
-bench/check.zig and src/tests/integration.zig. Cause: no enforced performance/correctness gates for generational transition. Fix: add invariants, stress tests, and Maxima throughput thresholds. Why: prevent regressions while iterating.
+bench/gc.zig and bench/check.zig. Cause: perf gate exercised semispace-only behavior and missed generational regressions. Fix: run GC bench in generational mode with promotion+LOS activity and enforce structural invariants (promoted bytes, old-space liveness, bounds) in bench-check. Why: prevent silent GC regressions while iterating.
