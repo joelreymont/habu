@@ -78,6 +78,7 @@
 
 ### 2. Compiler Core
 - [ ] `habu-fix-loop-macro-c7a41441` Fix LOOP macro dispatch.
+- [x] `habu-fix-loop-loop-daf318dd` Fix LOOP conditional `DO` multi-form parsing and `loop-finish` lowering in extended clauses. Depends on `habu-fix-loop-macro-c7a41441`.
 - [x] `habu-support-loop-in-84a5efed` Support `loop for ... in ... by ...` step-function clauses.
 - [x] `habu-loop-else-when-9b45625b` Support `loop ... when ... else when ... else ...` conditional routing.
 - [ ] `habu-support-loop-for-6e9d9623` Support LOOP `for ... and ...` clauses. Depends on `habu-fix-loop-macro-c7a41441`.

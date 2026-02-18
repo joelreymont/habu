@@ -9,6 +9,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-18)
 
 ### Worked Well
+- In `lib/stdlib.habu`, parsing `IF/WHEN/UNLESS ... DO` actions with the same keyword-boundary rule as top-level `DO` fixed a real parser bug where trailing forms (for example `(loop-finish)`) were misclassified as top-level LOOP clauses.
+- Rewriting `loop-finish` calls at LOOP codegen time (after `result-expr` is known) preserved generic accumulation semantics while avoiding Maxima-specific behavior.
 - Tracing Maxima load with per-form names (`TRACE defun ...`) made the real blocker obvious: `db.lisp` `defun clear` failed only because preceding `defmode` setup failed.
 - Reducing the failure to a minimal repro (`defmode` + `putprop` arg probe) exposed the root semantic bug: proclaimed `special` lambda params were compiled lexically, so helper callees saw `name=nil`.
 - Fixing lambda-parameter special semantics generically in `src/compiler/compile.zig` (dynamic `progv` wrapper for globally proclaimed special params) restored `declare-top` behavior across Maxima macros without Maxima-specific patches.
@@ -24,6 +26,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding dual regressions in `src/interp/repl.zig` for direct eval and script-driven `handler-case (load ...)` closed the gap that only appeared when `load` ran inside another loaded script.
 
 ### Did Not Work
+- Treating conditional `DO` boundaries as only `ELSE/END/AND` was wrong: it consumed subsequent LOOP clauses (like `COLLECT`) and silently changed loop results.
+- Defining `loop-finish` as a global macro caused expansion timing issues; keeping it as a callable symbol and lowering it inside LOOP expansion was more reliable here.
 - Chasing downstream `SIMPLE-ERROR` output first was noisy; until `defmode`/special-parameter semantics were fixed, later integrate traces were mostly secondary fallout.
 - Running long `zig build test -Dtest-filter=\"...maxima...\"` invocations remained unreliable/hang-prone in this environment; short focused filters and direct scripted repros gave more deterministic signal.
 - Using multiline piped REPL scripts for loader RCA gave misleading/garbled diagnostics; `habu <script-file>` probes and targeted tests were more trustworthy.

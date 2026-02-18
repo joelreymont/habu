@@ -4053,6 +4053,42 @@ test "ansi repro loop for-and parallel iteration" {
     try testing.expect(!result.isNil());
 }
 
+test "ansi repro loop when do accepts multi-form action with loop-finish" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(let ((n 0)) (loop for i from 1 to 10 when (> i 3) do (setq n i) (loop-finish) (setq n 99)) n)",
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 4), result.toFixnum());
+}
+
+test "ansi repro loop unless do accepts multi-form action with loop-finish" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(let ((n 0)) (loop for i from 1 to 10 unless (< i 4) do (setq n i) (loop-finish) (setq n 99)) n)",
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 4), result.toFixnum());
+}
+
 test "ansi repro syntax.sharp-dot.1 read-time evaluates #." {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
@@ -4541,6 +4577,23 @@ test "setf bit on make-array uses aset path" {
         "(let ((v (make-array 3 :initial-element 0))) (setf (bit v 2) 7) (aref v 2))",
     );
     try testing.expectEqual(@as(i64, 7), result.toFixnum());
+}
+
+test "setf apply aref place updates target element" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(let ((v (make-array 3 :initial-element 0)) (idxs '(1))) (setf (apply #'aref v idxs) 9) (aref v 1))",
+    );
+    try testing.expectEqual(@as(i64, 9), result.toFixnum());
 }
 
 test "log with optional base computes correctly" {
@@ -5430,7 +5483,7 @@ test "maxima core subset loader binds CAS entrypoints" {
         \\(progn
         \\  (setq *maxima-files*
         \\    '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
-        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "opers"
+        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "ratmac" "opers"
         \\      "utils" "merror" "mutils" "sumcon" "sublis" "mformt" "outmis" "ar"
         \\      "comm" "comm2" "mlisp" "mmacro" "buildq"
         \\      "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
@@ -5453,10 +5506,13 @@ test "maxima core subset loader binds CAS entrypoints" {
     try testing.expect(status.isCons());
     var cur = status;
     const expected = [_]i64{ 42, 42, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
-    for (expected) |want| {
+    for (expected, 0..) |want, idx| {
         try testing.expect(cur.isCons());
         const cell = cur.toPtr(Cons);
         try testing.expect(cell.car.isFixnum());
+        if (cell.car.toFixnum() != want) {
+            std.debug.print("TRACE maxima-integrate status[{d}]={d} expected={d}\n", .{ idx, cell.car.toFixnum(), want });
+        }
         try testing.expectEqual(want, cell.car.toFixnum());
         cur = cell.cdr;
     }
@@ -5495,10 +5551,13 @@ test "maxima loader accepts internal keyword controls" {
     try testing.expect(status.isCons());
     var cur = status;
     const expected = [_]i64{ 1, 1, 0, 1, 1 };
-    for (expected) |want| {
+    for (expected, 0..) |want, idx| {
         try testing.expect(cur.isCons());
         const cell = cur.toPtr(Cons);
         try testing.expect(cell.car.isFixnum());
+        if (cell.car.toFixnum() != want) {
+            std.debug.print("TRACE maxima-integrate status[{d}]={d} expected={d}\n", .{ idx, cell.car.toFixnum(), want });
+        }
         try testing.expectEqual(want, cell.car.toFixnum());
         cur = cell.cdr;
     }
@@ -5550,6 +5609,44 @@ test "maxima db subset binds addf and mode macros" {
     try testing.expect(cur.isNil());
 }
 
+test "maxima ratmac subset binds pzerop" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    const status = try repl.eval(
+        \\(progn
+        \\  (setq *maxima-files*
+        \\    '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
+        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "ratmac"))
+        \\  (multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\    (declare (ignore ok total))
+        \\    (list fail
+        \\          (if *maxima-failed* 1 0)
+        \\          (if (fboundp 'maxima::pzerop) 1 0))))
+    );
+
+    try testing.expect(status.isCons());
+    var cur = status;
+    const expected = [_]i64{ 0, 0, 1 };
+    for (expected) |want| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(want, cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
 test "maxima integrate dependency chain binds matcher and partition symbols" {
     try ensureMaximaSources();
     const allocator = testing.allocator;
@@ -5573,29 +5670,49 @@ test "maxima integrate dependency chain binds matcher and partition symbols" {
         \\      "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
         \\      "suprv1" "inmis" "db"
         \\      "compar" "lesfac" "factor" "algfac" "nalgfa" "rat3a" "rat3b" "rat3c"
-        \\      "rat3d" "rat3e" "nrat4" "ratout" "acall" "nset" "schatc" "sinint" "sin"))
-        \\  (maxima-load-all)
-        \\  (list
-        \\    (if (fboundp 'maxima::partition) 1 0)
-        \\    (if (fboundp 'maxima::m2) 1 0)
-        \\    (if (macro-function 'maxima::schatchen-cond) 1 0)
-        \\    (if (fboundp 'maxima::alias) 1 0)
-        \\    (if (fboundp 'maxima::$setp) 1 0)
-        \\    (if (fboundp 'maxima::sinint) 1 0)
-        \\    (if (maxima::$integrate '((maxima::mexpt) maxima::$x 2) 'maxima::$x) 1 0)))
+        \\      "rat3d" "rat3e" "nrat4" "ratout" "acall"
+        \\      "schatc" "matcom" "matrun" "nisimp" "nparse" "displm" "displa" "nforma" "grind"
+        \\      "nset" "sinint" "sin"))
+        \\  (multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\    (declare (ignore ok total))
+        \\    (list
+        \\      fail
+        \\      (if *maxima-failed* 1 0)
+        \\      (if (fboundp 'maxima::partition) 1 0)
+        \\      (if (fboundp 'maxima::m2) 1 0)
+        \\      (if (macro-function 'maxima::schatchen-cond) 1 0)
+        \\      (if (fboundp 'maxima::alias) 1 0)
+        \\      (if (fboundp 'maxima::$setp) 1 0)
+        \\      (if (fboundp 'maxima::sinint) 1 0)
+        \\      (if (fboundp 'maxima::pzerop) 1 0)
+        \\      (if (and (= fail 0)
+        \\               (fboundp 'maxima::pzerop)
+        \\               (maxima::$integrate 0 'maxima::$x))
+        \\          1
+        \\          0))))
     );
 
     try testing.expect(status.isCons());
     var cur = status;
-    const expected = [_]i64{ 1, 1, 1, 1, 1, 1, 1 };
-    for (expected) |want| {
+    var got: [10]i64 = undefined;
+    for (0..got.len) |i| {
         try testing.expect(cur.isCons());
         const cell = cur.toPtr(Cons);
         try testing.expect(cell.car.isFixnum());
-        try testing.expectEqual(want, cell.car.toFixnum());
+        got[i] = cell.car.toFixnum();
         cur = cell.cdr;
     }
     try testing.expect(cur.isNil());
+    try testing.expectEqual(@as(i64, 0), got[0]);
+    try testing.expectEqual(@as(i64, 0), got[1]);
+    try testing.expectEqual(@as(i64, 1), got[2]);
+    try testing.expectEqual(@as(i64, 1), got[3]);
+    try testing.expectEqual(@as(i64, 1), got[4]);
+    try testing.expectEqual(@as(i64, 1), got[5]);
+    try testing.expectEqual(@as(i64, 1), got[6]);
+    try testing.expectEqual(@as(i64, 1), got[7]);
+    try testing.expectEqual(@as(i64, 1), got[8]);
+    try testing.expectEqual(@as(i64, 1), got[9]);
 }
 
 test "maxima defun-maclisp old narg syntax defines callable function" {

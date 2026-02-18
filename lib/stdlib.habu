@@ -1431,6 +1431,14 @@
     (cons (%setf-build-form (car args) (car (cdr args)))
           (%setf-build-forms (cdr (cdr args))))))
 
+(defun %setf-fn-name (fn-form)
+  (if (and (consp fn-form)
+           (eq (car fn-form) 'function)
+           (consp (cdr fn-form))
+           (symbolp (car (cdr fn-form))))
+      (car (cdr fn-form))
+      nil))
+
 ; get-setf-expansion - return 5 values for setf expansion
 (defun get-setf-expansion (place &optional env)
   (let ((pack
@@ -1536,6 +1544,42 @@
                          (list 'progn (list 'put sym ind store) store)
                          (list 'get sym ind))))
                 (fill-pointer (%setf-expansion-1 'fill-pointer '%set-fill-pointer (car args)))
+                (funcall
+                 (let* ((fn-form (car args))
+                        (call-args (cdr args))
+                        (fn-name (%setf-fn-name fn-form))
+                        (upd (if (eq fn-name 'aref) '%aset (get fn-name 'setf-function))))
+                   (if (and fn-name upd)
+                       (let ((temps (mapcar #'(lambda (x) (declare (ignore x)) (gensym "ARG")) call-args))
+                             (store (gensym "STORE")))
+                         (list temps
+                               call-args
+                               (list store)
+                               (list 'progn
+                                     (append (list 'funcall (list 'function upd)) temps (list store))
+                                     store)
+                               (append (list 'funcall fn-form) temps)))
+                     (error "setf: unsupported funcall place"))))
+                (apply
+                 (let* ((fn-form (car args))
+                        (call-args (cdr args))
+                        (fn-name (%setf-fn-name fn-form))
+                        (upd (if (eq fn-name 'aref) '%aset (get fn-name 'setf-function))))
+                   (if (and fn-name upd call-args)
+                       (let* ((temps (mapcar #'(lambda (x) (declare (ignore x)) (gensym "ARG")) call-args))
+                              (store (gensym "STORE"))
+                              (spread (car (last temps)))
+                              (prefix (butlast temps)))
+                         (list temps
+                               call-args
+                               (list store)
+                               (list 'progn
+                                     (append (list 'apply (list 'function upd))
+                                             prefix
+                                             (list (list 'append spread (list 'list store))))
+                                     store)
+                               (append (list 'apply fn-form) temps)))
+                     (error "setf: unsupported apply place"))))
                 (t
                  (let ((exp (%get-setf-expander op))
                        (upd (get op 'setf-function)))
@@ -1560,6 +1604,16 @@
             (car forms)
           (cons 'progn forms))))))
 
+(defun %setf-aref (new array &rest subs)
+  (let ((args (append subs (list new))))
+    (eval (cons '%aset (cons array args)))))
+
+(defun %setf-svref (new vec idx)
+  (%svset vec idx new))
+
+(defun %setf-char (new str idx)
+  (%sset str idx new))
+
 ; fdefinition - function binding accessor
 ; Supports:
 ; - symbol: (fdefinition 'foo) => (symbol-function 'foo)
@@ -1580,6 +1634,10 @@
               (error "fdefinition: invalid (setf ...) name"))))
           (t (error "fdefinition: invalid function name")))))
     (t (error "fdefinition: invalid function name"))))
+
+(setf (fdefinition '(setf aref)) #'%setf-aref)
+(setf (fdefinition '(setf svref)) #'%setf-svref)
+(setf (fdefinition '(setf char)) #'%setf-char)
 
 ; intern with optional package designator (current backend interns in current package)
 (setf (fdefinition '%intern-core) #'intern)
@@ -1613,6 +1671,12 @@
 (setf (fdefinition 'integerp) #'integerp)
 (setf (fdefinition 'realp) #'realp)
 (setf (fdefinition 'stringp) #'stringp)
+(setf (fdefinition 'aref) #'aref)
+(setf (fdefinition 'svref) #'svref)
+(setf (fdefinition 'char) #'char)
+(setf (fdefinition '%aset) #'%aset)
+(setf (fdefinition '%svset) #'%svset)
+(setf (fdefinition '%sset) #'%sset)
 (setf (fdefinition 'atom) #'atom)
 (setf (fdefinition 'listp) #'listp)
 (setf (fdefinition '+) #'+)
@@ -4366,6 +4430,7 @@
           ((string= name "ALWAYS") :always)
           ((string= name "NEVER") :never)
           ((string= name "THEREIS") :thereis)
+          ((string= name "LOOP-FINISH") :loop-finish)
           ((string= name "BEING") :being)
           ((string= name "THE") :the)
           ((string= name "EACH") :each)
@@ -4465,6 +4530,40 @@
                          nil)))
       (list var from-val step-expr end-test rest))))
 
+; Helper: detect boundaries when parsing IF/WHEN/UNLESS DO actions
+; Conditional DO bodies stop when the next LOOP clause keyword starts.
+(defun loop-conditional-boundary-p (x)
+  (loop-keyword-p x))
+
+; Helper: parse DO/DOING action in IF/WHEN/UNLESS into (:do form...)
+(defun loop-parse-do-action (rest)
+  (let ((do-sym (car rest))
+        (forms nil)
+        (remaining (cdr rest)))
+    (while (and remaining (not (loop-conditional-boundary-p (car remaining))))
+      (push (car remaining) forms)
+      (setq remaining (cdr remaining)))
+    (when (null forms)
+      (error "DO requires at least one form"))
+    (list (cons do-sym (nreverse forms)) remaining)))
+
+; Helper: rewrite LOOP-FINISH forms once block-name is known
+(defun loop-rewrite-control-form (form block-name result-expr)
+  (if (and (consp form)
+           (eq (loop-kw-canon (car form)) :loop-finish)
+           (null (cdr form)))
+      (list 'return-from block-name result-expr)
+    form))
+
+; Helper: convert action (:do f1 f2 ...) into one executable form
+(defun loop-do-action-form (action block-name result-expr)
+  (let ((forms (mapcar (lambda (form)
+                         (loop-rewrite-control-form form block-name result-expr))
+                       (cdr action))))
+    (if (null (cdr forms))
+        (car forms)
+      (cons 'progn forms))))
+
 ; Generate loop code from parsed components
 (defun loop-generate-code (vars step-forms end-tests body-forms
                            collect-var collect-forms named-collects
@@ -4536,7 +4635,9 @@
       ; Build loop body using nested binary appends
       (let ((end-test-forms (when end-test
                               (list (list 'when end-test (list 'return-from block-name result-expr)))))
-            (main-body body-forms)  ; Already in correct order from DO clause
+            (main-body (mapcar (lambda (form)
+                                 (loop-rewrite-control-form form block-name result-expr))
+                               body-forms))
             (collect-body (append
                            ;; Default collect forms
                            (mapcar (lambda (expr)
@@ -4671,9 +4772,10 @@
 
 
 ; loop-finish - exit loop normally, running finally clause
+; LOOP parser rewrites this call in extended LOOP forms.
 (defun loop-finish ()
   "Exit the innermost enclosing LOOP, executing its finally clause."
-  (return-from nil nil))
+  (error "LOOP-FINISH used outside LOOP"))
 
 ; Expand loop clauses into code
 ;; Convert step-forms with :and markers into parallel psetq groups.
@@ -5065,7 +5167,11 @@
                  (else-action nil))
              ; Parse THEN clause (including optional INTO for collect/sum/etc)
              (case (loop-kw-canon (car then-rest))
-               ((:do :collect :collecting :sum :summing :count :counting
+               ((:do)
+                (let ((parsed (loop-parse-do-action then-rest)))
+                  (setq then-action (car parsed))
+                  (setq then-rest (cadr parsed))))
+               ((:collect :collecting :sum :summing :count :counting
                  :append :appending :nconc :nconcing :maximize :maximizing
                  :minimize :minimizing :return)
                 (setq then-action (list (car then-rest) (cadr then-rest)))
@@ -5080,7 +5186,11 @@
                (setq then-rest (cdr then-rest))
                ; Parse ELSE clause - may be WHEN or direct action
                (case (loop-kw-canon (car then-rest))
-                 ((:do :collect :collecting :sum :summing :count :counting
+                 ((:do)
+                  (let ((parsed (loop-parse-do-action then-rest)))
+                    (setq else-action (car parsed))
+                    (setq then-rest (cadr parsed))))
+                 ((:collect :collecting :sum :summing :count :counting
                    :append :appending :nconc :nconcing :maximize :maximizing
                    :minimize :minimizing :return)
                   (setq else-action (list (car then-rest) (cadr then-rest)))
@@ -5093,7 +5203,30 @@
                   (let ((sub-test (cadr then-rest))
                         (sub-rest (cddr then-rest)))
                     (case (loop-kw-canon (car sub-rest))
-                      ((:do :collect :collecting :sum :summing :count :counting
+                      ((:do)
+                       (let ((parsed (loop-parse-do-action sub-rest)))
+                         (setq else-action (car parsed))
+                         (setq sub-rest (cadr parsed)))
+                       (setq else-action (list :when-else sub-test else-action))
+                       (setq then-rest sub-rest)
+                       (when (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :else))
+                         (setq then-rest (cdr then-rest))
+                         (case (loop-kw-canon (car then-rest))
+                           ((:do)
+                            (let ((parsed2 (loop-parse-do-action then-rest)))
+                              (setq else-action (list :when-else-else sub-test (caddr else-action) (car parsed2)))
+                              (setq then-rest (cadr parsed2))))
+                           ((:collect :collecting :sum :summing :count :counting
+                             :append :appending :nconc :nconcing :maximize :maximizing
+                             :minimize :minimizing :return)
+                            (let ((else2 (list (car then-rest) (cadr then-rest)))
+                                  (after-else2 (cddr then-rest)))
+                              (when (and (consp after-else2) (eq (loop-kw-canon (car after-else2)) :into))
+                                (setq else2 (append else2 (list (car after-else2) (cadr after-else2))))
+                                (setq after-else2 (cddr after-else2)))
+                              (setq else-action (list :when-else-else sub-test (caddr else-action) else2))
+                              (setq then-rest after-else2))))))
+                      ((:collect :collecting :sum :summing :count :counting
                         :append :appending :nconc :nconcing :maximize :maximizing
                         :minimize :minimizing :return)
                        (setq else-action (list (car sub-rest) (cadr sub-rest)))
@@ -5106,7 +5239,11 @@
                        (when (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :else))
                          (setq then-rest (cdr then-rest))
                          (case (loop-kw-canon (car then-rest))
-                           ((:do :collect :collecting :sum :summing :count :counting
+                           ((:do)
+                            (let ((parsed2 (loop-parse-do-action then-rest)))
+                              (setq else-action (list :when-else-else sub-test (caddr else-action) (car parsed2)))
+                              (setq then-rest (cadr parsed2))))
+                           ((:collect :collecting :sum :summing :count :counting
                              :append :appending :nconc :nconcing :maximize :maximizing
                              :minimize :minimizing :return)
                             (let ((else2 (list (car then-rest) (cadr then-rest)))
@@ -5136,7 +5273,7 @@
                ; THEN action on true predicate
                (case (loop-kw-canon (car then-action))
                  ((:do)
-                  (push (list 'when test (cadr then-action)) body-forms))
+                  (push (list 'when test (loop-do-action-form then-action block-name result-expr)) body-forms))
                  ((:collect :collecting)
                   (let ((into-var (when (and (>= (length then-action) 4)
                                              (eq (loop-kw-canon (caddr then-action)) :into))
@@ -5183,7 +5320,7 @@
                        (action (cadr route)))
                    (case (loop-kw-canon (car action))
                      ((:do)
-                      (push (list 'when guard (cadr action)) body-forms))
+                      (push (list 'when guard (loop-do-action-form action block-name result-expr)) body-forms))
                      ((:collect :collecting)
                       (let ((into-var (when (and (>= (length action) 4)
                                                  (eq (loop-kw-canon (caddr action)) :into))
@@ -5228,7 +5365,11 @@
                  (else-action nil))
              ; Parse THEN clause
              (case (loop-kw-canon (car then-rest))
-               ((:do :collect :collecting :sum :summing :count :counting
+               ((:do)
+                (let ((parsed (loop-parse-do-action then-rest)))
+                  (setq then-action (car parsed))
+                  (setq then-rest (cadr parsed))))
+               ((:collect :collecting :sum :summing :count :counting
                  :append :appending :nconc :nconcing :maximize :maximizing
                  :minimize :minimizing :return)
                 (setq then-action (list (car then-rest) (cadr then-rest)))
@@ -5242,7 +5383,11 @@
                (setq then-rest (cdr then-rest))
                ; Parse ELSE clause - may be WHEN/UNLESS or direct action
                (case (loop-kw-canon (car then-rest))
-                 ((:do :collect :collecting :sum :summing :count :counting
+                 ((:do)
+                  (let ((parsed (loop-parse-do-action then-rest)))
+                    (setq else-action (car parsed))
+                    (setq then-rest (cadr parsed))))
+                 ((:collect :collecting :sum :summing :count :counting
                    :append :appending :nconc :nconcing :maximize :maximizing
                    :minimize :minimizing :return)
                   (setq else-action (list (car then-rest) (cadr then-rest)))
@@ -5255,7 +5400,32 @@
                   (let ((sub-test (cadr then-rest))
                         (sub-rest (cddr then-rest)))
                     (case (loop-kw-canon (car sub-rest))
-                      ((:do :collect :collecting :sum :summing :count :counting
+                      ((:do)
+                       (let ((parsed (loop-parse-do-action sub-rest)))
+                         (setq else-action (car parsed))
+                         (setq sub-rest (cadr parsed)))
+                       (setq else-action (list :when-else sub-test else-action))
+                       (setq then-rest sub-rest)
+                       ;; Check for another ELSE after this WHEN
+                       (when (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :else))
+                         (setq then-rest (cdr then-rest))
+                         (case (loop-kw-canon (car then-rest))
+                           ((:do)
+                            (let ((parsed2 (loop-parse-do-action then-rest)))
+                              (setq else-action (list :when-else-else sub-test (caddr else-action) (car parsed2)))
+                              (setq then-rest (cadr parsed2))))
+                           ((:collect :collecting :sum :summing :count :counting
+                             :append :appending :nconc :nconcing :maximize :maximizing
+                             :minimize :minimizing :return)
+                            ;; else-else: another fallback
+                            (let ((else2 (list (car then-rest) (cadr then-rest)))
+                                  (after-else2 (cddr then-rest)))
+                              (when (and (consp after-else2) (eq (loop-kw-canon (car after-else2)) :into))
+                                (setq else2 (append else2 (list (car after-else2) (cadr after-else2))))
+                                (setq after-else2 (cddr after-else2)))
+                              (setq else-action (list :when-else-else sub-test (caddr else-action) else2))
+                              (setq then-rest after-else2))))))
+                      ((:collect :collecting :sum :summing :count :counting
                         :append :appending :nconc :nconcing :maximize :maximizing
                         :minimize :minimizing :return)
                        (setq else-action (list (car sub-rest) (cadr sub-rest)))
@@ -5270,7 +5440,11 @@
                        (when (and (consp then-rest) (eq (loop-kw-canon (car then-rest)) :else))
                          (setq then-rest (cdr then-rest))
                          (case (loop-kw-canon (car then-rest))
-                           ((:do :collect :collecting :sum :summing :count :counting
+                           ((:do)
+                            (let ((parsed2 (loop-parse-do-action then-rest)))
+                              (setq else-action (list :when-else-else sub-test (caddr else-action) (car parsed2)))
+                              (setq then-rest (cadr parsed2))))
+                           ((:collect :collecting :sum :summing :count :counting
                              :append :appending :nconc :nconcing :maximize :maximizing
                              :minimize :minimizing :return)
                             ;; else-else: another fallback
@@ -5301,7 +5475,7 @@
 
                (case (loop-kw-canon (car then-action))
                  ((:do)
-                  (push (list 'unless test (cadr then-action)) body-forms))
+                  (push (list 'unless test (loop-do-action-form then-action block-name result-expr)) body-forms))
                  ((:collect :collecting)
                   (let ((into-var (when (and (>= (length then-action) 4)
                                              (eq (loop-kw-canon (caddr then-action)) :into))
@@ -5340,7 +5514,7 @@
                        (action (cadr route)))
                    (case (loop-kw-canon (car action))
                      ((:do)
-                      (push (list 'when guard (cadr action)) body-forms))
+                      (push (list 'when guard (loop-do-action-form action block-name result-expr)) body-forms))
                      ((:collect :collecting)
                       (let ((into-var (when (and (>= (length action) 4)
                                                  (eq (loop-kw-canon (caddr action)) :into))
@@ -5511,7 +5685,13 @@
            (push (cadr rest) thereis-forms)
            (setq rest (cddr rest)))
 
-          (t (error (format nil "Unknown loop keyword: ~a" kw))))))
+          (t (if (and (consp kw)
+                      (eq (loop-kw-canon (car kw)) :loop-finish)
+                      (null (cdr kw)))
+                 (progn
+                   (push kw body-forms)
+                   (setq rest (cdr rest)))
+               (error (format nil "Unknown loop keyword: ~a" kw)))))))
 
     ; Generate the loop code
     (loop-generate-code vars step-forms end-tests body-forms
@@ -5533,7 +5713,14 @@
       '(block nil (while t))
     (if (not (loop-keyword-p (car clauses)))
         ; Simple loop - body forms, wrap in block with while t
-        (list 'block nil (cons 'while (cons t clauses)))
+        (let ((simple-body (mapcar (lambda (form)
+                                     (if (and (consp form)
+                                              (eq (loop-kw-canon (car form)) :loop-finish)
+                                              (null (cdr form)))
+                                         '(return-from nil nil)
+                                       form))
+                                   clauses)))
+          (list 'block nil (cons 'while (cons t simple-body))))
       ; Extended loop with clauses
       (loop-expand clauses))))
 
