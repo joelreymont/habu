@@ -4467,6 +4467,131 @@ test "loadFilePublic aborts on first form error" {
     try testing.expect(after.isNil());
 }
 
+test "handler-case around load catches once and aborts file" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("load-handler-abort.lsp", .{});
+        defer file.close();
+        try file.writeAll(
+            "(setq *load-handler-probe* 0)\n" ++
+                "(error \"first\")\n" ++
+                "(setq *load-handler-probe* 1)\n" ++
+                "(error \"second\")\n" ++
+                "(defun load-after-handler () 2)\n",
+        );
+    }
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const script_abs = try std.fs.path.join(allocator, &.{ base, "load-handler-abort.lsp" });
+    defer allocator.free(script_abs);
+
+    _ = try repl.eval("(setq *load-handler-count* 0)");
+    const caught_expr = try std.fmt.allocPrint(
+        allocator,
+        "(eq (handler-case (load \"{s}\") (error (c) (declare (ignore c)) (setq *load-handler-count* (+ *load-handler-count* 1)) :caught)) :caught)",
+        .{script_abs},
+    );
+    defer allocator.free(caught_expr);
+    const caught = try repl.eval(caught_expr);
+    try testing.expect(caught.isT());
+
+    const count = try repl.eval("*load-handler-count*");
+    try testing.expect(count.isFixnum());
+    try testing.expectEqual(@as(i64, 1), count.toFixnum());
+
+    const probe = try repl.eval("*load-handler-probe*");
+    try testing.expect(probe.isFixnum());
+    try testing.expectEqual(@as(i64, 0), probe.toFixnum());
+
+    const after = try repl.eval("(fboundp 'load-after-handler)");
+    try testing.expect(after.isNil());
+}
+
+test "script handler-case load does not resume failed file" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 32 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var err_file = try tmp.dir.createFile("errfile.lsp", .{});
+        defer err_file.close();
+        try err_file.writeAll(
+            "(setq *script-load-probe* 0)\n" ++
+                "(error \"e1\")\n" ++
+                "(setq *script-load-probe* 1)\n" ++
+                "(error \"e2\")\n" ++
+                "(setq *script-load-probe* 2)\n",
+        );
+    }
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const err_abs = try std.fs.path.join(allocator, &.{ base, "errfile.lsp" });
+    defer allocator.free(err_abs);
+
+    const wrapper_src = try std.fmt.allocPrint(
+        allocator,
+        "(setq *script-load-catches* 0)\n" ++
+            "(handler-case\n" ++
+            "    (load \"{s}\")\n" ++
+            "  (condition (e)\n" ++
+            "    (declare (ignore e))\n" ++
+            "    (setq *script-load-catches* (+ *script-load-catches* 1))))\n" ++
+            "(setq *script-load-after* 42)\n",
+        .{err_abs},
+    );
+    defer allocator.free(wrapper_src);
+
+    {
+        var wrapper = try tmp.dir.createFile("wrapper.lsp", .{});
+        defer wrapper.close();
+        try wrapper.writeAll(wrapper_src);
+    }
+
+    const wrapper_abs = try std.fs.path.join(allocator, &.{ base, "wrapper.lsp" });
+    defer allocator.free(wrapper_abs);
+
+    var buf: [1024]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try repl.loadFilePublic(wrapper_abs, stream.writer());
+
+    const catches = try repl.eval("*script-load-catches*");
+    try testing.expect(catches.isFixnum());
+    try testing.expectEqual(@as(i64, 1), catches.toFixnum());
+
+    const probe = try repl.eval("*script-load-probe*");
+    try testing.expect(probe.isFixnum());
+    try testing.expectEqual(@as(i64, 0), probe.toFixnum());
+
+    const after = try repl.eval("*script-load-after*");
+    try testing.expect(after.isFixnum());
+    try testing.expectEqual(@as(i64, 42), after.toFixnum());
+}
+
 test "load resolves relative path with repeated directory prefix" {
     const testing = std.testing;
     const allocator = testing.allocator;

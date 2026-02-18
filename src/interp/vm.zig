@@ -191,6 +191,9 @@ pub const State = struct {
     current_argc: u8,
     pending_throw_tag: Value,
     pending_throw_value: Value,
+    throw_barrier_depth: usize,
+    relay_throw_tag: Value,
+    relay_throw_value: Value,
     pending_error: ?anyerror,
     is_unwinding: bool,
     pending_block_name: Value,
@@ -218,6 +221,9 @@ pub const State = struct {
             .current_argc = vm.current_argc,
             .pending_throw_tag = vm.pending_throw_tag,
             .pending_throw_value = vm.pending_throw_value,
+            .throw_barrier_depth = vm.throw_barrier_depth,
+            .relay_throw_tag = vm.relay_throw_tag,
+            .relay_throw_value = vm.relay_throw_value,
             .pending_error = vm.pending_error,
             .is_unwinding = vm.is_unwinding,
             .pending_block_name = vm.pending_block_name,
@@ -246,6 +252,9 @@ pub const State = struct {
         vm.current_argc = self.current_argc;
         vm.pending_throw_tag = self.pending_throw_tag;
         vm.pending_throw_value = self.pending_throw_value;
+        vm.throw_barrier_depth = self.throw_barrier_depth;
+        vm.relay_throw_tag = self.relay_throw_tag;
+        vm.relay_throw_value = self.relay_throw_value;
         vm.pending_error = self.pending_error;
         vm.is_unwinding = self.is_unwinding;
         vm.pending_block_name = self.pending_block_name;
@@ -356,6 +365,9 @@ pub const Vm = struct {
     /// Saved throw state for unwinding through unwind-protect
     pending_throw_tag: Value,
     pending_throw_value: Value,
+    throw_barrier_depth: usize,
+    relay_throw_tag: Value,
+    relay_throw_value: Value,
     pending_error: ?anyerror,
     is_unwinding: bool,
 
@@ -636,6 +648,9 @@ pub const Vm = struct {
             .scope_sp = 0,
             .pending_throw_tag = Value.nil,
             .pending_throw_value = Value.nil,
+            .throw_barrier_depth = 0,
+            .relay_throw_tag = Value.nil,
+            .relay_throw_value = Value.nil,
             .pending_error = null,
             .is_unwinding = false,
             .last_error_value = Value.nil,
@@ -1457,16 +1472,22 @@ pub const Vm = struct {
         if (saved_idx >= MAX_SAVED_CHUNKS) return error.StackOverflow;
         self.saved_chunks[saved_idx] = chunkRoot(saved_state.chunk);
         self.saved_chunk_sp = saved_idx + 1;
+        var should_restore = true;
         defer {
-            const chunk_val = self.saved_chunks[saved_idx];
-            self.saved_chunk_sp = saved_idx;
-            saved_state.restore(self);
-            if (!chunk_val.isNil()) {
-                if (self.chunkFromValue(chunk_val)) |chunk| {
-                    self.chunk = chunk;
+            if (should_restore) {
+                const chunk_val = self.saved_chunks[saved_idx];
+                self.saved_chunk_sp = saved_idx;
+                saved_state.restore(self);
+                if (!chunk_val.isNil()) {
+                    if (self.chunkFromValue(chunk_val)) |chunk| {
+                        self.chunk = chunk;
+                    }
                 }
             }
         }
+        const saved_barrier = self.throw_barrier_depth;
+        self.throw_barrier_depth = saved_state.catch_sp;
+        defer self.throw_barrier_depth = saved_barrier;
 
         if (base + args.len + 1 > self.stack.len) return error.StackOverflow;
         self.stack[base] = fn_val;
@@ -1480,7 +1501,29 @@ pub const Vm = struct {
 
         const argc: u8 = @intCast(args.len);
         try self.doCall(argc, false);
-        return try self.execute();
+        return self.execute() catch |run_err| {
+            if (run_err == error.NestedNonLocalExit) {
+                const relay_tag = self.relay_throw_tag;
+                const relay_value = self.relay_throw_value;
+                self.relay_throw_tag = Value.nil;
+                self.relay_throw_value = Value.nil;
+
+                const chunk_val = self.saved_chunks[saved_idx];
+                self.saved_chunk_sp = saved_idx;
+                saved_state.restore(self);
+                if (!chunk_val.isNil()) {
+                    if (self.chunkFromValue(chunk_val)) |chunk| {
+                        self.chunk = chunk;
+                    }
+                }
+                should_restore = false;
+
+                self.throw_barrier_depth = saved_barrier;
+                try self.doThrow(relay_tag, relay_value);
+                return error.ControlTransfer;
+            }
+            return run_err;
+        };
     }
 
     /// Like callFromStackAt, but checks for JIT code on the callee and
@@ -1492,16 +1535,22 @@ pub const Vm = struct {
         if (saved_idx >= MAX_SAVED_CHUNKS) return error.StackOverflow;
         self.saved_chunks[saved_idx] = chunkRoot(saved_state.chunk);
         self.saved_chunk_sp = saved_idx + 1;
+        var should_restore = true;
         defer {
-            const chunk_val = self.saved_chunks[saved_idx];
-            self.saved_chunk_sp = saved_idx;
-            saved_state.restore(self);
-            if (!chunk_val.isNil()) {
-                if (self.chunkFromValue(chunk_val)) |chunk| {
-                    self.chunk = chunk;
+            if (should_restore) {
+                const chunk_val = self.saved_chunks[saved_idx];
+                self.saved_chunk_sp = saved_idx;
+                saved_state.restore(self);
+                if (!chunk_val.isNil()) {
+                    if (self.chunkFromValue(chunk_val)) |chunk| {
+                        self.chunk = chunk;
+                    }
                 }
             }
         }
+        const saved_barrier = self.throw_barrier_depth;
+        self.throw_barrier_depth = saved_state.catch_sp;
+        defer self.throw_barrier_depth = saved_barrier;
 
         if (base + args.len + 1 > self.stack.len) return error.StackOverflow;
         self.stack[base] = fn_val;
@@ -1525,7 +1574,29 @@ pub const Vm = struct {
             return result;
         }
 
-        return try self.execute();
+        return self.execute() catch |run_err| {
+            if (run_err == error.NestedNonLocalExit) {
+                const relay_tag = self.relay_throw_tag;
+                const relay_value = self.relay_throw_value;
+                self.relay_throw_tag = Value.nil;
+                self.relay_throw_value = Value.nil;
+
+                const chunk_val = self.saved_chunks[saved_idx];
+                self.saved_chunk_sp = saved_idx;
+                saved_state.restore(self);
+                if (!chunk_val.isNil()) {
+                    if (self.chunkFromValue(chunk_val)) |chunk| {
+                        self.chunk = chunk;
+                    }
+                }
+                should_restore = false;
+
+                self.throw_barrier_depth = saved_barrier;
+                try self.doThrow(relay_tag, relay_value);
+                return error.ControlTransfer;
+            }
+            return run_err;
+        };
     }
 
     /// Apply function with args list provided as a value
@@ -1659,6 +1730,9 @@ pub const Vm = struct {
                     // Program terminated - return result from stack
                     std.debug.assert(self.sp > 0);
                     return try self.pop();
+                }
+                if (err == error.ControlTransfer) {
+                    continue;
                 }
                 // Try to convert Zig error to CL condition (type-error etc.).
                 // If a handler-case / handler-bind / catch handles it,
@@ -6746,6 +6820,11 @@ pub const Vm = struct {
 
                 // Check if tag matches (using eq comparison)
                 if (tag.raw == frame.tag.raw) {
+                    if (ci < self.throw_barrier_depth) {
+                        self.relay_throw_tag = tag;
+                        self.relay_throw_value = value;
+                        return error.NestedNonLocalExit;
+                    }
                     // Found matching catch - restore state and jump
                     // Pop catch stack down to (and including) this frame
                     self.catch_sp = ci;
