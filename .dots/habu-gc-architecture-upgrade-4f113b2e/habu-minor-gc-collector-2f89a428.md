@@ -1,9 +1,11 @@
 ---
 title: Minor GC collector
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-02-18T21:50:53.706636+01:00\""
+created-at: "\"\\\"2026-02-18T21:50:53.706636+01:00\\\"\""
+closed-at: "2026-02-18T23:12:58.581872+01:00"
+close-reason: implemented minor nursery collector + safe promotion
 blocks:
   - habu-remembered-set-c9541b7e
 ---
