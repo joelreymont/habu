@@ -27,7 +27,7 @@
   - [ ] `habu-stabilize-eval-vm-d1c1c5cc` Stabilize eval/VM paths under macro-heavy Maxima workloads. Depends on `habu-close-cl-semantic-dac2c058`.
     - [ ] `habu-rca-indirect-call-d9f594ad` RCA and fix JIT indirect-call path root cause (no workaround).
     - [ ] `habu-fix-nested-eval-420ba9e0` Fix nested eval/non-local exit frame restoration. Depends on `habu-rca-indirect-call-d9f594ad`.
-    - [ ] `habu-design-safe-macro-e2cbd352` Design/implement safe macro-expander caching with stable chunk/index semantics (no transient chunk-pool assumptions).
+    - [x] `habu-design-safe-macro-e2cbd352` Design/implement safe macro-expander caching with stable chunk/index semantics (no transient chunk-pool assumptions).
   - [ ] `habu-maxima-load-to-e6d01b9c` Drive Maxima loader and critical symbol binds to green. Depends on `habu-stabilize-eval-vm-d1c1c5cc`.
   - [ ] `habu-profile-maxima-hotspots-977ac23d` Profile real Maxima hotspots in interpreter and JIT modes. Depends on `habu-maxima-load-to-e6d01b9c`.
   - [ ] `habu-raise-jit-coverage-4bfef8eb` Raise JIT coverage for Maxima hotspot call/data paths. Depends on `habu-profile-maxima-hotspots-977ac23d`.

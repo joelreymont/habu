@@ -3413,16 +3413,28 @@ pub const Repl = struct {
             macro_sym = try self.heap.intern(macro_name_saved);
         }
 
+        // Store closure metadata in compiler macro table as:
+        // (closure flags transformed-def), where flags bit0=&whole bit1=&environment.
+        var macro_flags: i64 = 0;
+        if (macro_params.has_whole) macro_flags |= 1;
+        if (macro_params.has_env) macro_flags |= 2;
+        const compiler_macro_entry_items = [_]Value{
+            closure,
+            Value.makeFixnum(macro_flags),
+            transformed_rest2,
+        };
+        const compiler_macro_entry = try self.listFromSlice(&compiler_macro_entry_items);
+
         // Store the closure in REPL macro table for pre-compilation macro expansion
-        // Store the AST in Compiler macro table for compile-time expansion
+        // and the compiled entry in compiler macro table for compile-time expansion.
         try self.macros.put(macro_sym, .{
             .closure = closure,
             .has_whole = macro_params.has_whole,
             .has_env = macro_params.has_env,
         });
-        try self.compiler.macro_table.put(macro_sym, transformed_rest2);
+        try self.compiler.macro_table.put(macro_sym, compiler_macro_entry);
         try self.pinPersistentPair(macro_sym, closure);
-        try self.pinPersistentPair(macro_sym, transformed_rest2);
+        try self.pinPersistentPair(macro_sym, compiler_macro_entry);
 
         // Also store closure on symbol plist under MACRO-FUNCTION so that
         // (macro-function 'name) returns the closure per CL spec.

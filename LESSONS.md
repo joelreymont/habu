@@ -11,6 +11,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ### Worked Well
 - Sampling the long-running integrate gate (`sample` on the live test PID) immediately identified the real hot region (`expandMacro`/`compileCondWithTail`) instead of guessing.
 - Checking process state during long `zig build test` runs distinguished real runtime hotspots from external build contention and avoided chasing false "hang" causes.
+- Using REPL-compiled defmacro closures in compiler expansion (`src/interp/repl.zig` compiled macro-table entries + `src/compiler/compile.zig` direct closure-call path) removed repeated macro-lambda compile/emit cycles while keeping chunk/index semantics safe (closures come from stable REPL chunk pool, not transient expansion pools).
 - In `lib/stdlib.habu`, parsing `IF/WHEN/UNLESS ... DO` actions with the same keyword-boundary rule as top-level `DO` fixed a real parser bug where trailing forms (for example `(loop-finish)`) were misclassified as top-level LOOP clauses.
 - Rewriting `loop-finish` calls at LOOP codegen time (after `result-expr` is known) preserved generic accumulation semantics while avoiding Maxima-specific behavior.
 - Tracing Maxima load with per-form names (`TRACE defun ...`) made the real blocker obvious: `db.lisp` `defun clear` failed only because preceding `defmode` setup failed.
@@ -30,6 +31,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ### Did Not Work
 - Caching compiled macro expanders by storing closures in `macro_table` is not safe with current chunk-pool/index patching: cached closures retain expansion-time chunk index assumptions and can mis-dispatch nested lambdas later.
 - "Tagged cached macro" wrappers still failed because macro closures compiled in one expansion context are not context-free artifacts under current VM/compiler coupling (chunk indices + expansion-time global/macro state assumptions).
+- Treating a hanging `zig build test -Dtest-filter=...` run as a runtime hotspot signal was misleading in some cases: sampled hangs showed Zig build/test protocol wait states (`build` polling while `test --listen` waited for commands), so a stuck filtered run is not automatically a VM performance regression.
 - Treating conditional `DO` boundaries as only `ELSE/END/AND` was wrong: it consumed subsequent LOOP clauses (like `COLLECT`) and silently changed loop results.
 - Defining `loop-finish` as a global macro caused expansion timing issues; keeping it as a callable symbol and lowering it inside LOOP expansion was more reliable here.
 - Chasing downstream `SIMPLE-ERROR` output first was noisy; until `defmode`/special-parameter semantics were fixed, later integrate traces were mostly secondary fallout.

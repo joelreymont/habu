@@ -3031,17 +3031,89 @@ pub const Compiler = struct {
         }
     }
 
+    const CompiledMacroEntry = struct {
+        closure: Value,
+        has_whole: bool,
+        has_env: bool,
+    };
+
+    fn decodeCompiledMacroEntry(macro_def: Value) ?CompiledMacroEntry {
+        if (!macro_def.isCons()) return null;
+        const c1 = macro_def.toPtr(Cons);
+        if (!c1.car.isClosure()) return null;
+        if (!c1.cdr.isCons()) return null;
+        const c2 = c1.cdr.toPtr(Cons);
+        if (!c2.car.isFixnum()) return null;
+
+        const flags = c2.car.toFixnum();
+        if (flags < 0 or flags > 3) return null;
+
+        return .{
+            .closure = c1.car,
+            .has_whole = (flags & 1) != 0,
+            .has_env = (flags & 2) != 0,
+        };
+    }
+
+    fn callMacroClosure(
+        self: *Compiler,
+        closure: Value,
+        args: Value,
+        whole_form: Value,
+        vm: *Vm,
+        has_whole: bool,
+        has_env: bool,
+    ) !Value {
+        const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+        var call_args = std.ArrayList(Value){};
+        defer call_args.deinit(self.allocator);
+
+        if (has_whole) {
+            try call_args.append(self.allocator, whole_form);
+        }
+        if (has_env) {
+            try call_args.append(self.allocator, try heap.allocMacroEnv());
+        }
+
+        var arg_list = args;
+        while (arg_list.isCons()) {
+            const arg_cons = arg_list.toPtr(Cons);
+            try call_args.append(self.allocator, arg_cons.car);
+            arg_list = arg_cons.cdr;
+        }
+
+        return vm.callFromStack(closure, call_args.items);
+    }
+
     /// Expand a macro by calling its expander function with the arguments
     fn expandMacro(self: *Compiler, macro_def: Value, args: Value, whole_form: Value, vm: *Vm) !Value {
         const heap = if (self.heap) |val| val else return error.InvalidSyntax;
         try self.refreshBuiltins();
         const b = if (self.builtins) |val| val else return error.InvalidSyntax;
 
-        // If macro_def is a closure (set via (setf (macro-function ...) fn)),
-        // call it directly with (whole-form nil) per CL spec
+        // Precompiled defmacro entry: (closure flags transformed-def)
+        if (decodeCompiledMacroEntry(macro_def)) |entry| {
+            return self.callMacroClosure(
+                entry.closure,
+                args,
+                whole_form,
+                vm,
+                entry.has_whole,
+                entry.has_env,
+            );
+        }
+
+        // (setf (macro-function ...)) stores macro-function closures directly.
+        // Per CL, macro-function closures take (whole-form env).
         if (macro_def.isClosure()) {
-            const call_args = [_]Value{ whole_form, Value.nil };
-            return vm.callFromStack(macro_def, &call_args) catch |err| return err;
+            return self.callMacroClosure(
+                macro_def,
+                Value.nil,
+                whole_form,
+                vm,
+                true,
+                true,
+            );
         }
 
         // macro_def is ((params...) body...)

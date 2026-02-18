@@ -1064,6 +1064,32 @@ test "eval defmacro simple" {
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
+test "defmacro stores compiled closure entry in compiler macro table" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const def_result = try repl.eval("(defmacro compiled-entry (&whole w &environment e x) `(list ',w ',e ',x))");
+    try testing.expect(def_result.isSymbol());
+
+    const entry = repl.compiler.macro_table.get(def_result).?;
+    try testing.expect(entry.isCons());
+
+    const c1 = entry.toPtr(Cons);
+    try testing.expect(c1.car.isClosure());
+    try testing.expect(c1.cdr.isCons());
+
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(c2.car.isFixnum());
+    try testing.expectEqual(@as(i64, 3), c2.car.toFixnum());
+}
+
 test "eval defmacro &whole &environment" {
     const allocator = testing.allocator;
 
@@ -5454,6 +5480,9 @@ test "smallest heap: loop when collecting into" {
 }
 
 fn ensureMaximaSources() !void {
+    if (std.fs.cwd().access("../maxima/src/lmdcls.lisp", .{})) |_| return else |_| {}
+    if (std.fs.cwd().access("../maxima/src/src/lmdcls.lisp", .{})) |_| return else |_| {}
+    if (std.fs.cwd().access("../maxima/lmdcls.lisp", .{})) |_| return else |_| {}
     const candidates = [_][]const u8{
         "/tmp/maxima/src/lmdcls.lisp",
         "/tmp/maxima/src/src/lmdcls.lisp",
@@ -5483,7 +5512,7 @@ test "maxima core subset loader binds CAS entrypoints" {
         \\(progn
         \\  (setq *maxima-files*
         \\    '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
-        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "ratmac" "opers"
+        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "rzmac" "ratmac" "opers"
         \\      "utils" "merror" "mutils" "sumcon" "sublis" "mformt" "outmis" "ar"
         \\      "comm" "comm2" "mlisp" "mmacro" "buildq"
         \\      "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
@@ -5581,7 +5610,7 @@ test "maxima db subset binds addf and mode macros" {
         \\(progn
         \\  (setq *maxima-files*
         \\    '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
-        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "opers"
+        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "rzmac" "ratmac" "opers"
         \\      "utils" "merror" "mutils" "sumcon" "sublis" "mformt" "outmis" "ar"
         \\      "comm" "comm2" "mlisp" "mmacro" "buildq"
         \\      "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
@@ -5664,7 +5693,7 @@ test "maxima integrate dependency chain binds matcher and partition symbols" {
         \\(progn
         \\  (setq *maxima-files*
         \\    '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
-        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "opers"
+        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "rzmac" "opers"
         \\      "utils" "merror" "mutils" "sumcon" "sublis" "mformt" "outmis" "ar"
         \\      "comm" "comm2" "mlisp" "mmacro" "buildq"
         \\      "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
