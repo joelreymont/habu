@@ -10,6 +10,7 @@
 
 const std = @import("std");
 const Value = @import("value.zig").Value;
+const Tag = @import("value.zig").Tag;
 const objects = @import("objects.zig");
 const Symbol = objects.Symbol;
 const GC = @import("gc.zig").GC;
@@ -247,6 +248,8 @@ pub const GenerationalConfig = struct {
     nursery_each: ?usize = null,
     /// Optional large-object-space size.
     los_size: ?usize = null,
+    /// Promote pointer-free survivors at/above this size.
+    promote_threshold: usize = 1024,
 };
 
 pub const Region = struct {
@@ -293,6 +296,11 @@ pub const Heap = struct {
     gc_root_sig_valid: bool,
     /// Card table for old->young write barriers (generational scaffold).
     card_table: []u8,
+    /// Tenured bump pointer (used by minor-GC promotion policy).
+    tenured_alloc_ptr: ?[*]align(ALIGNMENT) u8,
+    promote_threshold: usize,
+    /// Metadata for promoted tenured objects (for remembered-set scans).
+    tenured_objs: std.ArrayList(TenuredObj),
     /// Persistent collector state reused across GC cycles.
     gc: GC,
     /// Backing allocator (for the memory buffer itself)
@@ -373,6 +381,13 @@ pub const Heap = struct {
         gc_finalize_ns: u64 = 0,
         gc_root_vals: usize = 0,
         wb_marks: usize = 0,
+        gc_promoted_bytes: usize = 0,
+    };
+
+    pub const TenuredObj = struct {
+        addr: usize,
+        tag: Tag,
+        size: usize,
     };
 
     const GcRootSig = struct {
@@ -489,6 +504,9 @@ pub const Heap = struct {
             .gc_root_sig = .{},
             .gc_root_sig_valid = false,
             .card_table = card_table,
+            .tenured_alloc_ptr = if (layout.tenured) |r| r.start else null,
+            .promote_threshold = config.generational.promote_threshold,
+            .tenured_objs = std.ArrayList(TenuredObj){},
             .gc = GC.init(allocator),
             .backing_allocator = allocator,
             .stats = .{},
@@ -628,6 +646,7 @@ pub const Heap = struct {
         self.stream_list.deinit(self.backing_allocator);
         self.gc_slots.deinit(self.backing_allocator);
         self.gc_internal_slots.deinit(self.backing_allocator);
+        self.tenured_objs.deinit(self.backing_allocator);
         self.gc.deinit();
         self.backing_allocator.free(self.card_table);
         self.backing_allocator.free(self.memory);
@@ -754,6 +773,56 @@ pub const Heap = struct {
             self.card_table[card_idx] = 1;
             self.stats.wb_marks +%= 1;
         }
+    }
+
+    pub fn markCardForOwnerAddr(self: *Heap, owner_addr: usize) void {
+        if (self.layout.mode != .generational) return;
+        if (!self.containsAddr(owner_addr)) return;
+        if (self.isInNurseryAddr(owner_addr)) return;
+        const card_idx = self.cardIndexForAddr(owner_addr) orelse return;
+        if (self.card_table[card_idx] == 0) {
+            self.card_table[card_idx] = 1;
+        }
+    }
+
+    pub fn hasMarkedCardInAddrRange(self: *const Heap, start_addr: usize, end_addr: usize) bool {
+        if (end_addr <= start_addr) return false;
+        if (!self.containsAddr(start_addr)) return false;
+        const last_addr = end_addr - 1;
+        if (!self.containsAddr(last_addr)) return false;
+
+        const start_idx = self.cardIndexForAddr(start_addr) orelse return false;
+        const end_idx = self.cardIndexForAddr(last_addr) orelse return false;
+        for (start_idx..end_idx + 1) |idx| {
+            if (self.card_table[idx] != 0) return true;
+        }
+        return false;
+    }
+
+    pub fn allocTenuredRaw(self: *Heap, size: usize) error{OutOfMemory}![*]align(ALIGNMENT) u8 {
+        const tenured = self.layout.tenured orelse return error.OutOfMemory;
+        const cur_ptr = self.tenured_alloc_ptr orelse return error.OutOfMemory;
+        const aligned_size = std.mem.alignForward(usize, size, ALIGNMENT);
+
+        const cur = @intFromPtr(cur_ptr);
+        const end = @intFromPtr(tenured.end);
+        if (cur > end) return error.OutOfMemory;
+        if (aligned_size > end - cur) return error.OutOfMemory;
+
+        const out = cur_ptr;
+        self.tenured_alloc_ptr = @ptrFromInt(cur + aligned_size);
+        return out;
+    }
+
+    pub fn recordTenuredObject(self: *Heap, addr: usize, tag: Tag, size: usize) !void {
+        const item: TenuredObj = .{ .addr = addr, .tag = tag, .size = size };
+        try self.tenured_objs.append(self.backing_allocator, item);
+    }
+
+    pub fn tenuredBytesUsed(self: *const Heap) usize {
+        const tenured = self.layout.tenured orelse return 0;
+        const ptr = self.tenured_alloc_ptr orelse return 0;
+        return @intFromPtr(ptr) - @intFromPtr(tenured.start);
     }
 
     /// Get bytes used in from-space

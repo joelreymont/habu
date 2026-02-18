@@ -35,6 +35,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding a no-allocation write barrier in `src/runtime/heap.zig` (card table + `writeBarrier`) and calling it at VM/primitives pointer-store sites (`src/interp/vm.zig`, `src/runtime/primitives/list.zig`, `src/runtime/primitives/hash.zig`, `src/runtime/primitives/clos.zig`, `src/runtime/primitives/symbol.zig`) provided generational-safe mutation hooks without changing non-generational behavior.
 - Exposing remembered-set APIs (`markedCardCount`, `appendMarkedCards`, `appendMarkedCardRanges`, `clearMarkedCards`) in `src/runtime/heap.zig` made barrier output directly consumable for upcoming minor-GC root scanning and added deterministic tests for mark/enumerate/clear flow.
 - Adding JIT-side barrier/safepoint hooks in `src/jit/backend.zig` (`jitWriteBarrier`, `jitSafepointBeforeAlloc`) keeps runtime helper mutations (`jitNreverse`) and slow allocation paths aligned with VM barrier invariants.
+- Splitting GC entry by layout mode in `src/runtime/gc.zig` (`collectSemispaceRootSet` vs `collectMinorRootSet`) kept semispace behavior stable while enabling generational-only logic incrementally.
+- Keeping minor-GC promotion conservative (pointer-free objects only) in `src/runtime/gc.zig` `shouldPromote` avoided premature tenure of resource-bearing/ref containers before tenured mark/sweep exists.
+- Extending stream liveness checks in `src/runtime/gc.zig` `finalizeUnreachable` to accept forwarded tenured addresses prevented false-finalization when survivors are promoted.
 
 ### Did Not Work
 - Caching compiled macro expanders by storing closures in `macro_table` is not safe with current chunk-pool/index patching: cached closures retain expansion-time chunk index assumptions and can mis-dispatch nested lambdas later.
@@ -54,6 +57,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Barrier coverage needs grep-driven audits after each refactor (`.car=`, `.cdr=`, `vec.set`, hash puts); it is easy to miss direct stores in VM helpers and primitive paths.
 - Remembered-set APIs should be allocation-free on hot mutation paths and only allocate during explicit scan/export calls; keep the write barrier itself side-effect-light.
 - JIT runtime helpers can mutate heap objects outside the interpreter dispatch loop; barrier logic must be hooked there explicitly or remembered sets drift silently.
+- Running `zig build test` in this environment can park in Zig `--listen` mode without emitting failures; treat that as harness instability and rely on targeted test filters plus explicit process sampling for RCA.
+- Promoting pointer-bearing containers before implementing tenured collection is a semantic trap: unreachable promoted objects will not be reclaimed/finalized yet, so promotion policy must enforce this boundary explicitly.
 
 ## Session Notes (2026-02-17)
 

@@ -78,6 +78,13 @@ pub const GC = struct {
     /// Run a garbage collection cycle with a precise root set (slot/range addresses).
     /// Returns the number of bytes copied, or error on OOM during work list allocation.
     pub fn collectRootSet(self: *GC, heap: *heap_mod.Heap, roots: roots_mod.RootSet) !usize {
+        return switch (heap.gcLayoutMode()) {
+            .semispace => try self.collectSemispaceRootSet(heap, roots),
+            .generational => try self.collectMinorRootSet(heap, roots),
+        };
+    }
+
+    fn collectSemispaceRootSet(self: *GC, heap: *heap_mod.Heap, roots: roots_mod.RootSet) !usize {
         const phase_start = std.time.nanoTimestamp();
 
         // Preallocate work queue if first collection
@@ -148,6 +155,74 @@ pub const GC = struct {
         return bytes_copied;
     }
 
+    fn collectMinorRootSet(self: *GC, heap: *heap_mod.Heap, roots: roots_mod.RootSet) !usize {
+        const phase_start = std.time.nanoTimestamp();
+
+        if (self.work_list.capacity == 0) {
+            const init_cap = self.calculateInitialCapacity(heap);
+            try self.work_list.ensureTotalCapacity(self.allocator, init_cap);
+        }
+
+        if (builtin.mode == .Debug) self.gc_in_progress = true;
+        defer {
+            if (builtin.mode == .Debug) self.gc_in_progress = false;
+        }
+
+        self.work_list.clearRetainingCapacity();
+        self.work_peak = 0;
+        var alloc_ptr = heap.to_start;
+        var root_vals: usize = roots.slots.len;
+        for (roots.ranges) |r| root_vals +%= r.len;
+
+        for (roots.ranges) |r| {
+            for (r.ptr[0..r.len]) |*root| {
+                root.* = try self.copyValue(heap, root.*, &alloc_ptr);
+            }
+        }
+        for (roots.slots) |slot| {
+            slot.* = try self.copyValue(heap, slot.*, &alloc_ptr);
+        }
+        const root_ns = elapsedNsSince(phase_start);
+
+        // Scan tenured remembered objects on marked cards.
+        var rem_scanned: usize = 0;
+        if (heap.markedCardCount() > 0) {
+            for (heap.tenured_objs.items) |obj| {
+                if (!heap.hasMarkedCardInAddrRange(obj.addr, obj.addr + obj.size)) continue;
+                try self.scanObject(heap, obj.addr, obj.tag, &alloc_ptr);
+                rem_scanned +%= 1;
+            }
+        }
+
+        while (self.work_list.items.len > 0) {
+            const item = self.work_list.items[self.work_list.items.len - 1];
+            self.work_list.items.len -= 1;
+            try self.scanObject(heap, item.addr, item.tag, &alloc_ptr);
+        }
+        const copy_end_ns = elapsedNsSince(phase_start);
+        const copy_ns = copy_end_ns - root_ns;
+
+        const bytes_copied = @intFromPtr(alloc_ptr) - @intFromPtr(heap.to_start);
+        const old_alloc_ptr = heap.alloc_ptr;
+
+        heap.swapSpaces();
+        heap.resetAllocPtr(@ptrCast(@alignCast(heap.from_start + bytes_copied)));
+
+        const finalize_start = std.time.nanoTimestamp();
+        self.finalizeUnreachable(heap, old_alloc_ptr);
+        const finalize_ns = elapsedNsSince(finalize_start);
+
+        heap.stats.gc_count +%= 1;
+        heap.stats.bytes_copied +%= bytes_copied;
+        heap.stats.gc_root_ns +%= root_ns;
+        heap.stats.gc_copy_ns +%= copy_ns;
+        heap.stats.gc_finalize_ns +%= finalize_ns;
+        heap.stats.gc_root_vals +%= root_vals + rem_scanned;
+
+        try self.maybeGrowQueues();
+        return bytes_copied;
+    }
+
     /// Grow work queues after GC if they exceeded 75% capacity
     /// Growth happens AFTER GC completes to avoid allocations during trace
     fn maybeGrowQueues(self: *GC) !void {
@@ -194,10 +269,17 @@ pub const GC = struct {
                 const first_word: *Value = @ptrFromInt(addr);
                 if (first_word.isForwarding()) {
                     const new_addr = first_word.toPtrAddr();
-                    const new_start = @intFromPtr(heap.from_start);
-                    const new_end = @intFromPtr(heap.from_end);
-                    // Forwarding pointers must point into the new from-space.
-                    if (new_addr >= new_start and new_addr < new_end) {
+                    const nursery_start = @intFromPtr(heap.from_start);
+                    const nursery_end = @intFromPtr(heap.from_end);
+                    var live = new_addr >= nursery_start and new_addr < nursery_end;
+                    if (!live) {
+                        if (heap.tenuredRegion()) |tenured| {
+                            const ten_start = @intFromPtr(tenured.start);
+                            const ten_used_end = if (heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
+                            live = new_addr >= ten_start and new_addr < ten_used_end;
+                        }
+                    }
+                    if (live) {
                         heap.stream_list.items[i] = @ptrFromInt(new_addr);
                         i += 1;
                         continue;
@@ -210,6 +292,47 @@ pub const GC = struct {
                 i += 1;
             }
         }
+    }
+
+    fn boxedHasRefs(addr: usize) bool {
+        const kind_ptr: *const objects.BoxedKind = @ptrFromInt(addr);
+        return switch (kind_ptr.*) {
+            .hashtable,
+            .array,
+            .stream,
+            .pathname,
+            .package,
+            .condition,
+            .class,
+            .slotdef,
+            .generic_function,
+            .method,
+            .macro_env,
+            .chunk,
+            => true,
+            .rational,
+            .complex,
+            .bignum,
+            .string32,
+            .native_code,
+            => false,
+        };
+    }
+
+    fn objectHasRefsAtAddr(tag: Tag, addr: usize) bool {
+        return switch (tag) {
+            .cons, .symbol, .vector, .closure => true,
+            .boxed => boxedHasRefs(addr),
+            .string, .keyword, .forwarding => false,
+        };
+    }
+
+    fn shouldPromote(heap: *const heap_mod.Heap, tag: Tag, size: usize, addr: usize) bool {
+        if (heap.gcLayoutMode() != .generational) return false;
+        if (tag == .forwarding) return false;
+        if (size < heap.promote_threshold) return false;
+        // Until tenured sweep/mark is implemented, only promote pointer-free objects.
+        return !objectHasRefsAtAddr(tag, addr);
     }
 
     /// Copy a value to to-space if needed
@@ -250,8 +373,17 @@ pub const GC = struct {
             const forwarded_size_ok = forwarded_size > 0 and
                 forwarded_size <= heap.space_size and
                 std.mem.isAligned(forwarded_size, heap_mod.ALIGNMENT);
-            const forwarded_range_ok = new_addr >= to_start and new_addr <= to_end and
-                forwarded_size <= to_end - new_addr;
+            const in_to_space = new_addr >= to_start and new_addr <= to_end and forwarded_size <= to_end - new_addr;
+            var in_tenured = false;
+            if (heap.gcLayoutMode() == .generational) {
+                if (heap.tenuredRegion()) |tenured| {
+                    const ten_start = @intFromPtr(tenured.start);
+                    const ten_used_end = if (heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
+                    in_tenured = new_addr >= ten_start and new_addr <= ten_used_end and
+                        forwarded_size <= ten_used_end - new_addr;
+                }
+            }
+            const forwarded_range_ok = in_to_space or in_tenured;
             if (forwarded_size_ok and forwarded_range_ok) {
                 return .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) };
             }
@@ -262,15 +394,27 @@ pub const GC = struct {
         const size = objects.objectSize(val);
         const aligned_size = std.mem.alignForward(usize, size, heap_mod.ALIGNMENT);
 
+        const promote = shouldPromote(heap, tag, aligned_size, obj_addr);
+        const dest: [*]u8 = if (promote)
+            @ptrCast(try heap.allocTenuredRaw(aligned_size))
+        else blk: {
+            const to_cur = @intFromPtr(alloc_ptr.*);
+            const to_end = @intFromPtr(heap.to_start) + heap.space_size;
+            if (to_cur > to_end or aligned_size > to_end - to_cur) return error.OutOfMemory;
+            const out: [*]u8 = @ptrCast(alloc_ptr.*);
+            alloc_ptr.* = @ptrFromInt(to_cur + aligned_size);
+            break :blk out;
+        };
+
         // Copy bytes
-        const dest: [*]u8 = @ptrCast(alloc_ptr.*);
         const src: [*]const u8 = @ptrFromInt(obj_addr);
         @memcpy(dest[0..size], src[0..size]);
 
-        // Update alloc pointer
-        alloc_ptr.* = @ptrFromInt(@intFromPtr(alloc_ptr.*) + aligned_size);
-
         const new_addr = @intFromPtr(dest);
+        if (promote) {
+            try heap.recordTenuredObject(new_addr, tag, aligned_size);
+            heap.stats.gc_promoted_bytes +%= aligned_size;
+        }
 
         // Repair interior pointers that point to inline data
         // These pointers are relative to the object start and need adjustment
@@ -284,9 +428,13 @@ pub const GC = struct {
         const size_ptr: *usize = @ptrFromInt(obj_addr + @sizeOf(Value));
         size_ptr.* = aligned_size;
 
-        // Add to work list for scanning (except strings/keywords which have no Value refs)
-        if (tag != .string and tag != .keyword) {
+        // Add to work list for scanning if object may contain Value refs.
+        if (objectHasRefsAtAddr(tag, new_addr)) {
             try self.pushWork(new_addr, tag);
+            if (promote) {
+                // Keep promoted containers in the remembered set until tenured GC exists.
+                heap.markCardForOwnerAddr(new_addr);
+            }
         }
 
         // Return new tagged pointer
@@ -928,4 +1076,61 @@ test "gc scans generic function dispatcher" {
     const start = @intFromPtr(heap.from_start);
     const end = start + heap.space_size;
     try testing.expect(disp_addr >= start and disp_addr < end);
+}
+
+test "minor gc promotes large survivors to tenured" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .promote_threshold = 64,
+        },
+    });
+    defer heap.deinit();
+
+    var root = try heap.allocBaseString("abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789");
+    try testing.expect(heap.isInNurseryAddr(root.toPtrAddr()));
+
+    var roots = [_]Value{root};
+    _ = try heap.collectGarbage(&roots);
+    root = roots[0];
+
+    const tenured = heap.tenuredRegion().?;
+    const addr = root.toPtrAddr();
+    try testing.expect(addr >= @intFromPtr(tenured.start) and addr < @intFromPtr(tenured.end));
+    try testing.expect(heap.stats.gc_promoted_bytes > 0);
+    try testing.expect(heap.tenuredBytesUsed() > 0);
+}
+
+test "minor gc keeps ref containers in nursery before tenured collector" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .promote_threshold = 128,
+        },
+    });
+    defer heap.deinit();
+
+    const child = try heap.allocCons(Value.makeFixnum(9), Value.nil);
+    const owner_val = try heap.allocVector(1, 64); // Large, but has refs.
+    const owner = owner_val.toPtr(objects.Vector);
+    owner.set(0, child);
+
+    var roots = [_]Value{owner_val};
+    _ = try heap.collectGarbage(&roots);
+
+    // Ref containers are kept in nursery until tenured mark/sweep exists.
+    const owner_after = roots[0].toPtr(objects.Vector);
+    try testing.expect(heap.isInNurseryAddr(@intFromPtr(owner_after)));
+    try testing.expect(owner_after.get(0).isCons());
+    try testing.expectEqual(@as(usize, 0), heap.tenured_objs.items.len);
 }
