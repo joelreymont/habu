@@ -1,9 +1,9 @@
 ---
 title: Tenured collector
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-02-18T21:50:53.711212+01:00"
+created-at: "\"2026-02-18T21:50:53.711212+01:00\""
 blocks:
   - habu-minor-gc-collector-2f89a428
 ---

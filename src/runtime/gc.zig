@@ -103,6 +103,7 @@ pub const GC = struct {
         self.work_list.clearRetainingCapacity();
         self.work_peak = 0;
         var alloc_ptr = heap.to_start;
+        heap.clearTenuredMarks();
         var root_vals: usize = roots.slots.len;
         for (roots.ranges) |r| root_vals +%= r.len;
 
@@ -139,6 +140,7 @@ pub const GC = struct {
         // Phase 4: Finalize unreachable objects with resources (uses old space)
         const finalize_start = std.time.nanoTimestamp();
         self.finalizeUnreachable(heap, old_alloc_ptr);
+        try heap.sweepTenured();
         const finalize_ns = elapsedNsSince(finalize_start);
 
         // Update stats
@@ -353,6 +355,9 @@ pub const GC = struct {
         const from_end = @intFromPtr(heap.from_end);
 
         if (obj_addr < from_start or obj_addr >= from_end) {
+            if (heap.gcLayoutMode() == .generational) {
+                _ = heap.markTenuredObject(obj_addr);
+            }
             // Object is not in from-space (might be static), don't copy
             return val;
         }
@@ -413,6 +418,7 @@ pub const GC = struct {
         const new_addr = @intFromPtr(dest);
         if (promote) {
             try heap.recordTenuredObject(new_addr, tag, aligned_size);
+            _ = heap.markTenuredObject(new_addr);
             heap.stats.gc_promoted_bytes +%= aligned_size;
         }
 
@@ -1133,4 +1139,77 @@ test "minor gc keeps ref containers in nursery before tenured collector" {
     try testing.expect(heap.isInNurseryAddr(@intFromPtr(owner_after)));
     try testing.expect(owner_after.get(0).isCons());
     try testing.expectEqual(@as(usize, 0), heap.tenured_objs.items.len);
+}
+
+test "tenured sweep reclaims unreachable promoted objects" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .promote_threshold = 64,
+        },
+    });
+    defer heap.deinit();
+
+    const payload = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789";
+
+    var s1 = try heap.allocBaseString(payload);
+    var s2 = try heap.allocBaseString(payload);
+    var roots12 = [_]Value{ s1, s2 };
+    _ = try heap.collectGarbage(&roots12);
+    s1 = roots12[0];
+    s2 = roots12[1];
+    const s2_addr = s2.toPtrAddr();
+    try testing.expectEqual(@as(usize, 2), heap.tenured_objs.items.len);
+
+    var roots1 = [_]Value{s1};
+    _ = try heap.collectGarbage(&roots1);
+    s1 = roots1[0];
+    try testing.expectEqual(@as(usize, 1), heap.tenured_objs.items.len);
+    try testing.expectEqual(s1.toPtrAddr(), heap.tenured_objs.items[0].addr);
+
+    var s3 = try heap.allocBaseString(payload);
+    var roots13 = [_]Value{ s1, s3 };
+    _ = try heap.collectGarbage(&roots13);
+    s3 = roots13[1];
+    try testing.expectEqual(s2_addr, s3.toPtrAddr());
+}
+
+test "tenured marking follows nursery references" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .promote_threshold = 64,
+        },
+    });
+    defer heap.deinit();
+
+    const payload = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789";
+
+    var s = try heap.allocBaseString(payload);
+    var roots_s = [_]Value{s};
+    _ = try heap.collectGarbage(&roots_s);
+    s = roots_s[0];
+    const s_addr = s.toPtrAddr();
+    try testing.expectEqual(@as(usize, 1), heap.tenured_objs.items.len);
+
+    var c = try heap.allocCons(s, Value.nil);
+    var roots_c = [_]Value{c};
+    _ = try heap.collectGarbage(&roots_c);
+    c = roots_c[0];
+
+    try testing.expectEqual(@as(usize, 1), heap.tenured_objs.items.len);
+    try testing.expectEqual(s_addr, heap.tenured_objs.items[0].addr);
+    const cons = c.toPtr(objects.Cons);
+    try testing.expect(cons.car.isString());
+    try testing.expectEqual(s_addr, cons.car.toPtrAddr());
 }

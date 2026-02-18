@@ -44,7 +44,7 @@
       - [x] `habu-write-barrier-stores-2b8bf449` Add write barriers to all pointer mutators. Depends on `habu-nursery-layout-scaffold-7aa479dc`.
       - [x] `habu-remembered-set-c9541b7e` Add card table + remembered set scanning APIs. Depends on `habu-write-barrier-stores-2b8bf449`.
       - [x] `habu-minor-gc-collector-2f89a428` Implement minor GC with promotion policy. Depends on `habu-remembered-set-c9541b7e`.
-      - [ ] `habu-tenured-collector-1dc6f7a9` Implement non-moving tenured mark-sweep collector. Depends on `habu-minor-gc-collector-2f89a428`.
+      - [x] `habu-tenured-collector-1dc6f7a9` Implement non-moving tenured mark-sweep collector. Depends on `habu-minor-gc-collector-2f89a428`.
       - [ ] `habu-large-obj-space-a5bd4ea3` Implement large-object space and pinning semantics. Depends on `habu-minor-gc-collector-2f89a428`.
       - [x] `habu-vm-jit-barrier-0df52611` Wire VM/JIT store paths to barrier/safepoint hooks. Depends on `habu-write-barrier-stores-2b8bf449`.
       - [ ] `habu-gc-regression-perf-91ce5f3c` Add GC regression and throughput gates. Depends on `habu-minor-gc-collector-2f89a428`.

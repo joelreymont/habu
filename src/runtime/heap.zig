@@ -301,6 +301,8 @@ pub const Heap = struct {
     promote_threshold: usize,
     /// Metadata for promoted tenured objects (for remembered-set scans).
     tenured_objs: std.ArrayList(TenuredObj),
+    /// Free spans reclaimed by tenured sweep (non-moving reuse).
+    tenured_free: std.ArrayList(FreeSpan),
     /// Persistent collector state reused across GC cycles.
     gc: GC,
     /// Backing allocator (for the memory buffer itself)
@@ -387,6 +389,12 @@ pub const Heap = struct {
     pub const TenuredObj = struct {
         addr: usize,
         tag: Tag,
+        size: usize,
+        marked: bool = false,
+    };
+
+    pub const FreeSpan = struct {
+        addr: usize,
         size: usize,
     };
 
@@ -507,6 +515,7 @@ pub const Heap = struct {
             .tenured_alloc_ptr = if (layout.tenured) |r| r.start else null,
             .promote_threshold = config.generational.promote_threshold,
             .tenured_objs = std.ArrayList(TenuredObj){},
+            .tenured_free = std.ArrayList(FreeSpan){},
             .gc = GC.init(allocator),
             .backing_allocator = allocator,
             .stats = .{},
@@ -647,6 +656,7 @@ pub const Heap = struct {
         self.gc_slots.deinit(self.backing_allocator);
         self.gc_internal_slots.deinit(self.backing_allocator);
         self.tenured_objs.deinit(self.backing_allocator);
+        self.tenured_free.deinit(self.backing_allocator);
         self.gc.deinit();
         self.backing_allocator.free(self.card_table);
         self.backing_allocator.free(self.memory);
@@ -800,10 +810,25 @@ pub const Heap = struct {
     }
 
     pub fn allocTenuredRaw(self: *Heap, size: usize) error{OutOfMemory}![*]align(ALIGNMENT) u8 {
-        const tenured = self.layout.tenured orelse return error.OutOfMemory;
-        const cur_ptr = self.tenured_alloc_ptr orelse return error.OutOfMemory;
         const aligned_size = std.mem.alignForward(usize, size, ALIGNMENT);
 
+        // Reuse reclaimed non-moving spans first.
+        var i: usize = 0;
+        while (i < self.tenured_free.items.len) : (i += 1) {
+            const span = &self.tenured_free.items[i];
+            if (span.size < aligned_size) continue;
+            const out_addr = span.addr;
+            if (span.size == aligned_size) {
+                _ = self.tenured_free.swapRemove(i);
+            } else {
+                span.addr += aligned_size;
+                span.size -= aligned_size;
+            }
+            return @ptrFromInt(out_addr);
+        }
+
+        const tenured = self.layout.tenured orelse return error.OutOfMemory;
+        const cur_ptr = self.tenured_alloc_ptr orelse return error.OutOfMemory;
         const cur = @intFromPtr(cur_ptr);
         const end = @intFromPtr(tenured.end);
         if (cur > end) return error.OutOfMemory;
@@ -815,8 +840,77 @@ pub const Heap = struct {
     }
 
     pub fn recordTenuredObject(self: *Heap, addr: usize, tag: Tag, size: usize) !void {
-        const item: TenuredObj = .{ .addr = addr, .tag = tag, .size = size };
+        const item: TenuredObj = .{ .addr = addr, .tag = tag, .size = size, .marked = false };
         try self.tenured_objs.append(self.backing_allocator, item);
+    }
+
+    pub fn clearTenuredMarks(self: *Heap) void {
+        for (self.tenured_objs.items) |*obj| {
+            obj.marked = false;
+        }
+    }
+
+    pub fn markTenuredObject(self: *Heap, addr: usize) bool {
+        const tenured = self.layout.tenured orelse return false;
+        if (addr < @intFromPtr(tenured.start) or addr >= @intFromPtr(tenured.end)) return false;
+        for (self.tenured_objs.items) |*obj| {
+            if (obj.addr == addr) {
+                obj.marked = true;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    fn coalesceTenuredFree(self: *Heap) void {
+        if (self.tenured_free.items.len < 2) return;
+        std.mem.sort(FreeSpan, self.tenured_free.items, {}, struct {
+            fn lessThan(_: void, a: FreeSpan, b: FreeSpan) bool {
+                return a.addr < b.addr;
+            }
+        }.lessThan);
+
+        var write: usize = 0;
+        var cur = self.tenured_free.items[0];
+        var i: usize = 1;
+        while (i < self.tenured_free.items.len) : (i += 1) {
+            const next = self.tenured_free.items[i];
+            if (cur.addr + cur.size == next.addr) {
+                cur.size += next.size;
+                continue;
+            }
+            self.tenured_free.items[write] = cur;
+            write += 1;
+            cur = next;
+        }
+        self.tenured_free.items[write] = cur;
+        self.tenured_free.items.len = write + 1;
+    }
+
+    pub fn sweepTenured(self: *Heap) !void {
+        if (self.layout.mode != .generational) return;
+
+        var dead_count: usize = 0;
+        for (self.tenured_objs.items) |obj| {
+            if (!obj.marked) dead_count += 1;
+        }
+        if (dead_count == 0) return;
+
+        try self.tenured_free.ensureUnusedCapacity(self.backing_allocator, dead_count);
+
+        var write: usize = 0;
+        for (self.tenured_objs.items) |obj| {
+            if (obj.marked) {
+                var live = obj;
+                live.marked = false;
+                self.tenured_objs.items[write] = live;
+                write += 1;
+                continue;
+            }
+            self.tenured_free.appendAssumeCapacity(.{ .addr = obj.addr, .size = obj.size });
+        }
+        self.tenured_objs.items.len = write;
+        self.coalesceTenuredFree();
     }
 
     pub fn tenuredBytesUsed(self: *const Heap) usize {
