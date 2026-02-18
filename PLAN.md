@@ -114,7 +114,7 @@
 - [ ] `habu-fix-finish-output-15f73282` Fix finish-output/force-output stream designator behavior.
 - [ ] `habu-add-encode-universal-fe1b93d9` Add encode-universal-time primitive + wiring.
 - [ ] `habu-signal-symbol-pkg-e766fbcf` Signal SYMBOL-PACKAGE type errors as Lisp conditions.
-- [ ] `habu-fix-symbol-fn-1df6e2c3` Fix symbol-function primitive fallback/wrapper resolution.
+- [x] `habu-fix-symbol-fn-f9fd590d` Fix function-namespace resolution so `symbol-function`/macro setup is not hijacked by special value bindings; seed function cells on `defun`/`setf` function definitions and revalidate Maxima readiness.
 
 ### 4. VM / GC / Eval / CLOS / Conditions
 - [ ] `habu-fix-gc-chunk-7057f649` Fix GC chunk root corruption.

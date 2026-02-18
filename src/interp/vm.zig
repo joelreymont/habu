@@ -774,26 +774,67 @@ pub const Vm = struct {
         self.function_resolve_context = context;
     }
 
+    fn isCallableFunctionValue(val: Value) bool {
+        return switch (val.typeKind()) {
+            .closure, .native_code, .generic_function => true,
+            else => false,
+        };
+    }
+
+    fn functionCellKey(self: *Vm) Error!Value {
+        return try self.intern("%FUNCTION-CELL");
+    }
+
+    fn lookupFunctionCell(self: *Vm, sym_val: Value) Error!?Value {
+        if (!sym_val.isSymbol()) return null;
+        const key = try self.functionCellKey();
+        const cell = try primitives.list.get(sym_val, key);
+        if (!isCallableFunctionValue(cell)) return null;
+        return cell;
+    }
+
+    fn storeFunctionCell(self: *Vm, sym_val: Value, fn_val: Value) Error!void {
+        if (!sym_val.isSymbol()) return;
+        const key = try self.functionCellKey();
+        _ = try primitives.list.put(self.heap, sym_val, key, fn_val);
+    }
+
+    fn clearFunctionCell(self: *Vm, sym_val: Value) Error!void {
+        if (!sym_val.isSymbol()) return;
+        const key = try self.functionCellKey();
+        _ = try primitives.list.remprop(self.heap, sym_val, key);
+    }
+
     fn resolveFunctionValue(self: *Vm, sym_val: Value) Error!?Value {
         if (!sym_val.isSymbol()) return null;
-        const sym = sym_val.toPtr(Symbol);
-        var global_idx: ?u16 = null;
+        if (try self.lookupFunctionCell(sym_val)) |fn_cell| {
+            return fn_cell;
+        }
+
+        var global_seen = false;
         var global_val = Value.nil;
+        const sym = sym_val.toPtr(Symbol);
         if (try self.lookupSymbolGlobalIndex(sym)) |idx| {
-            global_idx = idx;
+            global_seen = true;
             global_val = self.globals[idx];
-            // A concrete global binding wins immediately; nil/unbound fall through
-            // so builtin resolver callbacks can materialize function wrappers.
-            if (global_val.raw != Value.nil.raw and global_val.raw != Value.unbound.raw) {
+            if (isCallableFunctionValue(global_val)) {
+                try self.storeFunctionCell(sym_val, global_val);
                 return global_val;
             }
         }
+
         if (self.function_resolve_callback) |cb| {
             if (try cb(sym_val, self.function_resolve_context.?)) |resolved| {
-                return resolved;
+                if (isCallableFunctionValue(resolved)) {
+                    try self.storeFunctionCell(sym_val, resolved);
+                    return resolved;
+                }
             }
         }
-        if (global_idx != null) {
+
+        // Preserve bootstrap behavior for symbols with allocated global slots
+        // but no callable binding yet.
+        if (global_seen and (global_val.raw == Value.nil.raw or global_val.raw == Value.unbound.raw)) {
             return global_val;
         }
         return null;
@@ -3975,6 +4016,11 @@ pub const Vm = struct {
                 const sym = try self.pop();
                 switch (sym.typeKind()) {
                     .symbol => {
+                        if (func.isNil()) {
+                            try self.clearFunctionCell(sym);
+                        } else {
+                            try self.storeFunctionCell(sym, func);
+                        }
                         const sym_obj = sym.toPtr(Symbol);
                         if (try self.lookupSymbolGlobalIndex(sym_obj)) |idx| {
                             self.globals[idx] = func;

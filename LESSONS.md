@@ -9,6 +9,10 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-18)
 
 ### Worked Well
+- Reproducing function-namespace corruption with a minimal generic CL case (`(proclaim '(special selector))` + `(symbol-function 'selector)`) made the Maxima `defmode` failure deterministic without Maxima-specific assumptions.
+- Storing function bindings explicitly at defun/fdefinition/symbol-function definition points (`src/compiler/compile.zig:6051`, `src/compiler/compile.zig:6114`, `src/compiler/compile.zig:8141`, `src/compiler/compile.zig:8146`) plus VM-side function-cell resolution (`src/interp/vm.zig:808`) fixed the root namespace bug instead of masking it.
+- Adding function-cell lookup to REPL callable resolution (`src/interp/repl.zig:981`, `src/interp/repl.zig:1058`) kept `fboundp`/designator behavior stable when value cells are dynamically rebound.
+- Locking the regression in integration (`src/tests/integration.zig:6165`) and updating the Maxima readiness gate as behavior improved (`src/tests/integration.zig:5989`) prevented reintroducing special-binding/function-binding alias bugs.
 - Sampling the long-running integrate gate (`sample` on the live test PID) immediately identified the real hot region (`expandMacro`/`compileCondWithTail`) instead of guessing.
 - Checking process state during long `zig build test` runs distinguished real runtime hotspots from external build contention and avoided chasing false "hang" causes.
 - Using REPL-compiled defmacro closures in compiler expansion (`src/interp/repl.zig` compiled macro-table entries + `src/compiler/compile.zig` direct closure-call path) removed repeated macro-lambda compile/emit cycles while keeping chunk/index semantics safe (closures come from stable REPL chunk pool, not transient expansion pools).
@@ -49,6 +53,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Enforcing strict `bench/check.zig` argument handling (`InvalidArgs` returns non-zero) exposed accidental no-op invocations like `bench-check -- --json /tmp/file`.
 
 ### Did Not Work
+- Making `resolveFunctionValue` strict-callable-only without preserving nil-slot bootstrap behavior immediately broke stdlib bootstrapping (`%ASET` unresolved via `(symbol-function '%aset)`); preserving nil/unbound slot fallback while rejecting non-callable non-nil values was required.
 - Caching compiled macro expanders by storing closures in `macro_table` is not safe with current chunk-pool/index patching: cached closures retain expansion-time chunk index assumptions and can mis-dispatch nested lambdas later.
 - "Tagged cached macro" wrappers still failed because macro closures compiled in one expansion context are not context-free artifacts under current VM/compiler coupling (chunk indices + expansion-time global/macro state assumptions).
 - Treating a hanging `zig build test -Dtest-filter=...` run as a runtime hotspot signal was misleading in some cases: sampled hangs showed Zig build/test protocol wait states (`build` polling while `test --listen` waited for commands), so a stuck filtered run is not automatically a VM performance regression.

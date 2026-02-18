@@ -6043,7 +6043,7 @@ test "maxima e2e operation readiness status" {
     try testing.expectEqual(@as(i64, 0), got[0]);
     try testing.expectEqual(@as(i64, 0), got[1]);
     try testing.expectEqual(@as(i64, 1), got[2]);
-    try testing.expectEqual(@as(i64, 0), got[3]);
+    try testing.expectEqual(@as(i64, 1), got[3]);
     try testing.expectEqual(@as(i64, 0), got[4]);
     try testing.expectEqual(@as(i64, 1), got[5]);
     try testing.expectEqual(@as(i64, 0), got[6]);
@@ -6160,6 +6160,28 @@ test "proclaimed special lambda params are dynamically visible in callees" {
 
     try testing.expect(out.isFixnum());
     try testing.expectEqual(@as(i64, 42), out.toFixnum());
+}
+
+test "symbol-function ignores special value bindings" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(progn
+        \\  (defun selector (x env) (declare (ignore env)) x)
+        \\  (proclaim '(special selector))
+        \\  (let ((selector '(selector)))
+        \\    (setf (macro-function 'm) (symbol-function 'selector))
+        \\    (macro-function 'm)))
+    );
+
+    try testing.expect(out.isClosure());
 }
 
 test "local type declarations do not leak into unrelated lets" {

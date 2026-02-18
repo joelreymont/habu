@@ -60,6 +60,7 @@ fn patchChunkIndices(chunk: *runtime.objects.Chunk, base: u16) void {
 }
 
 pub const ReplError = anyerror;
+const load_form_root_name = "__HABU_INTERNAL_LOAD_FORM_ROOT__";
 
 /// REPL configuration
 pub const Config = struct {
@@ -736,6 +737,7 @@ pub const Repl = struct {
         self.vm.setFunctionResolveCallback(&functionResolveCallback, @ptrCast(self));
         // Set VM on compiler for macro expansion
         self.compiler.setVm(&self.vm);
+        _ = try self.ensureLoadFormRootGlobal();
         // Create *features* list
         try self.createFeaturesGlobal();
         // Create print control globals
@@ -751,6 +753,16 @@ pub const Repl = struct {
         if (idx >= self.vm.num_globals) {
             self.vm.num_globals = idx + 1;
         }
+    }
+
+    fn ensureLoadFormRootGlobal(self: *Repl) !u16 {
+        if (self.compiler.globals.lookup(load_form_root_name)) |idx| return idx;
+        const idx = try self.compiler.globals.define(load_form_root_name);
+        self.vm.globals[idx] = Value.nil;
+        if (idx >= self.vm.num_globals) {
+            self.vm.num_globals = idx + 1;
+        }
+        return idx;
     }
 
     /// Helper to set a CL global: intern symbol in CL, define global, set value
@@ -966,6 +978,14 @@ pub const Repl = struct {
         };
     }
 
+    fn lookupFunctionCellValue(self: *Repl, sym: Value) !?Value {
+        if (!sym.isSymbol()) return null;
+        const key = try self.heap.intern("%FUNCTION-CELL");
+        const cell = try primitives.list.get(sym, key);
+        if (!isCallableValue(cell)) return null;
+        return cell;
+    }
+
     fn buildPrimitiveFunctionWrapper(self: *Repl, sym: Value, arity: Compiler.PrimitiveRefArity) !Value {
         const builtins = self.compiler.builtins orelse return error.InvalidSyntax;
         const arg_count: usize = switch (arity) {
@@ -1035,6 +1055,12 @@ pub const Repl = struct {
         const s = sym.toPtr(Symbol);
         const local_name = s.getName();
         const trace = std.posix.getenv("HABU_TRACE_FN_RESOLVE") != null;
+        if (try self.lookupFunctionCellValue(sym)) |fn_cell| {
+            if (trace) {
+                std.debug.print("TRACE fn-lookup fn-cell={s}\n", .{local_name});
+            }
+            return fn_cell;
+        }
         if (trace and std.mem.eql(u8, local_name, "MAPCAR")) {
             std.debug.print("TRACE fn-lookup source num_globals={d}\n", .{source_vm.num_globals});
         }
@@ -1660,6 +1686,10 @@ pub const Repl = struct {
         vm: *Vm,
     };
 
+    const DispatchMacroCtx = struct {
+        vm: *Vm,
+    };
+
     fn parserReadEval(ctx: *anyopaque, expr: Value) reader.ParseError!Value {
         const hook: *ReadEvalCtx = @ptrCast(@alignCast(ctx));
         var arena = std.heap.ArenaAllocator.init(hook.repl.allocator);
@@ -1680,6 +1710,21 @@ pub const Repl = struct {
             }
             return error.UnexpectedToken;
         };
+    }
+
+    fn parserDispatchMacro(
+        ctx: *anyopaque,
+        function: Value,
+        disp_char: u8,
+        sub_char: u8,
+        arg: ?u32,
+        stream: Value,
+    ) reader.ParseError!Value {
+        _ = disp_char;
+        const hook: *DispatchMacroCtx = @ptrCast(@alignCast(ctx));
+        const arg_val = if (arg) |n| Value.makeFixnum(@intCast(n)) else Value.nil;
+        const args = [_]Value{ stream, Value.makeCharacter(sub_char), arg_val };
+        return hook.vm.callFromStackAt(hook.vm.sp, function, &args) catch return error.UnexpectedToken;
     }
 
     /// Evaluate file content in the active VM context.
@@ -1708,7 +1753,9 @@ pub const Repl = struct {
         var parser = try Parser.init(parse_alloc, self.heap, content, &self.vm.builtins);
         defer parser.deinit();
         var read_eval_ctx = ReadEvalCtx{ .repl = self, .vm = source_vm };
+        var dispatch_ctx = DispatchMacroCtx{ .vm = source_vm };
         parser.setReadEvalHook(@ptrCast(&read_eval_ctx), parserReadEval);
+        parser.setDispatchMacroHook(@ptrCast(&dispatch_ctx), parserDispatchMacro);
 
         while (parser.current.kind != .eof) {
             self.syncReaderPackageFromVm(source_vm);
@@ -1826,6 +1873,14 @@ pub const Repl = struct {
             var eval_arena = std.heap.ArenaAllocator.init(self.allocator);
             defer eval_arena.deinit();
             const eval_alloc = eval_arena.allocator();
+            const form_root_idx = try self.ensureLoadFormRootGlobal();
+            if (form_root_idx >= source_vm.num_globals) {
+                source_vm.num_globals = form_root_idx + 1;
+            }
+            const saved_form_root = source_vm.globals[form_root_idx];
+            source_vm.globals[form_root_idx] = expr;
+            defer source_vm.globals[form_root_idx] = saved_form_root;
+
             last_value = self.evalParsedWithVm(expr, source_vm, eval_alloc) catch |err| {
                 if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null or trace_forms) {
                     std.debug.print("TRACE load eval error: {s} form={d}\n", .{ @errorName(err), form_idx });
@@ -1871,8 +1926,11 @@ pub const Repl = struct {
 
         // Parse
         var parser = try Parser.init(arena_alloc, self.heap, source, &self.vm.builtins);
+        defer parser.deinit();
         var read_eval_ctx = ReadEvalCtx{ .repl = self, .vm = vm };
+        var dispatch_ctx = DispatchMacroCtx{ .vm = vm };
         parser.setReadEvalHook(@ptrCast(&read_eval_ctx), parserReadEval);
+        parser.setDispatchMacroHook(@ptrCast(&dispatch_ctx), parserDispatchMacro);
         const expr = try parser.parse();
 
         return self.evalParsedWithVm(expr, vm, arena_alloc);
@@ -2561,7 +2619,9 @@ pub const Repl = struct {
         var parser = try Parser.init(arena_alloc, self.heap, source, &self.vm.builtins);
         defer parser.deinit();
         var read_eval_ctx = ReadEvalCtx{ .repl = self, .vm = &self.vm };
+        var dispatch_ctx = DispatchMacroCtx{ .vm = &self.vm };
         parser.setReadEvalHook(@ptrCast(&read_eval_ctx), parserReadEval);
+        parser.setDispatchMacroHook(@ptrCast(&dispatch_ctx), parserDispatchMacro);
 
         var expr = if (parser.parse()) |parsed| parsed else |err| {
             const loc = parser.getErrorLocation();
@@ -3309,6 +3369,39 @@ pub const Repl = struct {
         const body_list = def_cons.cdr;
 
         const macro_params = try self.normalizeMacroParams(raw_params);
+        if (std.posix.getenv("HABU_TRACE_DEFMACRO_PARAMS") != null and cons2.car.isSymbol()) {
+            const dumpParamShape = struct {
+                fn run(params: Value) struct { fixed: usize, tail: Value } {
+                    var fixed: usize = 0;
+                    var p = params;
+                    while (p.isCons()) {
+                        fixed += 1;
+                        p = p.toPtr(Cons).cdr;
+                    }
+                    return .{ .fixed = fixed, .tail = p };
+                }
+            }.run;
+            const raw_info = dumpParamShape(raw_params);
+            const norm_info = dumpParamShape(macro_params.params);
+            std.debug.print(
+                "TRACE defmacro params name={s} raw-fixed={d} raw-tail={s} norm-fixed={d} norm-tail={s} whole={any} env={any}\n",
+                .{
+                    cons2.car.toPtr(Symbol).getName(),
+                    raw_info.fixed,
+                    @tagName(raw_info.tail.typeKind()),
+                    norm_info.fixed,
+                    @tagName(norm_info.tail.typeKind()),
+                    macro_params.has_whole,
+                    macro_params.has_env,
+                },
+            );
+            if (raw_info.tail.isSymbol()) {
+                std.debug.print("  raw-tail-sym={s}\n", .{raw_info.tail.toPtr(Symbol).getName()});
+            }
+            if (norm_info.tail.isSymbol()) {
+                std.debug.print("  norm-tail-sym={s}\n", .{norm_info.tail.toPtr(Symbol).getName()});
+            }
+        }
         const runtime_rest2 = try self.heap.allocCons(macro_params.params, body_list);
 
         // Build (lambda (args...) body...) to evaluate
@@ -3396,6 +3489,30 @@ pub const Repl = struct {
         const closure = try self.runVmPreserveMacroState(&macro_vm, chunk_ptr);
 
         if (!closure.isClosure()) return error.CompileError;
+
+        if (std.posix.getenv("HABU_TRACE_DEFMACRO_CLOSURE") != null) {
+            const cl = closure.toPtr(runtime.Closure);
+            if (cl.code.isChunk()) {
+                const ch = cl.code.toPtr(runtime.objects.Chunk);
+                std.debug.print(
+                    "TRACE defmacro closure name={s} arity={d} opt={d} key={d} rest={any} code-len={d} consts={d}\n",
+                    .{
+                        macro_name_saved,
+                        ch.arity,
+                        ch.opt_count,
+                        ch.key_count,
+                        ch.has_rest != 0,
+                        ch.code_len,
+                        ch.const_count,
+                    },
+                );
+            } else {
+                std.debug.print(
+                    "TRACE defmacro closure name={s} non-chunk-code kind={s}\n",
+                    .{ macro_name_saved, @tagName(cl.code.typeKind()) },
+                );
+            }
+        }
 
         // Re-resolve the macro symbol from the package using the saved name.
         // After VM execution (which may trigger GC), the original parsed symbol
@@ -4157,6 +4274,8 @@ pub const Repl = struct {
         // Parse expression
         var parser = try @import("../reader/parser.zig").Parser.init(self.allocator, self.heap, expr_str, &self.vm.builtins);
         defer parser.deinit();
+        var dispatch_ctx = DispatchMacroCtx{ .vm = &self.vm };
+        parser.setDispatchMacroHook(@ptrCast(&dispatch_ctx), parserDispatchMacro);
         const expr = try parser.parse();
         if (expr.isNil()) {
             try writer.writeAll("Empty expression\n");
