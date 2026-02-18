@@ -1422,6 +1422,7 @@ const VarKeyCtx = struct {
 };
 
 const VarMap = std.HashMap(VarKey, u16, VarKeyCtx, std.hash_map.default_max_load_percentage);
+const TypeDeclMap = std.HashMap(VarKey, Value, VarKeyCtx, std.hash_map.default_max_load_percentage);
 
 pub const OptimizeSettings = struct {
     speed: u8 = 1,
@@ -1441,6 +1442,8 @@ pub const Env = struct {
     bindings: VarMap,
     /// Function bindings at this level (Lisp-2 function namespace)
     fn_bindings: VarMap,
+    /// Lexical type declarations keyed by symbol identity
+    type_decls: TypeDeclMap,
     /// Parent environment (for closures)
     parent: ?*const Env,
     /// Depth from root (0 = top level)
@@ -1459,6 +1462,7 @@ pub const Env = struct {
         return .{
             .bindings = VarMap.init(allocator),
             .fn_bindings = VarMap.init(allocator),
+            .type_decls = TypeDeclMap.init(allocator),
             .parent = parent,
             .depth = if (parent) |p| p.depth + 1 else 0,
             .new_frame = true,
@@ -1473,6 +1477,7 @@ pub const Env = struct {
         return .{
             .bindings = VarMap.init(allocator),
             .fn_bindings = VarMap.init(allocator),
+            .type_decls = TypeDeclMap.init(allocator),
             .parent = parent,
             .depth = parent.depth, // Same depth - same frame
             .new_frame = false,
@@ -1496,6 +1501,12 @@ pub const Env = struct {
             if (key.uid == 0) self.allocator.free(key.name);
         }
         self.fn_bindings.deinit();
+
+        var type_it = self.type_decls.keyIterator();
+        while (type_it.next()) |key| {
+            if (key.uid == 0) self.allocator.free(key.name);
+        }
+        self.type_decls.deinit();
     }
 
     /// Get total local count in this frame
@@ -1571,6 +1582,16 @@ pub const Env = struct {
         const key = try keyOwnedFromSym(self.allocator, sym_val);
         try self.fn_bindings.put(key, abs_index);
         return abs_index;
+    }
+
+    pub fn bindTypeDeclSym(self: *Env, sym_val: Value, type_expr: Value) error{OutOfMemory}!void {
+        const key = try keyOwnedFromSym(self.allocator, sym_val);
+        errdefer if (key.uid == 0) self.allocator.free(key.name);
+        const gop = try self.type_decls.getOrPut(key);
+        if (gop.found_existing and key.uid == 0) {
+            self.allocator.free(key.name);
+        }
+        gop.value_ptr.* = type_expr;
     }
 
     fn lookupKey(self: *const Env, key: VarKey) ?Binding {
@@ -1651,6 +1672,21 @@ pub const Env = struct {
         }
 
         return null;
+    }
+
+    fn lookupTypeDeclKey(self: *const Env, key: VarKey) ?Value {
+        if (self.type_decls.get(key)) |decl| {
+            return decl;
+        }
+        if (self.parent) |parent| {
+            return parent.lookupTypeDeclKey(key);
+        }
+        return null;
+    }
+
+    pub fn lookupTypeDeclSym(self: *const Env, sym_val: Value) ?Value {
+        const key = keyFromSym(sym_val) orelse return null;
+        return self.lookupTypeDeclKey(key);
     }
 
     /// Look up any lexical symbol by case-insensitive symbol name.
@@ -1987,6 +2023,7 @@ pub const Compiler = struct {
     /// Typed parameter info for function declarations
     pub const TypedParam = struct {
         name: []const u8,
+        sym: ?Value = null,
         type_sym: ?Value, // null for untyped, otherwise the type symbol
         /// Local slot index in the lambda frame
         idx: u16,
@@ -2602,9 +2639,9 @@ pub const Compiler = struct {
                     }
                 }
 
-                // If variable has a type declaration, wrap with assert for specialization
+                // Apply lexical type declarations without leaking unrelated globals.
                 if (self.builtins) |b| {
-                    if (self.global_decls.getTypeDecl(name)) |type_expr| {
+                    if (env.lookupTypeDeclSym(sym_val)) |type_expr| {
                         if (type_expr.raw == b.ty_fixnum.raw) {
                             return self.builder.assertFixnum(result_ir);
                         }
@@ -3038,6 +3075,7 @@ pub const Compiler = struct {
     };
 
     fn decodeCompiledMacroEntry(macro_def: Value) ?CompiledMacroEntry {
+        if (std.posix.getenv("HABU_DISABLE_COMPILED_MACRO_ENTRY") != null) return null;
         if (!macro_def.isCons()) return null;
         const c1 = macro_def.toPtr(Cons);
         if (!c1.car.isClosure()) return null;
@@ -3065,24 +3103,166 @@ pub const Compiler = struct {
         has_env: bool,
     ) !Value {
         const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+        const saved_ext = vm.ext_roots;
+
+        const RootPair = struct { key: Value, val: Value };
+        var macro_entries = std.ArrayList(RootPair){};
+        defer macro_entries.deinit(self.allocator);
+        var macro_iter = self.macro_table.iterator();
+        while (macro_iter.next()) |entry| {
+            try macro_entries.append(self.allocator, .{
+                .key = entry.key_ptr.*,
+                .val = entry.value_ptr.*,
+            });
+        }
+
+        var symbol_macro_entries = std.ArrayList(RootPair){};
+        defer symbol_macro_entries.deinit(self.allocator);
+        var sym_iter = self.symbol_macros.iterator();
+        while (sym_iter.next()) |entry| {
+            try symbol_macro_entries.append(self.allocator, .{
+                .key = entry.key_ptr.*,
+                .val = entry.value_ptr.*,
+            });
+        }
+
+        const root_closure_idx = saved_ext.len;
+        const root_args_idx = saved_ext.len + 1;
+        const root_whole_idx = saved_ext.len + 2;
+        const root_env_idx = saved_ext.len + 3;
+        const root_macro_start = saved_ext.len + 4;
+        const root_symbol_start = root_macro_start + (macro_entries.items.len * 2);
+        const roots = try self.allocator.alloc(
+            Value,
+            saved_ext.len + 4 + (macro_entries.items.len * 2) + (symbol_macro_entries.items.len * 2),
+        );
+        defer self.allocator.free(roots);
+
+        if (saved_ext.len > 0) {
+            @memcpy(roots[0..saved_ext.len], saved_ext);
+        }
+        roots[root_closure_idx] = closure;
+        roots[root_args_idx] = args;
+        roots[root_whole_idx] = whole_form;
+        roots[root_env_idx] = Value.nil;
+
+        var root_idx = root_macro_start;
+        for (macro_entries.items) |entry| {
+            roots[root_idx] = entry.key;
+            roots[root_idx + 1] = entry.val;
+            root_idx += 2;
+        }
+        for (symbol_macro_entries.items) |entry| {
+            roots[root_idx] = entry.key;
+            roots[root_idx + 1] = entry.val;
+            root_idx += 2;
+        }
+
+        vm.setExtRoots(roots);
+        defer vm.setExtRoots(saved_ext);
+
+        if (has_env) {
+            roots[root_env_idx] = try heap.allocMacroEnv();
+        }
+
         var call_args = std.ArrayList(Value){};
         defer call_args.deinit(self.allocator);
 
         if (has_whole) {
-            try call_args.append(self.allocator, whole_form);
+            try call_args.append(self.allocator, roots[root_whole_idx]);
         }
         if (has_env) {
-            try call_args.append(self.allocator, try heap.allocMacroEnv());
+            try call_args.append(self.allocator, roots[root_env_idx]);
         }
 
-        var arg_list = args;
+        var arg_list = roots[root_args_idx];
         while (arg_list.isCons()) {
             const arg_cons = arg_list.toPtr(Cons);
             try call_args.append(self.allocator, arg_cons.car);
             arg_list = arg_cons.cdr;
         }
 
-        return vm.callFromStack(closure, call_args.items);
+        if (std.posix.getenv("HABU_TRACE_COMPILE_MACRO_ARGS") != null and whole_form.isCons()) {
+            const head = whole_form.toPtr(Cons).car;
+            if (head.isSymbol()) {
+                const head_name = head.toPtr(Symbol).getName();
+                if (std.mem.eql(u8, head_name, "LOAD-MACSYMA-MACROS")) {
+                    const hasMacsymaModule = struct {
+                        fn run(sym: Value) bool {
+                            if (!sym.isSymbol()) return false;
+                            var plist = sym.toPtr(Symbol).plist;
+                            while (plist.isCons()) {
+                                const pc = plist.toPtr(Cons);
+                                const entry = pc.car;
+                                if (entry.isCons()) {
+                                    const ec = entry.toPtr(Cons);
+                                    if (ec.car.isSymbol()) {
+                                        if (std.mem.eql(u8, ec.car.toPtr(Symbol).getName(), "MACSYMA-MODULE")) {
+                                            return true;
+                                        }
+                                    }
+                                }
+                                plist = pc.cdr;
+                            }
+                            return false;
+                        }
+                    }.run;
+
+                    std.debug.print("TRACE compile-macro head={s} argc={d}\n", .{ head_name, call_args.items.len });
+                    for (call_args.items, 0..) |arg, i| {
+                        if (arg.isSymbol()) {
+                            const s = arg.toPtr(Symbol);
+                            var live_raw: u64 = 0;
+                            var live_has = false;
+                            if (self.heap) |h| {
+                                if (h.current_package) |pkg| {
+                                    if (pkg.findAccessibleUpper(s.getName())) |live_sym| {
+                                        live_raw = live_sym.raw;
+                                        live_has = hasMacsymaModule(live_sym);
+                                    }
+                                }
+                            }
+                            std.debug.print(
+                                "  arg[{d}]=sym {s} raw=0x{x} pkg=0x{x} has={any} live=0x{x} live-has={any}\n",
+                                .{
+                                    i,
+                                    s.getName(),
+                                    arg.raw,
+                                    s.reserved,
+                                    hasMacsymaModule(arg),
+                                    live_raw,
+                                    live_has,
+                                },
+                            );
+                        } else {
+                            std.debug.print("  arg[{d}]={s} raw=0x{x}\n", .{ i, @tagName(arg.typeKind()), arg.raw });
+                        }
+                    }
+                }
+            }
+        }
+
+        const call_result = vm.callFromStack(roots[root_closure_idx], call_args.items) catch |err| {
+            try self.restoreMacroTablesFromRoots(
+                roots,
+                root_macro_start,
+                macro_entries.items.len,
+                root_symbol_start,
+                symbol_macro_entries.items.len,
+            );
+            try self.refreshBuiltins();
+            return err;
+        };
+
+        try self.restoreMacroTablesFromRoots(
+            roots,
+            root_macro_start,
+            macro_entries.items.len,
+            root_symbol_start,
+            symbol_macro_entries.items.len,
+        );
+        try self.refreshBuiltins();
+        return call_result;
     }
 
     /// Expand a macro by calling its expander function with the arguments
@@ -3177,6 +3357,14 @@ pub const Compiler = struct {
             }
             param_tail = new_cons;
             p = pc.cdr;
+        }
+        // Preserve dotted/symbol tail in macro lambda lists.
+        if (!p.isNil()) {
+            if (param_tail) |tail| {
+                tail.cdr = p;
+            } else {
+                new_params = p;
+            }
         }
         params = new_params;
 
@@ -3754,7 +3942,12 @@ pub const Compiler = struct {
                         else
                             try lambda_env.bindName(name);
                         try params.append(self.allocator, name);
-                        try typed_params.append(self.allocator, .{ .name = name, .type_sym = null, .idx = idx });
+                        try typed_params.append(self.allocator, .{
+                            .name = name,
+                            .sym = if (param_item.typeKind() == .symbol) param_item else null,
+                            .type_sym = null,
+                            .idx = idx,
+                        });
                         if (param_item.typeKind() == .symbol and self.isSpecialBindingSym(param_item)) {
                             try special_params.append(self.allocator, .{
                                 .sym = param_item,
@@ -3860,7 +4053,12 @@ pub const Compiler = struct {
                         else
                             try lambda_env.bindName(name);
                         try params.append(self.allocator, name);
-                        try typed_params.append(self.allocator, .{ .name = name, .type_sym = type_val, .idx = idx });
+                        try typed_params.append(self.allocator, .{
+                            .name = name,
+                            .sym = if (typed.car.typeKind() == .symbol) typed.car else null,
+                            .type_sym = type_val,
+                            .idx = idx,
+                        });
                         if (typed.car.typeKind() == .symbol and self.isSpecialBindingSym(typed.car)) {
                             try special_params.append(self.allocator, .{
                                 .sym = typed.car,
@@ -3923,8 +4121,10 @@ pub const Compiler = struct {
 
             if (tp.type_sym) |type_sym| {
                 type_sym_to_check = type_sym;
-            } else if (self.global_decls.getTypeDecl(param_name)) |decl_type| {
-                type_sym_to_check = decl_type;
+            } else if (tp.sym) |param_sym| {
+                if (lambda_env.lookupTypeDeclSym(param_sym)) |decl_type| {
+                    type_sym_to_check = decl_type;
+                }
             }
 
             if (type_sym_to_check) |type_sym| {
@@ -4767,6 +4967,7 @@ pub const Compiler = struct {
         var value_env = Env{
             .bindings = VarMap.init(self.allocator),
             .fn_bindings = VarMap.init(self.allocator),
+            .type_decls = TypeDeclMap.init(self.allocator),
             .parent = env,
             .depth = env.depth,
             .new_frame = false,
@@ -4808,20 +5009,6 @@ pub const Compiler = struct {
                 const val_cons = b.cdr.toPtr(Cons);
                 break :blk try self.compile(val_cons.car, &value_env);
             };
-
-            // Check for type declaration and add type assertion
-            var type_sym_to_check: ?Value = null;
-            if (self.global_decls.getTypeDecl(name)) |decl_type| {
-                type_sym_to_check = decl_type;
-            }
-
-            if (type_sym_to_check) |type_sym| {
-                // Always generate for specialization; emitter skips checks at safety=0.
-                const assert_ir = try self.makeTypeAssertionSym(val_ir, type_sym);
-                if (assert_ir) |wrapped| {
-                    val_ir = wrapped;
-                }
-            }
 
             // If this variable needs boxing, wrap value in make-box
             if (boxed.contains(sym)) {
@@ -12835,7 +13022,6 @@ pub const Compiler = struct {
 
         const heap = if (self.heap) |val| val else return error.InvalidSyntax;
 
-        // Use global_decls instead of per-scope decl_env
         // Match declaration spec by symbol identity
         const type_sym = try heap.intern("type");
         const ftype_sym = try heap.intern("ftype");
@@ -12859,14 +13045,16 @@ pub const Compiler = struct {
                 const var_cons = var_list.toPtr(Cons);
                 const var_name_val = var_cons.car;
                 if (!var_name_val.isSymbol()) return error.InvalidSyntax;
-
-                const var_sym = var_name_val.toPtr(Symbol);
-                const var_name = var_sym.getName();
-
-                try self.global_decls.addDecl(var_name, .{
-                    .spec = .type_decl,
-                    .type_expr = type_expr,
-                });
+                if (env) |scope_env| {
+                    try scope_env.bindTypeDeclSym(var_name_val, type_expr);
+                } else {
+                    const var_sym = var_name_val.toPtr(Symbol);
+                    const var_name = var_sym.getName();
+                    try self.global_decls.addDecl(var_name, .{
+                        .spec = .type_decl,
+                        .type_expr = type_expr,
+                    });
+                }
 
                 var_list = var_cons.cdr;
             }
@@ -18042,6 +18230,48 @@ test "macro expansion restores VM global_env" {
     compiler.deinit();
     try testing.expect(vm.global_env == saved_env);
     _ = try vm.collectGarbage();
+}
+
+test "macro expansion preserves dotted rest params" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(allocator, null);
+    defer env.deinit();
+
+    const m_sym = try heap.intern("m");
+    const a_sym = try heap.intern("a");
+    const b_sym = try heap.intern("b");
+    const rest_sym = try heap.intern("rest");
+
+    // Macro def: ((a b . rest) 42)
+    const params = try heap.allocCons(a_sym, try heap.allocCons(b_sym, rest_sym));
+    const body = try heap.allocCons(Value.makeFixnum(42), Value.nil);
+    const macro_def = try heap.allocCons(params, body);
+    try compiler.macro_table.put(m_sym, macro_def);
+
+    // (m 1 2 3 4) should expand successfully despite extra args.
+    const call_args = try heap.allocCons(
+        Value.makeFixnum(1),
+        try heap.allocCons(
+            Value.makeFixnum(2),
+            try heap.allocCons(Value.makeFixnum(3), try heap.allocCons(Value.makeFixnum(4), Value.nil)),
+        ),
+    );
+    const call_expr = try heap.allocCons(m_sym, call_args);
+    const ir_node = try compiler.compile(call_expr, &env);
+    defer allocator.destroy(ir_node);
+
+    try testing.expectEqual(Ir.lit, std.meta.activeTag(ir_node.*));
+    try testing.expectEqual(@as(i64, 42), ir_node.lit.toFixnum());
 }
 
 test "load-time-value restores VM chunk_pool" {

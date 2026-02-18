@@ -759,6 +759,40 @@ test "stdlib setf bit and sbit places" {
     try testing.expectEqual(@as(i64, 1), c3.car.toFixnum());
 }
 
+test "stdlib setf supports fifth through eighth places" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const got = try repl.eval(
+        "(let ((x '(a b c d e f g h i j)))\n" ++
+            "  (setf (fifth x) 'u (sixth x) 'v (seventh x) 'w (eighth x) 'z)\n" ++
+            "  (list (fifth x) (sixth x) (seventh x) (eighth x) (nth 7 x)))",
+    );
+    const c0 = got.toPtr(Cons);
+    try testing.expect(c0.car.isSymbol());
+    try testing.expectEqualStrings("U", c0.car.toPtr(runtime.Symbol).getName());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.isSymbol());
+    try testing.expectEqualStrings("V", c1.car.toPtr(runtime.Symbol).getName());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(c2.car.isSymbol());
+    try testing.expectEqualStrings("W", c2.car.toPtr(runtime.Symbol).getName());
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expect(c3.car.isSymbol());
+    try testing.expectEqualStrings("Z", c3.car.toPtr(runtime.Symbol).getName());
+    const c4 = c3.cdr.toPtr(Cons);
+    try testing.expect(c4.car.isSymbol());
+    try testing.expectEqualStrings("Z", c4.car.toPtr(runtime.Symbol).getName());
+}
+
 test "aref supports strings with character semantics" {
     const allocator = testing.allocator;
 
@@ -5693,7 +5727,7 @@ test "maxima integrate dependency chain binds matcher and partition symbols" {
         \\(progn
         \\  (setq *maxima-files*
         \\    '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
-        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "rzmac" "opers"
+        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "rzmac" "ratmac" "opers"
         \\      "utils" "merror" "mutils" "sumcon" "sublis" "mformt" "outmis" "ar"
         \\      "comm" "comm2" "mlisp" "mmacro" "buildq"
         \\      "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
@@ -5850,6 +5884,31 @@ test "proclaimed special lambda params are dynamically visible in callees" {
 
     try testing.expect(out.isFixnum());
     try testing.expectEqual(@as(i64, 42), out.toFixnum());
+}
+
+test "local type declarations do not leak into unrelated lets" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(progn
+        \\  (defun decl-type-leak-seed ()
+        \\    (let ((test #'car))
+        \\      (declare (type function test))
+        \\      test))
+        \\  (decl-type-leak-seed)
+        \\  (let ((test '(7 8)))
+        \\    (car test)))
+    );
+
+    try testing.expect(out.isFixnum());
+    try testing.expectEqual(@as(i64, 7), out.toFixnum());
 }
 
 test "maxima letmac destructuring-let expands and runs" {
