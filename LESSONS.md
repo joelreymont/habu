@@ -34,6 +34,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding explicit heap layout scaffolding (`GcLayoutMode`, `HeapLayout`, `Region`) in `src/runtime/heap.zig` made nursery/tenured/LOS boundaries concrete without changing current semispace behavior; this keeps incremental generational work isolated and testable.
 - Adding a no-allocation write barrier in `src/runtime/heap.zig` (card table + `writeBarrier`) and calling it at VM/primitives pointer-store sites (`src/interp/vm.zig`, `src/runtime/primitives/list.zig`, `src/runtime/primitives/hash.zig`, `src/runtime/primitives/clos.zig`, `src/runtime/primitives/symbol.zig`) provided generational-safe mutation hooks without changing non-generational behavior.
 - Exposing remembered-set APIs (`markedCardCount`, `appendMarkedCards`, `appendMarkedCardRanges`, `clearMarkedCards`) in `src/runtime/heap.zig` made barrier output directly consumable for upcoming minor-GC root scanning and added deterministic tests for mark/enumerate/clear flow.
+- Adding JIT-side barrier/safepoint hooks in `src/jit/backend.zig` (`jitWriteBarrier`, `jitSafepointBeforeAlloc`) keeps runtime helper mutations (`jitNreverse`) and slow allocation paths aligned with VM barrier invariants.
 
 ### Did Not Work
 - Caching compiled macro expanders by storing closures in `macro_table` is not safe with current chunk-pool/index patching: cached closures retain expansion-time chunk index assumptions and can mis-dispatch nested lambdas later.
@@ -52,6 +53,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Generational scaffolding must not silently change default capacity assumptions; keep default mode semispace and prove unchanged behavior with existing bench-check gates before moving to barrier/minor-GC dots.
 - Barrier coverage needs grep-driven audits after each refactor (`.car=`, `.cdr=`, `vec.set`, hash puts); it is easy to miss direct stores in VM helpers and primitive paths.
 - Remembered-set APIs should be allocation-free on hot mutation paths and only allocate during explicit scan/export calls; keep the write barrier itself side-effect-light.
+- JIT runtime helpers can mutate heap objects outside the interpreter dispatch loop; barrier logic must be hooked there explicitly or remembered sets drift silently.
 
 ## Session Notes (2026-02-17)
 

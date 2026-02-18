@@ -75,6 +75,19 @@ fn jitConsRefreshCache() void {
     }
 }
 
+fn jitSafepointBeforeAlloc() void {
+    if (g_heap) |heap| {
+        // Keep alloc cache coherent before any slow-path allocator/GC entry.
+        g_alloc_ptr = @intFromPtr(heap.alloc_ptr);
+        g_alloc_end = @intFromPtr(heap.from_end);
+    }
+}
+
+fn jitWriteBarrier(owner_raw: u64, stored_raw: u64) void {
+    const heap = g_heap orelse return;
+    heap.writeBarrier(Value{ .raw = owner_raw }, Value{ .raw = stored_raw });
+}
+
 /// Takes (cdr, car) order to avoid register swap when nesting cons calls.
 /// Inner cons result stays in x0 (arg0=cdr position) naturally.
 fn jitCons(cdr_raw: u64, car_raw: u64) callconv(.c) u64 {
@@ -94,6 +107,7 @@ fn jitCons(cdr_raw: u64, car_raw: u64) callconv(.c) u64 {
     }
     // Slow path: full allocation with potential GC
     const heap = g_heap orelse return 0;
+    jitSafepointBeforeAlloc();
     const car = Value{ .raw = car_raw };
     const cdr = Value{ .raw = cdr_raw };
     const result = heap.allocCons(car, cdr) catch return 0;
@@ -128,6 +142,7 @@ fn jitNreverse(list_raw: u64) callconv(.c) u64 {
         const cell = curr.toPtr(runtime.Cons);
         const next = cell.cdr;
         cell.cdr = prev;
+        jitWriteBarrier(curr.raw, prev.raw);
         prev = curr;
         curr = next;
     }
