@@ -1218,13 +1218,6 @@ pub const Vm = struct {
         var current_chunk_root = chunkRoot(self.chunk);
         var frame_chunk_roots: [MAX_FRAMES]Value = undefined;
 
-        const frame_closure_count: usize = blk: {
-            var n: usize = 0;
-            for (self.frames[0..self.fp]) |frame| {
-                if (frame.closure != null) n += 1;
-            }
-            break :blk n;
-        };
         const has_current_closure = self.current_closure != null;
         const slots_need: usize = self.catch_sp +
             self.block_sp +
@@ -1232,7 +1225,7 @@ pub const Vm = struct {
             self.progv_sp +
             self.handler_sp * 2 +
             7 +
-            frame_closure_count +
+            self.fp +
             (if (has_current_closure) @as(usize, 1) else 0) +
             self.catch_sp +
             self.unwind_sp +
@@ -1266,12 +1259,14 @@ pub const Vm = struct {
         self.gc_slots.appendAssumeCapacity(&self.current_package);
 
         var closure_idx: usize = 0;
-        for (self.frames[0..self.fp]) |frame| {
+        for (self.frames[0..self.fp], 0..) |frame, i| {
             if (frame.closure) |c| {
                 frame_closure_roots[closure_idx] = Value.makeClosure(c);
                 self.gc_slots.appendAssumeCapacity(&frame_closure_roots[closure_idx]);
                 closure_idx += 1;
             }
+            frame_chunk_roots[i] = chunkRoot(frame.chunk);
+            self.gc_slots.appendAssumeCapacity(&frame_chunk_roots[i]);
         }
         if (self.current_closure) |c| {
             current_closure_root = Value.makeClosure(c);
@@ -1295,10 +1290,6 @@ pub const Vm = struct {
             self.gc_slots.appendAssumeCapacity(&restart_chunk_roots[i]);
         }
         self.gc_slots.appendAssumeCapacity(&current_chunk_root);
-        for (self.frames[0..self.fp], 0..) |frame, i| {
-            frame_chunk_roots[i] = chunkRoot(frame.chunk);
-            self.gc_slots.appendAssumeCapacity(&frame_chunk_roots[i]);
-        }
 
         var ranges: [12]roots_mod.RootRange = undefined;
         var range_len: usize = 0;

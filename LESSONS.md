@@ -44,6 +44,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Mark-on-touch + work-queue scan for LOS in `src/runtime/gc.zig` `copyValue` prevented stale young pointers inside pinned large containers across minor collections.
 - Switching GC perf benches to generational fixtures (`bench/gc.zig`) is essential; semispace-only benches can pass while generational paths silently regress.
 - Hoist API drift checks must run under `-Duse-hoist=true`; default test mode can otherwise hide interface breakage behind the stub backend.
+- In `src/interp/vm.zig` `collectGarbageExtra`, replacing the closure-count prepass with an upper-bound capacity estimate (`self.fp`) and merging frame closure/chunk staging into one pass removed a duplicate frame walk with no semantic change.
 
 ### Did Not Work
 - Caching compiled macro expanders by storing closures in `macro_table` is not safe with current chunk-pool/index patching: cached closures retain expansion-time chunk index assumptions and can mis-dispatch nested lambdas later.
