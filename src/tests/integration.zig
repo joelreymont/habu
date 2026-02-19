@@ -5034,6 +5034,48 @@ test "package-local functionp does not override cl:functionp" {
     try testing.expect(c3.car.isNil());
 }
 
+test "package iteration macros produce symbols and iterator values" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(let ((ds 0)\n" ++
+            "      (de 0)\n" ++
+            "      (da 0)\n" ++
+            "      (iter-ok nil))\n" ++
+            "  (do-symbols (s *package*)\n" ++
+            "    (declare (ignore s))\n" ++
+            "    (setq ds (+ ds 1))\n" ++
+            "    (when (> ds 5) (return)))\n" ++
+            "  (do-external-symbols (s (find-package \"COMMON-LISP\"))\n" ++
+            "    (declare (ignore s))\n" ++
+            "    (setq de (+ de 1))\n" ++
+            "    (when (> de 5) (return)))\n" ++
+            "  (do-all-symbols (s)\n" ++
+            "    (declare (ignore s))\n" ++
+            "    (setq da (+ da 1))\n" ++
+            "    (when (> da 5) (return)))\n" ++
+            "  (with-package-iterator (next *package* :internal :external :inherited)\n" ++
+            "    (multiple-value-bind (more sym kind pkg) (next)\n" ++
+            "      (setq iter-ok (and more\n" ++
+            "                         (symbolp sym)\n" ++
+            "                         (packagep pkg)\n" ++
+            "                         (or (eq kind :internal)\n" ++
+            "                             (eq kind :external)\n" ++
+            "                             (eq kind :inherited))))))\n" ++
+            "  (and (> ds 0) (> de 0) (> da 0) iter-ok))",
+    );
+
+    try testing.expect(!result.isNil());
+}
+
 test "setf sbit on make-array uses aset path" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });

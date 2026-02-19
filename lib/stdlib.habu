@@ -6139,11 +6139,59 @@
   (declare (ignore condition restarts))
   `(progn ,@body))
 
-; with-package-iterator - package symbol iteration (stub)
+; with-package-iterator - package symbol iteration
+; (with-package-iterator (name package-list {symbol-type}*) body...)
+; symbol-type: :internal | :external | :inherited
 (defmacro with-package-iterator (spec &body body)
-  (let ((name (car spec)))
-    (declare (ignore name))
-    `(progn ,@body)))
+  (let ((name (car spec))
+        (package-form (cadr spec))
+        (types (cddr spec))
+        (pkg-list (gensym "PKG-LIST"))
+        (iter-list (gensym "ITER-LIST"))
+        (cursor (gensym "CURSOR"))
+        (pkg (gensym "PKG"))
+        (seen (gensym "SEEN"))
+        (local-syms (gensym "LOCAL-SYMS"))
+        (ext-syms (gensym "EXT-SYMS"))
+        (used-pkg (gensym "USED-PKG"))
+        (sym (gensym "SYM"))
+        (entry (gensym "ENTRY")))
+    `(let* ((,pkg-list (let ((p ,package-form))
+                         (if (listp p) p (list p))))
+            (,iter-list nil))
+       (dolist (,pkg ,pkg-list)
+         (when ,pkg
+           (setq ,pkg (%ensure-package ,pkg))
+           (let ((,seen (make-hash-table :test 'eq))
+                 (,local-syms (%package-symbols-list ,pkg))
+                 (,ext-syms (%package-exports-list ,pkg)))
+             (when (or (null ',types) (member :external ',types))
+               (dolist (,sym ,ext-syms)
+                 (unless (gethash ,sym ,seen)
+                   (setf (gethash ,sym ,seen) t)
+                   (push (list ,sym :external ,pkg) ,iter-list))))
+             (when (or (null ',types) (member :internal ',types))
+               (dolist (,sym ,local-syms)
+                 (unless (or (gethash ,sym ,seen)
+                             (member ,sym ,ext-syms))
+                   (setf (gethash ,sym ,seen) t)
+                   (push (list ,sym :internal ,pkg) ,iter-list))))
+             (when (or (null ',types) (member :inherited ',types))
+               (dolist (,used-pkg (package-use-list ,pkg))
+                 (dolist (,sym (%package-exports-list ,used-pkg))
+                   (unless (or (gethash ,sym ,seen)
+                               (member ,sym ,local-syms))
+                     (setf (gethash ,sym ,seen) t)
+                     (push (list ,sym :inherited ,pkg) ,iter-list))))))))
+       (setq ,iter-list (nreverse ,iter-list))
+       (let ((,cursor ,iter-list))
+         (flet ((,name ()
+                  (if ,cursor
+                      (let ((,entry (car ,cursor)))
+                        (setq ,cursor (cdr ,cursor))
+                        (values t (car ,entry) (cadr ,entry) (caddr ,entry)))
+                    (values nil nil nil nil))))
+           ,@body)))))
 
 ; defsetf - define setf expansion (simple form)
 (defmacro defsetf (access-fn &rest rest)
@@ -6319,16 +6367,6 @@
 ;;; Package Iteration Macros
 ;;; ============================================================================
 
-; Stub: will be replaced by native implementation
-(defun package-symbols-table (pkg)
-  (declare (ignore pkg))
-  nil)
-
-; Stub: will be replaced by native implementation
-(defun package-exports-table (pkg)
-  (declare (ignore pkg))
-  nil)
-
 ; Helper to get package symbols as a list
 (defun %package-symbols-list (pkg)
   "Internal: extract all symbols from package's internal hash table"
@@ -6364,7 +6402,7 @@
         (temp-pkg (gensym "PKG"))
         (sym-list (gensym "SYMS"))
         (seen (gensym "SEEN")))
-    `(let* ((,temp-pkg ,pkg)
+    `(let* ((,temp-pkg (%ensure-package ,pkg))
             (,seen (make-hash-table :test 'eq))
             (,sym-list nil))
        (block nil
@@ -6392,7 +6430,7 @@
         (pkg (or (cadr spec) '*package*))
         (result (caddr spec))
         (temp-pkg (gensym "PKG")))
-    `(let ((,temp-pkg ,pkg))
+    `(let ((,temp-pkg (%ensure-package ,pkg)))
        (block nil
          (dolist (,var (%package-exports-list ,temp-pkg))
            ,@body)
@@ -6410,10 +6448,11 @@
             (,seen (make-hash-table :test 'eq)))
        (block nil
          (dolist (,pkg-var ,pkg-list)
-           (dolist (,var (%package-symbols-list ,pkg-var))
-             (unless (gethash ,var ,seen)
-               (setf (gethash ,var ,seen) t)
-               ,@body)))
+           (when (packagep ,pkg-var)
+             (dolist (,var (%package-symbols-list ,pkg-var))
+               (unless (gethash ,var ,seen)
+                 (setf (gethash ,var ,seen) t)
+                 ,@body))))
          (let ((,var nil)) ,result)))))
 
 (defun logtest (a b)
