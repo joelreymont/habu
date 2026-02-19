@@ -232,6 +232,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Removing early-stdlib `dolist` macro forward-reference use in `array-row-major-index` and implementing true rank-aware `row-major-aref` index decomposition (`lib/stdlib.habu:605`, `lib/stdlib.habu:622`) fixed two root issues: malformed compile-time macro expansion in early forms and incorrect rank-1-only row-major access.
 - Replacing `with-package-iterator` stubs with real iterator state and hardening `do-symbols`/`do-external-symbols`/`do-all-symbols` package normalization (`lib/stdlib.habu:6145`, `lib/stdlib.habu:6398`, `lib/stdlib.habu:6428`, `lib/stdlib.habu:6441`) restored package-iteration behavior for generic CL code paths.
 - Locking iteration behavior with a focused regression (`src/tests/integration.zig:5037`) catches regressions in symbol-category iteration and iterator return-value shape.
+- Replacing `restart-bind` stubs with real restart-case lowering (`lib/stdlib.habu:7173`) restores dynamic restart registration so handler code can invoke bound restarts in generic CL flows.
+- Locking `restart-bind` behavior with focused coverage (`src/tests/integration.zig:4716`) prevents regressions where restart handlers silently no-op.
 
 ### Did Not Work
 - Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.

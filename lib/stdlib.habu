@@ -7169,10 +7169,17 @@
 ; pprint-logical-block - logical block for pprint (stub)
 ; pprint-logical-block and pprint-pop defined earlier
 
-; restart-bind - bind restart handlers (stub)
+; restart-bind - bind restart handlers
 (defmacro restart-bind (bindings &body body)
   "Establish restart bindings"
-  (declare (ignore bindings))
-  `(progn ,@body))
+  (let ((form `(progn ,@body)))
+    (dolist (binding (reverse bindings) form)
+      (let* ((name (car binding))
+             (fn (cadr binding)))
+        (setq form
+              `(restart-case
+                   ,form
+                 (,name ()
+                        (funcall ,fn))))))))
 
 (in-package "CL-USER")

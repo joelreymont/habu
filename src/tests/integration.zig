@@ -4713,6 +4713,34 @@ test "ansi repro compute-restarts.3 find-restart returns restart object" {
     try testing.expect(!result.isNil());
 }
 
+test "restart-bind establishes callable restart handlers" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const src =
+        \\(let ((seen nil))
+        \\  (let ((out (restart-bind
+        \\               ((foo #'(lambda ()
+        \\                        (setq seen t)
+        \\                        :ok)))
+        \\               (invoke-restart 'foo))))
+        \\    (list out seen)))
+    ;
+    const result = try repl.eval(src);
+    try testing.expect(result.isCons());
+    const c0 = result.toPtr(Cons);
+    try testing.expect(!c0.car.isNil());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(!c1.car.isNil());
+}
+
 test "ansi repro cerror.6 continue restart resumes" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
