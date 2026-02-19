@@ -208,6 +208,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding focused regressions for MV var/form counts and dotted-tail rejection (`src/compiler/compile.zig:19645`, `src/compiler/compile.zig:19688`) locked shape correctness while preserving `multiple-value-*` lowering semantics.
 - Replacing `compileDefclass` expansion accumulation (`src/compiler/compile.zig:11375`) from `ArrayList` growth to exact pre-counted form allocation removed dynamic staging overhead while preserving reader/writer symbol filtering.
 - Locking reader/writer expansion counting with a focused regression (`src/compiler/compile.zig:19120`) prevents silent off-by-one/missing-form regressions in generated defclass helper definitions.
+- Refactoring `compileTagbody` segment construction (`src/compiler/compile.zig:8015`) to pre-count tags, allocate segment/tag buffers once, and compile each segment directly removed dynamic segment/form staging lists from the hot control-flow lowering path.
+- Adding a focused dotted-tail regression for `tagbody` (`src/compiler/compile.zig:19902`) locked malformed body-list rejection while preserving existing segment partition behavior.
 
 ### Did Not Work
 - Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.

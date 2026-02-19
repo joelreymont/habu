@@ -8008,44 +8008,53 @@ pub const Compiler = struct {
 
     fn compileTagbody(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (tagbody [tag | form]...)
-        // Parse body into tags and segments
-        var tags = std.ArrayList(Value){};
-        defer tags.deinit(self.allocator);
+        // Count tags first so segment/tag storage can be allocated once.
+        var tag_count: usize = 0;
+        var scan = args;
+        while (scan.isCons()) : (scan = scan.toPtr(Cons).cdr) {
+            if (scan.toPtr(Cons).car.isSymbol()) tag_count += 1;
+        }
+        if (!scan.isNil()) return error.InvalidSyntax;
 
-        var segments = std.ArrayList(*const Ir){};
-        defer segments.deinit(self.allocator);
+        const tags = try self.allocator.alloc(Value, tag_count);
+        const segments = try self.allocator.alloc(*const Ir, tag_count + 1);
 
-        var current_forms = std.ArrayList(Value){};
-        defer current_forms.deinit(self.allocator);
-
-        // Walk through body
         var rest = args;
-        while (rest.isCons()) {
-            const cons = rest.toPtr(Cons);
-            const elem = cons.car;
-            rest = cons.cdr;
-
-            if (elem.isSymbol()) {
-                // This is a tag - close current segment and start new one
-                const segment_ir = try self.compileFormsToProgn(current_forms.items, env);
-                try segments.append(self.allocator, segment_ir);
-                current_forms.clearRetainingCapacity();
-
-                try tags.append(self.allocator, elem);
-            } else {
-                // This is a form - add to current segment
-                try current_forms.append(self.allocator, elem);
+        var tag_idx: usize = 0;
+        var seg_idx: usize = 0;
+        while (true) {
+            var form_count: usize = 0;
+            var seg_scan = rest;
+            while (seg_scan.isCons()) {
+                const elem = seg_scan.toPtr(Cons).car;
+                if (elem.isSymbol()) break;
+                form_count += 1;
+                seg_scan = seg_scan.toPtr(Cons).cdr;
             }
+            if (!seg_scan.isNil() and !seg_scan.isCons()) return error.InvalidSyntax;
+
+            const seg_forms = try self.allocator.alloc(Value, form_count);
+            var fill = rest;
+            var form_idx: usize = 0;
+            while (form_idx < form_count) : (form_idx += 1) {
+                const cell = fill.toPtr(Cons);
+                seg_forms[form_idx] = cell.car;
+                fill = cell.cdr;
+            }
+            segments[seg_idx] = try self.compileFormsToProgn(seg_forms, env);
+            seg_idx += 1;
+
+            if (!seg_scan.isCons()) break;
+
+            const tag_cell = seg_scan.toPtr(Cons);
+            tags[tag_idx] = tag_cell.car;
+            tag_idx += 1;
+            rest = tag_cell.cdr;
         }
 
-        // Close final segment
-        const final_segment = try self.compileFormsToProgn(current_forms.items, env);
-        try segments.append(self.allocator, final_segment);
-
-        return try self.builder.tagbody(
-            tags.items,
-            segments.items,
-        );
+        std.debug.assert(tag_idx == tags.len);
+        std.debug.assert(seg_idx == segments.len);
+        return try self.builder.tagbody(tags, segments);
     }
 
     fn compileFormsToProgn(self: *Compiler, forms: []const Value, env: *const Env) anyerror!*Ir {
@@ -20249,6 +20258,32 @@ test "compile tagbody builds segments without dropping forms" {
     try testing.expectEqual(@as(usize, 3), ir_node.tagbody.segments.len);
     try testing.expect(ir_node.tagbody.segments[1].* == .go);
     try testing.expect(ir_node.tagbody.segments[2].* == .lit);
+}
+
+test "compile tagbody rejects dotted tails" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(arena_alloc, &heap, "(tagbody start . 1)", &vm.builtins);
+    defer parser.deinit();
+    const expr = try parser.parse();
+    try testing.expectError(error.InvalidSyntax, compiler.compile(expr, &env));
 }
 
 test "compile format preserves variadic argument count" {
