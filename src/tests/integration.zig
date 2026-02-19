@@ -3994,6 +3994,32 @@ test "coerce lambda designator supports optional env arity" {
     try testing.expect(result.eq(Value.t));
 }
 
+test "coerce supports numeric and char target types" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(and (= (coerce 42 'float) 42.0)
+        \\     (= (coerce 42 'single-float) 42.0)
+        \\     (= (coerce 42.9 'integer) 42)
+        \\     (= (coerce #\A 'integer) 65)
+        \\     (char= (coerce 66 'character) #\B)
+        \\     (equal (coerce "AZ" 'list) '(#\A #\Z))
+        \\     (equal (coerce '(#\C #\D) 'string) "CD")
+        \\     (equal (coerce '#(1 2 3) 'list) '(1 2 3))
+        \\     (equal (coerce '(1 2 3) 'vector) '#(1 2 3))
+        \\     (= (coerce 7 't) 7))
+    );
+    try testing.expect(result.eq(Value.t));
+}
+
 test "ansi repro top-level setq undeclared special defines global" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });

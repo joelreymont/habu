@@ -2400,6 +2400,7 @@
 (defun coerce (object result-type)
   (let ((rtype (sequence-type-key result-type)))
     (cond
+    ((eq result-type 't) object)
     ; Same type - return as-is
     ((and (eq rtype :list) (listp object)) object)
     ((and (eq rtype :vector) (vectorp object)) object)
@@ -2432,6 +2433,10 @@
          (eq result-type 'double-float) (eq result-type 'short-float)
          (eq result-type 'long-float))
      (float object))
+    ((or (eq result-type 'integer) (eq result-type 'fixnum))
+     (cond
+       ((characterp object) (char-code object))
+       (t (truncate object))))
     ((and (eq result-type 'character) (integerp object))
      (code-char object))
     ((and (eq result-type 'character) (stringp object))
