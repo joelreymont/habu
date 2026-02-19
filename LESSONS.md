@@ -871,3 +871,13 @@ Environment guard:
 
 #### Did Not Work
 - Leaving assertion/progv aggregation on dynamic arrays causes repeated allocator churn in compile-heavy macro/function pipelines even when the target cardinality is statically bounded by parsed lambda metadata.
+
+### Session Notes (2026-02-19, macro map sync gating + Maxima reprofile)
+
+#### Worked Well
+- Sampling a real Maxima subset load (`sample` over `/tmp/maxima_profile_subset.lisp`) identified `interp.repl.Repl.restoreMacroMapsFromRoots` hash-map rebuilds as a dominant steady-state cost in form execution (`src/interp/repl.zig:497`, `src/interp/repl.zig:574`).
+- Adding GC-epoch-gated macro map synchronization (`src/interp/repl.zig:574` + `src/interp/repl.zig:2008`) removed unconditional macro-map refresh/restore work from no-GC form execution while retaining full restore on GC transitions.
+- Reprofiling after the change shifted hotspots away from macro-map restore loops and improved Maxima subset load wall time from ~5.06s to ~3.37s on the same script/run shape (`/tmp/maxima_profile_subset.lisp`), with similar peak memory (~289MB).
+
+#### Did Not Work
+- A manual-GC regression test that called `repl.vm.collectGarbage()` directly between evals produced false failures because macro maps are only guaranteed rooted during managed execution paths; direct unrooted GC is not a valid behavioral contract for macro table persistence.

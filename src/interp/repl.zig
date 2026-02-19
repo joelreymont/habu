@@ -104,6 +104,8 @@ pub const Repl = struct {
     current_vm: ?*Vm,
     /// Linked stack of active VM root contexts for nested eval/load.
     active_root_ctx: ?*VmRootCtx,
+    /// Heap GC count when macro maps were last key-refreshed/rebuilt.
+    macro_gc_synced: usize,
 
     pub fn init(self: *Repl, allocator: std.mem.Allocator, heap: *Heap, config: Config) !void {
         // NOTE: Repl must be initialized in-place so Compiler subcomponents can
@@ -119,6 +121,7 @@ pub const Repl = struct {
             .line_editor = LineEditor.init(allocator),
             .current_vm = null,
             .active_root_ctx = null,
+            .macro_gc_synced = 0,
         };
         errdefer self.chunk_pool.deinit(allocator);
         errdefer self.macros.deinit();
@@ -127,6 +130,7 @@ pub const Repl = struct {
         self.vm = try Vm.init(allocator, heap);
         errdefer self.vm.deinit();
         self.vm.setChunkPool(self.chunk_pool.items);
+        self.macro_gc_synced = self.heap.stats.gc_count;
 
         self.compiler = try Compiler.initWithHeap(allocator, &self.vm);
         errdefer self.compiler.deinit();
@@ -571,7 +575,46 @@ pub const Repl = struct {
         }
     }
 
+    fn syncMacroMapsIfGcChanged(self: *Repl) !void {
+        const gc_now = self.heap.stats.gc_count;
+        if (gc_now == self.macro_gc_synced) return;
+
+        var compiler_macros = std.ArrayList(MacroMapPair){};
+        defer compiler_macros.deinit(self.allocator);
+        try self.collectCompilerMacroPairs(&compiler_macros);
+
+        var symbol_macros = std.ArrayList(MacroMapPair){};
+        defer symbol_macros.deinit(self.allocator);
+        try self.collectSymbolMacroPairs(&symbol_macros);
+
+        var repl_macros = std.ArrayList(ReplMacroPair){};
+        defer repl_macros.deinit(self.allocator);
+        try self.collectReplMacroPairs(&repl_macros);
+
+        self.compiler.macro_table.clearRetainingCapacity();
+        for (compiler_macros.items) |pair| {
+            try self.compiler.macro_table.put(pair.key, pair.val);
+        }
+        self.compiler.symbol_macros.clearRetainingCapacity();
+        for (symbol_macros.items) |pair| {
+            try self.compiler.symbol_macros.put(pair.key, pair.val);
+        }
+        self.macros.clearRetainingCapacity();
+        for (repl_macros.items) |pair| {
+            try self.macros.put(pair.key, .{
+                .closure = pair.closure,
+                .has_whole = pair.has_whole,
+                .has_env = pair.has_env,
+            });
+        }
+
+        self.macro_gc_synced = gc_now;
+    }
+
     fn runVmPreserveMacroState(self: *Repl, vm: *Vm, chunk_ptr: *runtime.objects.Chunk) !Value {
+        try self.syncMacroMapsIfGcChanged();
+        const gc_before = self.heap.stats.gc_count;
+
         const saved_ext = vm.ext_roots;
         if (saved_ext.len != 0) {
             for (saved_ext) |*val| {
@@ -592,25 +635,6 @@ pub const Repl = struct {
         var repl_macros = std.ArrayList(ReplMacroPair){};
         defer repl_macros.deinit(self.allocator);
         try self.collectReplMacroPairs(&repl_macros);
-
-        // Purge any stale entries before executing in nested VMs. We only keep
-        // values proven live in current from-space by the collectors above.
-        self.compiler.macro_table.clearRetainingCapacity();
-        for (compiler_macros.items) |pair| {
-            try self.compiler.macro_table.put(pair.key, pair.val);
-        }
-        self.compiler.symbol_macros.clearRetainingCapacity();
-        for (symbol_macros.items) |pair| {
-            try self.compiler.symbol_macros.put(pair.key, pair.val);
-        }
-        self.macros.clearRetainingCapacity();
-        for (repl_macros.items) |pair| {
-            try self.macros.put(pair.key, .{
-                .closure = pair.closure,
-                .has_whole = pair.has_whole,
-                .has_env = pair.has_env,
-            });
-        }
 
         const total_roots = saved_ext.len +
             (compiler_macros.items.len * 2) +
@@ -664,6 +688,31 @@ pub const Repl = struct {
             const closure = try self.heap.allocClosure(chunk_val, chunk_ptr.arity, &[_]Value{});
             const call_base = vm.sp;
             break :blk vm.callFromStackAt(call_base, closure, &[_]Value{}) catch |run_err| {
+                const gc_after = self.heap.stats.gc_count;
+                if (gc_after != gc_before) {
+                    try self.refreshMacroKeys();
+                    try self.collectCompilerMacroPairs(&live_compiler_macros);
+                    try self.collectSymbolMacroPairs(&live_symbol_macros);
+                    try self.collectReplMacroPairs(&live_repl_macros);
+                    try self.restoreMacroMapsFromRoots(
+                        roots.items,
+                        compiler_macro_start,
+                        compiler_macros.items.len,
+                        symbol_macro_start,
+                        symbol_macros.items.len,
+                        repl_macro_start,
+                        repl_macros.items,
+                        live_compiler_macros.items,
+                        live_symbol_macros.items,
+                        live_repl_macros.items,
+                    );
+                    self.macro_gc_synced = gc_after;
+                }
+                return run_err;
+            };
+        } else vm.run(chunk_ptr) catch |run_err| {
+            const gc_after = self.heap.stats.gc_count;
+            if (gc_after != gc_before) {
                 try self.refreshMacroKeys();
                 try self.collectCompilerMacroPairs(&live_compiler_macros);
                 try self.collectSymbolMacroPairs(&live_symbol_macros);
@@ -680,9 +729,13 @@ pub const Repl = struct {
                     live_symbol_macros.items,
                     live_repl_macros.items,
                 );
-                return run_err;
-            };
-        } else vm.run(chunk_ptr) catch |run_err| {
+                self.macro_gc_synced = gc_after;
+            }
+            return run_err;
+        };
+
+        const gc_after = self.heap.stats.gc_count;
+        if (gc_after != gc_before) {
             try self.refreshMacroKeys();
             try self.collectCompilerMacroPairs(&live_compiler_macros);
             try self.collectSymbolMacroPairs(&live_symbol_macros);
@@ -699,25 +752,8 @@ pub const Repl = struct {
                 live_symbol_macros.items,
                 live_repl_macros.items,
             );
-            return run_err;
-        };
-
-        try self.refreshMacroKeys();
-        try self.collectCompilerMacroPairs(&live_compiler_macros);
-        try self.collectSymbolMacroPairs(&live_symbol_macros);
-        try self.collectReplMacroPairs(&live_repl_macros);
-        try self.restoreMacroMapsFromRoots(
-            roots.items,
-            compiler_macro_start,
-            compiler_macros.items.len,
-            symbol_macro_start,
-            symbol_macros.items.len,
-            repl_macro_start,
-            repl_macros.items,
-            live_compiler_macros.items,
-            live_symbol_macros.items,
-            live_repl_macros.items,
-        );
+            self.macro_gc_synced = gc_after;
+        }
         return result;
     }
 
@@ -2005,6 +2041,7 @@ pub const Repl = struct {
         // Macro expansion during compile may execute already-defined macro
         // closures; keep VM chunk pool in sync before any compile-time eval.
         self.syncChunkPools(vm);
+        try self.syncMacroMapsIfGcChanged();
         defer {
             if (saved_compiler_vm) |saved_vm| {
                 self.compiler.setVm(saved_vm);
