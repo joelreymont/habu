@@ -2168,6 +2168,8 @@ pub const Repl = struct {
             .@"if" => |i| hasUnresolvableCalls(i.cond, self_name, known) or
                 hasUnresolvableCalls(i.then_branch, self_name, known) or
                 hasUnresolvableCalls(i.else_branch, self_name, known),
+            .block => |b| hasUnresolvableCalls(b.body, self_name, known),
+            .return_from => |r| hasUnresolvableCalls(r.value, self_name, known),
             .let => |l| blk: {
                 for (l.bindings) |binding| {
                     if (hasUnresolvableCalls(binding.value, self_name, known)) break :blk true;
@@ -2194,6 +2196,38 @@ pub const Repl = struct {
         };
     }
 
+    const JitLambdaCandidate = struct {
+        name: []const u8,
+        lambda_ir: *const Ir,
+    };
+
+    fn extractJitLambdaCandidate(ir_node: *const Ir) ?JitLambdaCandidate {
+        return switch (ir_node.*) {
+            .define => |d| switch (d.value.*) {
+                .lambda => .{ .name = d.name, .lambda_ir = d.value },
+                else => null,
+            },
+            .set_symbol_function => |op| blk: {
+                if (op.left.* != .lit) break :blk null;
+                if (!op.left.lit.isSymbol()) break :blk null;
+                if (op.right.* != .lambda) break :blk null;
+                break :blk .{
+                    .name = op.left.lit.toPtr(runtime.Symbol).getName(),
+                    .lambda_ir = op.right,
+                };
+            },
+            .progn => |exprs| blk: {
+                for (exprs) |expr| {
+                    if (extractJitLambdaCandidate(expr)) |candidate| {
+                        break :blk candidate;
+                    }
+                }
+                break :blk null;
+            },
+            else => null,
+        };
+    }
+
     fn tryHoistCompileLambdas(
         self: *Repl,
         ir_node: *const Ir,
@@ -2202,35 +2236,15 @@ pub const Repl = struct {
     ) bool {
         _ = chunk_base;
         const trace = std.posix.getenv("HABU_TRACE_JIT") != null;
-        // Only handle top-level (define name lambda) for now
-        const define = switch (ir_node.*) {
-            .define => |d| d,
-            .progn => |exprs| blk: {
-                // Also search progn for defines (e.g., (progn (defun ...) (call)))
-                for (exprs) |expr| {
-                    switch (expr.*) {
-                        .define => |d| break :blk d,
-                        else => {},
-                    }
-                }
-                if (trace) std.debug.print("JIT: no define found in progn\n", .{});
-                return false;
-            },
-            else => {
-                if (trace) std.debug.print("JIT: top-level IR is not define (is {s})\n", .{@tagName(ir_node.*)});
-                return false;
-            },
+        const candidate = extractJitLambdaCandidate(ir_node) orelse {
+            if (trace) std.debug.print("JIT: no lambda candidate in top-level IR ({s})\n", .{@tagName(ir_node.*)});
+            return false;
         };
-        const lambda_ir = switch (define.value.*) {
-            .lambda => define.value,
-            else => {
-                if (trace) std.debug.print("JIT: define value is not lambda for '{s}'\n", .{define.name});
-                return false;
-            },
-        };
+        const fn_name = candidate.name;
+        const lambda_ir = candidate.lambda_ir;
         const lambda = lambda_ir.lambda;
 
-        if (trace) std.debug.print("JIT: considering '{s}' speed={d} safety={d} captures={d} opt={d} key={d} rest={}\n", .{ define.name, lambda.speed, lambda.safety, lambda.captures.len, lambda.optional_params.len, lambda.key_params.len, lambda.rest_param != null });
+        if (trace) std.debug.print("JIT: considering '{s}' speed={d} safety={d} captures={d} opt={d} key={d} rest={}\n", .{ fn_name, lambda.speed, lambda.safety, lambda.captures.len, lambda.optional_params.len, lambda.key_params.len, lambda.rest_param != null });
 
         // Only compile speed=3, safety=0 functions
         // Safety > 0 needs runtime type checks that hoist backend doesn't emit
@@ -2242,7 +2256,7 @@ pub const Repl = struct {
         if (!jit_backend.IrTranslator.canTranslate(lambda.body)) {
             if (trace) {
                 const bad_tag = jit_backend.IrTranslator.firstUnsupportedTag(lambda.body) orelse std.meta.activeTag(lambda.body.*);
-                std.debug.print("JIT: canTranslate failed for '{s}' (body tag: {s}, first unsupported: {s})\n", .{ define.name, @tagName(lambda.body.*), @tagName(bad_tag) });
+                std.debug.print("JIT: canTranslate failed for '{s}' (body tag: {s}, first unsupported: {s})\n", .{ fn_name, @tagName(lambda.body.*), @tagName(bad_tag) });
             }
             return false;
         }
@@ -2256,8 +2270,8 @@ pub const Repl = struct {
                 const cfn = entry.value_ptr.*;
                 kf_check.put(cfn.name, {}) catch {};
             }
-            if (hasUnresolvableCalls(lambda.body, define.name, &kf_check)) {
-                if (trace) std.debug.print("JIT: skipping '{s}' — has unresolvable calls\n", .{define.name});
+            if (hasUnresolvableCalls(lambda.body, fn_name, &kf_check)) {
+                if (trace) std.debug.print("JIT: skipping '{s}' — has unresolvable calls\n", .{fn_name});
                 return false;
             }
         }
@@ -2270,14 +2284,14 @@ pub const Repl = struct {
 
         // The first child chunk is the lambda's chunk
         if (child_chunks.len == 0) {
-            if (trace) std.debug.print("JIT: no child chunks for '{s}'\n", .{define.name});
+            if (trace) std.debug.print("JIT: no child chunks for '{s}'\n", .{fn_name});
             return false;
         }
         const chunk_val = child_chunks[0];
         const chunk_ptr = chunk_val.toPtr(runtime.objects.Chunk);
 
         // Try hoist compilation (may fail for unsupported IR nodes — that's OK)
-        return self.doHoistCompile(lambda_ir, define.name, chunk_ptr);
+        return self.doHoistCompile(lambda_ir, fn_name, chunk_ptr);
     }
 
     /// Inner function that propagates errors to allow try usage.

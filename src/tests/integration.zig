@@ -5,6 +5,7 @@
 
 const std = @import("std");
 const testing = std.testing;
+const build_options = @import("build_options");
 
 const runtime = @import("../runtime/runtime.zig");
 const Value = runtime.Value;
@@ -38,6 +39,50 @@ fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Valu
 
     const chunk = try compile_chunk.compileChunk(allocator, heap, &vm, &comp, &chunk_pool, source);
     return vm.run(chunk);
+}
+
+test "compileChunk JITs optimized defun with implicit block" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPool(chunk_pool.items);
+
+    const before = vm.jit_fns.count();
+    const def_chunk = try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(defun jit-block-probe (n) (declare (optimize (speed 3) (safety 0))) (if (<= n 0) 0 (+ n 1)))",
+    );
+    _ = try vm.run(def_chunk);
+    const after = vm.jit_fns.count();
+    try testing.expect(after > before);
+
+    const call_chunk = try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-block-probe 41)",
+    );
+    const result = try vm.run(call_chunk);
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
 // ============================================================================

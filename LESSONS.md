@@ -184,9 +184,14 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Caching builtin refresh by heap epoch in `src/compiler/compile.zig` (`bi_heap`/`bi_gc`/`bi_cl_pkg`/`bi_cl_ver` + `refreshBuiltins`) removed repeated `Builtins.init` churn from primitive compile dispatch while still invalidating on GC and CL package symbol-table mutation.
 - Replacing `append` primitive compilation’s temporary `ArrayList(*Ir)` in `src/compiler/compile.zig` with a streaming left fold removed a per-call transient allocation in a hot compile path.
 - Locking refresh invalidation behavior with focused tests in `src/compiler/compile.zig` (`refreshBuiltins rebuilds when builtin handles are cleared`, `refreshBuiltins invalidates on CL package symbol-table mutation`) prevented cache-staleness regressions.
+- Tracing bench JIT eligibility in `src/testing/compile_chunk.zig` immediately exposed two root causes for `compile_n=0`: top-level `defun` lowering had moved from `.define` to `.set_symbol_function`, and Hoist translation rejected implicit `.block` wrappers.
+- Extending JIT candidate extraction in both `src/testing/compile_chunk.zig` and `src/interp/repl.zig` to accept `.set_symbol_function` + lambda restored post-defun JIT registration after function-cell lowering changes.
+- Adding `.block` traversal/translation support in `src/jit/backend.zig` (`irAny`, `countIrNodes`, `canTranslate`, `firstUnsupportedTag`, `translate`, TCO helpers) fixed the real backend incompatibility instead of masking it in benchmark gating.
+- Validating with `zig build -Duse-hoist=true bench-jit -- --json` and `zig build -Duse-hoist=true bench-check -- --json` proved end-to-end recovery (`compile_n=1`, `fail_n=0`) and restored meaningful JIT perf signal.
 
 ### Did Not Work
 - Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.
+- Assuming JIT entry detection based only on `.define` was stable was wrong; compiler IR shape changes (function-cell correctness work) silently disabled JIT coverage in both REPL and benchmark paths.
 
 ---
 

@@ -616,6 +616,7 @@ fn irAny(ir: *const Ir, pred: anytype) bool {
     if (pred.check(ir)) return true;
     return switch (ir.*) {
         .@"if" => |n| irAny(n.cond, pred) or irAny(n.then_branch, pred) or irAny(n.else_branch, pred),
+        .block => |n| irAny(n.body, pred),
         .let => |n| blk: {
             for (n.bindings) |b| if (irAny(b.value, pred)) break :blk true;
             break :blk irAny(n.body, pred);
@@ -693,6 +694,7 @@ fn countIrNodes(node: *const Ir) usize {
     var count: usize = 1;
     switch (node.*) {
         .@"if" => |n| count += countIrNodes(n.cond) + countIrNodes(n.then_branch) + countIrNodes(n.else_branch),
+        .block => |n| count += countIrNodes(n.body),
         .let => |n| {
             for (n.bindings) |b| count += countIrNodes(b.value);
             count += countIrNodes(n.body);
@@ -1005,6 +1007,7 @@ pub const IrTranslator = struct {
             .le, .lt, .gt, .ge, .num_eq,
             => |op| canTranslate(op.left) and canTranslate(op.right),
             .@"if" => |f| canTranslate(f.cond) and canTranslate(f.then_branch) and canTranslate(f.else_branch),
+            .block => |b| canTranslate(b.body),
             .progn => |exprs| {
                 for (exprs) |e| if (!canTranslate(e)) return false;
                 return true;
@@ -1082,6 +1085,7 @@ pub const IrTranslator = struct {
             .fixnum_mul, .mul, .eq, .cons, .logand, .mod, .rem, .append, .assoc,
             => |op| firstUnsupportedTag(op.left) orelse firstUnsupportedTag(op.right),
             .@"if" => |f| firstUnsupportedTag(f.cond) orelse firstUnsupportedTag(f.then_branch) orelse firstUnsupportedTag(f.else_branch),
+            .block => |b| firstUnsupportedTag(b.body),
             .progn => |exprs| blk: {
                 for (exprs) |e| if (firstUnsupportedTag(e)) |tag| break :blk tag;
                 break :blk null;
@@ -1161,6 +1165,7 @@ pub const IrTranslator = struct {
             .eq => |op| try self.translateFixnumCmp(.eq, op.left, op.right),
             .fixnum_mul => |op| try self.translateFixnumMul(op.left, op.right),
             .mul => |op| try self.translateFixnumMul(op.left, op.right),
+            .block => |b| try self.translate(b.body),
             .@"if" => |if_node| try self.translateIf(if_node.cond, if_node.then_branch, if_node.else_branch),
             .progn => |exprs| try self.translateProgn(exprs),
             .let => |let_node| try self.translateLet(let_node.bindings, let_node.body),
@@ -2231,6 +2236,7 @@ pub const IrTranslator = struct {
     /// become jumps to header. Non-tail-position code delegates to translate().
     fn translateTCOExpr(self: *IrTranslator, ir: *const Ir) anyerror!HoistValue {
         switch (ir.*) {
+            .block => |b| return self.translateTCOExpr(b.body),
             .tailcall => |tc| {
                 if (isCallTargetSelf(tc.func, self.fn_name)) {
                     // Check for continuation stack mode: if active and an arg
@@ -3327,6 +3333,9 @@ fn patchCrossCallsToBLSlice(buf: []u8, caller_base: usize) void {
 /// Recursively collect all variable indices that are assigned (set) within an IR subtree.
 fn collectMutatedVars(ir: *const Ir, indices: *std.ArrayList(u16), allocator: std.mem.Allocator) !void {
     switch (ir.*) {
+        .block => |b| {
+            try collectMutatedVars(b.body, indices, allocator);
+        },
         .set => |s| {
             // Add index if not already present
             for (indices.items) |existing| {
@@ -3522,6 +3531,7 @@ fn isTailCall(ir: *const Ir, name: []const u8) bool {
 fn hasSelfTailCalls(body: *const Ir, name: []const u8) bool {
     return switch (body.*) {
         .tailcall => |tc| isCallTargetSelf(tc.func, name),
+        .block => |b| hasSelfTailCalls(b.body, name),
         .@"if" => |i| hasSelfTailCalls(i.then_branch, name) or hasSelfTailCalls(i.else_branch, name),
         .let => |l| hasSelfTailCalls(l.body, name),
         .progn => |exprs| if (exprs.len == 0) false else hasSelfTailCalls(exprs[exprs.len - 1], name),
@@ -3541,6 +3551,7 @@ fn hasSingleInnerSelfCall(body: *const Ir, name: []const u8) bool {
             }
             break :blk count == 1;
         },
+        .block => |b| hasSingleInnerSelfCall(b.body, name),
         .@"if" => |i| hasSingleInnerSelfCall(i.then_branch, name) or hasSingleInnerSelfCall(i.else_branch, name),
         .let => |l| hasSingleInnerSelfCall(l.body, name),
         .progn => |exprs| if (exprs.len == 0) false else hasSingleInnerSelfCall(exprs[exprs.len - 1], name),
@@ -6603,6 +6614,40 @@ test "hoist IR translator: generic countdown recursive" {
     try testing.expectEqual(@as(i64, 85), compiled.call1(3));
     // countdown(5) = 42, tagged: 85
     try testing.expectEqual(@as(i64, 85), compiled.call1(11));
+}
+
+test "hoist IR translator: block wrapper compiles" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const lit = try alloc.create(Ir);
+    lit.* = .{ .lit = Value.makeFixnum(42) };
+
+    const blk = try alloc.create(Ir);
+    blk.* = .{ .block = .{
+        .name = Value.nil,
+        .body = lit,
+    } };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = &.{},
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = blk,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    try testing.expect(IrTranslator.canTranslate(blk));
+    try testing.expectEqual(@as(?std.meta.Tag(Ir), null), IrTranslator.firstUnsupportedTag(blk));
+
+    var compiled = try compileIr(testing.allocator, lambda, "block-test");
+    defer compiled.deinit();
+    try testing.expectEqual(@as(i64, 85), compiled.call0());
 }
 
 test "hoist phi loop: dump codegen for debugging" {
