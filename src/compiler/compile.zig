@@ -8115,19 +8115,26 @@ pub const Compiler = struct {
         defer let_env.deinit();
 
         // Parse variable list
-        var vars = std.ArrayList([]const u8){};
-        defer vars.deinit(self.allocator);
+        var var_count: usize = 0;
+        var scan = cons1.car;
+        while (scan.isCons()) : (scan = scan.toPtr(Cons).cdr) {
+            const var_cons = scan.toPtr(Cons);
+            if (!var_cons.car.isSymbol()) return error.InvalidSyntax;
+            var_count += 1;
+        }
+        if (!scan.isNil()) return error.InvalidSyntax;
 
+        const vars = try self.allocator.alloc([]const u8, var_count);
         var var_list = cons1.car;
         var start_index: u16 = 0;
         var first = true;
+        var name_idx: usize = 0;
         while (var_list.isCons()) {
             const var_cons = var_list.toPtr(Cons);
-            if (!var_cons.car.isSymbol()) return error.InvalidSyntax;
             const sym_val = var_cons.car;
             const sym = sym_val.toPtr(Symbol);
-            const name_copy = try self.allocator.dupe(u8, sym.getName());
-            try vars.append(self.allocator, name_copy);
+            vars[name_idx] = try self.allocator.dupe(u8, sym.getName());
+            name_idx += 1;
             const idx = try let_env.bindSym(sym_val);
             if (first) {
                 start_index = idx;
@@ -8145,7 +8152,7 @@ pub const Compiler = struct {
         // Compile body forms
         const body_ir = try self.compileBody(cons2.cdr, &let_env);
 
-        return try self.builder.mvBind(vars.items, start_index, expr_ir, body_ir);
+        return try self.builder.mvBind(vars, start_index, expr_ir, body_ir);
     }
 
     fn compileMvCall(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -8156,19 +8163,22 @@ pub const Compiler = struct {
         // Compile function expression
         const func_ir = try self.compile(cons1.car, env);
 
-        // Compile forms
-        var forms = std.ArrayList(*const Ir){};
-        defer forms.deinit(self.allocator);
+        var form_count: usize = 0;
+        var scan = cons1.cdr;
+        while (scan.isCons()) : (scan = scan.toPtr(Cons).cdr) {
+            form_count += 1;
+        }
+        if (!scan.isNil()) return error.InvalidSyntax;
 
+        const forms = try self.allocator.alloc(*const Ir, form_count);
         var current = cons1.cdr;
-        while (current.isCons()) {
-            const cons = current.toPtr(Cons);
-            const form_ir = try self.compile(cons.car, env);
-            try forms.append(self.allocator, form_ir);
-            current = cons.cdr;
+        var idx: usize = 0;
+        while (current.isCons()) : (current = current.toPtr(Cons).cdr) {
+            forms[idx] = try self.compile(current.toPtr(Cons).car, env);
+            idx += 1;
         }
 
-        return try self.builder.mvCall(func_ir, forms.items);
+        return try self.builder.mvCall(func_ir, forms);
     }
 
     fn compileMvList(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -19785,6 +19795,82 @@ test "compile make-array preserves static and dynamic dimension forms" {
     const dyn_expr = try parser_dyn.parse();
     const dyn_ir = try compiler.compile(dyn_expr, &env);
     try testing.expect(dyn_ir.* == .arr_new_dyn);
+}
+
+test "compile multiple-value forms preserve var and form counts" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser_bind = try Parser.init(
+        arena_alloc,
+        &heap,
+        "(multiple-value-bind (a b c) (values 1 2 3) (+ a b c))",
+        &vm.builtins,
+    );
+    defer parser_bind.deinit();
+    const bind_expr = try parser_bind.parse();
+    const bind_ir = try compiler.compile(bind_expr, &env);
+    try testing.expect(bind_ir.* == .mv_bind);
+    try testing.expectEqual(@as(usize, 3), bind_ir.mv_bind.vars.len);
+
+    var parser_call = try Parser.init(
+        arena_alloc,
+        &heap,
+        "(multiple-value-call + (values 1 2) (values 3))",
+        &vm.builtins,
+    );
+    defer parser_call.deinit();
+    const call_expr = try parser_call.parse();
+    const call_ir = try compiler.compile(call_expr, &env);
+    try testing.expect(call_ir.* == .mv_call);
+    try testing.expectEqual(@as(usize, 2), call_ir.mv_call.forms.len);
+}
+
+test "compile multiple-value forms reject dotted tails" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const plus_sym = try heap.intern("+");
+    const bad_mv_call_args = try heap.allocCons(plus_sym, Value.makeFixnum(1));
+    try testing.expectError(error.InvalidSyntax, compiler.compileMvCall(bad_mv_call_args, &env));
+
+    const a_sym = try heap.intern("a");
+    const b_sym = try heap.intern("b");
+    const dotted_vars = try heap.allocCons(a_sym, b_sym);
+    const bind_args = try heap.allocCons(dotted_vars, try heap.allocCons(Value.nil, Value.nil));
+    try testing.expectError(error.InvalidSyntax, compiler.compileMvBind(bind_args, &env));
 }
 
 test "qualified struct predicate lookup emits struct_p ir" {

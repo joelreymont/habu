@@ -204,6 +204,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding focused regressions for vector/aref/aset operand preservation and dotted-tail rejection (`src/compiler/compile.zig:19524`, `src/compiler/compile.zig:19566`) locked the new strict list-shape checks and subscript/value arity behavior.
 - Replacing `compileMakeArray` static-dimension staging (`src/compiler/compile.zig:16921`) with count+single-allocation slices and direct `.arr_new` IR node construction removed intermediate list growth and builder-level duplicate copying for static dimension lists.
 - Locking scalar/static/dynamic `make-array` dimension lowering in focused regressions (`src/compiler/compile.zig:19603`) prevented regressions where static dimension vectors collapse back to dynamic paths.
+- Replacing `compileMvBind`/`compileMvCall` `ArrayList` staging (`src/compiler/compile.zig:8108`, `src/compiler/compile.zig:8159`) with pre-counted slices removed transient growth churn and made malformed dotted tails fail early.
+- Adding focused regressions for MV var/form counts and dotted-tail rejection (`src/compiler/compile.zig:19645`, `src/compiler/compile.zig:19688`) locked shape correctness while preserving `multiple-value-*` lowering semantics.
 
 ### Did Not Work
 - Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.
