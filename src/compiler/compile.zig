@@ -11379,26 +11379,42 @@ pub const Compiler = struct {
         const class_obj = try self.allocateClass(heap, name_val, superclasses, slot_specs.items);
         try heap.putLispClass(name_val, class_obj);
 
-        // Build defclass expansion forms dynamically; reader/writer options may
-        // include non-symbol entries that are skipped, so fixed-size pre-counting
-        // can leave uninitialized tails.
-        var defs = std.ArrayList(*Ir){};
-        defer defs.deinit(self.allocator);
+        // Build defclass expansion forms with exact pre-counting.
+        var reader_def_count: usize = 0;
+        var writer_def_count: usize = 0;
+        for (slot_specs.items) |spec| {
+            for (spec.readers.items) |reader_val| {
+                if (reader_val.isSymbol()) reader_def_count += 1;
+            }
+            for (spec.writers.items) |writer_val| {
+                if (writer_val.isSymbol()) writer_def_count += 1;
+            }
+        }
+        const def_count = 2 + // ctor + predicate
+            slot_specs.items.len + // default accessors
+            slot_specs.items.len + // default writers
+            reader_def_count +
+            writer_def_count +
+            1; // return class name
+        const defs = try self.allocator.alloc(*const Ir, def_count);
+        var def_idx: usize = 0;
 
         // 1. Constructor: (defun make-class-name (slot1 slot2 ...) (vector 'class-name slot1 slot2 ...))
         const make_name = try self.concatStrings("make-", class_name);
-        try defs.append(self.allocator, try self.generateStructConstructor(
+        defs[def_idx] = try self.generateStructConstructor(
             heap,
             make_name,
             class_name,
             slot_specs.items,
             env,
             try self.builder.lit(Value.unbound),
-        ));
+        );
+        def_idx += 1;
 
         // 2. Predicate: (defun class-name-p (obj) (and (vectorp obj) (eq (aref obj 0) 'class-name)))
         const pred_name = try self.concatStrings(class_name, "-p");
-        try defs.append(self.allocator, try self.generateStructPredicate(heap, pred_name, class_name));
+        defs[def_idx] = try self.generateStructPredicate(heap, pred_name, class_name);
+        def_idx += 1;
 
         // Register predicate for occurrence typing (use qualified name to match globals table)
         var pred_qual_buf: [512]u8 = undefined;
@@ -11410,7 +11426,8 @@ pub const Compiler = struct {
         // 3. Default accessors: (defun class-name-slot (obj) (if (class-name-p obj) (aref obj N+1) (error)))
         for (slot_specs.items, 0..) |spec, i| {
             const accessor_name = try self.concatStrings3(class_name, "-", spec.name);
-            try defs.append(self.allocator, try self.generateStructAccessor(heap, accessor_name, class_name, i));
+            defs[def_idx] = try self.generateStructAccessor(heap, accessor_name, class_name, i);
+            def_idx += 1;
             try self.registerStructAccessor(accessor_name, i);
         }
 
@@ -11419,7 +11436,8 @@ pub const Compiler = struct {
             const accessor_name = try self.concatStrings3(class_name, "-", spec.name);
             const setf_name = try self.concatStrings("(setf ", accessor_name);
             const setf_full = try self.concatStrings(setf_name, ")");
-            try defs.append(self.allocator, try self.generateStructWriter(heap, setf_full, class_name, i));
+            defs[def_idx] = try self.generateStructWriter(heap, setf_full, class_name, i);
+            def_idx += 1;
         }
 
         // 5. Readers: (defun reader-name (obj) (class-name-slot obj))
@@ -11428,7 +11446,8 @@ pub const Compiler = struct {
                 if (!reader_val.isSymbol()) continue;
                 const reader_sym = reader_val.toPtr(Symbol);
                 const reader_name = reader_sym.getName();
-                try defs.append(self.allocator, try self.generateStructAccessor(heap, reader_name, class_name, i));
+                defs[def_idx] = try self.generateStructAccessor(heap, reader_name, class_name, i);
+                def_idx += 1;
                 var writable_reader = false;
                 for (spec.writers.items) |writer_val| {
                     if (!writer_val.isSymbol()) continue;
@@ -11451,14 +11470,19 @@ pub const Compiler = struct {
                 const writer_name = writer_sym.getName();
                 const setf_name = try self.concatStrings("(setf ", writer_name);
                 const setf_full = try self.concatStrings(setf_name, ")");
-                try defs.append(self.allocator, try self.generateStructWriter(heap, setf_full, class_name, i));
+                defs[def_idx] = try self.generateStructWriter(heap, setf_full, class_name, i);
+                def_idx += 1;
             }
         }
 
         // 7. Return class name
-        try defs.append(self.allocator, try self.builder.lit(name_val));
+        defs[def_idx] = try self.builder.lit(name_val);
+        def_idx += 1;
 
-        return try self.builder.progn(defs.items);
+        std.debug.assert(def_idx == defs.len);
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .progn = defs };
+        return node;
     }
 
     /// Compile make-instance: (make-instance 'class-name :slot1 val1 :slot2 val2 ...)
@@ -19096,6 +19120,41 @@ test "compile defclass slot list" {
     const last = ir_def.progn[ir_def.progn.len - 1];
     try testing.expect(last.* == .lit);
     try testing.expect(last.lit.eq(class_sym));
+}
+
+test "compile defclass expansion count includes readers and writers" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(
+        arena_alloc,
+        &heap,
+        "(defclass foo () ((x :reader get-x :writer set-x) (y :reader get-y)))",
+        &vm.builtins,
+    );
+    defer parser.deinit();
+    const expr = try parser.parse();
+    const ir_def = try compiler.compile(expr, &env);
+
+    try testing.expect(ir_def.* == .progn);
+    // ctor + pred + 2 default accessors + 2 default writers + 2 readers + 1 writer + return
+    try testing.expectEqual(@as(usize, 10), ir_def.progn.len);
+    try testing.expect(ir_def.progn[ir_def.progn.len - 1].* == .lit);
 }
 
 test "compile defmethod specialized param" {
