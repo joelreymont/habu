@@ -165,6 +165,13 @@ pub const Ir = union(enum) {
         value: *const Ir,
     },
 
+    /// Signal condition: (signal condition-type value)
+    /// Like throw on %condition% tag, but returns nil when unhandled.
+    signal: struct {
+        condition_type: *const Ir,
+        value: *const Ir,
+    },
+
     /// Handler-case: like catch but binds caught value to a variable
     /// (handler-case protected-expr (type (var) handler-body)...)
     handler_case: struct {
@@ -1390,6 +1397,12 @@ pub const IrBuilder = struct {
     pub fn throw(self: IrBuilder, tag: *const Ir, value: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .throw = .{ .tag = tag, .value = value } };
+        return node;
+    }
+
+    pub fn signal(self: IrBuilder, condition_type: *const Ir, value: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .signal = .{ .condition_type = condition_type, .value = value } };
         return node;
     }
 

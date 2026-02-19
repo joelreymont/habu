@@ -6,7 +6,7 @@ const compiler_mod = @import("../compiler/compiler.zig");
 const bytecode = @import("../bytecode/bytecode.zig");
 const interp = @import("../interp/interp.zig");
 const specialize = @import("../compiler/passes/p07c_specialize.zig");
-const jit_backend = @import("../jit/backend.zig");
+const jit_backend = @import("../jit/backend_api.zig");
 const Ir = compiler_mod.ir.Ir;
 
 const Heap = runtime.Heap;

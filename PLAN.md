@@ -150,11 +150,13 @@
     - [x] `habu-revalidate-integrate-with-0874ce3e` Revalidate integrate path end-to-end once real Maxima source fixtures are present again. Depends on `habu-fix-declare-top-e3668a14`.
   - [ ] `habu-maxima-factor-ratsimp-521dd2ca` Maxima factor/ratsimp path: fix TypeMismatch and ProgramError roots.
     - [x] `habu-separate-value-fn-4d40d330` Keep function and value cells independent in `set_symbol_function` so shared symbols (for example `ratvars`) preserve variable data while remaining callable as functions.
+    - [x] `habu-load-matrix-deps-d5d1b7ee` Load matrix dependency chain (`mat`/`linnew`/`matrix`/`sprdet`/`newinv`/`newdet`) into readiness subsets so `LNEWVAR`/`CFACTOR` symbols are available before factor/determinant probes.
+    - [x] `habu-fix-builtin-callable-f9b29c06` Unify builtin-callable classification with compiler primitive dispatch so `symbol-function` resolves generic math operators (`ATAN`, etc.) without stale manual builtin lists.
   - [x] `habu-maxima-core-loader-999c7eb3` Add Maxima core subset loader + entrypoint binding integration gate.
   - [x] `habu-rca-load-stackoverflow-e3d4f5d8` RCA and fix load stack overflow path for Maxima large source files.
   - [x] `habu-fix-sin-lisp-b34b817f` Fix `sin.lisp` load root so `SININT` is bound and integrate path can complete. Ensure `schatc` dependency chain is loaded (`m2`/`schatchen-cond` present) before integrate execution.
   - [x] `habu-add-internal-option-8cbd6feb` Add system-only/internal keyword controls for loader diagnostics and bind checks. Dependency for `habu-maxima-end-to-efe58661`.
-- [ ] `habu-maxima-end-to-efe58661` Maxima end-to-end integration test continuation. Depends on `habu-fix-maxima-cas-a491af14`, `habu-maxima-subset-load-e9db9bb5`, `habu-rca-and-fix-4a4ea5d5`, `habu-add-maxima-cas-1807f8ae`, `habu-cut-gc-root-25d3bb03`, and `habu-fix-hoist-compile-9a100641`.
+- [ ] `habu-maxima-end-to-efe58661` Maxima end-to-end integration test continuation. Depends on `habu-fix-maxima-cas-a491af14`, `habu-maxima-subset-load-e9db9bb5`, `habu-rca-and-fix-4a4ea5d5`, `habu-add-maxima-cas-1807f8ae`, `habu-cut-gc-root-25d3bb03`, `habu-fix-hoist-compile-9a100641`, `habu-load-matrix-deps-d5d1b7ee`, and `habu-fix-builtin-callable-f9b29c06`.
 
 ## Execution Loop
 1. Pick the first unblocked unchecked leaf.

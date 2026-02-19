@@ -102,6 +102,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Keeping `defun` intact in desugar (`src/compiler/passes/p02_desugar.zig`) and only desugaring the body restored compiler-level DEFUN semantics (implicit function block), which removed `NoMatchingBlock` failures in real Maxima functions (`add-lineinfo`).
 - Restricting legacy bare-name global fallback to `CL-USER` symbols in both compiler and VM (`src/compiler/compile.zig`, `src/interp/vm.zig`) prevented cross-package function-cell capture (notably `FUNCTIONP` recursion paths while loading Maxima).
 - Preserving secondary values across `pop_block`/`push_block` in VM op post-processing (`src/interp/vm.zig`) fixed a subtle multi-value regression introduced by implicit DEFUN blocks (`(defun f () (values ...))` started returning only the primary value before this fix).
+- Routing builtin callable checks through compiler dispatch tables (`src/compiler/compile.zig:14482`) and consuming that API in REPL symbol resolution (`src/interp/repl.zig:880`, `src/interp/repl.zig:908`, `src/interp/repl.zig:956`) fixed the `ATAN`/`%ATAN` unbound path in `trigi` without adding Maxima-specific symbol aliases.
+- Adding/keeping focused gates (`src/tests/integration.zig:5921`, `src/tests/integration.zig:5979`, `src/tests/integration.zig:6047`) gave deterministic proof for the trig/matrix/dependency chain fixes even when broad filtered test runs were noisy.
 
 ### Did Not Work
 - Treating the previous function-cell fix as complete was incorrect; leaving `nil`/`unbound` in the value-cell overwrite allowlist still let `defun` corrupt same-name variables in generic Lisp code.
@@ -112,6 +114,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Directly aliasing every BIGFLOAT-IMPL symbol to a `cl:` function without a `fboundp` guard failed at load time (`ASIN` unbound on this runtime); guarded binding with explicit fallbacks is required for portable bootstrap stubs.
 - Assuming stubbed helper function signatures stay stable across later Maxima module loads was wrong: `simp.lisp` redefines `arg-count-check` with different arity, so generated bootstrap calls must follow upstream arity contracts.
 - Assuming `handler-case (error ...)` already covered all VM failures was wrong; unmapped Zig errors (`InvalidTypeSpecifier`, `InvalidArgument`) bypassed condition handlers until explicitly mapped.
+- Reintroducing builtin-name scans as ad hoc manual lists (`Builtins.primitive_fields`) is brittle; stale entries caused `symbol-function` to miss legitimate primitives (`ATAN`) even though compiler lowering already supported them.
+- Pushing wide `HABU_TRACE_FN_RESOLVE=1` traces across large Maxima loads produced megabytes of mostly noise; narrowing to failing subset tests and symbol-miss traces is faster for RCA.
 
 ## Session Notes (2026-02-17)
 

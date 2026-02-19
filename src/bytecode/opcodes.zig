@@ -1192,6 +1192,11 @@ pub const Op = enum(u16) {
     /// ( tag value -- )
     throw = 0x1F2,
 
+    /// Signal condition (condition-type and value on stack)
+    /// Dispatches handlers/catches and returns nil when unhandled.
+    /// ( condition-type value -- nil | transferred )
+    signal = 0x1FF,
+
     /// Push unwind-protect frame (operand: i16 offset to cleanup code)
     /// ( -- )
     push_unwind = 0x1F3,
@@ -1963,6 +1968,7 @@ pub const Op = enum(u16) {
             .pop_catch,
             .pop_block,
             .throw,
+            .signal,
             .write_to_stream,
             .hash_get,
             .sxhash,

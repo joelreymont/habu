@@ -872,6 +872,21 @@
   `(handler-case (progn ,@forms)
      (error (c) (values nil c))))
 
+; ERRSET compatibility (non-ANSI extension used by legacy Lisp systems):
+; (let ((errset nil)) (errset form)) => list of values or nil on error.
+; (let ((errset t)) (errset form)) => re-signal error.
+(defvar errset nil)
+
+(defmacro errset (&rest forms)
+  `(handler-case
+       (or (multiple-value-list ,(car forms)) (list nil))
+     (error (e)
+       (if errset
+           (error e)
+         nil))))
+
+(export '(errset))
+
 ; List operations
 (defun null (x) (eq x nil))
 (defun atom (x) (not (consp x)))
@@ -1355,6 +1370,15 @@
           (list 'progn (list writer a b store) store)
           (list reader a b))))
 
+(defun %setf-expansion-nth-const (n arg)
+  (let ((lst (gensym "L"))
+        (store (gensym "STORE")))
+    (list (list lst)
+          (list arg)
+          (list store)
+          (list 'progn (list 'rplaca (list 'nthcdr n lst) store) store)
+          (list 'nth n lst))))
+
 (defun %setf-gensym-list (items)
   (if (null items)
       nil
@@ -1466,6 +1490,12 @@
                 (cdddr (%setf-expansion-1 'cdddr '%set-cdddr (car args)))
                 (cadddr (%setf-expansion-1 'cadddr '%set-cadddr (car args)))
                 (fourth (%setf-expansion-1 'cadddr '%set-cadddr (car args)))
+                (fifth (%setf-expansion-nth-const 4 (car args)))
+                (sixth (%setf-expansion-nth-const 5 (car args)))
+                (seventh (%setf-expansion-nth-const 6 (car args)))
+                (eighth (%setf-expansion-nth-const 7 (car args)))
+                (ninth (%setf-expansion-nth-const 8 (car args)))
+                (tenth (%setf-expansion-nth-const 9 (car args)))
                 (svref (%setf-expansion-2 'svref '%svset (car args) (car (cdr args))))
                 (aref (%setf-expansion-n 'aref '%aset args))
                 (char (%setf-expansion-2 'char '%sset (car args) (car (cdr args))))
@@ -4085,13 +4115,26 @@
   (%clear-output stream))
 
 ; with-output-to-string - capture output to string
-; Usage: (with-output-to-string (var) body...) -> string
-; Use (stream-princ obj var) or (write-to-stream str var) inside body
-(defmacro with-output-to-string (var-binding &rest body)
-  (let ((stream-var (car var-binding)))
-    `(let ((,stream-var (make-string-output-stream)))
-       ,@body
-       (get-output-stream-string ,stream-var))))
+; Usage:
+;   (with-output-to-string (var) body...) -> fresh string result
+;   (with-output-to-string (var existing-string) body...) -> append into existing-string
+(defmacro with-output-to-string (spec &rest body)
+  (let ((var (car spec))
+        (dest (cadr spec))
+        (tmp (gensym "WOS-TMP"))
+        (i (gensym "WOS-I")))
+    (if dest
+        `(let ((,var (make-string-output-stream)))
+           ,@body
+           (let ((,tmp (get-output-stream-string ,var)))
+             (if (vectorp ,dest)
+                 (dotimes (,i (length ,tmp))
+                   (vector-push-extend (char ,tmp ,i) ,dest))
+                 (setq ,dest ,tmp))
+             ,dest))
+        `(let ((,var (make-string-output-stream)))
+           ,@body
+           (get-output-stream-string ,var)))))
 
 ;; ============================================================
 ;; Symbol Utilities
@@ -5855,6 +5898,11 @@
   (declare (ignore abort))
   (%close-stream stream))
 
+; write-char - write a character to stream (or *standard-output*)
+(defun write-char (character &optional stream)
+  (write-to-stream (string character) (or stream *standard-output*))
+  character)
+
 ; read-char - read a character from stream (or *standard-input*)
 (defun read-char (&optional stream eof-error-p eof-value recursive-p)
   (declare (ignore eof-error-p recursive-p))
@@ -5870,6 +5918,19 @@
       (let ((code (%peek-char-from-stream stream)))
         (if code (code-char code) eof-value))
       (%peek-char)))
+
+; read-char-no-hang - non-blocking read when a character is available
+(defun read-char-no-hang (&optional stream eof-error-p eof-value recursive-p)
+  (declare (ignore eof-error-p recursive-p))
+  (if stream
+      (let ((peek (%peek-char-from-stream stream)))
+        (if peek
+            (code-char (%read-char-from-stream stream))
+            eof-value))
+      (let ((peek (%peek-char)))
+        (if peek
+            (%read-char)
+            eof-value))))
 
 ;;; ============================================================================
 ;;; Stream macros
@@ -5921,10 +5982,22 @@
        ,@body)))
 
 (defmacro with-output-to-string (spec &body body)
-  (let ((var (car spec)))
-    `(let ((,var (make-string-output-stream)))
-       ,@body
-       (get-output-stream-string ,var))))
+  (let ((var (car spec))
+        (dest (cadr spec))
+        (tmp (gensym "WOS-TMP"))
+        (i (gensym "WOS-I")))
+    (if dest
+        `(let ((,var (make-string-output-stream)))
+           ,@body
+           (let ((,tmp (get-output-stream-string ,var)))
+             (if (vectorp ,dest)
+                 (dotimes (,i (length ,tmp))
+                   (vector-push-extend (char ,tmp ,i) ,dest))
+                 (setq ,dest ,tmp))
+             ,dest))
+        `(let ((,var (make-string-output-stream)))
+           ,@body
+           (get-output-stream-string ,var)))))
 
 ; with-open-stream - generic stream wrapper
 (defmacro with-open-stream (spec &body body)

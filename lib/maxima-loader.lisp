@@ -4,21 +4,25 @@
 ;; error reporting so we can iteratively raise compatibility.
 
 (defparameter *maxima-source-candidates*
-  '("/tmp/maxima/src/" "/tmp/maxima/src/src/" "/tmp/maxima/"))
+  '("../maxima/src/" "../maxima/src/src/" "../maxima/"
+    "/tmp/maxima/src/" "/tmp/maxima/src/src/" "/tmp/maxima/"))
 
 (defun maxima-source-has-core-p (dir)
-  (probe-file (concatenate 'string dir "lmdcls.lisp")))
+  (and dir
+       (probe-file (concatenate 'string dir "lmdcls.lisp"))))
 
 (defun detect-maxima-source-dir ()
-  (or (find-if #'maxima-source-has-core-p *maxima-source-candidates*)
-      (car *maxima-source-candidates*)))
+  (find-if #'maxima-source-has-core-p *maxima-source-candidates*))
 
 (defparameter *maxima-source-dir* (detect-maxima-source-dir))
-(defparameter *maxima-package-init* (concatenate 'string *maxima-source-dir* "maxima-package.lisp"))
+(defparameter *maxima-package-init*
+  (and *maxima-source-dir*
+       (concatenate 'string *maxima-source-dir* "maxima-package.lisp")))
 
 ;; Prefer upstream package definitions when available so package semantics
 ;; match Maxima source without local rewrites.
-(when (probe-file *maxima-package-init*)
+(when (and *maxima-package-init*
+           (probe-file *maxima-package-init*))
   (load *maxima-package-init*))
 
 (load "lib/maxima-stubs.lisp")

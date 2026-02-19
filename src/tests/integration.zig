@@ -6064,8 +6064,9 @@ test "maxima e2e operation readiness status" {
         \\    "comm" "comm2" "mlisp" "mmacro" "buildq"
         \\    "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
         \\    "suprv1" "inmis" "db"
-        \\    "compar" "lesfac" "factor" "algfac" "nalgfa" "rat3a" "rat3b" "rat3c"
+        \\    "compar" "lesfac" "factor" "algfac" "nalgfa" "ufact" "ifactor" "rat3a" "rat3b" "rat3c"
         \\    "rat3d" "rat3e" "nrat4" "ratout" "acall"
+        \\    "mat" "linnew" "matrix" "sprdet" "newinv" "newdet"
         \\    "schatc" "matcom" "matrun" "nisimp" "nparse" "displm" "displa" "nforma" "grind"
         \\    "nset" "sinint" "sin"))
     );
@@ -6104,9 +6105,9 @@ test "maxima e2e operation readiness status" {
     try testing.expectEqual(@as(i64, 1), got[3]);
     try testing.expectEqual(@as(i64, 0), got[4]);
     try testing.expectEqual(@as(i64, 1), got[5]);
-    try testing.expectEqual(@as(i64, 0), got[6]);
+    try testing.expectEqual(@as(i64, 1), got[6]);
     try testing.expectEqual(@as(i64, 0), got[7]);
-    try testing.expectEqual(@as(i64, 0), got[8]);
+    try testing.expectEqual(@as(i64, 1), got[8]);
     try testing.expectEqual(@as(i64, 1), got[9]);
     try testing.expectEqual(@as(i64, 0), got[10]);
     try testing.expectEqual(@as(i64, 0), got[11]);

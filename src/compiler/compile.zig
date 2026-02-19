@@ -1399,6 +1399,7 @@ pub const Builtins = struct {
         }
         return false;
     }
+
 };
 
 /// Lexical environment for variable resolution
@@ -14474,6 +14475,48 @@ pub const Compiler = struct {
         if (s == b.remove.raw) return .binary;
 
         return null;
+    }
+
+    /// Return true when SYMBOL-FUNCTION/function designator resolution should
+    /// treat `sym` as a compiler-recognized primitive callable.
+    pub fn isBuiltinFunctionSymbol(self: *Compiler, sym: Value) bool {
+        const b = if (self.builtins) |val| val else return false;
+        const dispatch_sym = self.canonicalBuiltinSymbol(sym);
+        const s = dispatch_sym.raw;
+
+        // Variadic arithmetic/custom fast paths in compilePrimitive.
+        if (s == b.@"+".raw or s == b.@"-".raw or s == b.@"*".raw or s == b.@"/".raw or s == b.append.raw) return true;
+
+        // Table-driven primitive dispatch.
+        inline for (nullary_dispatch) |entry| {
+            if (s == @field(b, entry.field).raw) return true;
+        }
+        inline for (unary_dispatch) |entry| {
+            if (s == @field(b, entry.field).raw) return true;
+        }
+        inline for (binary_dispatch) |entry| {
+            if (s == @field(b, entry.field).raw) return true;
+        }
+        inline for (ternary_dispatch) |entry| {
+            if (s == @field(b, entry.field).raw) return true;
+        }
+        inline for (composed_dispatch) |entry| {
+            if (s == @field(b, entry.field).raw) return true;
+        }
+
+        // Custom primitive handlers in compilePrimitive.
+        if (s == b.log.raw or s == b.gensym.raw or s == b.atan.raw) return true;
+        if (s == b.member.raw or s == b.assoc.raw or s == b.find.raw or s == b.position.raw or s == b.count.raw or s == b.remove.raw or s == b.list.raw) return true;
+        if (s == b.@"%make-broadcast-stream".raw or s == b.@"%make-concatenated-stream".raw) return true;
+        if (s == b.@"class-of".raw or s == b.floor.raw or s == b.ceiling.raw or s == b.round.raw or s == b.truncate.raw) return true;
+        if (s == b.aref.raw or s == b.@"make-string".raw or s == b.@"make-vector".raw or s == b.@"%svset".raw or s == b.@"%aset".raw or s == b.@"%set-slot-value".raw or s == b.@"%sset".raw or s == b.@"%make-unbound".raw or s == b.@"%class-of".raw or s == b.vector.raw or s == b.@"make-array".raw or s == b.char.raw or s == b.schar.raw or s == b.substring.raw) return true;
+        if (s == b.concatenate.raw or s == b.format.raw or s == b.print.raw or s == b.princ.raw or s == b.@"encode-universal-time".raw or s == b.@"%make-pathname".raw or s == b.@"set-macro-character".raw) return true;
+        if (s == b.@"make-hash-table".raw or s == b.gethash.raw or s == b.puthash.raw or s == b.remhash.raw or s == b.@"hash-table-count".raw or s == b.@"hash-table-capacity".raw) return true;
+        if (s == b.@"%open".raw or s == b.@"%close".raw or s == b.close.raw or s == b.@"%read-line".raw or s == b.@"%write-line".raw or s == b.@"%write-string".raw or s == b.@"%read-byte".raw or s == b.@"%write-byte".raw or s == b.@"%file-position".raw or s == b.@"%file-length".raw or s == b.@"%finish-output".raw or s == b.@"%force-output".raw or s == b.@"%clear-input".raw or s == b.@"%clear-output".raw) return true;
+        if (s == b.@"class-direct-superclasses".raw or s == b.@"class-precedence-list".raw or s == b.@"class-direct-slots".raw or s == b.@"class-slots".raw) return true;
+        if (s == b.@"slot-definition-name".raw or s == b.@"slot-definition-initform".raw or s == b.@"slot-definition-initargs".raw or s == b.@"slot-definition-readers".raw or s == b.@"slot-definition-writers".raw or s == b.@"slot-definition-allocation".raw or s == b.@"slot-definition-type".raw) return true;
+
+        return false;
     }
 
     /// Return the subtypes of a condition type for handler-case dispatch.

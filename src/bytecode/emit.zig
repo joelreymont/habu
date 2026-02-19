@@ -208,6 +208,10 @@ pub const Emitter = struct {
                 max_idx = computeMaxLocalIndexImpl(t.tag, max_idx);
                 max_idx = computeMaxLocalIndexImpl(t.value, max_idx);
             },
+            .signal => |s| {
+                max_idx = computeMaxLocalIndexImpl(s.condition_type, max_idx);
+                max_idx = computeMaxLocalIndexImpl(s.value, max_idx);
+            },
             .handler_case => |hc| {
                 const idx: u8 = @intCast(hc.cond_idx);
                 max_idx = @max(max_idx, idx + 1);
@@ -652,6 +656,7 @@ pub const Emitter = struct {
             .@"catch" => |c| try self.emitCatch(c),
             .handler_case => |hc| try self.emitHandlerCase(hc),
             .throw => |t| try self.emitThrow(t),
+            .signal => |s| try self.emitSignal(s),
             .handler_bind => |hb| try self.emitHandlerBind(hb),
             .restart_case => |rc| try self.emitRestartCase(rc),
             .invoke_restart => |inv| try self.emitInvokeRestart(inv),
@@ -1969,6 +1974,12 @@ pub const Emitter = struct {
 
         // Emit throw opcode - VM will unwind to matching catch
         try self.emitOp(.throw);
+    }
+
+    fn emitSignal(self: *Emitter, s: anytype) Error!void {
+        try self.emit(s.condition_type);
+        try self.emit(s.value);
+        try self.emitOp(.signal);
     }
 
     fn emitHandlerBind(self: *Emitter, hb: anytype) Error!void {

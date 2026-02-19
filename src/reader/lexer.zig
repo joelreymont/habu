@@ -40,6 +40,7 @@ pub const TokenKind = enum {
     character,
     label_def, // #1=
     label_ref, // #1#
+    dispatch, // #<sub-char> or #n<sub-char>
 
     // Reader conditionals
     feature_present, // #+
@@ -113,6 +114,7 @@ pub const Lexer = struct {
             '"' => self.readString(.string),
             ':' => self.readKeyword(),
             '|' => self.readEscapedSymbol(),
+            '\\' => self.readBackslashSymbol(),
             '.' => if (isDelimiter(self.peek())) self.makeToken(.dot) else self.readSymbolFromDot(),
             '-', '+' => if (isDigit(self.peek())) self.readNumber() else self.readSymbolFromSign(c),
             '#' => self.readHash(),
@@ -342,6 +344,13 @@ pub const Lexer = struct {
         return self.readSymbolLike(.symbol, true, false, true);
     }
 
+    fn readBackslashSymbol(self: *Lexer) Token {
+        // Leading '\' was already consumed as first character of token.
+        if (self.isAtEnd()) return self.makeToken(.err);
+        _ = self.advance(); // escaped first char
+        return self.readSymbolLike(.symbol, false, true, false);
+    }
+
     fn readSymbolLike(self: *Lexer, kind: TokenKind, allow_empty: bool, saw_any_init: bool, in_bar_init: bool) Token {
         var saw_any = saw_any_init;
         var in_bar = in_bar_init;
@@ -502,7 +511,9 @@ pub const Lexer = struct {
                     return self.makeToken(.array_open);
                 }
             }
-            return self.makeToken(.err);
+            if (self.isAtEnd()) return self.makeToken(.err);
+            _ = self.advance(); // consume dispatch sub-char
+            return self.makeToken(.dispatch);
         }
         if (c == '(') {
             // Vector literal: #(1 2 3)
@@ -535,7 +546,8 @@ pub const Lexer = struct {
             return self.readBitVector();
         }
         // Unknown # dispatch
-        return self.makeToken(.err);
+        _ = self.advance(); // consume dispatch sub-char
+        return self.makeToken(.dispatch);
     }
 
     fn readBitVector(self: *Lexer) Token {
@@ -667,7 +679,7 @@ fn isSymbolStart(c: u8) bool {
 
 fn isSymbolChar(c: u8) bool {
     // Include ':' for package-qualified symbols like pkg:sym or pkg::sym
-    return isSymbolStart(c) or isDigit(c) or c == '.' or c == ':';
+    return isSymbolStart(c) or isDigit(c) or c == '.' or c == ':' or c == '#';
 }
 
 // ============================================================================
@@ -731,7 +743,7 @@ test "lex bignum range" {
 test "lex symbols" {
     const testing = std.testing;
 
-    var lexer = Lexer.init("foo bar+ list->vector format.~.1 format.{.1 format.}.1");
+    var lexer = Lexer.init("foo bar+ list->vector format.~.1 format.{.1 format.}.1 /#alike");
 
     const t1 = lexer.next();
     try testing.expectEqual(TokenKind.symbol, t1.kind);
@@ -756,6 +768,10 @@ test "lex symbols" {
     const t6 = lexer.next();
     try testing.expectEqual(TokenKind.symbol, t6.kind);
     try testing.expectEqualStrings("format.}.1", t6.text);
+
+    const t7 = lexer.next();
+    try testing.expectEqual(TokenKind.symbol, t7.kind);
+    try testing.expectEqualStrings("/#alike", t7.text);
 }
 
 test "lex keywords" {
@@ -936,6 +952,17 @@ test "lex characters" {
     const t5 = lexer.next();
     try testing.expectEqual(TokenKind.character, t5.kind);
     try testing.expectEqualStrings("#\\)", t5.text);
+}
+
+test "lex symbol starting with backslash escape" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("'\\+");
+    const t0 = lexer.next();
+    try testing.expectEqual(TokenKind.quote, t0.kind);
+    const t1 = lexer.next();
+    try testing.expectEqual(TokenKind.symbol, t1.kind);
+    try testing.expectEqualStrings("\\+", t1.text);
 }
 
 test "lex hex numbers" {
@@ -1134,6 +1161,25 @@ test "lex reader conditionals" {
     try testing.expectEqualStrings("cl", t4.text);
 
     try testing.expectEqual(TokenKind.eof, lexer.next().kind);
+}
+
+test "lex dispatch macro token" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#$foo #12$bar");
+    const t1 = lexer.next();
+    try testing.expectEqual(TokenKind.dispatch, t1.kind);
+    try testing.expectEqualStrings("#$", t1.text);
+    const t2 = lexer.next();
+    try testing.expectEqual(TokenKind.symbol, t2.kind);
+    try testing.expectEqualStrings("foo", t2.text);
+
+    const t3 = lexer.next();
+    try testing.expectEqual(TokenKind.dispatch, t3.kind);
+    try testing.expectEqualStrings("#12$", t3.text);
+    const t4 = lexer.next();
+    try testing.expectEqual(TokenKind.symbol, t4.kind);
+    try testing.expectEqualStrings("bar", t4.text);
 }
 
 test "lex sharp dot reader eval" {

@@ -876,9 +876,9 @@ pub const Repl = struct {
         }
 
         // Check if it's a builtin primitive
-        if (self.compiler.builtins) |b| {
+        if (self.compiler.builtins) |_| {
             const dispatch_sym = try self.canonicalBuiltinFunctionSymbol(sym);
-            if (b.isBuiltinFunction(dispatch_sym)) {
+            if (self.compiler.isBuiltinFunctionSymbol(dispatch_sym)) {
                 return true;
             }
         }
@@ -903,9 +903,9 @@ pub const Repl = struct {
         }
 
         // Lazily materialize builtin primitive wrappers.
-        if (self.compiler.builtins) |b| {
+        if (self.compiler.builtins) |_| {
             const dispatch_sym = try self.canonicalBuiltinFunctionSymbol(sym);
-            const is_builtin = b.isBuiltinFunction(dispatch_sym);
+            const is_builtin = self.compiler.isBuiltinFunctionSymbol(dispatch_sym);
             if (trace_fn_resolve) {
                 std.debug.print(
                     "TRACE fn-resolve dispatch={s} builtin={}\n",
@@ -955,20 +955,64 @@ pub const Repl = struct {
     /// may not be externally accessible from the current package.
     fn canonicalBuiltinFunctionSymbol(self: *Repl, sym: Value) vm_mod.Error!Value {
         if (!sym.isSymbol()) return sym;
-        const b = self.compiler.builtins orelse return sym;
+        _ = self.compiler.builtins orelse return sym;
 
         const direct = self.canonicalMacroSymbol(sym);
-        if (b.isBuiltinFunction(direct)) return direct;
+        if (self.compiler.isBuiltinFunctionSymbol(direct)) return direct;
 
         const name = sym.toPtr(Symbol).getName();
-        if (try self.heap.internInPackage("CL", name)) |cl_sym| {
-            if (b.isBuiltinFunction(cl_sym)) return cl_sym;
-        }
-        if (try self.heap.internInPackage("CL-USER", name)) |cl_user_sym| {
-            if (b.isBuiltinFunction(cl_user_sym)) return cl_user_sym;
+        if (try self.findBuiltinByName(name)) |resolved| return resolved;
+
+        // Some macro-heavy code paths refer to builtin operators through an
+        // internal '%' prefix (e.g. %ATAN). Resolve those to the base builtin
+        // name when no explicit binding exists.
+        if (name.len > 1 and name[0] == '%') {
+            const stripped = name[1..];
+            if (try self.findBuiltinByName(stripped)) |resolved| return resolved;
         }
 
         return direct;
+    }
+
+    fn findBuiltinByName(self: *Repl, name: []const u8) vm_mod.Error!?Value {
+        const packages = [_][]const u8{ "CL", "COMMON-LISP", "CL-USER" };
+        for (packages) |pkg| {
+            if (try self.heap.internInPackage(pkg, name)) |sym| {
+                if (self.compiler.isBuiltinFunctionSymbol(sym)) return sym;
+            }
+        }
+
+        var case_buf: [256]u8 = undefined;
+        if (name.len > case_buf.len) return null;
+
+        var saw_upper = false;
+        var saw_lower = false;
+        for (name) |c| {
+            if (std.ascii.isUpper(c)) saw_upper = true;
+            if (std.ascii.isLower(c)) saw_lower = true;
+        }
+
+        if (saw_upper) {
+            for (name, 0..) |c, i| case_buf[i] = std.ascii.toLower(c);
+            const lowered = case_buf[0..name.len];
+            for (packages) |pkg| {
+                if (try self.heap.internInPackage(pkg, lowered)) |sym| {
+                    if (self.compiler.isBuiltinFunctionSymbol(sym)) return sym;
+                }
+            }
+        }
+
+        if (saw_lower) {
+            for (name, 0..) |c, i| case_buf[i] = std.ascii.toUpper(c);
+            const uppered = case_buf[0..name.len];
+            for (packages) |pkg| {
+                if (try self.heap.internInPackage(pkg, uppered)) |sym| {
+                    if (self.compiler.isBuiltinFunctionSymbol(sym)) return sym;
+                }
+            }
+        }
+
+        return null;
     }
 
     fn isCallableValue(val: Value) bool {
@@ -1724,7 +1768,24 @@ pub const Repl = struct {
         const hook: *DispatchMacroCtx = @ptrCast(@alignCast(ctx));
         const arg_val = if (arg) |n| Value.makeFixnum(@intCast(n)) else Value.nil;
         const args = [_]Value{ stream, Value.makeCharacter(sub_char), arg_val };
-        return hook.vm.callFromStackAt(hook.vm.sp, function, &args) catch return error.UnexpectedToken;
+        return hook.vm.callFromStackAt(hook.vm.sp, function, &args) catch |err| {
+            if (std.posix.getenv("HABU_TRACE_DISPATCH_MACRO") != null) {
+                const fn_kind = @tagName(function.typeKind());
+                const has_resolver = hook.vm.function_resolve_callback != null;
+                if (function.isSymbol()) {
+                    std.debug.print(
+                        "TRACE dispatch-macro error={s} fn={s} kind={s} sub={c} resolver={}\n",
+                        .{ @errorName(err), function.toPtr(Symbol).getName(), fn_kind, sub_char, has_resolver },
+                    );
+                } else {
+                    std.debug.print(
+                        "TRACE dispatch-macro error={s} kind={s} sub={c} resolver={}\n",
+                        .{ @errorName(err), fn_kind, sub_char, has_resolver },
+                    );
+                }
+            }
+            return error.UnexpectedToken;
+        };
     }
 
     /// Evaluate file content in the active VM context.
