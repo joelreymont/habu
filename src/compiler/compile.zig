@@ -16918,8 +16918,7 @@ pub const Compiler = struct {
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
 
-        var dimensions = std.ArrayList(*const Ir){};
-        defer dimensions.deinit(self.allocator);
+        var static_dimensions: ?[]const *const Ir = null;
         var dynamic_dimensions: ?*const Ir = null;
 
         var dims_val = cons1.car;
@@ -16936,9 +16935,11 @@ pub const Compiler = struct {
 
         // dims can be a fixnum, literal list of fixnums, or a dynamic expression.
         if (dims_val.isFixnum()) {
-            const dim_ir = try self.compile(dims_val, env);
-            try dimensions.append(self.allocator, dim_ir);
+            const dims = try self.allocator.alloc(*const Ir, 1);
+            dims[0] = try self.compile(dims_val, env);
+            static_dimensions = dims;
         } else if (dims_val.isCons()) {
+            var dim_count: usize = 0;
             var current = dims_val;
             var all_fixnums = true;
             while (current.isCons()) {
@@ -16947,16 +16948,20 @@ pub const Compiler = struct {
                     all_fixnums = false;
                     break;
                 }
+                dim_count += 1;
                 current = dim_cons.cdr;
             }
             if (all_fixnums and current.isNil()) {
+                const dims = try self.allocator.alloc(*const Ir, dim_count);
                 current = dims_val;
+                var idx: usize = 0;
                 while (current.isCons()) {
                     const dim_cons = current.toPtr(Cons);
-                    const dim_ir = try self.compile(dim_cons.car, env);
-                    try dimensions.append(self.allocator, dim_ir);
+                    dims[idx] = try self.compile(dim_cons.car, env);
+                    idx += 1;
                     current = dim_cons.cdr;
                 }
+                static_dimensions = dims;
             } else {
                 dynamic_dimensions = try self.compile(dims_val, env);
             }
@@ -17016,7 +17021,11 @@ pub const Compiler = struct {
         if (dynamic_dimensions) |dyn| {
             return try self.builder.arrNewDynamic(dyn, init_ir);
         }
-        return try self.builder.arrNew(dimensions.items, init_ir);
+
+        const dims = if (static_dimensions) |val| val else return error.InvalidSyntax;
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .arr_new = .{ .dimensions = dims, .init = init_ir } };
+        return node;
     }
 
     fn compileAref(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -19734,6 +19743,48 @@ test "compile aref and aset reject dotted tails" {
 
     const aset_args = try heap.allocCons(arr_sym, try heap.allocCons(Value.makeFixnum(1), Value.makeFixnum(2)));
     try testing.expectError(error.InvalidSyntax, compiler.compileAset(aset_args, &env));
+}
+
+test "compile make-array preserves static and dynamic dimension forms" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser_static = try Parser.init(arena_alloc, &heap, "(make-array '(2 3 4) :initial-element 0)", &vm.builtins);
+    defer parser_static.deinit();
+    const static_expr = try parser_static.parse();
+    const static_ir = try compiler.compile(static_expr, &env);
+    try testing.expect(static_ir.* == .arr_new);
+    try testing.expectEqual(@as(usize, 3), static_ir.arr_new.dimensions.len);
+    try testing.expect(static_ir.arr_new.init != null);
+
+    var parser_scalar = try Parser.init(arena_alloc, &heap, "(make-array 5)", &vm.builtins);
+    defer parser_scalar.deinit();
+    const scalar_expr = try parser_scalar.parse();
+    const scalar_ir = try compiler.compile(scalar_expr, &env);
+    try testing.expect(scalar_ir.* == .arr_new);
+    try testing.expectEqual(@as(usize, 1), scalar_ir.arr_new.dimensions.len);
+
+    var parser_dyn = try Parser.init(arena_alloc, &heap, "(make-array dims)", &vm.builtins);
+    defer parser_dyn.deinit();
+    const dyn_expr = try parser_dyn.parse();
+    const dyn_ir = try compiler.compile(dyn_expr, &env);
+    try testing.expect(dyn_ir.* == .arr_new_dyn);
 }
 
 test "qualified struct predicate lookup emits struct_p ir" {
