@@ -4329,6 +4329,34 @@ test "ansi repro syntax.sharp-dot.1 read-time evaluates #." {
     try testing.expectEqual(@as(i64, 3), result.toFixnum());
 }
 
+test "read-from-string returns object and index as multiple values" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const base = try repl.eval("(multiple-value-list (read-from-string \"ABC\" t nil :start 0))");
+    const b0 = base.toPtr(Cons);
+    try testing.expect(b0.car.isSymbol());
+    try testing.expectEqualStrings("ABC", b0.car.toPtr(runtime.Symbol).getName());
+    const b1 = b0.cdr.toPtr(Cons);
+    try testing.expect(b1.car.isFixnum());
+    try testing.expectEqual(@as(i64, 3), b1.car.toFixnum());
+
+    const with_start = try repl.eval("(multiple-value-list (read-from-string \"xxABC\" t nil :start 2))");
+    const s0 = with_start.toPtr(Cons);
+    try testing.expect(s0.car.isSymbol());
+    try testing.expectEqualStrings("ABC", s0.car.toPtr(runtime.Symbol).getName());
+    const s1 = s0.cdr.toPtr(Cons);
+    try testing.expect(s1.car.isFixnum());
+    try testing.expectEqual(@as(i64, 5), s1.car.toFixnum());
+}
+
 test "ansi repro syntax.sharp-c.1 read-time complex helper" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });

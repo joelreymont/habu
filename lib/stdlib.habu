@@ -3989,15 +3989,22 @@
                     string
                     (subseq string start limit))))
     (if (and (>= (length slice) 2)
-             (= (char slice 0) 35)
-             (= (char slice 1) 46))
+             (char= (char slice 0) #\#)
+             (char= (char slice 1) #\.))
         (if common-lisp::*read-suppress*
-            eof-value
-            (eval (read-from-string (subseq slice 2))))
+            (values eof-value start)
+            (multiple-value-bind (form pos)
+                (read-from-string (subseq slice 2))
+              (values (eval form) (+ start 2 pos))))
         (if eof-error-p
-            (read-from-string slice)
-            (handler-case (read-from-string slice)
-              (error () eof-value))))))
+            (multiple-value-bind (obj pos)
+                (read-from-string slice)
+              (values obj (+ start pos)))
+            (handler-case
+                (multiple-value-bind (obj pos)
+                    (read-from-string slice)
+                  (values obj (+ start pos)))
+              (error () (values eof-value start)))))))
 
 ; write-to-string - keyword-aware wrapper around primitive one-arg writer
 (defun write-to-string (object &key array base case circle escape gensym length level lines
