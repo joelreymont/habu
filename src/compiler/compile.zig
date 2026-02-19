@@ -16038,51 +16038,67 @@ pub const Compiler = struct {
 
     fn compileListPrim(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (list a b c ...) -> variadic
-        var elements = std.ArrayList(*const Ir){};
-        defer elements.deinit(self.allocator);
-
-        var current = args;
-        while (current.isCons()) {
-            const cons = current.toPtr(Cons);
-            const elem_ir = try self.compile(cons.car, env);
-            try elements.append(self.allocator, elem_ir);
-            current = cons.cdr;
+        var count: usize = 0;
+        var count_cur = args;
+        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
+            count += 1;
         }
-
-        return try self.builder.list(elements.items);
-    }
-
-    fn compileBroadcastStream(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        var streams = std.ArrayList(*const Ir){};
-        defer streams.deinit(self.allocator);
-
+        const elements = try self.allocator.alloc(*const Ir, count);
         var current = args;
+        var idx: usize = 0;
         while (current.isCons()) {
             const cons = current.toPtr(Cons);
-            const stream_ir = try self.compile(cons.car, env);
-            try streams.append(self.allocator, stream_ir);
+            elements[idx] = try self.compile(cons.car, env);
+            idx += 1;
             current = cons.cdr;
         }
 
         const node = try self.allocator.create(Ir);
-        node.* = .{ .make_broadcast_stream = try self.allocator.dupe(*const Ir, streams.items) };
+        node.* = .{ .list = elements };
+        return node;
+    }
+
+    fn compileBroadcastStream(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
+        var count: usize = 0;
+        var count_cur = args;
+        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
+            count += 1;
+        }
+        const streams = try self.allocator.alloc(*const Ir, count);
+
+        var current = args;
+        var idx: usize = 0;
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            streams[idx] = try self.compile(cons.car, env);
+            idx += 1;
+            current = cons.cdr;
+        }
+
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .make_broadcast_stream = streams };
         return node;
     }
 
     fn compileConcatenatedStream(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        var streams = std.ArrayList(*const Ir){};
-        defer streams.deinit(self.allocator);
+        var count: usize = 0;
+        var count_cur = args;
+        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
+            count += 1;
+        }
+        const streams = try self.allocator.alloc(*const Ir, count);
 
         var current = args;
+        var idx: usize = 0;
         while (current.isCons()) {
             const cons = current.toPtr(Cons);
-            const stream_ir = try self.compile(cons.car, env);
-            try streams.append(self.allocator, stream_ir);
+            streams[idx] = try self.compile(cons.car, env);
+            idx += 1;
             current = cons.cdr;
         }
 
         const node = try self.allocator.create(Ir);
-        node.* = .{ .make_concatenated_stream = try self.allocator.dupe(*const Ir, streams.items) };
+        node.* = .{ .make_concatenated_stream = streams };
         return node;
     }
 
@@ -19203,4 +19219,39 @@ test "compile append folds args into left-associated IR" {
     try testing.expectEqual(@as(i64, 1), left.append.left.lit.toFixnum());
     try testing.expect(left.append.right.* == .lit);
     try testing.expectEqual(@as(i64, 2), left.append.right.lit.toFixnum());
+}
+
+test "compile stream constructors keep all variadic operands" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(arena_alloc, &heap, "(%make-broadcast-stream 1 2 3)", &vm.builtins);
+    defer parser.deinit();
+    const expr_b = try parser.parse();
+    const ir_b = try compiler.compile(expr_b, &env);
+    try testing.expect(ir_b.* == .make_broadcast_stream);
+    try testing.expectEqual(@as(usize, 3), ir_b.make_broadcast_stream.len);
+
+    var parser2 = try Parser.init(arena_alloc, &heap, "(%make-concatenated-stream 4 5)", &vm.builtins);
+    defer parser2.deinit();
+    const expr_c = try parser2.parse();
+    const ir_c = try compiler.compile(expr_c, &env);
+    try testing.expect(ir_c.* == .make_concatenated_stream);
+    try testing.expectEqual(@as(usize, 2), ir_c.make_concatenated_stream.len);
 }
