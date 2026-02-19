@@ -4459,6 +4459,28 @@ test "with-output-to-string supports destination string form" {
     try testing.expect(!result.isNil());
 }
 
+test "with-output-to-string returns primary string value cleanly" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const len = try repl.eval(
+        "(let ((s (with-output-to-string (out) (format out \"hello\")))) (length s))",
+    );
+    try testing.expect(len.isFixnum());
+    try testing.expectEqual(@as(i64, 5), len.toFixnum());
+
+    const text = try repl.eval("(with-output-to-string (s) (princ \"test\" s))");
+    try testing.expect(text.isString());
+    try testing.expectEqualStrings("test", text.toPtr(runtime.String).bytes());
+}
+
 test "dispatch macro character executes during read-from-string" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
