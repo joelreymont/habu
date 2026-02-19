@@ -2524,7 +2524,7 @@ test "parse symbol with escaped colon does not trigger package lookup" {
 
     const val = try parser.parse();
     try testing.expect(val.isSymbol());
-    try testing.expectEqualStrings("FORMAT.\\:_.1", val.toPtr(runtime.Symbol).getName());
+    try testing.expectEqualStrings("FORMAT.:_.1", val.toPtr(runtime.Symbol).getName());
 }
 
 test "parse quoted symbol with escaped colon" {
@@ -2549,5 +2549,5 @@ test "parse quoted symbol with escaped colon" {
     try testing.expect(rest.isCons());
     const escaped_sym = rest.toPtr(objects.Cons).car;
     try testing.expect(escaped_sym.isSymbol());
-    try testing.expectEqualStrings("FORMAT.\\:_.1", escaped_sym.toPtr(runtime.Symbol).getName());
+    try testing.expectEqualStrings("FORMAT.:_.1", escaped_sym.toPtr(runtime.Symbol).getName());
 }

@@ -83,6 +83,10 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-19)
 
 ### Worked Well
+- Splitting constructor missing-slot defaults by type family in `generateStructConstructor` (`src/compiler/compile.zig:10071`, call sites `src/compiler/compile.zig:9756` and `src/compiler/compile.zig:11261`) restored CL semantics: `defclass` slots without initform start unbound, while `defstruct` still defaults to nil.
+- Locking `defstruct` nil-default behavior with a focused regression (`src/tests/integration.zig:3698`) prevented a silent semantic regression while fixing CLOS slot-boundp behavior.
+- Updating Maxima subset gate checks to package-qualified symbols (`src/tests/integration.zig:5783`) removed false negatives caused by strict package resolution.
+- Treating escaped reader characters as syntax (not symbol-name data) in parser expectations (`src/reader/parser.zig:2513`) aligned tests with CL reader behavior.
 - Treating `Repl` as self-referential (VM callbacks/global-env pointers into `Repl.compiler`) and keeping helper state at a stable address (`src/tests/integration.zig:5050`) removed deterministic `set_symbol_function` segfaults in MV tests.
 - Adding a focused regression for moved-helper REPL execution (`src/tests/integration.zig:5075`) keeps this lifetime bug from returning silently.
 - Replacing `global_special_syms` raw-value keys with package/uid-aware `VarKey` identity (`src/compiler/compile.zig:2159`, `src/compiler/compile.zig:2205`) removed GC-movement sensitivity from special-variable tracking and fixed stale special lookups after collections.
@@ -114,6 +118,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding/keeping focused gates (`src/tests/integration.zig:5921`, `src/tests/integration.zig:5979`, `src/tests/integration.zig:6047`) gave deterministic proof for the trig/matrix/dependency chain fixes even when broad filtered test runs were noisy.
 
 ### Did Not Work
+- Hard-coding Maxima subset load counts in integration gates is brittle; module lists and transitive dependencies drift and invalidate exact-count assertions.
+- Using unqualified `fboundp` symbols in package-heavy loaders created misleading failures even when target functions were correctly defined in `MAXIMA`.
 - Returning `Repl` by value from test helpers was unsafe: internal pointers (`vm.global_env`, callback contexts) can dangle after copies/moves and crash later in unrelated eval paths.
 - Continuing to use raw `Value.raw` identity for globally special symbols was incorrect under moving GC; symbol keys must use package/uid-aware identity to stay stable.
 - Treating uninterned symbols like global-name fallbacks was wrong; uninterned value cells need dedicated storage keyed by stable symbol uid (`src/interp/vm.zig:788`).

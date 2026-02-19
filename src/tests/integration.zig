@@ -3695,6 +3695,21 @@ test "defstruct slot with init-form" {
     try testing.expect(result.eq(Value.t));
 }
 
+test "defstruct missing slot init defaults to nil" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct ds-default-nil (a) (b))\n" ++
+        "  (let ((x (make-ds-default-nil)))\n" ++
+        "    (and (null (ds-default-nil-a x))\n" ++
+        "         (null (ds-default-nil-b x)))))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
 test "defstruct slot with :type keyword option" {
     const allocator = testing.allocator;
 
@@ -5791,27 +5806,44 @@ test "maxima core subset loader binds CAS entrypoints" {
         \\      "rat3d" "rat3e" "nrat4" "ratout" "acall"))
         \\  (multiple-value-bind (ok total fail) (maxima-load-all)
         \\    (list ok total fail
-        \\          (if (fboundp 'simplifya) 1 0)
-        \\          (if (fboundp '$diff) 1 0)
-        \\          (if (fboundp 'kindp) 1 0)
-        \\          (if (fboundp '$integrate) 1 0)
-        \\          (if (fboundp 'mfuncall) 1 0)
-        \\          (if (fboundp 'mformat) 1 0)
-        \\          (if (fboundp '$factor) 1 0)
-        \\          (if (fboundp '$ratsimp) 1 0)
-        \\          (if (fboundp '$expand) 1 0))))
+        \\          (if (fboundp 'maxima::simplifya) 1 0)
+        \\          (if (fboundp 'maxima::$diff) 1 0)
+        \\          (if (fboundp 'maxima::kindp) 1 0)
+        \\          (if (fboundp 'maxima::$integrate) 1 0)
+        \\          (if (fboundp 'maxima::mfuncall) 1 0)
+        \\          (if (fboundp 'maxima::mformat) 1 0)
+        \\          (if (fboundp 'maxima::$factor) 1 0)
+        \\          (if (fboundp 'maxima::$ratsimp) 1 0)
+        \\          (if (fboundp 'maxima::$expand) 1 0))))
     );
 
     try testing.expect(status.isCons());
     var cur = status;
-    const expected = [_]i64{ 42, 42, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
-    for (expected, 0..) |want, idx| {
+    const expected_tail = [_]i64{ 1, 1, 1, 1, 1, 1, 1, 1, 1 };
+
+    try testing.expect(cur.isCons());
+    const ok_cell = cur.toPtr(Cons);
+    try testing.expect(ok_cell.car.isFixnum());
+    const ok = ok_cell.car.toFixnum();
+    cur = ok_cell.cdr;
+
+    try testing.expect(cur.isCons());
+    const total_cell = cur.toPtr(Cons);
+    try testing.expect(total_cell.car.isFixnum());
+    const total = total_cell.car.toFixnum();
+    try testing.expectEqual(total, ok);
+    cur = total_cell.cdr;
+
+    try testing.expect(cur.isCons());
+    const fail_cell = cur.toPtr(Cons);
+    try testing.expect(fail_cell.car.isFixnum());
+    try testing.expectEqual(@as(i64, 0), fail_cell.car.toFixnum());
+    cur = fail_cell.cdr;
+
+    for (expected_tail) |want| {
         try testing.expect(cur.isCons());
         const cell = cur.toPtr(Cons);
         try testing.expect(cell.car.isFixnum());
-        if (cell.car.toFixnum() != want) {
-            std.debug.print("TRACE maxima-integrate status[{d}]={d} expected={d}\n", .{ idx, cell.car.toFixnum(), want });
-        }
         try testing.expectEqual(want, cell.car.toFixnum());
         cur = cell.cdr;
     }

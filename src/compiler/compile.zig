@@ -9753,7 +9753,14 @@ pub const Compiler = struct {
 
         // 1. Constructor: (defun make-name (slot1 slot2 ...) (vector 'name slot1 slot2 ...))
         const make_name = try self.concatStrings("MAKE-", struct_name);
-        defs[def_idx] = try self.generateStructConstructor(heap, make_name, struct_name, slot_specs.items, env);
+        defs[def_idx] = try self.generateStructConstructor(
+            heap,
+            make_name,
+            struct_name,
+            slot_specs.items,
+            env,
+            try self.builder.lit(Value.nil),
+        );
         def_idx += 1;
 
         // 2. Accessors: (defun name-slotN (obj) (if (name-p obj) (aref obj N+1) (error)))
@@ -10061,7 +10068,15 @@ pub const Compiler = struct {
     }
 
     /// Generate constructor: creates a closure that takes args, checks types, returns vector
-    fn generateStructConstructor(self: *Compiler, heap: *Heap, make_name: []const u8, struct_name: []const u8, slots: []const SlotSpec, env: *const Env) anyerror!*Ir {
+    fn generateStructConstructor(
+        self: *Compiler,
+        heap: *Heap,
+        make_name: []const u8,
+        struct_name: []const u8,
+        slots: []const SlotSpec,
+        env: *const Env,
+        missing_slot_default: *Ir,
+    ) anyerror!*Ir {
         // Qualify the constructor name with current package
         var qual_buf: [512]u8 = undefined;
         const q = try self.qualifyName(make_name, &qual_buf);
@@ -10070,7 +10085,6 @@ pub const Compiler = struct {
         const global_idx = try self.globals.define(qualified_name);
 
         const slot_count = slots.len;
-        const nil_lit = try self.builder.lit(Value.nil);
         const unbound_lit = try self.builder.lit(Value.unbound);
 
         // Constructor supports both positional and keyword initialization.
@@ -10089,7 +10103,7 @@ pub const Compiler = struct {
             const opt_default = if (spec.initform) |initform_expr|
                 try self.compile(initform_expr, env)
             else
-                nil_lit;
+                missing_slot_default;
 
             optional_params[i] = .{
                 .name = opt_names[i],
@@ -11244,7 +11258,14 @@ pub const Compiler = struct {
 
         // 1. Constructor: (defun make-class-name (slot1 slot2 ...) (vector 'class-name slot1 slot2 ...))
         const make_name = try self.concatStrings("make-", class_name);
-        try defs.append(self.allocator, try self.generateStructConstructor(heap, make_name, class_name, slot_specs.items, env));
+        try defs.append(self.allocator, try self.generateStructConstructor(
+            heap,
+            make_name,
+            class_name,
+            slot_specs.items,
+            env,
+            try self.builder.lit(Value.unbound),
+        ));
 
         // 2. Predicate: (defun class-name-p (obj) (and (vectorp obj) (eq (aref obj 0) 'class-name)))
         const pred_name = try self.concatStrings(class_name, "-p");
