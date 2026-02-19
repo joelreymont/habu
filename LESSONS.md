@@ -832,3 +832,13 @@ Environment guard:
 
 #### Did Not Work
 - Stopping after replacing `ArrayList` alone is insufficient: routing through `builder.call`/`builder.tailcall`/`builder.listStar` still performs an internal `dupe`, so transient-allocation reduction required direct node construction in compile hot paths.
+
+### Session Notes (2026-02-19, letrec + multi-setq staging)
+
+#### Worked Well
+- Reworking `compileLetrecWithTail` to pre-count bindings, store one compact binding table, and emit a direct `progn` node (`src/compiler/compile.zig:5351`) removed multiple staging lists (`names`, `values`, `indices`, `exprs`) from recursive-binding compilation.
+- Rewriting `compileMultiSetq` to pre-count pairs and emit a direct `progn` (`src/compiler/compile.zig:5949`) removed `ArrayList + dupe` churn from a high-frequency assignment form while preserving per-pair lowering through `compileSet`.
+- Adding focused compile regressions for letrec/setq lowering shape (`src/compiler/compile.zig:19349`, `src/compiler/compile.zig:19381`) caught structural regressions immediately without requiring long full-suite runs.
+
+#### Did Not Work
+- Leaving `letrec`/`setq` on dynamic append-first staging paths keeps avoidable allocator pressure in loader-heavy workflows; these forms need fixed-size preallocation once arity is knowable from list shape.

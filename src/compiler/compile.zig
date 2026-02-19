@@ -5358,18 +5358,23 @@ pub const Compiler = struct {
         const bindings_expr = cons.car;
         const body_exprs = cons.cdr;
 
-        // First pass: pre-register all globals (like defun does)
-        var names = std.ArrayList([]const u8){};
-        defer names.deinit(self.allocator);
+        var binding_count: usize = 0;
+        var count_cur = bindings_expr;
+        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
+            binding_count += 1;
+        }
 
-        var val_exprs = std.ArrayList(Value){};
-        defer val_exprs.deinit(self.allocator);
-
-        var indices = std.ArrayList(u16){};
-        defer indices.deinit(self.allocator);
+        const LetrecBinding = struct {
+            name: []const u8,
+            val_expr: Value,
+            idx: u16,
+        };
+        const bindings = try self.allocator.alloc(LetrecBinding, binding_count);
+        defer self.allocator.free(bindings);
 
         var binding_list = bindings_expr;
-        while (binding_list.isCons()) {
+        var idx: usize = 0;
+        while (binding_list.isCons()) : (binding_list = binding_list.toPtr(Cons).cdr) {
             const binding_cons = binding_list.toPtr(Cons);
             const binding = binding_cons.car;
 
@@ -5389,35 +5394,32 @@ pub const Compiler = struct {
             const val_cons = b.cdr.toPtr(Cons);
 
             // Pre-register global for recursive visibility
-            const idx = try self.globals.define(name);
-
-            try names.append(self.allocator, name);
-            try val_exprs.append(self.allocator, val_cons.car);
-            try indices.append(self.allocator, idx);
-
-            binding_list = binding_cons.cdr;
+            const global_idx = try self.globals.define(name);
+            bindings[idx] = .{
+                .name = name,
+                .val_expr = val_cons.car,
+                .idx = global_idx,
+            };
+            idx += 1;
         }
+        defer for (bindings[0..idx]) |b| {
+            self.allocator.free(b.name);
+        };
 
-        // Second pass: compile values and create defines
-        var exprs = std.ArrayList(*const Ir){};
-        defer exprs.deinit(self.allocator);
-
-        for (names.items, val_exprs.items, indices.items) |name, val_expr, idx| {
-            const val_ir = try self.compile(val_expr, env);
-            const define_ir = try self.builder.define(name, idx, val_ir);
-            try exprs.append(self.allocator, define_ir);
-        }
-        for (names.items) |name| {
-            self.allocator.free(name);
+        const exprs = try self.allocator.alloc(*const Ir, binding_count + 1);
+        for (bindings[0..idx], 0..) |b, i| {
+            const val_ir = try self.compile(b.val_expr, env);
+            exprs[i] = try self.builder.define(b.name, b.idx, val_ir);
         }
 
         // Compile body (in tail position if letrec is)
         const body_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
-        try exprs.append(self.allocator, body_ir);
+        exprs[binding_count] = body_ir;
 
         // Return progn of defines + body
-        const items = try self.allocator.dupe(*const Ir, exprs.items);
-        return try self.builder.progn(items);
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .progn = exprs };
+        return node;
     }
 
     fn compileFletWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
@@ -5958,10 +5960,19 @@ pub const Compiler = struct {
             return self.compileSet(args, env);
         }
 
-        // Multi-pair: collect each pair as a progn body
-        var forms = std.ArrayList(*const Ir){};
-        defer forms.deinit(self.allocator);
+        // Multi-pair: compile each pair and emit a progn directly.
+        var pair_count: usize = 0;
+        var count_cur = args;
+        while (count_cur.isCons()) {
+            const c1 = count_cur.toPtr(Cons);
+            if (!c1.cdr.isCons()) return error.InvalidSet;
+            pair_count += 1;
+            count_cur = c1.cdr.toPtr(Cons).cdr;
+        }
+
+        const forms = try self.allocator.alloc(*const Ir, pair_count);
         var rest = args;
+        var form_idx: usize = 0;
         while (rest.isCons()) {
             const c1 = rest.toPtr(Cons);
             if (!c1.cdr.isCons()) return error.InvalidSet;
@@ -5969,12 +5980,14 @@ pub const Compiler = struct {
             // Build a two-element list (var value) for compileSet
             const heap = self.heap orelse return error.InvalidSet;
             const pair = try heap.allocCons(c1.car, try heap.allocCons(c2.car, Value.nil));
-            try forms.append(self.allocator, try self.compileSet(pair, env));
+            forms[form_idx] = try self.compileSet(pair, env);
+            form_idx += 1;
             rest = c2.cdr;
         }
-        if (forms.items.len == 1) return @constCast(forms.items[0]);
-        const body = try self.allocator.dupe(*const Ir, forms.items);
-        return try self.builder.progn(body);
+
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .progn = forms };
+        return node;
     }
 
     fn compileSet(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -19345,4 +19358,68 @@ test "qualified struct predicate lookup emits struct_p ir" {
     const expr = try heap.allocCons(pred_sym, call_args);
     const ir_node = try compiler.compile(expr, &env);
     try testing.expect(ir_node.* == .struct_p);
+}
+
+test "compile letrec emits define sequence plus body" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(arena_alloc, &heap, "(letrec ((f (lambda (x) x)) (g (lambda (y) y))) (f 1))", &vm.builtins);
+    defer parser.deinit();
+    const expr = try parser.parse();
+    const ir_node = try compiler.compile(expr, &env);
+
+    try testing.expect(ir_node.* == .progn);
+    try testing.expectEqual(@as(usize, 3), ir_node.progn.len);
+    try testing.expect(ir_node.progn[0].* == .define);
+    try testing.expect(ir_node.progn[1].* == .define);
+    try testing.expect(ir_node.progn[2].* == .call);
+}
+
+test "compile multi-setq emits one form per pair" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(arena_alloc, &heap, "(setq a 1 b 2 c 3)", &vm.builtins);
+    defer parser.deinit();
+    const expr = try parser.parse();
+    const ir_node = try compiler.compile(expr, &env);
+
+    try testing.expect(ir_node.* == .progn);
+    try testing.expectEqual(@as(usize, 3), ir_node.progn.len);
+    try testing.expect(ir_node.progn[0].* == .define);
+    try testing.expect(ir_node.progn[1].* == .define);
+    try testing.expect(ir_node.progn[2].* == .define);
 }
