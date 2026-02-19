@@ -2195,6 +2195,33 @@ test "cond test-only clause returns test value" {
     try testing.expect(c1.cdr.isNil());
 }
 
+test "cond with many clauses still resolves final match" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    var src = std.ArrayList(u8){};
+    defer src.deinit(allocator);
+    try src.appendSlice(allocator, "(let ((n 79)) (cond ");
+    var i: usize = 0;
+    while (i < 80) : (i += 1) {
+        var clause_buf: [48]u8 = undefined;
+        const clause = try std.fmt.bufPrint(&clause_buf, "((= n {d}) {d}) ", .{ i, i });
+        try src.appendSlice(allocator, clause);
+    }
+    try src.appendSlice(allocator, "(t -1)))");
+
+    const result = try repl.eval(src.items);
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 79), result.toFixnum());
+}
+
 test "nested blocks" {
     const allocator = testing.allocator;
 

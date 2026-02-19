@@ -5683,22 +5683,36 @@ pub const Compiler = struct {
         // on large COND clause sets.
         if (args.isNil()) return try self.builder.lit(Value.nil);
 
-        var clauses = std.ArrayList(Value){};
-        defer clauses.deinit(self.allocator);
+        var clause_count: usize = 0;
+        var count_cur = args;
+        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
+            clause_count += 1;
+        }
+        if (!count_cur.isNil()) return error.InvalidSyntax;
+
+        var clause_stack: [64]Value = undefined;
+        var clause_heap: ?[]Value = null;
+        defer if (clause_heap) |buf| self.allocator.free(buf);
+        const clauses: []Value = if (clause_count <= clause_stack.len)
+            clause_stack[0..clause_count]
+        else blk: {
+            const mem = try self.allocator.alloc(Value, clause_count);
+            clause_heap = mem;
+            break :blk mem;
+        };
 
         var cur = args;
-        while (cur.isCons()) {
-            const cell = cur.toPtr(Cons);
-            try clauses.append(self.allocator, cell.car);
-            cur = cell.cdr;
+        var clause_idx: usize = 0;
+        while (cur.isCons()) : (cur = cur.toPtr(Cons).cdr) {
+            clauses[clause_idx] = cur.toPtr(Cons).car;
+            clause_idx += 1;
         }
-        if (!cur.isNil()) return error.InvalidSyntax;
 
         var result_ir = try self.builder.lit(Value.nil);
-        var i = clauses.items.len;
+        var i = clauses.len;
         while (i > 0) {
             i -= 1;
-            const clause = clauses.items[i];
+            const clause = clauses[i];
             if (!clause.isCons()) return error.InvalidSyntax;
             const clause_cons = clause.toPtr(Cons);
             const test_expr = clause_cons.car;
