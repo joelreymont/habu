@@ -222,6 +222,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Locking the fix with integration coverage (`src/tests/integration.zig:4335`) prevents regressions where wrappers return slice-relative positions instead of original-string indices.
 - Updating `Repl.evalPrint` to emit VM secondary values after the primary (`src/interp/repl.zig:2637`) fixed interactive output for multi-value forms (`(values ...)`, `floor`, etc.) and clearing `secondary_values_count` after print prevents stale-value bleed into subsequent REPL displays.
 - Adding REPL output regressions (`src/interp/repl.zig:4274`, `src/interp/repl.zig:4296`) locks multi-line multi-value display and post-print secondary reset behavior.
+- Extending `compileDefpackage` coverage to keyword designators (`src/compiler/compile.zig:19041`) locked CL-compliant forms like `(defpackage :my-pkg (:use :cl))` and prevents regressions where keyword package designators were accepted in parser paths but failed in compiler/package setup.
 
 ### Did Not Work
 - Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.

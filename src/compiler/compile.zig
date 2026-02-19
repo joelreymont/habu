@@ -19070,6 +19070,17 @@ test "compile defpackage names" {
     try testing.expectEqualStrings("BAZ", ir_opts.lit.toPtr(Symbol).getName());
     try testing.expect((try primitives.package.findPackage(&heap, baz_name)) != null);
     try testing.expect((try primitives.package.findPackage(&heap, nick_name)) != null);
+
+    const kw_pkg = try heap.internKeyword("my-pkg");
+    const kw_cl = try heap.internKeyword("cl");
+    const use_opt_kw = try heap.allocCons(use_kw, try heap.allocCons(kw_cl, Value.nil));
+    const args_kw = try heap.allocCons(kw_pkg, try heap.allocCons(use_opt_kw, Value.nil));
+    const ir_kw = try compiler.compileDefpackage(args_kw);
+    defer arena_alloc.destroy(ir_kw);
+    try testing.expect(ir_kw.* == .lit);
+    try testing.expect(ir_kw.lit.isSymbol());
+    try testing.expectEqualStrings("MY-PKG", ir_kw.lit.toPtr(Symbol).getName());
+    try testing.expect((try primitives.package.findPackage(&heap, kw_pkg)) != null);
 }
 
 test "parseTypeExpr function type" {
