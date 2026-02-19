@@ -85,6 +85,70 @@ test "compileChunk JITs optimized defun with implicit block" {
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
+test "compileChunk JIT handles recursive nqueens helper entry copies" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPool(chunk_pool.items);
+
+    const safe_def =
+        "(defun nqueens-safe-p (col placed row) " ++
+        "(declare (optimize (speed 3) (safety 0))) " ++
+        "(if (null placed) t " ++
+        "  (let ((c (car placed))) " ++
+        "    (if (not (= c col)) " ++
+        "      (if (not (= (abs (- c col)) row)) " ++
+        "        (nqueens-safe-p col (cdr placed) (+ row 1)) " ++
+        "        nil) " ++
+        "      nil))))";
+    _ = try vm.run(try compile_chunk.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool, safe_def));
+
+    const solve_def =
+        "(defun nqueens-solve (n row placed) " ++
+        "(declare (optimize (speed 3) (safety 0))) " ++
+        "(if (= row n) 1 " ++
+        "  (let ((count 0) (col 0)) " ++
+        "    (while (< col n) " ++
+        "      (if (nqueens-safe-p col placed 1) " ++
+        "        (setq count (+ count (nqueens-solve n (+ row 1) (cons col placed)))) " ++
+        "        nil) " ++
+        "      (setq col (+ col 1))) " ++
+        "    count)))";
+    _ = try vm.run(try compile_chunk.compileChunk(allocator, &heap, &vm, &comp, &chunk_pool, solve_def));
+
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(defun nqueens (n) (declare (optimize (speed 3) (safety 0))) (nqueens-solve n 0 nil))",
+    ));
+
+    const result = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(nqueens 4)",
+    ));
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 2), result.toFixnum());
+}
+
 // ============================================================================
 // Arithmetic Tests
 // ============================================================================

@@ -1,9 +1,11 @@
 ---
 title: Audit loader failures
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-17T22:23:04.159105+01:00"
+created-at: "\"2026-02-17T22:23:04.159105+01:00\""
+closed-at: "2026-02-20T00:12:24.717243+01:00"
+close-reason: loader now exposes stop-on-error and required-binding audits via maxima-load-all internal controls
 blocks:
   - habu-define-maxima-gates-aca4e665
 ---

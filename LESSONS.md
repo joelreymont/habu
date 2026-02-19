@@ -941,3 +941,17 @@ Environment guard:
 
 #### Did Not Work
 - Treating variadic format args as append-first dynamic lists hides redundant copying in builder emission; direct fixed-size arg slices are required for stable hot-path compilation cost.
+
+### Session Notes (2026-02-20, JIT SSA dominance + backedge liveness)
+
+#### Worked Well
+- Dumping Hoist IR/ASM for the failing `NQUEENS-SAFE-P` path (`HABU_DUMP_HOIST=1`) exposed a concrete dominance violation: `v9 = iconst 2` defined in one branch but reused in sibling blocks.
+- Extending constant pre-emission to traverse `.block` nodes (`src/jit/backend.zig:1738`) fixed the root cause by ensuring required constants are emitted from dominating context before TCO lowering.
+- Clearing `const_cache` on block switches when `local_consts` mode is active (`src/jit/backend.zig:1025`) hardened block-local constant semantics and avoids cross-block SSA reuse in the local-constant path.
+- Replacing `coalesceMovs` post-MOV safety logic with CFG-aware liveness (`isRegDeadAfter`) at the coalesce site (`src/jit/backend.zig:5623`) removed a real loop-backedge miscompile class.
+- Locking both sides with focused regressions (`src/jit/backend.zig:5983`, `src/jit/backend.zig:6005`, `src/tests/integration.zig:88`) prevented both the old `nqueens` wrong-result path and over-conservative pass disabling.
+
+#### Did Not Work
+- Assuming `preEmitConstants` already handled wrapper nodes was wrong; missing `.block` traversal silently disabled pre-emission for whole function bodies in TCO paths.
+- Assuming linear/use-local coalesce checks were enough across backward branches was wrong; loop-header reads require CFG liveness, not local scan heuristics.
+- Treating long `zig build test` as a reliable gate in this environment is still brittle; sampled runs showed `test --listen` wait states, so targeted filters remain the dependable validation path here.

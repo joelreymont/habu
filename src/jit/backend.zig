@@ -636,15 +636,44 @@ fn irAny(ir: *const Ir, pred: anytype) bool {
             break :blk false;
         },
         // Binary ops
-        .fixnum_add, .fixnum_sub, .add, .sub,
-        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
-        .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
-        .logand, .mod, .rem, .append, .assoc,
+        .fixnum_add,
+        .fixnum_sub,
+        .add,
+        .sub,
+        .fixnum_le,
+        .fixnum_lt,
+        .fixnum_gt,
+        .fixnum_ge,
+        .fixnum_eq,
+        .le,
+        .lt,
+        .gt,
+        .ge,
+        .num_eq,
+        .fixnum_mul,
+        .mul,
+        .eq,
+        .cons,
+        .logand,
+        .mod,
+        .rem,
+        .append,
+        .assoc,
         => |op| irAny(op.left, pred) or irAny(op.right, pred),
         // Unary ops
-        .assert_fixnum, .nilp, .not, .consp, .abs,
-        .car, .cdr, .unsafe_car, .unsafe_cdr,
-        .zerop, .oddp, .evenp, .length,
+        .assert_fixnum,
+        .nilp,
+        .not,
+        .consp,
+        .abs,
+        .car,
+        .cdr,
+        .unsafe_car,
+        .unsafe_cdr,
+        .zerop,
+        .oddp,
+        .evenp,
+        .length,
         => |op| irAny(op.operand, pred),
         else => false,
     };
@@ -712,14 +741,43 @@ fn countIrNodes(node: *const Ir) usize {
             count += countIrNodes(tc.func);
             for (tc.args) |a| count += countIrNodes(a);
         },
-        .fixnum_add, .fixnum_sub, .add, .sub,
-        .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
-        .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
-        .logand, .mod, .rem, .append, .assoc,
+        .fixnum_add,
+        .fixnum_sub,
+        .add,
+        .sub,
+        .fixnum_le,
+        .fixnum_lt,
+        .fixnum_gt,
+        .fixnum_ge,
+        .fixnum_eq,
+        .le,
+        .lt,
+        .gt,
+        .ge,
+        .num_eq,
+        .fixnum_mul,
+        .mul,
+        .eq,
+        .cons,
+        .logand,
+        .mod,
+        .rem,
+        .append,
+        .assoc,
         => |op| count += countIrNodes(op.left) + countIrNodes(op.right),
-        .assert_fixnum, .nilp, .not, .consp, .abs,
-        .car, .cdr, .unsafe_car, .unsafe_cdr,
-        .zerop, .oddp, .evenp, .length,
+        .assert_fixnum,
+        .nilp,
+        .not,
+        .consp,
+        .abs,
+        .car,
+        .cdr,
+        .unsafe_car,
+        .unsafe_cdr,
+        .zerop,
+        .oddp,
+        .evenp,
+        .length,
         => |op| count += countIrNodes(op.operand),
         else => {},
     }
@@ -927,7 +985,6 @@ pub const IrTranslator = struct {
     /// Heap-allocated continuation stack buffer (ownership transferred to CompiledFn).
     cont_buf_alloc: ?[]align(8) u8 = null,
 
-
     pub fn init(allocator: std.mem.Allocator, func: *Function, builder: *FunctionBuilder) IrTranslator {
         return .{
             .allocator = allocator,
@@ -968,6 +1025,11 @@ pub const IrTranslator = struct {
     fn switchBlock(self: *IrTranslator, blk: anytype) void {
         self.b.switchToBlock(blk);
         self.cse_cache.clearRetainingCapacity();
+        if (self.local_consts) {
+            // local_consts mode intentionally keeps constants block-local to avoid
+            // long live ranges across calls and to preserve SSA dominance.
+            self.const_cache.clearRetainingCapacity();
+        }
     }
 
     /// Emit an iconst, reusing a previously emitted value for the same constant.
@@ -1003,8 +1065,16 @@ pub const IrTranslator = struct {
         return switch (ir.*) {
             .lit, .@"var", .global_ref => true,
             .fixnum_add, .fixnum_sub, .add, .sub => |op| canTranslate(op.left) and canTranslate(op.right),
-            .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
-            .le, .lt, .gt, .ge, .num_eq,
+            .fixnum_le,
+            .fixnum_lt,
+            .fixnum_gt,
+            .fixnum_ge,
+            .fixnum_eq,
+            .le,
+            .lt,
+            .gt,
+            .ge,
+            .num_eq,
             => |op| canTranslate(op.left) and canTranslate(op.right),
             .@"if" => |f| canTranslate(f.cond) and canTranslate(f.then_branch) and canTranslate(f.else_branch),
             .block => |b| canTranslate(b.body),
@@ -1079,10 +1149,29 @@ pub const IrTranslator = struct {
     pub fn firstUnsupportedTag(ir: *const Ir) ?std.meta.Tag(Ir) {
         return switch (ir.*) {
             .lit, .@"var", .global_ref => null,
-            .fixnum_add, .fixnum_sub, .add, .sub,
-            .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
-            .le, .lt, .gt, .ge, .num_eq,
-            .fixnum_mul, .mul, .eq, .cons, .logand, .mod, .rem, .append, .assoc,
+            .fixnum_add,
+            .fixnum_sub,
+            .add,
+            .sub,
+            .fixnum_le,
+            .fixnum_lt,
+            .fixnum_gt,
+            .fixnum_ge,
+            .fixnum_eq,
+            .le,
+            .lt,
+            .gt,
+            .ge,
+            .num_eq,
+            .fixnum_mul,
+            .mul,
+            .eq,
+            .cons,
+            .logand,
+            .mod,
+            .rem,
+            .append,
+            .assoc,
             => |op| firstUnsupportedTag(op.left) orelse firstUnsupportedTag(op.right),
             .@"if" => |f| firstUnsupportedTag(f.cond) orelse firstUnsupportedTag(f.then_branch) orelse firstUnsupportedTag(f.else_branch),
             .block => |b| firstUnsupportedTag(b.body),
@@ -1107,9 +1196,21 @@ pub const IrTranslator = struct {
                 for (tc.args) |a| if (firstUnsupportedTag(a)) |tag| break :blk tag;
                 break :blk null;
             },
-            .nilp, .not, .consp, .abs, .zerop, .oddp, .evenp,
-            .car, .cdr, .unsafe_car, .unsafe_cdr, .length,
-            .sqrt, .round, .intern,
+            .nilp,
+            .not,
+            .consp,
+            .abs,
+            .zerop,
+            .oddp,
+            .evenp,
+            .car,
+            .cdr,
+            .unsafe_car,
+            .unsafe_cdr,
+            .length,
+            .sqrt,
+            .round,
+            .intern,
             => |op| firstUnsupportedTag(op.operand),
             .hash_count => |h| firstUnsupportedTag(h.operand),
             .make_hash => null,
@@ -1633,6 +1734,9 @@ pub const IrTranslator = struct {
                 try self.preEmitConstants(n.cond);
                 try self.preEmitConstants(n.then_branch);
                 try self.preEmitConstants(n.else_branch);
+            },
+            .block => |b| {
+                try self.preEmitConstants(b.body);
             },
             .progn => |exprs| {
                 for (exprs) |expr| try self.preEmitConstants(expr);
@@ -2625,8 +2729,6 @@ pub const IrTranslator = struct {
         return call_result;
     }
 
-
-
     fn translateProgn(self: *IrTranslator, exprs: []const *const Ir) anyerror!HoistValue {
         var result: HoistValue = undefined;
         for (exprs) |expr| {
@@ -2764,7 +2866,6 @@ pub const IrTranslator = struct {
             else => true, // Conservative: assume fixnum
         };
     }
-
 
     /// abs for tagged fixnums.
     /// Tagged: raw = val*2+1. If val >= 0 (raw >= 1), return raw.
@@ -3329,7 +3430,6 @@ fn patchCrossCallsToBLSlice(buf: []u8, caller_base: usize) void {
     }
 }
 
-
 /// Recursively collect all variable indices that are assigned (set) within an IR subtree.
 fn collectMutatedVars(ir: *const Ir, indices: *std.ArrayList(u16), allocator: std.mem.Allocator) !void {
     switch (ir.*) {
@@ -3376,8 +3476,19 @@ fn collectMutatedVars(ir: *const Ir, indices: *std.ArrayList(u16), allocator: st
             try collectMutatedVars(op.left, indices, allocator);
             try collectMutatedVars(op.right, indices, allocator);
         },
-        .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
-        .zerop, .oddp, .evenp, .length,
+        .assert_fixnum,
+        .nilp,
+        .not,
+        .consp,
+        .car,
+        .cdr,
+        .unsafe_car,
+        .unsafe_cdr,
+        .abs,
+        .zerop,
+        .oddp,
+        .evenp,
+        .length,
         => |op| {
             try collectMutatedVars(op.operand, indices, allocator);
         },
@@ -3450,9 +3561,21 @@ fn containsHelperCalls(body: *const Ir) bool {
     return irAny(body, struct {
         fn check(_: @This(), ir: *const Ir) bool {
             return switch (ir.*) {
-                .sqrt, .round, .make_hash, .hash_get, .hash_set, .hash_count,
-                .make_string, .intern, .arr_new, .arr_ref, .str_set,
-                .position, .position_eq, .position_equal, .format,
+                .sqrt,
+                .round,
+                .make_hash,
+                .hash_get,
+                .hash_set,
+                .hash_count,
+                .make_string,
+                .intern,
+                .arr_new,
+                .arr_ref,
+                .str_set,
+                .position,
+                .position_eq,
+                .position_equal,
+                .format,
                 => true,
                 else => false,
             };
@@ -3650,7 +3773,6 @@ fn isCallTargetSelf(func_ir: *const Ir, name: []const u8) bool {
     };
 }
 
-
 pub fn compileIr(
     allocator: std.mem.Allocator,
     ir: *const Ir,
@@ -3835,8 +3957,9 @@ pub fn compileIrWithKnownFns(
     // Use .none for functions with calls (cross or recursive) — hoist optimizer
     // hangs or produces incorrect results for call_indirect at any opt level > none.
     // Use .aggressive for leaf functions (no calls at all).
+    const use_aggressive = !(translator.is_recursive or translator.has_cross_calls or translator.has_loads);
     var ctx = ctx_builder
-        .optLevel(if (translator.is_recursive or translator.has_cross_calls or translator.has_loads) .none else .aggressive)
+        .optLevel(if (use_aggressive) .aggressive else .none)
         .callConv(.system_v)
         .verification(true)
         .build();
@@ -3892,12 +4015,16 @@ pub fn compileIrWithKnownFns(
         }
     }
 
+    const dump_passes = std.posix.getenv("HABU_DUMP_HOIST_PASSES") != null;
+    if (dump_passes) dumpAsmPass("start", code.code.items);
+
     // Peephole: replace dead cset with NOP in fused cmp+cset+b.cc sequences.
     // The icmp emits cmp+cset, and fused brif emits b.cc using flags directly.
     // The cset result is dead but still executes.
     if (std.posix.getenv("HABU_NO_CSET_ELIM") == null) {
         eliminateDeadCset(code.code.items);
     }
+    if (dump_passes) dumpAsmPass("after eliminateDeadCset", code.code.items);
 
     // Fix parallel copy conflicts in function entry (param register shuffling).
     // When hoist's regalloc copies params from x0-x7 to work registers,
@@ -3913,29 +4040,36 @@ pub fn compileIrWithKnownFns(
     if (arity > 1) {
         try fixEntryParamMovesAlloc(allocator, &code.code);
     }
+    if (dump_passes) dumpAsmPass("after fixEntryParamMoves", code.code.items);
 
     // Fuse MOVZ+CMP into CMP immediate (eliminates MOVZ for small constants)
     fuseCmpImmediate(code.code.items);
+    if (dump_passes) dumpAsmPass("after fuseCmpImmediate", code.code.items);
 
     // Fuse CMP+CSET...CMP+CSEL into CMP...CSEL with original condition.
     // Pattern: CMP sets flags → CSET materializes bool → later CMP tests bool → CSEL.
     // Replace with: CMP sets flags → NOP → ... → NOP → CSEL(original cond).
     fuseSelectCondition(code.code.items);
+    if (dump_passes) dumpAsmPass("after fuseSelectCondition", code.code.items);
 
     // Coalesce: replace `op rD, rA, rB; mov rC, rD` with `op rC, rA, rB; nop`
     coalesceMovs(code.code.items);
+    if (dump_passes) dumpAsmPass("after coalesceMovs", code.code.items);
 
     // Eliminate B .+4 (jump to next instruction = NOP).
     // Must run AFTER coalescing since coalescing uses branches as scan barriers.
     eliminateUselessBranches(code.code.items);
+    if (dump_passes) dumpAsmPass("after eliminateUselessBranches", code.code.items);
 
     // Invert `b.cond .+8; b target` → `b.inv_cond target; nop`.
     invertBranchOverBranch(code.code.items);
+    if (dump_passes) dumpAsmPass("after invertBranchOverBranch", code.code.items);
 
     // Eliminate dead MOV before unconditional B when MOV dest is never read.
     // Pattern: MOV Xd, Xs; B target where target is a chain ending at epilogue.
     // The MOV is a phi copy from the trampoline that's never consumed.
     eliminateDeadMovBeforeBranch(code.code.items);
+    if (dump_passes) dumpAsmPass("after eliminateDeadMovBeforeBranch", code.code.items);
 
     // Note: LSL+ADD fusion (ADD Xd,Xn,Xm,LSL #K) was tested but is SLOWER
     // on Apple M-series (~10% regression). The wide OoO engine dispatches
@@ -3959,44 +4093,56 @@ pub fn compileIrWithKnownFns(
             std.debug.print("\n", .{});
         }
     }
+    if (dump_passes) dumpAsmPass("after fixCallArgMoves", code.code.items);
 
     // Fuse MUL+ADD into MADD where possible.
     fuseMulAdd(code.code.items);
+    if (dump_passes) dumpAsmPass("after fuseMulAdd", code.code.items);
 
     // Fuse MOVZ+ALU into ALU-immediate and MOVZ+MOV into MOVZ-retarget.
     fuseMovzAlu(code.code.items);
+    if (dump_passes) dumpAsmPass("after fuseMovzAlu#1", code.code.items);
 
     // Eliminate round-trip MOV pairs: MOV xA, xB; ... MOV xB, xA → NOP both.
     // Common in TCO functions where entry params are copied to intermediate regs
     // and then immediately copied back for the loop header phis.
     eliminateRoundTripMovs(code.code.items);
+    if (dump_passes) dumpAsmPass("after eliminateRoundTripMovs", code.code.items);
 
     // Eliminate prologue/epilogue for leaf functions (no BLR/BL calls).
     // After TCO, recursive functions become loops and don't need frame setup.
     if (!translator.is_recursive or translator.all_calls_converted) {
         eliminateLeafPrologue(code.code.items);
     }
+    if (dump_passes) dumpAsmPass("after eliminateLeafPrologue", code.code.items);
 
     // Eliminate dead MOVZ instructions where the dest is overwritten before read.
     eliminateDeadMovz(code.code.items);
+    if (dump_passes) dumpAsmPass("after eliminateDeadMovz#1", code.code.items);
 
     // Remove all NOP instructions and fix branch offsets.
     // Must run LAST after all other peephole passes that introduce NOPs.
     compactNops(code.code.items, &code.code);
+    if (dump_passes) dumpAsmPass("after compactNops#1", code.code.items);
 
     // After NOP compaction, new adjacent MOVZ+ALU pairs may emerge.
-    // Also dead MOVZ may be exposed. Run all MOVZ optimizations again.
+    // Also dead MOVZ may be exposed.
     fuseMovzAlu(code.code.items);
+    if (dump_passes) dumpAsmPass("after fuseMovzAlu#2", code.code.items);
     eliminateDeadMovz(code.code.items);
+    if (dump_passes) dumpAsmPass("after eliminateDeadMovz#2", code.code.items);
     compactNops(code.code.items, &code.code);
+    if (dump_passes) dumpAsmPass("after compactNops#2", code.code.items);
 
     // Eliminate dead MOV x29, xzr in prologue (hoist clears frame pointer
     // after saving it, but we don't use x29 as frame pointer).
     eliminateDeadFramePointerClear(code.code.items);
+    if (dump_passes) dumpAsmPass("after eliminateDeadFramePointerClear", code.code.items);
 
     // Final pass: compact any new NOPs and simplify branch chains.
     compactNops(code.code.items, &code.code);
     eliminateUselessBranches(code.code.items);
+    if (dump_passes) dumpAsmPass("after final compact/branch", code.code.items);
 
     // Debug: dump final machine code before making executable
     if (std.posix.getenv("HABU_DUMP_HOIST") != null) {
@@ -4044,7 +4190,6 @@ pub fn compileIrWithKnownFns(
         .cont_buf = translator.cont_buf_alloc,
     };
 }
-
 
 /// Replace dead CSET instructions with NOP when followed by a B.cond.
 /// Pattern: CMP; CSET; B.cond → CMP; NOP; B.cond
@@ -4122,23 +4267,16 @@ fn fuseCmpImmediate(code: []u8) void {
 
                 // NOP the MOVZ if rm is not used elsewhere
                 if (!rm_used_between) {
-                    // Check if rm is used AFTER the CMP
-                    var rm_used_after = false;
-                    k = i + 1;
-                    while (k < n_insns) : (k += 1) {
-                        const insn_k = readInsn(code, k);
-                        if (insn_k == NOP) continue;
-                        const k_rn_a: u5 = @truncate((insn_k >> 5) & 0x1F);
-                        const k_rm_a: u5 = @truncate((insn_k >> 16) & 0x1F);
-                        const k_rd: u5 = @truncate(insn_k & 0x1F);
-                        if (k_rn_a == rm or k_rm_a == rm) {
-                            rm_used_after = true;
-                            break;
-                        }
-                        // If rd overwrites rm, rm is dead
-                        if (k_rd == rm) break;
+                    // Use CFG-aware liveness so branch-reachable uses of rm keep
+                    // the MOVZ alive.
+                    const dead_after = isRegDeadAfter(code, i, rm);
+                    if (std.posix.getenv("HABU_TRACE_CMP_FUSE") != null) {
+                        std.debug.print(
+                            "TRACE cmp-fuse cmp_idx={d} movz_idx={d} rm=x{d} dead_after={any}\n",
+                            .{ i, j, rm, dead_after },
+                        );
                     }
-                    if (!rm_used_after) {
+                    if (dead_after) {
                         writeInsn(code, j, NOP);
                     }
                 }
@@ -4706,11 +4844,27 @@ fn isMovzRegDead(code: []const u8, alu_idx: usize, reg: u5) bool {
     return isRegDeadAfter(code, alu_idx, reg);
 }
 
+fn hasControlFlowBeforeWrite(code: []const u8, start_idx: usize, reg: u5) bool {
+    const n = code.len / 4;
+    var j = start_idx + 1;
+    while (j < n) : (j += 1) {
+        const insn = readInsn(code, j);
+        if (insn == 0xD503201F) continue;
+        if (insnWritesReg(insn, reg)) return false;
+        if (insn & 0xFC000000 == 0x14000000 or // B
+            insn & 0xFF000000 == 0x54000000 or // B.cond
+            insn & 0xFC000000 == 0x94000000 or // BL
+            insn & 0xFFFFFC1F == 0xD63F0000 or // BLR
+            insn & 0xFFFFFC1F == 0xD65F0000) // RET
+            return true;
+    }
+    return false;
+}
+
 /// Fuse adjacent MOVZ+ALU pairs into ALU-immediate form.
 /// Patterns:
 ///   MOVZ Rn, #imm; ADD Rd, Rm, Rn  → ADD Rd, Rm, #imm; NOP
 ///   MOVZ Rn, #imm; SUB Rd, Rm, Rn  → SUB Rd, Rm, #imm; NOP
-///   MOVZ Rn, #imm; MOV Rd, Rn      → MOVZ Rd, #imm; NOP
 /// Only when:
 ///   - imm fits in 12 bits (0..4095)
 ///   - Rn (MOVZ dest) is dead after the ALU op (not read before overwrite)
@@ -4806,6 +4960,7 @@ fn fuseMovzAlu(code: []u8) void {
             const mov_rm: u5 = @truncate((insn1 >> 16) & 0x1F);
             const mov_rd: u5 = @truncate(insn1 & 0x1F);
             if (mov_rm == movz_rd) {
+                if (hasControlFlowBeforeWrite(code, i + 1, movz_rd)) continue;
                 if (isMovzRegDead(code, i + 1, movz_rd)) {
                     // MOVZ Xd, #imm16: 1_10_100101_00_imm16_Rd
                     const new_insn: u32 = 0xD2800000 | (imm16 << 5) | @as(u32, mov_rd);
@@ -4823,7 +4978,14 @@ fn fuseMovzAlu(code: []u8) void {
 /// Scans forward following branches up to depth limit.
 /// Returns true if reg is overwritten before any read.
 fn isRegDeadAfter(code: []const u8, idx: usize, reg: u5) bool {
-    return isRegDeadFrom(code, idx + 1, reg, 0);
+    const n = code.len / 4;
+    if (n == 0 or idx + 1 >= n) return true;
+
+    const max_insns = 4096;
+    if (n > max_insns) return false;
+
+    var memo: [max_insns]u8 = [_]u8{0} ** max_insns;
+    return isRegDeadFrom(code, idx + 1, reg, memo[0..n]);
 }
 
 /// Check if register `reg` is dead within the current basic block after `idx`.
@@ -4850,80 +5012,90 @@ fn isRegDeadInBlock(code: []const u8, idx: usize, reg: u5) bool {
     return true; // end of function
 }
 
-/// Check if register `reg` is dead starting from instruction `start_idx`.
-/// `depth` prevents infinite recursion through branch chains.
-fn isRegDeadFrom(code: []const u8, start_idx: usize, reg: u5, depth: u8) bool {
-    if (depth > 8) return false;
+/// Check if register `reg` is dead starting at `start_idx`.
+/// Memoized DFS over control flow: dead only if ALL reachable paths overwrite
+/// or terminate before any read.
+fn isRegDeadFrom(code: []const u8, start_idx: usize, reg: u5, memo: []u8) bool {
     const n = code.len / 4;
-    var j: usize = start_idx;
-    const limit = @min(j + 20, n);
-    while (j < limit) : (j += 1) {
-        const insn = readInsn(code, j);
+    if (start_idx >= n) return true;
 
-        // Stop at branches (control flow makes liveness uncertain)
-        // B, B.cond, BL, BLR, RET
-        if (insn & 0xFC000000 == 0x14000000) {
-            // Unconditional B: follow the target and continue scanning there.
-            const imm26_raw = insn & 0x3FFFFFF;
-            const imm26: i32 = if (imm26_raw & 0x2000000 != 0)
-                @as(i32, @intCast(imm26_raw)) - 0x4000000
-            else
-                @intCast(imm26_raw);
-            const target: i32 = @as(i32, @intCast(j)) + imm26;
-            if (target >= 0 and target < @as(i32, @intCast(n))) {
-                return isRegDeadFrom(code, @intCast(target), reg, depth + 1);
-            }
-            return false; // unknown target
-        }
-        if (insn & 0xFF000000 == 0x54000000) {
-            // B.cond: check if reg is dead on BOTH paths.
-            const cond_imm19_raw = (insn >> 5) & 0x7FFFF;
-            const cond_offset: i32 = if (cond_imm19_raw & 0x40000 != 0)
-                @as(i32, @intCast(cond_imm19_raw)) - 0x80000
-            else
-                @intCast(cond_imm19_raw);
-            const taken_target: i32 = @as(i32, @intCast(j)) + cond_offset;
-            var taken_dead = false;
-            if (taken_target >= 0 and taken_target < @as(i32, @intCast(n))) {
-                taken_dead = isRegDeadFrom(code, @intCast(taken_target), reg, depth + 1);
-            }
-            // Fall-through is next instruction
-            const fallthrough_dead = if (j + 1 < n)
-                isRegDeadFrom(code, j + 1, reg, depth + 1)
-            else
-                false;
-            return taken_dead and fallthrough_dead;
-        }
-        if (insn & 0xFC000000 == 0x94000000) { // BL
-            // Calls may read argument/sret registers.
-            // x0-x7: integer args, x8: indirect return pointer.
-            if (reg <= 8) return false;
-            // Other caller-saved GPRs are clobbered by the call.
-            if (reg <= 17) return true;
-            // Callee-saved / unknown regs: be conservative.
-            return false;
-        }
-        if (insn & 0xFFFFFC1F == 0xD63F0000) { // BLR
-            // BLR reads the branch target register in bits [9:5].
-            const target: u5 = @truncate((insn >> 5) & 0x1F);
-            if (reg == target) return false;
-            // Calls may also read argument/sret registers.
-            if (reg <= 8) return false;
-            if (reg <= 17) return true;
-            return false;
-        }
-        if (insn == 0xD65F03C0) return true; // RET: reg dead
-        if (insn == 0xD503201F) continue; // NOP: skip
+    const status = memo[start_idx];
+    if (status == 2) return true;
+    if (status == 3) return false;
+    if (status == 1) return false; // Loop/recurrence: conservatively live.
+    memo[start_idx] = 1;
 
-        // Check if this instruction WRITES reg (makes it dead)
-        const writes_reg = insnWritesReg(insn, reg);
-        // Check if this instruction READS reg (makes it live)
-        const reads_reg = insnReadsReg(insn, reg);
-
-        if (reads_reg) return false; // reg is used, can't eliminate
-        if (writes_reg) return true; // reg overwritten, it was dead
+    const insn = readInsn(code, start_idx);
+    if (insn == 0xD503201F) {
+        const dead = isRegDeadFrom(code, start_idx + 1, reg, memo);
+        memo[start_idx] = if (dead) 2 else 3;
+        return dead;
     }
-    return false; // conservative: don't know
+
+    // Calls/returns/branches first (control-flow boundaries).
+    if (insn & 0xFC000000 == 0x94000000) { // BL
+        const dead = if (reg <= 8) false else if (reg <= 17) true else false;
+        memo[start_idx] = if (dead) 2 else 3;
+        return dead;
+    }
+    if (insn & 0xFFFFFC1F == 0xD63F0000) { // BLR
+        const target_reg: u5 = @truncate((insn >> 5) & 0x1F);
+        const dead = if (reg == target_reg) false else if (reg <= 8) false else if (reg <= 17) true else false;
+        memo[start_idx] = if (dead) 2 else 3;
+        return dead;
+    }
+    if (insn == 0xD65F03C0) { // RET
+        memo[start_idx] = 2;
+        return true;
+    }
+    if (insn & 0xFC000000 == 0x14000000) { // B
+        const imm26_raw = insn & 0x3FFFFFF;
+        const imm26: i32 = if (imm26_raw & 0x2000000 != 0)
+            @as(i32, @intCast(imm26_raw)) - 0x4000000
+        else
+            @intCast(imm26_raw);
+        const target: i32 = @as(i32, @intCast(start_idx)) + imm26;
+        if (target < 0 or target >= @as(i32, @intCast(n))) {
+            memo[start_idx] = 3;
+            return false;
+        }
+        const dead = isRegDeadFrom(code, @intCast(target), reg, memo);
+        memo[start_idx] = if (dead) 2 else 3;
+        return dead;
+    }
+    if (insn & 0xFF000000 == 0x54000000) { // B.cond
+        const imm19_raw = (insn >> 5) & 0x7FFFF;
+        const imm19: i32 = if (imm19_raw & 0x40000 != 0)
+            @as(i32, @intCast(imm19_raw)) - 0x80000
+        else
+            @intCast(imm19_raw);
+        const taken_target: i32 = @as(i32, @intCast(start_idx)) + imm19;
+        if (taken_target < 0 or taken_target >= @as(i32, @intCast(n))) {
+            memo[start_idx] = 3;
+            return false;
+        }
+        const taken_dead = isRegDeadFrom(code, @intCast(taken_target), reg, memo);
+        const fall_dead = if (start_idx + 1 < n)
+            isRegDeadFrom(code, start_idx + 1, reg, memo)
+        else
+            true;
+        const dead = taken_dead and fall_dead;
+        memo[start_idx] = if (dead) 2 else 3;
+        return dead;
+    }
+
+    if (insnReadsReg(insn, reg)) {
+        memo[start_idx] = 3;
+        return false;
+    }
+    if (insnWritesReg(insn, reg)) {
+        memo[start_idx] = 2;
+        return true;
+    }
+
+    const dead = isRegDeadFrom(code, start_idx + 1, reg, memo);
+    memo[start_idx] = if (dead) 2 else 3;
+    return dead;
 }
 
 /// Check if an ARM64 instruction writes to a specific register.
@@ -5140,129 +5312,153 @@ fn eliminateDeadMovBeforeBranch(code: []u8) void {
 /// instruction using x9 as scratch.
 fn fixEntryParamMovesAlloc(allocator: std.mem.Allocator, code_list: *std.ArrayList(u8)) !void {
     const code = code_list.items;
-    if (code.len < 16) return;
+    if (code.len < 8) return;
     const n_insns = code.len / 4;
 
-    // Find first MOV from ABI param register after prologue
-    var first_mov: usize = 0;
-    for (0..@min(n_insns, 16)) |idx| {
-        const insn = readInsn(code, idx);
-        if (insn & 0xFFE0FFE0 == 0xAA0003E0) {
-            const rm: u5 = @truncate((insn >> 16) & 0x1F);
-            if (rm <= 7) { first_mov = idx; break; }
+    // Find first entry MOV that reads an ABI argument register.
+    var first_mov: ?usize = null;
+    for (0..@min(n_insns, 24)) |insn_idx| {
+        const insn = readInsn(code, insn_idx);
+        if (insn & 0xFFE0FFE0 != 0xAA0003E0) continue;
+        const src: u5 = @truncate((insn >> 16) & 0x1F);
+        if (src <= 7) {
+            first_mov = insn_idx;
+            break;
         }
     }
-    if (first_mov == 0) return;
+    const start = first_mov orelse return;
 
-    // Collect consecutive param MOVs
+    // Collect consecutive MOVs in the entry copy region.
     const MovInfo = struct { src: u5, dst: u5, pos: usize };
-    var movs: [8]MovInfo = undefined;
+    const max_movs = 12;
+    var movs: [max_movs]MovInfo = undefined;
     var n_movs: usize = 0;
-    var idx = first_mov;
-    while (idx < @min(n_insns, first_mov + 8) and n_movs < 8) : (idx += 1) {
+    var idx = start;
+    while (idx < @min(n_insns, start + max_movs) and n_movs < max_movs) : (idx += 1) {
         const insn = readInsn(code, idx);
-        if (insn & 0xFFE0FFE0 == 0xAA0003E0) {
-            const rd: u5 = @truncate(insn & 0x1F);
-            const rm: u5 = @truncate((insn >> 16) & 0x1F);
-            if (rm <= 7) {
-                movs[n_movs] = .{ .src = rm, .dst = rd, .pos = idx };
-                n_movs += 1;
-            } else break;
-        } else break;
+        if (insn & 0xFFE0FFE0 != 0xAA0003E0) break;
+        movs[n_movs] = .{
+            .src = @truncate((insn >> 16) & 0x1F),
+            .dst = @truncate(insn & 0x1F),
+            .pos = idx,
+        };
+        n_movs += 1;
     }
     if (n_movs < 2) return;
 
-    // Check for conflicts
+    // Quick reject: no overwritten source.
     var has_conflict = false;
     for (1..n_movs) |a| {
         for (0..a) |b| {
-            if (movs[b].dst == movs[a].src) { has_conflict = true; break; }
+            if (movs[b].dst == movs[a].src) {
+                has_conflict = true;
+                break;
+            }
         }
         if (has_conflict) break;
     }
     if (!has_conflict) return;
 
-    // Resolve using parallel copy algorithm with x9 as scratch.
-    // Build the desired assignment: for each MOV, we want dst = original_param[src].
-    // Topological sort: emit MOVs whose dst is not anyone's src first.
-    // For cycles, break with scratch register.
-    var emitted: [8]bool = .{ false, false, false, false, false, false, false, false };
-    var result: [12]u32 = undefined; // up to 8 + scratch overhead
+    // Symbolically execute the original move chain so we preserve semantics of
+    // dependent chains such as "mov x5, x1; mov x2, x5" (x2 must get x1).
+    var state: [32]u5 = undefined;
+    for (0..state.len) |r| state[r] = @intCast(r);
+    for (0..n_movs) |mi| {
+        state[movs[mi].dst] = state[movs[mi].src];
+    }
+
+    const Assign = struct { dst: u5, src: u5 };
+    var assigns: [max_movs]Assign = undefined;
+    var n_assigns: usize = 0;
+    for (0..n_movs) |mi| {
+        const dst = movs[mi].dst;
+        var seen = false;
+        for (0..n_assigns) |ai| {
+            if (assigns[ai].dst == dst) {
+                seen = true;
+                break;
+            }
+        }
+        if (seen) continue;
+
+        const src = state[dst];
+        if (src == dst) continue;
+        assigns[n_assigns] = .{ .dst = dst, .src = src };
+        n_assigns += 1;
+    }
+    if (n_assigns == 0) return;
+
+    const regUsed = struct {
+        fn f(assigns_slice: []const Assign, reg: u5) bool {
+            for (assigns_slice) |a| {
+                if (a.src == reg or a.dst == reg) return true;
+            }
+            return false;
+        }
+    }.f;
+
+    var scratch: u5 = 9;
+    while (scratch < 28 and regUsed(assigns[0..n_assigns], scratch)) : (scratch += 1) {}
+    if (scratch >= 28) scratch = 9;
+
+    // Resolve normalized assignments with a cycle-safe parallel-copy schedule.
+    var emitted: [max_movs]bool = .{false} ** max_movs;
+    var emitted_count: usize = 0;
+    var result: [max_movs * 2]u32 = undefined;
     var n_result: usize = 0;
 
-    // Repeatedly emit MOVs that don't clobber any unresolved source
-    var progress = true;
-    while (progress) {
-        progress = false;
-        for (0..n_movs) |mi| {
-            if (emitted[mi]) continue;
-            // Check: does this MOV's dst clobber a source that's still needed?
-            var clobbers_needed = false;
-            for (0..n_movs) |other| {
-                if (other == mi or emitted[other]) continue;
-                if (movs[mi].dst == movs[other].src) {
-                    clobbers_needed = true;
+    while (emitted_count < n_assigns) {
+        var progressed = false;
+
+        for (0..n_assigns) |ai| {
+            if (emitted[ai]) continue;
+            const dst = assigns[ai].dst;
+            var dst_needed = false;
+            for (0..n_assigns) |other| {
+                if (ai == other or emitted[other]) continue;
+                if (assigns[other].src == dst) {
+                    dst_needed = true;
                     break;
                 }
             }
-            if (!clobbers_needed) {
-                result[n_result] = makeMovInsn(movs[mi].dst, movs[mi].src);
+            if (!dst_needed) {
+                result[n_result] = makeMovInsn(dst, assigns[ai].src);
                 n_result += 1;
-                emitted[mi] = true;
-                progress = true;
+                emitted[ai] = true;
+                emitted_count += 1;
+                progressed = true;
             }
         }
-    }
 
-    // Remaining unemitted MOVs form cycles. Break each with scratch (x9).
-    const scratch: u5 = 9;
-    for (0..n_movs) |mi| {
-        if (emitted[mi]) continue;
-        // Start of a cycle: mi -> ... -> mi
-        // Save mi's source to scratch, then emit chain, then emit last from scratch.
-        result[n_result] = makeMovInsn(scratch, movs[mi].src);
-        n_result += 1;
-        emitted[mi] = true;
+        if (progressed) continue;
 
-        // Follow the chain: find who reads from mi.dst
-        var current_dst = movs[mi].dst;
-        var found = true;
-        while (found) {
-            found = false;
-            for (0..n_movs) |nj| {
-                if (emitted[nj]) continue;
-                if (movs[nj].src == current_dst) {
-                    result[n_result] = makeMovInsn(movs[nj].dst, movs[nj].src);
-                    n_result += 1;
-                    emitted[nj] = true;
-                    current_dst = movs[nj].dst;
-                    found = true;
-                    break;
-                }
+        // Break a cycle by preserving one source in scratch.
+        var cycle_idx: ?usize = null;
+        for (0..n_assigns) |ai| {
+            if (!emitted[ai]) {
+                cycle_idx = ai;
+                break;
             }
         }
-        // Close cycle: the last destination gets scratch (original mi.src)
-        result[n_result] = makeMovInsn(movs[mi].dst, scratch);
+        const ci = cycle_idx orelse break;
+        result[n_result] = makeMovInsn(scratch, assigns[ci].src);
         n_result += 1;
+        assigns[ci].src = scratch;
     }
 
-    // Replace original MOV slots with result instructions.
-    // If n_result <= n_movs, write in-place (pad with NOP if needed).
-    // If n_result > n_movs, we need to insert extra instructions.
+    // Replace original MOV slots with the resolved sequence.
     if (n_result <= n_movs) {
         for (0..n_movs) |mi| {
             if (mi < n_result) {
                 writeInsn(code, movs[mi].pos, result[mi]);
             } else {
-                writeInsn(code, movs[mi].pos, 0xD503201F); // NOP
+                writeInsn(code, movs[mi].pos, 0xD503201F);
             }
         }
     } else {
-        // Write first n_movs results into existing slots
         for (0..n_movs) |mi| {
             writeInsn(code, movs[mi].pos, result[mi]);
         }
-        // Insert remaining instructions after the last MOV position
         const insert_byte_pos = (movs[n_movs - 1].pos + 1) * 4;
         for (n_movs..n_result) |ri| {
             const bytes: [4]u8 = @bitCast(result[ri]);
@@ -5329,21 +5525,6 @@ fn eliminateUselessBranches(code: []u8) void {
 /// Coalesce: for ALU ops where the result is only used by a later mov,
 /// change the ALU op's destination to the mov's destination and NOP the mov.
 /// Handles non-adjacent pairs: `add rD, rA, rB; ...; mov rC, rD` → `add rC, rA, rB; ...; nop`
-/// Check if there are any call instructions (BLR/BL) between two instruction indices.
-/// Used to determine if a loop body contains calls (which makes backward branch
-/// coalescing unsafe due to callee-clobbered registers).
-fn has_calls_in_loop(code: []u8, from: usize, to: usize) bool {
-    const n_insns = code.len / 4;
-    var idx = from;
-    while (idx < to and idx < n_insns) : (idx += 1) {
-        const insn = readInsn(code, idx);
-        if (insn & 0xFFFFFC1F == 0xD63F0000 or // BLR
-            insn & 0xFC000000 == 0x94000000) // BL
-            return true;
-    }
-    return false;
-}
-
 /// Return true if `reg` is used as a BLR target before being overwritten.
 /// Coalescing into such a register can destroy indirect-call targets.
 fn usedAsBlrTargetBeforeRedef(code: []u8, from: usize, reg: u5) bool {
@@ -5439,46 +5620,11 @@ fn coalesceMovs(code: []u8) void {
 
             const mi = mov_idx orelse continue;
 
-            // Check that rd0 is not used AFTER the mov (before next write or branch).
-            // If rd0 has other consumers after the MOV, coalescing would break them.
-            var safe = true;
-            var k = mi + 1;
-            while (k < n_insns) : (k += 1) {
-                const after = readInsn(code, k);
-                if (after == 0xD503201F) continue; // NOP
-                const rn_a: u5 = @truncate((after >> 5) & 0x1F);
-                const rm_a: u5 = @truncate((after >> 16) & 0x1F);
-                const rd_a: u5 = @truncate(after & 0x1F);
-                // Check for MOV Xd, Xm where Xm == rd0 (another consumer)
-                if (after & 0xFFE0FFE0 == 0xAA0003E0) {
-                    const mov_src: u5 = @truncate((after >> 16) & 0x1F);
-                    if (mov_src == rd0) { safe = false; break; }
-                }
-                // If rd0 is used as source operand
-                if (rn_a == rd0 or rm_a == rd0) { safe = false; break; }
-                // If rd0 is redefined, no more consumers can see old value
-                if (rd_a == rd0) break;
-                // At control flow boundaries, check if rd0 is used by targets.
-                if (after & 0xFC000000 == 0x14000000) { // B imm26
-                    // Backward branches (loop backedges): rd0 is a temporary that
-                    // was just phi-copied to mov_dst. The loop header reads mov_dst,
-                    // not rd0. Only safe for loops without calls (simple loops).
-                    const imm26: u32 = after & 0x03FFFFFF;
-                    const is_backward = (imm26 & 0x02000000) != 0;
-                    if (is_backward and !has_calls_in_loop(code, i, k)) {
-                        break; // safe: rd0 dead at loop header
-                    }
-                    safe = false;
-                    break;
-                }
-                if (after & 0xFF000000 == 0x54000000 or // B.cond
-                    after & 0xFFFFFC1F == 0xD65F0000 or // RET
-                    after & 0xFFFFFC1F == 0xD63F0000) // BLR
-                { safe = false; break; }
-            }
-            if (!safe) continue;
+            // rd0 must be dead on all paths after the MOV copy.
+            if (!isRegDeadAfter(code, mi, rd0)) continue;
 
             // Also check that mov_dst is not written between ALU op and mov
+            var safe = true;
             var j2 = i + 1;
             while (j2 < mi) : (j2 += 1) {
                 const between = readInsn(code, j2);
@@ -5637,6 +5783,15 @@ fn writeInsn(code: []u8, idx: usize, val: u32) void {
     std.mem.writeInt(u32, code[off..][0..4], val, .little);
 }
 
+fn dumpAsmPass(label: []const u8, code: []const u8) void {
+    std.debug.print("[hoist-pass] {s} bytes={d}\n", .{ label, code.len });
+    var i: usize = 0;
+    while (i + 4 <= code.len) : (i += 4) {
+        const w = std.mem.readInt(u32, code[i..][0..4], .little);
+        std.debug.print("  {x:0>4}: {x:0>8}\n", .{ i, w });
+    }
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -5666,6 +5821,206 @@ fn compileAndLoad(allocator: std.mem.Allocator, func: *Function) !struct { fn_pt
         .fn_ptr = mem.getFn(*const fn (i64) callconv(.c) i64),
         .mem = mem,
     };
+}
+
+test "fixEntryParamMovesAlloc preserves chained entry copies" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    // Problematic chain observed in NQUEENS-SAFE-P entry shuffle.
+    try appendInsn(&code, testing.allocator, makeMovInsn(3, 0)); // x3 <- x0
+    try appendInsn(&code, testing.allocator, makeMovInsn(5, 1)); // x5 <- x1
+    try appendInsn(&code, testing.allocator, makeMovInsn(6, 2)); // x6 <- x2
+    try appendInsn(&code, testing.allocator, makeMovInsn(0, 3)); // x0 <- x3
+    try appendInsn(&code, testing.allocator, makeMovInsn(2, 5)); // x2 <- x5
+    try appendInsn(&code, testing.allocator, makeMovInsn(4, 6)); // x4 <- x6
+    try appendInsn(&code, testing.allocator, 0xF100005F); // cmp x2, #0
+
+    var expected_regs: [32]u64 = undefined;
+    for (0..expected_regs.len) |r| expected_regs[r] = r;
+    const orig_moves = [_]struct { dst: u5, src: u5 }{
+        .{ .dst = 3, .src = 0 },
+        .{ .dst = 5, .src = 1 },
+        .{ .dst = 6, .src = 2 },
+        .{ .dst = 0, .src = 3 },
+        .{ .dst = 2, .src = 5 },
+        .{ .dst = 4, .src = 6 },
+    };
+    for (orig_moves) |m| {
+        expected_regs[m.dst] = expected_regs[m.src];
+    }
+
+    try fixEntryParamMovesAlloc(testing.allocator, &code);
+
+    var actual_regs: [32]u64 = undefined;
+    for (0..actual_regs.len) |r| actual_regs[r] = r;
+    const n_insns = code.items.len / 4;
+    var idx: usize = 0;
+    while (idx < n_insns) : (idx += 1) {
+        const insn = readInsn(code.items, idx);
+        if (insn & 0xFFE0FFE0 != 0xAA0003E0) break;
+        const dst: u5 = @truncate(insn & 0x1F);
+        const src: u5 = @truncate((insn >> 16) & 0x1F);
+        actual_regs[dst] = actual_regs[src];
+    }
+
+    const checked_regs = [_]u5{ 0, 2, 3, 4, 5, 6 };
+    for (checked_regs) |r| {
+        try testing.expectEqual(expected_regs[r], actual_regs[r]);
+    }
+}
+
+test "fuseMovzAlu keeps movz source register live across branch" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    try appendInsn(&code, testing.allocator, 0xD2800074); // movz x20, #3
+    try appendInsn(&code, testing.allocator, makeMovInsn(23, 20)); // mov x23, x20
+    try appendInsn(&code, testing.allocator, 0x14000002); // b +2 (to idx 4)
+    try appendInsn(&code, testing.allocator, 0xD503201F); // nop
+    try appendInsn(&code, testing.allocator, makeMovInsn(2, 20)); // mov x2, x20 (later use)
+    try appendInsn(&code, testing.allocator, 0xD65F03C0); // ret
+
+    fuseMovzAlu(code.items);
+
+    const insn0 = readInsn(code.items, 0);
+    const insn1 = readInsn(code.items, 1);
+    try testing.expectEqual(@as(u32, 0xD2800074), insn0);
+    try testing.expectEqual(makeMovInsn(23, 20), insn1);
+}
+
+test "isRegDeadAfter keeps branch-reachable movz live" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    const insns = [_]u32{
+        0xA9BF7BFD, // stp x29, x30, [sp, #-16]!
+        0xAA1F03FD, // mov x29, sp
+        0xAA0003E3, // mov x3, x0
+        0xAA0103E5, // mov x5, x1
+        0xAA0203E6, // mov x6, x2
+        0xAA0303E0, // mov x0, x3
+        0xAA0503E2, // mov x2, x5
+        0xAA0603E4, // mov x4, x6
+        0x14000001, // b +1
+        0xD2800003, // movz x3, #0
+        0xEB00005F, // cmp x2, xzr
+        0x1A9F17E5, // cset x5, eq
+        0x540000A0, // b.eq +5
+        0x14000007, // b +7
+        0xAA0503E0, // mov x0, x5
+        0xA8C17BFD, // ldp x29, x30, [sp], #16
+        0xD65F03C0, // ret
+        0xD2800041, // movz x1, #2
+        0xAA0103E5, // mov x5, x1
+        0x17FFFFFB, // b -5
+        0xF8400046, // ldr x6, [x2]
+        0xEB0000DF, // cmp x6, x0
+        0x1A9F17E7, // cset x7, eq
+        0x54000040, // b.eq +2
+        0x14000003, // b +3
+        0xAA0303E5, // mov x5, x3  <-- x3 use
+        0x17FFFFF4, // b -12
+    };
+    for (insns) |insn| try appendInsn(&code, testing.allocator, insn);
+
+    // movz at idx 9 must stay live *after* the cmp at idx 10 because x3 is
+    // still used at idx 25 on a branch-reachable path.
+    try testing.expect(!isRegDeadAfter(code.items, 10, 3));
+}
+
+test "isRegDeadAfter keeps movz live in cset-elided graph" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    const insns = [_]u32{
+        0xA9BF7BFD, 0xAA1F03FD, 0xAA0003E3, 0xAA0103E5,
+        0xAA0203E6, 0xAA0303E0, 0xAA0503E2, 0xAA0603E4,
+        0x14000001, 0xD2800003, 0xF100005F, 0xD503201F,
+        0x540000A0, 0x14000007, 0xAA0503E0, 0xA8C17BFD,
+        0xD65F03C0, 0xD2800041, 0xAA0103E5, 0x17FFFFFB,
+        0xF8400046, 0xEB0000DF, 0xD503201F, 0x54000040,
+        0x14000003, 0xAA0303E5, 0x17FFFFF4, 0xCB0000C7,
+        0xD2800028, 0x8B0800EB, 0xF100057F, 0x1A9FB7E7,
+        0xCB0B0028, 0x6B1F00FF, 0x9A881167, 0xEB0400FF,
+        0xD503201F, 0x54000040, 0x14000003, 0xAA0303E5,
+        0x17FFFFE6, 0xD2800103, 0x8B030045, 0xF84000A3,
+        0x8B010085, 0xAA0303E2, 0xAA0503E4, 0x17FFFFDA,
+    };
+    for (insns) |insn| try appendInsn(&code, testing.allocator, insn);
+
+    try testing.expect(!isRegDeadAfter(code.items, 10, 3));
+}
+
+test "coalesceMovs keeps source live across loop backedge" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    try appendInsn(&code, testing.allocator, makeMovInsn(0, 5)); // reads x5 on loop header
+    try appendInsn(&code, testing.allocator, 0x8B010085); // add x5, x4, x1
+    try appendInsn(&code, testing.allocator, makeMovInsn(4, 5)); // mov x4, x5
+    try appendInsn(&code, testing.allocator, 0x17FFFFFD); // b to idx 0
+
+    coalesceMovs(code.items);
+
+    try testing.expectEqual(@as(u32, 0x8B010085), readInsn(code.items, 1));
+    try testing.expectEqual(makeMovInsn(4, 5), readInsn(code.items, 2));
+}
+
+test "coalesceMovs folds dead copy in straight line" {
+    var code = std.ArrayList(u8){};
+    defer code.deinit(testing.allocator);
+
+    const appendInsn = struct {
+        fn f(list: *std.ArrayList(u8), allocator: std.mem.Allocator, insn: u32) !void {
+            const bytes: [4]u8 = @bitCast(insn);
+            try list.appendSlice(allocator, &bytes);
+        }
+    }.f;
+
+    try appendInsn(&code, testing.allocator, 0x8B010085); // add x5, x4, x1
+    try appendInsn(&code, testing.allocator, makeMovInsn(4, 5)); // mov x4, x5
+    try appendInsn(&code, testing.allocator, 0xD65F03C0); // ret
+
+    coalesceMovs(code.items);
+
+    try testing.expectEqual(@as(u32, 0x8B010084), readInsn(code.items, 0));
+    try testing.expectEqual(@as(u32, 0xD503201F), readInsn(code.items, 1));
 }
 
 test "hoist identity" {
@@ -6531,8 +6886,8 @@ test "hoist IR translator: countdown callFromValues" {
     defer compiled.deinit();
 
     // Test via call1
-    try testing.expectEqual(@as(i64, 85), compiled.call1(1));  // countdown(0) = 42
-    try testing.expectEqual(@as(i64, 85), compiled.call1(3));  // countdown(1) = 42
+    try testing.expectEqual(@as(i64, 85), compiled.call1(1)); // countdown(0) = 42
+    try testing.expectEqual(@as(i64, 85), compiled.call1(3)); // countdown(1) = 42
 
     // Test via callFromValues (same path as VM)
     const args0 = [_]Value{Value.makeFixnum(0)};
