@@ -226,6 +226,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding focused `with-output-to-string` regressions (`src/tests/integration.zig:4421`) locked clean primary-value behavior and verified `princ` writes to string streams without call-mismatch failures.
 - Extending `coerce` numeric/character coverage in `lib/stdlib.habu:2400` (integer/fixnum targets via truncation, `character`<->`integer` bridges, and explicit `t` identity) closed real CL conversion gaps without backend-specific branching.
 - Locking those conversions with integration coverage (`src/tests/integration.zig:4010`) prevents regressions on numeric/char/list/string/vector coercion paths.
+- Routing `~D` through a dedicated grouped-decimal helper in `src/interp/vm.zig:7786`/`src/interp/vm.zig:8719` fixed `~:D` output semantics (`1,234,567` and `-1,234,567`) without ad-hoc directive parsing branches.
+- Locking grouped-decimal behavior with explicit integration coverage (`src/tests/integration.zig:2749`) prevents regressions where modifier parsing falls through to literal directive text.
 
 ### Did Not Work
 - Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.

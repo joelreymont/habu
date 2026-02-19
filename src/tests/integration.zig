@@ -2743,6 +2743,31 @@ test "format ~D decimal" {
         \\(format nil "Value is ~D" 42)
     );
     try testing.expect(result.isString());
+    try testing.expectEqualStrings("Value is 42", try asString(result));
+}
+
+test "format ~:D grouped decimal" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const pos = try repl.eval(
+        \\(format nil "~:D" 1234567)
+    );
+    try testing.expect(pos.isString());
+    try testing.expectEqualStrings("1,234,567", try asString(pos));
+
+    const neg = try repl.eval(
+        \\(format nil "~:D" -1234567)
+    );
+    try testing.expect(neg.isString());
+    try testing.expectEqualStrings("-1,234,567", try asString(neg));
 }
 
 test "format ~% newline" {

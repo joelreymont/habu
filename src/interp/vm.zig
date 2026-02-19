@@ -7783,7 +7783,7 @@ pub const Vm = struct {
                         if (arg_idx < args.len) {
                             const min_width = self.parseFormatWidth(fmt[i + 1 .. scan_idx]);
                             const start_len = result.items.len;
-                            try self.formatFixnumBase(args[arg_idx], 10, &result);
+                            try self.formatFixnumDecimal(args[arg_idx], has_colon, &result);
                             if (min_width > 0) {
                                 const written = result.items.len - start_len;
                                 if (written < min_width) {
@@ -8714,6 +8714,28 @@ pub const Vm = struct {
         else
             try std.fmt.bufPrint(&buf, "-" ++ spec, .{@as(u64, @intCast(-n))});
         try result.appendSlice(self.allocator, num_str);
+    }
+
+    fn formatFixnumDecimal(self: *Vm, val: Value, grouped: bool, result: *std.ArrayList(u8)) Error!void {
+        if (!val.isFixnum()) return;
+        if (!grouped) return self.formatFixnumBase(val, 10, result);
+
+        const n = val.toFixnum();
+        var buf: [80]u8 = undefined;
+        const raw = try std.fmt.bufPrint(&buf, "{d}", .{n});
+        var start: usize = 0;
+        if (raw.len > 0 and raw[0] == '-') {
+            try result.append(self.allocator, '-');
+            start = 1;
+        }
+        const digits = raw[start..];
+        for (digits, 0..) |ch, i| {
+            try result.append(self.allocator, ch);
+            const remain = digits.len - i - 1;
+            if (remain > 0 and (remain % 3) == 0) {
+                try result.append(self.allocator, ',');
+            }
+        }
     }
 
     fn formatFixnumRadix(self: *Vm, n: i64, radix: u8, result: *std.ArrayList(u8)) Error!void {
