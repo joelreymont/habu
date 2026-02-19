@@ -12007,8 +12007,9 @@ pub const Compiler = struct {
         const dispatch_params_copy = try self.allocator.dupe([]const u8, dispatch_params.items);
 
         // Create lambda
+        const lambda_params = try self.allocator.dupe([]const u8, dispatch_params.items);
         const lambda_ir = try self.builder.lambda(
-            try dispatch_params.toOwnedSlice(self.allocator),
+            lambda_params,
             &[_]Ir.OptionalParam{},
             &[_]Ir.KeyParam{},
             false,
@@ -12287,13 +12288,10 @@ pub const Compiler = struct {
         }
 
         // Generate parameter names for dispatcher: arg0, arg1, ...
-        var dispatcher_params = std.ArrayList([]const u8){};
-        defer dispatcher_params.deinit(self.allocator);
+        const dispatch_params = try self.allocator.alloc([]const u8, max_arity);
         for (0..max_arity) |i| {
-            const pname = try std.fmt.allocPrint(self.allocator, "arg{d}", .{i});
-            try dispatcher_params.append(self.allocator, pname);
+            dispatch_params[i] = try std.fmt.allocPrint(self.allocator, "arg{d}", .{i});
         }
-        const dispatch_params = try dispatcher_params.toOwnedSlice(self.allocator);
 
         // Separate methods by qualifier
         var primary_methods = std.ArrayList(MethodDef){};
