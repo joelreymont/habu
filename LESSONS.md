@@ -198,6 +198,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Locking variadic arithmetic semantics with focused regressions in `src/compiler/compile.zig:19284` (`(+)`, `(*)`, unary `(- x)`, unary `(/ x)`, and left-associated `(+ 1 2 3)`) preserved CL behavior while tightening argument-list validation.
 - Replacing `compileCallNextMethod` and `generateMethodCallByNameAtDepth` transient `ArrayList` staging in `src/compiler/compile.zig:12126` and `src/compiler/compile.zig:12726` with pre-sized argument slices + `buildCallIr` removed list growth churn from generic-function dispatch call lowering.
 - Adding focused regressions for `call-next-method` arg-shape preservation and dotted explicit arg rejection (`src/compiler/compile.zig:19336`, `src/compiler/compile.zig:19382`) locked the no-drop/no-mask behavior while tightening malformed-list handling.
+- Replacing `compileMakeInstance` keyword/value call-arg staging and `compileFindClass` optional-form sequencing staging (`src/compiler/compile.zig:11522`, `src/compiler/compile.zig:11699`) with pre-sized slices removed extra temporary list growth and redundant copy churn in CLOS compile helpers.
+- Locking `make-instance` ctor-arg preservation and `find-class` optional sequencing/dotted-tail rejection in focused regressions (`src/compiler/compile.zig:19410`, `src/compiler/compile.zig:19462`, `src/compiler/compile.zig:19494`) made these list-shape contracts explicit.
 
 ### Did Not Work
 - Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.

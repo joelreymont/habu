@@ -11519,19 +11519,25 @@ pub const Compiler = struct {
         defer if (q.owned) self.allocator.free(q.name);
         const ctor_name = q.name;
 
-        var call_args_list = std.ArrayList(*Ir){};
-        defer call_args_list.deinit(self.allocator);
+        var call_arg_count: usize = 0;
+        for (slot_values) |maybe_val| {
+            if (maybe_val != null) call_arg_count += 2;
+        }
+
+        const call_args = try self.allocator.alloc(*const Ir, call_arg_count);
+        var call_idx: usize = 0;
         for (slot_values, 0..) |maybe_val, i| {
             if (maybe_val) |val| {
                 const kw = try heap.internKeyword(slot_specs[i].name);
-                try call_args_list.append(self.allocator, try self.builder.lit(kw));
-                try call_args_list.append(self.allocator, val);
+                call_args[call_idx] = try self.builder.lit(kw);
+                call_args[call_idx + 1] = val;
+                call_idx += 2;
             }
         }
 
         const ctor_idx = if (self.globals.lookup(ctor_name)) |val| val else return error.InvalidSyntax;
         const ctor_ref = try self.builder.globalRef(ctor_name, ctor_idx);
-        const ctor_call = try self.builder.call(ctor_ref, try call_args_list.toOwnedSlice(self.allocator));
+        const ctor_call = try self.buildCallIr(ctor_ref, call_args, false);
 
         // Call initialize-instance on the new object (for :before/:after/:around methods)
         // Emit: (let ((#:obj (ctor ...))) (initialize-instance #:obj) #:obj)
@@ -11698,16 +11704,26 @@ pub const Compiler = struct {
 
         if (first.cdr.isNil()) return lookup_ir;
 
-        var exprs = std.ArrayList(*const Ir){};
-        defer exprs.deinit(self.allocator);
+        var form_count: usize = 0;
+        var scan = first.cdr;
+        while (scan.isCons()) : (scan = scan.toPtr(Cons).cdr) {
+            form_count += 1;
+        }
+        if (!scan.isNil()) return error.InvalidSyntax;
 
+        const exprs = try self.allocator.alloc(*const Ir, form_count + 1);
         var rest = first.cdr;
+        var idx: usize = 0;
         while (rest.isCons()) : (rest = rest.toPtr(Cons).cdr) {
             const cell = rest.toPtr(Cons);
-            try exprs.append(self.allocator, try self.compile(cell.car, env));
+            exprs[idx] = try self.compile(cell.car, env);
+            idx += 1;
         }
-        try exprs.append(self.allocator, lookup_ir);
-        return try self.builder.progn(exprs.items);
+        exprs[idx] = lookup_ir;
+
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .progn = exprs };
+        return node;
     }
 
     /// Compile defgeneric: (defgeneric name (arg1 arg2 ...))
@@ -19531,6 +19547,114 @@ test "compile call-next-method rejects dotted explicit args" {
 
     const dotted_args = try heap.allocCons(Value.makeFixnum(1), Value.makeFixnum(2));
     try testing.expectError(error.InvalidSyntax, compiler.compileCallNextMethod(dotted_args, &env));
+}
+
+test "compile make-instance preserves keyword/value arg pairs" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser_class = try Parser.init(arena_alloc, &heap, "(defclass foo () ((x :initarg :x) (y :initarg :y)))", &vm.builtins);
+    defer parser_class.deinit();
+    const class_expr = try parser_class.parse();
+    _ = try compiler.compile(class_expr, &env);
+
+    var parser_make = try Parser.init(arena_alloc, &heap, "(make-instance 'foo :x 1 :y 2)", &vm.builtins);
+    defer parser_make.deinit();
+    const make_expr = try parser_make.parse();
+    const inst_ir = try compiler.compile(make_expr, &env);
+
+    const ctor_call = switch (inst_ir.*) {
+        .call => inst_ir,
+        .let => inst_ir.let.bindings[0].value,
+        else => {
+            try testing.expect(false);
+            return;
+        },
+    };
+
+    try testing.expect(ctor_call.* == .call);
+    try testing.expectEqual(@as(usize, 4), ctor_call.call.args.len);
+    try testing.expect(ctor_call.call.args[0].* == .lit);
+    try testing.expect(ctor_call.call.args[0].lit.isKeyword());
+    try testing.expect(ctor_call.call.args[1].* == .lit);
+    try testing.expectEqual(@as(i64, 1), ctor_call.call.args[1].lit.toFixnum());
+    try testing.expect(ctor_call.call.args[2].* == .lit);
+    try testing.expect(ctor_call.call.args[2].lit.isKeyword());
+    try testing.expect(ctor_call.call.args[3].* == .lit);
+    try testing.expectEqual(@as(i64, 2), ctor_call.call.args[3].lit.toFixnum());
+}
+
+test "compile find-class preserves optional arg sequencing" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(arena_alloc, &heap, "(find-class 'foo t nil)", &vm.builtins);
+    defer parser.deinit();
+    const expr = try parser.parse();
+    const ir_node = try compiler.compile(expr, &env);
+
+    try testing.expect(ir_node.* == .progn);
+    try testing.expectEqual(@as(usize, 3), ir_node.progn.len);
+    try testing.expect(ir_node.progn[0].* == .lit);
+    try testing.expect(ir_node.progn[1].* == .lit);
+    try testing.expect(ir_node.progn[2].* == .find_class);
+}
+
+test "compile find-class rejects dotted optional tail" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const class_sym = try heap.intern("foo");
+    const dotted_args = try heap.allocCons(class_sym, Value.t);
+    try testing.expectError(error.InvalidSyntax, compiler.compileFindClass(dotted_args, &env));
 }
 
 test "qualified struct predicate lookup emits struct_p ir" {
