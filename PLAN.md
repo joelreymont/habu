@@ -115,6 +115,7 @@
 - [ ] `habu-add-encode-universal-fe1b93d9` Add encode-universal-time primitive + wiring.
 - [ ] `habu-signal-symbol-pkg-e766fbcf` Signal SYMBOL-PACKAGE type errors as Lisp conditions.
 - [x] `habu-fix-symbol-fn-f9fd590d` Fix function-namespace resolution so `symbol-function`/macro setup is not hijacked by special value bindings; seed function cells on `defun`/`setf` function definitions and revalidate Maxima readiness.
+- [x] `habu-resolve-internal-setter-9122d08d` Classify `%aset`/`%svset`/`%sset` as builtin callable designators so bootstrap function resolution does not depend on nil-slot fallback behavior.
 
 ### 4. VM / GC / Eval / CLOS / Conditions
 - [ ] `habu-fix-gc-chunk-7057f649` Fix GC chunk root corruption.

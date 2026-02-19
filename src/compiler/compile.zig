@@ -1387,6 +1387,8 @@ pub const Builtins = struct {
         "file-namestring",        "host-namestring",          "wild-pathname-p",
         // Also callable
                   "funcall",                  "apply",                    "values",                      "values-list",
+        // Internal setters used by setf expanders and bootstrap fdefinition wiring
+                  "%aset",                    "%svset",                   "%sset",
     };
 
     /// Check if a symbol is a builtin function (not special form)

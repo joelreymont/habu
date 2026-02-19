@@ -6184,6 +6184,35 @@ test "symbol-function ignores special value bindings" {
     try testing.expect(out.isClosure());
 }
 
+test "symbol-function resolves internal setf setter helpers" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(list
+        \\  (functionp (symbol-function '%aset))
+        \\  (functionp (symbol-function '%svset))
+        \\  (functionp (symbol-function '%sset)))
+    );
+
+    try testing.expect(out.isCons());
+    var cur = out;
+    var i: usize = 0;
+    while (i < 3) : (i += 1) {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isT());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
 test "local type declarations do not leak into unrelated lets" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
