@@ -5958,12 +5958,14 @@ test "maxima trigi subset binds callable trig aliases" {
         \\          1
         \\          0)
         \\      (if (fboundp 'maxima::$sin) 1 0)
-        \\      (if (fboundp 'maxima::$cos) 1 0))))
+        \\      (if (fboundp 'maxima::$cos) 1 0)
+        \\      (if (handler-case (equal (maxima::$sin 0) 0) (error () nil)) 1 0)
+        \\      (if (handler-case (equal (maxima::$cos 0) 1) (error () nil)) 1 0))))
     );
 
     try testing.expect(status.isCons());
     var cur = status;
-    const expected = [_]i64{ 0, 0, 1, 1, 1, 1 };
+    const expected = [_]i64{ 0, 0, 1, 1, 1, 1, 1, 1 };
     for (expected) |want| {
         try testing.expect(cur.isCons());
         const cell = cur.toPtr(Cons);

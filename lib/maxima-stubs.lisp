@@ -248,8 +248,10 @@
 ;; Functions from defmfun-check.lisp (can't load — complex macros)
 (defun arg-count-check (required-arg-count expr &optional pretty-name)
   (declare (ignore pretty-name))
-  (unless (= required-arg-count (length (rest expr)))
-    (error "Wrong number of arguments: expected ~A, got ~A" required-arg-count (length (rest expr)))))
+  (let* ((tail (if (consp expr) (cdr expr) nil))
+         (got (if (listp tail) (length tail) 0)))
+    (unless (= required-arg-count got)
+      (error "Wrong number of arguments: expected ~A, got ~A" required-arg-count got))))
 (defun oneargcheck (expr) (arg-count-check 1 expr))
 (defun twoargcheck (expr) (arg-count-check 2 expr))
 
@@ -257,6 +259,29 @@
 (defun check-integer-facts (x &optional mode)
   (declare (ignore x mode))
   nil)
+
+;; complex-number-p is defined in ellipt.lisp, but trig simplifiers call it
+;; before ellipt is loaded in our bootstrap subsets.
+(defun complex-number-p (u &optional (ntypep 'numberp))
+  (let ((r 0) (i 0))
+    (labels ((a1 (x) (cadr x))
+             (a2 (x) (caddr x))
+             (a3+ (x) (cdddr x))
+             (n (x) (funcall ntypep x))
+             (ip (x) (and (eq x '$%i) (n 1)))
+             (n+i (x) (and (null (a3+ x))
+                           (n (setq r (a1 x)))
+                           (or (and (ip (a2 x)) (setq i 1) t)
+                               (and (mtimesp (a2 x)) (n*i (a2 x))))))
+             (n*i (x) (and (null (a3+ x))
+                           (n (setq i (a1 x)))
+                           (eq (a2 x) '$%i))))
+      (declare (inline a1 a2 a3+ n ip n+i n*i))
+      (cond ((n u) (values t u 0))
+            ((atom u) (if (ip u) (values t 0 1)))
+            ((mplusp u) (if (n+i u) (values t r i)))
+            ((mtimesp u) (if (n*i u) (values t r i)))
+            (t nil)))))
 
 ;; maybe-invert-string-case: commac.lisp uses LOOP features we don't support yet
 (defun maybe-invert-string-case (str) str)
@@ -324,7 +349,7 @@
        (defun ,simp-name (,form-arg ,unused-arg ,z-arg)
          (declare (ignore ,unused-arg)
                   (ignorable ,z-arg))
-         (arg-count-check ,arg-count ,form-arg nil)
+         (arg-count-check ,arg-count ,form-arg)
          (let ,arg-forms
            (flet ((give-up (&key (noun-name ',noun-name)
                                  (args (list ,@lambda-list)))
