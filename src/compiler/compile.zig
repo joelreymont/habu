@@ -8146,12 +8146,10 @@ pub const Compiler = struct {
     }
 
     fn compileFunctionDefine(self: *Compiler, sym_val: Value, name: []const u8, idx: u16, value_ir: *const Ir) anyerror!*Ir {
-        const define_ir = try self.builder.define(name, idx, value_ir);
+        _ = name;
+        _ = idx;
         const sym_ir = try self.builder.lit(sym_val);
-        const fn_ir = try self.builder.globalRef(name, idx);
-        const set_fn_ir = try self.builder.setSymbolFunction(sym_ir, fn_ir);
-        const seq = [_]*const Ir{ define_ir, set_fn_ir };
-        return try self.builder.progn(&seq);
+        return try self.builder.setSymbolFunction(sym_ir, value_ir);
     }
 
     fn removeGenericFunctionMeta(self: *Compiler, name: []const u8) void {
@@ -18529,23 +18527,12 @@ test "compile defun typed name" {
     const ir_def = try compiler.compile(expr, &env);
     defer arena_alloc.destroy(ir_def);
 
-    var def_ir: *const Ir = undefined;
-    switch (ir_def.*) {
-        .define => def_ir = ir_def,
-        .progn => |exprs| {
-            try testing.expectEqual(@as(usize, 2), exprs.len);
-            try testing.expect(exprs[0].* == .define);
-            try testing.expect(exprs[1].* == .set_symbol_function);
-            def_ir = exprs[0];
-        },
-        else => {
-            try testing.expect(false);
-            return;
-        },
-    }
-    try testing.expectEqualStrings("CL-USER:FOO", def_ir.define.name);
-    try testing.expect(def_ir.define.value.* == .lambda);
-    switch (def_ir.define.value.lambda.body.*) {
+    try testing.expect(ir_def.* == .set_symbol_function);
+    try testing.expect(ir_def.set_symbol_function.left.* == .lit);
+    try testing.expectEqual(foo_sym.raw, ir_def.set_symbol_function.left.lit.raw);
+    try testing.expect(ir_def.set_symbol_function.right.* == .lambda);
+    try testing.expect(compiler.globals.lookup("CL-USER:FOO") != null);
+    switch (ir_def.set_symbol_function.right.lambda.body.*) {
         .assert_fixnum => {},
         .block => |blk| try testing.expect(blk.body.* == .assert_fixnum),
         else => try testing.expect(false),
@@ -18583,22 +18570,9 @@ test "compile defun sets lambda name" {
     const ir_def = try compiler.compile(expr, &env);
     defer arena_alloc.destroy(ir_def);
 
-    var def_ir: *const Ir = undefined;
-    switch (ir_def.*) {
-        .define => def_ir = ir_def,
-        .progn => |exprs| {
-            try testing.expectEqual(@as(usize, 2), exprs.len);
-            try testing.expect(exprs[0].* == .define);
-            try testing.expect(exprs[1].* == .set_symbol_function);
-            def_ir = exprs[0];
-        },
-        else => {
-            try testing.expect(false);
-            return;
-        },
-    }
-    try testing.expect(def_ir.define.value.* == .lambda);
-    try testing.expectEqual(foo_sym.raw, def_ir.define.value.lambda.name.raw);
+    try testing.expect(ir_def.* == .set_symbol_function);
+    try testing.expect(ir_def.set_symbol_function.right.* == .lambda);
+    try testing.expectEqual(foo_sym.raw, ir_def.set_symbol_function.right.lambda.name.raw);
 }
 
 test "compile defpackage names" {

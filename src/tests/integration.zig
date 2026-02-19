@@ -6242,6 +6242,72 @@ test "symbol-function ignores special value bindings" {
     try testing.expect(out.isClosure());
 }
 
+test "value and function namespaces stay independent for shared symbol" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(progn
+        \\  (setq ratvars '(a b c))
+        \\  (defun ratvars () 'ok)
+        \\  (list
+        \\    (if (equal (cdr ratvars) '(b c)) 1 0)
+        \\    (if (eq (ratvars) 'ok) 1 0)
+        \\    (if (equal (symbol-value 'ratvars) '(a b c)) 1 0)
+        \\    (if (functionp (symbol-function 'ratvars)) 1 0)))
+    );
+
+    try testing.expect(out.isCons());
+    var cur = out;
+    var i: usize = 0;
+    while (i < 4) : (i += 1) {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(@as(i64, 1), cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
+test "defun does not clobber nil value binding" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(progn
+        \\  (setq maybe-nil nil)
+        \\  (defun maybe-nil () 'ok)
+        \\  (list
+        \\    (if (null (symbol-value 'maybe-nil)) 1 0)
+        \\    (if (eq (maybe-nil) 'ok) 1 0)))
+    );
+
+    try testing.expect(out.isCons());
+    var cur = out;
+    var i: usize = 0;
+    while (i < 2) : (i += 1) {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(@as(i64, 1), cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
 test "symbol-function resolves internal setf setter helpers" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });

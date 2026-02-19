@@ -149,6 +149,7 @@
     - [x] `habu-fix-nested-load-d7d28e45` Fix nested `load` non-local exit relay so `handler-case` around `load` aborts on first error instead of resuming later file forms.
     - [x] `habu-revalidate-integrate-with-0874ce3e` Revalidate integrate path end-to-end once real Maxima source fixtures are present again. Depends on `habu-fix-declare-top-e3668a14`.
   - [ ] `habu-maxima-factor-ratsimp-521dd2ca` Maxima factor/ratsimp path: fix TypeMismatch and ProgramError roots.
+    - [x] `habu-separate-value-fn-4d40d330` Keep function and value cells independent in `set_symbol_function` so shared symbols (for example `ratvars`) preserve variable data while remaining callable as functions.
   - [x] `habu-maxima-core-loader-999c7eb3` Add Maxima core subset loader + entrypoint binding integration gate.
   - [x] `habu-rca-load-stackoverflow-e3d4f5d8` RCA and fix load stack overflow path for Maxima large source files.
   - [x] `habu-fix-sin-lisp-b34b817f` Fix `sin.lisp` load root so `SININT` is bound and integrate path can complete. Ensure `schatc` dependency chain is loaded (`m2`/`schatchen-cond` present) before integrate execution.

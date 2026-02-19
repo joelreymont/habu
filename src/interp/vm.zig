@@ -4023,9 +4023,14 @@ pub const Vm = struct {
                         }
                         const sym_obj = sym.toPtr(Symbol);
                         if (try self.lookupSymbolGlobalIndex(sym_obj)) |idx| {
-                            self.globals[idx] = func;
-                            if (idx >= self.num_globals) {
-                                self.num_globals = idx + 1;
+                            const prev = self.globals[idx];
+                            // Keep value and function namespaces separate:
+                            // only update legacy callable value-cell slots.
+                            if (isCallableFunctionValue(prev)) {
+                                self.globals[idx] = func;
+                                if (idx >= self.num_globals) {
+                                    self.num_globals = idx + 1;
+                                }
                             }
                         } else if (self.global_env) |env| {
                             // Create a new global slot for this symbol
@@ -4034,7 +4039,8 @@ pub const Vm = struct {
                             defer if (q.owned) self.allocator.free(q.name);
                             const idx = try env.define(q.name);
                             if (idx < self.globals.len) {
-                                self.globals[idx] = func;
+                                // Function-only binding: leave value cell unbound.
+                                self.globals[idx] = Value.unbound;
                                 if (idx >= self.num_globals) {
                                     self.num_globals = idx + 1;
                                 }
