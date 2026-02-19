@@ -3224,37 +3224,18 @@ pub const Compiler = struct {
     ) !Value {
         const heap = if (self.heap) |val| val else return error.InvalidSyntax;
         const saved_ext = vm.ext_roots;
-
-        const RootPair = struct { key: Value, val: Value };
-        var macro_entries = std.ArrayList(RootPair){};
-        defer macro_entries.deinit(self.allocator);
-        var macro_iter = self.macro_table.iterator();
-        while (macro_iter.next()) |entry| {
-            try macro_entries.append(self.allocator, .{
-                .key = entry.key_ptr.*,
-                .val = entry.value_ptr.*,
-            });
-        }
-
-        var symbol_macro_entries = std.ArrayList(RootPair){};
-        defer symbol_macro_entries.deinit(self.allocator);
-        var sym_iter = self.symbol_macros.iterator();
-        while (sym_iter.next()) |entry| {
-            try symbol_macro_entries.append(self.allocator, .{
-                .key = entry.key_ptr.*,
-                .val = entry.value_ptr.*,
-            });
-        }
+        const macro_count = self.macro_table.count();
+        const symbol_macro_count = self.symbol_macros.count();
 
         const root_closure_idx = saved_ext.len;
         const root_args_idx = saved_ext.len + 1;
         const root_whole_idx = saved_ext.len + 2;
         const root_env_idx = saved_ext.len + 3;
         const root_macro_start = saved_ext.len + 4;
-        const root_symbol_start = root_macro_start + (macro_entries.items.len * 2);
+        const root_symbol_start = root_macro_start + (macro_count * 2);
         const roots = try self.allocator.alloc(
             Value,
-            saved_ext.len + 4 + (macro_entries.items.len * 2) + (symbol_macro_entries.items.len * 2),
+            saved_ext.len + 4 + (macro_count * 2) + (symbol_macro_count * 2),
         );
         defer self.allocator.free(roots);
 
@@ -3267,14 +3248,16 @@ pub const Compiler = struct {
         roots[root_env_idx] = Value.nil;
 
         var root_idx = root_macro_start;
-        for (macro_entries.items) |entry| {
-            roots[root_idx] = entry.key;
-            roots[root_idx + 1] = entry.val;
+        var macro_iter = self.macro_table.iterator();
+        while (macro_iter.next()) |entry| {
+            roots[root_idx] = entry.key_ptr.*;
+            roots[root_idx + 1] = entry.value_ptr.*;
             root_idx += 2;
         }
-        for (symbol_macro_entries.items) |entry| {
-            roots[root_idx] = entry.key;
-            roots[root_idx + 1] = entry.val;
+        var sym_iter = self.symbol_macros.iterator();
+        while (sym_iter.next()) |entry| {
+            roots[root_idx] = entry.key_ptr.*;
+            roots[root_idx + 1] = entry.value_ptr.*;
             root_idx += 2;
         }
 
@@ -3285,22 +3268,41 @@ pub const Compiler = struct {
             roots[root_env_idx] = try heap.allocMacroEnv();
         }
 
-        var call_args = std.ArrayList(Value){};
-        defer call_args.deinit(self.allocator);
+        var arg_count: usize = @as(usize, @intFromBool(has_whole)) + @as(usize, @intFromBool(has_env));
+        var arg_scan = roots[root_args_idx];
+        while (arg_scan.isCons()) : (arg_scan = arg_scan.toPtr(Cons).cdr) {
+            arg_count += 1;
+        }
+
+        var call_args_stack: [64]Value = undefined;
+        var call_args_heap: ?[]Value = null;
+        defer if (call_args_heap) |buf| self.allocator.free(buf);
+        const call_args_buf: []Value = if (arg_count <= call_args_stack.len)
+            call_args_stack[0..arg_count]
+        else blk: {
+            const mem = try self.allocator.alloc(Value, arg_count);
+            call_args_heap = mem;
+            break :blk mem;
+        };
+        var call_arg_idx: usize = 0;
 
         if (has_whole) {
-            try call_args.append(self.allocator, roots[root_whole_idx]);
+            call_args_buf[call_arg_idx] = roots[root_whole_idx];
+            call_arg_idx += 1;
         }
         if (has_env) {
-            try call_args.append(self.allocator, roots[root_env_idx]);
+            call_args_buf[call_arg_idx] = roots[root_env_idx];
+            call_arg_idx += 1;
         }
 
         var arg_list = roots[root_args_idx];
         while (arg_list.isCons()) {
             const arg_cons = arg_list.toPtr(Cons);
-            try call_args.append(self.allocator, arg_cons.car);
+            call_args_buf[call_arg_idx] = arg_cons.car;
+            call_arg_idx += 1;
             arg_list = arg_cons.cdr;
         }
+        const call_args = call_args_buf[0..call_arg_idx];
 
         if (std.posix.getenv("HABU_TRACE_COMPILE_MACRO_ARGS") != null and whole_form.isCons()) {
             const head = whole_form.toPtr(Cons).car;
@@ -3328,8 +3330,8 @@ pub const Compiler = struct {
                         }
                     }.run;
 
-                    std.debug.print("TRACE compile-macro head={s} argc={d}\n", .{ head_name, call_args.items.len });
-                    for (call_args.items, 0..) |arg, i| {
+                    std.debug.print("TRACE compile-macro head={s} argc={d}\n", .{ head_name, call_args.len });
+                    for (call_args, 0..) |arg, i| {
                         if (arg.isSymbol()) {
                             const s = arg.toPtr(Symbol);
                             var live_raw: u64 = 0;
@@ -3362,13 +3364,13 @@ pub const Compiler = struct {
             }
         }
 
-        const call_result = vm.callFromStack(roots[root_closure_idx], call_args.items) catch |err| {
+        const call_result = vm.callFromStack(roots[root_closure_idx], call_args) catch |err| {
             try self.restoreMacroTablesFromRoots(
                 roots,
                 root_macro_start,
-                macro_entries.items.len,
+                macro_count,
                 root_symbol_start,
-                symbol_macro_entries.items.len,
+                symbol_macro_count,
             );
             try self.refreshBuiltins();
             return err;
@@ -3377,9 +3379,9 @@ pub const Compiler = struct {
         try self.restoreMacroTablesFromRoots(
             roots,
             root_macro_start,
-            macro_entries.items.len,
+            macro_count,
             root_symbol_start,
-            symbol_macro_entries.items.len,
+            symbol_macro_count,
         );
         try self.refreshBuiltins();
         return call_result;
@@ -3561,27 +3563,8 @@ pub const Compiler = struct {
         const saved_env = vm.global_env;
         const saved_ext = vm.ext_roots;
         const saved_pool = vm.chunk_pool;
-
-        const RootPair = struct { key: Value, val: Value };
-        var macro_entries = std.ArrayList(RootPair){};
-        defer macro_entries.deinit(self.allocator);
-        var macro_iter = self.macro_table.iterator();
-        while (macro_iter.next()) |entry| {
-            try macro_entries.append(self.allocator, .{
-                .key = entry.key_ptr.*,
-                .val = entry.value_ptr.*,
-            });
-        }
-
-        var symbol_macro_entries = std.ArrayList(RootPair){};
-        defer symbol_macro_entries.deinit(self.allocator);
-        var sym_iter = self.symbol_macros.iterator();
-        while (sym_iter.next()) |entry| {
-            try symbol_macro_entries.append(self.allocator, .{
-                .key = entry.key_ptr.*,
-                .val = entry.value_ptr.*,
-            });
-        }
+        const macro_count = self.macro_table.count();
+        const symbol_macro_count = self.symbol_macros.count();
 
         const root_chunk_idx = saved_pool.len;
         const root_closure_idx = saved_pool.len + 1;
@@ -3589,10 +3572,10 @@ pub const Compiler = struct {
         const root_whole_idx = saved_pool.len + 3;
         const root_env_idx = saved_pool.len + 4;
         const root_macro_start = saved_pool.len + 5;
-        const root_symbol_start = root_macro_start + (macro_entries.items.len * 2);
+        const root_symbol_start = root_macro_start + (macro_count * 2);
         const macro_roots = try self.allocator.alloc(
             Value,
-            saved_pool.len + 5 + (macro_entries.items.len * 2) + (symbol_macro_entries.items.len * 2),
+            saved_pool.len + 5 + (macro_count * 2) + (symbol_macro_count * 2),
         );
         defer self.allocator.free(macro_roots);
         const chunk_roots = try self.allocator.alloc(Value, saved_pool.len + child_chunks.len);
@@ -3607,14 +3590,16 @@ pub const Compiler = struct {
         macro_roots[root_whole_idx] = whole_form;
         macro_roots[root_env_idx] = Value.nil;
         var root_idx = root_macro_start;
-        for (macro_entries.items) |entry| {
-            macro_roots[root_idx] = entry.key;
-            macro_roots[root_idx + 1] = entry.val;
+        var macro_iter = self.macro_table.iterator();
+        while (macro_iter.next()) |entry| {
+            macro_roots[root_idx] = entry.key_ptr.*;
+            macro_roots[root_idx + 1] = entry.value_ptr.*;
             root_idx += 2;
         }
-        for (symbol_macro_entries.items) |entry| {
-            macro_roots[root_idx] = entry.key;
-            macro_roots[root_idx + 1] = entry.val;
+        var sym_iter = self.symbol_macros.iterator();
+        while (sym_iter.next()) |entry| {
+            macro_roots[root_idx] = entry.key_ptr.*;
+            macro_roots[root_idx + 1] = entry.value_ptr.*;
             root_idx += 2;
         }
         const macro_chunk_base: u16 = @intCast(saved_pool.len);
@@ -3660,30 +3645,49 @@ pub const Compiler = struct {
             macro_roots[root_env_idx] = try heap.allocMacroEnv();
         }
 
-        var call_args = std.ArrayList(Value){};
-        defer call_args.deinit(self.allocator);
+        var arg_count: usize = @as(usize, @intFromBool(whole_var != null)) + @as(usize, @intFromBool(env_var != null));
+        var arg_scan = macro_roots[root_args_idx];
+        while (arg_scan.isCons()) : (arg_scan = arg_scan.toPtr(Cons).cdr) {
+            arg_count += 1;
+        }
+
+        var call_args_stack: [64]Value = undefined;
+        var call_args_heap: ?[]Value = null;
+        defer if (call_args_heap) |buf| self.allocator.free(buf);
+        const call_args_buf: []Value = if (arg_count <= call_args_stack.len)
+            call_args_stack[0..arg_count]
+        else blk: {
+            const mem = try self.allocator.alloc(Value, arg_count);
+            call_args_heap = mem;
+            break :blk mem;
+        };
+        var call_arg_idx: usize = 0;
 
         if (whole_var != null) {
-            try call_args.append(self.allocator, macro_roots[root_whole_idx]);
+            call_args_buf[call_arg_idx] = macro_roots[root_whole_idx];
+            call_arg_idx += 1;
         }
         if (env_var != null) {
-            try call_args.append(self.allocator, macro_roots[root_env_idx]);
+            call_args_buf[call_arg_idx] = macro_roots[root_env_idx];
+            call_arg_idx += 1;
         }
 
         var arg_list = macro_roots[root_args_idx];
         while (arg_list.isCons()) {
             const arg_cons = arg_list.toPtr(Cons);
-            try call_args.append(self.allocator, arg_cons.car);
+            call_args_buf[call_arg_idx] = arg_cons.car;
+            call_arg_idx += 1;
             arg_list = arg_cons.cdr;
         }
+        const call_args = call_args_buf[0..call_arg_idx];
 
-        const call_result = vm.callFromStack(closure_val, call_args.items) catch |err| {
+        const call_result = vm.callFromStack(closure_val, call_args) catch |err| {
             try self.restoreMacroTablesFromRoots(
                 macro_roots,
                 root_macro_start,
-                macro_entries.items.len,
+                macro_count,
                 root_symbol_start,
-                symbol_macro_entries.items.len,
+                symbol_macro_count,
             );
             try self.refreshBuiltins();
             return err;
@@ -3692,9 +3696,9 @@ pub const Compiler = struct {
         try self.restoreMacroTablesFromRoots(
             macro_roots,
             root_macro_start,
-            macro_entries.items.len,
+            macro_count,
             root_symbol_start,
-            symbol_macro_entries.items.len,
+            symbol_macro_count,
         );
         try self.refreshBuiltins();
         return call_result;

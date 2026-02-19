@@ -188,6 +188,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Extending JIT candidate extraction in both `src/testing/compile_chunk.zig` and `src/interp/repl.zig` to accept `.set_symbol_function` + lambda restored post-defun JIT registration after function-cell lowering changes.
 - Adding `.block` traversal/translation support in `src/jit/backend.zig` (`irAny`, `countIrNodes`, `canTranslate`, `firstUnsupportedTag`, `translate`, TCO helpers) fixed the real backend incompatibility instead of masking it in benchmark gating.
 - Validating with `zig build -Duse-hoist=true bench-jit -- --json` and `zig build -Duse-hoist=true bench-check -- --json` proved end-to-end recovery (`compile_n=1`, `fail_n=0`) and restored meaningful JIT perf signal.
+- Replacing macro-root staging in `src/compiler/compile.zig` (`callMacroClosure`, `expandMacro`) from temporary `ArrayList` map snapshots to direct root-buffer packing removed repeated transient allocations in macro expansion hot paths without changing GC/root restoration semantics.
+- Pre-counting macro call argument arity and using a stack buffer (with single fallback heap alloc) removed dynamic `ArrayList(Value)` growth churn in compile-time macro invocation loops.
 
 ### Did Not Work
 - Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.
