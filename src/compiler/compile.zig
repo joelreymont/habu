@@ -12514,11 +12514,13 @@ pub const Compiler = struct {
             return try self.builder.progn(seq);
         }
 
-        var stmts = std.ArrayList(*Ir){};
-        defer stmts.deinit(self.allocator);
+        const stmt_count = 2 + before_methods.len; // set_next + before* + final(primary/let)
+        const stmts = try self.allocator.alloc(*const Ir, stmt_count);
+        var stmt_idx: usize = 0;
 
         // Bind %next-method% first
-        try stmts.append(self.allocator, set_next);
+        stmts[stmt_idx] = set_next;
+        stmt_idx += 1;
 
         // Call applicable :before methods (most specific first)
         // Generate runtime typep checks for each :before method
@@ -12544,10 +12546,11 @@ pub const Compiler = struct {
             const before_call = try self.generateMethodCall(before, dispatch_params);
             if (cond) |c| {
                 const nil_ir = try self.builder.lit(Value.nil);
-                try stmts.append(self.allocator, try self.builder.ifExpr(c, before_call, nil_ir));
+                stmts[stmt_idx] = try self.builder.ifExpr(c, before_call, nil_ir);
             } else {
-                try stmts.append(self.allocator, before_call);
+                stmts[stmt_idx] = before_call;
             }
+            stmt_idx += 1;
         }
 
         // If we have :after methods, save primary result and return it at the end
@@ -12557,8 +12560,8 @@ pub const Compiler = struct {
             const primary_call = try self.generateMethodCall(primary, dispatch_params);
 
             // Build let body: after calls + result reference
-            var let_body = std.ArrayList(*Ir){};
-            defer let_body.deinit(self.allocator);
+            const let_body = try self.allocator.alloc(*const Ir, after_count + 1);
+            var let_idx: usize = 0;
 
             // Generate after calls at depth 0 - let doesn't create a new lambda scope
             // The params are still at depth=0, indices 0..n-1
@@ -12588,30 +12591,42 @@ pub const Compiler = struct {
                 const after_call = try self.generateMethodCall(after, dispatch_params);
                 if (cond) |c| {
                     const nil_ir = try self.builder.lit(Value.nil);
-                    try let_body.append(self.allocator, try self.builder.ifExpr(c, after_call, nil_ir));
+                    let_body[let_idx] = try self.builder.ifExpr(c, after_call, nil_ir);
                 } else {
-                    try let_body.append(self.allocator, after_call);
+                    let_body[let_idx] = after_call;
                 }
+                let_idx += 1;
             }
 
             // Return the result variable
             // Let binding index is after all params: dispatch_params.len
             const result_index: u16 = @intCast(dispatch_params.len);
             const result_ref = try self.builder.variable(result_name, 0, result_index);
-            try let_body.append(self.allocator, result_ref);
+            let_body[let_idx] = result_ref;
+            let_idx += 1;
+            std.debug.assert(let_idx == let_body.len);
 
-            const body_progn = try self.builder.progn(try let_body.toOwnedSlice(self.allocator));
+            const body_progn = blk: {
+                const node = try self.allocator.create(Ir);
+                node.* = .{ .progn = let_body };
+                break :blk node;
+            };
 
             // Create let binding for result at index after params
             const let_ir = try self.builder.let1(result_name, result_index, primary_call, body_progn);
 
-            try stmts.append(self.allocator, let_ir);
+            stmts[stmt_idx] = let_ir;
+            stmt_idx += 1;
         } else {
             // No :after methods, just call primary
-            try stmts.append(self.allocator, try self.generateMethodCall(primary, dispatch_params));
+            stmts[stmt_idx] = try self.generateMethodCall(primary, dispatch_params);
+            stmt_idx += 1;
         }
 
-        return try self.builder.progn(try stmts.toOwnedSlice(self.allocator));
+        std.debug.assert(stmt_idx == stmts.len);
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .progn = stmts };
+        return node;
     }
 
     /// Sort methods by specificity (most specific first)
@@ -19248,6 +19263,51 @@ test "compile defmethod dispatcher optional params track arity" {
         try testing.expect(dispatcher.* == .lambda);
         try testing.expectEqual(@as(usize, 0), dispatcher.lambda.params.len);
         try testing.expectEqual(@as(usize, 2), dispatcher.lambda.optional_params.len);
+        found_dispatcher = true;
+        break;
+    }
+    try testing.expect(found_dispatcher);
+}
+
+test "compile defmethod before/after emits dispatcher for method combination" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser_before = try Parser.init(arena_alloc, &heap, "(defmethod foo :before ((x fixnum)) x)", &vm.builtins);
+    defer parser_before.deinit();
+    _ = try compiler.compile(try parser_before.parse(), &env);
+
+    var parser_primary = try Parser.init(arena_alloc, &heap, "(defmethod foo ((x fixnum)) x)", &vm.builtins);
+    defer parser_primary.deinit();
+    _ = try compiler.compile(try parser_primary.parse(), &env);
+
+    var parser_after = try Parser.init(arena_alloc, &heap, "(defmethod foo :after ((x fixnum)) x)", &vm.builtins);
+    defer parser_after.deinit();
+    const ir_def = try compiler.compile(try parser_after.parse(), &env);
+
+    try testing.expect(ir_def.* == .progn);
+    var found_dispatcher = false;
+    for (ir_def.progn) |node| {
+        if (node.* != .set_gf_dispatcher) continue;
+        const dispatcher = node.set_gf_dispatcher.right;
+        try testing.expect(dispatcher.* == .lambda);
+        try testing.expectEqual(@as(usize, 1), dispatcher.lambda.optional_params.len);
+        try testing.expect(dispatcher.lambda.body.* == .@"if");
         found_dispatcher = true;
         break;
     }

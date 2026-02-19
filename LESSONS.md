@@ -212,6 +212,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding a focused dotted-tail regression for `tagbody` (`src/compiler/compile.zig:19902`) locked malformed body-list rejection while preserving existing segment partition behavior.
 - Replacing method-dispatch setup staging in `generateMethodDispatcher` (`src/compiler/compile.zig:12321`, `src/compiler/compile.zig:12446`) with fixed-size slices for `no-applicable-method` call args and lambda optional params removed avoidable list-growth churn in generic-function dispatcher synthesis.
 - Locking dispatcher arity shaping via `defmethod` regression (`src/compiler/compile.zig:19208`) keeps optional-param count aligned with computed max arity after staging refactors.
+- Replacing `buildEffectiveMethod` statement/after-body accumulation (`src/compiler/compile.zig:12517`, `src/compiler/compile.zig:12560`) with deterministic pre-sized slices and direct progn nodes removed additional method-combination staging allocations in CLOS dispatcher synthesis.
+- Locking `:before`/primary/`:after` dispatcher synthesis with a focused regression (`src/compiler/compile.zig:19256`) preserved method-combination shape while removing transient list staging.
 
 ### Did Not Work
 - Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.
