@@ -215,11 +215,14 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Replacing `buildEffectiveMethod` statement/after-body accumulation (`src/compiler/compile.zig:12517`, `src/compiler/compile.zig:12560`) with deterministic pre-sized slices and direct progn nodes removed additional method-combination staging allocations in CLOS dispatcher synthesis.
 - Locking `:before`/primary/`:after` dispatcher synthesis with a focused regression (`src/compiler/compile.zig:19256`) preserved method-combination shape while removing transient list staging.
 - Replacing `toOwnedSlice`-based dispatcher/lambda param handoff in `defmethod`/dispatcher generation (`src/compiler/compile.zig:12011`, `src/compiler/compile.zig:12296`) with explicit pre-sized/duped slices removed remaining ownership-churn allocations in method-dispatch parameter setup.
+- Rewriting `parseVariant` field extraction (`src/compiler/compile.zig:12900`) to pre-count and allocate field-name slices once removed transient `ArrayList` growth and added strict dotted-tail rejection for malformed variant specs.
+- Locking the behavior with `parseVariant` focused regression (`src/compiler/compile.zig:17991`) keeps ADT variant parsing strict while preserving field ordering.
 
 ### Did Not Work
 - Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.
 - Assuming JIT entry detection based only on `.define` was stable was wrong; compiler IR shape changes (function-cell correctness work) silently disabled JIT coverage in both REPL and benchmark paths.
 - Driving dotted-tail rejection through top-level `compile` dispatch was misleading for this test: non-builtin `+` symbol identity can route to generic call lowering, so the invariant should be asserted at `compileVariadicArith` directly when validating list-shape enforcement.
+- Reader/parser canonicalizes unescaped symbol case, so parser-based regressions should assert normalized names (`FOO`) instead of source spelling (`Foo`) when validating symbol-derived identifiers.
 
 ---
 

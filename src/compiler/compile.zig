@@ -12907,22 +12907,29 @@ pub const Compiler = struct {
         // Dupe name to heap - symbol internal storage may be invalidated by GC
         const name = try self.allocator.dupe(u8, sym_name);
 
-        var fields = std.ArrayList([]const u8){};
-        var current = cons1.cdr;
-        while (current.isCons()) {
-            const field_cons = current.toPtr(Cons);
+        var field_count: usize = 0;
+        var scan = cons1.cdr;
+        while (scan.isCons()) : (scan = scan.toPtr(Cons).cdr) {
+            const field_cons = scan.toPtr(Cons);
             if (!field_cons.car.isSymbol()) return error.InvalidSyntax;
-            const field_sym_name = field_cons.car.toPtr(Symbol).getName();
-            // Dupe field name to heap
-            const field_name = try self.allocator.dupe(u8, field_sym_name);
-            try fields.append(self.allocator, field_name);
-            current = field_cons.cdr;
+            field_count += 1;
         }
+        if (!scan.isNil()) return error.InvalidSyntax;
+
+        const fields = try self.allocator.alloc([]const u8, field_count);
+        var current = cons1.cdr;
+        var idx: usize = 0;
+        while (current.isCons()) : (current = current.toPtr(Cons).cdr) {
+            const field_sym_name = current.toPtr(Cons).car.toPtr(Symbol).getName();
+            fields[idx] = try self.allocator.dupe(u8, field_sym_name);
+            idx += 1;
+        }
+        std.debug.assert(idx == fields.len);
 
         return .{
             .name = name,
             .sym = cons1.car,
-            .fields = try fields.toOwnedSlice(self.allocator),
+            .fields = fields,
         };
     }
 
@@ -17974,6 +17981,38 @@ test "match exhaustiveness uses variant symbol identity" {
 
     _ = compiler.defined_types.remove("T");
     compiler.allocator.free(variants);
+}
+
+test "parseVariant preserves fields and rejects dotted tails" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var parser_ok = try Parser.init(arena_alloc, &heap, "(Foo A B C)", &vm.builtins);
+    defer parser_ok.deinit();
+    const expr_ok = try parser_ok.parse();
+    const var_ok = try compiler.parseVariant(expr_ok);
+    try testing.expectEqualStrings("FOO", var_ok.name);
+    try testing.expectEqual(@as(usize, 3), var_ok.fields.len);
+    try testing.expectEqualStrings("A", var_ok.fields[0]);
+    try testing.expectEqualStrings("B", var_ok.fields[1]);
+    try testing.expectEqualStrings("C", var_ok.fields[2]);
+
+    var parser_bad = try Parser.init(arena_alloc, &heap, "(Foo A . B)", &vm.builtins);
+    defer parser_bad.deinit();
+    const expr_bad = try parser_bad.parse();
+    try testing.expectError(error.InvalidSyntax, compiler.parseVariant(expr_bad));
 }
 
 test "declare - type declaration" {
