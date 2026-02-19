@@ -16842,18 +16842,22 @@ pub const Compiler = struct {
 
     fn compileVectorPrim(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (vector a b c ...) -> create vector from elements
-        var elements = std.ArrayList(*const Ir){};
-        defer elements.deinit(self.allocator);
+        var elem_count: usize = 0;
+        var scan = args;
+        while (scan.isCons()) : (scan = scan.toPtr(Cons).cdr) {
+            elem_count += 1;
+        }
+        if (!scan.isNil()) return error.InvalidSyntax;
 
+        const elements = try self.allocator.alloc(*const Ir, elem_count);
         var current = args;
-        while (current.isCons()) {
-            const cons = current.toPtr(Cons);
-            const elem_ir = try self.compile(cons.car, env);
-            try elements.append(self.allocator, elem_ir);
-            current = cons.cdr;
+        var idx: usize = 0;
+        while (current.isCons()) : (current = current.toPtr(Cons).cdr) {
+            elements[idx] = try self.compile(current.toPtr(Cons).car, env);
+            idx += 1;
         }
 
-        return try self.builder.vec(elements.items);
+        return try self.builder.vec(elements);
     }
 
     fn compileMakeString(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -17021,19 +17025,22 @@ pub const Compiler = struct {
         const cons1 = args.toPtr(Cons);
         const array_ir = try self.compile(cons1.car, env);
 
-        // Collect subscripts
-        var subscripts = std.ArrayList(*const Ir){};
-        defer subscripts.deinit(self.allocator);
+        var sub_count: usize = 0;
+        var scan = cons1.cdr;
+        while (scan.isCons()) : (scan = scan.toPtr(Cons).cdr) {
+            sub_count += 1;
+        }
+        if (!scan.isNil()) return error.InvalidSyntax;
 
+        const subscripts = try self.allocator.alloc(*const Ir, sub_count);
         var current = cons1.cdr;
-        while (current.isCons()) {
-            const sub_cons = current.toPtr(Cons);
-            const sub_ir = try self.compile(sub_cons.car, env);
-            try subscripts.append(self.allocator, sub_ir);
-            current = sub_cons.cdr;
+        var idx: usize = 0;
+        while (current.isCons()) : (current = current.toPtr(Cons).cdr) {
+            subscripts[idx] = try self.compile(current.toPtr(Cons).car, env);
+            idx += 1;
         }
 
-        return try self.builder.arrRef(array_ir, subscripts.items);
+        return try self.builder.arrRef(array_ir, subscripts);
     }
 
     fn compileSvset(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -17076,31 +17083,31 @@ pub const Compiler = struct {
         const cons1 = args.toPtr(Cons);
         const array_ir = try self.compile(cons1.car, env);
 
-        // Collect subscripts and value
-        var subscripts = std.ArrayList(*const Ir){};
-        defer subscripts.deinit(self.allocator);
+        var arg_count: usize = 0;
+        var scan = cons1.cdr;
+        while (scan.isCons()) : (scan = scan.toPtr(Cons).cdr) {
+            arg_count += 1;
+        }
+        if (!scan.isNil()) return error.InvalidSyntax;
+        if (arg_count == 0) return error.InvalidSyntax;
+
+        const sub_count = arg_count - 1;
+        const subscripts = try self.allocator.alloc(*const Ir, sub_count);
 
         var current = cons1.cdr;
-        var value_ir: ?*const Ir = null;
-
-        // Iterate to collect all arguments
-        while (current.isCons()) {
-            const cons = current.toPtr(Cons);
-            const arg_ir = try self.compile(cons.car, env);
-
-            // Last element is the value, rest are subscripts
-            if (cons.cdr.isNil()) {
-                value_ir = arg_ir;
+        var idx: usize = 0;
+        var value_ir: *const Ir = undefined;
+        while (current.isCons()) : (current = current.toPtr(Cons).cdr) {
+            const arg_ir = try self.compile(current.toPtr(Cons).car, env);
+            if (idx < sub_count) {
+                subscripts[idx] = arg_ir;
             } else {
-                try subscripts.append(self.allocator, arg_ir);
+                value_ir = arg_ir;
             }
-
-            current = cons.cdr;
+            idx += 1;
         }
 
-        if (value_ir == null) return error.InvalidSyntax;
-
-        return try self.builder.arrSet(array_ir, subscripts.items, value_ir.?);
+        return try self.builder.arrSet(array_ir, subscripts, value_ir);
     }
 
     fn compileGethash(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -19655,6 +19662,78 @@ test "compile find-class rejects dotted optional tail" {
     const class_sym = try heap.intern("foo");
     const dotted_args = try heap.allocCons(class_sym, Value.t);
     try testing.expectError(error.InvalidSyntax, compiler.compileFindClass(dotted_args, &env));
+}
+
+test "compile vector and array accessors preserve operand counts" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser_vec = try Parser.init(arena_alloc, &heap, "(vector 1 2 3)", &vm.builtins);
+    defer parser_vec.deinit();
+    const vec_expr = try parser_vec.parse();
+    const vec_ir = try compiler.compile(vec_expr, &env);
+    try testing.expect(vec_ir.* == .vec);
+    try testing.expectEqual(@as(usize, 3), vec_ir.vec.len);
+
+    var parser_aref = try Parser.init(arena_alloc, &heap, "(aref arr 1 2 3)", &vm.builtins);
+    defer parser_aref.deinit();
+    const aref_expr = try parser_aref.parse();
+    const aref_ir = try compiler.compile(aref_expr, &env);
+    try testing.expect(aref_ir.* == .arr_ref);
+    try testing.expectEqual(@as(usize, 3), aref_ir.arr_ref.subscripts.len);
+
+    var parser_aset = try Parser.init(arena_alloc, &heap, "(%aset arr 1 2 3 9)", &vm.builtins);
+    defer parser_aset.deinit();
+    const aset_expr = try parser_aset.parse();
+    const aset_ir = try compiler.compile(aset_expr, &env);
+    try testing.expect(aset_ir.* == .arr_set);
+    try testing.expectEqual(@as(usize, 3), aset_ir.arr_set.subscripts.len);
+    try testing.expect(aset_ir.arr_set.value.* == .lit);
+    try testing.expectEqual(@as(i64, 9), aset_ir.arr_set.value.lit.toFixnum());
+}
+
+test "compile aref and aset reject dotted tails" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const arr_sym = try heap.intern("arr");
+    const aref_args = try heap.allocCons(arr_sym, try heap.allocCons(Value.makeFixnum(1), Value.makeFixnum(2)));
+    try testing.expectError(error.InvalidSyntax, compiler.compileAref(aref_args, &env));
+
+    const aset_args = try heap.allocCons(arr_sym, try heap.allocCons(Value.makeFixnum(1), Value.makeFixnum(2)));
+    try testing.expectError(error.InvalidSyntax, compiler.compileAset(aset_args, &env));
 }
 
 test "qualified struct predicate lookup emits struct_p ir" {
