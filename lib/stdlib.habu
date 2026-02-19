@@ -604,10 +604,13 @@
 ; array-row-major-index - convert indices to linear index
 (defun array-row-major-index (array &rest subscripts)
   (let ((dims (array-dimensions array))
+        (subs subscripts)
         (idx 0))
-    (dolist (s subscripts idx)
-      (setq idx (+ (* idx (car dims)) s))
-      (setq dims (cdr dims)))))
+    (while subs
+      (setq idx (+ (* idx (car dims)) (car subs)))
+      (setq dims (cdr dims))
+      (setq subs (cdr subs)))
+    idx))
 
 ; array-in-bounds-p - check if indices are in bounds
 (defun array-in-bounds-p (array &rest subscripts)
@@ -617,7 +620,19 @@
 
 ; row-major-aref - access by row-major index
 (defun row-major-aref (array index)
-  (aref array index))
+  (let ((dims (array-dimensions array)))
+    (if (= (length dims) 1)
+        (aref array index)
+      (let ((rev-dims (reverse dims))
+            (subs nil)
+            (i index))
+        (while rev-dims
+          (let* ((d (car rev-dims))
+                 (q (truncate i d)))
+            (setq subs (cons (- i (* q d)) subs))
+            (setq i q)
+            (setq rev-dims (cdr rev-dims))))
+        (apply #'aref array subs)))))
 
 ; array-displacement - get displacement (none for simple arrays)
 (defun array-displacement (array)

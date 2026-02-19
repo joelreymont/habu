@@ -228,6 +228,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Locking those conversions with integration coverage (`src/tests/integration.zig:4010`) prevents regressions on numeric/char/list/string/vector coercion paths.
 - Routing `~D` through a dedicated grouped-decimal helper in `src/interp/vm.zig:7786`/`src/interp/vm.zig:8719` fixed `~:D` output semantics (`1,234,567` and `-1,234,567`) without ad-hoc directive parsing branches.
 - Locking grouped-decimal behavior with explicit integration coverage (`src/tests/integration.zig:2749`) prevents regressions where modifier parsing falls through to literal directive text.
+- Reproducing multidimensional `make-array` row-major access in a focused integration (`src/tests/integration.zig:950`) exposed a real stdlib semantic gap rather than test-only churn.
+- Removing early-stdlib `dolist` macro forward-reference use in `array-row-major-index` and implementing true rank-aware `row-major-aref` index decomposition (`lib/stdlib.habu:605`, `lib/stdlib.habu:622`) fixed two root issues: malformed compile-time macro expansion in early forms and incorrect rank-1-only row-major access.
 
 ### Did Not Work
 - Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.

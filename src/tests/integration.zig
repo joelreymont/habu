@@ -947,6 +947,42 @@ test "nested array literals read as nested array objects" {
     try testing.expect(got.isT());
 }
 
+test "make-array supports multidimensional rank indexing and row-major access" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const got = try repl.eval(
+        "(let ((a (make-array '(3 4) :initial-element 0)))\n" ++
+            "  (setf (aref a 1 2) 9)\n" ++
+            "  (list (= (array-rank a) 2)\n" ++
+            "        (equal (array-dimensions a) '(3 4))\n" ++
+            "        (aref a 1 2)\n" ++
+            "        (row-major-aref a (array-row-major-index a 1 2))))",
+    );
+
+    const c0 = got.toPtr(Cons);
+    try testing.expect(c0.car.isT());
+
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.isT());
+
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(c2.car.isFixnum());
+    try testing.expectEqual(@as(i64, 9), c2.car.toFixnum());
+
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expect(c3.car.isFixnum());
+    try testing.expectEqual(@as(i64, 9), c3.car.toFixnum());
+}
+
 test "stdlib pushnew supports gethash place" {
     const allocator = testing.allocator;
 
