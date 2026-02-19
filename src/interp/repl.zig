@@ -2661,6 +2661,14 @@ pub const Repl = struct {
         };
         try self.printValue(result, writer);
         try writer.writeAll("\n");
+        if (self.vm.secondary_values_count > 0) {
+            var i: usize = 0;
+            while (i < self.vm.secondary_values_count) : (i += 1) {
+                try self.printValue(self.vm.secondary_values[i], writer);
+                try writer.writeAll("\n");
+            }
+            self.vm.secondary_values_count = 0;
+        }
     }
 
     fn printDiagnostic(self: *Repl, source: []const u8, info: ErrorInfo, writer: anytype) !void {
@@ -4974,6 +4982,46 @@ test "eval comparison" {
 
     const result2 = try evalString(allocator, &heap, "(> 5 10)");
     try testing.expect(result2.isNil());
+}
+
+test "evalPrint prints multiple values on separate lines" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    var out = std.ArrayList(u8){};
+    defer out.deinit(allocator);
+
+    try repl.evalPrint("(values 1 2 3)", out.writer(allocator));
+    try testing.expectEqualStrings("1\n2\n3\n", out.items);
+}
+
+test "evalPrint clears secondary values between evaluations" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    var out = std.ArrayList(u8){};
+    defer out.deinit(allocator);
+
+    try repl.evalPrint("(values 10 20)", out.writer(allocator));
+    out.clearRetainingCapacity();
+    try repl.evalPrint("42", out.writer(allocator));
+    try testing.expectEqualStrings("42\n", out.items);
 }
 
 test "eval expands macro forms" {

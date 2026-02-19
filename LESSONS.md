@@ -220,6 +220,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Locking direct `char`/`schar` CL semantics with integration coverage (`src/tests/integration.zig:862`) prevents regressions where string indexing accidentally returns integer codepoints instead of character values.
 - Fixing `read-from-string` wrapper index semantics in `lib/stdlib.habu:3984` (add `:start` offset back to secondary position and preserve multi-values through wrapper branches) closed a real CL behavior gap that surfaced under `(multiple-value-list (read-from-string ... :start N))`.
 - Locking the fix with integration coverage (`src/tests/integration.zig:4335`) prevents regressions where wrappers return slice-relative positions instead of original-string indices.
+- Updating `Repl.evalPrint` to emit VM secondary values after the primary (`src/interp/repl.zig:2637`) fixed interactive output for multi-value forms (`(values ...)`, `floor`, etc.) and clearing `secondary_values_count` after print prevents stale-value bleed into subsequent REPL displays.
+- Adding REPL output regressions (`src/interp/repl.zig:4274`, `src/interp/repl.zig:4296`) locks multi-line multi-value display and post-print secondary reset behavior.
 
 ### Did Not Work
 - Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.
