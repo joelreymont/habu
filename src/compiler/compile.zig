@@ -15125,22 +15125,7 @@ pub const Compiler = struct {
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
     fn compileVariadicArith(self: *Compiler, args: Value, env: *const Env, op: PrimTag, identity: ?i64) anyerror!*Ir {
-        // Collect args
-        var arg_list = std.ArrayList(*Ir){};
-        defer arg_list.deinit(self.allocator);
-
-        var current = args;
-        while (current.isCons()) {
-            const c = current.toPtr(Cons);
-            const compiled = try self.compile(c.car, env);
-            try arg_list.append(self.allocator, compiled);
-            current = c.cdr;
-        }
-
-        const arg_count = arg_list.items.len;
-
-        // Handle different arities
-        if (arg_count == 0) {
+        if (!args.isCons()) {
             // (+) -> 0, (*) -> 1, (-) and (/) are errors
             if (identity) |id| {
                 return try self.builder.lit(Value.makeFixnum(id));
@@ -15148,23 +15133,27 @@ pub const Compiler = struct {
             return error.InvalidSyntax;
         }
 
-        if (arg_count == 1) {
+        const cons1 = args.toPtr(Cons);
+        var result = try self.compile(cons1.car, env);
+        var rest = cons1.cdr;
+
+        if (rest.isNil()) {
             // (+ x) -> x, (* x) -> x
             // (- x) -> (- 0 x), (/ x) -> (/ 1 x)
             if (op == .sub) {
                 const zero = try self.builder.lit(Value.makeFixnum(0));
-                return try self.builder.sub(zero, arg_list.items[0]);
+                return try self.builder.sub(zero, result);
             }
             if (op == .div) {
                 const one = try self.builder.lit(Value.makeFixnum(1));
-                return try self.builder.div(one, arg_list.items[0]);
+                return try self.builder.div(one, result);
             }
-            return arg_list.items[0];
+            return result;
         }
 
-        // 2+ args: fold left
-        var result = arg_list.items[0];
-        for (arg_list.items[1..]) |arg| {
+        while (rest.isCons()) {
+            const c = rest.toPtr(Cons);
+            const arg = try self.compile(c.car, env);
             result = switch (op) {
                 .add => try self.builder.add(result, arg),
                 .sub => try self.builder.sub(result, arg),
@@ -15172,7 +15161,10 @@ pub const Compiler = struct {
                 .div => try self.builder.div(result, arg),
                 else => unreachable,
             };
+            rest = c.cdr;
         }
+
+        if (!rest.isNil()) return error.InvalidSyntax;
         return result;
     }
 
@@ -19293,6 +19285,98 @@ test "compile append folds args into left-associated IR" {
     try testing.expectEqual(@as(i64, 1), left.append.left.lit.toFixnum());
     try testing.expect(left.append.right.* == .lit);
     try testing.expectEqual(@as(i64, 2), left.append.right.lit.toFixnum());
+}
+
+test "compile variadic arithmetic keeps unary and fold semantics" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser_add0 = try Parser.init(arena_alloc, &heap, "(+)", &vm.builtins);
+    defer parser_add0.deinit();
+    const expr_add0 = try parser_add0.parse();
+    const ir_add0 = try compiler.compile(expr_add0, &env);
+    try testing.expect(ir_add0.* == .lit);
+    try testing.expectEqual(@as(i64, 0), ir_add0.lit.toFixnum());
+
+    var parser_mul0 = try Parser.init(arena_alloc, &heap, "(*)", &vm.builtins);
+    defer parser_mul0.deinit();
+    const expr_mul0 = try parser_mul0.parse();
+    const ir_mul0 = try compiler.compile(expr_mul0, &env);
+    try testing.expect(ir_mul0.* == .lit);
+    try testing.expectEqual(@as(i64, 1), ir_mul0.lit.toFixnum());
+
+    var parser_sub1 = try Parser.init(arena_alloc, &heap, "(- 7)", &vm.builtins);
+    defer parser_sub1.deinit();
+    const expr_sub1 = try parser_sub1.parse();
+    const ir_sub1 = try compiler.compile(expr_sub1, &env);
+    try testing.expect(ir_sub1.* == .sub);
+    try testing.expect(ir_sub1.sub.left.* == .lit);
+    try testing.expectEqual(@as(i64, 0), ir_sub1.sub.left.lit.toFixnum());
+    try testing.expect(ir_sub1.sub.right.* == .lit);
+    try testing.expectEqual(@as(i64, 7), ir_sub1.sub.right.lit.toFixnum());
+
+    var parser_div1 = try Parser.init(arena_alloc, &heap, "(/ 7)", &vm.builtins);
+    defer parser_div1.deinit();
+    const expr_div1 = try parser_div1.parse();
+    const ir_div1 = try compiler.compile(expr_div1, &env);
+    try testing.expect(ir_div1.* == .div);
+    try testing.expect(ir_div1.div.left.* == .lit);
+    try testing.expectEqual(@as(i64, 1), ir_div1.div.left.lit.toFixnum());
+    try testing.expect(ir_div1.div.right.* == .lit);
+    try testing.expectEqual(@as(i64, 7), ir_div1.div.right.lit.toFixnum());
+
+    var parser_add3 = try Parser.init(arena_alloc, &heap, "(+ 1 2 3)", &vm.builtins);
+    defer parser_add3.deinit();
+    const expr_add3 = try parser_add3.parse();
+    const ir_add3 = try compiler.compile(expr_add3, &env);
+    try testing.expect(ir_add3.* == .add);
+    try testing.expect(ir_add3.add.right.* == .lit);
+    try testing.expectEqual(@as(i64, 3), ir_add3.add.right.lit.toFixnum());
+    try testing.expect(ir_add3.add.left.* == .add);
+    try testing.expect(ir_add3.add.left.add.left.* == .lit);
+    try testing.expectEqual(@as(i64, 1), ir_add3.add.left.add.left.lit.toFixnum());
+    try testing.expect(ir_add3.add.left.add.right.* == .lit);
+    try testing.expectEqual(@as(i64, 2), ir_add3.add.left.add.right.lit.toFixnum());
+}
+
+test "compile variadic arithmetic rejects dotted tails" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const dotted_args = try heap.allocCons(Value.makeFixnum(1), Value.makeFixnum(2));
+    try testing.expectError(error.InvalidSyntax, compiler.compileVariadicArith(dotted_args, &env, .add, 0));
 }
 
 test "compile stream constructors keep all variadic operands" {

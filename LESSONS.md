@@ -194,10 +194,13 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Rewriting `compileBodyWithTail` in `src/compiler/compile.zig` to use a single-form fast path plus one direct pre-sized allocation for multi-form bodies removed the prior `ArrayList`+`dupe` double-allocation pattern in a ubiquitous compile path.
 - Rewriting `filterDeclares` in `src/compiler/compile.zig` to build a reversed list directly and reverse links in-place removed temporary `ArrayList(Value)` staging while preserving declaration processing and body ordering.
 - Replacing `compileListPrim` / `compileBroadcastStream` / `compileConcatenatedStream` in `src/compiler/compile.zig` with count+single-allocation slices and direct IR node initialization removed the previous `ArrayList` then `dupe` double-allocation pattern for variadic primitive lowering.
+- Rewriting `compileVariadicArith` in `src/compiler/compile.zig:15127` from `ArrayList(*Ir)` staging to a single-pass compile+fold removed transient allocation churn on arithmetic hot paths and allowed strict dotted-tail rejection (`(+ 1 . 2)` now errors at this lowering boundary).
+- Locking variadic arithmetic semantics with focused regressions in `src/compiler/compile.zig:19284` (`(+)`, `(*)`, unary `(- x)`, unary `(/ x)`, and left-associated `(+ 1 2 3)`) preserved CL behavior while tightening argument-list validation.
 
 ### Did Not Work
 - Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.
 - Assuming JIT entry detection based only on `.define` was stable was wrong; compiler IR shape changes (function-cell correctness work) silently disabled JIT coverage in both REPL and benchmark paths.
+- Driving dotted-tail rejection through top-level `compile` dispatch was misleading for this test: non-builtin `+` symbol identity can route to generic call lowering, so the invariant should be asserted at `compileVariadicArith` directly when validating list-shape enforcement.
 
 ---
 
