@@ -12110,6 +12110,21 @@ pub const Compiler = struct {
 
     /// Compile call-next-method: (call-next-method [args...])
     /// Calls the next applicable method in the dispatch chain
+    fn fillMethodArgRefs(
+        self: *Compiler,
+        out: []*const Ir,
+        params: []const []const u8,
+        env: *const Env,
+    ) anyerror!void {
+        for (params, 0..) |param_name, idx| {
+            out[idx] = if (env.lookupName(param_name)) |binding|
+                try self.builder.variable(param_name, binding.depth, binding.index)
+            else
+                // Fallback keeps legacy behavior when env lookup misses.
+                try self.builder.variable(param_name, 0, @intCast(idx));
+        }
+    }
+
     fn compileCallNextMethod(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // call-next-method calls the %next-method% special variable
         // If no args provided, pass the original method arguments
@@ -12123,35 +12138,34 @@ pub const Compiler = struct {
 
         const next_method_ir = try self.builder.globalRef(nm_name, nm_global_idx);
 
-        var arg_irs = std.ArrayList(*Ir){};
-        defer arg_irs.deinit(self.allocator);
-
-        if (args.isNil()) {
+        const call_args = if (args.isNil()) blk: {
             // No args provided - pass original method parameters
             if (self.method_params) |params| {
-                for (params, 0..) |param_name, idx| {
-                    // Look up param in environment to get correct depth/index
-                    if (env.lookupName(param_name)) |binding| {
-                        const var_ir = try self.builder.variable(param_name, binding.depth, binding.index);
-                        try arg_irs.append(self.allocator, var_ir);
-                    } else {
-                        // Shouldn't happen - param should be in scope
-                        const var_ir = try self.builder.variable(param_name, 0, @intCast(idx));
-                        try arg_irs.append(self.allocator, var_ir);
-                    }
-                }
+                const refs = try self.allocator.alloc(*const Ir, params.len);
+                try self.fillMethodArgRefs(refs, params, env);
+                break :blk refs;
             }
-        } else {
+            break :blk try self.allocator.alloc(*const Ir, 0);
+        } else blk: {
             // Explicit args provided
-            var curr = args;
-            while (curr.isCons()) {
-                const cons = curr.toPtr(Cons);
-                try arg_irs.append(self.allocator, try self.compile(cons.car, env));
-                curr = cons.cdr;
+            var arg_count: usize = 0;
+            var scan = args;
+            while (scan.isCons()) : (scan = scan.toPtr(Cons).cdr) {
+                arg_count += 1;
             }
-        }
+            if (!scan.isNil()) return error.InvalidSyntax;
 
-        const call_ir = try self.builder.call(next_method_ir, try arg_irs.toOwnedSlice(self.allocator));
+            const refs = try self.allocator.alloc(*const Ir, arg_count);
+            var curr = args;
+            var idx: usize = 0;
+            while (curr.isCons()) : (curr = curr.toPtr(Cons).cdr) {
+                refs[idx] = try self.compile(curr.toPtr(Cons).car, env);
+                idx += 1;
+            }
+            break :blk refs;
+        };
+
+        const call_ir = try self.buildCallIr(next_method_ir, call_args, false);
 
         // Check if %next-method% is nil before calling
         // (if %next-method% (call %next-method% args...) (no-next-method gf method args...))
@@ -12165,25 +12179,15 @@ pub const Compiler = struct {
         const no_next_fn = try self.builder.globalRef("COMMON-LISP:NO-NEXT-METHOD", no_next_fn_idx);
 
         // Build args: gf=nil, method=nil, original args
-        var no_next_args = std.ArrayList(*Ir){};
-        defer no_next_args.deinit(self.allocator);
-        try no_next_args.append(self.allocator, try self.builder.lit(Value.nil));
-        try no_next_args.append(self.allocator, try self.builder.lit(Value.nil));
-
-        // Add original method args
-        if (self.method_params) |params| {
-            for (params, 0..) |param_name, idx| {
-                if (env.lookupName(param_name)) |binding| {
-                    const var_ir = try self.builder.variable(param_name, binding.depth, binding.index);
-                    try no_next_args.append(self.allocator, var_ir);
-                } else {
-                    const var_ir = try self.builder.variable(param_name, 0, @intCast(idx));
-                    try no_next_args.append(self.allocator, var_ir);
-                }
-            }
+        const method_params = self.method_params orelse &[_][]const u8{};
+        const no_next_args = try self.allocator.alloc(*const Ir, method_params.len + 2);
+        no_next_args[0] = try self.builder.lit(Value.nil);
+        no_next_args[1] = try self.builder.lit(Value.nil);
+        if (method_params.len > 0) {
+            try self.fillMethodArgRefs(no_next_args[2..], method_params, env);
         }
 
-        const no_next_call = try self.builder.call(no_next_fn, try no_next_args.toOwnedSlice(self.allocator));
+        const no_next_call = try self.buildCallIr(no_next_fn, no_next_args, false);
 
         return try self.builder.ifExpr(next_method_check_ir, call_ir, no_next_call);
     }
@@ -12722,13 +12726,9 @@ pub const Compiler = struct {
         dispatch_params: []const []const u8,
         depth: u8,
     ) anyerror!*Ir {
-        // Build argument list: pass all parameters
-        var args = std.ArrayList(*const Ir){};
-        defer args.deinit(self.allocator);
-
+        const args = try self.allocator.alloc(*const Ir, dispatch_params.len);
         for (dispatch_params, 0..) |param, idx| {
-            const arg_ir = try self.builder.variable(param, depth, @intCast(idx));
-            try args.append(self.allocator, arg_ir);
+            args[idx] = try self.builder.variable(param, depth, @intCast(idx));
         }
 
         // Look up the method function by name (direct global lookup, not symbol interning)
@@ -12737,7 +12737,7 @@ pub const Compiler = struct {
         const func_val_ir = try self.builder.globalRef(function_name, func_idx);
 
         // Call the method function
-        return try self.builder.call(func_val_ir, try args.toOwnedSlice(self.allocator));
+        return try self.buildCallIr(func_val_ir, args, false);
     }
 
     /// Compile define-method-combination: stub for custom method combinations
@@ -19455,6 +19455,82 @@ test "compile call forms preserve all operands without staging churn" {
     try testing.expect(apply_ir.* == .apply);
     try testing.expect(apply_ir.apply.args.* == .list_star);
     try testing.expectEqual(@as(usize, 3), apply_ir.apply.args.list_star.len);
+}
+
+test "compile call-next-method preserves arg shapes" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const params = [_][]const u8{ "x", "y" };
+    compiler.method_params = &params;
+    defer compiler.method_params = null;
+
+    const explicit_args = try heap.allocCons(
+        Value.makeFixnum(1),
+        try heap.allocCons(
+            Value.makeFixnum(2),
+            try heap.allocCons(Value.makeFixnum(3), Value.nil),
+        ),
+    );
+    const explicit_ir = try compiler.compileCallNextMethod(explicit_args, &env);
+    try testing.expect(explicit_ir.* == .@"if");
+    try testing.expect(explicit_ir.@"if".then_branch.* == .call);
+    try testing.expectEqual(@as(usize, 3), explicit_ir.@"if".then_branch.call.args.len);
+    try testing.expect(explicit_ir.@"if".else_branch.* == .call);
+    try testing.expectEqual(@as(usize, 4), explicit_ir.@"if".else_branch.call.args.len);
+    try testing.expect(explicit_ir.@"if".else_branch.call.args[0].* == .lit);
+    try testing.expect(explicit_ir.@"if".else_branch.call.args[0].lit.isNil());
+    try testing.expect(explicit_ir.@"if".else_branch.call.args[1].* == .lit);
+    try testing.expect(explicit_ir.@"if".else_branch.call.args[1].lit.isNil());
+
+    const implicit_ir = try compiler.compileCallNextMethod(Value.nil, &env);
+    try testing.expect(implicit_ir.* == .@"if");
+    try testing.expect(implicit_ir.@"if".then_branch.* == .call);
+    try testing.expectEqual(@as(usize, 2), implicit_ir.@"if".then_branch.call.args.len);
+}
+
+test "compile call-next-method rejects dotted explicit args" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const params = [_][]const u8{"x"};
+    compiler.method_params = &params;
+    defer compiler.method_params = null;
+
+    const dotted_args = try heap.allocCons(Value.makeFixnum(1), Value.makeFixnum(2));
+    try testing.expectError(error.InvalidSyntax, compiler.compileCallNextMethod(dotted_args, &env));
 }
 
 test "qualified struct predicate lookup emits struct_p ir" {
