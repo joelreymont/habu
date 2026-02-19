@@ -13902,8 +13902,7 @@ pub const Compiler = struct {
         const heap = if (self.heap) |val| val else return exprs;
         const declare_sym = try heap.intern("declare");
 
-        var filtered = std.ArrayList(Value){};
-        defer filtered.deinit(self.allocator);
+        var rev_filtered = Value.nil;
 
         var list = exprs;
         while (list.isCons()) {
@@ -13920,26 +13919,27 @@ pub const Compiler = struct {
             }
 
             if (!is_declare) {
-                try filtered.append(self.allocator, expr);
+                rev_filtered = try heap.allocCons(expr, rev_filtered);
             }
 
             list = cons.cdr;
         }
 
-        if (filtered.items.len == 0) {
+        if (rev_filtered.isNil()) {
             return Value.nil;
         }
 
-        var result = Value.nil;
-        var i = filtered.items.len;
-        while (i > 0) {
-            i -= 1;
-            const pair = try heap.alloc(Cons);
-            pair.car = filtered.items[i];
-            pair.cdr = result;
-            result = Value.makeCons(pair);
+        // Reverse in place to restore source order.
+        var prev = Value.nil;
+        var cur = rev_filtered;
+        while (cur.isCons()) {
+            const cell = cur.toPtr(Cons);
+            const next = cell.cdr;
+            cell.cdr = prev;
+            prev = cur;
+            cur = next;
         }
-        return result;
+        return prev;
     }
 
     fn processDeclareList(self: *Compiler, decl_list: Value, env: *Env) !void {

@@ -192,6 +192,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Pre-counting macro call argument arity and using a stack buffer (with single fallback heap alloc) removed dynamic `ArrayList(Value)` growth churn in compile-time macro invocation loops.
 - Reworking `compileCondWithTail` in `src/compiler/compile.zig` to count clauses first and use a stack-first clause buffer (heap fallback only for large conds) kept iterative reverse lowering while removing per-cond `ArrayList` churn; regression `src/tests/integration.zig` with 80 clauses validates large fallback correctness.
 - Rewriting `compileBodyWithTail` in `src/compiler/compile.zig` to use a single-form fast path plus one direct pre-sized allocation for multi-form bodies removed the prior `ArrayList`+`dupe` double-allocation pattern in a ubiquitous compile path.
+- Rewriting `filterDeclares` in `src/compiler/compile.zig` to build a reversed list directly and reverse links in-place removed temporary `ArrayList(Value)` staging while preserving declaration processing and body ordering.
 
 ### Did Not Work
 - Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.
