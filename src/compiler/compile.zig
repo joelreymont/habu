@@ -5435,12 +5435,22 @@ pub const Compiler = struct {
         var flet_env = Env.initLet(self.allocator, env);
         defer flet_env.deinit();
 
-        // Parse function definitions and create lambda bindings
-        var bindings = std.ArrayList(Ir.Binding){};
-        defer bindings.deinit(self.allocator);
+        var binding_count: usize = 0;
+        var count_cur = bindings_expr;
+        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
+            binding_count += 1;
+        }
 
+        const bindings = try self.allocator.alloc(Ir.Binding, binding_count);
+        errdefer self.allocator.free(bindings);
+        var filled: usize = 0;
+        errdefer for (bindings[0..filled]) |binding| {
+            self.allocator.free(binding.name);
+        };
+
+        // Parse function definitions and create lambda bindings
         var binding_list = bindings_expr;
-        while (binding_list.isCons()) {
+        while (binding_list.isCons()) : (binding_list = binding_list.toPtr(Cons).cdr) {
             const binding_cons = binding_list.toPtr(Cons);
             const fdef = binding_cons.car;
 
@@ -5462,15 +5472,15 @@ pub const Compiler = struct {
                 lambda_ir.lambda.name = f.car;
             }
 
-            try bindings.append(self.allocator, .{ .name = name, .value = lambda_ir, .index = index });
-
-            binding_list = binding_cons.cdr;
+            bindings[filled] = .{ .name = name, .value = lambda_ir, .index = index };
+            filled += 1;
         }
 
         // Compile body in new environment
         const body_ir = try self.compileBodyWithTail(body_exprs, &flet_env, in_tail);
-
-        return try self.builder.letExpr(bindings.items, body_ir);
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .let = .{ .bindings = bindings, .body = body_ir } };
+        return node;
     }
 
     fn compileLabelsWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
@@ -5492,21 +5502,28 @@ pub const Compiler = struct {
         var labels_env = Env.initLet(self.allocator, env);
         defer labels_env.deinit();
 
+        var binding_count: usize = 0;
+        var count_cur = bindings_expr;
+        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
+            binding_count += 1;
+        }
+
+        const LabelBinding = struct {
+            name: []const u8,
+            lambda_args: Value,
+            index: u16,
+            sym_val: Value,
+        };
+        const entries = try self.allocator.alloc(LabelBinding, binding_count);
+        defer self.allocator.free(entries);
+
         // First pass: pre-bind all function names so lambdas can see each other.
-        var names = std.ArrayList([]const u8){};
-        defer names.deinit(self.allocator);
-
-        var lambda_args = std.ArrayList(Value){};
-        defer lambda_args.deinit(self.allocator);
-
-        var indices = std.ArrayList(u16){};
-        defer indices.deinit(self.allocator);
-
-        var sym_vals = std.ArrayList(Value){};
-        defer sym_vals.deinit(self.allocator);
-
         var binding_list = bindings_expr;
-        while (binding_list.isCons()) {
+        var filled: usize = 0;
+        errdefer for (entries[0..filled]) |entry| {
+            self.allocator.free(entry.name);
+        };
+        while (binding_list.isCons()) : (binding_list = binding_list.toPtr(Cons).cdr) {
             const binding_cons = binding_list.toPtr(Cons);
             const fdef = binding_cons.car;
 
@@ -5520,12 +5537,13 @@ pub const Compiler = struct {
             const name = try self.allocator.dupe(u8, name_sym.getName());
             const idx = try labels_env.bindFunctionSym(f.car);
 
-            try names.append(self.allocator, name);
-            try lambda_args.append(self.allocator, f.cdr);
-            try indices.append(self.allocator, idx);
-            try sym_vals.append(self.allocator, f.car);
-
-            binding_list = binding_cons.cdr;
+            entries[filled] = .{
+                .name = name,
+                .lambda_args = f.cdr,
+                .index = idx,
+                .sym_val = f.car,
+            };
+            filled += 1;
         }
 
         const boxed_fn = try self.allocator.create(BoxingSet);
@@ -5534,8 +5552,8 @@ pub const Compiler = struct {
             boxed_fn.deinit();
             self.allocator.destroy(boxed_fn);
         }
-        for (sym_vals.items) |sym_val| {
-            try boxed_fn.add(sym_val);
+        for (entries[0..filled]) |entry| {
+            try boxed_fn.add(entry.sym_val);
         }
 
         const saved_boxed_fn = self.boxed_fn_syms;
@@ -5543,37 +5561,41 @@ pub const Compiler = struct {
         defer self.boxed_fn_syms = saved_boxed_fn;
 
         // First LET stage: initialize every fn slot with a box placeholder.
-        var boxed_bindings = std.ArrayList(Ir.Binding){};
-        defer boxed_bindings.deinit(self.allocator);
-        for (names.items, indices.items) |name, idx| {
+        const boxed_bindings = try self.allocator.alloc(Ir.Binding, filled);
+        errdefer self.allocator.free(boxed_bindings);
+        for (entries[0..filled], 0..) |entry, i| {
             const nil_ir = try self.builder.lit(Value.nil);
             const make_box = try self.allocator.create(Ir);
             make_box.* = .{ .make_box = .{ .operand = nil_ir } };
-            try boxed_bindings.append(self.allocator, .{ .name = name, .value = make_box, .index = idx });
+            boxed_bindings[i] = .{ .name = entry.name, .value = make_box, .index = entry.index };
         }
 
         // Compile lambdas in labels_env for recursive visibility, then assign
         // each slot's box content.
-        var init_forms = std.ArrayList(*const Ir){};
-        defer init_forms.deinit(self.allocator);
-        for (lambda_args.items, indices.items, sym_vals.items) |largs, idx, sym_val| {
-            const lambda_ir = try self.compileLambda(largs, &labels_env);
+        const init_forms = try self.allocator.alloc(*const Ir, filled + 1);
+        errdefer self.allocator.free(init_forms);
+        for (entries[0..filled], 0..) |entry, i| {
+            const lambda_ir = try self.compileLambda(entry.lambda_args, &labels_env);
             if (lambda_ir.* == .lambda) {
-                lambda_ir.lambda.name = sym_val;
+                lambda_ir.lambda.name = entry.sym_val;
             }
 
-            const slot_name = sym_val.toPtr(Symbol).getName();
-            const slot_ref = try self.builder.variable(slot_name, 0, idx);
+            const slot_name = entry.sym_val.toPtr(Symbol).getName();
+            const slot_ref = try self.builder.variable(slot_name, 0, entry.index);
             const box_set = try self.allocator.create(Ir);
             box_set.* = .{ .box_set = .{ .left = slot_ref, .right = lambda_ir } };
-            try init_forms.append(self.allocator, box_set);
+            init_forms[i] = box_set;
         }
 
         const body_ir = try self.compileBodyWithTail(body_exprs, &labels_env, in_tail);
-        try init_forms.append(self.allocator, body_ir);
-        const seq_ir = try self.builder.progn(init_forms.items);
+        init_forms[filled] = body_ir;
 
-        return try self.builder.letExpr(boxed_bindings.items, seq_ir);
+        const seq_ir = try self.allocator.create(Ir);
+        seq_ir.* = .{ .progn = init_forms };
+
+        const let_ir = try self.allocator.create(Ir);
+        let_ir.* = .{ .let = .{ .bindings = boxed_bindings, .body = seq_ir } };
+        return let_ir;
     }
 
     fn compileLetStarWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
@@ -19465,4 +19487,68 @@ test "compile multi-setf emits one form per pair" {
     try testing.expect(ir_node.progn[0].* == .define);
     try testing.expect(ir_node.progn[1].* == .define);
     try testing.expect(ir_node.progn[2].* == .define);
+}
+
+test "compile flet emits direct let bindings" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(arena_alloc, &heap, "(flet ((id (x) x) (inc (y) (+ y 1))) (inc (id 3)))", &vm.builtins);
+    defer parser.deinit();
+    const expr = try parser.parse();
+    const ir_node = try compiler.compile(expr, &env);
+
+    try testing.expect(ir_node.* == .let);
+    try testing.expectEqual(@as(usize, 2), ir_node.let.bindings.len);
+    try testing.expect(ir_node.let.bindings[0].value.* == .lambda);
+    try testing.expect(ir_node.let.bindings[1].value.* == .lambda);
+}
+
+test "compile labels emits boxed init sequence" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(arena_alloc, &heap, "(labels ((fact (n) (if (= n 0) 1 (* n (fact (- n 1)))))) (fact 3))", &vm.builtins);
+    defer parser.deinit();
+    const expr = try parser.parse();
+    const ir_node = try compiler.compile(expr, &env);
+
+    try testing.expect(ir_node.* == .let);
+    try testing.expectEqual(@as(usize, 1), ir_node.let.bindings.len);
+    try testing.expect(ir_node.let.bindings[0].value.* == .make_box);
+    try testing.expect(ir_node.let.body.* == .progn);
+    try testing.expectEqual(@as(usize, 2), ir_node.let.body.progn.len);
+    try testing.expect(ir_node.let.body.progn[0].* == .box_set);
 }

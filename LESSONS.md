@@ -851,3 +851,13 @@ Environment guard:
 
 #### Did Not Work
 - Using `builder.progn(items)` in this path still duplicates slices internally, so partial refactors that keep builder-level aggregation do not remove transient-allocation pressure.
+
+### Session Notes (2026-02-19, flet/labels staging)
+
+#### Worked Well
+- Replacing `compileFletWithTail` `ArrayList(Ir.Binding)` staging with pre-counted binding slices and direct `.let` node construction (`src/compiler/compile.zig:5426`) removed builder-side binding duplication while preserving lexical function binding behavior.
+- Reworking `compileLabelsWithTail` to use one compact binding table plus pre-sized `boxed_bindings`/`init_forms` slices (`src/compiler/compile.zig:5476`) removed layered staging lists and avoided duplicate `progn`/`let` copying in recursive local-function lowering.
+- Keeping `errdefer` cleanup for duplicated names in the error path preserved safety while allowing successful paths to transfer ownership to IR nodes.
+
+#### Did Not Work
+- Holding onto dynamic append patterns for `labels` setup (`names`/`lambda_args`/`indices`/`sym_vals`) adds avoidable allocator churn and duplicates data already derivable from the same binding list traversal.
