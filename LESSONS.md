@@ -890,3 +890,12 @@ Environment guard:
 
 #### Did Not Work
 - Leaving these sequence forms on builder-backed aggregation keeps hidden duplicate-slice allocation in high-frequency control-flow lowering; direct node emission is required for predictable allocation behavior.
+
+### Session Notes (2026-02-19, format arg staging)
+
+#### Worked Well
+- Rewriting `compileFormat` variadic argument lowering to pre-count and fill a single args slice (`src/compiler/compile.zig:16205`) removed `ArrayList` growth and builder-side arg duplication in a frequently used formatting path.
+- Locking the cardinality behavior with a compile regression (`src/compiler/compile.zig:19615`) plus integration format checks kept semantics stable while reducing transient compiler allocations.
+
+#### Did Not Work
+- Treating variadic format args as append-first dynamic lists hides redundant copying in builder emission; direct fixed-size arg slices are required for stable hot-path compilation cost.

@@ -16212,19 +16212,24 @@ pub const Compiler = struct {
         const cons2 = cons1.cdr.toPtr(Cons);
         const control_ir = try self.compile(cons2.car, env);
 
-        // Collect remaining args
-        var arg_list = std.ArrayList(*const Ir){};
-        defer arg_list.deinit(self.allocator);
-
-        var rest = cons2.cdr;
-        while (rest.isCons()) {
-            const cons = rest.toPtr(Cons);
-            const arg_ir = try self.compile(cons.car, env);
-            try arg_list.append(self.allocator, arg_ir);
-            rest = cons.cdr;
+        var arg_count: usize = 0;
+        var count_cur = cons2.cdr;
+        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
+            arg_count += 1;
         }
 
-        return try self.builder.format(dest_ir, control_ir, arg_list.items);
+        const format_args = try self.allocator.alloc(*const Ir, arg_count);
+        var rest = cons2.cdr;
+        var arg_idx: usize = 0;
+        while (rest.isCons()) : (rest = rest.toPtr(Cons).cdr) {
+            const cons = rest.toPtr(Cons);
+            format_args[arg_idx] = try self.compile(cons.car, env);
+            arg_idx += 1;
+        }
+
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .format = .{ .dest = dest_ir, .control = control_ir, .args = format_args } };
+        return node;
     }
 
     fn compileEncodeUniversalTime(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -19685,4 +19690,33 @@ test "compile tagbody builds segments without dropping forms" {
     try testing.expectEqual(@as(usize, 3), ir_node.tagbody.segments.len);
     try testing.expect(ir_node.tagbody.segments[1].* == .go);
     try testing.expect(ir_node.tagbody.segments[2].* == .lit);
+}
+
+test "compile format preserves variadic argument count" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(arena_alloc, &heap, "(format t \"~A ~A\" 1 2)", &vm.builtins);
+    defer parser.deinit();
+    const expr = try parser.parse();
+    const ir_node = try compiler.compile(expr, &env);
+
+    try testing.expect(ir_node.* == .format);
+    try testing.expectEqual(@as(usize, 2), ir_node.format.args.len);
 }
