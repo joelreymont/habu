@@ -6269,6 +6269,49 @@ test "symbol-function resolves internal setf setter helpers" {
     try testing.expect(cur.isNil());
 }
 
+test "handler-case catches invalid argument and invalid type specifier" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(list
+        \\  (if (eq (handler-case
+        \\               (position "x" "abca")
+        \\             (error (c)
+        \\               (declare (ignore c))
+        \\               :caught))
+        \\           :caught)
+        \\      1
+        \\      0)
+        \\  (if (eq (handler-case
+        \\               (typep 1 '(integer foo *))
+        \\             (error (c)
+        \\               (declare (ignore c))
+        \\               :caught))
+        \\           :caught)
+        \\      1
+        \\      0))
+    );
+
+    try testing.expect(out.isCons());
+    var cur = out;
+    const expected = [_]i64{ 1, 1 };
+    for (expected) |want| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(want, cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
 test "local type declarations do not leak into unrelated lets" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });

@@ -123,6 +123,7 @@
 - [ ] `habu-fix-nested-eval-b0bbd02d` Fix nested eval non-local exits. Depends on `habu-fix-gc-chunk-7057f649`.
 - [ ] `habu-fix-clos-superclass-2aa44685` Fix CLOS superclass alias resolution.
 - [ ] `habu-fix-warn-apply-fe791fc7` Fix warn/apply nil callee path.
+- [x] `habu-signal-invalid-type-81c49397` Map VM `InvalidTypeSpecifier`/`InvalidArgument` to CL conditions so `handler-case` can catch and continue large-package probes.
 - [ ] `habu-fix-ansi-deftest-faa1296f` Fix ANSI DEFTEST TypeMismatch root cause.
   - [ ] `habu-trace-first-ansi-3501b989` Trace first uncaught ANSI TypeMismatch.
   - [ ] `habu-patch-ansi-typemismatch-dae30cf8` Patch root cause.

@@ -7396,6 +7396,8 @@ pub const Vm = struct {
     fn zigErrorToConditionSym(self: *const Vm, err: anyerror) ?Value {
         const b = self.builtins;
         if (err == error.TypeMismatch) return b.sym_type_error;
+        if (err == error.InvalidTypeSpecifier) return b.sym_type_error;
+        if (err == error.InvalidArgument) return b.sym_program_error;
         if (err == error.DivisionByZero) return b.sym_division_by_zero;
         if (err == error.UnboundSymbol) return b.sym_unbound_variable;
         if (err == error.FileNotFound) return b.sym_file_error;

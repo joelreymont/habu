@@ -91,6 +91,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Tracing with `HABU_TRACE_ERROR_CONTEXT=1`/`HABU_TRACE_ERROR_ONLY=UnboundSymbol` on the module load gate immediately exposed the actual symbol-function miss (`ATAN`) inside `trigi` instead of chasing downstream parser/runtime fallout.
 - Installing BIGFLOAT-IMPL callable aliases through a guarded binder (`lib/maxima-stubs.lisp:120`, `lib/maxima-stubs.lisp:133`) plus inverse-trig fallbacks (`lib/maxima-stubs.lisp:105`) fixed `trigi`/`trigo` loading generically and kept operator symbols fbound across package shadowing.
 - Adding a focused trigi subset regression (`src/tests/integration.zig:5921`) catches future regressions where callable trig aliases disappear during package/bootstrap changes.
+- Mapping VM `InvalidTypeSpecifier`/`InvalidArgument` to CL conditions in `zigErrorToConditionSym` (`src/interp/vm.zig:7398`) restored `handler-case` behavior for malformed type/argument paths and kept long Maxima probes from aborting at the first uncaught Zig error.
+- Locking the condition mapping with `src/tests/integration.zig` (`handler-case catches invalid argument and invalid type specifier`) prevents condition-handler regressions from silently returning to raw Zig error aborts.
 - Converting the Maxima end-to-end check into a deterministic readiness vector (`src/tests/integration.zig:5781`) keeps large-package progress measurable without hiding remaining semantic gaps.
 - Splitting large Maxima setup/eval forms into separate `repl.eval` calls reduced parser-noise and made failures attributable to specific steps instead of one monolithic expression.
 - Keeping `defun` intact in desugar (`src/compiler/passes/p02_desugar.zig`) and only desugaring the body restored compiler-level DEFUN semantics (implicit function block), which removed `NoMatchingBlock` failures in real Maxima functions (`add-lineinfo`).
@@ -103,6 +105,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Packing very large module-list setup and operation probes into a single reader input string produced unstable `UnexpectedToken` failures; smaller staged eval forms are safer for large integration probes.
 - Assuming package-qualified names were safe under old fallback logic was wrong: fallback-to-bare-name can silently bind to the wrong package/global slot and manifests later as recursive calls instead of immediate package resolution errors.
 - Directly aliasing every BIGFLOAT-IMPL symbol to a `cl:` function without a `fboundp` guard failed at load time (`ASIN` unbound on this runtime); guarded binding with explicit fallbacks is required for portable bootstrap stubs.
+- Assuming `handler-case (error ...)` already covered all VM failures was wrong; unmapped Zig errors (`InvalidTypeSpecifier`, `InvalidArgument`) bypassed condition handlers until explicitly mapped.
 
 ## Session Notes (2026-02-17)
 
