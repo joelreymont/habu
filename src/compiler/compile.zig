@@ -1953,6 +1953,11 @@ pub const Compiler = struct {
     globals: GlobalEnv,
     /// Pre-interned builtin symbols for identity comparison
     builtins: ?Builtins,
+    /// Cache keys for builtin handle freshness.
+    bi_heap: ?*Heap,
+    bi_gc: usize,
+    bi_cl_pkg: usize,
+    bi_cl_ver: u64,
     /// Current occurrence context for type narrowing (set during if compilation)
     occ: ?*const OccurrenceCtx,
     /// Variables that need boxing (mutable + captured) - set during let compilation
@@ -2042,6 +2047,10 @@ pub const Compiler = struct {
             .type_checking_enabled = false, // Off by default for gradual typing
             .globals = GlobalEnv.init(allocator),
             .builtins = null, // Lazily initialized when heap is available
+            .bi_heap = null,
+            .bi_gc = 0,
+            .bi_cl_pkg = 0,
+            .bi_cl_ver = 0,
             .occ = null,
             .boxed_vars = null,
             .boxed_fn_syms = null,
@@ -2067,6 +2076,7 @@ pub const Compiler = struct {
     /// Initialize with heap for symbol interning
     pub fn initWithHeap(allocator: std.mem.Allocator, vm: *Vm) !Compiler {
         const builtins = try initBuiltinsCanonical(vm.heap);
+        const bi_epoch = builtinsEpoch(vm.heap);
         if (vm.heap.cl_user_package) |cl_user| {
             vm.heap.setCurrentPackage(cl_user);
         }
@@ -2078,6 +2088,10 @@ pub const Compiler = struct {
             .type_checking_enabled = false,
             .globals = GlobalEnv.init(allocator),
             .builtins = builtins,
+            .bi_heap = vm.heap,
+            .bi_gc = vm.heap.stats.gc_count,
+            .bi_cl_pkg = bi_epoch.cl_pkg,
+            .bi_cl_ver = bi_epoch.cl_ver,
             .occ = null,
             .boxed_vars = null,
             .boxed_fn_syms = null,
@@ -2103,6 +2117,7 @@ pub const Compiler = struct {
     /// Initialize with heap while preserving current package selection.
     pub fn initWithHeapPreservePackage(allocator: std.mem.Allocator, vm: *Vm) !Compiler {
         const builtins = try initBuiltinsCanonical(vm.heap);
+        const bi_epoch = builtinsEpoch(vm.heap);
         return .{
             .builder = IrBuilder.init(allocator),
             .allocator = allocator,
@@ -2111,6 +2126,10 @@ pub const Compiler = struct {
             .type_checking_enabled = false,
             .globals = GlobalEnv.init(allocator),
             .builtins = builtins,
+            .bi_heap = vm.heap,
+            .bi_gc = vm.heap.stats.gc_count,
+            .bi_cl_pkg = bi_epoch.cl_pkg,
+            .bi_cl_ver = bi_epoch.cl_ver,
             .occ = null,
             .boxed_vars = null,
             .boxed_fn_syms = null,
@@ -2137,6 +2156,10 @@ pub const Compiler = struct {
     pub fn setVm(self: *Compiler, vm: *Vm) void {
         self.vm = vm;
         self.heap = vm.heap;
+        self.bi_heap = null;
+        self.bi_gc = 0;
+        self.bi_cl_pkg = 0;
+        self.bi_cl_ver = 0;
     }
 
     fn initBuiltinsCanonical(heap: *Heap) !Builtins {
@@ -2150,10 +2173,41 @@ pub const Compiler = struct {
         return try Builtins.init(heap);
     }
 
+    const BuiltinsEpoch = struct {
+        cl_pkg: usize,
+        cl_ver: u64,
+    };
+
+    fn builtinsEpoch(heap: *Heap) BuiltinsEpoch {
+        if (heap.cl_package) |cl_pkg| {
+            return .{
+                .cl_pkg = @intFromPtr(cl_pkg),
+                .cl_ver = cl_pkg.symbols.version,
+            };
+        }
+        return .{
+            .cl_pkg = 0,
+            .cl_ver = 0,
+        };
+    }
+
     /// Refresh interned builtin symbol identities after GC may have moved objects.
     pub fn refreshBuiltins(self: *Compiler) !void {
         const heap = self.heap orelse return;
+        const bi_epoch = builtinsEpoch(heap);
+        const same_heap = if (self.bi_heap) |cached| cached == heap else false;
+        if (self.builtins != null and same_heap and
+            self.bi_gc == heap.stats.gc_count and
+            self.bi_cl_pkg == bi_epoch.cl_pkg and
+            self.bi_cl_ver == bi_epoch.cl_ver)
+        {
+            return;
+        }
         self.builtins = try initBuiltinsCanonical(heap);
+        self.bi_heap = heap;
+        self.bi_gc = heap.stats.gc_count;
+        self.bi_cl_pkg = bi_epoch.cl_pkg;
+        self.bi_cl_ver = bi_epoch.cl_ver;
     }
 
     fn specialKeyFromSym(sym_val: Value) ?VarKey {
@@ -14737,24 +14791,19 @@ pub const Compiler = struct {
         if (s == b.@"/".raw) return self.compileVariadicArith(args, env, .div, null);
         if (s == b.append.raw) {
             if (args.isNil()) return try self.builder.lit(Value.nil);
-
-            var parts = std.ArrayList(*Ir){};
-            defer parts.deinit(self.allocator);
+            if (!args.isCons()) return try self.builder.lit(Value.nil);
 
             var rest = args;
+            const first = rest.toPtr(Cons);
+            var acc = try self.compile(first.car, env);
+            rest = first.cdr;
+
             while (rest.isCons()) : (rest = rest.toPtr(Cons).cdr) {
                 const cell = rest.toPtr(Cons);
-                try parts.append(self.allocator, try self.compile(cell.car, env));
+                const next = try self.compile(cell.car, env);
+                acc = try self.builder.append(acc, next);
             }
 
-            if (parts.items.len == 0) return try self.builder.lit(Value.nil);
-            if (parts.items.len == 1) return parts.items[0];
-
-            var acc = parts.items[0];
-            var i: usize = 1;
-            while (i < parts.items.len) : (i += 1) {
-                acc = try self.builder.append(acc, parts.items[i]);
-            }
             return acc;
         }
         if (s == b.log.raw) {
@@ -19012,6 +19061,49 @@ test "parser resolves list symbol to builtin" {
     try testing.expectEqual(b.list.raw, head.raw);
 }
 
+test "refreshBuiltins rebuilds when builtin handles are cleared" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    try testing.expect(compiler.builtins != null);
+    compiler.builtins = null;
+    try compiler.refreshBuiltins();
+    try testing.expect(compiler.builtins != null);
+}
+
+test "refreshBuiltins invalidates on CL package symbol-table mutation" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var compiler = try Compiler.initWithHeap(allocator, &vm);
+    defer compiler.deinit();
+
+    const before_ver = compiler.bi_cl_ver;
+    const cl_pkg_opt = heap.cl_package;
+    try testing.expect(cl_pkg_opt != null);
+    const cl_pkg = cl_pkg_opt.?;
+    _ = try cl_pkg.intern(&heap, "__HABU-BI-EPOCH-TEST__");
+    try testing.expect(cl_pkg.symbols.version > before_ver);
+
+    try compiler.refreshBuiltins();
+    try testing.expectEqual(cl_pkg.symbols.version, compiler.bi_cl_ver);
+}
+
 test "compile list and listen use intrinsic IR" {
     const testing = std.testing;
     const allocator = testing.allocator;
@@ -19058,4 +19150,41 @@ test "compile list and listen use intrinsic IR" {
         };
         try testing.expect(is_listen);
     }
+}
+
+test "compile append folds args into left-associated IR" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(arena_alloc, &heap, "(append 1 2 3)", &vm.builtins);
+    defer parser.deinit();
+    const expr = try parser.parse();
+
+    const ir_node = try compiler.compile(expr, &env);
+    try testing.expect(ir_node.* == .append);
+    try testing.expect(ir_node.append.left.* == .append);
+    try testing.expect(ir_node.append.right.* == .lit);
+    try testing.expectEqual(@as(i64, 3), ir_node.append.right.lit.toFixnum());
+
+    const left = ir_node.append.left;
+    try testing.expect(left.append.left.* == .lit);
+    try testing.expectEqual(@as(i64, 1), left.append.left.lit.toFixnum());
+    try testing.expect(left.append.right.* == .lit);
+    try testing.expectEqual(@as(i64, 2), left.append.right.lit.toFixnum());
 }

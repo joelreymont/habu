@@ -178,6 +178,18 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ---
 
+## Session Notes (2026-02-19)
+
+### Worked Well
+- Caching builtin refresh by heap epoch in `src/compiler/compile.zig` (`bi_heap`/`bi_gc`/`bi_cl_pkg`/`bi_cl_ver` + `refreshBuiltins`) removed repeated `Builtins.init` churn from primitive compile dispatch while still invalidating on GC and CL package symbol-table mutation.
+- Replacing `append` primitive compilation’s temporary `ArrayList(*Ir)` in `src/compiler/compile.zig` with a streaming left fold removed a per-call transient allocation in a hot compile path.
+- Locking refresh invalidation behavior with focused tests in `src/compiler/compile.zig` (`refreshBuiltins rebuilds when builtin handles are cleared`, `refreshBuiltins invalidates on CL package symbol-table mutation`) prevented cache-staleness regressions.
+
+### Did Not Work
+- Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.
+
+---
+
 ## Anti-Patterns (What Goes Wrong)
 
 ### 1. "Already Exists" Discovery (793 occurrences)
