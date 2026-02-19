@@ -13869,8 +13869,13 @@ pub const Compiler = struct {
         // DEBUG: assert count > 0
         std.debug.assert(count > 0);
 
-        var expr_list = std.ArrayList(*Ir){};
-        defer expr_list.deinit(self.allocator);
+        if (count == 1) {
+            const only = exprs.toPtr(Cons);
+            return try self.compileWithTail(only.car, env, in_tail);
+        }
+
+        const items = try self.allocator.alloc(*const Ir, count);
+        errdefer self.allocator.free(items);
 
         var list = exprs;
         var idx: usize = 0;
@@ -13879,20 +13884,13 @@ pub const Compiler = struct {
             const is_last = idx == count - 1;
             // Only last expression is in tail position
             const expr_ir = try self.compileWithTail(cons.car, env, in_tail and is_last);
-            try expr_list.append(self.allocator, expr_ir);
+            items[idx] = expr_ir;
             list = cons.cdr;
             idx += 1;
         }
 
         // DEBUG: assert we compiled all expressions
-        std.debug.assert(expr_list.items.len == count);
-
-        if (expr_list.items.len == 1) {
-            return expr_list.items[0];
-        }
-
-        // Convert to const slice for progn
-        const items = try self.allocator.dupe(*const Ir, expr_list.items);
+        std.debug.assert(idx == count);
         const result = try self.builder.progn(items);
         // DEBUG: verify progn was created with all items
         std.debug.assert(std.meta.activeTag(result.*) == .progn);
