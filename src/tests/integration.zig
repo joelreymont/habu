@@ -5041,26 +5041,54 @@ test "ansi repro encode-universal-time returns fixnum" {
 // Multiple values: comprehensive tests for secondary values propagation
 // ============================================================================
 
+const ReplStdlibState = struct {
+    repl: Repl,
+    heap: *Heap,
+};
+
 // Helper: setup REPL with stdlib loaded
-fn initReplWithStdlib(allocator: std.mem.Allocator) !struct { repl: Repl, heap: *Heap } {
-    const heap = try allocator.create(Heap);
-    heap.* = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+fn initReplWithStdlib(allocator: std.mem.Allocator) !*ReplStdlibState {
+    const state = try allocator.create(ReplStdlibState);
+    errdefer allocator.destroy(state);
 
-    var repl: Repl = undefined;
-    try repl.init(allocator, heap, .{});
-    try repl.wireGlobalEnv();
-    try loadStdlib(&repl);
+    state.heap = try allocator.create(Heap);
+    errdefer allocator.destroy(state.heap);
+    state.heap.* = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    errdefer state.heap.deinit();
 
-    return .{ .repl = repl, .heap = heap };
+    state.repl = undefined;
+    try state.repl.init(allocator, state.heap, .{});
+    try state.repl.wireGlobalEnv();
+    try loadStdlib(&state.repl);
+    return state;
 }
 
-fn deinitReplWithStdlib(allocator: std.mem.Allocator, state: *@TypeOf(initReplWithStdlib(undefined) catch unreachable)) void {
+fn deinitReplWithStdlib(allocator: std.mem.Allocator, state: *ReplStdlibState) void {
     state.repl.deinit();
     state.heap.deinit();
     allocator.destroy(state.heap);
+    allocator.destroy(state);
 }
 
 // --- Secondary values through control flow ---
+
+test "initReplWithStdlib keeps moved repl callable" {
+    const allocator = testing.allocator;
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
+
+    try testing.expect(state.repl.vm.global_env != null);
+
+    const out = try state.repl.eval(
+        \\(progn
+        \\  (defun helper-rewire-check (n d)
+        \\    (multiple-value-bind (q r) (floor n d) (list q r)))
+        \\  (helper-rewire-check 17 5))
+    );
+    try testing.expect(out.isCons());
+    try testing.expectEqual(@as(i64, 3), out.toPtr(Cons).car.toFixnum());
+    try testing.expectEqual(@as(i64, 2), out.toPtr(Cons).cdr.toPtr(Cons).car.toFixnum());
+}
 
 test "mv: values through if (then branch)" {
     const allocator = testing.allocator;
@@ -5272,8 +5300,8 @@ test "mv: values through conditional jumps (jmp_nil/jmp_not_nil)" {
 
 test "mv: floor 1-arg float" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     const result = try state.repl.eval(
         \\(multiple-value-bind (q r) (floor 3.7) (list q r))
@@ -5286,8 +5314,8 @@ test "mv: floor 1-arg float" {
 
 test "mv: floor 2-arg integers" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     const result = try state.repl.eval(
         \\(multiple-value-bind (q r) (floor 17 5) (list q r))
@@ -5299,8 +5327,8 @@ test "mv: floor 2-arg integers" {
 
 test "mv: floor negative dividend" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     // CL: (floor -7 2) => -4, 1
     const result = try state.repl.eval(
@@ -5313,8 +5341,8 @@ test "mv: floor negative dividend" {
 
 test "mv: truncate 2-arg" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     // CL: (truncate 7 2) => 3, 1
     const result = try state.repl.eval(
@@ -5327,8 +5355,8 @@ test "mv: truncate 2-arg" {
 
 test "mv: ceiling 2-arg" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     // CL: (ceiling 7 2) => 4, -1
     const result = try state.repl.eval(
@@ -5341,8 +5369,8 @@ test "mv: ceiling 2-arg" {
 
 test "mv: round to nearest even" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     // CL: (round 2.5) => 2, 0.5 (banker's rounding)
     const result = try state.repl.eval(
@@ -5356,8 +5384,8 @@ test "mv: round to nearest even" {
 
 test "mv: round 2-arg" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     // CL: (round 7 2) => 4, -1 (7/2 = 3.5, rounds to 4)
     const result = try state.repl.eval(
@@ -5370,8 +5398,8 @@ test "mv: round 2-arg" {
 
 test "mv: floor in function with params" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     // The critical regression: mv-bind inside function with params
     _ = try state.repl.eval(
@@ -5386,8 +5414,8 @@ test "mv: floor in function with params" {
 
 test "mv: mod and rem" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     // mod uses floor, rem uses truncate
     const r1 = try state.repl.eval("(mod 17 5)");
@@ -5406,8 +5434,8 @@ test "mv: mod and rem" {
 
 test "mv: floor 1-arg integer identity" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     // (floor 10) => 10, 0
     const result = try state.repl.eval(
@@ -5420,8 +5448,8 @@ test "mv: floor 1-arg integer identity" {
 
 test "mv: multiple-value-list floor" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     // (multiple-value-list (floor 17 5)) => (3 2)
     const result = try state.repl.eval("(multiple-value-list (floor 17 5))");
@@ -5434,8 +5462,8 @@ test "mv: multiple-value-list floor" {
 
 test "error: handler-case catches error" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     const result = try state.repl.eval(
         \\(handler-case
@@ -5448,8 +5476,8 @@ test "error: handler-case catches error" {
 
 test "error: handler-case type-error" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     const result = try state.repl.eval(
         \\(handler-case
@@ -5461,8 +5489,8 @@ test "error: handler-case type-error" {
 
 test "error: handler-case division-by-zero" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     const result = try state.repl.eval(
         \\(handler-case
@@ -5474,8 +5502,8 @@ test "error: handler-case division-by-zero" {
 
 test "error: errset catches namestring type mismatch in local binding" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     const result = try state.repl.eval(
         \\(let (name errset)
@@ -5487,8 +5515,8 @@ test "error: errset catches namestring type mismatch in local binding" {
 
 test "error: errset re-signals when errset variable is true" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     const result = try state.repl.eval(
         \\(handler-case
@@ -5502,8 +5530,8 @@ test "error: errset re-signals when errset variable is true" {
 
 test "error: errset returns list of values on success" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     const result = try state.repl.eval("(let ((errset nil)) (errset (values 1 2)))");
     try testing.expect(result.isCons());
@@ -5515,8 +5543,8 @@ test "error: errset returns list of values on success" {
 
 test "mv: round 3.5 to even" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     // (round 3.5) => 4 (3.5 rounds to 4, the nearest even)
     const result = try state.repl.eval(
@@ -5527,8 +5555,8 @@ test "mv: round 3.5 to even" {
 
 test "mv: round 0.5 to even" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     // (round 0.5) => 0 (0.5 rounds to 0, the nearest even)
     const result = try state.repl.eval(
@@ -5539,8 +5567,8 @@ test "mv: round 0.5 to even" {
 
 test "mv: round -2.5 to even" {
     const allocator = testing.allocator;
-    var state = try initReplWithStdlib(allocator);
-    defer deinitReplWithStdlib(allocator, &state);
+    const state = try initReplWithStdlib(allocator);
+    defer deinitReplWithStdlib(allocator, state);
 
     // (round -2.5) => -2 (nearest even)
     const result = try state.repl.eval(

@@ -83,6 +83,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-19)
 
 ### Worked Well
+- Treating `Repl` as self-referential (VM callbacks/global-env pointers into `Repl.compiler`) and keeping helper state at a stable address (`src/tests/integration.zig:5050`) removed deterministic `set_symbol_function` segfaults in MV tests.
+- Adding a focused regression for moved-helper REPL execution (`src/tests/integration.zig:5075`) keeps this lifetime bug from returning silently.
 - Replacing `global_special_syms` raw-value keys with package/uid-aware `VarKey` identity (`src/compiler/compile.zig:2159`, `src/compiler/compile.zig:2205`) removed GC-movement sensitivity from special-variable tracking and fixed stale special lookups after collections.
 - Detecting leading local `(declare (special ...))` forms before lowering `let` (`src/compiler/compile.zig:5150`) fixed a root semantic gap where locally-declared specials were compiled lexically.
 - Unifying symbol value-cell operations through explicit VM helpers (`src/interp/vm.zig:823`, `src/interp/vm.zig:835`) and handling uninterned symbols via stable uids fixed `symbol-value`/`boundp`/`makunbound`/`progv` behavior generically.
@@ -112,6 +114,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding/keeping focused gates (`src/tests/integration.zig:5921`, `src/tests/integration.zig:5979`, `src/tests/integration.zig:6047`) gave deterministic proof for the trig/matrix/dependency chain fixes even when broad filtered test runs were noisy.
 
 ### Did Not Work
+- Returning `Repl` by value from test helpers was unsafe: internal pointers (`vm.global_env`, callback contexts) can dangle after copies/moves and crash later in unrelated eval paths.
 - Continuing to use raw `Value.raw` identity for globally special symbols was incorrect under moving GC; symbol keys must use package/uid-aware identity to stay stable.
 - Treating uninterned symbols like global-name fallbacks was wrong; uninterned value cells need dedicated storage keyed by stable symbol uid (`src/interp/vm.zig:788`).
 - Leaving debug env checks in hot VM op paths (for example `write_to_stream`) is a measurable perf anti-pattern; remove tracing from opcode dispatch and keep diagnostics opt-in at higher layers.
