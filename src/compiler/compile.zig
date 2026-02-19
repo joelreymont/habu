@@ -12327,11 +12327,10 @@ pub const Compiler = struct {
         // (no-applicable-method gf-sym arg1 arg2 ...)
         const gf_sym = try self.heap.?.intern(gf_name);
         const gf_lit = try self.builder.lit(gf_sym);
-        var no_app_args = std.ArrayList(*Ir){};
-        try no_app_args.append(self.allocator, gf_lit);
+        const no_app_args = try self.allocator.alloc(*const Ir, dispatch_params.len + 1);
+        no_app_args[0] = gf_lit;
         for (dispatch_params, 0..) |pname, idx| {
-            const arg_ir = try self.builder.variable(pname, 0, @intCast(idx));
-            try no_app_args.append(self.allocator, arg_ir);
+            no_app_args[idx + 1] = try self.builder.variable(pname, 0, @intCast(idx));
         }
         // Look up no-applicable-method as a global function
         const no_app_idx = self.globals.lookup("COMMON-LISP:NO-APPLICABLE-METHOD") orelse
@@ -12339,7 +12338,7 @@ pub const Compiler = struct {
             self.lookupGlobalIdxWithFallback("no-applicable-method") orelse
             try self.globals.define("COMMON-LISP:NO-APPLICABLE-METHOD");
         const no_app_fn = try self.builder.globalRef("COMMON-LISP:NO-APPLICABLE-METHOD", no_app_idx);
-        dispatch_body = try self.builder.call(no_app_fn, no_app_args.items);
+        dispatch_body = try self.buildCallIr(no_app_fn, no_app_args, false);
 
         // Build dispatch chain for primary methods (type checking)
         // For each primary method, also run applicable :before and :after
@@ -12443,16 +12442,15 @@ pub const Compiler = struct {
 
         // Wrap dispatch body in lambda with all params optional (default nil)
         // This allows calling with fewer args than max arity
-        var opt_params = std.ArrayList(Ir.OptionalParam){};
-        defer opt_params.deinit(self.allocator);
+        const opt_params = try self.allocator.alloc(Ir.OptionalParam, dispatch_params.len);
         const nil_ir = try self.builder.lit(Value.nil);
-        for (dispatch_params) |pname| {
-            try opt_params.append(self.allocator, .{ .name = pname, .default = nil_ir });
+        for (dispatch_params, 0..) |pname, opt_idx| {
+            opt_params[opt_idx] = .{ .name = pname, .default = nil_ir };
         }
 
         const dispatcher = try self.builder.lambda(
             &[_][]const u8{}, // No required params
-            try opt_params.toOwnedSlice(self.allocator),
+            opt_params,
             &[_]Ir.KeyParam{},
             false,
             null,
@@ -19211,6 +19209,49 @@ test "compile defmethod specialized param" {
         }
     }
     try testing.expect(found);
+}
+
+test "compile defmethod dispatcher optional params track arity" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(
+        arena_alloc,
+        &heap,
+        "(defmethod foo ((x fixnum) (y fixnum)) (+ x y))",
+        &vm.builtins,
+    );
+    defer parser.deinit();
+    const expr = try parser.parse();
+    const ir_def = try compiler.compile(expr, &env);
+
+    try testing.expect(ir_def.* == .progn);
+    var found_dispatcher = false;
+    for (ir_def.progn) |node| {
+        if (node.* != .set_gf_dispatcher) continue;
+        const dispatcher = node.set_gf_dispatcher.right;
+        try testing.expect(dispatcher.* == .lambda);
+        try testing.expectEqual(@as(usize, 0), dispatcher.lambda.params.len);
+        try testing.expectEqual(@as(usize, 2), dispatcher.lambda.optional_params.len);
+        found_dispatcher = true;
+        break;
+    }
+    try testing.expect(found_dispatcher);
 }
 
 test "compiler qualifyName allocates for long names" {

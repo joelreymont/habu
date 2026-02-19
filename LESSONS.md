@@ -210,6 +210,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Locking reader/writer expansion counting with a focused regression (`src/compiler/compile.zig:19120`) prevents silent off-by-one/missing-form regressions in generated defclass helper definitions.
 - Refactoring `compileTagbody` segment construction (`src/compiler/compile.zig:8015`) to pre-count tags, allocate segment/tag buffers once, and compile each segment directly removed dynamic segment/form staging lists from the hot control-flow lowering path.
 - Adding a focused dotted-tail regression for `tagbody` (`src/compiler/compile.zig:19902`) locked malformed body-list rejection while preserving existing segment partition behavior.
+- Replacing method-dispatch setup staging in `generateMethodDispatcher` (`src/compiler/compile.zig:12321`, `src/compiler/compile.zig:12446`) with fixed-size slices for `no-applicable-method` call args and lambda optional params removed avoidable list-growth churn in generic-function dispatcher synthesis.
+- Locking dispatcher arity shaping via `defmethod` regression (`src/compiler/compile.zig:19208`) keeps optional-param count aligned with computed max arity after staging refactors.
 
 ### Did Not Work
 - Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.
