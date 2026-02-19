@@ -8055,13 +8055,13 @@ pub const Compiler = struct {
         if (forms.len == 1) {
             return self.compile(forms[0], env);
         }
-        var exprs = std.ArrayList(*const Ir){};
-        defer exprs.deinit(self.allocator);
-        for (forms) |form| {
-            const form_ir = try self.compile(form, env);
-            try exprs.append(self.allocator, form_ir);
+        const exprs = try self.allocator.alloc(*const Ir, forms.len);
+        for (forms, 0..) |form, i| {
+            exprs[i] = try self.compile(form, env);
         }
-        return try self.builder.progn(exprs.items);
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .progn = exprs };
+        return node;
     }
 
     fn compileGo(self: *Compiler, args: Value) anyerror!*Ir {
@@ -8076,18 +8076,24 @@ pub const Compiler = struct {
 
     fn compileValues(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (values v1 v2 ...)
-        var vals = std.ArrayList(*const Ir){};
-        defer vals.deinit(self.allocator);
-
-        var current = args;
-        while (current.isCons()) {
-            const cons = current.toPtr(Cons);
-            const val_ir = try self.compile(cons.car, env);
-            try vals.append(self.allocator, val_ir);
-            current = cons.cdr;
+        var val_count: usize = 0;
+        var count_cur = args;
+        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
+            val_count += 1;
         }
 
-        return try self.builder.values(vals.items);
+        const vals = try self.allocator.alloc(*const Ir, val_count);
+        var current = args;
+        var idx: usize = 0;
+        while (current.isCons()) : (current = current.toPtr(Cons).cdr) {
+            const cons = current.toPtr(Cons);
+            vals[idx] = try self.compile(cons.car, env);
+            idx += 1;
+        }
+
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .values = vals };
+        return node;
     }
 
     fn compileValuesList(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -19618,4 +19624,65 @@ test "compile all-special let lowers to progv" {
     const ir_node = try compiler.compile(expr, &env);
 
     try testing.expect(ir_node.* == .progv);
+}
+
+test "compile values preserves all operands" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(arena_alloc, &heap, "(values 1 2 3 4)", &vm.builtins);
+    defer parser.deinit();
+    const expr = try parser.parse();
+    const ir_node = try compiler.compile(expr, &env);
+
+    try testing.expect(ir_node.* == .values);
+    try testing.expectEqual(@as(usize, 4), ir_node.values.len);
+}
+
+test "compile tagbody builds segments without dropping forms" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(arena_alloc, &heap, "(tagbody start (go done) done 42)", &vm.builtins);
+    defer parser.deinit();
+    const expr = try parser.parse();
+    const ir_node = try compiler.compile(expr, &env);
+
+    try testing.expect(ir_node.* == .tagbody);
+    try testing.expectEqual(@as(usize, 2), ir_node.tagbody.tags.len);
+    try testing.expectEqual(@as(usize, 3), ir_node.tagbody.segments.len);
+    try testing.expect(ir_node.tagbody.segments[1].* == .go);
+    try testing.expect(ir_node.tagbody.segments[2].* == .lit);
 }

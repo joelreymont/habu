@@ -881,3 +881,12 @@ Environment guard:
 
 #### Did Not Work
 - A manual-GC regression test that called `repl.vm.collectGarbage()` directly between evals produced false failures because macro maps are only guaranteed rooted during managed execution paths; direct unrooted GC is not a valid behavioral contract for macro table persistence.
+
+### Session Notes (2026-02-19, tagbody/progn/values staging)
+
+#### Worked Well
+- Replacing `compileFormsToProgn` and `compileValues` dynamic staging with pre-sized slices and direct IR node emission (`src/compiler/compile.zig:8051`, `src/compiler/compile.zig:8077`) removed another layer of `ArrayList` growth + builder duplication in control-flow and multi-value compilation paths.
+- Revalidating with both compile-shape regressions and integration-level tagbody/values tests ensured segment/value cardinality stayed correct while reducing staging overhead.
+
+#### Did Not Work
+- Leaving these sequence forms on builder-backed aggregation keeps hidden duplicate-slice allocation in high-frequency control-flow lowering; direct node emission is required for predictable allocation behavior.
