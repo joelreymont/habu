@@ -83,6 +83,12 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-19)
 
 ### Worked Well
+- Replacing `global_special_syms` raw-value keys with package/uid-aware `VarKey` identity (`src/compiler/compile.zig:2159`, `src/compiler/compile.zig:2205`) removed GC-movement sensitivity from special-variable tracking and fixed stale special lookups after collections.
+- Detecting leading local `(declare (special ...))` forms before lowering `let` (`src/compiler/compile.zig:5150`) fixed a root semantic gap where locally-declared specials were compiled lexically.
+- Unifying symbol value-cell operations through explicit VM helpers (`src/interp/vm.zig:823`, `src/interp/vm.zig:835`) and handling uninterned symbols via stable uids fixed `symbol-value`/`boundp`/`makunbound`/`progv` behavior generically.
+- Rewriting `progv` save/restore to bind concrete slots or uninterned symbol cells (`src/interp/vm.zig:7257`) removed name-suffix aliasing and restored correct dynamic binding restoration.
+- Routing `write-string` through shared stream I/O (`src/runtime/primitives/stream.zig:407`, `src/runtime/primitives/io.zig:787`) centralized stream-type behavior and avoids duplicated output-path logic.
+- Locking regressions for dynamic specials/value cells/numeric predicates (`src/tests/integration.zig:6226`, `src/tests/integration.zig:6305`, `src/tests/integration.zig:6344`) kept fixes generic and prevented Maxima-only drift.
 - Tightening `set_symbol_function` to stop mutating value-cell globals except legacy callable slots (`src/interp/vm.zig:4026`) removed a generic namespace corruption path where `defun` could overwrite unrelated variable bindings (for example Maxima `ratvars`-style symbols).
 - Locking this with explicit regressions for shared symbol names and nil-bound values (`src/tests/integration.zig:6245`, `src/tests/integration.zig:6282`) keeps future function-cell work from silently reintroducing value-cell clobbers.
 - Capturing the failing `check_closure` disassembly for the Maxima gate showed the assertion was injected at local `let` binding stores, which pointed directly to declaration scoping instead of JIT/runtime dispatch.
@@ -106,6 +112,10 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding/keeping focused gates (`src/tests/integration.zig:5921`, `src/tests/integration.zig:5979`, `src/tests/integration.zig:6047`) gave deterministic proof for the trig/matrix/dependency chain fixes even when broad filtered test runs were noisy.
 
 ### Did Not Work
+- Continuing to use raw `Value.raw` identity for globally special symbols was incorrect under moving GC; symbol keys must use package/uid-aware identity to stay stable.
+- Treating uninterned symbols like global-name fallbacks was wrong; uninterned value cells need dedicated storage keyed by stable symbol uid (`src/interp/vm.zig:788`).
+- Leaving debug env checks in hot VM op paths (for example `write_to_stream`) is a measurable perf anti-pattern; remove tracing from opcode dispatch and keep diagnostics opt-in at higher layers.
+- Running `zig build test -Dtest-filter='maxima e2e operation readiness status'` is still hang-prone here; the equivalent scripted readiness probe produced deterministic signal.
 - Treating the previous function-cell fix as complete was incorrect; leaving `nil`/`unbound` in the value-cell overwrite allowlist still let `defun` corrupt same-name variables in generic Lisp code.
 - Focusing first on mixed special-`let` lowering (`tryCompileSpecialLet`) was a false lead; the actual fault came from type declaration leakage into lexical bindings.
 - Running broad `zig build test -Dtest-filter='maxima '` remains unreliable in this environment (hang-prone); targeted filters for failing gates are more deterministic for RCA.

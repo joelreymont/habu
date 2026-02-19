@@ -6059,7 +6059,7 @@ test "maxima e2e operation readiness status" {
     _ = try repl.eval(
         \\(setq *maxima-files*
         \\  '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
-        \\    "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "rzmac" "ratmac" "opers"
+        \\    "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "rzmac" "ratmac" "mhayat" "combin" "opers"
         \\    "utils" "merror" "mutils" "sumcon" "sublis" "mformt" "outmis" "ar"
         \\    "comm" "comm2" "mlisp" "mmacro" "buildq"
         \\    "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
@@ -6068,7 +6068,9 @@ test "maxima e2e operation readiness status" {
         \\    "rat3d" "rat3e" "nrat4" "ratout" "acall"
         \\    "mat" "linnew" "matrix" "sprdet" "newinv" "newdet"
         \\    "schatc" "matcom" "matrun" "nisimp" "nparse" "displm" "displa" "nforma" "grind"
-        \\    "nset" "sinint" "sin"))
+        \\    "nset" "sinint" "sin" "trigi" "trigo" "trgred"
+        \\    "tlimit" "limit"
+        \\    "solve" "psolve" "algsys" "sqrtdenest" "polyrz" "cpoly"))
     );
     const status = try repl.eval(
         \\(multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
@@ -6103,14 +6105,14 @@ test "maxima e2e operation readiness status" {
     try testing.expectEqual(@as(i64, 0), got[1]);
     try testing.expectEqual(@as(i64, 1), got[2]);
     try testing.expectEqual(@as(i64, 1), got[3]);
-    try testing.expectEqual(@as(i64, 0), got[4]);
+    try testing.expectEqual(@as(i64, 1), got[4]);
     try testing.expectEqual(@as(i64, 1), got[5]);
     try testing.expectEqual(@as(i64, 1), got[6]);
-    try testing.expectEqual(@as(i64, 0), got[7]);
+    try testing.expectEqual(@as(i64, 1), got[7]);
     try testing.expectEqual(@as(i64, 1), got[8]);
     try testing.expectEqual(@as(i64, 1), got[9]);
-    try testing.expectEqual(@as(i64, 0), got[10]);
-    try testing.expectEqual(@as(i64, 0), got[11]);
+    try testing.expectEqual(@as(i64, 1), got[10]);
+    try testing.expectEqual(@as(i64, 1), got[11]);
 }
 
 test "maxima defun-maclisp old narg syntax defines callable function" {
@@ -6219,6 +6221,162 @@ test "proclaimed special lambda params are dynamically visible in callees" {
 
     try testing.expect(out.isFixnum());
     try testing.expectEqual(@as(i64, 42), out.toFixnum());
+}
+
+test "defvar makes prog bindings dynamically visible" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(progn
+        \\  (defvar nn*)
+        \\  (defun use-nn () nn*)
+        \\  (prog (nn*)
+        \\    (setq nn* 3)
+        \\    (return (use-nn))))
+    );
+
+    try testing.expect(out.isFixnum());
+    try testing.expectEqual(@as(i64, 3), out.toFixnum());
+}
+
+test "let declare special uses dynamic binding and restores global" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(progn
+        \\  (defvar ans 7)
+        \\  (defun use-ans () ans)
+        \\  (list
+        \\    (let ((ans 0))
+        \\      (declare (special ans))
+        \\      (setq ans 42)
+        \\      (use-ans))
+        \\    ans))
+    );
+
+    try testing.expect(out.isCons());
+    const c0 = out.toPtr(Cons);
+    try testing.expect(c0.car.isFixnum());
+    try testing.expectEqual(@as(i64, 42), c0.car.toFixnum());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.isFixnum());
+    try testing.expectEqual(@as(i64, 7), c1.car.toFixnum());
+    try testing.expect(c1.cdr.isNil());
+}
+
+test "progv supports deep dynamic nesting" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(progn
+        \\  (defun walk-progv (n)
+        \\    (if (= n 0)
+        \\        t
+        \\        (progv '(x) (list n)
+        \\          (walk-progv (1- n)))))
+        \\  (walk-progv 40))
+    );
+
+    try testing.expect(out.isT());
+}
+
+test "symbol value cells handle uninterned and fresh interned symbols" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(progn
+        \\  (makunbound 'fresh-runtime-cell)
+        \\  (let ((s (gensym "X")))
+        \\    (setf (symbol-value s) 42)
+        \\    (setf (symbol-value 'fresh-runtime-cell) 9)
+        \\    (list
+        \\      (if (= (symbol-value s) 42) 1 0)
+        \\      (if (boundp s) 1 0)
+        \\      (progn (makunbound s) (if (boundp s) 0 1))
+        \\      (if (= (symbol-value 'fresh-runtime-cell) 9) 1 0)
+        \\      (if (boundp 'fresh-runtime-cell) 1 0)
+        \\      (if (= (progv (list s) (list 7) (symbol-value s)) 7) 1 0)
+        \\      (if (boundp s) 0 1))))
+    );
+
+    try testing.expect(out.isCons());
+    var cur = out;
+    var i: usize = 0;
+    while (i < 7) : (i += 1) {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(@as(i64, 1), cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
+test "numeric predicates support generic numeric tower values" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(list
+        \\  (if (zerop 0) 1 0)
+        \\  (if (zerop 0.0) 1 0)
+        \\  (if (zerop 1000000000000000000000000000000000000000) 0 1)
+        \\  (if (plusp 1000000000000000000000000000000000000000) 1 0)
+        \\  (if (minusp -1000000000000000000000000000000000000000) 1 0)
+        \\  (if (zerop (/ 0 7)) 1 0)
+        \\  (if (plusp (/ 3 2)) 1 0)
+        \\  (if (minusp (/ -3 2)) 1 0)
+        \\  (if (zerop (complex 0 0)) 1 0)
+        \\  (handler-case (progn (plusp (complex 1 1)) 0) (error (e) (declare (ignore e)) 1))
+        \\  (handler-case (progn (minusp (complex 1 1)) 0) (error (e) (declare (ignore e)) 1)))
+    );
+
+    try testing.expect(out.isCons());
+    var cur = out;
+    var i: usize = 0;
+    while (i < 11) : (i += 1) {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(@as(i64, 1), cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
 }
 
 test "symbol-function ignores special value bindings" {

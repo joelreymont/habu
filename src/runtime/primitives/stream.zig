@@ -404,7 +404,7 @@ pub fn primForceOutput(heap: *Heap, args: []const Value) !Value {
 }
 
 /// Write a string to an output stream (file or string output stream)
-pub fn primWriteString(heap: *Heap, args: []const Value) !Value {
+pub fn primWriteString(_: *Heap, args: []const Value) !Value {
     if (args.len < 2) return error.InvalidArgument;
 
     const str_val = args[0];
@@ -418,19 +418,12 @@ pub fn primWriteString(heap: *Heap, args: []const Value) !Value {
     if (stream.closed) return error.StreamClosed;
     if (!stream.isOutput()) return error.NotOutputStreamError;
 
-    // Convert to UTF-8 bytes for output
+    // Convert to UTF-8 bytes for output, then route through shared stream writer.
+    // This keeps stream-type support centralized (stdout/stderr/broadcast/etc).
     if (str_val.isString()) {
         const str = str_val.toPtr(String);
         const data = str.data[0..str.length];
-
-        if (stream.stream_type == .file) {
-            const file = std.fs.File{ .handle = stream.file_fd };
-            try file.writeAll(data);
-        } else if (stream.stream_type == .string) {
-            try streamWriteBytes(heap, stream, data);
-        } else {
-            return error.InvalidArgument;
-        }
+        try io.writeBytesToStream(stream_val, data);
     } else {
         // String32 - encode to UTF-8
         const s32 = str_val.toPtr(String32);
@@ -444,15 +437,7 @@ pub fn primWriteString(heap: *Heap, args: []const Value) !Value {
             try w.writeAll(cp_buf[0..len]);
         }
 
-        const utf8_data = fbs.getWritten();
-        if (stream.stream_type == .file) {
-            const file = std.fs.File{ .handle = stream.file_fd };
-            try file.writeAll(utf8_data);
-        } else if (stream.stream_type == .string) {
-            try streamWriteBytes(heap, stream, utf8_data);
-        } else {
-            return error.InvalidArgument;
-        }
+        try io.writeBytesToStream(stream_val, fbs.getWritten());
     }
 
     return str_val;

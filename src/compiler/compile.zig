@@ -1426,6 +1426,7 @@ const VarKeyCtx = struct {
 
 const VarMap = std.HashMap(VarKey, u16, VarKeyCtx, std.hash_map.default_max_load_percentage);
 const TypeDeclMap = std.HashMap(VarKey, Value, VarKeyCtx, std.hash_map.default_max_load_percentage);
+const SpecialSymSet = std.HashMap(VarKey, void, VarKeyCtx, std.hash_map.default_max_load_percentage);
 
 pub const OptimizeSettings = struct {
     speed: u8 = 1,
@@ -1992,8 +1993,8 @@ pub const Compiler = struct {
     type_aliases: std.StringHashMap(Value),
     /// Global declaration environment
     global_decls: DeclEnv,
-    /// Package-aware set of globally proclaimed special symbols (Value.raw).
-    global_special_syms: std.AutoHashMap(u64, void),
+    /// Package-aware set of globally proclaimed special symbols.
+    global_special_syms: SpecialSymSet,
     /// Persistent optimize declarations from DECLAIM/PROCLAIM
     optimize_global: OptimizeSettings,
     /// Effective optimize settings for current compile scope
@@ -2056,7 +2057,7 @@ pub const Compiler = struct {
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
             .type_aliases = std.StringHashMap(Value).init(allocator),
             .global_decls = DeclEnv.create(allocator),
-            .global_special_syms = std.AutoHashMap(u64, void).init(allocator),
+            .global_special_syms = SpecialSymSet.init(allocator),
             .optimize_global = .{},
             .optimize_current = .{},
             .diag = false,
@@ -2092,7 +2093,7 @@ pub const Compiler = struct {
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
             .type_aliases = std.StringHashMap(Value).init(allocator),
             .global_decls = DeclEnv.create(allocator),
-            .global_special_syms = std.AutoHashMap(u64, void).init(allocator),
+            .global_special_syms = SpecialSymSet.init(allocator),
             .optimize_global = .{},
             .optimize_current = .{},
             .diag = false,
@@ -2125,7 +2126,7 @@ pub const Compiler = struct {
             .generic_functions = std.StringHashMap(std.ArrayList(MethodDef)).init(allocator),
             .type_aliases = std.StringHashMap(Value).init(allocator),
             .global_decls = DeclEnv.create(allocator),
-            .global_special_syms = std.AutoHashMap(u64, void).init(allocator),
+            .global_special_syms = SpecialSymSet.init(allocator),
             .optimize_global = .{},
             .optimize_current = .{},
             .diag = false,
@@ -2153,6 +2154,60 @@ pub const Compiler = struct {
     pub fn refreshBuiltins(self: *Compiler) !void {
         const heap = self.heap orelse return;
         self.builtins = try initBuiltinsCanonical(heap);
+    }
+
+    fn specialKeyFromSym(sym_val: Value) ?VarKey {
+        if (!sym_val.isSymbol()) return null;
+        const sym = sym_val.toPtr(Symbol);
+        const bits: u64 = sym.reserved;
+        if (bits != 0 and (bits & 1) == 0) {
+            return .{
+                .pkg_ptr = @intCast(bits),
+                .uid = 0,
+                .name = sym.getName(),
+            };
+        }
+        if ((bits & 1) != 0) {
+            return .{
+                .pkg_ptr = 0,
+                .uid = bits >> 1,
+                .name = "",
+            };
+        }
+        return .{
+            .pkg_ptr = 0,
+            .uid = 0,
+            .name = sym.getName(),
+        };
+    }
+
+    fn specialKeyOwnedFromSym(allocator: std.mem.Allocator, sym_val: Value) !VarKey {
+        const key = specialKeyFromSym(sym_val) orelse return error.InvalidSyntax;
+        if (key.uid != 0) return .{ .pkg_ptr = 0, .uid = key.uid, .name = "" };
+        const name_copy = try allocator.dupe(u8, key.name);
+        return .{ .pkg_ptr = key.pkg_ptr, .uid = 0, .name = name_copy };
+    }
+
+    fn insertSpecialSym(set: *SpecialSymSet, allocator: std.mem.Allocator, sym_val: Value) !void {
+        const key = try specialKeyOwnedFromSym(allocator, sym_val);
+        errdefer if (key.uid == 0) allocator.free(key.name);
+        const gop = try set.getOrPut(key);
+        if (gop.found_existing and key.uid == 0) {
+            allocator.free(key.name);
+        }
+    }
+
+    fn specialSetContainsSym(set: *const SpecialSymSet, sym_val: Value) bool {
+        const key = specialKeyFromSym(sym_val) orelse return false;
+        return set.contains(key);
+    }
+
+    fn markGlobalSpecialSym(self: *Compiler, sym_val: Value) !void {
+        try insertSpecialSym(&self.global_special_syms, self.globals.allocator, sym_val);
+    }
+
+    fn isGloballySpecialSym(self: *const Compiler, sym_val: Value) bool {
+        return specialSetContainsSym(&self.global_special_syms, sym_val);
     }
 
     pub fn deinit(self: *Compiler) void {
@@ -2219,6 +2274,12 @@ pub const Compiler = struct {
         self.type_aliases.deinit();
         // Free global_decls
         self.global_decls.deinit();
+        var special_it = self.global_special_syms.keyIterator();
+        while (special_it.next()) |key| {
+            if (key.uid == 0) {
+                self.globals.allocator.free(key.name);
+            }
+        }
         self.global_special_syms.deinit();
         // Note: defined_types contains references to ArrayList buffers and duped strings
         // that are intentionally not freed - they persist for the compiler's lifetime
@@ -5070,7 +5131,7 @@ pub const Compiler = struct {
 
     fn isSpecialBindingSym(self: *Compiler, sym: Value) bool {
         if (!sym.isSymbolLike()) return false;
-        if (sym.isSymbol() and self.global_special_syms.contains(sym.raw)) return true;
+        if (self.isGloballySpecialSym(sym)) return true;
         const name = sym.getSymbolName();
         if (self.global_decls.hasDecl(name, .special)) return true;
         return name.len >= 2 and name[0] == '*' and name[name.len - 1] == '*';
@@ -5084,6 +5145,41 @@ pub const Compiler = struct {
             out = try self.builder.cons(items[i], out);
         }
         return out;
+    }
+
+    fn collectLocalSpecialDecls(self: *Compiler, body_exprs: Value, out: *SpecialSymSet) !void {
+        const heap = self.heap orelse return;
+        const declare_sym = try heap.intern("declare");
+        const special_sym = try heap.intern("special");
+
+        var forms = body_exprs;
+        while (forms.isCons()) {
+            const form = forms.toPtr(Cons).car;
+            if (!form.isCons()) break;
+            const form_cons = form.toPtr(Cons);
+            if (!form_cons.car.eq(declare_sym)) break;
+
+            var specs = form_cons.cdr;
+            while (specs.isCons()) {
+                const spec = specs.toPtr(Cons).car;
+                if (spec.isCons()) {
+                    const spec_cons = spec.toPtr(Cons);
+                    if (spec_cons.car.eq(special_sym)) {
+                        var vars = spec_cons.cdr;
+                        while (vars.isCons()) {
+                            const var_val = vars.toPtr(Cons).car;
+                            if (var_val.isSymbol()) {
+                                try insertSpecialSym(out, self.allocator, var_val);
+                            }
+                            vars = vars.toPtr(Cons).cdr;
+                        }
+                    }
+                }
+                specs = specs.toPtr(Cons).cdr;
+            }
+
+            forms = forms.toPtr(Cons).cdr;
+        }
     }
 
     fn tryCompileSpecialLet(
@@ -5105,6 +5201,15 @@ pub const Compiler = struct {
         defer special_temps.deinit(self.allocator);
         var rewritten_bindings = std.ArrayList(Value){};
         defer rewritten_bindings.deinit(self.allocator);
+        var local_special_syms = SpecialSymSet.init(self.allocator);
+        defer {
+            var it = local_special_syms.keyIterator();
+            while (it.next()) |key| {
+                if (key.uid == 0) self.allocator.free(key.name);
+            }
+            local_special_syms.deinit();
+        }
+        try self.collectLocalSpecialDecls(body_exprs, &local_special_syms);
         var has_lexical = false;
 
         var bindings = bindings_expr;
@@ -5131,7 +5236,8 @@ pub const Compiler = struct {
                 break :blk bind_pair.cdr.toPtr(Cons).car;
             };
 
-            if (self.isSpecialBindingSym(sym)) {
+            const is_local_special = specialSetContainsSym(&local_special_syms, sym);
+            if (self.isSpecialBindingSym(sym) or is_local_special) {
                 const temp_sym = try prims.gensym(heap, null);
                 const init_tail = try heap.allocCons(init_expr, Value.nil);
                 const temp_binding = try heap.allocCons(temp_sym, init_tail);
@@ -8010,6 +8116,9 @@ pub const Compiler = struct {
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
         if (!cons1.car.isSymbol()) return error.InvalidSyntax;
+
+        // DEFVAR globally proclaims NAME special.
+        try self.markGlobalSpecialSym(cons1.car);
 
         const init_expr = if (cons1.cdr.isCons())
             cons1.cdr.toPtr(Cons).car
@@ -13185,7 +13294,7 @@ pub const Compiler = struct {
 
             try self.global_decls.addDecl(var_name, .{ .spec = spec });
             if (spec == .special) {
-                try self.global_special_syms.put(var_val.raw, {});
+                try self.markGlobalSpecialSym(var_val);
             }
 
             list = cons.cdr;
@@ -13305,7 +13414,7 @@ pub const Compiler = struct {
 
             try self.global_decls.addDecl(parsed_name.name, .{ .spec = spec });
             if (spec == .special and var_val.isSymbol()) {
-                try self.global_special_syms.put(var_val.raw, {});
+                try self.markGlobalSpecialSym(var_val);
             }
 
             list = cons.cdr;

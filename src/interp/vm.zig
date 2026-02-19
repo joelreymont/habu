@@ -437,6 +437,8 @@ pub const Vm = struct {
     /// Used to lazily materialize callable values for builtin primitive symbols.
     function_resolve_callback: ?*const fn (Value, *anyopaque) Error!?Value,
     function_resolve_context: ?*anyopaque,
+    /// Value cells for uninterned symbols, keyed by stable symbol uid.
+    uninterned_values: std.AutoHashMap(u64, Value),
 
     /// Counter for gensym
     gensym_counter: u64,
@@ -467,7 +469,7 @@ pub const Vm = struct {
     const MAX_UNWINDS = 32;
     const MAX_RESTARTS = 64;
     const MAX_BLOCKS = 64;
-    const MAX_PROGVS = 32;
+    const MAX_PROGVS = 256;
     const MAX_HANDLERS = 64;
     const MAX_SAVED_CHUNKS = 1024;
 
@@ -695,6 +697,7 @@ pub const Vm = struct {
             .fboundp_context = null,
             .function_resolve_callback = null,
             .function_resolve_context = null,
+            .uninterned_values = std.AutoHashMap(u64, Value).init(allocator),
             .gensym_counter = 0,
             .current_closure = null,
             .current_argc = 0,
@@ -718,6 +721,7 @@ pub const Vm = struct {
             self.allocator.destroy(compiled_ptr.*);
         }
         self.jit_fns.deinit();
+        self.uninterned_values.deinit();
         self.gc_slots.deinit(self.allocator);
     }
 
@@ -779,6 +783,83 @@ pub const Vm = struct {
             .closure, .native_code, .generic_function => true,
             else => false,
         };
+    }
+
+    fn symbolIsUninterned(sym: *const Symbol) bool {
+        const pkg_bits = sym.reserved;
+        return pkg_bits == 0 or (pkg_bits & 1) != 0;
+    }
+
+    fn uninternedSymbolId(sym: *const Symbol) ?u64 {
+        if (!symbolIsUninterned(sym)) return null;
+        if ((sym.reserved & 1) == 0 or sym.reserved == 0) return null;
+        return sym.reserved;
+    }
+
+    fn defineSymbolGlobalIndex(self: *Vm, sym: *const Symbol) Error!?u16 {
+        if (symbolIsUninterned(sym)) return null;
+        const env = self.global_env orelse return null;
+        var qual_buf: [512]u8 = undefined;
+        const q = try qual_name.qualSym(self.allocator, sym, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        return try env.define(q.name);
+    }
+
+    fn lookupSymbolLocalValueCell(self: *const Vm, sym: *const Symbol) ?Value {
+        const sym_id = uninternedSymbolId(sym) orelse return null;
+        return self.uninterned_values.get(sym_id);
+    }
+
+    fn setSymbolLocalValueCell(self: *Vm, sym: *const Symbol, val: Value) Error!void {
+        const sym_id = uninternedSymbolId(sym) orelse return error.TypeMismatch;
+        try self.uninterned_values.put(sym_id, val);
+    }
+
+    fn clearSymbolLocalValueCell(self: *Vm, sym: *const Symbol) void {
+        const sym_id = uninternedSymbolId(sym) orelse return;
+        _ = self.uninterned_values.remove(sym_id);
+    }
+
+    fn lookupSymbolValueCell(self: *Vm, sym_val: Value) Error!?Value {
+        if (!sym_val.isSymbol()) return null;
+        const sym = sym_val.toPtr(Symbol);
+        if (try self.lookupSymbolGlobalIndex(sym)) |idx| {
+            if (idx >= MAX_GLOBALS) return null;
+            const val = self.globals[idx];
+            if (val.raw == Value.unbound.raw) return null;
+            return val;
+        }
+        return self.lookupSymbolLocalValueCell(sym);
+    }
+
+    fn setSymbolValueCell(self: *Vm, sym_val: Value, val: Value) Error!void {
+        if (!sym_val.isSymbol()) return error.TypeMismatch;
+        const sym = sym_val.toPtr(Symbol);
+        if (try self.lookupSymbolGlobalIndex(sym)) |idx| {
+            if (idx < MAX_GLOBALS) {
+                try self.storeGlobal(idx, val);
+            }
+            return;
+        }
+        if (try self.defineSymbolGlobalIndex(sym)) |idx| {
+            if (idx < MAX_GLOBALS) {
+                try self.storeGlobal(idx, val);
+            }
+            return;
+        }
+        try self.setSymbolLocalValueCell(sym, val);
+    }
+
+    fn clearSymbolValueCell(self: *Vm, sym_val: Value) Error!void {
+        if (!sym_val.isSymbol()) return error.TypeMismatch;
+        const sym = sym_val.toPtr(Symbol);
+        if (try self.lookupSymbolGlobalIndex(sym)) |idx| {
+            if (idx < MAX_GLOBALS) {
+                self.globals[idx] = Value.unbound;
+            }
+            return;
+        }
+        self.clearSymbolLocalValueCell(sym);
     }
 
     fn functionCellKey(self: *Vm) Error!Value {
@@ -1193,6 +1274,7 @@ pub const Vm = struct {
 
     fn lookupSymbolGlobalIndex(self: *Vm, sym: *const Symbol) Error!?u16 {
         const env = self.global_env orelse return null;
+        if (symbolIsUninterned(sym)) return null;
         const local_name = sym.getName();
 
         var qual_buf: [512]u8 = undefined;
@@ -1221,7 +1303,7 @@ pub const Vm = struct {
     fn allowLegacyGlobalFallbackSym(self: *const Vm, sym: *const Symbol) bool {
         _ = self;
         const pkg_bits = sym.reserved;
-        if (pkg_bits == 0 or (pkg_bits & 1) != 0) return true;
+        if (pkg_bits == 0 or (pkg_bits & 1) != 0) return false;
         const pkg: *runtime.heap.Package = @ptrFromInt(pkg_bits);
         return isLegacyFallbackPackageName(pkg.name);
     }
@@ -1302,6 +1384,7 @@ pub const Vm = struct {
             self.progv_sp +
             self.handler_sp * 2 +
             7 +
+            self.uninterned_values.count() +
             self.fp +
             (if (has_current_closure) @as(usize, 1) else 0) +
             self.catch_sp +
@@ -1334,6 +1417,10 @@ pub const Vm = struct {
         self.gc_slots.appendAssumeCapacity(&self.pending_block_name);
         self.gc_slots.appendAssumeCapacity(&self.pending_block_value);
         self.gc_slots.appendAssumeCapacity(&self.current_package);
+        var uninterned_it = self.uninterned_values.valueIterator();
+        while (uninterned_it.next()) |slot| {
+            self.gc_slots.appendAssumeCapacity(slot);
+        }
 
         var closure_idx: usize = 0;
         for (self.frames[0..self.fp], 0..) |frame, i| {
@@ -3977,12 +4064,7 @@ pub const Vm = struct {
                         return error.InvalidArgument;
                     },
                     .symbol => {
-                        const sym = sym_val.toPtr(Symbol);
-                        if (try self.lookupSymbolGlobalIndex(sym)) |idx| {
-                            if (idx < MAX_GLOBALS) {
-                                self.globals[idx] = Value.unbound;
-                            }
-                        }
+                        try self.clearSymbolValueCell(sym_val);
                         try self.push(sym_val);
                     },
                     else => try self.signalTypeError(),
@@ -3997,15 +4079,7 @@ pub const Vm = struct {
                         return error.InvalidArgument;
                     },
                     .symbol => {
-                        const sym = sym_val.toPtr(Symbol);
-                        if (try self.lookupSymbolGlobalIndex(sym)) |idx| {
-                            if (idx < MAX_GLOBALS) {
-                                self.globals[idx] = val;
-                                if (idx >= self.num_globals) {
-                                    self.num_globals = idx + 1;
-                                }
-                            }
-                        }
+                        try self.setSymbolValueCell(sym_val, val);
                         try self.push(val);
                     },
                     else => try self.signalTypeError(),
@@ -6533,24 +6607,7 @@ pub const Vm = struct {
                 switch (val.typeKind()) {
                     .nil, .t => try self.push(Value.t),
                     .symbol => {
-                        const sym = val.toPtr(Symbol);
-                        const local_name = sym.getName();
-                        // Build qualified name using symbol's package
-                        var qual_buf: [512]u8 = undefined;
-                        const q = try qual_name.qualSym(self.allocator, sym, &qual_buf);
-                        defer if (q.owned) self.allocator.free(q.name);
-                        const qname = q.name;
-                        // Check if symbol exists in global environment and is not unbound
-                        const is_bound = if (self.global_env) |env| blk: {
-                            const idx = env.lookup(qname) orelse env.lookup(local_name);
-                            if (idx) |i| {
-                                if (i < MAX_GLOBALS) {
-                                    // Check if value is unbound marker
-                                    break :blk self.globals[i].raw != Value.unbound.raw;
-                                }
-                            }
-                            break :blk false;
-                        } else false;
+                        const is_bound = (try self.lookupSymbolValueCell(val)) != null;
                         try self.push(if (is_bound) Value.t else Value.nil);
                     },
                     else => try self.signalTypeErrorDatumExpected(val, self.builtins.sym_symbol),
@@ -6585,10 +6642,10 @@ pub const Vm = struct {
                     .nil => try self.push(Value.nil),
                     .t => try self.push(Value.t),
                     .symbol => {
-                        const sym = val.toPtr(Symbol);
-                        if (try self.lookupSymbolGlobalIndex(sym)) |idx| {
-                            try self.push(self.globals[idx]);
+                        if (try self.lookupSymbolValueCell(val)) |bound_val| {
+                            try self.push(bound_val);
                         } else {
+                            const sym = val.toPtr(Symbol);
                             if (self.shouldTraceError(error.UnboundSymbol)) {
                                 std.debug.print(
                                     "TRACE symbol lookup miss op={s} sym={s}\n",
@@ -6706,18 +6763,40 @@ pub const Vm = struct {
             },
             .zerop => {
                 const val = try self.pop();
-                if (!val.isFixnum()) return error.TypeMismatch;
-                try self.push(if (val.toFixnum() == 0) Value.t else Value.nil);
+                const is_zero = switch (val.typeKind()) {
+                    .fixnum => val.toFixnum() == 0,
+                    .float => val.toFloat() == 0.0,
+                    .bignum => val.toPtr(runtime.Bignum).isZero(),
+                    .rational => val.toPtr(runtime.Rational).numerator == 0,
+                    .complex => blk: {
+                        const c = val.toPtr(runtime.Complex);
+                        break :blk c.real == 0.0 and c.imag == 0.0;
+                    },
+                    else => return error.TypeMismatch,
+                };
+                try self.push(if (is_zero) Value.t else Value.nil);
             },
             .plusp => {
                 const val = try self.pop();
-                if (!val.isFixnum()) return error.TypeMismatch;
-                try self.push(if (val.toFixnum() > 0) Value.t else Value.nil);
+                const is_pos = switch (val.typeKind()) {
+                    .fixnum => val.toFixnum() > 0,
+                    .float => val.toFloat() > 0.0,
+                    .bignum => val.toPtr(runtime.Bignum).size > 0,
+                    .rational => val.toPtr(runtime.Rational).numerator > 0,
+                    else => return error.TypeMismatch,
+                };
+                try self.push(if (is_pos) Value.t else Value.nil);
             },
             .minusp => {
                 const val = try self.pop();
-                if (!val.isFixnum()) return error.TypeMismatch;
-                try self.push(if (val.toFixnum() < 0) Value.t else Value.nil);
+                const is_neg = switch (val.typeKind()) {
+                    .fixnum => val.toFixnum() < 0,
+                    .float => val.toFloat() < 0.0,
+                    .bignum => val.toPtr(runtime.Bignum).size < 0,
+                    .rational => val.toPtr(runtime.Rational).numerator < 0,
+                    else => return error.TypeMismatch,
+                };
+                try self.push(if (is_neg) Value.t else Value.nil);
             },
             .evenp => {
                 const val = try self.pop();
@@ -7174,20 +7253,12 @@ pub const Vm = struct {
             condition_type.raw == b.sym_end_of_file.raw;
     }
 
-    fn globalNameMatches(sym_name: []const u8, global_name: []const u8) bool {
-        if (std.mem.eql(u8, sym_name, global_name)) return true;
-        if (global_name.len <= sym_name.len + 1) return false;
-        const split_idx = global_name.len - sym_name.len - 1;
-        if (global_name[split_idx] != ':') return false;
-        return std.mem.eql(u8, global_name[split_idx + 1 ..], sym_name);
-    }
-
     /// Handle return-from by searching for matching block frame and jumping to it
     fn pushProgvFrame(self: *Vm, symbols: Value, values: Value) Error!void {
         if (self.progv_sp >= MAX_PROGVS) return error.StackOverflow;
 
-        // Build list of (global-index . old-value) pairs.
-        // A single symbol name may map to multiple global aliases.
+        // Build list of (binding-key . old-value) pairs.
+        // binding-key is either a global index fixnum or an uninterned symbol.
         var saved_bindings = Value.nil;
         var sym_list = symbols;
         var val_list = values;
@@ -7199,29 +7270,28 @@ pub const Vm = struct {
             if (!symbol.isSymbol()) return error.TypeMismatch;
 
             const sym_ptr = symbol.toPtr(Symbol);
-            const sym_name = sym_ptr.getName();
             const new_value = if (val_list.isCons()) val_list.toPtr(Cons).car else Value.nil;
 
-            if (self.global_env) |env| {
-                var it = env.bindings.iterator();
-                while (it.next()) |entry| {
-                    const global_name = entry.key_ptr.*;
-                    if (!globalNameMatches(sym_name, global_name)) continue;
-
-                    const idx = entry.value_ptr.*;
-                    const old_value = if (idx < self.num_globals) self.globals[idx] else Value.nil;
-
-                    if (idx < MAX_GLOBALS) {
-                        self.globals[idx] = new_value;
-                        if (idx >= self.num_globals) {
-                            self.num_globals = idx + 1;
-                        }
-                    }
-
-                    const idx_fix = Value.makeFixnum(@intCast(idx));
-                    const pair = try self.heap.allocCons(idx_fix, old_value);
-                    saved_bindings = try self.heap.allocCons(pair, saved_bindings);
+            if (try self.lookupSymbolGlobalIndex(sym_ptr)) |idx| {
+                const old_value = if (idx < self.num_globals) self.globals[idx] else Value.unbound;
+                if (idx < MAX_GLOBALS) {
+                    try self.storeGlobal(idx, new_value);
                 }
+                const idx_fix = Value.makeFixnum(@intCast(idx));
+                const pair = try self.heap.allocCons(idx_fix, old_value);
+                saved_bindings = try self.heap.allocCons(pair, saved_bindings);
+            } else if (try self.defineSymbolGlobalIndex(sym_ptr)) |idx| {
+                if (idx < MAX_GLOBALS) {
+                    try self.storeGlobal(idx, new_value);
+                }
+                const idx_fix = Value.makeFixnum(@intCast(idx));
+                const pair = try self.heap.allocCons(idx_fix, Value.unbound);
+                saved_bindings = try self.heap.allocCons(pair, saved_bindings);
+            } else {
+                const old_value = self.lookupSymbolLocalValueCell(sym_ptr) orelse Value.unbound;
+                try self.setSymbolLocalValueCell(sym_ptr, new_value);
+                const pair = try self.heap.allocCons(symbol, old_value);
+                saved_bindings = try self.heap.allocCons(pair, saved_bindings);
             }
 
             // Advance lists
@@ -7249,18 +7319,27 @@ pub const Vm = struct {
 
             if (pair.isCons()) {
                 const pair_cons = pair.toPtr(Cons);
-                const idx_val = pair_cons.car;
+                const key_val = pair_cons.car;
                 const old_value = pair_cons.cdr;
-                if (!idx_val.isFixnum()) {
-                    bindings = binding_cons.cdr;
-                    continue;
-                }
-                const idx_signed = idx_val.toFixnum();
-                if (idx_signed >= 0) {
-                    const idx: usize = @intCast(idx_signed);
-                    if (idx < MAX_GLOBALS) {
-                        self.globals[idx] = old_value;
-                    }
+                switch (key_val.typeKind()) {
+                    .fixnum => {
+                        const idx_signed = key_val.toFixnum();
+                        if (idx_signed >= 0) {
+                            const idx: usize = @intCast(idx_signed);
+                            if (idx < MAX_GLOBALS) {
+                                self.globals[idx] = old_value;
+                            }
+                        }
+                    },
+                    .symbol => {
+                        const sym = key_val.toPtr(Symbol);
+                        if (old_value.raw == Value.unbound.raw) {
+                            self.clearSymbolLocalValueCell(sym);
+                        } else {
+                            try self.setSymbolLocalValueCell(sym, old_value);
+                        }
+                    },
+                    else => {},
                 }
             }
 
