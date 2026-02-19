@@ -6066,26 +6066,37 @@ pub const Compiler = struct {
         const value_expr = cons2.car;
         if (!cons2.cdr.isNil()) {
             // Multi-place setf: compile each pair in sequence and return last value.
-            var items = std.ArrayList(*const Ir){};
-            defer items.deinit(self.allocator);
-
-            var p = args;
             const heap = if (self.heap) |val| val else return error.InvalidSyntax;
+
+            var pair_count: usize = 0;
+            var count_cur = args;
+            while (count_cur.isCons()) {
+                const pair1 = count_cur.toPtr(Cons);
+                if (!pair1.cdr.isCons()) return error.InvalidSyntax;
+                pair_count += 1;
+                count_cur = pair1.cdr.toPtr(Cons).cdr;
+            }
+
+            const items = try self.allocator.alloc(*const Ir, pair_count);
+            var p = args;
+            var idx: usize = 0;
             while (p.isCons()) {
                 const pair1 = p.toPtr(Cons);
                 if (!pair1.cdr.isCons()) return error.InvalidSyntax;
                 const pair2 = pair1.cdr.toPtr(Cons);
 
                 const one = try heap.allocCons(pair1.car, try heap.allocCons(pair2.car, Value.nil));
-                const node_ir = try self.compileSetf(one, env);
-                try items.append(self.allocator, node_ir);
-
+                items[idx] = try self.compileSetf(one, env);
+                idx += 1;
                 p = pair2.cdr;
             }
 
-            if (items.items.len == 0) return error.InvalidSyntax;
-            if (items.items.len == 1) return @constCast(items.items[0]);
-            return try self.builder.progn(items.items);
+            if (items.len == 0) return error.InvalidSyntax;
+            if (items.len == 1) return @constCast(items[0]);
+
+            const node = try self.allocator.create(Ir);
+            node.* = .{ .progn = items };
+            return node;
         }
 
         // If place is a symbol, check for symbol macro
@@ -19413,6 +19424,38 @@ test "compile multi-setq emits one form per pair" {
     defer env.deinit();
 
     var parser = try Parser.init(arena_alloc, &heap, "(setq a 1 b 2 c 3)", &vm.builtins);
+    defer parser.deinit();
+    const expr = try parser.parse();
+    const ir_node = try compiler.compile(expr, &env);
+
+    try testing.expect(ir_node.* == .progn);
+    try testing.expectEqual(@as(usize, 3), ir_node.progn.len);
+    try testing.expect(ir_node.progn[0].* == .define);
+    try testing.expect(ir_node.progn[1].* == .define);
+    try testing.expect(ir_node.progn[2].* == .define);
+}
+
+test "compile multi-setf emits one form per pair" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(arena_alloc, &heap, "(setf a 1 b 2 c 3)", &vm.builtins);
     defer parser.deinit();
     const expr = try parser.parse();
     const ir_node = try compiler.compile(expr, &env);

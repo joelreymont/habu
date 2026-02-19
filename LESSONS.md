@@ -842,3 +842,12 @@ Environment guard:
 
 #### Did Not Work
 - Leaving `letrec`/`setq` on dynamic append-first staging paths keeps avoidable allocator pressure in loader-heavy workflows; these forms need fixed-size preallocation once arity is knowable from list shape.
+
+### Session Notes (2026-02-19, multi-place setf staging)
+
+#### Worked Well
+- Replacing `compileSetf` multi-place `ArrayList` staging with pre-counted pair slices and direct `progn` node emission (`src/compiler/compile.zig:6067`) removed append-growth/dupe churn while preserving recursive per-pair lowering.
+- Keeping lowering through the same single-place `compileSetf` path for each `(place value)` pair retained semantics for symbol-macro and compound-place updates; the focused regression (`src/compiler/compile.zig:19427`) confirms one emitted form per pair.
+
+#### Did Not Work
+- Using `builder.progn(items)` in this path still duplicates slices internally, so partial refactors that keep builder-level aggregation do not remove transient-allocation pressure.
