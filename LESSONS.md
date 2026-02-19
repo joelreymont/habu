@@ -822,3 +822,13 @@ Environment guard:
   environments still run the rest of the suite deterministically.
 - Prefer candidate-root probing (`/tmp/maxima/src/`, `/tmp/maxima/src/src/`,
   `/tmp/maxima/`) in both loader and tests to avoid path drift regressions.
+
+### Session Notes (2026-02-19, call-lowering transient allocs)
+
+#### Worked Well
+- Replacing `ArrayList + builder.call/tailcall/listStar` staging in call lowering with single pre-sized slices and direct IR node construction (`src/compiler/compile.zig:5892`, `src/compiler/compile.zig:5914`, `src/compiler/compile.zig:17130`) removed redundant transient allocations in hot compile paths while preserving call/apply semantics.
+- Adding a shared qualified struct-predicate lookup helper (`src/compiler/compile.zig:17158`) removed per-call symbol-name duplication and made occurrence-typing predicate lookup robust for package-qualified predicate registrations.
+- Locking regressions directly in compiler tests (`src/compiler/compile.zig:19273`, `src/compiler/compile.zig:19316`) gave deterministic proof that variadic operand preservation and `struct_p` lowering stayed intact.
+
+#### Did Not Work
+- Stopping after replacing `ArrayList` alone is insufficient: routing through `builder.call`/`builder.tailcall`/`builder.listStar` still performs an internal `dupe`, so transient-allocation reduction required direct node construction in compile hot paths.

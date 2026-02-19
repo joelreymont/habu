@@ -5895,20 +5895,8 @@ pub const Compiler = struct {
 
         const cons1 = args.toPtr(Cons);
         const fn_ir = try self.compile(cons1.car, env);
-
-        var compiled_args = std.ArrayList(*Ir){};
-        defer compiled_args.deinit(self.allocator);
-
-        var list = cons1.cdr;
-        while (list.isCons()) {
-            const c = list.toPtr(Cons);
-            const arg_ir = try self.compile(c.car, env);
-            try compiled_args.append(self.allocator, arg_ir);
-            list = c.cdr;
-        }
-
-        const items = try self.allocator.dupe(*const Ir, compiled_args.items);
-        return try self.builder.call(fn_ir, items);
+        const call_args = try self.compileCallArgsSlice(cons1.cdr, env);
+        return try self.buildCallIr(fn_ir, call_args, false);
     }
 
     fn compileApply(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
@@ -5922,32 +5910,36 @@ pub const Compiler = struct {
 
         if (!rest.isCons()) return error.InvalidSyntax;
 
-        // Collect all remaining args (spread args + final list)
-        var spread_args = std.ArrayList(*const Ir){};
-        defer spread_args.deinit(self.allocator);
-
-        while (rest.isCons()) {
-            const cons = rest.toPtr(Cons);
-            const arg_ir = try self.compile(cons.car, env);
-            try spread_args.append(self.allocator, arg_ir);
-            rest = cons.cdr;
+        var spread_count: usize = 0;
+        var count_cur = rest;
+        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
+            spread_count += 1;
         }
-
-        if (spread_args.items.len == 0) return error.InvalidSyntax;
+        if (spread_count == 0) return error.InvalidSyntax;
 
         const fn_ir = try self.compile(fn_expr, env);
 
         // If only one arg, it's just (apply fn args-list)
-        if (spread_args.items.len == 1) {
+        if (spread_count == 1) {
+            const only_arg = try self.compile(rest.toPtr(Cons).car, env);
             const node = try self.allocator.create(ir.Ir);
-            node.* = .{ .apply = .{ .func = fn_ir, .args = spread_args.items[0] } };
+            node.* = .{ .apply = .{ .func = fn_ir, .args = only_arg } };
             return node;
+        }
+
+        const spread_args = try self.allocator.alloc(*const Ir, spread_count);
+        var idx: usize = 0;
+        while (rest.isCons()) : (rest = rest.toPtr(Cons).cdr) {
+            const cons = rest.toPtr(Cons);
+            spread_args[idx] = try self.compile(cons.car, env);
+            idx += 1;
         }
 
         // Multiple args: need to build combined args list
         // (apply fn a b c final-list) => call fn with (a b c . final-list)
         // Build: (list* a b c final-list) which creates (a b c . final-list)
-        const combined = try self.builder.listStar(spread_args.items);
+        const combined = try self.allocator.create(ir.Ir);
+        combined.* = .{ .list_star = spread_args };
         const node = try self.allocator.create(ir.Ir);
         node.* = .{ .apply = .{ .func = fn_ir, .args = combined } };
         return node;
@@ -17135,15 +17127,54 @@ pub const Compiler = struct {
         return self.compileCallWithTail(func_expr, args_expr, env, false);
     }
 
+    fn compileCallArgsSlice(self: *Compiler, args_expr: Value, env: *const Env) anyerror![]const *const Ir {
+        var arg_count: usize = 0;
+        var count_cur = args_expr;
+        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
+            arg_count += 1;
+        }
+
+        const call_args = try self.allocator.alloc(*const Ir, arg_count);
+        var cur = args_expr;
+        var idx: usize = 0;
+        while (cur.isCons()) : (cur = cur.toPtr(Cons).cdr) {
+            const cons = cur.toPtr(Cons);
+            call_args[idx] = try self.compile(cons.car, env);
+            idx += 1;
+        }
+        return call_args;
+    }
+
+    fn buildCallIr(self: *Compiler, func_ir: *const Ir, call_args: []const *const Ir, in_tail: bool) !*Ir {
+        const node = try self.allocator.create(Ir);
+        if (in_tail) {
+            node.* = .{ .tailcall = .{ .func = func_ir, .args = call_args } };
+        } else {
+            node.* = .{ .call = .{ .func = func_ir, .args = call_args } };
+        }
+        return node;
+    }
+
+    fn lookupStructPredicateType(self: *Compiler, sym: *const Symbol) anyerror!?*const types.Type {
+        const name = sym.getName();
+        if (self.struct_predicates.get(name)) |struct_type| {
+            return struct_type;
+        }
+
+        var qual_buf: [512]u8 = undefined;
+        const q = try self.getQualifiedName(sym, &qual_buf);
+        defer if (q.owned) self.allocator.free(q.name);
+        if (std.mem.eql(u8, q.name, name)) return null;
+        return self.struct_predicates.get(q.name);
+    }
+
     fn compileCallWithTail(self: *Compiler, func_expr: Value, args_expr: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
         // Check for struct predicate calls (for occurrence typing)
         // If calling a known struct predicate like point-p, generate struct_p IR
         if (func_expr.isSymbol() and self.struct_predicates.count() > 0 and env.lookupFunctionSym(func_expr) == null) {
-            // Copy name to avoid dangling pointer if heap moves
-            const sym_name_raw = func_expr.toPtr(Symbol).getName();
-            const sym_name = try self.allocator.dupe(u8, sym_name_raw);
-            defer self.allocator.free(sym_name);
-            if (self.struct_predicates.get(sym_name)) |struct_type| {
+            const sym = func_expr.toPtr(Symbol);
+            const sym_name = sym.getName();
+            if (try self.lookupStructPredicateType(sym)) |struct_type| {
                 // This is a struct predicate call - generate struct_p IR
                 // Extract struct name from predicate (remove "-p" suffix)
                 const struct_name = if (sym_name.len > 2 and
@@ -17175,25 +17206,8 @@ pub const Compiler = struct {
             break :blk try self.builder.lit(func_expr);
         } else try self.compile(func_expr, env);
 
-        var args = std.ArrayList(*Ir){};
-        defer args.deinit(self.allocator);
-
-        var list = args_expr;
-        while (list.isCons()) {
-            const cons = list.toPtr(Cons);
-            const arg_ir = try self.compile(cons.car, env);
-            try args.append(self.allocator, arg_ir);
-            list = cons.cdr;
-        }
-
-        // Convert to const slice
-        const items = try self.allocator.dupe(*const Ir, args.items);
-
-        if (in_tail) {
-            return try self.builder.tailcall(func_ir, items);
-        } else {
-            return try self.builder.call(func_ir, items);
-        }
+        const call_args = try self.compileCallArgsSlice(args_expr, env);
+        return try self.buildCallIr(func_ir, call_args, in_tail);
     }
 
     // ========================================================================
@@ -19254,4 +19268,81 @@ test "compile stream constructors keep all variadic operands" {
     const ir_c = try compiler.compile(expr_c, &env);
     try testing.expect(ir_c.* == .make_concatenated_stream);
     try testing.expectEqual(@as(usize, 2), ir_c.make_concatenated_stream.len);
+}
+
+test "compile call forms preserve all operands without staging churn" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser1 = try Parser.init(arena_alloc, &heap, "(f 1 2 3 4)", &vm.builtins);
+    defer parser1.deinit();
+    const call_expr = try parser1.parse();
+    const call_ir = try compiler.compile(call_expr, &env);
+    try testing.expect(call_ir.* == .call);
+    try testing.expectEqual(@as(usize, 4), call_ir.call.args.len);
+
+    var parser2 = try Parser.init(arena_alloc, &heap, "(funcall f 1 2 3 4)", &vm.builtins);
+    defer parser2.deinit();
+    const funcall_expr = try parser2.parse();
+    const funcall_ir = try compiler.compile(funcall_expr, &env);
+    try testing.expect(funcall_ir.* == .call);
+    try testing.expectEqual(@as(usize, 4), funcall_ir.call.args.len);
+
+    var parser3 = try Parser.init(arena_alloc, &heap, "(apply f 1 2 xs)", &vm.builtins);
+    defer parser3.deinit();
+    const apply_expr = try parser3.parse();
+    const apply_ir = try compiler.compile(apply_expr, &env);
+    try testing.expect(apply_ir.* == .apply);
+    try testing.expect(apply_ir.apply.args.* == .list_star);
+    try testing.expectEqual(@as(usize, 3), apply_ir.apply.args.list_star.len);
+}
+
+test "qualified struct predicate lookup emits struct_p ir" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const pred_sym = try heap.intern("widget-p");
+    var qbuf: [512]u8 = undefined;
+    const q = try compiler.getQualifiedName(pred_sym.toPtr(Symbol), &qbuf);
+    defer if (q.owned) compiler.allocator.free(q.name);
+    const key = try compiler.globals.allocator.dupe(u8, q.name);
+    try compiler.struct_predicates.put(key, &types.t_any);
+
+    const arg_sym = try heap.intern("x");
+    const call_args = try heap.allocCons(arg_sym, Value.nil);
+    const expr = try heap.allocCons(pred_sym, call_args);
+    const ir_node = try compiler.compile(expr, &env);
+    try testing.expect(ir_node.* == .struct_p);
 }
