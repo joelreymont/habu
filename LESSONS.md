@@ -217,6 +217,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Replacing `toOwnedSlice`-based dispatcher/lambda param handoff in `defmethod`/dispatcher generation (`src/compiler/compile.zig:12011`, `src/compiler/compile.zig:12296`) with explicit pre-sized/duped slices removed remaining ownership-churn allocations in method-dispatch parameter setup.
 - Rewriting `parseVariant` field extraction (`src/compiler/compile.zig:12900`) to pre-count and allocate field-name slices once removed transient `ArrayList` growth and added strict dotted-tail rejection for malformed variant specs.
 - Locking the behavior with `parseVariant` focused regression (`src/compiler/compile.zig:17991`) keeps ADT variant parsing strict while preserving field ordering.
+- Locking direct `char`/`schar` CL semantics with integration coverage (`src/tests/integration.zig:862`) prevents regressions where string indexing accidentally returns integer codepoints instead of character values.
 
 ### Did Not Work
 - Clearing `compiler.builtins` inside `setVm` caused null-handle crashes in REPL setup (`src/interp/repl.zig:createFeaturesGlobal` reads `compiler.builtins.?` directly). Correct fix was to invalidate refresh epoch keys in `setVm` without nulling builtin handles.

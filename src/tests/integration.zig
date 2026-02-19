@@ -863,6 +863,42 @@ test "aref supports strings with character semantics" {
     try testing.expectEqual(@as(u21, 'z'), mutated.toCharacter());
 }
 
+test "char and schar return character objects" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const got = try repl.eval(
+        "(list (char \"hello\" 0)\n" ++
+            "      (char-code (char \"hello\" 0))\n" ++
+            "      (schar \"world\" 1)\n" ++
+            "      (char-code (schar \"world\" 1)))",
+    );
+
+    const c0 = got.toPtr(Cons);
+    try testing.expect(c0.car.isCharacter());
+    try testing.expectEqual(@as(u21, 'h'), c0.car.toCharacter());
+
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.isFixnum());
+    try testing.expectEqual(@as(i64, 'h'), c1.car.toFixnum());
+
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(c2.car.isCharacter());
+    try testing.expectEqual(@as(u21, 'o'), c2.car.toCharacter());
+
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expect(c3.car.isFixnum());
+    try testing.expectEqual(@as(i64, 'o'), c3.car.toFixnum());
+}
+
 test "array reader keeps terminal cons and symbol literals" {
     const allocator = testing.allocator;
 
