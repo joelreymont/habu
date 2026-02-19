@@ -88,6 +88,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Switching lexical variable assertion lookup from global name-based declarations to environment symbol-identity lookup (`src/compiler/compile.zig:2620`) removed false `assert_closure`/`assert_fixnum` injections in unrelated forms.
 - Dropping global type-decl application from `let` initializer compilation (`src/compiler/compile.zig:5002`) removed a root crash vector where unrelated local names inherited stale global declarations.
 - Locking the fix with a regression (`src/tests/integration.zig:5889`) prevents reintroducing local type declaration leakage.
+- Tracing with `HABU_TRACE_ERROR_CONTEXT=1`/`HABU_TRACE_ERROR_ONLY=UnboundSymbol` on the module load gate immediately exposed the actual symbol-function miss (`ATAN`) inside `trigi` instead of chasing downstream parser/runtime fallout.
+- Installing BIGFLOAT-IMPL callable aliases through a guarded binder (`lib/maxima-stubs.lisp:120`, `lib/maxima-stubs.lisp:133`) plus inverse-trig fallbacks (`lib/maxima-stubs.lisp:105`) fixed `trigi`/`trigo` loading generically and kept operator symbols fbound across package shadowing.
+- Adding a focused trigi subset regression (`src/tests/integration.zig:5921`) catches future regressions where callable trig aliases disappear during package/bootstrap changes.
 - Converting the Maxima end-to-end check into a deterministic readiness vector (`src/tests/integration.zig:5781`) keeps large-package progress measurable without hiding remaining semantic gaps.
 - Splitting large Maxima setup/eval forms into separate `repl.eval` calls reduced parser-noise and made failures attributable to specific steps instead of one monolithic expression.
 - Keeping `defun` intact in desugar (`src/compiler/passes/p02_desugar.zig`) and only desugaring the body restored compiler-level DEFUN semantics (implicit function block), which removed `NoMatchingBlock` failures in real Maxima functions (`add-lineinfo`).
@@ -99,6 +102,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Running broad `zig build test -Dtest-filter='maxima '` remains unreliable in this environment (hang-prone); targeted filters for failing gates are more deterministic for RCA.
 - Packing very large module-list setup and operation probes into a single reader input string produced unstable `UnexpectedToken` failures; smaller staged eval forms are safer for large integration probes.
 - Assuming package-qualified names were safe under old fallback logic was wrong: fallback-to-bare-name can silently bind to the wrong package/global slot and manifests later as recursive calls instead of immediate package resolution errors.
+- Directly aliasing every BIGFLOAT-IMPL symbol to a `cl:` function without a `fboundp` guard failed at load time (`ASIN` unbound on this runtime); guarded binding with explicit fallbacks is required for portable bootstrap stubs.
 
 ## Session Notes (2026-02-17)
 

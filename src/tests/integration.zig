@@ -5918,6 +5918,62 @@ test "maxima ratmac subset binds pzerop" {
     try testing.expect(cur.isNil());
 }
 
+test "maxima trigi subset binds callable trig aliases" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 192 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    const status = try repl.eval(
+        \\(progn
+        \\  (setq *maxima-files*
+        \\    '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
+        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "rzmac" "ratmac" "opers"
+        \\      "utils" "merror" "mutils" "sumcon" "sublis" "mformt" "outmis" "ar"
+        \\      "comm" "comm2" "mlisp" "mmacro" "buildq"
+        \\      "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
+        \\      "suprv1" "inmis" "db"
+        \\      "compar" "lesfac" "factor" "algfac" "nalgfa" "rat3a" "rat3b" "rat3c"
+        \\      "rat3d" "rat3e" "nrat4" "ratout" "acall"
+        \\      "schatc" "matcom" "matrun" "nisimp" "nparse" "displm" "displa" "nforma" "grind"
+        \\      "spgcd" "ezgcd" "trigi" "trigo"))
+        \\  (multiple-value-bind (ok total fail) (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\    (declare (ignore ok total))
+        \\    (list
+        \\      fail
+        \\      (if *maxima-failed* 1 0)
+        \\      (if (and (fboundp 'maxima::atan)
+        \\               (functionp (symbol-function 'maxima::atan)))
+        \\          1
+        \\          0)
+        \\      (if (and (fboundp 'maxima::asin)
+        \\               (functionp (symbol-function 'maxima::asin)))
+        \\          1
+        \\          0)
+        \\      (if (fboundp 'maxima::$sin) 1 0)
+        \\      (if (fboundp 'maxima::$cos) 1 0))))
+    );
+
+    try testing.expect(status.isCons());
+    var cur = status;
+    const expected = [_]i64{ 0, 0, 1, 1, 1, 1 };
+    for (expected) |want| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(want, cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
 test "maxima integrate dependency chain binds matcher and partition symbols" {
     try ensureMaximaSources();
     const allocator = testing.allocator;
