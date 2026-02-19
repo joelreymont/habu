@@ -861,3 +861,13 @@ Environment guard:
 
 #### Did Not Work
 - Holding onto dynamic append patterns for `labels` setup (`names`/`lambda_args`/`indices`/`sym_vals`) adds avoidable allocator churn and duplicates data already derivable from the same binding list traversal.
+
+### Session Notes (2026-02-19, lambda/progv staging)
+
+#### Worked Well
+- Replacing lambda entry-assertion staging with fixed-size assertion buffers and direct `progn` node emission (`src/compiler/compile.zig:4239`) removed `ArrayList + dupe` overhead while keeping safety-gated assertion semantics.
+- Replacing special-parameter `progv` staging with pre-sized symbol/value slices (`src/compiler/compile.zig:4302`) eliminated transient list growth in lambda lowering without changing symbol/value ordering.
+- Replacing all-special LET fast-path value staging (`src/compiler/compile.zig:5320`) with direct slices removed another hot allocation loop in dynamic-binding lowering.
+
+#### Did Not Work
+- Leaving assertion/progv aggregation on dynamic arrays causes repeated allocator churn in compile-heavy macro/function pipelines even when the target cardinality is statically bounded by parsed lambda metadata.

@@ -4236,40 +4236,44 @@ pub const Compiler = struct {
         }
 
         // Prepend type assertions for typed parameters
-        var assertions = std.ArrayList(*Ir){};
-        defer assertions.deinit(self.allocator);
+        if (self.optimize_current.safety > 0 and typed_params.items.len > 0) {
+            const assertions = try self.allocator.alloc(*const Ir, typed_params.items.len + 1);
+            var assertions_owned = false;
+            defer if (!assertions_owned) self.allocator.free(assertions);
 
-        for (typed_params.items) |tp| {
-            const param_name = tp.name;
-            var type_sym_to_check: ?Value = null;
+            var assertion_count: usize = 0;
+            for (typed_params.items) |tp| {
+                const param_name = tp.name;
+                var type_sym_to_check: ?Value = null;
 
-            if (tp.type_sym) |type_sym| {
-                type_sym_to_check = type_sym;
-            } else if (tp.sym) |param_sym| {
-                if (lambda_env.lookupTypeDeclSym(param_sym)) |decl_type| {
-                    type_sym_to_check = decl_type;
+                if (tp.type_sym) |type_sym| {
+                    type_sym_to_check = type_sym;
+                } else if (tp.sym) |param_sym| {
+                    if (lambda_env.lookupTypeDeclSym(param_sym)) |decl_type| {
+                        type_sym_to_check = decl_type;
+                    }
                 }
-            }
 
-            if (type_sym_to_check) |type_sym| {
-                // At safety=0, variable references are already wrapped with
-                // assert_fixnum via getTypeDecl, so entry assertions are
-                // redundant. At safety>0, emit entry checks for early error.
-                if (self.optimize_current.safety > 0) {
+                if (type_sym_to_check) |type_sym| {
                     const var_ir = try self.builder.variable(param_name, 0, tp.idx);
                     const assert_ir = try self.makeTypeAssertionSym(var_ir, type_sym);
                     if (assert_ir) |assert_node| {
-                        try assertions.append(self.allocator, assert_node);
+                        assertions[assertion_count] = assert_node;
+                        assertion_count += 1;
                     }
                 }
             }
-        }
 
-        // If we have assertions, wrap body in progn with assertions first
-        if (assertions.items.len > 0) {
-            try assertions.append(self.allocator, body_ir);
-            const items = try self.allocator.dupe(*const Ir, assertions.items);
-            body_ir = try self.builder.progn(items);
+            // If we have assertions, wrap body in progn with assertions first
+            if (assertion_count > 0) {
+                assertions[assertion_count] = body_ir;
+                assertion_count += 1;
+
+                const seq_ir = try self.allocator.create(Ir);
+                seq_ir.* = .{ .progn = assertions[0..assertion_count] };
+                body_ir = seq_ir;
+                assertions_owned = true;
+            }
         }
 
         // Wrap body in return type assertion if specified.
@@ -4299,19 +4303,19 @@ pub const Compiler = struct {
         // Globally proclaimed special params must be dynamically visible to
         // callees (e.g. declare-top helpers in Maxima mrgmac/db pipeline).
         if (special_params.items.len > 0) {
-            var special_syms = std.ArrayList(Value){};
-            defer special_syms.deinit(self.allocator);
-            var special_vals = std.ArrayList(*const Ir){};
-            defer special_vals.deinit(self.allocator);
+            const special_syms = try self.allocator.alloc(Value, special_params.items.len);
+            defer self.allocator.free(special_syms);
+            const special_vals = try self.allocator.alloc(*const Ir, special_params.items.len);
+            defer self.allocator.free(special_vals);
 
-            for (special_params.items) |sp| {
-                try special_syms.append(self.allocator, sp.sym);
-                try special_vals.append(self.allocator, try self.builder.variable(sp.name, 0, sp.idx));
+            for (special_params.items, 0..) |sp, i| {
+                special_syms[i] = sp.sym;
+                special_vals[i] = try self.builder.variable(sp.name, 0, sp.idx);
             }
 
-            const special_syms_list = try self.listFromSlice(special_syms.items);
+            const special_syms_list = try self.listFromSlice(special_syms);
             const special_syms_ir = try self.builder.lit(special_syms_list);
-            const special_vals_ir = try self.buildIrList(special_vals.items);
+            const special_vals_ir = try self.buildIrList(special_vals);
             body_ir = try self.builder.progv(special_syms_ir, special_vals_ir, body_ir);
         }
 
@@ -5317,15 +5321,14 @@ pub const Compiler = struct {
 
         // Fast path: all bindings are special.
         if (!has_lexical) {
-            var vals = std.ArrayList(*const Ir){};
-            defer vals.deinit(self.allocator);
-            for (special_inits.items) |init_expr| {
-                const init_ir = try self.compile(init_expr, env);
-                try vals.append(self.allocator, init_ir);
+            const vals = try self.allocator.alloc(*const Ir, special_inits.items.len);
+            defer self.allocator.free(vals);
+            for (special_inits.items, 0..) |init_expr, i| {
+                vals[i] = try self.compile(init_expr, env);
             }
             const sym_list = try self.listFromSlice(special_syms.items);
             const symbols_ir = try self.builder.lit(sym_list);
-            const values_ir = try self.buildIrList(vals.items);
+            const values_ir = try self.buildIrList(vals);
             const body_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
             return try self.builder.progv(symbols_ir, values_ir, body_ir);
         }
@@ -19551,4 +19554,68 @@ test "compile labels emits boxed init sequence" {
     try testing.expect(ir_node.let.body.* == .progn);
     try testing.expectEqual(@as(usize, 2), ir_node.let.body.progn.len);
     try testing.expect(ir_node.let.body.progn[0].* == .box_set);
+}
+
+test "compile typed lambda emits assertion sequence" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(arena_alloc, &heap, "(lambda ((x fixnum)) x)", &vm.builtins);
+    defer parser.deinit();
+    const expr = try parser.parse();
+    const ir_node = try compiler.compile(expr, &env);
+
+    try testing.expect(ir_node.* == .lambda);
+    try testing.expect(ir_node.lambda.body.* == .progn);
+    try testing.expectEqual(@as(usize, 2), ir_node.lambda.body.progn.len);
+    try testing.expect(ir_node.lambda.body.progn[0].* == .assert_fixnum);
+}
+
+test "compile all-special let lowers to progv" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    var compiler = try Compiler.initWithHeap(arena_alloc, &vm);
+    defer compiler.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    var parser = try Parser.init(
+        arena_alloc,
+        &heap,
+        "(let ((*x* 1) (*y* 2)) (declare (special *x* *y*)) (+ *x* *y*))",
+        &vm.builtins,
+    );
+    defer parser.deinit();
+    const expr = try parser.parse();
+    const ir_node = try compiler.compile(expr, &env);
+
+    try testing.expect(ir_node.* == .progv);
 }
