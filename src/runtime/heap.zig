@@ -19,6 +19,13 @@ const roots_mod = @import("roots.zig");
 pub const ALIGNMENT: usize = 16;
 pub const CARD_SHIFT: u6 = 9; // 512-byte cards
 pub const CARD_SIZE: usize = 1 << CARD_SHIFT;
+pub const CARD_GRAIN_SHIFT: u6 = 6; // 64-byte card lanes
+pub const CARD_GRAIN_SIZE: usize = 1 << CARD_GRAIN_SHIFT;
+const CARD_GRAIN_N: usize = CARD_SIZE / CARD_GRAIN_SIZE;
+comptime {
+    if (CARD_SIZE % CARD_GRAIN_SIZE != 0) @compileError("CARD_GRAIN_SIZE must divide CARD_SIZE");
+    if (CARD_GRAIN_N > 8) @compileError("CARD_GRAIN_N must fit in a u8 bitmask");
+}
 const ALLOC_SAMPLE_MASK: usize = 7; // Sample 1/8 allocations.
 const NURSERY_HEADROOM_MIN: usize = 64 * 1024;
 const NURSERY_HEADROOM_SHIFT: u6 = 3; // 12.5% live-set headroom.
@@ -848,13 +855,38 @@ pub const Heap = struct {
         return (addr - base) >> CARD_SHIFT;
     }
 
+    fn cardLaneBitForAddr(self: *const Heap, addr: usize) u8 {
+        const base = @intFromPtr(self.memory.ptr);
+        const lane = ((addr - base) & (CARD_SIZE - 1)) >> CARD_GRAIN_SHIFT;
+        return @as(u8, 1) << @as(u3, @intCast(lane));
+    }
+
+    fn cardLaneMaskForRange(self: *const Heap, card_idx: usize, start_addr: usize, end_addr: usize) u8 {
+        const card = self.cardRange(card_idx) orelse return 0;
+        const card_start = @intFromPtr(card.start);
+        const card_end = @intFromPtr(card.end);
+        const lo = @max(start_addr, card_start);
+        const hi = @min(end_addr, card_end);
+        if (hi <= lo) return 0;
+
+        const lane_lo = (lo - card_start) >> CARD_GRAIN_SHIFT;
+        const lane_hi = (hi - 1 - card_start) >> CARD_GRAIN_SHIFT;
+        var mask: u8 = 0;
+        var lane = lane_lo;
+        while (lane <= lane_hi) : (lane += 1) {
+            mask |= @as(u8, 1) << @as(u3, @intCast(lane));
+        }
+        return mask;
+    }
+
     pub fn clearCardTable(self: *Heap) void {
         @memset(self.card_table, 0);
     }
 
     pub fn isCardMarkedForAddr(self: *const Heap, addr: usize) bool {
         const idx = self.cardIndexForAddr(addr) orelse return false;
-        return self.card_table[idx] != 0;
+        const bit = self.cardLaneBitForAddr(addr);
+        return (self.card_table[idx] & bit) != 0;
     }
 
     pub fn markedCardCount(self: *const Heap) usize {
@@ -910,8 +942,9 @@ pub const Heap = struct {
         if (!self.isInNurseryAddr(stored_addr)) return;
 
         const card_idx = self.cardIndexForAddr(owner_addr) orelse return;
-        if (self.card_table[card_idx] == 0) {
-            self.card_table[card_idx] = 1;
+        const bit = self.cardLaneBitForAddr(owner_addr);
+        if ((self.card_table[card_idx] & bit) == 0) {
+            self.card_table[card_idx] |= bit;
             self.stats.wb_marks +%= 1;
         }
     }
@@ -921,8 +954,9 @@ pub const Heap = struct {
         if (!self.containsAddr(owner_addr)) return;
         if (self.isInNurseryAddr(owner_addr)) return;
         const card_idx = self.cardIndexForAddr(owner_addr) orelse return;
-        if (self.card_table[card_idx] == 0) {
-            self.card_table[card_idx] = 1;
+        const bit = self.cardLaneBitForAddr(owner_addr);
+        if ((self.card_table[card_idx] & bit) == 0) {
+            self.card_table[card_idx] |= bit;
         }
     }
 
@@ -935,7 +969,8 @@ pub const Heap = struct {
         const start_idx = self.cardIndexForAddr(start_addr) orelse return false;
         const end_idx = self.cardIndexForAddr(last_addr) orelse return false;
         for (start_idx..end_idx + 1) |idx| {
-            if (self.card_table[idx] != 0) return true;
+            const mask = self.cardLaneMaskForRange(idx, start_addr, end_addr);
+            if (mask != 0 and (self.card_table[idx] & mask) != 0) return true;
         }
         return false;
     }
@@ -3037,6 +3072,41 @@ test "heap remembered set APIs enumerate and clear marked cards" {
 
     heap.clearMarkedCards(cards.items);
     try testing.expectEqual(@as(usize, 0), heap.markedCardCount());
+}
+
+test "heap card lanes reduce same-card remembered false positives" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+        },
+    });
+    defer heap.deinit();
+
+    const tenured = heap.tenuredRegion().?;
+    const base = @intFromPtr(tenured.start);
+    const owner_a = Value{ .raw = base };
+    const owner_b_addr = base + CARD_GRAIN_SIZE * 3;
+    const owner_b = Value{ .raw = owner_b_addr };
+    const young = try heap.allocCons(Value.makeFixnum(9), Value.nil);
+
+    heap.clearCardTable();
+    heap.writeBarrier(owner_a, young);
+    try testing.expectEqual(@as(usize, 1), heap.markedCardCount());
+    try testing.expect(heap.isCardMarkedForAddr(base));
+    try testing.expect(!heap.isCardMarkedForAddr(owner_b_addr));
+
+    heap.writeBarrier(owner_b, young);
+    try testing.expectEqual(@as(usize, 1), heap.markedCardCount());
+    try testing.expect(heap.isCardMarkedForAddr(owner_b_addr));
+
+    try testing.expect(heap.hasMarkedCardInAddrRange(base, base + CARD_GRAIN_SIZE));
+    try testing.expect(!heap.hasMarkedCardInAddrRange(base + CARD_GRAIN_SIZE, base + CARD_GRAIN_SIZE * 2));
+    try testing.expect(heap.hasMarkedCardInAddrRange(owner_b_addr, owner_b_addr + CARD_GRAIN_SIZE));
 }
 
 test "heap collectGarbage reuses gc_slots buffer" {
