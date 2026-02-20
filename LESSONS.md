@@ -43,6 +43,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding a deterministic generational stress regression in integration (`src/tests/integration.zig:7173`) locked adaptive tenuring bounds (`threshold/min/max`, scale, ratio ranges) and ensured threshold movement under repeated promote-and-sweep cycles.
 - Replacing 1-bit card marks with per-card lane bitmasks (`src/runtime/heap.zig:20`, `src/runtime/heap.zig:851`, `src/runtime/heap.zig:963`) tightened remembered-set granularity and reduced same-card false-positive scans without changing barrier call sites.
 - Making `hasMarkedCardInAddrRange` lane-aware (`src/runtime/heap.zig:954`) plus adding a focused regression (`src/runtime/heap.zig:3070`) gave deterministic proof that unrelated lanes in the same card no longer trigger remembered-set hits.
+- Coalescing remembered cards into run lists (`src/runtime/heap.zig:914`) and reusing a persistent `remembered_runs` buffer in GC (`src/runtime/gc.zig:185`, `src/runtime/gc.zig:414`) improved minor-GC remembered scanning locality while keeping allocation-free hot paths.
+- Routing minor-GC remembered scans through run-aware overlap checks (`src/runtime/gc.zig:415`, `src/runtime/heap.zig:996`) eliminated full-table clean-run walks and preserved correctness on tenured/LOS edge scanning.
 
 ### Did Not Work
 - Assuming promotion-success counters would update only when tenured sweep reclaimed something was wrong; the old early-return path in `sweepTenured` skipped success accounting for all-live sets.
@@ -60,6 +62,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Enforcing `tenured_live > 0 => tenured_bytes > 0` as a strict benchmark invariant was incorrect for current allocator accounting (`bench/check.zig:390`): `tenured_bytes` tracks bump-usage, not exact live-bytes, so hard coupling generated false failures on valid runs.
 - Repl/stdlib-driven tenuring stress tests were brittle for this gate (fixture-sensitive OOM and promotion-starvation); heap-driven promote/drop cycles in `src/tests/integration.zig:7173` are a better deterministic guard for policy regression checks.
 - In this environment `zig build bench-check -- --json` can stall with sleeping `bench_check`/build processes and no progress output; targeted `-Dtest-filter` gates plus `tools/gc-compare` JSON checks are the reliable verification path until harness stability is fixed.
+- Using only per-object `hasMarkedCardInAddrRange` checks across all old objects is still too cache-cold for remembered scans at scale; run coalescing + fast run filtering should be the baseline before deeper RSet tuning.
 
 ## Session Notes (2026-02-18)
 

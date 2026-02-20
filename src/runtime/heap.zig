@@ -303,6 +303,11 @@ pub const Region = struct {
     }
 };
 
+pub const CardRun = struct {
+    start_idx: usize,
+    end_idx: usize, // exclusive
+};
+
 pub const HeapLayout = struct {
     mode: GcLayoutMode,
     nursery_from: Region,
@@ -916,6 +921,21 @@ pub const Heap = struct {
         }
     }
 
+    pub fn appendMarkedCardRuns(self: *const Heap, allocator: std.mem.Allocator, out: *std.ArrayList(CardRun)) !void {
+        var idx: usize = 0;
+        while (idx < self.card_table.len) {
+            while (idx < self.card_table.len and self.card_table[idx] == 0) : (idx += 1) {}
+            if (idx >= self.card_table.len) break;
+            const start_idx = idx;
+            idx += 1;
+            while (idx < self.card_table.len and self.card_table[idx] != 0) : (idx += 1) {}
+            try out.append(allocator, .{
+                .start_idx = start_idx,
+                .end_idx = idx,
+            });
+        }
+    }
+
     pub fn appendMarkedCardRanges(self: *const Heap, allocator: std.mem.Allocator, out: *std.ArrayList(Region)) !void {
         for (self.card_table, 0..) |v, idx| {
             if (v == 0) continue;
@@ -971,6 +991,30 @@ pub const Heap = struct {
         for (start_idx..end_idx + 1) |idx| {
             const mask = self.cardLaneMaskForRange(idx, start_addr, end_addr);
             if (mask != 0 and (self.card_table[idx] & mask) != 0) return true;
+        }
+        return false;
+    }
+
+    pub fn hasMarkedCardInAddrRangeRuns(self: *const Heap, start_addr: usize, end_addr: usize, runs: []const CardRun) bool {
+        if (runs.len == 0) return false;
+        if (end_addr <= start_addr) return false;
+        if (!self.containsAddr(start_addr)) return false;
+        const last_addr = end_addr - 1;
+        if (!self.containsAddr(last_addr)) return false;
+
+        const start_idx = self.cardIndexForAddr(start_addr) orelse return false;
+        const end_idx = self.cardIndexForAddr(last_addr) orelse return false;
+        for (runs) |run| {
+            if (run.end_idx <= start_idx) continue;
+            if (run.start_idx > end_idx) break;
+
+            const card_lo = @max(run.start_idx, start_idx);
+            const card_hi = @min(run.end_idx - 1, end_idx);
+            var idx = card_lo;
+            while (idx <= card_hi) : (idx += 1) {
+                const mask = self.cardLaneMaskForRange(idx, start_addr, end_addr);
+                if (mask != 0 and (self.card_table[idx] & mask) != 0) return true;
+            }
         }
         return false;
     }
@@ -3069,6 +3113,12 @@ test "heap remembered set APIs enumerate and clear marked cards" {
     for (ranges.items) |r| {
         try testing.expect(r.len() > 0);
     }
+
+    var runs = std.ArrayList(CardRun){};
+    defer runs.deinit(testing.allocator);
+    try heap.appendMarkedCardRuns(testing.allocator, &runs);
+    try testing.expectEqual(@as(usize, 2), runs.items.len);
+    try testing.expect(runs.items[0].end_idx <= runs.items[1].start_idx);
 
     heap.clearMarkedCards(cards.items);
     try testing.expectEqual(@as(usize, 0), heap.markedCardCount());

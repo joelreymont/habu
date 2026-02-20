@@ -73,7 +73,7 @@
         - [x] `habu-tenuring-lock-perf-72884770` Tenuring: lock perf regressions. Depends on `habu-tenuring-adaptive-threshold-34c571a8`.
       - [ ] `habu-optimize-remembered-set-4ebdf466` Optimize remembered-set/card scanning paths. Depends on `habu-implement-adaptive-tenuring-8d7cbd85`.
         - [x] `habu-rset-tighten-card-ba8ce5c2` RSet: tighten card mark granularity.
-        - [ ] `habu-rset-add-scan-13787e2c` RSet: add scan fast paths. Depends on `habu-rset-tighten-card-ba8ce5c2`.
+        - [x] `habu-rset-add-scan-13787e2c` RSet: add scan fast paths. Depends on `habu-rset-tighten-card-ba8ce5c2`.
         - [ ] `habu-rset-verify-correctness-3010858a` RSet: verify correctness and speed. Depends on `habu-rset-add-scan-13787e2c`.
       - [ ] `habu-implement-gc-debt-bb3f3f6e` Implement GC debt trigger model with pause targets. Depends on `habu-optimize-remembered-set-4ebdf466`.
         - [ ] `habu-debt-account-allocation-07cb1149` Debt: account allocation pressure.

@@ -182,6 +182,9 @@ pub const GC = struct {
     /// Survivor age updates collected during copy (preallocated, reused).
     age_updates: std.ArrayList(heap_mod.Heap.SurvivorAgeEntry),
     age_peak: usize,
+    /// Coalesced remembered-card runs for minor-GC fast-path scans.
+    remembered_runs: std.ArrayList(heap_mod.CardRun),
+    runs_peak: usize,
     /// Debug: flag set during GC trace/copy phase
     gc_in_progress: if (builtin.mode == .Debug) bool else void,
 
@@ -193,6 +196,8 @@ pub const GC = struct {
             .work_peak = 0,
             .age_updates = std.ArrayList(heap_mod.Heap.SurvivorAgeEntry){},
             .age_peak = 0,
+            .remembered_runs = std.ArrayList(heap_mod.CardRun){},
+            .runs_peak = 0,
             .gc_in_progress = if (builtin.mode == .Debug) false else {},
         };
     }
@@ -200,6 +205,7 @@ pub const GC = struct {
     pub fn deinit(self: *GC) void {
         self.work_list.deinit(self.allocator);
         self.age_updates.deinit(self.allocator);
+        self.remembered_runs.deinit(self.allocator);
     }
 
     /// Calculate initial capacity for work queues based on heap size
@@ -300,6 +306,7 @@ pub const GC = struct {
             const init_cap = self.calculateInitialCapacity(heap);
             try self.work_list.ensureTotalCapacity(self.allocator, init_cap);
             try self.age_updates.ensureTotalCapacity(self.allocator, init_cap * 4);
+            try self.remembered_runs.ensureTotalCapacity(self.allocator, @max(init_cap / 8, @as(usize, 64)));
         }
 
         // Set GC in-progress flag (debug only)
@@ -387,6 +394,8 @@ pub const GC = struct {
         self.work_peak = 0;
         self.age_updates.clearRetainingCapacity();
         self.age_peak = 0;
+        self.remembered_runs.clearRetainingCapacity();
+        self.runs_peak = 0;
         var alloc_ptr = heap.to_start;
         heap.clearTenuredMarks();
         heap.clearLosMarks();
@@ -406,16 +415,10 @@ pub const GC = struct {
         // Scan tenured remembered objects on marked cards.
         var rem_scanned: usize = 0;
         if (heap.markedCardCount() > 0) {
-            for (heap.tenured_objs.items) |obj| {
-                if (!heap.hasMarkedCardInAddrRange(obj.addr, obj.addr + obj.size)) continue;
-                try self.scanObject(heap, obj.addr, obj.tag, &alloc_ptr);
-                rem_scanned +%= 1;
-            }
-            for (heap.los_objs.items) |obj| {
-                if (!heap.hasMarkedCardInAddrRange(obj.addr, obj.addr + obj.size)) continue;
-                try self.scanObject(heap, obj.addr, obj.tag, &alloc_ptr);
-                rem_scanned +%= 1;
-            }
+            try heap.appendMarkedCardRuns(self.allocator, &self.remembered_runs);
+            self.runs_peak = self.remembered_runs.items.len;
+            rem_scanned +%= try self.scanRememberedObjects(heap, heap.tenured_objs.items, &alloc_ptr);
+            rem_scanned +%= try self.scanRememberedObjects(heap, heap.los_objs.items, &alloc_ptr);
         }
 
         while (self.work_list.items.len > 0) {
@@ -450,6 +453,22 @@ pub const GC = struct {
         return bytes_copied;
     }
 
+    fn scanRememberedObjects(
+        self: *GC,
+        heap: *heap_mod.Heap,
+        objs: anytype,
+        alloc_ptr: *[*]align(heap_mod.ALIGNMENT) u8,
+    ) !usize {
+        if (self.remembered_runs.items.len == 0) return 0;
+        var scanned: usize = 0;
+        for (objs) |obj| {
+            if (!heap.hasMarkedCardInAddrRangeRuns(obj.addr, obj.addr + obj.size, self.remembered_runs.items)) continue;
+            try self.scanObject(heap, obj.addr, obj.tag, alloc_ptr);
+            scanned +%= 1;
+        }
+        return scanned;
+    }
+
     /// Grow work queues after GC if they exceeded 75% capacity
     /// Growth happens AFTER GC completes to avoid allocations during trace
     fn maybeGrowQueues(self: *GC) !void {
@@ -457,6 +476,8 @@ pub const GC = struct {
         const work_peak = self.work_peak;
         const age_cap = self.age_updates.capacity;
         const age_peak = self.age_peak;
+        const run_cap = self.remembered_runs.capacity;
+        const run_peak = self.runs_peak;
 
         // If we used >75% capacity, grow for next cycle
         if (work_peak * 4 > work_cap * 3) {
@@ -466,6 +487,10 @@ pub const GC = struct {
         if (age_cap == 0 or age_peak * 4 > age_cap * 3) {
             const new_cap = if (age_cap == 0) @as(usize, 256) else age_cap * 2;
             try self.age_updates.ensureTotalCapacity(self.allocator, new_cap);
+        }
+        if (run_cap == 0 or run_peak * 4 > run_cap * 3) {
+            const new_cap = if (run_cap == 0) @as(usize, 64) else run_cap * 2;
+            try self.remembered_runs.ensureTotalCapacity(self.allocator, new_cap);
         }
     }
 
