@@ -63,6 +63,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Exporting debt telemetry through `bench/gc` and enforcing it in `bench/check`/`tools/gc-compare` (`bench/gc.zig:337`, `bench/check.zig:70`, `tools/gc-compare:330`) created a closed verification loop for debt bytes, paydown, and trigger quality.
 - Driving LOS threshold from per-cycle allocation-size deltas (`src/runtime/gc.zig:244`, `src/runtime/gc.zig:273`) plus occupancy/pause feedback produced bounded threshold movement without workload-specific handling.
 - Exporting LOS policy state end-to-end (`src/runtime/heap.zig:474`, `bench/gc.zig:357`, `bench/check.zig:90`, `tools/gc-compare:374`) turned threshold/scale/range regressions into immediate gate failures instead of latent perf drift.
+- Reusing one bin/list allocator path for both tenured and LOS free spans (`src/runtime/heap.zig:1124`, `src/runtime/heap.zig:1175`, `src/runtime/heap.zig:1433`) removed duplicate allocation-policy code and made LOS reuse use the same bounded best-fit behavior as tenured.
+- Rewinding LOS bump-pointer from coalesced tail spans (`src/runtime/heap.zig:1420`, `src/runtime/heap.zig:1501`) reclaimed top-of-LOS space immediately and reduced LOS reuse latency on subsequent allocations.
 
 ### Did Not Work
 - Assuming a fixed `MAJOR_SWEEP_BUDGET`-sized fixture would keep major cycle active was brittle; root ordering/object size can make the cycle complete in one pass, so barrier tests need larger deterministic workloads.
@@ -89,6 +91,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Running `python -m py_compile` in-tree drops `tools/__pycache__` artifacts; remove these before commit to keep generated files out of history.
 - Debt-triggered precollection is safe for `Value` roots but not raw heap-backed byte slices (`allocString`/`intern`/`allocSymbol`); those paths still need explicit stable-copy handling before enabling proactive debt collections there.
 - Using cumulative allocation histograms directly for LOS adaptation was wrong; control decisions must use per-cycle deltas (`src/runtime/gc.zig:244`) or thresholds drift from stale historical bias.
+- Asserting absolute LOS object positions in tests was brittle because low thresholds can route bootstrap allocations into LOS; capture/mark target spans explicitly and assert reuse by span address (`src/runtime/heap.zig:3490`, `src/runtime/heap.zig:3521`).
 
 ## Session Notes (2026-02-18)
 

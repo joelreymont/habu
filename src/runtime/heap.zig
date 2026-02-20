@@ -377,6 +377,7 @@ pub const Heap = struct {
     los_target_pause_ns: u64,
     los_objs: std.ArrayList(TenuredObj),
     los_free: std.ArrayList(FreeSpan),
+    los_free_bins: [TENURED_FREE_BIN_N]std.ArrayList(FreeSpan),
     major_cycle_active: bool,
     /// Persistent collector state reused across GC cycles.
     gc: GC,
@@ -727,6 +728,7 @@ pub const Heap = struct {
             .los_target_pause_ns = 10_000_000,
             .los_objs = std.ArrayList(TenuredObj){},
             .los_free = std.ArrayList(FreeSpan){},
+            .los_free_bins = [_]std.ArrayList(FreeSpan){std.ArrayList(FreeSpan){}} ** TENURED_FREE_BIN_N,
             .major_cycle_active = false,
             .gc = GC.init(allocator),
             .backing_allocator = allocator,
@@ -884,6 +886,9 @@ pub const Heap = struct {
         }
         self.los_objs.deinit(self.backing_allocator);
         self.los_free.deinit(self.backing_allocator);
+        for (&self.los_free_bins) |*bin| {
+            bin.deinit(self.backing_allocator);
+        }
         self.gc.deinit();
         self.backing_allocator.free(self.card_table);
         self.backing_allocator.free(self.memory);
@@ -1112,7 +1117,7 @@ pub const Heap = struct {
         return false;
     }
 
-    fn tenuredFreeBinIndex(size: usize) usize {
+    fn freeBinIndex(size: usize) usize {
         var cap = ALIGNMENT;
         var idx: usize = 0;
         while (idx + 1 < TENURED_FREE_BIN_N and size > cap) : (idx += 1) {
@@ -1121,52 +1126,63 @@ pub const Heap = struct {
         return idx;
     }
 
-    fn drainTenuredBinsToList(self: *Heap) !void {
+    fn drainBinsToList(
+        self: *Heap,
+        bins: *[TENURED_FREE_BIN_N]std.ArrayList(FreeSpan),
+        list: *std.ArrayList(FreeSpan),
+    ) !void {
         var total: usize = 0;
-        for (self.tenured_free_bins) |bin| {
+        for (bins.*) |bin| {
             total +%= bin.items.len;
         }
         if (total == 0) return;
 
-        try self.tenured_free.ensureUnusedCapacity(self.backing_allocator, total);
-        for (&self.tenured_free_bins) |*bin| {
+        try list.ensureUnusedCapacity(self.backing_allocator, total);
+        for (bins) |*bin| {
             for (bin.items) |span| {
-                self.tenured_free.appendAssumeCapacity(span);
+                list.appendAssumeCapacity(span);
             }
             bin.clearRetainingCapacity();
         }
     }
 
-    fn rebuildTenuredBinsFromList(self: *Heap) !void {
+    fn rebuildBinsFromList(
+        self: *Heap,
+        bins: *[TENURED_FREE_BIN_N]std.ArrayList(FreeSpan),
+        list: *std.ArrayList(FreeSpan),
+    ) !void {
         var counts = [_]usize{0} ** TENURED_FREE_BIN_N;
-        for (self.tenured_free.items) |span| {
-            counts[tenuredFreeBinIndex(span.size)] +%= 1;
+        for (list.items) |span| {
+            counts[freeBinIndex(span.size)] +%= 1;
         }
 
-        for (&self.tenured_free_bins, 0..) |*bin, idx| {
+        for (bins, 0..) |*bin, idx| {
             bin.clearRetainingCapacity();
             if (counts[idx] == 0) continue;
             try bin.ensureUnusedCapacity(self.backing_allocator, counts[idx]);
         }
 
-        for (self.tenured_free.items) |span| {
-            self.tenured_free_bins[tenuredFreeBinIndex(span.size)].appendAssumeCapacity(span);
+        for (list.items) |span| {
+            bins[freeBinIndex(span.size)].appendAssumeCapacity(span);
         }
-        self.tenured_free.clearRetainingCapacity();
+        list.clearRetainingCapacity();
     }
 
-    fn allocTenuredFromBins(self: *Heap, aligned_size: usize) ?[*]align(ALIGNMENT) u8 {
+    fn allocFromBins(
+        bins: *[TENURED_FREE_BIN_N]std.ArrayList(FreeSpan),
+        aligned_size: usize,
+    ) ?[*]align(ALIGNMENT) u8 {
         var best_bin: usize = 0;
         var best_idx: usize = 0;
         var best_waste: usize = 0;
         var have_best = false;
         var scanned: usize = 0;
 
-        var bin_idx = tenuredFreeBinIndex(aligned_size);
+        var bin_idx = freeBinIndex(aligned_size);
         search: while (bin_idx < TENURED_FREE_BIN_N) : (bin_idx += 1) {
             var i: usize = 0;
-            while (i < self.tenured_free_bins[bin_idx].items.len) : (i += 1) {
-                const span_size = self.tenured_free_bins[bin_idx].items[i].size;
+            while (i < bins[bin_idx].items.len) : (i += 1) {
+                const span_size = bins[bin_idx].items[i].size;
                 if (span_size < aligned_size) continue;
 
                 scanned +%= 1;
@@ -1183,10 +1199,10 @@ pub const Heap = struct {
         }
         if (!have_best) return null;
 
-        const span = &self.tenured_free_bins[best_bin].items[best_idx];
+        const span = &bins[best_bin].items[best_idx];
         const out_addr = span.addr;
         if (best_waste < TENURED_SPLIT_MIN_REMAINDER) {
-            _ = self.tenured_free_bins[best_bin].swapRemove(best_idx);
+            _ = bins[best_bin].swapRemove(best_idx);
         } else {
             span.addr += aligned_size;
             span.size = best_waste;
@@ -1194,15 +1210,15 @@ pub const Heap = struct {
         return @ptrFromInt(out_addr);
     }
 
-    fn allocTenuredFromPendingList(self: *Heap, aligned_size: usize) ?[*]align(ALIGNMENT) u8 {
+    fn allocFromList(list: *std.ArrayList(FreeSpan), aligned_size: usize) ?[*]align(ALIGNMENT) u8 {
         var best_idx: usize = 0;
         var best_waste: usize = 0;
         var have_best = false;
         var scanned: usize = 0;
 
         var i: usize = 0;
-        while (i < self.tenured_free.items.len) : (i += 1) {
-            const span_size = self.tenured_free.items[i].size;
+        while (i < list.items.len) : (i += 1) {
+            const span_size = list.items[i].size;
             if (span_size < aligned_size) continue;
 
             scanned +%= 1;
@@ -1217,15 +1233,56 @@ pub const Heap = struct {
         }
         if (!have_best) return null;
 
-        const span = &self.tenured_free.items[best_idx];
+        const span = &list.items[best_idx];
         const out_addr = span.addr;
         if (best_waste < TENURED_SPLIT_MIN_REMAINDER) {
-            _ = self.tenured_free.swapRemove(best_idx);
+            _ = list.swapRemove(best_idx);
         } else {
             span.addr += aligned_size;
             span.size = best_waste;
         }
         return @ptrFromInt(out_addr);
+    }
+
+    fn coalesceFreeList(list: *std.ArrayList(FreeSpan)) void {
+        if (list.items.len < 2) return;
+        std.mem.sort(FreeSpan, list.items, {}, struct {
+            fn lessThan(_: void, a: FreeSpan, b: FreeSpan) bool {
+                return a.addr < b.addr;
+            }
+        }.lessThan);
+
+        var write: usize = 0;
+        var cur = list.items[0];
+        var i: usize = 1;
+        while (i < list.items.len) : (i += 1) {
+            const next = list.items[i];
+            if (cur.addr + cur.size == next.addr) {
+                cur.size += next.size;
+                continue;
+            }
+            list.items[write] = cur;
+            write += 1;
+            cur = next;
+        }
+        list.items[write] = cur;
+        list.items.len = write + 1;
+    }
+
+    fn drainTenuredBinsToList(self: *Heap) !void {
+        try self.drainBinsToList(&self.tenured_free_bins, &self.tenured_free);
+    }
+
+    fn rebuildTenuredBinsFromList(self: *Heap) !void {
+        try self.rebuildBinsFromList(&self.tenured_free_bins, &self.tenured_free);
+    }
+
+    fn allocTenuredFromBins(self: *Heap, aligned_size: usize) ?[*]align(ALIGNMENT) u8 {
+        return allocFromBins(&self.tenured_free_bins, aligned_size);
+    }
+
+    fn allocTenuredFromPendingList(self: *Heap, aligned_size: usize) ?[*]align(ALIGNMENT) u8 {
+        return allocFromList(&self.tenured_free, aligned_size);
     }
 
     pub fn allocTenuredRaw(self: *Heap, size: usize) error{OutOfMemory}![*]align(ALIGNMENT) u8 {
@@ -1279,34 +1336,8 @@ pub const Heap = struct {
     }
 
     fn coalesceTenuredFree(self: *Heap) !void {
-        if (self.tenured_free.items.len == 0) return;
         try self.drainTenuredBinsToList();
-
-        if (self.tenured_free.items.len < 2) {
-            try self.rebuildTenuredBinsFromList();
-            return;
-        }
-        std.mem.sort(FreeSpan, self.tenured_free.items, {}, struct {
-            fn lessThan(_: void, a: FreeSpan, b: FreeSpan) bool {
-                return a.addr < b.addr;
-            }
-        }.lessThan);
-
-        var write: usize = 0;
-        var cur = self.tenured_free.items[0];
-        var i: usize = 1;
-        while (i < self.tenured_free.items.len) : (i += 1) {
-            const next = self.tenured_free.items[i];
-            if (cur.addr + cur.size == next.addr) {
-                cur.size += next.size;
-                continue;
-            }
-            self.tenured_free.items[write] = cur;
-            write += 1;
-            cur = next;
-        }
-        self.tenured_free.items[write] = cur;
-        self.tenured_free.items.len = write + 1;
+        coalesceFreeList(&self.tenured_free);
         try self.rebuildTenuredBinsFromList();
     }
 
@@ -1400,25 +1431,54 @@ pub const Heap = struct {
             aligned_size >= self.los_threshold;
     }
 
+    fn drainLosBinsToList(self: *Heap) !void {
+        try self.drainBinsToList(&self.los_free_bins, &self.los_free);
+    }
+
+    fn rebuildLosBinsFromList(self: *Heap) !void {
+        try self.rebuildBinsFromList(&self.los_free_bins, &self.los_free);
+    }
+
+    fn allocLosFromBins(self: *Heap, aligned_size: usize) ?[*]align(ALIGNMENT) u8 {
+        return allocFromBins(&self.los_free_bins, aligned_size);
+    }
+
+    fn allocLosFromPendingList(self: *Heap, aligned_size: usize) ?[*]align(ALIGNMENT) u8 {
+        return allocFromList(&self.los_free, aligned_size);
+    }
+
+    fn trimLosTailFromFreeList(self: *Heap) void {
+        const los = self.layout.los orelse return;
+        const los_start = @intFromPtr(los.start);
+        const los_end = @intFromPtr(los.end);
+        var cur = @intFromPtr(self.los_alloc_ptr orelse los.start);
+        if (cur < los_start or cur > los_end) return;
+
+        while (self.los_free.items.len > 0) {
+            const last_idx = self.los_free.items.len - 1;
+            const span = self.los_free.items[last_idx];
+            if (span.addr + span.size != cur) break;
+            cur = span.addr;
+            self.los_free.items.len = last_idx;
+        }
+
+        self.los_alloc_ptr = @ptrFromInt(cur);
+    }
+
     pub fn allocLosRaw(self: *Heap, size: usize) error{OutOfMemory}![*]align(ALIGNMENT) u8 {
         const aligned_size = std.mem.alignForward(usize, size, ALIGNMENT);
 
-        // Reuse reclaimed spans first.
-        var i: usize = 0;
-        while (i < self.los_free.items.len) : (i += 1) {
-            const span = &self.los_free.items[i];
-            if (span.size < aligned_size) continue;
-            const out_addr = span.addr;
-            if (span.size == aligned_size) {
-                _ = self.los_free.swapRemove(i);
-            } else {
-                span.addr += aligned_size;
-                span.size -= aligned_size;
-            }
+        if (self.allocLosFromBins(aligned_size)) |reused| {
             self.stats.allocations +%= 1;
             self.stats.bytes_allocated +%= aligned_size;
             self.recordAllocDebt(aligned_size);
-            return @ptrFromInt(out_addr);
+            return reused;
+        }
+        if (self.allocLosFromPendingList(aligned_size)) |pending| {
+            self.stats.allocations +%= 1;
+            self.stats.bytes_allocated +%= aligned_size;
+            self.recordAllocDebt(aligned_size);
+            return pending;
         }
 
         const los = self.layout.los orelse return error.OutOfMemory;
@@ -1466,29 +1526,11 @@ pub const Heap = struct {
         return .none;
     }
 
-    fn coalesceLosFree(self: *Heap) void {
-        if (self.los_free.items.len < 2) return;
-        std.mem.sort(FreeSpan, self.los_free.items, {}, struct {
-            fn lessThan(_: void, a: FreeSpan, b: FreeSpan) bool {
-                return a.addr < b.addr;
-            }
-        }.lessThan);
-
-        var write: usize = 0;
-        var cur = self.los_free.items[0];
-        var i: usize = 1;
-        while (i < self.los_free.items.len) : (i += 1) {
-            const next = self.los_free.items[i];
-            if (cur.addr + cur.size == next.addr) {
-                cur.size += next.size;
-                continue;
-            }
-            self.los_free.items[write] = cur;
-            write += 1;
-            cur = next;
-        }
-        self.los_free.items[write] = cur;
-        self.los_free.items.len = write + 1;
+    fn coalesceLosFree(self: *Heap) !void {
+        try self.drainLosBinsToList();
+        coalesceFreeList(&self.los_free);
+        self.trimLosTailFromFreeList();
+        try self.rebuildLosBinsFromList();
     }
 
     pub fn sweepLos(self: *Heap) !void {
@@ -1498,7 +1540,10 @@ pub const Heap = struct {
         for (self.los_objs.items) |obj| {
             if (!obj.marked) dead_count += 1;
         }
-        if (dead_count == 0) return;
+        if (dead_count == 0) {
+            self.clearLosMarks();
+            return;
+        }
 
         try self.los_free.ensureUnusedCapacity(self.backing_allocator, dead_count);
 
@@ -1514,7 +1559,7 @@ pub const Heap = struct {
             self.los_free.appendAssumeCapacity(.{ .addr = obj.addr, .size = obj.size });
         }
         self.los_objs.items.len = write;
-        self.coalesceLosFree();
+        try self.coalesceLosFree();
     }
 
     pub fn sweepLosSlice(self: *Heap, cursor: *usize, budget: usize) !SweepSliceResult {
@@ -1551,7 +1596,7 @@ pub const Heap = struct {
 
         if (cursor.* < self.los_objs.items.len) return .{ .done = false, .scanned = scanned };
         cursor.* = 0;
-        self.coalesceLosFree();
+        try self.coalesceLosFree();
         return .{ .done = true, .scanned = scanned };
     }
 
@@ -3439,6 +3484,92 @@ test "heap allocates large objects in LOS" {
     try testing.expect(!heap.isInNurseryAddr(vec.toPtrAddr()));
     try testing.expect(heap.losBytesUsed() > 0);
     try testing.expectEqual(los0 + 1, heap.los_objs.items.len);
+}
+
+test "heap LOS reuses middle free spans from bins" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .los_threshold = 256,
+        },
+    });
+    defer heap.deinit();
+
+    const first_size = std.mem.alignForward(usize, 0x510, ALIGNMENT);
+    const middle_size = std.mem.alignForward(usize, 0x620, ALIGNMENT);
+    const tail_size = std.mem.alignForward(usize, 0x590, ALIGNMENT);
+
+    const first = try heap.allocLosRaw(first_size);
+    const middle = try heap.allocLosRaw(middle_size);
+    const tail = try heap.allocLosRaw(tail_size);
+    try heap.recordLosObject(@intFromPtr(first), .boxed, first_size);
+    try heap.recordLosObject(@intFromPtr(middle), .boxed, middle_size);
+    try heap.recordLosObject(@intFromPtr(tail), .boxed, tail_size);
+    const middle_addr = @intFromPtr(middle);
+
+    for (heap.los_objs.items) |obj| {
+        if (obj.addr == middle_addr) continue;
+        _ = heap.markLosObject(obj.addr);
+    }
+    try heap.sweepLos();
+
+    var los_bin_span_n: usize = 0;
+    for (heap.los_free_bins) |bin| {
+        los_bin_span_n +%= bin.items.len;
+    }
+    try testing.expect(los_bin_span_n > 0);
+    try testing.expectEqual(@as(usize, 0), heap.los_free.items.len);
+
+    const reused = try heap.allocLosRaw(middle_size);
+    try testing.expectEqual(middle_addr, @intFromPtr(reused));
+}
+
+test "heap LOS sweep trims free tail and rewinds bump pointer" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .los_threshold = 256,
+        },
+    });
+    defer heap.deinit();
+
+    const head_size = std.mem.alignForward(usize, 0x710, ALIGNMENT);
+    const tail_size = std.mem.alignForward(usize, 0x7A0, ALIGNMENT);
+    const head = try heap.allocLosRaw(head_size);
+    const tail = try heap.allocLosRaw(tail_size);
+    try heap.recordLosObject(@intFromPtr(head), .boxed, head_size);
+    try heap.recordLosObject(@intFromPtr(tail), .boxed, tail_size);
+    const head_addr = @intFromPtr(head);
+    const tail_addr = @intFromPtr(tail);
+
+    for (heap.los_objs.items) |obj| {
+        if (obj.addr == tail_addr) continue;
+        _ = heap.markLosObject(obj.addr);
+    }
+    try heap.sweepLos();
+
+    try testing.expectEqual(tail_addr, @intFromPtr(heap.los_alloc_ptr.?));
+    try testing.expect(heap.markLosObject(head_addr) != .none);
+    try testing.expectEqual(@as(usize, 0), heap.los_free.items.len);
+
+    var los_bin_span_n: usize = 0;
+    for (heap.los_free_bins) |bin| {
+        los_bin_span_n +%= bin.items.len;
+    }
+    try testing.expectEqual(@as(usize, 0), los_bin_span_n);
+
+    const bumped = try heap.allocLosRaw(tail_size);
+    try testing.expectEqual(tail_addr, @intFromPtr(bumped));
 }
 
 test "heap tenured free bins coalesce and reuse spans" {
