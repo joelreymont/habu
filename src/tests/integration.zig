@@ -4613,6 +4613,39 @@ test "generational loop for-and arithmetic stays bounded" {
     try testing.expectEqual(@as(i64, 58), result.toFixnum());
 }
 
+test "generational string designators stay valid across GC pressure" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{
+        .total_size = 128 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 2 * 1024 * 1024,
+            .los_size = 16 * 1024 * 1024,
+            .los_threshold = 16 * 1024,
+            .promote_threshold = 1024,
+        },
+    });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const ok = try repl.eval(
+        \\(let* ((src (make-string 65536 :initial-element #\a))
+        \\       (sym (make-symbol src)))
+        \\  (let ((i 0))
+        \\    (while (< i 200000)
+        \\      (cons i i)
+        \\      (setq i (+ i 1))))
+        \\  (and (= (length (string-upcase sym)) 65536)
+        \\       (= (length (string-downcase src)) 65536)))
+    );
+    try testing.expect(!ok.isNil());
+}
+
 test "ansi repro loop when do accepts multi-form action with loop-finish" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
