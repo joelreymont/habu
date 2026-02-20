@@ -61,6 +61,17 @@ const GcSnap = struct {
     gc_nursery_scale: f64,
     gc_nursery_survival: f64,
     gc_nursery_pause_error: f64,
+    gc_debt_bytes: usize,
+    gc_debt_threshold: usize,
+    gc_debt_alloc_bytes: usize,
+    gc_debt_paydown_bytes: usize,
+    gc_debt_trigger_n: usize,
+    gc_debt_skip_n: usize,
+    gc_debt_score: f64,
+    gc_debt_ratio: f64,
+    gc_debt_occupancy: f64,
+    gc_debt_survival: f64,
+    gc_debt_pause_error: f64,
 };
 
 const GcDelta = struct {
@@ -75,6 +86,17 @@ const GcDelta = struct {
     gc_nursery_scale: f64,
     gc_nursery_survival: f64,
     gc_nursery_pause_error: f64,
+    gc_debt_bytes: usize,
+    gc_debt_threshold: usize,
+    gc_debt_alloc_bytes: usize,
+    gc_debt_paydown_bytes: usize,
+    gc_debt_trigger_n: usize,
+    gc_debt_skip_n: usize,
+    gc_debt_score: f64,
+    gc_debt_ratio: f64,
+    gc_debt_occupancy: f64,
+    gc_debt_survival: f64,
+    gc_debt_pause_error: f64,
 };
 
 fn counterDelta(comptime T: type, after: T, before: T) T {
@@ -94,6 +116,17 @@ fn gcSnap(heap: *const Heap) GcSnap {
         .gc_nursery_scale = heap.stats.gc_nursery_scale,
         .gc_nursery_survival = heap.stats.gc_nursery_survival,
         .gc_nursery_pause_error = heap.stats.gc_nursery_pause_error,
+        .gc_debt_bytes = heap.stats.gc_debt_bytes,
+        .gc_debt_threshold = heap.stats.gc_debt_threshold,
+        .gc_debt_alloc_bytes = heap.stats.gc_debt_alloc_bytes,
+        .gc_debt_paydown_bytes = heap.stats.gc_debt_paydown_bytes,
+        .gc_debt_trigger_n = heap.stats.gc_debt_trigger_n,
+        .gc_debt_skip_n = heap.stats.gc_debt_skip_n,
+        .gc_debt_score = heap.stats.gc_debt_score,
+        .gc_debt_ratio = heap.stats.gc_debt_ratio,
+        .gc_debt_occupancy = heap.stats.gc_debt_occupancy,
+        .gc_debt_survival = heap.stats.gc_debt_survival,
+        .gc_debt_pause_error = heap.stats.gc_debt_pause_error,
     };
 }
 
@@ -117,6 +150,17 @@ fn gcDelta(before: GcSnap, after: GcSnap) GcDelta {
         .gc_nursery_scale = after.gc_nursery_scale,
         .gc_nursery_survival = after.gc_nursery_survival,
         .gc_nursery_pause_error = after.gc_nursery_pause_error,
+        .gc_debt_bytes = after.gc_debt_bytes,
+        .gc_debt_threshold = after.gc_debt_threshold,
+        .gc_debt_alloc_bytes = counterDelta(usize, after.gc_debt_alloc_bytes, before.gc_debt_alloc_bytes),
+        .gc_debt_paydown_bytes = counterDelta(usize, after.gc_debt_paydown_bytes, before.gc_debt_paydown_bytes),
+        .gc_debt_trigger_n = counterDelta(usize, after.gc_debt_trigger_n, before.gc_debt_trigger_n),
+        .gc_debt_skip_n = counterDelta(usize, after.gc_debt_skip_n, before.gc_debt_skip_n),
+        .gc_debt_score = after.gc_debt_score,
+        .gc_debt_ratio = after.gc_debt_ratio,
+        .gc_debt_occupancy = after.gc_debt_occupancy,
+        .gc_debt_survival = after.gc_debt_survival,
+        .gc_debt_pause_error = after.gc_debt_pause_error,
     };
 }
 
@@ -569,6 +613,38 @@ pub fn main() !void {
             gc_run.gc_nursery_scale,
             gc_run.gc_nursery_survival,
             gc_run.gc_nursery_pause_error,
+        },
+    );
+    try w.print(
+        "  gc debt(load): bytes={d}/{d} alloc={d} paydown={d} triggers={d} skips={d} score={d:.3} ratio={d:.3} occ={d:.3} surv={d:.3} pause_err={d:.3}\n",
+        .{
+            gc_load.gc_debt_bytes,
+            gc_load.gc_debt_threshold,
+            gc_load.gc_debt_alloc_bytes,
+            gc_load.gc_debt_paydown_bytes,
+            gc_load.gc_debt_trigger_n,
+            gc_load.gc_debt_skip_n,
+            gc_load.gc_debt_score,
+            gc_load.gc_debt_ratio,
+            gc_load.gc_debt_occupancy,
+            gc_load.gc_debt_survival,
+            gc_load.gc_debt_pause_error,
+        },
+    );
+    try w.print(
+        "  gc debt(run): bytes={d}/{d} alloc={d} paydown={d} triggers={d} skips={d} score={d:.3} ratio={d:.3} occ={d:.3} surv={d:.3} pause_err={d:.3}\n",
+        .{
+            gc_run.gc_debt_bytes,
+            gc_run.gc_debt_threshold,
+            gc_run.gc_debt_alloc_bytes,
+            gc_run.gc_debt_paydown_bytes,
+            gc_run.gc_debt_trigger_n,
+            gc_run.gc_debt_skip_n,
+            gc_run.gc_debt_score,
+            gc_run.gc_debt_ratio,
+            gc_run.gc_debt_occupancy,
+            gc_run.gc_debt_survival,
+            gc_run.gc_debt_pause_error,
         },
     );
     for (benches.items) |b| {

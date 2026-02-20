@@ -9,6 +9,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-20)
 
 ### Worked Well
+- Extending Maxima workload GC snapshots with debt telemetry (`bench/maxima_workload.zig:53`, `bench/maxima_workload.zig:84`, `bench/maxima_workload.zig:604`) made debt trigger/skip behavior visible during real loader pressure.
+- Wiring Maxima debt metrics through comparison tooling (`tools/gc-compare:455`, `tools/gc-compare:663`) enabled direct A/B coefficient checks instead of inferring debt behavior from pause metrics alone.
+- Running coefficient A/B and rolling back to baseline constants in `src/runtime/gc.zig:89` after benchmark evidence prevented a real VM throughput regression (`bench-vm` string/hash path) caused by over-aggressive early-trigger thresholds.
 - Integrating debt-trigger scoring into VM precollection (`src/runtime/gc.zig:197`, `src/runtime/heap.zig:1348`, `src/interp/vm.zig:1414`) replaced threshold-only checks with measurable debt/pause/occupancy decisions.
 - Exporting debt-decision telemetry end-to-end (`bench/gc.zig:372`, `bench/check.zig:421`, `tools/gc-compare:341`) exposed policy-range regressions immediately in the standard perf loop.
 - Recording debt paydown as actual debt retired instead of raw reclaim volume (`src/runtime/heap.zig:1370`) aligned counters with invariants and removed false debt-regression failures in `bench-check`.
@@ -55,6 +58,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Exporting debt telemetry through `bench/gc` and enforcing it in `bench/check`/`tools/gc-compare` (`bench/gc.zig:337`, `bench/check.zig:70`, `tools/gc-compare:330`) created a closed verification loop for debt bytes, paydown, and trigger quality.
 
 ### Did Not Work
+- More aggressive debt thresholds/weights looked faster on Maxima only because loader failures increased (`maxima_habu_errors` 8→10), so raw wall-time wins are invalid unless error counts stay flat.
 - Counting `gc_debt_paydown_bytes` as raw `max(copied,reclaimed)` was wrong (`src/runtime/heap.zig:1370`): it can exceed debt inflow by orders of magnitude and trip valid invariants (`bench/check.zig:416`).
 - Treating a single default-threshold `bench-check` p95 miss as semantic breakage was noisy in this environment; rerunning with a relaxed p95 gate isolated invariant/schema correctness from host performance variance.
 - Assuming promotion-success counters would update only when tenured sweep reclaimed something was wrong; the old early-return path in `sweepTenured` skipped success accounting for all-live sets.

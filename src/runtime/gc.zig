@@ -86,6 +86,16 @@ pub const DebtTriggerOutput = struct {
     pause_error: f64,
 };
 
+const DEBT_SCORE_DEBT_W = 0.70;
+const DEBT_SCORE_OCC_W = 0.20;
+const DEBT_SCORE_SURV_W = 0.10;
+const DEBT_SCORE_PAUSE_PENALTY = 0.20;
+const DEBT_TRIGGER_HARD_RATIO = 1.25;
+const DEBT_TRIGGER_MAIN_RATIO = 1.00;
+const DEBT_TRIGGER_MAIN_SCORE = 0.65;
+const DEBT_TRIGGER_SOFT_RATIO = 0.85;
+const DEBT_TRIGGER_SOFT_SCORE = 0.95;
+
 fn clampf(v: f64, lo: f64, hi: f64) f64 {
     if (v < lo) return lo;
     if (v > hi) return hi;
@@ -210,11 +220,15 @@ pub fn deriveDebtTrigger(in: DebtTriggerInput) DebtTriggerOutput {
     const survival_ratio = clampf(in.survival_ratio, 0.0, 1.5);
     const pause_error = clampf(in.pause_error, -1.0, 2.0);
 
-    var score = 0.70 * debt_ratio + 0.20 * occupancy_ratio + 0.10 * survival_ratio;
-    if (pause_error > 0.0) score -= 0.20 * @min(pause_error, 1.0);
+    var score = DEBT_SCORE_DEBT_W * debt_ratio +
+        DEBT_SCORE_OCC_W * occupancy_ratio +
+        DEBT_SCORE_SURV_W * survival_ratio;
+    if (pause_error > 0.0) score -= DEBT_SCORE_PAUSE_PENALTY * @min(pause_error, 1.0);
     score = clampf(score, 0.0, 4.0);
 
-    const should_collect = debt_ratio >= 1.25 or (debt_ratio >= 1.0 and score >= 0.65) or (debt_ratio >= 0.85 and score >= 0.95);
+    const should_collect = debt_ratio >= DEBT_TRIGGER_HARD_RATIO or
+        (debt_ratio >= DEBT_TRIGGER_MAIN_RATIO and score >= DEBT_TRIGGER_MAIN_SCORE) or
+        (debt_ratio >= DEBT_TRIGGER_SOFT_RATIO and score >= DEBT_TRIGGER_SOFT_SCORE);
     return .{
         .should_collect = should_collect,
         .score = score,

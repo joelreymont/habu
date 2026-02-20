@@ -445,6 +445,28 @@ if maxima:
             "maxima_gc_run_remembered_scanned": int(gc_run.get("gc_remembered_scanned", 0)),
             "maxima_gc_run_remembered_runs": int(gc_run.get("gc_remembered_runs", 0)),
             "maxima_gc_run_remembered_marked_cards": int(gc_run.get("gc_remembered_marked_cards", 0)),
+            "maxima_gc_load_debt_bytes": int(gc.get("load", {}).get("gc_debt_bytes", 0)),
+            "maxima_gc_load_debt_threshold": int(gc.get("load", {}).get("gc_debt_threshold", 0)),
+            "maxima_gc_load_debt_alloc_bytes": int(gc.get("load", {}).get("gc_debt_alloc_bytes", 0)),
+            "maxima_gc_load_debt_paydown_bytes": int(gc.get("load", {}).get("gc_debt_paydown_bytes", 0)),
+            "maxima_gc_load_debt_trigger_n": int(gc.get("load", {}).get("gc_debt_trigger_n", 0)),
+            "maxima_gc_load_debt_skip_n": int(gc.get("load", {}).get("gc_debt_skip_n", 0)),
+            "maxima_gc_load_debt_score": float(gc.get("load", {}).get("gc_debt_score", 0.0)),
+            "maxima_gc_load_debt_ratio": float(gc.get("load", {}).get("gc_debt_ratio", 0.0)),
+            "maxima_gc_load_debt_occupancy": float(gc.get("load", {}).get("gc_debt_occupancy", 0.0)),
+            "maxima_gc_load_debt_survival": float(gc.get("load", {}).get("gc_debt_survival", 0.0)),
+            "maxima_gc_load_debt_pause_error": float(gc.get("load", {}).get("gc_debt_pause_error", 0.0)),
+            "maxima_gc_run_debt_bytes": int(gc_run.get("gc_debt_bytes", 0)),
+            "maxima_gc_run_debt_threshold": int(gc_run.get("gc_debt_threshold", 0)),
+            "maxima_gc_run_debt_alloc_bytes": int(gc_run.get("gc_debt_alloc_bytes", 0)),
+            "maxima_gc_run_debt_paydown_bytes": int(gc_run.get("gc_debt_paydown_bytes", 0)),
+            "maxima_gc_run_debt_trigger_n": int(gc_run.get("gc_debt_trigger_n", 0)),
+            "maxima_gc_run_debt_skip_n": int(gc_run.get("gc_debt_skip_n", 0)),
+            "maxima_gc_run_debt_score": float(gc_run.get("gc_debt_score", 0.0)),
+            "maxima_gc_run_debt_ratio": float(gc_run.get("gc_debt_ratio", 0.0)),
+            "maxima_gc_run_debt_occupancy": float(gc_run.get("gc_debt_occupancy", 0.0)),
+            "maxima_gc_run_debt_survival": float(gc_run.get("gc_debt_survival", 0.0)),
+            "maxima_gc_run_debt_pause_error": float(gc_run.get("gc_debt_pause_error", 0.0)),
             "maxima_gc_run_promote_threshold": int(gc_run.get("gc_promote_threshold", 0)),
             "maxima_gc_run_promote_scale": float(gc_run.get("gc_promote_scale", 1.0)),
             "maxima_gc_run_promote_success_rate": float(gc_run.get("gc_promote_success_rate", 0.0)),
@@ -625,6 +647,44 @@ if maxima:
             sc=metrics["maxima_gc_run_remembered_scanned"],
             rn=metrics["maxima_gc_run_remembered_runs"],
             mc=metrics["maxima_gc_run_remembered_marked_cards"],
+        )
+    )
+    print(
+        "  load_debt: debt={db}/{dt} alloc={da} paydown={dp} triggers={tr} skips={sk}".format(
+            db=metrics["maxima_gc_load_debt_bytes"],
+            dt=metrics["maxima_gc_load_debt_threshold"],
+            da=metrics["maxima_gc_load_debt_alloc_bytes"],
+            dp=metrics["maxima_gc_load_debt_paydown_bytes"],
+            tr=metrics["maxima_gc_load_debt_trigger_n"],
+            sk=metrics["maxima_gc_load_debt_skip_n"],
+        )
+    )
+    print(
+        "  load_debt_policy: score={sc:.4f} ratio={dr:.4f} occ={oc:.4f} surv={sv:.4f} pause_err={pe:.4f}".format(
+            sc=metrics["maxima_gc_load_debt_score"],
+            dr=metrics["maxima_gc_load_debt_ratio"],
+            oc=metrics["maxima_gc_load_debt_occupancy"],
+            sv=metrics["maxima_gc_load_debt_survival"],
+            pe=metrics["maxima_gc_load_debt_pause_error"],
+        )
+    )
+    print(
+        "  run_debt: debt={db}/{dt} alloc={da} paydown={dp} triggers={tr} skips={sk}".format(
+            db=metrics["maxima_gc_run_debt_bytes"],
+            dt=metrics["maxima_gc_run_debt_threshold"],
+            da=metrics["maxima_gc_run_debt_alloc_bytes"],
+            dp=metrics["maxima_gc_run_debt_paydown_bytes"],
+            tr=metrics["maxima_gc_run_debt_trigger_n"],
+            sk=metrics["maxima_gc_run_debt_skip_n"],
+        )
+    )
+    print(
+        "  run_debt_policy: score={sc:.4f} ratio={dr:.4f} occ={oc:.4f} surv={sv:.4f} pause_err={pe:.4f}".format(
+            sc=metrics["maxima_gc_run_debt_score"],
+            dr=metrics["maxima_gc_run_debt_ratio"],
+            oc=metrics["maxima_gc_run_debt_occupancy"],
+            sv=metrics["maxima_gc_run_debt_survival"],
+            pe=metrics["maxima_gc_run_debt_pause_error"],
         )
     )
     print()

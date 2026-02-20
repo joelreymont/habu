@@ -1,9 +1,11 @@
 ---
 title: Implement GC debt trigger model
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-20T08:55:19.472084+01:00"
+created-at: "\"2026-02-20T08:55:19.472084+01:00\""
+closed-at: "2026-02-20T13:51:23.063829+01:00"
+close-reason: completed
 blocks:
   - habu-optimize-remembered-set-4ebdf466
 ---
