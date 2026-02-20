@@ -469,7 +469,7 @@ fn loadStdlib(repl: *Repl) !void {
     defer file.close();
     const content = try file.readToEndAlloc(repl.allocator, 16 * 1024 * 1024);
     defer repl.allocator.free(content);
-    try repl.evalFileContent(content, null_writer);
+    try repl.evalFile(content, null_writer);
 }
 
 fn asString(val: Value) ![]const u8 {
@@ -2471,7 +2471,7 @@ test "nested unwind-protect" {
 //     // Load stdlib for setq
 //     const stdlib = @embedFile("../../lib/stdlib.habu");
 //     const null_writer = std.io.null_writer;
-//     try repl.evalFileContent(stdlib, null_writer);
+//     try repl.evalFile(stdlib, null_writer);
 //
 //     // Cleanup should run even when protected form errors
 //     // Currently this test would fail - cleanup doesn't run on errors
@@ -3085,9 +3085,9 @@ test "stdlib compiles" {
     // const stdlib = try file.readToEndAlloc(allocator, 256 * 1024);
     // defer allocator.free(stdlib);
 
-    // // Use evalFileContent to evaluate the whole file (handles multiple expressions)
+    // // Use evalFile to evaluate the whole file (handles multiple expressions)
     // const null_writer = std.io.null_writer;
-    // try repl.evalFileContent(stdlib, null_writer);
+    // try repl.evalFile(stdlib, null_writer);
 
     // // Test a few stdlib functions
     // const length_result = try repl.eval("(length (list3 1 2 3))");

@@ -142,8 +142,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Fixing lambda-parameter special semantics generically in `src/compiler/compile.zig` (dynamic `progv` wrapper for globally proclaimed special params) restored `declare-top` behavior across Maxima macros without Maxima-specific patches.
 - Adding a focused regression in `src/tests/integration.zig` (`proclaimed special lambda params are dynamically visible in callees`) locks this dynamic-scope contract.
 - Adding system-only/internal keywords on `maxima-load-all` (`:habu-stop-on-error`, `:habu-required-bindings`) enabled stronger diagnostics without bending CL-facing defaults.
-- Removing per-form error masking in `src/interp/repl.zig` `evalFileContentSeparateVm` (propagate parse/eval errors instead of continuing) made `(load ...)` semantics deterministic and restored reliable file-level failure accounting for Maxima loader gates.
-- Locking strict load semantics with a focused regression (`src/interp/repl.zig` `loadFilePublic aborts on first form error`) prevented silent partial-file success regressions.
+- Removing per-form error masking in `src/interp/repl.zig` `evalForms` (then named `evalFileContentSeparateVm`) made `(load ...)` semantics deterministic and restored reliable file-level failure accounting for Maxima loader gates.
+- Locking strict load semantics with a focused regression (`src/interp/repl.zig` `loadFile` aborts on first form error) prevented silent partial-file success regressions.
 - Fixing `loop` parser support for `FOR ... IN ... BY ...` in `lib/stdlib.habu` removed a generic clause-gap that surfaced as `Unknown loop keyword: BY` in large Lisp packages.
 - Extending `get-setf-expansion` with composed list-place updaters (`cadr`/`cddr`/`caddr`/`cdddr`/aliases) removed a high-frequency `setf: unsupported place` class for macro-heavy code.
 - Reworking LOOP conditional routing to accept `ELSE WHEN ... ELSE ...` in `lib/stdlib.habu` unblocked real-world clause patterns (e.g. `commac.lisp` `maknam`) without Maxima-specific branches.
@@ -182,7 +182,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Running long `zig build test -Dtest-filter=\"...maxima...\"` invocations remained unreliable/hang-prone in this environment; short focused filters and direct scripted repros gave more deterministic signal.
 - Using multiline piped REPL scripts for loader RCA gave misleading/garbled diagnostics; `habu <script-file>` probes and targeted tests were more trustworthy.
 - Name-only special-declaration matching in the compiler was too coarse; package-unaware declaration lookup can silently destabilize unrelated lexical bindings.
-- Testing only direct `(handler-case (load ...))` eval was insufficient; script-level `loadFilePublic` execution has different callback boundaries and must be covered explicitly.
+- Testing only direct `(handler-case (load ...))` eval was insufficient; script-level `loadFile` execution has different callback boundaries and must be covered explicitly.
 - Blind regex rewrites on function-call signatures in `src/runtime/gc.zig` briefly produced duplicate arguments (`self.copyValue(heap, heap, ...)`); immediate compile/test loops are required right after broad replacements.
 - Using `std.time.Timer.start()` inside GC internals widened the GC error set (`TimerUnsupported`) and broke call-site error contracts in `src/interp/vm.zig`; use `std.time.nanoTimestamp()` deltas in hot/runtime internals when error signatures must stay stable.
 - Root-cache signatures based only on table counts are not enough; equal counts can still hide map-entry churn. Include mutation/version signals (for symbol tables) or stronger structure signatures.
@@ -948,7 +948,7 @@ Impact on Maxima loader debugging:
 - "formwise read/eval" probes that appeared to succeed (`DONE forms=1 ok=1`)
   were not trustworthy for multi-form files because stream `read` never
   advanced past the first form.
-- Removing `handler_sp/catch_sp` clobber in `evalFileContentSeparateVm` did
+- Removing `handler_sp/catch_sp` clobber in `evalForms` (then named `evalFileContentSeparateVm`) did
   not fix `db/compar/limit` load overflows and introduced new regressions
   (`mlisp` load failure), so that change was reverted.
 

@@ -64,7 +64,7 @@ fn mainInner() !void {
     try repl.wireGlobalEnv();
 
     // Auto-load stdlib.habu
-    if (repl.loadFilePublic("lib/stdlib.habu", writer)) |_| {} else |err| {
+    if (repl.loadFile("lib/stdlib.habu", writer)) |_| {} else |err| {
         try writer.print("; Warning: Could not load lib/stdlib.habu: {s}\n", .{@errorName(err)});
         if (err == error.FileNotFound) {
             try writer.print("; Hint: Run from project root directory\n", .{});
@@ -80,7 +80,7 @@ fn mainInner() !void {
 
     const has_files = args.len > 1;
     for (args[1..]) |arg| {
-        if (repl.loadFilePublic(arg, writer)) |_| {} else |err| {
+        if (repl.loadFile(arg, writer)) |_| {} else |err| {
             try writer.print("Error loading {s}: {s}\n", .{ arg, @errorName(err) });
             try writer.flush();
             return err;

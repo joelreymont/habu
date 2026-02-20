@@ -313,7 +313,7 @@ const maxima_files_expr =
 fn loadMaxima(timer: *std.time.Timer, repl: *Repl) !LoaderStats {
     var stats = LoaderStats{};
 
-    try repl.loadFilePublic("lib/stdlib.habu", std.io.null_writer);
+    try repl.loadFile("lib/stdlib.habu", std.io.null_writer);
     _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
     _ = try repl.eval(maxima_files_expr);
 

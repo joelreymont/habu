@@ -323,7 +323,7 @@ pub fn main() !void {
     {
         var stderr_buf: [4096]u8 = undefined;
         var stderr_writer = std.fs.File.stderr().writer(&stderr_buf);
-        repl.loadFilePublic("lib/stdlib.habu", &stderr_writer.interface) catch |err| {
+        repl.loadFile("lib/stdlib.habu", &stderr_writer.interface) catch |err| {
             stderr_writer.interface.print("Could not load stdlib: {s}\n", .{@errorName(err)}) catch {};
             stderr_writer.interface.flush() catch {};
             return err;

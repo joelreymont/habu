@@ -53,6 +53,7 @@ fn patchChunkIndices(chunk: *runtime.objects.Chunk, base: u16) !void {
 pub const ReplError = anyerror;
 const load_form_root_name = "__HABU_INTERNAL_LOAD_FORM_ROOT__";
 const load_form_root_stack_name = "__HABU_INTERNAL_LOAD_FORM_STACK__";
+const load_form_root_tmp_name = "__HABU_INTERNAL_LOAD_FORM_TMP__";
 
 /// REPL configuration
 pub const Config = struct {
@@ -871,7 +872,7 @@ pub const Repl = struct {
     /// Callback for (load "filename") from VM
     fn loadCallback(filename: []const u8, context: *anyopaque) vm_mod.Error!Value {
         const self: *Repl = @ptrCast(@alignCast(context));
-        return self.loadFileValue(filename);
+        return self.load(filename);
     }
 
     /// Callback for (eval expr) from VM
@@ -903,7 +904,7 @@ pub const Repl = struct {
                 std.debug.print("EVAL expr kind={s}\n", .{@tagName(expr.typeKind())});
             }
         }
-        return self.evalExpression(expr);
+        return self.evalExpr(expr);
     }
 
     /// Callback for (macroexpand expr) from VM
@@ -980,7 +981,7 @@ pub const Repl = struct {
                 }
                 if (arity_opt) |arity| {
                     const wrapper_form = try self.buildPrimitiveFunctionWrapper(dispatch_sym, arity);
-                    const wrapper_val = try self.evalExpression(wrapper_form);
+                    const wrapper_val = try self.evalExpr(wrapper_form);
                     if (trace_fn_resolve) {
                         std.debug.print("TRACE fn-resolve wrapper kind={s}\n", .{@tagName(wrapper_val.typeKind())});
                     }
@@ -989,7 +990,7 @@ pub const Repl = struct {
                     // Generic fallback for builtin primitives without fixed arity metadata:
                     // (lambda (&rest args) (eval (cons 'sym args)))
                     const wrapper_form = try self.buildEvalDispatchWrapper(dispatch_sym);
-                    const wrapper_val = try self.evalExpression(wrapper_form);
+                    const wrapper_val = try self.evalExpr(wrapper_form);
                     if (trace_fn_resolve) {
                         std.debug.print(
                             "TRACE fn-resolve eval-wrapper kind={s}\n",
@@ -1340,8 +1341,8 @@ pub const Repl = struct {
         return null;
     }
 
-    /// Evaluate an expression using a separate VM
-    fn evalExpression(self: *Repl, expr: Value) !Value {
+    /// Evaluate an expression in the active VM context.
+    fn evalExpr(self: *Repl, expr: Value) !Value {
         // Use arena for compilation
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
@@ -1412,8 +1413,7 @@ pub const Repl = struct {
     }
 
     /// Load a file and return the last value (for (load ...) primitive)
-    /// Uses a separate VM to avoid recursive execution issues
-    fn loadFileValue(self: *Repl, path: []const u8) !Value {
+    fn load(self: *Repl, path: []const u8) !Value {
         const source_vm = self.activeVm();
         const resolved_path = try self.resolveLoadPath(source_vm, path);
         defer self.allocator.free(resolved_path);
@@ -1427,7 +1427,7 @@ pub const Repl = struct {
         if (try self.fallbackSourcePathForFasl(resolved_path)) |fallback_path| {
             defer self.allocator.free(fallback_path);
             if (!self.isCurrentLoadPath(source_vm, fallback_path)) {
-                return try self.loadFileValue(fallback_path);
+                return try self.load(fallback_path);
             }
             return Value.t;
         }
@@ -1439,7 +1439,7 @@ pub const Repl = struct {
                     if (self.isCurrentLoadPath(source_vm, fallback_path)) {
                         return Value.t;
                     }
-                    return try self.loadFileValue(fallback_path);
+                    return try self.load(fallback_path);
                 }
             }
             return err;
@@ -1462,14 +1462,14 @@ pub const Repl = struct {
         // Evaluate all expressions and return the last value.
         // Some ANSI harnesses hand us host-generated .fasl files; if parsing
         // fails, fall back to sibling source file when available.
-        const result = self.evalFileContentSeparateVm(content) catch |err| {
+        const result = self.evalForms(content) catch |err| {
             if (err == error.UnexpectedToken) {
                 if (try self.fallbackSourcePathForFasl(resolved_path)) |fallback_path| {
                     defer self.allocator.free(fallback_path);
                     if (self.isCurrentLoadPath(source_vm, fallback_path)) {
                         return Value.t;
                     }
-                    return try self.loadFileValue(fallback_path);
+                    return try self.load(fallback_path);
                 }
             }
             return err;
@@ -1845,9 +1845,9 @@ pub const Repl = struct {
         };
     }
 
-    /// Evaluate file content in the active VM context.
+    /// Evaluate multiple forms in the active VM context.
     /// Nested execution is handled through callFromStackAt in runVmPreserveMacroState.
-    fn evalFileContentSeparateVm(self: *Repl, content: []const u8) !Value {
+    fn evalForms(self: *Repl, content: []const u8) !Value {
         var last_value = Value.nil;
         const trace_forms = std.process.hasEnvVar(self.allocator, "HABU_TRACE_FORMS") catch false;
         var form_idx: usize = 0;
@@ -3151,112 +3151,19 @@ pub const Repl = struct {
         }
     }
 
-    /// Load and evaluate a file (public for main.zig)
-    pub fn loadFilePublic(self: *Repl, path: []const u8, writer: anytype) !void {
-        return self.loadFile(path, writer);
-    }
-
-    /// Load and evaluate a file
-    fn loadFile(self: *Repl, path: []const u8, writer: anytype) !void {
-        _ = if (self.loadFileValue(path)) |value| value else |err| {
+    /// Load and evaluate a file.
+    pub fn loadFile(self: *Repl, path: []const u8, writer: anytype) !void {
+        _ = if (self.load(path)) |value| value else |err| {
             try writer.print("Cannot open '{s}': {s}\n", .{ path, @errorName(err) });
             return err;
         };
         try writer.print("; loaded {s}\n", .{path});
     }
 
-    /// Evaluate file content (multiple expressions)
-    pub fn evalFileContent(self: *Repl, content: []const u8, writer: anytype) !void {
-        var pos: usize = 0;
-
-        while (pos < content.len) {
-            // Skip whitespace and comments
-            while (pos < content.len) {
-                if (content[pos] == ' ' or content[pos] == '\t' or
-                    content[pos] == '\n' or content[pos] == '\r')
-                {
-                    pos += 1;
-                } else if (content[pos] == ';') {
-                    // Skip comment line
-                    while (pos < content.len and content[pos] != '\n') {
-                        pos += 1;
-                    }
-                } else {
-                    break;
-                }
-            }
-
-            if (pos >= content.len) break;
-
-            // Find end of expression (simple approach: match parens)
-            const start = pos;
-            const end = if (self.findExprEnd(content, pos)) |value| value else |err| {
-                try writer.print("Parse error at position {d}: {s}\n", .{ pos, @errorName(err) });
-                return err;
-            };
-
-            if (end > start) {
-                const expr = content[start..end];
-                if (self.eval(expr)) |_| {} else |err| {
-                    try writer.print("Error evaluating expression at position {d}: {s}\n", .{ start, @errorName(err) });
-                    try writer.print("Expression: {s}\n", .{expr[0..@min(100, expr.len)]});
-                    return err;
-                }
-                pos = end;
-            } else {
-                break;
-            }
-        }
-    }
-
-    /// Find end of S-expression
-    fn findExprEnd(self: *Repl, content: []const u8, start: usize) !usize {
-        _ = self;
-        var pos = start;
-        if (pos >= content.len) return start;
-
-        // Handle list
-        if (content[pos] == '(') {
-            var depth: usize = 1;
-            pos += 1;
-            while (pos < content.len and depth > 0) {
-                if (content[pos] == '(') {
-                    depth += 1;
-                } else if (content[pos] == ')') {
-                    depth -= 1;
-                } else if (content[pos] == '"') {
-                    // Skip string
-                    pos += 1;
-                    while (pos < content.len and content[pos] != '"') {
-                        if (content[pos] == '\\' and pos + 1 < content.len) {
-                            pos += 1;
-                        }
-                        pos += 1;
-                    }
-                } else if (content[pos] == ';') {
-                    // Skip comment
-                    while (pos < content.len and content[pos] != '\n') {
-                        pos += 1;
-                    }
-                    pos -= 1; // will be incremented below
-                }
-                pos += 1;
-            }
-            if (depth > 0) return error.ParseError;
-            return pos;
-        }
-
-        // Handle atom
-        while (pos < content.len) {
-            const c = content[pos];
-            if (c == ' ' or c == '\t' or c == '\n' or c == '\r' or
-                c == '(' or c == ')' or c == ';')
-            {
-                break;
-            }
-            pos += 1;
-        }
-        return pos;
+    /// Evaluate multiple forms from source content.
+    pub fn evalFile(self: *Repl, content: []const u8, writer: anytype) !void {
+        _ = writer;
+        _ = try self.evalForms(content);
     }
 
     // ========================================================================
@@ -4560,7 +4467,7 @@ test "loop for-in supports by step function" {
     try repl.init(allocator, &heap, .{});
     defer repl.deinit();
     try repl.wireGlobalEnv();
-    try repl.loadFilePublic("lib/stdlib.habu", std.io.null_writer);
+    try repl.loadFile("lib/stdlib.habu", std.io.null_writer);
 
     const result = try repl.eval(
         "(equal (loop for x in '(1 2 3 4 5 6) by #'cddr collect x) '(1 3 5))",
@@ -4579,7 +4486,7 @@ test "loop when else-when else-do chain is accepted" {
     try repl.init(allocator, &heap, .{});
     defer repl.deinit();
     try repl.wireGlobalEnv();
-    try repl.loadFilePublic("lib/stdlib.habu", std.io.null_writer);
+    try repl.loadFile("lib/stdlib.habu", std.io.null_writer);
 
     const result = try repl.eval(
         "(equal (loop for v in '(1 \"x\" 2) when (numberp v) collecting v into tem else when (stringp v) collecting (length v) into tem else do (return :bad) finally (return tem)) '(1 1 2))",
@@ -4598,7 +4505,7 @@ test "setf supports composed list places" {
     try repl.init(allocator, &heap, .{});
     defer repl.deinit();
     try repl.wireGlobalEnv();
-    try repl.loadFilePublic("lib/stdlib.habu", std.io.null_writer);
+    try repl.loadFile("lib/stdlib.habu", std.io.null_writer);
 
     const result = try repl.eval(
         \\(progn
@@ -4628,7 +4535,7 @@ test "dolist supports early return without corrupting iteration state" {
     try repl.init(allocator, &heap, .{});
     defer repl.deinit();
     try repl.wireGlobalEnv();
-    try repl.loadFilePublic("lib/stdlib.habu", std.io.null_writer);
+    try repl.loadFile("lib/stdlib.habu", std.io.null_writer);
 
     const result = try repl.eval(
         "(equal (progn (setq seen nil) (list (dolist (x '(1 2 a 3) 'done) (if (numberp x) (push x seen) (return :stop))) (nreverse seen))) '(:stop (1 2)))",
@@ -4657,7 +4564,7 @@ test "eval parse error sets error info" {
     }
 }
 
-test "loadFilePublic missing file errors" {
+test "loadFile missing file errors" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
@@ -4670,10 +4577,10 @@ test "loadFilePublic missing file errors" {
 
     var buf: [1024]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
-    try testing.expectError(error.FileNotFound, repl.loadFilePublic("nope-nope.habu", stream.writer()));
+    try testing.expectError(error.FileNotFound, repl.loadFile("nope-nope.habu", stream.writer()));
 }
 
-test "loadFilePublic aborts on first form error" {
+test "loadFile aborts on first form error" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
@@ -4705,7 +4612,7 @@ test "loadFilePublic aborts on first form error" {
 
     var buf: [1024]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
-    try testing.expectError(error.TypeMismatch, repl.loadFilePublic(script_abs, stream.writer()));
+    try testing.expectError(error.TypeMismatch, repl.loadFile(script_abs, stream.writer()));
 
     const before = try repl.eval("(fboundp 'load-ok)");
     try testing.expect(before.isT());
@@ -4823,7 +4730,7 @@ test "script handler-case load does not resume failed file" {
 
     var buf: [1024]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
-    try repl.loadFilePublic(wrapper_abs, stream.writer());
+    try repl.loadFile(wrapper_abs, stream.writer());
 
     const catches = try repl.eval("*script-load-catches*");
     try testing.expect(catches.isFixnum());
@@ -4885,7 +4792,7 @@ test "load resolves relative path with repeated directory prefix" {
 
     var out_buf: [256]u8 = undefined;
     var stream = std.io.fixedBufferStream(&out_buf);
-    try repl.loadFilePublic(load_abs, stream.writer());
+    try repl.loadFile(load_abs, stream.writer());
 }
 
 test "showType reports compile error" {

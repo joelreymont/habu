@@ -21,7 +21,7 @@ fn loadStdlib(repl: *Repl) !void {
     defer file.close();
     const content = try file.readToEndAlloc(repl.allocator, 16 * 1024 * 1024);
     defer repl.allocator.free(content);
-    try repl.evalFileContent(content, null_writer);
+    try repl.evalFile(content, null_writer);
 }
 
 test "logical pathname translations load from host file" {
