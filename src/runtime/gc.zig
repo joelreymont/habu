@@ -2043,6 +2043,67 @@ test "incremental major sweep slices large tenured sets" {
     try testing.expectEqual(@as(usize, 1), heap.tenured_objs.items.len);
 }
 
+test "major barrier rescues newly linked old object before sweep" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 64 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 4 * 1024 * 1024,
+            .los_size = 4 * 1024 * 1024,
+            .los_threshold = 256,
+            .promote_threshold = 64,
+        },
+    });
+    defer heap.deinit();
+
+    const payload = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789";
+    const n = MAJOR_SWEEP_BUDGET_OBJS * 4 + 300;
+
+    const bulk = try testing.allocator.alloc(Value, n);
+    defer testing.allocator.free(bulk);
+    for (bulk) |*v| v.* = try heap.allocBaseString(payload);
+    var victim = try heap.allocBaseString(payload);
+    const keeper_val = try heap.allocVector(1, 128); // LOS object with refs.
+    keeper_val.toPtr(objects.Vector).set(0, Value.nil);
+
+    const roots_all = try testing.allocator.alloc(Value, n + 2);
+    defer testing.allocator.free(roots_all);
+    @memcpy(roots_all[0..n], bulk);
+    roots_all[n] = victim;
+    roots_all[n + 1] = keeper_val;
+
+    _ = try heap.collectGarbage(roots_all);
+    victim = roots_all[n];
+    const victim_addr = victim.toPtrAddr();
+    try testing.expect(heap.tenured_objs.items.len >= n + 1);
+
+    var roots_keep = [_]Value{keeper_val};
+    _ = try heap.collectGarbage(&roots_keep);
+    try testing.expect(heap.isMajorCycleActive());
+
+    const keeper_vec = roots_keep[0].toPtr(objects.Vector);
+    keeper_vec.set(0, victim);
+    heap.writeBarrier(roots_keep[0], victim);
+
+    var guard: usize = 0;
+    while (heap.isMajorCycleActive() and guard < 32) : (guard += 1) {
+        _ = try heap.collectGarbage(&roots_keep);
+    }
+    try testing.expect(!heap.isMajorCycleActive());
+
+    var found = false;
+    for (heap.tenured_objs.items) |obj| {
+        if (obj.addr == victim_addr) {
+            found = true;
+            break;
+        }
+    }
+    try testing.expect(found);
+    try testing.expectEqual(victim_addr, keeper_vec.get(0).toPtrAddr());
+}
+
 test "tenured marking follows nursery references" {
     const testing = std.testing;
 
