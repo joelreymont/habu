@@ -78,6 +78,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Surfacing OCaml adapter status/errors in JSON and text outputs (`tools/perf-loop:491`, `tools/gc-compare:706`) made missing OCaml command wiring explicit instead of silently dropping the runtime.
 - Emitting selected-gate parity deltas and CI trend series directly from gate evaluations (`tools/gc-compare:680`, `tools/gc-compare:706`, `tools/gc-compare:947`) created a machine-consumable contract for regression dashboards without duplicating gate math downstream.
 - Ranking GC actions from repeated `gc-compare` samples with per-metric confidence (`tools/perf-loop:314`, `tools/perf-loop:410`, `tools/perf-loop:548`) reduced score volatility and exposed low-confidence optimization signals directly in reasons/output.
+- Persisting perf-loop runs as append-only JSONL plus derived trend lines (`tools/perf-loop:574`, `tools/perf-loop:706`, `tools/perf-loop:917`) gives a durable self-improvement trail without coupling ranking logic to external storage.
 
 ### Did Not Work
 - Assuming a fixed `MAJOR_SWEEP_BUDGET`-sized fixture would keep major cycle active was brittle; root ordering/object size can make the cycle complete in one pass, so barrier tests need larger deterministic workloads.
@@ -93,6 +94,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Relying on `tools/dot-finish` full `zig build test` in this environment was unreliable due harness stalls; targeted filtered test gates provided deterministic validation for dot closure work.
 - Running real-workload CAS loops with large default iteration counts caused impractically long benchmark runs; use very small defaults plus explicit `--scale` for controlled expansion.
 - Parsing mixed benchmark stdout by taking the last JSON object without key validation was incorrect for list-heavy payloads; inner bench objects can parse successfully and masquerade as full payloads (`tools/bench_pack_runner.py:426` fix with `required_keys`).
+- Using `datetime.utcnow()` for persisted run timestamps triggered runtime deprecation warnings in current Python; use timezone-aware UTC timestamps (`tools/perf-loop:707`).
 - Reusing `lib/maxima-loader.lisp` as-is for SBCL benchmarking was brittle because warning conditions were treated as load failures; SBCL-side loaders need warning-muffling and explicit per-file load control.
 - Clamping adaptive nursery targets only to static min/max bounds was insufficient: without a live-bytes floor, shrink decisions can violate runtime occupancy constraints (`src/runtime/heap.zig:1140`) and force pathological recollection behavior.
 - Using plain unsigned subtraction for per-cycle counter deltas (`src/runtime/gc.zig:165`) is unsafe with wrapping counters; use modular delta (`-%`) consistently.

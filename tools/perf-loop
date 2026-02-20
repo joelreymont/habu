@@ -5,11 +5,13 @@ Runs microbench + real workload comparisons, ranks bottlenecks, and prints next 
 """
 
 import argparse
+import datetime
 import json
 import math
 import os
 import subprocess
 import sys
+from collections import deque
 from dataclasses import dataclass
 
 import bench_pack_runner as bench_pack
@@ -54,6 +56,22 @@ def parse_args():
         "--with-ocaml",
         action="store_true",
         help="run OCaml adapters when available and include normalized status/errors",
+    )
+    p.add_argument(
+        "--history-file",
+        default="bench/results/perf_loop_history.jsonl",
+        help="append-only JSONL file for persisted perf-loop history",
+    )
+    p.add_argument(
+        "--history-window",
+        type=int,
+        default=20,
+        help="number of most-recent history samples to use for trend summaries",
+    )
+    p.add_argument(
+        "--no-history",
+        action="store_true",
+        help="disable history persistence and trend summarization",
     )
     p.add_argument("--fail-on-gates", action="store_true", help="exit non-zero if selected GC gate fails")
     p.add_argument("--top", type=int, default=12, help="top bottlenecks to print")
@@ -553,6 +571,90 @@ def validate_gc_report(gc_norm: dict, actions: list):
     return {"ok": len(errs) == 0, "errors": errs}
 
 
+def append_history_record(path: str, record: dict):
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, separators=(",", ":")))
+        fh.write("\n")
+
+
+def load_history_tail(path: str, window: int):
+    if window <= 0 or not os.path.exists(path):
+        return [], 0
+    tail = deque(maxlen=window)
+    total = 0
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            raw = line.strip()
+            if not raw:
+                continue
+            try:
+                entry = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            tail.append(entry)
+            total += 1
+    return list(tail), total
+
+
+def numeric_trend(samples: list[float]):
+    if not samples:
+        return None
+    latest = float(samples[-1])
+    previous = float(samples[-2]) if len(samples) >= 2 else latest
+    delta_prev = latest - previous
+    mean = sum(samples) / float(len(samples))
+    return {
+        "n": len(samples),
+        "latest": latest,
+        "previous": previous,
+        "delta_prev": delta_prev,
+        "mean": mean,
+        "min": min(samples),
+        "max": max(samples),
+    }
+
+
+def build_trend_lines(history_tail: list):
+    def series(metric: str):
+        values = []
+        for row in history_tail:
+            gc_summary = row.get("gc_summary", {})
+            val = gc_summary.get(metric)
+            if isinstance(val, (int, float)):
+                values.append(float(val))
+        return values
+
+    gate_vals = []
+    top_action_counts = {}
+    for row in history_tail:
+        gate_pass = row.get("gc_gate_pass")
+        if isinstance(gate_pass, bool):
+            gate_vals.append(gate_pass)
+        actions = row.get("gc_actions", [])
+        if actions:
+            top_dot = actions[0].get("dot")
+            if isinstance(top_dot, str) and top_dot:
+                top_action_counts[top_dot] = top_action_counts.get(top_dot, 0) + 1
+
+    top_action_rank = sorted(top_action_counts.items(), key=lambda item: item[1], reverse=True)
+
+    return {
+        "avg_pause_ratio": numeric_trend(series("avg_pause_ratio")),
+        "p95_pause_ratio": numeric_trend(series("p95_pause_ratio")),
+        "throughput_ratio": numeric_trend(series("throughput_ratio")),
+        "rss_ratio": numeric_trend(series("rss_ratio")),
+        "gate_pass_rate": (
+            sum(1 for v in gate_vals if v) / float(len(gate_vals))
+            if gate_vals
+            else None
+        ),
+        "top_action_dots": [{"dot": dot, "count": count} for dot, count in top_action_rank[:5]],
+    }
+
+
 def summarize(entries, top):
     slow = sorted(entries, key=lambda e: e.ratio)
     return slow[:top]
@@ -601,6 +703,50 @@ def main():
     merged = micro_entries + maxima_entries
     worst = summarize(merged, args.top)
 
+    history_record = {
+        "timestamp_utc": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "config": {
+            "iters": args.iters,
+            "scale": args.scale,
+            "heap_mb": args.heap_mb,
+            "gc_iters": args.gc_iters,
+            "gc_runs": args.gc_runs,
+            "gc_live_mb": args.gc_live_mb,
+            "gc_heap_mb": args.gc_heap_mb,
+            "gate_level": args.gate_level,
+            "with_ocaml": bool(args.with_ocaml),
+            "profile_mutator": bool(args.profile_mutator),
+        },
+        "gc_gate_pass": gate_pass,
+        "gc_summary": gc_norm,
+        "gc_run_stats": gc_stats,
+        "gc_actions": gc_actions,
+        "micro_error_n": len(micro_errs),
+        "maxima_error_n": len(maxima_errs),
+        "worst": [
+            {
+                "suite": e.suite,
+                "name": e.name,
+                "ratio": e.ratio,
+            }
+            for e in worst
+        ],
+    }
+    history_tail = []
+    history_entries = 0
+    trend_lines = None
+    if not args.no_history:
+        append_history_record(args.history_file, history_record)
+        history_tail, history_entries = load_history_tail(args.history_file, args.history_window)
+        trend_lines = build_trend_lines(history_tail)
+    history_meta = {
+        "enabled": not args.no_history,
+        "file": args.history_file,
+        "entries": history_entries,
+        "window": args.history_window,
+        "window_samples": len(history_tail),
+    }
+
     if args.json:
         payload = {
             "micro_errors": micro_errs,
@@ -628,6 +774,8 @@ def main():
             "gc_validation": gc_validation,
             "gc_gate_level": args.gate_level,
             "gc_gate_pass": gate_pass,
+            "history": history_meta,
+            "trend_lines": trend_lines,
             "worst": [
                 {
                     "suite": e.suite,
@@ -766,6 +914,32 @@ def main():
             t=gc_stats.get("confidence_by_metric", {}).get("throughput_ratio", 1.0),
         )
     )
+    if history_meta["enabled"]:
+        print(
+            "  history: file={f} entries={n} window={w} samples={s}".format(
+                f=history_meta["file"],
+                n=history_meta["entries"],
+                w=history_meta["window"],
+                s=history_meta["window_samples"],
+            )
+        )
+        if trend_lines:
+            avg_trend = trend_lines.get("avg_pause_ratio")
+            p95_trend = trend_lines.get("p95_pause_ratio")
+            thr_trend = trend_lines.get("throughput_ratio")
+            if avg_trend and p95_trend and thr_trend:
+                print(
+                    "  trend: avg={a:+.4f} p95={p:+.4f} thr={t:+.4f} gate_pass_rate={g}".format(
+                        a=avg_trend.get("delta_prev", 0.0),
+                        p=p95_trend.get("delta_prev", 0.0),
+                        t=thr_trend.get("delta_prev", 0.0),
+                        g=(
+                            f"{trend_lines.get('gate_pass_rate', 0.0):.3f}"
+                            if trend_lines.get("gate_pass_rate") is not None
+                            else "n/a"
+                        ),
+                    )
+                )
     print(f"  gc report validation: {'PASS' if gc_validation['ok'] else 'FAIL'}")
     if gc_actions:
         print("  gc action ranking:")
