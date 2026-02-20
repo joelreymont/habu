@@ -1,9 +1,11 @@
 ---
 title: Improve tenured free-list allocator
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-02-20T08:55:19.481475+01:00"
+created-at: "\"2026-02-20T08:55:19.481475+01:00\""
+closed-at: "2026-02-20T14:57:08.400804+01:00"
+close-reason: Completed tenured allocator bins, split policy, and fragmentation gates
 blocks:
   - habu-add-incremental-major-c1faa29a
 ---

@@ -38,6 +38,7 @@ PARITY_GATES = {
             "promote_waste_rate_max": 0.05,
             "promote_scale_dev_max": 0.35,
             "remembered_scan_per_mark_max": 256.0,
+            "tenured_fragmentation_max": 0.95,
         },
         "competitive": {
             "avg_pause_ratio_min": 0.50,
@@ -47,6 +48,7 @@ PARITY_GATES = {
             "promote_waste_rate_max": 0.03,
             "promote_scale_dev_max": 0.30,
             "remembered_scan_per_mark_max": 192.0,
+            "tenured_fragmentation_max": 0.85,
         },
         "parity": {
             "avg_pause_ratio_min": 1.00,
@@ -56,6 +58,7 @@ PARITY_GATES = {
             "promote_waste_rate_max": 0.02,
             "promote_scale_dev_max": 0.25,
             "remembered_scan_per_mark_max": 128.0,
+            "tenured_fragmentation_max": 0.70,
         },
     },
     "vs_ocaml": {
@@ -67,6 +70,7 @@ PARITY_GATES = {
             "promote_waste_rate_max": 0.05,
             "promote_scale_dev_max": 0.35,
             "remembered_scan_per_mark_max": 256.0,
+            "tenured_fragmentation_max": 0.95,
         },
         "competitive": {
             "avg_pause_ratio_min": 0.50,
@@ -76,6 +80,7 @@ PARITY_GATES = {
             "promote_waste_rate_max": 0.03,
             "promote_scale_dev_max": 0.30,
             "remembered_scan_per_mark_max": 192.0,
+            "tenured_fragmentation_max": 0.85,
         },
         "parity": {
             "avg_pause_ratio_min": 1.00,
@@ -85,6 +90,7 @@ PARITY_GATES = {
             "promote_waste_rate_max": 0.02,
             "promote_scale_dev_max": 0.25,
             "remembered_scan_per_mark_max": 128.0,
+            "tenured_fragmentation_max": 0.70,
         },
     },
 }
@@ -275,6 +281,10 @@ def eval_level(metrics, level):
         "actual": metrics["gc_major_slice_in_bounds"],
         "pass": bool(metrics["gc_major_slice_in_bounds"]),
     }
+    out["gc_tenured_fragmentation_in_bounds"] = {
+        "actual": metrics["gc_tenured_fragmentation_in_bounds"],
+        "pass": bool(metrics["gc_tenured_fragmentation_in_bounds"]),
+    }
     if "promote_waste_rate_max" in level:
         out["gc_promote_waste_rate"] = {
             "actual": metrics["gc_promote_waste_rate"],
@@ -292,6 +302,12 @@ def eval_level(metrics, level):
             "actual": metrics["gc_remembered_scan_per_mark"],
             "target_max": level["remembered_scan_per_mark_max"],
             "pass": metrics["gc_remembered_scan_per_mark"] <= level["remembered_scan_per_mark_max"],
+        }
+    if "tenured_fragmentation_max" in level:
+        out["gc_tenured_fragmentation"] = {
+            "actual": metrics["gc_tenured_fragmentation"],
+            "target_max": level["tenured_fragmentation_max"],
+            "pass": metrics["gc_tenured_fragmentation"] <= level["tenured_fragmentation_max"],
         }
     out["pass"] = all(m["pass"] for m in out.values() if isinstance(m, dict) and "pass" in m)
     return out
@@ -348,6 +364,10 @@ debt_ratio = float(habu.get("gc_debt_ratio", 0.0))
 debt_occupancy = float(habu.get("gc_debt_occupancy", 0.0))
 debt_survival = float(habu.get("gc_debt_survival", 0.0))
 debt_pause_error = float(habu.get("gc_debt_pause_error", 0.0))
+tenured_free_span_n = int(habu.get("tenured_free_span_n", 0))
+tenured_free_bytes = int(habu.get("tenured_free_bytes", 0))
+tenured_free_largest_span = int(habu.get("tenured_free_largest_span", 0))
+tenured_fragmentation = float(habu.get("tenured_fragmentation", 0.0))
 major_mark_budget = int(habu.get("gc_major_mark_budget_objs", 0))
 major_sweep_budget = int(habu.get("gc_major_sweep_budget_objs", 0))
 major_mark_steps = int(habu.get("gc_major_mark_steps", 0))
@@ -380,6 +400,15 @@ promote_threshold_in_bounds = (
     and promote_threshold_max >= promote_threshold_min
     and promote_threshold >= promote_threshold_min
     and promote_threshold <= promote_threshold_max
+)
+tenured_fragmentation_in_bounds = (
+    tenured_fragmentation >= 0.0
+    and tenured_fragmentation <= 1.0
+    and tenured_free_largest_span <= tenured_free_bytes
+    and (
+        (tenured_free_span_n == 0 and tenured_free_bytes == 0 and tenured_free_largest_span == 0)
+        or tenured_free_span_n > 0
+    )
 )
 major_slice_in_bounds = (
     major_mark_budget > 0
@@ -439,6 +468,11 @@ metrics = {
     "gc_debt_pause_error": debt_pause_error,
     "gc_debt_in_bounds": debt_in_bounds,
     "gc_debt_policy_in_bounds": debt_policy_in_bounds,
+    "gc_tenured_free_span_n": tenured_free_span_n,
+    "gc_tenured_free_bytes": tenured_free_bytes,
+    "gc_tenured_free_largest_span": tenured_free_largest_span,
+    "gc_tenured_fragmentation": tenured_fragmentation,
+    "gc_tenured_fragmentation_in_bounds": tenured_fragmentation_in_bounds,
     "gc_major_mark_budget_objs": major_mark_budget,
     "gc_major_sweep_budget_objs": major_sweep_budget,
     "gc_major_mark_steps": major_mark_steps,
@@ -635,6 +669,17 @@ print(
         sv=metrics["gc_debt_survival"],
         pe=metrics["gc_debt_pause_error"],
         ok=str(metrics["gc_debt_policy_in_bounds"]).lower(),
+    )
+)
+print()
+print("Tenured free-space:")
+print(
+    "  spans={sn} bytes={fb} largest={lg} frag={fr:.4f} in_bounds={ok}".format(
+        sn=metrics["gc_tenured_free_span_n"],
+        fb=metrics["gc_tenured_free_bytes"],
+        lg=metrics["gc_tenured_free_largest_span"],
+        fr=metrics["gc_tenured_fragmentation"],
+        ok=str(metrics["gc_tenured_fragmentation_in_bounds"]).lower(),
     )
 )
 print()

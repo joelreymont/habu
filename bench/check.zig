@@ -40,6 +40,11 @@ const GcJson = struct {
     tenured_live: u64 = 0,
     los_live: u64 = 0,
     tenured_bytes: u64 = 0,
+    tenured_capacity_bytes: u64 = 0,
+    tenured_free_span_n: u64 = 0,
+    tenured_free_bytes: u64 = 0,
+    tenured_free_largest_span: u64 = 0,
+    tenured_fragmentation: f64 = 0.0,
     los_bytes: u64 = 0,
     alloc_sample_n: u64 = 0,
     alloc_sample_bytes: u64 = 0,
@@ -519,6 +524,42 @@ pub fn main() !void {
     if (gc.wb_marks == 0) try fail("gc wb_marks is 0", .{});
     if (gc.los_live == 0) try fail("gc los_live is 0", .{});
     if (gc.los_bytes == 0) try fail("gc los_bytes is 0", .{});
+    if (gc.tenured_capacity_bytes == 0) try fail("gc tenured_capacity_bytes is 0", .{});
+    if (gc.tenured_bytes > gc.tenured_capacity_bytes) {
+        try fail(
+            "gc tenured_bytes {d} > tenured_capacity_bytes {d}",
+            .{ gc.tenured_bytes, gc.tenured_capacity_bytes },
+        );
+    }
+    if (gc.tenured_free_bytes > gc.tenured_bytes) {
+        try fail(
+            "gc tenured_free_bytes {d} > tenured_bytes {d}",
+            .{ gc.tenured_free_bytes, gc.tenured_bytes },
+        );
+    }
+    if (gc.tenured_free_span_n == 0) {
+        if (gc.tenured_free_bytes != 0) {
+            try fail("gc tenured_free_bytes {d} with 0 spans", .{gc.tenured_free_bytes});
+        }
+        if (gc.tenured_free_largest_span != 0) {
+            try fail("gc tenured_free_largest_span {d} with 0 spans", .{gc.tenured_free_largest_span});
+        }
+        if (gc.tenured_fragmentation != 0.0) {
+            try fail("gc tenured_fragmentation {d:.4} with 0 spans", .{gc.tenured_fragmentation});
+        }
+    } else {
+        if (gc.tenured_free_bytes == 0) try fail("gc tenured_free_bytes is 0 with spans", .{});
+        if (gc.tenured_free_largest_span == 0) try fail("gc tenured_free_largest_span is 0 with spans", .{});
+    }
+    if (gc.tenured_free_largest_span > gc.tenured_free_bytes) {
+        try fail(
+            "gc tenured_free_largest_span {d} > tenured_free_bytes {d}",
+            .{ gc.tenured_free_largest_span, gc.tenured_free_bytes },
+        );
+    }
+    if (gc.tenured_fragmentation < 0.0 or gc.tenured_fragmentation > 1.0) {
+        try fail("gc tenured_fragmentation {d:.4} outside [0,1]", .{gc.tenured_fragmentation});
+    }
     if (gc.tenured_bytes + gc.los_bytes > gc.heap_bytes) {
         try fail("gc old-space bytes {d} > heap_bytes {d}", .{ gc.tenured_bytes + gc.los_bytes, gc.heap_bytes });
     }

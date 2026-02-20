@@ -326,6 +326,9 @@ pub fn main() !void {
     const tenured_live = heap.tenured_objs.items.len;
     const los_live = heap.los_objs.items.len;
     const tenured_bytes = heap.tenuredBytesUsed();
+    const tenured_free = heap.tenuredFreeStats();
+    const tenured_capacity_bytes = if (heap.tenuredRegion()) |r| r.len() else @as(usize, 0);
+    const tenured_fragmentation = heap.tenuredFragmentation();
     const los_bytes = heap.losBytesUsed();
     const live_bytes = heap.bytesUsed();
     const gc_delta_u64: u64 = @intCast(gc_delta);
@@ -415,6 +418,11 @@ pub fn main() !void {
             .tenured_live = tenured_live,
             .los_live = los_live,
             .tenured_bytes = tenured_bytes,
+            .tenured_capacity_bytes = tenured_capacity_bytes,
+            .tenured_free_span_n = tenured_free.span_n,
+            .tenured_free_bytes = tenured_free.bytes,
+            .tenured_free_largest_span = tenured_free.largest,
+            .tenured_fragmentation = tenured_fragmentation,
             .los_bytes = los_bytes,
             .alloc_sample_n = sample_n_delta,
             .alloc_sample_bytes = sample_bytes_delta,
@@ -550,6 +558,16 @@ pub fn main() !void {
     try w.print("  promoted bytes: {d}\n", .{promoted_delta});
     try w.print("  write-barrier marks: {d}\n", .{wb_delta});
     try w.print("  tenured live/bytes: {d} / {d}\n", .{ tenured_live, tenured_bytes });
+    try w.print(
+        "  tenured free: spans {d}, bytes {d}/{d}, largest {d}, frag {d:.4}\n",
+        .{
+            tenured_free.span_n,
+            tenured_free.bytes,
+            tenured_capacity_bytes,
+            tenured_free.largest,
+            tenured_fragmentation,
+        },
+    );
     try w.print("  los live/bytes: {d} / {d}\n", .{ los_live, los_bytes });
     try w.print("  gc_count: {d}\n", .{gc_delta});
     try w.flush();

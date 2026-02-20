@@ -536,6 +536,12 @@ pub const Heap = struct {
         size: usize,
     };
 
+    pub const FreeSpanStats = struct {
+        span_n: usize = 0,
+        bytes: usize = 0,
+        largest: usize = 0,
+    };
+
     pub const SweepSliceResult = struct {
         done: bool,
         scanned: usize,
@@ -1527,6 +1533,33 @@ pub const Heap = struct {
         const tenured = self.layout.tenured orelse return 0;
         const ptr = self.tenured_alloc_ptr orelse return 0;
         return @intFromPtr(ptr) - @intFromPtr(tenured.start);
+    }
+
+    pub fn tenuredFreeStats(self: *const Heap) FreeSpanStats {
+        var out: FreeSpanStats = .{};
+
+        for (self.tenured_free.items) |span| {
+            out.span_n +%= 1;
+            out.bytes +%= span.size;
+            if (span.size > out.largest) out.largest = span.size;
+        }
+        for (self.tenured_free_bins) |bin| {
+            for (bin.items) |span| {
+                out.span_n +%= 1;
+                out.bytes +%= span.size;
+                if (span.size > out.largest) out.largest = span.size;
+            }
+        }
+
+        return out;
+    }
+
+    pub fn tenuredFragmentation(self: *const Heap) f64 {
+        const free_stats = self.tenuredFreeStats();
+        if (free_stats.bytes == 0) return 0.0;
+        const free_f = @as(f64, @floatFromInt(free_stats.bytes));
+        const largest_f = @as(f64, @floatFromInt(free_stats.largest));
+        return 1.0 - (largest_f / free_f);
     }
 
     pub fn losBytesUsed(self: *const Heap) usize {
@@ -3450,6 +3483,41 @@ test "heap tenured split policy avoids tiny tail fragments" {
     for (heap.tenured_free_bins) |bin| free_span_n += bin.items.len;
     try testing.expectEqual(@as(usize, 0), free_span_n);
     try testing.expectEqual(@as(usize, 0), heap.tenured_free.items.len);
+}
+
+test "heap tenured fragmentation metric reflects largest free span" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+        },
+    });
+    defer heap.deinit();
+
+    const span_size = std.mem.alignForward(usize, 64, ALIGNMENT);
+    const span0 = try heap.allocTenuredRaw(span_size);
+    _ = try heap.allocTenuredRaw(span_size);
+    const span2 = try heap.allocTenuredRaw(span_size);
+
+    try heap.tenured_free.append(heap.backing_allocator, .{
+        .addr = @intFromPtr(span0),
+        .size = span_size,
+    });
+    try heap.tenured_free.append(heap.backing_allocator, .{
+        .addr = @intFromPtr(span2),
+        .size = span_size,
+    });
+    try heap.coalesceTenuredFree();
+
+    const free_stats = heap.tenuredFreeStats();
+    try testing.expectEqual(@as(usize, 2), free_stats.span_n);
+    try testing.expectEqual(@as(usize, span_size * 2), free_stats.bytes);
+    try testing.expectEqual(@as(usize, span_size), free_stats.largest);
+    try testing.expectApproxEqAbs(@as(f64, 0.5), heap.tenuredFragmentation(), 1e-9);
 }
 
 test "heap writeBarrier marks old-to-young cards in generational mode" {

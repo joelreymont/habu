@@ -1067,3 +1067,13 @@ Environment guard:
 
 #### Did Not Work
 - Pure first-fit with unconditional split creates tiny remainder spans that churn bins and increase fragmentation pressure under mixed-size promotion workloads.
+
+### Session Notes (2026-02-20, tenured fragmentation benchmarks)
+
+#### Worked Well
+- Emitting tenured free-space fragmentation telemetry directly from `bench/gc.zig` (free span count/bytes/largest span/fragmentation ratio) gave a stable signal to track allocator-quality changes.
+- Reading free-space from both pending and binned tenured free lists in `src/runtime/heap.zig` (`tenuredFreeStats`, `tenuredFragmentation`) avoided blind spots during incremental sweep windows.
+- Wiring fragmentation invariants and gate checks through `bench/check.zig` and `tools/gc-compare` ensured regressions are caught automatically with the same CI/parity flow as other GC metrics.
+
+#### Did Not Work
+- Tracking only `tenured_bytes` and object counts misses allocator fragmentation regressions completely; fragmentation required explicit free-span topology metrics.
