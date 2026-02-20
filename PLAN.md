@@ -80,7 +80,7 @@
         - [x] `habu-debt-integrate-trigger-c402efa2` Debt: integrate trigger decisions. Depends on `habu-debt-account-allocation-07cb1149`.
         - [x] `habu-debt-tune-coefficients-d2f31c52` Debt: tune coefficients with benches. Depends on `habu-debt-integrate-trigger-c402efa2`.
       - [ ] `habu-add-incremental-major-c1faa29a` Add incremental major marking with pause budget slicing. Depends on `habu-implement-gc-debt-bb3f3f6e`.
-        - [ ] `habu-major-gc-incremental-068b1148` Major GC: incremental mark state machine.
+        - [x] `habu-major-gc-incremental-068b1148` Major GC: incremental mark state machine.
         - [ ] `habu-major-gc-barrier-ac8038a7` Major GC: barrier-assisted marking. Depends on `habu-major-gc-incremental-068b1148`.
         - [ ] `habu-major-gc-pause-bee3923c` Major GC: pause-slice validation. Depends on `habu-major-gc-barrier-ac8038a7`.
       - [ ] `habu-improve-tenured-free-e53ce37d` Improve tenured free-list allocator and coalescing. Depends on `habu-add-incremental-major-c1faa29a`.

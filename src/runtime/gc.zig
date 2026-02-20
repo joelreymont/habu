@@ -95,6 +95,21 @@ const DEBT_TRIGGER_MAIN_RATIO = 1.00;
 const DEBT_TRIGGER_MAIN_SCORE = 0.65;
 const DEBT_TRIGGER_SOFT_RATIO = 0.85;
 const DEBT_TRIGGER_SOFT_SCORE = 0.95;
+const MAJOR_MARK_BUDGET_OBJS: usize = 512;
+const MAJOR_SWEEP_BUDGET_OBJS: usize = 1024;
+
+const MajorPhase = enum {
+    idle,
+    mark,
+    sweep_tenured,
+    sweep_los,
+};
+
+const MajorState = struct {
+    phase: MajorPhase = .idle,
+    tenured_cursor: usize = 0,
+    los_cursor: usize = 0,
+};
 
 fn clampf(v: f64, lo: f64, hi: f64) f64 {
     if (v < lo) return lo;
@@ -253,6 +268,10 @@ pub const GC = struct {
     /// Coalesced remembered-card runs for minor-GC fast-path scans.
     remembered_runs: std.ArrayList(heap_mod.CardRun),
     runs_peak: usize,
+    /// Persistent major-cycle work queue for incremental old-space marking.
+    major_work: std.ArrayList(WorkItem),
+    major_peak: usize,
+    major: MajorState,
     /// Debug: flag set during GC trace/copy phase
     gc_in_progress: if (builtin.mode == .Debug) bool else void,
 
@@ -266,6 +285,9 @@ pub const GC = struct {
             .age_peak = 0,
             .remembered_runs = std.ArrayList(heap_mod.CardRun){},
             .runs_peak = 0,
+            .major_work = std.ArrayList(WorkItem){},
+            .major_peak = 0,
+            .major = .{},
             .gc_in_progress = if (builtin.mode == .Debug) false else {},
         };
     }
@@ -274,6 +296,7 @@ pub const GC = struct {
         self.work_list.deinit(self.allocator);
         self.age_updates.deinit(self.allocator);
         self.remembered_runs.deinit(self.allocator);
+        self.major_work.deinit(self.allocator);
     }
 
     /// Calculate initial capacity for work queues based on heap size
@@ -308,7 +331,10 @@ pub const GC = struct {
         const promote_success_before = heap.stats.gc_promote_success_n;
         const promote_age_before = heap.stats.gc_promote_age;
         const copied = switch (mode) {
-            .semispace => try self.collectSemispaceRootSet(heap, roots),
+            .semispace => blk: {
+                heap.setMajorCycleActive(false);
+                break :blk try self.collectSemispaceRootSet(heap, roots);
+            },
             .generational => try self.collectMinorRootSet(heap, roots),
         };
         const pause_ns = elapsedNsSince(pause_start);
@@ -375,6 +401,7 @@ pub const GC = struct {
             try self.work_list.ensureTotalCapacity(self.allocator, init_cap);
             try self.age_updates.ensureTotalCapacity(self.allocator, init_cap * 4);
             try self.remembered_runs.ensureTotalCapacity(self.allocator, @max(init_cap / 8, @as(usize, 64)));
+            try self.major_work.ensureTotalCapacity(self.allocator, init_cap);
         }
 
         // Set GC in-progress flag (debug only)
@@ -451,12 +478,15 @@ pub const GC = struct {
             const init_cap = self.calculateInitialCapacity(heap);
             try self.work_list.ensureTotalCapacity(self.allocator, init_cap);
             try self.age_updates.ensureTotalCapacity(self.allocator, init_cap * 4);
+            try self.major_work.ensureTotalCapacity(self.allocator, init_cap);
         }
 
         if (builtin.mode == .Debug) self.gc_in_progress = true;
         defer {
             if (builtin.mode == .Debug) self.gc_in_progress = false;
         }
+
+        self.beginMajorCycleIfNeeded(heap);
 
         self.work_list.clearRetainingCapacity();
         self.work_peak = 0;
@@ -465,8 +495,6 @@ pub const GC = struct {
         self.remembered_runs.clearRetainingCapacity();
         self.runs_peak = 0;
         var alloc_ptr = heap.to_start;
-        heap.clearTenuredMarks();
-        heap.clearLosMarks();
         var root_vals: usize = roots.slots.len;
         for (roots.ranges) |r| root_vals +%= r.len;
 
@@ -490,11 +518,8 @@ pub const GC = struct {
             rem_scanned +%= try self.scanRememberedObjects(heap, heap.los_objs.items, &alloc_ptr);
         }
 
-        while (self.work_list.items.len > 0) {
-            const item = self.work_list.items[self.work_list.items.len - 1];
-            self.work_list.items.len -= 1;
-            try self.scanObject(heap, item.addr, item.tag, &alloc_ptr);
-        }
+        try self.processMinorWork(heap, &alloc_ptr);
+        try self.advanceMajorCycle(heap, &alloc_ptr);
         const copy_end_ns = elapsedNsSince(phase_start);
         const copy_ns = copy_end_ns - root_ns;
 
@@ -507,8 +532,6 @@ pub const GC = struct {
 
         const finalize_start = std.time.nanoTimestamp();
         self.finalizeUnreachable(heap, old_alloc_ptr);
-        try heap.sweepTenured();
-        try heap.sweepLos();
         const finalize_ns = elapsedNsSince(finalize_start);
 
         heap.stats.gc_count +%= 1;
@@ -550,6 +573,8 @@ pub const GC = struct {
         const age_peak = self.age_peak;
         const run_cap = self.remembered_runs.capacity;
         const run_peak = self.runs_peak;
+        const major_cap = self.major_work.capacity;
+        const major_peak = self.major_peak;
 
         // If we used >75% capacity, grow for next cycle
         if (work_peak * 4 > work_cap * 3) {
@@ -563,6 +588,106 @@ pub const GC = struct {
         if (run_cap == 0 or run_peak * 4 > run_cap * 3) {
             const new_cap = if (run_cap == 0) @as(usize, 64) else run_cap * 2;
             try self.remembered_runs.ensureTotalCapacity(self.allocator, new_cap);
+        }
+        if (major_cap == 0 or major_peak * 4 > major_cap * 3) {
+            const new_cap = if (major_cap == 0) @as(usize, 256) else major_cap * 2;
+            try self.major_work.ensureTotalCapacity(self.allocator, new_cap);
+        }
+    }
+
+    fn shouldRunMajorCycle(heap: *const heap_mod.Heap) bool {
+        return heap.gcLayoutMode() == .generational and
+            (heap.tenured_objs.items.len > 0 or heap.los_objs.items.len > 0);
+    }
+
+    fn beginMajorCycleIfNeeded(self: *GC, heap: *heap_mod.Heap) void {
+        if (heap.gcLayoutMode() != .generational) {
+            self.major.phase = .idle;
+            heap.setMajorCycleActive(false);
+            return;
+        }
+        if (self.major.phase != .idle) {
+            heap.setMajorCycleActive(true);
+            return;
+        }
+        if (!shouldRunMajorCycle(heap)) {
+            heap.setMajorCycleActive(false);
+            return;
+        }
+
+        self.major.phase = .mark;
+        self.major.tenured_cursor = 0;
+        self.major.los_cursor = 0;
+        self.major_work.clearRetainingCapacity();
+        self.major_peak = 0;
+        heap.clearTenuredMarks();
+        heap.clearLosMarks();
+        heap.setMajorCycleActive(true);
+    }
+
+    fn pushMajorWork(self: *GC, addr: usize, tag: Tag) !void {
+        if (builtin.mode == .Debug and self.gc_in_progress) {
+            const old_cap = self.major_work.capacity;
+            try self.major_work.append(self.allocator, .{ .addr = addr, .tag = tag });
+            const new_cap = self.major_work.capacity;
+            if (new_cap > old_cap) {
+                std.debug.print("ERROR: major_work allocated during GC (cap: {} -> {})\n", .{ old_cap, new_cap });
+                @panic("Allocation during GC detected");
+            }
+        } else {
+            try self.major_work.append(self.allocator, .{ .addr = addr, .tag = tag });
+        }
+        if (self.major_work.items.len > self.major_peak) self.major_peak = self.major_work.items.len;
+    }
+
+    fn processMinorWork(self: *GC, heap: *heap_mod.Heap, alloc_ptr: *[*]align(heap_mod.ALIGNMENT) u8) !void {
+        while (self.work_list.items.len > 0) {
+            const item = self.work_list.items[self.work_list.items.len - 1];
+            self.work_list.items.len -= 1;
+            try self.scanObject(heap, item.addr, item.tag, alloc_ptr);
+        }
+    }
+
+    fn processMajorWork(self: *GC, heap: *heap_mod.Heap, alloc_ptr: *[*]align(heap_mod.ALIGNMENT) u8, budget: usize) !void {
+        var left = budget;
+        while (left > 0 and self.major_work.items.len > 0) : (left -= 1) {
+            const item = self.major_work.items[self.major_work.items.len - 1];
+            self.major_work.items.len -= 1;
+            try self.scanObject(heap, item.addr, item.tag, alloc_ptr);
+            try self.processMinorWork(heap, alloc_ptr);
+        }
+    }
+
+    fn advanceMajorCycle(self: *GC, heap: *heap_mod.Heap, alloc_ptr: *[*]align(heap_mod.ALIGNMENT) u8) !void {
+        if (self.major.phase == .idle) return;
+
+        try self.processMajorWork(heap, alloc_ptr, MAJOR_MARK_BUDGET_OBJS);
+
+        while (true) {
+            switch (self.major.phase) {
+                .idle => return,
+                .mark => {
+                    if (self.major_work.items.len != 0) return;
+                    self.major.phase = .sweep_tenured;
+                    continue;
+                },
+                .sweep_tenured => {
+                    if (self.major_work.items.len != 0) return;
+                    if (!try heap.sweepTenuredSlice(&self.major.tenured_cursor, MAJOR_SWEEP_BUDGET_OBJS)) return;
+                    self.major.phase = .sweep_los;
+                    continue;
+                },
+                .sweep_los => {
+                    if (self.major_work.items.len != 0) return;
+                    if (!try heap.sweepLosSlice(&self.major.los_cursor, MAJOR_SWEEP_BUDGET_OBJS)) return;
+                    self.major.phase = .idle;
+                    self.major.tenured_cursor = 0;
+                    self.major.los_cursor = 0;
+                    self.major_work.clearRetainingCapacity();
+                    heap.setMajorCycleActive(false);
+                    return;
+                },
+            }
         }
     }
 
@@ -698,13 +823,22 @@ pub const GC = struct {
         const from_end = @intFromPtr(heap.from_end);
 
         if (obj_addr < from_start or obj_addr >= from_end) {
-            if (heap.gcLayoutMode() == .generational) {
-                _ = heap.markTenuredObject(obj_addr);
+            if (heap.isMajorCycleActive()) {
+                const old_tag = val.getTag();
+                const has_refs = objectHasRefsAtAddr(old_tag, obj_addr);
+
+                switch (heap.markTenuredObject(obj_addr)) {
+                    .newly => {
+                        if (has_refs) {
+                            try self.pushMajorWork(obj_addr, old_tag);
+                        }
+                    },
+                    .already, .none => {},
+                }
                 switch (heap.markLosObject(obj_addr)) {
                     .newly => {
-                        const old_tag = val.getTag();
-                        if (objectHasRefsAtAddr(old_tag, obj_addr)) {
-                            try self.pushWork(obj_addr, old_tag);
+                        if (has_refs) {
+                            try self.pushMajorWork(obj_addr, old_tag);
                         }
                     },
                     .already, .none => {},
@@ -1865,6 +1999,48 @@ test "tenured sweep reclaims unreachable promoted objects" {
     _ = try heap.collectGarbage(&roots13);
     s3 = roots13[1];
     try testing.expectEqual(s2_addr, s3.toPtrAddr());
+}
+
+test "incremental major sweep slices large tenured sets" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 16 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .promote_threshold = 64,
+        },
+    });
+    defer heap.deinit();
+
+    const payload = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789";
+    const n = MAJOR_SWEEP_BUDGET_OBJS + 257;
+    var roots = try testing.allocator.alloc(Value, n);
+    defer testing.allocator.free(roots);
+
+    for (roots) |*r| {
+        r.* = try heap.allocBaseString(payload);
+    }
+    _ = try heap.collectGarbage(roots);
+    try testing.expect(heap.tenured_objs.items.len >= n);
+
+    const keep = roots[0];
+    roots[0] = keep;
+    for (roots[1..]) |*r| r.* = Value.nil;
+
+    _ = try heap.collectGarbage(roots);
+    try testing.expect(heap.tenured_objs.items.len > 1);
+    try testing.expect(heap.isMajorCycleActive());
+
+    var guard: usize = 0;
+    while (heap.isMajorCycleActive() and guard < 32) : (guard += 1) {
+        _ = try heap.collectGarbage(roots);
+    }
+
+    try testing.expect(!heap.isMajorCycleActive());
+    try testing.expectEqual(@as(usize, 1), heap.tenured_objs.items.len);
 }
 
 test "tenured marking follows nursery references" {

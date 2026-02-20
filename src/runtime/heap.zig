@@ -369,6 +369,7 @@ pub const Heap = struct {
     los_threshold: usize,
     los_objs: std.ArrayList(TenuredObj),
     los_free: std.ArrayList(FreeSpan),
+    major_cycle_active: bool,
     /// Persistent collector state reused across GC cycles.
     gc: GC,
     /// Backing allocator (for the memory buffer itself)
@@ -678,6 +679,7 @@ pub const Heap = struct {
             .los_threshold = config.generational.los_threshold,
             .los_objs = std.ArrayList(TenuredObj){},
             .los_free = std.ArrayList(FreeSpan){},
+            .major_cycle_active = false,
             .gc = GC.init(allocator),
             .backing_allocator = allocator,
             .stats = .{},
@@ -852,6 +854,15 @@ pub const Heap = struct {
         return self.layout.mode;
     }
 
+    pub fn setMajorCycleActive(self: *Heap, active: bool) void {
+        if (self.layout.mode != .generational) return;
+        self.major_cycle_active = active;
+    }
+
+    pub fn isMajorCycleActive(self: *const Heap) bool {
+        return self.layout.mode == .generational and self.major_cycle_active;
+    }
+
     pub fn nurseryFromRegion(self: *const Heap) Region {
         return self.layout.nursery_from;
     }
@@ -987,7 +998,7 @@ pub const Heap = struct {
         const stored_addr = stored.toPtrAddr();
         if (!self.containsAddr(owner_addr) or !self.containsAddr(stored_addr)) return;
         if (self.isInNurseryAddr(owner_addr)) return;
-        if (!self.isInNurseryAddr(stored_addr)) return;
+        if (!self.major_cycle_active and !self.isInNurseryAddr(stored_addr)) return;
 
         const card_idx = self.cardIndexForAddr(owner_addr) orelse return;
         const bit = self.cardLaneBitForAddr(owner_addr);
@@ -1096,16 +1107,17 @@ pub const Heap = struct {
         }
     }
 
-    pub fn markTenuredObject(self: *Heap, addr: usize) bool {
-        const tenured = self.layout.tenured orelse return false;
-        if (addr < @intFromPtr(tenured.start) or addr >= @intFromPtr(tenured.end)) return false;
+    pub fn markTenuredObject(self: *Heap, addr: usize) MarkResult {
+        const tenured = self.layout.tenured orelse return .none;
+        if (addr < @intFromPtr(tenured.start) or addr >= @intFromPtr(tenured.end)) return .none;
         for (self.tenured_objs.items) |*obj| {
             if (obj.addr == addr) {
+                if (obj.marked) return .already;
                 obj.marked = true;
-                return true;
+                return .newly;
             }
         }
-        return false;
+        return .none;
     }
 
     fn coalesceTenuredFree(self: *Heap) void {
@@ -1167,6 +1179,52 @@ pub const Heap = struct {
         }
         self.tenured_objs.items.len = write;
         self.coalesceTenuredFree();
+    }
+
+    pub fn sweepTenuredSlice(self: *Heap, cursor: *usize, budget: usize) !bool {
+        if (self.layout.mode != .generational) return true;
+        if (budget == 0) return false;
+        if (self.tenured_objs.items.len == 0) {
+            cursor.* = 0;
+            return true;
+        }
+        if (cursor.* >= self.tenured_objs.items.len) {
+            cursor.* = 0;
+        }
+
+        const reserve_n = @min(budget, self.tenured_objs.items.len - cursor.*);
+        try self.tenured_free.ensureUnusedCapacity(self.backing_allocator, reserve_n);
+
+        var left = budget;
+        while (cursor.* < self.tenured_objs.items.len and left > 0) : (left -= 1) {
+            const idx = cursor.*;
+            const obj = self.tenured_objs.items[idx];
+            if (obj.marked) {
+                var live = obj;
+                if (!live.promote_success_recorded and live.promoted_cycle < self.stats.gc_count) {
+                    const cls = allocClassForTagAddr(live.tag, live.addr);
+                    const age_bucket = allocAgeBucket(live.promoted_age);
+                    self.stats.gc_promote_success_n +%= 1;
+                    self.stats.gc_promote_success_bytes +%= live.size;
+                    self.stats.gc_promote_success_class[@intFromEnum(cls)] +%= 1;
+                    self.stats.gc_promote_success_age[age_bucket] +%= 1;
+                    self.stats.gc_promote_success_age_class[@intFromEnum(cls)][age_bucket] +%= 1;
+                    live.promote_success_recorded = true;
+                }
+                live.marked = false;
+                self.tenured_objs.items[idx] = live;
+                cursor.* += 1;
+                continue;
+            }
+
+            self.tenured_free.appendAssumeCapacity(.{ .addr = obj.addr, .size = obj.size });
+            _ = self.tenured_objs.swapRemove(idx);
+        }
+
+        if (cursor.* < self.tenured_objs.items.len) return false;
+        cursor.* = 0;
+        self.coalesceTenuredFree();
+        return true;
     }
 
     fn shouldAllocLos(self: *const Heap, aligned_size: usize) bool {
@@ -1290,6 +1348,42 @@ pub const Heap = struct {
         }
         self.los_objs.items.len = write;
         self.coalesceLosFree();
+    }
+
+    pub fn sweepLosSlice(self: *Heap, cursor: *usize, budget: usize) !bool {
+        if (self.layout.mode != .generational) return true;
+        if (budget == 0) return false;
+        if (self.los_objs.items.len == 0) {
+            cursor.* = 0;
+            return true;
+        }
+        if (cursor.* >= self.los_objs.items.len) {
+            cursor.* = 0;
+        }
+
+        const reserve_n = @min(budget, self.los_objs.items.len - cursor.*);
+        try self.los_free.ensureUnusedCapacity(self.backing_allocator, reserve_n);
+
+        var left = budget;
+        while (cursor.* < self.los_objs.items.len and left > 0) : (left -= 1) {
+            const idx = cursor.*;
+            const obj = self.los_objs.items[idx];
+            if (obj.marked) {
+                var live = obj;
+                live.marked = false;
+                self.los_objs.items[idx] = live;
+                cursor.* += 1;
+                continue;
+            }
+
+            self.los_free.appendAssumeCapacity(.{ .addr = obj.addr, .size = obj.size });
+            _ = self.los_objs.swapRemove(idx);
+        }
+
+        if (cursor.* < self.los_objs.items.len) return false;
+        cursor.* = 0;
+        self.coalesceLosFree();
+        return true;
     }
 
     pub fn tenuredBytesUsed(self: *const Heap) usize {
@@ -3172,6 +3266,35 @@ test "heap writeBarrier is disabled for semispace mode" {
     heap.clearCardTable();
     heap.writeBarrier(owner, young);
     try testing.expect(!heap.isCardMarkedForAddr(owner_addr));
+}
+
+test "heap writeBarrier marks old-to-old cards during major cycle" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+        },
+    });
+    defer heap.deinit();
+
+    const tenured = heap.tenuredRegion().?;
+    const owner_addr = @intFromPtr(tenured.start);
+    const other_addr = owner_addr + ALIGNMENT;
+    const owner = Value{ .raw = owner_addr };
+    const other_old = Value{ .raw = other_addr };
+
+    heap.clearCardTable();
+    heap.setMajorCycleActive(false);
+    heap.writeBarrier(owner, other_old);
+    try testing.expect(!heap.isCardMarkedForAddr(owner_addr));
+
+    heap.setMajorCycleActive(true);
+    heap.writeBarrier(owner, other_old);
+    try testing.expect(heap.isCardMarkedForAddr(owner_addr));
 }
 
 test "heap remembered set APIs enumerate and clear marked cards" {

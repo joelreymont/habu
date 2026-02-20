@@ -9,6 +9,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-20)
 
 ### Worked Well
+- Moving major old-space collection to an explicit phase machine (`src/runtime/gc.zig:102`, `src/runtime/gc.zig:584`) with persistent `major_work` queue enabled resumable mark/sweep progress without per-cycle full sweeps.
+- Splitting tenured/LOS sweeping into cursor-based slices (`src/runtime/heap.zig:1187`, `src/runtime/heap.zig:1367`) kept reclamation bounded per minor cycle while preserving coalescing correctness at cycle completion.
+- Enabling write-barrier card marking for old->old pointer stores only while major cycle is active (`src/runtime/heap.zig:1003`) kept incremental marking sound across mutator slices and was validated by focused regression coverage.
 - Extending Maxima workload GC snapshots with debt telemetry (`bench/maxima_workload.zig:53`, `bench/maxima_workload.zig:84`, `bench/maxima_workload.zig:604`) made debt trigger/skip behavior visible during real loader pressure.
 - Wiring Maxima debt metrics through comparison tooling (`tools/gc-compare:455`, `tools/gc-compare:663`) enabled direct A/B coefficient checks instead of inferring debt behavior from pause metrics alone.
 - Running coefficient A/B and rolling back to baseline constants in `src/runtime/gc.zig:89` after benchmark evidence prevented a real VM throughput regression (`bench-vm` string/hash path) caused by over-aggressive early-trigger thresholds.
@@ -58,6 +61,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Exporting debt telemetry through `bench/gc` and enforcing it in `bench/check`/`tools/gc-compare` (`bench/gc.zig:337`, `bench/check.zig:70`, `tools/gc-compare:330`) created a closed verification loop for debt bytes, paydown, and trigger quality.
 
 ### Did Not Work
+- Transitioning mark->sweep as a single step per minor cycle delayed tiny sweep completions by an extra GC; using iterative phase advancement in one cycle (`src/runtime/gc.zig:639`) fixed this regression.
 - More aggressive debt thresholds/weights looked faster on Maxima only because loader failures increased (`maxima_habu_errors` 8→10), so raw wall-time wins are invalid unless error counts stay flat.
 - Counting `gc_debt_paydown_bytes` as raw `max(copied,reclaimed)` was wrong (`src/runtime/heap.zig:1370`): it can exceed debt inflow by orders of magnitude and trip valid invariants (`bench/check.zig:416`).
 - Treating a single default-threshold `bench-check` p95 miss as semantic breakage was noisy in this environment; rerunning with a relaxed p95 gate isolated invariant/schema correctness from host performance variance.
