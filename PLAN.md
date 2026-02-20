@@ -97,7 +97,7 @@
         - [x] `habu-safepoint-batch-polling-4c6aa8b1` Safepoint: batch polling strategy. Depends on `habu-barrier-inline-hot-4222c4ad`.
       - [ ] `habu-create-cross-runtime-056102b6` Create cross-runtime GC benchmark pack for parity validation. Depends on `habu-reduce-barrier-and-254725b9`.
         - [x] `habu-bench-pack-define-4131275b` Bench pack: define shared workloads.
-        - [ ] `habu-bench-pack-implement-72607a92` Bench pack: implement runtime runners. Depends on `habu-bench-pack-define-4131275b`.
+        - [x] `habu-bench-pack-implement-72607a92` Bench pack: implement runtime runners. Depends on `habu-bench-pack-define-4131275b`.
         - [ ] `habu-bench-pack-add-cb3ac540` Bench pack: add unified diff report. Depends on `habu-bench-pack-implement-72607a92`.
       - [ ] `habu-automate-gc-self-807cbd79` Automate GC self-improvement loop from ranked deltas. Depends on `habu-create-cross-runtime-056102b6`.
         - [ ] `habu-self-loop-rank-9d5c4220` Self-loop: rank bottleneck candidates.

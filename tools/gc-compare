@@ -5,10 +5,9 @@ Compares pause-time metrics on similar allocation pressure workloads.
 """
 
 import json
-import os
-import re
-import subprocess
 import sys
+
+import bench_pack_runner as bench_pack
 
 ITERS = 100
 LIVE_MB = 8
@@ -17,6 +16,7 @@ JSON_OUT = False
 FAIL_ON_GATES = False
 GATE_LEVEL = "milestone_2x_from_baseline"
 WITH_MAXIMA = False
+WITH_OCAML = False
 MAXIMA_SCALE = 3
 MAXIMA_HEAP_MB = 1024
 MAXIMA_NURSERY_MB = 24
@@ -124,6 +124,8 @@ for arg in sys.argv[1:]:
         HEAP_MB = int(arg.split("=", 1)[1])
     elif arg == "--with-maxima":
         WITH_MAXIMA = True
+    elif arg == "--with-ocaml":
+        WITH_OCAML = True
     elif arg.startswith("--maxima-scale="):
         MAXIMA_SCALE = int(arg.split("=", 1)[1])
     elif arg.startswith("--maxima-heap-mb="):
@@ -133,96 +135,6 @@ for arg in sys.argv[1:]:
     else:
         print(f"unknown arg: {arg}", file=sys.stderr)
         sys.exit(2)
-
-os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-
-
-def parse_mixed_json(text: str, label: str):
-    starts = [i for i, ch in enumerate(text) if ch == '{']
-    for i in reversed(starts):
-        frag = text[i:].strip()
-        try:
-            return json.loads(frag)
-        except json.JSONDecodeError:
-            pass
-    raise RuntimeError(f"{label}: missing JSON payload\n{text}")
-
-
-def parse_rss_bytes(stderr_text: str):
-    for line in stderr_text.splitlines():
-        if "maximum resident set size" in line.lower():
-            m = re.search(r"(\d+)", line)
-            if not m:
-                continue
-            raw = int(m.group(1))
-            if sys.platform == "darwin":
-                # macOS /usr/bin/time -l reports bytes.
-                return raw
-            # GNU time reports kbytes.
-            return raw * 1024
-    return None
-
-
-def run_cmd(argv, timeout=1800):
-    if os.path.exists("/usr/bin/time"):
-        p = subprocess.run(
-            ["/usr/bin/time", "-l", *argv],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        if p.returncode == 0:
-            return p, parse_rss_bytes(p.stderr)
-        if "illegal option" not in p.stderr.lower():
-            return p, parse_rss_bytes(p.stderr)
-    p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
-    return p, None
-
-
-def run_habu():
-    cmd = [
-        "zig",
-        "build",
-        "bench",
-        "--",
-        "--json",
-        f"--iters={ITERS}",
-        f"--live-mb={LIVE_MB}",
-        f"--heap-mb={HEAP_MB}",
-    ]
-    p, rss_bytes = run_cmd(cmd, timeout=1800)
-    if p.returncode != 0:
-        raise RuntimeError(f"habu gc bench failed\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}")
-    return parse_mixed_json(p.stdout, "habu"), rss_bytes
-
-
-def run_sbcl():
-    cmd = [
-        "sbcl",
-        "--script",
-        "bench/sbcl_gc.lisp",
-        "--json",
-        f"--iters={ITERS}",
-        f"--live-mb={LIVE_MB}",
-    ]
-    p, rss_bytes = run_cmd(cmd, timeout=1800)
-    if p.returncode != 0:
-        raise RuntimeError(f"sbcl gc bench failed\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}")
-    return parse_mixed_json(p.stdout, "sbcl"), rss_bytes
-
-
-def run_maxima():
-    cmd = [
-        "tools/maxima-bench",
-        "--json",
-        f"--scale={MAXIMA_SCALE}",
-        f"--heap-mb={MAXIMA_HEAP_MB}",
-        f"--nursery-mb={MAXIMA_NURSERY_MB}",
-    ]
-    p, _ = run_cmd(cmd, timeout=3600)
-    if p.returncode != 0:
-        raise RuntimeError(f"maxima bench failed\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}")
-    return parse_mixed_json(p.stdout, "maxima")
 
 
 def mib_per_sec(work_bytes: int, total_pause_ns: int):
@@ -321,9 +233,112 @@ def eval_level(metrics, level):
     return out
 
 
-habu, habu_rss = run_habu()
-sbcl, sbcl_rss = run_sbcl()
-maxima = run_maxima() if WITH_MAXIMA else None
+def require_runner_ok(result, label: str):
+    if result.get("status") == "ok":
+        return
+    error = result.get("error") or "unknown error"
+    stderr = result.get("stderr")
+    if stderr:
+        raise RuntimeError(f"{label} failed: {error}\nstderr:\n{stderr}")
+    raise RuntimeError(f"{label} failed: {error}")
+
+
+def ratio_metrics(habu_payload, ref_payload, habu_rss, ref_rss):
+    h_avg = habu_payload.get("avg_pause_ns", 0)
+    h_p50 = habu_payload.get("p50_pause_ns", 0)
+    h_p95 = habu_payload.get("p95_pause_ns", 0)
+    h_p99 = habu_payload.get("p99_pause_ns", 0)
+    r_avg = ref_payload.get("avg_pause_ns", 0)
+    r_p50 = ref_payload.get("p50_pause_ns", 0)
+    r_p95 = ref_payload.get("p95_pause_ns", 0)
+    r_p99 = ref_payload.get("p99_pause_ns", 0)
+
+    avg_ratio = (r_avg / h_avg) if h_avg > 0 else 0.0
+    p50_ratio = (r_p50 / h_p50) if h_p50 > 0 else 0.0
+    p95_ratio = (r_p95 / h_p95) if h_p95 > 0 else 0.0
+    p99_ratio = (r_p99 / h_p99) if h_p99 > 0 else 0.0
+
+    h_work = int(habu_payload.get("bytes_copied", 0))
+    h_pause_total = int(h_avg) * int(habu_payload.get("gc_count", 0))
+    r_work = int(ref_payload.get("live_mb", LIVE_MB)) * 1024 * 1024 * int(ref_payload.get("iters", ITERS))
+    r_pause_total = int(r_avg) * int(ref_payload.get("iters", ITERS))
+    h_tp = mib_per_sec(h_work, h_pause_total)
+    r_tp = mib_per_sec(r_work, r_pause_total)
+    throughput_ratio = (h_tp / r_tp) if r_tp > 0 else 0.0
+
+    return {
+        "avg_pause_ratio": avg_ratio,
+        "p50_pause_ratio": p50_ratio,
+        "p95_pause_ratio": p95_ratio,
+        "p99_pause_ratio": p99_ratio,
+        "habu_mib_per_sec": h_tp,
+        "ref_mib_per_sec": r_tp,
+        "throughput_ratio": throughput_ratio,
+        "rss_ratio": (
+            (habu_rss / ref_rss)
+            if (habu_rss is not None and ref_rss is not None and ref_rss > 0)
+            else None
+        ),
+    }
+
+
+gc_habu_run = bench_pack.run_gc_runtime("habu", iters=ITERS, live_mb=LIVE_MB, heap_mb=HEAP_MB)
+gc_sbcl_run = bench_pack.run_gc_runtime("sbcl", iters=ITERS, live_mb=LIVE_MB, heap_mb=HEAP_MB)
+gc_ocaml_run = bench_pack.run_gc_runtime("ocaml", iters=ITERS, live_mb=LIVE_MB, heap_mb=HEAP_MB) if WITH_OCAML else None
+
+require_runner_ok(gc_habu_run, "gc habu runner")
+require_runner_ok(gc_sbcl_run, "gc sbcl runner")
+if gc_ocaml_run and gc_ocaml_run.get("status") == "error":
+    require_runner_ok(gc_ocaml_run, "gc ocaml runner")
+
+habu = gc_habu_run.get("payload", {})
+habu_rss = gc_habu_run.get("rss_bytes")
+sbcl = gc_sbcl_run.get("payload", {})
+sbcl_rss = gc_sbcl_run.get("rss_bytes")
+
+ocaml = None
+ocaml_rss = None
+if gc_ocaml_run and gc_ocaml_run.get("status") == "ok":
+    ocaml = gc_ocaml_run.get("payload", {})
+    ocaml_rss = gc_ocaml_run.get("rss_bytes")
+
+maxima = None
+maxima_runners = None
+if WITH_MAXIMA:
+    maxima_habu_run = bench_pack.run_workload_runtime(
+        "habu",
+        "maxima",
+        scale=MAXIMA_SCALE,
+        heap_mb=MAXIMA_HEAP_MB,
+        nursery_mb=MAXIMA_NURSERY_MB,
+    )
+    maxima_sbcl_run = bench_pack.run_workload_runtime(
+        "sbcl",
+        "maxima",
+        scale=MAXIMA_SCALE,
+        heap_mb=MAXIMA_HEAP_MB,
+        nursery_mb=MAXIMA_NURSERY_MB,
+    )
+    require_runner_ok(maxima_habu_run, "maxima habu runner")
+    require_runner_ok(maxima_sbcl_run, "maxima sbcl runner")
+    maxima = {
+        "habu": maxima_habu_run.get("payload", {}),
+        "sbcl": maxima_sbcl_run.get("payload", {}),
+    }
+    maxima_runners = {"habu": maxima_habu_run, "sbcl": maxima_sbcl_run}
+    if WITH_OCAML:
+        maxima_ocaml_run = bench_pack.run_workload_runtime(
+            "ocaml",
+            "maxima",
+            scale=MAXIMA_SCALE,
+            heap_mb=MAXIMA_HEAP_MB,
+            nursery_mb=MAXIMA_NURSERY_MB,
+        )
+        if maxima_ocaml_run.get("status") == "error":
+            require_runner_ok(maxima_ocaml_run, "maxima ocaml runner")
+        maxima_runners["ocaml"] = maxima_ocaml_run
+        if maxima_ocaml_run.get("status") == "ok":
+            maxima["ocaml"] = maxima_ocaml_run.get("payload", {})
 
 h_avg = habu.get("avg_pause_ns", 0)
 h_p50 = habu.get("p50_pause_ns", 0)
@@ -334,19 +349,15 @@ s_p50 = sbcl.get("p50_pause_ns", 0)
 s_p95 = sbcl.get("p95_pause_ns", 0)
 s_p99 = sbcl.get("p99_pause_ns", 0)
 
-avg_ratio = (s_avg / h_avg) if h_avg > 0 else 0.0
-p50_ratio = (s_p50 / h_p50) if h_p50 > 0 else 0.0
-p95_ratio = (s_p95 / h_p95) if h_p95 > 0 else 0.0
-p99_ratio = (s_p99 / h_p99) if h_p99 > 0 else 0.0
-
-h_work = int(habu.get("bytes_copied", 0))
-h_pause_total = int(h_avg) * int(habu.get("gc_count", 0))
-s_work = int(sbcl.get("live_mb", LIVE_MB)) * 1024 * 1024 * int(sbcl.get("iters", ITERS))
-s_pause_total = int(s_avg) * int(sbcl.get("iters", ITERS))
-h_tp = mib_per_sec(h_work, h_pause_total)
-s_tp = mib_per_sec(s_work, s_pause_total)
-throughput_ratio = (h_tp / s_tp) if s_tp > 0 else 0.0
-rss_ratio = (habu_rss / sbcl_rss) if (habu_rss and sbcl_rss and sbcl_rss > 0) else None
+sbcl_ratio = ratio_metrics(habu, sbcl, habu_rss, sbcl_rss)
+avg_ratio = sbcl_ratio["avg_pause_ratio"]
+p50_ratio = sbcl_ratio["p50_pause_ratio"]
+p95_ratio = sbcl_ratio["p95_pause_ratio"]
+p99_ratio = sbcl_ratio["p99_pause_ratio"]
+h_tp = sbcl_ratio["habu_mib_per_sec"]
+s_tp = sbcl_ratio["ref_mib_per_sec"]
+throughput_ratio = sbcl_ratio["throughput_ratio"]
+rss_ratio = sbcl_ratio["rss_ratio"]
 hot_name, hot_n = hot_alloc_class(habu)
 survive_bytes = int(habu.get("gc_survive_bytes", 0))
 promote_bytes = int(habu.get("gc_promote_bytes", 0))
@@ -528,6 +539,29 @@ metrics = {
     "gc_nursery_survival": float(habu.get("gc_nursery_survival", 0.0)),
     "gc_nursery_pause_error": float(habu.get("gc_nursery_pause_error", 0.0)),
 }
+ocaml_metrics = None
+if ocaml:
+    ocaml_ratio = ratio_metrics(habu, ocaml, habu_rss, ocaml_rss)
+    ocaml_metrics = {
+        "avg_pause_ratio": ocaml_ratio["avg_pause_ratio"],
+        "p50_pause_ratio": ocaml_ratio["p50_pause_ratio"],
+        "p95_pause_ratio": ocaml_ratio["p95_pause_ratio"],
+        "p99_pause_ratio": ocaml_ratio["p99_pause_ratio"],
+        "throughput_ratio": ocaml_ratio["throughput_ratio"],
+        "habu_mib_per_sec": ocaml_ratio["habu_mib_per_sec"],
+        "ocaml_mib_per_sec": ocaml_ratio["ref_mib_per_sec"],
+        "rss_ratio": ocaml_ratio["rss_ratio"],
+    }
+    metrics.update(
+        {
+            "ocaml_avg_pause_ratio": ocaml_metrics["avg_pause_ratio"],
+            "ocaml_p50_pause_ratio": ocaml_metrics["p50_pause_ratio"],
+            "ocaml_p95_pause_ratio": ocaml_metrics["p95_pause_ratio"],
+            "ocaml_p99_pause_ratio": ocaml_metrics["p99_pause_ratio"],
+            "ocaml_throughput_ratio": ocaml_metrics["throughput_ratio"],
+            "ocaml_rss_ratio": ocaml_metrics["rss_ratio"],
+        }
+    )
 if maxima:
     mh = maxima.get("habu", {})
     ms = maxima.get("sbcl", {})
@@ -650,6 +684,20 @@ gate_eval = {
     "competitive": eval_level(metrics, PARITY_GATES["vs_sbcl"]["competitive"]),
     "parity": eval_level(metrics, PARITY_GATES["vs_sbcl"]["parity"]),
 }
+gate_eval_ocaml = None
+if ocaml_metrics:
+    merged_ocaml = dict(metrics)
+    merged_ocaml["avg_pause_ratio"] = ocaml_metrics["avg_pause_ratio"]
+    merged_ocaml["p95_pause_ratio"] = ocaml_metrics["p95_pause_ratio"]
+    merged_ocaml["throughput_ratio"] = ocaml_metrics["throughput_ratio"]
+    merged_ocaml["rss_ratio"] = ocaml_metrics["rss_ratio"]
+    gate_eval_ocaml = {
+        "milestone_2x_from_baseline": eval_level(
+            merged_ocaml, PARITY_GATES["vs_ocaml"]["milestone_2x_from_baseline"]
+        ),
+        "competitive": eval_level(merged_ocaml, PARITY_GATES["vs_ocaml"]["competitive"]),
+        "parity": eval_level(merged_ocaml, PARITY_GATES["vs_ocaml"]["parity"]),
+    }
 selected_gate = gate_eval.get(GATE_LEVEL)
 if selected_gate is None:
     print(f"unknown gate level: {GATE_LEVEL}", file=sys.stderr)
@@ -661,10 +709,16 @@ if JSON_OUT:
             {
                 "habu": habu,
                 "sbcl": sbcl,
-                "rss_bytes": {"habu": habu_rss, "sbcl": sbcl_rss},
+                "ocaml": ocaml,
+                "runners": {
+                    "gc": {"habu": gc_habu_run, "sbcl": gc_sbcl_run, "ocaml": gc_ocaml_run},
+                    "maxima": maxima_runners,
+                },
+                "rss_bytes": {"habu": habu_rss, "sbcl": sbcl_rss, "ocaml": ocaml_rss},
                 "maxima": maxima,
                 "metrics": metrics,
-                "gates": {"targets": PARITY_GATES, "vs_sbcl": gate_eval},
+                "ocaml_metrics": ocaml_metrics,
+                "gates": {"targets": PARITY_GATES, "vs_sbcl": gate_eval, "vs_ocaml": gate_eval_ocaml},
                 "gate_level": GATE_LEVEL,
                 "gate_pass": selected_gate["pass"],
             },
@@ -677,6 +731,13 @@ if JSON_OUT:
 
 print("GC comparison (Habu vs SBCL)")
 print(f"  iters: {ITERS}, live_mb: {LIVE_MB}, habu_heap_mb: {HEAP_MB}")
+if WITH_OCAML:
+    ocaml_state = (gc_ocaml_run or {}).get("status", "skipped")
+    ocaml_err = (gc_ocaml_run or {}).get("error")
+    if ocaml_err:
+        print(f"  ocaml_runner: {ocaml_state} ({ocaml_err})")
+    else:
+        print(f"  ocaml_runner: {ocaml_state}")
 print()
 print("Habu:")
 print(f"  avg_pause: {h_avg/1e6:.3f} ms")
@@ -697,11 +758,20 @@ print(f"  avg_pause_ratio: {avg_ratio:.4f}x")
 print(f"  p50_pause_ratio: {p50_ratio:.4f}x")
 print(f"  p95_pause_ratio: {p95_ratio:.4f}x")
 print(f"  p99_pause_ratio: {p99_ratio:.4f}x")
+if ocaml_metrics:
+    print("Ratio (ocaml / habu; >1 means Habu better):")
+    print(f"  avg_pause_ratio: {ocaml_metrics['avg_pause_ratio']:.4f}x")
+    print(f"  p50_pause_ratio: {ocaml_metrics['p50_pause_ratio']:.4f}x")
+    print(f"  p95_pause_ratio: {ocaml_metrics['p95_pause_ratio']:.4f}x")
+    print(f"  p99_pause_ratio: {ocaml_metrics['p99_pause_ratio']:.4f}x")
 print()
 print("Throughput:")
 print(f"  habu_copy_mib_per_s: {h_tp:.2f}")
 print(f"  sbcl_live_mib_per_s: {s_tp:.2f}")
 print(f"  throughput_ratio (habu/sbcl): {throughput_ratio:.4f}x")
+if ocaml_metrics:
+    print(f"  ocaml_live_mib_per_s: {ocaml_metrics['ocaml_mib_per_sec']:.2f}")
+    print(f"  throughput_ratio (habu/ocaml): {ocaml_metrics['throughput_ratio']:.4f}x")
 print()
 print("Allocation sampling:")
 print(f"  alloc_sample_n: {metrics['alloc_sample_n']}")
@@ -932,11 +1002,22 @@ if habu_rss and sbcl_rss:
     print(f"  rss_ratio (habu/sbcl): {rss_ratio:.4f}x")
 else:
     print("  rss_ratio: unavailable (time(1) RSS metrics not available)")
+if ocaml_metrics:
+    if habu_rss and ocaml_rss and ocaml_metrics["rss_ratio"] is not None:
+        print(f"  ocaml_rss_mib: {ocaml_rss/(1024*1024):.2f}")
+        print(f"  rss_ratio (habu/ocaml): {ocaml_metrics['rss_ratio']:.4f}x")
+    else:
+        print("  rss_ratio (habu/ocaml): unavailable (time(1) RSS metrics not available)")
 print()
 print("Gate status (vs SBCL):")
 for level_name, level in gate_eval.items():
     state = "PASS" if level["pass"] else "FAIL"
     print(f"  {level_name}: {state}")
+if gate_eval_ocaml:
+    print("Gate status (vs OCaml):")
+    for level_name, level in gate_eval_ocaml.items():
+        state = "PASS" if level["pass"] else "FAIL"
+        print(f"  {level_name}: {state}")
 print(f"  selected gate [{GATE_LEVEL}]: {'PASS' if selected_gate['pass'] else 'FAIL'}")
 if FAIL_ON_GATES and not selected_gate["pass"]:
     sys.exit(1)

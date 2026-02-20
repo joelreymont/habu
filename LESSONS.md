@@ -73,6 +73,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Batching debt safepoint polls by both op-count and allocation-byte budget (`src/interp/vm.zig:1432`, `src/interp/vm.zig:471`) preserved bounded polling latency while cutting VM safepoint poll overhead by an order of magnitude on Maxima loads.
 - Resetting safepoint batch counters on every actual GC entry (`src/interp/vm.zig:1452`) avoided stale-batch carryover after collections.
 - Defining a single cross-runtime workload manifest (`bench/pack/corpus.json`) removed benchmark-name drift between Habu/SBCL tooling and provides a stable contract for OCaml runner integration.
+- Moving runtime execution into one shared adapter module (`tools/bench_pack_runner.py:369`, `tools/bench_pack_runner.py:445`) made `tools/perf-loop` and `tools/gc-compare` consume identical normalized payloads, eliminating duplicated command/parsing drift.
+- Enforcing required top-level JSON keys when scraping mixed stdout (`tools/bench_pack_runner.py:426`, `tools/bench_pack_runner.py:481`) prevented nested benchmark-object misparses and restored complete workload accounting in `tools/perf-loop` (`tools/perf-loop:116`) and `tools/gc-compare` (`tools/gc-compare:285`).
+- Surfacing OCaml adapter status/errors in JSON and text outputs (`tools/perf-loop:491`, `tools/gc-compare:706`) made missing OCaml command wiring explicit instead of silently dropping the runtime.
 
 ### Did Not Work
 - Assuming a fixed `MAJOR_SWEEP_BUDGET`-sized fixture would keep major cycle active was brittle; root ordering/object size can make the cycle complete in one pass, so barrier tests need larger deterministic workloads.
@@ -87,6 +90,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Assuming `(in-package ...)` inside one `progn` would affect reader/package resolution for subsequent symbols in the same already-read form was wrong; defining formatter helpers with explicit package-qualified symbol names avoids this trap.
 - Relying on `tools/dot-finish` full `zig build test` in this environment was unreliable due harness stalls; targeted filtered test gates provided deterministic validation for dot closure work.
 - Running real-workload CAS loops with large default iteration counts caused impractically long benchmark runs; use very small defaults plus explicit `--scale` for controlled expansion.
+- Parsing mixed benchmark stdout by taking the last JSON object without key validation was incorrect for list-heavy payloads; inner bench objects can parse successfully and masquerade as full payloads (`tools/bench_pack_runner.py:426` fix with `required_keys`).
 - Reusing `lib/maxima-loader.lisp` as-is for SBCL benchmarking was brittle because warning conditions were treated as load failures; SBCL-side loaders need warning-muffling and explicit per-file load control.
 - Clamping adaptive nursery targets only to static min/max bounds was insufficient: without a live-bytes floor, shrink decisions can violate runtime occupancy constraints (`src/runtime/heap.zig:1140`) and force pathological recollection behavior.
 - Using plain unsigned subtraction for per-cycle counter deltas (`src/runtime/gc.zig:165`) is unsafe with wrapping counters; use modular delta (`-%`) consistently.

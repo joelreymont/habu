@@ -6,11 +6,12 @@ Runs microbench + real workload comparisons, ranks bottlenecks, and prints next 
 
 import argparse
 import json
-import math
 import os
 import subprocess
 import sys
 from dataclasses import dataclass
+
+import bench_pack_runner as bench_pack
 
 
 @dataclass
@@ -41,6 +42,11 @@ def parse_args():
         default="milestone_2x_from_baseline",
         choices=("milestone_2x_from_baseline", "competitive", "parity"),
         help="GC gate level to evaluate",
+    )
+    p.add_argument(
+        "--with-ocaml",
+        action="store_true",
+        help="run OCaml adapters when available and include normalized status/errors",
     )
     p.add_argument("--fail-on-gates", action="store_true", help="exit non-zero if selected GC gate fails")
     p.add_argument("--top", type=int, default=12, help="top bottlenecks to print")
@@ -97,22 +103,52 @@ def advice(name: str, suite: str):
     return "Profile CAS opcode mix and remove interpreter/JIT boundary overhead"
 
 
-def collect_micro(iters: int):
-    out = run_cmd(["tools/comprehensive-bench", "--json", f"--iters={iters}"])
-    data = parse_mixed_json(out)
-    sbcl = data.get("sbcl", {})
-    habu = data.get("habu_jit", {})
-    errs = data.get("habu_jit_errors", {})
+def must_ok(result: dict, label: str):
+    if result.get("status") == "ok":
+        return
+    error = result.get("error") or "unknown error"
+    stderr = result.get("stderr")
+    if stderr:
+        raise RuntimeError(f"{label} failed: {error}\nstderr:\n{stderr}")
+    raise RuntimeError(f"{label} failed: {error}")
+
+
+def collect_micro(iters: int, with_ocaml: bool):
+    habu_run = bench_pack.run_workload_runtime("habu", "micro", iters=iters, mode="jit")
+    sbcl_run = bench_pack.run_workload_runtime("sbcl", "micro", iters=iters, mode="jit")
+    ocaml_run = bench_pack.run_workload_runtime("ocaml", "micro", iters=iters, mode="jit") if with_ocaml else None
+
+    must_ok(habu_run, "micro habu runner")
+    must_ok(sbcl_run, "micro sbcl runner")
 
     entries = []
-    for name, sb_ns in sbcl.items():
-        hb_ns = habu.get(name)
-        if hb_ns is None:
+    errs = {}
+    ocaml_errs = {}
+    sbcl = sbcl_run.get("workloads", {})
+    habu = habu_run.get("workloads", {})
+    for name in habu_run.get("workload_order", []):
+        hb = habu.get(name, {})
+        sb = sbcl.get(name, {})
+        hb_status = hb.get("status")
+        sb_status = sb.get("status")
+        hb_ns = int(hb.get("ns", 0))
+        sb_ns = int(sb.get("ns", 0))
+        if hb_status != "ok" or sb_status != "ok" or hb_ns <= 0 or sb_ns <= 0:
+            errs[name] = "habu={hs}:{he} sbcl={ss}:{se}".format(
+                hs=hb_status or "missing",
+                he=hb.get("error"),
+                ss=sb_status or "missing",
+                se=sb.get("error"),
+            )
+            if ocaml_run:
+                oc = ocaml_run.get("workloads", {}).get(name, {})
+                if oc.get("status") != "ok":
+                    ocaml_errs[name] = "ocaml={st}:{err}".format(
+                        st=oc.get("status") or "missing",
+                        err=oc.get("error"),
+                    )
             continue
-        if name in errs:
-            continue
-        if sb_ns <= 0 or hb_ns <= 0:
-            continue
+
         ratio = sb_ns / hb_ns
         entries.append(
             Entry(
@@ -124,7 +160,15 @@ def collect_micro(iters: int):
                 note=advice(name, "micro"),
             )
         )
-    return entries, errs
+        if ocaml_run:
+            oc = ocaml_run.get("workloads", {}).get(name, {})
+            if oc.get("status") != "ok":
+                ocaml_errs[name] = "ocaml={st}:{err}".format(
+                    st=oc.get("status") or "missing",
+                    err=oc.get("error"),
+                )
+
+    return entries, errs, ocaml_errs, {"habu": habu_run, "sbcl": sbcl_run, "ocaml": ocaml_run}
 
 
 def mutator_phase(gc_phase: dict):
@@ -157,37 +201,58 @@ def mutator_phase(gc_phase: dict):
     }
 
 
-def collect_maxima(scale: int, heap_mb: int, profile_mutator: bool):
+def collect_maxima(scale: int, heap_mb: int, profile_mutator: bool, with_ocaml: bool):
     env = os.environ.copy()
     if profile_mutator:
         env["HABU_PROFILE_MUTATOR"] = "1"
-    out = run_cmd(
-        ["tools/maxima-bench", "--json", f"--scale={scale}", f"--heap-mb={heap_mb}"],
+
+    habu_run = bench_pack.run_workload_runtime(
+        "habu",
+        "maxima",
+        scale=scale,
+        heap_mb=heap_mb,
         env=env,
     )
-    data = parse_mixed_json(out)
-    habu = data["habu"]
-    sbcl = data["sbcl"]
+    sbcl_run = bench_pack.run_workload_runtime(
+        "sbcl",
+        "maxima",
+        scale=scale,
+        heap_mb=heap_mb,
+    )
+    ocaml_run = (
+        bench_pack.run_workload_runtime("ocaml", "maxima", scale=scale, heap_mb=heap_mb) if with_ocaml else None
+    )
 
-    h_map = {b["name"]: b for b in habu.get("benches", [])}
-    s_map = {b["name"]: b for b in sbcl.get("benches", [])}
+    must_ok(habu_run, "maxima habu runner")
+    must_ok(sbcl_run, "maxima sbcl runner")
 
     entries = []
     errs = {}
-    for name in sorted(set(h_map) | set(s_map)):
-        hb = h_map.get(name)
-        sb = s_map.get(name)
-        if hb is None or sb is None:
-            errs[name] = "missing"
+    ocaml_errs = {}
+    for name in habu_run.get("workload_order", []):
+        hb = habu_run.get("workloads", {}).get(name, {})
+        sb = sbcl_run.get("workloads", {}).get(name, {})
+        hb_status = hb.get("status")
+        sb_status = sb.get("status")
+        hb_ns = int(hb.get("ns", 0))
+        sb_ns = int(sb.get("ns", 0))
+
+        if hb_status != "ok" or sb_status != "ok" or hb_ns <= 0 or sb_ns <= 0:
+            errs[name] = "habu={hs}:{he} sbcl={ss}:{se}".format(
+                hs=hb_status or "missing",
+                he=hb.get("error"),
+                ss=sb_status or "missing",
+                se=sb.get("error"),
+            )
+            if ocaml_run:
+                oc = ocaml_run.get("workloads", {}).get(name, {})
+                if oc.get("status") != "ok":
+                    ocaml_errs[name] = "ocaml={st}:{err}".format(
+                        st=oc.get("status") or "missing",
+                        err=oc.get("error"),
+                    )
             continue
-        if hb.get("error") or sb.get("error"):
-            errs[name] = f"habu={hb.get('error')} sbcl={sb.get('error')}"
-            continue
-        hb_ns = hb.get("ns", 0)
-        sb_ns = sb.get("ns", 0)
-        if hb_ns <= 0 or sb_ns <= 0:
-            errs[name] = "zero-ns"
-            continue
+
         ratio = sb_ns / hb_ns
         entries.append(
             Entry(
@@ -199,25 +264,46 @@ def collect_maxima(scale: int, heap_mb: int, profile_mutator: bool):
                 note=advice(name, "maxima"),
             )
         )
+        if ocaml_run:
+            oc = ocaml_run.get("workloads", {}).get(name, {})
+            if oc.get("status") != "ok":
+                ocaml_errs[name] = "ocaml={st}:{err}".format(
+                    st=oc.get("status") or "missing",
+                    err=oc.get("error"),
+                )
+
+    habu = habu_run.get("payload", {})
+    sbcl = sbcl_run.get("payload", {})
     gc = habu.get("gc", {})
     mutator_profile = {
         "enabled": bool(profile_mutator),
         "load": mutator_phase(gc.get("load", {})),
         "run": mutator_phase(gc.get("run", {})),
     }
-    return entries, errs, habu.get("loader", {}), sbcl.get("loader", {}), mutator_profile
+    return (
+        entries,
+        errs,
+        ocaml_errs,
+        habu.get("loader", {}),
+        sbcl.get("loader", {}),
+        mutator_profile,
+        {"habu": habu_run, "sbcl": sbcl_run, "ocaml": ocaml_run},
+    )
 
 
-def collect_gc_gates(gc_iters: int, gc_live_mb: int, gc_heap_mb: int, gate_level: str):
+def collect_gc_gates(gc_iters: int, gc_live_mb: int, gc_heap_mb: int, gate_level: str, with_ocaml: bool):
+    cmd = [
+        "tools/gc-compare",
+        "--json",
+        f"--iters={gc_iters}",
+        f"--live-mb={gc_live_mb}",
+        f"--heap-mb={gc_heap_mb}",
+        f"--gate-level={gate_level}",
+    ]
+    if with_ocaml:
+        cmd.append("--with-ocaml")
     out = run_cmd(
-        [
-            "tools/gc-compare",
-            "--json",
-            f"--iters={gc_iters}",
-            f"--live-mb={gc_live_mb}",
-            f"--heap-mb={gc_heap_mb}",
-            f"--gate-level={gate_level}",
-        ]
+        cmd
     )
     return parse_mixed_json(out)
 
@@ -401,11 +487,11 @@ def main():
     args = parse_args()
     os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-    micro_entries, micro_errs = collect_micro(args.iters)
-    maxima_entries, maxima_errs, h_loader, s_loader, mutator_profile = collect_maxima(
-        args.scale, args.heap_mb, args.profile_mutator
+    micro_entries, micro_errs, micro_ocaml_errs, micro_runners = collect_micro(args.iters, args.with_ocaml)
+    maxima_entries, maxima_errs, maxima_ocaml_errs, h_loader, s_loader, mutator_profile, maxima_runners = collect_maxima(
+        args.scale, args.heap_mb, args.profile_mutator, args.with_ocaml
     )
-    gc_compare = collect_gc_gates(args.gc_iters, args.gc_live_mb, args.gc_heap_mb, args.gate_level)
+    gc_compare = collect_gc_gates(args.gc_iters, args.gc_live_mb, args.gc_heap_mb, args.gate_level, args.with_ocaml)
     gate_pass = bool(gc_compare.get("gate_pass", False))
     gc_norm = gc_summary(gc_compare, args.gate_level)
     gc_actions = rank_gc_actions(gc_compare, gc_norm)
@@ -420,7 +506,21 @@ def main():
         payload = {
             "micro_errors": micro_errs,
             "maxima_errors": maxima_errs,
+            "ocaml_errors": {"micro": micro_ocaml_errs, "maxima": maxima_ocaml_errs},
             "loaders": {"habu": h_loader, "sbcl": s_loader},
+            "runners": {
+                "micro": {
+                    "habu": micro_runners["habu"],
+                    "sbcl": micro_runners["sbcl"],
+                    "ocaml": micro_runners["ocaml"],
+                },
+                "maxima": {
+                    "habu": maxima_runners["habu"],
+                    "sbcl": maxima_runners["sbcl"],
+                    "ocaml": maxima_runners["ocaml"],
+                },
+                "gc": (gc_compare.get("runners") or {}).get("gc"),
+            },
             "mutator_profile": mutator_profile,
             "gc_compare": gc_compare,
             "gc_summary": gc_norm,
@@ -469,6 +569,21 @@ def main():
             ms=s_loader.get("ns", 0) / 1e6,
         )
     )
+    if args.with_ocaml:
+        micro_ocaml = micro_runners.get("ocaml")
+        maxima_ocaml = maxima_runners.get("ocaml")
+        print(
+            "  runner(ocaml,micro): {st} {err}".format(
+                st=(micro_ocaml or {}).get("status", "skipped"),
+                err=(micro_ocaml or {}).get("error", ""),
+            )
+        )
+        print(
+            "  runner(ocaml,maxima): {st} {err}".format(
+                st=(maxima_ocaml or {}).get("status", "skipped"),
+                err=(maxima_ocaml or {}).get("error", ""),
+            )
+        )
     if mutator_profile.get("enabled"):
         load = mutator_profile.get("load", {})
         run = mutator_profile.get("run", {})
@@ -500,6 +615,8 @@ def main():
         print(f"  micro errors: {len(micro_errs)}")
     if maxima_errs:
         print(f"  maxima errors: {len(maxima_errs)}")
+    if args.with_ocaml and (micro_ocaml_errs or maxima_ocaml_errs):
+        print(f"  ocaml errors: {len(micro_ocaml_errs) + len(maxima_ocaml_errs)}")
     gc_metrics = gc_norm
     gc_gate = gc_norm.get("gate_details", {})
     if gc_metrics:

@@ -46,6 +46,7 @@ sbcl --script bench/comprehensive.lisp
 - `bench/pack/corpus.json` — Shared micro + Maxima workload corpus for Habu/SBCL/OCaml runners
 - `bench/pack/README.md` — Bench-pack schema and usage notes
 - `bench/sbcl_gc.lisp` — SBCL GC stress benchmark
+- `tools/bench_pack_runner.py` — Shared runtime adapters + normalized runner payloads
 - `tools/comprehensive-bench` — Combined runner script
 - `tools/maxima-bench` — Maxima workload comparison runner
 - `tools/gc-compare` — Habu vs SBCL GC comparison runner
@@ -55,7 +56,8 @@ sbcl --script bench/comprehensive.lisp
 ### GC Parity Gates
 
 `tools/gc-compare` now emits numeric GC gate targets for both `vs_sbcl` and `vs_ocaml`.
-Current execution path evaluates `vs_sbcl` and reports per-level pass/fail.
+Default gate evaluation is `vs_sbcl`; `--with-ocaml` enables OCaml runner adapters and emits OCaml gate evaluations when OCaml telemetry is available.
+`tools/gc-compare --json` and `tools/perf-loop --json` now include normalized `runners` payloads (`habu`/`sbcl`/`ocaml`) from `tools/bench_pack_runner.py`.
 `bench/gc.zig` JSON now includes pause percentiles (`p50_pause_ns`, `p95_pause_ns`, `p99_pause_ns`), phase-mode timings (`gc_minor_count`, `gc_major_count`, `avg_minor_ns`, `avg_major_ns`), allocation sampling telemetry (`alloc_sample_*`, `alloc_sample_size`), survival/promotion histograms (`gc_survive_*`, `gc_promote_*`), and adaptive nursery policy telemetry (`gc_nursery_*`).
 `bench/check.zig` enforces `gc_nursery_target >= live_bytes` so adaptive shrinking cannot set a trigger below live nursery occupancy.
 `tools/gc-compare --with-maxima` augments micro-GC gates with Maxima workload GC telemetry (default stress point: `--maxima-scale=3 --maxima-nursery-mb=24`).
@@ -102,10 +104,12 @@ tools/maxima-bench                          # Habu vs SBCL Maxima workload
 tools/maxima-bench --scale=3 --nursery-mb=24
 tools/gc-compare --iters=30 --live-mb=8     # Habu vs SBCL GC pause comparison
 tools/gc-compare --with-maxima              # Include Maxima GC telemetry in comparison
+tools/gc-compare --with-ocaml               # Include OCaml runner status/metrics when configured
 tools/gc-compare --json                      # Include gate metrics + threshold status
 tools/gc-compare --fail-on-gates --gate-level=milestone_2x_from_baseline
 tools/perf-loop --iters=1 --scale=1         # Ranked bottlenecks + GC gate summary
 tools/perf-loop --json --gc-iters=30        # Include gc_compare gate schema in JSON
+tools/perf-loop --json --with-ocaml         # Include OCaml runner status/errors in JSON
 tools/perf-loop --json --profile-mutator    # Include barrier/safepoint mutator overhead profile
 tools/perf-loop --fail-on-gates --gate-level=milestone_2x_from_baseline
 ```
