@@ -1,9 +1,11 @@
 ---
 title: "Bench pack: add unified diff report"
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-02-20T08:58:56.438710+01:00\""
+created-at: "\"\\\"2026-02-20T08:58:56.438710+01:00\\\"\""
+closed-at: "2026-02-20T15:58:39.379056+01:00"
+close-reason: completed
 blocks:
   - habu-bench-pack-implement-72607a92
 ---

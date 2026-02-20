@@ -233,6 +233,65 @@ def eval_level(metrics, level):
     return out
 
 
+def parity_rows(gates, level_name: str):
+    if not gates:
+        return None
+    level = gates.get(level_name)
+    if not isinstance(level, dict):
+        return None
+    rows = []
+    for metric, detail in level.items():
+        if metric == "pass" or not isinstance(detail, dict) or "pass" not in detail:
+            continue
+        actual = detail.get("actual")
+        target_kind = None
+        target = None
+        delta = None
+        if "target_min" in detail:
+            target_kind = "min"
+            target = detail.get("target_min")
+            if isinstance(actual, (int, float)) and isinstance(target, (int, float)):
+                delta = float(actual) - float(target)
+        elif "target_max" in detail:
+            target_kind = "max"
+            target = detail.get("target_max")
+            if isinstance(actual, (int, float)) and isinstance(target, (int, float)):
+                delta = float(target) - float(actual)
+
+        rows.append(
+            {
+                "metric": metric,
+                "actual": actual,
+                "target_kind": target_kind,
+                "target": target,
+                "delta_to_target": delta,
+                "pass": bool(detail.get("pass")),
+            }
+        )
+    rows.sort(key=lambda row: row["metric"])
+    return rows
+
+
+def build_trend(runtime: str, rows, gate_level: str, gate_pass):
+    if rows is None:
+        return None
+    return {
+        "runtime": runtime,
+        "gate_level": gate_level,
+        "gate_pass": gate_pass,
+        "iters": ITERS,
+        "live_mb": LIVE_MB,
+        "heap_mb": HEAP_MB,
+        "series": rows,
+    }
+
+
+def fmt_delta(delta):
+    if isinstance(delta, (int, float)):
+        return f"{delta:+.6f}"
+    return "n/a"
+
+
 def require_runner_ok(result, label: str):
     if result.get("status") == "ok":
         return
@@ -702,6 +761,22 @@ selected_gate = gate_eval.get(GATE_LEVEL)
 if selected_gate is None:
     print(f"unknown gate level: {GATE_LEVEL}", file=sys.stderr)
     sys.exit(2)
+selected_gate_ocaml = gate_eval_ocaml.get(GATE_LEVEL) if gate_eval_ocaml else None
+
+parity_diff = {
+    "gate_level": GATE_LEVEL,
+    "vs_sbcl": parity_rows(gate_eval, GATE_LEVEL),
+    "vs_ocaml": parity_rows(gate_eval_ocaml, GATE_LEVEL) if gate_eval_ocaml else None,
+}
+trend = {
+    "vs_sbcl": build_trend("sbcl", parity_diff["vs_sbcl"], GATE_LEVEL, selected_gate.get("pass")),
+    "vs_ocaml": build_trend(
+        "ocaml",
+        parity_diff["vs_ocaml"],
+        GATE_LEVEL,
+        selected_gate_ocaml.get("pass") if selected_gate_ocaml else None,
+    ),
+}
 
 if JSON_OUT:
     print(
@@ -719,6 +794,8 @@ if JSON_OUT:
                 "metrics": metrics,
                 "ocaml_metrics": ocaml_metrics,
                 "gates": {"targets": PARITY_GATES, "vs_sbcl": gate_eval, "vs_ocaml": gate_eval_ocaml},
+                "parity_diff": parity_diff,
+                "trend": trend,
                 "gate_level": GATE_LEVEL,
                 "gate_pass": selected_gate["pass"],
             },
@@ -1018,6 +1095,23 @@ if gate_eval_ocaml:
     for level_name, level in gate_eval_ocaml.items():
         state = "PASS" if level["pass"] else "FAIL"
         print(f"  {level_name}: {state}")
+if parity_diff["vs_sbcl"]:
+    print("Parity diff (selected gate):")
+    ocaml_map = {}
+    if parity_diff["vs_ocaml"]:
+        for row in parity_diff["vs_ocaml"]:
+            ocaml_map[row["metric"]] = row
+    for row in parity_diff["vs_sbcl"]:
+        metric = row["metric"]
+        sb_state = "PASS" if row["pass"] else "FAIL"
+        sb_delta = fmt_delta(row["delta_to_target"])
+        if metric in ocaml_map:
+            oc_row = ocaml_map[metric]
+            oc_state = "PASS" if oc_row["pass"] else "FAIL"
+            oc_delta = fmt_delta(oc_row["delta_to_target"])
+            print(f"  {metric}: sbcl {sb_delta} {sb_state} | ocaml {oc_delta} {oc_state}")
+        else:
+            print(f"  {metric}: sbcl {sb_delta} {sb_state}")
 print(f"  selected gate [{GATE_LEVEL}]: {'PASS' if selected_gate['pass'] else 'FAIL'}")
 if FAIL_ON_GATES and not selected_gate["pass"]:
     sys.exit(1)
