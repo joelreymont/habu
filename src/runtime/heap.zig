@@ -479,6 +479,9 @@ pub const Heap = struct {
         gc_copy_ns: u64 = 0,
         gc_finalize_ns: u64 = 0,
         gc_root_vals: usize = 0,
+        gc_remembered_scanned: usize = 0,
+        gc_remembered_runs: usize = 0,
+        gc_remembered_marked_cards: usize = 0,
         wb_marks: usize = 0,
         gc_promoted_bytes: usize = 0,
     };

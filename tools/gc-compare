@@ -37,6 +37,7 @@ PARITY_GATES = {
             "rss_ratio_max": 4.0,
             "promote_waste_rate_max": 0.05,
             "promote_scale_dev_max": 0.35,
+            "remembered_scan_per_mark_max": 256.0,
         },
         "competitive": {
             "avg_pause_ratio_min": 0.50,
@@ -45,6 +46,7 @@ PARITY_GATES = {
             "rss_ratio_max": 2.0,
             "promote_waste_rate_max": 0.03,
             "promote_scale_dev_max": 0.30,
+            "remembered_scan_per_mark_max": 192.0,
         },
         "parity": {
             "avg_pause_ratio_min": 1.00,
@@ -53,6 +55,7 @@ PARITY_GATES = {
             "rss_ratio_max": 1.20,
             "promote_waste_rate_max": 0.02,
             "promote_scale_dev_max": 0.25,
+            "remembered_scan_per_mark_max": 128.0,
         },
     },
     "vs_ocaml": {
@@ -63,6 +66,7 @@ PARITY_GATES = {
             "rss_ratio_max": 4.0,
             "promote_waste_rate_max": 0.05,
             "promote_scale_dev_max": 0.35,
+            "remembered_scan_per_mark_max": 256.0,
         },
         "competitive": {
             "avg_pause_ratio_min": 0.50,
@@ -71,6 +75,7 @@ PARITY_GATES = {
             "rss_ratio_max": 2.0,
             "promote_waste_rate_max": 0.03,
             "promote_scale_dev_max": 0.30,
+            "remembered_scan_per_mark_max": 192.0,
         },
         "parity": {
             "avg_pause_ratio_min": 1.00,
@@ -79,6 +84,7 @@ PARITY_GATES = {
             "rss_ratio_max": 1.20,
             "promote_waste_rate_max": 0.02,
             "promote_scale_dev_max": 0.25,
+            "remembered_scan_per_mark_max": 128.0,
         },
     },
 }
@@ -269,6 +275,12 @@ def eval_level(metrics, level):
             "target_max": level["promote_scale_dev_max"],
             "pass": metrics["gc_promote_scale_dev"] <= level["promote_scale_dev_max"],
         }
+    if "remembered_scan_per_mark_max" in level:
+        out["gc_remembered_scan_per_mark"] = {
+            "actual": metrics["gc_remembered_scan_per_mark"],
+            "target_max": level["remembered_scan_per_mark_max"],
+            "pass": metrics["gc_remembered_scan_per_mark"] <= level["remembered_scan_per_mark_max"],
+        }
     out["pass"] = all(m["pass"] for m in out.values() if isinstance(m, dict) and "pass" in m)
     return out
 
@@ -310,8 +322,14 @@ promote_scale = float(habu.get("gc_promote_scale", 1.0))
 promote_success_rate = float(habu.get("gc_promote_success_rate", 0.0))
 promote_young_ratio = float(habu.get("gc_promote_young_ratio", 0.0))
 promote_mature_ratio = float(habu.get("gc_promote_mature_ratio", 0.0))
+remembered_scanned = int(habu.get("gc_remembered_scanned", 0))
+remembered_runs = int(habu.get("gc_remembered_runs", 0))
+remembered_cards = int(habu.get("gc_remembered_marked_cards", 0))
 promote_waste_rate = promote_rate * max(0.0, 1.0 - promote_success_rate)
 promote_scale_dev = abs(promote_scale - 1.0)
+remembered_scan_per_mark = (
+    float(remembered_scanned) / float(max(remembered_cards, 1))
+)
 promote_threshold_in_bounds = (
     promote_threshold_min > 0
     and promote_threshold_max >= promote_threshold_min
@@ -347,6 +365,10 @@ metrics = {
     "gc_promote_success_rate": promote_success_rate,
     "gc_promote_young_ratio": promote_young_ratio,
     "gc_promote_mature_ratio": promote_mature_ratio,
+    "gc_remembered_scanned": remembered_scanned,
+    "gc_remembered_runs": remembered_runs,
+    "gc_remembered_marked_cards": remembered_cards,
+    "gc_remembered_scan_per_mark": remembered_scan_per_mark,
     "gc_nursery_target": int(habu.get("gc_nursery_target", 0)),
     "gc_nursery_scale": float(habu.get("gc_nursery_scale", 1.0)),
     "gc_nursery_survival": float(habu.get("gc_nursery_survival", 0.0)),
@@ -375,6 +397,9 @@ if maxima:
             "maxima_gc_run_avg_major_ns": int(gc_run.get("avg_major_ns", 0)),
             "maxima_gc_run_bytes_copied": int(gc_run.get("bytes_copied", 0)),
             "maxima_gc_run_promoted_bytes": int(gc_run.get("promoted_bytes", 0)),
+            "maxima_gc_run_remembered_scanned": int(gc_run.get("gc_remembered_scanned", 0)),
+            "maxima_gc_run_remembered_runs": int(gc_run.get("gc_remembered_runs", 0)),
+            "maxima_gc_run_remembered_marked_cards": int(gc_run.get("gc_remembered_marked_cards", 0)),
             "maxima_gc_run_promote_threshold": int(gc_run.get("gc_promote_threshold", 0)),
             "maxima_gc_run_promote_scale": float(gc_run.get("gc_promote_scale", 1.0)),
             "maxima_gc_run_promote_success_rate": float(gc_run.get("gc_promote_success_rate", 0.0)),
@@ -478,6 +503,16 @@ print(
     )
 )
 print()
+print("Remembered-set telemetry:")
+print(
+    "  scanned={sc} runs={rn} marked_cards={mc} scan_per_mark={spm:.3f}".format(
+        sc=metrics["gc_remembered_scanned"],
+        rn=metrics["gc_remembered_runs"],
+        mc=metrics["gc_remembered_marked_cards"],
+        spm=metrics["gc_remembered_scan_per_mark"],
+    )
+)
+print()
 print("Nursery policy:")
 print(f"  gc_nursery_target: {metrics['gc_nursery_target']}")
 print(f"  gc_nursery_scale: {metrics['gc_nursery_scale']:.4f}")
@@ -515,6 +550,13 @@ if maxima:
             sr=metrics["maxima_gc_run_promote_success_rate"],
             yr=metrics["maxima_gc_run_promote_young_ratio"],
             mr=metrics["maxima_gc_run_promote_mature_ratio"],
+        )
+    )
+    print(
+        "  run_rset: scanned={sc} runs={rn} marked_cards={mc}".format(
+            sc=metrics["maxima_gc_run_remembered_scanned"],
+            rn=metrics["maxima_gc_run_remembered_runs"],
+            mc=metrics["maxima_gc_run_remembered_marked_cards"],
         )
     )
     print()

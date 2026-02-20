@@ -136,6 +136,9 @@ pub fn main() !void {
     const copy_ns0 = heap.stats.gc_copy_ns;
     const finalize_ns0 = heap.stats.gc_finalize_ns;
     const root_vals0 = heap.stats.gc_root_vals;
+    const remembered_scanned0 = heap.stats.gc_remembered_scanned;
+    const remembered_runs0 = heap.stats.gc_remembered_runs;
+    const remembered_cards0 = heap.stats.gc_remembered_marked_cards;
     const promoted0 = heap.stats.gc_promoted_bytes;
     const wb0 = heap.stats.wb_marks;
     const sample_n0 = heap.stats.alloc_sample_n;
@@ -177,6 +180,9 @@ pub fn main() !void {
     const copy_ns1 = heap.stats.gc_copy_ns;
     const finalize_ns1 = heap.stats.gc_finalize_ns;
     const root_vals1 = heap.stats.gc_root_vals;
+    const remembered_scanned1 = heap.stats.gc_remembered_scanned;
+    const remembered_runs1 = heap.stats.gc_remembered_runs;
+    const remembered_cards1 = heap.stats.gc_remembered_marked_cards;
     const promoted1 = heap.stats.gc_promoted_bytes;
     const wb1 = heap.stats.wb_marks;
     const sample_n1 = heap.stats.alloc_sample_n;
@@ -221,6 +227,9 @@ pub fn main() !void {
     const copy_delta = copy_ns1 - copy_ns0;
     const finalize_delta = finalize_ns1 - finalize_ns0;
     const root_vals_delta = root_vals1 - root_vals0;
+    const remembered_scanned_delta = remembered_scanned1 - remembered_scanned0;
+    const remembered_runs_delta = remembered_runs1 - remembered_runs0;
+    const remembered_cards_delta = remembered_cards1 - remembered_cards0;
     const promoted_delta = promoted1 - promoted0;
     const wb_delta = wb1 - wb0;
     const sample_n_delta = sample_n1 - sample_n0;
@@ -332,6 +341,9 @@ pub fn main() !void {
             .avg_copy_ns = avg_copy_ns,
             .avg_finalize_ns = avg_finalize_ns,
             .root_vals = root_vals_delta,
+            .gc_remembered_scanned = remembered_scanned_delta,
+            .gc_remembered_runs = remembered_runs_delta,
+            .gc_remembered_marked_cards = remembered_cards_delta,
             .promoted_bytes = promoted_delta,
             .wb_marks = wb_delta,
             .tenured_live = tenured_live,
@@ -441,6 +453,10 @@ pub fn main() !void {
         },
     );
     try w.print("  root vals visited: {d}\n", .{root_vals_delta});
+    try w.print(
+        "  remembered scan: scanned {d}, runs {d}, marked_cards {d}\n",
+        .{ remembered_scanned_delta, remembered_runs_delta, remembered_cards_delta },
+    );
     try w.print("  promoted bytes: {d}\n", .{promoted_delta});
     try w.print("  write-barrier marks: {d}\n", .{wb_delta});
     try w.print("  tenured live/bytes: {d} / {d}\n", .{ tenured_live, tenured_bytes });

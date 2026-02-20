@@ -22,6 +22,9 @@ const GcJson = struct {
     avg_copy_ns: u64 = 0,
     avg_finalize_ns: u64 = 0,
     root_vals: u64 = 0,
+    gc_remembered_scanned: u64 = 0,
+    gc_remembered_runs: u64 = 0,
+    gc_remembered_marked_cards: u64 = 0,
     promoted_bytes: u64 = 0,
     wb_marks: u64 = 0,
     tenured_live: u64 = 0,
@@ -376,6 +379,21 @@ pub fn main() !void {
     }
     if (gc.gc_promote_mature_ratio < 0.0 or gc.gc_promote_mature_ratio > 1.0) {
         try fail("gc promote mature ratio {d:.4} outside [0,1]", .{gc.gc_promote_mature_ratio});
+    }
+    if (gc.gc_remembered_marked_cards == 0) try fail("gc remembered marked cards is 0", .{});
+    if (gc.gc_remembered_runs == 0) try fail("gc remembered runs is 0", .{});
+    if (gc.gc_remembered_runs > gc.gc_remembered_marked_cards) {
+        try fail(
+            "gc remembered runs {d} > marked cards {d}",
+            .{ gc.gc_remembered_runs, gc.gc_remembered_marked_cards },
+        );
+    }
+    if (gc.gc_remembered_scanned == 0) try fail("gc remembered scanned is 0", .{});
+    if (gc.gc_remembered_scanned > gc.root_vals) {
+        try fail(
+            "gc remembered scanned {d} > root vals {d}",
+            .{ gc.gc_remembered_scanned, gc.root_vals },
+        );
     }
     if (gc.gc_nursery_target == 0) try fail("gc gc_nursery_target is 0", .{});
     if (gc.gc_nursery_target > gc.heap_bytes) {

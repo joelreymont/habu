@@ -414,7 +414,8 @@ pub const GC = struct {
 
         // Scan tenured remembered objects on marked cards.
         var rem_scanned: usize = 0;
-        if (heap.markedCardCount() > 0) {
+        const marked_cards = heap.markedCardCount();
+        if (marked_cards > 0) {
             try heap.appendMarkedCardRuns(self.allocator, &self.remembered_runs);
             self.runs_peak = self.remembered_runs.items.len;
             rem_scanned +%= try self.scanRememberedObjects(heap, heap.tenured_objs.items, &alloc_ptr);
@@ -448,6 +449,9 @@ pub const GC = struct {
         heap.stats.gc_copy_ns +%= copy_ns;
         heap.stats.gc_finalize_ns +%= finalize_ns;
         heap.stats.gc_root_vals +%= root_vals + rem_scanned;
+        heap.stats.gc_remembered_scanned +%= rem_scanned;
+        heap.stats.gc_remembered_runs +%= self.remembered_runs.items.len;
+        heap.stats.gc_remembered_marked_cards +%= marked_cards;
 
         try self.maybeGrowQueues();
         return bytes_copied;
@@ -1817,6 +1821,35 @@ test "los object scan updates nursery references" {
     try testing.expect(child2.isCons());
     try testing.expect(child2.raw != child1_raw);
     try testing.expect(heap.isInNurseryAddr(child2.toPtrAddr()));
+}
+
+test "minor gc records remembered-set telemetry" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .los_threshold = 256,
+            .promote_threshold = 1024 * 1024,
+        },
+    });
+    defer heap.deinit();
+
+    const owner = try heap.allocVector(1, 64);
+    const child = try heap.allocCons(Value.makeFixnum(3), Value.nil);
+    owner.toPtr(objects.Vector).set(0, child);
+    heap.writeBarrier(owner, child);
+
+    var roots = [_]Value{owner};
+    _ = try heap.collectGarbage(&roots);
+
+    try testing.expect(heap.stats.gc_remembered_marked_cards > 0);
+    try testing.expect(heap.stats.gc_remembered_runs > 0);
+    try testing.expect(heap.stats.gc_remembered_scanned > 0);
+    try testing.expect(heap.stats.gc_remembered_runs <= heap.stats.gc_remembered_marked_cards);
 }
 
 test "los sweep reclaims unreachable large objects" {

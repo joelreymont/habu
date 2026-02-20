@@ -45,6 +45,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Making `hasMarkedCardInAddrRange` lane-aware (`src/runtime/heap.zig:954`) plus adding a focused regression (`src/runtime/heap.zig:3070`) gave deterministic proof that unrelated lanes in the same card no longer trigger remembered-set hits.
 - Coalescing remembered cards into run lists (`src/runtime/heap.zig:914`) and reusing a persistent `remembered_runs` buffer in GC (`src/runtime/gc.zig:185`, `src/runtime/gc.zig:414`) improved minor-GC remembered scanning locality while keeping allocation-free hot paths.
 - Routing minor-GC remembered scans through run-aware overlap checks (`src/runtime/gc.zig:415`, `src/runtime/heap.zig:996`) eliminated full-table clean-run walks and preserved correctness on tenured/LOS edge scanning.
+- Adding explicit remembered-set telemetry counters (`src/runtime/heap.zig:481`, `src/runtime/gc.zig:450`) plus exporting them in GC bench payloads (`bench/gc.zig:337`) made RSet scan pressure visible and regression-checkable.
+- Extending `bench/check` + `tools/gc-compare` with remembered-set invariants/gates (`bench/check.zig:380`, `tools/gc-compare:33`, `tools/gc-compare:483`) locked both correctness (non-zero marked/runs/scans) and efficiency (`scan_per_mark`) in automated validation loops.
+- Locking runtime coverage with a focused GC regression (`src/runtime/gc.zig:1822`) ensured remembered-set telemetry is exercised and monotonic under real LOS owner + young child mutation patterns.
 
 ### Did Not Work
 - Assuming promotion-success counters would update only when tenured sweep reclaimed something was wrong; the old early-return path in `sweepTenured` skipped success accounting for all-live sets.
@@ -63,6 +66,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Repl/stdlib-driven tenuring stress tests were brittle for this gate (fixture-sensitive OOM and promotion-starvation); heap-driven promote/drop cycles in `src/tests/integration.zig:7173` are a better deterministic guard for policy regression checks.
 - In this environment `zig build bench-check -- --json` can stall with sleeping `bench_check`/build processes and no progress output; targeted `-Dtest-filter` gates plus `tools/gc-compare` JSON checks are the reliable verification path until harness stability is fixed.
 - Using only per-object `hasMarkedCardInAddrRange` checks across all old objects is still too cache-cold for remembered scans at scale; run coalescing + fast run filtering should be the baseline before deeper RSet tuning.
+- Running `python -m py_compile` in-tree drops `tools/__pycache__` artifacts; remove these before commit to keep generated files out of history.
 
 ## Session Notes (2026-02-18)
 
