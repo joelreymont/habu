@@ -25,6 +25,16 @@ const GcJson = struct {
     gc_remembered_scanned: u64 = 0,
     gc_remembered_runs: u64 = 0,
     gc_remembered_marked_cards: u64 = 0,
+    gc_major_cycle_n: u64 = 0,
+    gc_major_mark_steps: u64 = 0,
+    gc_major_mark_budget_objs: u64 = 0,
+    gc_major_sweep_tenured_steps: u64 = 0,
+    gc_major_sweep_los_steps: u64 = 0,
+    gc_major_sweep_budget_objs: u64 = 0,
+    gc_major_swept_tenured: u64 = 0,
+    gc_major_swept_los: u64 = 0,
+    gc_major_max_tenured_slice: u64 = 0,
+    gc_major_max_los_slice: u64 = 0,
     promoted_bytes: u64 = 0,
     wb_marks: u64 = 0,
     tenured_live: u64 = 0,
@@ -405,6 +415,67 @@ pub fn main() !void {
             "gc remembered scanned {d} > root vals {d}",
             .{ gc.gc_remembered_scanned, gc.root_vals },
         );
+    }
+    if (gc.gc_major_cycle_n > gc.gc_count) {
+        try fail("gc major cycles {d} > gc_count {d}", .{ gc.gc_major_cycle_n, gc.gc_count });
+    }
+    if (gc.gc_major_mark_budget_objs == 0) try fail("gc major mark budget is 0", .{});
+    if (gc.gc_major_sweep_budget_objs == 0) try fail("gc major sweep budget is 0", .{});
+    if (gc.gc_major_max_tenured_slice > gc.gc_major_sweep_budget_objs) {
+        try fail(
+            "gc major max tenured slice {d} > sweep budget {d}",
+            .{ gc.gc_major_max_tenured_slice, gc.gc_major_sweep_budget_objs },
+        );
+    }
+    if (gc.gc_major_max_los_slice > gc.gc_major_sweep_budget_objs) {
+        try fail(
+            "gc major max los slice {d} > sweep budget {d}",
+            .{ gc.gc_major_max_los_slice, gc.gc_major_sweep_budget_objs },
+        );
+    }
+    if (gc.gc_major_sweep_tenured_steps == 0) {
+        if (gc.gc_major_swept_tenured != 0) {
+            try fail("gc major swept tenured {d} with 0 steps", .{gc.gc_major_swept_tenured});
+        }
+        if (gc.gc_major_max_tenured_slice != 0) {
+            try fail("gc major max tenured slice {d} with 0 steps", .{gc.gc_major_max_tenured_slice});
+        }
+    } else {
+        if (gc.gc_major_swept_tenured < gc.gc_major_sweep_tenured_steps) {
+            try fail(
+                "gc major swept tenured {d} < steps {d}",
+                .{ gc.gc_major_swept_tenured, gc.gc_major_sweep_tenured_steps },
+            );
+        }
+        if (gc.gc_major_max_tenured_slice == 0) try fail("gc major max tenured slice is 0", .{});
+        if (gc.gc_major_max_tenured_slice > gc.gc_major_swept_tenured) {
+            try fail(
+                "gc major max tenured slice {d} > swept {d}",
+                .{ gc.gc_major_max_tenured_slice, gc.gc_major_swept_tenured },
+            );
+        }
+    }
+    if (gc.gc_major_sweep_los_steps == 0) {
+        if (gc.gc_major_swept_los != 0) {
+            try fail("gc major swept los {d} with 0 steps", .{gc.gc_major_swept_los});
+        }
+        if (gc.gc_major_max_los_slice != 0) {
+            try fail("gc major max los slice {d} with 0 steps", .{gc.gc_major_max_los_slice});
+        }
+    } else {
+        if (gc.gc_major_swept_los < gc.gc_major_sweep_los_steps) {
+            try fail(
+                "gc major swept los {d} < steps {d}",
+                .{ gc.gc_major_swept_los, gc.gc_major_sweep_los_steps },
+            );
+        }
+        if (gc.gc_major_max_los_slice == 0) try fail("gc major max los slice is 0", .{});
+        if (gc.gc_major_max_los_slice > gc.gc_major_swept_los) {
+            try fail(
+                "gc major max los slice {d} > swept {d}",
+                .{ gc.gc_major_max_los_slice, gc.gc_major_swept_los },
+            );
+        }
     }
     if (gc.gc_debt_threshold == 0) try fail("gc debt threshold is 0", .{});
     if (gc.gc_debt_alloc_bytes == 0) try fail("gc debt alloc bytes is 0", .{});

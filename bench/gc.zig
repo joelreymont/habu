@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const runtime = @import("runtime");
+const gc_mod = runtime.gc;
 const heap_mod = runtime.heap;
 const objects = runtime.objects;
 const Value = runtime.Value;
@@ -139,6 +140,14 @@ pub fn main() !void {
     const remembered_scanned0 = heap.stats.gc_remembered_scanned;
     const remembered_runs0 = heap.stats.gc_remembered_runs;
     const remembered_cards0 = heap.stats.gc_remembered_marked_cards;
+    const major_cycle0 = heap.stats.gc_major_cycle_n;
+    const major_mark_steps0 = heap.stats.gc_major_mark_steps;
+    const major_sweep_tenured_steps0 = heap.stats.gc_major_sweep_tenured_steps;
+    const major_sweep_los_steps0 = heap.stats.gc_major_sweep_los_steps;
+    const major_swept_tenured0 = heap.stats.gc_major_swept_tenured;
+    const major_swept_los0 = heap.stats.gc_major_swept_los;
+    const major_max_tenured_slice0 = heap.stats.gc_major_max_tenured_slice;
+    const major_max_los_slice0 = heap.stats.gc_major_max_los_slice;
     const debt_alloc0 = heap.stats.gc_debt_alloc_bytes;
     const debt_paydown0 = heap.stats.gc_debt_paydown_bytes;
     const debt_trigger0 = heap.stats.gc_debt_trigger_n;
@@ -187,6 +196,14 @@ pub fn main() !void {
     const remembered_scanned1 = heap.stats.gc_remembered_scanned;
     const remembered_runs1 = heap.stats.gc_remembered_runs;
     const remembered_cards1 = heap.stats.gc_remembered_marked_cards;
+    const major_cycle1 = heap.stats.gc_major_cycle_n;
+    const major_mark_steps1 = heap.stats.gc_major_mark_steps;
+    const major_sweep_tenured_steps1 = heap.stats.gc_major_sweep_tenured_steps;
+    const major_sweep_los_steps1 = heap.stats.gc_major_sweep_los_steps;
+    const major_swept_tenured1 = heap.stats.gc_major_swept_tenured;
+    const major_swept_los1 = heap.stats.gc_major_swept_los;
+    const major_max_tenured_slice1 = heap.stats.gc_major_max_tenured_slice;
+    const major_max_los_slice1 = heap.stats.gc_major_max_los_slice;
     const debt_bytes1 = heap.stats.gc_debt_bytes;
     const debt_alloc1 = heap.stats.gc_debt_alloc_bytes;
     const debt_paydown1 = heap.stats.gc_debt_paydown_bytes;
@@ -244,6 +261,14 @@ pub fn main() !void {
     const remembered_scanned_delta = remembered_scanned1 - remembered_scanned0;
     const remembered_runs_delta = remembered_runs1 - remembered_runs0;
     const remembered_cards_delta = remembered_cards1 - remembered_cards0;
+    const major_cycle_delta = major_cycle1 - major_cycle0;
+    const major_mark_steps_delta = major_mark_steps1 - major_mark_steps0;
+    const major_sweep_tenured_steps_delta = major_sweep_tenured_steps1 - major_sweep_tenured_steps0;
+    const major_sweep_los_steps_delta = major_sweep_los_steps1 - major_sweep_los_steps0;
+    const major_swept_tenured_delta = major_swept_tenured1 - major_swept_tenured0;
+    const major_swept_los_delta = major_swept_los1 - major_swept_los0;
+    const major_max_tenured_slice = @max(major_max_tenured_slice0, major_max_tenured_slice1);
+    const major_max_los_slice = @max(major_max_los_slice0, major_max_los_slice1);
     const debt_alloc_delta = debt_alloc1 - debt_alloc0;
     const debt_paydown_delta = debt_paydown1 - debt_paydown0;
     const debt_trigger_delta = debt_trigger1 - debt_trigger0;
@@ -364,6 +389,16 @@ pub fn main() !void {
             .gc_remembered_scanned = remembered_scanned_delta,
             .gc_remembered_runs = remembered_runs_delta,
             .gc_remembered_marked_cards = remembered_cards_delta,
+            .gc_major_cycle_n = major_cycle_delta,
+            .gc_major_mark_steps = major_mark_steps_delta,
+            .gc_major_mark_budget_objs = gc_mod.MAJOR_MARK_BUDGET_OBJS,
+            .gc_major_sweep_tenured_steps = major_sweep_tenured_steps_delta,
+            .gc_major_sweep_los_steps = major_sweep_los_steps_delta,
+            .gc_major_sweep_budget_objs = gc_mod.MAJOR_SWEEP_BUDGET_OBJS,
+            .gc_major_swept_tenured = major_swept_tenured_delta,
+            .gc_major_swept_los = major_swept_los_delta,
+            .gc_major_max_tenured_slice = major_max_tenured_slice,
+            .gc_major_max_los_slice = major_max_los_slice,
             .gc_debt_bytes = debt_bytes,
             .gc_debt_threshold = debt_threshold,
             .gc_debt_alloc_bytes = debt_alloc_delta,
@@ -487,6 +522,22 @@ pub fn main() !void {
     try w.print(
         "  remembered scan: scanned {d}, runs {d}, marked_cards {d}\n",
         .{ remembered_scanned_delta, remembered_runs_delta, remembered_cards_delta },
+    );
+    try w.print(
+        "  major slices: cycles {d}, mark_steps {d}/{d}, tenured_steps {d}, los_steps {d}, swept tenured {d}, swept los {d}, max tenured {d}/{d}, max los {d}/{d}\n",
+        .{
+            major_cycle_delta,
+            major_mark_steps_delta,
+            gc_mod.MAJOR_MARK_BUDGET_OBJS,
+            major_sweep_tenured_steps_delta,
+            major_sweep_los_steps_delta,
+            major_swept_tenured_delta,
+            major_swept_los_delta,
+            major_max_tenured_slice,
+            gc_mod.MAJOR_SWEEP_BUDGET_OBJS,
+            major_max_los_slice,
+            gc_mod.MAJOR_SWEEP_BUDGET_OBJS,
+        },
     );
     try w.print(
         "  gc debt: bytes {d}/{d}, alloc {d}, paydown {d}, triggers {d}\n",

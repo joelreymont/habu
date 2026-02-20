@@ -271,6 +271,10 @@ def eval_level(metrics, level):
         "actual": metrics["gc_debt_policy_in_bounds"],
         "pass": bool(metrics["gc_debt_policy_in_bounds"]),
     }
+    out["gc_major_slice_in_bounds"] = {
+        "actual": metrics["gc_major_slice_in_bounds"],
+        "pass": bool(metrics["gc_major_slice_in_bounds"]),
+    }
     if "promote_waste_rate_max" in level:
         out["gc_promote_waste_rate"] = {
             "actual": metrics["gc_promote_waste_rate"],
@@ -344,6 +348,15 @@ debt_ratio = float(habu.get("gc_debt_ratio", 0.0))
 debt_occupancy = float(habu.get("gc_debt_occupancy", 0.0))
 debt_survival = float(habu.get("gc_debt_survival", 0.0))
 debt_pause_error = float(habu.get("gc_debt_pause_error", 0.0))
+major_mark_budget = int(habu.get("gc_major_mark_budget_objs", 0))
+major_sweep_budget = int(habu.get("gc_major_sweep_budget_objs", 0))
+major_mark_steps = int(habu.get("gc_major_mark_steps", 0))
+major_sweep_tenured_steps = int(habu.get("gc_major_sweep_tenured_steps", 0))
+major_sweep_los_steps = int(habu.get("gc_major_sweep_los_steps", 0))
+major_swept_tenured = int(habu.get("gc_major_swept_tenured", 0))
+major_swept_los = int(habu.get("gc_major_swept_los", 0))
+major_max_tenured_slice = int(habu.get("gc_major_max_tenured_slice", 0))
+major_max_los_slice = int(habu.get("gc_major_max_los_slice", 0))
 promote_waste_rate = promote_rate * max(0.0, 1.0 - promote_success_rate)
 promote_scale_dev = abs(promote_scale - 1.0)
 remembered_scan_per_mark = (
@@ -367,6 +380,18 @@ promote_threshold_in_bounds = (
     and promote_threshold_max >= promote_threshold_min
     and promote_threshold >= promote_threshold_min
     and promote_threshold <= promote_threshold_max
+)
+major_slice_in_bounds = (
+    major_mark_budget > 0
+    and major_sweep_budget > 0
+    and major_max_tenured_slice <= major_sweep_budget
+    and major_max_los_slice <= major_sweep_budget
+    and (major_sweep_tenured_steps > 0 or major_swept_tenured == 0)
+    and (major_sweep_los_steps > 0 or major_swept_los == 0)
+    and (major_sweep_tenured_steps == 0 or major_swept_tenured >= major_sweep_tenured_steps)
+    and (major_sweep_los_steps == 0 or major_swept_los >= major_sweep_los_steps)
+    and (major_sweep_tenured_steps == 0 or major_max_tenured_slice > 0)
+    and (major_sweep_los_steps == 0 or major_max_los_slice > 0)
 )
 
 metrics = {
@@ -414,6 +439,16 @@ metrics = {
     "gc_debt_pause_error": debt_pause_error,
     "gc_debt_in_bounds": debt_in_bounds,
     "gc_debt_policy_in_bounds": debt_policy_in_bounds,
+    "gc_major_mark_budget_objs": major_mark_budget,
+    "gc_major_sweep_budget_objs": major_sweep_budget,
+    "gc_major_mark_steps": major_mark_steps,
+    "gc_major_sweep_tenured_steps": major_sweep_tenured_steps,
+    "gc_major_sweep_los_steps": major_sweep_los_steps,
+    "gc_major_swept_tenured": major_swept_tenured,
+    "gc_major_swept_los": major_swept_los,
+    "gc_major_max_tenured_slice": major_max_tenured_slice,
+    "gc_major_max_los_slice": major_max_los_slice,
+    "gc_major_slice_in_bounds": major_slice_in_bounds,
     "gc_nursery_target": int(habu.get("gc_nursery_target", 0)),
     "gc_nursery_scale": float(habu.get("gc_nursery_scale", 1.0)),
     "gc_nursery_survival": float(habu.get("gc_nursery_survival", 0.0)),
@@ -600,6 +635,22 @@ print(
         sv=metrics["gc_debt_survival"],
         pe=metrics["gc_debt_pause_error"],
         ok=str(metrics["gc_debt_policy_in_bounds"]).lower(),
+    )
+)
+print()
+print("Major-slice telemetry:")
+print(
+    "  mark_steps={ms} budget={mb} tenured_steps={ts} swept={st} max={mt}/{sb} los_steps={ls} swept={sl} max={ml}/{sb} in_bounds={ok}".format(
+        ms=metrics["gc_major_mark_steps"],
+        mb=metrics["gc_major_mark_budget_objs"],
+        ts=metrics["gc_major_sweep_tenured_steps"],
+        st=metrics["gc_major_swept_tenured"],
+        mt=metrics["gc_major_max_tenured_slice"],
+        ls=metrics["gc_major_sweep_los_steps"],
+        sl=metrics["gc_major_swept_los"],
+        ml=metrics["gc_major_max_los_slice"],
+        sb=metrics["gc_major_sweep_budget_objs"],
+        ok=str(metrics["gc_major_slice_in_bounds"]).lower(),
     )
 )
 print()

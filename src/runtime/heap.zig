@@ -488,6 +488,14 @@ pub const Heap = struct {
         gc_remembered_scanned: usize = 0,
         gc_remembered_runs: usize = 0,
         gc_remembered_marked_cards: usize = 0,
+        gc_major_cycle_n: usize = 0,
+        gc_major_mark_steps: usize = 0,
+        gc_major_sweep_tenured_steps: usize = 0,
+        gc_major_sweep_los_steps: usize = 0,
+        gc_major_swept_tenured: usize = 0,
+        gc_major_swept_los: usize = 0,
+        gc_major_max_tenured_slice: usize = 0,
+        gc_major_max_los_slice: usize = 0,
         gc_debt_bytes: usize = 0,
         gc_debt_threshold: usize = 0,
         gc_debt_alloc_bytes: usize = 0,
@@ -521,6 +529,11 @@ pub const Heap = struct {
     pub const FreeSpan = struct {
         addr: usize,
         size: usize,
+    };
+
+    pub const SweepSliceResult = struct {
+        done: bool,
+        scanned: usize,
     };
 
     const GcRootSig = struct {
@@ -1181,12 +1194,12 @@ pub const Heap = struct {
         self.coalesceTenuredFree();
     }
 
-    pub fn sweepTenuredSlice(self: *Heap, cursor: *usize, budget: usize) !bool {
-        if (self.layout.mode != .generational) return true;
-        if (budget == 0) return false;
+    pub fn sweepTenuredSlice(self: *Heap, cursor: *usize, budget: usize) !SweepSliceResult {
+        if (self.layout.mode != .generational) return .{ .done = true, .scanned = 0 };
+        if (budget == 0) return .{ .done = false, .scanned = 0 };
         if (self.tenured_objs.items.len == 0) {
             cursor.* = 0;
-            return true;
+            return .{ .done = true, .scanned = 0 };
         }
         if (cursor.* >= self.tenured_objs.items.len) {
             cursor.* = 0;
@@ -1195,8 +1208,10 @@ pub const Heap = struct {
         const reserve_n = @min(budget, self.tenured_objs.items.len - cursor.*);
         try self.tenured_free.ensureUnusedCapacity(self.backing_allocator, reserve_n);
 
+        var scanned: usize = 0;
         var left = budget;
         while (cursor.* < self.tenured_objs.items.len and left > 0) : (left -= 1) {
+            scanned +%= 1;
             const idx = cursor.*;
             const obj = self.tenured_objs.items[idx];
             if (obj.marked) {
@@ -1221,10 +1236,10 @@ pub const Heap = struct {
             _ = self.tenured_objs.swapRemove(idx);
         }
 
-        if (cursor.* < self.tenured_objs.items.len) return false;
+        if (cursor.* < self.tenured_objs.items.len) return .{ .done = false, .scanned = scanned };
         cursor.* = 0;
         self.coalesceTenuredFree();
-        return true;
+        return .{ .done = true, .scanned = scanned };
     }
 
     fn shouldAllocLos(self: *const Heap, aligned_size: usize) bool {
@@ -1350,12 +1365,12 @@ pub const Heap = struct {
         self.coalesceLosFree();
     }
 
-    pub fn sweepLosSlice(self: *Heap, cursor: *usize, budget: usize) !bool {
-        if (self.layout.mode != .generational) return true;
-        if (budget == 0) return false;
+    pub fn sweepLosSlice(self: *Heap, cursor: *usize, budget: usize) !SweepSliceResult {
+        if (self.layout.mode != .generational) return .{ .done = true, .scanned = 0 };
+        if (budget == 0) return .{ .done = false, .scanned = 0 };
         if (self.los_objs.items.len == 0) {
             cursor.* = 0;
-            return true;
+            return .{ .done = true, .scanned = 0 };
         }
         if (cursor.* >= self.los_objs.items.len) {
             cursor.* = 0;
@@ -1364,8 +1379,10 @@ pub const Heap = struct {
         const reserve_n = @min(budget, self.los_objs.items.len - cursor.*);
         try self.los_free.ensureUnusedCapacity(self.backing_allocator, reserve_n);
 
+        var scanned: usize = 0;
         var left = budget;
         while (cursor.* < self.los_objs.items.len and left > 0) : (left -= 1) {
+            scanned +%= 1;
             const idx = cursor.*;
             const obj = self.los_objs.items[idx];
             if (obj.marked) {
@@ -1380,10 +1397,10 @@ pub const Heap = struct {
             _ = self.los_objs.swapRemove(idx);
         }
 
-        if (cursor.* < self.los_objs.items.len) return false;
+        if (cursor.* < self.los_objs.items.len) return .{ .done = false, .scanned = scanned };
         cursor.* = 0;
         self.coalesceLosFree();
-        return true;
+        return .{ .done = true, .scanned = scanned };
     }
 
     pub fn tenuredBytesUsed(self: *const Heap) usize {

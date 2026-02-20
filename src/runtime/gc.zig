@@ -95,8 +95,8 @@ const DEBT_TRIGGER_MAIN_RATIO = 1.00;
 const DEBT_TRIGGER_MAIN_SCORE = 0.65;
 const DEBT_TRIGGER_SOFT_RATIO = 0.85;
 const DEBT_TRIGGER_SOFT_SCORE = 0.95;
-const MAJOR_MARK_BUDGET_OBJS: usize = 512;
-const MAJOR_SWEEP_BUDGET_OBJS: usize = 1024;
+pub const MAJOR_MARK_BUDGET_OBJS: usize = 512;
+pub const MAJOR_SWEEP_BUDGET_OBJS: usize = 1024;
 
 const MajorPhase = enum {
     idle,
@@ -648,20 +648,24 @@ pub const GC = struct {
         }
     }
 
-    fn processMajorWork(self: *GC, heap: *heap_mod.Heap, alloc_ptr: *[*]align(heap_mod.ALIGNMENT) u8, budget: usize) !void {
+    fn processMajorWork(self: *GC, heap: *heap_mod.Heap, alloc_ptr: *[*]align(heap_mod.ALIGNMENT) u8, budget: usize) !usize {
+        var scanned: usize = 0;
         var left = budget;
         while (left > 0 and self.major_work.items.len > 0) : (left -= 1) {
+            scanned +%= 1;
             const item = self.major_work.items[self.major_work.items.len - 1];
             self.major_work.items.len -= 1;
             try self.scanObject(heap, item.addr, item.tag, alloc_ptr);
             try self.processMinorWork(heap, alloc_ptr);
         }
+        return scanned;
     }
 
     fn advanceMajorCycle(self: *GC, heap: *heap_mod.Heap, alloc_ptr: *[*]align(heap_mod.ALIGNMENT) u8) !void {
         if (self.major.phase == .idle) return;
 
-        try self.processMajorWork(heap, alloc_ptr, MAJOR_MARK_BUDGET_OBJS);
+        const marked = try self.processMajorWork(heap, alloc_ptr, MAJOR_MARK_BUDGET_OBJS);
+        heap.stats.gc_major_mark_steps +%= marked;
 
         while (true) {
             switch (self.major.phase) {
@@ -673,18 +677,35 @@ pub const GC = struct {
                 },
                 .sweep_tenured => {
                     if (self.major_work.items.len != 0) return;
-                    if (!try heap.sweepTenuredSlice(&self.major.tenured_cursor, MAJOR_SWEEP_BUDGET_OBJS)) return;
+                    const slice = try heap.sweepTenuredSlice(&self.major.tenured_cursor, MAJOR_SWEEP_BUDGET_OBJS);
+                    if (slice.scanned > 0) {
+                        heap.stats.gc_major_sweep_tenured_steps +%= 1;
+                        heap.stats.gc_major_swept_tenured +%= slice.scanned;
+                        if (slice.scanned > heap.stats.gc_major_max_tenured_slice) {
+                            heap.stats.gc_major_max_tenured_slice = slice.scanned;
+                        }
+                    }
+                    if (!slice.done) return;
                     self.major.phase = .sweep_los;
                     continue;
                 },
                 .sweep_los => {
                     if (self.major_work.items.len != 0) return;
-                    if (!try heap.sweepLosSlice(&self.major.los_cursor, MAJOR_SWEEP_BUDGET_OBJS)) return;
+                    const slice = try heap.sweepLosSlice(&self.major.los_cursor, MAJOR_SWEEP_BUDGET_OBJS);
+                    if (slice.scanned > 0) {
+                        heap.stats.gc_major_sweep_los_steps +%= 1;
+                        heap.stats.gc_major_swept_los +%= slice.scanned;
+                        if (slice.scanned > heap.stats.gc_major_max_los_slice) {
+                            heap.stats.gc_major_max_los_slice = slice.scanned;
+                        }
+                    }
+                    if (!slice.done) return;
                     self.major.phase = .idle;
                     self.major.tenured_cursor = 0;
                     self.major.los_cursor = 0;
                     self.major_work.clearRetainingCapacity();
                     heap.setMajorCycleActive(false);
+                    heap.stats.gc_major_cycle_n +%= 1;
                     return;
                 },
             }
@@ -2041,6 +2062,46 @@ test "incremental major sweep slices large tenured sets" {
 
     try testing.expect(!heap.isMajorCycleActive());
     try testing.expectEqual(@as(usize, 1), heap.tenured_objs.items.len);
+}
+
+test "major slice telemetry stays within configured budgets" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 16 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .promote_threshold = 64,
+        },
+    });
+    defer heap.deinit();
+
+    const payload = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789";
+    const n = MAJOR_SWEEP_BUDGET_OBJS + 257;
+    const roots = try testing.allocator.alloc(Value, n);
+    defer testing.allocator.free(roots);
+
+    for (roots) |*r| {
+        r.* = try heap.allocBaseString(payload);
+    }
+    _ = try heap.collectGarbage(roots);
+
+    const keep = roots[0];
+    roots[0] = keep;
+    for (roots[1..]) |*r| r.* = Value.nil;
+
+    var guard: usize = 0;
+    while (guard < 32 and (heap.isMajorCycleActive() or guard == 0)) : (guard += 1) {
+        _ = try heap.collectGarbage(roots);
+    }
+
+    try testing.expect(heap.stats.gc_major_cycle_n > 0);
+    try testing.expect(heap.stats.gc_major_sweep_tenured_steps > 0);
+    try testing.expect(heap.stats.gc_major_swept_tenured > 0);
+    try testing.expect(heap.stats.gc_major_max_tenured_slice <= MAJOR_SWEEP_BUDGET_OBJS);
+    try testing.expect(heap.stats.gc_major_max_los_slice <= MAJOR_SWEEP_BUDGET_OBJS);
 }
 
 test "major barrier rescues newly linked old object before sweep" {

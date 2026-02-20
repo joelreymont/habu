@@ -1036,3 +1036,14 @@ Environment guard:
 - Assuming `preEmitConstants` already handled wrapper nodes was wrong; missing `.block` traversal silently disabled pre-emission for whole function bodies in TCO paths.
 - Assuming linear/use-local coalesce checks were enough across backward branches was wrong; loop-header reads require CFG liveness, not local scan heuristics.
 - Treating long `zig build test` as a reliable gate in this environment is still brittle; sampled runs showed `test --listen` wait states, so targeted filters remain the dependable validation path here.
+
+### Session Notes (2026-02-20, major slice budget telemetry gates)
+
+#### Worked Well
+- Exporting major mark/sweep budgets from GC (`src/runtime/gc.zig:98`) and threading them into bench JSON (`bench/gc.zig:394`, `bench/gc.zig:397`) removed hard-coded budget assumptions in downstream tooling.
+- Enforcing step/sweep/max-slice coherence directly in bench regression checks (`bench/check.zig:420` to `bench/check.zig:477`) caught invalid major-slice telemetry states early.
+- Adding `gc_major_slice_in_bounds` to parity gate evaluation (`tools/gc-compare:274`, `tools/gc-compare:385`, `tools/gc-compare:451`) made slice-budget violations fail the same gate path as other GC policy invariants.
+
+#### Did Not Work
+- Depending on raw `gc_major_max_*_slice` telemetry alone was insufficient for external validation; without explicit emitted budgets, compare/check tools either drift or silently skip strict bound checks.
+- Using full-suite `zig build test` as the only validation gate is not reliable in this workspace right now due an unrelated compile/integration segfault path; targeted GC tests + bench gates were the stable proof path for this dot.
