@@ -1605,6 +1605,28 @@ pub const Vm = struct {
             range_len += 1;
         }
 
+        if (std.posix.getenv("HABU_TRACE_BAD_GLOBAL_ROOT") != null) {
+            const from_start = @intFromPtr(self.heap.from_start);
+            const from_end = @intFromPtr(self.heap.from_end);
+            const kind_n = @typeInfo(runtime.objects.BoxedKind).@"enum".fields.len;
+            var gi: usize = 0;
+            while (gi < self.num_globals and gi < MAX_GLOBALS) : (gi += 1) {
+                const val = self.globals[gi];
+                if (!val.isPointer() or val.getTag() != .boxed) continue;
+                const addr = val.toPtrAddr();
+                if (addr < from_start or addr >= from_end) continue;
+                const first_word: *const Value = @ptrFromInt(addr);
+                if (first_word.isForwarding()) continue;
+                const kind_raw = @as(*const u64, @ptrFromInt(addr)).*;
+                if (kind_raw < kind_n) continue;
+                const name = self.globalNameForIndex(@intCast(gi)) orelse "<unknown>";
+                std.debug.print(
+                    "TRACE bad-global-root idx={d} name={s} val=0x{x} kind-raw=0x{x}\n",
+                    .{ gi, name, val.raw, kind_raw },
+                );
+            }
+        }
+
         const reclaimed = try self.heap.collectGarbageRootSet(.{
             .ranges = ranges[0..range_len],
             .slots = self.gc_slots.items,

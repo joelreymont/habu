@@ -171,6 +171,9 @@
         (if habu-required-bindings
             (%maxima-missing-bindings habu-required-bindings)
             nil))
+  (unless (%maxima-proper-list-p *maxima-failed*)
+    (error "maxima-load-all invariant: *MAXIMA-FAILED* is not a proper list: ~S"
+           *maxima-failed*))
   (let ((total (length files))
         (fail (length *maxima-failed*)))
     (when verbose

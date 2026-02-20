@@ -3326,6 +3326,16 @@ pub const Compiler = struct {
         }
         const call_args = call_args_buf[0..call_arg_idx];
 
+        if (std.posix.getenv("HABU_TRACE_COMPILE_MACRO_FLAGS") != null and whole_form.isCons()) {
+            const head = whole_form.toPtr(Cons).car;
+            if (head.isSymbol()) {
+                std.debug.print(
+                    "TRACE compile-macro flags head={s} argc={d} whole={any} env={any}\n",
+                    .{ head.toPtr(Symbol).getName(), call_args.len, has_whole, has_env },
+                );
+            }
+        }
+
         if (std.posix.getenv("HABU_TRACE_COMPILE_MACRO_ARGS") != null and whole_form.isCons()) {
             const head = whole_form.toPtr(Cons).car;
             if (head.isSymbol()) {
@@ -3417,6 +3427,15 @@ pub const Compiler = struct {
 
         // Precompiled defmacro entry: (closure flags transformed-def)
         if (decodeCompiledMacroEntry(macro_def)) |entry| {
+            if (std.posix.getenv("HABU_TRACE_COMPILE_MACRO_SOURCE") != null and whole_form.isCons()) {
+                const head = whole_form.toPtr(Cons).car;
+                if (head.isSymbol()) {
+                    std.debug.print(
+                        "TRACE compile-macro source=compiled head={s}\n",
+                        .{head.toPtr(Symbol).getName()},
+                    );
+                }
+            }
             return self.callMacroClosure(
                 entry.closure,
                 args,
@@ -3430,6 +3449,15 @@ pub const Compiler = struct {
         // (setf (macro-function ...)) stores macro-function closures directly.
         // Per CL, macro-function closures take (whole-form env).
         if (macro_def.isClosure()) {
+            if (std.posix.getenv("HABU_TRACE_COMPILE_MACRO_SOURCE") != null and whole_form.isCons()) {
+                const head = whole_form.toPtr(Cons).car;
+                if (head.isSymbol()) {
+                    std.debug.print(
+                        "TRACE compile-macro source=plist-closure head={s}\n",
+                        .{head.toPtr(Symbol).getName()},
+                    );
+                }
+            }
             return self.callMacroClosure(
                 macro_def,
                 Value.nil,
@@ -15058,6 +15086,66 @@ pub const Compiler = struct {
         return cl_pkg.findAccessibleUpper(name) orelse live;
     }
 
+    fn symbolHomePackage(sym: Value) ?*runtime.heap.Package {
+        if (!sym.isSymbol()) return null;
+        const bits = sym.toPtr(Symbol).reserved;
+        if (bits == 0 or (bits & 1) != 0) return null;
+        return @ptrFromInt(bits);
+    }
+
+    fn packageCanSeeSymbolNameFrom(
+        target_pkg: *runtime.heap.Package,
+        owner_pkg: *runtime.heap.Package,
+        name: []const u8,
+    ) bool {
+        if (target_pkg == owner_pkg) return true;
+        for (target_pkg.use_list.items) |used_pkg| {
+            if (used_pkg != owner_pkg) continue;
+            return owner_pkg.auto_export or owner_pkg.exports.contains(name);
+        }
+        return false;
+    }
+
+    fn lookupMacroDefByName(self: *Compiler, target_sym: Value) ?Value {
+        const live_target = self.resolveForwardedValue(target_sym);
+        if (!live_target.isSymbol()) return null;
+        const target_name = live_target.toPtr(Symbol).getName();
+        const target_pkg = symbolHomePackage(live_target);
+
+        var it = self.macro_table.iterator();
+        while (it.next()) |entry| {
+            const key_live = self.resolveForwardedValue(entry.key_ptr.*);
+            if (!key_live.isSymbol()) continue;
+            if (!std.mem.eql(u8, key_live.toPtr(Symbol).getName(), target_name)) continue;
+            if (target_pkg) |pkg| {
+                const key_pkg = symbolHomePackage(key_live) orelse continue;
+                if (!packageCanSeeSymbolNameFrom(pkg, key_pkg, target_name)) continue;
+            }
+            return self.resolveForwardedValue(entry.value_ptr.*);
+        }
+        return null;
+    }
+
+    fn lookupSymbolMacroByName(self: *Compiler, target_sym: Value) ?Value {
+        const live_target = self.resolveForwardedValue(target_sym);
+        if (!live_target.isSymbol()) return null;
+        const target_name = live_target.toPtr(Symbol).getName();
+        const target_pkg = symbolHomePackage(live_target);
+
+        var it = self.symbol_macros.iterator();
+        while (it.next()) |entry| {
+            const key_live = self.resolveForwardedValue(entry.key_ptr.*);
+            if (!key_live.isSymbol()) continue;
+            if (!std.mem.eql(u8, key_live.toPtr(Symbol).getName(), target_name)) continue;
+            if (target_pkg) |pkg| {
+                const key_pkg = symbolHomePackage(key_live) orelse continue;
+                if (!packageCanSeeSymbolNameFrom(pkg, key_pkg, target_name)) continue;
+            }
+            return self.resolveForwardedValue(entry.value_ptr.*);
+        }
+        return null;
+    }
+
     fn lookupMacroDef(self: *Compiler, sym: Value) ?Value {
         const live_sym = self.resolveForwardedValue(sym);
         if (!live_sym.isSymbol()) return null;
@@ -15066,10 +15154,16 @@ pub const Compiler = struct {
         if (canonical.raw != live_sym.raw) {
             if (self.macro_table.get(canonical)) |def| return self.resolveForwardedValue(def);
         }
+        if (self.lookupMacroDefByName(live_sym)) |def| return def;
+        if (canonical.raw != live_sym.raw) {
+            if (self.lookupMacroDefByName(canonical)) |def| return def;
+        }
         // Also check symbol property list for macro-function (set via setf)
         if (live_sym.isSymbol()) {
             const sym_ptr = live_sym.toPtr(Symbol);
             if (sym_ptr.plist.isCons()) {
+                var macro_entry_val: ?Value = null;
+                var macro_fn_val: ?Value = null;
                 // Search plist for 'macro-function key
                 // Plist stored as alist: ((key . val) (key . val) ...)
                 var plist = sym_ptr.plist;
@@ -15080,16 +15174,24 @@ pub const Compiler = struct {
                         const entry_cons = entry.toPtr(Cons);
                         if (entry_cons.car.isSymbol()) {
                             const key_name = entry_cons.car.toPtr(Symbol).getName();
+                            if (std.mem.eql(u8, key_name, "%HABU-MACRO-ENTRY")) {
+                                const val = entry_cons.cdr;
+                                if (decodeCompiledMacroEntry(val) != null) {
+                                    macro_entry_val = val;
+                                }
+                            }
                             if (std.mem.eql(u8, key_name, "MACRO-FUNCTION") or
                                 std.mem.eql(u8, key_name, "macro-function"))
                             {
                                 const val = entry_cons.cdr;
-                                if (val.isClosure()) return val;
+                                if (val.isClosure()) macro_fn_val = val;
                             }
                         }
                     }
                     plist = pc.cdr;
                 }
+                if (macro_entry_val) |val| return val;
+                if (macro_fn_val) |val| return val;
             }
         }
         return null;
@@ -15102,6 +15204,10 @@ pub const Compiler = struct {
         const canonical = self.canonicalBuiltinSymbol(live_sym);
         if (canonical.raw != live_sym.raw) {
             if (self.symbol_macros.get(canonical)) |expansion| return self.resolveForwardedValue(expansion);
+        }
+        if (self.lookupSymbolMacroByName(live_sym)) |expansion| return expansion;
+        if (canonical.raw != live_sym.raw) {
+            if (self.lookupSymbolMacroByName(canonical)) |expansion| return expansion;
         }
         return null;
     }

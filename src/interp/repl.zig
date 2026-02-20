@@ -786,6 +786,7 @@ pub const Repl = struct {
         self.compiler.setVm(&self.vm);
         _ = try self.ensureLoadFormRootGlobal();
         _ = try self.ensureLoadFormRootStackGlobal();
+        _ = try self.ensureLoadFormRootTmpGlobal();
         // Create *features* list
         try self.createFeaturesGlobal();
         // Create print control globals
@@ -821,6 +822,95 @@ pub const Repl = struct {
             self.vm.num_globals = idx + 1;
         }
         return idx;
+    }
+
+    fn ensureLoadFormRootTmpGlobal(self: *Repl) !u16 {
+        if (self.compiler.globals.lookup(load_form_root_tmp_name)) |idx| return idx;
+        const idx = try self.compiler.globals.define(load_form_root_tmp_name);
+        self.vm.globals[idx] = Value.nil;
+        if (idx >= self.vm.num_globals) {
+            self.vm.num_globals = idx + 1;
+        }
+        return idx;
+    }
+
+    fn ensureVmGlobalRootSlots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void {
+        if (root_idx >= vm.num_globals) vm.num_globals = root_idx + 1;
+        if (stack_idx >= vm.num_globals) vm.num_globals = stack_idx + 1;
+        if (tmp_idx >= vm.num_globals) vm.num_globals = tmp_idx + 1;
+    }
+
+    fn ensureVmGlobalRootStackSlots(vm: *Vm, root_idx: u16, stack_idx: u16) void {
+        if (root_idx >= vm.num_globals) vm.num_globals = root_idx + 1;
+        if (stack_idx >= vm.num_globals) vm.num_globals = stack_idx + 1;
+    }
+
+    fn pushRootValue(vm: *Vm, root_idx: u16, stack_idx: u16, root_val: Value) !void {
+        ensureVmGlobalRootStackSlots(vm, root_idx, stack_idx);
+        const saved_root = vm.globals[root_idx];
+        const saved_stack = vm.globals[stack_idx];
+        vm.globals[root_idx] = root_val;
+        errdefer {
+            vm.globals[root_idx] = saved_root;
+            vm.globals[stack_idx] = saved_stack;
+        }
+        vm.globals[stack_idx] = try vm.allocCons(saved_root, saved_stack);
+    }
+
+    fn popRootValue(vm: *Vm, root_idx: u16, stack_idx: u16) void {
+        const stack = vm.globals[stack_idx];
+        if (!stack.isCons()) {
+            vm.globals[root_idx] = Value.nil;
+            vm.globals[stack_idx] = Value.nil;
+            return;
+        }
+        const cell = stack.toPtr(Cons);
+        vm.globals[root_idx] = cell.car;
+        vm.globals[stack_idx] = cell.cdr;
+    }
+
+    fn pushMacroCallRoots(
+        vm: *Vm,
+        root_idx: u16,
+        stack_idx: u16,
+        tmp_idx: u16,
+        args: Value,
+        whole_form: Value,
+    ) !void {
+        ensureVmGlobalRootSlots(vm, root_idx, stack_idx, tmp_idx);
+        const saved_root = vm.globals[root_idx];
+        const saved_tmp = vm.globals[tmp_idx];
+        const saved_stack = vm.globals[stack_idx];
+        vm.globals[root_idx] = args;
+        vm.globals[tmp_idx] = whole_form;
+        errdefer {
+            vm.globals[root_idx] = saved_root;
+            vm.globals[tmp_idx] = saved_tmp;
+            vm.globals[stack_idx] = saved_stack;
+        }
+        const saved_pair = try vm.allocCons(saved_root, saved_tmp);
+        vm.globals[stack_idx] = try vm.allocCons(saved_pair, saved_stack);
+    }
+
+    fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void {
+        const stack = vm.globals[stack_idx];
+        if (!stack.isCons()) {
+            vm.globals[root_idx] = Value.nil;
+            vm.globals[tmp_idx] = Value.nil;
+            vm.globals[stack_idx] = Value.nil;
+            return;
+        }
+        const stack_cell = stack.toPtr(Cons);
+        vm.globals[stack_idx] = stack_cell.cdr;
+        const saved_pair = stack_cell.car;
+        if (!saved_pair.isCons()) {
+            vm.globals[root_idx] = Value.nil;
+            vm.globals[tmp_idx] = Value.nil;
+            return;
+        }
+        const pair = saved_pair.toPtr(Cons);
+        vm.globals[root_idx] = pair.car;
+        vm.globals[tmp_idx] = pair.cdr;
     }
 
     /// Helper to set a CL global: intern symbol in CL, define global, set value
@@ -1447,15 +1537,24 @@ pub const Repl = struct {
         defer self.allocator.free(content);
 
         const load_path = try self.loadPathnameValue(resolved_path);
+        const form_root_idx = try self.ensureLoadFormRootGlobal();
+        const form_stack_idx = try self.ensureLoadFormRootStackGlobal();
+
         const load_bindings = self.bindLoadGlobals(source_vm, load_path);
         defer self.restoreLoadGlobals(source_vm, load_bindings);
 
         // CL spec: *PACKAGE* is rebound by LOAD — save and restore after.
         const saved_pkg_native = self.heap.current_package;
-        const saved_pkg_globals = self.savePackageGlobals(source_vm);
+        const saved_pkg_global = self.currentPackageGlobal(source_vm) orelse Value.nil;
+        try pushRootValue(source_vm, form_root_idx, form_stack_idx, saved_pkg_global);
+        defer popRootValue(source_vm, form_root_idx, form_stack_idx);
         defer {
+            const saved_pkg_live = source_vm.globals[form_root_idx];
             self.heap.current_package = saved_pkg_native;
-            self.restorePackageGlobals(source_vm, saved_pkg_globals);
+            if (saved_pkg_live.isPackage()) {
+                source_vm.current_package = saved_pkg_live;
+                self.setPackageGlobals(source_vm, saved_pkg_live);
+            }
             self.syncReaderPackageFromVm(source_vm);
         }
 
@@ -1993,27 +2092,8 @@ pub const Repl = struct {
             const eval_alloc = eval_arena.allocator();
             const form_root_idx = try self.ensureLoadFormRootGlobal();
             const form_stack_idx = try self.ensureLoadFormRootStackGlobal();
-            if (form_root_idx >= source_vm.num_globals) {
-                source_vm.num_globals = form_root_idx + 1;
-            }
-            if (form_stack_idx >= source_vm.num_globals) {
-                source_vm.num_globals = form_stack_idx + 1;
-            }
-            const old_root = source_vm.globals[form_root_idx];
-            const old_stack = source_vm.globals[form_stack_idx];
-            source_vm.globals[form_root_idx] = expr;
-            source_vm.globals[form_stack_idx] = try source_vm.allocCons(old_root, old_stack);
-            defer {
-                const stack = source_vm.globals[form_stack_idx];
-                if (stack.isCons()) {
-                    const cell = stack.toPtr(Cons);
-                    source_vm.globals[form_root_idx] = cell.car;
-                    source_vm.globals[form_stack_idx] = cell.cdr;
-                } else {
-                    source_vm.globals[form_root_idx] = Value.nil;
-                    source_vm.globals[form_stack_idx] = Value.nil;
-                }
-            }
+            try pushRootValue(source_vm, form_root_idx, form_stack_idx, expr);
+            defer popRootValue(source_vm, form_root_idx, form_stack_idx);
 
             const live_form = source_vm.globals[form_root_idx];
             last_value = self.evalParsedWithVm(live_form, source_vm, eval_alloc) catch |err| {
@@ -3561,6 +3641,13 @@ pub const Repl = struct {
         const saved_current_vm = self.current_vm;
         self.current_vm = source_vm;
         defer self.current_vm = saved_current_vm;
+        const form_tmp_idx = try self.ensureLoadFormRootTmpGlobal();
+        const saved_form_tmp = source_vm.globals[form_tmp_idx];
+        source_vm.globals[form_tmp_idx] = transformed_rest2;
+        if (form_tmp_idx >= source_vm.num_globals) {
+            source_vm.num_globals = form_tmp_idx + 1;
+        }
+        defer source_vm.globals[form_tmp_idx] = saved_form_tmp;
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         // Save macro name as a Zig string BEFORE VM execution, because
@@ -3570,6 +3657,7 @@ pub const Repl = struct {
         defer self.allocator.free(macro_name_saved);
 
         const closure = try self.runVmPreserveMacroState(source_vm, chunk_ptr);
+        const transformed_rest2_live = source_vm.globals[form_tmp_idx];
 
         if (!closure.isClosure()) return error.CompileError;
 
@@ -3621,7 +3709,7 @@ pub const Repl = struct {
         const compiler_macro_entry_items = [_]Value{
             closure,
             Value.makeFixnum(macro_flags),
-            transformed_rest2,
+            transformed_rest2_live,
         };
         const compiler_macro_entry = try self.listFromSlice(&compiler_macro_entry_items);
 
@@ -3640,12 +3728,15 @@ pub const Repl = struct {
         // (macro-function 'name) returns the closure per CL spec.
         if (macro_sym.isSymbol()) {
             const mf_key = try self.heap.intern("MACRO-FUNCTION");
+            const entry_key = try self.heap.intern("%HABU-MACRO-ENTRY");
             const sym_ptr = macro_sym.toPtr(runtime.Symbol);
             // Build new plist entry (MACRO-FUNCTION . closure)
-            const entry = try self.heap.allocCons(mf_key, closure);
+            const mf_entry = try self.heap.allocCons(mf_key, closure);
+            const meta_entry = try self.heap.allocCons(entry_key, compiler_macro_entry);
             // Prepend to existing plist
             const old_plist = sym_ptr.plist;
-            const new_plist = try self.heap.allocCons(entry, old_plist);
+            const with_meta = try self.heap.allocCons(meta_entry, old_plist);
+            const new_plist = try self.heap.allocCons(mf_entry, with_meta);
             sym_ptr.plist = new_plist;
             self.heap.writeBarrier(macro_sym, new_plist);
         }
@@ -4056,6 +4147,20 @@ pub const Repl = struct {
 
     /// Call a macro closure with arguments (as a list)
     fn callMacro(self: *Repl, macro: MacroEntry, whole_form: Value, args: Value, macro_name: Value) ReplError!Value {
+        const source_vm = self.activeVm();
+        const form_root_idx = try self.ensureLoadFormRootGlobal();
+        const form_stack_idx = try self.ensureLoadFormRootStackGlobal();
+        const form_tmp_idx = try self.ensureLoadFormRootTmpGlobal();
+        try pushMacroCallRoots(
+            source_vm,
+            form_root_idx,
+            form_stack_idx,
+            form_tmp_idx,
+            args,
+            whole_form,
+        );
+        defer popMacroCallRoots(source_vm, form_root_idx, form_stack_idx, form_tmp_idx);
+
         const closure = macro.closure;
         if (!closure.isClosure()) {
             if (std.posix.getenv("HABU_TRACE_MACRO_CALLS") != null and macro_name.isSymbol()) {
@@ -4066,25 +4171,28 @@ pub const Repl = struct {
             }
             return error.RuntimeError;
         }
-        var call_args = args;
+        var call_args = source_vm.globals[form_root_idx];
         if (macro.has_env) {
             const env_val = try self.heap.allocMacroEnv();
-            call_args = try self.heap.allocCons(env_val, call_args);
+            source_vm.globals[form_root_idx] = try self.heap.allocCons(env_val, source_vm.globals[form_root_idx]);
+            call_args = source_vm.globals[form_root_idx];
         }
         if (macro.has_whole) {
-            call_args = try self.heap.allocCons(whole_form, call_args);
+            source_vm.globals[form_root_idx] = try self.heap.allocCons(source_vm.globals[form_tmp_idx], source_vm.globals[form_root_idx]);
+            call_args = source_vm.globals[form_root_idx];
         }
+        source_vm.globals[form_tmp_idx] = closure;
         // Count args
         var argc: usize = 0;
-        var arg_list = call_args;
+        var arg_list = source_vm.globals[form_root_idx];
         while (arg_list.isCons()) {
             argc += 1;
             arg_list = arg_list.toPtr(Cons).cdr;
         }
         if (std.posix.getenv("HABU_TRACE_MACRO_CALLS") != null and macro_name.isSymbol()) {
             std.debug.print(
-                "TRACE macro call: {s} argc={d}\n",
-                .{ macro_name.toPtr(Symbol).getName(), argc },
+                "TRACE macro call: {s} argc={d} whole={any} env={any}\n",
+                .{ macro_name.toPtr(Symbol).getName(), argc, macro.has_whole, macro.has_env },
             );
         }
 
@@ -4128,8 +4236,8 @@ pub const Repl = struct {
         // Build constants: [0]=closure, [1..]=args
         var constants = std.ArrayList(Value){};
         defer constants.deinit(self.allocator);
-        try constants.append(self.allocator, closure);
-        arg_list = call_args;
+        try constants.append(self.allocator, source_vm.globals[form_tmp_idx]);
+        arg_list = source_vm.globals[form_root_idx];
         while (arg_list.isCons()) {
             try constants.append(self.allocator, arg_list.toPtr(Cons).car);
             arg_list = arg_list.toPtr(Cons).cdr;
@@ -4137,7 +4245,6 @@ pub const Repl = struct {
 
         const chunk = try self.heap.allocChunk(code.items, constants.items, 0, 0, 0, false, 0);
 
-        const source_vm = self.activeVm();
         self.syncChunkPools(source_vm);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
@@ -4743,6 +4850,91 @@ test "script handler-case load does not resume failed file" {
     const after = try repl.eval("*script-load-after*");
     try testing.expect(after.isFixnum());
     try testing.expectEqual(@as(i64, 42), after.toFixnum());
+}
+
+test "load preserves package global across generational GC pressure" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{
+        .total_size = 64 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 2 * 1024 * 1024,
+            .los_size = 8 * 1024 * 1024,
+            .los_threshold = 16 * 1024,
+            .promote_threshold = 1024,
+        },
+    });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const cl_name = try repl.heap.intern("COMMON-LISP");
+    const cl_pkg = (try repl.heap.findLispPackage(cl_name)) orelse return error.TestUnexpectedResult;
+    try repl.setClGlobal("*PACKAGE*", cl_pkg);
+
+    const pkg_before = repl.currentPackageGlobal(&repl.vm) orelse return error.TestUnexpectedResult;
+    try testing.expect(pkg_before.isPackage());
+    const pkg_before_name = switch (pkg_before.toPtr(runtime.objects.Package).name.typeKind()) {
+        .symbol => pkg_before.toPtr(runtime.objects.Package).name.toPtr(runtime.Symbol).getName(),
+        .string => pkg_before.toPtr(runtime.objects.Package).name.toPtr(runtime.String).bytes(),
+        .keyword => pkg_before.toPtr(runtime.objects.Package).name.toPtr(runtime.Keyword).getName(),
+        else => return error.TestUnexpectedResult,
+    };
+    const pkg_name_before = try allocator.dupe(u8, pkg_before_name);
+    defer allocator.free(pkg_name_before);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("load-package-gc.lsp", .{});
+        defer file.close();
+        try file.writeAll(
+            "(in-package \"CL-USER\")\n" ++
+                "(let ((i 0))\n" ++
+                "  (while (< i 400000)\n" ++
+                "    (cons i i)\n" ++
+                "    (setq i (+ i 1))))\n" ++
+                "17\n",
+        );
+    }
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const script_abs = try std.fs.path.join(allocator, &.{ base, "load-package-gc.lsp" });
+    defer allocator.free(script_abs);
+
+    var buf: [1024]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try repl.loadFile(script_abs, stream.writer());
+
+    const pkg_after_load = repl.currentPackageGlobal(&repl.vm) orelse return error.TestUnexpectedResult;
+    try testing.expect(pkg_after_load.isPackage());
+    const pkg_after_load_name = switch (pkg_after_load.toPtr(runtime.objects.Package).name.typeKind()) {
+        .symbol => pkg_after_load.toPtr(runtime.objects.Package).name.toPtr(runtime.Symbol).getName(),
+        .string => pkg_after_load.toPtr(runtime.objects.Package).name.toPtr(runtime.String).bytes(),
+        .keyword => pkg_after_load.toPtr(runtime.objects.Package).name.toPtr(runtime.Keyword).getName(),
+        else => return error.TestUnexpectedResult,
+    };
+    try testing.expect(std.mem.eql(u8, pkg_name_before, pkg_after_load_name));
+
+    _ = try repl.vm.collectGarbage();
+    _ = try repl.vm.collectGarbage();
+
+    const pkg_after_gc = repl.currentPackageGlobal(&repl.vm) orelse return error.TestUnexpectedResult;
+    try testing.expect(pkg_after_gc.isPackage());
+    const pkg_after_gc_name = switch (pkg_after_gc.toPtr(runtime.objects.Package).name.typeKind()) {
+        .symbol => pkg_after_gc.toPtr(runtime.objects.Package).name.toPtr(runtime.Symbol).getName(),
+        .string => pkg_after_gc.toPtr(runtime.objects.Package).name.toPtr(runtime.String).bytes(),
+        .keyword => pkg_after_gc.toPtr(runtime.objects.Package).name.toPtr(runtime.Keyword).getName(),
+        else => return error.TestUnexpectedResult,
+    };
+    try testing.expect(std.mem.eql(u8, pkg_name_before, pkg_after_gc_name));
 }
 
 test "load resolves relative path with repeated directory prefix" {

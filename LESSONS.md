@@ -9,6 +9,10 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-20)
 
 ### Worked Well
+- Rooting saved package state through VM global root stack (`src/interp/repl.zig:1540`, `src/interp/repl.zig:1548`) eliminated a real generational GC corruption where `COMMON-LISP:*PACKAGE*` was restored from stale local `Value` snapshots, and the full Maxima generational bench now completes (`bench/maxima_workload.zig`).
+- Rooting defmacro transformed definitions across VM execution (`src/interp/repl.zig:3644`, `src/interp/repl.zig:3659`) prevented stale macro-entry payloads when GC runs during macro closure materialization.
+- Adding an opt-in pre-GC global corruption probe (`HABU_TRACE_BAD_GLOBAL_ROOT` in `src/interp/vm.zig:1608`) made the bad root source explicit (`idx=100`, `COMMON-LISP:*PACKAGE*`) and shortened RCA.
+- Locking the package-root fix with a dedicated generational load regression (`src/interp/repl.zig:4867`) catches stale `*PACKAGE*` restoration by forcing GC during `load` and then collecting again after `load` returns.
 - Running parallel worker agents in isolated `jj` workspaces (`/Users/joel/Work/habu-agent-compiler`, `/Users/joel/Work/habu-agent-gc`) accelerated independent RCA/fix loops without file ownership collisions, then `jj squash --from ... --message ...` merged results cleanly back into the default workspace.
 - Resolving forwarded symbols at every list-iteration boundary in compiler hot paths (`src/compiler/compile.zig:2682`, `src/compiler/compile.zig:5122`, `src/compiler/compile.zig:14190`, `src/compiler/compile.zig:17540`) eliminated stale symbol/name pointers under moving GC and stopped `stdlib fdefinition basic` segmentation faults.
 - For incremental major-sweep tests, draining any already-active cycle before changing the root set (`src/runtime/gc.zig:2477`) prevented false negatives caused by finishing a cycle that started under the old root set.
@@ -89,6 +93,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Linking Maxima loader docs directly to parity/regression commands (`docs/maxima-loader.md`) made loader RCA and perf gate checks share one operational entrypoint.
 
 ### Did Not Work
+- Saving/restoring VM globals in local structs across `load`/nested eval (`src/interp/repl.zig` pre-fix `savePackageGlobals`/`restorePackageGlobals` pattern) is unsafe under moving GC; the restored values can be stale and later crash in GC object-size dispatch.
+- Bundling a broader load-global rebinding rewrite while fixing package restoration caused a deterministic Maxima nparse regression (`InvalidIr` in `SIMPTIMES`); isolating the package-root fix first restored the gate before further refactor work.
+- Stress fixtures that keep entire allocation chains alive (for example repeatedly `cons`ing into a retained list) can OOM before the target invariant is exercised; GC-stress regressions should churn ephemeral allocations.
 - Assuming post-promotion collections start from an idle major-cycle state was wrong; tests that drop roots mid-cycle can observe old marks and fail reclamation assertions unless the previous cycle is drained first (`src/runtime/gc.zig:2477`).
 - Using `jj squash --from ...` without `--message` in non-interactive automation opened an editor unexpectedly; always pass `--message` for scripted merges.
 - Assuming a fixed `MAJOR_SWEEP_BUDGET`-sized fixture would keep major cycle active was brittle; root ordering/object size can make the cycle complete in one pass, so barrier tests need larger deterministic workloads.
