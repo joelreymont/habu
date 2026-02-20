@@ -9,6 +9,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-20)
 
 ### Worked Well
+- Extending `CompiledFn.callFromValues` beyond arity 3 (`src/jit/backend.zig:983`) closed a silent high-arity JIT call bridge gap where 4+ arg compiled functions previously returned `nil` from the VM bridge path.
 - RCA on JIT helper-call corruption showed a true parallel-copy cycle in call-argument setup (`mov x0,x1; mov x1,x3; mov x2,x0; mov x3,x2`) being lowered sequentially; extending `fixCallArgMoves` to use scratch-cycle breaking and consume the pre-call target move slot (`mov x9,xT; blr x9`) fixed wrong helper args without papering over.
 - Tightening untagged-mode eligibility to a conservative arithmetic subset in `src/jit/backend.zig` prevented untagged/tagged mixing across runtime helper boundaries and removed a class of silent semantic corruptions in JIT helper paths.
 - Adding a focused JIT regression for formatted templates with suffix text (`src/tests/integration.zig:128`) caught the helper-call argument corruption immediately and now guards the call-argument fix.
@@ -193,6 +194,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Enforcing strict `bench/check.zig` argument handling (`InvalidArgs` returns non-zero) exposed accidental no-op invocations like `bench-check -- --json /tmp/file`.
 
 ### Did Not Work
+- Leaving `CompiledFn.callFromValues` capped at arity 3 (`src/jit/backend.zig` pre-fix) quietly produced `nil` for 4+ arg JIT functions even when compilation succeeded, masking coverage and correctness holes.
 - Relying on naive topological reordering for call-arg moves without cycle breaking (`src/jit/backend.zig` pre-fix `fixCallArgMoves`) produced deterministically wrong helper arguments on 4-arg call-indirect paths and silently returned `nil` from JIT `format` calls.
 - A pure per-character preallocation path for all string concatenations (`lib/stdlib.habu:2416` intermediate attempt) improved long concatenations but regressed short hot call sites; restoring dedicated 1/2-arg `string-concat` fast paths fixed that.
 - A loop-only `reduce` rewrite without function-specialized dispatch barely moved the benchmark (~1901ms to ~1894ms), confirming that per-element `funcall` overhead (not recursion itself) was the dominant bottleneck in the hot `#'+` path.

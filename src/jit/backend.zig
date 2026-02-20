@@ -998,6 +998,26 @@ pub const CompiledFn = struct {
                 const f: *const fn (i64, i64, i64) callconv(.c) i64 = @ptrCast(@alignCast(self.fn_ptr));
                 break :blk @bitCast(f(@bitCast(args[0]), @bitCast(args[1]), @bitCast(args[2])));
             },
+            4 => blk: {
+                const f: *const fn (i64, i64, i64, i64) callconv(.c) i64 = @ptrCast(@alignCast(self.fn_ptr));
+                break :blk @bitCast(f(@bitCast(args[0]), @bitCast(args[1]), @bitCast(args[2]), @bitCast(args[3])));
+            },
+            5 => blk: {
+                const f: *const fn (i64, i64, i64, i64, i64) callconv(.c) i64 = @ptrCast(@alignCast(self.fn_ptr));
+                break :blk @bitCast(f(@bitCast(args[0]), @bitCast(args[1]), @bitCast(args[2]), @bitCast(args[3]), @bitCast(args[4])));
+            },
+            6 => blk: {
+                const f: *const fn (i64, i64, i64, i64, i64, i64) callconv(.c) i64 = @ptrCast(@alignCast(self.fn_ptr));
+                break :blk @bitCast(f(@bitCast(args[0]), @bitCast(args[1]), @bitCast(args[2]), @bitCast(args[3]), @bitCast(args[4]), @bitCast(args[5])));
+            },
+            7 => blk: {
+                const f: *const fn (i64, i64, i64, i64, i64, i64, i64) callconv(.c) i64 = @ptrCast(@alignCast(self.fn_ptr));
+                break :blk @bitCast(f(@bitCast(args[0]), @bitCast(args[1]), @bitCast(args[2]), @bitCast(args[3]), @bitCast(args[4]), @bitCast(args[5]), @bitCast(args[6])));
+            },
+            8 => blk: {
+                const f: *const fn (i64, i64, i64, i64, i64, i64, i64, i64) callconv(.c) i64 = @ptrCast(@alignCast(self.fn_ptr));
+                break :blk @bitCast(f(@bitCast(args[0]), @bitCast(args[1]), @bitCast(args[2]), @bitCast(args[3]), @bitCast(args[4]), @bitCast(args[5]), @bitCast(args[6]), @bitCast(args[7])));
+            },
             else => @bitCast(@as(i64, 0)), // TODO: support more args
         };
     }
@@ -1024,6 +1044,12 @@ pub const CompiledFn = struct {
     pub fn call3(self: *const CompiledFn, a: i64, b: i64, c: i64) i64 {
         const f: *const fn (i64, i64, i64) callconv(.c) i64 = @ptrCast(@alignCast(self.fn_ptr));
         return f(a, b, c);
+    }
+
+    /// Call with 4 tagged i64 args, returns tagged i64.
+    pub fn call4(self: *const CompiledFn, a: i64, b: i64, c: i64, d: i64) i64 {
+        const f: *const fn (i64, i64, i64, i64) callconv(.c) i64 = @ptrCast(@alignCast(self.fn_ptr));
+        return f(a, b, c, d);
     }
 };
 
@@ -7174,6 +7200,75 @@ test "hoist IR translator: countdown callFromValues" {
     const args3 = [_]Value{Value.makeFixnum(3)};
     const result3 = compiled.callFromValues(&args3);
     try testing.expectEqual(@as(u64, 85), result3.raw);
+}
+
+test "hoist IR translator: callFromValues supports arity 4" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const params = try alloc.alloc([]const u8, 4);
+    params[0] = "a";
+    params[1] = "b";
+    params[2] = "c";
+    params[3] = "d";
+
+    const mkVar = struct {
+        fn f(a: std.mem.Allocator, name: []const u8, idx: u16) !*Ir {
+            const v = try a.create(Ir);
+            v.* = .{ .@"var" = .{ .name = name, .depth = 0, .index = idx } };
+            return v;
+        }
+    }.f;
+
+    const sum_ab = try alloc.create(Ir);
+    sum_ab.* = .{ .fixnum_add = .{
+        .left = try mkVar(alloc, "a", 0),
+        .right = try mkVar(alloc, "b", 1),
+    } };
+    const sum_cd = try alloc.create(Ir);
+    sum_cd.* = .{ .fixnum_add = .{
+        .left = try mkVar(alloc, "c", 2),
+        .right = try mkVar(alloc, "d", 3),
+    } };
+    const sum_all = try alloc.create(Ir);
+    sum_all.* = .{ .fixnum_add = .{
+        .left = sum_ab,
+        .right = sum_cd,
+    } };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = params,
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = sum_all,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    var compiled = try compileIr(testing.allocator, lambda, "add4");
+    defer compiled.deinit();
+
+    const args = [_]Value{
+        Value.makeFixnum(1),
+        Value.makeFixnum(2),
+        Value.makeFixnum(3),
+        Value.makeFixnum(4),
+    };
+    const result = compiled.callFromValues(&args);
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 10), result.toFixnum());
+
+    const r4 = compiled.call4(
+        @bitCast(Value.makeFixnum(1).raw),
+        @bitCast(Value.makeFixnum(2).raw),
+        @bitCast(Value.makeFixnum(3).raw),
+        @bitCast(Value.makeFixnum(4).raw),
+    );
+    try testing.expectEqual(@as(u64, result.raw), @as(u64, @bitCast(r4)));
 }
 
 test "hoist IR translator: generic countdown recursive" {

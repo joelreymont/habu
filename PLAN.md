@@ -162,6 +162,7 @@
     - [ ] `habu-jit-float-support-91148537` Resolve float call-target and boxed-float lowering.
     - [x] `habu-str-concat-bench-c576d53b` Add direct string concatenate fast path (1/2-arg hot cases + 3+-arg prealloc path) and keep generic fallback semantics.
     - [x] `habu-intern-bench-jit-1a268ee9` Fix JIT call-arg cycle handling for helper calls and optimize simple `format`+`intern` hot path.
+    - [x] `habu-fix-jit-helper-aadb5b24` Fix BLR helper call arg-cycle corruption and extend compiled arity bridge (`callFromValues`) through arity 8.
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).
