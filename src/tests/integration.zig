@@ -2905,6 +2905,164 @@ test "format ~S standard" {
     try testing.expect(result.isString());
 }
 
+test "format ~R cardinal ordinal and radix" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const cardinal = try repl.eval(
+        \\(format nil "~R" 42)
+    );
+    try testing.expect(cardinal.isString());
+    try testing.expectEqualStrings("forty-two", try asString(cardinal));
+
+    const ordinal = try repl.eval(
+        \\(format nil "~:R" 21)
+    );
+    try testing.expect(ordinal.isString());
+    try testing.expectEqualStrings("21st", try asString(ordinal));
+
+    const radix = try repl.eval(
+        \\(format nil "~16R" 255)
+    );
+    try testing.expect(radix.isString());
+    try testing.expectEqualStrings("FF", try asString(radix));
+}
+
+test "format ~F ~E ~G floating directives" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const fixed = try repl.eval(
+        \\(format nil "~F" 12.5)
+    );
+    try testing.expect(fixed.isString());
+    try testing.expectEqualStrings("12.5", try asString(fixed));
+
+    const exp = try repl.eval(
+        \\(format nil "~E" 12.5)
+    );
+    try testing.expect(exp.isString());
+    try testing.expect(std.mem.indexOf(u8, try asString(exp), "e") != null);
+
+    const general = try repl.eval(
+        \\(format nil "~G" 0.00000012)
+    );
+    try testing.expect(general.isString());
+    try testing.expect((std.mem.indexOf(u8, try asString(general), "e") != null) or
+        (std.mem.indexOf(u8, try asString(general), "E") != null));
+}
+
+test "format ~P plural and ~[ conditional directives" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const plural1 = try repl.eval(
+        \\(format nil "~D item~P" 1)
+    );
+    try testing.expect(plural1.isString());
+    try testing.expectEqualStrings("1 item", try asString(plural1));
+
+    const plural2 = try repl.eval(
+        \\(format nil "~D item~P" 2)
+    );
+    try testing.expect(plural2.isString());
+    try testing.expectEqualStrings("2 items", try asString(plural2));
+
+    const cond_idx = try repl.eval(
+        \\(format nil "~[zero~;one~;many~]" 1)
+    );
+    try testing.expect(cond_idx.isString());
+    try testing.expectEqualStrings("one", try asString(cond_idx));
+
+    const cond_bool = try repl.eval(
+        \\(format nil "~:[no~;yes~]" t)
+    );
+    try testing.expect(cond_bool.isString());
+    try testing.expectEqualStrings("yes", try asString(cond_bool));
+}
+
+test "format ~* argument navigation" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const skipped = try repl.eval(
+        \\(format nil "~A ~*~A" "x" "skip" "y")
+    );
+    try testing.expect(skipped.isString());
+    try testing.expectEqualStrings("x y", try asString(skipped));
+
+    const skipped2 = try repl.eval(
+        \\(format nil "~A ~2*~A" "a" "b" "c" "d")
+    );
+    try testing.expect(skipped2.isString());
+    try testing.expectEqualStrings("a d", try asString(skipped2));
+}
+
+test "format ~/ function directive" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 2 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const local = try repl.eval(
+        \\(progn
+        \\  (defun fmt-wrap (stream arg colonp atp &rest params)
+        \\    (declare (ignore colonp atp params))
+        \\    (princ "[" stream)
+        \\    (princ arg stream)
+        \\    (princ "]" stream))
+        \\  (format nil "~/fmt-wrap/" 42))
+    );
+    try testing.expect(local.isString());
+    try testing.expectEqualStrings("[42]", try asString(local));
+
+    const qualified = try repl.eval(
+        \\(progn
+        \\  (defpackage :fmtpkg (:use :cl))
+        \\  (defun fmtpkg::wrap (stream arg colonp atp &rest params)
+        \\    (declare (ignore colonp atp params))
+        \\    (princ "<" stream)
+        \\    (princ arg stream)
+        \\    (princ ">" stream))
+        \\  (format nil "~/fmtpkg::wrap/" 7))
+    );
+    try testing.expect(qualified.isString());
+    try testing.expectEqualStrings("<7>", try asString(qualified));
+}
+
 // ============================================================================
 // stdlib tests
 // ============================================================================
@@ -6122,6 +6280,45 @@ test "smallest heap: &aux with let and setq under GC pressure" {
         \\    (length y)))
     );
     try testing.expectEqual(@as(i64, 2), result.toFixnum());
+}
+
+test "smallest heap: defun &aux cond push do return regression" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(progn
+        \\  (defvar *do-cond-push* nil)
+        \\  (setq *do-cond-push* nil)
+        \\  (defun do-cond-repro (x &aux foo)
+        \\    (cond ((eq 'a (setq foo 'c))
+        \\           (push x *do-cond-push*)
+        \\           x)
+        \\          (t
+        \\           (do ((lis (list 1 2) (cdr lis)))
+        \\               ((null (cdr lis)) x)
+        \\             (cond ((eq 'c foo)
+        \\                    (rplacd lis (cons x (cdr lis)))
+        \\                    (return x)))))))
+        \\  (list (do-cond-repro 9)
+        \\        (if (null *do-cond-push*) 1 0)))
+    );
+
+    try testing.expect(result.isCons());
+    const c0 = result.toPtr(Cons);
+    try testing.expect(c0.car.isFixnum());
+    try testing.expectEqual(@as(i64, 9), c0.car.toFixnum());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.isFixnum());
+    try testing.expectEqual(@as(i64, 1), c1.car.toFixnum());
+    try testing.expect(c1.cdr.isNil());
 }
 
 test "smallest heap: loop when collecting into" {

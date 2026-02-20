@@ -7910,30 +7910,29 @@ pub const Vm = struct {
                     },
                     '*' => {
                         // Argument navigation
-                        // Parse optional count parameter: ~n*
-                        var skip_count: usize = 1; // Default: skip 1 arg
-
-                        // Look backwards for numeric parameter
-                        var param_start = i + 1;
-                        while (param_start > 0 and fmt[param_start - 1] >= '0' and fmt[param_start - 1] <= '9') {
-                            param_start -= 1;
+                        // ~*     skip forward
+                        // ~:*    move backward
+                        // ~@*    absolute goto index
+                        // ~n*    explicit count (default 1)
+                        var move_count: usize = 1;
+                        const param_str = fmt[i + 1 .. scan_idx];
+                        var d0: usize = 0;
+                        while (d0 < param_str.len and !(param_str[d0] >= '0' and param_str[d0] <= '9')) : (d0 += 1) {}
+                        if (d0 < param_str.len) {
+                            var d1 = d0;
+                            while (d1 < param_str.len and param_str[d1] >= '0' and param_str[d1] <= '9') : (d1 += 1) {}
+                            move_count = std.fmt.parseInt(usize, param_str[d0..d1], 10) catch 1;
                         }
 
-                        if (param_start < i + 1) {
-                            const param_str = fmt[param_start .. i + 1];
-                            if (param_str.len > 0) {
-                                skip_count = try std.fmt.parseInt(usize, param_str, 10);
-                            }
+                        if (has_at) {
+                            arg_idx = @min(move_count, args.len);
+                        } else if (has_colon) {
+                            arg_idx = if (move_count > arg_idx) 0 else arg_idx - move_count;
+                        } else {
+                            arg_idx = @min(arg_idx + move_count, args.len);
                         }
 
-                        // Skip forward
-                        arg_idx += skip_count;
-                        // Bounds check not needed - just clamps at end
-                        if (arg_idx > args.len) {
-                            arg_idx = args.len;
-                        }
-
-                        i += 2;
+                        i = scan_idx + 1;
                     },
                     'P', 'p' => {
                         // ~P: plural - 's' if arg != 1
@@ -7942,10 +7941,14 @@ pub const Vm = struct {
                             // Use previous arg
                             break :blk if (arg_idx > 0) args[arg_idx - 1] else Value.nil;
                         } else blk: {
-                            // Consume next arg
-                            const v = if (arg_idx < args.len) args[arg_idx] else Value.nil;
-                            arg_idx += 1;
-                            break :blk v;
+                            // Consume next arg when present; otherwise fall back
+                            // to previous arg for "~D ... ~P" usage.
+                            if (arg_idx < args.len) {
+                                const v = args[arg_idx];
+                                arg_idx += 1;
+                                break :blk v;
+                            }
+                            break :blk if (arg_idx > 0) args[arg_idx - 1] else Value.nil;
                         };
 
                         const should_plural = if (val.isFixnum()) val.toFixnum() != 1 else true;
@@ -8538,6 +8541,105 @@ pub const Vm = struct {
                             arg_idx += 1;
                         }
                         i = scan_idx + 1;
+                    },
+                    'G', 'g' => {
+                        // General floating-point: fixed for normal range, exponent otherwise.
+                        if (arg_idx < args.len) {
+                            const val = args[arg_idx];
+                            const fval: f64 = if (val.isFixnum())
+                                @floatFromInt(val.toFixnum())
+                            else if (val.isFloat())
+                                val.toFloat()
+                            else if (val.typeKind() == .rational) blk: {
+                                const rat = val.toPtr(runtime.Rational);
+                                break :blk @as(f64, @floatFromInt(rat.numerator)) / @as(f64, @floatFromInt(rat.denominator));
+                            } else 0.0;
+
+                            const abs_val = @abs(fval);
+                            const use_exp = abs_val != 0.0 and (abs_val < 0.0001 or abs_val >= 1000000.0);
+
+                            var buf: [64]u8 = undefined;
+                            if (use_exp) {
+                                const formatted = try std.fmt.bufPrint(&buf, "{e}", .{fval});
+                                try result.appendSlice(self.allocator, formatted);
+                            } else {
+                                const formatted = try std.fmt.bufPrint(&buf, "{d:.6}", .{fval});
+                                var flen = formatted.len;
+                                if (std.mem.indexOf(u8, formatted, ".")) |_| {
+                                    while (flen > 1 and formatted[flen - 1] == '0') flen -= 1;
+                                    if (flen > 0 and formatted[flen - 1] == '.') flen += 1;
+                                }
+                                try result.appendSlice(self.allocator, formatted[0..flen]);
+                            }
+                            arg_idx += 1;
+                        }
+                        i = scan_idx + 1;
+                    },
+                    '/' => {
+                        // ~/fn/ custom formatter:
+                        // call as (fn stream arg colonp atp), append stream output.
+                        const fn_start = scan_idx + 1;
+                        var fn_end = fn_start;
+                        while (fn_end < fmt.len and fmt[fn_end] != '/') : (fn_end += 1) {}
+                        if (fn_end >= fmt.len or fn_end == fn_start) {
+                            try result.append(self.allocator, fmt[i]);
+                            i += 1;
+                            continue;
+                        }
+
+                        const fn_name = fmt[fn_start..fn_end];
+                        var fn_sym_opt: ?Value = null;
+                        if (std.mem.indexOf(u8, fn_name, "::")) |sep| {
+                            const pkg_name = fn_name[0..sep];
+                            const sym_name = fn_name[sep + 2 ..];
+                            fn_sym_opt = try self.heap.internInPackage(pkg_name, sym_name);
+                            if (fn_sym_opt == null and pkg_name.len <= 128 and sym_name.len <= 256) {
+                                var pkg_buf: [128]u8 = undefined;
+                                var sym_buf: [256]u8 = undefined;
+                                for (pkg_name, 0..) |ch, idx| pkg_buf[idx] = std.ascii.toUpper(ch);
+                                for (sym_name, 0..) |ch, idx| sym_buf[idx] = std.ascii.toUpper(ch);
+                                fn_sym_opt = try self.heap.internInPackage(pkg_buf[0..pkg_name.len], sym_buf[0..sym_name.len]);
+                            }
+                        } else if (std.mem.indexOfScalar(u8, fn_name, ':')) |sep| {
+                            const pkg_name = fn_name[0..sep];
+                            const sym_name = fn_name[sep + 1 ..];
+                            fn_sym_opt = try self.heap.internInPackage(pkg_name, sym_name);
+                            if (fn_sym_opt == null and pkg_name.len <= 128 and sym_name.len <= 256) {
+                                var pkg_buf: [128]u8 = undefined;
+                                var sym_buf: [256]u8 = undefined;
+                                for (pkg_name, 0..) |ch, idx| pkg_buf[idx] = std.ascii.toUpper(ch);
+                                for (sym_name, 0..) |ch, idx| sym_buf[idx] = std.ascii.toUpper(ch);
+                                fn_sym_opt = try self.heap.internInPackage(pkg_buf[0..pkg_name.len], sym_buf[0..sym_name.len]);
+                            }
+                        } else {
+                            fn_sym_opt = try self.intern(fn_name);
+                        }
+
+                        if (fn_sym_opt) |fn_sym| {
+                            const tmp_stream = try primitives.io.makeStringOutputStream(self.heap);
+                            const fn_arg = if (arg_idx < args.len) args[arg_idx] else Value.nil;
+                            if (arg_idx < args.len) arg_idx += 1;
+                            const fn_args = [_]Value{
+                                tmp_stream,
+                                fn_arg,
+                                if (has_colon) Value.t else Value.nil,
+                                if (has_at) Value.t else Value.nil,
+                            };
+                            const fn_result = try self.callFromStack(fn_sym, &fn_args);
+                            const stream_text = try primitives.io.getOutputStreamString(self.heap, tmp_stream);
+                            if (stream_text.isString()) {
+                                const bytes = stream_text.toPtr(runtime.String).bytes();
+                                if (bytes.len > 0) {
+                                    try result.appendSlice(self.allocator, bytes);
+                                } else if (fn_result.isString()) {
+                                    try result.appendSlice(self.allocator, fn_result.toPtr(runtime.String).bytes());
+                                } else if (!fn_result.isNil()) {
+                                    try self.formatValueAesthetic(fn_result, &result);
+                                }
+                            }
+                        }
+
+                        i = fn_end + 1;
                     },
                     'R', 'r' => {
                         // Radix: ~R prints in English, ~nR prints in base n

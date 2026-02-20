@@ -6,6 +6,23 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ---
 
+## Session Notes (2026-02-20)
+
+### Worked Well
+- Replacing the `symbol-plist` placeholder with a real primitive-backed wrapper in `lib/stdlib.habu:4171` fixed function-cell parity: direct `(symbol-plist ...)` and `(funcall #'symbol-plist ...)` now agree, and `getl` behavior is stable when loaded generically.
+- Adding a stdlib `getl` compatibility implementation in `lib/stdlib.habu:4180` plus an integration lock in `src/tests/integration.zig:7135` prevented silent plist lookup regressions in Maxima-style paths.
+- Adding the exact `defun + &aux + outer cond + push + inner do/cond/return` repro as an integration test (`src/tests/integration.zig:6285`) is a reliable guard even when no compiler code change is required.
+- Tightening format directive behavior in `src/interp/vm.zig` fixed real gaps:
+  - `~*` argument navigation now honors `~*`, `~:*`, `~@*`, and numeric counts (`src/interp/vm.zig:7913`).
+  - `~P` now falls back to previous argument when no next argument exists (`src/interp/vm.zig:7945`), preserving common `~D ... ~P` usage.
+  - `~G` now emits general float formatting (`src/interp/vm.zig:8546`).
+  - `~/fn/` now invokes formatter functions and appends stream output (`src/interp/vm.zig:8579`).
+- Expanding integration coverage for format directives (`src/tests/integration.zig:2938`, `src/tests/integration.zig:3005`, `src/tests/integration.zig:3029`) gave immediate red/green signal on each missing directive behavior.
+
+### Did Not Work
+- Assuming `(in-package ...)` inside one `progn` would affect reader/package resolution for subsequent symbols in the same already-read form was wrong; defining formatter helpers with explicit package-qualified symbol names avoids this trap.
+- Relying on `tools/dot-finish` full `zig build test` in this environment was unreliable due harness stalls; targeted filtered test gates provided deterministic validation for dot closure work.
+
 ## Session Notes (2026-02-18)
 
 ### Worked Well
