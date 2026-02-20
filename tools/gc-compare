@@ -585,7 +585,63 @@ if maxima:
             "maxima_gc_run_nursery_scale": float(gc_run.get("gc_nursery_scale", 1.0)),
             "maxima_gc_run_nursery_survival": float(gc_run.get("gc_nursery_survival", 0.0)),
             "maxima_gc_run_nursery_pause_error": float(gc_run.get("gc_nursery_pause_error", 0.0)),
+            "maxima_gc_load_los_bytes": int(gc.get("load", {}).get("los_bytes", 0)),
+            "maxima_gc_load_los_live": int(gc.get("load", {}).get("los_live", 0)),
+            "maxima_gc_load_los_threshold": int(gc.get("load", {}).get("gc_los_threshold", 0)),
+            "maxima_gc_load_los_threshold_min": int(gc.get("load", {}).get("gc_los_threshold_min", 0)),
+            "maxima_gc_load_los_threshold_max": int(gc.get("load", {}).get("gc_los_threshold_max", 0)),
+            "maxima_gc_load_los_scale": float(gc.get("load", {}).get("gc_los_scale", 1.0)),
+            "maxima_gc_load_los_large_ratio": float(gc.get("load", {}).get("gc_los_large_ratio", 0.0)),
+            "maxima_gc_load_los_occupancy": float(gc.get("load", {}).get("gc_los_occupancy", 0.0)),
+            "maxima_gc_load_los_pause_error": float(gc.get("load", {}).get("gc_los_pause_error", 0.0)),
+            "maxima_gc_run_los_bytes": int(gc_run.get("los_bytes", 0)),
+            "maxima_gc_run_los_live": int(gc_run.get("los_live", 0)),
+            "maxima_gc_run_los_threshold": int(gc_run.get("gc_los_threshold", 0)),
+            "maxima_gc_run_los_threshold_min": int(gc_run.get("gc_los_threshold_min", 0)),
+            "maxima_gc_run_los_threshold_max": int(gc_run.get("gc_los_threshold_max", 0)),
+            "maxima_gc_run_los_scale": float(gc_run.get("gc_los_scale", 1.0)),
+            "maxima_gc_run_los_large_ratio": float(gc_run.get("gc_los_large_ratio", 0.0)),
+            "maxima_gc_run_los_occupancy": float(gc_run.get("gc_los_occupancy", 0.0)),
+            "maxima_gc_run_los_pause_error": float(gc_run.get("gc_los_pause_error", 0.0)),
         }
+    )
+    metrics["maxima_gc_load_los_threshold_in_bounds"] = (
+        metrics["maxima_gc_load_los_threshold_min"] > 0
+        and metrics["maxima_gc_load_los_threshold_max"]
+        >= metrics["maxima_gc_load_los_threshold_min"]
+        and metrics["maxima_gc_load_los_threshold"]
+        >= metrics["maxima_gc_load_los_threshold_min"]
+        and metrics["maxima_gc_load_los_threshold"]
+        <= metrics["maxima_gc_load_los_threshold_max"]
+    )
+    metrics["maxima_gc_load_los_policy_in_bounds"] = (
+        metrics["maxima_gc_load_los_scale"] >= 0.5
+        and metrics["maxima_gc_load_los_scale"] <= 1.5
+        and metrics["maxima_gc_load_los_large_ratio"] >= 0.0
+        and metrics["maxima_gc_load_los_large_ratio"] <= 1.0
+        and metrics["maxima_gc_load_los_occupancy"] >= 0.0
+        and metrics["maxima_gc_load_los_occupancy"] <= 2.0
+        and metrics["maxima_gc_load_los_pause_error"] >= -1.0
+        and metrics["maxima_gc_load_los_pause_error"] <= 2.0
+    )
+    metrics["maxima_gc_run_los_threshold_in_bounds"] = (
+        metrics["maxima_gc_run_los_threshold_min"] > 0
+        and metrics["maxima_gc_run_los_threshold_max"]
+        >= metrics["maxima_gc_run_los_threshold_min"]
+        and metrics["maxima_gc_run_los_threshold"]
+        >= metrics["maxima_gc_run_los_threshold_min"]
+        and metrics["maxima_gc_run_los_threshold"]
+        <= metrics["maxima_gc_run_los_threshold_max"]
+    )
+    metrics["maxima_gc_run_los_policy_in_bounds"] = (
+        metrics["maxima_gc_run_los_scale"] >= 0.5
+        and metrics["maxima_gc_run_los_scale"] <= 1.5
+        and metrics["maxima_gc_run_los_large_ratio"] >= 0.0
+        and metrics["maxima_gc_run_los_large_ratio"] <= 1.0
+        and metrics["maxima_gc_run_los_occupancy"] >= 0.0
+        and metrics["maxima_gc_run_los_occupancy"] <= 2.0
+        and metrics["maxima_gc_run_los_pause_error"] >= -1.0
+        and metrics["maxima_gc_run_los_pause_error"] <= 2.0
     )
 gate_eval = {
     "milestone_2x_from_baseline": eval_level(
@@ -782,6 +838,36 @@ if maxima:
             s=metrics["maxima_gc_run_nursery_scale"],
             sv=metrics["maxima_gc_run_nursery_survival"],
             pe=metrics["maxima_gc_run_nursery_pause_error"],
+        )
+    )
+    print(
+        "  load_los: bytes={b} live={n} threshold={t} [{mn},{mx}] scale={s:.4f} large={lr:.4f} occ={oc:.4f} pause_err={pe:.4f} in_bounds={ok1}/{ok2}".format(
+            b=metrics["maxima_gc_load_los_bytes"],
+            n=metrics["maxima_gc_load_los_live"],
+            t=metrics["maxima_gc_load_los_threshold"],
+            mn=metrics["maxima_gc_load_los_threshold_min"],
+            mx=metrics["maxima_gc_load_los_threshold_max"],
+            s=metrics["maxima_gc_load_los_scale"],
+            lr=metrics["maxima_gc_load_los_large_ratio"],
+            oc=metrics["maxima_gc_load_los_occupancy"],
+            pe=metrics["maxima_gc_load_los_pause_error"],
+            ok1=str(metrics["maxima_gc_load_los_threshold_in_bounds"]).lower(),
+            ok2=str(metrics["maxima_gc_load_los_policy_in_bounds"]).lower(),
+        )
+    )
+    print(
+        "  run_los: bytes={b} live={n} threshold={t} [{mn},{mx}] scale={s:.4f} large={lr:.4f} occ={oc:.4f} pause_err={pe:.4f} in_bounds={ok1}/{ok2}".format(
+            b=metrics["maxima_gc_run_los_bytes"],
+            n=metrics["maxima_gc_run_los_live"],
+            t=metrics["maxima_gc_run_los_threshold"],
+            mn=metrics["maxima_gc_run_los_threshold_min"],
+            mx=metrics["maxima_gc_run_los_threshold_max"],
+            s=metrics["maxima_gc_run_los_scale"],
+            lr=metrics["maxima_gc_run_los_large_ratio"],
+            oc=metrics["maxima_gc_run_los_occupancy"],
+            pe=metrics["maxima_gc_run_los_pause_error"],
+            ok1=str(metrics["maxima_gc_run_los_threshold_in_bounds"]).lower(),
+            ok2=str(metrics["maxima_gc_run_los_policy_in_bounds"]).lower(),
         )
     )
     print(

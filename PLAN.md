@@ -87,10 +87,10 @@
         - [x] `habu-tenured-alloc-segregated-942b726a` Tenured alloc: segregated free bins.
         - [x] `habu-tenured-alloc-coalesce-4dcdcd32` Tenured alloc: coalesce/split policy. Depends on `habu-tenured-alloc-segregated-942b726a`.
         - [x] `habu-tenured-alloc-fragmentation-35baabcd` Tenured alloc: fragmentation benchmarks. Depends on `habu-tenured-alloc-coalesce-4dcdcd32`.
-      - [ ] `habu-improve-los-policy-bfcc62a6` Improve LOS threshold/reuse policy for lower RSS and pauses. Depends on `habu-improve-tenured-free-e53ce37d`.
+      - [x] `habu-improve-los-policy-bfcc62a6` Improve LOS threshold/reuse policy for lower RSS and pauses. Depends on `habu-improve-tenured-free-e53ce37d`.
         - [x] `habu-los-threshold-auto-6d2a6cc1` LOS: threshold auto-tuning model.
         - [x] `habu-los-reuse-and-ca77f709` LOS: reuse and reclamation path. Depends on `habu-los-threshold-auto-6d2a6cc1`.
-        - [ ] `habu-los-validate-rss-db6cebaf` LOS: validate RSS/pause impact. Depends on `habu-los-reuse-and-ca77f709`.
+        - [x] `habu-los-validate-rss-db6cebaf` LOS: validate RSS/pause impact. Depends on `habu-los-reuse-and-ca77f709`.
       - [ ] `habu-reduce-barrier-and-254725b9` Reduce barrier/safepoint mutator overhead in VM/JIT hot paths. Depends on `habu-improve-los-policy-bfcc62a6`.
         - [ ] `habu-barrier-profile-mutator-812522db` Barrier: profile mutator overhead.
         - [ ] `habu-barrier-inline-hot-4222c4ad` Barrier: inline hot fast paths. Depends on `habu-barrier-profile-mutator-812522db`.
