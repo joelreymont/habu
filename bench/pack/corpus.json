@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "baseline_date": "2026-02-20",
+  "description": "Shared benchmark corpus for Habu/SBCL/OCaml runners.",
+  "suites": {
+    "micro": {
+      "source": [
+        "bench/comprehensive_bench.zig",
+        "bench/comprehensive.lisp"
+      ],
+      "runner_targets": ["habu", "sbcl", "ocaml"],
+      "workloads": [
+        { "name": "fixnum_loop", "category": "arith" },
+        { "name": "fixnum_mul", "category": "arith" },
+        { "name": "gcd", "category": "arith" },
+        { "name": "float_sum", "category": "float" },
+        { "name": "float_sqrt", "category": "float" },
+        { "name": "fib35", "category": "recurse" },
+        { "name": "tak", "category": "recurse" },
+        { "name": "ack", "category": "recurse" },
+        { "name": "nqueens10", "category": "recurse" },
+        { "name": "list_build", "category": "list" },
+        { "name": "list_reverse", "category": "list" },
+        { "name": "list_append", "category": "list" },
+        { "name": "assoc", "category": "list" },
+        { "name": "mapcar", "category": "hof" },
+        { "name": "reduce", "category": "hof" },
+        { "name": "remove_if", "category": "hof" },
+        { "name": "hash_insert", "category": "hash" },
+        { "name": "hash_lookup", "category": "hash" },
+        { "name": "string_concat", "category": "string" },
+        { "name": "string_search", "category": "string" },
+        { "name": "sort_fixnum", "category": "sort" },
+        { "name": "sort_string", "category": "sort" },
+        { "name": "gc_cons", "category": "gc" },
+        { "name": "gc_vector", "category": "gc" },
+        { "name": "intern", "category": "symbol" }
+      ]
+    },
+    "maxima": {
+      "source": [
+        "bench/maxima_workload.zig",
+        "bench/maxima_workload.lisp"
+      ],
+      "runner_targets": ["habu", "sbcl", "ocaml"],
+      "workloads": [
+        { "name": "simplifya", "category": "maxima" },
+        { "name": "diff", "category": "maxima" },
+        { "name": "integrate", "category": "maxima" },
+        { "name": "factor", "category": "maxima" },
+        { "name": "ratsimp", "category": "maxima" },
+        { "name": "limit", "category": "maxima" },
+        { "name": "solve", "category": "maxima" },
+        { "name": "determinant", "category": "maxima" },
+        { "name": "expand", "category": "maxima" },
+        { "name": "sin", "category": "maxima" },
+        { "name": "cos", "category": "maxima" }
+      ]
+    }
+  }
+}

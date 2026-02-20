@@ -43,6 +43,8 @@ sbcl --script bench/comprehensive.lisp
 - `bench/comprehensive.habu` — Habu benchmark expressions (for REPL testing)
 - `bench/maxima_workload.zig` — Habu real-workload Maxima harness
 - `bench/maxima_workload.lisp` — SBCL real-workload Maxima harness
+- `bench/pack/corpus.json` — Shared micro + Maxima workload corpus for Habu/SBCL/OCaml runners
+- `bench/pack/README.md` — Bench-pack schema and usage notes
 - `bench/sbcl_gc.lisp` — SBCL GC stress benchmark
 - `tools/comprehensive-bench` — Combined runner script
 - `tools/maxima-bench` — Maxima workload comparison runner
@@ -104,5 +106,6 @@ tools/gc-compare --json                      # Include gate metrics + threshold 
 tools/gc-compare --fail-on-gates --gate-level=milestone_2x_from_baseline
 tools/perf-loop --iters=1 --scale=1         # Ranked bottlenecks + GC gate summary
 tools/perf-loop --json --gc-iters=30        # Include gc_compare gate schema in JSON
+tools/perf-loop --json --profile-mutator    # Include barrier/safepoint mutator overhead profile
 tools/perf-loop --fail-on-gates --gate-level=milestone_2x_from_baseline
 ```
