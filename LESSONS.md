@@ -1047,3 +1047,13 @@ Environment guard:
 #### Did Not Work
 - Depending on raw `gc_major_max_*_slice` telemetry alone was insufficient for external validation; without explicit emitted budgets, compare/check tools either drift or silently skip strict bound checks.
 - Using full-suite `zig build test` as the only validation gate is not reliable in this workspace right now due an unrelated compile/integration segfault path; targeted GC tests + bench gates were the stable proof path for this dot.
+
+### Session Notes (2026-02-20, tenured segregated free bins)
+
+#### Worked Well
+- Splitting tenured reuse into two layers in `src/runtime/heap.zig` (`allocTenuredFromBins` + `allocTenuredFromPendingList`) preserved immediate reuse of newly swept spans while making steady-state reuse O(number of candidate bins) instead of O(all free spans).
+- Rebuilding bins from coalesced spans (`coalesceTenuredFree`, `drainTenuredBinsToList`, `rebuildTenuredBinsFromList`) kept coalescing exact without introducing pointer aliasing/index invalidation across mutable free lists.
+- A direct allocator-level regression (`src/runtime/heap.zig`: `heap tenured free bins coalesce and reuse spans`) caught both coalesced-span reuse and split-tail reuse behavior.
+
+#### Did Not Work
+- A bins-only allocator path that ignored the in-progress `tenured_free` pending list would delay reuse until full coalesce completion and can transiently starve promotions during sliced major sweep windows.

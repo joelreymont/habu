@@ -84,7 +84,7 @@
         - [x] `habu-major-gc-barrier-ac8038a7` Major GC: barrier-assisted marking. Depends on `habu-major-gc-incremental-068b1148`.
         - [x] `habu-major-gc-pause-bee3923c` Major GC: pause-slice validation. Depends on `habu-major-gc-barrier-ac8038a7`.
       - [ ] `habu-improve-tenured-free-e53ce37d` Improve tenured free-list allocator and coalescing. Depends on `habu-add-incremental-major-c1faa29a`.
-        - [ ] `habu-tenured-alloc-segregated-942b726a` Tenured alloc: segregated free bins.
+        - [x] `habu-tenured-alloc-segregated-942b726a` Tenured alloc: segregated free bins.
         - [ ] `habu-tenured-alloc-coalesce-4dcdcd32` Tenured alloc: coalesce/split policy. Depends on `habu-tenured-alloc-segregated-942b726a`.
         - [ ] `habu-tenured-alloc-fragmentation-35baabcd` Tenured alloc: fragmentation benchmarks. Depends on `habu-tenured-alloc-coalesce-4dcdcd32`.
       - [ ] `habu-improve-los-policy-bfcc62a6` Improve LOS threshold/reuse policy for lower RSS and pauses. Depends on `habu-improve-tenured-free-e53ce37d`.
