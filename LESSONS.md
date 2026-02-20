@@ -9,6 +9,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-20)
 
 ### Worked Well
+- Rewriting `reduce` to iterative folds and adding a `#'+` non-`:from-end` fast path in `lib/stdlib.habu:1043` removed `funcall` dispatch from the dominant benchmark case and cut `bench-comp` `reduce` from ~1894ms to ~25ms (single-iteration run) without changing CL fold behavior.
+- Locking reduce semantics with an integration gate (`src/tests/integration.zig:719`) ensured left/right fold order, empty-sequence behavior, and `:initial-value` handling stayed intact after the loop rewrite.
 - Splitting `mapcar` into explicit 1-list and 2-list fast paths in `lib/stdlib.habu:107` removed per-element `apply` argument-list churn on the hot benchmark path while preserving the generic variadic branch for 3+ lists; `bench-comp` `mapcar` dropped from ~190ms to ~63ms (single-iteration run).
 - Making `mapcar2` iterate with `consp` guards and `%map-reverse` (`lib/stdlib.habu:146`) kept dotted-list termination semantics aligned with generic `mapcar` while avoiding an extra `reverse` pass and potential non-cons `car` errors.
 - Locking the new semantics with `src/tests/integration.zig:694` catches regressions in one-list, two-list, and dotted-tail list behavior under stdlib load.
@@ -186,6 +188,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Enforcing strict `bench/check.zig` argument handling (`InvalidArgs` returns non-zero) exposed accidental no-op invocations like `bench-check -- --json /tmp/file`.
 
 ### Did Not Work
+- A loop-only `reduce` rewrite without function-specialized dispatch barely moved the benchmark (~1901ms to ~1894ms), confirming that per-element `funcall` overhead (not recursion itself) was the dominant bottleneck in the hot `#'+` path.
 - Keeping `mapcar` on a single generic variadic `apply` loop (`lib/stdlib.habu:107` pre-fix) caused severe avoidable overhead for the dominant one-list benchmark shape; arity-specialized paths are required for production throughput.
 - Making `resolveFunctionValue` strict-callable-only without preserving nil-slot bootstrap behavior immediately broke stdlib bootstrapping (`%ASET` unresolved via `(symbol-function '%aset)`); preserving nil/unbound slot fallback while rejecting non-callable non-nil values was required.
 - Caching compiled macro expanders by storing closures in `macro_table` is not safe with current chunk-pool/index patching: cached closures retain expansion-time chunk index assumptions and can mis-dispatch nested lambdas later.

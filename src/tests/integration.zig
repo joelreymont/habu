@@ -716,6 +716,31 @@ test "stdlib mapcar fast paths preserve variadic semantics" {
     try testing.expect(result.raw == Value.t.raw);
 }
 
+test "stdlib reduce loop rewrite preserves CL fold behavior" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(and
+        \\  (eql (reduce #'+ '(1 2 3 4)) 10)
+        \\  (eql (reduce #'+ '(1 2 3 4) :initial-value 10) 20)
+        \\  (eql (reduce #'- '(1 2 3)) -4)
+        \\  (eql (reduce #'- '(1 2 3) :from-end t) 2)
+        \\  (eql (reduce #'- '(1 2 3) :from-end t :initial-value 10) -8)
+        \\  (eql (reduce #'+ '() :initial-value 5) 5)
+        \\  (eql (reduce (lambda () 42) '()) 42))
+    );
+    try testing.expect(result.raw == Value.t.raw);
+}
+
 test "stdlib symbol-function eval-dispatch wrapper encode-universal-time" {
     const allocator = testing.allocator;
 

@@ -156,7 +156,7 @@
     - [x] `habu-str-search-bench-ec385e1b` JIT `make-string`/`setf char`/`position` benchmark path.
     - [x] `habu-gc-vector-bench-b4995d1c` JIT `make-array`/`aref` benchmark path.
     - [x] `habu-mapcar-bench-jit-622b58d5` Add mapcar fast paths for 1/2 list arities and preserve variadic semantics.
-    - [ ] `habu-reduce-bench-jit-b7c95d90` Add reduce HOF JIT path on top of closure lowering.
+    - [x] `habu-reduce-bench-jit-b7c95d90` Optimize stdlib reduce hot path (`#'+`, non-`:from-end`) with loop fast path and preserve fold semantics.
     - [ ] `habu-sort-fixnum-bench-f2e5e01d` Add sort comparator lowering for function designators.
     - [ ] `habu-sort-str-bench-a3f88f51` Add string sort path (`symbol_function`/comparator dispatch).
     - [ ] `habu-jit-float-support-91148537` Resolve float call-target and boxed-float lowering.
