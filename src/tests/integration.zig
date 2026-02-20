@@ -5595,7 +5595,10 @@ test "concatenate delegates to stdlib for sequence coercion" {
     try loadStdlib(&repl);
 
     const result = try repl.eval(
-        \\(string= (concatenate 'string "abc" "def") "abcdef")
+        \\(and
+        \\  (string= (concatenate 'string "abc" "def") "abcdef")
+        \\  (string= (concatenate 'string "ab" '(#\c #\d) "ef") "abcdef")
+        \\  (equal (concatenate 'list '(1 2) '(3 4)) '(1 2 3 4)))
     );
     try testing.expect(!result.isNil());
 }

@@ -9,6 +9,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-20)
 
 ### Worked Well
+- Specializing `concatenate` for all-string inputs in `lib/stdlib.habu:2436` with direct `string-concat` handling for 1/2-arg hot cases and preallocated copy for 3+ args cut `bench-comp` `string_concat` from ~2031ms to ~39ms while keeping mixed-sequence fallback behavior.
+- Expanding concatenate integration coverage (`src/tests/integration.zig:5586`) to include mixed sequence coercion and list output protected the optimized string path from silently breaking non-string result types.
 - Rewriting `reduce` to iterative folds and adding a `#'+` non-`:from-end` fast path in `lib/stdlib.habu:1043` removed `funcall` dispatch from the dominant benchmark case and cut `bench-comp` `reduce` from ~1894ms to ~25ms (single-iteration run) without changing CL fold behavior.
 - Locking reduce semantics with an integration gate (`src/tests/integration.zig:719`) ensured left/right fold order, empty-sequence behavior, and `:initial-value` handling stayed intact after the loop rewrite.
 - Splitting `mapcar` into explicit 1-list and 2-list fast paths in `lib/stdlib.habu:107` removed per-element `apply` argument-list churn on the hot benchmark path while preserving the generic variadic branch for 3+ lists; `bench-comp` `mapcar` dropped from ~190ms to ~63ms (single-iteration run).
@@ -188,6 +190,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Enforcing strict `bench/check.zig` argument handling (`InvalidArgs` returns non-zero) exposed accidental no-op invocations like `bench-check -- --json /tmp/file`.
 
 ### Did Not Work
+- A pure per-character preallocation path for all string concatenations (`lib/stdlib.habu:2416` intermediate attempt) improved long concatenations but regressed short hot call sites; restoring dedicated 1/2-arg `string-concat` fast paths fixed that.
 - A loop-only `reduce` rewrite without function-specialized dispatch barely moved the benchmark (~1901ms to ~1894ms), confirming that per-element `funcall` overhead (not recursion itself) was the dominant bottleneck in the hot `#'+` path.
 - Keeping `mapcar` on a single generic variadic `apply` loop (`lib/stdlib.habu:107` pre-fix) caused severe avoidable overhead for the dominant one-list benchmark shape; arity-specialized paths are required for production throughput.
 - Making `resolveFunctionValue` strict-callable-only without preserving nil-slot bootstrap behavior immediately broke stdlib bootstrapping (`%ASET` unresolved via `(symbol-function '%aset)`); preserving nil/unbound slot fallback while rejecting non-callable non-nil values was required.

@@ -160,7 +160,7 @@
     - [ ] `habu-sort-fixnum-bench-f2e5e01d` Add sort comparator lowering for function designators.
     - [ ] `habu-sort-str-bench-a3f88f51` Add string sort path (`symbol_function`/comparator dispatch).
     - [ ] `habu-jit-float-support-91148537` Resolve float call-target and boxed-float lowering.
-    - [ ] `habu-str-concat-bench-c576d53b` Resolve `concatenate` call-target path for string concat.
+    - [x] `habu-str-concat-bench-c576d53b` Add direct string concatenate fast path (1/2-arg hot cases + 3+-arg prealloc path) and keep generic fallback semantics.
     - [ ] `habu-intern-bench-jit-1a268ee9` Finish intern benchmark JIT wiring end-to-end.
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
