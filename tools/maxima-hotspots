@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+DEFAULT_WORKLOADS = [
+    "integrate",
+    "ratsimp",
+    "factor",
+    "solve",
+    "determinant",
+]
+
+
+def parse_json_tail(text: str, label: str) -> dict:
+    m = re.search(r"\{.*\}\s*$", text, re.S)
+    if not m:
+        raise RuntimeError(f"{label}: could not locate trailing JSON payload")
+    return json.loads(m.group(0))
+
+
+def run_bench(use_hoist: bool, scale: int, heap_mb: int, nursery_mb: int) -> dict:
+    mode = "jit" if use_hoist else "interp"
+    cmd = [
+        "zig",
+        "build",
+        f"-Duse-hoist={'true' if use_hoist else 'false'}",
+        "bench-maxima",
+        "--",
+        "--json",
+        f"--scale={scale}",
+        f"--heap-mb={heap_mb}",
+        f"--nursery-mb={nursery_mb}",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    out = (proc.stdout or "") + (proc.stderr or "")
+    if proc.returncode != 0:
+        raise RuntimeError(f"{mode} run failed ({proc.returncode})\n{out}")
+    return parse_json_tail(out, mode)
+
+
+def benches_by_name(payload: dict) -> dict:
+    result = {}
+    for b in payload.get("benches", []):
+        name = b.get("name")
+        if isinstance(name, str):
+            result[name] = b
+    return result
+
+
+def summarize(jit: dict, interp: dict, workloads: list[str]) -> dict:
+    jit_map = benches_by_name(jit)
+    interp_map = benches_by_name(interp)
+    rows = []
+    for name in workloads:
+        jb = jit_map.get(name)
+        ib = interp_map.get(name)
+        if jb is None or ib is None:
+            continue
+        jns = int(jb.get("ns", 0))
+        ins = int(ib.get("ns", 0))
+        speedup = (ins / jns) if jns > 0 else None
+        rows.append(
+            {
+                "name": name,
+                "jit_ns": jns,
+                "interp_ns": ins,
+                "speedup_interp_over_jit": speedup,
+                "jit_error": jb.get("error"),
+                "interp_error": ib.get("error"),
+            }
+        )
+    rows.sort(key=lambda r: r["jit_ns"], reverse=True)
+    return {
+        "workloads": rows,
+        "jit_loader_ns": int(jit.get("loader", {}).get("ns", 0)),
+        "interp_loader_ns": int(interp.get("loader", {}).get("ns", 0)),
+    }
+
+
+def format_text(summary: dict) -> str:
+    lines = []
+    lines.append("name               jit_ns        interp_ns     interp/jit")
+    lines.append("----------------------------------------------------------")
+    for row in summary["workloads"]:
+        sp = row["speedup_interp_over_jit"]
+        sp_txt = f"{sp:.3f}" if sp is not None else "n/a"
+        lines.append(
+            f"{row['name']:<18} {row['jit_ns']:>12} {row['interp_ns']:>12} {sp_txt:>11}"
+        )
+    lines.append("")
+    lines.append(f"loader_ns jit={summary['jit_loader_ns']} interp={summary['interp_loader_ns']}")
+    return "\n".join(lines)
+
+
+def format_markdown(summary: dict, scale: int, heap_mb: int, nursery_mb: int) -> str:
+    lines = []
+    lines.append("# Maxima Hotspots")
+    lines.append("")
+    lines.append(f"- scale: `{scale}`")
+    lines.append(f"- heap_mb: `{heap_mb}`")
+    lines.append(f"- nursery_mb: `{nursery_mb}`")
+    lines.append("")
+    lines.append("| workload | jit_ns | interp_ns | interp/jit |")
+    lines.append("|---|---:|---:|---:|")
+    for row in summary["workloads"]:
+        sp = row["speedup_interp_over_jit"]
+        sp_txt = f"{sp:.3f}" if sp is not None else "n/a"
+        lines.append(
+            f"| {row['name']} | {row['jit_ns']} | {row['interp_ns']} | {sp_txt} |"
+        )
+    lines.append("")
+    lines.append(
+        f"- loader_ns: jit=`{summary['jit_loader_ns']}`, interp=`{summary['interp_loader_ns']}`"
+    )
+    return "\n".join(lines) + "\n"
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description="Profile Maxima CAS workload hotspots in JIT vs interpreter modes.")
+    p.add_argument("--scale", type=int, default=1)
+    p.add_argument("--heap-mb", type=int, default=1024)
+    p.add_argument("--nursery-mb", type=int, default=24)
+    p.add_argument(
+        "--workloads",
+        type=str,
+        default=",".join(DEFAULT_WORKLOADS),
+        help="comma-separated workload names from bench-maxima output",
+    )
+    p.add_argument("--json", action="store_true", help="print JSON summary")
+    p.add_argument("--markdown-out", type=str, default="", help="write markdown report")
+    args = p.parse_args()
+
+    workloads = [w.strip() for w in args.workloads.split(",") if w.strip()]
+    if not workloads:
+        print("no workloads selected", file=sys.stderr)
+        return 2
+
+    try:
+        jit = run_bench(True, args.scale, args.heap_mb, args.nursery_mb)
+        interp = run_bench(False, args.scale, args.heap_mb, args.nursery_mb)
+        summary = summarize(jit, interp, workloads)
+    except Exception as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(summary, indent=2))
+    else:
+        print(format_text(summary))
+
+    if args.markdown_out:
+        md = format_markdown(summary, args.scale, args.heap_mb, args.nursery_mb)
+        Path(args.markdown_out).write_text(md)
+        print(f"wrote {args.markdown_out}", file=sys.stderr)
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

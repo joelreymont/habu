@@ -27,6 +27,7 @@ Technical documentation for Habu Lisp (Zig implementation).
 - **[KEYWORD-SUPPORT.md](KEYWORD-SUPPORT.md)** - Keyword implementation
 - **[PRIMITIVES-ADDED.md](PRIMITIVES-ADDED.md)** - Primitive function reference
 - **[maxima-loader.md](maxima-loader.md)** - Maxima loader and stub workflow
+- **[maxima-hotspots.md](maxima-hotspots.md)** - JIT vs interpreter CAS hotspot report for integrate/ratsimp/factor/solve/determinant
 - **[gc-architecture-comparison.md](gc-architecture-comparison.md)** - SBCL/OCaml GC technique mapping and Habu parity plan
 - **[gc-parity-contract.md](gc-parity-contract.md)** - GC parity gates, regression contract, and CI enforcement
 
