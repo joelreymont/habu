@@ -333,6 +333,9 @@ pub const Vm = struct {
 
     /// Reusable buffers for GC root tracking.
     gc_slots: std.ArrayList(*Value),
+    /// Deferred safepoint debt polls to reduce mutator overhead.
+    safepoint_batch_ops: usize,
+    safepoint_batch_bytes: usize,
 
     /// Global variables (indexed by constant pool index)
     globals: [MAX_GLOBALS]Value,
@@ -478,6 +481,8 @@ pub const Vm = struct {
     const MAX_PROGVS = 256;
     const MAX_HANDLERS = 64;
     const MAX_SAVED_CHUNKS = 1024;
+    const SAFEPOINT_BATCH_OPS = 32;
+    const SAFEPOINT_BATCH_BYTES = 64 * 1024;
 
     fn chunkRoot(ptr: *const Chunk) Value {
         const addr = @intFromPtr(ptr);
@@ -695,6 +700,8 @@ pub const Vm = struct {
             .heap = heap,
             .allocator = allocator,
             .gc_slots = std.ArrayList(*Value){},
+            .safepoint_batch_ops = 0,
+            .safepoint_batch_bytes = 0,
             .globals = undefined,
             .num_globals = 0,
             .current_package = Value.nil,
@@ -1066,7 +1073,7 @@ pub const Vm = struct {
     /// Allocate a cons cell, running GC if needed
     pub fn allocCons(self: *Vm, car: Value, cdr: Value) error{OutOfMemory}!Value {
         var roots = [_]Value{ car, cdr };
-        try self.collectIfDebt(roots[0..]);
+        try self.collectIfDebt(roots[0..], @sizeOf(runtime.Cons));
         return if (self.heap.allocCons(roots[0], roots[1])) |val| val else |err| switch (err) {
             error.OutOfMemory => {
                 _ = try self.collectGarbageExtra(roots[0..]);
@@ -1078,7 +1085,7 @@ pub const Vm = struct {
     /// Allocate a vector, running GC if needed
     pub fn allocVector(self: *Vm, length: usize, capacity: usize) error{ OutOfMemory, Overflow }!Value {
         var none: [0]Value = .{};
-        try self.collectIfDebt(none[0..]);
+        try self.collectIfDebt(none[0..], @sizeOf(runtime.Vector) + capacity * @sizeOf(Value));
         return if (self.heap.allocVector(length, capacity)) |val| val else |err| switch (err) {
             error.OutOfMemory => {
                 _ = try self.collectGarbage();
@@ -1126,7 +1133,7 @@ pub const Vm = struct {
 
     pub fn allocStringUninitialized(self: *Vm, length: usize) error{ OutOfMemory, Overflow }!Value {
         var none: [0]Value = .{};
-        try self.collectIfDebt(none[0..]);
+        try self.collectIfDebt(none[0..], @sizeOf(runtime.String) + length);
         return if (self.heap.allocStringUninitialized(length)) |val| val else |err| switch (err) {
             error.OutOfMemory => {
                 _ = try self.collectGarbage();
@@ -1160,7 +1167,7 @@ pub const Vm = struct {
         roots_buf[0] = code;
         @memcpy(roots_buf[1 .. 1 + captures.len], captures);
         const roots = roots_buf[0 .. 1 + captures.len];
-        try self.collectIfDebt(roots);
+        try self.collectIfDebt(roots, @sizeOf(runtime.Closure) + captures.len * @sizeOf(Value));
         @memcpy(captures, roots[1..]);
 
         return if (self.heap.allocClosure(roots[0], arity, captures)) |val| val else |err| switch (err) {
@@ -1176,7 +1183,7 @@ pub const Vm = struct {
     /// Allocate a hash table, running GC if needed
     pub fn allocHashTable(self: *Vm, capacity: usize, test_type: runtime.HashTest) error{ OutOfMemory, Overflow }!Value {
         var none: [0]Value = .{};
-        try self.collectIfDebt(none[0..]);
+        try self.collectIfDebt(none[0..], @sizeOf(runtime.HashTable) + capacity * 2 * @sizeOf(Value));
         return self.heap.allocHashTable(capacity, test_type) catch |err| switch (err) {
             error.OutOfMemory => blk: {
                 _ = try self.collectGarbage();
@@ -1422,7 +1429,18 @@ pub const Vm = struct {
         return try self.collectGarbageExtra(none[0..]);
     }
 
-    fn collectIfDebt(self: *Vm, extra_roots: []Value) !void {
+    fn collectIfDebt(self: *Vm, extra_roots: []Value, alloc_hint_bytes: usize) !void {
+        self.safepoint_batch_ops +%= 1;
+        self.safepoint_batch_bytes +%= alloc_hint_bytes;
+
+        const should_poll = self.heap.shouldCollectDebt() or
+            self.safepoint_batch_ops >= SAFEPOINT_BATCH_OPS or
+            self.safepoint_batch_bytes >= SAFEPOINT_BATCH_BYTES;
+        if (!should_poll) return;
+
+        self.safepoint_batch_ops = 0;
+        self.safepoint_batch_bytes = 0;
+
         const profile = self.heap.profileMutatorEnabled();
         const start_ns: i128 = if (profile) std.time.nanoTimestamp() else 0;
         const should_collect = self.heap.shouldCollectDebtNow();
@@ -1435,6 +1453,8 @@ pub const Vm = struct {
 
     fn collectGarbageExtra(self: *Vm, extra_roots: []Value) !usize {
         self.gc_slots.clearRetainingCapacity();
+        self.safepoint_batch_ops = 0;
+        self.safepoint_batch_bytes = 0;
 
         var frame_closure_roots: [MAX_FRAMES]Value = undefined;
         var current_closure_root = Value.nil;

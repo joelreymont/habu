@@ -70,6 +70,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding opt-in mutator profiling counters (`HABU_PROFILE_MUTATOR`) for write barrier and safepoint paths (`src/runtime/heap.zig:527`, `src/interp/vm.zig:1420`, `src/jit/backend.zig:82`) produced direct VM-vs-JIT overhead telemetry without changing default hot-path behavior.
 - Wiring `tools/perf-loop --profile-mutator` to export/load mutator profile snapshots (`tools/perf-loop:132`, `tools/perf-loop:392`, `tools/perf-loop:457`) made barrier/safepoint overhead part of the standard optimization loop.
 - Inlining a cheap `stored.isPointer()` guard at VM/JIT barrier call sites (`src/interp/vm.zig:1417`, `src/jit/backend.zig:99`) cut mutator-profiled barrier call volume on Maxima load paths without changing GC semantics.
+- Batching debt safepoint polls by both op-count and allocation-byte budget (`src/interp/vm.zig:1432`, `src/interp/vm.zig:471`) preserved bounded polling latency while cutting VM safepoint poll overhead by an order of magnitude on Maxima loads.
+- Resetting safepoint batch counters on every actual GC entry (`src/interp/vm.zig:1452`) avoided stale-batch carryover after collections.
 
 ### Did Not Work
 - Assuming a fixed `MAJOR_SWEEP_BUDGET`-sized fixture would keep major cycle active was brittle; root ordering/object size can make the cycle complete in one pass, so barrier tests need larger deterministic workloads.
@@ -100,6 +102,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Looking only at Maxima run-phase GC counters is insufficient for LOS validation when run-phase alloc pressure is low (`maxima_gc_run_count` may be 0); include load-phase LOS telemetry in validation checks (`tools/gc-compare:589`, `tools/gc-compare:839`).
 - Running `zig test src/interp/vm.zig` directly is invalid in this repo layout (relative imports outside module path); validate VM changes through build steps/bench paths instead.
 - For short run phases, nanosecond counter deltas can quantize to zero (`wb_ns` on tiny benchmark tails), so compare call counts and load-phase totals instead of relying on single tiny-phase timing deltas.
+- Op-count-only safepoint batching can over-delay polls during large single allocations; enforce a byte budget (`SAFEPOINT_BATCH_BYTES`) alongside op budget to keep latency bounded by allocation volume.
 
 ## Session Notes (2026-02-18)
 

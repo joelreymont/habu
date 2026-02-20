@@ -150,6 +150,7 @@ Measured baseline used for this ranking:
   - Major remaining end-to-end bottlenecks are still workload dispatch/JIT paths, so GC changes must target pause/RSS first and avoid regressing CAS throughput.
 - `tools/perf-loop --json --iters=1 --scale=1 --profile-mutator`
   - Enables `HABU_PROFILE_MUTATOR=1` during Maxima workload runs and emits `mutator_profile` (`wb_*`, `safepoint_*`) to isolate barrier/safepoint overhead in VM vs JIT paths.
+  - After batched VM safepoint polling (`SAFEPOINT_BATCH_OPS=32`, `SAFEPOINT_BATCH_BYTES=64KiB`), Maxima load-path safepoint polls dropped from O(10^5) to O(10^3) per run while keeping bounded poll latency.
 
 | Rank | Gap | Measured signal | Impact | Risk | Priority | Execution dot(s) |
 |---|---|---|---:|---:|---:|---|

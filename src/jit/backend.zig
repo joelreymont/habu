@@ -48,6 +48,7 @@ var g_heap: ?*Heap = null;
 /// Set the global heap pointer for JIT allocation.
 pub fn setHeap(heap: *Heap) void {
     g_heap = heap;
+    g_safepoint_batch_ops = 0;
     jitConsRefreshCache();
 }
 
@@ -67,6 +68,8 @@ pub fn syncHeapFromGlobal(heap: *Heap) void {
 /// Falls back to heap.allocCons on overflow.
 var g_alloc_ptr: u64 = 0;
 var g_alloc_end: u64 = 0;
+var g_safepoint_batch_ops: usize = 0;
+const JIT_SAFEPOINT_BATCH_OPS: usize = 8;
 
 fn jitConsRefreshCache() void {
     if (g_heap) |heap| {
@@ -83,6 +86,12 @@ fn elapsedNsSince(start_ns: i128) u64 {
 
 fn jitSafepointBeforeAlloc() void {
     if (g_heap) |heap| {
+        g_safepoint_batch_ops +%= 1;
+        const should_poll = heap.shouldCollectDebt() or
+            g_safepoint_batch_ops >= JIT_SAFEPOINT_BATCH_OPS;
+        if (!should_poll) return;
+        g_safepoint_batch_ops = 0;
+
         const profile = heap.profileMutatorEnabled();
         const start_ns: i128 = if (profile) std.time.nanoTimestamp() else 0;
 
