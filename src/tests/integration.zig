@@ -85,6 +85,47 @@ test "compileChunk JITs optimized defun with implicit block" {
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
+test "compileChunk JIT length handles string literals" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    const before = vm.jit_fns.count();
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(defun jit-string-len () (declare (optimize (speed 3) (safety 0))) (length \"xxxxxxxx\"))",
+    ));
+    try testing.expect(vm.jit_fns.count() > before);
+
+    const result = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-string-len)",
+    ));
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 8), result.toFixnum());
+}
+
 test "compileChunk JIT handles recursive nqueens helper entry copies" {
     if (!build_options.use_hoist) return;
 

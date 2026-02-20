@@ -310,6 +310,48 @@ fn dispatchMacroBridge(
     return bridge.vm.callFromStackAt(bridge.vm.sp, function, &args) catch return error.UnexpectedToken;
 }
 
+fn jitCallBridgeInvoke(vm: *Vm, fn_raw: u64, args: []const Value) u64 {
+    const fn_val = Value{ .raw = fn_raw };
+    // Bridge calls may run GC and move semispaces; refresh JIT bump-cache from
+    // heap before and after so inline-cons globals never drift from VM state.
+    jit_backend.setHeap(vm.heap);
+    const result = vm.callFromStackAt(vm.sp, fn_val, args) catch |err| {
+        std.debug.panic("jit call bridge failed: {s} argc={d}", .{ @errorName(err), args.len });
+    };
+    jit_backend.setHeap(vm.heap);
+    return vm.resolveForwardedValue(result).raw;
+}
+
+fn jitCallBridge0(ctx: *anyopaque, fn_raw: u64) callconv(.c) u64 {
+    const vm: *Vm = @ptrCast(@alignCast(ctx));
+    var args: [0]Value = .{};
+    return jitCallBridgeInvoke(vm, fn_raw, args[0..]);
+}
+
+fn jitCallBridge1(ctx: *anyopaque, fn_raw: u64, arg0: u64) callconv(.c) u64 {
+    const vm: *Vm = @ptrCast(@alignCast(ctx));
+    const args = [_]Value{Value{ .raw = arg0 }};
+    return jitCallBridgeInvoke(vm, fn_raw, &args);
+}
+
+fn jitCallBridge2(ctx: *anyopaque, fn_raw: u64, arg0: u64, arg1: u64) callconv(.c) u64 {
+    const vm: *Vm = @ptrCast(@alignCast(ctx));
+    const args = [_]Value{ Value{ .raw = arg0 }, Value{ .raw = arg1 } };
+    return jitCallBridgeInvoke(vm, fn_raw, &args);
+}
+
+fn jitCallBridge3(ctx: *anyopaque, fn_raw: u64, arg0: u64, arg1: u64, arg2: u64) callconv(.c) u64 {
+    const vm: *Vm = @ptrCast(@alignCast(ctx));
+    const args = [_]Value{ Value{ .raw = arg0 }, Value{ .raw = arg1 }, Value{ .raw = arg2 } };
+    return jitCallBridgeInvoke(vm, fn_raw, &args);
+}
+
+fn jitCallBridge4(ctx: *anyopaque, fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64) callconv(.c) u64 {
+    const vm: *Vm = @ptrCast(@alignCast(ctx));
+    const args = [_]Value{ Value{ .raw = arg0 }, Value{ .raw = arg1 }, Value{ .raw = arg2 }, Value{ .raw = arg3 } };
+    return jitCallBridgeInvoke(vm, fn_raw, &args);
+}
+
 pub const Vm = struct {
     /// Value stack
     stack: [STACK_SIZE]Value,
@@ -467,6 +509,9 @@ pub const Vm = struct {
 
     /// Hoist SSA JIT: maps chunk address to compiled native function.
     jit_fns: std.AutoHashMap(usize, *jit_backend.CompiledFn),
+
+    /// Stable host-root slots for JIT literal Values.
+    jit_literal_roots: std.ArrayList(*Value),
 
     /// Pre-interned builtin symbols for fast dispatch
     builtins: BuiltinSymbols,
@@ -763,6 +808,7 @@ pub const Vm = struct {
             .current_argc = 0,
             .ext_roots = &[_]Value{},
             .jit_fns = std.AutoHashMap(usize, *jit_backend.CompiledFn).init(allocator),
+            .jit_literal_roots = std.ArrayList(*Value){},
             .builtins = try BuiltinSymbols.init(heap),
             .type_syms = try type_mod.TypeSymbols.init(heap),
         };
@@ -781,6 +827,10 @@ pub const Vm = struct {
             self.allocator.destroy(compiled_ptr.*);
         }
         self.jit_fns.deinit();
+        for (self.jit_literal_roots.items) |slot| {
+            self.allocator.destroy(slot);
+        }
+        self.jit_literal_roots.deinit(self.allocator);
         self.uninterned_values.deinit();
         self.gc_slots.deinit(self.allocator);
     }
@@ -1046,6 +1096,14 @@ pub const Vm = struct {
         try self.jit_fns.put(@intFromPtr(chunk), compiled);
     }
 
+    /// Register a stable host-root slot for a JIT literal Value.
+    pub fn registerJitLiteral(self: *Vm, val: Value) !*Value {
+        const slot = try self.allocator.create(Value);
+        slot.* = self.resolveForwardedValue(val);
+        try self.jit_literal_roots.append(self.allocator, slot);
+        return slot;
+    }
+
     /// Look up hoist-compiled function for a chunk.
     pub fn lookupJitFn(self: *Vm, chunk: *const Chunk) ?*const jit_backend.CompiledFn {
         return self.jit_fns.get(@intFromPtr(chunk));
@@ -1060,6 +1118,14 @@ pub const Vm = struct {
 
         // Set global heap pointer so JIT cons can allocate
         jit_backend.setHeap(self.heap);
+        jit_backend.setCallBridge(.{
+            .context = self,
+            .call0 = jitCallBridge0,
+            .call1 = jitCallBridge1,
+            .call2 = jitCallBridge2,
+            .call3 = jitCallBridge3,
+            .call4 = jitCallBridge4,
+        });
 
         // Extract args from the VM stack (they're above the callee frame)
         const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
@@ -1494,6 +1560,7 @@ pub const Vm = struct {
             self.handler_sp * 2 +
             7 +
             self.uninterned_values.count() +
+            self.jit_literal_roots.items.len +
             self.fp +
             (if (has_current_closure) @as(usize, 1) else 0) +
             self.catch_sp +
@@ -1528,6 +1595,9 @@ pub const Vm = struct {
         self.gc_slots.appendAssumeCapacity(&self.current_package);
         var uninterned_it = self.uninterned_values.valueIterator();
         while (uninterned_it.next()) |slot| {
+            self.gc_slots.appendAssumeCapacity(slot);
+        }
+        for (self.jit_literal_roots.items) |slot| {
             self.gc_slots.appendAssumeCapacity(slot);
         }
 
@@ -3454,10 +3524,7 @@ pub const Vm = struct {
                     // Pop the call frame and push result
                     self.fp -= 1;
                     const caller_frame = self.frames[self.fp];
-                    self.chunk = caller_frame.chunk;
-                    self.ip = caller_frame.return_ip;
-                    self.sp = caller_frame.bp;
-                    try self.push(result);
+                    try self.restoreCallerFrameAfterCall(caller_frame, result);
                 }
             },
             .tail_call => {
@@ -3493,20 +3560,7 @@ pub const Vm = struct {
                     tracePrintValue(result);
                     std.debug.print("\n", .{});
                 }
-                self.sp = frame.bp;
-                self.chunk = frame.chunk;
-                self.ip = frame.return_ip;
-                if (frame.handler_restore_depth) |depth| {
-                    self.handler_sp = depth;
-                } else {
-                    self.handler_sp = frame.handler_depth;
-                }
-                self.block_sp = frame.block_depth;
-                self.catch_sp = frame.catch_depth;
-                self.unwind_sp = frame.unwind_depth;
-                self.restart_sp = frame.restart_depth;
-                self.progv_sp = frame.progv_depth;
-                try self.push(result);
+                try self.restoreCallerFrameAfterCall(frame, result);
             },
             .make_closure => {
                 const chunk_idx = self.readU16();
@@ -9778,6 +9832,27 @@ pub const Vm = struct {
         try self.signalTypeErrorDatumExpected(Value.nil, Value.nil);
     }
 
+    fn restoreCallerFrameAfterCall(self: *Vm, frame: Frame, result: Value) Error!void {
+        self.sp = frame.bp;
+        self.chunk = frame.chunk;
+        self.ip = frame.return_ip;
+        self.restoreDynamicDepthsFromFrame(frame);
+        try self.push(result);
+    }
+
+    fn restoreDynamicDepthsFromFrame(self: *Vm, frame: Frame) void {
+        if (frame.handler_restore_depth) |depth| {
+            self.handler_sp = depth;
+        } else {
+            self.handler_sp = frame.handler_depth;
+        }
+        self.block_sp = frame.block_depth;
+        self.catch_sp = frame.catch_depth;
+        self.unwind_sp = frame.unwind_depth;
+        self.restart_sp = frame.restart_depth;
+        self.progv_sp = frame.progv_depth;
+    }
+
     fn doCall(self: *Vm, argc: u8, tail: bool) Error!void {
         // Bounds check: need at least argc + 1 items on stack (args + function)
         if (self.sp < @as(usize, argc) + 1) return error.StackUnderflow;
@@ -9964,6 +10039,9 @@ pub const Vm = struct {
             // Move arguments to start of current frame
             const current_bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
             const arg_start = self.sp - actual_argc;
+            if (self.fp > 0) {
+                self.restoreDynamicDepthsFromFrame(self.frames[self.fp - 1]);
+            }
 
             if (key_count > 0) {
                 // For key args, layout is:
@@ -12120,6 +12198,170 @@ test "vm state restore refreshes owned chunk pool slice" {
     try testing.expect(vm.chunk_pool_owner != null);
     try testing.expectEqual(@intFromPtr(chunk_pool.items.ptr), @intFromPtr(vm.chunk_pool.ptr));
     try testing.expectEqual(chunk_pool.items.len, vm.chunk_pool.len);
+}
+
+test "vm restore caller frame uses handler restore depth" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    const empty_chunk = Chunk{
+        .code = @constCast(&[_]u8{}),
+        .const_pool = @ptrCast(@constCast(&[_]Value{})),
+        .const_count = 0,
+        .code_len = 0,
+        .arity = 0,
+        .opt_count = 0,
+        .key_count = 0,
+        .has_rest = 0,
+        .num_locals = 0,
+    };
+    vm.chunk = &empty_chunk;
+    vm.ip = 99;
+    vm.sp = 17;
+    vm.fp = 1;
+    vm.handler_sp = 13;
+    vm.block_sp = 12;
+    vm.catch_sp = 11;
+    vm.unwind_sp = 10;
+    vm.restart_sp = 9;
+    vm.progv_sp = 8;
+    vm.frames[0] = .{
+        .chunk = &halt_chunk,
+        .return_ip = 7,
+        .bp = 4,
+        .closure = null,
+        .argc = 0,
+        .positional_argc = 0,
+        .block_depth = 3,
+        .catch_depth = 2,
+        .unwind_depth = 1,
+        .restart_depth = 4,
+        .progv_depth = 5,
+        .handler_depth = 6,
+        .handler_restore_depth = 2,
+    };
+
+    vm.fp -= 1;
+    try vm.restoreCallerFrameAfterCall(vm.frames[vm.fp], Value.makeFixnum(42));
+
+    try testing.expect(vm.chunk == &halt_chunk);
+    try testing.expectEqual(@as(usize, 7), vm.ip);
+    try testing.expectEqual(@as(usize, 5), vm.sp);
+    try testing.expectEqual(@as(i64, 42), vm.stack[4].toFixnum());
+    try testing.expectEqual(@as(usize, 2), vm.handler_sp);
+    try testing.expectEqual(@as(usize, 3), vm.block_sp);
+    try testing.expectEqual(@as(usize, 2), vm.catch_sp);
+    try testing.expectEqual(@as(usize, 1), vm.unwind_sp);
+    try testing.expectEqual(@as(usize, 4), vm.restart_sp);
+    try testing.expectEqual(@as(usize, 5), vm.progv_sp);
+}
+
+test "vm restore caller frame falls back to handler depth" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    vm.chunk = &halt_chunk;
+    vm.ip = 31;
+    vm.sp = 12;
+    vm.fp = 1;
+    vm.handler_sp = 9;
+    vm.block_sp = 9;
+    vm.catch_sp = 9;
+    vm.unwind_sp = 9;
+    vm.restart_sp = 9;
+    vm.progv_sp = 9;
+    vm.frames[0] = .{
+        .chunk = &halt_chunk,
+        .return_ip = 5,
+        .bp = 1,
+        .closure = null,
+        .argc = 0,
+        .positional_argc = 0,
+        .block_depth = 0,
+        .catch_depth = 1,
+        .unwind_depth = 2,
+        .restart_depth = 3,
+        .progv_depth = 4,
+        .handler_depth = 7,
+        .handler_restore_depth = null,
+    };
+
+    vm.fp -= 1;
+    try vm.restoreCallerFrameAfterCall(vm.frames[vm.fp], Value.makeFixnum(9));
+
+    try testing.expectEqual(@as(usize, 2), vm.sp);
+    try testing.expectEqual(@as(i64, 9), vm.stack[1].toFixnum());
+    try testing.expectEqual(@as(usize, 7), vm.handler_sp);
+    try testing.expectEqual(@as(usize, 0), vm.block_sp);
+    try testing.expectEqual(@as(usize, 1), vm.catch_sp);
+    try testing.expectEqual(@as(usize, 2), vm.unwind_sp);
+    try testing.expectEqual(@as(usize, 3), vm.restart_sp);
+    try testing.expectEqual(@as(usize, 4), vm.progv_sp);
+}
+
+test "vm doCall tail call restores dynamic depths" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    const empty_code = [_]u8{};
+    const no_consts = [_]Value{};
+    const callee_chunk_val = try heap.allocChunk(&empty_code, &no_consts, 0, 0, 0, false, 0);
+    const callee_closure = try vm.allocClosureWithGC(callee_chunk_val, 0, &[_]Value{});
+
+    vm.chunk = &halt_chunk;
+    vm.ip = 12;
+    vm.fp = 1;
+    vm.sp = 1;
+    vm.stack[0] = callee_closure;
+    vm.block_sp = 17;
+    vm.catch_sp = 16;
+    vm.unwind_sp = 15;
+    vm.restart_sp = 14;
+    vm.progv_sp = 13;
+    vm.handler_sp = 12;
+    vm.frames[0] = .{
+        .chunk = &halt_chunk,
+        .return_ip = 99,
+        .bp = 0,
+        .closure = null,
+        .argc = 0,
+        .positional_argc = 0,
+        .block_depth = 1,
+        .catch_depth = 2,
+        .unwind_depth = 3,
+        .restart_depth = 4,
+        .progv_depth = 5,
+        .handler_depth = 6,
+        .handler_restore_depth = 7,
+    };
+
+    try vm.doCall(0, true);
+
+    try testing.expect(vm.chunk == callee_chunk_val.toPtr(Chunk));
+    try testing.expectEqual(@as(usize, 1), vm.block_sp);
+    try testing.expectEqual(@as(usize, 2), vm.catch_sp);
+    try testing.expectEqual(@as(usize, 3), vm.unwind_sp);
+    try testing.expectEqual(@as(usize, 4), vm.restart_sp);
+    try testing.expectEqual(@as(usize, 5), vm.progv_sp);
+    try testing.expectEqual(@as(usize, 7), vm.handler_sp);
 }
 
 test "vm collectGarbage updates ext roots" {

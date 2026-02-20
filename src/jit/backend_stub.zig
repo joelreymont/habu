@@ -5,8 +5,20 @@ const runtime = @import("../runtime/runtime.zig");
 const Ir = ir_mod.Ir;
 const Value = runtime.Value;
 const Heap = runtime.Heap;
+pub const LiteralRoots = std.AutoHashMap(usize, *Value);
 
 pub fn setHeap(_: *Heap) void {}
+
+pub const CallBridge = struct {
+    context: *anyopaque,
+    call0: *const fn (*anyopaque, u64) callconv(.c) u64,
+    call1: *const fn (*anyopaque, u64, u64) callconv(.c) u64,
+    call2: *const fn (*anyopaque, u64, u64, u64) callconv(.c) u64,
+    call3: *const fn (*anyopaque, u64, u64, u64, u64) callconv(.c) u64,
+    call4: *const fn (*anyopaque, u64, u64, u64, u64, u64) callconv(.c) u64,
+};
+
+pub fn setCallBridge(_: CallBridge) void {}
 
 pub fn syncHeapFromGlobal(_: *Heap) void {}
 
@@ -55,10 +67,6 @@ pub const IrTranslator = struct {
     }
 };
 
-pub fn isCallResolvable(_: *const Ir, _: []const u8, _: *const std.StringHashMap(void)) bool {
-    return false;
-}
-
 pub fn patchCrossCallsToBL(_: [*]u8, _: usize, _: usize) void {}
 
 pub fn compileIr(
@@ -74,6 +82,16 @@ pub fn compileIrWithKnownFns(
     _: *const Ir,
     _: []const u8,
     _: ?*const std.StringHashMap(KnownFn),
+) !CompiledFn {
+    return error.JitDisabled;
+}
+
+pub fn compileIrWithKnownFnsAndLiteralRoots(
+    _: std.mem.Allocator,
+    _: *const Ir,
+    _: []const u8,
+    _: ?*const std.StringHashMap(KnownFn),
+    _: ?*const LiteralRoots,
 ) !CompiledFn {
     return error.JitDisabled;
 }

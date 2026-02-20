@@ -14,14 +14,17 @@ else
     };
 
 pub const setHeap = impl.setHeap;
+pub const setCallBridge = impl.setCallBridge;
 pub const syncHeapFromGlobal = impl.syncHeapFromGlobal;
+pub const CallBridge = impl.CallBridge;
+pub const LiteralRoots = impl.LiteralRoots;
 pub const KnownFn = impl.KnownFn;
 pub const CompiledFn = impl.CompiledFn;
 pub const IrTranslator = impl.IrTranslator;
-pub const isCallResolvable = impl.isCallResolvable;
 pub const patchCrossCallsToBL = impl.patchCrossCallsToBL;
 pub const compileIr = impl.compileIr;
 pub const compileIrWithKnownFns = impl.compileIrWithKnownFns;
+pub const compileIrWithKnownFnsAndLiteralRoots = impl.compileIrWithKnownFnsAndLiteralRoots;
 
 test "hoist API contract probe" {
     if (!build_options.use_hoist) return;

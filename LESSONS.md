@@ -1125,3 +1125,17 @@ Environment guard:
 
 #### Did Not Work
 - Tracking only `tenured_bytes` and object counts misses allocator fragmentation regressions completely; fragmentation required explicit free-span topology metrics.
+
+### Session Notes (2026-02-20, JIT bridge call-stack and sequence correctness)
+
+#### Worked Well
+- Restoring full dynamic control-stack depths on JIT fast returns (`src/interp/vm.zig:3519` via `restoreCallerFrameAfterCall`) removed a real block-stack leak in bridge-heavy higher-order workloads.
+- Restoring frame dynamic depths before tail-call frame reuse in `doCall(..., tail=true)` (`src/interp/vm.zig:10028`) fixed repeated block-frame accumulation on recursive tail paths.
+- Rooting pointer literals for JIT codegen and loading them via stable slots (`src/interp/repl.zig:2296`, `src/jit/backend.zig:1434`) removed stale-literal pointer hazards under moving GC.
+- Replacing list-only JIT `length` lowering with a generic sequence helper (`src/jit/backend.zig:556`, `src/jit/backend.zig:3274`) fixed string-length crashes in optimized code paths.
+- Refreshing JIT heap bump-cache before/after bridge calls (`src/interp/vm.zig:313`) prevented `heap.alloc_ptr` corruption after bridge-triggered GC and removed `bytesUsed` overflow panics.
+
+#### Did Not Work
+- Assuming JIT fast-return could pop only `fp/sp` was wrong; dynamic stacks (`block/catch/unwind/restart/progv/handler`) must be restored from call-frame metadata.
+- Assuming list-only `length` lowering was safe at `safety 0` was wrong; valid non-list sequences (strings/vectors/arrays) are common and must follow generic CL semantics.
+- Assuming JIT heap globals stay valid across bridge calls was wrong; interpreter/GC activity inside bridge calls invalidates cached bump pointers unless explicitly refreshed.

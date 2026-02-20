@@ -2257,90 +2257,6 @@ pub const Repl = struct {
         return try passes.specialize.specialize(self.compiler.allocator, ir_node);
     }
 
-    /// Try to compile lambda nodes via Hoist SSA JIT and register with the VM.
-    /// Called after bytecode emission, before arena reset.
-    /// Returns true if hoist compilation succeeded, false otherwise.
-    /// Check if an IR body has calls that can't be resolved to JIT targets.
-    fn hasUnresolvableCalls(body: *const Ir, self_name: []const u8, known: *const std.StringHashMap(void)) bool {
-        return switch (body.*) {
-            .call => |c| blk: {
-                if (!jit_backend.isCallResolvable(c.func, self_name, known))
-                    break :blk true;
-                for (c.args) |arg| {
-                    if (hasUnresolvableCalls(arg, self_name, known)) break :blk true;
-                }
-                break :blk false;
-            },
-            .tailcall => |tc| blk: {
-                if (!jit_backend.isCallResolvable(tc.func, self_name, known))
-                    break :blk true;
-                for (tc.args) |arg| {
-                    if (hasUnresolvableCalls(arg, self_name, known)) break :blk true;
-                }
-                break :blk false;
-            },
-            .@"if" => |i| hasUnresolvableCalls(i.cond, self_name, known) or
-                hasUnresolvableCalls(i.then_branch, self_name, known) or
-                hasUnresolvableCalls(i.else_branch, self_name, known),
-            .block => |b| hasUnresolvableCalls(b.body, self_name, known),
-            .return_from => |r| hasUnresolvableCalls(r.value, self_name, known),
-            .let => |l| blk: {
-                for (l.bindings) |binding| {
-                    if (hasUnresolvableCalls(binding.value, self_name, known)) break :blk true;
-                }
-                break :blk hasUnresolvableCalls(l.body, self_name, known);
-            },
-            .set => |s| hasUnresolvableCalls(s.value, self_name, known),
-            .progn => |exprs| blk: {
-                for (exprs) |e| {
-                    if (hasUnresolvableCalls(e, self_name, known)) break :blk true;
-                }
-                break :blk false;
-            },
-            .loop => |l| hasUnresolvableCalls(l.cond, self_name, known) or hasUnresolvableCalls(l.body, self_name, known),
-            .fixnum_add,
-            .fixnum_sub,
-            .add,
-            .sub,
-            .fixnum_le,
-            .fixnum_lt,
-            .fixnum_gt,
-            .fixnum_ge,
-            .fixnum_eq,
-            .le,
-            .lt,
-            .gt,
-            .ge,
-            .num_eq,
-            .fixnum_mul,
-            .mul,
-            .eq,
-            .cons,
-            .logand,
-            .mod,
-            .rem,
-            .append,
-            .assoc,
-            => |op| hasUnresolvableCalls(op.left, self_name, known) or hasUnresolvableCalls(op.right, self_name, known),
-            .assert_fixnum,
-            .nilp,
-            .not,
-            .consp,
-            .car,
-            .cdr,
-            .unsafe_car,
-            .unsafe_cdr,
-            .abs,
-            .zerop,
-            .oddp,
-            .evenp,
-            .length,
-            => |op| hasUnresolvableCalls(op.operand, self_name, known),
-            .lit, .@"var", .global_ref => false,
-            else => false,
-        };
-    }
-
     const JitLambdaCandidate = struct {
         name: []const u8,
         lambda_ir: *const Ir,
@@ -2373,6 +2289,164 @@ pub const Repl = struct {
         };
     }
 
+    fn shouldRootJitLiteral(v: Value) bool {
+        return v.isPointer() and !v.isMagicSymbol();
+    }
+
+    fn collectJitLiteralRoots(
+        self: *Repl,
+        ir_node: *const Ir,
+        roots: *jit_backend.LiteralRoots,
+    ) !void {
+        switch (ir_node.*) {
+            .lit => |v| {
+                if (shouldRootJitLiteral(v)) {
+                    const key = @intFromPtr(ir_node);
+                    if (!roots.contains(key)) {
+                        const slot = try self.vm.registerJitLiteral(v);
+                        try roots.put(key, slot);
+                    }
+                }
+            },
+            .lambda => |lam| {
+                if (lam.captures.len != 0) return error.UnsupportedIrNode;
+                if (lam.optional_params.len != 0) return error.UnsupportedIrNode;
+                if (lam.key_params.len != 0) return error.UnsupportedIrNode;
+                if (lam.rest_param != null) return error.UnsupportedIrNode;
+                if (lam.lambda_expr.isNil()) return error.UnsupportedIrNode;
+
+                const key = @intFromPtr(ir_node);
+                if (!roots.contains(key)) {
+                    const closure_val = try self.evalExpr(lam.lambda_expr);
+                    if (!closure_val.isClosure()) return error.TypeMismatch;
+                    const slot = try self.vm.registerJitLiteral(closure_val);
+                    try roots.put(key, slot);
+                }
+                try self.collectJitLiteralRoots(lam.body, roots);
+            },
+            .fixnum_add, .fixnum_sub, .add, .sub => |op| {
+                try self.collectJitLiteralRoots(op.left, roots);
+                try self.collectJitLiteralRoots(op.right, roots);
+            },
+            .fixnum_le,
+            .fixnum_lt,
+            .fixnum_gt,
+            .fixnum_ge,
+            .fixnum_eq,
+            .le,
+            .lt,
+            .gt,
+            .ge,
+            .num_eq,
+            .fixnum_mul,
+            .mul,
+            .eq,
+            .cons,
+            .logand,
+            .mod,
+            .rem,
+            .append,
+            .assoc,
+            .make_string,
+            .position,
+            .position_eq,
+            .position_equal,
+            => |op| {
+                try self.collectJitLiteralRoots(op.left, roots);
+                try self.collectJitLiteralRoots(op.right, roots);
+            },
+            .@"if" => |f| {
+                try self.collectJitLiteralRoots(f.cond, roots);
+                try self.collectJitLiteralRoots(f.then_branch, roots);
+                try self.collectJitLiteralRoots(f.else_branch, roots);
+            },
+            .block => |b| try self.collectJitLiteralRoots(b.body, roots),
+            .progn => |exprs| {
+                for (exprs) |expr| {
+                    try self.collectJitLiteralRoots(expr, roots);
+                }
+            },
+            .let => |l| {
+                for (l.bindings) |binding| {
+                    try self.collectJitLiteralRoots(binding.value, roots);
+                }
+                try self.collectJitLiteralRoots(l.body, roots);
+            },
+            .set => |s| try self.collectJitLiteralRoots(s.value, roots),
+            .loop => |l| {
+                try self.collectJitLiteralRoots(l.cond, roots);
+                try self.collectJitLiteralRoots(l.body, roots);
+            },
+            .assert_fixnum => |op| try self.collectJitLiteralRoots(op.operand, roots),
+            .call => |c| {
+                try self.collectJitLiteralRoots(c.func, roots);
+                for (c.args) |arg| {
+                    try self.collectJitLiteralRoots(arg, roots);
+                }
+            },
+            .tailcall => |tc| {
+                try self.collectJitLiteralRoots(tc.func, roots);
+                for (tc.args) |arg| {
+                    try self.collectJitLiteralRoots(arg, roots);
+                }
+            },
+            .nilp,
+            .not,
+            .consp,
+            .abs,
+            .zerop,
+            .oddp,
+            .evenp,
+            .car,
+            .cdr,
+            .unsafe_car,
+            .unsafe_cdr,
+            .length,
+            .sqrt,
+            .round,
+            .intern,
+            => |op| try self.collectJitLiteralRoots(op.operand, roots),
+            .hash_count => |h| try self.collectJitLiteralRoots(h.operand, roots),
+            .hash_get => |h| {
+                try self.collectJitLiteralRoots(h.table, roots);
+                try self.collectJitLiteralRoots(h.key, roots);
+                if (h.default) |d| try self.collectJitLiteralRoots(d, roots);
+            },
+            .hash_set => |h| {
+                try self.collectJitLiteralRoots(h.table, roots);
+                try self.collectJitLiteralRoots(h.key, roots);
+                try self.collectJitLiteralRoots(h.value, roots);
+            },
+            .format => |f| {
+                try self.collectJitLiteralRoots(f.dest, roots);
+                try self.collectJitLiteralRoots(f.control, roots);
+                for (f.args) |arg| {
+                    try self.collectJitLiteralRoots(arg, roots);
+                }
+            },
+            .str_set => |s| {
+                try self.collectJitLiteralRoots(s.str, roots);
+                try self.collectJitLiteralRoots(s.index, roots);
+                try self.collectJitLiteralRoots(s.value, roots);
+            },
+            .arr_new => |a| {
+                for (a.dimensions) |dim| {
+                    try self.collectJitLiteralRoots(dim, roots);
+                }
+                if (a.init) |init_ir| {
+                    try self.collectJitLiteralRoots(init_ir, roots);
+                }
+            },
+            .arr_ref => |a| {
+                try self.collectJitLiteralRoots(a.array, roots);
+                for (a.subscripts) |sub| {
+                    try self.collectJitLiteralRoots(sub, roots);
+                }
+            },
+            else => {},
+        }
+    }
+
     fn tryHoistCompileLambdas(
         self: *Repl,
         ir_node: *const Ir,
@@ -2397,29 +2471,6 @@ pub const Repl = struct {
         // Skip functions whose body is just a type assertion (e.g. (the fixnum x)).
         // These may receive non-fixnum types; the untagged JIT would corrupt them.
         if (lambda.body.* == .assert_fixnum) return false;
-        // Skip functions that the hoist backend can't translate (fast reject)
-        if (!jit_backend.IrTranslator.canTranslate(lambda.body)) {
-            if (trace) {
-                const bad_tag = jit_backend.IrTranslator.firstUnsupportedTag(lambda.body) orelse std.meta.activeTag(lambda.body.*);
-                std.debug.print("JIT: canTranslate failed for '{s}' (body tag: {s}, first unsupported: {s})\n", .{ fn_name, @tagName(lambda.body.*), @tagName(bad_tag) });
-            }
-            return false;
-        }
-        // Skip functions with non-self calls that have no known JIT target.
-        // Build temporary known_fns set for the check.
-        {
-            var kf_check = std.StringHashMap(void).init(self.allocator);
-            defer kf_check.deinit();
-            var iter = self.vm.jit_fns.iterator();
-            while (iter.next()) |entry| {
-                const cfn = entry.value_ptr.*;
-                kf_check.put(cfn.name, {}) catch {};
-            }
-            if (hasUnresolvableCalls(lambda.body, fn_name, &kf_check)) {
-                if (trace) std.debug.print("JIT: skipping '{s}' — has unresolvable calls\n", .{fn_name});
-                return false;
-            }
-        }
 
         // Only simple functions without captures, optional, key, or rest params
         if (lambda.captures.len > 0) return false;
@@ -2464,7 +2515,22 @@ pub const Repl = struct {
         }
 
         const trace = std.posix.getenv("HABU_TRACE_JIT") != null;
-        var compiled = jit_backend.compileIrWithKnownFns(self.allocator, lambda_ir, name, &known_fns) catch |err| {
+        var literal_roots = jit_backend.LiteralRoots.init(self.allocator);
+        defer literal_roots.deinit();
+        if (lambda_ir.* == .lambda) {
+            self.collectJitLiteralRoots(lambda_ir.lambda.body, &literal_roots) catch |err| {
+                if (trace) {
+                    std.debug.print("JIT: literal root prep failed for '{s}': {s}\n", .{ name, @errorName(err) });
+                }
+                return false;
+            };
+        }
+        const literal_roots_ptr: ?*const jit_backend.LiteralRoots = if (literal_roots.count() > 0)
+            &literal_roots
+        else
+            null;
+
+        var compiled = jit_backend.compileIrWithKnownFnsAndLiteralRoots(self.allocator, lambda_ir, name, &known_fns, literal_roots_ptr) catch |err| {
             if (trace) {
                 std.debug.print("JIT: hoist compile failed for '{s}': {s}\n", .{ name, @errorName(err) });
             }

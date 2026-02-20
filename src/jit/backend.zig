@@ -40,16 +40,30 @@ const Cons = runtime.Cons;
 
 const I64 = HoistType.I64;
 const I8 = HoistType.I8;
+pub const LiteralRoots = std.AutoHashMap(usize, *Value);
 
 // ── Global heap pointer for JIT cons allocation ──
 // Set by the VM before calling JIT functions that may allocate.
 var g_heap: ?*Heap = null;
+pub const CallBridge = struct {
+    context: *anyopaque,
+    call0: *const fn (*anyopaque, u64) callconv(.c) u64,
+    call1: *const fn (*anyopaque, u64, u64) callconv(.c) u64,
+    call2: *const fn (*anyopaque, u64, u64, u64) callconv(.c) u64,
+    call3: *const fn (*anyopaque, u64, u64, u64, u64) callconv(.c) u64,
+    call4: *const fn (*anyopaque, u64, u64, u64, u64, u64) callconv(.c) u64,
+};
+var g_call_bridge: ?CallBridge = null;
 
 /// Set the global heap pointer for JIT allocation.
 pub fn setHeap(heap: *Heap) void {
     g_heap = heap;
     g_safepoint_batch_ops = 0;
     jitConsRefreshCache();
+}
+
+pub fn setCallBridge(bridge: CallBridge) void {
+    g_call_bridge = bridge;
 }
 
 /// Sync heap.alloc_ptr from the JIT global g_alloc_ptr.
@@ -219,6 +233,31 @@ fn jitAssoc(key_raw: u64, alist_raw: u64) callconv(.c) u64 {
         curr = cell.cdr;
     }
     return Value.nil.raw;
+}
+
+fn jitCall0(fn_raw: u64) callconv(.c) u64 {
+    const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
+    return bridge.call0(bridge.context, fn_raw);
+}
+
+fn jitCall1(fn_raw: u64, arg0: u64) callconv(.c) u64 {
+    const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
+    return bridge.call1(bridge.context, fn_raw, arg0);
+}
+
+fn jitCall2(fn_raw: u64, arg0: u64, arg1: u64) callconv(.c) u64 {
+    const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
+    return bridge.call2(bridge.context, fn_raw, arg0, arg1);
+}
+
+fn jitCall3(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64) callconv(.c) u64 {
+    const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
+    return bridge.call3(bridge.context, fn_raw, arg0, arg1, arg2);
+}
+
+fn jitCall4(fn_raw: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64) callconv(.c) u64 {
+    const bridge = g_call_bridge orelse std.debug.panic("jit call bridge not set", .{});
+    return bridge.call4(bridge.context, fn_raw, arg0, arg1, arg2, arg3);
 }
 
 fn jitToFloat(v: Value) ?f64 {
@@ -502,6 +541,41 @@ fn jitPosition(item_raw: u64, seq_raw: u64) callconv(.c) u64 {
         },
         else => return Value.nil.raw,
     }
+}
+
+fn jitLength(seq_raw: u64) callconv(.c) u64 {
+    const seq = Value{ .raw = seq_raw };
+    return switch (seq.typeKind()) {
+        .nil => Value.makeFixnum(0).raw,
+        .cons => blk: {
+            var len: i64 = 0;
+            var curr = seq;
+            while (curr.isCons()) {
+                len += 1;
+                curr = curr.toPtr(runtime.Cons).cdr;
+            }
+            break :blk Value.makeFixnum(len).raw;
+        },
+        .vector => blk: {
+            const vec = seq.toPtr(runtime.Vector);
+            break :blk Value.makeFixnum(@intCast(vec.length)).raw;
+        },
+        .string => blk: {
+            const str = seq.toPtr(runtime.String);
+            break :blk Value.makeFixnum(@intCast(str.length)).raw;
+        },
+        .string32 => blk: {
+            const str32 = seq.toPtr(runtime.String32);
+            break :blk Value.makeFixnum(@intCast(str32.length)).raw;
+        },
+        .array => blk: {
+            const arr = seq.toPtr(runtime.Array);
+            if (arr.rank != 1) break :blk Value.nil.raw;
+            if (arr.total_size > std.math.maxInt(i64)) break :blk Value.nil.raw;
+            break :blk Value.makeFixnum(@intCast(arr.total_size)).raw;
+        },
+        else => Value.nil.raw,
+    };
 }
 
 fn jitFormatSimple(dest_raw: u64, control_raw: u64, arg_raw: u64, argc_raw: u64) callconv(.c) u64 {
@@ -970,6 +1044,9 @@ pub const IrTranslator = struct {
     /// Used for cross-function calls via call_indirect.
     known_fns: ?*const std.StringHashMap(KnownFn) = null,
 
+    /// Maps IR node pointer -> GC-rooted literal slot for pointer literals.
+    literal_roots: ?*const LiteralRoots = null,
+
     /// Whether the function has cross-function calls (non-self call_indirect).
     has_cross_calls: bool = false,
 
@@ -1088,12 +1165,40 @@ pub const IrTranslator = struct {
         return result;
     }
 
+    fn hasLiteralRoot(literal_roots: ?*const LiteralRoots, ir: *const Ir) bool {
+        if (literal_roots) |roots| {
+            return roots.contains(@intFromPtr(ir));
+        }
+        return false;
+    }
+
+    fn litNeedsRoot(v: Value) bool {
+        return v.isPointer() and !v.isMagicSymbol();
+    }
+
     /// Fast check: can we translate all nodes in this IR tree?
     /// Returns false if any unsupported node is found.
     pub fn canTranslate(ir: *const Ir) bool {
+        return canTranslateWithLiteralRoots(ir, null);
+    }
+
+    pub fn canTranslateWithLiteralRoots(ir: *const Ir, literal_roots: ?*const LiteralRoots) bool {
         return switch (ir.*) {
-            .lit, .@"var", .global_ref => true,
-            .fixnum_add, .fixnum_sub, .add, .sub => |op| canTranslate(op.left) and canTranslate(op.right),
+            .lit => |v| blk: {
+                if (!litNeedsRoot(v)) break :blk true;
+                if (literal_roots == null) break :blk true;
+                break :blk hasLiteralRoot(literal_roots, ir);
+            },
+            .@"var", .global_ref => true,
+            .lambda => |lam| blk: {
+                if (!hasLiteralRoot(literal_roots, ir)) break :blk false;
+                if (lam.captures.len != 0) break :blk false;
+                if (lam.optional_params.len != 0) break :blk false;
+                if (lam.key_params.len != 0) break :blk false;
+                if (lam.rest_param != null) break :blk false;
+                break :blk canTranslateWithLiteralRoots(lam.body, literal_roots);
+            },
+            .fixnum_add, .fixnum_sub, .add, .sub => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
             .fixnum_le,
             .fixnum_lt,
             .fixnum_gt,
@@ -1104,71 +1209,68 @@ pub const IrTranslator = struct {
             .gt,
             .ge,
             .num_eq,
-            => |op| canTranslate(op.left) and canTranslate(op.right),
-            .@"if" => |f| canTranslate(f.cond) and canTranslate(f.then_branch) and canTranslate(f.else_branch),
-            .block => |b| canTranslate(b.body),
+            => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
+            .@"if" => |f| canTranslateWithLiteralRoots(f.cond, literal_roots) and canTranslateWithLiteralRoots(f.then_branch, literal_roots) and canTranslateWithLiteralRoots(f.else_branch, literal_roots),
+            .block => |b| canTranslateWithLiteralRoots(b.body, literal_roots),
             .progn => |exprs| {
-                for (exprs) |e| if (!canTranslate(e)) return false;
+                for (exprs) |e| if (!canTranslateWithLiteralRoots(e, literal_roots)) return false;
                 return true;
             },
             .let => |l| {
-                for (l.bindings) |b| if (!canTranslate(b.value)) return false;
-                return canTranslate(l.body);
+                for (l.bindings) |b| if (!canTranslateWithLiteralRoots(b.value, literal_roots)) return false;
+                return canTranslateWithLiteralRoots(l.body, literal_roots);
             },
-            .set => |s| canTranslate(s.value),
-            .loop => |l| canTranslate(l.cond) and canTranslate(l.body),
-            .assert_fixnum => |op| canTranslate(op.operand),
+            .set => |s| canTranslateWithLiteralRoots(s.value, literal_roots),
+            .loop => |l| canTranslateWithLiteralRoots(l.cond, literal_roots) and canTranslateWithLiteralRoots(l.body, literal_roots),
+            .assert_fixnum => |op| canTranslateWithLiteralRoots(op.operand, literal_roots),
             .call => |c| {
-                // Only self-recursive calls are supported; cross-function calls are not yet.
-                // canTranslate is called without fn_name context, so we can't check self-call here.
-                // We allow all calls to pass canTranslate and handle non-self calls gracefully in translate.
-                if (!canTranslate(c.func)) return false;
-                for (c.args) |a| if (!canTranslate(a)) return false;
+                if (!canTranslateWithLiteralRoots(c.func, literal_roots)) return false;
+                for (c.args) |a| if (!canTranslateWithLiteralRoots(a, literal_roots)) return false;
                 return true;
             },
             .tailcall => |tc| {
-                if (!canTranslate(tc.func)) return false;
-                for (tc.args) |a| if (!canTranslate(a)) return false;
+                if (!canTranslateWithLiteralRoots(tc.func, literal_roots)) return false;
+                for (tc.args) |a| if (!canTranslateWithLiteralRoots(a, literal_roots)) return false;
                 return true;
             },
-            .fixnum_mul => |op| canTranslate(op.left) and canTranslate(op.right),
-            .mul => |op| canTranslate(op.left) and canTranslate(op.right),
-            .eq => |op| canTranslate(op.left) and canTranslate(op.right),
+            .fixnum_mul => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
+            .mul => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
+            .eq => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
             // List / predicate operations (inline, no heap access needed)
-            .nilp, .not, .consp, .abs => |op| canTranslate(op.operand),
-            .zerop, .oddp, .evenp => |op| canTranslate(op.operand),
-            .car, .cdr, .unsafe_car, .unsafe_cdr => |op| canTranslate(op.operand),
-            .length => |op| canTranslate(op.operand),
-            .cons => |op| canTranslate(op.left) and canTranslate(op.right),
-            .sqrt, .round, .intern => |op| canTranslate(op.operand),
-            .hash_count => |h| canTranslate(h.operand),
+            .nilp, .not, .consp, .abs => |op| canTranslateWithLiteralRoots(op.operand, literal_roots),
+            .zerop, .oddp, .evenp => |op| canTranslateWithLiteralRoots(op.operand, literal_roots),
+            .car, .cdr, .unsafe_car, .unsafe_cdr => |op| canTranslateWithLiteralRoots(op.operand, literal_roots),
+            .length => |op| canTranslateWithLiteralRoots(op.operand, literal_roots),
+            .cons => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
+            .sqrt, .round, .intern => |op| canTranslateWithLiteralRoots(op.operand, literal_roots),
+            .hash_count => |h| canTranslateWithLiteralRoots(h.operand, literal_roots),
             .make_hash => true,
-            .hash_get => |h| canTranslate(h.table) and canTranslate(h.key) and
-                (if (h.default) |d| canTranslate(d) else true),
-            .hash_set => |h| canTranslate(h.table) and canTranslate(h.key) and canTranslate(h.value),
+            .hash_get => |h| canTranslateWithLiteralRoots(h.table, literal_roots) and canTranslateWithLiteralRoots(h.key, literal_roots) and
+                (if (h.default) |d| canTranslateWithLiteralRoots(d, literal_roots) else true),
+            .hash_set => |h| canTranslateWithLiteralRoots(h.table, literal_roots) and canTranslateWithLiteralRoots(h.key, literal_roots) and canTranslateWithLiteralRoots(h.value, literal_roots),
             .format => |f| blk: {
                 if (f.args.len > 1) break :blk false;
-                if (!canTranslate(f.dest) or !canTranslate(f.control)) break :blk false;
-                for (f.args) |a| if (!canTranslate(a)) break :blk false;
+                if (!canTranslateWithLiteralRoots(f.dest, literal_roots) or !canTranslateWithLiteralRoots(f.control, literal_roots)) break :blk false;
+                for (f.args) |a| if (!canTranslateWithLiteralRoots(a, literal_roots)) break :blk false;
                 break :blk true;
             },
-            .make_string => |op| canTranslate(op.left) and canTranslate(op.right),
-            .str_set => |s| canTranslate(s.str) and canTranslate(s.index) and canTranslate(s.value),
-            .position, .position_eq, .position_equal => |op| canTranslate(op.left) and canTranslate(op.right),
+            .make_string => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
+            .str_set => |s| canTranslateWithLiteralRoots(s.str, literal_roots) and canTranslateWithLiteralRoots(s.index, literal_roots) and canTranslateWithLiteralRoots(s.value, literal_roots),
+            .position, .position_eq, .position_equal => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
             .arr_new => |a| blk: {
                 if (a.dimensions.len != 1) break :blk false;
-                if (!canTranslate(a.dimensions[0])) break :blk false;
-                if (a.init) |v| break :blk canTranslate(v);
+                if (!canTranslateWithLiteralRoots(a.dimensions[0], literal_roots)) break :blk false;
+                if (a.init) |v| break :blk canTranslateWithLiteralRoots(v, literal_roots);
                 break :blk true;
             },
             .arr_ref => |a| blk: {
                 if (a.subscripts.len != 1) break :blk false;
-                break :blk canTranslate(a.array) and canTranslate(a.subscripts[0]);
+                break :blk canTranslateWithLiteralRoots(a.array, literal_roots) and canTranslateWithLiteralRoots(a.subscripts[0], literal_roots);
             },
-            .logand => |op| canTranslate(op.left) and canTranslate(op.right),
-            .mod, .rem => |op| canTranslate(op.left) and canTranslate(op.right),
-            .append => |op| canTranslate(op.left) and canTranslate(op.right),
-            .assoc => |op| canTranslate(op.left) and canTranslate(op.right),
+            .logand => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
+            .mod, .rem => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
+            .append => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
+            .assoc => |op| canTranslateWithLiteralRoots(op.left, literal_roots) and canTranslateWithLiteralRoots(op.right, literal_roots),
             else => false,
         };
     }
@@ -1176,8 +1278,26 @@ pub const IrTranslator = struct {
     /// Return the first unsupported node tag in depth-first order.
     /// Useful for JIT coverage diagnostics when canTranslate() rejects a body.
     pub fn firstUnsupportedTag(ir: *const Ir) ?std.meta.Tag(Ir) {
+        return firstUnsupportedTagWithLiteralRoots(ir, null);
+    }
+
+    pub fn firstUnsupportedTagWithLiteralRoots(ir: *const Ir, literal_roots: ?*const LiteralRoots) ?std.meta.Tag(Ir) {
         return switch (ir.*) {
-            .lit, .@"var", .global_ref => null,
+            .lit => |v| blk: {
+                if (!litNeedsRoot(v)) break :blk null;
+                if (literal_roots == null) break :blk null;
+                if (!hasLiteralRoot(literal_roots, ir)) break :blk .lit;
+                break :blk null;
+            },
+            .@"var", .global_ref => null,
+            .lambda => |lam| blk: {
+                if (!hasLiteralRoot(literal_roots, ir)) break :blk .lambda;
+                if (lam.captures.len != 0) break :blk .lambda;
+                if (lam.optional_params.len != 0) break :blk .lambda;
+                if (lam.key_params.len != 0) break :blk .lambda;
+                if (lam.rest_param != null) break :blk .lambda;
+                break :blk firstUnsupportedTagWithLiteralRoots(lam.body, literal_roots);
+            },
             .fixnum_add,
             .fixnum_sub,
             .add,
@@ -1201,28 +1321,28 @@ pub const IrTranslator = struct {
             .rem,
             .append,
             .assoc,
-            => |op| firstUnsupportedTag(op.left) orelse firstUnsupportedTag(op.right),
-            .@"if" => |f| firstUnsupportedTag(f.cond) orelse firstUnsupportedTag(f.then_branch) orelse firstUnsupportedTag(f.else_branch),
-            .block => |b| firstUnsupportedTag(b.body),
+            => |op| firstUnsupportedTagWithLiteralRoots(op.left, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(op.right, literal_roots),
+            .@"if" => |f| firstUnsupportedTagWithLiteralRoots(f.cond, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(f.then_branch, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(f.else_branch, literal_roots),
+            .block => |b| firstUnsupportedTagWithLiteralRoots(b.body, literal_roots),
             .progn => |exprs| blk: {
-                for (exprs) |e| if (firstUnsupportedTag(e)) |tag| break :blk tag;
+                for (exprs) |e| if (firstUnsupportedTagWithLiteralRoots(e, literal_roots)) |tag| break :blk tag;
                 break :blk null;
             },
             .let => |l| blk: {
-                for (l.bindings) |b| if (firstUnsupportedTag(b.value)) |tag| break :blk tag;
-                break :blk firstUnsupportedTag(l.body);
+                for (l.bindings) |b| if (firstUnsupportedTagWithLiteralRoots(b.value, literal_roots)) |tag| break :blk tag;
+                break :blk firstUnsupportedTagWithLiteralRoots(l.body, literal_roots);
             },
-            .set => |s| firstUnsupportedTag(s.value),
-            .loop => |l| firstUnsupportedTag(l.cond) orelse firstUnsupportedTag(l.body),
-            .assert_fixnum => |op| firstUnsupportedTag(op.operand),
+            .set => |s| firstUnsupportedTagWithLiteralRoots(s.value, literal_roots),
+            .loop => |l| firstUnsupportedTagWithLiteralRoots(l.cond, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(l.body, literal_roots),
+            .assert_fixnum => |op| firstUnsupportedTagWithLiteralRoots(op.operand, literal_roots),
             .call => |c| blk: {
-                if (firstUnsupportedTag(c.func)) |tag| break :blk tag;
-                for (c.args) |a| if (firstUnsupportedTag(a)) |tag| break :blk tag;
+                if (firstUnsupportedTagWithLiteralRoots(c.func, literal_roots)) |tag| break :blk tag;
+                for (c.args) |a| if (firstUnsupportedTagWithLiteralRoots(a, literal_roots)) |tag| break :blk tag;
                 break :blk null;
             },
             .tailcall => |tc| blk: {
-                if (firstUnsupportedTag(tc.func)) |tag| break :blk tag;
-                for (tc.args) |a| if (firstUnsupportedTag(a)) |tag| break :blk tag;
+                if (firstUnsupportedTagWithLiteralRoots(tc.func, literal_roots)) |tag| break :blk tag;
+                for (tc.args) |a| if (firstUnsupportedTagWithLiteralRoots(a, literal_roots)) |tag| break :blk tag;
                 break :blk null;
             },
             .nilp,
@@ -1240,32 +1360,32 @@ pub const IrTranslator = struct {
             .sqrt,
             .round,
             .intern,
-            => |op| firstUnsupportedTag(op.operand),
-            .hash_count => |h| firstUnsupportedTag(h.operand),
+            => |op| firstUnsupportedTagWithLiteralRoots(op.operand, literal_roots),
+            .hash_count => |h| firstUnsupportedTagWithLiteralRoots(h.operand, literal_roots),
             .make_hash => null,
-            .hash_get => |h| firstUnsupportedTag(h.table) orelse
-                firstUnsupportedTag(h.key) orelse
-                (if (h.default) |d| firstUnsupportedTag(d) else null),
-            .hash_set => |h| firstUnsupportedTag(h.table) orelse firstUnsupportedTag(h.key) orelse firstUnsupportedTag(h.value),
+            .hash_get => |h| firstUnsupportedTagWithLiteralRoots(h.table, literal_roots) orelse
+                firstUnsupportedTagWithLiteralRoots(h.key, literal_roots) orelse
+                (if (h.default) |d| firstUnsupportedTagWithLiteralRoots(d, literal_roots) else null),
+            .hash_set => |h| firstUnsupportedTagWithLiteralRoots(h.table, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(h.key, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(h.value, literal_roots),
             .format => |f| blk: {
                 if (f.args.len > 1) break :blk .format;
-                if (firstUnsupportedTag(f.dest)) |tag| break :blk tag;
-                if (firstUnsupportedTag(f.control)) |tag| break :blk tag;
-                for (f.args) |a| if (firstUnsupportedTag(a)) |tag| break :blk tag;
+                if (firstUnsupportedTagWithLiteralRoots(f.dest, literal_roots)) |tag| break :blk tag;
+                if (firstUnsupportedTagWithLiteralRoots(f.control, literal_roots)) |tag| break :blk tag;
+                for (f.args) |a| if (firstUnsupportedTagWithLiteralRoots(a, literal_roots)) |tag| break :blk tag;
                 break :blk null;
             },
-            .make_string => |op| firstUnsupportedTag(op.left) orelse firstUnsupportedTag(op.right),
-            .str_set => |s| firstUnsupportedTag(s.str) orelse firstUnsupportedTag(s.index) orelse firstUnsupportedTag(s.value),
-            .position, .position_eq, .position_equal => |op| firstUnsupportedTag(op.left) orelse firstUnsupportedTag(op.right),
+            .make_string => |op| firstUnsupportedTagWithLiteralRoots(op.left, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(op.right, literal_roots),
+            .str_set => |s| firstUnsupportedTagWithLiteralRoots(s.str, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(s.index, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(s.value, literal_roots),
+            .position, .position_eq, .position_equal => |op| firstUnsupportedTagWithLiteralRoots(op.left, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(op.right, literal_roots),
             .arr_new => |a| blk: {
                 if (a.dimensions.len != 1) break :blk .arr_new;
-                if (firstUnsupportedTag(a.dimensions[0])) |tag| break :blk tag;
-                if (a.init) |v| break :blk firstUnsupportedTag(v);
+                if (firstUnsupportedTagWithLiteralRoots(a.dimensions[0], literal_roots)) |tag| break :blk tag;
+                if (a.init) |v| break :blk firstUnsupportedTagWithLiteralRoots(v, literal_roots);
                 break :blk null;
             },
             .arr_ref => |a| blk: {
                 if (a.subscripts.len != 1) break :blk .arr_ref;
-                break :blk firstUnsupportedTag(a.array) orelse firstUnsupportedTag(a.subscripts[0]);
+                break :blk firstUnsupportedTagWithLiteralRoots(a.array, literal_roots) orelse firstUnsupportedTagWithLiteralRoots(a.subscripts[0], literal_roots);
             },
             else => std.meta.activeTag(ir.*),
         };
@@ -1274,7 +1394,7 @@ pub const IrTranslator = struct {
     /// Translate a Habu IR node to Hoist SSA, returning the SSA value produced.
     pub fn translate(self: *IrTranslator, ir: *const Ir) anyerror!HoistValue {
         return switch (ir.*) {
-            .lit => |v| try self.translateLit(v),
+            .lit => |v| try self.translateLit(ir, v),
             .@"var" => |v| self.translateVar(v),
             // Specialized fixnum ops (from type specialize pass)
             .fixnum_add => |op| try self.translateFixnumAdd(op.left, op.right),
@@ -1302,7 +1422,8 @@ pub const IrTranslator = struct {
             .set => |set_node| try self.translateSet(set_node.index, set_node.value),
             .loop => |loop_node| try self.translateLoop(loop_node.cond, loop_node.body),
             .assert_fixnum => |op| try self.translate(op.operand), // At safety 0, just pass through
-            .global_ref => |_| try self.translateLit(Value.nil), // TODO: general global refs
+            .global_ref => |_| try self.translateLit(ir, Value.nil), // TODO: general global refs
+            .lambda => |_| try self.translateLambdaLiteral(ir),
             // List / predicate operations (inline, no heap access needed)
             .nilp => |op| try self.translateNilp(op.operand),
             .not => |op| try self.translateNot(op.operand),
@@ -1345,11 +1466,25 @@ pub const IrTranslator = struct {
         };
     }
 
-    fn translateLit(self: *IrTranslator, val: Value) anyerror!HoistValue {
+    fn translateLit(self: *IrTranslator, ir: *const Ir, val: Value) anyerror!HoistValue {
         if (self.untagged and val.isFixnum()) {
             return try self.cachedIconst(val.toFixnum());
         }
+        if (litNeedsRoot(val)) {
+            if (self.literal_roots) |roots| {
+                const slot = roots.get(@intFromPtr(ir)) orelse return error.UnsupportedIrNode;
+                const slot_addr = try self.cachedIconst(@as(i64, @bitCast(@intFromPtr(slot))));
+                return try self.b.load(I64, slot_addr, MemFlags.default());
+            }
+        }
         return try self.cachedIconst(@as(i64, @bitCast(val.raw)));
+    }
+
+    fn translateLambdaLiteral(self: *IrTranslator, ir: *const Ir) anyerror!HoistValue {
+        const roots = self.literal_roots orelse return error.UnsupportedIrNode;
+        const slot = roots.get(@intFromPtr(ir)) orelse return error.UnsupportedIrNode;
+        const slot_addr = try self.cachedIconst(@as(i64, @bitCast(@intFromPtr(slot))));
+        return try self.b.load(I64, slot_addr, MemFlags.default());
     }
 
     fn translateVar(self: *IrTranslator, v: anytype) HoistValue {
@@ -1971,7 +2106,28 @@ pub const IrTranslator = struct {
             }
         }
 
-        return error.UnsupportedCallTarget;
+        return try self.translateGenericCall(func_ir, args);
+    }
+
+    fn translateGenericCall(self: *IrTranslator, func_ir: *const Ir, args: []const *const Ir) anyerror!HoistValue {
+        if (args.len > 4) return error.UnsupportedCallTarget;
+
+        var call_args: [5]HoistValue = undefined;
+        call_args[0] = try self.translate(func_ir);
+        for (args, 0..) |arg, i| {
+            call_args[i + 1] = try self.translate(arg);
+        }
+
+        const helper_ptr: u64 = switch (args.len) {
+            0 => @intFromPtr(@as(*const anyopaque, @ptrCast(&jitCall0))),
+            1 => @intFromPtr(@as(*const anyopaque, @ptrCast(&jitCall1))),
+            2 => @intFromPtr(@as(*const anyopaque, @ptrCast(&jitCall2))),
+            3 => @intFromPtr(@as(*const anyopaque, @ptrCast(&jitCall3))),
+            4 => @intFromPtr(@as(*const anyopaque, @ptrCast(&jitCall4))),
+            else => unreachable,
+        };
+        const fn_ptr = try self.b.iconst(I64, @as(i64, @bitCast(helper_ptr)));
+        return try self.emitIndirectCallValues(fn_ptr, call_args[0 .. args.len + 1]);
     }
 
     fn translateCrossCall(self: *IrTranslator, known: KnownFn, args: []const *const Ir) anyerror!HoistValue {
@@ -3115,57 +3271,11 @@ pub const IrTranslator = struct {
         return try self.emitPrimitiveCallValues(prim_ptr, &.{ item, seq });
     }
 
-    /// length: count cons cells by walking cdr chain.
-    /// Emits a loop: count=0, ptr=list; while ptr!=nil: count++, ptr=cdr(ptr); return tagged(count)
+    /// Generic sequence length helper for list/vector/string/string32/1d-array.
     fn translateLength(self: *IrTranslator, operand_ir: *const Ir) anyerror!HoistValue {
-        const list_val = try self.translate(operand_ir);
-
-        // Create blocks: header (loop test), body (increment), exit (return count)
-        const header = try self.func.dfg.blocks.add();
-        const body = try self.func.dfg.blocks.add();
-        const exit = try self.func.dfg.blocks.add();
-
-        try self.func.layout.appendBlock(header);
-        try self.func.layout.appendBlock(body);
-        try self.func.layout.appendBlock(exit);
-
-        // Header block params: ptr (I64), count (I64)
-        const ptr_param = try self.func.dfg.appendBlockParam(header, I64);
-        const count_param = try self.func.dfg.appendBlockParam(header, I64);
-
-        // Exit block param for final count
-        const exit_count = try self.func.dfg.appendBlockParam(exit, I64);
-
-        // Jump from current block to header with initial values
-        const zero = try self.cachedIconst(0);
-        const tagged_zero = try self.cachedIconst(1); // tagged 0
-        try self.b.jumpArgs(header, &.{ list_val, tagged_zero });
-
-        // Header: test if ptr is nil (== 0)
-        self.switchBlock(header);
-        const is_nil = try self.b.icmp(I8, IntCC.eq, ptr_param, zero);
-        // brif to exit passes count via trampoline (brifArgs broken)
-        const exit_tramp = try self.func.dfg.blocks.add();
-        try self.func.layout.appendBlock(exit_tramp);
-        try self.b.brif(is_nil, exit_tramp, body);
-
-        // Exit trampoline: jump to exit with current count
-        self.switchBlock(exit_tramp);
-        try self.b.jumpArgs(exit, &.{count_param});
-
-        // Body: count += 2 (tagged increment), ptr = cdr(ptr)
-        self.switchBlock(body);
-        const two = try self.cachedIconst(2); // tagged 1 increment = 2 in raw
-        const new_count = try self.b.iadd(I64, count_param, two);
-        // cdr is at offset 8 from cons pointer (cons tag is 0, raw = pointer)
-        const eight = try self.cachedIconst(8);
-        const cdr_addr = try self.b.iadd(I64, ptr_param, eight);
-        const next_ptr = try self.b.load(I64, cdr_addr, hoist.memflags.MemFlags.heap());
-        try self.b.jumpArgs(header, &.{ next_ptr, new_count });
-
-        // Continue in exit block — return count
-        self.switchBlock(exit);
-        return exit_count;
+        const seq = try self.translate(operand_ir);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitLength)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &.{seq});
     }
 };
 
@@ -3733,30 +3843,6 @@ fn detectLoops(body: *const Ir) bool {
     }{});
 }
 
-pub fn isCallResolvable(func_ir: *const Ir, self_name: []const u8, known: *const std.StringHashMap(void)) bool {
-    if (isCallTargetSelf(func_ir, self_name)) return true;
-    if (getCallTargetName(func_ir)) |target_name| {
-        // Check known JIT-compiled functions
-        if (known.get(target_name) != null) return true;
-        // Check qualified name: "PKG:SYM" might match known "SYM" or vice versa
-        if (std.mem.indexOfScalar(u8, target_name, ':')) |colon_pos| {
-            const short_name = target_name[colon_pos + 1 ..];
-            if (known.get(short_name) != null) return true;
-        }
-        // Check if any known name ends with ":TARGET_NAME"
-        var iter = known.iterator();
-        while (iter.next()) |entry| {
-            const kn = entry.key_ptr.*;
-            if (std.mem.indexOfScalar(u8, kn, ':')) |colon_pos| {
-                if (std.mem.eql(u8, kn[colon_pos + 1 ..], target_name)) return true;
-            }
-        }
-        // Check known runtime primitives (gcd, nreverse, append, assoc, etc.)
-        if (getJitPrimitivePtr(target_name) != null) return true;
-    }
-    return false;
-}
-
 /// Extract the target function name from a call's func IR node.
 fn getCallTargetName(func_ir: *const Ir) ?[]const u8 {
     return switch (func_ir.*) {
@@ -3807,7 +3893,7 @@ pub fn compileIr(
     ir: *const Ir,
     name: []const u8,
 ) !CompiledFn {
-    return compileIrWithKnownFns(allocator, ir, name, null);
+    return compileIrWithKnownFnsAndLiteralRoots(allocator, ir, name, null, null);
 }
 
 pub fn compileIrWithKnownFns(
@@ -3816,13 +3902,23 @@ pub fn compileIrWithKnownFns(
     name: []const u8,
     known_fns: ?*const std.StringHashMap(KnownFn),
 ) !CompiledFn {
+    return compileIrWithKnownFnsAndLiteralRoots(allocator, ir, name, known_fns, null);
+}
+
+pub fn compileIrWithKnownFnsAndLiteralRoots(
+    allocator: std.mem.Allocator,
+    ir: *const Ir,
+    name: []const u8,
+    known_fns: ?*const std.StringHashMap(KnownFn),
+    literal_roots: ?*const LiteralRoots,
+) !CompiledFn {
     const lambda = switch (ir.*) {
         .lambda => |l| l,
         else => return error.ExpectedLambda,
     };
 
     // Fast reject: check if all IR nodes are supported before allocating
-    if (!IrTranslator.canTranslate(lambda.body)) return error.UnsupportedIrNode;
+    if (!IrTranslator.canTranslateWithLiteralRoots(lambda.body, literal_roots)) return error.UnsupportedIrNode;
 
     const arity: u32 = @intCast(lambda.params.len);
 
@@ -3860,6 +3956,7 @@ pub fn compileIrWithKnownFns(
 
     translator.fn_name = name;
     translator.known_fns = known_fns;
+    translator.literal_roots = literal_roots;
     translator.has_cross_calls = containsCons(lambda.body) or
         containsHelperCalls(lambda.body) or
         containsPrimitiveCalls(lambda.body, name) or
@@ -6201,6 +6298,45 @@ test "hoist IR translator: non-recursive if" {
     try testing.expectEqual(@as(i64, 3), compiled.call1(3));
     // n=5 (tagged=11): 5>1 → return 42 (tagged=85)
     try testing.expectEqual(@as(i64, 85), compiled.call1(11));
+}
+
+test "hoist IR translator: pointer literal requires root when provided" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var heap = try runtime.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+    const sym = try heap.intern("jit-literal-symbol");
+
+    const lit_sym = try alloc.create(Ir);
+    lit_sym.* = .{ .lit = sym };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = &.{},
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = lit_sym,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    var roots = LiteralRoots.init(testing.allocator);
+    defer roots.deinit();
+    try testing.expect(!IrTranslator.canTranslateWithLiteralRoots(lambda.lambda.body, &roots));
+
+    const slot = try testing.allocator.create(Value);
+    defer testing.allocator.destroy(slot);
+    slot.* = sym;
+    try roots.put(@intFromPtr(lit_sym), slot);
+    try testing.expect(IrTranslator.canTranslateWithLiteralRoots(lambda.lambda.body, &roots));
+
+    var compiled = try compileIrWithKnownFnsAndLiteralRoots(testing.allocator, lambda, "jit_lit_sym", null, &roots);
+    defer compiled.deinit();
+    try testing.expectEqual(@as(i64, @bitCast(sym.raw)), compiled.call0());
 }
 
 test "hoist IR translator: nested if in expression" {
