@@ -92,7 +92,7 @@
         - [x] `habu-los-reuse-and-ca77f709` LOS: reuse and reclamation path. Depends on `habu-los-threshold-auto-6d2a6cc1`.
         - [x] `habu-los-validate-rss-db6cebaf` LOS: validate RSS/pause impact. Depends on `habu-los-reuse-and-ca77f709`.
       - [ ] `habu-reduce-barrier-and-254725b9` Reduce barrier/safepoint mutator overhead in VM/JIT hot paths. Depends on `habu-improve-los-policy-bfcc62a6`.
-        - [ ] `habu-barrier-profile-mutator-812522db` Barrier: profile mutator overhead.
+        - [x] `habu-barrier-profile-mutator-812522db` Barrier: profile mutator overhead.
         - [ ] `habu-barrier-inline-hot-4222c4ad` Barrier: inline hot fast paths. Depends on `habu-barrier-profile-mutator-812522db`.
         - [ ] `habu-safepoint-batch-polling-4c6aa8b1` Safepoint: batch polling strategy. Depends on `habu-barrier-inline-hot-4222c4ad`.
       - [ ] `habu-create-cross-runtime-056102b6` Create cross-runtime GC benchmark pack for parity validation. Depends on `habu-reduce-barrier-and-254725b9`.

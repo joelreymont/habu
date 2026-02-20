@@ -1,9 +1,11 @@
 ---
 title: Improve LOS policy and reuse
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-02-20T08:55:19.486227+01:00"
+created-at: "\"2026-02-20T08:55:19.486227+01:00\""
+closed-at: "2026-02-20T15:26:17.716215+01:00"
+close-reason: All LOS child dots completed
 blocks:
   - habu-improve-tenured-free-e53ce37d
 ---

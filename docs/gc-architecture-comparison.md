@@ -148,6 +148,8 @@ Measured baseline used for this ranking:
   - Copied bytes per GC `8,396,576` (roughly full live set each cycle).
 - `tools/perf-loop --json --iters=1 --scale=1`
   - Major remaining end-to-end bottlenecks are still workload dispatch/JIT paths, so GC changes must target pause/RSS first and avoid regressing CAS throughput.
+- `tools/perf-loop --json --iters=1 --scale=1 --profile-mutator`
+  - Enables `HABU_PROFILE_MUTATOR=1` during Maxima workload runs and emits `mutator_profile` (`wb_*`, `safepoint_*`) to isolate barrier/safepoint overhead in VM vs JIT paths.
 
 | Rank | Gap | Measured signal | Impact | Risk | Priority | Execution dot(s) |
 |---|---|---|---:|---:|---:|---|

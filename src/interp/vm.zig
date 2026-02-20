@@ -58,6 +58,12 @@ const halt_chunk = Chunk{
     .num_locals = 0,
 };
 
+fn elapsedNsSince(start_ns: i128) u64 {
+    const now_ns = std.time.nanoTimestamp();
+    if (now_ns <= start_ns) return 0;
+    return @intCast(now_ns - start_ns);
+}
+
 /// Catch frame for exception handling
 pub const CatchFrame = struct {
     /// Tag value to match against
@@ -1412,7 +1418,13 @@ pub const Vm = struct {
     }
 
     fn collectIfDebt(self: *Vm, extra_roots: []Value) !void {
-        if (!self.heap.shouldCollectDebtNow()) return;
+        const profile = self.heap.profileMutatorEnabled();
+        const start_ns: i128 = if (profile) std.time.nanoTimestamp() else 0;
+        const should_collect = self.heap.shouldCollectDebtNow();
+        if (profile) {
+            self.heap.noteSafepointVm(@intCast(elapsedNsSince(start_ns)));
+        }
+        if (!should_collect) return;
         _ = try self.collectGarbageExtra(extra_roots);
     }
 

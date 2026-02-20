@@ -75,17 +75,35 @@ fn jitConsRefreshCache() void {
     }
 }
 
+fn elapsedNsSince(start_ns: i128) u64 {
+    const now_ns = std.time.nanoTimestamp();
+    if (now_ns <= start_ns) return 0;
+    return @intCast(now_ns - start_ns);
+}
+
 fn jitSafepointBeforeAlloc() void {
     if (g_heap) |heap| {
+        const profile = heap.profileMutatorEnabled();
+        const start_ns: i128 = if (profile) std.time.nanoTimestamp() else 0;
+
         // Keep alloc cache coherent before any slow-path allocator/GC entry.
         g_alloc_ptr = @intFromPtr(heap.alloc_ptr);
         g_alloc_end = @intFromPtr(heap.from_end);
+
+        if (profile) {
+            heap.noteSafepointJit(elapsedNsSince(start_ns));
+        }
     }
 }
 
 fn jitWriteBarrier(owner_raw: u64, stored_raw: u64) void {
     const heap = g_heap orelse return;
+    const profile = heap.profileMutatorEnabled();
+    const start_ns: i128 = if (profile) std.time.nanoTimestamp() else 0;
     heap.writeBarrier(Value{ .raw = owner_raw }, Value{ .raw = stored_raw });
+    if (profile) {
+        heap.noteJitWriteBarrier(elapsedNsSince(start_ns));
+    }
 }
 
 /// Takes (cdr, car) order to avoid register swap when nesting cons calls.

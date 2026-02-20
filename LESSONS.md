@@ -67,6 +67,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Rewinding LOS bump-pointer from coalesced tail spans (`src/runtime/heap.zig:1420`, `src/runtime/heap.zig:1501`) reclaimed top-of-LOS space immediately and reduced LOS reuse latency on subsequent allocations.
 - Emitting LOS policy + live-bytes counters in Maxima workload GC snapshots (`bench/maxima_workload.zig:50`, `bench/maxima_workload.zig:112`, `bench/maxima_workload.zig:629`) made real-workload LOS behavior inspectable without ad-hoc traces.
 - Extending `tools/gc-compare` Maxima parsing with LOS bounds checks (`tools/gc-compare:589`, `tools/gc-compare:631`, `tools/gc-compare:833`) provided one-command verification that LOS policy remains in-range under `--with-maxima`.
+- Adding opt-in mutator profiling counters (`HABU_PROFILE_MUTATOR`) for write barrier and safepoint paths (`src/runtime/heap.zig:527`, `src/interp/vm.zig:1420`, `src/jit/backend.zig:82`) produced direct VM-vs-JIT overhead telemetry without changing default hot-path behavior.
+- Wiring `tools/perf-loop --profile-mutator` to export/load mutator profile snapshots (`tools/perf-loop:132`, `tools/perf-loop:392`, `tools/perf-loop:457`) made barrier/safepoint overhead part of the standard optimization loop.
 
 ### Did Not Work
 - Assuming a fixed `MAJOR_SWEEP_BUDGET`-sized fixture would keep major cycle active was brittle; root ordering/object size can make the cycle complete in one pass, so barrier tests need larger deterministic workloads.
@@ -95,6 +97,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Using cumulative allocation histograms directly for LOS adaptation was wrong; control decisions must use per-cycle deltas (`src/runtime/gc.zig:244`) or thresholds drift from stale historical bias.
 - Asserting absolute LOS object positions in tests was brittle because low thresholds can route bootstrap allocations into LOS; capture/mark target spans explicitly and assert reuse by span address (`src/runtime/heap.zig:3490`, `src/runtime/heap.zig:3521`).
 - Looking only at Maxima run-phase GC counters is insufficient for LOS validation when run-phase alloc pressure is low (`maxima_gc_run_count` may be 0); include load-phase LOS telemetry in validation checks (`tools/gc-compare:589`, `tools/gc-compare:839`).
+- Running `zig test src/interp/vm.zig` directly is invalid in this repo layout (relative imports outside module path); validate VM changes through build steps/bench paths instead.
 
 ## Session Notes (2026-02-18)
 

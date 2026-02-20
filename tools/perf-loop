@@ -32,6 +32,11 @@ def parse_args():
     p.add_argument("--gc-live-mb", type=int, default=8, help="gc-compare live set")
     p.add_argument("--gc-heap-mb", type=int, default=64, help="gc-compare habu heap")
     p.add_argument(
+        "--profile-mutator",
+        action="store_true",
+        help="enable HABU_PROFILE_MUTATOR for maxima run and report barrier/safepoint overhead",
+    )
+    p.add_argument(
         "--gate-level",
         default="milestone_2x_from_baseline",
         choices=("milestone_2x_from_baseline", "competitive", "parity"),
@@ -43,8 +48,8 @@ def parse_args():
     return p.parse_args()
 
 
-def run_cmd(argv, timeout=3600):
-    p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+def run_cmd(argv, timeout=3600, env=None):
+    p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, env=env)
     if p.returncode != 0:
         raise RuntimeError(f"cmd failed: {' '.join(argv)}\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}")
     return p.stdout
@@ -122,8 +127,44 @@ def collect_micro(iters: int):
     return entries, errs
 
 
-def collect_maxima(scale: int, heap_mb: int):
-    out = run_cmd(["tools/maxima-bench", "--json", f"--scale={scale}", f"--heap-mb={heap_mb}"])
+def mutator_phase(gc_phase: dict):
+    wb_calls = int(gc_phase.get("wb_calls", 0))
+    wb_ns = int(gc_phase.get("wb_ns", 0))
+    wb_jit_calls = int(gc_phase.get("wb_jit_calls", 0))
+    wb_jit_ns = int(gc_phase.get("wb_jit_ns", 0))
+    wb_vm_calls = max(0, wb_calls - wb_jit_calls)
+    wb_vm_ns = max(0, wb_ns - wb_jit_ns)
+    sp_vm_calls = int(gc_phase.get("safepoint_vm_calls", 0))
+    sp_vm_ns = int(gc_phase.get("safepoint_vm_ns", 0))
+    sp_jit_calls = int(gc_phase.get("safepoint_jit_calls", 0))
+    sp_jit_ns = int(gc_phase.get("safepoint_jit_ns", 0))
+    return {
+        "wb_calls": wb_calls,
+        "wb_ns": wb_ns,
+        "wb_ns_per_call": (wb_ns / wb_calls) if wb_calls else 0.0,
+        "wb_vm_calls": wb_vm_calls,
+        "wb_vm_ns": wb_vm_ns,
+        "wb_vm_ns_per_call": (wb_vm_ns / wb_vm_calls) if wb_vm_calls else 0.0,
+        "wb_jit_calls": wb_jit_calls,
+        "wb_jit_ns": wb_jit_ns,
+        "wb_jit_ns_per_call": (wb_jit_ns / wb_jit_calls) if wb_jit_calls else 0.0,
+        "safepoint_vm_calls": sp_vm_calls,
+        "safepoint_vm_ns": sp_vm_ns,
+        "safepoint_vm_ns_per_call": (sp_vm_ns / sp_vm_calls) if sp_vm_calls else 0.0,
+        "safepoint_jit_calls": sp_jit_calls,
+        "safepoint_jit_ns": sp_jit_ns,
+        "safepoint_jit_ns_per_call": (sp_jit_ns / sp_jit_calls) if sp_jit_calls else 0.0,
+    }
+
+
+def collect_maxima(scale: int, heap_mb: int, profile_mutator: bool):
+    env = os.environ.copy()
+    if profile_mutator:
+        env["HABU_PROFILE_MUTATOR"] = "1"
+    out = run_cmd(
+        ["tools/maxima-bench", "--json", f"--scale={scale}", f"--heap-mb={heap_mb}"],
+        env=env,
+    )
     data = parse_mixed_json(out)
     habu = data["habu"]
     sbcl = data["sbcl"]
@@ -158,7 +199,13 @@ def collect_maxima(scale: int, heap_mb: int):
                 note=advice(name, "maxima"),
             )
         )
-    return entries, errs, habu.get("loader", {}), sbcl.get("loader", {})
+    gc = habu.get("gc", {})
+    mutator_profile = {
+        "enabled": bool(profile_mutator),
+        "load": mutator_phase(gc.get("load", {})),
+        "run": mutator_phase(gc.get("run", {})),
+    }
+    return entries, errs, habu.get("loader", {}), sbcl.get("loader", {}), mutator_profile
 
 
 def collect_gc_gates(gc_iters: int, gc_live_mb: int, gc_heap_mb: int, gate_level: str):
@@ -355,7 +402,9 @@ def main():
     os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
     micro_entries, micro_errs = collect_micro(args.iters)
-    maxima_entries, maxima_errs, h_loader, s_loader = collect_maxima(args.scale, args.heap_mb)
+    maxima_entries, maxima_errs, h_loader, s_loader, mutator_profile = collect_maxima(
+        args.scale, args.heap_mb, args.profile_mutator
+    )
     gc_compare = collect_gc_gates(args.gc_iters, args.gc_live_mb, args.gc_heap_mb, args.gate_level)
     gate_pass = bool(gc_compare.get("gate_pass", False))
     gc_norm = gc_summary(gc_compare, args.gate_level)
@@ -372,6 +421,7 @@ def main():
             "micro_errors": micro_errs,
             "maxima_errors": maxima_errs,
             "loaders": {"habu": h_loader, "sbcl": s_loader},
+            "mutator_profile": mutator_profile,
             "gc_compare": gc_compare,
             "gc_summary": gc_norm,
             "gc_actions": gc_actions,
@@ -419,6 +469,33 @@ def main():
             ms=s_loader.get("ns", 0) / 1e6,
         )
     )
+    if mutator_profile.get("enabled"):
+        load = mutator_profile.get("load", {})
+        run = mutator_profile.get("run", {})
+        print(
+            "  mutator(load): wb={wb} ({wbn:.3f}ms, vm={wvm} jit={wjit}) sp_vm={sv} ({svn:.3f}ms) sp_jit={sj} ({sjn:.3f}ms)".format(
+                wb=load.get("wb_calls", 0),
+                wbn=load.get("wb_ns", 0) / 1e6,
+                wvm=load.get("wb_vm_calls", 0),
+                wjit=load.get("wb_jit_calls", 0),
+                sv=load.get("safepoint_vm_calls", 0),
+                svn=load.get("safepoint_vm_ns", 0) / 1e6,
+                sj=load.get("safepoint_jit_calls", 0),
+                sjn=load.get("safepoint_jit_ns", 0) / 1e6,
+            )
+        )
+        print(
+            "  mutator(run): wb={wb} ({wbn:.3f}ms, vm={wvm} jit={wjit}) sp_vm={sv} ({svn:.3f}ms) sp_jit={sj} ({sjn:.3f}ms)".format(
+                wb=run.get("wb_calls", 0),
+                wbn=run.get("wb_ns", 0) / 1e6,
+                wvm=run.get("wb_vm_calls", 0),
+                wjit=run.get("wb_jit_calls", 0),
+                sv=run.get("safepoint_vm_calls", 0),
+                svn=run.get("safepoint_vm_ns", 0) / 1e6,
+                sj=run.get("safepoint_jit_calls", 0),
+                sjn=run.get("safepoint_jit_ns", 0) / 1e6,
+            )
+        )
     if micro_errs:
         print(f"  micro errors: {len(micro_errs)}")
     if maxima_errs:

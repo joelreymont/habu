@@ -378,6 +378,7 @@ pub const Heap = struct {
     los_objs: std.ArrayList(TenuredObj),
     los_free: std.ArrayList(FreeSpan),
     los_free_bins: [TENURED_FREE_BIN_N]std.ArrayList(FreeSpan),
+    profile_mutator: bool,
     major_cycle_active: bool,
     /// Persistent collector state reused across GC cycles.
     gc: GC,
@@ -524,6 +525,14 @@ pub const Heap = struct {
         gc_debt_survival: f64 = 0.0,
         gc_debt_pause_error: f64 = 0.0,
         wb_marks: usize = 0,
+        wb_calls: usize = 0,
+        wb_ns: u64 = 0,
+        wb_jit_calls: usize = 0,
+        wb_jit_ns: u64 = 0,
+        safepoint_vm_calls: usize = 0,
+        safepoint_vm_ns: u64 = 0,
+        safepoint_jit_calls: usize = 0,
+        safepoint_jit_ns: u64 = 0,
         gc_promoted_bytes: usize = 0,
     };
 
@@ -692,6 +701,8 @@ pub const Heap = struct {
         if (los_threshold_target < los_threshold_min) los_threshold_target = los_threshold_min;
         if (los_threshold_target > los_threshold_max) los_threshold_target = los_threshold_max;
 
+        const profile_mutator = std.posix.getenv("HABU_PROFILE_MUTATOR") != null;
+
         var heap = Heap{
             .memory = memory,
             .layout = layout,
@@ -729,6 +740,7 @@ pub const Heap = struct {
             .los_objs = std.ArrayList(TenuredObj){},
             .los_free = std.ArrayList(FreeSpan){},
             .los_free_bins = [_]std.ArrayList(FreeSpan){std.ArrayList(FreeSpan){}} ** TENURED_FREE_BIN_N,
+            .profile_mutator = profile_mutator,
             .major_cycle_active = false,
             .gc = GC.init(allocator),
             .backing_allocator = allocator,
@@ -1050,6 +1062,13 @@ pub const Heap = struct {
     }
 
     pub fn writeBarrier(self: *Heap, owner: Value, stored: Value) void {
+        const profile = self.profile_mutator;
+        const start_ns: i128 = if (profile) std.time.nanoTimestamp() else 0;
+        defer if (profile) {
+            self.stats.wb_calls +%= 1;
+            self.stats.wb_ns +%= elapsedNsSince(start_ns);
+        };
+
         if (self.layout.mode != .generational) return;
         if (!owner.isPointer() or !stored.isPointer()) return;
 
@@ -1065,6 +1084,28 @@ pub const Heap = struct {
             self.card_table[card_idx] |= bit;
             self.stats.wb_marks +%= 1;
         }
+    }
+
+    pub fn profileMutatorEnabled(self: *const Heap) bool {
+        return self.profile_mutator;
+    }
+
+    pub fn noteJitWriteBarrier(self: *Heap, elapsed_ns: u64) void {
+        if (!self.profile_mutator) return;
+        self.stats.wb_jit_calls +%= 1;
+        self.stats.wb_jit_ns +%= elapsed_ns;
+    }
+
+    pub fn noteSafepointVm(self: *Heap, elapsed_ns: u64) void {
+        if (!self.profile_mutator) return;
+        self.stats.safepoint_vm_calls +%= 1;
+        self.stats.safepoint_vm_ns +%= elapsed_ns;
+    }
+
+    pub fn noteSafepointJit(self: *Heap, elapsed_ns: u64) void {
+        if (!self.profile_mutator) return;
+        self.stats.safepoint_jit_calls +%= 1;
+        self.stats.safepoint_jit_ns +%= elapsed_ns;
     }
 
     pub fn markCardForOwnerAddr(self: *Heap, owner_addr: usize) void {
