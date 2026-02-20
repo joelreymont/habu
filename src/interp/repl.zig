@@ -880,15 +880,14 @@ pub const Repl = struct {
         ensureVmGlobalRootSlots(vm, root_idx, stack_idx, tmp_idx);
         const saved_root = vm.globals[root_idx];
         const saved_tmp = vm.globals[tmp_idx];
-        const saved_stack = vm.globals[stack_idx];
         vm.globals[root_idx] = args;
         vm.globals[tmp_idx] = whole_form;
         errdefer {
             vm.globals[root_idx] = saved_root;
             vm.globals[tmp_idx] = saved_tmp;
-            vm.globals[stack_idx] = saved_stack;
         }
         const saved_pair = try vm.allocCons(saved_root, saved_tmp);
+        const saved_stack = vm.globals[stack_idx];
         vm.globals[stack_idx] = try vm.allocCons(saved_pair, saved_stack);
     }
 
@@ -1540,8 +1539,8 @@ pub const Repl = struct {
         const form_root_idx = try self.ensureLoadFormRootGlobal();
         const form_stack_idx = try self.ensureLoadFormRootStackGlobal();
 
-        const load_bindings = self.bindLoadGlobals(source_vm, load_path);
-        defer self.restoreLoadGlobals(source_vm, load_bindings);
+        const load_bindings = try self.bindLoadGlobals(source_vm, load_path, form_root_idx, form_stack_idx);
+        defer self.restoreLoadGlobals(source_vm, load_bindings, form_root_idx, form_stack_idx);
 
         // CL spec: *PACKAGE* is rebound by LOAD — save and restore after.
         const saved_pkg_native = self.heap.current_package;
@@ -1586,12 +1585,8 @@ pub const Repl = struct {
     }
 
     const LoadBindings = struct {
-        load_pathname_cl: ?struct { idx: usize, prev: Value } = null,
-        load_pathname_user: ?struct { idx: usize, prev: Value } = null,
-        load_pathname_plain: ?struct { idx: usize, prev: Value } = null,
-        load_truename_cl: ?struct { idx: usize, prev: Value } = null,
-        load_truename_user: ?struct { idx: usize, prev: Value } = null,
-        load_truename_plain: ?struct { idx: usize, prev: Value } = null,
+        idxs: [6]usize = [_]usize{0} ** 6,
+        len: usize = 0,
     };
 
     fn loadPathnameValue(self: *Repl, path: []const u8) !Value {
@@ -1609,49 +1604,50 @@ pub const Repl = struct {
         return try primitives.pathname.parseNamestring(self.allocator, self.heap, path_str);
     }
 
-    fn bindLoadGlobals(self: *Repl, vm: *Vm, path: Value) LoadBindings {
+    fn bindLoadGlobals(
+        self: *Repl,
+        vm: *Vm,
+        path: Value,
+        root_idx: u16,
+        stack_idx: u16,
+    ) !LoadBindings {
         var bindings: LoadBindings = .{};
-        if (self.compiler.globals.lookup("COMMON-LISP:*LOAD-PATHNAME*")) |idx| {
-            bindings.load_pathname_cl = .{ .idx = idx, .prev = vm.globals[idx] };
+        const names = [_][]const u8{
+            "COMMON-LISP:*LOAD-PATHNAME*",
+            "CL-USER:*LOAD-PATHNAME*",
+            "*LOAD-PATHNAME*",
+            "COMMON-LISP:*LOAD-TRUENAME*",
+            "CL-USER:*LOAD-TRUENAME*",
+            "*LOAD-TRUENAME*",
+        };
+        for (names) |name| {
+            const idx = self.compiler.globals.lookup(name) orelse continue;
+            const prev = if (idx < vm.num_globals) vm.globals[idx] else Value.nil;
+            try pushRootValue(vm, root_idx, stack_idx, prev);
             vm.globals[idx] = path;
             if (idx >= vm.num_globals) vm.num_globals = idx + 1;
-        }
-        if (self.compiler.globals.lookup("CL-USER:*LOAD-PATHNAME*")) |idx| {
-            bindings.load_pathname_user = .{ .idx = idx, .prev = vm.globals[idx] };
-            vm.globals[idx] = path;
-            if (idx >= vm.num_globals) vm.num_globals = idx + 1;
-        }
-        if (self.compiler.globals.lookup("*LOAD-PATHNAME*")) |idx| {
-            bindings.load_pathname_plain = .{ .idx = idx, .prev = vm.globals[idx] };
-            vm.globals[idx] = path;
-            if (idx >= vm.num_globals) vm.num_globals = idx + 1;
-        }
-        if (self.compiler.globals.lookup("COMMON-LISP:*LOAD-TRUENAME*")) |idx| {
-            bindings.load_truename_cl = .{ .idx = idx, .prev = vm.globals[idx] };
-            vm.globals[idx] = path;
-            if (idx >= vm.num_globals) vm.num_globals = idx + 1;
-        }
-        if (self.compiler.globals.lookup("CL-USER:*LOAD-TRUENAME*")) |idx| {
-            bindings.load_truename_user = .{ .idx = idx, .prev = vm.globals[idx] };
-            vm.globals[idx] = path;
-            if (idx >= vm.num_globals) vm.num_globals = idx + 1;
-        }
-        if (self.compiler.globals.lookup("*LOAD-TRUENAME*")) |idx| {
-            bindings.load_truename_plain = .{ .idx = idx, .prev = vm.globals[idx] };
-            vm.globals[idx] = path;
-            if (idx >= vm.num_globals) vm.num_globals = idx + 1;
+            std.debug.assert(bindings.len < bindings.idxs.len);
+            bindings.idxs[bindings.len] = idx;
+            bindings.len += 1;
         }
         return bindings;
     }
 
-    fn restoreLoadGlobals(self: *Repl, vm: *Vm, bindings: LoadBindings) void {
+    fn restoreLoadGlobals(
+        self: *Repl,
+        vm: *Vm,
+        bindings: LoadBindings,
+        root_idx: u16,
+        stack_idx: u16,
+    ) void {
         _ = self;
-        if (bindings.load_pathname_cl) |entry| vm.globals[entry.idx] = entry.prev;
-        if (bindings.load_pathname_user) |entry| vm.globals[entry.idx] = entry.prev;
-        if (bindings.load_pathname_plain) |entry| vm.globals[entry.idx] = entry.prev;
-        if (bindings.load_truename_cl) |entry| vm.globals[entry.idx] = entry.prev;
-        if (bindings.load_truename_user) |entry| vm.globals[entry.idx] = entry.prev;
-        if (bindings.load_truename_plain) |entry| vm.globals[entry.idx] = entry.prev;
+        var i = bindings.len;
+        while (i > 0) {
+            i -= 1;
+            const idx = bindings.idxs[i];
+            vm.globals[idx] = vm.globals[root_idx];
+            popRootValue(vm, root_idx, stack_idx);
+        }
     }
 
     fn readFileContent(self: *Repl, path: []const u8) ![]u8 {
@@ -1712,43 +1708,6 @@ pub const Repl = struct {
                 if (idx >= vm.num_globals) vm.num_globals = idx + 1;
             }
         }
-    }
-
-    const PackageGlobalBindings = struct {
-        pkg_cl: ?struct { idx: usize, prev: Value } = null,
-        pkg_cl2: ?struct { idx: usize, prev: Value } = null,
-        pkg_user: ?struct { idx: usize, prev: Value } = null,
-        pkg_plain: ?struct { idx: usize, prev: Value } = null,
-    };
-
-    fn savePackageGlobals(self: *Repl, vm: *Vm) PackageGlobalBindings {
-        var bindings: PackageGlobalBindings = .{};
-        const names = [_]struct { field: enum { cl, cl2, user, plain }, name: []const u8 }{
-            .{ .field = .cl, .name = "COMMON-LISP:*PACKAGE*" },
-            .{ .field = .cl2, .name = "CL:*PACKAGE*" },
-            .{ .field = .user, .name = "CL-USER:*PACKAGE*" },
-            .{ .field = .plain, .name = "*PACKAGE*" },
-        };
-        for (names) |entry| {
-            if (self.compiler.globals.lookup(entry.name)) |idx| {
-                const prev = if (idx < vm.num_globals) vm.globals[idx] else Value.nil;
-                switch (entry.field) {
-                    .cl => bindings.pkg_cl = .{ .idx = idx, .prev = prev },
-                    .cl2 => bindings.pkg_cl2 = .{ .idx = idx, .prev = prev },
-                    .user => bindings.pkg_user = .{ .idx = idx, .prev = prev },
-                    .plain => bindings.pkg_plain = .{ .idx = idx, .prev = prev },
-                }
-            }
-        }
-        return bindings;
-    }
-
-    fn restorePackageGlobals(self: *Repl, vm: *Vm, bindings: PackageGlobalBindings) void {
-        _ = self;
-        if (bindings.pkg_cl) |e| vm.globals[e.idx] = e.prev;
-        if (bindings.pkg_cl2) |e| vm.globals[e.idx] = e.prev;
-        if (bindings.pkg_user) |e| vm.globals[e.idx] = e.prev;
-        if (bindings.pkg_plain) |e| vm.globals[e.idx] = e.prev;
     }
 
     fn syncReaderPackageFromVm(self: *Repl, vm: *const Vm) void {
@@ -3641,13 +3600,18 @@ pub const Repl = struct {
         const saved_current_vm = self.current_vm;
         self.current_vm = source_vm;
         defer self.current_vm = saved_current_vm;
+        const form_root_idx = try self.ensureLoadFormRootGlobal();
+        const form_stack_idx = try self.ensureLoadFormRootStackGlobal();
         const form_tmp_idx = try self.ensureLoadFormRootTmpGlobal();
-        const saved_form_tmp = source_vm.globals[form_tmp_idx];
-        source_vm.globals[form_tmp_idx] = transformed_rest2;
-        if (form_tmp_idx >= source_vm.num_globals) {
-            source_vm.num_globals = form_tmp_idx + 1;
-        }
-        defer source_vm.globals[form_tmp_idx] = saved_form_tmp;
+        try pushMacroCallRoots(
+            source_vm,
+            form_root_idx,
+            form_stack_idx,
+            form_tmp_idx,
+            Value.nil,
+            transformed_rest2,
+        );
+        defer popMacroCallRoots(source_vm, form_root_idx, form_stack_idx, form_tmp_idx);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         // Save macro name as a Zig string BEFORE VM execution, because
@@ -3657,12 +3621,14 @@ pub const Repl = struct {
         defer self.allocator.free(macro_name_saved);
 
         const closure = try self.runVmPreserveMacroState(source_vm, chunk_ptr);
+        source_vm.globals[form_root_idx] = closure;
+        const closure_live = source_vm.globals[form_root_idx];
         const transformed_rest2_live = source_vm.globals[form_tmp_idx];
 
-        if (!closure.isClosure()) return error.CompileError;
+        if (!closure_live.isClosure()) return error.CompileError;
 
         if (std.posix.getenv("HABU_TRACE_DEFMACRO_CLOSURE") != null) {
-            const cl = closure.toPtr(runtime.Closure);
+            const cl = closure_live.toPtr(runtime.Closure);
             if (cl.code.isChunk()) {
                 const ch = cl.code.toPtr(runtime.objects.Chunk);
                 std.debug.print(
@@ -3707,7 +3673,7 @@ pub const Repl = struct {
         if (macro_params.has_whole) macro_flags |= 1;
         if (macro_params.has_env) macro_flags |= 2;
         const compiler_macro_entry_items = [_]Value{
-            closure,
+            closure_live,
             Value.makeFixnum(macro_flags),
             transformed_rest2_live,
         };
@@ -3716,12 +3682,12 @@ pub const Repl = struct {
         // Store the closure in REPL macro table for pre-compilation macro expansion
         // and the compiled entry in compiler macro table for compile-time expansion.
         try self.macros.put(macro_sym, .{
-            .closure = closure,
+            .closure = closure_live,
             .has_whole = macro_params.has_whole,
             .has_env = macro_params.has_env,
         });
         try self.compiler.macro_table.put(macro_sym, compiler_macro_entry);
-        try self.pinPersistentPair(macro_sym, closure);
+        try self.pinPersistentPair(macro_sym, closure_live);
         try self.pinPersistentPair(macro_sym, compiler_macro_entry);
 
         // Also store closure on symbol plist under MACRO-FUNCTION so that
@@ -3731,7 +3697,7 @@ pub const Repl = struct {
             const entry_key = try self.heap.intern("%HABU-MACRO-ENTRY");
             const sym_ptr = macro_sym.toPtr(runtime.Symbol);
             // Build new plist entry (MACRO-FUNCTION . closure)
-            const mf_entry = try self.heap.allocCons(mf_key, closure);
+            const mf_entry = try self.heap.allocCons(mf_key, closure_live);
             const meta_entry = try self.heap.allocCons(entry_key, compiler_macro_entry);
             // Prepend to existing plist
             const old_plist = sym_ptr.plist;
@@ -4935,6 +4901,96 @@ test "load preserves package global across generational GC pressure" {
         else => return error.TestUnexpectedResult,
     };
     try testing.expect(std.mem.eql(u8, pkg_name_before, pkg_after_gc_name));
+}
+
+test "load restores load pathname globals under generational GC pressure" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{
+        .total_size = 64 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 2 * 1024 * 1024,
+            .los_size = 8 * 1024 * 1024,
+            .los_threshold = 16 * 1024,
+            .promote_threshold = 1024,
+        },
+    });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const load_globals = [_][]const u8{
+        "COMMON-LISP:*LOAD-PATHNAME*",
+        "COMMON-LISP:*LOAD-TRUENAME*",
+        "CL-USER:*LOAD-PATHNAME*",
+        "CL-USER:*LOAD-TRUENAME*",
+        "*LOAD-PATHNAME*",
+        "*LOAD-TRUENAME*",
+    };
+
+    const sentinel = try repl.loadPathnameValue("/tmp/habu-load-sentinel.lsp");
+    const sentinel_ns_val = try primitives.pathname.namestring(
+        allocator,
+        repl.heap,
+        &repl.vm.builtins,
+        sentinel,
+    );
+    try testing.expect(sentinel_ns_val.isString());
+    const sentinel_ns = try allocator.dupe(u8, sentinel_ns_val.toPtr(runtime.String).bytes());
+    defer allocator.free(sentinel_ns);
+
+    for (load_globals) |name| {
+        const idx = if (repl.compiler.globals.lookup(name)) |i| i else try repl.compiler.globals.define(name);
+        repl.vm.globals[idx] = sentinel;
+        if (idx >= repl.vm.num_globals) repl.vm.num_globals = idx + 1;
+    }
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("load-pathname-gc.lsp", .{});
+        defer file.close();
+        try file.writeAll(
+            "(let ((i 0))\n" ++
+                "  (while (< i 400000)\n" ++
+                "    (cons i i)\n" ++
+                "    (setq i (+ i 1))))\n" ++
+                "17\n",
+        );
+    }
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const script_abs = try std.fs.path.join(allocator, &.{ base, "load-pathname-gc.lsp" });
+    defer allocator.free(script_abs);
+
+    var buf: [1024]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try repl.loadFile(script_abs, stream.writer());
+
+    _ = try repl.vm.collectGarbage();
+    _ = try repl.vm.collectGarbage();
+
+    for (load_globals) |name| {
+        const idx = repl.compiler.globals.lookup(name) orelse continue;
+        if (idx >= repl.vm.num_globals) return error.TestUnexpectedResult;
+        const got = repl.vm.globals[idx];
+        try testing.expect(got.isPathname());
+        const got_ns = try primitives.pathname.namestring(
+            allocator,
+            repl.heap,
+            &repl.vm.builtins,
+            got,
+        );
+        try testing.expect(got_ns.isString());
+        try testing.expect(std.mem.eql(u8, sentinel_ns, got_ns.toPtr(runtime.String).bytes()));
+    }
 }
 
 test "load resolves relative path with repeated directory prefix" {
