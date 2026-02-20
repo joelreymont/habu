@@ -275,4 +275,19 @@ pub fn build(b: *std.Build) void {
 
     const bench_check_step = b.step("bench-check", "Run bench regression checks");
     bench_check_step.dependOn(&bench_check_run_cmd.step);
+
+    // GC parity comparison (Habu vs SBCL)
+    const gc_parity_cmd = b.addSystemCommand(&.{
+        "tools/gc-compare",
+        "--json",
+        "--iters=20",
+        "--live-mb=8",
+        "--heap-mb=64",
+        "--gate-level=milestone_2x_from_baseline",
+    });
+    if (b.args) |args| {
+        gc_parity_cmd.addArgs(args);
+    }
+    const gc_parity_step = b.step("gc-parity", "Run GC parity comparison against SBCL");
+    gc_parity_step.dependOn(&gc_parity_cmd.step);
 }

@@ -104,6 +104,7 @@ zig build -Duse-hoist=true bench-jit        # JIT microbenchmarks
 zig build bench                             # GC benchmarks
 zig build bench-vm                          # VM benchmarks
 zig build -Duse-hoist=true bench-maxima     # Maxima real-workload benchmark (generational)
+zig build gc-parity                         # GC parity comparison preset (Habu vs SBCL)
 tools/maxima-bench                          # Habu vs SBCL Maxima workload
 tools/maxima-bench --scale=3 --nursery-mb=24
 tools/gc-compare --iters=30 --live-mb=8     # Habu vs SBCL GC pause comparison

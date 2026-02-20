@@ -1,0 +1,61 @@
+name: GC Parity
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gc-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.15.1
+
+      - name: Install SBCL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sbcl
+
+      - name: Run GC parity comparison
+        run: |
+          mkdir -p bench/results
+          tools/gc-compare \
+            --json \
+            --iters=20 \
+            --live-mb=8 \
+            --heap-mb=64 \
+            --gate-level=milestone_2x_from_baseline \
+            > bench/results/gc-parity-ci.json
+
+      - name: Summarize GC parity
+        run: |
+          python3 - <<'PY'
+          import json
+          path = "bench/results/gc-parity-ci.json"
+          with open(path, "r", encoding="utf-8") as fh:
+              data = json.load(fh)
+          metrics = data.get("metrics", {})
+          gate = data.get("gates", {}).get("vs_sbcl", {}).get(data.get("gate_level"), {})
+          print("gate_pass=", data.get("gate_pass"))
+          print("avg_pause_ratio=", metrics.get("avg_pause_ratio"))
+          print("p95_pause_ratio=", metrics.get("p95_pause_ratio"))
+          print("throughput_ratio=", metrics.get("throughput_ratio"))
+          print("rss_ratio=", metrics.get("rss_ratio"))
+          print("selected_gate=", gate.get("pass"))
+          PY
+
+      - name: Upload GC parity artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gc-parity-${{ github.run_id }}
+          path: bench/results/gc-parity-ci.json
+          if-no-files-found: error

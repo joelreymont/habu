@@ -80,6 +80,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Ranking GC actions from repeated `gc-compare` samples with per-metric confidence (`tools/perf-loop:314`, `tools/perf-loop:410`, `tools/perf-loop:548`) reduced score volatility and exposed low-confidence optimization signals directly in reasons/output.
 - Persisting perf-loop runs as append-only JSONL plus derived trend lines (`tools/perf-loop:574`, `tools/perf-loop:706`, `tools/perf-loop:917`) gives a durable self-improvement trail without coupling ranking logic to external storage.
 - Emitting explicit `next_dots` recommendations from measured score/confidence/trend signals (`tools/perf-loop:658`, `tools/perf-loop:750`, `tools/perf-loop:988`) turns perf-loop output into direct execution commands instead of manual interpretation.
+- Adding a dedicated `gc-parity` build step (`build.zig:279`) plus CI workflow (`.github/workflows/gc-parity.yml`) gives a stable entrypoint for parity artifacts without forcing gate failures yet.
 
 ### Did Not Work
 - Assuming a fixed `MAJOR_SWEEP_BUDGET`-sized fixture would keep major cycle active was brittle; root ordering/object size can make the cycle complete in one pass, so barrier tests need larger deterministic workloads.
