@@ -146,10 +146,16 @@ pub fn main() !void {
     const survive_bytes0 = heap.stats.gc_survive_bytes;
     const survive_class0 = heap.stats.gc_survive_class;
     const survive_size0 = heap.stats.gc_survive_size;
+    const survive_age0 = heap.stats.gc_survive_age;
     const promote_n0 = heap.stats.gc_promote_n;
     const promote_bytes0 = heap.stats.gc_promote_bytes;
     const promote_class0 = heap.stats.gc_promote_class;
     const promote_size0 = heap.stats.gc_promote_size;
+    const promote_age0 = heap.stats.gc_promote_age;
+    const promote_success_n0 = heap.stats.gc_promote_success_n;
+    const promote_success_bytes0 = heap.stats.gc_promote_success_bytes;
+    const promote_success_class0 = heap.stats.gc_promote_success_class;
+    const promote_success_age0 = heap.stats.gc_promote_success_age;
     for (pauses, 0..) |*ns, i| {
         _ = i;
         roots[1] = try heap.allocBaseString(promote_buf[0..]);
@@ -181,10 +187,16 @@ pub fn main() !void {
     const survive_bytes1 = heap.stats.gc_survive_bytes;
     const survive_class1 = heap.stats.gc_survive_class;
     const survive_size1 = heap.stats.gc_survive_size;
+    const survive_age1 = heap.stats.gc_survive_age;
     const promote_n1 = heap.stats.gc_promote_n;
     const promote_bytes1 = heap.stats.gc_promote_bytes;
     const promote_class1 = heap.stats.gc_promote_class;
     const promote_size1 = heap.stats.gc_promote_size;
+    const promote_age1 = heap.stats.gc_promote_age;
+    const promote_success_n1 = heap.stats.gc_promote_success_n;
+    const promote_success_bytes1 = heap.stats.gc_promote_success_bytes;
+    const promote_success_class1 = heap.stats.gc_promote_success_class;
+    const promote_success_age1 = heap.stats.gc_promote_success_age;
 
     var sum: u128 = 0;
     for (pauses) |ns| sum += ns;
@@ -231,6 +243,10 @@ pub fn main() !void {
     for (&survive_size_delta, 0..) |*dst, i| {
         dst.* = survive_size1[i] - survive_size0[i];
     }
+    var survive_age_delta: @TypeOf(heap.stats.gc_survive_age) = undefined;
+    for (&survive_age_delta, 0..) |*dst, i| {
+        dst.* = survive_age1[i] - survive_age0[i];
+    }
     const promote_n_delta = promote_n1 - promote_n0;
     const promote_bytes_delta = promote_bytes1 - promote_bytes0;
     var promote_class_delta: @TypeOf(heap.stats.gc_promote_class) = undefined;
@@ -240,6 +256,20 @@ pub fn main() !void {
     var promote_size_delta: @TypeOf(heap.stats.gc_promote_size) = undefined;
     for (&promote_size_delta, 0..) |*dst, i| {
         dst.* = promote_size1[i] - promote_size0[i];
+    }
+    var promote_age_delta: @TypeOf(heap.stats.gc_promote_age) = undefined;
+    for (&promote_age_delta, 0..) |*dst, i| {
+        dst.* = promote_age1[i] - promote_age0[i];
+    }
+    const promote_success_n_delta = promote_success_n1 - promote_success_n0;
+    const promote_success_bytes_delta = promote_success_bytes1 - promote_success_bytes0;
+    var promote_success_class_delta: @TypeOf(heap.stats.gc_promote_success_class) = undefined;
+    for (&promote_success_class_delta, 0..) |*dst, i| {
+        dst.* = promote_success_class1[i] - promote_success_class0[i];
+    }
+    var promote_success_age_delta: @TypeOf(heap.stats.gc_promote_success_age) = undefined;
+    for (&promote_success_age_delta, 0..) |*dst, i| {
+        dst.* = promote_success_age1[i] - promote_success_age0[i];
     }
     const tenured_live = heap.tenured_objs.items.len;
     const los_live = heap.los_objs.items.len;
@@ -319,10 +349,16 @@ pub fn main() !void {
             .gc_survive_bytes = survive_bytes_delta,
             .gc_survive_class = survive_class_delta,
             .gc_survive_size = survive_size_delta,
+            .gc_survive_age = survive_age_delta,
             .gc_promote_n = promote_n_delta,
             .gc_promote_bytes = promote_bytes_delta,
             .gc_promote_class = promote_class_delta,
             .gc_promote_size = promote_size_delta,
+            .gc_promote_age = promote_age_delta,
+            .gc_promote_success_n = promote_success_n_delta,
+            .gc_promote_success_bytes = promote_success_bytes_delta,
+            .gc_promote_success_class = promote_success_class_delta,
+            .gc_promote_success_age = promote_success_age_delta,
             .gc_nursery_target = nursery_target,
             .gc_nursery_scale = nursery_scale,
             .gc_nursery_survival = nursery_survival,
@@ -360,6 +396,10 @@ pub fn main() !void {
     try w.print(
         "  survival: n {d}, bytes {d}, promoted n {d}, bytes {d}\n",
         .{ survive_n_delta, survive_bytes_delta, promote_n_delta, promote_bytes_delta },
+    );
+    try w.print(
+        "  promotion success: n {d}, bytes {d}\n",
+        .{ promote_success_n_delta, promote_success_bytes_delta },
     );
     try w.print(
         "  nursery policy: target {d} bytes, scale {d:.4}, survival {d:.4}, pause_err {d:.4}\n",

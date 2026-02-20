@@ -46,10 +46,16 @@ const GcJson = struct {
     gc_survive_bytes: u64 = 0,
     gc_survive_class: []u64 = &[_]u64{},
     gc_survive_size: [8]u64 = [_]u64{0} ** 8,
+    gc_survive_age: [8]u64 = [_]u64{0} ** 8,
     gc_promote_n: u64 = 0,
     gc_promote_bytes: u64 = 0,
     gc_promote_class: []u64 = &[_]u64{},
     gc_promote_size: [8]u64 = [_]u64{0} ** 8,
+    gc_promote_age: [8]u64 = [_]u64{0} ** 8,
+    gc_promote_success_n: u64 = 0,
+    gc_promote_success_bytes: u64 = 0,
+    gc_promote_success_class: []u64 = &[_]u64{},
+    gc_promote_success_age: [8]u64 = [_]u64{0} ** 8,
     gc_nursery_target: u64 = 0,
     gc_nursery_scale: f64 = 1.0,
     gc_nursery_survival: f64 = 0.0,
@@ -296,6 +302,11 @@ pub fn main() !void {
     if (survive_size_sum != gc.gc_survive_n) {
         try fail("gc survive size sum {d} != gc_survive_n {d}", .{ survive_size_sum, gc.gc_survive_n });
     }
+    var survive_age_sum: u64 = 0;
+    for (gc.gc_survive_age) |n| survive_age_sum += n;
+    if (survive_age_sum != gc.gc_survive_n) {
+        try fail("gc survive age sum {d} != gc_survive_n {d}", .{ survive_age_sum, gc.gc_survive_n });
+    }
     if (gc.gc_promote_n == 0) try fail("gc gc_promote_n is 0", .{});
     if (gc.gc_promote_bytes == 0) try fail("gc gc_promote_bytes is 0", .{});
     if (gc.gc_promote_bytes != gc.promoted_bytes) {
@@ -310,6 +321,27 @@ pub fn main() !void {
     for (gc.gc_promote_size) |n| promote_size_sum += n;
     if (promote_size_sum != gc.gc_promote_n) {
         try fail("gc promote size sum {d} != gc_promote_n {d}", .{ promote_size_sum, gc.gc_promote_n });
+    }
+    var promote_age_sum: u64 = 0;
+    for (gc.gc_promote_age) |n| promote_age_sum += n;
+    if (promote_age_sum != gc.gc_promote_n) {
+        try fail("gc promote age sum {d} != gc_promote_n {d}", .{ promote_age_sum, gc.gc_promote_n });
+    }
+    if (gc.gc_promote_success_n > gc.gc_promote_n) {
+        try fail("gc promote success n {d} > promote n {d}", .{ gc.gc_promote_success_n, gc.gc_promote_n });
+    }
+    if (gc.gc_promote_success_bytes > gc.gc_promote_bytes) {
+        try fail("gc promote success bytes {d} > promote bytes {d}", .{ gc.gc_promote_success_bytes, gc.gc_promote_bytes });
+    }
+    var promote_success_class_sum: u64 = 0;
+    for (gc.gc_promote_success_class) |n| promote_success_class_sum += n;
+    if (promote_success_class_sum != gc.gc_promote_success_n) {
+        try fail("gc promote success class sum {d} != gc_promote_success_n {d}", .{ promote_success_class_sum, gc.gc_promote_success_n });
+    }
+    var promote_success_age_sum: u64 = 0;
+    for (gc.gc_promote_success_age) |n| promote_success_age_sum += n;
+    if (promote_success_age_sum != gc.gc_promote_success_n) {
+        try fail("gc promote success age sum {d} != gc_promote_success_n {d}", .{ promote_success_age_sum, gc.gc_promote_success_n });
     }
     if (gc.gc_nursery_target == 0) try fail("gc gc_nursery_target is 0", .{});
     if (gc.gc_nursery_target > gc.heap_bytes) {

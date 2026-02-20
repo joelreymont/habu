@@ -107,6 +107,9 @@ pub const GC = struct {
     work_list: std.ArrayList(WorkItem),
     /// Peak work queue size seen during the most recent collection.
     work_peak: usize,
+    /// Survivor age updates collected during copy (preallocated, reused).
+    age_updates: std.ArrayList(heap_mod.Heap.SurvivorAgeEntry),
+    age_peak: usize,
     /// Debug: flag set during GC trace/copy phase
     gc_in_progress: if (builtin.mode == .Debug) bool else void,
 
@@ -116,12 +119,15 @@ pub const GC = struct {
             .allocator = allocator,
             .work_list = std.ArrayList(WorkItem){},
             .work_peak = 0,
+            .age_updates = std.ArrayList(heap_mod.Heap.SurvivorAgeEntry){},
+            .age_peak = 0,
             .gc_in_progress = if (builtin.mode == .Debug) false else {},
         };
     }
 
     pub fn deinit(self: *GC) void {
         self.work_list.deinit(self.allocator);
+        self.age_updates.deinit(self.allocator);
     }
 
     /// Calculate initial capacity for work queues based on heap size
@@ -188,6 +194,7 @@ pub const GC = struct {
         if (self.work_list.capacity == 0) {
             const init_cap = self.calculateInitialCapacity(heap);
             try self.work_list.ensureTotalCapacity(self.allocator, init_cap);
+            try self.age_updates.ensureTotalCapacity(self.allocator, init_cap * 4);
         }
 
         // Set GC in-progress flag (debug only)
@@ -199,6 +206,8 @@ pub const GC = struct {
         // Clear work list, retaining capacity from previous collections
         self.work_list.clearRetainingCapacity();
         self.work_peak = 0;
+        self.age_updates.clearRetainingCapacity();
+        self.age_peak = 0;
         var alloc_ptr = heap.to_start;
         heap.clearTenuredMarks();
         var root_vals: usize = roots.slots.len;
@@ -233,6 +242,7 @@ pub const GC = struct {
         // Phase 3: Swap spaces
         heap.swapSpaces();
         heap.resetAllocPtr(@ptrCast(@alignCast(heap.from_start + bytes_copied)));
+        try heap.rebuildSurvivorAges(self.age_updates.items);
 
         // Phase 4: Finalize unreachable objects with resources (uses old space)
         const finalize_start = std.time.nanoTimestamp();
@@ -260,6 +270,7 @@ pub const GC = struct {
         if (self.work_list.capacity == 0) {
             const init_cap = self.calculateInitialCapacity(heap);
             try self.work_list.ensureTotalCapacity(self.allocator, init_cap);
+            try self.age_updates.ensureTotalCapacity(self.allocator, init_cap * 4);
         }
 
         if (builtin.mode == .Debug) self.gc_in_progress = true;
@@ -269,6 +280,8 @@ pub const GC = struct {
 
         self.work_list.clearRetainingCapacity();
         self.work_peak = 0;
+        self.age_updates.clearRetainingCapacity();
+        self.age_peak = 0;
         var alloc_ptr = heap.to_start;
         heap.clearTenuredMarks();
         heap.clearLosMarks();
@@ -313,6 +326,7 @@ pub const GC = struct {
 
         heap.swapSpaces();
         heap.resetAllocPtr(@ptrCast(@alignCast(heap.from_start + bytes_copied)));
+        try heap.rebuildSurvivorAges(self.age_updates.items);
 
         const finalize_start = std.time.nanoTimestamp();
         self.finalizeUnreachable(heap, old_alloc_ptr);
@@ -336,11 +350,17 @@ pub const GC = struct {
     fn maybeGrowQueues(self: *GC) !void {
         const work_cap = self.work_list.capacity;
         const work_peak = self.work_peak;
+        const age_cap = self.age_updates.capacity;
+        const age_peak = self.age_peak;
 
         // If we used >75% capacity, grow for next cycle
         if (work_peak * 4 > work_cap * 3) {
             const new_cap = work_cap * 2;
             try self.work_list.ensureTotalCapacity(self.allocator, new_cap);
+        }
+        if (age_cap == 0 or age_peak * 4 > age_cap * 3) {
+            const new_cap = if (age_cap == 0) @as(usize, 256) else age_cap * 2;
+            try self.age_updates.ensureTotalCapacity(self.allocator, new_cap);
         }
     }
 
@@ -359,6 +379,21 @@ pub const GC = struct {
         }
 
         if (self.work_list.items.len > self.work_peak) self.work_peak = self.work_list.items.len;
+    }
+
+    fn pushAgeUpdate(self: *GC, addr: usize, age: u8) !void {
+        if (builtin.mode == .Debug and self.gc_in_progress) {
+            const old_cap = self.age_updates.capacity;
+            try self.age_updates.append(self.allocator, .{ .addr = addr, .age = age });
+            const new_cap = self.age_updates.capacity;
+            if (new_cap > old_cap) {
+                std.debug.print("ERROR: age_updates allocated during GC (cap: {} -> {})\n", .{ old_cap, new_cap });
+                @panic("Allocation during GC detected");
+            }
+        } else {
+            try self.age_updates.append(self.allocator, .{ .addr = addr, .age = age });
+        }
+        if (self.age_updates.items.len > self.age_peak) self.age_peak = self.age_updates.items.len;
     }
 
     /// Finalize unreachable objects that hold resources (e.g., file handles)
@@ -513,6 +548,10 @@ pub const GC = struct {
         const tag = val.getTag();
         const size = objects.objectSize(val);
         const aligned_size = std.mem.alignForward(usize, size, heap_mod.ALIGNMENT);
+        const survivor_age: u8 = if (heap.gcLayoutMode() == .generational)
+            heap.nextSurvivorAge(obj_addr)
+        else
+            0;
 
         const promote = shouldPromote(heap, tag, aligned_size, obj_addr);
         const dest: [*]u8 = if (promote)
@@ -532,11 +571,14 @@ pub const GC = struct {
 
         const new_addr = @intFromPtr(dest);
         if (promote) {
-            try heap.recordTenuredObject(new_addr, tag, aligned_size);
+            try heap.recordTenuredObject(new_addr, tag, aligned_size, survivor_age);
             _ = heap.markTenuredObject(new_addr);
             heap.stats.gc_promoted_bytes +%= aligned_size;
         }
-        heap.noteSurvival(tag, new_addr, aligned_size, promote);
+        heap.noteSurvival(tag, new_addr, aligned_size, promote, survivor_age);
+        if (heap.gcLayoutMode() == .generational) {
+            try self.pushAgeUpdate(new_addr, survivor_age);
+        }
 
         // Repair interior pointers that point to inline data
         // These pointers are relative to the object start and need adjustment
@@ -1388,7 +1430,51 @@ test "minor gc promotes large survivors to tenured" {
     try testing.expect(heap.stats.gc_survive_bytes >= heap.stats.gc_promoted_bytes);
     try testing.expect(heap.stats.gc_promote_n > 0);
     try testing.expectEqual(heap.stats.gc_promote_bytes, heap.stats.gc_promoted_bytes);
+    var survive_age_sum: usize = 0;
+    for (heap.stats.gc_survive_age) |n| survive_age_sum +%= n;
+    try testing.expectEqual(heap.stats.gc_survive_n, survive_age_sum);
+    var promote_age_sum: usize = 0;
+    for (heap.stats.gc_promote_age) |n| promote_age_sum +%= n;
+    try testing.expectEqual(heap.stats.gc_promote_n, promote_age_sum);
+    try testing.expect(heap.stats.gc_promote_age[1] > 0);
     try testing.expect(heap.tenuredBytesUsed() > 0);
+}
+
+test "promotion success telemetry records surviving promoted objects" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .promote_threshold = 64,
+        },
+    });
+    defer heap.deinit();
+
+    const payload = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789";
+    var s = try heap.allocBaseString(payload);
+    var roots = [_]Value{s};
+
+    _ = try heap.collectGarbage(&roots);
+    s = roots[0];
+    try testing.expect(heap.stats.gc_promote_n > 0);
+    const promote_n = heap.stats.gc_promote_n;
+    const promote_bytes = heap.stats.gc_promote_bytes;
+
+    _ = try heap.collectGarbage(&roots);
+    s = roots[0];
+
+    try testing.expect(heap.stats.gc_promote_success_n > 0);
+    try testing.expect(heap.stats.gc_promote_success_n <= promote_n);
+    try testing.expect(heap.stats.gc_promote_success_bytes > 0);
+    try testing.expect(heap.stats.gc_promote_success_bytes <= promote_bytes);
+
+    var success_age_sum: usize = 0;
+    for (heap.stats.gc_promote_success_age) |n| success_age_sum +%= n;
+    try testing.expectEqual(heap.stats.gc_promote_success_n, success_age_sum);
 }
 
 test "minor gc keeps ref containers in nursery before tenured collector" {

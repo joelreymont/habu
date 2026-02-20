@@ -47,6 +47,7 @@ pub const AllocClass = enum(u8) {
 
 const ALLOC_CLASS_N: usize = std.meta.fields(AllocClass).len;
 const ALLOC_SIZE_N: usize = 8;
+pub const GC_AGE_N: usize = 8;
 
 /// Interned symbol table for eq comparison
 pub const SymbolTable = struct {
@@ -328,6 +329,9 @@ pub const Heap = struct {
     /// Structural signature of root-bearing tables.
     gc_root_sig: GcRootSig,
     gc_root_sig_valid: bool,
+    /// Nursery survivor age maps (addr -> minor survival age).
+    survivor_age_cur: std.AutoHashMapUnmanaged(usize, u8),
+    survivor_age_next: std.AutoHashMapUnmanaged(usize, u8),
     /// Card table for old->young write barriers (generational scaffold).
     card_table: []u8,
     /// Tenured bump pointer (used by minor-GC promotion policy).
@@ -428,10 +432,19 @@ pub const Heap = struct {
         gc_survive_bytes: usize = 0,
         gc_survive_class: [ALLOC_CLASS_N]usize = [_]usize{0} ** ALLOC_CLASS_N,
         gc_survive_size: [ALLOC_SIZE_N]usize = [_]usize{0} ** ALLOC_SIZE_N,
+        gc_survive_age: [GC_AGE_N]usize = [_]usize{0} ** GC_AGE_N,
+        gc_survive_age_class: [ALLOC_CLASS_N][GC_AGE_N]usize = [_][GC_AGE_N]usize{[_]usize{0} ** GC_AGE_N} ** ALLOC_CLASS_N,
         gc_promote_n: usize = 0,
         gc_promote_bytes: usize = 0,
         gc_promote_class: [ALLOC_CLASS_N]usize = [_]usize{0} ** ALLOC_CLASS_N,
         gc_promote_size: [ALLOC_SIZE_N]usize = [_]usize{0} ** ALLOC_SIZE_N,
+        gc_promote_age: [GC_AGE_N]usize = [_]usize{0} ** GC_AGE_N,
+        gc_promote_age_class: [ALLOC_CLASS_N][GC_AGE_N]usize = [_][GC_AGE_N]usize{[_]usize{0} ** GC_AGE_N} ** ALLOC_CLASS_N,
+        gc_promote_success_n: usize = 0,
+        gc_promote_success_bytes: usize = 0,
+        gc_promote_success_class: [ALLOC_CLASS_N]usize = [_]usize{0} ** ALLOC_CLASS_N,
+        gc_promote_success_age: [GC_AGE_N]usize = [_]usize{0} ** GC_AGE_N,
+        gc_promote_success_age_class: [ALLOC_CLASS_N][GC_AGE_N]usize = [_][GC_AGE_N]usize{[_]usize{0} ** GC_AGE_N} ** ALLOC_CLASS_N,
         gc_nursery_target: usize = 0,
         gc_nursery_scale: f64 = 1.0,
         gc_nursery_survival: f64 = 0.0,
@@ -450,6 +463,14 @@ pub const Heap = struct {
         tag: Tag,
         size: usize,
         marked: bool = false,
+        promoted_cycle: usize = 0,
+        promoted_age: u8 = 0,
+        promote_success_recorded: bool = false,
+    };
+
+    pub const SurvivorAgeEntry = struct {
+        addr: usize,
+        age: u8,
     };
 
     pub const FreeSpan = struct {
@@ -582,6 +603,8 @@ pub const Heap = struct {
             .gc_internal_slots = std.ArrayList(*Value){},
             .gc_root_sig = .{},
             .gc_root_sig_valid = false,
+            .survivor_age_cur = .{},
+            .survivor_age_next = .{},
             .card_table = card_table,
             .tenured_alloc_ptr = if (layout.tenured) |r| r.start else null,
             .promote_threshold = config.generational.promote_threshold,
@@ -731,6 +754,8 @@ pub const Heap = struct {
         self.stream_list.deinit(self.backing_allocator);
         self.gc_slots.deinit(self.backing_allocator);
         self.gc_internal_slots.deinit(self.backing_allocator);
+        self.survivor_age_cur.deinit(self.backing_allocator);
+        self.survivor_age_next.deinit(self.backing_allocator);
         self.tenured_objs.deinit(self.backing_allocator);
         self.tenured_free.deinit(self.backing_allocator);
         self.los_objs.deinit(self.backing_allocator);
@@ -917,8 +942,16 @@ pub const Heap = struct {
         return out;
     }
 
-    pub fn recordTenuredObject(self: *Heap, addr: usize, tag: Tag, size: usize) !void {
-        const item: TenuredObj = .{ .addr = addr, .tag = tag, .size = size, .marked = false };
+    pub fn recordTenuredObject(self: *Heap, addr: usize, tag: Tag, size: usize, age: u8) !void {
+        const item: TenuredObj = .{
+            .addr = addr,
+            .tag = tag,
+            .size = size,
+            .marked = false,
+            .promoted_cycle = self.stats.gc_count,
+            .promoted_age = age,
+            .promote_success_recorded = false,
+        };
         try self.tenured_objs.append(self.backing_allocator, item);
     }
 
@@ -972,14 +1005,24 @@ pub const Heap = struct {
         for (self.tenured_objs.items) |obj| {
             if (!obj.marked) dead_count += 1;
         }
-        if (dead_count == 0) return;
-
-        try self.tenured_free.ensureUnusedCapacity(self.backing_allocator, dead_count);
+        if (dead_count > 0) {
+            try self.tenured_free.ensureUnusedCapacity(self.backing_allocator, dead_count);
+        }
 
         var write: usize = 0;
         for (self.tenured_objs.items) |obj| {
             if (obj.marked) {
                 var live = obj;
+                if (!live.promote_success_recorded and live.promoted_cycle < self.stats.gc_count) {
+                    const cls = allocClassForTagAddr(live.tag, live.addr);
+                    const age_bucket = allocAgeBucket(live.promoted_age);
+                    self.stats.gc_promote_success_n +%= 1;
+                    self.stats.gc_promote_success_bytes +%= live.size;
+                    self.stats.gc_promote_success_class[@intFromEnum(cls)] +%= 1;
+                    self.stats.gc_promote_success_age[age_bucket] +%= 1;
+                    self.stats.gc_promote_success_age_class[@intFromEnum(cls)][age_bucket] +%= 1;
+                    live.promote_success_recorded = true;
+                }
                 live.marked = false;
                 self.tenured_objs.items[write] = live;
                 write += 1;
@@ -1230,6 +1273,38 @@ pub const Heap = struct {
         return 7;
     }
 
+    fn allocAgeBucket(age: u8) usize {
+        if (age <= 1) return age;
+        if (age == 2) return 2;
+        if (age == 3) return 3;
+        if (age <= 5) return 4;
+        if (age <= 7) return 5;
+        if (age <= 11) return 6;
+        return 7;
+    }
+
+    pub fn nextSurvivorAge(self: *const Heap, addr: usize) u8 {
+        const prev = self.survivor_age_cur.get(addr) orelse 0;
+        if (prev == std.math.maxInt(u8)) return prev;
+        return prev + 1;
+    }
+
+    pub fn rebuildSurvivorAges(self: *Heap, entries: []const SurvivorAgeEntry) !void {
+        self.survivor_age_next.clearRetainingCapacity();
+        try self.survivor_age_next.ensureTotalCapacity(self.backing_allocator, @intCast(entries.len));
+
+        const nursery_start = @intFromPtr(self.from_start);
+        const nursery_end = @intFromPtr(self.from_end);
+        for (entries) |entry| {
+            if (entry.addr < nursery_start or entry.addr >= nursery_end) continue;
+            try self.survivor_age_next.put(self.backing_allocator, entry.addr, entry.age);
+        }
+
+        const tmp = self.survivor_age_cur;
+        self.survivor_age_cur = self.survivor_age_next;
+        self.survivor_age_next = tmp;
+    }
+
     fn noteAllocSample(self: *Heap, cls: AllocClass, size: usize) void {
         if ((self.stats.allocations & ALLOC_SAMPLE_MASK) != 0) return;
         self.stats.alloc_sample_n +%= 1;
@@ -1272,18 +1347,23 @@ pub const Heap = struct {
         };
     }
 
-    pub fn noteSurvival(self: *Heap, tag: Tag, addr: usize, size: usize, promoted: bool) void {
+    pub fn noteSurvival(self: *Heap, tag: Tag, addr: usize, size: usize, promoted: bool, age: u8) void {
         const cls = allocClassForTagAddr(tag, addr);
         const bucket = allocSizeBucket(size);
+        const age_bucket = allocAgeBucket(age);
         self.stats.gc_survive_n +%= 1;
         self.stats.gc_survive_bytes +%= size;
         self.stats.gc_survive_class[@intFromEnum(cls)] +%= 1;
         self.stats.gc_survive_size[bucket] +%= 1;
+        self.stats.gc_survive_age[age_bucket] +%= 1;
+        self.stats.gc_survive_age_class[@intFromEnum(cls)][age_bucket] +%= 1;
         if (promoted) {
             self.stats.gc_promote_n +%= 1;
             self.stats.gc_promote_bytes +%= size;
             self.stats.gc_promote_class[@intFromEnum(cls)] +%= 1;
             self.stats.gc_promote_size[bucket] +%= 1;
+            self.stats.gc_promote_age[age_bucket] +%= 1;
+            self.stats.gc_promote_age_class[@intFromEnum(cls)][age_bucket] +%= 1;
         }
     }
 

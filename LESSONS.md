@@ -9,6 +9,11 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-20)
 
 ### Worked Well
+- Tracking nursery survivor age through a reusable side-map + per-copy updates (`src/runtime/heap.zig:1292`, `src/runtime/gc.zig:582`) produced stable age histograms without changing object layouts.
+- Extending survival/promotion telemetry with explicit age buckets and promotion-success counters (`src/runtime/heap.zig:434`, `src/runtime/heap.zig:992`, `src/runtime/heap.zig:1350`) made tenuring feedback directly measurable for the next adaptive-threshold dot.
+- Rebuilding survivor-age state after each nursery swap (`src/runtime/gc.zig:245`, `src/runtime/gc.zig:330`) kept age tracking aligned with moving addresses and prevented stale-address drift.
+- Guarding promotion-success accounting inside `sweepTenured` even when `dead_count == 0` (`src/runtime/heap.zig:1000`) fixed a real telemetry blind spot where always-live promoted objects never counted as successful promotions.
+- Wiring new telemetry through `gc_bench`/`bench-check` (`bench/gc.zig:239`, `bench/check.zig:49`) caught schema and invariant regressions immediately.
 - Fixing stale forwarded pointers at the VM constant/chunk boundary (`src/interp/vm.zig:10469`, `src/interp/vm.zig:10488`, `src/interp/vm.zig:10500`) removed a root crash vector under small nursery pressure; repairing constants/chunk pointers lazily in hot ops (`push_const`/`check_or`/`push_block`/`return_from`) kept behavior generic for any large Lisp workload.
 - Using an interned builtin key for function cells (`src/runtime/builtins.zig:66`, `src/runtime/builtins.zig:177`, `src/interp/vm.zig:907`) removed repeated runtime interning in function-namespace lookup/store/clear and stabilized `symbol-function` behavior during GC churn.
 - Preserving VM chunk-pool state with pointer-aware restore logic in compiler temporary execution paths (`src/compiler/compile.zig:3626`, `src/compiler/compile.zig:9233`) fixed stale chunk-pool restoration when nested compile/eval replaces pools mid-expansion.
@@ -33,6 +38,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Extending `tools/gc-compare` with optional Maxima telemetry (`--with-maxima`, defaults `--maxima-scale=3 --maxima-nursery-mb=24`) provided a practical mixed workload calibration point while keeping fast micro-only runs as default.
 
 ### Did Not Work
+- Assuming promotion-success counters would update only when tenured sweep reclaimed something was wrong; the old early-return path in `sweepTenured` skipped success accounting for all-live sets.
+- Using `AutoHashMapUnmanaged.ensureTotalCapacity(..., entries.len)` without casting failed on Zig 0.15 `Size` typing (`src/runtime/heap.zig:1294`); explicit integer casts are required.
 - Relying on `jj diff` word-level render to validate edited code was misleading during this RCA; several hunks appeared token-mashed while source files were correct, so direct line inspection (`nl -ba`) is required before concluding syntax damage.
 - Treating full `zig build test` as a required close gate in this environment remained unreliable (`--listen` hang state); targeted `-Dtest-filter` gates plus workload repro must be the deterministic proof path until harness stability improves.
 - Assuming `(in-package ...)` inside one `progn` would affect reader/package resolution for subsequent symbols in the same already-read form was wrong; defining formatter helpers with explicit package-qualified symbol names avoids this trap.
