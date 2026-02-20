@@ -590,6 +590,48 @@ fn jitFormatSimple(dest_raw: u64, control_raw: u64, arg_raw: u64, argc_raw: u64)
 
     const heap = g_heap orelse return Value.nil.raw;
     const bytes = control.toPtr(runtime.String).bytes();
+
+    // Fast path: one plain ~D/~d directive with literal prefix/suffix.
+    // This avoids per-call dynamic ArrayList allocation in hot format loops.
+    if (argc == 1) {
+        const arg = Value{ .raw = arg_raw };
+        if (arg.isFixnum()) {
+            var directive_pos: ?usize = null;
+            var idx: usize = 0;
+            var simple = true;
+            while (idx < bytes.len) : (idx += 1) {
+                if (bytes[idx] != '~') continue;
+                if (directive_pos != null or idx + 1 >= bytes.len) {
+                    simple = false;
+                    break;
+                }
+                const directive = bytes[idx + 1];
+                if (directive != 'd' and directive != 'D') {
+                    simple = false;
+                    break;
+                }
+                directive_pos = idx;
+                idx += 1;
+            }
+
+            if (simple and directive_pos != null) {
+                const pos = directive_pos.?;
+                var num_buf: [64]u8 = undefined;
+                const printed = std.fmt.bufPrint(&num_buf, "{d}", .{arg.toFixnum()}) catch return Value.nil.raw;
+                const suffix = bytes[pos + 2 ..];
+                const total_len = pos + printed.len + suffix.len;
+                if (total_len <= 512) {
+                    var out_buf: [512]u8 = undefined;
+                    @memcpy(out_buf[0..pos], bytes[0..pos]);
+                    @memcpy(out_buf[pos .. pos + printed.len], printed);
+                    @memcpy(out_buf[pos + printed.len .. total_len], suffix);
+                    const result = heap.allocBaseString(out_buf[0..total_len]) catch return Value.nil.raw;
+                    return result.raw;
+                }
+            }
+        }
+    }
+
     var out = std.ArrayList(u8){};
     defer out.deinit(heap.backing_allocator);
 
@@ -3722,6 +3764,49 @@ fn containsHelperCalls(body: *const Ir) bool {
     }{});
 }
 
+/// Conservative gate for untagged mode: only pure fixnum arithmetic/control.
+fn isUntaggedSafeExpr(ir: *const Ir) bool {
+    return switch (ir.*) {
+        .lit => |v| v.isFixnum(),
+        .@"var" => true,
+        .fixnum_add,
+        .fixnum_sub,
+        .fixnum_mul,
+        .add,
+        .sub,
+        .mul,
+        .fixnum_le,
+        .fixnum_lt,
+        .fixnum_gt,
+        .fixnum_ge,
+        .fixnum_eq,
+        .le,
+        .lt,
+        .gt,
+        .ge,
+        .num_eq,
+        .eq,
+        .logand,
+        .mod,
+        .rem,
+        => |op| isUntaggedSafeExpr(op.left) and isUntaggedSafeExpr(op.right),
+        .assert_fixnum => |op| isUntaggedSafeExpr(op.operand),
+        .@"if" => |n| isUntaggedSafeExpr(n.cond) and isUntaggedSafeExpr(n.then_branch) and isUntaggedSafeExpr(n.else_branch),
+        .block => |n| isUntaggedSafeExpr(n.body),
+        .progn => |exprs| blk: {
+            for (exprs) |e| if (!isUntaggedSafeExpr(e)) break :blk false;
+            break :blk true;
+        },
+        .let => |n| blk: {
+            for (n.bindings) |b| if (!isUntaggedSafeExpr(b.value)) break :blk false;
+            break :blk isUntaggedSafeExpr(n.body);
+        },
+        .set => |n| isUntaggedSafeExpr(n.value),
+        .loop => |n| isUntaggedSafeExpr(n.cond) and isUntaggedSafeExpr(n.body),
+        else => false,
+    };
+}
+
 /// Detect whether a function body contains unresolvable non-self calls.
 pub fn hasNonSelfCalls(body: *const Ir, name: []const u8) bool {
     return irAny(body, struct {
@@ -3988,22 +4073,10 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
         translator.self_sig_ref = try func.addSignature(indirect_sig);
     }
 
-    // Enable untagged mode: work with plain i64 inside the function body.
-    // Params are untagged at entry (sshr 1), result is re-tagged at return.
-    // Self-calls use untagged calling convention (no tag/untag overhead).
-    // Only use untagged mode for functions with loops (no call overhead).
-    // Recursive functions pay retag/untag at every self-call, which is worse.
-    // Untagged mode: work with plain i64 inside the function.
-    // Disabled when function uses cons/car/cdr because cons cells store tagged
-    // values, creating a tagged/untagged boundary that requires conversions.
-    // Untagged mode: work with plain i64 inside the function.
-    // Disabled when function uses:
-    // - cons/car/cdr: cons cells store tagged values
-    // - primitive calls (gcd, nreverse, append, assoc): expect tagged args
+    // Enable untagged mode only for a conservative arithmetic subset.
+    // This avoids mixing untagged fixnums with tagged runtime/helper paths.
     translator.untagged = translator.has_loops and !translator.is_recursive and
-        !containsCons(lambda.body) and !containsLoads(lambda.body) and
-        !containsHelperCalls(lambda.body) and
-        !containsPrimitiveCalls(lambda.body, name);
+        isUntaggedSafeExpr(lambda.body);
 
     // Map params to SSA values, untagging at entry in untagged mode.
     const block_params = func.dfg.blockParams(entry);
@@ -4206,8 +4279,10 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     // which can clobber source registers before they're consumed.
     // Always run for recursive functions (even without nested self-calls)
     // because 3+ params create dependency chains in the arg move sequence.
-    if (translator.is_recursive) {
-        fixCallArgMoves(code.code.items);
+    if (translator.is_recursive or translator.has_cross_calls) {
+        if (!fixCallArgMoves(code.code.items)) {
+            return error.UnsupportedIrNode;
+        }
         // Debug: dump patched machine code
         if (false) {
             std.debug.print("[hoist-asm-patched] {d} bytes: ", .{code.code.items.len});
@@ -5782,8 +5857,8 @@ fn coalesceMovs(code: []u8) void {
     }
 }
 
-fn fixCallArgMoves(code: []u8) void {
-    if (code.len < 8) return;
+fn fixCallArgMoves(code: []u8) bool {
+    if (code.len < 8) return true;
     const n_insns = code.len / 4;
 
     var i: usize = 0;
@@ -5823,80 +5898,113 @@ fn fixCallArgMoves(code: []u8) void {
 
         if (n_movs < 2) continue;
 
-        // Check for conflicts: a mov reads from a register that's been
-        // overwritten by an earlier (lower index) mov in the sequence.
-        // Note: movs[] is in reverse order (movs[0] is closest to blr).
-        // The execution order is movs[n-1], movs[n-2], ..., movs[0], blr.
-        var has_conflict = false;
-        for (0..n_movs) |a| {
-            for (a + 1..n_movs) |b| {
-                // movs[b] executes BEFORE movs[a] (farther from blr = earlier)
-                // Check if movs[b] writes a register that movs[a] reads
-                if (movs[b].dst == movs[a].src) {
-                    has_conflict = true;
-                    break;
-                }
-            }
-            if (has_conflict) break;
+        const Assign = struct { dst: u5, src: u5 };
+        var assigns: [8]Assign = undefined;
+        for (0..n_movs) |mi| {
+            assigns[mi] = .{ .dst = movs[mi].dst, .src = movs[mi].src };
         }
 
-        if (!has_conflict) continue;
+        const regUsed = struct {
+            fn f(assigns_slice: []const Assign, reg: u5) bool {
+                for (assigns_slice) |a| {
+                    if (a.src == reg or a.dst == reg) return true;
+                }
+                return false;
+            }
+        }.f;
 
-        // Reorder using topological sort on the dependency graph.
-        // Edge: move A depends on move B if B's destination = A's source
-        // (A must execute before B to read the value B overwrites).
-        // A move is "ready" when its destination is NOT the source of any
-        // remaining (un-emitted) move.
-        var new_order: [8]MovInfo = undefined;
+        var scratch: u5 = 9;
+        while (scratch < 28 and regUsed(assigns[0..n_movs], scratch)) : (scratch += 1) {}
+        if (scratch >= 28) scratch = 9;
+
+        // Resolve parallel copy with cycle handling via scratch register.
         var emitted: [8]bool = .{ false, false, false, false, false, false, false, false };
-        var n_emitted: usize = 0;
+        var emitted_count: usize = 0;
+        var result: [9]u32 = undefined; // up to n_movs + 1 for one broken cycle
+        var n_result: usize = 0;
 
-        while (n_emitted < n_movs) {
-            var found = false;
-            for (0..n_movs) |a| {
-                if (emitted[a]) continue;
-                // Check if this move's DESTINATION is needed as SOURCE by any remaining move.
-                // If no remaining move reads from our destination, we can emit safely.
+        while (emitted_count < n_movs) {
+            var progressed = false;
+
+            for (0..n_movs) |ai| {
+                if (emitted[ai]) continue;
+                const dst = assigns[ai].dst;
                 var dst_needed = false;
-                for (0..n_movs) |b| {
-                    if (a == b or emitted[b]) continue;
-                    if (movs[b].src == movs[a].dst) {
+                for (0..n_movs) |other| {
+                    if (ai == other or emitted[other]) continue;
+                    if (assigns[other].src == dst) {
                         dst_needed = true;
                         break;
                     }
                 }
                 if (!dst_needed) {
-                    new_order[n_emitted] = movs[a];
-                    emitted[a] = true;
-                    n_emitted += 1;
-                    found = true;
-                    break; // restart scan
+                    result[n_result] = makeMovInsn(dst, assigns[ai].src);
+                    n_result += 1;
+                    emitted[ai] = true;
+                    emitted_count += 1;
+                    progressed = true;
                 }
             }
-            if (!found) {
-                // Cycle detected - emit remaining in original order
-                for (0..n_movs) |a| {
-                    if (!emitted[a]) {
-                        new_order[n_emitted] = movs[a];
-                        emitted[a] = true;
-                        n_emitted += 1;
+
+            if (progressed) continue;
+
+            // Cycle: preserve one source in scratch, then continue.
+            var cycle_idx: ?usize = null;
+            for (0..n_movs) |ai| {
+                if (!emitted[ai]) {
+                    cycle_idx = ai;
+                    break;
+                }
+            }
+            const ci = cycle_idx orelse break;
+            if (n_result >= result.len) return false;
+            result[n_result] = makeMovInsn(scratch, assigns[ci].src);
+            n_result += 1;
+            assigns[ci].src = scratch;
+        }
+
+        // Existing mov slots are written in execution order:
+        // movs[n-1], movs[n-2], ..., movs[0].
+        if (n_result <= n_movs) {
+            for (0..n_movs) |k| {
+                const pos = movs[n_movs - 1 - k].pos;
+                if (k < n_result) {
+                    writeInsn(code, pos, result[k]);
+                } else {
+                    writeInsn(code, pos, 0xD503201F); // NOP
+                }
+            }
+            continue;
+        }
+
+        // Need one extra slot for cycle break: reuse `mov x9, xT; blr x9`.
+        if (n_result == n_movs + 1 and is_blr) {
+            const call_target: u5 = @truncate((insn >> 5) & 0x1F);
+            const farthest_pos = movs[n_movs - 1].pos;
+            if (call_target == 9 and farthest_pos > 0) {
+                const slot_pos = farthest_pos - 1;
+                const slot_insn = readInsn(code, slot_pos);
+                if (slot_insn & 0xFFE0FFE0 == 0xAA0003E0) {
+                    const slot_dst: u5 = @truncate(slot_insn & 0x1F);
+                    const slot_src: u5 = @truncate((slot_insn >> 16) & 0x1F);
+                    if (slot_dst == 9) {
+                        const patched_call = (insn & ~@as(u32, 0x3E0)) | (@as(u32, slot_src) << 5);
+                        writeInsn(code, i, patched_call);
+                        writeInsn(code, slot_pos, result[0]);
+                        for (0..n_movs) |k| {
+                            const pos = movs[n_movs - 1 - k].pos;
+                            writeInsn(code, pos, result[k + 1]);
+                        }
+                        continue;
                     }
                 }
             }
         }
 
-        // Write reordered instructions back.
-        // The positions in the code buffer are: movs[n-1].pos, movs[n-2].pos, ..., movs[0].pos
-        // We need to write new_order[0..n_movs] into these positions (in execution order).
-        // Execution order: position = movs[n_movs - 1 - k].pos for k-th emitted move.
-        for (0..n_emitted) |k| {
-            const pos = movs[n_movs - 1 - k].pos;
-            const new_insn: u32 = 0xAA0003E0 |
-                @as(u32, new_order[k].dst) |
-                (@as(u32, new_order[k].src) << 16);
-            writeInsn(code, pos, new_insn);
-        }
+        return false;
     }
+
+    return true;
 }
 
 fn readInsn(code: []const u8, idx: usize) u32 {

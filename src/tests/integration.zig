@@ -126,6 +126,45 @@ test "compileChunk JIT length handles string literals" {
     try testing.expectEqual(@as(i64, 8), result.toFixnum());
 }
 
+test "compileChunk JIT format simple preserves literal template" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(defun jit-format-simple-template (n) (declare (optimize (speed 3) (safety 0))) (format nil \"BENCH-SYM-~d-X\" n))",
+    ));
+
+    const result = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-format-simple-template 42)",
+    ));
+    try testing.expect(result.isString());
+    try testing.expectEqualStrings("BENCH-SYM-42-X", result.toPtr(runtime.String).bytes());
+}
+
 test "deep recursive defun does not overflow block stack at 64" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
