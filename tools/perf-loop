@@ -6,6 +6,7 @@ Runs microbench + real workload comparisons, ranks bottlenecks, and prints next 
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
@@ -30,6 +31,12 @@ def parse_args():
     p.add_argument("--scale", type=int, default=1, help="maxima workload scale")
     p.add_argument("--heap-mb", type=int, default=1024, help="maxima workload heap")
     p.add_argument("--gc-iters", type=int, default=30, help="gc-compare iterations")
+    p.add_argument(
+        "--gc-runs",
+        type=int,
+        default=3,
+        help="number of repeated gc-compare runs for confidence-weighted ranking",
+    )
     p.add_argument("--gc-live-mb", type=int, default=8, help="gc-compare live set")
     p.add_argument("--gc-heap-mb", type=int, default=64, help="gc-compare habu heap")
     p.add_argument(
@@ -291,8 +298,15 @@ def collect_maxima(scale: int, heap_mb: int, profile_mutator: bool, with_ocaml: 
     )
 
 
-def collect_gc_gates(gc_iters: int, gc_live_mb: int, gc_heap_mb: int, gate_level: str, with_ocaml: bool):
-    cmd = [
+def collect_gc_gates(
+    gc_iters: int,
+    gc_live_mb: int,
+    gc_heap_mb: int,
+    gate_level: str,
+    with_ocaml: bool,
+    gc_runs: int,
+):
+    base_cmd = [
         "tools/gc-compare",
         "--json",
         f"--iters={gc_iters}",
@@ -301,11 +315,59 @@ def collect_gc_gates(gc_iters: int, gc_live_mb: int, gc_heap_mb: int, gate_level
         f"--gate-level={gate_level}",
     ]
     if with_ocaml:
-        cmd.append("--with-ocaml")
-    out = run_cmd(
-        cmd
-    )
-    return parse_mixed_json(out)
+        base_cmd.append("--with-ocaml")
+
+    runs = []
+    for _ in range(max(1, gc_runs)):
+        out = run_cmd(base_cmd)
+        runs.append(parse_mixed_json(out))
+    return runs
+
+
+def gc_run_stats(gc_runs: list):
+    fields = ("avg_pause_ratio", "p95_pause_ratio", "throughput_ratio", "rss_ratio")
+    values = {field: [] for field in fields}
+    for run in gc_runs:
+        metrics = run.get("metrics", {})
+        for field in fields:
+            val = metrics.get(field)
+            if isinstance(val, (int, float)):
+                values[field].append(float(val))
+
+    means = {}
+    stdev = {}
+    cv = {}
+    confidence_by_metric = {}
+
+    for field, vals in values.items():
+        if not vals:
+            continue
+        mu = sum(vals) / float(len(vals))
+        var = 0.0
+        for v in vals:
+            diff = v - mu
+            var += diff * diff
+        sigma = math.sqrt(var / float(len(vals)))
+        denom = abs(mu)
+        coeff = (sigma / denom) if denom > 1e-12 else (0.0 if sigma == 0.0 else 1.0)
+        conf = 1.0 / (1.0 + coeff)
+        means[field] = mu
+        stdev[field] = sigma
+        cv[field] = coeff
+        confidence_by_metric[field] = conf
+
+    conf_fields = ("avg_pause_ratio", "p95_pause_ratio", "throughput_ratio")
+    conf_vals = [confidence_by_metric[f] for f in conf_fields if f in confidence_by_metric]
+    confidence = (sum(conf_vals) / float(len(conf_vals))) if conf_vals else 1.0
+
+    return {
+        "runs": len(gc_runs),
+        "means": means,
+        "stdev": stdev,
+        "cv": cv,
+        "confidence": confidence,
+        "confidence_by_metric": confidence_by_metric,
+    }
 
 
 def gc_summary(gc_compare: dict, gate_level: str):
@@ -333,11 +395,22 @@ def gc_summary(gc_compare: dict, gate_level: str):
     }
 
 
-def rank_gc_actions(gc_compare: dict, gc_norm: dict):
+def rank_gc_actions(gc_compare: dict, gc_norm: dict, gc_stats: dict):
+    means = gc_stats.get("means", {})
+    conf_by_metric = gc_stats.get("confidence_by_metric", {})
+    run_confidence = float(gc_stats.get("confidence", 1.0))
+
+    def metric_actual(field: str, fallback: float):
+        value = means.get(field)
+        if isinstance(value, (int, float)):
+            return float(value)
+        return fallback
+
     def gap_min(field: str):
         d = gc_norm.get("gate_details", {}).get(field, {})
         target = float(d.get("target_min", 0.0))
-        actual = float(d.get("actual", 0.0))
+        actual_base = float(d.get("actual", 0.0))
+        actual = metric_actual(field, actual_base)
         if target <= 0.0:
             return 0.0
         return max(0.0, (target - actual) / target)
@@ -345,6 +418,9 @@ def rank_gc_actions(gc_compare: dict, gc_norm: dict):
     avg_gap = gap_min("avg_pause_ratio")
     p95_gap = gap_min("p95_pause_ratio")
     thr_gap = gap_min("throughput_ratio")
+    conf_avg = float(conf_by_metric.get("avg_pause_ratio", run_confidence))
+    conf_p95 = float(conf_by_metric.get("p95_pause_ratio", run_confidence))
+    conf_thr = float(conf_by_metric.get("throughput_ratio", run_confidence))
 
     habu = gc_compare.get("habu", {})
     avg_pause = float(habu.get("avg_pause_ns", 0.0))
@@ -359,7 +435,8 @@ def rank_gc_actions(gc_compare: dict, gc_norm: dict):
         {
             "dot": "habu-nursery-policy-derive-d65d5879",
             "action": "Derive adaptive nursery control law from live/survival feedback",
-            "score": 0.55 * max(avg_gap, thr_gap) + 0.45 * p95_gap,
+            "score_base": 0.55 * max(avg_gap, thr_gap) + 0.45 * p95_gap,
+            "confidence": min(conf_avg, conf_thr, conf_p95),
             "reason": "avg/throughput gate gaps dominate with full-live copying pressure",
         }
     )
@@ -367,7 +444,8 @@ def rank_gc_actions(gc_compare: dict, gc_norm: dict):
         {
             "dot": "habu-debt-integrate-trigger-c402efa2",
             "action": "Integrate debt-trigger pacing for smoother pause/throughput tradeoff",
-            "score": 0.60 * avg_gap + 0.40 * p95_gap,
+            "score_base": 0.60 * avg_gap + 0.40 * p95_gap,
+            "confidence": min(conf_avg, conf_p95),
             "reason": "static trigger under-shoots gate targets across pause and throughput",
         }
     )
@@ -375,7 +453,8 @@ def rank_gc_actions(gc_compare: dict, gc_norm: dict):
         {
             "dot": "habu-major-gc-incremental-068b1148",
             "action": "Implement incremental major mark slices to cut tail pauses",
-            "score": p95_gap,
+            "score_base": p95_gap,
+            "confidence": conf_p95,
             "reason": "p95/p99 remain far below target; slicing needed for latency tail",
         }
     )
@@ -383,7 +462,8 @@ def rank_gc_actions(gc_compare: dict, gc_norm: dict):
         {
             "dot": "habu-rset-add-scan-13787e2c",
             "action": "Add remembered-set scan fast paths and reduce rescan overhead",
-            "score": copy_share * max(thr_gap, avg_gap),
+            "score_base": copy_share * max(thr_gap, avg_gap),
+            "confidence": min(conf_thr, conf_avg),
             "reason": f"copy-share {copy_share:.4f} indicates copy/scavenge dominates pause budget",
         }
     )
@@ -391,7 +471,8 @@ def rank_gc_actions(gc_compare: dict, gc_norm: dict):
         {
             "dot": "habu-tenuring-adaptive-threshold-34c571a8",
             "action": "Tune adaptive tenuring threshold from promote/survival telemetry",
-            "score": 0.50 * avg_gap + 0.50 * min(1.0, max(0.0, 0.02 - promote_rate) / 0.02),
+            "score_base": 0.50 * avg_gap + 0.50 * min(1.0, max(0.0, 0.02 - promote_rate) / 0.02),
+            "confidence": conf_avg,
             "reason": f"promote-rate {promote_rate:.6f} with hot class {hot_class} suggests tenure policy mismatch",
         }
     )
@@ -400,9 +481,18 @@ def rank_gc_actions(gc_compare: dict, gc_norm: dict):
             {
                 "dot": "habu-los-threshold-auto-6d2a6cc1",
                 "action": "Auto-tune LOS threshold and reuse policy",
-                "score": max(0.0, min(1.0, float(rss_ratio) - 1.0)),
+                "score_base": max(0.0, min(1.0, float(rss_ratio) - 1.0)),
+                "confidence": float(conf_by_metric.get("rss_ratio", run_confidence)),
                 "reason": f"rss-ratio {float(rss_ratio):.4f} vs parity max 1.2",
             }
+        )
+
+    for action in raw:
+        confidence = float(action.get("confidence", run_confidence))
+        score_base = float(action.get("score_base", 0.0))
+        action["score"] = score_base * confidence
+        action["reason"] = (
+            f"{action['reason']}; conf={confidence:.3f}; runs={gc_stats.get('runs', 1)}"
         )
 
     ranked = sorted(raw, key=lambda a: a["score"], reverse=True)
@@ -491,10 +581,19 @@ def main():
     maxima_entries, maxima_errs, maxima_ocaml_errs, h_loader, s_loader, mutator_profile, maxima_runners = collect_maxima(
         args.scale, args.heap_mb, args.profile_mutator, args.with_ocaml
     )
-    gc_compare = collect_gc_gates(args.gc_iters, args.gc_live_mb, args.gc_heap_mb, args.gate_level, args.with_ocaml)
+    gc_runs = collect_gc_gates(
+        args.gc_iters,
+        args.gc_live_mb,
+        args.gc_heap_mb,
+        args.gate_level,
+        args.with_ocaml,
+        args.gc_runs,
+    )
+    gc_compare = gc_runs[-1]
+    gc_stats = gc_run_stats(gc_runs)
     gate_pass = bool(gc_compare.get("gate_pass", False))
     gc_norm = gc_summary(gc_compare, args.gate_level)
-    gc_actions = rank_gc_actions(gc_compare, gc_norm)
+    gc_actions = rank_gc_actions(gc_compare, gc_norm, gc_stats)
     gc_validation = validate_gc_report(gc_norm, gc_actions)
     if not gc_validation["ok"]:
         raise RuntimeError("invalid gc report: " + "; ".join(gc_validation["errors"]))
@@ -523,6 +622,7 @@ def main():
             },
             "mutator_profile": mutator_profile,
             "gc_compare": gc_compare,
+            "gc_run_stats": gc_stats,
             "gc_summary": gc_norm,
             "gc_actions": gc_actions,
             "gc_validation": gc_validation,
@@ -548,7 +648,7 @@ def main():
     print("Performance self-improvement loop")
     print(
         f"  micro iters: {args.iters}, maxima scale: {args.scale}, heap_mb: {args.heap_mb}, "
-        f"gc(iters/live/heap): {args.gc_iters}/{args.gc_live_mb}/{args.gc_heap_mb}, "
+        f"gc(iters/runs/live/heap): {args.gc_iters}/{args.gc_runs}/{args.gc_live_mb}/{args.gc_heap_mb}, "
         f"gate: {args.gate_level}"
     )
     print(
@@ -657,6 +757,15 @@ def main():
         )
     if gc_gate:
         print(f"  gc gate {args.gate_level}: {'PASS' if gc_gate.get('pass') else 'FAIL'}")
+    print(
+        "  gc confidence: runs={n} overall={c:.4f} avg={a:.4f} p95={p:.4f} thr={t:.4f}".format(
+            n=gc_stats.get("runs", 1),
+            c=gc_stats.get("confidence", 1.0),
+            a=gc_stats.get("confidence_by_metric", {}).get("avg_pause_ratio", 1.0),
+            p=gc_stats.get("confidence_by_metric", {}).get("p95_pause_ratio", 1.0),
+            t=gc_stats.get("confidence_by_metric", {}).get("throughput_ratio", 1.0),
+        )
+    )
     print(f"  gc report validation: {'PASS' if gc_validation['ok'] else 'FAIL'}")
     if gc_actions:
         print("  gc action ranking:")

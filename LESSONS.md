@@ -77,6 +77,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Enforcing required top-level JSON keys when scraping mixed stdout (`tools/bench_pack_runner.py:426`, `tools/bench_pack_runner.py:481`) prevented nested benchmark-object misparses and restored complete workload accounting in `tools/perf-loop` (`tools/perf-loop:116`) and `tools/gc-compare` (`tools/gc-compare:285`).
 - Surfacing OCaml adapter status/errors in JSON and text outputs (`tools/perf-loop:491`, `tools/gc-compare:706`) made missing OCaml command wiring explicit instead of silently dropping the runtime.
 - Emitting selected-gate parity deltas and CI trend series directly from gate evaluations (`tools/gc-compare:680`, `tools/gc-compare:706`, `tools/gc-compare:947`) created a machine-consumable contract for regression dashboards without duplicating gate math downstream.
+- Ranking GC actions from repeated `gc-compare` samples with per-metric confidence (`tools/perf-loop:314`, `tools/perf-loop:410`, `tools/perf-loop:548`) reduced score volatility and exposed low-confidence optimization signals directly in reasons/output.
 
 ### Did Not Work
 - Assuming a fixed `MAJOR_SWEEP_BUDGET`-sized fixture would keep major cycle active was brittle; root ordering/object size can make the cycle complete in one pass, so barrier tests need larger deterministic workloads.

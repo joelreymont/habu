@@ -59,6 +59,7 @@ sbcl --script bench/comprehensive.lisp
 Default gate evaluation is `vs_sbcl`; `--with-ocaml` enables OCaml runner adapters and emits OCaml gate evaluations when OCaml telemetry is available.
 `tools/gc-compare --json` and `tools/perf-loop --json` now include normalized `runners` payloads (`habu`/`sbcl`/`ocaml`) from `tools/bench_pack_runner.py`.
 `tools/gc-compare --json` also emits CI-friendly `parity_diff` (selected-gate deltas) and `trend` (metric series) blocks.
+`tools/perf-loop` ranks GC actions from repeated `gc-compare` samples (`--gc-runs`) and emits confidence metrics in `gc_run_stats`.
 `bench/gc.zig` JSON now includes pause percentiles (`p50_pause_ns`, `p95_pause_ns`, `p99_pause_ns`), phase-mode timings (`gc_minor_count`, `gc_major_count`, `avg_minor_ns`, `avg_major_ns`), allocation sampling telemetry (`alloc_sample_*`, `alloc_sample_size`), survival/promotion histograms (`gc_survive_*`, `gc_promote_*`), and adaptive nursery policy telemetry (`gc_nursery_*`).
 `bench/check.zig` enforces `gc_nursery_target >= live_bytes` so adaptive shrinking cannot set a trigger below live nursery occupancy.
 `tools/gc-compare --with-maxima` augments micro-GC gates with Maxima workload GC telemetry (default stress point: `--maxima-scale=3 --maxima-nursery-mb=24`).
@@ -109,7 +110,7 @@ tools/gc-compare --with-ocaml               # Include OCaml runner status/metric
 tools/gc-compare --json                      # Include gate metrics + threshold status
 tools/gc-compare --fail-on-gates --gate-level=milestone_2x_from_baseline
 tools/perf-loop --iters=1 --scale=1         # Ranked bottlenecks + GC gate summary
-tools/perf-loop --json --gc-iters=30        # Include gc_compare gate schema in JSON
+tools/perf-loop --json --gc-iters=30 --gc-runs=3  # Include gate schema + confidence-weighted gc ranking
 tools/perf-loop --json --with-ocaml         # Include OCaml runner status/errors in JSON
 tools/perf-loop --json --profile-mutator    # Include barrier/safepoint mutator overhead profile
 tools/perf-loop --fail-on-gates --gate-level=milestone_2x_from_baseline
