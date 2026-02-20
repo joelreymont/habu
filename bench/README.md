@@ -63,6 +63,7 @@ Default gate evaluation is `vs_sbcl`; `--with-ocaml` enables OCaml runner adapte
 `tools/perf-loop` ranks GC actions from repeated `gc-compare` samples (`--gc-runs`) and emits confidence metrics in `gc_run_stats`.
 `tools/perf-loop` persists JSONL history (`--history-file`, default `bench/results/perf_loop_history.jsonl`) and derives `trend_lines` from the recent window.
 `tools/perf-loop --json` emits `next_dots` recommendations (`dot on <id>`) ranked from measured scores + confidence + trend pressure.
+Contract reference: `docs/gc-parity-contract.md`.
 `bench/gc.zig` JSON now includes pause percentiles (`p50_pause_ns`, `p95_pause_ns`, `p99_pause_ns`), phase-mode timings (`gc_minor_count`, `gc_major_count`, `avg_minor_ns`, `avg_major_ns`), allocation sampling telemetry (`alloc_sample_*`, `alloc_sample_size`), survival/promotion histograms (`gc_survive_*`, `gc_promote_*`), and adaptive nursery policy telemetry (`gc_nursery_*`).
 `bench/check.zig` enforces `gc_nursery_target >= live_bytes` so adaptive shrinking cannot set a trigger below live nursery occupancy.
 `tools/gc-compare --with-maxima` augments micro-GC gates with Maxima workload GC telemetry (default stress point: `--maxima-scale=3 --maxima-nursery-mb=24`).
