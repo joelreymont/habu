@@ -9,6 +9,11 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-20)
 
 ### Worked Well
+- Fixing stale forwarded pointers at the VM constant/chunk boundary (`src/interp/vm.zig:10469`, `src/interp/vm.zig:10488`, `src/interp/vm.zig:10500`) removed a root crash vector under small nursery pressure; repairing constants/chunk pointers lazily in hot ops (`push_const`/`check_or`/`push_block`/`return_from`) kept behavior generic for any large Lisp workload.
+- Using an interned builtin key for function cells (`src/runtime/builtins.zig:66`, `src/runtime/builtins.zig:177`, `src/interp/vm.zig:907`) removed repeated runtime interning in function-namespace lookup/store/clear and stabilized `symbol-function` behavior during GC churn.
+- Preserving VM chunk-pool state with pointer-aware restore logic in compiler temporary execution paths (`src/compiler/compile.zig:3626`, `src/compiler/compile.zig:9233`) fixed stale chunk-pool restoration when nested compile/eval replaces pools mid-expansion.
+- Canonicalizing forwarded symbols before macro/symbol-macro and struct-predicate lookup (`src/compiler/compile.zig:14881`, `src/compiler/compile.zig:14906`, `src/compiler/compile.zig:17338`) prevented GC-moved symbol identity drift in compile-time dispatch.
+- Running both targeted integration regressions and real Maxima workload repros (`src/tests/integration.zig:7135`, `zig build -Duse-hoist=true bench-maxima -- --json --scale=1 --heap-mb=1024 --nursery-mb=16`) gave deterministic proof that the small-nursery path now completes without crash.
 - Replacing the `symbol-plist` placeholder with a real primitive-backed wrapper in `lib/stdlib.habu:4171` fixed function-cell parity: direct `(symbol-plist ...)` and `(funcall #'symbol-plist ...)` now agree, and `getl` behavior is stable when loaded generically.
 - Adding a stdlib `getl` compatibility implementation in `lib/stdlib.habu:4180` plus an integration lock in `src/tests/integration.zig:7135` prevented silent plist lookup regressions in Maxima-style paths.
 - Adding the exact `defun + &aux + outer cond + push + inner do/cond/return` repro as an integration test (`src/tests/integration.zig:6285`) is a reliable guard even when no compiler code change is required.
@@ -28,6 +33,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Extending `tools/gc-compare` with optional Maxima telemetry (`--with-maxima`, defaults `--maxima-scale=3 --maxima-nursery-mb=24`) provided a practical mixed workload calibration point while keeping fast micro-only runs as default.
 
 ### Did Not Work
+- Relying on `jj diff` word-level render to validate edited code was misleading during this RCA; several hunks appeared token-mashed while source files were correct, so direct line inspection (`nl -ba`) is required before concluding syntax damage.
+- Treating full `zig build test` as a required close gate in this environment remained unreliable (`--listen` hang state); targeted `-Dtest-filter` gates plus workload repro must be the deterministic proof path until harness stability improves.
 - Assuming `(in-package ...)` inside one `progn` would affect reader/package resolution for subsequent symbols in the same already-read form was wrong; defining formatter helpers with explicit package-qualified symbol names avoids this trap.
 - Relying on `tools/dot-finish` full `zig build test` in this environment was unreliable due harness stalls; targeted filtered test gates provided deterministic validation for dot closure work.
 - Running real-workload CAS loops with large default iteration counts caused impractically long benchmark runs; use very small defaults plus explicit `--scale` for controlled expansion.

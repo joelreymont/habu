@@ -524,6 +524,48 @@ pub const Vm = struct {
         return parsed;
     }
 
+    fn invalidOpcode(self: *const Vm, comptime site: []const u8) Error {
+        if (std.posix.getenv("HABU_TRACE_INVALID_OPCODE") != null) {
+            const chunk_addr = @intFromPtr(self.chunk);
+            const from_start = @intFromPtr(self.heap.from_start);
+            const from_end = @intFromPtr(self.heap.from_end);
+            const to_start = @intFromPtr(self.heap.to_start);
+            const to_end = to_start + self.heap.space_size;
+            const in_from = chunk_addr >= from_start and chunk_addr < from_end;
+            const in_to = chunk_addr >= to_start and chunk_addr < to_end;
+            const in_heap = in_from or in_to;
+            std.debug.print(
+                "TRACE invalid-opcode site={s} chunk=0x{x} ip={d} sp={d} fp={d} catch={d} unwind={d} block={d}\n",
+                .{
+                    site,
+                    chunk_addr,
+                    self.ip,
+                    self.sp,
+                    self.fp,
+                    self.catch_sp,
+                    self.unwind_sp,
+                    self.block_sp,
+                },
+            );
+            if (chunk_addr == @intFromPtr(&halt_chunk)) {
+                std.debug.print("  chunk-meta=halt\n", .{});
+            } else {
+                std.debug.print(
+                    "  chunk-meta in_heap={any} in_from={any} in_to={any} from=[0x{x},0x{x}) to=[0x{x},0x{x})\n",
+                    .{ in_heap, in_from, in_to, from_start, from_end, to_start, to_end },
+                );
+                if (in_to and (chunk_addr & 0xF) == 0) {
+                    const first_word: *const Value = @ptrFromInt(chunk_addr);
+                    std.debug.print(
+                        "  chunk-meta to-space first-word=0x{x:0>16} forwarding={any}\n",
+                        .{ first_word.raw, first_word.isForwarding() },
+                    );
+                }
+            }
+        }
+        return error.InvalidOpcode;
+    }
+
     fn shouldTraceError(self: *Vm, err: anyerror) bool {
         if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") == null) return false;
         if (err == error.Halt and std.posix.getenv("HABU_TRACE_ERROR_INCLUDE_HALT") == null) return false;
@@ -862,13 +904,9 @@ pub const Vm = struct {
         self.clearSymbolLocalValueCell(sym);
     }
 
-    fn functionCellKey(self: *Vm) Error!Value {
-        return try self.intern("%FUNCTION-CELL");
-    }
-
     fn lookupFunctionCell(self: *Vm, sym_val: Value) Error!?Value {
         if (!sym_val.isSymbol()) return null;
-        const key = try self.functionCellKey();
+        const key = self.builtins.sym_function_cell;
         const cell = try primitives.list.get(sym_val, key);
         if (!isCallableFunctionValue(cell)) return null;
         return cell;
@@ -876,13 +914,13 @@ pub const Vm = struct {
 
     fn storeFunctionCell(self: *Vm, sym_val: Value, fn_val: Value) Error!void {
         if (!sym_val.isSymbol()) return;
-        const key = try self.functionCellKey();
+        const key = self.builtins.sym_function_cell;
         _ = try primitives.list.put(self.heap, sym_val, key, fn_val);
     }
 
     fn clearFunctionCell(self: *Vm, sym_val: Value) Error!void {
         if (!sym_val.isSymbol()) return;
-        const key = try self.functionCellKey();
+        const key = self.builtins.sym_function_cell;
         _ = try primitives.list.remprop(self.heap, sym_val, key);
     }
 
@@ -940,8 +978,6 @@ pub const Vm = struct {
     pub fn clearExtRoots(self: *Vm) void {
         self.ext_roots = &[_]Value{};
     }
-
-
 
     fn htGrowInPlace(self: *Vm, ht_idx: usize, new_cap: usize) !void {
         const entries_len = try std.math.mul(usize, new_cap, 2);
@@ -1966,8 +2002,14 @@ pub const Vm = struct {
         self.execute_depth += 1;
         defer self.execute_depth -= 1;
         while (true) {
+            const chunk_addr = @intFromPtr(self.chunk);
+            const stale_start = @intFromPtr(self.heap.to_start);
+            const stale_end = stale_start + self.heap.space_size;
+            if (chunk_addr >= stale_start and chunk_addr < stale_end) {
+                self.refreshCurrentChunk();
+            }
             // Bounds check before reading opcode to prevent read past end of chunk
-            if (self.ip >= self.chunk.getCode().len) return error.InvalidOpcode;
+            if (self.ip >= self.chunk.getCode().len) return self.invalidOpcode("execute.ip-oob");
             const op_ip = self.ip;
             const op = self.readOp();
 
@@ -2043,8 +2085,7 @@ pub const Vm = struct {
             },
             .push_const => {
                 const idx = self.readU16();
-                if (idx >= self.chunk.getConstants().len) return error.InvalidConstant;
-                try self.push(self.chunk.getConstants()[idx]);
+                try self.push(try self.loadConst(idx));
             },
             .dup => {
                 const val = try self.peek(0);
@@ -2087,7 +2128,7 @@ pub const Vm = struct {
                         }
                         std.debug.print("\n", .{});
                     }
-                    return error.InvalidOpcode;
+                    return self.invalidOpcode("execute-op.load-local-range");
                 }
                 const val = self.stack[stack_idx];
                 try self.push(val);
@@ -2119,7 +2160,7 @@ pub const Vm = struct {
                         }
                         std.debug.print("\n", .{});
                     }
-                    return error.InvalidOpcode;
+                    return self.invalidOpcode("execute-op.store-local-range");
                 }
                 const val = try self.pop();
                 self.stack[stack_idx] = val;
@@ -2140,7 +2181,7 @@ pub const Vm = struct {
             },
             .exit_scope => {
                 const num_locals = self.readU8();
-                if (self.scope_sp == 0) return error.InvalidOpcode;
+                if (self.scope_sp == 0) return self.invalidOpcode("execute-op.exit-scope-empty");
                 self.scope_sp -= 1;
                 // Result is on top of stack, locals are below
                 // Stack: [locals...] result
@@ -2296,8 +2337,7 @@ pub const Vm = struct {
             .find_key => {
                 // Get keyword to search for from constant pool
                 const kw_idx = self.readU16();
-                if (kw_idx >= self.chunk.getConstants().len) return error.InvalidConstant;
-                const keyword = self.chunk.getConstants()[kw_idx];
+                const keyword = try self.loadConst(kw_idx);
 
                 // Get current frame info
                 const frame = if (self.fp > 0) &self.frames[self.fp - 1] else null;
@@ -3257,7 +3297,7 @@ pub const Vm = struct {
                 const offset = self.readI16();
                 // Use isize to handle the full range of usize safely
                 const new_ip = @as(isize, @intCast(self.ip)) + offset;
-                if (new_ip < 0) return error.InvalidOpcode;
+                if (new_ip < 0) return self.invalidOpcode("execute-op.jmp-neg");
                 self.ip = @intCast(new_ip);
             },
             .jmp_nil => {
@@ -3265,7 +3305,7 @@ pub const Vm = struct {
                 const val = try self.pop();
                 if (val.isNil()) {
                     const new_ip = @as(isize, @intCast(self.ip)) + offset;
-                    if (new_ip < 0) return error.InvalidOpcode;
+                    if (new_ip < 0) return self.invalidOpcode("execute-op.jmp-nil-neg");
                     self.ip = @intCast(new_ip);
                 }
             },
@@ -3274,7 +3314,7 @@ pub const Vm = struct {
                 const val = try self.pop();
                 if (!val.isNil()) {
                     const new_ip = @as(isize, @intCast(self.ip)) + offset;
-                    if (new_ip < 0) return error.InvalidOpcode;
+                    if (new_ip < 0) return self.invalidOpcode("execute-op.jmp-not-nil-neg");
                     self.ip = @intCast(new_ip);
                 }
             },
@@ -4086,22 +4126,23 @@ pub const Vm = struct {
                 }
             },
             .set_symbol_function => {
-                const func = try self.pop();
-                const sym = try self.pop();
-                switch (sym.typeKind()) {
+                if (self.sp < 2) return error.StackUnderflow;
+                const sym_idx = self.sp - 2;
+                const fn_idx = self.sp - 1;
+                switch (self.stack[sym_idx].typeKind()) {
                     .symbol => {
-                        if (func.isNil()) {
-                            try self.clearFunctionCell(sym);
+                        if (self.stack[fn_idx].isNil()) {
+                            try self.clearFunctionCell(self.stack[sym_idx]);
                         } else {
-                            try self.storeFunctionCell(sym, func);
+                            try self.storeFunctionCell(self.stack[sym_idx], self.stack[fn_idx]);
                         }
-                        const sym_obj = sym.toPtr(Symbol);
+                        const sym_obj = self.stack[sym_idx].toPtr(Symbol);
                         if (try self.lookupSymbolGlobalIndex(sym_obj)) |idx| {
                             const prev = self.globals[idx];
                             // Keep value and function namespaces separate:
                             // only update legacy callable value-cell slots.
                             if (isCallableFunctionValue(prev)) {
-                                self.globals[idx] = func;
+                                self.globals[idx] = self.stack[fn_idx];
                                 if (idx >= self.num_globals) {
                                     self.num_globals = idx + 1;
                                 }
@@ -4121,9 +4162,10 @@ pub const Vm = struct {
                             }
                         }
                     },
-                    else => try self.signalTypeErrorDatumExpected(sym, self.builtins.sym_symbol),
+                    else => try self.signalTypeErrorDatumExpected(self.stack[sym_idx], self.builtins.sym_symbol),
                 }
-                try self.push(func);
+                self.stack[sym_idx] = self.stack[fn_idx];
+                self.sp -= 1;
             },
             .set_symbol_plist => {
                 const plist = try self.pop();
@@ -4214,8 +4256,7 @@ pub const Vm = struct {
             .check_or => {
                 // Read constant pool index for type vector
                 const type_vec_idx = self.readU16();
-                if (type_vec_idx >= self.chunk.getConstants().len) return error.InvalidConstant;
-                const type_vec = self.chunk.getConstants()[type_vec_idx];
+                const type_vec = try self.loadConst(type_vec_idx);
 
                 // Get value to check
                 const val = try self.peek(0);
@@ -4362,7 +4403,7 @@ pub const Vm = struct {
                 // Calculate exit_ip relative to current IP (after offset bytes, before name_idx)
                 const exit_ip = @as(usize, @intCast(@as(isize, @intCast(self.ip)) + offset));
                 const name_idx = self.readU16();
-                const name_raw = self.chunk.getConstants()[name_idx];
+                const name_raw = try self.loadConst(name_idx);
                 if (self.block_sp >= MAX_BLOCKS) {
                     if (std.process.hasEnvVar(self.allocator, "HABU_TRACE_BLOCK_OVERFLOW") catch false) {
                         const chunk_name = if (self.chunk.name.isSymbol())
@@ -4409,7 +4450,7 @@ pub const Vm = struct {
 
             .return_from => {
                 const name_idx = self.readU16();
-                const name_raw = self.chunk.getConstants()[name_idx];
+                const name_raw = try self.loadConst(name_idx);
                 const value = try self.pop();
                 try self.doReturnFrom(name_raw, value);
             },
@@ -7048,7 +7089,7 @@ pub const Vm = struct {
             // so cleanup runs with the correct stack context
             // Validate before restore to guard against corruption
             if (unwind_frame.unwind_sp > STACK_SIZE or unwind_frame.unwind_fp > MAX_FRAMES) {
-                return error.InvalidOpcode;
+                return self.invalidOpcode("throw.unwind-stack-corrupt");
             }
             self.sp = unwind_frame.unwind_sp;
             self.fp = unwind_frame.unwind_fp;
@@ -7148,7 +7189,7 @@ pub const Vm = struct {
                     self.catch_sp = ci;
                     // Validate before restore to guard against corruption
                     if (frame.catch_sp > STACK_SIZE or frame.catch_fp > MAX_FRAMES) {
-                        return error.InvalidOpcode;
+                        return self.invalidOpcode("throw.catch-stack-corrupt");
                     }
                     while (self.progv_sp > frame.progv_depth) {
                         try self.popProgvFrame();
@@ -7364,7 +7405,7 @@ pub const Vm = struct {
             self.chunk = unwind_frame.chunk;
             self.ip = unwind_frame.cleanup_ip;
             if (unwind_frame.unwind_sp > STACK_SIZE or unwind_frame.unwind_fp > MAX_FRAMES) {
-                return error.InvalidOpcode;
+                return self.invalidOpcode("return-from.unwind-stack-corrupt");
             }
             self.sp = unwind_frame.unwind_sp;
             self.fp = unwind_frame.unwind_fp;
@@ -7384,7 +7425,7 @@ pub const Vm = struct {
                 self.block_sp = i;
                 // Found matching block - restore state and jump
                 if (frame.block_sp > STACK_SIZE or frame.block_fp > MAX_FRAMES) {
-                    return error.InvalidOpcode;
+                    return self.invalidOpcode("return-from.block-stack-corrupt");
                 }
                 self.chunk = frame.chunk;
                 self.ip = frame.exit_ip;
@@ -7464,7 +7505,7 @@ pub const Vm = struct {
 
             // Validate before restore to guard against corruption
             if (unwind_frame.unwind_sp > STACK_SIZE or unwind_frame.unwind_fp > MAX_FRAMES) {
-                return error.InvalidOpcode;
+                return self.invalidOpcode("do-error.unwind-stack-corrupt");
             }
             self.sp = unwind_frame.unwind_sp;
             self.fp = unwind_frame.unwind_fp;
@@ -7626,7 +7667,7 @@ pub const Vm = struct {
 
                 // Restore execution state
                 if (frame.restart_sp > STACK_SIZE or frame.restart_fp > MAX_FRAMES) {
-                    return error.InvalidOpcode;
+                    return self.invalidOpcode("invoke-restart.stack-corrupt");
                 }
                 self.chunk = frame.chunk;
                 self.ip = frame.handler_ip;
@@ -8728,7 +8769,10 @@ pub const Vm = struct {
                 // Ensure decimal point for CL compliance
                 var has_dot = false;
                 for (num_str) |c| {
-                    if (c == '.' or c == 'e' or c == 'E') { has_dot = true; break; }
+                    if (c == '.' or c == 'e' or c == 'E') {
+                        has_dot = true;
+                        break;
+                    }
                 }
                 if (!has_dot) try result.appendSlice(self.allocator, ".0");
             },
@@ -9064,7 +9108,6 @@ pub const Vm = struct {
                     i += 1;
                 }
             }
-
         }
     }
 
@@ -9411,33 +9454,33 @@ pub const Vm = struct {
                                     std.debug.print(" callee=nil", .{});
                                 } else {
                                     const callee = callee_val.toPtr(Chunk);
-                                std.debug.print(" arity={d} opt={d} key={d} rest={any}", .{
-                                    callee.arity,
-                                    callee.opt_count,
-                                    callee.key_count,
-                                    callee.has_rest != 0,
-                                });
-                                std.debug.print(" code_len={d} consts={d}", .{
-                                    callee.code_len,
-                                    callee.const_count,
-                                });
-                                switch (callee.name.typeKind()) {
-                                    .symbol => std.debug.print(" name={s}", .{callee.name.toPtr(Symbol).getName()}),
-                                    .string => std.debug.print(" name={s}", .{callee.name.toPtr(runtime.String).bytes()}),
-                                    else => std.debug.print(" name-kind={s}", .{@tagName(callee.name.typeKind())}),
-                                }
-                                if (std.posix.getenv("HABU_TRACE_CALL_MISMATCH_CALLEE_DISASM") != null) {
-                                    std.debug.print("\nCALL_MISMATCH callee-disasm idx={d} begin\n", .{cidx});
-                                    const stdout_file = std.fs.File.stdout();
-                                    var cbuf: [8192]u8 = undefined;
-                                    var cwriter = stdout_file.writer(&cbuf);
-                                    const cw = &cwriter.interface;
-                                    disasm.disassembleRuntime(callee, cw) catch |err| {
-                                        std.debug.print("CALL_MISMATCH callee-disasm error={s}\n", .{@errorName(err)});
-                                    };
-                                    cw.flush() catch {};
-                                    std.debug.print("CALL_MISMATCH callee-disasm idx={d} end\n", .{cidx});
-                                }
+                                    std.debug.print(" arity={d} opt={d} key={d} rest={any}", .{
+                                        callee.arity,
+                                        callee.opt_count,
+                                        callee.key_count,
+                                        callee.has_rest != 0,
+                                    });
+                                    std.debug.print(" code_len={d} consts={d}", .{
+                                        callee.code_len,
+                                        callee.const_count,
+                                    });
+                                    switch (callee.name.typeKind()) {
+                                        .symbol => std.debug.print(" name={s}", .{callee.name.toPtr(Symbol).getName()}),
+                                        .string => std.debug.print(" name={s}", .{callee.name.toPtr(runtime.String).bytes()}),
+                                        else => std.debug.print(" name-kind={s}", .{@tagName(callee.name.typeKind())}),
+                                    }
+                                    if (std.posix.getenv("HABU_TRACE_CALL_MISMATCH_CALLEE_DISASM") != null) {
+                                        std.debug.print("\nCALL_MISMATCH callee-disasm idx={d} begin\n", .{cidx});
+                                        const stdout_file = std.fs.File.stdout();
+                                        var cbuf: [8192]u8 = undefined;
+                                        var cwriter = stdout_file.writer(&cbuf);
+                                        const cw = &cwriter.interface;
+                                        disasm.disassembleRuntime(callee, cw) catch |err| {
+                                            std.debug.print("CALL_MISMATCH callee-disasm error={s}\n", .{@errorName(err)});
+                                        };
+                                        cw.flush() catch {};
+                                        std.debug.print("CALL_MISMATCH callee-disasm idx={d} end\n", .{cidx});
+                                    }
                                 }
                             }
                         } else if (sz > 0) {
@@ -9669,6 +9712,12 @@ pub const Vm = struct {
             self.stack[self.sp - argc - 1] = fn_val;
         }
 
+        const canonical_fn = self.resolveForwardedValue(fn_val);
+        if (canonical_fn.raw != fn_val.raw) {
+            fn_val = canonical_fn;
+            self.stack[self.sp - argc - 1] = fn_val;
+        }
+
         // If calling a generic function, delegate to its dispatcher
         if (fn_val.isGenericFunction()) {
             const gf = fn_val.toPtr(runtime.objects.GenericFunction);
@@ -9676,7 +9725,7 @@ pub const Vm = struct {
                 try self.callMismatch(fn_val, argc, "gf-dispatcher-nil");
                 return;
             }
-            fn_val = gf.dispatcher;
+            fn_val = self.resolveForwardedValue(gf.dispatcher);
             // Update function slot on stack
             self.stack[self.sp - argc - 1] = fn_val;
         }
@@ -9691,7 +9740,11 @@ pub const Vm = struct {
         }
 
         const closure = fn_val.toPtr(runtime.Closure);
-        const callee_chunk = self.chunkFromValue(closure.code) orelse {
+        const code_val = self.resolveForwardedValue(closure.code);
+        if (code_val.raw != closure.code.raw) {
+            closure.code = code_val;
+        }
+        const callee_chunk = self.chunkFromValue(code_val) orelse {
             try self.callMismatch(fn_val, argc, "closure-code-not-chunk");
             return;
         };
@@ -9791,12 +9844,12 @@ pub const Vm = struct {
             self.sp -= extra_count;
         }
 
-            // Determine how many args to copy as locals
-            // For keyword args, we need to keep ALL args for find_key to scan
-            const actual_argc: u8 = if (key_count > 0) argc else @min(argc, max_positional);
-            const positional_argc: u8 = if (key_count > 0) actual_positional else actual_argc;
+        // Determine how many args to copy as locals
+        // For keyword args, we need to keep ALL args for find_key to scan
+        const actual_argc: u8 = if (key_count > 0) argc else @min(argc, max_positional);
+        const positional_argc: u8 = if (key_count > 0) actual_positional else actual_argc;
 
-            if (tail) {
+        if (tail) {
             // Tail call: reuse current frame
             // Move arguments to start of current frame
             const current_bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
@@ -9846,12 +9899,12 @@ pub const Vm = struct {
             self.chunk = callee_chunk;
             self.ip = 0;
 
-                // Update closure and argc in current frame
-                if (self.fp > 0) {
-                    self.frames[self.fp - 1].closure = closure;
-                    self.frames[self.fp - 1].argc = argc;
-                    self.frames[self.fp - 1].positional_argc = positional_argc;
-                }
+            // Update closure and argc in current frame
+            if (self.fp > 0) {
+                self.frames[self.fp - 1].closure = closure;
+                self.frames[self.fp - 1].argc = argc;
+                self.frames[self.fp - 1].positional_argc = positional_argc;
+            }
 
             // Reserve space for additional locals.
             // For keyword lambdas, keyword-pair slots live above positional/key slots.
@@ -9871,16 +9924,16 @@ pub const Vm = struct {
             }
 
             // Save current state
-                self.frames[self.fp] = .{
-                    .chunk = self.chunk,
-                    .return_ip = self.ip,
-                    .bp = self.sp - actual_argc - 1, // -1 for function value
-                    .closure = closure,
-                    .argc = argc,
-                    .positional_argc = positional_argc,
-                    .block_depth = self.block_sp,
-                    .catch_depth = self.catch_sp,
-                    .unwind_depth = self.unwind_sp,
+            self.frames[self.fp] = .{
+                .chunk = self.chunk,
+                .return_ip = self.ip,
+                .bp = self.sp - actual_argc - 1, // -1 for function value
+                .closure = closure,
+                .argc = argc,
+                .positional_argc = positional_argc,
+                .block_depth = self.block_sp,
+                .catch_depth = self.catch_sp,
+                .unwind_depth = self.unwind_sp,
                 .restart_depth = self.restart_sp,
                 .progv_depth = self.progv_sp,
                 .handler_depth = self.handler_sp,
@@ -10411,6 +10464,45 @@ pub const Vm = struct {
         const val = self.chunk.readI32(self.ip);
         self.ip += 4;
         return val;
+    }
+
+    fn resolveForwardedValue(self: *Vm, val: Value) Value {
+        if (!val.isPointer()) return val;
+
+        const stale_start = @intFromPtr(self.heap.to_start);
+        const stale_end = stale_start + self.heap.space_size;
+        const addr = val.toPtrAddr();
+        if (addr < stale_start or addr >= stale_end) return val;
+
+        const first_word: *const Value = @ptrFromInt(addr);
+        if (!first_word.isForwarding()) return val;
+
+        const new_addr = first_word.toPtrAddr();
+        const from_start = @intFromPtr(self.heap.from_start);
+        const from_end = @intFromPtr(self.heap.from_end);
+        if (new_addr < from_start or new_addr >= from_end) return val;
+
+        return .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) };
+    }
+
+    fn loadConst(self: *Vm, idx: u16) Error!Value {
+        if (idx >= self.chunk.getConstants().len) return error.InvalidConstant;
+        const consts = self.chunk.getConstants();
+        const raw = consts[idx];
+        const fixed = self.resolveForwardedValue(raw);
+        if (fixed.raw != raw.raw) {
+            self.chunk.getConstants()[idx] = fixed;
+        }
+        return fixed;
+    }
+
+    fn refreshCurrentChunk(self: *Vm) void {
+        const cur = Value.makeChunk(self.chunk);
+        const fixed = self.resolveForwardedValue(cur);
+        if (fixed.raw == cur.raw) return;
+        if (self.chunkFromValue(fixed)) |chunk| {
+            self.chunk = chunk;
+        }
     }
 
     // ========================================================================
@@ -11162,19 +11254,26 @@ test "vm aref aset rank-0 array" {
     // Dynamic make_array with rank=0 and initial-element (operand=1).
     // dimensions=nil gives a rank-0 array with one element.
     const code = [_]u8{
-        @truncate(push_nil_op & 0xFF), @truncate(push_nil_op >> 8),
-        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 7, 0, 0, 0,
-        @truncate(make_array_op & 0xFF), @truncate(make_array_op >> 8), 1,
-        @truncate(store_local_op & 0xFF), @truncate(store_local_op >> 8), 0,
+        @truncate(push_nil_op & 0xFF),   @truncate(push_nil_op >> 8),
+        @truncate(push_i32_op & 0xFF),   @truncate(push_i32_op >> 8),
+        7,                               0,
+        0,                               0,
+        @truncate(make_array_op & 0xFF), @truncate(make_array_op >> 8),
+        1,                               @truncate(store_local_op & 0xFF),
+        @truncate(store_local_op >> 8),  0,
 
-        @truncate(load_local_op & 0xFF), @truncate(load_local_op >> 8), 0,
-        @truncate(push_i32_op & 0xFF), @truncate(push_i32_op >> 8), 42, 0, 0, 0,
-        @truncate(aset_op & 0xFF), @truncate(aset_op >> 8), 0,
-        @truncate(pop_op & 0xFF), @truncate(pop_op >> 8),
+        @truncate(load_local_op & 0xFF), @truncate(load_local_op >> 8),
+        0,                               @truncate(push_i32_op & 0xFF),
+        @truncate(push_i32_op >> 8),     42,
+        0,                               0,
+        0,                               @truncate(aset_op & 0xFF),
+        @truncate(aset_op >> 8),         0,
+        @truncate(pop_op & 0xFF),        @truncate(pop_op >> 8),
 
-        @truncate(load_local_op & 0xFF), @truncate(load_local_op >> 8), 0,
-        @truncate(aref_op & 0xFF), @truncate(aref_op >> 8), 0,
-        @truncate(ret_op & 0xFF), @truncate(ret_op >> 8),
+        @truncate(load_local_op & 0xFF), @truncate(load_local_op >> 8),
+        0,                               @truncate(aref_op & 0xFF),
+        @truncate(aref_op >> 8),         0,
+        @truncate(ret_op & 0xFF),        @truncate(ret_op >> 8),
     };
 
     const chunk = Chunk{

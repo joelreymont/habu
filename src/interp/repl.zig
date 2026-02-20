@@ -2221,12 +2221,43 @@ pub const Repl = struct {
                 break :blk false;
             },
             .loop => |l| hasUnresolvableCalls(l.cond, self_name, known) or hasUnresolvableCalls(l.body, self_name, known),
-            .fixnum_add, .fixnum_sub, .add, .sub, .fixnum_le, .fixnum_lt, .fixnum_gt, .fixnum_ge, .fixnum_eq,
-            .le, .lt, .gt, .ge, .num_eq, .fixnum_mul, .mul, .eq, .cons,
-            .logand, .mod, .rem, .append, .assoc,
+            .fixnum_add,
+            .fixnum_sub,
+            .add,
+            .sub,
+            .fixnum_le,
+            .fixnum_lt,
+            .fixnum_gt,
+            .fixnum_ge,
+            .fixnum_eq,
+            .le,
+            .lt,
+            .gt,
+            .ge,
+            .num_eq,
+            .fixnum_mul,
+            .mul,
+            .eq,
+            .cons,
+            .logand,
+            .mod,
+            .rem,
+            .append,
+            .assoc,
             => |op| hasUnresolvableCalls(op.left, self_name, known) or hasUnresolvableCalls(op.right, self_name, known),
-            .assert_fixnum, .nilp, .not, .consp, .car, .cdr, .unsafe_car, .unsafe_cdr, .abs,
-            .zerop, .oddp, .evenp, .length,
+            .assert_fixnum,
+            .nilp,
+            .not,
+            .consp,
+            .car,
+            .cdr,
+            .unsafe_car,
+            .unsafe_cdr,
+            .abs,
+            .zerop,
+            .oddp,
+            .evenp,
+            .length,
             => |op| hasUnresolvableCalls(op.operand, self_name, known),
             .lit, .@"var", .global_ref => false,
             else => false,
@@ -2464,7 +2495,7 @@ pub const Repl = struct {
 
         if (std.posix.getenv("HABU_TRACE_JIT") != null) {
             std.debug.print("JIT: hoist compiled '{s}' OK (arity={d}, fn_ptr={*}, chunk=0x{x}, map_count={d})\n", .{
-                name, compiled.arity, compiled.fn_ptr,
+                name,                   compiled.arity,          compiled.fn_ptr,
                 @intFromPtr(chunk_ptr), self.vm.jit_fns.count(),
             });
         }
@@ -3578,26 +3609,11 @@ pub const Repl = struct {
             self.chunk_pool.appendAssumeCapacity(c);
         }
 
-        // Use a separate VM to avoid corrupting the main VM's state
-        // (handleDefmacro may be called during a load from within the main VM)
-        var macro_vm = try Vm.init(self.allocator, self.heap);
-        defer macro_vm.deinit();
-        macro_vm.setGlobalEnv(&self.compiler.globals);
-        macro_vm.setLoadCallback(&loadCallback, @ptrCast(self));
-        macro_vm.setEvalCallback(&evalCallback, @ptrCast(self));
-        macro_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
-        macro_vm.setMacroexpand1Callback(&macroexpand1Callback, @ptrCast(self));
-        macro_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
-        macro_vm.setFunctionResolveCallback(&functionResolveCallback, @ptrCast(self));
-
-        self.syncChunkPools(&macro_vm);
-
-        // Copy globals from current context
         const source_vm = self.activeVm();
-        for (source_vm.globals, 0..) |g, i| {
-            macro_vm.globals[i] = g;
-        }
-        macro_vm.num_globals = source_vm.num_globals;
+        self.syncChunkPools(source_vm);
+        const saved_current_vm = self.current_vm;
+        self.current_vm = source_vm;
+        defer self.current_vm = saved_current_vm;
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         // Save macro name as a Zig string BEFORE VM execution, because
@@ -3606,7 +3622,7 @@ pub const Repl = struct {
         const macro_name_saved = try self.allocator.dupe(u8, cons2.car.toPtr(runtime.Symbol).getName());
         defer self.allocator.free(macro_name_saved);
 
-        const closure = try self.runVmPreserveMacroState(&macro_vm, chunk_ptr);
+        const closure = try self.runVmPreserveMacroState(source_vm, chunk_ptr);
 
         if (!closure.isClosure()) return error.CompileError;
 
@@ -3684,7 +3700,6 @@ pub const Repl = struct {
             const old_plist = sym_ptr.plist;
             const new_plist = try self.heap.allocCons(entry, old_plist);
             sym_ptr.plist = new_plist;
-
         }
 
         if (std.posix.getenv("HABU_TRACE_DEFMACRO_DEFINE") != null and macro_sym.isSymbol()) {
@@ -3875,44 +3890,15 @@ pub const Repl = struct {
             self.chunk_pool.appendAssumeCapacity(c);
         }
 
-        // Use a separate VM to avoid corrupting the main VM's state
-        var eval_vm = try Vm.init(self.allocator, self.heap);
-        defer eval_vm.deinit();
-        eval_vm.setGlobalEnv(&self.compiler.globals);
-
-        self.syncChunkPools(&eval_vm);
-
-        eval_vm.setLoadCallback(&loadCallback, @ptrCast(self));
-        eval_vm.setEvalCallback(&evalCallback, @ptrCast(self));
-        eval_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
-        eval_vm.setMacroexpand1Callback(&macroexpand1Callback, @ptrCast(self));
-        eval_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
-        eval_vm.setFunctionResolveCallback(&functionResolveCallback, @ptrCast(self));
-
-        // Copy globals from current context
         const source_vm = self.activeVm();
-        for (source_vm.globals, 0..) |g, i| {
-            eval_vm.globals[i] = g;
-        }
-        eval_vm.num_globals = source_vm.num_globals;
+        self.syncChunkPools(source_vm);
 
-        // Set eval_vm as current so nested loads use it for globals
         const saved_current_vm = self.current_vm;
-        self.current_vm = &eval_vm;
+        self.current_vm = source_vm;
         defer self.current_vm = saved_current_vm;
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        const result = try self.runVmPreserveMacroState(&eval_vm, chunk_ptr);
-
-        // Copy back any new globals to the original source
-        for (eval_vm.globals, 0..) |g, i| {
-            source_vm.globals[i] = g;
-        }
-        if (eval_vm.num_globals > source_vm.num_globals) {
-            source_vm.num_globals = eval_vm.num_globals;
-        }
-
-        return result;
+        return try self.runVmPreserveMacroState(source_vm, chunk_ptr);
     }
 
     /// Desugar an expression (let* → let, cond → if, etc.)
@@ -4033,7 +4019,6 @@ pub const Repl = struct {
                     return expr;
                 }
             }
-
 
             if (self.lookupMacroEntry(head)) |macro_entry| {
                 if (std.posix.getenv("HABU_TRACE_MACRO_DEPTH") != null and depth >= 480) {
@@ -4204,27 +4189,15 @@ pub const Repl = struct {
 
         const chunk = try self.heap.allocChunk(code.items, constants.items, 0, 0, 0, false, 0);
 
-        // Use a separate VM to avoid corrupting the current VM state
-        var macro_vm = try Vm.init(self.allocator, self.heap);
-        defer macro_vm.deinit();
-        macro_vm.setGlobalEnv(&self.compiler.globals);
-        macro_vm.setLoadCallback(&loadCallback, @ptrCast(self));
-        macro_vm.setEvalCallback(&evalCallback, @ptrCast(self));
-        // NOTE: macroexpandCallback NOT set to prevent infinite expansion loops
-        macro_vm.setFboundpCallback(&fboundpCallback, @ptrCast(self));
-        macro_vm.setFunctionResolveCallback(&functionResolveCallback, @ptrCast(self));
-
-        // Copy globals from current context (nested VM if loading, main VM otherwise)
         const source_vm = self.activeVm();
-        for (source_vm.globals[0..source_vm.num_globals], 0..) |g, i| {
-            macro_vm.globals[i] = g;
-        }
-        macro_vm.num_globals = source_vm.num_globals;
-
-        self.syncChunkPools(&macro_vm);
+        self.syncChunkPools(source_vm);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        return self.runVmPreserveMacroState(&macro_vm, chunk_ptr) catch |err| {
+        const saved_current_vm = self.current_vm;
+        self.current_vm = source_vm;
+        defer self.current_vm = saved_current_vm;
+
+        return self.runVmPreserveMacroState(source_vm, chunk_ptr) catch |err| {
             if (std.posix.getenv("HABU_TRACE_MACRO_CALLS") != null and macro_name.isSymbol()) {
                 std.debug.print(
                     "TRACE macro call error: {s} err={s}\n",

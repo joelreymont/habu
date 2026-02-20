@@ -2210,9 +2210,10 @@ pub const Compiler = struct {
         self.bi_cl_ver = bi_epoch.cl_ver;
     }
 
-    fn specialKeyFromSym(sym_val: Value) ?VarKey {
-        if (!sym_val.isSymbol()) return null;
-        const sym = sym_val.toPtr(Symbol);
+    fn specialKeyFromSym(self: *const Compiler, sym_val: Value) ?VarKey {
+        const live_sym = self.resolveForwardedValue(sym_val);
+        if (!live_sym.isSymbol()) return null;
+        const sym = live_sym.toPtr(Symbol);
         const bits: u64 = sym.reserved;
         if (bits != 0 and (bits & 1) == 0) {
             return .{
@@ -2235,15 +2236,15 @@ pub const Compiler = struct {
         };
     }
 
-    fn specialKeyOwnedFromSym(allocator: std.mem.Allocator, sym_val: Value) !VarKey {
-        const key = specialKeyFromSym(sym_val) orelse return error.InvalidSyntax;
+    fn specialKeyOwnedFromSym(self: *const Compiler, allocator: std.mem.Allocator, sym_val: Value) !VarKey {
+        const key = self.specialKeyFromSym(sym_val) orelse return error.InvalidSyntax;
         if (key.uid != 0) return .{ .pkg_ptr = 0, .uid = key.uid, .name = "" };
         const name_copy = try allocator.dupe(u8, key.name);
         return .{ .pkg_ptr = key.pkg_ptr, .uid = 0, .name = name_copy };
     }
 
-    fn insertSpecialSym(set: *SpecialSymSet, allocator: std.mem.Allocator, sym_val: Value) !void {
-        const key = try specialKeyOwnedFromSym(allocator, sym_val);
+    fn insertSpecialSym(self: *const Compiler, set: *SpecialSymSet, allocator: std.mem.Allocator, sym_val: Value) !void {
+        const key = try self.specialKeyOwnedFromSym(allocator, sym_val);
         errdefer if (key.uid == 0) allocator.free(key.name);
         const gop = try set.getOrPut(key);
         if (gop.found_existing and key.uid == 0) {
@@ -2251,17 +2252,17 @@ pub const Compiler = struct {
         }
     }
 
-    fn specialSetContainsSym(set: *const SpecialSymSet, sym_val: Value) bool {
-        const key = specialKeyFromSym(sym_val) orelse return false;
+    fn specialSetContainsSym(self: *const Compiler, set: *const SpecialSymSet, sym_val: Value) bool {
+        const key = self.specialKeyFromSym(sym_val) orelse return false;
         return set.contains(key);
     }
 
     fn markGlobalSpecialSym(self: *Compiler, sym_val: Value) !void {
-        try insertSpecialSym(&self.global_special_syms, self.globals.allocator, sym_val);
+        try self.insertSpecialSym(&self.global_special_syms, self.globals.allocator, sym_val);
     }
 
     fn isGloballySpecialSym(self: *const Compiler, sym_val: Value) bool {
-        return specialSetContainsSym(&self.global_special_syms, sym_val);
+        return self.specialSetContainsSym(&self.global_special_syms, sym_val);
     }
 
     pub fn deinit(self: *Compiler) void {
@@ -3619,15 +3620,23 @@ pub const Compiler = struct {
         vm.setGlobalEnv(&self.globals);
         vm.setChunkPool(chunk_roots);
         defer {
-            // Keep the previous chunk pool slice up-to-date across GC that may run
-            // while we temporarily replace vm.chunk_pool for macro expansion.
-            for (saved_pool, 0..) |*slot, i| {
-                slot.* = macro_roots[i];
-            }
-
             vm.setExtRoots(saved_ext);
             vm.global_env = saved_env;
-            restoreVmStatePreserveRelay(vm, saved_state);
+
+            var restore_state = saved_state;
+            // If vm.chunk_pool is still our temporary slice, restore the original pool.
+            // Otherwise nested compilation replaced it with a newer shared pool and we
+            // must preserve that newer pointer instead of forcing a stale slice.
+            if (vm.chunk_pool.ptr == chunk_roots.ptr and vm.chunk_pool.len == chunk_roots.len) {
+                for (saved_pool, 0..) |*slot, i| {
+                    slot.* = macro_roots[i];
+                }
+                restore_state.chunk_pool = saved_pool;
+            } else {
+                restore_state.chunk_pool = vm.chunk_pool;
+                restore_state.chunk_base = vm.chunk_base;
+            }
+            restoreVmStatePreserveRelay(vm, restore_state);
         }
 
         const chunk_ptr = macro_roots[root_chunk_idx].toPtr(Chunk);
@@ -5231,7 +5240,7 @@ pub const Compiler = struct {
                         while (vars.isCons()) {
                             const var_val = vars.toPtr(Cons).car;
                             if (var_val.isSymbol()) {
-                                try insertSpecialSym(out, self.allocator, var_val);
+                                try self.insertSpecialSym(out, self.allocator, var_val);
                             }
                             vars = vars.toPtr(Cons).cdr;
                         }
@@ -5298,7 +5307,7 @@ pub const Compiler = struct {
                 break :blk bind_pair.cdr.toPtr(Cons).car;
             };
 
-            const is_local_special = specialSetContainsSym(&local_special_syms, sym);
+            const is_local_special = self.specialSetContainsSym(&local_special_syms, sym);
             if (self.isSpecialBindingSym(sym) or is_local_special) {
                 const temp_sym = try prims.gensym(heap, null);
                 const init_tail = try heap.allocCons(init_expr, Value.nil);
@@ -9218,13 +9227,20 @@ pub const Compiler = struct {
         vm.setExtRoots(pool_roots);
         vm.setChunkPool(chunk_roots);
         defer {
-            for (saved_pool, 0..) |*slot, i| {
-                slot.* = pool_roots[i];
-            }
-
             vm.setExtRoots(saved_ext);
             vm.global_env = saved_env;
-            restoreVmStatePreserveRelay(vm, saved_state);
+
+            var restore_state = saved_state;
+            if (vm.chunk_pool.ptr == chunk_roots.ptr and vm.chunk_pool.len == chunk_roots.len) {
+                for (saved_pool, 0..) |*slot, i| {
+                    slot.* = pool_roots[i];
+                }
+                restore_state.chunk_pool = saved_pool;
+            } else {
+                restore_state.chunk_pool = vm.chunk_pool;
+                restore_state.chunk_base = vm.chunk_base;
+            }
+            restoreVmStatePreserveRelay(vm, restore_state);
         }
 
         const chunk_ptr = chunk_val.toPtr(Chunk);
@@ -14862,24 +14878,42 @@ pub const Compiler = struct {
         return &.{};
     }
 
+    fn resolveForwardedValue(self: *const Compiler, val: Value) Value {
+        if (!val.isPointer()) return val;
+        const heap = if (self.heap) |h| h else return val;
+        const stale_start = @intFromPtr(heap.to_start);
+        const stale_end = stale_start + heap.space_size;
+        const addr = val.toPtrAddr();
+        if (addr < stale_start or addr >= stale_end) return val;
+        const first_word: *const Value = @ptrFromInt(addr);
+        if (!first_word.isForwarding()) return val;
+        const new_addr = first_word.toPtrAddr();
+        const from_start = @intFromPtr(heap.from_start);
+        const from_end = @intFromPtr(heap.from_end);
+        if (new_addr < from_start or new_addr >= from_end) return val;
+        return .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) };
+    }
+
     fn canonicalBuiltinSymbol(self: *Compiler, sym: Value) Value {
-        if (!sym.isSymbol()) return sym;
-        const heap = if (self.heap) |val| val else return sym;
-        const cl_pkg = if (heap.cl_package) |val| val else return sym;
-        const name = sym.toPtr(Symbol).getName();
-        return cl_pkg.findAccessibleUpper(name) orelse sym;
+        const live = self.resolveForwardedValue(sym);
+        if (!live.isSymbol()) return live;
+        const heap = if (self.heap) |val| val else return live;
+        const cl_pkg = if (heap.cl_package) |val| val else return live;
+        const name = live.toPtr(Symbol).getName();
+        return cl_pkg.findAccessibleUpper(name) orelse live;
     }
 
     fn lookupMacroDef(self: *Compiler, sym: Value) ?Value {
-        if (!sym.isSymbol()) return null;
-        if (self.macro_table.get(sym)) |def| return def;
-        const canonical = self.canonicalBuiltinSymbol(sym);
-        if (canonical.raw != sym.raw) {
-            if (self.macro_table.get(canonical)) |def| return def;
+        const live_sym = self.resolveForwardedValue(sym);
+        if (!live_sym.isSymbol()) return null;
+        if (self.macro_table.get(live_sym)) |def| return self.resolveForwardedValue(def);
+        const canonical = self.canonicalBuiltinSymbol(live_sym);
+        if (canonical.raw != live_sym.raw) {
+            if (self.macro_table.get(canonical)) |def| return self.resolveForwardedValue(def);
         }
         // Also check symbol property list for macro-function (set via setf)
-        if (sym.isSymbol()) {
-            const sym_ptr = sym.toPtr(Symbol);
+        if (live_sym.isSymbol()) {
+            const sym_ptr = live_sym.toPtr(Symbol);
             if (sym_ptr.plist.isCons()) {
                 // Search plist for 'macro-function key
                 // Plist stored as alist: ((key . val) (key . val) ...)
@@ -14907,11 +14941,12 @@ pub const Compiler = struct {
     }
 
     fn lookupSymbolMacro(self: *Compiler, sym: Value) ?Value {
-        if (!sym.isSymbol()) return null;
-        if (self.symbol_macros.get(sym)) |expansion| return expansion;
-        const canonical = self.canonicalBuiltinSymbol(sym);
-        if (canonical.raw != sym.raw) {
-            if (self.symbol_macros.get(canonical)) |expansion| return expansion;
+        const live_sym = self.resolveForwardedValue(sym);
+        if (!live_sym.isSymbol()) return null;
+        if (self.symbol_macros.get(live_sym)) |expansion| return self.resolveForwardedValue(expansion);
+        const canonical = self.canonicalBuiltinSymbol(live_sym);
+        if (canonical.raw != live_sym.raw) {
+            if (self.symbol_macros.get(canonical)) |expansion| return self.resolveForwardedValue(expansion);
         }
         return null;
     }
@@ -17300,7 +17335,10 @@ pub const Compiler = struct {
         return node;
     }
 
-    fn lookupStructPredicateType(self: *Compiler, sym: *const Symbol) anyerror!?*const types.Type {
+    fn lookupStructPredicateType(self: *Compiler, sym_val: Value) anyerror!?*const types.Type {
+        const live_sym = self.resolveForwardedValue(sym_val);
+        if (!live_sym.isSymbol()) return null;
+        const sym = live_sym.toPtr(Symbol);
         const name = sym.getName();
         if (self.struct_predicates.get(name)) |struct_type| {
             return struct_type;
@@ -17314,12 +17352,13 @@ pub const Compiler = struct {
     }
 
     fn compileCallWithTail(self: *Compiler, func_expr: Value, args_expr: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
+        const live_func_expr = self.resolveForwardedValue(func_expr);
         // Check for struct predicate calls (for occurrence typing)
         // If calling a known struct predicate like point-p, generate struct_p IR
-        if (func_expr.isSymbol() and self.struct_predicates.count() > 0 and env.lookupFunctionSym(func_expr) == null) {
-            const sym = func_expr.toPtr(Symbol);
+        if (live_func_expr.isSymbol() and self.struct_predicates.count() > 0 and env.lookupFunctionSym(live_func_expr) == null) {
+            const sym = live_func_expr.toPtr(Symbol);
             const sym_name = sym.getName();
-            if (try self.lookupStructPredicateType(sym)) |struct_type| {
+            if (try self.lookupStructPredicateType(live_func_expr)) |struct_type| {
                 // This is a struct predicate call - generate struct_p IR
                 // Extract struct name from predicate (remove "-p" suffix)
                 const struct_name = if (sym_name.len > 2 and
@@ -17339,17 +17378,17 @@ pub const Compiler = struct {
             }
         }
 
-        const func_ir = if (func_expr.isSymbol()) blk: {
-            if (env.lookupFunctionSym(func_expr)) |binding| {
-                const name = func_expr.toPtr(Symbol).getName();
+        const func_ir = if (live_func_expr.isSymbol()) blk: {
+            if (env.lookupFunctionSym(live_func_expr)) |binding| {
+                const name = live_func_expr.toPtr(Symbol).getName();
                 const fn_ref = try self.builder.variable(name, binding.depth, binding.index);
-                break :blk try self.maybeBoxRefFunction(func_expr, fn_ref);
+                break :blk try self.maybeBoxRefFunction(live_func_expr, fn_ref);
             }
 
             // Function position uses function namespace, not value namespace.
             // Emit symbol designator so VM resolves fdefinition/builtin wrappers.
-            break :blk try self.builder.lit(func_expr);
-        } else try self.compile(func_expr, env);
+            break :blk try self.builder.lit(live_func_expr);
+        } else try self.compile(live_func_expr, env);
 
         const call_args = try self.compileCallArgsSlice(args_expr, env);
         return try self.buildCallIr(func_ir, call_args, in_tail);
