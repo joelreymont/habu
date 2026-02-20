@@ -1170,3 +1170,13 @@ Environment guard:
 
 #### Did Not Work
 - Keeping `MAX_BLOCKS` far below `MAX_FRAMES` created an artificial control-stack ceiling that failed real recursive Lisp code before true frame/stack limits were reached.
+
+### Session Notes (2026-02-20, sort copy-once safety under generational GC)
+
+#### Worked Well
+- Refactoring `sort` to copy once at the public entry and recurse on an internal working-list helper (`lib/stdlib.habu:2374` to `lib/stdlib.habu:2387`) preserved non-destructive CL behavior while removing recursive `copy-list` overhead.
+- Locking sort semantics with focused integration checks (`src/tests/integration.zig:821`) caught both descending comparator designators and `:key` behavior regressions.
+- Validating against the generational designator stress test (`src/tests/integration.zig:4878`) ensured the optimization did not reintroduce load-time heap corruption.
+
+#### Did Not Work
+- Threading a copy-state flag through recursive `sort-with-key` calls (extra recursion argument path) caused deterministic corruption during stdlib load under generational GC, eventually crashing in later unrelated forms (e.g. `defmacro` handling). Avoid copy-state recursion parameters in this path until the underlying runtime/compiler corruption is root-caused.

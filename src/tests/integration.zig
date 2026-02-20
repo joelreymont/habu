@@ -818,6 +818,63 @@ test "stdlib reduce loop rewrite preserves CL fold behavior" {
     try testing.expect(result.raw == Value.t.raw);
 }
 
+test "stdlib sort copy-once path preserves function designator semantics" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const asc = try repl.eval("(equal (sort '(4 1 3 2) #'<) '(1 2 3 4))");
+    try testing.expect(asc.raw == Value.t.raw);
+
+    const desc = try repl.eval("(equal (sort '(4 1 3 2) #'>) '(4 3 2 1))");
+    try testing.expect(desc.raw == Value.t.raw);
+
+    const pure_input = try repl.eval(
+        \\(let* ((xs '(3 2 1))
+        \\       (ys (sort xs #'<)))
+        \\  (equal xs '(3 2 1)))
+    );
+    try testing.expect(pure_input.raw == Value.t.raw);
+
+    const pure_output = try repl.eval(
+        \\(let* ((xs '(3 2 1))
+        \\       (ys (sort xs #'<)))
+        \\  (equal ys '(1 2 3)))
+    );
+    try testing.expect(pure_output.raw == Value.t.raw);
+
+    const key = try repl.eval(
+        \\(equal (sort '(21 13 4) #'< :key #'(lambda (x) (mod x 10)))
+        \\       '(21 13 4))
+    );
+    try testing.expect(key.raw == Value.t.raw);
+}
+
+test "stdlib sort designator path works from speed-3 caller" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(defun jit-sort-fast-check () (declare (optimize (speed 3) (safety 0))) (equal (sort '(5 2 4 1 3) #'<) '(1 2 3 4 5)))");
+    const result = try repl.eval("(jit-sort-fast-check)");
+    try testing.expect(result.raw == Value.t.raw);
+}
+
 test "stdlib symbol-function eval-dispatch wrapper encode-universal-time" {
     const allocator = testing.allocator;
 

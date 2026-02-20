@@ -2371,14 +2371,20 @@
       (rplacd slow nil)
       (cons lst second))))
 
+; sort-with-key-internal - merge sort over a working list
+(defun sort-with-key-internal (seq pred key)
+  (if (or (null seq) (null (cdr seq)))
+      seq
+      (let ((halves (split-list seq)))
+        (merge-lists-with-key (sort-with-key-internal (car halves) pred key)
+                              (sort-with-key-internal (cdr halves) pred key)
+                              pred key))))
+
 ; sort-with-key - merge sort with key function
 (defun sort-with-key (seq pred key)
   (if (or (null seq) (null (cdr seq)))
       seq
-      (let ((halves (split-list (copy-list seq))))
-        (merge-lists-with-key (sort-with-key (car halves) pred key)
-                              (sort-with-key (cdr halves) pred key)
-                              pred key))))
+      (sort-with-key-internal (copy-list seq) pred key)))
 
 ; sort - merge sort (stable), with optional :key
 (defun sort (seq pred &key key)
