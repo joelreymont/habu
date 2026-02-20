@@ -36,31 +36,23 @@ const lineedit = @import("lineedit.zig");
 const LineEditor = lineedit.LineEditor;
 
 /// Patch make_closure indices in a chunk to be absolute
-fn patchChunkIndices(chunk: *runtime.objects.Chunk, base: u16) void {
+fn patchChunkIndices(chunk: *runtime.objects.Chunk, base: u16) !void {
     const code = chunk.getCode();
     var i: usize = 0;
-    while (i + 1 < code.len) {
-        // Read opcode (2 bytes, little-endian)
-        const low: u16 = code[i];
-        const high: u16 = code[i + 1];
-        const opcode = low | (high << 8);
-        const op: Op = @enumFromInt(opcode);
-        const size = op.operandSize();
-
-        if (op == .make_closure) {
-            // Operand starts at i + 2 (after 2-byte opcode)
-            const rel_idx = std.mem.readInt(u16, code[i + 2 ..][0..2], .little);
-            const abs_idx = rel_idx + base;
-            std.mem.writeInt(u16, code[i + 2 ..][0..2], abs_idx, .little);
+    while (i < code.len) {
+        const insn = try bytecode.opcodes.decodeInstruction(code, i);
+        if (insn.op == .make_closure) {
+            const rel_idx = std.mem.readInt(u16, code[insn.operand_off..][0..2], .little);
+            const abs_idx = try std.math.add(u16, rel_idx, base);
+            std.mem.writeInt(u16, code[insn.operand_off..][0..2], abs_idx, .little);
         }
-
-        // Move to next instruction: 2 bytes for opcode + operand size
-        i += 2 + size;
+        i = insn.next_off;
     }
 }
 
 pub const ReplError = anyerror;
 const load_form_root_name = "__HABU_INTERNAL_LOAD_FORM_ROOT__";
+const load_form_root_stack_name = "__HABU_INTERNAL_LOAD_FORM_STACK__";
 
 /// REPL configuration
 pub const Config = struct {
@@ -129,7 +121,7 @@ pub const Repl = struct {
 
         self.vm = try Vm.init(allocator, heap);
         errdefer self.vm.deinit();
-        self.vm.setChunkPool(self.chunk_pool.items);
+        self.vm.setChunkPoolOwned(&self.chunk_pool);
         self.macro_gc_synced = self.heap.stats.gc_count;
 
         self.compiler = try Compiler.initWithHeap(allocator, &self.vm);
@@ -157,23 +149,23 @@ pub const Repl = struct {
     }
 
     fn syncChunkPools(self: *Repl, vm: *Vm) void {
-        const pool = self.chunk_pool.items;
+        const owner = &self.chunk_pool;
         // Keep the main VM in sync even when evaluating via nested VMs.
-        self.vm.setChunkPool(pool);
+        self.vm.setChunkPoolOwned(owner);
         if (vm != &self.vm) {
-            vm.setChunkPool(pool);
+            vm.setChunkPoolOwned(owner);
         }
         // If we are inside a nested load/eval, ensure that VM also sees the new slice.
         if (self.current_vm) |cur| {
             if (cur != &self.vm and cur != vm) {
-                cur.setChunkPool(pool);
+                cur.setChunkPoolOwned(owner);
             }
         }
         // Keep all active VMs in nested runVmPreserveMacroState chains in sync too.
         var ctx_opt = self.active_root_ctx;
         while (ctx_opt) |ctx| {
             if (ctx.vm != &self.vm and ctx.vm != vm) {
-                ctx.vm.setChunkPool(pool);
+                ctx.vm.setChunkPoolOwned(owner);
             }
             ctx_opt = ctx.prev;
         }
@@ -395,14 +387,32 @@ pub const Repl = struct {
         // pointer. Follow it to find the live copy.
         const addr = sym_val.toPtrAddr();
         if (addr == 0) return sym_val;
+        const stale_start = @intFromPtr(self.heap.to_start);
+        const stale_end = stale_start + self.heap.space_size;
+        if (addr < stale_start or addr >= stale_end) return sym_val;
         const first_word: *const Value = @ptrFromInt(addr);
-        if (first_word.isForwarding()) {
-            const new_addr = first_word.toPtrAddr();
-            const tag = sym_val.getTag();
-            return .{ .raw = new_addr | @as(u64, @intFromEnum(tag)) };
+        if (!first_word.isForwarding()) return sym_val;
+        const new_addr = first_word.toPtrAddr();
+        const forwarded_size_ptr: *const usize = @ptrFromInt(addr + @sizeOf(Value));
+        const forwarded_size = forwarded_size_ptr.*;
+        const forwarded_size_ok = forwarded_size > 0 and
+            forwarded_size <= self.heap.space_size and
+            std.mem.isAligned(forwarded_size, @import("../runtime/heap.zig").ALIGNMENT);
+        const from_start = @intFromPtr(self.heap.from_start);
+        const from_end = @intFromPtr(self.heap.from_end);
+        const in_from = new_addr >= from_start and new_addr < from_end and forwarded_size <= from_end - new_addr;
+        var in_tenured = false;
+        if (self.heap.gcLayoutMode() == .generational) {
+            if (self.heap.tenuredRegion()) |tenured| {
+                const ten_start = @intFromPtr(tenured.start);
+                const ten_used_end = if (self.heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
+                in_tenured = new_addr >= ten_start and new_addr < ten_used_end and forwarded_size <= ten_used_end - new_addr;
+            }
         }
+        if (!forwarded_size_ok or !(in_from or in_tenured)) return sym_val;
+        const tag = sym_val.getTag();
+        return .{ .raw = new_addr | @as(u64, @intFromEnum(tag)) };
         // No forwarding pointer — can't resolve (multi-GC scenario)
-        return sym_val;
     }
 
     /// Refresh all macro map keys to their current GC-safe addresses.
@@ -774,6 +784,7 @@ pub const Repl = struct {
         // Set VM on compiler for macro expansion
         self.compiler.setVm(&self.vm);
         _ = try self.ensureLoadFormRootGlobal();
+        _ = try self.ensureLoadFormRootStackGlobal();
         // Create *features* list
         try self.createFeaturesGlobal();
         // Create print control globals
@@ -794,6 +805,16 @@ pub const Repl = struct {
     fn ensureLoadFormRootGlobal(self: *Repl) !u16 {
         if (self.compiler.globals.lookup(load_form_root_name)) |idx| return idx;
         const idx = try self.compiler.globals.define(load_form_root_name);
+        self.vm.globals[idx] = Value.nil;
+        if (idx >= self.vm.num_globals) {
+            self.vm.num_globals = idx + 1;
+        }
+        return idx;
+    }
+
+    fn ensureLoadFormRootStackGlobal(self: *Repl) !u16 {
+        if (self.compiler.globals.lookup(load_form_root_stack_name)) |idx| return idx;
+        const idx = try self.compiler.globals.define(load_form_root_stack_name);
         self.vm.globals[idx] = Value.nil;
         if (idx >= self.vm.num_globals) {
             self.vm.num_globals = idx + 1;
@@ -1372,7 +1393,7 @@ pub const Repl = struct {
         // Patch child chunks to use absolute indices
         for (child_chunks) |c| {
             const chunk_ptr = c.toPtr(runtime.objects.Chunk);
-            patchChunkIndices(chunk_ptr, chunk_base);
+            try patchChunkIndices(chunk_ptr, chunk_base);
         }
 
         // Store child chunks for closures
@@ -1385,7 +1406,7 @@ pub const Repl = struct {
         // the caller VM's stack/locals across GC while evaluating runtime EVAL.
         self.syncChunkPools(source_vm);
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        patchChunkIndices(chunk_ptr, chunk_base);
+        try patchChunkIndices(chunk_ptr, chunk_base);
         const closure = try self.heap.allocClosure(chunk, chunk_ptr.arity, &[_]Value{});
         return try source_vm.callFromStackAt(source_vm.sp, closure, &[_]Value{});
     }
@@ -1971,14 +1992,31 @@ pub const Repl = struct {
             defer eval_arena.deinit();
             const eval_alloc = eval_arena.allocator();
             const form_root_idx = try self.ensureLoadFormRootGlobal();
+            const form_stack_idx = try self.ensureLoadFormRootStackGlobal();
             if (form_root_idx >= source_vm.num_globals) {
                 source_vm.num_globals = form_root_idx + 1;
             }
-            const saved_form_root = source_vm.globals[form_root_idx];
+            if (form_stack_idx >= source_vm.num_globals) {
+                source_vm.num_globals = form_stack_idx + 1;
+            }
+            const old_root = source_vm.globals[form_root_idx];
+            const old_stack = source_vm.globals[form_stack_idx];
             source_vm.globals[form_root_idx] = expr;
-            defer source_vm.globals[form_root_idx] = saved_form_root;
+            source_vm.globals[form_stack_idx] = try source_vm.allocCons(old_root, old_stack);
+            defer {
+                const stack = source_vm.globals[form_stack_idx];
+                if (stack.isCons()) {
+                    const cell = stack.toPtr(Cons);
+                    source_vm.globals[form_root_idx] = cell.car;
+                    source_vm.globals[form_stack_idx] = cell.cdr;
+                } else {
+                    source_vm.globals[form_root_idx] = Value.nil;
+                    source_vm.globals[form_stack_idx] = Value.nil;
+                }
+            }
 
-            last_value = self.evalParsedWithVm(expr, source_vm, eval_alloc) catch |err| {
+            const live_form = source_vm.globals[form_root_idx];
+            last_value = self.evalParsedWithVm(live_form, source_vm, eval_alloc) catch |err| {
                 if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null or trace_forms) {
                     std.debug.print("TRACE load eval error: {s} form={d}\n", .{ @errorName(err), form_idx });
                 }
@@ -2131,7 +2169,7 @@ pub const Repl = struct {
 
         // Patch child chunks to use absolute indices
         for (child_chunks) |child_chunk| {
-            patchChunkIndices(child_chunk.toPtr(runtime.objects.Chunk), chunk_base);
+            try patchChunkIndices(child_chunk.toPtr(runtime.objects.Chunk), chunk_base);
         }
 
         // Store chunks persistently
@@ -2145,7 +2183,7 @@ pub const Repl = struct {
 
         // Patch main chunk to use absolute chunk indices
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        patchChunkIndices(chunk_ptr, chunk_base);
+        try patchChunkIndices(chunk_ptr, chunk_base);
 
         if (std.posix.getenv("HABU_TRACE_FORM_DISASM") != null and !vm.isExecuting()) {
             std.debug.print("TRACE form disasm begin\n", .{});
@@ -2857,9 +2895,9 @@ pub const Repl = struct {
 
         // Patch wrapper chunk AND child chunks to use absolute indices
         const wrapper_chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        patchChunkIndices(wrapper_chunk_ptr, chunk_base);
+        try patchChunkIndices(wrapper_chunk_ptr, chunk_base);
         for (child_chunks) |c| {
-            patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
+            try patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
         }
 
         // Store child chunks persistently (closures need them beyond this eval)
@@ -3467,6 +3505,7 @@ pub const Repl = struct {
             const new_cons = new_cell.toPtr(Cons);
             if (param_tail) |t| {
                 t.cdr = new_cell;
+                self.heap.writeBarrier(Value.makeCons(t), new_cell);
             } else {
                 new_params = new_cell;
             }
@@ -3478,6 +3517,7 @@ pub const Repl = struct {
         if (!p.isNil()) {
             if (param_tail) |tail| {
                 tail.cdr = p;
+                self.heap.writeBarrier(Value.makeCons(tail), p);
             } else {
                 new_params = p;
             }
@@ -3598,9 +3638,9 @@ pub const Repl = struct {
 
         // Patch wrapper chunk AND child chunks to use absolute indices
         const wrapper_chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        patchChunkIndices(wrapper_chunk_ptr, chunk_base);
+        try patchChunkIndices(wrapper_chunk_ptr, chunk_base);
         for (child_chunks) |c| {
-            patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
+            try patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
         }
 
         // Add child chunks
@@ -3700,6 +3740,7 @@ pub const Repl = struct {
             const old_plist = sym_ptr.plist;
             const new_plist = try self.heap.allocCons(entry, old_plist);
             sym_ptr.plist = new_plist;
+            self.heap.writeBarrier(macro_sym, new_plist);
         }
 
         if (std.posix.getenv("HABU_TRACE_DEFMACRO_DEFINE") != null and macro_sym.isSymbol()) {
@@ -3880,9 +3921,9 @@ pub const Repl = struct {
 
         // Patch child chunks AND main chunk to use absolute indices
         for (child_chunks) |c| {
-            patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
+            try patchChunkIndices(c.toPtr(runtime.objects.Chunk), chunk_base);
         }
-        patchChunkIndices(chunk.toPtr(runtime.objects.Chunk), chunk_base);
+        try patchChunkIndices(chunk.toPtr(runtime.objects.Chunk), chunk_base);
 
         // Add child chunks
         try self.chunk_pool.ensureUnusedCapacity(self.allocator, child_chunks.len);
@@ -4424,25 +4465,6 @@ test "repl init wires compiler pointers to repl vm" {
 
     try testing.expect(repl.compiler.vm == &repl.vm);
     try testing.expect(repl.compiler.bi_checker.builtins == &repl.vm.builtins);
-}
-
-/// Patch make_closure instructions to use absolute chunk indices
-fn patchMakeClosureIndices(code: []u8, base: u16) void {
-    var i: usize = 0;
-    while (i < code.len) {
-        const op: Op = @enumFromInt(code[i]);
-        const size = op.operandSize();
-
-        if (op == .make_closure) {
-            // make_closure has: u16 chunk_index, u8 num_captures
-            // Patch the u16 index at code[i+1..i+3]
-            const rel_idx = std.mem.readInt(u16, code[i + 1 ..][0..2], .little);
-            const abs_idx = base + rel_idx;
-            std.mem.writeInt(u16, code[i + 1 ..][0..2], abs_idx, .little);
-        }
-
-        i += 1 + size;
-    }
 }
 
 /// Convenience function to evaluate a string

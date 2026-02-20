@@ -209,6 +209,7 @@ pub fn parseNamestring(allocator: std.mem.Allocator, heap: *Heap, str: Value) !V
                     const comp_str = try heap.allocBaseString(dir_part[start..j]);
                     const new_cons = try heap.allocCons(comp_str, Value.nil);
                     tail.toPtr(objects.Cons).cdr = new_cons;
+                    heap.writeBarrier(tail, new_cons);
                     tail = new_cons;
                 }
                 start = j + 1;
@@ -218,6 +219,7 @@ pub fn parseNamestring(allocator: std.mem.Allocator, heap: *Heap, str: Value) !V
             const comp_str = try heap.allocBaseString(dir_part[start..j]);
             const new_cons = try heap.allocCons(comp_str, Value.nil);
             tail.toPtr(objects.Cons).cdr = new_cons;
+            heap.writeBarrier(tail, new_cons);
         }
 
         directory = dir_list;

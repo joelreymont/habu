@@ -35,7 +35,7 @@ fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Valu
 
     var chunk_pool = std.ArrayList(Value){};
     defer chunk_pool.deinit(allocator);
-    vm.setChunkPool(chunk_pool.items);
+    vm.setChunkPoolOwned(&chunk_pool);
 
     const chunk = try compile_chunk.compileChunk(allocator, heap, &vm, &comp, &chunk_pool, source);
     return vm.run(chunk);
@@ -57,7 +57,7 @@ test "compileChunk JITs optimized defun with implicit block" {
 
     var chunk_pool = std.ArrayList(Value){};
     defer chunk_pool.deinit(allocator);
-    vm.setChunkPool(chunk_pool.items);
+    vm.setChunkPoolOwned(&chunk_pool);
 
     const before = vm.jit_fns.count();
     const def_chunk = try compile_chunk.compileChunk(
@@ -101,7 +101,7 @@ test "compileChunk JIT handles recursive nqueens helper entry copies" {
 
     var chunk_pool = std.ArrayList(Value){};
     defer chunk_pool.deinit(allocator);
-    vm.setChunkPool(chunk_pool.items);
+    vm.setChunkPoolOwned(&chunk_pool);
 
     const safe_def =
         "(defun nqueens-safe-p (col placed row) " ++
@@ -4584,6 +4584,35 @@ test "ansi repro loop for-and parallel iteration" {
     try testing.expect(!result.isNil());
 }
 
+test "generational loop for-and arithmetic stays bounded" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{
+        .total_size = 256 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 24 * 1024 * 1024,
+            .los_size = 24 * 1024 * 1024,
+            .los_threshold = 32 * 1024,
+            .promote_threshold = 1024,
+        },
+    });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(loop for i from 0 to 10
+        \\      and d = 3 then (+ d i)
+        \\      finally (return d))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 58), result.toFixnum());
+}
+
 test "ansi repro loop when do accepts multi-form action with loop-finish" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
@@ -6424,6 +6453,118 @@ test "maxima core subset loader binds CAS entrypoints" {
         cur = cell.cdr;
     }
     try testing.expect(cur.isNil());
+}
+
+test "maxima generational loader reaches ifactor without OOM" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{
+        .total_size = 1024 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 24 * 1024 * 1024,
+            .los_size = 24 * 1024 * 1024,
+            .los_threshold = 32 * 1024,
+            .promote_threshold = 1024,
+        },
+    });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    const status = try repl.eval(
+        \\(progn
+        \\  (setq *maxima-files*
+        \\    '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
+        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "rzmac" "ratmac" "mhayat" "combin" "opers"
+        \\      "utils" "merror" "mutils" "sumcon" "sublis" "mformt" "outmis" "ar"
+        \\      "comm" "comm2" "mlisp" "mmacro" "buildq"
+        \\      "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
+        \\      "suprv1" "inmis" "db"
+        \\      "compar" "lesfac" "factor" "algfac" "nalgfa" "ufact" "ifactor"))
+        \\  (multiple-value-bind (ok total fail missing attempted)
+        \\      (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\    (list ok total fail attempted (if missing (length missing) 0))))
+    );
+
+    try testing.expect(status.isCons());
+    var cur = status;
+    const expected = [_]i64{ 48, 48, 0, 48, 0 };
+    for (expected) |want| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(want, cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
+test "maxima generational loader reaches nparse without OOM" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{
+        .total_size = 1024 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 24 * 1024 * 1024,
+            .los_size = 24 * 1024 * 1024,
+            .los_threshold = 32 * 1024,
+            .promote_threshold = 1024,
+        },
+    });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval("(load \"lib/maxima-loader.lisp\")");
+
+    const status = try repl.eval(
+        \\(progn
+        \\  (setq *maxima-files*
+        \\    '("lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
+        \\      "defcal" "maxmac" "mopers" "mforma" "mrgmac" "strmac" "rzmac" "ratmac" "mhayat" "combin" "opers"
+        \\      "utils" "merror" "mutils" "sumcon" "sublis" "mformt" "outmis" "ar"
+        \\      "comm" "comm2" "mlisp" "mmacro" "buildq"
+        \\      "simp" "float" "csimp" "csimp2" "zero" "logarc" "rpart"
+        \\      "suprv1" "inmis" "db"
+        \\      "compar" "lesfac" "factor" "algfac" "nalgfa" "ufact" "ifactor"
+        \\      "rat3a" "rat3b" "rat3c" "rat3d" "rat3e" "nrat4" "ratout" "acall"
+        \\      "mat" "linnew" "matrix" "sprdet" "newinv" "newdet"
+        \\      "schatc" "matcom" "matrun" "nisimp" "nparse"))
+        \\  (multiple-value-bind (ok total fail missing attempted)
+        \\      (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\    (list ok total fail attempted (if missing (length missing) 0))))
+    );
+
+    try testing.expect(status.isCons());
+    const c0 = status.toPtr(Cons);
+    try testing.expect(c0.car.isFixnum());
+    const ok = c0.car.toFixnum();
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.isFixnum());
+    const total = c1.car.toFixnum();
+    try testing.expect(c1.cdr.isCons());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(c2.car.isFixnum());
+    const fail = c2.car.toFixnum();
+    try testing.expect(c2.cdr.isCons());
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expect(c3.car.isFixnum());
+    const attempted = c3.car.toFixnum();
+
+    try testing.expectEqual(@as(i64, 0), fail);
+    try testing.expectEqual(total, ok);
+    try testing.expectEqual(total, attempted);
 }
 
 test "maxima loader accepts internal keyword controls" {

@@ -9,6 +9,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-20)
 
 ### Worked Well
+- Running parallel worker agents in isolated `jj` workspaces (`/Users/joel/Work/habu-agent-compiler`, `/Users/joel/Work/habu-agent-gc`) accelerated independent RCA/fix loops without file ownership collisions, then `jj squash --from ... --message ...` merged results cleanly back into the default workspace.
+- Resolving forwarded symbols at every list-iteration boundary in compiler hot paths (`src/compiler/compile.zig:2682`, `src/compiler/compile.zig:5122`, `src/compiler/compile.zig:14190`, `src/compiler/compile.zig:17540`) eliminated stale symbol/name pointers under moving GC and stopped `stdlib fdefinition basic` segmentation faults.
+- For incremental major-sweep tests, draining any already-active cycle before changing the root set (`src/runtime/gc.zig:2477`) prevented false negatives caused by finishing a cycle that started under the old root set.
 - Validating barrier-assisted incremental marking with an old-object rescue regression (`src/runtime/gc.zig:2048`) caught cross-slice liveness hazards that normal sweep tests miss.
 - Gating old->old card marking behind `major_cycle_active` (`src/runtime/heap.zig:1003`) preserved fast-path remembered behavior outside major cycles while still providing correctness during incremental marking.
 - Moving major old-space collection to an explicit phase machine (`src/runtime/gc.zig:102`, `src/runtime/gc.zig:584`) with persistent `major_work` queue enabled resumable mark/sweep progress without per-cycle full sweeps.
@@ -86,6 +89,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Linking Maxima loader docs directly to parity/regression commands (`docs/maxima-loader.md`) made loader RCA and perf gate checks share one operational entrypoint.
 
 ### Did Not Work
+- Assuming post-promotion collections start from an idle major-cycle state was wrong; tests that drop roots mid-cycle can observe old marks and fail reclamation assertions unless the previous cycle is drained first (`src/runtime/gc.zig:2477`).
+- Using `jj squash --from ...` without `--message` in non-interactive automation opened an editor unexpectedly; always pass `--message` for scripted merges.
 - Assuming a fixed `MAJOR_SWEEP_BUDGET`-sized fixture would keep major cycle active was brittle; root ordering/object size can make the cycle complete in one pass, so barrier tests need larger deterministic workloads.
 - Transitioning mark->sweep as a single step per minor cycle delayed tiny sweep completions by an extra GC; using iterative phase advancement in one cycle (`src/runtime/gc.zig:639`) fixed this regression.
 - More aggressive debt thresholds/weights looked faster on Maxima only because loader failures increased (`maxima_habu_errors` 8→10), so raw wall-time wins are invalid unless error counts stay flat.

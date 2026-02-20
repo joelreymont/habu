@@ -373,6 +373,7 @@ pub fn vectorPushExtend(heap: *Heap, val: Value, element: Value, extension: u64)
 
     if (fp < vec.capacity) {
         vec.data[fp] = element;
+        heap.writeBarrier(val, element);
         vec.setFillPointer(fp + 1);
         return @intCast(fp);
     }
@@ -391,6 +392,7 @@ pub fn vectorPushExtend(heap: *Heap, val: Value, element: Value, extension: u64)
 
     // Add new element
     new_obj.data[fp] = element;
+    heap.writeBarrier(new_vec, element);
 
     // Preserve fill-pointer and adjustable flag
     new_obj.setFillPointer(fp + 1);
@@ -426,7 +428,7 @@ pub fn vectorPop(val: Value) Value {
 /// Fill sequence with a value (destructive)
 /// start and end are indices (0-based)
 /// Returns true on success
-pub fn fill(seq: Value, fill_value: Value, start: usize, end: ?usize) bool {
+pub fn fill(heap: *Heap, seq: Value, fill_value: Value, start: usize, end: ?usize) bool {
     switch (seq.typeKind()) {
         .vector => {
             const vec = seq.toPtr(objects.Vector);
@@ -436,6 +438,7 @@ pub fn fill(seq: Value, fill_value: Value, start: usize, end: ?usize) bool {
 
             for (start..e) |i| {
                 vec.data[i] = fill_value;
+                heap.writeBarrier(seq, fill_value);
             }
             return true;
         },
@@ -450,6 +453,7 @@ pub fn fill(seq: Value, fill_value: Value, start: usize, end: ?usize) bool {
                 if (idx >= start and idx < e) {
                     const cons_obj = current.toPtr(objects.Cons);
                     cons_obj.car = fill_value;
+                    heap.writeBarrier(current, fill_value);
                 }
 
                 if (idx >= e) break;
@@ -466,8 +470,8 @@ pub fn fill(seq: Value, fill_value: Value, start: usize, end: ?usize) bool {
 }
 
 /// Fill vector with a value (convenience wrapper)
-pub fn vectorFill(val: Value, fill_value: Value) bool {
-    return fill(val, fill_value, 0, null);
+pub fn vectorFill(heap: *Heap, val: Value, fill_value: Value) bool {
+    return fill(heap, val, fill_value, 0, null);
 }
 
 /// Copy vector
@@ -590,7 +594,7 @@ pub fn vectorReverse(val: Value) bool {
 /// Replace elements from src into dst
 /// Copies from src[s2..e2] to dst[s1..s1+(e2-s2)]
 /// Returns true on success
-pub fn replace(dst: Value, src: Value, s1: usize, e1: ?usize, s2: usize, e2: ?usize) bool {
+pub fn replace(heap: *Heap, dst: Value, src: Value, s1: usize, e1: ?usize, s2: usize, e2: ?usize) bool {
     // Determine lengths
     const dst_len = switch (dst.typeKind()) {
         .vector => dst.toPtr(objects.Vector).length,
@@ -637,6 +641,7 @@ pub fn replace(dst: Value, src: Value, s1: usize, e1: ?usize, s2: usize, e2: ?us
                 // Copy forward
                 for (0..copy_count) |i| {
                     dst_vec.data[s1 + i] = src_vec.data[s2 + i];
+                    heap.writeBarrier(dst, dst_vec.data[s1 + i]);
                 }
             } else if (s1 > s2) {
                 // Copy backward
@@ -644,6 +649,7 @@ pub fn replace(dst: Value, src: Value, s1: usize, e1: ?usize, s2: usize, e2: ?us
                 while (i > 0) {
                     i -= 1;
                     dst_vec.data[s1 + i] = src_vec.data[s2 + i];
+                    heap.writeBarrier(dst, dst_vec.data[s1 + i]);
                 }
             }
             // s1 == s2: no-op
@@ -651,6 +657,7 @@ pub fn replace(dst: Value, src: Value, s1: usize, e1: ?usize, s2: usize, e2: ?us
             // Different vectors - simple copy
             for (0..copy_count) |i| {
                 dst_vec.data[s1 + i] = src_vec.data[s2 + i];
+                heap.writeBarrier(dst, dst_vec.data[s1 + i]);
             }
         }
         return true;
@@ -697,6 +704,7 @@ pub fn replace(dst: Value, src: Value, s1: usize, e1: ?usize, s2: usize, e2: ?us
             const dst_vec = dst.toPtr(objects.Vector);
             for (0..idx) |i| {
                 dst_vec.data[s1 + i] = src_items[i];
+                heap.writeBarrier(dst, src_items[i]);
             }
         },
         .cons, .nil => {
@@ -711,6 +719,7 @@ pub fn replace(dst: Value, src: Value, s1: usize, e1: ?usize, s2: usize, e2: ?us
                 if (!curr.isCons()) return false;
                 const cons = curr.toPtr(objects.Cons);
                 cons.car = src_items[i];
+                heap.writeBarrier(curr, src_items[i]);
                 curr = cons.cdr;
                 pos += 1;
             }
@@ -1132,13 +1141,13 @@ test "fill vector" {
     _ = vectorSet(vec, 4, Value.makeFixnum(5));
 
     // Fill entire vector
-    try testing.expect(fill(vec, Value.makeFixnum(99), 0, null));
+    try testing.expect(fill(&heap, vec, Value.makeFixnum(99), 0, null));
     for (0..5) |i| {
         try testing.expectEqual(@as(i64, 99), vectorRef(vec, i).toFixnum());
     }
 
     // Partial fill
-    try testing.expect(fill(vec, Value.makeFixnum(42), 1, 4));
+    try testing.expect(fill(&heap, vec, Value.makeFixnum(42), 1, 4));
     try testing.expectEqual(@as(i64, 99), vectorRef(vec, 0).toFixnum());
     try testing.expectEqual(@as(i64, 42), vectorRef(vec, 1).toFixnum());
     try testing.expectEqual(@as(i64, 42), vectorRef(vec, 2).toFixnum());
@@ -1162,7 +1171,7 @@ test "fill list" {
     });
 
     // Fill entire list
-    try testing.expect(fill(lst, Value.makeFixnum(99), 0, null));
+    try testing.expect(fill(&heap, lst, Value.makeFixnum(99), 0, null));
     for (0..5) |i| {
         try testing.expectEqual(@as(i64, 99), list_prim.nth(lst, @intCast(i)).toFixnum());
     }
@@ -1175,7 +1184,7 @@ test "fill list" {
         Value.makeFixnum(4),
         Value.makeFixnum(5),
     });
-    try testing.expect(fill(lst2, Value.makeFixnum(42), 1, 4));
+    try testing.expect(fill(&heap, lst2, Value.makeFixnum(42), 1, 4));
     try testing.expectEqual(@as(i64, 1), list_prim.nth(lst2, 0).toFixnum());
     try testing.expectEqual(@as(i64, 42), list_prim.nth(lst2, 1).toFixnum());
     try testing.expectEqual(@as(i64, 42), list_prim.nth(lst2, 2).toFixnum());
@@ -1204,7 +1213,7 @@ test "replace vector to vector" {
     _ = vectorSet(dst, 5, Value.makeFixnum(6));
 
     // Replace dst[1..4] with src[0..3]
-    try testing.expect(replace(dst, src, 1, 4, 0, 3));
+    try testing.expect(replace(&heap, dst, src, 1, 4, 0, 3));
     try testing.expectEqual(@as(i64, 1), vectorRef(dst, 0).toFixnum());
     try testing.expectEqual(@as(i64, 10), vectorRef(dst, 1).toFixnum());
     try testing.expectEqual(@as(i64, 20), vectorRef(dst, 2).toFixnum());
@@ -1228,7 +1237,7 @@ test "replace overlapping same vector" {
     _ = vectorSet(vec, 5, Value.makeFixnum(6));
 
     // Shift right: copy [0..3] to [2..5]
-    try testing.expect(replace(vec, vec, 2, 5, 0, 3));
+    try testing.expect(replace(&heap, vec, vec, 2, 5, 0, 3));
     try testing.expectEqual(@as(i64, 1), vectorRef(vec, 0).toFixnum());
     try testing.expectEqual(@as(i64, 2), vectorRef(vec, 1).toFixnum());
     try testing.expectEqual(@as(i64, 1), vectorRef(vec, 2).toFixnum());
@@ -1257,7 +1266,7 @@ test "replace list to vector" {
     _ = vectorSet(dst, 3, Value.makeFixnum(4));
     _ = vectorSet(dst, 4, Value.makeFixnum(5));
 
-    try testing.expect(replace(dst, src, 1, 4, 0, 3));
+    try testing.expect(replace(&heap, dst, src, 1, 4, 0, 3));
     try testing.expectEqual(@as(i64, 1), vectorRef(dst, 0).toFixnum());
     try testing.expectEqual(@as(i64, 10), vectorRef(dst, 1).toFixnum());
     try testing.expectEqual(@as(i64, 20), vectorRef(dst, 2).toFixnum());
@@ -1286,7 +1295,7 @@ test "replace vector to list" {
         Value.makeFixnum(5),
     });
 
-    try testing.expect(replace(dst, src, 1, 4, 0, 3));
+    try testing.expect(replace(&heap, dst, src, 1, 4, 0, 3));
     try testing.expectEqual(@as(i64, 1), list_prim.nth(dst, 0).toFixnum());
     try testing.expectEqual(@as(i64, 10), list_prim.nth(dst, 1).toFixnum());
     try testing.expectEqual(@as(i64, 20), list_prim.nth(dst, 2).toFixnum());

@@ -120,12 +120,14 @@ fn listContainsValue(list: Value, value: Value) bool {
 fn ensureLispSymbolTable(heap: *Heap, pkg: *objects.Package) !void {
     if (pkg.symbols.raw == Value.nil.raw) {
         pkg.symbols = try createHashTable(heap, 16);
+        heap.writeBarrier(Value.makePackage(pkg), pkg.symbols);
     }
 }
 
 fn addShadowingSymbol(heap: *Heap, pkg: *objects.Package, sym: Value) !void {
     if (!listContainsValue(pkg.shadowing, sym)) {
         pkg.shadowing = try heap.allocCons(sym, pkg.shadowing);
+        heap.writeBarrier(Value.makePackage(pkg), pkg.shadowing);
     }
 }
 
@@ -576,6 +578,7 @@ pub fn internSymbol(heap: *Heap, name: Value, pkg: Value) !Value {
     // Add to symbols table (create if needed)
     if (p.symbols.raw == Value.nil.raw) {
         p.symbols = try createHashTable(heap, 16);
+        heap.writeBarrier(pkg, p.symbols);
     }
     try insertHashTable(heap, p.symbols, new_sym, new_sym);
 
@@ -678,6 +681,7 @@ pub fn exportSymbols(heap: *Heap, symbols: Value, pkg: Value) !void {
     // Create exports table if needed
     if (p.exports.raw == Value.nil.raw) {
         p.exports = try createHashTable(heap, 16);
+        heap.writeBarrier(resolved_pkg, p.exports);
     }
 
     // Handle single symbol or list
@@ -711,6 +715,7 @@ pub fn importSymbols(heap: *Heap, symbols: Value, pkg: Value) !void {
     // Create symbols table if needed
     if (p.symbols.raw == Value.nil.raw) {
         p.symbols = try createHashTable(heap, 16);
+        heap.writeBarrier(resolved_pkg, p.symbols);
     }
 
     // Handle single symbol or list
@@ -835,6 +840,7 @@ pub fn usePackage(heap: *Heap, pkgs_to_use: Value, pkg: Value) !void {
         const pkg_to_use = list.toPtr(objects.Cons).car;
         if (!listHasPkg(p.use_list, pkg_to_use)) {
             p.use_list = try heap.allocCons(pkg_to_use, p.use_list);
+            heap.writeBarrier(resolved_pkg, p.use_list);
         }
         const native_use = try nativePkgFor(heap, pkg_to_use);
         if (!nativeUseHas(native_pkg.use_list.items, native_use)) {
@@ -853,6 +859,7 @@ pub fn unusePackage(heap: *Heap, pkgs_to_unuse: Value, pkg: Value) !void {
     if (to_remove.raw == Value.nil.raw) return;
 
     p.use_list = try filterPkgList(heap, p.use_list, to_remove);
+    heap.writeBarrier(resolved_pkg, p.use_list);
 
     var native_rm = std.ArrayList(*heap_mod.Package){};
     defer native_rm.deinit(heap.backing_allocator);
@@ -934,6 +941,7 @@ pub fn uninternSymbol(heap: *Heap, symbol: Value, pkg: Value) !bool {
         curr = curr.toPtr(Cons).cdr;
     }
     p.shadowing = new_shadowing;
+    heap.writeBarrier(pkg, p.shadowing);
 
     return true;
 }
@@ -970,6 +978,7 @@ pub fn deletePackage(heap: *Heap, designator: Value) !bool {
             const other = pkg_val.toPtr(objects.Package);
             if (other.use_list.raw != Value.nil.raw) {
                 other.use_list = try filterPkgList(heap, other.use_list, rm_list);
+                heap.writeBarrier(pkg_val, other.use_list);
             }
         }
     }
@@ -1095,6 +1104,7 @@ pub fn renamePackage(heap: *Heap, pkg: Value, new_name: Value, new_nicknames: ?V
         }
 
         p.nicknames = nns;
+        heap.writeBarrier(pkg, p.nicknames);
         var nicks = nns;
         while (!nicks.isNil()) {
             if (!nicks.isCons()) break;
@@ -1108,6 +1118,7 @@ pub fn renamePackage(heap: *Heap, pkg: Value, new_name: Value, new_nicknames: ?V
     }
 
     p.name = new_name;
+    heap.writeBarrier(pkg, p.name);
     return pkg;
 }
 

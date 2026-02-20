@@ -19,23 +19,17 @@ const Parser = reader.Parser;
 const Op = bytecode.Op;
 const Emitter = bytecode.Emitter;
 
-fn patchChunkIndices(chunk: *Chunk, base: u16) void {
+fn patchChunkIndices(chunk: *Chunk, base: u16) !void {
     const code = chunk.getCode();
     var i: usize = 0;
-    while (i + 1 < code.len) {
-        const low: u16 = code[i];
-        const high: u16 = code[i + 1];
-        const opcode = low | (high << 8);
-        const op: Op = @enumFromInt(opcode);
-        const size = op.operandSize();
-
-        if (op == .make_closure) {
-            const rel_idx = std.mem.readInt(u16, code[i + 2 ..][0..2], .little);
-            const abs_idx = rel_idx + base;
-            std.mem.writeInt(u16, code[i + 2 ..][0..2], abs_idx, .little);
+    while (i < code.len) {
+        const insn = try bytecode.opcodes.decodeInstruction(code, i);
+        if (insn.op == .make_closure) {
+            const rel_idx = std.mem.readInt(u16, code[insn.operand_off..][0..2], .little);
+            const abs_idx = try std.math.add(u16, rel_idx, base);
+            std.mem.writeInt(u16, code[insn.operand_off..][0..2], abs_idx, .little);
         }
-
-        i += 2 + size;
+        i = insn.next_off;
     }
 }
 
@@ -82,7 +76,7 @@ pub fn compileChunk(
 
     const chunk_base: u16 = @intCast(chunk_pool.items.len);
     for (child_chunks) |c| {
-        patchChunkIndices(c.toPtr(Chunk), chunk_base);
+        try patchChunkIndices(c.toPtr(Chunk), chunk_base);
     }
 
     try chunk_pool.ensureUnusedCapacity(allocator, child_chunks.len);
@@ -91,8 +85,8 @@ pub fn compileChunk(
     }
 
     const chunk_ptr = chunk.toPtr(Chunk);
-    patchChunkIndices(chunk_ptr, chunk_base);
-    vm.setChunkPool(chunk_pool.items);
+    try patchChunkIndices(chunk_ptr, chunk_base);
+    vm.setChunkPoolOwned(chunk_pool);
 
     // Try hoist SSA JIT compilation for eligible lambdas
     tryHoistCompile(allocator, specialized, child_chunks, chunk_base, vm);

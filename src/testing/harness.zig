@@ -38,7 +38,7 @@ pub const Runner = struct {
         self.vm.setGlobalEnv(&self.comp.globals);
 
         errdefer self.chunk_pool.deinit(allocator);
-        self.vm.setChunkPool(self.chunk_pool.items);
+        self.vm.setChunkPoolOwned(&self.chunk_pool);
     }
 
     pub fn deinit(self: *Runner) void {

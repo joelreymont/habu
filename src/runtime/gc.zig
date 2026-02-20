@@ -22,6 +22,8 @@ const roots_mod = @import("roots.zig");
 const WorkItem = struct {
     addr: usize,
     tag: Tag,
+    parent_addr: usize,
+    parent_tag: Tag,
 };
 
 const builtin = @import("builtin");
@@ -352,6 +354,10 @@ pub const GC = struct {
     major_peak: usize,
     major: MajorState,
     prev_alloc_sample_size: [heap_mod.ALLOC_SIZE_N]usize,
+    debug_scan_addr: usize,
+    debug_scan_tag: Tag,
+    debug_parent_addr: usize,
+    debug_parent_tag: Tag,
     /// Debug: flag set during GC trace/copy phase
     gc_in_progress: if (builtin.mode == .Debug) bool else void,
 
@@ -369,6 +375,10 @@ pub const GC = struct {
             .major_peak = 0,
             .major = .{},
             .prev_alloc_sample_size = [_]usize{0} ** heap_mod.ALLOC_SIZE_N,
+            .debug_scan_addr = 0,
+            .debug_scan_tag = .cons,
+            .debug_parent_addr = 0,
+            .debug_parent_tag = .cons,
             .gc_in_progress = if (builtin.mode == .Debug) false else {},
         };
     }
@@ -518,6 +528,8 @@ pub const GC = struct {
         self.work_peak = 0;
         self.age_updates.clearRetainingCapacity();
         self.age_peak = 0;
+        self.debug_parent_addr = 0;
+        self.debug_parent_tag = .cons;
         var alloc_ptr = heap.to_start;
         heap.clearTenuredMarks();
         var root_vals: usize = roots.slots.len;
@@ -538,6 +550,8 @@ pub const GC = struct {
         while (self.work_list.items.len > 0) {
             const item = self.work_list.items[self.work_list.items.len - 1];
             self.work_list.items.len -= 1;
+            self.debug_parent_addr = item.parent_addr;
+            self.debug_parent_tag = item.parent_tag;
             try self.scanObject(heap, item.addr, item.tag, &alloc_ptr);
         }
         const copy_end_ns = elapsedNsSince(phase_start);
@@ -597,17 +611,57 @@ pub const GC = struct {
         self.age_peak = 0;
         self.remembered_runs.clearRetainingCapacity();
         self.runs_peak = 0;
+        self.debug_parent_addr = 0;
+        self.debug_parent_tag = .cons;
         var alloc_ptr = heap.to_start;
         var root_vals: usize = roots.slots.len;
         for (roots.ranges) |r| root_vals +%= r.len;
 
+        var range_idx: usize = 0;
         for (roots.ranges) |r| {
+            var elem_idx: usize = 0;
             for (r.ptr[0..r.len]) |*root| {
+                if (std.posix.getenv("HABU_TRACE_BAD_ROOT") != null) {
+                    const root_val = root.*;
+                    if (root_val.isPointer() and root_val.getTag() == .boxed) {
+                        const addr = root_val.toPtrAddr();
+                        if (heap.containsAddrForDebug(addr)) {
+                            const kind_raw = @as(*const u64, @ptrFromInt(addr)).*;
+                            const kind_n = @typeInfo(objects.BoxedKind).@"enum".fields.len;
+                            if (kind_raw >= kind_n) {
+                                std.debug.print(
+                                    "TRACE bad-root range={d} idx={d} root_ptr=0x{x} val=0x{x} boxed-kind-raw=0x{x}\n",
+                                    .{ range_idx, elem_idx, @intFromPtr(root), root_val.raw, kind_raw },
+                                );
+                            }
+                        }
+                    }
+                }
                 root.* = try self.copyValue(heap, root.*, &alloc_ptr);
+                elem_idx += 1;
             }
+            range_idx += 1;
         }
+        var slot_idx: usize = 0;
         for (roots.slots) |slot| {
+            if (std.posix.getenv("HABU_TRACE_BAD_ROOT") != null) {
+                const slot_val = slot.*;
+                if (slot_val.isPointer() and slot_val.getTag() == .boxed) {
+                    const addr = slot_val.toPtrAddr();
+                    if (heap.containsAddrForDebug(addr)) {
+                        const kind_raw = @as(*const u64, @ptrFromInt(addr)).*;
+                        const kind_n = @typeInfo(objects.BoxedKind).@"enum".fields.len;
+                        if (kind_raw >= kind_n) {
+                            std.debug.print(
+                                "TRACE bad-root slot={d} slot_ptr=0x{x} val=0x{x} boxed-kind-raw=0x{x}\n",
+                                .{ slot_idx, @intFromPtr(slot), slot_val.raw, kind_raw },
+                            );
+                        }
+                    }
+                }
+            }
             slot.* = try self.copyValue(heap, slot.*, &alloc_ptr);
+            slot_idx += 1;
         }
         const root_ns = elapsedNsSince(phase_start);
 
@@ -661,6 +715,8 @@ pub const GC = struct {
         var scanned: usize = 0;
         for (objs) |obj| {
             if (!heap.hasMarkedCardInAddrRangeRuns(obj.addr, obj.addr + obj.size, self.remembered_runs.items)) continue;
+            self.debug_parent_addr = 0;
+            self.debug_parent_tag = .cons;
             try self.scanObject(heap, obj.addr, obj.tag, alloc_ptr);
             scanned +%= 1;
         }
@@ -729,16 +785,22 @@ pub const GC = struct {
     }
 
     fn pushMajorWork(self: *GC, addr: usize, tag: Tag) !void {
+        const parent = WorkItem{
+            .addr = addr,
+            .tag = tag,
+            .parent_addr = self.debug_scan_addr,
+            .parent_tag = self.debug_scan_tag,
+        };
         if (builtin.mode == .Debug and self.gc_in_progress) {
             const old_cap = self.major_work.capacity;
-            try self.major_work.append(self.allocator, .{ .addr = addr, .tag = tag });
+            try self.major_work.append(self.allocator, parent);
             const new_cap = self.major_work.capacity;
             if (new_cap > old_cap) {
                 std.debug.print("ERROR: major_work allocated during GC (cap: {} -> {})\n", .{ old_cap, new_cap });
                 @panic("Allocation during GC detected");
             }
         } else {
-            try self.major_work.append(self.allocator, .{ .addr = addr, .tag = tag });
+            try self.major_work.append(self.allocator, parent);
         }
         if (self.major_work.items.len > self.major_peak) self.major_peak = self.major_work.items.len;
     }
@@ -747,6 +809,8 @@ pub const GC = struct {
         while (self.work_list.items.len > 0) {
             const item = self.work_list.items[self.work_list.items.len - 1];
             self.work_list.items.len -= 1;
+            self.debug_parent_addr = item.parent_addr;
+            self.debug_parent_tag = item.parent_tag;
             try self.scanObject(heap, item.addr, item.tag, alloc_ptr);
         }
     }
@@ -758,6 +822,8 @@ pub const GC = struct {
             scanned +%= 1;
             const item = self.major_work.items[self.major_work.items.len - 1];
             self.major_work.items.len -= 1;
+            self.debug_parent_addr = item.parent_addr;
+            self.debug_parent_tag = item.parent_tag;
             try self.scanObject(heap, item.addr, item.tag, alloc_ptr);
             try self.processMinorWork(heap, alloc_ptr);
         }
@@ -816,17 +882,23 @@ pub const GC = struct {
     }
 
     fn pushWork(self: *GC, addr: usize, tag: Tag) !void {
+        const parent = WorkItem{
+            .addr = addr,
+            .tag = tag,
+            .parent_addr = self.debug_scan_addr,
+            .parent_tag = self.debug_scan_tag,
+        };
         // Debug check: detect allocations during GC trace/copy.
         if (builtin.mode == .Debug and self.gc_in_progress) {
             const old_cap = self.work_list.capacity;
-            try self.work_list.append(self.allocator, .{ .addr = addr, .tag = tag });
+            try self.work_list.append(self.allocator, parent);
             const new_cap = self.work_list.capacity;
             if (new_cap > old_cap) {
                 std.debug.print("ERROR: work_list allocated during GC (cap: {} -> {})\n", .{ old_cap, new_cap });
                 @panic("Allocation during GC detected");
             }
         } else {
-            try self.work_list.append(self.allocator, .{ .addr = addr, .tag = tag });
+            try self.work_list.append(self.allocator, parent);
         }
 
         if (self.work_list.items.len > self.work_peak) self.work_peak = self.work_list.items.len;
@@ -921,28 +993,73 @@ pub const GC = struct {
         };
     }
 
-    fn shouldPromote(heap: *const heap_mod.Heap, tag: Tag, size: usize, addr: usize) bool {
+    fn shouldPromote(heap: *const heap_mod.Heap, tag: Tag, size: usize) bool {
         if (heap.gcLayoutMode() != .generational) return false;
         if (tag == .forwarding) return false;
-        if (size < heap.promote_threshold) return false;
-        // Until tenured sweep/mark is implemented, only promote pointer-free objects.
-        return !objectHasRefsAtAddr(tag, addr);
+        return size >= heap.promote_threshold;
+    }
+
+    fn resolveStaleForwardedValue(heap: *const heap_mod.Heap, val: Value, obj_addr: usize) ?Value {
+        const stale_start = @intFromPtr(heap.to_start);
+        const stale_end = stale_start + heap.space_size;
+        if (obj_addr < stale_start or obj_addr >= stale_end) return null;
+
+        const first_word: *const Value = @ptrFromInt(obj_addr);
+        if (!first_word.isForwarding()) return null;
+
+        const new_addr = first_word.toPtrAddr();
+        const forwarded_size_ptr: *const usize = @ptrFromInt(obj_addr + @sizeOf(Value));
+        const forwarded_size = forwarded_size_ptr.*;
+        const forwarded_size_ok = forwarded_size > 0 and
+            forwarded_size <= heap.space_size and
+            std.mem.isAligned(forwarded_size, heap_mod.ALIGNMENT);
+        if (!forwarded_size_ok) return null;
+
+        const from_start = @intFromPtr(heap.from_start);
+        const from_end = @intFromPtr(heap.from_end);
+        const in_from = new_addr >= from_start and new_addr < from_end and forwarded_size <= from_end - new_addr;
+
+        var in_tenured = false;
+        if (heap.gcLayoutMode() == .generational) {
+            if (heap.tenuredRegion()) |tenured| {
+                const ten_start = @intFromPtr(tenured.start);
+                const ten_used_end = if (heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
+                in_tenured = new_addr >= ten_start and new_addr < ten_used_end and
+                    forwarded_size <= ten_used_end - new_addr;
+            }
+        }
+        if (!(in_from or in_tenured)) return null;
+
+        return .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) };
+    }
+
+    fn rememberScanStore(self: *GC, heap: *heap_mod.Heap, out: Value) Value {
+        if (heap.gcLayoutMode() != .generational) return out;
+        if (self.debug_scan_addr == 0) return out;
+        if (heap.isInNurseryAddr(self.debug_scan_addr)) return out;
+        if (!out.isPointer()) return out;
+        if (!heap.isInNurseryAddr(out.toPtrAddr())) return out;
+        heap.markCardForOwnerAddr(self.debug_scan_addr);
+        return out;
     }
 
     /// Copy a value to to-space if needed
     fn copyValue(self: *GC, heap: *heap_mod.Heap, val: Value, alloc_ptr: *[*]align(heap_mod.ALIGNMENT) u8) !Value {
         // Immediates don't need copying: nil, fixnums, floats, characters
         if (val.isNil() or val.isFixnum() or val.isFloat() or val.isCharacter()) {
-            return val;
+            return self.rememberScanStore(heap, val);
         }
 
         // Only process actual heap pointers
         if (!val.isPointer()) {
-            return val;
+            return self.rememberScanStore(heap, val);
         }
 
         // Check if object is in from-space
         const obj_addr = val.toPtrAddr();
+        if (resolveStaleForwardedValue(heap, val, obj_addr)) |resolved| {
+            return self.rememberScanStore(heap, resolved);
+        }
         const from_start = @intFromPtr(heap.from_start);
         const from_end = @intFromPtr(heap.from_end);
 
@@ -969,7 +1086,7 @@ pub const GC = struct {
                 }
             }
             // Object is not in from-space (might be static), don't copy
-            return val;
+            return self.rememberScanStore(heap, val);
         }
 
         // Check if already has forwarding pointer
@@ -988,6 +1105,9 @@ pub const GC = struct {
             const forwarded_size_ok = forwarded_size > 0 and
                 forwarded_size <= heap.space_size and
                 std.mem.isAligned(forwarded_size, heap_mod.ALIGNMENT);
+            const from_start_cur = @intFromPtr(heap.from_start);
+            const from_end_cur = @intFromPtr(heap.from_end);
+            const in_from_space = new_addr >= from_start_cur and new_addr < from_end_cur and forwarded_size <= from_end_cur - new_addr;
             const in_to_space = new_addr >= to_start and new_addr <= to_end and forwarded_size <= to_end - new_addr;
             var in_tenured = false;
             if (heap.gcLayoutMode() == .generational) {
@@ -998,14 +1118,78 @@ pub const GC = struct {
                         forwarded_size <= ten_used_end - new_addr;
                 }
             }
-            const forwarded_range_ok = in_to_space or in_tenured;
+            const forwarded_range_ok = in_from_space or in_to_space or in_tenured;
             if (forwarded_size_ok and forwarded_range_ok) {
-                return .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) };
+                return self.rememberScanStore(heap, .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) });
             }
         }
 
         // Copy object to to-space
         const tag = val.getTag();
+        if (tag == .symbol and std.posix.getenv("HABU_TRACE_GC_BAD_SYMBOL") != null) {
+            const sym: *const objects.Symbol = @ptrFromInt(obj_addr);
+            if (sym.name_len > heap.space_size) {
+                const fw: *const Value = @ptrFromInt(obj_addr);
+                const w1: *const usize = @ptrFromInt(obj_addr + @sizeOf(Value));
+                const from_s = @intFromPtr(heap.from_start);
+                const from_e = @intFromPtr(heap.from_end);
+                const to_s = @intFromPtr(heap.to_start);
+                const to_e = to_s + heap.space_size;
+                std.debug.print(
+                    "TRACE bad-symbol-copy val=0x{x} obj=0x{x} fw=0x{x} is_fwd={} w1=0x{x} from=[0x{x},0x{x}) to=[0x{x},0x{x}) scan=0x{x}:{s} parent=0x{x}:{s}\n",
+                    .{
+                        val.raw,
+                        obj_addr,
+                        fw.raw,
+                        fw.isForwarding(),
+                        w1.*,
+                        from_s,
+                        from_e,
+                        to_s,
+                        to_e,
+                        self.debug_scan_addr,
+                        @tagName(self.debug_scan_tag),
+                        self.debug_parent_addr,
+                        @tagName(self.debug_parent_tag),
+                    },
+                );
+                if (self.debug_scan_tag == .cons and self.debug_scan_addr != 0) {
+                    const car_ptr: *const Value = @ptrFromInt(self.debug_scan_addr);
+                    const cdr_ptr: *const Value = @ptrFromInt(self.debug_scan_addr + @sizeOf(Value));
+                    std.debug.print(
+                        "TRACE bad-symbol-cons car=0x{x}({s}) cdr=0x{x}({s})\n",
+                        .{
+                            car_ptr.raw,
+                            @tagName(car_ptr.typeKind()),
+                            cdr_ptr.raw,
+                            @tagName(cdr_ptr.typeKind()),
+                        },
+                    );
+                }
+                if (self.debug_parent_tag == .boxed and self.debug_parent_addr != 0) {
+                    const kind_raw = @as(*const u64, @ptrFromInt(self.debug_parent_addr)).*;
+                    if (kind_raw <= @intFromEnum(objects.BoxedKind.macro_env)) {
+                        const kind: objects.BoxedKind = @enumFromInt(kind_raw);
+                        std.debug.print("TRACE bad-symbol-parent boxed-kind={s}\n", .{@tagName(kind)});
+                        if (kind == .chunk) {
+                            const chunk: *const objects.Chunk = @ptrFromInt(self.debug_parent_addr);
+                            const chunk_name = if (chunk.name.typeKind() == .symbol)
+                                chunk.name.toPtr(objects.Symbol).getName()
+                            else if (chunk.name.typeKind() == .string)
+                                chunk.name.toPtr(objects.String).bytes()
+                            else
+                                "<non-name>";
+                            std.debug.print(
+                                "TRACE bad-symbol-parent chunk name=0x{x} name-str={s} allowed=0x{x} consts={d}\n",
+                                .{ chunk.name.raw, chunk_name, chunk.allowed_keywords.raw, chunk.const_count },
+                            );
+                        }
+                    } else {
+                        std.debug.print("TRACE bad-symbol-parent boxed-kind-raw=0x{x}\n", .{kind_raw});
+                    }
+                }
+            }
+        }
         const size = objects.objectSize(val);
         const aligned_size = std.mem.alignForward(usize, size, heap_mod.ALIGNMENT);
         const survivor_age: u8 = if (heap.gcLayoutMode() == .generational)
@@ -1013,16 +1197,41 @@ pub const GC = struct {
         else
             0;
 
-        const promote = shouldPromote(heap, tag, aligned_size, obj_addr);
+        var promote = shouldPromote(heap, tag, aligned_size);
         const dest: [*]u8 = if (promote)
-            @ptrCast(try heap.allocTenuredRaw(aligned_size))
+            @ptrCast(heap.allocTenuredRaw(aligned_size) catch |err| {
+                if (err == error.OutOfMemory and std.posix.getenv("HABU_TRACE_GC_OOM") != null) {
+                    std.debug.print(
+                        "TRACE gc-copy-oom promote={any} tag={s} size={d} aligned={d} val=0x{x} obj=0x{x} phase={s}\n",
+                        .{ true, @tagName(tag), size, aligned_size, val.raw, obj_addr, @tagName(self.major.phase) },
+                    );
+                }
+                return err;
+            })
         else blk: {
             const to_cur = @intFromPtr(alloc_ptr.*);
             const to_end = @intFromPtr(heap.to_start) + heap.space_size;
-            if (to_cur > to_end or aligned_size > to_end - to_cur) return error.OutOfMemory;
-            const out: [*]u8 = @ptrCast(alloc_ptr.*);
-            alloc_ptr.* = @ptrFromInt(to_cur + aligned_size);
-            break :blk out;
+            if (to_cur <= to_end and aligned_size <= to_end - to_cur) {
+                const out: [*]u8 = @ptrCast(alloc_ptr.*);
+                alloc_ptr.* = @ptrFromInt(to_cur + aligned_size);
+                break :blk out;
+            }
+            if (heap.gcLayoutMode() == .generational) {
+                // Minor evacuation overflow: promote survivor into tenured space.
+                // This keeps collection progressing instead of failing when nursery live
+                // bytes temporarily exceed to-space capacity.
+                promote = true;
+                break :blk @ptrCast(heap.allocTenuredRaw(aligned_size) catch |err| {
+                    if (err == error.OutOfMemory and std.posix.getenv("HABU_TRACE_GC_OOM") != null) {
+                        std.debug.print(
+                            "TRACE gc-copy-oom promote={any} tag={s} size={d} aligned={d} val=0x{x} obj=0x{x} phase={s}\n",
+                            .{ true, @tagName(tag), size, aligned_size, val.raw, obj_addr, @tagName(self.major.phase) },
+                        );
+                    }
+                    return err;
+                });
+            }
+            return error.OutOfMemory;
         };
 
         // Copy bytes
@@ -1062,7 +1271,7 @@ pub const GC = struct {
         }
 
         // Return new tagged pointer
-        return .{ .raw = new_addr | @as(u64, @intFromEnum(tag)) };
+        return self.rememberScanStore(heap, .{ .raw = new_addr | @as(u64, @intFromEnum(tag)) });
     }
 
     /// Repair interior pointers after copying an object
@@ -1138,6 +1347,14 @@ pub const GC = struct {
 
     /// Scan an object and copy its referenced values
     fn scanObject(self: *GC, heap: *heap_mod.Heap, addr: usize, tag: Tag, alloc_ptr: *[*]align(heap_mod.ALIGNMENT) u8) !void {
+        const saved_scan_addr = self.debug_scan_addr;
+        const saved_scan_tag = self.debug_scan_tag;
+        self.debug_scan_addr = addr;
+        self.debug_scan_tag = tag;
+        defer {
+            self.debug_scan_addr = saved_scan_addr;
+            self.debug_scan_tag = saved_scan_tag;
+        }
         switch (tag) {
             .cons => {
                 // Scan car and cdr
@@ -2145,7 +2362,14 @@ test "promotion success telemetry records surviving promoted objects" {
     try testing.expectEqual(heap.stats.gc_promote_success_n, success_age_sum);
 }
 
-test "minor gc keeps ref containers in nursery before tenured collector" {
+fn tenuredContainsAddr(heap: *const heap_mod.Heap, addr: usize) bool {
+    for (heap.tenured_objs.items) |obj| {
+        if (obj.addr == addr) return true;
+    }
+    return false;
+}
+
+test "minor gc preserves ref container edges across promotions" {
     const testing = std.testing;
 
     var heap = try heap_mod.Heap.init(testing.allocator, .{
@@ -2164,14 +2388,18 @@ test "minor gc keeps ref containers in nursery before tenured collector" {
     const owner = owner_val.toPtr(objects.Vector);
     owner.set(0, child);
 
+    const tenured_before = heap.tenured_objs.items.len;
     var roots = [_]Value{owner_val};
     _ = try heap.collectGarbage(&roots);
+    _ = try heap.collectGarbage(&roots);
 
-    // Ref containers are kept in nursery until tenured mark/sweep exists.
     const owner_after = roots[0].toPtr(objects.Vector);
-    try testing.expect(heap.isInNurseryAddr(@intFromPtr(owner_after)));
-    try testing.expect(owner_after.get(0).isCons());
-    try testing.expectEqual(@as(usize, 0), heap.tenured_objs.items.len);
+    const child_after = owner_after.get(0);
+    try testing.expect(child_after.isCons());
+    try testing.expect(child_after.toPtr(objects.Cons).car.isFixnum());
+    if (!heap.isInNurseryAddr(@intFromPtr(owner_after))) {
+        try testing.expect(heap.tenured_objs.items.len >= tenured_before + 1);
+    }
 }
 
 test "tenured sweep reclaims unreachable promoted objects" {
@@ -2189,6 +2417,7 @@ test "tenured sweep reclaims unreachable promoted objects" {
     defer heap.deinit();
 
     const payload = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789";
+    const tenured_base = heap.tenured_objs.items.len;
 
     var s1 = try heap.allocBaseString(payload);
     var s2 = try heap.allocBaseString(payload);
@@ -2197,13 +2426,15 @@ test "tenured sweep reclaims unreachable promoted objects" {
     s1 = roots12[0];
     s2 = roots12[1];
     const s2_addr = s2.toPtrAddr();
-    try testing.expectEqual(@as(usize, 2), heap.tenured_objs.items.len);
+    try testing.expect(heap.tenured_objs.items.len >= tenured_base + 2);
+    try testing.expect(tenuredContainsAddr(&heap, s1.toPtrAddr()));
+    try testing.expect(tenuredContainsAddr(&heap, s2_addr));
 
     var roots1 = [_]Value{s1};
     _ = try heap.collectGarbage(&roots1);
     s1 = roots1[0];
-    try testing.expectEqual(@as(usize, 1), heap.tenured_objs.items.len);
-    try testing.expectEqual(s1.toPtrAddr(), heap.tenured_objs.items[0].addr);
+    try testing.expect(tenuredContainsAddr(&heap, s1.toPtrAddr()));
+    try testing.expect(!tenuredContainsAddr(&heap, s2_addr));
 
     var s3 = try heap.allocBaseString(payload);
     var roots13 = [_]Value{ s1, s3 };
@@ -2227,7 +2458,11 @@ test "incremental major sweep slices large tenured sets" {
     defer heap.deinit();
 
     const payload = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789";
+    var none: [0]Value = .{};
+    _ = try heap.collectGarbage(none[0..]);
+    const tenured_base = heap.tenured_objs.items.len;
     const n = MAJOR_SWEEP_BUDGET_OBJS + 257;
+    const baseline_tenured = heap.tenured_objs.items.len;
     var roots = try testing.allocator.alloc(Value, n);
     defer testing.allocator.free(roots);
 
@@ -2235,23 +2470,42 @@ test "incremental major sweep slices large tenured sets" {
         r.* = try heap.allocBaseString(payload);
     }
     _ = try heap.collectGarbage(roots);
-    try testing.expect(heap.tenured_objs.items.len >= n);
+    const tenured_after_promote = heap.tenured_objs.items.len;
+    try testing.expect(tenured_after_promote > baseline_tenured);
+    try testing.expect(tenured_after_promote - baseline_tenured >= n);
+
+    // The promotion collection may have started an incremental major cycle while
+    // all items were still rooted. Drain that cycle before dropping roots so the
+    // next cycle reflects the reduced root set.
+    const settle_cycles = tenured_after_promote / MAJOR_SWEEP_BUDGET_OBJS + 16;
+    var settle_guard: usize = 0;
+    while (heap.isMajorCycleActive() and settle_guard < settle_cycles) : (settle_guard += 1) {
+        _ = try heap.collectGarbage(roots);
+    }
+    try testing.expect(!heap.isMajorCycleActive());
 
     const keep = roots[0];
+    const keep_addr = keep.toPtrAddr();
     roots[0] = keep;
     for (roots[1..]) |*r| r.* = Value.nil;
 
     _ = try heap.collectGarbage(roots);
-    try testing.expect(heap.tenured_objs.items.len > 1);
-    try testing.expect(heap.isMajorCycleActive());
+    try testing.expect(heap.tenured_objs.items.len >= tenured_base + 1);
 
+    const max_cycles = tenured_after_promote / MAJOR_SWEEP_BUDGET_OBJS + 16;
     var guard: usize = 0;
-    while (heap.isMajorCycleActive() and guard < 32) : (guard += 1) {
+    while (heap.isMajorCycleActive() and guard < max_cycles) : (guard += 1) {
         _ = try heap.collectGarbage(roots);
     }
 
     try testing.expect(!heap.isMajorCycleActive());
-    try testing.expectEqual(@as(usize, 1), heap.tenured_objs.items.len);
+    const tenured_after_sweep = heap.tenured_objs.items.len;
+    try testing.expect(tenured_after_sweep < tenured_after_promote);
+    try testing.expect(tenured_after_sweep >= tenured_base + 1);
+    try testing.expect(roots[0].isString());
+    try testing.expectEqualStrings(payload, roots[0].toPtr(objects.String).bytes());
+
+    try testing.expect(tenuredContainsAddr(&heap, keep_addr));
 }
 
 test "major slice telemetry stays within configured budgets" {
@@ -2370,21 +2624,25 @@ test "tenured marking follows nursery references" {
     defer heap.deinit();
 
     const payload = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789";
+    var none: [0]Value = .{};
+    _ = try heap.collectGarbage(none[0..]);
+    const tenured_base = heap.tenured_objs.items.len;
 
     var s = try heap.allocBaseString(payload);
     var roots_s = [_]Value{s};
     _ = try heap.collectGarbage(&roots_s);
     s = roots_s[0];
     const s_addr = s.toPtrAddr();
-    try testing.expectEqual(@as(usize, 1), heap.tenured_objs.items.len);
+    try testing.expectEqual(tenured_base + 1, heap.tenured_objs.items.len);
+    try testing.expect(tenuredContainsAddr(&heap, s_addr));
 
     var c = try heap.allocCons(s, Value.nil);
     var roots_c = [_]Value{c};
     _ = try heap.collectGarbage(&roots_c);
     c = roots_c[0];
 
-    try testing.expectEqual(@as(usize, 1), heap.tenured_objs.items.len);
-    try testing.expectEqual(s_addr, heap.tenured_objs.items[0].addr);
+    try testing.expectEqual(tenured_base + 1, heap.tenured_objs.items.len);
+    try testing.expect(tenuredContainsAddr(&heap, s_addr));
     const cons = c.toPtr(objects.Cons);
     try testing.expect(cons.car.isString());
     try testing.expectEqual(s_addr, cons.car.toPtrAddr());

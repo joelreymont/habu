@@ -2680,69 +2680,70 @@ pub const Compiler = struct {
 
     /// Compile with tail position tracking
     fn compileWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
+        const live_expr = self.resolveForwardedValue(expr);
         // Nil
-        if (expr.isNil()) {
+        if (live_expr.isNil()) {
             return try self.builder.lit(Value.nil);
         }
 
         // Fixnum
-        if (expr.isFixnum()) {
-            return try self.builder.lit(expr);
+        if (live_expr.isFixnum()) {
+            return try self.builder.lit(live_expr);
         }
 
         // Float
-        if (expr.isFloat()) {
-            return try self.builder.lit(expr);
+        if (live_expr.isFloat()) {
+            return try self.builder.lit(live_expr);
         }
 
         // Rational
-        if (expr.isRational()) {
-            return try self.builder.lit(expr);
+        if (live_expr.isRational()) {
+            return try self.builder.lit(live_expr);
         }
 
         // Complex
-        if (expr.isComplex()) {
-            return try self.builder.lit(expr);
+        if (live_expr.isComplex()) {
+            return try self.builder.lit(live_expr);
         }
 
         // Bignum
-        if (expr.isBignum()) {
-            return try self.builder.lit(expr);
+        if (live_expr.isBignum()) {
+            return try self.builder.lit(live_expr);
         }
 
         // String (base-string or String32)
-        if (expr.isString() or expr.isString32()) {
-            return try self.builder.lit(expr);
+        if (live_expr.isString() or live_expr.isString32()) {
+            return try self.builder.lit(live_expr);
         }
 
         // Character
-        if (expr.isCharacter()) {
-            return try self.builder.lit(expr);
+        if (live_expr.isCharacter()) {
+            return try self.builder.lit(live_expr);
         }
 
         // t and nil are self-evaluating (also symbols, but special)
-        if (expr.isMagicSymbol()) {
-            return try self.builder.lit(expr);
+        if (live_expr.isMagicSymbol()) {
+            return try self.builder.lit(live_expr);
         }
 
         // Vector (literal - #(1 2 3))
-        if (expr.isVector()) {
-            return try self.builder.lit(expr);
+        if (live_expr.isVector()) {
+            return try self.builder.lit(live_expr);
         }
 
         // Array literal - #2A(...)
-        if (expr.isArray()) {
-            return try self.builder.lit(expr);
+        if (live_expr.isArray()) {
+            return try self.builder.lit(live_expr);
         }
 
         // Symbol (variable reference or symbol macro)
-        if (expr.isSymbol()) {
+        if (live_expr.isSymbol()) {
             // Check for symbol macros first
-            if (self.lookupSymbolMacro(expr)) |expansion| {
+            if (self.lookupSymbolMacro(live_expr)) |expansion| {
                 return self.compileWithTail(expansion, env, in_tail);
             }
 
-            const sym_val = expr;
+            const sym_val = live_expr;
             const sym = sym_val.toPtr(Symbol);
             const name = sym.getName();
 
@@ -2773,23 +2774,45 @@ pub const Compiler = struct {
         }
 
         // List (special form or function call)
-        if (expr.isCons()) {
-            return self.compileListWithTail(expr, env, in_tail);
+        if (live_expr.isCons()) {
+            return self.compileListWithTail(live_expr, env, in_tail) catch |err| {
+                if (err == error.InvalidSyntax and std.posix.getenv("HABU_TRACE_INVALID_SYNTAX") != null) {
+                    const cons = live_expr.toPtr(Cons);
+                    if (cons.car.isSymbol()) {
+                        std.debug.print(
+                            "TRACE invalid-syntax form head={s} tail-kind={s}\n",
+                            .{
+                                cons.car.toPtr(Symbol).getName(),
+                                @tagName(cons.cdr.typeKind()),
+                            },
+                        );
+                    } else {
+                        std.debug.print(
+                            "TRACE invalid-syntax form head-kind={s} tail-kind={s}\n",
+                            .{
+                                @tagName(cons.car.typeKind()),
+                                @tagName(cons.cdr.typeKind()),
+                            },
+                        );
+                    }
+                }
+                return err;
+            };
         }
 
         // Keyword - just return as literal
-        if (expr.isKeyword()) {
-            return try self.builder.lit(expr);
+        if (live_expr.isKeyword()) {
+            return try self.builder.lit(live_expr);
         }
 
         // Closure - can appear as macro expansion result
         // Treat as literal (will be used by funcall at runtime)
-        if (expr.isClosure()) {
-            return try self.builder.lit(expr);
+        if (live_expr.isClosure()) {
+            return try self.builder.lit(live_expr);
         }
 
-        if (self.diag) {
-            std.debug.print("Invalid syntax: typeKind={}, raw=0x{x}\n", .{ expr.typeKind(), expr.raw });
+        if (self.diag or std.posix.getenv("HABU_TRACE_INVALID_SYNTAX") != null) {
+            std.debug.print("TRACE invalid-syntax value kind={s} raw=0x{x}\n", .{ @tagName(live_expr.typeKind()), live_expr.raw });
         }
         return error.InvalidSyntax;
     }
@@ -3170,22 +3193,17 @@ pub const Compiler = struct {
         return try self.builder.globalRef(qname, idx);
     }
 
-    fn patchChunkClosureIndices(chunk: *Chunk, base: u16) void {
+    fn patchChunkClosureIndices(chunk: *Chunk, base: u16) !void {
         const code = chunk.getCode();
         var i: usize = 0;
-        while (i + 1 < code.len) {
-            const low: u16 = code[i];
-            const high: u16 = code[i + 1];
-            const opcode: u16 = low | (high << 8);
-            const op: bytecode.Op = @enumFromInt(opcode);
-            const size = op.operandSize();
-
-            if (op == .make_closure) {
-                const rel_idx = std.mem.readInt(u16, code[i + 2 ..][0..2], .little);
-                std.mem.writeInt(u16, code[i + 2 ..][0..2], rel_idx + base, .little);
+        while (i < code.len) {
+            const insn = try bytecode.opcodes.decodeInstruction(code, i);
+            if (insn.op == .make_closure) {
+                const rel_idx = std.mem.readInt(u16, code[insn.operand_off..][0..2], .little);
+                const abs_idx = try std.math.add(u16, rel_idx, base);
+                std.mem.writeInt(u16, code[insn.operand_off..][0..2], abs_idx, .little);
             }
-
-            i += 2 + size;
+            i = insn.next_off;
         }
     }
 
@@ -3243,9 +3261,9 @@ pub const Compiler = struct {
         if (saved_ext.len > 0) {
             @memcpy(roots[0..saved_ext.len], saved_ext);
         }
-        roots[root_closure_idx] = closure;
-        roots[root_args_idx] = args;
-        roots[root_whole_idx] = whole_form;
+        roots[root_closure_idx] = self.resolveForwardedValue(closure);
+        roots[root_args_idx] = self.resolveForwardedValue(args);
+        roots[root_whole_idx] = self.resolveForwardedValue(whole_form);
         roots[root_env_idx] = Value.nil;
 
         var root_idx = root_macro_start;
@@ -3270,9 +3288,11 @@ pub const Compiler = struct {
         }
 
         var arg_count: usize = @as(usize, @intFromBool(has_whole)) + @as(usize, @intFromBool(has_env));
-        var arg_scan = roots[root_args_idx];
-        while (arg_scan.isCons()) : (arg_scan = arg_scan.toPtr(Cons).cdr) {
+        var arg_scan = self.resolveForwardedValue(roots[root_args_idx]);
+        while (arg_scan.isCons()) {
+            arg_scan = self.resolveForwardedValue(arg_scan);
             arg_count += 1;
+            arg_scan = self.resolveForwardedValue(arg_scan.toPtr(Cons).cdr);
         }
 
         var call_args_stack: [64]Value = undefined;
@@ -3296,12 +3316,13 @@ pub const Compiler = struct {
             call_arg_idx += 1;
         }
 
-        var arg_list = roots[root_args_idx];
+        var arg_list = self.resolveForwardedValue(roots[root_args_idx]);
         while (arg_list.isCons()) {
+            arg_list = self.resolveForwardedValue(arg_list);
             const arg_cons = arg_list.toPtr(Cons);
-            call_args_buf[call_arg_idx] = arg_cons.car;
+            call_args_buf[call_arg_idx] = self.resolveForwardedValue(arg_cons.car);
             call_arg_idx += 1;
-            arg_list = arg_cons.cdr;
+            arg_list = self.resolveForwardedValue(arg_cons.cdr);
         }
         const call_args = call_args_buf[0..call_arg_idx];
 
@@ -3456,35 +3477,40 @@ pub const Compiler = struct {
         var env_var: ?Value = null;
         var new_params = Value.nil;
         var param_tail: ?*Cons = null;
-        var p = params;
+        var p = self.resolveForwardedValue(params);
         while (p.isCons()) {
+            p = self.resolveForwardedValue(p);
             const pc = p.toPtr(Cons);
-            if (pc.car.raw == b.@"&environment".raw) {
+            const param_item = self.resolveForwardedValue(pc.car);
+            const next_param = self.resolveForwardedValue(pc.cdr);
+            if (param_item.raw == b.@"&environment".raw) {
                 // Extract var name following &environment and skip both
-                if (pc.cdr.isCons()) {
-                    const env_rest = pc.cdr.toPtr(Cons);
-                    env_var = env_rest.car; // The variable name
-                    p = env_rest.cdr; // Skip &environment and var
+                if (next_param.isCons()) {
+                    const env_rest = next_param.toPtr(Cons);
+                    env_var = self.resolveForwardedValue(env_rest.car); // The variable name
+                    p = self.resolveForwardedValue(env_rest.cdr); // Skip &environment and var
                 } else {
-                    p = pc.cdr;
+                    p = next_param;
                 }
                 continue;
             }
             // Keep this param
-            const new_cell = try heap.allocCons(pc.car, Value.nil);
+            const new_cell = try heap.allocCons(param_item, Value.nil);
             const new_cons = new_cell.toPtr(Cons);
             if (param_tail) |t| {
                 t.cdr = new_cell;
+                heap.writeBarrier(Value.makeCons(t), new_cell);
             } else {
                 new_params = new_cell;
             }
             param_tail = new_cons;
-            p = pc.cdr;
+            p = next_param;
         }
         // Preserve dotted/symbol tail in macro lambda lists.
         if (!p.isNil()) {
             if (param_tail) |tail| {
                 tail.cdr = p;
+                heap.writeBarrier(Value.makeCons(tail), p);
             } else {
                 new_params = p;
             }
@@ -3563,32 +3589,36 @@ pub const Compiler = struct {
         const saved_state = vm_mod.State.save(vm);
         const saved_env = vm.global_env;
         const saved_ext = vm.ext_roots;
-        const saved_pool = vm.chunk_pool;
+        const saved_pool = saved_state.chunk_pool;
         const macro_count = self.macro_table.count();
         const symbol_macro_count = self.symbol_macros.count();
 
-        const root_chunk_idx = saved_pool.len;
-        const root_closure_idx = saved_pool.len + 1;
-        const root_args_idx = saved_pool.len + 2;
-        const root_whole_idx = saved_pool.len + 3;
-        const root_env_idx = saved_pool.len + 4;
-        const root_macro_start = saved_pool.len + 5;
+        const ext_prefix = saved_ext.len;
+        const root_chunk_idx = ext_prefix + saved_pool.len;
+        const root_closure_idx = ext_prefix + saved_pool.len + 1;
+        const root_args_idx = ext_prefix + saved_pool.len + 2;
+        const root_whole_idx = ext_prefix + saved_pool.len + 3;
+        const root_env_idx = ext_prefix + saved_pool.len + 4;
+        const root_macro_start = ext_prefix + saved_pool.len + 5;
         const root_symbol_start = root_macro_start + (macro_count * 2);
         const macro_roots = try self.allocator.alloc(
             Value,
-            saved_pool.len + 5 + (macro_count * 2) + (symbol_macro_count * 2),
+            ext_prefix + saved_pool.len + 5 + (macro_count * 2) + (symbol_macro_count * 2),
         );
         defer self.allocator.free(macro_roots);
         const chunk_roots = try self.allocator.alloc(Value, saved_pool.len + child_chunks.len);
         defer self.allocator.free(chunk_roots);
+        if (saved_ext.len > 0) {
+            @memcpy(macro_roots[0..saved_ext.len], saved_ext);
+        }
         for (saved_pool, 0..) |saved_chunk_val, i| {
-            macro_roots[i] = saved_chunk_val;
+            macro_roots[ext_prefix + i] = saved_chunk_val;
             chunk_roots[i] = saved_chunk_val;
         }
-        macro_roots[root_chunk_idx] = chunk_val;
+        macro_roots[root_chunk_idx] = self.resolveForwardedValue(chunk_val);
         macro_roots[root_closure_idx] = Value.nil;
-        macro_roots[root_args_idx] = args;
-        macro_roots[root_whole_idx] = whole_form;
+        macro_roots[root_args_idx] = self.resolveForwardedValue(args);
+        macro_roots[root_whole_idx] = self.resolveForwardedValue(whole_form);
         macro_roots[root_env_idx] = Value.nil;
         var root_idx = root_macro_start;
         var macro_iter = self.macro_table.iterator();
@@ -3605,13 +3635,13 @@ pub const Compiler = struct {
         }
         const macro_chunk_base: u16 = @intCast(saved_pool.len);
         if (macro_chunk_base > 0) {
-            patchChunkClosureIndices(macro_roots[root_chunk_idx].toPtr(Chunk), macro_chunk_base);
+            try patchChunkClosureIndices(macro_roots[root_chunk_idx].toPtr(Chunk), macro_chunk_base);
         }
 
         for (child_chunks, 0..) |cv, i| {
             const child_ptr = cv.toPtr(Chunk);
             if (macro_chunk_base > 0) {
-                patchChunkClosureIndices(child_ptr, macro_chunk_base);
+                try patchChunkClosureIndices(child_ptr, macro_chunk_base);
             }
             chunk_roots[saved_pool.len + i] = cv;
         }
@@ -3628,12 +3658,23 @@ pub const Compiler = struct {
             // Otherwise nested compilation replaced it with a newer shared pool and we
             // must preserve that newer pointer instead of forcing a stale slice.
             if (vm.chunk_pool.ptr == chunk_roots.ptr and vm.chunk_pool.len == chunk_roots.len) {
-                for (saved_pool, 0..) |*slot, i| {
-                    slot.* = macro_roots[i];
+                if (saved_state.chunk_pool_owner) |owner| {
+                    const copy_len = @min(owner.items.len, saved_pool.len);
+                    for (owner.items[0..copy_len], 0..) |*slot, i| {
+                        slot.* = macro_roots[ext_prefix + i];
+                    }
+                    restore_state.chunk_pool_owner = owner;
+                    restore_state.chunk_pool = owner.items;
+                } else {
+                    for (saved_pool, 0..) |*slot, i| {
+                        slot.* = macro_roots[ext_prefix + i];
+                    }
+                    restore_state.chunk_pool_owner = null;
+                    restore_state.chunk_pool = saved_pool;
                 }
-                restore_state.chunk_pool = saved_pool;
             } else {
-                restore_state.chunk_pool = vm.chunk_pool;
+                restore_state.chunk_pool_owner = vm.chunk_pool_owner;
+                restore_state.chunk_pool = if (vm.chunk_pool_owner) |owner| owner.items else vm.chunk_pool;
                 restore_state.chunk_base = vm.chunk_base;
             }
             restoreVmStatePreserveRelay(vm, restore_state);
@@ -3655,9 +3696,11 @@ pub const Compiler = struct {
         }
 
         var arg_count: usize = @as(usize, @intFromBool(whole_var != null)) + @as(usize, @intFromBool(env_var != null));
-        var arg_scan = macro_roots[root_args_idx];
-        while (arg_scan.isCons()) : (arg_scan = arg_scan.toPtr(Cons).cdr) {
+        var arg_scan = self.resolveForwardedValue(macro_roots[root_args_idx]);
+        while (arg_scan.isCons()) {
+            arg_scan = self.resolveForwardedValue(arg_scan);
             arg_count += 1;
+            arg_scan = self.resolveForwardedValue(arg_scan.toPtr(Cons).cdr);
         }
 
         var call_args_stack: [64]Value = undefined;
@@ -3681,12 +3724,13 @@ pub const Compiler = struct {
             call_arg_idx += 1;
         }
 
-        var arg_list = macro_roots[root_args_idx];
+        var arg_list = self.resolveForwardedValue(macro_roots[root_args_idx]);
         while (arg_list.isCons()) {
+            arg_list = self.resolveForwardedValue(arg_list);
             const arg_cons = arg_list.toPtr(Cons);
-            call_args_buf[call_arg_idx] = arg_cons.car;
+            call_args_buf[call_arg_idx] = self.resolveForwardedValue(arg_cons.car);
             call_arg_idx += 1;
-            arg_list = arg_cons.cdr;
+            arg_list = self.resolveForwardedValue(arg_cons.cdr);
         }
         const call_args = call_args_buf[0..call_arg_idx];
 
@@ -3917,12 +3961,36 @@ pub const Compiler = struct {
         defer aux_bindings.deinit(self.allocator);
 
         const SpecialParam = struct {
-            sym: Value,
+            sym_pkg_ptr: usize,
+            sym_uid: u64,
             name: []const u8,
             idx: u16,
         };
         var special_params = std.ArrayList(SpecialParam){};
         defer special_params.deinit(self.allocator);
+
+        const appendSpecialParam = struct {
+            fn run(
+                comp: *Compiler,
+                special_list: *std.ArrayList(SpecialParam),
+                sym: Value,
+                name: []const u8,
+                idx: u16,
+            ) !void {
+                const live_sym = comp.resolveForwardedValue(sym);
+                if (!live_sym.isSymbol()) return error.InvalidLambda;
+                const sym_ptr = live_sym.toPtr(Symbol);
+                const bits = sym_ptr.reserved;
+                const sym_uid: u64 = if ((bits & 1) != 0) bits >> 1 else 0;
+                const sym_pkg_ptr: usize = if (sym_uid == 0 and bits != 0) @intCast(bits) else 0;
+                try special_list.append(comp.allocator, .{
+                    .sym_pkg_ptr = sym_pkg_ptr,
+                    .sym_uid = sym_uid,
+                    .name = name,
+                    .idx = idx,
+                });
+            }
+        }.run;
 
         // Bind params as we parse to preserve symbol identity (package) and avoid
         // stashing GC-movable pointers into auxiliary arrays/maps.
@@ -3939,10 +4007,12 @@ pub const Compiler = struct {
         var in_key = false;
         var in_aux = false;
         var seen_rest = false;
-        var param_list = params_expr;
+        var param_list = self.resolveForwardedValue(params_expr);
         while (param_list.isCons()) {
+            param_list = self.resolveForwardedValue(param_list);
             const param_cons = param_list.toPtr(Cons);
-            const param_item = param_cons.car;
+            const param_item = self.resolveForwardedValue(param_cons.car);
+            const next_param = self.resolveForwardedValue(param_cons.cdr);
 
             switch (param_item.typeKind()) {
                 .symbol, .keyword, .t, .nil => {
@@ -3953,20 +4023,18 @@ pub const Compiler = struct {
                     if (marker.raw == b.@"&rest".raw or marker.raw == b.@"&body".raw) {
                         if (seen_rest) return error.InvalidLambda;
                         // Next element is the rest parameter name
-                        if (!param_cons.cdr.isCons()) return error.InvalidLambda;
-                        const rest_cons = param_cons.cdr.toPtr(Cons);
-                        const rest_name_raw = if (symLikeName(rest_cons.car)) |name| name else return error.InvalidLambda;
+                        if (!next_param.isCons()) return error.InvalidLambda;
+                        const rest_cons = next_param.toPtr(Cons);
+                        const rest_item = self.resolveForwardedValue(rest_cons.car);
+                        const after_rest = self.resolveForwardedValue(rest_cons.cdr);
+                        const rest_name_raw = if (symLikeName(rest_item)) |name| name else return error.InvalidLambda;
                         const rest_name = try self.allocator.dupe(u8, rest_name_raw);
                         rest_param = rest_name;
                         var rest_idx: u16 = 0;
-                        if (rest_cons.car.typeKind() == .symbol) {
-                            rest_idx = try lambda_env.bindSym(rest_cons.car);
-                            if (self.isSpecialBindingSym(rest_cons.car)) {
-                                try special_params.append(self.allocator, .{
-                                    .sym = rest_cons.car,
-                                    .name = rest_name,
-                                    .idx = rest_idx,
-                                });
+                        if (rest_item.typeKind() == .symbol) {
+                            rest_idx = try lambda_env.bindSym(rest_item);
+                            if (self.isSpecialBindingSym(rest_item)) {
+                                try appendSpecialParam(self, &special_params, rest_item, rest_name, rest_idx);
                             }
                         } else {
                             rest_idx = try lambda_env.bindName(rest_name);
@@ -3975,7 +4043,7 @@ pub const Compiler = struct {
                         in_optional = false;
                         in_key = false;
                         in_aux = false;
-                        param_list = rest_cons.cdr;
+                        param_list = after_rest;
                         continue;
                     }
 
@@ -3983,7 +4051,7 @@ pub const Compiler = struct {
                     if (marker.raw == b.@"&optional".raw) {
                         in_optional = true;
                         in_key = false;
-                        param_list = param_cons.cdr;
+                        param_list = next_param;
                         continue;
                     }
 
@@ -3992,14 +4060,14 @@ pub const Compiler = struct {
                         in_key = true;
                         in_optional = false;
                         in_aux = false;
-                        param_list = param_cons.cdr;
+                        param_list = next_param;
                         continue;
                     }
 
                     // Check for &allow-other-keys keyword (use symbol identity)
                     if (marker.raw == b.@"&allow-other-keys".raw) {
                         allow_other_keys = true;
-                        param_list = param_cons.cdr;
+                        param_list = next_param;
                         continue;
                     }
 
@@ -4008,7 +4076,7 @@ pub const Compiler = struct {
                         in_aux = true;
                         in_key = false;
                         in_optional = false;
-                        param_list = param_cons.cdr;
+                        param_list = next_param;
                         continue;
                     }
 
@@ -4040,11 +4108,7 @@ pub const Compiler = struct {
                         if (param_item.typeKind() == .symbol) {
                             idx = try lambda_env.bindSym(param_item);
                             if (self.isSpecialBindingSym(param_item)) {
-                                try special_params.append(self.allocator, .{
-                                    .sym = param_item,
-                                    .name = name,
-                                    .idx = idx,
-                                });
+                                try appendSpecialParam(self, &special_params, param_item, name, idx);
                             }
                         } else {
                             idx = try lambda_env.bindName(name);
@@ -4059,11 +4123,7 @@ pub const Compiler = struct {
                         if (param_item.typeKind() == .symbol) {
                             idx = try lambda_env.bindSym(param_item);
                             if (self.isSpecialBindingSym(param_item)) {
-                                try special_params.append(self.allocator, .{
-                                    .sym = param_item,
-                                    .name = name,
-                                    .idx = idx,
-                                });
+                                try appendSpecialParam(self, &special_params, param_item, name, idx);
                             }
                         } else {
                             idx = try lambda_env.bindName(name);
@@ -4082,17 +4142,15 @@ pub const Compiler = struct {
                             .idx = idx,
                         });
                         if (param_item.typeKind() == .symbol and self.isSpecialBindingSym(param_item)) {
-                            try special_params.append(self.allocator, .{
-                                .sym = param_item,
-                                .name = name,
-                                .idx = idx,
-                            });
+                            try appendSpecialParam(self, &special_params, param_item, name, idx);
                         }
                     }
                 },
                 .cons => {
                     const typed = param_item.toPtr(Cons);
-                    const typed_name = symLikeName(typed.car);
+                    const typed_car = self.resolveForwardedValue(typed.car);
+                    const typed_cdr = self.resolveForwardedValue(typed.cdr);
+                    const typed_name = symLikeName(typed_car);
                     if (!in_key and typed_name == null) return error.InvalidLambda;
                     const name = if (typed_name) |sym_name| try self.allocator.dupe(u8, sym_name) else "";
 
@@ -4101,12 +4159,13 @@ pub const Compiler = struct {
                         // &aux initializers run in lambda environment so they
                         // can reference earlier lambda bindings.
                         var init_ir: *const Ir = try self.builder.lit(Value.nil);
-                        if (typed.cdr.isCons()) {
-                            const init_cons = typed.cdr.toPtr(Cons);
+                        if (typed_cdr.isCons()) {
+                            const init_cons = typed_cdr.toPtr(Cons);
                             init_ir = try self.compile(init_cons.car, &lambda_env);
                         }
-                        const abs_idx = if (typed.car.typeKind() == .symbol)
-                            try lambda_env.bindSym(typed.car)
+                        const typed_car_live = self.resolveForwardedValue(typed_car);
+                        const abs_idx = if (typed_car_live.typeKind() == .symbol)
+                            try lambda_env.bindSym(typed_car_live)
                         else
                             try lambda_env.bindName(name);
                         try aux_bindings.append(self.allocator, .{
@@ -4114,12 +4173,8 @@ pub const Compiler = struct {
                             .value = init_ir,
                             .index = abs_idx,
                         });
-                        if (typed.car.typeKind() == .symbol and self.isSpecialBindingSym(typed.car)) {
-                            try special_params.append(self.allocator, .{
-                                .sym = typed.car,
-                                .name = name,
-                                .idx = abs_idx,
-                            });
+                        if (typed_car_live.typeKind() == .symbol and self.isSpecialBindingSym(typed_car_live)) {
+                            try appendSpecialParam(self, &special_params, typed_car_live, name, abs_idx);
                         }
                     } else if (in_key) {
                         // Key parameter supports both (var default) and
@@ -4140,13 +4195,10 @@ pub const Compiler = struct {
                         });
                         var idx: u16 = 0;
                         if (spec.param_sym) |param_sym| {
-                            idx = try lambda_env.bindSym(param_sym);
-                            if (self.isSpecialBindingSym(param_sym)) {
-                                try special_params.append(self.allocator, .{
-                                    .sym = param_sym,
-                                    .name = param_name,
-                                    .idx = idx,
-                                });
+                            const live_param_sym = self.resolveForwardedValue(param_sym);
+                            idx = try lambda_env.bindSym(live_param_sym);
+                            if (self.isSpecialBindingSym(live_param_sym)) {
+                                try appendSpecialParam(self, &special_params, live_param_sym, param_name, idx);
                             }
                         } else {
                             idx = try lambda_env.bindName(param_name);
@@ -4156,8 +4208,8 @@ pub const Compiler = struct {
                         // CL lambda-list defaults evaluate in lambda env,
                         // with prior params already visible.
                         var default_ir: ?*const Ir = null;
-                        if (typed.cdr.isCons()) {
-                            const default_cons = typed.cdr.toPtr(Cons);
+                        if (typed_cdr.isCons()) {
+                            const default_cons = typed_cdr.toPtr(Cons);
                             default_ir = try self.compile(default_cons.car, &lambda_env);
                         }
                         try optional_params.append(self.allocator, .{
@@ -4165,46 +4217,39 @@ pub const Compiler = struct {
                             .default = default_ir,
                         });
                         var idx: u16 = 0;
-                        if (typed.car.typeKind() == .symbol) {
-                            idx = try lambda_env.bindSym(typed.car);
-                            if (self.isSpecialBindingSym(typed.car)) {
-                                try special_params.append(self.allocator, .{
-                                    .sym = typed.car,
-                                    .name = name,
-                                    .idx = idx,
-                                });
+                        const typed_car_live = self.resolveForwardedValue(typed_car);
+                        if (typed_car_live.typeKind() == .symbol) {
+                            idx = try lambda_env.bindSym(typed_car_live);
+                            if (self.isSpecialBindingSym(typed_car_live)) {
+                                try appendSpecialParam(self, &special_params, typed_car_live, name, idx);
                             }
                         } else {
                             idx = try lambda_env.bindName(name);
                         }
                     } else {
                         // Typed parameter: (name type-expr)
-                        if (!typed.cdr.isCons()) return error.InvalidLambda;
-                        const type_val = typed.cdr.toPtr(Cons).car;
-                        const idx = if (typed.car.typeKind() == .symbol)
-                            try lambda_env.bindSym(typed.car)
+                        if (!typed_cdr.isCons()) return error.InvalidLambda;
+                        const type_val = typed_cdr.toPtr(Cons).car;
+                        const idx = if (typed_car.typeKind() == .symbol)
+                            try lambda_env.bindSym(typed_car)
                         else
                             try lambda_env.bindName(name);
                         try params.append(self.allocator, name);
                         try typed_params.append(self.allocator, .{
                             .name = name,
-                            .sym = if (typed.car.typeKind() == .symbol) typed.car else null,
+                            .sym = if (typed_car.typeKind() == .symbol) typed_car else null,
                             .type_sym = type_val,
                             .idx = idx,
                         });
-                        if (typed.car.typeKind() == .symbol and self.isSpecialBindingSym(typed.car)) {
-                            try special_params.append(self.allocator, .{
-                                .sym = typed.car,
-                                .name = name,
-                                .idx = idx,
-                            });
+                        if (typed_car.typeKind() == .symbol and self.isSpecialBindingSym(typed_car)) {
+                            try appendSpecialParam(self, &special_params, typed_car, name, idx);
                         }
                     }
                 },
                 else => return error.InvalidLambda,
             }
 
-            param_list = param_cons.cdr;
+            param_list = next_param;
         }
 
         // Also check for rest parameter via dotted list: (a b . rest)
@@ -4216,11 +4261,7 @@ pub const Compiler = struct {
             if (param_list.typeKind() == .symbol) {
                 rest_idx = try lambda_env.bindSym(param_list);
                 if (self.isSpecialBindingSym(param_list)) {
-                    try special_params.append(self.allocator, .{
-                        .sym = param_list,
-                        .name = rest_name,
-                        .idx = rest_idx,
-                    });
+                    try appendSpecialParam(self, &special_params, param_list, rest_name, rest_idx);
                 }
             } else {
                 rest_idx = try lambda_env.bindName(rest_name);
@@ -4312,13 +4353,24 @@ pub const Compiler = struct {
         // Globally proclaimed special params must be dynamically visible to
         // callees (e.g. declare-top helpers in Maxima mrgmac/db pipeline).
         if (special_params.items.len > 0) {
+            const heap = if (self.heap) |val| val else return error.UninitializedBuiltins;
             const special_syms = try self.allocator.alloc(Value, special_params.items.len);
             defer self.allocator.free(special_syms);
             const special_vals = try self.allocator.alloc(*const Ir, special_params.items.len);
             defer self.allocator.free(special_vals);
 
             for (special_params.items, 0..) |sp, i| {
-                special_syms[i] = sp.sym;
+                const sym_val = if (sp.sym_uid != 0) blk: {
+                    const sym = try heap.allocSymbol(sp.name);
+                    sym.toPtr(Symbol).reserved = (sp.sym_uid << 1) | 1;
+                    break :blk sym;
+                } else if (sp.sym_pkg_ptr != 0) blk: {
+                    const pkg: *runtime.heap.Package = @ptrFromInt(sp.sym_pkg_ptr);
+                    break :blk try pkg.intern(heap, sp.name);
+                } else blk: {
+                    break :blk try heap.intern(sp.name);
+                };
+                special_syms[i] = sym_val;
                 special_vals[i] = try self.builder.variable(sp.name, 0, sp.idx);
             }
 
@@ -4902,11 +4954,14 @@ pub const Compiler = struct {
         mutated: *std.AutoHashMap(Value, void),
         captured: *std.AutoHashMap(Value, void),
     ) error{OutOfMemory}!void {
-        var current = list;
+        var current = self.resolveForwardedValue(list);
         while (current.isCons()) {
+            current = self.resolveForwardedValue(current);
             const cons = current.toPtr(Cons);
-            try self.collectMutationsAndCaptures(cons.car, binding_syms, mutated, captured);
-            current = cons.cdr;
+            const item = self.resolveForwardedValue(cons.car);
+            const next = self.resolveForwardedValue(cons.cdr);
+            try self.collectMutationsAndCaptures(item, binding_syms, mutated, captured);
+            current = next;
         }
     }
 
@@ -4922,14 +4977,17 @@ pub const Compiler = struct {
         var dispatch_params = std.AutoHashMap(Value, void).init(self.allocator);
         defer dispatch_params.deinit();
 
-        var param_list = params_expr;
+        var param_list = self.resolveForwardedValue(params_expr);
         while (param_list.isCons()) {
+            param_list = self.resolveForwardedValue(param_list);
             const param_cons = param_list.toPtr(Cons);
-            if (param_cons.car.isSymbol()) {
-                const param_sym = param_cons.car;
+            const param_item = self.resolveForwardedValue(param_cons.car);
+            const next_param = self.resolveForwardedValue(param_cons.cdr);
+            if (param_item.isSymbol()) {
+                const param_sym = param_item;
                 try dispatch_params.put(param_sym, {});
             }
-            param_list = param_cons.cdr;
+            param_list = next_param;
         }
 
         // Find free variable references in body that are our bindings
@@ -4990,14 +5048,17 @@ pub const Compiler = struct {
                     }
 
                     // Add lambda params
-                    var pl = lam_params;
+                    var pl = self.resolveForwardedValue(lam_params);
                     while (pl.isCons()) {
+                        pl = self.resolveForwardedValue(pl);
                         const pc = pl.toPtr(Cons);
-                        if (pc.car.isSymbol()) {
-                            const ps = pc.car;
+                        const param_item = self.resolveForwardedValue(pc.car);
+                        const next_param = self.resolveForwardedValue(pc.cdr);
+                        if (param_item.isSymbol()) {
+                            const ps = param_item;
                             try nested_params.put(ps, {});
                         }
-                        pl = pc.cdr;
+                        pl = next_param;
                     }
 
                     // Recurse with extended params
@@ -5018,11 +5079,14 @@ pub const Compiler = struct {
         params: *std.AutoHashMap(Value, void),
         captured: *std.AutoHashMap(Value, void),
     ) error{OutOfMemory}!void {
-        var current = list;
+        var current = self.resolveForwardedValue(list);
         while (current.isCons()) {
+            current = self.resolveForwardedValue(current);
             const cons = current.toPtr(Cons);
-            try self.collectFreeVarRefs(cons.car, binding_syms, params, captured);
-            current = cons.cdr;
+            const item = self.resolveForwardedValue(cons.car);
+            const next = self.resolveForwardedValue(cons.cdr);
+            try self.collectFreeVarRefs(item, binding_syms, params, captured);
+            current = next;
         }
     }
 
@@ -5032,9 +5096,10 @@ pub const Compiler = struct {
 
     fn compileLetWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
         // (let ((x 1) (y 2)) body)
-        if (!args.isCons()) return error.InvalidLet;
+        const live_args = self.resolveForwardedValue(args);
+        if (!live_args.isCons()) return error.InvalidLet;
 
-        const cons = args.toPtr(Cons);
+        const cons = live_args.toPtr(Cons);
         const bindings_expr = cons.car;
         const body_exprs = cons.cdr;
 
@@ -5050,17 +5115,19 @@ pub const Compiler = struct {
         var binding_syms = std.ArrayList(Value){};
         defer binding_syms.deinit(self.allocator);
 
-        var binding_list = bindings_expr;
+        var binding_list = self.resolveForwardedValue(bindings_expr);
         while (binding_list.isCons()) {
+            binding_list = self.resolveForwardedValue(binding_list);
             const binding_cons = binding_list.toPtr(Cons);
-            const binding = binding_cons.car;
+            const binding = self.resolveForwardedValue(binding_cons.car);
+            const next_binding = self.resolveForwardedValue(binding_cons.cdr);
 
             const bind_sym = if (binding.isSymbolLike()) blk: {
-                break :blk binding;
+                break :blk self.resolveForwardedValue(binding);
             } else if (binding.isCons()) blk: {
                 const b = binding.toPtr(Cons);
                 if (!b.car.isSymbolLike()) return error.InvalidLet;
-                break :blk b.car;
+                break :blk self.resolveForwardedValue(b.car);
             } else {
                 return error.InvalidLet;
             };
@@ -5069,7 +5136,7 @@ pub const Compiler = struct {
             try binding_names.append(self.allocator, name_copy);
             try binding_syms.append(self.allocator, bind_sym);
 
-            binding_list = binding_cons.cdr;
+            binding_list = next_binding;
         }
 
         // Find variables that need boxing (mutable + captured by lambda)
@@ -5082,9 +5149,18 @@ pub const Compiler = struct {
         }
         try self.findBoxedVars(body_exprs, binding_syms.items, boxed);
 
+        const binding_is_boxed = try self.allocator.alloc(bool, binding_syms.items.len);
+        defer self.allocator.free(binding_is_boxed);
+        for (binding_syms.items, 0..) |sym, i| {
+            binding_is_boxed[i] = boxed.contains(sym);
+        }
+
         // Create let_env first so we can get indices for each binding
         var let_env = Env.initLet(self.allocator, env);
         defer let_env.deinit();
+
+        const binding_indices = try self.allocator.alloc(u16, binding_syms.items.len);
+        defer self.allocator.free(binding_indices);
 
         // First, reserve ALL slots by binding all names (so nested exprs like 'or' know
         // to use higher indices). This fixes a bug where (or ...) in a let binding
@@ -5092,9 +5168,9 @@ pub const Compiler = struct {
         for (binding_syms.items, 0..) |sym, i| {
             const name = binding_names.items[i];
             if (sym.typeKind() == .symbol) {
-                _ = try let_env.bindSym(sym);
+                binding_indices[i] = try let_env.bindSym(sym);
             } else {
-                _ = try let_env.bindName(name);
+                binding_indices[i] = try let_env.bindName(name);
             }
         }
 
@@ -5118,23 +5194,15 @@ pub const Compiler = struct {
         var bindings = std.ArrayList(Ir.Binding){};
         defer bindings.deinit(self.allocator);
 
-        binding_list = bindings_expr;
+        binding_list = self.resolveForwardedValue(bindings_expr);
         var name_idx: usize = 0;
-        while (binding_list.isCons()) : (name_idx += 1) {
+        while (binding_list.isCons()) {
+            binding_list = self.resolveForwardedValue(binding_list);
             const binding_cons = binding_list.toPtr(Cons);
-            const binding = binding_cons.car;
+            const binding = self.resolveForwardedValue(binding_cons.car);
+            const next_binding = self.resolveForwardedValue(binding_cons.cdr);
             const name = binding_names.items[name_idx];
-            const sym = binding_syms.items[name_idx];
-
-            // Get the already-assigned index
-            const index = blk: {
-                if (sym.typeKind() == .symbol) {
-                    const found = let_env.lookupSym(sym) orelse return error.InvalidLet;
-                    break :blk found.index;
-                }
-                const found = let_env.lookupName(name) orelse return error.InvalidLet;
-                break :blk found.index;
-            };
+            const index = binding_indices[name_idx];
 
             // Get value expression - compile in value_env (has reserved slots)
             var val_ir = blk: {
@@ -5148,7 +5216,7 @@ pub const Compiler = struct {
             };
 
             // If this variable needs boxing, wrap value in make-box
-            if (boxed.contains(sym)) {
+            if (binding_is_boxed[name_idx]) {
                 const box_ir = try self.allocator.create(Ir);
                 box_ir.* = .{ .make_box = .{ .operand = val_ir } };
                 val_ir = box_ir;
@@ -5156,7 +5224,8 @@ pub const Compiler = struct {
 
             try bindings.append(self.allocator, .{ .name = name, .value = val_ir, .index = index });
 
-            binding_list = binding_cons.cdr;
+            binding_list = next_binding;
+            name_idx += 1;
         }
 
         // Set boxed_vars so variable refs/set! in nested lexical scopes can
@@ -5201,9 +5270,10 @@ pub const Compiler = struct {
     }
 
     fn isSpecialBindingSym(self: *Compiler, sym: Value) bool {
-        if (!sym.isSymbolLike()) return false;
-        if (self.isGloballySpecialSym(sym)) return true;
-        const name = sym.getSymbolName();
+        const live_sym = self.resolveForwardedValue(sym);
+        if (!live_sym.isSymbolLike()) return false;
+        if (self.isGloballySpecialSym(live_sym)) return true;
+        const name = live_sym.getSymbolName();
         if (self.global_decls.hasDecl(name, .special)) return true;
         return name.len >= 2 and name[0] == '*' and name[name.len - 1] == '*';
     }
@@ -5260,7 +5330,8 @@ pub const Compiler = struct {
         env: *const Env,
         in_tail: bool,
     ) anyerror!?*Ir {
-        if (!bindings_expr.isCons()) return null;
+        const live_bindings_expr = self.resolveForwardedValue(bindings_expr);
+        if (!live_bindings_expr.isCons()) return null;
         const heap = if (self.heap) |h| h else return error.InvalidLet;
         const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
 
@@ -5283,17 +5354,18 @@ pub const Compiler = struct {
         try self.collectLocalSpecialDecls(body_exprs, &local_special_syms);
         var has_lexical = false;
 
-        var bindings = bindings_expr;
+        var bindings = live_bindings_expr;
         while (bindings.isCons()) {
             const bind_cons = bindings.toPtr(Cons);
-            const binding = bind_cons.car;
+            const next_bindings = bind_cons.cdr;
+            const binding = self.resolveForwardedValue(bind_cons.car);
 
             const sym = if (binding.isSymbolLike()) blk: {
-                break :blk binding;
+                break :blk self.resolveForwardedValue(binding);
             } else if (binding.isCons()) blk: {
                 const bind_pair = binding.toPtr(Cons);
                 if (!bind_pair.car.isSymbolLike()) return null;
-                break :blk bind_pair.car;
+                break :blk self.resolveForwardedValue(bind_pair.car);
             } else {
                 return null;
             };
@@ -5307,13 +5379,14 @@ pub const Compiler = struct {
                 break :blk bind_pair.cdr.toPtr(Cons).car;
             };
 
-            const is_local_special = self.specialSetContainsSym(&local_special_syms, sym);
-            if (self.isSpecialBindingSym(sym) or is_local_special) {
+            const live_sym = self.resolveForwardedValue(sym);
+            const is_local_special = self.specialSetContainsSym(&local_special_syms, live_sym);
+            if (self.isSpecialBindingSym(live_sym) or is_local_special) {
                 const temp_sym = try prims.gensym(heap, null);
                 const init_tail = try heap.allocCons(init_expr, Value.nil);
                 const temp_binding = try heap.allocCons(temp_sym, init_tail);
 
-                try special_syms.append(self.allocator, sym);
+                try special_syms.append(self.allocator, live_sym);
                 try special_inits.append(self.allocator, init_expr);
                 try special_temps.append(self.allocator, temp_sym);
                 try rewritten_bindings.append(self.allocator, temp_binding);
@@ -5322,7 +5395,7 @@ pub const Compiler = struct {
                 try rewritten_bindings.append(self.allocator, binding);
             }
 
-            bindings = bind_cons.cdr;
+            bindings = self.resolveForwardedValue(next_bindings);
         }
 
         if (!bindings.isNil()) return error.InvalidLet;
@@ -5481,7 +5554,10 @@ pub const Compiler = struct {
             if (!f.cdr.isCons()) return error.InvalidLet;
             const lambda_ir = try self.compileLambda(f.cdr, env);
             if (lambda_ir.* == .lambda) {
-                lambda_ir.lambda.name = f.car;
+                lambda_ir.lambda.name = if (self.heap) |heap|
+                    try heap.intern(name)
+                else
+                    self.resolveForwardedValue(f.car);
             }
 
             bindings[filled] = .{ .name = name, .value = lambda_ir, .index = index };
@@ -5589,7 +5665,10 @@ pub const Compiler = struct {
         for (entries[0..filled], 0..) |entry, i| {
             const lambda_ir = try self.compileLambda(entry.lambda_args, &labels_env);
             if (lambda_ir.* == .lambda) {
-                lambda_ir.lambda.name = entry.sym_val;
+                lambda_ir.lambda.name = if (self.heap) |heap|
+                    try heap.intern(entry.name)
+                else
+                    self.resolveForwardedValue(entry.sym_val);
             }
 
             const slot_name = entry.sym_val.toPtr(Symbol).getName();
@@ -5662,9 +5741,10 @@ pub const Compiler = struct {
     }
 
     fn compileLetStarBindings(self: *Compiler, bindings_list: Value, body_exprs: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
-        if (!bindings_list.isCons()) return error.InvalidLet;
+        const live_bindings_list = self.resolveForwardedValue(bindings_list);
+        if (!live_bindings_list.isCons()) return error.InvalidLet;
 
-        const binding_cons = bindings_list.toPtr(Cons);
+        const binding_cons = live_bindings_list.toPtr(Cons);
         const binding = binding_cons.car;
         const rest = binding_cons.cdr;
 
@@ -5696,8 +5776,9 @@ pub const Compiler = struct {
         // Create extended environment and allocate slot for this binding.
         var let_env = Env.initLet(self.allocator, env);
         defer let_env.deinit();
-        const index = if (bind_sym.typeKind() == .symbol)
-            try let_env.bindSym(bind_sym)
+        const live_bind_sym = self.resolveForwardedValue(bind_sym);
+        const index = if (live_bind_sym.typeKind() == .symbol)
+            try let_env.bindSym(live_bind_sym)
         else
             try let_env.bindName(name);
 
@@ -5705,10 +5786,11 @@ pub const Compiler = struct {
         const binding_array = [_]ir.Ir.Binding{.{ .name = name, .value = val_ir, .index = index }};
 
         // Compile rest or body
-        const inner_ir = if (rest.isNil())
+        const live_rest = self.resolveForwardedValue(rest);
+        const inner_ir = if (live_rest.isNil())
             try self.compileBodyWithTail(body_exprs, &let_env, in_tail)
         else
-            try self.compileLetStarBindings(rest, body_exprs, &let_env, in_tail);
+            try self.compileLetStarBindings(live_rest, body_exprs, &let_env, in_tail);
 
         return try self.builder.letExpr(&binding_array, inner_ir);
     }
@@ -5983,40 +6065,42 @@ pub const Compiler = struct {
 
     /// CL multi-setq: (setq a 1 b 2 c 3) → (progn (setq a 1) (setq b 2) (setq c 3))
     fn compileMultiSetq(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        if (!args.isCons()) return error.InvalidSet;
+        const live_args = self.resolveForwardedValue(args);
+        if (!live_args.isCons()) return error.InvalidSet;
 
         // Check if this is a simple single-pair setq
-        const cons1 = args.toPtr(Cons);
+        const cons1 = live_args.toPtr(Cons);
         if (!cons1.cdr.isCons()) return error.InvalidSet;
         const cons2 = cons1.cdr.toPtr(Cons);
         if (cons2.cdr.isNil()) {
             // Single pair: (setq var value) — compile directly
-            return self.compileSet(args, env);
+            return self.compileSet(live_args, env);
         }
 
         // Multi-pair: compile each pair and emit a progn directly.
         var pair_count: usize = 0;
-        var count_cur = args;
+        var count_cur = live_args;
         while (count_cur.isCons()) {
             const c1 = count_cur.toPtr(Cons);
             if (!c1.cdr.isCons()) return error.InvalidSet;
             pair_count += 1;
-            count_cur = c1.cdr.toPtr(Cons).cdr;
+            count_cur = self.resolveForwardedValue(c1.cdr.toPtr(Cons).cdr);
         }
 
         const forms = try self.allocator.alloc(*const Ir, pair_count);
-        var rest = args;
+        var rest = live_args;
         var form_idx: usize = 0;
         while (rest.isCons()) {
             const c1 = rest.toPtr(Cons);
             if (!c1.cdr.isCons()) return error.InvalidSet;
             const c2 = c1.cdr.toPtr(Cons);
+            const next_rest = c2.cdr;
             // Build a two-element list (var value) for compileSet
             const heap = self.heap orelse return error.InvalidSet;
             const pair = try heap.allocCons(c1.car, try heap.allocCons(c2.car, Value.nil));
             forms[form_idx] = try self.compileSet(pair, env);
             form_idx += 1;
-            rest = c2.cdr;
+            rest = self.resolveForwardedValue(next_rest);
         }
 
         const node = try self.allocator.create(Ir);
@@ -6026,17 +6110,20 @@ pub const Compiler = struct {
 
     fn compileSet(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (set! var value) or (setq var value)
-        if (!args.isCons()) return error.InvalidSet;
+        const live_args = self.resolveForwardedValue(args);
+        if (!live_args.isCons()) return error.InvalidSet;
 
-        const cons1 = args.toPtr(Cons);
-        if (!cons1.car.isSymbol()) return error.InvalidSet;
-        const var_val = cons1.car;
-        const var_sym = var_val.toPtr(Symbol);
-        const local_name = var_sym.getName();
+        const cons1 = live_args.toPtr(Cons);
+        const var_val_initial = self.resolveForwardedValue(cons1.car);
+        if (!var_val_initial.isSymbol()) return error.InvalidSet;
 
         if (!cons1.cdr.isCons()) return error.InvalidSet;
         const cons2 = cons1.cdr.toPtr(Cons);
         const val_ir = try self.compile(cons2.car, env);
+        const var_val = self.resolveForwardedValue(var_val_initial);
+        if (!var_val.isSymbol()) return error.InvalidSet;
+        const var_sym = var_val.toPtr(Symbol);
+        const local_name = var_sym.getName();
 
         // First check local environment
         if (env.lookupSym(var_val)) |binding| {
@@ -6399,6 +6486,7 @@ pub const Compiler = struct {
                     if (last) |l| {
                         const new_cell = try heap.allocCons(value_expr, Value.nil);
                         l.cdr = new_cell;
+                        heap.writeBarrier(Value.makeCons(l), new_cell);
                     } else {
                         aset_args = try heap.allocCons(value_expr, Value.nil);
                     }
@@ -8252,7 +8340,10 @@ pub const Compiler = struct {
         // std.debug.print("  Compiling value for define: {s}\n", .{name});
         const value_ir = try self.compile(cons2.car, env);
         if (value_ir.* == .lambda) {
-            value_ir.lambda.name = cons1.car;
+            value_ir.lambda.name = if (self.heap) |heap|
+                try heap.intern(local_name)
+            else
+                self.resolveForwardedValue(cons1.car);
         }
 
         return try self.builder.define(name, idx, value_ir);
@@ -8381,6 +8472,10 @@ pub const Compiler = struct {
         // Rest is (params...) body...
         const lambda_args = cons1.cdr;
         const lambda_ir = try self.compileLambdaWithReturnType(lambda_args, env, return_type);
+        name_val = if (name_sym_saved != null)
+            try self.refreshDefunNameSymbol(name, local_name, name_val)
+        else
+            self.resolveForwardedValue(name_val);
         if (lambda_ir.* == .lambda) {
             // CL DEFUN establishes an implicit block named by the function.
             if (name_val.isSymbol()) {
@@ -8400,6 +8495,25 @@ pub const Compiler = struct {
             return try self.compileFunctionDefine(name_val, name, idx, lambda_ir);
         }
         return try self.builder.define(name, idx, lambda_ir);
+    }
+
+    fn refreshDefunNameSymbol(self: *Compiler, qualified_name: []const u8, local_name: []const u8, fallback: Value) !Value {
+        const heap = self.heap orelse return self.resolveForwardedValue(fallback);
+
+        if (std.mem.indexOfScalar(u8, qualified_name, ':')) |colon_idx| {
+            const pkg_name = qualified_name[0..colon_idx];
+            var sym_start = colon_idx + 1;
+            if (sym_start < qualified_name.len and qualified_name[sym_start] == ':') {
+                sym_start += 1;
+            }
+            if (sym_start < qualified_name.len) {
+                if (heap.findPackage(pkg_name)) |pkg| {
+                    return try pkg.intern(heap, qualified_name[sym_start..]);
+                }
+            }
+        }
+
+        return try heap.intern(local_name);
     }
 
     fn compileFunctionDefine(self: *Compiler, sym_val: Value, name: []const u8, idx: u16, value_ir: *const Ir) anyerror!*Ir {
@@ -9214,10 +9328,17 @@ pub const Compiler = struct {
         const saved_state = vm_mod.State.save(vm);
         const saved_env = vm.global_env;
         const saved_ext = vm.ext_roots;
-        const saved_pool = vm.chunk_pool;
+        const saved_pool = saved_state.chunk_pool;
+        const ext_prefix = saved_ext.len;
 
-        const pool_roots = try self.allocator.dupe(Value, saved_pool);
+        const pool_roots = try self.allocator.alloc(Value, ext_prefix + saved_pool.len);
         defer self.allocator.free(pool_roots);
+        if (saved_ext.len > 0) {
+            @memcpy(pool_roots[0..saved_ext.len], saved_ext);
+        }
+        if (saved_pool.len > 0) {
+            @memcpy(pool_roots[ext_prefix .. ext_prefix + saved_pool.len], saved_pool);
+        }
         const chunk_roots = try self.allocator.alloc(Value, child_chunks.len);
         defer self.allocator.free(chunk_roots);
         for (child_chunks, 0..) |cv, i| {
@@ -9232,12 +9353,23 @@ pub const Compiler = struct {
 
             var restore_state = saved_state;
             if (vm.chunk_pool.ptr == chunk_roots.ptr and vm.chunk_pool.len == chunk_roots.len) {
-                for (saved_pool, 0..) |*slot, i| {
-                    slot.* = pool_roots[i];
+                if (saved_state.chunk_pool_owner) |owner| {
+                    const copy_len = @min(owner.items.len, saved_pool.len);
+                    for (owner.items[0..copy_len], 0..) |*slot, i| {
+                        slot.* = pool_roots[ext_prefix + i];
+                    }
+                    restore_state.chunk_pool_owner = owner;
+                    restore_state.chunk_pool = owner.items;
+                } else {
+                    for (saved_pool, 0..) |*slot, i| {
+                        slot.* = pool_roots[ext_prefix + i];
+                    }
+                    restore_state.chunk_pool_owner = null;
+                    restore_state.chunk_pool = saved_pool;
                 }
-                restore_state.chunk_pool = saved_pool;
             } else {
-                restore_state.chunk_pool = vm.chunk_pool;
+                restore_state.chunk_pool_owner = vm.chunk_pool_owner;
+                restore_state.chunk_pool = if (vm.chunk_pool_owner) |owner| owner.items else vm.chunk_pool;
                 restore_state.chunk_base = vm.chunk_base;
             }
             restoreVmStatePreserveRelay(vm, restore_state);
@@ -13994,38 +14126,42 @@ pub const Compiler = struct {
     }
 
     fn compileBodyWithTail(self: *Compiler, exprs: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
-        if (exprs.isNil()) {
+        const live_exprs = self.resolveForwardedValue(exprs);
+        if (live_exprs.isNil()) {
             return try self.builder.lit(Value.nil);
         }
 
         // Count expressions first to know which is last
         var count: usize = 0;
-        var tmp = exprs;
+        var tmp = live_exprs;
         while (tmp.isCons()) {
             count += 1;
-            tmp = tmp.toPtr(Cons).cdr;
+            tmp = self.resolveForwardedValue(tmp.toPtr(Cons).cdr);
         }
 
         // DEBUG: assert count > 0
         std.debug.assert(count > 0);
 
         if (count == 1) {
-            const only = exprs.toPtr(Cons);
+            const only = live_exprs.toPtr(Cons);
             return try self.compileWithTail(only.car, env, in_tail);
         }
 
         const items = try self.allocator.alloc(*const Ir, count);
         errdefer self.allocator.free(items);
 
-        var list = exprs;
+        var list = live_exprs;
         var idx: usize = 0;
         while (list.isCons()) {
+            list = self.resolveForwardedValue(list);
             const cons = list.toPtr(Cons);
+            const expr_val = self.resolveForwardedValue(cons.car);
+            const next_list = self.resolveForwardedValue(cons.cdr);
             const is_last = idx == count - 1;
             // Only last expression is in tail position
-            const expr_ir = try self.compileWithTail(cons.car, env, in_tail and is_last);
+            const expr_ir = try self.compileWithTail(expr_val, env, in_tail and is_last);
             items[idx] = expr_ir;
-            list = cons.cdr;
+            list = next_list;
             idx += 1;
         }
 
@@ -14044,10 +14180,12 @@ pub const Compiler = struct {
 
         var rev_filtered = Value.nil;
 
-        var list = exprs;
+        var list = self.resolveForwardedValue(exprs);
         while (list.isCons()) {
+            list = self.resolveForwardedValue(list);
             const cons = list.toPtr(Cons);
-            const expr = cons.car;
+            const expr = self.resolveForwardedValue(cons.car);
+            const next_list = self.resolveForwardedValue(cons.cdr);
 
             var is_declare = false;
             if (expr.isCons()) {
@@ -14062,7 +14200,7 @@ pub const Compiler = struct {
                 rev_filtered = try heap.allocCons(expr, rev_filtered);
             }
 
-            list = cons.cdr;
+            list = next_list;
         }
 
         if (rev_filtered.isNil()) {
@@ -14076,6 +14214,7 @@ pub const Compiler = struct {
             const cell = cur.toPtr(Cons);
             const next = cell.cdr;
             cell.cdr = prev;
+            heap.writeBarrier(cur, prev);
             prev = cur;
             cur = next;
         }
@@ -14083,14 +14222,16 @@ pub const Compiler = struct {
     }
 
     fn processDeclareList(self: *Compiler, decl_list: Value, env: *Env) !void {
-        var list = decl_list;
+        var list = self.resolveForwardedValue(decl_list);
         while (list.isCons()) {
+            list = self.resolveForwardedValue(list);
             const cons = list.toPtr(Cons);
-            const decl_spec = cons.car;
+            const decl_spec = self.resolveForwardedValue(cons.car);
+            const next_list = self.resolveForwardedValue(cons.cdr);
             if (decl_spec.isCons()) {
                 try self.processDeclSpec(decl_spec, env);
             }
-            list = cons.cdr;
+            list = next_list;
         }
     }
 
@@ -14888,9 +15029,23 @@ pub const Compiler = struct {
         const first_word: *const Value = @ptrFromInt(addr);
         if (!first_word.isForwarding()) return val;
         const new_addr = first_word.toPtrAddr();
+        const forwarded_size_ptr: *const usize = @ptrFromInt(addr + @sizeOf(Value));
+        const forwarded_size = forwarded_size_ptr.*;
+        const forwarded_size_ok = forwarded_size > 0 and
+            forwarded_size <= heap.space_size and
+            std.mem.isAligned(forwarded_size, @import("../runtime/heap.zig").ALIGNMENT);
         const from_start = @intFromPtr(heap.from_start);
         const from_end = @intFromPtr(heap.from_end);
-        if (new_addr < from_start or new_addr >= from_end) return val;
+        const in_from = new_addr >= from_start and new_addr < from_end and forwarded_size <= from_end - new_addr;
+        var in_tenured = false;
+        if (heap.gcLayoutMode() == .generational) {
+            if (heap.tenuredRegion()) |tenured| {
+                const ten_start = @intFromPtr(tenured.start);
+                const ten_used_end = if (heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
+                in_tenured = new_addr >= ten_start and new_addr < ten_used_end and forwarded_size <= ten_used_end - new_addr;
+            }
+        }
+        if (!forwarded_size_ok or !(in_from or in_tenured)) return val;
         return .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) };
     }
 
@@ -17309,18 +17464,24 @@ pub const Compiler = struct {
 
     fn compileCallArgsSlice(self: *Compiler, args_expr: Value, env: *const Env) anyerror![]const *const Ir {
         var arg_count: usize = 0;
-        var count_cur = args_expr;
-        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
+        var count_cur = self.resolveForwardedValue(args_expr);
+        while (count_cur.isCons()) {
+            count_cur = self.resolveForwardedValue(count_cur);
             arg_count += 1;
+            count_cur = self.resolveForwardedValue(count_cur.toPtr(Cons).cdr);
         }
 
         const call_args = try self.allocator.alloc(*const Ir, arg_count);
-        var cur = args_expr;
+        var cur = self.resolveForwardedValue(args_expr);
         var idx: usize = 0;
-        while (cur.isCons()) : (cur = cur.toPtr(Cons).cdr) {
+        while (cur.isCons()) {
+            cur = self.resolveForwardedValue(cur);
             const cons = cur.toPtr(Cons);
-            call_args[idx] = try self.compile(cons.car, env);
+            const arg_expr = self.resolveForwardedValue(cons.car);
+            const next = self.resolveForwardedValue(cons.cdr);
+            call_args[idx] = try self.compile(arg_expr, env);
             idx += 1;
+            cur = next;
         }
         return call_args;
     }

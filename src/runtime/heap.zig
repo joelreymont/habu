@@ -292,7 +292,7 @@ pub const GenerationalConfig = struct {
     los_size: ?usize = null,
     /// Allocate objects at/above this size in LOS (non-moving).
     los_threshold: usize = 32 * 1024,
-    /// Promote pointer-free survivors at/above this size.
+    /// Promote nursery survivors at/above this size.
     promote_threshold: usize = 1024,
     /// Lower bound for adaptive promotion threshold.
     promote_threshold_min: ?usize = null,
@@ -956,6 +956,10 @@ pub const Heap = struct {
         return addr >= start and addr < end;
     }
 
+    pub fn containsAddrForDebug(self: *const Heap, addr: usize) bool {
+        return self.containsAddr(addr);
+    }
+
     fn regionContains(r: Region, addr: usize) bool {
         return addr >= @intFromPtr(r.start) and addr < @intFromPtr(r.end);
     }
@@ -1337,7 +1341,31 @@ pub const Heap = struct {
         const cur = @intFromPtr(cur_ptr);
         const end = @intFromPtr(tenured.end);
         if (cur > end) return error.OutOfMemory;
-        if (aligned_size > end - cur) return error.OutOfMemory;
+        if (aligned_size > end - cur) {
+            if (std.posix.getenv("HABU_TRACE_TENURED_OOM") != null) {
+                const tenured_start = @intFromPtr(tenured.start);
+                const used = cur - tenured_start;
+                const cap = end - tenured_start;
+                const free = self.tenuredFreeStats();
+                std.debug.print(
+                    "TRACE tenured-oom req={d} align={d} used={d}/{d} bump_free={d} free_bytes={d} free_spans={d} free_largest={d} objs={d} major_count={d} major_cycle={d}\n",
+                    .{
+                        size,
+                        aligned_size,
+                        used,
+                        cap,
+                        end - cur,
+                        free.bytes,
+                        free.span_n,
+                        free.largest,
+                        self.tenured_objs.items.len,
+                        self.stats.gc_major_count,
+                        self.stats.gc_major_cycle_n,
+                    },
+                );
+            }
+            return error.OutOfMemory;
+        }
 
         const out = cur_ptr;
         self.tenured_alloc_ptr = @ptrFromInt(cur + aligned_size);
@@ -1995,8 +2023,64 @@ pub const Heap = struct {
         self.warn_ctx = ctx;
     }
 
+    fn traceBadStoreValue(self: *const Heap, field: []const u8, val: Value) void {
+        if (std.posix.getenv("HABU_TRACE_BAD_STORE") == null) return;
+        if (!val.isPointer() or val.isNil()) return;
+
+        const addr = val.toPtrAddr();
+        if (!self.containsAddr(addr)) return;
+
+        const stale_start = @intFromPtr(self.to_start);
+        const stale_end = stale_start + self.space_size;
+        const in_stale = addr >= stale_start and addr < stale_end;
+
+        switch (val.getTag()) {
+            .symbol => {
+                const sym: *const objects.Symbol = @ptrFromInt(addr);
+                if (sym.name_len <= self.space_size) return;
+                std.debug.print(
+                    "TRACE bad-store field={s} val=0x{x} addr=0x{x} tag=symbol name_len={d} in_stale={any} from=[0x{x},0x{x}) to=[0x{x},0x{x})\n",
+                    .{
+                        field,
+                        val.raw,
+                        addr,
+                        sym.name_len,
+                        in_stale,
+                        @intFromPtr(self.from_start),
+                        @intFromPtr(self.from_end),
+                        stale_start,
+                        stale_end,
+                    },
+                );
+                @panic("invalid symbol stored into heap object");
+            },
+            .keyword => {
+                const kw: *const objects.Keyword = @ptrFromInt(addr);
+                if (kw.name_len <= self.space_size) return;
+                std.debug.print(
+                    "TRACE bad-store field={s} val=0x{x} addr=0x{x} tag=keyword name_len={d} in_stale={any} from=[0x{x},0x{x}) to=[0x{x},0x{x})\n",
+                    .{
+                        field,
+                        val.raw,
+                        addr,
+                        kw.name_len,
+                        in_stale,
+                        @intFromPtr(self.from_start),
+                        @intFromPtr(self.from_end),
+                        stale_start,
+                        stale_end,
+                    },
+                );
+                @panic("invalid keyword stored into heap object");
+            },
+            else => {},
+        }
+    }
+
     /// Allocate a cons cell
     pub fn allocCons(self: *Heap, car: Value, cdr: Value) error{OutOfMemory}!Value {
+        self.traceBadStoreValue("cons.car", car);
+        self.traceBadStoreValue("cons.cdr", cdr);
         const cons = try self.alloc(objects.Cons);
         cons.* = objects.Cons.init(car, cdr);
         return Value.makeCons(cons);
@@ -2628,7 +2712,11 @@ pub const Heap = struct {
         };
 
         if (use_los) {
-            try self.recordLosObject(@intFromPtr(ptr), .closure, aligned_size);
+            const owner_addr = @intFromPtr(ptr);
+            try self.recordLosObject(owner_addr, .closure, aligned_size);
+            // LOS closures are old-generation immediately; seed remembered-set so
+            // young captures/code edges are scanned on subsequent minor GCs.
+            self.markCardForOwnerAddr(owner_addr);
         }
         self.noteAllocSample(.closure, aligned_size);
 
@@ -2786,7 +2874,11 @@ pub const Heap = struct {
         };
 
         if (use_los) {
-            try self.recordLosObject(@intFromPtr(ptr), .boxed, aligned_size);
+            const owner_addr = @intFromPtr(ptr);
+            try self.recordLosObject(owner_addr, .boxed, aligned_size);
+            // LOS chunks are old-generation immediately; seed remembered-set so
+            // young constant/name/lambda metadata edges are traced by minor GC.
+            self.markCardForOwnerAddr(owner_addr);
         }
         self.noteAllocSample(.chunk, aligned_size);
 
@@ -3758,6 +3850,86 @@ test "heap writeBarrier marks old-to-young cards in generational mode" {
     heap.writeBarrier(fake_owner, young);
     try testing.expect(heap.isCardMarkedForAddr(owner_addr));
     try testing.expect(heap.stats.wb_marks > 0);
+}
+
+test "heap LOS chunk metadata edges survive minor GC" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .los_threshold = 256,
+        },
+    });
+    defer heap.deinit();
+
+    const code = [_]u8{0} ** 512;
+    const chunk_val = try heap.allocChunk(code[0..], &[_]Value{}, 0, 0, 0, false, 0);
+    const chunk = chunk_val.toPtr(objects.Chunk);
+    const los = heap.losRegion().?;
+    const chunk_addr = chunk_val.toPtrAddr();
+    try testing.expect(chunk_addr >= @intFromPtr(los.start) and chunk_addr < @intFromPtr(los.end));
+
+    const young_name = try heap.allocSymbol("LOS-CHUNK-NAME");
+    try testing.expect(heap.isInNurseryAddr(young_name.toPtrAddr()));
+    chunk.name = young_name;
+
+    var roots = [_]Value{chunk_val};
+    _ = try heap.collectGarbage(roots[0..]);
+
+    const repaired = chunk.name;
+    try testing.expect(repaired.isSymbol());
+    const repaired_addr = repaired.toPtrAddr();
+    const stale_start = @intFromPtr(heap.to_start);
+    const stale_end = stale_start + heap.space_size;
+    try testing.expect(!(repaired_addr >= stale_start and repaired_addr < stale_end));
+    try testing.expectEqualStrings("LOS-CHUNK-NAME", repaired.toPtr(objects.Symbol).getName());
+}
+
+test "heap LOS chunk constant cons edges survive repeated minor GC" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .los_threshold = 256,
+        },
+    });
+    defer heap.deinit();
+
+    const code = [_]u8{0} ** 512;
+    const sym = try heap.allocSymbol("LOS-CHUNK-CONST");
+    const cell = try heap.allocCons(sym, Value.nil);
+    const constants = [_]Value{cell};
+
+    const chunk_val = try heap.allocChunk(code[0..], constants[0..], 0, 0, 0, false, 0);
+    const chunk = chunk_val.toPtr(objects.Chunk);
+    const los = heap.losRegion().?;
+    const chunk_addr = chunk_val.toPtrAddr();
+    try testing.expect(chunk_addr >= @intFromPtr(los.start) and chunk_addr < @intFromPtr(los.end));
+
+    var roots = [_]Value{chunk_val};
+    for (0..4) |_| {
+        _ = try heap.collectGarbage(roots[0..]);
+
+        const const0 = chunk.getConstants()[0];
+        try testing.expect(const0.isCons());
+
+        const car = const0.toPtr(objects.Cons).car;
+        try testing.expect(car.isSymbol());
+        try testing.expectEqualStrings("LOS-CHUNK-CONST", car.toPtr(objects.Symbol).getName());
+
+        const car_addr = car.toPtrAddr();
+        const stale_start = @intFromPtr(heap.to_start);
+        const stale_end = stale_start + heap.space_size;
+        try testing.expect(!(car_addr >= stale_start and car_addr < stale_end));
+    }
 }
 
 test "heap writeBarrier is disabled for semispace mode" {

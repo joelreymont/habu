@@ -24,6 +24,7 @@ pub const Error = error{
     JumpTooLong,
     InvalidIr,
     NoHeap,
+    InvalidBytecode,
 };
 
 /// Block info for tracking named exits
@@ -1256,6 +1257,43 @@ pub const Emitter = struct {
         return idx;
     }
 
+    fn resolveForwardedValue(self: *const Emitter, val: Value) Value {
+        const heap = self.heap orelse return val;
+        if (!val.isPointer()) return val;
+        const addr = val.toPtrAddr();
+        const stale_start = @intFromPtr(heap.to_start);
+        const stale_end = stale_start + heap.space_size;
+        if (addr < stale_start or addr >= stale_end) return val;
+        const first_word: *const Value = @ptrFromInt(addr);
+        if (!first_word.isForwarding()) return val;
+        const new_addr = first_word.toPtrAddr();
+        const forwarded_size_ptr: *const usize = @ptrFromInt(addr + @sizeOf(Value));
+        const forwarded_size = forwarded_size_ptr.*;
+        const forwarded_size_ok = forwarded_size > 0 and
+            forwarded_size <= heap.space_size and
+            std.mem.isAligned(forwarded_size, @import("../runtime/heap.zig").ALIGNMENT);
+        const from_start = @intFromPtr(heap.from_start);
+        const from_end = @intFromPtr(heap.from_end);
+        const in_from = new_addr >= from_start and new_addr < from_end and forwarded_size <= from_end - new_addr;
+        var in_tenured = false;
+        if (heap.gcLayoutMode() == .generational) {
+            if (heap.tenuredRegion()) |tenured| {
+                const ten_start = @intFromPtr(tenured.start);
+                const ten_used_end = if (heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
+                in_tenured = new_addr >= ten_start and new_addr < ten_used_end and forwarded_size <= ten_used_end - new_addr;
+            }
+        }
+        if (!forwarded_size_ok or !(in_from or in_tenured)) return val;
+        return .{
+            .raw = new_addr | @as(u64, @intFromEnum(val.getTag())),
+        };
+    }
+
+    fn addValueConstant(self: *Emitter, val: Value) Error!u16 {
+        const live = self.resolveForwardedValue(val);
+        return self.addConstant(live.raw);
+    }
+
     /// Get current code offset
     fn currentOffset(self: *const Emitter) usize {
         return self.code.items.len;
@@ -1292,24 +1330,25 @@ pub const Emitter = struct {
     // ========================================================================
 
     fn emitLiteral(self: *Emitter, val: Value) Error!void {
-        switch (val.typeKind()) {
+        const live = self.resolveForwardedValue(val);
+        switch (live.typeKind()) {
             .nil => try self.emitOp(.push_nil),
             .t => try self.emitOp(.push_t),
             .fixnum => {
-                const n = val.toFixnum();
+                const n = live.toFixnum();
                 if (n >= std.math.minInt(i32) and n <= std.math.maxInt(i32)) {
                     try self.emitOp(.push_i32);
                     try self.emitI32(@intCast(n));
                 } else {
                     // Large fixnum - use constant pool
-                    const idx = try self.addConstant(val.raw);
+                    const idx = try self.addValueConstant(live);
                     try self.emitOp(.push_const);
                     try self.emitU16(idx);
                 }
             },
             else => {
                 // Other values go in constant pool
-                const idx = try self.addConstant(val.raw);
+                const idx = try self.addValueConstant(live);
                 try self.emitOp(.push_const);
                 try self.emitU16(idx);
             },
@@ -1320,7 +1359,7 @@ pub const Emitter = struct {
         if (self.heap) |heap| {
             // Intern symbol and add to constant pool
             const sym = try heap.intern(name);
-            const idx = try self.addConstant(sym.raw);
+            const idx = try self.addValueConstant(sym);
             try self.emitOp(.push_const);
             try self.emitU16(idx);
         } else {
@@ -1514,7 +1553,7 @@ pub const Emitter = struct {
             // Add keyword to constant pool for find_key opcode
             if (lambda_emitter.heap) |heap| {
                 const kw = try heap.internKeyword(key_param.keyword);
-                const kw_idx = try lambda_emitter.addConstant(kw.raw);
+                const kw_idx = try lambda_emitter.addValueConstant(kw);
 
                 // Emit find_key which pushes (found_flag, value)
                 try lambda_emitter.emitOp(.find_key);
@@ -1568,8 +1607,8 @@ pub const Emitter = struct {
         // Finalize lambda chunk (GC Value)
         const chunk_val = try lambda_emitter.finalize();
         const chunk = chunk_val.toPtr(Chunk);
-        chunk.lambda_expr = lam.lambda_expr;
-        chunk.name = lam.name;
+        chunk.lambda_expr = self.resolveForwardedValue(lam.lambda_expr);
+        chunk.name = self.resolveForwardedValue(lam.name);
         chunk.allow_other_keys = if (lam.allow_other_keys) 1 else 0;
         if (lam.key_params.len > 0) {
             if (lambda_emitter.heap) |heap| {
@@ -1591,9 +1630,9 @@ pub const Emitter = struct {
         const child_base: u16 = @intCast(self.child_chunks.items.len);
         if (child_base > 0) {
             for (lambda_emitter.child_chunks.items) |child_chunk_val| {
-                patchMakeClosureIndicesOffset(child_chunk_val.toPtr(Chunk).getCode(), child_base);
+                try patchMakeClosureIndicesOffset(child_chunk_val.toPtr(Chunk).getCode(), child_base);
             }
-            patchMakeClosureIndicesOffset(chunk.getCode(), child_base);
+            try patchMakeClosureIndicesOffset(chunk.getCode(), child_base);
         }
 
         // Collect any child chunks from the lambda
@@ -1735,7 +1774,7 @@ pub const Emitter = struct {
         // Push struct name symbol as constant
         const heap = if (self.heap) |val| val else return error.NoHeap;
         const name_sym = try heap.intern(struct_name);
-        const const_idx = try self.addConstant(name_sym.raw);
+        const const_idx = try self.addValueConstant(name_sym);
         try self.emitOp(.push_const);
         try self.emitU16(const_idx);
 
@@ -1760,7 +1799,8 @@ pub const Emitter = struct {
 
     fn emitBlock(self: *Emitter, b: anytype) Error!void {
         // Add block name to constant pool
-        const name_idx = try self.addConstant(b.name.raw);
+        const block_name = self.resolveForwardedValue(b.name);
+        const name_idx = try self.addValueConstant(block_name);
 
         // Emit push_block with placeholder offset and name index
         try self.emitOp(.push_block);
@@ -1771,7 +1811,7 @@ pub const Emitter = struct {
         // Still track on control stack for unwind-protect handling
         const entry = ControlEntry{
             .block = .{
-                .name = b.name,
+                .name = block_name,
                 .pending_exits = std.ArrayList(usize){},
             },
         };
@@ -1808,6 +1848,7 @@ pub const Emitter = struct {
     fn emitReturnFrom(self: *Emitter, r: anytype) Error!void {
         // Emit the return value
         try self.emit(r.value);
+        const return_name = self.resolveForwardedValue(r.name);
 
         // Check if block is in current chunk with NO intervening unwind-protect
         // If there's an unwind_protect between us and the block, we must use runtime
@@ -1818,7 +1859,7 @@ pub const Emitter = struct {
             i -= 1;
             switch (self.control_stack.items[i]) {
                 .block => |*blk| {
-                    if (blk.name.raw == r.name.raw) {
+                    if (self.resolveForwardedValue(blk.name).raw == return_name.raw) {
                         // Found target block in same chunk with no unwind-protect between
                         // Use compile-time jump
                         const jump_loc = try self.emitJump(.jmp);
@@ -1841,7 +1882,7 @@ pub const Emitter = struct {
 
         // Block not in current chunk or crosses unwind-protect
         // Emit runtime return_from opcode for proper cleanup handling
-        const name_idx = try self.addConstant(r.name.raw);
+        const name_idx = try self.addValueConstant(return_name);
         try self.emitOp(.return_from);
         try self.emitU16(name_idx);
     }
@@ -2583,7 +2624,7 @@ pub const Emitter = struct {
         }
 
         // 3. Add to constant pool and emit check_or with the index
-        const idx = try self.addConstant(type_list.raw);
+        const idx = try self.addValueConstant(type_list);
         try self.emitOp(.check_or);
         try self.emitU16(idx);
     }
@@ -2619,29 +2660,16 @@ pub const Emitter = struct {
 /// Used when collecting child chunks from nested emitters - the nested code's
 /// indices are relative to ITS child_chunks array, but they need to be adjusted
 /// to be relative to the parent's array.
-fn patchMakeClosureIndicesOffset(code: []u8, offset: u16) void {
+fn patchMakeClosureIndicesOffset(code: []u8, offset: u16) Error!void {
     var i: usize = 0;
-    while (i + 1 < code.len) {
-        // Read opcode (2 bytes, little-endian)
-        const low: u16 = code[i];
-        const high: u16 = code[i + 1];
-        const opcode = low | (high << 8);
-        const op: Op = @enumFromInt(opcode);
-        const size = op.operandSize();
-
-        if (op == .make_closure) {
-            // make_closure has: u16 chunk_index, u8 num_captures
-            // Operand starts at i+2 (after 2-byte opcode)
-            // Add offset to the u16 index at code[i+2..i+4]
-            if (i + 2 + 2 <= code.len) {
-                const rel_idx = std.mem.readInt(u16, code[i + 2 ..][0..2], .little);
-                const new_idx = rel_idx + offset;
-                std.mem.writeInt(u16, code[i + 2 ..][0..2], new_idx, .little);
-            }
+    while (i < code.len) {
+        const insn = opcodes.decodeInstruction(code, i) catch return error.InvalidBytecode;
+        if (insn.op == .make_closure) {
+            const rel_idx = std.mem.readInt(u16, code[insn.operand_off..][0..2], .little);
+            const abs_idx = std.math.add(u16, rel_idx, offset) catch return error.InvalidBytecode;
+            std.mem.writeInt(u16, code[insn.operand_off..][0..2], abs_idx, .little);
         }
-
-        // Move to next instruction: 2 bytes for opcode + operand size
-        i += 2 + size;
+        i = insn.next_off;
     }
 }
 

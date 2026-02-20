@@ -2278,6 +2278,33 @@ pub const Op = enum(u16) {
     }
 };
 
+pub const DecodeError = error{
+    TruncatedInstruction,
+    InvalidOpcode,
+};
+
+pub const DecodedInstruction = struct {
+    op: Op,
+    operand_off: usize,
+    next_off: usize,
+};
+
+pub fn decodeInstruction(code: []const u8, offset: usize) DecodeError!DecodedInstruction {
+    if (offset >= code.len) return error.TruncatedInstruction;
+    if (code.len - offset < 2) return error.TruncatedInstruction;
+
+    const opcode = std.mem.readInt(u16, code[offset..][0..2], .little);
+    const op = std.meta.intToEnum(Op, opcode) catch return error.InvalidOpcode;
+    const insn_len: usize = 2 + op.operandSize();
+    if (code.len - offset < insn_len) return error.TruncatedInstruction;
+
+    return .{
+        .op = op,
+        .operand_off = offset + 2,
+        .next_off = offset + insn_len,
+    };
+}
+
 // ============================================================================
 // Tests
 // ============================================================================

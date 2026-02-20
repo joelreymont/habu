@@ -194,6 +194,7 @@ pub const State = struct {
     progv_sp: usize,
     pending_handler_restore_depth: ?usize,
     chunk_pool: []Value,
+    chunk_pool_owner: ?*std.ArrayList(Value),
     chunk_base: usize,
     current_closure: ?*const runtime.Closure,
     current_argc: u8,
@@ -223,7 +224,8 @@ pub const State = struct {
             .handler_sp = vm.handler_sp,
             .progv_sp = vm.progv_sp,
             .pending_handler_restore_depth = vm.pending_handler_restore_depth,
-            .chunk_pool = vm.chunk_pool,
+            .chunk_pool_owner = vm.chunk_pool_owner,
+            .chunk_pool = if (vm.chunk_pool_owner) |owner| owner.items else vm.chunk_pool,
             .chunk_base = vm.chunk_base,
             .current_closure = vm.current_closure,
             .current_argc = vm.current_argc,
@@ -254,7 +256,8 @@ pub const State = struct {
         vm.handler_sp = self.handler_sp;
         vm.progv_sp = self.progv_sp;
         vm.pending_handler_restore_depth = self.pending_handler_restore_depth;
-        vm.chunk_pool = self.chunk_pool;
+        vm.chunk_pool_owner = self.chunk_pool_owner;
+        vm.chunk_pool = if (self.chunk_pool_owner) |owner| owner.items else self.chunk_pool;
         vm.chunk_base = self.chunk_base;
         vm.current_closure = self.current_closure;
         vm.current_argc = self.current_argc;
@@ -347,6 +350,7 @@ pub const Vm = struct {
 
     /// Chunk pool for closures (boxed chunk values)
     chunk_pool: []Value,
+    chunk_pool_owner: ?*std.ArrayList(Value),
     /// Base offset for current eval's chunks
     chunk_base: usize,
 
@@ -706,6 +710,7 @@ pub const Vm = struct {
             .num_globals = 0,
             .current_package = Value.nil,
             .chunk_pool = &[_]Value{},
+            .chunk_pool_owner = null,
             .chunk_base = 0,
             .saved_chunks = undefined,
             .saved_chunk_sp = 0,
@@ -783,12 +788,21 @@ pub const Vm = struct {
     /// Set the chunk pool for closures with a base offset (deprecated)
     pub fn setChunkPoolWithBase(self: *Vm, chunks: []Value, base: usize) void {
         self.chunk_pool = chunks;
+        self.chunk_pool_owner = null;
         self.chunk_base = base;
     }
 
     /// Set the chunk pool for closures (indices are absolute)
     pub fn setChunkPool(self: *Vm, chunks: []Value) void {
         self.chunk_pool = chunks;
+        self.chunk_pool_owner = null;
+        self.chunk_base = 0;
+    }
+
+    /// Set chunk pool from a stable owner ArrayList.
+    pub fn setChunkPoolOwned(self: *Vm, owner: *std.ArrayList(Value)) void {
+        self.chunk_pool_owner = owner;
+        self.chunk_pool = owner.items;
         self.chunk_base = 0;
     }
 
@@ -1085,7 +1099,9 @@ pub const Vm = struct {
     /// Allocate a vector, running GC if needed
     pub fn allocVector(self: *Vm, length: usize, capacity: usize) error{ OutOfMemory, Overflow }!Value {
         var none: [0]Value = .{};
-        try self.collectIfDebt(none[0..], @sizeOf(runtime.Vector) + capacity * @sizeOf(Value));
+        const payload_bytes = std.math.mul(usize, capacity, @sizeOf(Value)) catch return error.Overflow;
+        const alloc_bytes = std.math.add(usize, @sizeOf(runtime.Vector), payload_bytes) catch return error.Overflow;
+        try self.collectIfDebt(none[0..], alloc_bytes);
         return if (self.heap.allocVector(length, capacity)) |val| val else |err| switch (err) {
             error.OutOfMemory => {
                 _ = try self.collectGarbage();
@@ -1118,17 +1134,22 @@ pub const Vm = struct {
     /// Allocate an uninitialized string, running GC if needed
     /// Get string bytes from a string designator (string, symbol, or character).
     fn getStringDesignator(self: *Vm, val: Value) Error![]const u8 {
-        _ = self;
-        if (val.isString()) {
-            return val.toPtr(String).bytes();
-        } else if (val.isSymbol()) {
-            return val.toPtr(runtime.Symbol).getName();
-        } else if (val.isCharacter()) {
-            // Single character - return as 1-byte slice (only for ASCII)
-            return error.TypeMismatch; // TODO: support character designators
-        } else {
-            return error.TypeMismatch;
-        }
+        const live = self.resolveForwardedValue(val);
+        return switch (live.typeKind()) {
+            .string => live.toPtr(String).bytes(),
+            .symbol => live.toPtr(runtime.Symbol).getName(),
+            .keyword => live.toPtr(runtime.Keyword).getName(),
+            .char => error.TypeMismatch, // TODO: support character designators
+            else => error.TypeMismatch,
+        };
+    }
+
+    fn stabilizeHeapBytes(self: *Vm, bytes: []const u8, scratch: *?[]u8) Error![]const u8 {
+        if (!self.bytesInHeap(bytes)) return bytes;
+        const copy = try self.allocator.alloc(u8, bytes.len);
+        @memcpy(copy, bytes);
+        scratch.* = copy;
+        return copy;
     }
 
     pub fn allocStringUninitialized(self: *Vm, length: usize) error{ OutOfMemory, Overflow }!Value {
@@ -3006,6 +3027,9 @@ pub const Vm = struct {
                 const elem = try self.pop();
                 const vec_val = try self.pop();
                 const result = primitives.vector.vectorPush(vec_val, elem);
+                if (result >= 0) {
+                    self.writeBarrierStore(vec_val, elem);
+                }
                 try self.push(Value.makeFixnum(result));
             },
 
@@ -3015,6 +3039,9 @@ pub const Vm = struct {
                 const vec_val = try self.pop();
                 if (!ext.isFixnum()) return error.TypeMismatch;
                 const result = try primitives.vector.vectorPushExtend(self.heap, vec_val, elem, @intCast(ext.toFixnum()));
+                if (result >= 0) {
+                    self.writeBarrierStore(vec_val, elem);
+                }
                 try self.push(Value.makeFixnum(result));
             },
 
@@ -3991,13 +4018,14 @@ pub const Vm = struct {
             .list_to_string => {
                 if (self.sp < 1) return error.StackUnderflow;
                 const list_idx = self.sp - 1;
-                const list_val = self.stack[list_idx];
+                const list_val = self.resolveForwardedValue(self.stack[list_idx]);
                 // Count length first
                 var len: usize = 0;
                 var p = list_val;
                 while (p != Value.nil) {
-                    if (!p.isCons()) return error.TypeMismatch;
-                    const c = p.toPtr(Cons);
+                    const live_p = self.resolveForwardedValue(p);
+                    if (!live_p.isCons()) return error.TypeMismatch;
+                    const c = live_p.toPtr(Cons);
                     // Accept either characters or fixnums (char codes)
                     if (!c.car.isCharacter() and !c.car.isFixnum()) return error.TypeMismatch;
                     len = try std.math.add(usize, len, 1);
@@ -4007,9 +4035,11 @@ pub const Vm = struct {
                 const str = try self.allocStringUninitialized(len);
                 const str_obj = str.toPtr(String);
                 var i: usize = 0;
-                p = self.stack[list_idx];
+                p = self.resolveForwardedValue(self.stack[list_idx]);
                 while (p != Value.nil) {
-                    const c = p.toPtr(Cons);
+                    const live_p = self.resolveForwardedValue(p);
+                    if (!live_p.isCons()) return error.TypeMismatch;
+                    const c = live_p.toPtr(Cons);
                     const cp: i64 = if (c.car.isCharacter())
                         @intCast(c.car.toCharacter())
                     else
@@ -4026,8 +4056,11 @@ pub const Vm = struct {
             .string_upcase => {
                 if (self.sp < 1) return error.StackUnderflow;
                 const str_idx = self.sp - 1;
-                const str_val = self.stack[str_idx];
-                const src_bytes = try self.getStringDesignator(str_val);
+                var scratch: ?[]u8 = null;
+                defer if (scratch) |buf| self.allocator.free(buf);
+                const str_val = self.resolveForwardedValue(self.stack[str_idx]);
+                const src_bytes_raw = try self.getStringDesignator(str_val);
+                const src_bytes = try self.stabilizeHeapBytes(src_bytes_raw, &scratch);
                 const src_len = src_bytes.len;
                 const result = try self.allocStringUninitialized(src_len);
                 const dst = result.toPtr(String);
@@ -4040,8 +4073,11 @@ pub const Vm = struct {
             .string_downcase => {
                 if (self.sp < 1) return error.StackUnderflow;
                 const str_idx = self.sp - 1;
-                const str_val = self.stack[str_idx];
-                const src_bytes_dc = try self.getStringDesignator(str_val);
+                var scratch: ?[]u8 = null;
+                defer if (scratch) |buf| self.allocator.free(buf);
+                const str_val = self.resolveForwardedValue(self.stack[str_idx]);
+                const src_bytes_dc_raw = try self.getStringDesignator(str_val);
+                const src_bytes_dc = try self.stabilizeHeapBytes(src_bytes_dc_raw, &scratch);
                 const src_len_dc = src_bytes_dc.len;
                 const result = try self.allocStringUninitialized(src_len_dc);
                 const dst = result.toPtr(String);
@@ -4062,7 +4098,7 @@ pub const Vm = struct {
                 try self.push(result);
             },
             .intern => {
-                const name_val = try self.pop();
+                const name_val = self.resolveForwardedValue(try self.pop());
                 const sym = switch (name_val.typeKind()) {
                     .string => try self.intern(name_val.toPtr(String).bytes()),
                     .symbol => try self.intern(name_val.toPtr(Symbol).getName()),
@@ -4102,7 +4138,7 @@ pub const Vm = struct {
                 try self.push(result);
             },
             .sym_name => {
-                const sym_val = try self.pop();
+                const sym_val = self.resolveForwardedValue(try self.pop());
                 const name_str = switch (sym_val.typeKind()) {
                     .nil => try self.allocString("nil"),
                     .t => try self.allocString("t"),
@@ -4123,7 +4159,7 @@ pub const Vm = struct {
             },
             .copy_symbol => {
                 const copy_props = try self.pop();
-                const sym_val = try self.pop();
+                const sym_val = self.resolveForwardedValue(try self.pop());
                 const sym_kind = sym_val.typeKind();
                 // Get the symbol name
                 const name = switch (sym_kind) {
@@ -10530,9 +10566,23 @@ pub const Vm = struct {
         if (!first_word.isForwarding()) return val;
 
         const new_addr = first_word.toPtrAddr();
+        const forwarded_size_ptr: *const usize = @ptrFromInt(addr + @sizeOf(Value));
+        const forwarded_size = forwarded_size_ptr.*;
+        const forwarded_size_ok = forwarded_size > 0 and
+            forwarded_size <= self.heap.space_size and
+            std.mem.isAligned(forwarded_size, @import("../runtime/heap.zig").ALIGNMENT);
         const from_start = @intFromPtr(self.heap.from_start);
         const from_end = @intFromPtr(self.heap.from_end);
-        if (new_addr < from_start or new_addr >= from_end) return val;
+        const in_from = new_addr >= from_start and new_addr < from_end and forwarded_size <= from_end - new_addr;
+        var in_tenured = false;
+        if (self.heap.gcLayoutMode() == .generational) {
+            if (self.heap.tenuredRegion()) |tenured| {
+                const ten_start = @intFromPtr(tenured.start);
+                const ten_used_end = if (self.heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
+                in_tenured = new_addr >= ten_start and new_addr < ten_used_end and forwarded_size <= ten_used_end - new_addr;
+            }
+        }
+        if (!forwarded_size_ok or !(in_from or in_tenured)) return val;
 
         return .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) };
     }
@@ -12013,6 +12063,41 @@ test "vm collectGarbage relocates chunk pointers" {
     const pool_after = @intFromPtr(pool[0].toPtr(Chunk));
     try testing.expect(pool_after >= start and pool_after < end);
     try testing.expect(pool_after != @intFromPtr(pool_ptr));
+}
+
+test "vm state restore refreshes owned chunk pool slice" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    try chunk_pool.append(allocator, Value.nil);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    const saved = State.save(&vm);
+    const saved_ptr = @intFromPtr(saved.chunk_pool.ptr);
+
+    var target_cap: usize = 4096;
+    var moved = false;
+    while (!moved and target_cap <= (1 << 20)) : (target_cap *= 2) {
+        try chunk_pool.ensureTotalCapacity(allocator, target_cap);
+        while (chunk_pool.items.len < target_cap) {
+            try chunk_pool.append(allocator, Value.nil);
+        }
+        moved = @intFromPtr(chunk_pool.items.ptr) != saved_ptr;
+    }
+    try testing.expect(moved);
+
+    saved.restore(&vm);
+    try testing.expect(vm.chunk_pool_owner != null);
+    try testing.expectEqual(@intFromPtr(chunk_pool.items.ptr), @intFromPtr(vm.chunk_pool.ptr));
+    try testing.expectEqual(chunk_pool.items.len, vm.chunk_pool.len);
 }
 
 test "vm collectGarbage updates ext roots" {
