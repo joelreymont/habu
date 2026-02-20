@@ -289,6 +289,13 @@ pub fn main() !void {
     const nursery_scale = heap.stats.gc_nursery_scale;
     const nursery_survival = heap.stats.gc_nursery_survival;
     const nursery_pause_error = heap.stats.gc_nursery_pause_error;
+    const promote_threshold = heap.stats.gc_promote_threshold;
+    const promote_threshold_min = heap.stats.gc_promote_threshold_min;
+    const promote_threshold_max = heap.stats.gc_promote_threshold_max;
+    const promote_scale = heap.stats.gc_promote_scale;
+    const promote_success_rate = heap.stats.gc_promote_success_rate;
+    const promote_young_ratio = heap.stats.gc_promote_young_ratio;
+    const promote_mature_ratio = heap.stats.gc_promote_mature_ratio;
     const sample_cons = sample_class_delta[@intFromEnum(heap_mod.AllocClass.cons)];
     const sample_symbol = sample_class_delta[@intFromEnum(heap_mod.AllocClass.symbol)];
     const sample_keyword = sample_class_delta[@intFromEnum(heap_mod.AllocClass.keyword)];
@@ -359,6 +366,13 @@ pub fn main() !void {
             .gc_promote_success_bytes = promote_success_bytes_delta,
             .gc_promote_success_class = promote_success_class_delta,
             .gc_promote_success_age = promote_success_age_delta,
+            .gc_promote_threshold = promote_threshold,
+            .gc_promote_threshold_min = promote_threshold_min,
+            .gc_promote_threshold_max = promote_threshold_max,
+            .gc_promote_scale = promote_scale,
+            .gc_promote_success_rate = promote_success_rate,
+            .gc_promote_young_ratio = promote_young_ratio,
+            .gc_promote_mature_ratio = promote_mature_ratio,
             .gc_nursery_target = nursery_target,
             .gc_nursery_scale = nursery_scale,
             .gc_nursery_survival = nursery_survival,
@@ -400,6 +414,18 @@ pub fn main() !void {
     try w.print(
         "  promotion success: n {d}, bytes {d}\n",
         .{ promote_success_n_delta, promote_success_bytes_delta },
+    );
+    try w.print(
+        "  promote policy: threshold {d} [{d},{d}] scale {d:.4} success {d:.4} young {d:.4} mature {d:.4}\n",
+        .{
+            promote_threshold,
+            promote_threshold_min,
+            promote_threshold_max,
+            promote_scale,
+            promote_success_rate,
+            promote_young_ratio,
+            promote_mature_ratio,
+        },
     );
     try w.print(
         "  nursery policy: target {d} bytes, scale {d:.4}, survival {d:.4}, pause_err {d:.4}\n",

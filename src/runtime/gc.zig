@@ -49,6 +49,25 @@ pub const NurseryPolicyOutput = struct {
     scale: f64,
 };
 
+pub const TenuringPolicyInput = struct {
+    current_bytes: usize,
+    min_bytes: usize,
+    max_bytes: usize,
+    promote_n: usize,
+    promote_success_n: usize,
+    promote_age: [heap_mod.GC_AGE_N]usize,
+    survive_n: usize,
+    survive_age: [heap_mod.GC_AGE_N]usize,
+};
+
+pub const TenuringPolicyOutput = struct {
+    target_bytes: usize,
+    scale: f64,
+    success_rate: f64,
+    young_promote_ratio: f64,
+    mature_survive_ratio: f64,
+};
+
 fn clampf(v: f64, lo: f64, hi: f64) f64 {
     if (v < lo) return lo;
     if (v > hi) return hi;
@@ -96,6 +115,59 @@ pub fn deriveNurseryPolicy(in: NurseryPolicyInput) NurseryPolicyOutput {
         .survival_ratio = survival_ratio,
         .pause_error = pause_error,
         .scale = scale,
+    };
+}
+
+/// Derive next promotion threshold from promotion quality and survivor age mix.
+/// Control law goals:
+/// - raise threshold when many young promotions fail quickly,
+/// - lower threshold when mature survivors keep recopying in nursery,
+/// - keep threshold stable via deadband and bounded scale.
+pub fn deriveTenuringPolicy(in: TenuringPolicyInput) TenuringPolicyOutput {
+    const promote_n_f = @as(f64, @floatFromInt(@max(in.promote_n, @as(usize, 1))));
+    const success_f = @as(f64, @floatFromInt(in.promote_success_n));
+    const success_rate = clampf(success_f / promote_n_f, 0.0, 1.0);
+
+    const young_promoted = in.promote_age[0] + in.promote_age[1] + in.promote_age[2] + in.promote_age[3];
+    const young_ratio = if (in.promote_n == 0)
+        0.0
+    else
+        clampf(@as(f64, @floatFromInt(young_promoted)) / @as(f64, @floatFromInt(in.promote_n)), 0.0, 1.0);
+
+    const mature_survive = in.survive_age[4] + in.survive_age[5] + in.survive_age[6] + in.survive_age[7];
+    const mature_ratio = if (in.survive_n == 0)
+        0.0
+    else
+        clampf(@as(f64, @floatFromInt(mature_survive)) / @as(f64, @floatFromInt(in.survive_n)), 0.0, 1.0);
+
+    var scale: f64 = 1.0;
+    if (in.promote_n > 0) {
+        if (success_rate < 0.25 or young_ratio > 0.60) {
+            scale = 1.20;
+        } else if (success_rate > 0.70 and mature_ratio > 0.20) {
+            scale = 0.85;
+        }
+    } else if (mature_ratio > 0.30 and in.survive_n > 0) {
+        scale = 0.90;
+    }
+    scale = clampf(scale, 0.50, 1.50);
+
+    var target = @as(usize, @intFromFloat(@as(f64, @floatFromInt(in.current_bytes)) * scale));
+    if (in.current_bytes > 0) {
+        const delta = if (target >= in.current_bytes) target - in.current_bytes else in.current_bytes - target;
+        if (delta * 100 <= in.current_bytes * 6) target = in.current_bytes;
+    }
+
+    if (target < in.min_bytes) target = in.min_bytes;
+    if (target > in.max_bytes) target = in.max_bytes;
+    target = std.mem.alignForward(usize, target, heap_mod.ALIGNMENT);
+
+    return .{
+        .target_bytes = target,
+        .scale = scale,
+        .success_rate = success_rate,
+        .young_promote_ratio = young_ratio,
+        .mature_survive_ratio = mature_ratio,
     };
 }
 
@@ -154,8 +226,13 @@ pub const GC = struct {
         const pause_start = std.time.nanoTimestamp();
         const mode = heap.gcLayoutMode();
         const survive_before = heap.stats.gc_survive_bytes;
+        const survive_n_before = heap.stats.gc_survive_n;
+        const survive_age_before = heap.stats.gc_survive_age;
         const copied_before = heap.stats.bytes_copied;
         const promoted_before = heap.stats.gc_promoted_bytes;
+        const promote_n_before = heap.stats.gc_promote_n;
+        const promote_success_before = heap.stats.gc_promote_success_n;
+        const promote_age_before = heap.stats.gc_promote_age;
         const copied = switch (mode) {
             .semispace => try self.collectSemispaceRootSet(heap, roots),
             .generational => try self.collectMinorRootSet(heap, roots),
@@ -170,8 +247,19 @@ pub const GC = struct {
                 heap.stats.gc_minor_count +%= 1;
                 heap.stats.gc_minor_ns +%= pause_ns;
                 const survive_cycle = counterDelta(usize, heap.stats.gc_survive_bytes, survive_before);
+                const survive_n_cycle = counterDelta(usize, heap.stats.gc_survive_n, survive_n_before);
                 const copied_cycle = counterDelta(usize, heap.stats.bytes_copied, copied_before);
                 const promoted_cycle = counterDelta(usize, heap.stats.gc_promoted_bytes, promoted_before);
+                const promote_n_cycle = counterDelta(usize, heap.stats.gc_promote_n, promote_n_before);
+                const promote_success_cycle = counterDelta(usize, heap.stats.gc_promote_success_n, promote_success_before);
+                var survive_age_cycle: [heap_mod.GC_AGE_N]usize = undefined;
+                for (&survive_age_cycle, 0..) |*dst, i| {
+                    dst.* = counterDelta(usize, heap.stats.gc_survive_age[i], survive_age_before[i]);
+                }
+                var promote_age_cycle: [heap_mod.GC_AGE_N]usize = undefined;
+                for (&promote_age_cycle, 0..) |*dst, i| {
+                    dst.* = counterDelta(usize, heap.stats.gc_promote_age[i], promote_age_before[i]);
+                }
                 const policy = deriveNurseryPolicy(.{
                     .current_bytes = heap.nursery_target_bytes,
                     .min_bytes = heap.nursery_min_bytes,
@@ -182,6 +270,23 @@ pub const GC = struct {
                     .target_pause_ns = heap.nursery_target_pause_ns,
                 });
                 heap.setNurseryTarget(policy.target_bytes, policy.survival_ratio, policy.pause_error, policy.scale);
+                const tenuring = deriveTenuringPolicy(.{
+                    .current_bytes = heap.promote_threshold,
+                    .min_bytes = heap.promote_threshold_min,
+                    .max_bytes = heap.promote_threshold_max,
+                    .promote_n = promote_n_cycle,
+                    .promote_success_n = promote_success_cycle,
+                    .promote_age = promote_age_cycle,
+                    .survive_n = survive_n_cycle,
+                    .survive_age = survive_age_cycle,
+                });
+                heap.setPromoteThreshold(
+                    tenuring.target_bytes,
+                    tenuring.scale,
+                    tenuring.success_rate,
+                    tenuring.young_promote_ratio,
+                    tenuring.mature_survive_ratio,
+                );
             },
         }
         return copied;
@@ -1347,6 +1452,82 @@ test "nursery policy clamps to min and max bounds" {
         .target_pause_ns = 50_000_000,
     });
     try testing.expectEqual(@as(usize, 1536 * 1024), high.target_bytes);
+}
+
+test "tenuring policy raises threshold for young low-success promotions" {
+    const testing = std.testing;
+
+    const out = deriveTenuringPolicy(.{
+        .current_bytes = 1024,
+        .min_bytes = 256,
+        .max_bytes = 4096,
+        .promote_n = 100,
+        .promote_success_n = 5,
+        .promote_age = .{ 0, 70, 20, 10, 0, 0, 0, 0 },
+        .survive_n = 1000,
+        .survive_age = .{ 0, 500, 200, 100, 100, 50, 30, 20 },
+    });
+    try testing.expect(out.target_bytes > 1024);
+    try testing.expect(out.scale > 1.0);
+    try testing.expect(out.success_rate < 0.25);
+}
+
+test "tenuring policy lowers threshold on mature survivor pressure" {
+    const testing = std.testing;
+
+    const out = deriveTenuringPolicy(.{
+        .current_bytes = 2048,
+        .min_bytes = 256,
+        .max_bytes = 4096,
+        .promote_n = 20,
+        .promote_success_n = 18,
+        .promote_age = .{ 0, 1, 2, 1, 4, 4, 4, 4 },
+        .survive_n = 1000,
+        .survive_age = .{ 0, 50, 60, 90, 200, 200, 200, 200 },
+    });
+    try testing.expect(out.target_bytes < 2048);
+    try testing.expect(out.scale < 1.0);
+    try testing.expect(out.mature_survive_ratio > 0.20);
+}
+
+test "tenuring policy keeps threshold inside deadband" {
+    const testing = std.testing;
+
+    const out = deriveTenuringPolicy(.{
+        .current_bytes = 2048,
+        .min_bytes = 256,
+        .max_bytes = 4096,
+        .promote_n = 0,
+        .promote_success_n = 0,
+        .promote_age = .{0} ** heap_mod.GC_AGE_N,
+        .survive_n = 1000,
+        .survive_age = .{ 0, 800, 100, 50, 20, 15, 10, 5 },
+    });
+    try testing.expectEqual(@as(usize, 2048), out.target_bytes);
+    try testing.expectEqual(@as(f64, 1.0), out.scale);
+}
+
+test "minor gc applies adaptive promote threshold at runtime" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .promote_threshold = 64,
+        },
+    });
+    defer heap.deinit();
+
+    const initial = heap.promote_threshold;
+    var roots = [_]Value{try heap.allocBaseString("abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789")};
+    _ = try heap.collectGarbage(&roots);
+
+    try testing.expect(heap.promote_threshold >= initial);
+    try testing.expectEqual(heap.promote_threshold, heap.stats.gc_promote_threshold);
+    try testing.expect(heap.stats.gc_promote_scale >= 1.0);
 }
 
 test "minor gc applies adaptive nursery target at runtime" {

@@ -281,6 +281,10 @@ pub const GenerationalConfig = struct {
     los_threshold: usize = 32 * 1024,
     /// Promote pointer-free survivors at/above this size.
     promote_threshold: usize = 1024,
+    /// Lower bound for adaptive promotion threshold.
+    promote_threshold_min: ?usize = null,
+    /// Upper bound for adaptive promotion threshold.
+    promote_threshold_max: ?usize = null,
 };
 
 pub const Region = struct {
@@ -337,6 +341,8 @@ pub const Heap = struct {
     /// Tenured bump pointer (used by minor-GC promotion policy).
     tenured_alloc_ptr: ?[*]align(ALIGNMENT) u8,
     promote_threshold: usize,
+    promote_threshold_min: usize,
+    promote_threshold_max: usize,
     /// Metadata for promoted tenured objects (for remembered-set scans).
     tenured_objs: std.ArrayList(TenuredObj),
     /// Free spans reclaimed by tenured sweep (non-moving reuse).
@@ -445,6 +451,13 @@ pub const Heap = struct {
         gc_promote_success_class: [ALLOC_CLASS_N]usize = [_]usize{0} ** ALLOC_CLASS_N,
         gc_promote_success_age: [GC_AGE_N]usize = [_]usize{0} ** GC_AGE_N,
         gc_promote_success_age_class: [ALLOC_CLASS_N][GC_AGE_N]usize = [_][GC_AGE_N]usize{[_]usize{0} ** GC_AGE_N} ** ALLOC_CLASS_N,
+        gc_promote_threshold: usize = 0,
+        gc_promote_threshold_min: usize = 0,
+        gc_promote_threshold_max: usize = 0,
+        gc_promote_scale: f64 = 1.0,
+        gc_promote_success_rate: f64 = 0.0,
+        gc_promote_young_ratio: f64 = 0.0,
+        gc_promote_mature_ratio: f64 = 0.0,
         gc_nursery_target: usize = 0,
         gc_nursery_scale: f64 = 1.0,
         gc_nursery_survival: f64 = 0.0,
@@ -586,6 +599,16 @@ pub const Heap = struct {
         if (nursery_target < nursery_min) nursery_target = nursery_min;
         if (nursery_target > nursery_max) nursery_target = nursery_max;
 
+        const base_promote = std.mem.alignForward(usize, @max(config.generational.promote_threshold, @as(usize, ALIGNMENT)), ALIGNMENT);
+        const min_default = @max(base_promote / 8, @as(usize, 64));
+        var promote_min = std.mem.alignForward(usize, config.generational.promote_threshold_min orelse min_default, ALIGNMENT);
+        const max_default = if (layout.mode == .generational) @max(base_promote, nursery_max / 2) else base_promote;
+        const promote_max = std.mem.alignForward(usize, config.generational.promote_threshold_max orelse max_default, ALIGNMENT);
+        if (promote_min > promote_max) promote_min = promote_max;
+        var promote_target = base_promote;
+        if (promote_target < promote_min) promote_target = promote_min;
+        if (promote_target > promote_max) promote_target = promote_max;
+
         var heap = Heap{
             .memory = memory,
             .layout = layout,
@@ -607,7 +630,9 @@ pub const Heap = struct {
             .survivor_age_next = .{},
             .card_table = card_table,
             .tenured_alloc_ptr = if (layout.tenured) |r| r.start else null,
-            .promote_threshold = config.generational.promote_threshold,
+            .promote_threshold = promote_target,
+            .promote_threshold_min = promote_min,
+            .promote_threshold_max = promote_max,
             .tenured_objs = std.ArrayList(TenuredObj){},
             .tenured_free = std.ArrayList(FreeSpan){},
             .los_alloc_ptr = if (layout.los) |r| r.start else null,
@@ -644,6 +669,9 @@ pub const Heap = struct {
             .kw_format_arguments = Value.nil,
         };
         heap.stats.gc_nursery_target = nursery_target;
+        heap.stats.gc_promote_threshold = promote_target;
+        heap.stats.gc_promote_threshold_min = promote_min;
+        heap.stats.gc_promote_threshold_max = promote_max;
 
         try heap.symbols.put("T", Value.t);
         try heap.symbols.put("NIL", Value.nil);
@@ -1209,6 +1237,23 @@ pub const Heap = struct {
         self.stats.gc_nursery_scale = scale;
         self.stats.gc_nursery_survival = survival_ratio;
         self.stats.gc_nursery_pause_error = pause_error;
+    }
+
+    pub fn setPromoteThreshold(self: *Heap, target_bytes: usize, scale: f64, success_rate: f64, young_ratio: f64, mature_ratio: f64) void {
+        if (self.layout.mode != .generational) return;
+        var target = target_bytes;
+        if (target < self.promote_threshold_min) target = self.promote_threshold_min;
+        if (target > self.promote_threshold_max) target = self.promote_threshold_max;
+        target = std.mem.alignForward(usize, target, ALIGNMENT);
+
+        self.promote_threshold = target;
+        self.stats.gc_promote_threshold = target;
+        self.stats.gc_promote_threshold_min = self.promote_threshold_min;
+        self.stats.gc_promote_threshold_max = self.promote_threshold_max;
+        self.stats.gc_promote_scale = scale;
+        self.stats.gc_promote_success_rate = success_rate;
+        self.stats.gc_promote_young_ratio = young_ratio;
+        self.stats.gc_promote_mature_ratio = mature_ratio;
     }
 
     /// Allocate raw bytes (16-byte aligned)

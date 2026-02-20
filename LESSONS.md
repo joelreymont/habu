@@ -36,6 +36,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Making policy-cycle counters wrap-safe (`src/runtime/gc.zig:165` via `counterDelta`) removed latent unsigned-underflow hazards when long-running telemetry counters roll over.
 - Running Maxima workload benches in generational mode with explicit nursery sizing (`bench/maxima_workload.zig`: `--nursery-mb`) plus GC telemetry export (`.gc.load`/`.gc.run`) made nursery-policy behavior observable on real workloads instead of microbench-only signal.
 - Extending `tools/gc-compare` with optional Maxima telemetry (`--with-maxima`, defaults `--maxima-scale=3 --maxima-nursery-mb=24`) provided a practical mixed workload calibration point while keeping fast micro-only runs as default.
+- Driving tenuring as a first-class control law in `deriveTenuringPolicy` (`src/runtime/gc.zig:126`) and applying it every minor cycle (`src/runtime/gc.zig:273`) made promotion threshold behavior measurable, bounded, and non-oscillatory without workload-specific special cases.
+- Capturing adaptive tenuring bounds/ratios directly in heap stats (`src/runtime/heap.zig:454`, `src/runtime/heap.zig:1242`) and exporting/validating them in bench tooling (`bench/gc.zig:366`, `bench/check.zig:353`) caught policy regressions as schema/invariant failures instead of latent perf drift.
+- Locking policy behavior with dedicated GC tests (`src/runtime/gc.zig:1457`, `src/runtime/gc.zig:1510`) provided deterministic red/green coverage for raise/lower/deadband decisions and runtime threshold updates.
 
 ### Did Not Work
 - Assuming promotion-success counters would update only when tenured sweep reclaimed something was wrong; the old early-return path in `sweepTenured` skipped success accounting for all-live sets.
@@ -50,6 +53,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Using plain unsigned subtraction for per-cycle counter deltas (`src/runtime/gc.zig:165`) is unsafe with wrapping counters; use modular delta (`-%`) consistently.
 - A less aggressive nursery shrink law experiment in `src/runtime/gc.zig` increased Maxima stressed-runtime totals (~75.7s baseline to ~78.2s at `scale=4,nursery=24`), so benchmark-driven tuning must keep the original coefficients until tenuring/debt controls land.
 - Very small nursery settings (`tools/maxima-bench --nursery-mb=8..16`) exposed real crash paths under GC pressure (compiler/runtime stale-pointer faults), so treat those runs as RCA repros, not tuning datapoints.
+- Enforcing `tenured_live > 0 => tenured_bytes > 0` as a strict benchmark invariant was incorrect for current allocator accounting (`bench/check.zig:390`): `tenured_bytes` tracks bump-usage, not exact live-bytes, so hard coupling generated false failures on valid runs.
 
 ## Session Notes (2026-02-18)
 

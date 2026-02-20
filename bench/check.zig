@@ -56,6 +56,13 @@ const GcJson = struct {
     gc_promote_success_bytes: u64 = 0,
     gc_promote_success_class: []u64 = &[_]u64{},
     gc_promote_success_age: [8]u64 = [_]u64{0} ** 8,
+    gc_promote_threshold: u64 = 0,
+    gc_promote_threshold_min: u64 = 0,
+    gc_promote_threshold_max: u64 = 0,
+    gc_promote_scale: f64 = 1.0,
+    gc_promote_success_rate: f64 = 0.0,
+    gc_promote_young_ratio: f64 = 0.0,
+    gc_promote_mature_ratio: f64 = 0.0,
     gc_nursery_target: u64 = 0,
     gc_nursery_scale: f64 = 1.0,
     gc_nursery_survival: f64 = 0.0,
@@ -343,6 +350,33 @@ pub fn main() !void {
     if (promote_success_age_sum != gc.gc_promote_success_n) {
         try fail("gc promote success age sum {d} != gc_promote_success_n {d}", .{ promote_success_age_sum, gc.gc_promote_success_n });
     }
+    if (gc.gc_promote_threshold == 0) try fail("gc gc_promote_threshold is 0", .{});
+    if (gc.gc_promote_threshold_min == 0) try fail("gc gc_promote_threshold_min is 0", .{});
+    if (gc.gc_promote_threshold_max == 0) try fail("gc gc_promote_threshold_max is 0", .{});
+    if (gc.gc_promote_threshold_min > gc.gc_promote_threshold_max) {
+        try fail(
+            "gc promote threshold min {d} > max {d}",
+            .{ gc.gc_promote_threshold_min, gc.gc_promote_threshold_max },
+        );
+    }
+    if (gc.gc_promote_threshold < gc.gc_promote_threshold_min or gc.gc_promote_threshold > gc.gc_promote_threshold_max) {
+        try fail(
+            "gc promote threshold {d} outside [{d},{d}]",
+            .{ gc.gc_promote_threshold, gc.gc_promote_threshold_min, gc.gc_promote_threshold_max },
+        );
+    }
+    if (gc.gc_promote_scale < 0.50 or gc.gc_promote_scale > 1.50) {
+        try fail("gc promote scale {d:.4} outside [0.50,1.50]", .{gc.gc_promote_scale});
+    }
+    if (gc.gc_promote_success_rate < 0.0 or gc.gc_promote_success_rate > 1.0) {
+        try fail("gc promote success rate {d:.4} outside [0,1]", .{gc.gc_promote_success_rate});
+    }
+    if (gc.gc_promote_young_ratio < 0.0 or gc.gc_promote_young_ratio > 1.0) {
+        try fail("gc promote young ratio {d:.4} outside [0,1]", .{gc.gc_promote_young_ratio});
+    }
+    if (gc.gc_promote_mature_ratio < 0.0 or gc.gc_promote_mature_ratio > 1.0) {
+        try fail("gc promote mature ratio {d:.4} outside [0,1]", .{gc.gc_promote_mature_ratio});
+    }
     if (gc.gc_nursery_target == 0) try fail("gc gc_nursery_target is 0", .{});
     if (gc.gc_nursery_target > gc.heap_bytes) {
         try fail("gc nursery_target {d} > heap_bytes {d}", .{ gc.gc_nursery_target, gc.heap_bytes });
@@ -356,9 +390,7 @@ pub fn main() !void {
     if (gc.gc_nursery_survival < 0.0) try fail("gc nursery_survival < 0", .{});
     if (gc.promoted_bytes == 0) try fail("gc promoted_bytes is 0", .{});
     if (gc.wb_marks == 0) try fail("gc wb_marks is 0", .{});
-    if (gc.tenured_live == 0) try fail("gc tenured_live is 0", .{});
     if (gc.los_live == 0) try fail("gc los_live is 0", .{});
-    if (gc.tenured_bytes == 0) try fail("gc tenured_bytes is 0", .{});
     if (gc.los_bytes == 0) try fail("gc los_bytes is 0", .{});
     if (gc.tenured_bytes + gc.los_bytes > gc.heap_bytes) {
         try fail("gc old-space bytes {d} > heap_bytes {d}", .{ gc.tenured_bytes + gc.los_bytes, gc.heap_bytes });

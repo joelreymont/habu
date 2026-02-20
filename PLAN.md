@@ -69,7 +69,7 @@
         - [x] `habu-nursery-policy-benchmark-599d4233` Nursery policy: benchmark tuning. Depends on `habu-nursery-policy-runtime-1b0c5008`.
       - [ ] `habu-implement-adaptive-tenuring-8d7cbd85` Implement adaptive tenuring policy from age/survival signals. Depends on `habu-implement-adaptive-nursery-08dfe594`.
         - [x] `habu-tenuring-collect-age-66c01bf2` Tenuring: collect age distributions.
-        - [ ] `habu-tenuring-adaptive-threshold-34c571a8` Tenuring: adaptive threshold logic. Depends on `habu-tenuring-collect-age-66c01bf2`.
+        - [x] `habu-tenuring-adaptive-threshold-34c571a8` Tenuring: adaptive threshold logic. Depends on `habu-tenuring-collect-age-66c01bf2`.
         - [ ] `habu-tenuring-lock-perf-72884770` Tenuring: lock perf regressions. Depends on `habu-tenuring-adaptive-threshold-34c571a8`.
       - [ ] `habu-optimize-remembered-set-4ebdf466` Optimize remembered-set/card scanning paths. Depends on `habu-implement-adaptive-tenuring-8d7cbd85`.
         - [ ] `habu-rset-tighten-card-ba8ce5c2` RSet: tighten card mark granularity.
