@@ -6935,6 +6935,46 @@ test "symbol-function resolves internal setf setter helpers" {
     try testing.expect(cur.isNil());
 }
 
+test "symbol-plist funcall parity and getl plist search" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const out = try repl.eval(
+        \\(progn
+        \\  (setf (symbol-plist 'gp-probe) nil)
+        \\  (put 'gp-probe 'a 10)
+        \\  (put 'gp-probe 'b 20)
+        \\  (let ((direct (symbol-plist 'gp-probe))
+        \\        (via-funcall (funcall #'symbol-plist 'gp-probe))
+        \\        (from-sym (getl 'gp-probe '(z b)))
+        \\        (from-cons (getl (cons 'head (symbol-plist 'gp-probe)) '(z b))))
+        \\    (list
+        \\      (if (equal direct via-funcall) 1 0)
+        \\      (if (= (get 'gp-probe 'b) 20) 1 0)
+        \\      (if (and (consp from-sym) (eq (car from-sym) 'b) (= (cadr from-sym) 20)) 1 0)
+        \\      (if (and (consp from-cons) (eq (car from-cons) 'b) (= (cadr from-cons) 20)) 1 0)
+        \\      (if (null (getl 'gp-probe '(missing))) 1 0))))
+    );
+
+    try testing.expect(out.isCons());
+    var cur = out;
+    var i: usize = 0;
+    while (i < 5) : (i += 1) {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        try testing.expectEqual(@as(i64, 1), cell.car.toFixnum());
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+}
+
 test "handler-case catches invalid argument and invalid type specifier" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });

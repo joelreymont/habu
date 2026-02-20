@@ -4169,11 +4169,25 @@
 
 ; symbol-plist - get symbol's property list
 (defun symbol-plist (symbol)
-  (declare (ignore symbol))
-  nil)  ; Placeholder - property lists not yet implemented
+  ;; Compiles to VM primitive opcode; keeps #', SYMBOL-FUNCTION, and FUNCALL paths aligned.
+  (symbol-plist symbol))
 
 ; get, put, remprop - implemented as VM primitives (opcodes.zig)
 ; No stdlib wrapper needed - compiler generates direct opcode calls
+
+; getl - return tail of plist at first matching indicator
+; Accepts symbol plist source or (head . plist) cons source for compatibility
+(defun getl (plist indicator-list)
+  (cond
+    ((symbolp plist)
+     (setq plist (symbol-plist plist)))
+    ((consp plist)
+     (setq plist (cdr plist)))
+    (t (return-from getl nil)))
+  (do ((tail plist (cddr tail)))
+      ((null tail) nil)
+    (when (member (car tail) indicator-list :test #'eq)
+      (return tail))))
 
 ; getf - get property from plist
 (defun getf (plist indicator &optional default)
