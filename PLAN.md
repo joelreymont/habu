@@ -163,6 +163,8 @@
     - [x] `habu-str-concat-bench-c576d53b` Add direct string concatenate fast path (1/2-arg hot cases + 3+-arg prealloc path) and keep generic fallback semantics.
     - [x] `habu-intern-bench-jit-1a268ee9` Fix JIT call-arg cycle handling for helper calls and optimize simple `format`+`intern` hot path.
     - [x] `habu-fix-jit-helper-aadb5b24` Fix BLR helper call arg-cycle corruption and extend compiled arity bridge (`callFromValues`) through arity 8.
+    - [x] `habu-fix-jit-heap-62c0436e` Keep JIT heap cursor sync monotonic and add intern+format distinct-symbol regression guard.
+    - [x] `habu-fix-jit-bridge-685a2246` Preserve inline-cons cursor across JIT↔VM bridge calls and force call-arg cycle fixing for generic non-self calls (nqueens helper-entry regression).
   - [x] `habu-cut-gc-root-25d3bb03` Cut GC root-set assembly overhead in VM collection path.
   - [x] `habu-fix-hoist-compile-9a100641` Fix hoist dependency compile blocker.
   - [x] `habu-fix-jit-gate-e7562d33` Restore JIT gate integrity (default hoist backend + source-backed jit bench + strict bench-check args).

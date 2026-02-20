@@ -9,6 +9,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-20)
 
 ### Worked Well
+- Syncing inline-cons cursor state at JIT↔VM bridge boundaries (`src/interp/vm.zig:337`, `src/interp/vm.zig:349`) fixed a real allocator rewind bug: bridge calls no longer reset `g_alloc_ptr` from stale `heap.alloc_ptr`, and recursive nqueens JIT paths now preserve cons list state.
+- Classifying *any* non-self call as a cross-call in JIT lowering (`src/jit/backend.zig:4079`, `src/jit/backend.zig:4153`) ensured `fixCallArgMoves` runs in `src/testing/compile_chunk.zig` flows where `known_fns` is empty, closing helper-call arg corruption in wrapper functions.
+- Adding env-gated JIT bridge tracing (`HABU_TRACE_JIT_BRIDGE` in `src/interp/vm.zig:326`) made call-designator/arg corruption immediately visible and shortened RCA from assembly-level guesswork to one deterministic signal.
 - Extending `CompiledFn.callFromValues` beyond arity 3 (`src/jit/backend.zig:983`) closed a silent high-arity JIT call bridge gap where 4+ arg compiled functions previously returned `nil` from the VM bridge path.
 - RCA on JIT helper-call corruption showed a true parallel-copy cycle in call-argument setup (`mov x0,x1; mov x1,x3; mov x2,x0; mov x3,x2`) being lowered sequentially; extending `fixCallArgMoves` to use scratch-cycle breaking and consume the pre-call target move slot (`mov x9,xT; blr x9`) fixed wrong helper args without papering over.
 - Tightening untagged-mode eligibility to a conservative arithmetic subset in `src/jit/backend.zig` prevented untagged/tagged mixing across runtime helper boundaries and removed a class of silent semantic corruptions in JIT helper paths.
@@ -107,6 +110,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Linking Maxima loader docs directly to parity/regression commands (`docs/maxima-loader.md`) made loader RCA and perf gate checks share one operational entrypoint.
 
 ### Did Not Work
+- Assuming `jit_backend.setHeap()` was always safe in bridge helpers without first syncing inline-cons progress was wrong; when JIT had advanced `g_alloc_ptr`, bridge entry rewound allocator state and corrupted in-flight recursive data structures (`src/interp/vm.zig` pre-fix `jitCallBridgeInvoke`).
+- Gating non-self call handling on populated `known_fns` was brittle in test/harness compilation paths (`src/testing/compile_chunk.zig:191` calls `compileIr` without known-fn map), leaving call-arg cycle passes disabled for real helper-call shapes.
 - Saving/restoring VM globals in local structs across `load`/nested eval (`src/interp/repl.zig` pre-fix `savePackageGlobals`/`restorePackageGlobals` pattern) is unsafe under moving GC; the restored values can be stale and later crash in GC object-size dispatch.
 - Bundling a broader load-global rebinding rewrite while fixing package restoration caused a deterministic Maxima nparse regression (`InvalidIr` in `SIMPTIMES`); isolating the package-root fix first restored the gate before further refactor work.
 - Stress fixtures that keep entire allocation chains alive (for example repeatedly `cons`ing into a retained list) can OOM before the target invariant is exercised; GC-stress regressions should churn ephemeral allocations.

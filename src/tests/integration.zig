@@ -165,6 +165,44 @@ test "compileChunk JIT format simple preserves literal template" {
     try testing.expectEqualStrings("BENCH-SYM-42-X", result.toPtr(runtime.String).bytes());
 }
 
+test "compileChunk JIT intern+format returns distinct symbols" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(defun jit-intern-format (n) (declare (optimize (speed 3) (safety 0))) (intern (format nil \"BENCH-SYM-~d\" n)))",
+    ));
+
+    const result = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(let ((a (jit-intern-format 1)) (b (jit-intern-format 2))) (and (symbolp a) (symbolp b) (not (eq a b)) (string= (symbol-name a) \"BENCH-SYM-1\") (string= (symbol-name b) \"BENCH-SYM-2\")))",
+    ));
+    try testing.expect(result.raw == Value.t.raw);
+}
+
 test "deep recursive defun does not overflow block stack at 64" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });

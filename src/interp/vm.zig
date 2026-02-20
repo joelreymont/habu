@@ -310,15 +310,49 @@ fn dispatchMacroBridge(
     return bridge.vm.callFromStackAt(bridge.vm.sp, function, &args) catch return error.UnexpectedToken;
 }
 
+fn traceJitBridgeValue(v: Value) void {
+    switch (v.typeKind()) {
+        .nil => std.debug.print("nil", .{}),
+        .t => std.debug.print("t", .{}),
+        .fixnum => std.debug.print("fixnum({d})", .{v.toFixnum()}),
+        .symbol => std.debug.print("symbol({s})", .{v.toPtr(Symbol).getName()}),
+        .keyword => std.debug.print("keyword(:{s})", .{v.toPtr(runtime.Keyword).getName()}),
+        else => std.debug.print("{s}(0x{x})", .{ @tagName(v.typeKind()), v.raw }),
+    }
+}
+
 fn jitCallBridgeInvoke(vm: *Vm, fn_raw: u64, args: []const Value) u64 {
     const fn_val = Value{ .raw = fn_raw };
+    const trace_bridge = std.posix.getenv("HABU_TRACE_JIT_BRIDGE") != null;
+    if (trace_bridge) {
+        std.debug.print("JIT_BRIDGE call fn=", .{});
+        traceJitBridgeValue(fn_val);
+        std.debug.print(" argc={d}", .{args.len});
+        for (args, 0..) |arg, i| {
+            std.debug.print(" a{d}=", .{i});
+            traceJitBridgeValue(arg);
+        }
+        std.debug.print("\n", .{});
+    }
+    // Commit inline-cons progress before entering VM helper paths. Otherwise
+    // setHeap() would reset g_alloc_ptr from stale heap.alloc_ptr and clobber
+    // in-flight JIT allocations across bridge calls.
+    jit_backend.syncHeapFromGlobal(vm.heap);
     // Bridge calls may run GC and move semispaces; refresh JIT bump-cache from
     // heap before and after so inline-cons globals never drift from VM state.
     jit_backend.setHeap(vm.heap);
     const result = vm.callFromStackAt(vm.sp, fn_val, args) catch |err| {
         std.debug.panic("jit call bridge failed: {s} argc={d}", .{ @errorName(err), args.len });
     };
+    // Nested JIT calls inside vm.callFromStackAt may have advanced g_alloc_ptr.
+    // Sync first, then refresh globals against the current semispace after GC.
+    jit_backend.syncHeapFromGlobal(vm.heap);
     jit_backend.setHeap(vm.heap);
+    if (trace_bridge) {
+        std.debug.print("JIT_BRIDGE ret ", .{});
+        traceJitBridgeValue(result);
+        std.debug.print("\n", .{});
+    }
     return vm.resolveForwardedValue(result).raw;
 }
 

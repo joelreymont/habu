@@ -71,7 +71,14 @@ pub fn setCallBridge(bridge: CallBridge) void {
 /// (inline cons updates g_alloc_ptr but not heap.alloc_ptr directly).
 pub fn syncHeapFromGlobal(heap: *Heap) void {
     if (g_alloc_ptr != 0) {
-        heap.alloc_ptr = @ptrFromInt(g_alloc_ptr);
+        const heap_ptr = @intFromPtr(heap.alloc_ptr);
+        if (g_alloc_ptr > heap_ptr) {
+            heap.alloc_ptr = @ptrFromInt(g_alloc_ptr);
+        } else {
+            // Helper allocations can advance heap.alloc_ptr directly.
+            // Never rewind the VM allocator to a stale inline-cons cursor.
+            g_alloc_ptr = heap_ptr;
+        }
     }
 }
 
@@ -382,9 +389,10 @@ fn jitMakeString(len_raw: u64, char_raw: u64) callconv(.c) u64 {
 
 fn jitInternName(name: []const u8) u64 {
     const heap = g_heap orelse return Value.nil.raw;
-    const stable = heap.backing_allocator.dupe(u8, name) catch return Value.nil.raw;
-    defer heap.backing_allocator.free(stable);
-    const sym = heap.intern(stable) catch return Value.nil.raw;
+    if (std.posix.getenv("HABU_TRACE_JIT_INTERN") != null) {
+        std.debug.print("JIT_INTERN name=\"{s}\"\n", .{name});
+    }
+    const sym = heap.intern(name) catch return Value.nil.raw;
     return sym.raw;
 }
 
@@ -4071,12 +4079,19 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     translator.has_cross_calls = containsCons(lambda.body) or
         containsHelperCalls(lambda.body) or
         containsPrimitiveCalls(lambda.body, name) or
-        (if (known_fns) |kf| kf.count() > 0 and hasNonSelfCalls(lambda.body, name) else false);
+        hasAnyNonSelfCalls(lambda.body, name);
 
     translator.user_arity = arity;
     translator.is_recursive = detectSelfCalls(lambda.body, name);
     translator.has_loops = detectLoops(lambda.body);
     translator.has_loads = containsLoads(lambda.body);
+
+    if (std.posix.getenv("HABU_TRACE_JIT_FLAGS") != null) {
+        std.debug.print(
+            "JIT_FLAGS fn={s} arity={d} rec={} cross={} loops={} loads={} known={d}\n",
+            .{ name, arity, translator.is_recursive, translator.has_cross_calls, translator.has_loops, translator.has_loads, if (known_fns) |kf| kf.count() else 0 },
+        );
+    }
 
     // Check if any inlinable cross-function calls contain loads
     if (!translator.has_loads and known_fns != null) {
@@ -4138,7 +4153,7 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
         translator.has_cross_calls = containsCons(lambda.body) or
             containsHelperCalls(lambda.body) or
             containsPrimitiveCalls(lambda.body, name) or
-            (if (known_fns) |kf| kf.count() > 0 and hasNonSelfCalls(lambda.body, name) else false);
+            hasAnyNonSelfCalls(lambda.body, name);
     }
 
     // Emit small constants locally (not cached) when a TCO function has
