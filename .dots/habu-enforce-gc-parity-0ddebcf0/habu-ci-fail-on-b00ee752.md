@@ -1,9 +1,11 @@
 ---
 title: "CI: fail on parity regressions"
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-02-20T08:58:56.471273+01:00"
+created-at: "\"\\\"2026-02-20T08:58:56.471273+01:00\\\"\""
+closed-at: "2026-02-20T16:15:31.025351+01:00"
+close-reason: completed
 blocks:
   - habu-ci-add-gc-0b97019b
 ---

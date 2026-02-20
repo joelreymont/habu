@@ -46,6 +46,7 @@ sbcl --script bench/comprehensive.lisp
 - `bench/pack/corpus.json` — Shared micro + Maxima workload corpus for Habu/SBCL/OCaml runners
 - `bench/pack/README.md` — Bench-pack schema and usage notes
 - `bench/sbcl_gc.lisp` — SBCL GC stress benchmark
+- `bench/gc-regression-baseline.json` — GC regression baseline ratios for CI fail-on-regressions mode
 - `tools/bench_pack_runner.py` — Shared runtime adapters + normalized runner payloads
 - `tools/comprehensive-bench` — Combined runner script
 - `tools/maxima-bench` — Maxima workload comparison runner
@@ -112,6 +113,7 @@ tools/gc-compare --with-maxima              # Include Maxima GC telemetry in com
 tools/gc-compare --with-ocaml               # Include OCaml runner status/metrics when configured
 tools/gc-compare --json                      # Include gate metrics + threshold status
 tools/gc-compare --fail-on-gates --gate-level=milestone_2x_from_baseline
+tools/gc-compare --fail-on-regressions --regression-baseline=bench/gc-regression-baseline.json --regression-slack=0.15
 tools/perf-loop --iters=1 --scale=1         # Ranked bottlenecks + GC gate summary
 tools/perf-loop --json --gc-iters=30 --gc-runs=3  # Include gate schema + confidence-weighted gc ranking
 tools/perf-loop --json --history-file=/tmp/perf_loop_history.jsonl  # Persist self-loop history + trend lines

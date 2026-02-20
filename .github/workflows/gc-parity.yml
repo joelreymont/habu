@@ -25,17 +25,26 @@ jobs:
           sudo apt-get install -y sbcl
 
       - name: Run GC parity comparison
+        id: gc_parity
         run: |
           mkdir -p bench/results
+          set +e
           tools/gc-compare \
             --json \
             --iters=20 \
             --live-mb=8 \
             --heap-mb=64 \
             --gate-level=milestone_2x_from_baseline \
+            --regression-baseline=bench/gc-regression-baseline.json \
+            --regression-slack=0.15 \
+            --fail-on-regressions \
             > bench/results/gc-parity-ci.json
+          status=$?
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Summarize GC parity
+        if: always()
         run: |
           python3 - <<'PY'
           import json
@@ -50,6 +59,8 @@ jobs:
           print("throughput_ratio=", metrics.get("throughput_ratio"))
           print("rss_ratio=", metrics.get("rss_ratio"))
           print("selected_gate=", gate.get("pass"))
+          reg = data.get("regression", {})
+          print("regression_pass=", reg.get("pass"))
           PY
 
       - name: Upload GC parity artifact
@@ -59,3 +70,11 @@ jobs:
           name: gc-parity-${{ github.run_id }}
           path: bench/results/gc-parity-ci.json
           if-no-files-found: error
+
+      - name: Fail on GC parity regressions
+        if: always()
+        run: |
+          if [ "${{ steps.gc_parity.outputs.exit_code }}" != "0" ]; then
+            echo "GC parity regression gate failed"
+            exit 1
+          fi

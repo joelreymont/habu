@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "baseline_date": "2026-02-20",
+  "config": {
+    "iters": 20,
+    "live_mb": 8,
+    "heap_mb": 64,
+    "gate_level": "milestone_2x_from_baseline"
+  },
+  "metrics": {
+    "avg_pause_ratio": 0.015961062389619567,
+    "p95_pause_ratio": 0.027343434821794486,
+    "throughput_ratio": 0.015977990392438145,
+    "rss_ratio": 1.3326141675656238
+  }
+}

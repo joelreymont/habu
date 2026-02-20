@@ -105,7 +105,7 @@
         - [x] `habu-self-loop-emit-73c9938b` Self-loop: emit next-dot recommendations. Depends on `habu-self-loop-persist-f5acd7c3`.
       - [ ] `habu-enforce-gc-parity-0ddebcf0` Enforce GC parity CI gates and fail regressions. Depends on `habu-automate-gc-self-807cbd79`.
         - [x] `habu-ci-add-gc-0b97019b` CI: add GC parity job.
-        - [ ] `habu-ci-fail-on-b00ee752` CI: fail on parity regressions. Depends on `habu-ci-add-gc-0b97019b`.
+        - [x] `habu-ci-fail-on-b00ee752` CI: fail on parity regressions. Depends on `habu-ci-add-gc-0b97019b`.
         - [ ] `habu-docs-publish-gc-a7ea765a` Docs: publish GC parity contract. Depends on `habu-ci-fail-on-b00ee752`.
   - [ ] `habu-raise-jit-coverage-4bfef8eb` Raise JIT coverage for Maxima hotspot call/data paths. Depends on `habu-profile-maxima-hotspots-977ac23d`.
     - [ ] `habu-jit-missing-call-7abc44ab` Add generic JIT lowering for missing call-target patterns.

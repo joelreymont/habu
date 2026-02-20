@@ -5,6 +5,7 @@ Compares pause-time metrics on similar allocation pressure workloads.
 """
 
 import json
+import os
 import sys
 
 import bench_pack_runner as bench_pack
@@ -14,12 +15,15 @@ LIVE_MB = 8
 HEAP_MB = 64
 JSON_OUT = False
 FAIL_ON_GATES = False
+FAIL_ON_REGRESSIONS = False
 GATE_LEVEL = "milestone_2x_from_baseline"
 WITH_MAXIMA = False
 WITH_OCAML = False
 MAXIMA_SCALE = 3
 MAXIMA_HEAP_MB = 1024
 MAXIMA_NURSERY_MB = 24
+REGRESSION_BASELINE = ""
+REGRESSION_SLACK = 0.15
 
 PARITY_GATES = {
     "schema_version": 1,
@@ -114,8 +118,14 @@ for arg in sys.argv[1:]:
         JSON_OUT = True
     elif arg == "--fail-on-gates":
         FAIL_ON_GATES = True
+    elif arg == "--fail-on-regressions":
+        FAIL_ON_REGRESSIONS = True
     elif arg.startswith("--gate-level="):
         GATE_LEVEL = arg.split("=", 1)[1]
+    elif arg.startswith("--regression-baseline="):
+        REGRESSION_BASELINE = arg.split("=", 1)[1]
+    elif arg.startswith("--regression-slack="):
+        REGRESSION_SLACK = float(arg.split("=", 1)[1])
     elif arg.startswith("--iters="):
         ITERS = int(arg.split("=", 1)[1])
     elif arg.startswith("--live-mb="):
@@ -290,6 +300,68 @@ def fmt_delta(delta):
     if isinstance(delta, (int, float)):
         return f"{delta:+.6f}"
     return "n/a"
+
+
+def load_regression_baseline(path: str):
+    if not path:
+        return None
+    if not os.path.exists(path):
+        raise RuntimeError(f"regression baseline missing: {path}")
+    with open(path, "r", encoding="utf-8") as fh:
+        payload = json.load(fh)
+    if isinstance(payload, dict) and isinstance(payload.get("metrics"), dict):
+        return payload
+    if isinstance(payload, dict):
+        return {"metrics": payload}
+    raise RuntimeError(f"invalid regression baseline format: {path}")
+
+
+def eval_regressions(metrics: dict, baseline_metrics: dict, slack: float):
+    checks = {}
+    higher_better = ("avg_pause_ratio", "p95_pause_ratio", "throughput_ratio")
+    for key in higher_better:
+        base = baseline_metrics.get(key)
+        actual = metrics.get(key)
+        if not isinstance(base, (int, float)) or not isinstance(actual, (int, float)):
+            checks[key] = {
+                "actual": actual,
+                "baseline": base,
+                "threshold_min": None,
+                "pass": False,
+            }
+            continue
+        threshold = float(base) * max(0.0, 1.0 - slack)
+        checks[key] = {
+            "actual": float(actual),
+            "baseline": float(base),
+            "threshold_min": threshold,
+            "pass": float(actual) >= threshold,
+        }
+
+    key = "rss_ratio"
+    base = baseline_metrics.get(key)
+    actual = metrics.get(key)
+    if isinstance(base, (int, float)) and isinstance(actual, (int, float)):
+        threshold = float(base) * (1.0 + max(0.0, slack))
+        checks[key] = {
+            "actual": float(actual),
+            "baseline": float(base),
+            "threshold_max": threshold,
+            "pass": float(actual) <= threshold,
+        }
+    else:
+        checks[key] = {
+            "actual": actual,
+            "baseline": base,
+            "threshold_max": None,
+            "pass": False,
+        }
+
+    return {
+        "slack": slack,
+        "checks": checks,
+        "pass": all(check.get("pass", False) for check in checks.values()),
+    }
 
 
 def require_runner_ok(result, label: str):
@@ -777,6 +849,15 @@ trend = {
         selected_gate_ocaml.get("pass") if selected_gate_ocaml else None,
     ),
 }
+regression_baseline_payload = None
+regression = None
+if REGRESSION_BASELINE:
+    regression_baseline_payload = load_regression_baseline(REGRESSION_BASELINE)
+    regression = eval_regressions(
+        metrics,
+        regression_baseline_payload.get("metrics", {}),
+        REGRESSION_SLACK,
+    )
 
 if JSON_OUT:
     print(
@@ -796,6 +877,8 @@ if JSON_OUT:
                 "gates": {"targets": PARITY_GATES, "vs_sbcl": gate_eval, "vs_ocaml": gate_eval_ocaml},
                 "parity_diff": parity_diff,
                 "trend": trend,
+                "regression_baseline": REGRESSION_BASELINE or None,
+                "regression": regression,
                 "gate_level": GATE_LEVEL,
                 "gate_pass": selected_gate["pass"],
             },
@@ -803,6 +886,8 @@ if JSON_OUT:
         )
     )
     if FAIL_ON_GATES and not selected_gate["pass"]:
+        sys.exit(1)
+    if FAIL_ON_REGRESSIONS and (not regression or not regression.get("pass", False)):
         sys.exit(1)
     sys.exit(0)
 
@@ -1112,6 +1197,35 @@ if parity_diff["vs_sbcl"]:
             print(f"  {metric}: sbcl {sb_delta} {sb_state} | ocaml {oc_delta} {oc_state}")
         else:
             print(f"  {metric}: sbcl {sb_delta} {sb_state}")
+if regression:
+    print("Regression gate:")
+    for metric, check in regression.get("checks", {}).items():
+        state = "PASS" if check.get("pass") else "FAIL"
+        if "threshold_min" in check and check.get("threshold_min") is not None:
+            print(
+                "  {m}: actual={a:.6f} baseline={b:.6f} min={t:.6f} {s}".format(
+                    m=metric,
+                    a=check.get("actual", 0.0),
+                    b=check.get("baseline", 0.0),
+                    t=check.get("threshold_min", 0.0),
+                    s=state,
+                )
+            )
+        elif "threshold_max" in check and check.get("threshold_max") is not None:
+            print(
+                "  {m}: actual={a:.6f} baseline={b:.6f} max={t:.6f} {s}".format(
+                    m=metric,
+                    a=check.get("actual", 0.0),
+                    b=check.get("baseline", 0.0),
+                    t=check.get("threshold_max", 0.0),
+                    s=state,
+                )
+            )
+        else:
+            print(f"  {metric}: baseline/actual missing FAIL")
+    print(f"  regression gate: {'PASS' if regression.get('pass') else 'FAIL'}")
 print(f"  selected gate [{GATE_LEVEL}]: {'PASS' if selected_gate['pass'] else 'FAIL'}")
 if FAIL_ON_GATES and not selected_gate["pass"]:
+    sys.exit(1)
+if FAIL_ON_REGRESSIONS and (not regression or not regression.get("pass", False)):
     sys.exit(1)
