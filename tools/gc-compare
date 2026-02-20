@@ -16,6 +16,10 @@ HEAP_MB = 64
 JSON_OUT = False
 FAIL_ON_GATES = False
 GATE_LEVEL = "milestone_2x_from_baseline"
+WITH_MAXIMA = False
+MAXIMA_SCALE = 3
+MAXIMA_HEAP_MB = 1024
+MAXIMA_NURSERY_MB = 24
 
 PARITY_GATES = {
     "schema_version": 1,
@@ -94,6 +98,14 @@ for arg in sys.argv[1:]:
         LIVE_MB = int(arg.split("=", 1)[1])
     elif arg.startswith("--heap-mb="):
         HEAP_MB = int(arg.split("=", 1)[1])
+    elif arg == "--with-maxima":
+        WITH_MAXIMA = True
+    elif arg.startswith("--maxima-scale="):
+        MAXIMA_SCALE = int(arg.split("=", 1)[1])
+    elif arg.startswith("--maxima-heap-mb="):
+        MAXIMA_HEAP_MB = int(arg.split("=", 1)[1])
+    elif arg.startswith("--maxima-nursery-mb="):
+        MAXIMA_NURSERY_MB = int(arg.split("=", 1)[1])
     else:
         print(f"unknown arg: {arg}", file=sys.stderr)
         sys.exit(2)
@@ -175,6 +187,20 @@ def run_sbcl():
     return parse_mixed_json(p.stdout, "sbcl"), rss_bytes
 
 
+def run_maxima():
+    cmd = [
+        "tools/maxima-bench",
+        "--json",
+        f"--scale={MAXIMA_SCALE}",
+        f"--heap-mb={MAXIMA_HEAP_MB}",
+        f"--nursery-mb={MAXIMA_NURSERY_MB}",
+    ]
+    p, _ = run_cmd(cmd, timeout=3600)
+    if p.returncode != 0:
+        raise RuntimeError(f"maxima bench failed\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}")
+    return parse_mixed_json(p.stdout, "maxima")
+
+
 def mib_per_sec(work_bytes: int, total_pause_ns: int):
     if work_bytes <= 0 or total_pause_ns <= 0:
         return 0.0
@@ -221,6 +247,7 @@ def eval_level(metrics, level):
 
 habu, habu_rss = run_habu()
 sbcl, sbcl_rss = run_sbcl()
+maxima = run_maxima() if WITH_MAXIMA else None
 
 h_avg = habu.get("avg_pause_ns", 0)
 h_p50 = habu.get("p50_pause_ns", 0)
@@ -272,6 +299,35 @@ metrics = {
     "gc_nursery_survival": float(habu.get("gc_nursery_survival", 0.0)),
     "gc_nursery_pause_error": float(habu.get("gc_nursery_pause_error", 0.0)),
 }
+if maxima:
+    mh = maxima.get("habu", {})
+    ms = maxima.get("sbcl", {})
+    gc = mh.get("gc", {})
+    gc_run = gc.get("run", {})
+    h_benches = mh.get("benches", [])
+    maxima_habu_errors = sum(1 for b in h_benches if b.get("error"))
+    maxima_habu_total_ns = sum(int(b.get("ns", 0)) for b in h_benches if not b.get("error"))
+    metrics.update(
+        {
+            "maxima_scale": int(mh.get("scale", MAXIMA_SCALE)),
+            "maxima_nursery_mb": int(mh.get("nursery_mb", MAXIMA_NURSERY_MB)),
+            "maxima_habu_loader_ns": int(mh.get("loader", {}).get("ns", 0)),
+            "maxima_sbcl_loader_ns": int(ms.get("loader", {}).get("ns", 0)),
+            "maxima_habu_errors": int(maxima_habu_errors),
+            "maxima_habu_total_ns": int(maxima_habu_total_ns),
+            "maxima_gc_run_count": int(gc_run.get("gc_count", 0)),
+            "maxima_gc_run_minor_count": int(gc_run.get("gc_minor_count", 0)),
+            "maxima_gc_run_major_count": int(gc_run.get("gc_major_count", 0)),
+            "maxima_gc_run_avg_minor_ns": int(gc_run.get("avg_minor_ns", 0)),
+            "maxima_gc_run_avg_major_ns": int(gc_run.get("avg_major_ns", 0)),
+            "maxima_gc_run_bytes_copied": int(gc_run.get("bytes_copied", 0)),
+            "maxima_gc_run_promoted_bytes": int(gc_run.get("promoted_bytes", 0)),
+            "maxima_gc_run_nursery_target": int(gc_run.get("gc_nursery_target", 0)),
+            "maxima_gc_run_nursery_scale": float(gc_run.get("gc_nursery_scale", 1.0)),
+            "maxima_gc_run_nursery_survival": float(gc_run.get("gc_nursery_survival", 0.0)),
+            "maxima_gc_run_nursery_pause_error": float(gc_run.get("gc_nursery_pause_error", 0.0)),
+        }
+    )
 gate_eval = {
     "milestone_2x_from_baseline": eval_level(
         metrics, PARITY_GATES["vs_sbcl"]["milestone_2x_from_baseline"]
@@ -291,6 +347,7 @@ if JSON_OUT:
                 "habu": habu,
                 "sbcl": sbcl,
                 "rss_bytes": {"habu": habu_rss, "sbcl": sbcl_rss},
+                "maxima": maxima,
                 "metrics": metrics,
                 "gates": {"targets": PARITY_GATES, "vs_sbcl": gate_eval},
                 "gate_level": GATE_LEVEL,
@@ -349,6 +406,31 @@ print(f"  gc_nursery_scale: {metrics['gc_nursery_scale']:.4f}")
 print(f"  gc_nursery_survival: {metrics['gc_nursery_survival']:.4f}")
 print(f"  gc_nursery_pause_error: {metrics['gc_nursery_pause_error']:.4f}")
 print()
+if maxima:
+    print("Maxima GC telemetry:")
+    print(f"  scale: {metrics['maxima_scale']}, nursery_mb: {metrics['maxima_nursery_mb']}")
+    print(f"  loader_habu_ms: {metrics['maxima_habu_loader_ns']/1e6:.3f}")
+    print(f"  loader_sbcl_ms: {metrics['maxima_sbcl_loader_ns']/1e6:.3f}")
+    print(f"  habu_total_ms: {metrics['maxima_habu_total_ns']/1e6:.3f}")
+    print(f"  habu_errors: {metrics['maxima_habu_errors']}")
+    print(
+        "  run_gc: n={n} minor={mn} major={mj} avg_minor_ms={amin:.3f} avg_major_ms={amaj:.3f}".format(
+            n=metrics["maxima_gc_run_count"],
+            mn=metrics["maxima_gc_run_minor_count"],
+            mj=metrics["maxima_gc_run_major_count"],
+            amin=metrics["maxima_gc_run_avg_minor_ns"] / 1e6,
+            amaj=metrics["maxima_gc_run_avg_major_ns"] / 1e6,
+        )
+    )
+    print(
+        "  run_nursery: target={t} scale={s:.4f} survival={sv:.4f} pause_err={pe:.4f}".format(
+            t=metrics["maxima_gc_run_nursery_target"],
+            s=metrics["maxima_gc_run_nursery_scale"],
+            sv=metrics["maxima_gc_run_nursery_survival"],
+            pe=metrics["maxima_gc_run_nursery_pause_error"],
+        )
+    )
+    print()
 print("Memory:")
 if habu_rss and sbcl_rss:
     print(f"  habu_rss_mib: {habu_rss/(1024*1024):.2f}")

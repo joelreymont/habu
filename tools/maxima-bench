@@ -16,6 +16,7 @@ import sys
 
 SCALE = 1
 HEAP_MB = 1024
+NURSERY_MB = 32
 JSON_OUT = False
 
 for arg in sys.argv[1:]:
@@ -25,6 +26,8 @@ for arg in sys.argv[1:]:
         SCALE = int(arg.split("=", 1)[1])
     elif arg.startswith("--heap-mb="):
         HEAP_MB = int(arg.split("=", 1)[1])
+    elif arg.startswith("--nursery-mb="):
+        NURSERY_MB = int(arg.split("=", 1)[1])
     else:
         print(f"unknown arg: {arg}", file=sys.stderr)
         sys.exit(2)
@@ -32,7 +35,7 @@ for arg in sys.argv[1:]:
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 
-def run_habu(scale: int, heap_mb: int):
+def run_habu(scale: int, heap_mb: int, nursery_mb: int):
     cmd = [
         "zig",
         "build",
@@ -42,11 +45,12 @@ def run_habu(scale: int, heap_mb: int):
         "--json",
         f"--scale={scale}",
         f"--heap-mb={heap_mb}",
+        f"--nursery-mb={nursery_mb}",
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
     if proc.returncode != 0:
         raise RuntimeError(f"habu bench failed\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
-    return parse_mixed_json(proc.stdout, "habu")
+    return parse_mixed_json(proc.stdout, "habu", required_keys=("engine", "workload"))
 
 
 def run_sbcl(scale: int):
@@ -60,18 +64,21 @@ def run_sbcl(scale: int):
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
     if proc.returncode != 0:
         raise RuntimeError(f"sbcl bench failed\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
-    return parse_mixed_json(proc.stdout, "sbcl")
+    return parse_mixed_json(proc.stdout, "sbcl", required_keys=("engine", "workload"))
 
 
-def parse_mixed_json(text: str, label: str):
-    idx = text.rfind('{"engine"')
-    if idx < 0:
-        raise RuntimeError(f"{label} output missing JSON payload\\nstdout:\\n{text}")
-    payload = text[idx:].strip()
-    try:
-        return json.loads(payload)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"{label} JSON parse failed: {exc}\\nstdout:\\n{text}") from exc
+def parse_mixed_json(text: str, label: str, required_keys=()):
+    starts = [i for i, ch in enumerate(text) if ch == '{']
+    dec = json.JSONDecoder()
+    for i in reversed(starts):
+        frag = text[i:].lstrip()
+        try:
+            val, _ = dec.raw_decode(frag)
+            if isinstance(val, dict) and all(k in val for k in required_keys):
+                return val
+        except json.JSONDecodeError:
+            pass
+    raise RuntimeError(f"{label} output missing JSON payload\\nstdout:\\n{text}")
 
 
 def index_benches(data):
@@ -81,7 +88,7 @@ def index_benches(data):
     return out
 
 
-habu = run_habu(SCALE, HEAP_MB)
+habu = run_habu(SCALE, HEAP_MB, NURSERY_MB)
 sbcl = run_sbcl(SCALE)
 
 if JSON_OUT:
@@ -92,7 +99,7 @@ habu_idx = index_benches(habu)
 sbcl_idx = index_benches(sbcl)
 
 print("Maxima workload comparison (Habu vs SBCL)")
-print(f"  scale: {SCALE}, heap_mb: {HEAP_MB}")
+print(f"  scale: {SCALE}, heap_mb: {HEAP_MB}, nursery_mb: {NURSERY_MB}")
 
 h_loader = habu.get("loader", {})
 s_loader = sbcl.get("loader", {})
@@ -121,6 +128,38 @@ print(
 )
 if s_loader.get("error"):
     print(f"      error: {s_loader['error']}")
+
+h_gc = habu.get("gc")
+if isinstance(h_gc, dict):
+    gc_load = h_gc.get("load", {})
+    gc_run = h_gc.get("run", {})
+    print("  gc (habu):")
+    print(
+        "    load: n={n} minor={mn} major={mj} copied={cp} promoted={pr} avg_minor={amin:.3f} ms avg_major={amaj:.3f} ms".format(
+            n=gc_load.get("gc_count", 0),
+            mn=gc_load.get("gc_minor_count", 0),
+            mj=gc_load.get("gc_major_count", 0),
+            cp=gc_load.get("bytes_copied", 0),
+            pr=gc_load.get("promoted_bytes", 0),
+            amin=gc_load.get("avg_minor_ns", 0) / 1e6,
+            amaj=gc_load.get("avg_major_ns", 0) / 1e6,
+        )
+    )
+    print(
+        "    run : n={n} minor={mn} major={mj} copied={cp} promoted={pr} avg_minor={amin:.3f} ms avg_major={amaj:.3f} ms nursery={nt} scale={sc:.3f} surv={sv:.3f} pause_err={pe:.3f}".format(
+            n=gc_run.get("gc_count", 0),
+            mn=gc_run.get("gc_minor_count", 0),
+            mj=gc_run.get("gc_major_count", 0),
+            cp=gc_run.get("bytes_copied", 0),
+            pr=gc_run.get("promoted_bytes", 0),
+            amin=gc_run.get("avg_minor_ns", 0) / 1e6,
+            amaj=gc_run.get("avg_major_ns", 0) / 1e6,
+            nt=gc_run.get("gc_nursery_target", 0),
+            sc=gc_run.get("gc_nursery_scale", 1.0),
+            sv=gc_run.get("gc_nursery_survival", 0.0),
+            pe=gc_run.get("gc_nursery_pause_error", 0.0),
+        )
+    )
 
 print()
 print(f"{'Bench':<14} {'Habu':>12} {'SBCL':>12} {'Ratio':>10}")

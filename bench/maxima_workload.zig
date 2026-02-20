@@ -11,6 +11,7 @@ const Cons = runtime.Cons;
 
 const Opts = struct {
     heap_mb: usize = 1024,
+    nursery_mb: usize = 32,
     scale: usize = 1,
     json: bool = false,
 };
@@ -40,12 +41,91 @@ const Bench = struct {
     err_name: ?[]const u8 = null,
 };
 
+const JsonBench = struct {
+    name: []const u8,
+    category: []const u8,
+    iters: usize,
+    ns: u64,
+    @"error": ?[]const u8 = null,
+};
+
+const GcSnap = struct {
+    gc_count: usize,
+    gc_minor_count: usize,
+    gc_major_count: usize,
+    bytes_copied: usize,
+    promoted_bytes: usize,
+    gc_minor_ns: u64,
+    gc_major_ns: u64,
+    gc_nursery_target: usize,
+    gc_nursery_scale: f64,
+    gc_nursery_survival: f64,
+    gc_nursery_pause_error: f64,
+};
+
+const GcDelta = struct {
+    gc_count: usize,
+    gc_minor_count: usize,
+    gc_major_count: usize,
+    bytes_copied: usize,
+    promoted_bytes: usize,
+    avg_minor_ns: u64,
+    avg_major_ns: u64,
+    gc_nursery_target: usize,
+    gc_nursery_scale: f64,
+    gc_nursery_survival: f64,
+    gc_nursery_pause_error: f64,
+};
+
+fn counterDelta(comptime T: type, after: T, before: T) T {
+    return after -% before;
+}
+
+fn gcSnap(heap: *const Heap) GcSnap {
+    return .{
+        .gc_count = heap.stats.gc_count,
+        .gc_minor_count = heap.stats.gc_minor_count,
+        .gc_major_count = heap.stats.gc_major_count,
+        .bytes_copied = heap.stats.bytes_copied,
+        .promoted_bytes = heap.stats.gc_promoted_bytes,
+        .gc_minor_ns = heap.stats.gc_minor_ns,
+        .gc_major_ns = heap.stats.gc_major_ns,
+        .gc_nursery_target = heap.stats.gc_nursery_target,
+        .gc_nursery_scale = heap.stats.gc_nursery_scale,
+        .gc_nursery_survival = heap.stats.gc_nursery_survival,
+        .gc_nursery_pause_error = heap.stats.gc_nursery_pause_error,
+    };
+}
+
+fn gcDelta(before: GcSnap, after: GcSnap) GcDelta {
+    const gc_n = counterDelta(usize, after.gc_count, before.gc_count);
+    const minor_n = counterDelta(usize, after.gc_minor_count, before.gc_minor_count);
+    const major_n = counterDelta(usize, after.gc_major_count, before.gc_major_count);
+    const minor_ns = counterDelta(u64, after.gc_minor_ns, before.gc_minor_ns);
+    const major_ns = counterDelta(u64, after.gc_major_ns, before.gc_major_ns);
+    const minor_n_u64: u64 = @intCast(minor_n);
+    const major_n_u64: u64 = @intCast(major_n);
+    return .{
+        .gc_count = gc_n,
+        .gc_minor_count = minor_n,
+        .gc_major_count = major_n,
+        .bytes_copied = counterDelta(usize, after.bytes_copied, before.bytes_copied),
+        .promoted_bytes = counterDelta(usize, after.promoted_bytes, before.promoted_bytes),
+        .avg_minor_ns = if (minor_n_u64 == 0) 0 else minor_ns / minor_n_u64,
+        .avg_major_ns = if (major_n_u64 == 0) 0 else major_ns / major_n_u64,
+        .gc_nursery_target = after.gc_nursery_target,
+        .gc_nursery_scale = after.gc_nursery_scale,
+        .gc_nursery_survival = after.gc_nursery_survival,
+        .gc_nursery_pause_error = after.gc_nursery_pause_error,
+    };
+}
+
 fn usage(w: anytype) !void {
     try w.writeAll(
         \\Maxima workload benchmark (Habu)
         \\
         \\Usage:
-        \\  zig build -Duse-hoist=true bench-maxima -- [--heap-mb N] [--scale N] [--json]
+        \\  zig build -Duse-hoist=true bench-maxima -- [--heap-mb N] [--nursery-mb N] [--scale N] [--json]
         \\
     );
 }
@@ -70,6 +150,10 @@ fn parseArgs() !Opts {
             opts.heap_mb = try std.fmt.parseInt(usize, arg["--heap-mb=".len..], 10);
             continue;
         }
+        if (std.mem.startsWith(u8, arg, "--nursery-mb=")) {
+            opts.nursery_mb = try std.fmt.parseInt(usize, arg["--nursery-mb=".len..], 10);
+            continue;
+        }
         if (std.mem.startsWith(u8, arg, "--scale=")) {
             opts.scale = try std.fmt.parseInt(usize, arg["--scale=".len..], 10);
             continue;
@@ -78,6 +162,7 @@ fn parseArgs() !Opts {
     }
 
     if (opts.heap_mb == 0) return error.InvalidArgs;
+    if (opts.nursery_mb == 0) return error.InvalidArgs;
     if (opts.scale == 0) return error.InvalidArgs;
     return opts;
 }
@@ -358,7 +443,19 @@ pub fn main() !void {
     defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
 
-    var heap = try Heap.init(allocator, .{ .total_size = opts.heap_mb * 1024 * 1024 });
+    const heap_bytes = opts.heap_mb * 1024 * 1024;
+    const nursery_bytes = opts.nursery_mb * 1024 * 1024;
+    if (nursery_bytes > heap_bytes / 3) return error.InvalidArgs;
+    var heap = try Heap.init(allocator, .{
+        .total_size = heap_bytes,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = nursery_bytes,
+            .los_size = nursery_bytes,
+            .los_threshold = 32 * 1024,
+            .promote_threshold = 1024,
+        },
+    });
     defer heap.deinit();
 
     var repl: Repl = undefined;
@@ -368,6 +465,7 @@ pub fn main() !void {
 
     var timer = try std.time.Timer.start();
 
+    const gc_start = gcSnap(&heap);
     const loader = loadMaxima(&timer, &repl) catch |err| {
         var out_buf_err: [2048]u8 = undefined;
         var out_err = std.fs.File.stdout().writer(&out_buf_err);
@@ -384,6 +482,7 @@ pub fn main() !void {
         try w_err.flush();
         return;
     };
+    const gc_after_load = gcSnap(&heap);
 
     var benches = std.ArrayList(Bench){};
     defer benches.deinit(allocator);
@@ -391,40 +490,86 @@ pub fn main() !void {
     for (bench_defs) |def| {
         try benches.append(allocator, runBench(allocator, &timer, &repl, def, opts.scale));
     }
+    const gc_after_run = gcSnap(&heap);
+    const gc_load = gcDelta(gc_start, gc_after_load);
+    const gc_run = gcDelta(gc_after_load, gc_after_run);
 
     var out_buf: [16384]u8 = undefined;
     var out = std.fs.File.stdout().writer(&out_buf);
     const w = &out.interface;
 
     if (opts.json) {
-        try w.print(
-            "{{\"engine\":\"habu\",\"workload\":\"maxima\",\"heap_mb\":{d},\"scale\":{d},\"loader\":{{\"ok\":{d},\"total\":{d},\"fail\":{d},\"attempted\":{d},\"missing\":{d},\"ns\":{d}}},\"benches\":[",
-            .{ opts.heap_mb, opts.scale, loader.ok, loader.total, loader.fail, loader.attempted, loader.missing, loader.ns },
-        );
-        for (benches.items, 0..) |b, i| {
-            if (i != 0) try w.writeByte(',');
-            if (b.err_name) |err_name| {
-                try w.print(
-                    "{{\"name\":\"{s}\",\"category\":\"{s}\",\"iters\":{d},\"ns\":0,\"error\":\"{s}\"}}",
-                    .{ b.name, b.category, b.iters, err_name },
-                );
-            } else {
-                try w.print(
-                    "{{\"name\":\"{s}\",\"category\":\"{s}\",\"iters\":{d},\"ns\":{d}}}",
-                    .{ b.name, b.category, b.iters, b.ns },
-                );
-            }
+        var json_benches = std.ArrayList(JsonBench){};
+        defer json_benches.deinit(allocator);
+        try json_benches.ensureTotalCapacity(allocator, benches.items.len);
+        for (benches.items) |b| {
+            json_benches.appendAssumeCapacity(.{
+                .name = b.name,
+                .category = b.category,
+                .iters = b.iters,
+                .ns = b.ns,
+                .@"error" = b.err_name,
+            });
         }
-        try w.writeAll("]}\n");
+        const payload = .{
+            .engine = "habu",
+            .workload = "maxima",
+            .heap_mb = opts.heap_mb,
+            .nursery_mb = opts.nursery_mb,
+            .scale = opts.scale,
+            .loader = .{
+                .ok = loader.ok,
+                .total = loader.total,
+                .fail = loader.fail,
+                .attempted = loader.attempted,
+                .missing = loader.missing,
+                .ns = loader.ns,
+            },
+            .gc = .{
+                .load = gc_load,
+                .run = gc_run,
+            },
+            .benches = json_benches.items,
+        };
+        try std.json.Stringify.value(payload, .{}, w);
+        try w.writeByte('\n');
         try w.flush();
         return;
     }
 
     try w.print("Maxima workload benchmark (Habu)\n", .{});
-    try w.print("  heap: {d} MiB, scale: {d}\n", .{ opts.heap_mb, opts.scale });
+    try w.print("  heap: {d} MiB, nursery: {d} MiB, scale: {d}\n", .{ opts.heap_mb, opts.nursery_mb, opts.scale });
     try w.print(
         "  loader: ok={d}/{d}, fail={d}, attempted={d}, missing={d}, {d:.3} ms\n",
         .{ loader.ok, loader.total, loader.fail, loader.attempted, loader.missing, @as(f64, @floatFromInt(loader.ns)) / 1e6 },
+    );
+    try w.print(
+        "  gc(load): n={d} minor={d} major={d} copied={d} promoted={d} avg_minor={d:.3}ms avg_major={d:.3}ms\n",
+        .{
+            gc_load.gc_count,
+            gc_load.gc_minor_count,
+            gc_load.gc_major_count,
+            gc_load.bytes_copied,
+            gc_load.promoted_bytes,
+            @as(f64, @floatFromInt(gc_load.avg_minor_ns)) / 1e6,
+            @as(f64, @floatFromInt(gc_load.avg_major_ns)) / 1e6,
+        },
+    );
+    try w.print(
+        "  gc(run): n={d} minor={d} major={d} copied={d} promoted={d} avg_minor={d:.3}ms avg_major={d:.3}ms nursery={d} scale={d:.3} surv={d:.3} pause_err={d:.3}\n",
+        .{
+            gc_run.gc_count,
+            gc_run.gc_minor_count,
+            gc_run.gc_major_count,
+            gc_run.bytes_copied,
+            gc_run.promoted_bytes,
+            @as(f64, @floatFromInt(gc_run.avg_minor_ns)) / 1e6,
+            @as(f64, @floatFromInt(gc_run.avg_major_ns)) / 1e6,
+            gc_run.gc_nursery_target,
+            gc_run.gc_nursery_scale,
+            gc_run.gc_nursery_survival,
+            gc_run.gc_nursery_pause_error,
+        },
     );
     for (benches.items) |b| {
         if (b.err_name) |err_name| {

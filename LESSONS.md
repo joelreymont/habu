@@ -24,6 +24,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Parsing mixed benchmark stdout by extracting the trailing JSON payload (`tools/maxima-bench`, `tools/perf-loop`, `tools/gc-compare`) made automation robust when Maxima runtime warnings print before/around result JSON.
 - Adding a live-occupancy floor in nursery resizing (`src/runtime/heap.zig:1144` `nurseryLiveFloor`) prevented adaptive shrink steps from setting `gc_threshold` below current live nursery usage, which otherwise risks immediate-GC thrash loops.
 - Making policy-cycle counters wrap-safe (`src/runtime/gc.zig:165` via `counterDelta`) removed latent unsigned-underflow hazards when long-running telemetry counters roll over.
+- Running Maxima workload benches in generational mode with explicit nursery sizing (`bench/maxima_workload.zig`: `--nursery-mb`) plus GC telemetry export (`.gc.load`/`.gc.run`) made nursery-policy behavior observable on real workloads instead of microbench-only signal.
+- Extending `tools/gc-compare` with optional Maxima telemetry (`--with-maxima`, defaults `--maxima-scale=3 --maxima-nursery-mb=24`) provided a practical mixed workload calibration point while keeping fast micro-only runs as default.
 
 ### Did Not Work
 - Assuming `(in-package ...)` inside one `progn` would affect reader/package resolution for subsequent symbols in the same already-read form was wrong; defining formatter helpers with explicit package-qualified symbol names avoids this trap.
@@ -32,6 +34,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Reusing `lib/maxima-loader.lisp` as-is for SBCL benchmarking was brittle because warning conditions were treated as load failures; SBCL-side loaders need warning-muffling and explicit per-file load control.
 - Clamping adaptive nursery targets only to static min/max bounds was insufficient: without a live-bytes floor, shrink decisions can violate runtime occupancy constraints (`src/runtime/heap.zig:1140`) and force pathological recollection behavior.
 - Using plain unsigned subtraction for per-cycle counter deltas (`src/runtime/gc.zig:165`) is unsafe with wrapping counters; use modular delta (`-%`) consistently.
+- A less aggressive nursery shrink law experiment in `src/runtime/gc.zig` increased Maxima stressed-runtime totals (~75.7s baseline to ~78.2s at `scale=4,nursery=24`), so benchmark-driven tuning must keep the original coefficients until tenuring/debt controls land.
+- Very small nursery settings (`tools/maxima-bench --nursery-mb=8..16`) exposed real crash paths under GC pressure (compiler/runtime stale-pointer faults), so treat those runs as RCA repros, not tuning datapoints.
 
 ## Session Notes (2026-02-18)
 

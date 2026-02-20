@@ -56,6 +56,7 @@ sbcl --script bench/comprehensive.lisp
 Current execution path evaluates `vs_sbcl` and reports per-level pass/fail.
 `bench/gc.zig` JSON now includes pause percentiles (`p50_pause_ns`, `p95_pause_ns`, `p99_pause_ns`), phase-mode timings (`gc_minor_count`, `gc_major_count`, `avg_minor_ns`, `avg_major_ns`), allocation sampling telemetry (`alloc_sample_*`, `alloc_sample_size`), survival/promotion histograms (`gc_survive_*`, `gc_promote_*`), and adaptive nursery policy telemetry (`gc_nursery_*`).
 `bench/check.zig` enforces `gc_nursery_target >= live_bytes` so adaptive shrinking cannot set a trigger below live nursery occupancy.
+`tools/gc-compare --with-maxima` augments micro-GC gates with Maxima workload GC telemetry (default stress point: `--maxima-scale=3 --maxima-nursery-mb=24`).
 CI mode:
 - `--gate-level=<milestone_2x_from_baseline|competitive|parity>`
 - `--fail-on-gates` (exit `1` when selected gate fails)
@@ -94,9 +95,11 @@ zig build bench-cl                           # Original 5-item CL comparison
 zig build -Duse-hoist=true bench-jit        # JIT microbenchmarks
 zig build bench                             # GC benchmarks
 zig build bench-vm                          # VM benchmarks
-zig build -Duse-hoist=true bench-maxima     # Maxima real-workload benchmark
+zig build -Duse-hoist=true bench-maxima     # Maxima real-workload benchmark (generational)
 tools/maxima-bench                          # Habu vs SBCL Maxima workload
+tools/maxima-bench --scale=3 --nursery-mb=24
 tools/gc-compare --iters=30 --live-mb=8     # Habu vs SBCL GC pause comparison
+tools/gc-compare --with-maxima              # Include Maxima GC telemetry in comparison
 tools/gc-compare --json                      # Include gate metrics + threshold status
 tools/gc-compare --fail-on-gates --gate-level=milestone_2x_from_baseline
 tools/perf-loop --iters=1 --scale=1         # Ranked bottlenecks + GC gate summary

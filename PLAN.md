@@ -27,6 +27,7 @@
   - [ ] `habu-stabilize-eval-vm-d1c1c5cc` Stabilize eval/VM paths under macro-heavy Maxima workloads. Depends on `habu-close-cl-semantic-dac2c058`.
     - [ ] `habu-rca-indirect-call-d9f594ad` RCA and fix JIT indirect-call path root cause (no workaround).
     - [ ] `habu-fix-nested-eval-420ba9e0` Fix nested eval/non-local exit frame restoration. Depends on `habu-rca-indirect-call-d9f594ad`.
+    - [ ] `habu-rca-small-nursery-ce0d8d7f` RCA/fix GC-pressure crash with small nursery Maxima loads (`--nursery-mb=8..16`). Depends on `habu-nursery-policy-benchmark-599d4233`; blocks `habu-maxima-load-to-e6d01b9c`.
     - [x] `habu-design-safe-macro-e2cbd352` Design/implement safe macro-expander caching with stable chunk/index semantics (no transient chunk-pool assumptions).
   - [ ] `habu-maxima-load-to-e6d01b9c` Drive Maxima loader and critical symbol binds to green. Depends on `habu-stabilize-eval-vm-d1c1c5cc`.
   - [ ] `habu-profile-maxima-hotspots-977ac23d` Profile real Maxima hotspots in interpreter and JIT modes. Depends on `habu-maxima-load-to-e6d01b9c`.
@@ -62,10 +63,10 @@
         - [x] `habu-perf-loop-ingest-2b991d65` Perf loop: ingest GC telemetry.
         - [x] `habu-perf-loop-rank-2043d329` Perf loop: rank GC actions. Depends on `habu-perf-loop-ingest-2b991d65`.
         - [x] `habu-perf-loop-validate-b73f42d1` Perf loop: validate action reports. Depends on `habu-perf-loop-rank-2043d329`.
-      - [ ] `habu-implement-adaptive-nursery-08dfe594` Implement adaptive nursery sizing from live/survival feedback. Depends on `habu-feed-gc-metrics-8a4ffc19`.
+      - [x] `habu-implement-adaptive-nursery-08dfe594` Implement adaptive nursery sizing from live/survival feedback. Depends on `habu-feed-gc-metrics-8a4ffc19`.
         - [x] `habu-nursery-policy-derive-d65d5879` Nursery policy: derive control law.
         - [x] `habu-nursery-policy-runtime-1b0c5008` Nursery policy: runtime resizing. Depends on `habu-nursery-policy-derive-d65d5879`.
-        - [ ] `habu-nursery-policy-benchmark-599d4233` Nursery policy: benchmark tuning. Depends on `habu-nursery-policy-runtime-1b0c5008`.
+        - [x] `habu-nursery-policy-benchmark-599d4233` Nursery policy: benchmark tuning. Depends on `habu-nursery-policy-runtime-1b0c5008`.
       - [ ] `habu-implement-adaptive-tenuring-8d7cbd85` Implement adaptive tenuring policy from age/survival signals. Depends on `habu-implement-adaptive-nursery-08dfe594`.
         - [ ] `habu-tenuring-collect-age-66c01bf2` Tenuring: collect age distributions.
         - [ ] `habu-tenuring-adaptive-threshold-34c571a8` Tenuring: adaptive threshold logic. Depends on `habu-tenuring-collect-age-66c01bf2`.

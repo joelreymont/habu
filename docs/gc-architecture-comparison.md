@@ -200,6 +200,7 @@ Runtime application status:
 - Runtime floor in `src/runtime/heap.zig` (`nurseryLiveFloor`) prevents policy shrink below current live nursery bytes plus headroom (`max(12.5% live, 64KiB)`), avoiding immediate-GC thrash after a shrink step.
 - Counter deltas used by the policy are wrap-safe (`-%`) so long-running sessions cannot underflow on telemetry counter rollover.
 - Telemetry exports include `gc_nursery_target`, `gc_nursery_scale`, `gc_nursery_survival`, `gc_nursery_pause_error`.
+- Benchmark tuning now uses both micro GC stress and Maxima workload telemetry via `tools/gc-compare --with-maxima` (default Maxima stress config: `--maxima-scale=3 --maxima-nursery-mb=24`).
 
 ## Next Dots
-- `habu-nursery-policy-benchmark-599d4233`: tune adaptive nursery coefficients/headroom against SBCL/OCaml parity gates.
+- `habu-tenuring-collect-age-66c01bf2`: collect age distributions for adaptive tenuring policy.
