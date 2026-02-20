@@ -98,9 +98,11 @@ fn jitSafepointBeforeAlloc() void {
 
 fn jitWriteBarrier(owner_raw: u64, stored_raw: u64) void {
     const heap = g_heap orelse return;
+    const stored = Value{ .raw = stored_raw };
+    if (!stored.isPointer()) return;
     const profile = heap.profileMutatorEnabled();
     const start_ns: i128 = if (profile) std.time.nanoTimestamp() else 0;
-    heap.writeBarrier(Value{ .raw = owner_raw }, Value{ .raw = stored_raw });
+    heap.writeBarrier(Value{ .raw = owner_raw }, stored);
     if (profile) {
         heap.noteJitWriteBarrier(elapsedNsSince(start_ns));
     }

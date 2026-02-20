@@ -1412,6 +1412,11 @@ pub const Vm = struct {
         try self.handleSpecialVarStore(idx, val);
     }
 
+    inline fn writeBarrierStore(self: *Vm, owner: Value, stored: Value) void {
+        if (!stored.isPointer()) return;
+        self.heap.writeBarrier(owner, stored);
+    }
+
     pub fn collectGarbage(self: *Vm) !usize {
         var none: [0]Value = .{};
         return try self.collectGarbageExtra(none[0..]);
@@ -2314,7 +2319,7 @@ pub const Vm = struct {
                         // Note: captures array is mutable
                         const captures: [*]Value = @constCast(c.captures);
                         captures[index] = val;
-                        self.heap.writeBarrier(Value.makeClosure(@constCast(c)), val);
+                        self.writeBarrierStore(Value.makeClosure(@constCast(c)), val);
                     } else {
                         if (std.posix.getenv("HABU_TRACE_UPVALUE") != null) {
                             if (c.code.isChunk()) {
@@ -2564,7 +2569,7 @@ pub const Vm = struct {
                             const tail_val = self.stack[tail_idx];
                             if (tail_val.isCons()) {
                                 tail_val.toPtr(Cons).cdr = new_cell;
-                                self.heap.writeBarrier(tail_val, new_cell);
+                                self.writeBarrierStore(tail_val, new_cell);
                             } else {
                                 self.stack[head_idx] = new_cell;
                             }
@@ -2576,7 +2581,7 @@ pub const Vm = struct {
                         const tail_val = self.stack[tail_idx];
                         if (tail_val.isCons()) {
                             tail_val.toPtr(Cons).cdr = list2;
-                            self.heap.writeBarrier(tail_val, list2);
+                            self.writeBarrierStore(tail_val, list2);
                         }
                         const result = self.stack[head_idx];
                         self.sp = list1_idx;
@@ -2685,7 +2690,7 @@ pub const Vm = struct {
                 if (!cons_val.isCons()) return error.TypeMismatch;
                 const c = cons_val.toPtr(Cons);
                 c.car = new_car;
-                self.heap.writeBarrier(cons_val, new_car);
+                self.writeBarrierStore(cons_val, new_car);
                 try self.push(cons_val); // CL: rplaca returns the modified cons
             },
 
@@ -2695,7 +2700,7 @@ pub const Vm = struct {
                 if (!cons_val.isCons()) return error.TypeMismatch;
                 const c = cons_val.toPtr(Cons);
                 c.cdr = new_cdr;
-                self.heap.writeBarrier(cons_val, new_cdr);
+                self.writeBarrierStore(cons_val, new_cdr);
                 try self.push(cons_val); // CL: rplacd returns the modified cons
             },
 
@@ -2906,7 +2911,7 @@ pub const Vm = struct {
                 const idx: usize = @intCast(idx_signed);
                 if (idx >= vec.length) return error.TypeMismatch;
                 vec.set(idx, val);
-                self.heap.writeBarrier(vec_val, val);
+                self.writeBarrierStore(vec_val, val);
                 try self.push(val); // Return the value that was set
             },
             .elt_set => {
@@ -2924,7 +2929,7 @@ pub const Vm = struct {
                         const vec = seq_val.toPtr(runtime.Vector);
                         if (idx >= vec.length) return error.TypeMismatch;
                         vec.set(idx, val);
-                        self.heap.writeBarrier(seq_val, val);
+                        self.writeBarrierStore(seq_val, val);
                         try self.push(val);
                     },
                     .string => {
@@ -2953,7 +2958,7 @@ pub const Vm = struct {
                         }
                         if (!list.isCons()) return error.TypeMismatch;
                         list.toPtr(runtime.Cons).car = val;
-                        self.heap.writeBarrier(list, val);
+                        self.writeBarrierStore(list, val);
                         try self.push(val);
                     },
                     else => return error.TypeMismatch,
@@ -3172,7 +3177,7 @@ pub const Vm = struct {
                 const val = self.stack[self.sp - 1];
                 const vec = box.toPtr(runtime.Vector);
                 vec.set(0, val);
-                self.heap.writeBarrier(box, val);
+                self.writeBarrierStore(box, val);
                 self.sp -= 1;
                 try self.push(box);
             },
@@ -3190,7 +3195,7 @@ pub const Vm = struct {
                 const vec = box.toPtr(runtime.Vector);
                 if (vec.length < 1) return error.TypeMismatch;
                 vec.set(0, val);
-                self.heap.writeBarrier(box, val);
+                self.writeBarrierStore(box, val);
                 try self.push(val); // Return the value written
             },
 
@@ -4755,8 +4760,8 @@ pub const Vm = struct {
                         },
                         else => return err,
                     };
-                    self.heap.writeBarrier(self.stack[ht_idx], key);
-                    self.heap.writeBarrier(self.stack[ht_idx], value);
+                    self.writeBarrierStore(self.stack[ht_idx], key);
+                    self.writeBarrierStore(self.stack[ht_idx], value);
                     break;
                 }
 
@@ -5827,7 +5832,7 @@ pub const Vm = struct {
                         const idx: usize = @intCast(subscripts[0]);
                         if (idx >= vec.length) return error.TypeMismatch;
                         vec.set(idx, new_val);
-                        self.heap.writeBarrier(arr_val, new_val);
+                        self.writeBarrierStore(arr_val, new_val);
                         try self.push(new_val);
                     },
                     .string => {
@@ -5873,7 +5878,7 @@ pub const Vm = struct {
                         // Set element
                         const data: [*]Value = @ptrFromInt(arr.data_ptr);
                         data[index] = new_val;
-                        self.heap.writeBarrier(arr_val, new_val);
+                        self.writeBarrierStore(arr_val, new_val);
 
                         // Return the value (Common Lisp setf semantics)
                         try self.push(new_val);
@@ -10442,7 +10447,7 @@ pub const Vm = struct {
             const tail_val = self.stack[tail_idx];
             if (tail_val.isCons()) {
                 tail_val.toPtr(Cons).cdr = new_cons;
-                self.heap.writeBarrier(tail_val, new_cons);
+                self.writeBarrierStore(tail_val, new_cons);
             } else {
                 self.stack[result_idx] = new_cons;
             }
