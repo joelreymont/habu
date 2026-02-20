@@ -691,6 +691,31 @@ test "stdlib mapc supports variadic list dispatch" {
     try testing.expect(result.raw == Value.t.raw);
 }
 
+test "stdlib mapcar fast paths preserve variadic semantics" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        \\(and
+        \\  (equal (mapcar #'(lambda (x) (+ x 1)) '(1 2 3)) '(2 3 4))
+        \\  (equal (mapcar #'(lambda (a b) (+ a b))
+        \\                 '(1 2 3)
+        \\                 '(10 20 30 40))
+        \\         '(11 22 33))
+        \\  (let ((d (cons 1 (cons 2 3))))
+        \\    (equal (mapcar #'identity d) '(1 2))))
+    );
+    try testing.expect(result.raw == Value.t.raw);
+}
+
 test "stdlib symbol-function eval-dispatch wrapper encode-universal-time" {
     const allocator = testing.allocator;
 

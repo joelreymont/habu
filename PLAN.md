@@ -155,7 +155,7 @@
     - [x] `habu-hash-lookup-bench-65e5589f` JIT `gethash` lookup path with hash growth-safe set.
     - [x] `habu-str-search-bench-ec385e1b` JIT `make-string`/`setf char`/`position` benchmark path.
     - [x] `habu-gc-vector-bench-b4995d1c` JIT `make-array`/`aref` benchmark path.
-    - [ ] `habu-mapcar-bench-jit-622b58d5` Add lambda/closure lowering for HOF benchmark calls.
+    - [x] `habu-mapcar-bench-jit-622b58d5` Add mapcar fast paths for 1/2 list arities and preserve variadic semantics.
     - [ ] `habu-reduce-bench-jit-b7c95d90` Add reduce HOF JIT path on top of closure lowering.
     - [ ] `habu-sort-fixnum-bench-f2e5e01d` Add sort comparator lowering for function designators.
     - [ ] `habu-sort-str-bench-a3f88f51` Add string sort path (`symbol_function`/comparator dispatch).

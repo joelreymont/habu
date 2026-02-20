@@ -9,6 +9,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-20)
 
 ### Worked Well
+- Splitting `mapcar` into explicit 1-list and 2-list fast paths in `lib/stdlib.habu:107` removed per-element `apply` argument-list churn on the hot benchmark path while preserving the generic variadic branch for 3+ lists; `bench-comp` `mapcar` dropped from ~190ms to ~63ms (single-iteration run).
+- Making `mapcar2` iterate with `consp` guards and `%map-reverse` (`lib/stdlib.habu:146`) kept dotted-list termination semantics aligned with generic `mapcar` while avoiding an extra `reverse` pass and potential non-cons `car` errors.
+- Locking the new semantics with `src/tests/integration.zig:694` catches regressions in one-list, two-list, and dotted-tail list behavior under stdlib load.
 - Rooting saved package state through VM global root stack (`src/interp/repl.zig:1540`, `src/interp/repl.zig:1548`) eliminated a real generational GC corruption where `COMMON-LISP:*PACKAGE*` was restored from stale local `Value` snapshots, and the full Maxima generational bench now completes (`bench/maxima_workload.zig`).
 - Rooting defmacro transformed definitions across VM execution (`src/interp/repl.zig:3644`, `src/interp/repl.zig:3659`) prevented stale macro-entry payloads when GC runs during macro closure materialization.
 - Adding an opt-in pre-GC global corruption probe (`HABU_TRACE_BAD_GLOBAL_ROOT` in `src/interp/vm.zig:1608`) made the bad root source explicit (`idx=100`, `COMMON-LISP:*PACKAGE*`) and shortened RCA.
@@ -183,6 +186,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Enforcing strict `bench/check.zig` argument handling (`InvalidArgs` returns non-zero) exposed accidental no-op invocations like `bench-check -- --json /tmp/file`.
 
 ### Did Not Work
+- Keeping `mapcar` on a single generic variadic `apply` loop (`lib/stdlib.habu:107` pre-fix) caused severe avoidable overhead for the dominant one-list benchmark shape; arity-specialized paths are required for production throughput.
 - Making `resolveFunctionValue` strict-callable-only without preserving nil-slot bootstrap behavior immediately broke stdlib bootstrapping (`%ASET` unresolved via `(symbol-function '%aset)`); preserving nil/unbound slot fallback while rejecting non-callable non-nil values was required.
 - Caching compiled macro expanders by storing closures in `macro_table` is not safe with current chunk-pool/index patching: cached closures retain expansion-time chunk index assumptions and can mis-dispatch nested lambdas later.
 - "Tagged cached macro" wrappers still failed because macro closures compiled in one expansion context are not context-free artifacts under current VM/compiler coupling (chunk indices + expansion-time global/macro state assumptions).
