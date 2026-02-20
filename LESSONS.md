@@ -1139,3 +1139,13 @@ Environment guard:
 - Assuming JIT fast-return could pop only `fp/sp` was wrong; dynamic stacks (`block/catch/unwind/restart/progv/handler`) must be restored from call-frame metadata.
 - Assuming list-only `length` lowering was safe at `safety 0` was wrong; valid non-list sequences (strings/vectors/arrays) are common and must follow generic CL semantics.
 - Assuming JIT heap globals stay valid across bridge calls was wrong; interpreter/GC activity inside bridge calls invalidates cached bump pointers unless explicitly refreshed.
+
+### Session Notes (2026-02-20, control-stack depth limits)
+
+#### Worked Well
+- Raising VM `MAX_BLOCKS` to frame-scale (`src/interp/vm.zig:529`) removed premature `StackOverflow` in legitimate recursive workloads (e.g., sort merge recursion) without changing call semantics.
+- Locking the behavior with a deep-recursion integration test (`src/tests/integration.zig:132`) prevents regressions where recursion depth >64 incorrectly fails even when frame/stack budgets are still available.
+- Re-running comprehensive bench showed `sort_string` and `intern` now complete instead of warmup overflowing from block-depth exhaustion.
+
+#### Did Not Work
+- Keeping `MAX_BLOCKS` far below `MAX_FRAMES` created an artificial control-stack ceiling that failed real recursive Lisp code before true frame/stack limits were reached.

@@ -126,6 +126,43 @@ test "compileChunk JIT length handles string literals" {
     try testing.expectEqual(@as(i64, 8), result.toFixnum());
 }
 
+test "deep recursive defun does not overflow block stack at 64" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(defun block-depth-sum (n) (if (<= n 0) 0 (+ 1 (block-depth-sum (- n 1)))))",
+    ));
+
+    const result = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(block-depth-sum 96)",
+    ));
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 96), result.toFixnum());
+}
+
 test "compileChunk JIT handles recursive nqueens helper entry copies" {
     if (!build_options.use_hoist) return;
 
