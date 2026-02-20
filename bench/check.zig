@@ -70,6 +70,11 @@ const GcJson = struct {
     gc_nursery_scale: f64 = 1.0,
     gc_nursery_survival: f64 = 0.0,
     gc_nursery_pause_error: f64 = 0.0,
+    gc_debt_bytes: u64 = 0,
+    gc_debt_threshold: u64 = 0,
+    gc_debt_alloc_bytes: u64 = 0,
+    gc_debt_paydown_bytes: u64 = 0,
+    gc_debt_trigger_n: u64 = 0,
 };
 
 const VmBench = struct {
@@ -393,6 +398,18 @@ pub fn main() !void {
         try fail(
             "gc remembered scanned {d} > root vals {d}",
             .{ gc.gc_remembered_scanned, gc.root_vals },
+        );
+    }
+    if (gc.gc_debt_threshold == 0) try fail("gc debt threshold is 0", .{});
+    if (gc.gc_debt_alloc_bytes == 0) try fail("gc debt alloc bytes is 0", .{});
+    if (gc.gc_debt_paydown_bytes == 0) try fail("gc debt paydown bytes is 0", .{});
+    if (gc.gc_debt_bytes > gc.gc_debt_threshold) {
+        try fail("gc debt bytes {d} > threshold {d}", .{ gc.gc_debt_bytes, gc.gc_debt_threshold });
+    }
+    if (gc.gc_debt_paydown_bytes > gc.gc_debt_alloc_bytes + gc.gc_debt_threshold) {
+        try fail(
+            "gc debt paydown {d} > alloc+threshold {d}",
+            .{ gc.gc_debt_paydown_bytes, gc.gc_debt_alloc_bytes + gc.gc_debt_threshold },
         );
     }
     if (gc.gc_nursery_target == 0) try fail("gc gc_nursery_target is 0", .{});

@@ -1059,9 +1059,10 @@ pub const Vm = struct {
 
     /// Allocate a cons cell, running GC if needed
     pub fn allocCons(self: *Vm, car: Value, cdr: Value) error{OutOfMemory}!Value {
-        return if (self.heap.allocCons(car, cdr)) |val| val else |err| switch (err) {
+        var roots = [_]Value{ car, cdr };
+        try self.collectIfDebt(roots[0..]);
+        return if (self.heap.allocCons(roots[0], roots[1])) |val| val else |err| switch (err) {
             error.OutOfMemory => {
-                var roots = [_]Value{ car, cdr };
                 _ = try self.collectGarbageExtra(roots[0..]);
                 return try self.heap.allocCons(roots[0], roots[1]);
             },
@@ -1070,6 +1071,8 @@ pub const Vm = struct {
 
     /// Allocate a vector, running GC if needed
     pub fn allocVector(self: *Vm, length: usize, capacity: usize) error{ OutOfMemory, Overflow }!Value {
+        var none: [0]Value = .{};
+        try self.collectIfDebt(none[0..]);
         return if (self.heap.allocVector(length, capacity)) |val| val else |err| switch (err) {
             error.OutOfMemory => {
                 _ = try self.collectGarbage();
@@ -1116,6 +1119,8 @@ pub const Vm = struct {
     }
 
     pub fn allocStringUninitialized(self: *Vm, length: usize) error{ OutOfMemory, Overflow }!Value {
+        var none: [0]Value = .{};
+        try self.collectIfDebt(none[0..]);
         return if (self.heap.allocStringUninitialized(length)) |val| val else |err| switch (err) {
             error.OutOfMemory => {
                 _ = try self.collectGarbage();
@@ -1144,13 +1149,16 @@ pub const Vm = struct {
 
     /// Allocate a closure, running GC if needed
     pub fn allocClosureWithGC(self: *Vm, code: Value, arity: u32, captures: []Value) error{ OutOfMemory, Overflow }!Value {
-        return if (self.heap.allocClosure(code, arity, captures)) |val| val else |err| switch (err) {
+        if (captures.len > 64) return error.Overflow;
+        var roots_buf: [65]Value = undefined;
+        roots_buf[0] = code;
+        @memcpy(roots_buf[1 .. 1 + captures.len], captures);
+        const roots = roots_buf[0 .. 1 + captures.len];
+        try self.collectIfDebt(roots);
+        @memcpy(captures, roots[1..]);
+
+        return if (self.heap.allocClosure(roots[0], arity, captures)) |val| val else |err| switch (err) {
             error.OutOfMemory => {
-                if (captures.len > 64) return error.Overflow;
-                var roots_buf: [65]Value = undefined;
-                roots_buf[0] = code;
-                @memcpy(roots_buf[1 .. 1 + captures.len], captures);
-                const roots = roots_buf[0 .. 1 + captures.len];
                 _ = try self.collectGarbageExtra(roots);
                 @memcpy(captures, roots[1..]);
                 return try self.heap.allocClosure(roots[0], arity, captures);
@@ -1161,6 +1169,8 @@ pub const Vm = struct {
 
     /// Allocate a hash table, running GC if needed
     pub fn allocHashTable(self: *Vm, capacity: usize, test_type: runtime.HashTest) error{ OutOfMemory, Overflow }!Value {
+        var none: [0]Value = .{};
+        try self.collectIfDebt(none[0..]);
         return self.heap.allocHashTable(capacity, test_type) catch |err| switch (err) {
             error.OutOfMemory => blk: {
                 _ = try self.collectGarbage();
@@ -1399,6 +1409,12 @@ pub const Vm = struct {
     pub fn collectGarbage(self: *Vm) !usize {
         var none: [0]Value = .{};
         return try self.collectGarbageExtra(none[0..]);
+    }
+
+    fn collectIfDebt(self: *Vm, extra_roots: []Value) !void {
+        if (!self.heap.shouldCollectDebt()) return;
+        self.heap.stats.gc_debt_trigger_n +%= 1;
+        _ = try self.collectGarbageExtra(extra_roots);
     }
 
     fn collectGarbageExtra(self: *Vm, extra_roots: []Value) !usize {
@@ -12085,6 +12101,26 @@ test "vm collectGarbage roots slot-tracked values" {
     try testing.expect(vm.pending_block_value.raw != raw_d);
     try testing.expect(vm.current_package.raw != raw_e);
     try testing.expect(vm.handler_stack[0].condition_type.raw != raw_h);
+}
+
+test "vm allocVector triggers debt-driven precollection" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    heap.gc_debt_bytes = heap.gc_debt_threshold_bytes;
+    heap.stats.gc_debt_bytes = heap.gc_debt_bytes;
+    const gc0 = heap.stats.gc_count;
+
+    _ = try vm.allocVector(4, 4);
+
+    try testing.expect(heap.stats.gc_count > gc0);
+    try testing.expect(heap.stats.gc_debt_trigger_n > 0);
 }
 
 test "vm allocCons roots args across GC" {

@@ -29,6 +29,8 @@ comptime {
 const ALLOC_SAMPLE_MASK: usize = 7; // Sample 1/8 allocations.
 const NURSERY_HEADROOM_MIN: usize = 64 * 1024;
 const NURSERY_HEADROOM_SHIFT: u6 = 3; // 12.5% live-set headroom.
+const GC_DEBT_MIN_BYTES: usize = 64 * 1024;
+const GC_DEBT_TARGET_SHIFT: u6 = 2; // 25% of nursery target.
 
 pub const AllocClass = enum(u8) {
     cons,
@@ -338,6 +340,8 @@ pub const Heap = struct {
     nursery_min_bytes: usize,
     nursery_max_bytes: usize,
     nursery_target_pause_ns: u64,
+    gc_debt_bytes: usize,
+    gc_debt_threshold_bytes: usize,
     /// Reusable buffer for building GC root slot lists.
     gc_slots: std.ArrayList(*Value),
     /// Cached internal root slots (symbols/packages/readtables).
@@ -482,6 +486,11 @@ pub const Heap = struct {
         gc_remembered_scanned: usize = 0,
         gc_remembered_runs: usize = 0,
         gc_remembered_marked_cards: usize = 0,
+        gc_debt_bytes: usize = 0,
+        gc_debt_threshold: usize = 0,
+        gc_debt_alloc_bytes: usize = 0,
+        gc_debt_paydown_bytes: usize = 0,
+        gc_debt_trigger_n: usize = 0,
         wb_marks: usize = 0,
         gc_promoted_bytes: usize = 0,
     };
@@ -613,6 +622,12 @@ pub const Heap = struct {
         var nursery_target = aligned_threshold;
         if (nursery_target < nursery_min) nursery_target = nursery_min;
         if (nursery_target > nursery_max) nursery_target = nursery_max;
+        var debt_threshold = std.mem.alignForward(
+            usize,
+            @max(nursery_target >> GC_DEBT_TARGET_SHIFT, @as(usize, GC_DEBT_MIN_BYTES)),
+            ALIGNMENT,
+        );
+        if (debt_threshold > nursery_target) debt_threshold = nursery_target;
 
         const base_promote = std.mem.alignForward(usize, @max(config.generational.promote_threshold, @as(usize, ALIGNMENT)), ALIGNMENT);
         const min_default = @max(base_promote / 8, @as(usize, 64));
@@ -637,6 +652,8 @@ pub const Heap = struct {
             .nursery_min_bytes = nursery_min,
             .nursery_max_bytes = nursery_max,
             .nursery_target_pause_ns = 10_000_000,
+            .gc_debt_bytes = 0,
+            .gc_debt_threshold_bytes = debt_threshold,
             .gc_slots = std.ArrayList(*Value){},
             .gc_internal_slots = std.ArrayList(*Value){},
             .gc_root_sig = .{},
@@ -684,6 +701,7 @@ pub const Heap = struct {
             .kw_format_arguments = Value.nil,
         };
         heap.stats.gc_nursery_target = nursery_target;
+        heap.stats.gc_debt_threshold = debt_threshold;
         heap.stats.gc_promote_threshold = promote_target;
         heap.stats.gc_promote_threshold_min = promote_min;
         heap.stats.gc_promote_threshold_max = promote_max;
@@ -1167,6 +1185,7 @@ pub const Heap = struct {
             }
             self.stats.allocations +%= 1;
             self.stats.bytes_allocated +%= aligned_size;
+            self.recordAllocDebt(aligned_size);
             return @ptrFromInt(out_addr);
         }
 
@@ -1181,6 +1200,7 @@ pub const Heap = struct {
         self.los_alloc_ptr = @ptrFromInt(cur + aligned_size);
         self.stats.allocations +%= 1;
         self.stats.bytes_allocated +%= aligned_size;
+        self.recordAllocDebt(aligned_size);
         return out;
     }
 
@@ -1292,6 +1312,44 @@ pub const Heap = struct {
         return self.bytesUsed() >= self.gc_threshold;
     }
 
+    fn deriveDebtThreshold(self: *const Heap) usize {
+        const base = if (self.layout.mode == .generational) self.nursery_target_bytes else self.gc_threshold;
+        var threshold = std.mem.alignForward(
+            usize,
+            @max(base >> GC_DEBT_TARGET_SHIFT, @as(usize, GC_DEBT_MIN_BYTES)),
+            ALIGNMENT,
+        );
+        if (threshold > base) threshold = base;
+        return threshold;
+    }
+
+    fn refreshDebtThreshold(self: *Heap) void {
+        self.gc_debt_threshold_bytes = self.deriveDebtThreshold();
+        self.stats.gc_debt_threshold = self.gc_debt_threshold_bytes;
+    }
+
+    fn recordAllocDebt(self: *Heap, bytes: usize) void {
+        self.gc_debt_bytes +%= bytes;
+        self.stats.gc_debt_alloc_bytes +%= bytes;
+        self.stats.gc_debt_bytes = self.gc_debt_bytes;
+    }
+
+    pub fn shouldCollectDebt(self: *const Heap) bool {
+        return self.gc_debt_bytes >= self.gc_debt_threshold_bytes;
+    }
+
+    fn settleGcDebt(self: *Heap, copied_bytes: usize, reclaimed_bytes: usize) void {
+        const paydown = @max(copied_bytes, reclaimed_bytes);
+        if (paydown >= self.gc_debt_bytes) {
+            self.gc_debt_bytes = 0;
+        } else {
+            self.gc_debt_bytes -= paydown;
+        }
+        self.stats.gc_debt_paydown_bytes +%= paydown;
+        self.stats.gc_debt_bytes = self.gc_debt_bytes;
+        self.refreshDebtThreshold();
+    }
+
     fn nurseryLiveFloor(self: *const Heap) usize {
         if (self.layout.mode != .generational) return self.gc_threshold;
         const used = self.bytesUsed();
@@ -1319,6 +1377,7 @@ pub const Heap = struct {
         self.stats.gc_nursery_scale = scale;
         self.stats.gc_nursery_survival = survival_ratio;
         self.stats.gc_nursery_pause_error = pause_error;
+        self.refreshDebtThreshold();
     }
 
     pub fn setPromoteThreshold(self: *Heap, target_bytes: usize, scale: f64, success_rate: f64, young_ratio: f64, mature_ratio: f64) void {
@@ -1363,6 +1422,7 @@ pub const Heap = struct {
 
         self.stats.allocations +%= 1;
         self.stats.bytes_allocated +%= aligned_size;
+        self.recordAllocDebt(aligned_size);
 
         return result;
     }
@@ -2786,13 +2846,15 @@ pub const Heap = struct {
         self.stats.gc_build_ns +%= elapsedNsSince(build_start);
 
         // Run GC
-        _ = try self.gc.collectRootSet(self, .{
+        const copied = try self.gc.collectRootSet(self, .{
             .ranges = external_roots.ranges,
             .slots = self.gc_slots.items,
         });
 
         const after = self.bytesUsed();
-        return if (before > after) before - after else 0;
+        const reclaimed = if (before > after) before - after else 0;
+        self.settleGcDebt(copied, reclaimed);
+        return reclaimed;
     }
 
     /// Try to allocate, running GC if needed
@@ -3160,6 +3222,34 @@ test "heap card lanes reduce same-card remembered false positives" {
     try testing.expect(heap.hasMarkedCardInAddrRange(base, base + CARD_GRAIN_SIZE));
     try testing.expect(!heap.hasMarkedCardInAddrRange(base + CARD_GRAIN_SIZE, base + CARD_GRAIN_SIZE * 2));
     try testing.expect(heap.hasMarkedCardInAddrRange(owner_b_addr, owner_b_addr + CARD_GRAIN_SIZE));
+}
+
+test "heap debt tracks allocation pressure and GC paydown" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+        },
+    });
+    defer heap.deinit();
+
+    const payload = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789";
+    const debt0 = heap.stats.gc_debt_bytes;
+    _ = try heap.allocBaseString(payload);
+    try testing.expect(heap.stats.gc_debt_bytes > debt0);
+    try testing.expect(heap.stats.gc_debt_alloc_bytes > 0);
+    try testing.expect(heap.stats.gc_debt_threshold > 0);
+
+    const debt_before_gc = heap.stats.gc_debt_bytes;
+    var roots = [_]Value{};
+    _ = try heap.collectGarbage(&roots);
+    try testing.expect(heap.stats.gc_debt_paydown_bytes > 0);
+    try testing.expect(heap.stats.gc_debt_bytes <= debt_before_gc);
+    try testing.expect(heap.stats.gc_debt_bytes <= heap.stats.gc_debt_threshold);
 }
 
 test "heap collectGarbage reuses gc_slots buffer" {

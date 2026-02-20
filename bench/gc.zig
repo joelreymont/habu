@@ -139,6 +139,9 @@ pub fn main() !void {
     const remembered_scanned0 = heap.stats.gc_remembered_scanned;
     const remembered_runs0 = heap.stats.gc_remembered_runs;
     const remembered_cards0 = heap.stats.gc_remembered_marked_cards;
+    const debt_alloc0 = heap.stats.gc_debt_alloc_bytes;
+    const debt_paydown0 = heap.stats.gc_debt_paydown_bytes;
+    const debt_trigger0 = heap.stats.gc_debt_trigger_n;
     const promoted0 = heap.stats.gc_promoted_bytes;
     const wb0 = heap.stats.wb_marks;
     const sample_n0 = heap.stats.alloc_sample_n;
@@ -183,6 +186,10 @@ pub fn main() !void {
     const remembered_scanned1 = heap.stats.gc_remembered_scanned;
     const remembered_runs1 = heap.stats.gc_remembered_runs;
     const remembered_cards1 = heap.stats.gc_remembered_marked_cards;
+    const debt_bytes1 = heap.stats.gc_debt_bytes;
+    const debt_alloc1 = heap.stats.gc_debt_alloc_bytes;
+    const debt_paydown1 = heap.stats.gc_debt_paydown_bytes;
+    const debt_trigger1 = heap.stats.gc_debt_trigger_n;
     const promoted1 = heap.stats.gc_promoted_bytes;
     const wb1 = heap.stats.wb_marks;
     const sample_n1 = heap.stats.alloc_sample_n;
@@ -230,6 +237,9 @@ pub fn main() !void {
     const remembered_scanned_delta = remembered_scanned1 - remembered_scanned0;
     const remembered_runs_delta = remembered_runs1 - remembered_runs0;
     const remembered_cards_delta = remembered_cards1 - remembered_cards0;
+    const debt_alloc_delta = debt_alloc1 - debt_alloc0;
+    const debt_paydown_delta = debt_paydown1 - debt_paydown0;
+    const debt_trigger_delta = debt_trigger1 - debt_trigger0;
     const promoted_delta = promoted1 - promoted0;
     const wb_delta = wb1 - wb0;
     const sample_n_delta = sample_n1 - sample_n0;
@@ -305,6 +315,8 @@ pub fn main() !void {
     const promote_success_rate = heap.stats.gc_promote_success_rate;
     const promote_young_ratio = heap.stats.gc_promote_young_ratio;
     const promote_mature_ratio = heap.stats.gc_promote_mature_ratio;
+    const debt_bytes = debt_bytes1;
+    const debt_threshold = heap.stats.gc_debt_threshold;
     const sample_cons = sample_class_delta[@intFromEnum(heap_mod.AllocClass.cons)];
     const sample_symbol = sample_class_delta[@intFromEnum(heap_mod.AllocClass.symbol)];
     const sample_keyword = sample_class_delta[@intFromEnum(heap_mod.AllocClass.keyword)];
@@ -344,6 +356,11 @@ pub fn main() !void {
             .gc_remembered_scanned = remembered_scanned_delta,
             .gc_remembered_runs = remembered_runs_delta,
             .gc_remembered_marked_cards = remembered_cards_delta,
+            .gc_debt_bytes = debt_bytes,
+            .gc_debt_threshold = debt_threshold,
+            .gc_debt_alloc_bytes = debt_alloc_delta,
+            .gc_debt_paydown_bytes = debt_paydown_delta,
+            .gc_debt_trigger_n = debt_trigger_delta,
             .promoted_bytes = promoted_delta,
             .wb_marks = wb_delta,
             .tenured_live = tenured_live,
@@ -456,6 +473,10 @@ pub fn main() !void {
     try w.print(
         "  remembered scan: scanned {d}, runs {d}, marked_cards {d}\n",
         .{ remembered_scanned_delta, remembered_runs_delta, remembered_cards_delta },
+    );
+    try w.print(
+        "  gc debt: bytes {d}/{d}, alloc {d}, paydown {d}, triggers {d}\n",
+        .{ debt_bytes, debt_threshold, debt_alloc_delta, debt_paydown_delta, debt_trigger_delta },
     );
     try w.print("  promoted bytes: {d}\n", .{promoted_delta});
     try w.print("  write-barrier marks: {d}\n", .{wb_delta});

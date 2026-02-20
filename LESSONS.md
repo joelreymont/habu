@@ -48,6 +48,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding explicit remembered-set telemetry counters (`src/runtime/heap.zig:481`, `src/runtime/gc.zig:450`) plus exporting them in GC bench payloads (`bench/gc.zig:337`) made RSet scan pressure visible and regression-checkable.
 - Extending `bench/check` + `tools/gc-compare` with remembered-set invariants/gates (`bench/check.zig:380`, `tools/gc-compare:33`, `tools/gc-compare:483`) locked both correctness (non-zero marked/runs/scans) and efficiency (`scan_per_mark`) in automated validation loops.
 - Locking runtime coverage with a focused GC regression (`src/runtime/gc.zig:1822`) ensured remembered-set telemetry is exercised and monotonic under real LOS owner + young child mutation patterns.
+- Adding heap-level GC debt accounting (`src/runtime/heap.zig:338`, `src/runtime/heap.zig:1329`, `src/runtime/heap.zig:2829`) plus VM debt-triggered precollection hooks (`src/interp/vm.zig:1062`, `src/interp/vm.zig:1410`) converted allocation pressure into explicit, testable counters instead of implicit OOM-only behavior.
+- Exporting debt telemetry through `bench/gc` and enforcing it in `bench/check`/`tools/gc-compare` (`bench/gc.zig:337`, `bench/check.zig:70`, `tools/gc-compare:330`) created a closed verification loop for debt bytes, paydown, and trigger quality.
 
 ### Did Not Work
 - Assuming promotion-success counters would update only when tenured sweep reclaimed something was wrong; the old early-return path in `sweepTenured` skipped success accounting for all-live sets.
@@ -67,6 +69,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - In this environment `zig build bench-check -- --json` can stall with sleeping `bench_check`/build processes and no progress output; targeted `-Dtest-filter` gates plus `tools/gc-compare` JSON checks are the reliable verification path until harness stability is fixed.
 - Using only per-object `hasMarkedCardInAddrRange` checks across all old objects is still too cache-cold for remembered scans at scale; run coalescing + fast run filtering should be the baseline before deeper RSet tuning.
 - Running `python -m py_compile` in-tree drops `tools/__pycache__` artifacts; remove these before commit to keep generated files out of history.
+- Debt-triggered precollection is safe for `Value` roots but not raw heap-backed byte slices (`allocString`/`intern`/`allocSymbol`); those paths still need explicit stable-copy handling before enabling proactive debt collections there.
 
 ## Session Notes (2026-02-18)
 
