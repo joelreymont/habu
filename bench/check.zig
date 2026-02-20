@@ -75,6 +75,12 @@ const GcJson = struct {
     gc_debt_alloc_bytes: u64 = 0,
     gc_debt_paydown_bytes: u64 = 0,
     gc_debt_trigger_n: u64 = 0,
+    gc_debt_skip_n: u64 = 0,
+    gc_debt_score: f64 = 0.0,
+    gc_debt_ratio: f64 = 0.0,
+    gc_debt_occupancy: f64 = 0.0,
+    gc_debt_survival: f64 = 0.0,
+    gc_debt_pause_error: f64 = 0.0,
 };
 
 const VmBench = struct {
@@ -411,6 +417,21 @@ pub fn main() !void {
             "gc debt paydown {d} > alloc+threshold {d}",
             .{ gc.gc_debt_paydown_bytes, gc.gc_debt_alloc_bytes + gc.gc_debt_threshold },
         );
+    }
+    if (gc.gc_debt_score < 0.0 or gc.gc_debt_score > 4.0) {
+        try fail("gc debt score {d:.4} outside [0,4]", .{gc.gc_debt_score});
+    }
+    if (gc.gc_debt_ratio < 0.0 or gc.gc_debt_ratio > 4.0) {
+        try fail("gc debt ratio {d:.4} outside [0,4]", .{gc.gc_debt_ratio});
+    }
+    if (gc.gc_debt_occupancy < 0.0 or gc.gc_debt_occupancy > 2.0) {
+        try fail("gc debt occupancy {d:.4} outside [0,2]", .{gc.gc_debt_occupancy});
+    }
+    if (gc.gc_debt_survival < 0.0 or gc.gc_debt_survival > 1.5) {
+        try fail("gc debt survival {d:.4} outside [0,1.5]", .{gc.gc_debt_survival});
+    }
+    if (gc.gc_debt_pause_error < -1.0 or gc.gc_debt_pause_error > 2.0) {
+        try fail("gc debt pause error {d:.4} outside [-1,2]", .{gc.gc_debt_pause_error});
     }
     if (gc.gc_nursery_target == 0) try fail("gc gc_nursery_target is 0", .{});
     if (gc.gc_nursery_target > gc.heap_bytes) {

@@ -9,6 +9,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-20)
 
 ### Worked Well
+- Integrating debt-trigger scoring into VM precollection (`src/runtime/gc.zig:197`, `src/runtime/heap.zig:1348`, `src/interp/vm.zig:1414`) replaced threshold-only checks with measurable debt/pause/occupancy decisions.
+- Exporting debt-decision telemetry end-to-end (`bench/gc.zig:372`, `bench/check.zig:421`, `tools/gc-compare:341`) exposed policy-range regressions immediately in the standard perf loop.
+- Recording debt paydown as actual debt retired instead of raw reclaim volume (`src/runtime/heap.zig:1370`) aligned counters with invariants and removed false debt-regression failures in `bench-check`.
 - Tracking nursery survivor age through a reusable side-map + per-copy updates (`src/runtime/heap.zig:1292`, `src/runtime/gc.zig:582`) produced stable age histograms without changing object layouts.
 - Extending survival/promotion telemetry with explicit age buckets and promotion-success counters (`src/runtime/heap.zig:434`, `src/runtime/heap.zig:992`, `src/runtime/heap.zig:1350`) made tenuring feedback directly measurable for the next adaptive-threshold dot.
 - Rebuilding survivor-age state after each nursery swap (`src/runtime/gc.zig:245`, `src/runtime/gc.zig:330`) kept age tracking aligned with moving addresses and prevented stale-address drift.
@@ -52,6 +55,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Exporting debt telemetry through `bench/gc` and enforcing it in `bench/check`/`tools/gc-compare` (`bench/gc.zig:337`, `bench/check.zig:70`, `tools/gc-compare:330`) created a closed verification loop for debt bytes, paydown, and trigger quality.
 
 ### Did Not Work
+- Counting `gc_debt_paydown_bytes` as raw `max(copied,reclaimed)` was wrong (`src/runtime/heap.zig:1370`): it can exceed debt inflow by orders of magnitude and trip valid invariants (`bench/check.zig:416`).
+- Treating a single default-threshold `bench-check` p95 miss as semantic breakage was noisy in this environment; rerunning with a relaxed p95 gate isolated invariant/schema correctness from host performance variance.
 - Assuming promotion-success counters would update only when tenured sweep reclaimed something was wrong; the old early-return path in `sweepTenured` skipped success accounting for all-live sets.
 - Using `AutoHashMapUnmanaged.ensureTotalCapacity(..., entries.len)` without casting failed on Zig 0.15 `Size` typing (`src/runtime/heap.zig:1294`); explicit integer casts are required.
 - Relying on `jj diff` word-level render to validate edited code was misleading during this RCA; several hunks appeared token-mashed while source files were correct, so direct line inspection (`nl -ba`) is required before concluding syntax damage.

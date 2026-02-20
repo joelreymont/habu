@@ -77,7 +77,7 @@
         - [x] `habu-rset-verify-correctness-3010858a` RSet: verify correctness and speed. Depends on `habu-rset-add-scan-13787e2c`.
       - [ ] `habu-implement-gc-debt-bb3f3f6e` Implement GC debt trigger model with pause targets. Depends on `habu-optimize-remembered-set-4ebdf466`.
         - [x] `habu-debt-account-allocation-07cb1149` Debt: account allocation pressure.
-        - [ ] `habu-debt-integrate-trigger-c402efa2` Debt: integrate trigger decisions. Depends on `habu-debt-account-allocation-07cb1149`.
+        - [x] `habu-debt-integrate-trigger-c402efa2` Debt: integrate trigger decisions. Depends on `habu-debt-account-allocation-07cb1149`.
         - [ ] `habu-debt-tune-coefficients-d2f31c52` Debt: tune coefficients with benches. Depends on `habu-debt-integrate-trigger-c402efa2`.
       - [ ] `habu-add-incremental-major-c1faa29a` Add incremental major marking with pause budget slicing. Depends on `habu-implement-gc-debt-bb3f3f6e`.
         - [ ] `habu-major-gc-incremental-068b1148` Major GC: incremental mark state machine.

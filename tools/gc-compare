@@ -267,6 +267,10 @@ def eval_level(metrics, level):
         "actual": metrics["gc_debt_in_bounds"],
         "pass": bool(metrics["gc_debt_in_bounds"]),
     }
+    out["gc_debt_policy_in_bounds"] = {
+        "actual": metrics["gc_debt_policy_in_bounds"],
+        "pass": bool(metrics["gc_debt_policy_in_bounds"]),
+    }
     if "promote_waste_rate_max" in level:
         out["gc_promote_waste_rate"] = {
             "actual": metrics["gc_promote_waste_rate"],
@@ -334,12 +338,30 @@ debt_threshold = int(habu.get("gc_debt_threshold", 0))
 debt_alloc_bytes = int(habu.get("gc_debt_alloc_bytes", 0))
 debt_paydown_bytes = int(habu.get("gc_debt_paydown_bytes", 0))
 debt_trigger_n = int(habu.get("gc_debt_trigger_n", 0))
+debt_skip_n = int(habu.get("gc_debt_skip_n", 0))
+debt_score = float(habu.get("gc_debt_score", 0.0))
+debt_ratio = float(habu.get("gc_debt_ratio", 0.0))
+debt_occupancy = float(habu.get("gc_debt_occupancy", 0.0))
+debt_survival = float(habu.get("gc_debt_survival", 0.0))
+debt_pause_error = float(habu.get("gc_debt_pause_error", 0.0))
 promote_waste_rate = promote_rate * max(0.0, 1.0 - promote_success_rate)
 promote_scale_dev = abs(promote_scale - 1.0)
 remembered_scan_per_mark = (
     float(remembered_scanned) / float(max(remembered_cards, 1))
 )
 debt_in_bounds = debt_threshold > 0 and debt_bytes <= debt_threshold
+debt_policy_in_bounds = (
+    debt_score >= 0.0
+    and debt_score <= 4.0
+    and debt_ratio >= 0.0
+    and debt_ratio <= 4.0
+    and debt_occupancy >= 0.0
+    and debt_occupancy <= 2.0
+    and debt_survival >= 0.0
+    and debt_survival <= 1.5
+    and debt_pause_error >= -1.0
+    and debt_pause_error <= 2.0
+)
 promote_threshold_in_bounds = (
     promote_threshold_min > 0
     and promote_threshold_max >= promote_threshold_min
@@ -384,7 +406,14 @@ metrics = {
     "gc_debt_alloc_bytes": debt_alloc_bytes,
     "gc_debt_paydown_bytes": debt_paydown_bytes,
     "gc_debt_trigger_n": debt_trigger_n,
+    "gc_debt_skip_n": debt_skip_n,
+    "gc_debt_score": debt_score,
+    "gc_debt_ratio": debt_ratio,
+    "gc_debt_occupancy": debt_occupancy,
+    "gc_debt_survival": debt_survival,
+    "gc_debt_pause_error": debt_pause_error,
     "gc_debt_in_bounds": debt_in_bounds,
+    "gc_debt_policy_in_bounds": debt_policy_in_bounds,
     "gc_nursery_target": int(habu.get("gc_nursery_target", 0)),
     "gc_nursery_scale": float(habu.get("gc_nursery_scale", 1.0)),
     "gc_nursery_survival": float(habu.get("gc_nursery_survival", 0.0)),
@@ -531,13 +560,24 @@ print(
 print()
 print("GC debt telemetry:")
 print(
-    "  debt={db}/{dt} alloc={da} paydown={dp} triggers={tr} in_bounds={ok}".format(
+    "  debt={db}/{dt} alloc={da} paydown={dp} triggers={tr} skips={sk} in_bounds={ok}".format(
         db=metrics["gc_debt_bytes"],
         dt=metrics["gc_debt_threshold"],
         da=metrics["gc_debt_alloc_bytes"],
         dp=metrics["gc_debt_paydown_bytes"],
         tr=metrics["gc_debt_trigger_n"],
+        sk=metrics["gc_debt_skip_n"],
         ok=str(metrics["gc_debt_in_bounds"]).lower(),
+    )
+)
+print(
+    "  policy: score={sc:.4f} ratio={dr:.4f} occ={oc:.4f} surv={sv:.4f} pause_err={pe:.4f} in_bounds={ok}".format(
+        sc=metrics["gc_debt_score"],
+        dr=metrics["gc_debt_ratio"],
+        oc=metrics["gc_debt_occupancy"],
+        sv=metrics["gc_debt_survival"],
+        pe=metrics["gc_debt_pause_error"],
+        ok=str(metrics["gc_debt_policy_in_bounds"]).lower(),
     )
 )
 print()

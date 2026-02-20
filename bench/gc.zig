@@ -142,6 +142,7 @@ pub fn main() !void {
     const debt_alloc0 = heap.stats.gc_debt_alloc_bytes;
     const debt_paydown0 = heap.stats.gc_debt_paydown_bytes;
     const debt_trigger0 = heap.stats.gc_debt_trigger_n;
+    const debt_skip0 = heap.stats.gc_debt_skip_n;
     const promoted0 = heap.stats.gc_promoted_bytes;
     const wb0 = heap.stats.wb_marks;
     const sample_n0 = heap.stats.alloc_sample_n;
@@ -190,6 +191,12 @@ pub fn main() !void {
     const debt_alloc1 = heap.stats.gc_debt_alloc_bytes;
     const debt_paydown1 = heap.stats.gc_debt_paydown_bytes;
     const debt_trigger1 = heap.stats.gc_debt_trigger_n;
+    const debt_skip1 = heap.stats.gc_debt_skip_n;
+    const debt_score1 = heap.stats.gc_debt_score;
+    const debt_ratio1 = heap.stats.gc_debt_ratio;
+    const debt_occupancy1 = heap.stats.gc_debt_occupancy;
+    const debt_survival1 = heap.stats.gc_debt_survival;
+    const debt_pause_error1 = heap.stats.gc_debt_pause_error;
     const promoted1 = heap.stats.gc_promoted_bytes;
     const wb1 = heap.stats.wb_marks;
     const sample_n1 = heap.stats.alloc_sample_n;
@@ -240,6 +247,7 @@ pub fn main() !void {
     const debt_alloc_delta = debt_alloc1 - debt_alloc0;
     const debt_paydown_delta = debt_paydown1 - debt_paydown0;
     const debt_trigger_delta = debt_trigger1 - debt_trigger0;
+    const debt_skip_delta = debt_skip1 - debt_skip0;
     const promoted_delta = promoted1 - promoted0;
     const wb_delta = wb1 - wb0;
     const sample_n_delta = sample_n1 - sample_n0;
@@ -361,6 +369,12 @@ pub fn main() !void {
             .gc_debt_alloc_bytes = debt_alloc_delta,
             .gc_debt_paydown_bytes = debt_paydown_delta,
             .gc_debt_trigger_n = debt_trigger_delta,
+            .gc_debt_skip_n = debt_skip_delta,
+            .gc_debt_score = debt_score1,
+            .gc_debt_ratio = debt_ratio1,
+            .gc_debt_occupancy = debt_occupancy1,
+            .gc_debt_survival = debt_survival1,
+            .gc_debt_pause_error = debt_pause_error1,
             .promoted_bytes = promoted_delta,
             .wb_marks = wb_delta,
             .tenured_live = tenured_live,
@@ -477,6 +491,10 @@ pub fn main() !void {
     try w.print(
         "  gc debt: bytes {d}/{d}, alloc {d}, paydown {d}, triggers {d}\n",
         .{ debt_bytes, debt_threshold, debt_alloc_delta, debt_paydown_delta, debt_trigger_delta },
+    );
+    try w.print(
+        "  gc debt policy: skips {d}, score {d:.4}, ratio {d:.4}, occ {d:.4}, surv {d:.4}, pause_err {d:.4}\n",
+        .{ debt_skip_delta, debt_score1, debt_ratio1, debt_occupancy1, debt_survival1, debt_pause_error1 },
     );
     try w.print("  promoted bytes: {d}\n", .{promoted_delta});
     try w.print("  write-barrier marks: {d}\n", .{wb_delta});

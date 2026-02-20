@@ -68,6 +68,24 @@ pub const TenuringPolicyOutput = struct {
     mature_survive_ratio: f64,
 };
 
+pub const DebtTriggerInput = struct {
+    debt_bytes: usize,
+    debt_threshold: usize,
+    nursery_used_bytes: usize,
+    nursery_target_bytes: usize,
+    survival_ratio: f64,
+    pause_error: f64,
+};
+
+pub const DebtTriggerOutput = struct {
+    should_collect: bool,
+    score: f64,
+    debt_ratio: f64,
+    occupancy_ratio: f64,
+    survival_ratio: f64,
+    pause_error: f64,
+};
+
 fn clampf(v: f64, lo: f64, hi: f64) f64 {
     if (v < lo) return lo;
     if (v > hi) return hi;
@@ -168,6 +186,42 @@ pub fn deriveTenuringPolicy(in: TenuringPolicyInput) TenuringPolicyOutput {
         .success_rate = success_rate,
         .young_promote_ratio = young_ratio,
         .mature_survive_ratio = mature_ratio,
+    };
+}
+
+/// Derive whether allocation debt should trigger a pre-collection.
+/// Control law goals:
+/// - trigger early when debt exceeds budget and occupancy is rising,
+/// - back off when recent pauses are already over budget,
+/// - hard-trigger for extreme debt regardless of pause state.
+pub fn deriveDebtTrigger(in: DebtTriggerInput) DebtTriggerOutput {
+    const threshold = @max(in.debt_threshold, @as(usize, 1));
+    const target = @max(in.nursery_target_bytes, @as(usize, 1));
+    const debt_ratio = clampf(
+        @as(f64, @floatFromInt(in.debt_bytes)) / @as(f64, @floatFromInt(threshold)),
+        0.0,
+        4.0,
+    );
+    const occupancy_ratio = clampf(
+        @as(f64, @floatFromInt(in.nursery_used_bytes)) / @as(f64, @floatFromInt(target)),
+        0.0,
+        2.0,
+    );
+    const survival_ratio = clampf(in.survival_ratio, 0.0, 1.5);
+    const pause_error = clampf(in.pause_error, -1.0, 2.0);
+
+    var score = 0.70 * debt_ratio + 0.20 * occupancy_ratio + 0.10 * survival_ratio;
+    if (pause_error > 0.0) score -= 0.20 * @min(pause_error, 1.0);
+    score = clampf(score, 0.0, 4.0);
+
+    const should_collect = debt_ratio >= 1.25 or (debt_ratio >= 1.0 and score >= 0.65) or (debt_ratio >= 0.85 and score >= 0.95);
+    return .{
+        .should_collect = should_collect,
+        .score = score,
+        .debt_ratio = debt_ratio,
+        .occupancy_ratio = occupancy_ratio,
+        .survival_ratio = survival_ratio,
+        .pause_error = pause_error,
     };
 }
 
@@ -1481,6 +1535,51 @@ test "nursery policy clamps to min and max bounds" {
         .target_pause_ns = 50_000_000,
     });
     try testing.expectEqual(@as(usize, 1536 * 1024), high.target_bytes);
+}
+
+test "debt trigger collects when debt reaches threshold" {
+    const testing = std.testing;
+
+    const out = deriveDebtTrigger(.{
+        .debt_bytes = 1024 * 1024,
+        .debt_threshold = 1024 * 1024,
+        .nursery_used_bytes = 256 * 1024,
+        .nursery_target_bytes = 1024 * 1024,
+        .survival_ratio = 0.25,
+        .pause_error = 0.0,
+    });
+    try testing.expect(out.should_collect);
+    try testing.expect(out.debt_ratio >= 1.0);
+}
+
+test "debt trigger backs off under high pause pressure near threshold" {
+    const testing = std.testing;
+
+    const out = deriveDebtTrigger(.{
+        .debt_bytes = 1024 * 1024,
+        .debt_threshold = 1024 * 1024,
+        .nursery_used_bytes = 64 * 1024,
+        .nursery_target_bytes = 1024 * 1024,
+        .survival_ratio = 0.90,
+        .pause_error = 1.0,
+    });
+    try testing.expect(!out.should_collect);
+    try testing.expect(out.score < 0.65);
+}
+
+test "debt trigger hard-collects on extreme debt" {
+    const testing = std.testing;
+
+    const out = deriveDebtTrigger(.{
+        .debt_bytes = 2 * 1024 * 1024,
+        .debt_threshold = 1024 * 1024,
+        .nursery_used_bytes = 32 * 1024,
+        .nursery_target_bytes = 1024 * 1024,
+        .survival_ratio = 1.0,
+        .pause_error = 1.0,
+    });
+    try testing.expect(out.should_collect);
+    try testing.expect(out.debt_ratio >= 1.25);
 }
 
 test "tenuring policy raises threshold for young low-success promotions" {

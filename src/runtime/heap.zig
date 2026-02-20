@@ -13,7 +13,8 @@ const Value = @import("value.zig").Value;
 const Tag = @import("value.zig").Tag;
 const objects = @import("objects.zig");
 const Symbol = objects.Symbol;
-const GC = @import("gc.zig").GC;
+const gc_mod = @import("gc.zig");
+const GC = gc_mod.GC;
 const roots_mod = @import("roots.zig");
 
 pub const ALIGNMENT: usize = 16;
@@ -491,6 +492,12 @@ pub const Heap = struct {
         gc_debt_alloc_bytes: usize = 0,
         gc_debt_paydown_bytes: usize = 0,
         gc_debt_trigger_n: usize = 0,
+        gc_debt_skip_n: usize = 0,
+        gc_debt_score: f64 = 0.0,
+        gc_debt_ratio: f64 = 0.0,
+        gc_debt_occupancy: f64 = 0.0,
+        gc_debt_survival: f64 = 0.0,
+        gc_debt_pause_error: f64 = 0.0,
         wb_marks: usize = 0,
         gc_promoted_bytes: usize = 0,
     };
@@ -1338,14 +1345,38 @@ pub const Heap = struct {
         return self.gc_debt_bytes >= self.gc_debt_threshold_bytes;
     }
 
+    pub fn shouldCollectDebtNow(self: *Heap) bool {
+        const decision = gc_mod.deriveDebtTrigger(.{
+            .debt_bytes = self.gc_debt_bytes,
+            .debt_threshold = self.gc_debt_threshold_bytes,
+            .nursery_used_bytes = self.bytesUsed(),
+            .nursery_target_bytes = self.nursery_target_bytes,
+            .survival_ratio = self.stats.gc_nursery_survival,
+            .pause_error = self.stats.gc_nursery_pause_error,
+        });
+        self.stats.gc_debt_score = decision.score;
+        self.stats.gc_debt_ratio = decision.debt_ratio;
+        self.stats.gc_debt_occupancy = decision.occupancy_ratio;
+        self.stats.gc_debt_survival = decision.survival_ratio;
+        self.stats.gc_debt_pause_error = decision.pause_error;
+        if (decision.should_collect) {
+            self.stats.gc_debt_trigger_n +%= 1;
+        } else {
+            self.stats.gc_debt_skip_n +%= 1;
+        }
+        return decision.should_collect;
+    }
+
     fn settleGcDebt(self: *Heap, copied_bytes: usize, reclaimed_bytes: usize) void {
         const paydown = @max(copied_bytes, reclaimed_bytes);
-        if (paydown >= self.gc_debt_bytes) {
+        const debt_before = self.gc_debt_bytes;
+        const debt_paid = @min(paydown, debt_before);
+        if (paydown >= debt_before) {
             self.gc_debt_bytes = 0;
         } else {
             self.gc_debt_bytes -= paydown;
         }
-        self.stats.gc_debt_paydown_bytes +%= paydown;
+        self.stats.gc_debt_paydown_bytes +%= debt_paid;
         self.stats.gc_debt_bytes = self.gc_debt_bytes;
         self.refreshDebtThreshold();
     }

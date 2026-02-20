@@ -1412,8 +1412,7 @@ pub const Vm = struct {
     }
 
     fn collectIfDebt(self: *Vm, extra_roots: []Value) !void {
-        if (!self.heap.shouldCollectDebt()) return;
-        self.heap.stats.gc_debt_trigger_n +%= 1;
+        if (!self.heap.shouldCollectDebtNow()) return;
         _ = try self.collectGarbageExtra(extra_roots);
     }
 
