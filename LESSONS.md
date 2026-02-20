@@ -39,6 +39,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Driving tenuring as a first-class control law in `deriveTenuringPolicy` (`src/runtime/gc.zig:126`) and applying it every minor cycle (`src/runtime/gc.zig:273`) made promotion threshold behavior measurable, bounded, and non-oscillatory without workload-specific special cases.
 - Capturing adaptive tenuring bounds/ratios directly in heap stats (`src/runtime/heap.zig:454`, `src/runtime/heap.zig:1242`) and exporting/validating them in bench tooling (`bench/gc.zig:366`, `bench/check.zig:353`) caught policy regressions as schema/invariant failures instead of latent perf drift.
 - Locking policy behavior with dedicated GC tests (`src/runtime/gc.zig:1457`, `src/runtime/gc.zig:1510`) provided deterministic red/green coverage for raise/lower/deadband decisions and runtime threshold updates.
+- Extending `tools/gc-compare` with tenuring guard metrics/gates (`tools/gc-compare:38`, `tools/gc-compare:256`, `tools/gc-compare:460`) added machine-checkable regression signals for promotion waste and policy-scale drift alongside pause/throughput parity checks.
+- Adding a deterministic generational stress regression in integration (`src/tests/integration.zig:7173`) locked adaptive tenuring bounds (`threshold/min/max`, scale, ratio ranges) and ensured threshold movement under repeated promote-and-sweep cycles.
 
 ### Did Not Work
 - Assuming promotion-success counters would update only when tenured sweep reclaimed something was wrong; the old early-return path in `sweepTenured` skipped success accounting for all-live sets.
@@ -54,6 +56,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - A less aggressive nursery shrink law experiment in `src/runtime/gc.zig` increased Maxima stressed-runtime totals (~75.7s baseline to ~78.2s at `scale=4,nursery=24`), so benchmark-driven tuning must keep the original coefficients until tenuring/debt controls land.
 - Very small nursery settings (`tools/maxima-bench --nursery-mb=8..16`) exposed real crash paths under GC pressure (compiler/runtime stale-pointer faults), so treat those runs as RCA repros, not tuning datapoints.
 - Enforcing `tenured_live > 0 => tenured_bytes > 0` as a strict benchmark invariant was incorrect for current allocator accounting (`bench/check.zig:390`): `tenured_bytes` tracks bump-usage, not exact live-bytes, so hard coupling generated false failures on valid runs.
+- Repl/stdlib-driven tenuring stress tests were brittle for this gate (fixture-sensitive OOM and promotion-starvation); heap-driven promote/drop cycles in `src/tests/integration.zig:7173` are a better deterministic guard for policy regression checks.
 
 ## Session Notes (2026-02-18)
 

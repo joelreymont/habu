@@ -35,18 +35,24 @@ PARITY_GATES = {
             "p95_pause_ratio_min": 0.2224,
             "throughput_ratio_min": 0.1340,
             "rss_ratio_max": 4.0,
+            "promote_waste_rate_max": 0.05,
+            "promote_scale_dev_max": 0.35,
         },
         "competitive": {
             "avg_pause_ratio_min": 0.50,
             "p95_pause_ratio_min": 0.50,
             "throughput_ratio_min": 0.50,
             "rss_ratio_max": 2.0,
+            "promote_waste_rate_max": 0.03,
+            "promote_scale_dev_max": 0.30,
         },
         "parity": {
             "avg_pause_ratio_min": 1.00,
             "p95_pause_ratio_min": 1.00,
             "throughput_ratio_min": 1.00,
             "rss_ratio_max": 1.20,
+            "promote_waste_rate_max": 0.02,
+            "promote_scale_dev_max": 0.25,
         },
     },
     "vs_ocaml": {
@@ -55,18 +61,24 @@ PARITY_GATES = {
             "p95_pause_ratio_min": 0.2224,
             "throughput_ratio_min": 0.1340,
             "rss_ratio_max": 4.0,
+            "promote_waste_rate_max": 0.05,
+            "promote_scale_dev_max": 0.35,
         },
         "competitive": {
             "avg_pause_ratio_min": 0.50,
             "p95_pause_ratio_min": 0.50,
             "throughput_ratio_min": 0.50,
             "rss_ratio_max": 2.0,
+            "promote_waste_rate_max": 0.03,
+            "promote_scale_dev_max": 0.30,
         },
         "parity": {
             "avg_pause_ratio_min": 1.00,
             "p95_pause_ratio_min": 1.00,
             "throughput_ratio_min": 1.00,
             "rss_ratio_max": 1.20,
+            "promote_waste_rate_max": 0.02,
+            "promote_scale_dev_max": 0.25,
         },
     },
 }
@@ -241,6 +253,22 @@ def eval_level(metrics, level):
         "target_max": level["rss_ratio_max"],
         "pass": (rss_actual is not None and rss_actual <= level["rss_ratio_max"]),
     }
+    out["gc_promote_threshold_in_bounds"] = {
+        "actual": metrics["gc_promote_threshold_in_bounds"],
+        "pass": bool(metrics["gc_promote_threshold_in_bounds"]),
+    }
+    if "promote_waste_rate_max" in level:
+        out["gc_promote_waste_rate"] = {
+            "actual": metrics["gc_promote_waste_rate"],
+            "target_max": level["promote_waste_rate_max"],
+            "pass": metrics["gc_promote_waste_rate"] <= level["promote_waste_rate_max"],
+        }
+    if "promote_scale_dev_max" in level:
+        out["gc_promote_scale_dev"] = {
+            "actual": metrics["gc_promote_scale_dev"],
+            "target_max": level["promote_scale_dev_max"],
+            "pass": metrics["gc_promote_scale_dev"] <= level["promote_scale_dev_max"],
+        }
     out["pass"] = all(m["pass"] for m in out.values() if isinstance(m, dict) and "pass" in m)
     return out
 
@@ -275,6 +303,21 @@ hot_name, hot_n = hot_alloc_class(habu)
 survive_bytes = int(habu.get("gc_survive_bytes", 0))
 promote_bytes = int(habu.get("gc_promote_bytes", 0))
 promote_rate = (promote_bytes / survive_bytes) if survive_bytes > 0 else 0.0
+promote_threshold = int(habu.get("gc_promote_threshold", 0))
+promote_threshold_min = int(habu.get("gc_promote_threshold_min", 0))
+promote_threshold_max = int(habu.get("gc_promote_threshold_max", 0))
+promote_scale = float(habu.get("gc_promote_scale", 1.0))
+promote_success_rate = float(habu.get("gc_promote_success_rate", 0.0))
+promote_young_ratio = float(habu.get("gc_promote_young_ratio", 0.0))
+promote_mature_ratio = float(habu.get("gc_promote_mature_ratio", 0.0))
+promote_waste_rate = promote_rate * max(0.0, 1.0 - promote_success_rate)
+promote_scale_dev = abs(promote_scale - 1.0)
+promote_threshold_in_bounds = (
+    promote_threshold_min > 0
+    and promote_threshold_max >= promote_threshold_min
+    and promote_threshold >= promote_threshold_min
+    and promote_threshold <= promote_threshold_max
+)
 
 metrics = {
     "avg_pause_ratio": avg_ratio,
@@ -294,6 +337,16 @@ metrics = {
     "gc_promote_n": int(habu.get("gc_promote_n", 0)),
     "gc_promote_bytes": promote_bytes,
     "gc_promote_rate": promote_rate,
+    "gc_promote_waste_rate": promote_waste_rate,
+    "gc_promote_threshold": promote_threshold,
+    "gc_promote_threshold_min": promote_threshold_min,
+    "gc_promote_threshold_max": promote_threshold_max,
+    "gc_promote_threshold_in_bounds": promote_threshold_in_bounds,
+    "gc_promote_scale": promote_scale,
+    "gc_promote_scale_dev": promote_scale_dev,
+    "gc_promote_success_rate": promote_success_rate,
+    "gc_promote_young_ratio": promote_young_ratio,
+    "gc_promote_mature_ratio": promote_mature_ratio,
     "gc_nursery_target": int(habu.get("gc_nursery_target", 0)),
     "gc_nursery_scale": float(habu.get("gc_nursery_scale", 1.0)),
     "gc_nursery_survival": float(habu.get("gc_nursery_survival", 0.0)),
@@ -322,6 +375,11 @@ if maxima:
             "maxima_gc_run_avg_major_ns": int(gc_run.get("avg_major_ns", 0)),
             "maxima_gc_run_bytes_copied": int(gc_run.get("bytes_copied", 0)),
             "maxima_gc_run_promoted_bytes": int(gc_run.get("promoted_bytes", 0)),
+            "maxima_gc_run_promote_threshold": int(gc_run.get("gc_promote_threshold", 0)),
+            "maxima_gc_run_promote_scale": float(gc_run.get("gc_promote_scale", 1.0)),
+            "maxima_gc_run_promote_success_rate": float(gc_run.get("gc_promote_success_rate", 0.0)),
+            "maxima_gc_run_promote_young_ratio": float(gc_run.get("gc_promote_young_ratio", 0.0)),
+            "maxima_gc_run_promote_mature_ratio": float(gc_run.get("gc_promote_mature_ratio", 0.0)),
             "maxima_gc_run_nursery_target": int(gc_run.get("gc_nursery_target", 0)),
             "maxima_gc_run_nursery_scale": float(gc_run.get("gc_nursery_scale", 1.0)),
             "maxima_gc_run_nursery_survival": float(gc_run.get("gc_nursery_survival", 0.0)),
@@ -399,6 +457,26 @@ print(f"  gc_survive_bytes: {metrics['gc_survive_bytes']}")
 print(f"  gc_promote_n: {metrics['gc_promote_n']}")
 print(f"  gc_promote_bytes: {metrics['gc_promote_bytes']}")
 print(f"  gc_promote_rate: {metrics['gc_promote_rate']:.4f}")
+print(f"  gc_promote_waste_rate: {metrics['gc_promote_waste_rate']:.4f}")
+print()
+print("Tenuring policy:")
+print(
+    "  gc_promote_threshold: {t} [{mn},{mx}] in_bounds={ok}".format(
+        t=metrics["gc_promote_threshold"],
+        mn=metrics["gc_promote_threshold_min"],
+        mx=metrics["gc_promote_threshold_max"],
+        ok=str(metrics["gc_promote_threshold_in_bounds"]).lower(),
+    )
+)
+print(
+    "  gc_promote_scale: {s:.4f} (|d|={d:.4f}) success={sr:.4f} young={yr:.4f} mature={mr:.4f}".format(
+        s=metrics["gc_promote_scale"],
+        d=metrics["gc_promote_scale_dev"],
+        sr=metrics["gc_promote_success_rate"],
+        yr=metrics["gc_promote_young_ratio"],
+        mr=metrics["gc_promote_mature_ratio"],
+    )
+)
 print()
 print("Nursery policy:")
 print(f"  gc_nursery_target: {metrics['gc_nursery_target']}")
@@ -428,6 +506,15 @@ if maxima:
             s=metrics["maxima_gc_run_nursery_scale"],
             sv=metrics["maxima_gc_run_nursery_survival"],
             pe=metrics["maxima_gc_run_nursery_pause_error"],
+        )
+    )
+    print(
+        "  run_tenuring: threshold={t} scale={s:.4f} success={sr:.4f} young={yr:.4f} mature={mr:.4f}".format(
+            t=metrics["maxima_gc_run_promote_threshold"],
+            s=metrics["maxima_gc_run_promote_scale"],
+            sr=metrics["maxima_gc_run_promote_success_rate"],
+            yr=metrics["maxima_gc_run_promote_young_ratio"],
+            mr=metrics["maxima_gc_run_promote_mature_ratio"],
         )
     )
     print()

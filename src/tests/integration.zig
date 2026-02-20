@@ -7170,6 +7170,51 @@ test "symbol-function survives small generational nursery GC pressure" {
     try testing.expect(cur.isNil());
 }
 
+test "adaptive tenuring metrics stay bounded under generational load" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{
+        .total_size = 64 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 2 * 1024 * 1024,
+            .promote_threshold = 128,
+        },
+    });
+    defer heap.deinit();
+    const start_threshold = heap.promote_threshold;
+
+    const payload =
+        "abcdefghijklmnopqrstuvwxyz0123456789" ++
+        "abcdefghijklmnopqrstuvwxyz0123456789" ++
+        "abcdefghijklmnopqrstuvwxyz0123456789" ++
+        "abcdefghijklmnopqrstuvwxyz0123456789";
+
+    var roots: [192]Value = [_]Value{Value.nil} ** 192;
+    var cycles: usize = 0;
+    while (cycles < 8) : (cycles += 1) {
+        for (&roots) |*slot| {
+            slot.* = try heap.allocBaseString(payload);
+        }
+        _ = try heap.collectGarbage(&roots);
+        for (&roots) |*slot| slot.* = Value.nil;
+        _ = try heap.collectGarbage(&roots);
+    }
+
+    try testing.expect(heap.stats.gc_minor_count > 0);
+    try testing.expect(heap.stats.gc_promote_n > 0);
+    try testing.expect(heap.stats.gc_promote_threshold >= heap.stats.gc_promote_threshold_min);
+    try testing.expect(heap.stats.gc_promote_threshold <= heap.stats.gc_promote_threshold_max);
+    try testing.expect(heap.stats.gc_promote_scale >= 0.5);
+    try testing.expect(heap.stats.gc_promote_scale <= 1.5);
+    try testing.expect(heap.stats.gc_promote_success_rate >= 0.0);
+    try testing.expect(heap.stats.gc_promote_success_rate <= 1.0);
+    try testing.expect(heap.stats.gc_promote_young_ratio >= 0.0);
+    try testing.expect(heap.stats.gc_promote_young_ratio <= 1.0);
+    try testing.expect(heap.stats.gc_promote_mature_ratio >= 0.0);
+    try testing.expect(heap.stats.gc_promote_mature_ratio <= 1.0);
+    try testing.expect(heap.stats.gc_promote_threshold > start_threshold);
+}
+
 test "symbol-plist funcall parity and getl plist search" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
