@@ -19,6 +19,34 @@ const roots_mod = @import("roots.zig");
 pub const ALIGNMENT: usize = 16;
 pub const CARD_SHIFT: u6 = 9; // 512-byte cards
 pub const CARD_SIZE: usize = 1 << CARD_SHIFT;
+const ALLOC_SAMPLE_MASK: usize = 7; // Sample 1/8 allocations.
+const NURSERY_HEADROOM_MIN: usize = 64 * 1024;
+const NURSERY_HEADROOM_SHIFT: u6 = 3; // 12.5% live-set headroom.
+
+pub const AllocClass = enum(u8) {
+    cons,
+    symbol,
+    keyword,
+    vector,
+    array,
+    string,
+    closure,
+    stream,
+    hash_table,
+    chunk,
+    package,
+    pathname,
+    condition,
+    native_code,
+    rational,
+    complex,
+    bignum,
+    macro_env,
+    other,
+};
+
+const ALLOC_CLASS_N: usize = std.meta.fields(AllocClass).len;
+const ALLOC_SIZE_N: usize = 8;
 
 /// Interned symbol table for eq comparison
 pub const SymbolTable = struct {
@@ -289,6 +317,10 @@ pub const Heap = struct {
     from_end: [*]u8,
     /// GC threshold in bytes
     gc_threshold: usize,
+    nursery_target_bytes: usize,
+    nursery_min_bytes: usize,
+    nursery_max_bytes: usize,
+    nursery_target_pause_ns: u64,
     /// Reusable buffer for building GC root slot lists.
     gc_slots: std.ArrayList(*Value),
     /// Cached internal root slots (symbols/packages/readtables).
@@ -382,8 +414,28 @@ pub const Heap = struct {
     pub const Stats = struct {
         allocations: usize = 0,
         bytes_allocated: usize = 0,
+        alloc_sample_n: usize = 0,
+        alloc_sample_bytes: usize = 0,
+        alloc_sample_class: [ALLOC_CLASS_N]usize = [_]usize{0} ** ALLOC_CLASS_N,
+        alloc_sample_size: [ALLOC_SIZE_N]usize = [_]usize{0} ** ALLOC_SIZE_N,
         gc_count: usize = 0,
+        gc_minor_count: usize = 0,
+        gc_major_count: usize = 0,
         bytes_copied: usize = 0,
+        gc_minor_ns: u64 = 0,
+        gc_major_ns: u64 = 0,
+        gc_survive_n: usize = 0,
+        gc_survive_bytes: usize = 0,
+        gc_survive_class: [ALLOC_CLASS_N]usize = [_]usize{0} ** ALLOC_CLASS_N,
+        gc_survive_size: [ALLOC_SIZE_N]usize = [_]usize{0} ** ALLOC_SIZE_N,
+        gc_promote_n: usize = 0,
+        gc_promote_bytes: usize = 0,
+        gc_promote_class: [ALLOC_CLASS_N]usize = [_]usize{0} ** ALLOC_CLASS_N,
+        gc_promote_size: [ALLOC_SIZE_N]usize = [_]usize{0} ** ALLOC_SIZE_N,
+        gc_nursery_target: usize = 0,
+        gc_nursery_scale: f64 = 1.0,
+        gc_nursery_survival: f64 = 0.0,
+        gc_nursery_pause_error: f64 = 0.0,
         gc_build_ns: u64 = 0,
         gc_root_ns: u64 = 0,
         gc_copy_ns: u64 = 0,
@@ -504,6 +556,14 @@ pub const Heap = struct {
         const space_size = layout.nursery_from.len();
         const from_start = layout.nursery_from.start;
         const to_start = layout.nursery_to.start;
+        const raw_threshold: usize = @intFromFloat(@as(f32, @floatFromInt(space_size)) * config.gc_threshold);
+        const aligned_threshold = std.mem.alignForward(usize, raw_threshold, ALIGNMENT);
+        const nursery_max = alignDown(space_size);
+        const nursery_min_default = alignDown(@max(space_size / 8, @as(usize, 64 * 1024)));
+        const nursery_min = if (layout.mode == .generational) nursery_min_default else nursery_max;
+        var nursery_target = aligned_threshold;
+        if (nursery_target < nursery_min) nursery_target = nursery_min;
+        if (nursery_target > nursery_max) nursery_target = nursery_max;
 
         var heap = Heap{
             .memory = memory,
@@ -513,7 +573,11 @@ pub const Heap = struct {
             .to_start = to_start,
             .alloc_ptr = from_start,
             .from_end = layout.nursery_from.end,
-            .gc_threshold = @intFromFloat(@as(f32, @floatFromInt(space_size)) * config.gc_threshold),
+            .gc_threshold = nursery_target,
+            .nursery_target_bytes = nursery_target,
+            .nursery_min_bytes = nursery_min,
+            .nursery_max_bytes = nursery_max,
+            .nursery_target_pause_ns = 10_000_000,
             .gc_slots = std.ArrayList(*Value){},
             .gc_internal_slots = std.ArrayList(*Value){},
             .gc_root_sig = .{},
@@ -556,6 +620,7 @@ pub const Heap = struct {
             .kw_format_control = Value.nil,
             .kw_format_arguments = Value.nil,
         };
+        heap.stats.gc_nursery_target = nursery_target;
 
         try heap.symbols.put("T", Value.t);
         try heap.symbols.put("NIL", Value.nil);
@@ -1074,6 +1139,35 @@ pub const Heap = struct {
         return self.bytesUsed() >= self.gc_threshold;
     }
 
+    fn nurseryLiveFloor(self: *const Heap) usize {
+        if (self.layout.mode != .generational) return self.gc_threshold;
+        const used = self.bytesUsed();
+        const frac = used >> NURSERY_HEADROOM_SHIFT;
+        const headroom = @max(frac, NURSERY_HEADROOM_MIN);
+        var floor = used +| headroom;
+        floor = std.mem.alignForward(usize, floor, ALIGNMENT);
+        if (floor < self.nursery_min_bytes) floor = self.nursery_min_bytes;
+        if (floor > self.nursery_max_bytes) floor = self.nursery_max_bytes;
+        return floor;
+    }
+
+    pub fn setNurseryTarget(self: *Heap, target_bytes: usize, survival_ratio: f64, pause_error: f64, scale: f64) void {
+        if (self.layout.mode != .generational) return;
+        var target = target_bytes;
+        if (target < self.nursery_min_bytes) target = self.nursery_min_bytes;
+        if (target > self.nursery_max_bytes) target = self.nursery_max_bytes;
+        const floor = self.nurseryLiveFloor();
+        if (target < floor) target = floor;
+        target = std.mem.alignForward(usize, target, ALIGNMENT);
+
+        self.nursery_target_bytes = target;
+        self.gc_threshold = target;
+        self.stats.gc_nursery_target = target;
+        self.stats.gc_nursery_scale = scale;
+        self.stats.gc_nursery_survival = survival_ratio;
+        self.stats.gc_nursery_pause_error = pause_error;
+    }
+
     /// Allocate raw bytes (16-byte aligned)
     pub fn allocRaw(self: *Heap, size: usize) error{OutOfMemory}![*]align(ALIGNMENT) u8 {
         const aligned_size = std.mem.alignForward(usize, size, ALIGNMENT);
@@ -1103,9 +1197,101 @@ pub const Heap = struct {
         return result;
     }
 
+    fn allocClassForType(comptime T: type) AllocClass {
+        if (T == objects.Cons) return .cons;
+        if (T == objects.Symbol) return .symbol;
+        if (T == objects.Keyword) return .keyword;
+        if (T == objects.Vector) return .vector;
+        if (T == objects.Array) return .array;
+        if (T == objects.String or T == objects.String32) return .string;
+        if (T == objects.Closure) return .closure;
+        if (T == objects.Stream) return .stream;
+        if (T == objects.HashTable) return .hash_table;
+        if (T == objects.Chunk) return .chunk;
+        if (T == objects.Package) return .package;
+        if (T == objects.Pathname) return .pathname;
+        if (T == objects.Condition) return .condition;
+        if (T == objects.NativeCode) return .native_code;
+        if (T == objects.Rational) return .rational;
+        if (T == objects.Complex) return .complex;
+        if (T == objects.Bignum) return .bignum;
+        if (T == objects.MacroEnv) return .macro_env;
+        return .other;
+    }
+
+    fn allocSizeBucket(size: usize) usize {
+        if (size <= 32) return 0;
+        if (size <= 64) return 1;
+        if (size <= 128) return 2;
+        if (size <= 256) return 3;
+        if (size <= 512) return 4;
+        if (size <= 1024) return 5;
+        if (size <= 4096) return 6;
+        return 7;
+    }
+
+    fn noteAllocSample(self: *Heap, cls: AllocClass, size: usize) void {
+        if ((self.stats.allocations & ALLOC_SAMPLE_MASK) != 0) return;
+        self.stats.alloc_sample_n +%= 1;
+        self.stats.alloc_sample_bytes +%= size;
+        self.stats.alloc_sample_class[@intFromEnum(cls)] +%= 1;
+        self.stats.alloc_sample_size[allocSizeBucket(size)] +%= 1;
+    }
+
+    fn allocClassForBoxedKind(kind: objects.BoxedKind) AllocClass {
+        return switch (kind) {
+            .hashtable => .hash_table,
+            .rational => .rational,
+            .complex => .complex,
+            .stream => .stream,
+            .bignum => .bignum,
+            .array => .array,
+            .pathname => .pathname,
+            .package => .package,
+            .chunk => .chunk,
+            .condition => .condition,
+            .native_code => .native_code,
+            .macro_env => .macro_env,
+            else => .other,
+        };
+    }
+
+    fn allocClassForTagAddr(tag: Tag, addr: usize) AllocClass {
+        return switch (tag) {
+            .cons => .cons,
+            .symbol => .symbol,
+            .keyword => .keyword,
+            .vector => .vector,
+            .string => .string,
+            .closure => .closure,
+            .boxed => blk: {
+                const kind_ptr: *const objects.BoxedKind = @ptrFromInt(addr);
+                break :blk allocClassForBoxedKind(kind_ptr.*);
+            },
+            else => .other,
+        };
+    }
+
+    pub fn noteSurvival(self: *Heap, tag: Tag, addr: usize, size: usize, promoted: bool) void {
+        const cls = allocClassForTagAddr(tag, addr);
+        const bucket = allocSizeBucket(size);
+        self.stats.gc_survive_n +%= 1;
+        self.stats.gc_survive_bytes +%= size;
+        self.stats.gc_survive_class[@intFromEnum(cls)] +%= 1;
+        self.stats.gc_survive_size[bucket] +%= 1;
+        if (promoted) {
+            self.stats.gc_promote_n +%= 1;
+            self.stats.gc_promote_bytes +%= size;
+            self.stats.gc_promote_class[@intFromEnum(cls)] +%= 1;
+            self.stats.gc_promote_size[bucket] +%= 1;
+        }
+    }
+
     /// Allocate an object of a specific type
     pub fn alloc(self: *Heap, comptime T: type) error{OutOfMemory}!*T {
         const ptr = try self.allocRaw(@sizeOf(T));
+        const aligned_size = std.mem.alignForward(usize, @sizeOf(T), ALIGNMENT);
+        self.noteAllocSample(allocClassForType(T), aligned_size);
         return @ptrCast(@alignCast(ptr));
     }
 
@@ -1407,7 +1593,7 @@ pub const Heap = struct {
     }
 
     /// Allocate a vector with given capacity
-    pub fn allocVector(self: *Heap, length: usize, capacity: usize) error{OutOfMemory, Overflow}!Value {
+    pub fn allocVector(self: *Heap, length: usize, capacity: usize) error{ OutOfMemory, Overflow }!Value {
         // Allocate header + data array together
         const data_size = try std.math.mul(usize, capacity, @sizeOf(Value));
         const total_size = try std.math.add(usize, @sizeOf(objects.Vector), data_size);
@@ -1434,12 +1620,13 @@ pub const Heap = struct {
         if (use_los) {
             try self.recordLosObject(@intFromPtr(ptr), .vector, aligned_size);
         }
+        self.noteAllocSample(.vector, aligned_size);
 
         return Value.makeVector(vec);
     }
 
     /// Allocate a multi-dimensional array
-    pub fn allocArray(self: *Heap, dimensions: []const u64) error{OutOfMemory, Overflow}!Value {
+    pub fn allocArray(self: *Heap, dimensions: []const u64) error{ OutOfMemory, Overflow }!Value {
         if (dimensions.len == 0 or dimensions.len > 8) return error.OutOfMemory;
 
         // Calculate total size (product of all dimensions)
@@ -1482,12 +1669,13 @@ pub const Heap = struct {
         if (use_los) {
             try self.recordLosObject(@intFromPtr(ptr), .boxed, aligned_size);
         }
+        self.noteAllocSample(.array, aligned_size);
 
         return Value.makeArray(arr);
     }
 
     /// Allocate a string (copies the bytes)
-    pub fn allocBaseString(self: *Heap, bytes: []const u8) error{OutOfMemory, Overflow}!Value {
+    pub fn allocBaseString(self: *Heap, bytes: []const u8) error{ OutOfMemory, Overflow }!Value {
         const aligned_len = std.mem.alignForward(usize, bytes.len, 8);
         const total_size = try std.math.add(usize, @sizeOf(objects.String), aligned_len);
 
@@ -1510,6 +1698,7 @@ pub const Heap = struct {
         if (use_los) {
             try self.recordLosObject(@intFromPtr(ptr), .string, aligned_size);
         }
+        self.noteAllocSample(.string, aligned_size);
 
         return Value.makeString(str);
     }
@@ -1535,6 +1724,7 @@ pub const Heap = struct {
         if (use_los) {
             try self.recordLosObject(@intFromPtr(ptr), .string, aligned_size);
         }
+        self.noteAllocSample(.string, aligned_size);
 
         return Value.makeString(str);
     }
@@ -1564,6 +1754,7 @@ pub const Heap = struct {
         if (use_los) {
             try self.recordLosObject(@intFromPtr(ptr), .boxed, aligned_size);
         }
+        self.noteAllocSample(.string, aligned_size);
 
         return Value.makeString32(s32);
     }
@@ -1590,6 +1781,7 @@ pub const Heap = struct {
         if (use_los) {
             try self.recordLosObject(@intFromPtr(ptr), .boxed, aligned_size);
         }
+        self.noteAllocSample(.string, aligned_size);
 
         return Value.makeString32(s32);
     }
@@ -1714,6 +1906,7 @@ pub const Heap = struct {
         if (use_los) {
             try self.recordLosObject(@intFromPtr(ptr), .boxed, aligned_size);
         }
+        self.noteAllocSample(.string, aligned_size);
 
         return Value.makeString32(s32);
     }
@@ -1746,6 +1939,7 @@ pub const Heap = struct {
         if (use_los) {
             try self.recordLosObject(@intFromPtr(ptr), .closure, aligned_size);
         }
+        self.noteAllocSample(.closure, aligned_size);
 
         return Value.makeClosure(closure);
     }
@@ -1903,6 +2097,7 @@ pub const Heap = struct {
         if (use_los) {
             try self.recordLosObject(@intFromPtr(ptr), .boxed, aligned_size);
         }
+        self.noteAllocSample(.chunk, aligned_size);
 
         return Value.makeChunk(chunk);
     }
@@ -1948,6 +2143,7 @@ pub const Heap = struct {
     pub fn allocSymbol(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
         const aligned_name_len = std.mem.alignForward(usize, name.len, 8);
         const total_size = @sizeOf(objects.Symbol) + aligned_name_len;
+        const aligned_size = std.mem.alignForward(usize, total_size, ALIGNMENT);
 
         const ptr = try self.allocRaw(total_size);
         const sym: *objects.Symbol = @ptrCast(@alignCast(ptr));
@@ -1968,6 +2164,8 @@ pub const Heap = struct {
             .plist = Value.nil,
             .reserved = reserved_uid,
         };
+
+        self.noteAllocSample(.symbol, aligned_size);
 
         return Value.makeSymbol(sym);
     }
@@ -2009,7 +2207,7 @@ pub const Heap = struct {
         return Value.makePathname(pn);
     }
 
-    pub fn packageKey(self: *Heap, name: Value) error{OutOfMemory, TypeError}!Value {
+    pub fn packageKey(self: *Heap, name: Value) error{ OutOfMemory, TypeError }!Value {
         return switch (name.typeKind()) {
             .string => try self.internKeyword(name.toPtr(objects.String).bytes()),
             .symbol => try self.internKeyword(name.toPtr(objects.Symbol).getName()),
@@ -2019,7 +2217,7 @@ pub const Heap = struct {
     }
 
     /// Find a Lisp-level package by name
-    pub fn findLispPackage(self: *Heap, name: Value) error{OutOfMemory, TypeError}!?Value {
+    pub fn findLispPackage(self: *Heap, name: Value) error{ OutOfMemory, TypeError }!?Value {
         if (self.lisp_packages.raw == Value.nil.raw) return null;
         const ht = self.lisp_packages.toPtr(objects.HashTable);
         const key = try self.packageKey(name);
@@ -2201,6 +2399,7 @@ pub const Heap = struct {
     pub fn allocKeyword(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
         const aligned_name_len = std.mem.alignForward(usize, name.len, 8);
         const total_size = @sizeOf(objects.Keyword) + aligned_name_len;
+        const aligned_size = std.mem.alignForward(usize, total_size, ALIGNMENT);
 
         const ptr = try self.allocRaw(total_size);
         const kw: *objects.Keyword = @ptrCast(@alignCast(ptr));
@@ -2213,6 +2412,8 @@ pub const Heap = struct {
             .name_ptr = name_ptr,
             .hash = fnvHash(name),
         };
+
+        self.noteAllocSample(.keyword, aligned_size);
 
         return Value.makeKeyword(kw);
     }
@@ -2783,6 +2984,93 @@ test "heap collectGarbageRootSet updates multi-range" {
     const c1 = r1[0].toPtr(objects.Cons);
     try testing.expectEqual(@as(i64, 2), c1.car.toFixnum());
     try testing.expect(c1.cdr.isNil());
+}
+
+test "heap gc telemetry counters are monotonic" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+        },
+    });
+    defer heap.deinit();
+
+    var roots = [_]Value{try heap.allocCons(Value.makeFixnum(3), Value.nil)};
+    const c0 = heap.stats.gc_count;
+    const m0 = heap.stats.gc_minor_count;
+    const maj0 = heap.stats.gc_major_count;
+    const b0 = heap.stats.gc_build_ns;
+    const r0 = heap.stats.gc_root_ns;
+    const cpy0 = heap.stats.gc_copy_ns;
+    const f0 = heap.stats.gc_finalize_ns;
+    const mn0 = heap.stats.gc_minor_ns;
+
+    _ = try heap.collectGarbage(&roots);
+    const c1 = heap.stats.gc_count;
+    const m1 = heap.stats.gc_minor_count;
+    const maj1 = heap.stats.gc_major_count;
+    const b1 = heap.stats.gc_build_ns;
+    const r1 = heap.stats.gc_root_ns;
+    const cpy1 = heap.stats.gc_copy_ns;
+    const f1 = heap.stats.gc_finalize_ns;
+    const mn1 = heap.stats.gc_minor_ns;
+
+    _ = try heap.collectGarbage(&roots);
+    const c2 = heap.stats.gc_count;
+    const m2 = heap.stats.gc_minor_count;
+    const maj2 = heap.stats.gc_major_count;
+    const b2 = heap.stats.gc_build_ns;
+    const r2 = heap.stats.gc_root_ns;
+    const cpy2 = heap.stats.gc_copy_ns;
+    const f2 = heap.stats.gc_finalize_ns;
+    const mn2 = heap.stats.gc_minor_ns;
+
+    try testing.expectEqual(c0 + 1, c1);
+    try testing.expectEqual(c1 + 1, c2);
+    try testing.expectEqual(m0 + 1, m1);
+    try testing.expectEqual(m1 + 1, m2);
+    try testing.expectEqual(maj0, maj1);
+    try testing.expectEqual(maj1, maj2);
+    try testing.expectEqual(c2, m2 + maj2);
+    try testing.expect(b1 >= b0 and b2 >= b1);
+    try testing.expect(r1 >= r0 and r2 >= r1);
+    try testing.expect(cpy1 >= cpy0 and cpy2 >= cpy1);
+    try testing.expect(f1 >= f0 and f2 >= f1);
+    try testing.expect(mn1 >= mn0 and mn2 >= mn1);
+}
+
+test "heap allocation sampling tracks classes and buckets" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    const sample_n0 = heap.stats.alloc_sample_n;
+    const cons0 = heap.stats.alloc_sample_class[@intFromEnum(AllocClass.cons)];
+    const size0 = heap.stats.alloc_sample_size;
+
+    for (0..512) |_| {
+        _ = try heap.allocCons(Value.makeFixnum(1), Value.nil);
+    }
+
+    const sample_n1 = heap.stats.alloc_sample_n;
+    const cons1 = heap.stats.alloc_sample_class[@intFromEnum(AllocClass.cons)];
+    const size1 = heap.stats.alloc_sample_size;
+
+    const sample_delta = sample_n1 - sample_n0;
+    const cons_delta = cons1 - cons0;
+    try testing.expect(sample_delta > 0);
+    try testing.expect(cons_delta > 0);
+
+    var size_sum: usize = 0;
+    for (size1, 0..) |n, i| {
+        size_sum += n - size0[i];
+    }
+    try testing.expectEqual(sample_delta, size_sum);
 }
 
 test "heap deinit finalizes output streams" {

@@ -30,6 +30,82 @@
     - [x] `habu-design-safe-macro-e2cbd352` Design/implement safe macro-expander caching with stable chunk/index semantics (no transient chunk-pool assumptions).
   - [ ] `habu-maxima-load-to-e6d01b9c` Drive Maxima loader and critical symbol binds to green. Depends on `habu-stabilize-eval-vm-d1c1c5cc`.
   - [ ] `habu-profile-maxima-hotspots-977ac23d` Profile real Maxima hotspots in interpreter and JIT modes. Depends on `habu-maxima-load-to-e6d01b9c`.
+    - [x] `habu-add-maxima-real-c6c59d32` Add Maxima real-workload benchmark harness (`bench/maxima_workload.zig`, `bench/maxima_workload.lisp`, `tools/maxima-bench`) with loader + CAS timing JSON.
+    - [x] `habu-extend-microbench-matrix-31060fbb` Extend microbench matrix and self-improvement comparison loop. Depends on `habu-add-maxima-real-c6c59d32`.
+    - [x] `habu-measure-gc-against-b81d7bc6` Measure GC against SBCL workloads with comparable load/alloc scenarios. Depends on `habu-extend-microbench-matrix-31060fbb`.
+    - [ ] `habu-extract-sbcl-ocaml-4e8a4268` Extract SBCL/OCaml GC techniques into Habu gap map + implementation plan. Depends on `habu-measure-gc-against-b81d7bc6`.
+      - [x] `habu-study-sbcl-gc-2294e52d` Study SBCL `gencgc` internals and record transferrable heuristics.
+        - [x] `habu-sbcl-gc-map-03111566` SBCL GC: map trigger heuristics.
+        - [x] `habu-sbcl-gc-map-ad011b3f` SBCL GC: map alloc/card paths. Depends on `habu-sbcl-gc-map-03111566`.
+        - [x] `habu-sbcl-gc-doc-cc1d45a6` SBCL GC: document transferable invariants. Depends on `habu-sbcl-gc-map-ad011b3f`.
+      - [x] `habu-study-ocaml-gc-d799848f` Study OCaml runtime GC internals and record transferrable heuristics.
+        - [x] `habu-ocaml-gc-map-1059f3df` OCaml GC: map pacing heuristics.
+        - [x] `habu-ocaml-gc-map-6d2cc823` OCaml GC: map shared heap sweeps. Depends on `habu-ocaml-gc-map-1059f3df`.
+        - [x] `habu-ocaml-gc-doc-ca9eb86f` OCaml GC: document transferable invariants. Depends on `habu-ocaml-gc-map-6d2cc823`.
+      - [x] `habu-build-habu-vs-5f1f7bf6` Build Habu vs SBCL/OCaml GC gap matrix. Depends on `habu-study-ocaml-gc-d799848f`.
+        - [x] `habu-gc-gap-inventory-101abe09` GC gap: inventory Habu current state.
+        - [x] `habu-gc-gap-build-06231b8d` GC gap: build SBCL/OCaml matrix. Depends on `habu-gc-gap-inventory-101abe09`.
+        - [x] `habu-gc-gap-rank-801a44a1` GC gap: rank by perf impact. Depends on `habu-gc-gap-build-06231b8d`.
+      - [x] `habu-define-gc-parity-c2bf61b3` Define machine-checkable GC parity gates in bench tools. Depends on `habu-build-habu-vs-5f1f7bf6`.
+        - [x] `habu-gc-gates-set-e17bc236` GC gates: set parity thresholds.
+        - [x] `habu-gc-gates-encode-374df105` GC gates: encode machine schema. Depends on `habu-gc-gates-set-e17bc236`.
+        - [x] `habu-gc-gates-wire-b71c2f49` GC gates: wire fail conditions. Depends on `habu-gc-gates-encode-374df105`.
+      - [x] `habu-add-pause-budget-92f30aad` Add pause-budget telemetry for young/major phases. Depends on `habu-define-gc-parity-c2bf61b3`.
+        - [x] `habu-gc-telemetry-phase-e17cdcf3` GC telemetry: phase pause timers.
+        - [x] `habu-gc-telemetry-export-87936024` GC telemetry: export p95/p99. Depends on `habu-gc-telemetry-phase-e17cdcf3`.
+        - [x] `habu-gc-telemetry-add-9580666d` GC telemetry: add regression tests. Depends on `habu-gc-telemetry-export-87936024`.
+      - [x] `habu-add-allocation-hot-1f31ac72` Add allocation hot-type sampling and survival telemetry. Depends on `habu-add-pause-budget-92f30aad`.
+        - [x] `habu-gc-telemetry-sample-13149884` GC telemetry: sample alloc hot classes.
+        - [x] `habu-gc-telemetry-track-230600dd` GC telemetry: track survival histograms. Depends on `habu-gc-telemetry-sample-13149884`.
+        - [x] `habu-gc-telemetry-emit-dec8e7ae` GC telemetry: emit alloc hot metrics. Depends on `habu-gc-telemetry-track-230600dd`.
+      - [x] `habu-feed-gc-metrics-8a4ffc19` Feed GC telemetry into self-improvement ranking loop. Depends on `habu-add-allocation-hot-1f31ac72`.
+        - [x] `habu-perf-loop-ingest-2b991d65` Perf loop: ingest GC telemetry.
+        - [x] `habu-perf-loop-rank-2043d329` Perf loop: rank GC actions. Depends on `habu-perf-loop-ingest-2b991d65`.
+        - [x] `habu-perf-loop-validate-b73f42d1` Perf loop: validate action reports. Depends on `habu-perf-loop-rank-2043d329`.
+      - [ ] `habu-implement-adaptive-nursery-08dfe594` Implement adaptive nursery sizing from live/survival feedback. Depends on `habu-feed-gc-metrics-8a4ffc19`.
+        - [x] `habu-nursery-policy-derive-d65d5879` Nursery policy: derive control law.
+        - [x] `habu-nursery-policy-runtime-1b0c5008` Nursery policy: runtime resizing. Depends on `habu-nursery-policy-derive-d65d5879`.
+        - [ ] `habu-nursery-policy-benchmark-599d4233` Nursery policy: benchmark tuning. Depends on `habu-nursery-policy-runtime-1b0c5008`.
+      - [ ] `habu-implement-adaptive-tenuring-8d7cbd85` Implement adaptive tenuring policy from age/survival signals. Depends on `habu-implement-adaptive-nursery-08dfe594`.
+        - [ ] `habu-tenuring-collect-age-66c01bf2` Tenuring: collect age distributions.
+        - [ ] `habu-tenuring-adaptive-threshold-34c571a8` Tenuring: adaptive threshold logic. Depends on `habu-tenuring-collect-age-66c01bf2`.
+        - [ ] `habu-tenuring-lock-perf-72884770` Tenuring: lock perf regressions. Depends on `habu-tenuring-adaptive-threshold-34c571a8`.
+      - [ ] `habu-optimize-remembered-set-4ebdf466` Optimize remembered-set/card scanning paths. Depends on `habu-implement-adaptive-tenuring-8d7cbd85`.
+        - [ ] `habu-rset-tighten-card-ba8ce5c2` RSet: tighten card mark granularity.
+        - [ ] `habu-rset-add-scan-13787e2c` RSet: add scan fast paths. Depends on `habu-rset-tighten-card-ba8ce5c2`.
+        - [ ] `habu-rset-verify-correctness-3010858a` RSet: verify correctness and speed. Depends on `habu-rset-add-scan-13787e2c`.
+      - [ ] `habu-implement-gc-debt-bb3f3f6e` Implement GC debt trigger model with pause targets. Depends on `habu-optimize-remembered-set-4ebdf466`.
+        - [ ] `habu-debt-account-allocation-07cb1149` Debt: account allocation pressure.
+        - [ ] `habu-debt-integrate-trigger-c402efa2` Debt: integrate trigger decisions. Depends on `habu-debt-account-allocation-07cb1149`.
+        - [ ] `habu-debt-tune-coefficients-d2f31c52` Debt: tune coefficients with benches. Depends on `habu-debt-integrate-trigger-c402efa2`.
+      - [ ] `habu-add-incremental-major-c1faa29a` Add incremental major marking with pause budget slicing. Depends on `habu-implement-gc-debt-bb3f3f6e`.
+        - [ ] `habu-major-gc-incremental-068b1148` Major GC: incremental mark state machine.
+        - [ ] `habu-major-gc-barrier-ac8038a7` Major GC: barrier-assisted marking. Depends on `habu-major-gc-incremental-068b1148`.
+        - [ ] `habu-major-gc-pause-bee3923c` Major GC: pause-slice validation. Depends on `habu-major-gc-barrier-ac8038a7`.
+      - [ ] `habu-improve-tenured-free-e53ce37d` Improve tenured free-list allocator and coalescing. Depends on `habu-add-incremental-major-c1faa29a`.
+        - [ ] `habu-tenured-alloc-segregated-942b726a` Tenured alloc: segregated free bins.
+        - [ ] `habu-tenured-alloc-coalesce-4dcdcd32` Tenured alloc: coalesce/split policy. Depends on `habu-tenured-alloc-segregated-942b726a`.
+        - [ ] `habu-tenured-alloc-fragmentation-35baabcd` Tenured alloc: fragmentation benchmarks. Depends on `habu-tenured-alloc-coalesce-4dcdcd32`.
+      - [ ] `habu-improve-los-policy-bfcc62a6` Improve LOS threshold/reuse policy for lower RSS and pauses. Depends on `habu-improve-tenured-free-e53ce37d`.
+        - [ ] `habu-los-threshold-auto-6d2a6cc1` LOS: threshold auto-tuning model.
+        - [ ] `habu-los-reuse-and-ca77f709` LOS: reuse and reclamation path. Depends on `habu-los-threshold-auto-6d2a6cc1`.
+        - [ ] `habu-los-validate-rss-db6cebaf` LOS: validate RSS/pause impact. Depends on `habu-los-reuse-and-ca77f709`.
+      - [ ] `habu-reduce-barrier-and-254725b9` Reduce barrier/safepoint mutator overhead in VM/JIT hot paths. Depends on `habu-improve-los-policy-bfcc62a6`.
+        - [ ] `habu-barrier-profile-mutator-812522db` Barrier: profile mutator overhead.
+        - [ ] `habu-barrier-inline-hot-4222c4ad` Barrier: inline hot fast paths. Depends on `habu-barrier-profile-mutator-812522db`.
+        - [ ] `habu-safepoint-batch-polling-4c6aa8b1` Safepoint: batch polling strategy. Depends on `habu-barrier-inline-hot-4222c4ad`.
+      - [ ] `habu-create-cross-runtime-056102b6` Create cross-runtime GC benchmark pack for parity validation. Depends on `habu-reduce-barrier-and-254725b9`.
+        - [ ] `habu-bench-pack-define-4131275b` Bench pack: define shared workloads.
+        - [ ] `habu-bench-pack-implement-72607a92` Bench pack: implement runtime runners. Depends on `habu-bench-pack-define-4131275b`.
+        - [ ] `habu-bench-pack-add-cb3ac540` Bench pack: add unified diff report. Depends on `habu-bench-pack-implement-72607a92`.
+      - [ ] `habu-automate-gc-self-807cbd79` Automate GC self-improvement loop from ranked deltas. Depends on `habu-create-cross-runtime-056102b6`.
+        - [ ] `habu-self-loop-rank-9d5c4220` Self-loop: rank bottleneck candidates.
+        - [ ] `habu-self-loop-persist-f5acd7c3` Self-loop: persist run history. Depends on `habu-self-loop-rank-9d5c4220`.
+        - [ ] `habu-self-loop-emit-73c9938b` Self-loop: emit next-dot recommendations. Depends on `habu-self-loop-persist-f5acd7c3`.
+      - [ ] `habu-enforce-gc-parity-0ddebcf0` Enforce GC parity CI gates and fail regressions. Depends on `habu-automate-gc-self-807cbd79`.
+        - [ ] `habu-ci-add-gc-0b97019b` CI: add GC parity job.
+        - [ ] `habu-ci-fail-on-b00ee752` CI: fail on parity regressions. Depends on `habu-ci-add-gc-0b97019b`.
+        - [ ] `habu-docs-publish-gc-a7ea765a` Docs: publish GC parity contract. Depends on `habu-ci-fail-on-b00ee752`.
   - [ ] `habu-raise-jit-coverage-4bfef8eb` Raise JIT coverage for Maxima hotspot call/data paths. Depends on `habu-profile-maxima-hotspots-977ac23d`.
     - [ ] `habu-jit-missing-call-7abc44ab` Add generic JIT lowering for missing call-target patterns.
     - [ ] `habu-jit-missing-data-714eb838` Add generic JIT lowering for missing vector/hash/string hot ops.

@@ -8,9 +8,15 @@ const GcJson = struct {
     heap_bytes: u64,
     live_bytes: u64,
     avg_pause_ns: u64,
+    p50_pause_ns: u64 = 0,
     p95_pause_ns: u64,
+    p99_pause_ns: u64 = 0,
     gc_count: u64,
+    gc_minor_count: u64 = 0,
+    gc_major_count: u64 = 0,
     bytes_copied: u64,
+    avg_minor_ns: u64 = 0,
+    avg_major_ns: u64 = 0,
     avg_build_ns: u64 = 0,
     avg_root_ns: u64 = 0,
     avg_copy_ns: u64 = 0,
@@ -22,6 +28,32 @@ const GcJson = struct {
     los_live: u64 = 0,
     tenured_bytes: u64 = 0,
     los_bytes: u64 = 0,
+    alloc_sample_n: u64 = 0,
+    alloc_sample_bytes: u64 = 0,
+    alloc_sample_cons: u64 = 0,
+    alloc_sample_symbol: u64 = 0,
+    alloc_sample_keyword: u64 = 0,
+    alloc_sample_vector: u64 = 0,
+    alloc_sample_array: u64 = 0,
+    alloc_sample_string: u64 = 0,
+    alloc_sample_closure: u64 = 0,
+    alloc_sample_stream: u64 = 0,
+    alloc_sample_hash_table: u64 = 0,
+    alloc_sample_chunk: u64 = 0,
+    alloc_sample_other: u64 = 0,
+    alloc_sample_size: [8]u64 = [_]u64{0} ** 8,
+    gc_survive_n: u64 = 0,
+    gc_survive_bytes: u64 = 0,
+    gc_survive_class: []u64 = &[_]u64{},
+    gc_survive_size: [8]u64 = [_]u64{0} ** 8,
+    gc_promote_n: u64 = 0,
+    gc_promote_bytes: u64 = 0,
+    gc_promote_class: []u64 = &[_]u64{},
+    gc_promote_size: [8]u64 = [_]u64{0} ** 8,
+    gc_nursery_target: u64 = 0,
+    gc_nursery_scale: f64 = 1.0,
+    gc_nursery_survival: f64 = 0.0,
+    gc_nursery_pause_error: f64 = 0.0,
 };
 
 const VmBench = struct {
@@ -209,6 +241,12 @@ pub fn main() !void {
     const jit = jit_parsed.value;
 
     if (gc.gc_count != gc.iters) try fail("gc_count {d} != iters {d}", .{ gc.gc_count, gc.iters });
+    if (gc.gc_minor_count + gc.gc_major_count != gc.gc_count) {
+        try fail(
+            "gc mode counts {d}+{d} != gc_count {d}",
+            .{ gc.gc_minor_count, gc.gc_major_count, gc.gc_count },
+        );
+    }
     if (gc.bytes_copied == 0) try fail("gc bytes_copied is 0", .{});
     if (gc.live_bytes == 0) try fail("gc live_bytes is 0", .{});
     if (gc.avg_build_ns == 0) try fail("gc avg_build_ns is 0", .{});
@@ -218,6 +256,72 @@ pub fn main() !void {
     if (gc.avg_copy_ns < gc.avg_root_ns) {
         try fail("gc avg_copy_ns {d} < avg_root_ns {d}", .{ gc.avg_copy_ns, gc.avg_root_ns });
     }
+    if (gc.gc_minor_count > 0 and gc.avg_minor_ns == 0) try fail("gc avg_minor_ns is 0", .{});
+    if (gc.gc_major_count > 0 and gc.avg_major_ns == 0) try fail("gc avg_major_ns is 0", .{});
+    if (gc.alloc_sample_n == 0) try fail("gc alloc_sample_n is 0", .{});
+    if (gc.alloc_sample_bytes == 0) try fail("gc alloc_sample_bytes is 0", .{});
+    var class_sum: u64 = 0;
+    class_sum += gc.alloc_sample_cons;
+    class_sum += gc.alloc_sample_symbol;
+    class_sum += gc.alloc_sample_keyword;
+    class_sum += gc.alloc_sample_vector;
+    class_sum += gc.alloc_sample_array;
+    class_sum += gc.alloc_sample_string;
+    class_sum += gc.alloc_sample_closure;
+    class_sum += gc.alloc_sample_stream;
+    class_sum += gc.alloc_sample_hash_table;
+    class_sum += gc.alloc_sample_chunk;
+    class_sum += gc.alloc_sample_other;
+    if (class_sum != gc.alloc_sample_n) {
+        try fail("gc alloc class sum {d} != alloc_sample_n {d}", .{ class_sum, gc.alloc_sample_n });
+    }
+    var size_sum: u64 = 0;
+    for (gc.alloc_sample_size) |n| size_sum += n;
+    if (size_sum != gc.alloc_sample_n) {
+        try fail("gc alloc size sum {d} != alloc_sample_n {d}", .{ size_sum, gc.alloc_sample_n });
+    }
+    if (gc.gc_survive_n == 0) try fail("gc gc_survive_n is 0", .{});
+    if (gc.gc_survive_bytes == 0) try fail("gc gc_survive_bytes is 0", .{});
+    const expected_survive_bytes = gc.bytes_copied + gc.promoted_bytes;
+    if (gc.gc_survive_bytes != expected_survive_bytes) {
+        try fail("gc survive_bytes {d} != copied+promoted {d}", .{ gc.gc_survive_bytes, expected_survive_bytes });
+    }
+    var survive_class_sum: u64 = 0;
+    for (gc.gc_survive_class) |n| survive_class_sum += n;
+    if (survive_class_sum != gc.gc_survive_n) {
+        try fail("gc survive class sum {d} != gc_survive_n {d}", .{ survive_class_sum, gc.gc_survive_n });
+    }
+    var survive_size_sum: u64 = 0;
+    for (gc.gc_survive_size) |n| survive_size_sum += n;
+    if (survive_size_sum != gc.gc_survive_n) {
+        try fail("gc survive size sum {d} != gc_survive_n {d}", .{ survive_size_sum, gc.gc_survive_n });
+    }
+    if (gc.gc_promote_n == 0) try fail("gc gc_promote_n is 0", .{});
+    if (gc.gc_promote_bytes == 0) try fail("gc gc_promote_bytes is 0", .{});
+    if (gc.gc_promote_bytes != gc.promoted_bytes) {
+        try fail("gc promote_bytes {d} != promoted_bytes {d}", .{ gc.gc_promote_bytes, gc.promoted_bytes });
+    }
+    var promote_class_sum: u64 = 0;
+    for (gc.gc_promote_class) |n| promote_class_sum += n;
+    if (promote_class_sum != gc.gc_promote_n) {
+        try fail("gc promote class sum {d} != gc_promote_n {d}", .{ promote_class_sum, gc.gc_promote_n });
+    }
+    var promote_size_sum: u64 = 0;
+    for (gc.gc_promote_size) |n| promote_size_sum += n;
+    if (promote_size_sum != gc.gc_promote_n) {
+        try fail("gc promote size sum {d} != gc_promote_n {d}", .{ promote_size_sum, gc.gc_promote_n });
+    }
+    if (gc.gc_nursery_target == 0) try fail("gc gc_nursery_target is 0", .{});
+    if (gc.gc_nursery_target > gc.heap_bytes) {
+        try fail("gc nursery_target {d} > heap_bytes {d}", .{ gc.gc_nursery_target, gc.heap_bytes });
+    }
+    if (gc.gc_nursery_target < gc.live_bytes) {
+        try fail("gc nursery_target {d} < live_bytes {d}", .{ gc.gc_nursery_target, gc.live_bytes });
+    }
+    if (gc.gc_nursery_scale < 0.50 or gc.gc_nursery_scale > 1.50) {
+        try fail("gc nursery_scale {d:.4} outside [0.50,1.50]", .{gc.gc_nursery_scale});
+    }
+    if (gc.gc_nursery_survival < 0.0) try fail("gc nursery_survival < 0", .{});
     if (gc.promoted_bytes == 0) try fail("gc promoted_bytes is 0", .{});
     if (gc.wb_marks == 0) try fail("gc wb_marks is 0", .{});
     if (gc.tenured_live == 0) try fail("gc tenured_live is 0", .{});
@@ -230,6 +334,14 @@ pub fn main() !void {
     const gc_phase_sum = gc.avg_build_ns + gc.avg_root_ns + gc.avg_copy_ns + gc.avg_finalize_ns;
     if (gc.avg_pause_ns > 0 and gc_phase_sum > gc.avg_pause_ns * 4) {
         try fail("gc phase sum {d} > 4x avg_pause_ns {d}", .{ gc_phase_sum, gc.avg_pause_ns });
+    }
+    if (gc.p50_pause_ns == 0) try fail("gc p50_pause_ns is 0", .{});
+    if (gc.p99_pause_ns == 0) try fail("gc p99_pause_ns is 0", .{});
+    if (gc.p50_pause_ns > gc.p95_pause_ns) {
+        try fail("gc p50 {d} > p95 {d}", .{ gc.p50_pause_ns, gc.p95_pause_ns });
+    }
+    if (gc.p95_pause_ns > gc.p99_pause_ns) {
+        try fail("gc p95 {d} > p99 {d}", .{ gc.p95_pause_ns, gc.p99_pause_ns });
     }
     const p95_ms = @as(f64, @floatFromInt(gc.p95_pause_ns)) / 1e6;
     if (p95_ms > opts.max_gc_p95_ms) try fail("gc p95 {d:.3}ms > {d:.3}ms", .{ p95_ms, opts.max_gc_p95_ms });

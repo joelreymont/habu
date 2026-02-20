@@ -32,6 +32,73 @@ fn elapsedNsSince(start_ns: i128) u64 {
     return @intCast(now_ns - start_ns);
 }
 
+pub const NurseryPolicyInput = struct {
+    current_bytes: usize,
+    min_bytes: usize,
+    max_bytes: usize,
+    survive_bytes: usize,
+    copied_bytes: usize,
+    p95_pause_ns: u64,
+    target_pause_ns: u64,
+};
+
+pub const NurseryPolicyOutput = struct {
+    target_bytes: usize,
+    survival_ratio: f64,
+    pause_error: f64,
+    scale: f64,
+};
+
+fn clampf(v: f64, lo: f64, hi: f64) f64 {
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
+fn counterDelta(comptime T: type, after: T, before: T) T {
+    return after -% before;
+}
+
+/// Derive next nursery target from measured survival and pause behavior.
+/// Control law goals:
+/// - shrink when survival is high or pause exceeds target,
+/// - grow when survival is low and pause is comfortably below target,
+/// - avoid oscillation via deadband and bounded scale.
+pub fn deriveNurseryPolicy(in: NurseryPolicyInput) NurseryPolicyOutput {
+    const copied = if (in.copied_bytes == 0) @as(usize, 1) else in.copied_bytes;
+    const pause_target = if (in.target_pause_ns == 0) @as(u64, 1) else in.target_pause_ns;
+
+    const survive_f = @as(f64, @floatFromInt(in.survive_bytes));
+    const copied_f = @as(f64, @floatFromInt(copied));
+    const survival_ratio = clampf(survive_f / copied_f, 0.0, 1.5);
+
+    const pause_f = @as(f64, @floatFromInt(in.p95_pause_ns));
+    const pause_target_f = @as(f64, @floatFromInt(pause_target));
+    const pause_error = (pause_f - pause_target_f) / pause_target_f;
+
+    const shrink_scale = 1.0 - 0.60 * survival_ratio - 0.35 * @max(0.0, pause_error);
+    const grow_scale = 1.0 + 0.30 * @max(0.0, 0.25 - survival_ratio) + 0.15 * @max(0.0, -pause_error);
+    var scale = if (survival_ratio > 0.25 or pause_error > 0.0) shrink_scale else grow_scale;
+    scale = clampf(scale, 0.50, 1.50);
+
+    var target = @as(usize, @intFromFloat(@as(f64, @floatFromInt(in.current_bytes)) * scale));
+    if (in.current_bytes > 0) {
+        const delta = if (target >= in.current_bytes) target - in.current_bytes else in.current_bytes - target;
+        if (delta * 100 <= in.current_bytes * 5) target = in.current_bytes;
+    }
+
+    if (target < in.min_bytes) target = in.min_bytes;
+    if (target > in.max_bytes) target = in.max_bytes;
+    target = std.mem.alignForward(usize, target, heap_mod.ALIGNMENT);
+
+    return .{
+        .target_bytes = target,
+        .survival_ratio = survival_ratio,
+        .pause_error = pause_error,
+        .scale = scale,
+    };
+}
+
 /// Garbage collector state
 pub const GC = struct {
     /// Allocator for work list
@@ -78,10 +145,40 @@ pub const GC = struct {
     /// Run a garbage collection cycle with a precise root set (slot/range addresses).
     /// Returns the number of bytes copied, or error on OOM during work list allocation.
     pub fn collectRootSet(self: *GC, heap: *heap_mod.Heap, roots: roots_mod.RootSet) !usize {
-        return switch (heap.gcLayoutMode()) {
+        const pause_start = std.time.nanoTimestamp();
+        const mode = heap.gcLayoutMode();
+        const survive_before = heap.stats.gc_survive_bytes;
+        const copied_before = heap.stats.bytes_copied;
+        const promoted_before = heap.stats.gc_promoted_bytes;
+        const copied = switch (mode) {
             .semispace => try self.collectSemispaceRootSet(heap, roots),
             .generational => try self.collectMinorRootSet(heap, roots),
         };
+        const pause_ns = elapsedNsSince(pause_start);
+        switch (mode) {
+            .semispace => {
+                heap.stats.gc_major_count +%= 1;
+                heap.stats.gc_major_ns +%= pause_ns;
+            },
+            .generational => {
+                heap.stats.gc_minor_count +%= 1;
+                heap.stats.gc_minor_ns +%= pause_ns;
+                const survive_cycle = counterDelta(usize, heap.stats.gc_survive_bytes, survive_before);
+                const copied_cycle = counterDelta(usize, heap.stats.bytes_copied, copied_before);
+                const promoted_cycle = counterDelta(usize, heap.stats.gc_promoted_bytes, promoted_before);
+                const policy = deriveNurseryPolicy(.{
+                    .current_bytes = heap.nursery_target_bytes,
+                    .min_bytes = heap.nursery_min_bytes,
+                    .max_bytes = heap.nursery_max_bytes,
+                    .survive_bytes = survive_cycle,
+                    .copied_bytes = copied_cycle +% promoted_cycle,
+                    .p95_pause_ns = pause_ns,
+                    .target_pause_ns = heap.nursery_target_pause_ns,
+                });
+                heap.setNurseryTarget(policy.target_bytes, policy.survival_ratio, policy.pause_error, policy.scale);
+            },
+        }
+        return copied;
     }
 
     fn collectSemispaceRootSet(self: *GC, heap: *heap_mod.Heap, roots: roots_mod.RootSet) !usize {
@@ -439,6 +536,7 @@ pub const GC = struct {
             _ = heap.markTenuredObject(new_addr);
             heap.stats.gc_promoted_bytes +%= aligned_size;
         }
+        heap.noteSurvival(tag, new_addr, aligned_size, promote);
 
         // Repair interior pointers that point to inline data
         // These pointers are relative to the object start and need adjustment
@@ -1102,6 +1200,165 @@ test "gc scans generic function dispatcher" {
     try testing.expect(disp_addr >= start and disp_addr < end);
 }
 
+test "gc records minor and major pause stats by layout mode" {
+    const testing = std.testing;
+
+    {
+        var heap = try heap_mod.Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+        defer heap.deinit();
+
+        var roots = [_]Value{try heap.allocCons(Value.makeFixnum(1), Value.nil)};
+        _ = try heap.collectGarbage(&roots);
+        try testing.expect(heap.stats.gc_major_count > 0);
+        try testing.expect(heap.stats.gc_major_ns > 0);
+        try testing.expectEqual(@as(usize, 0), heap.stats.gc_minor_count);
+        try testing.expectEqual(@as(u64, 0), heap.stats.gc_minor_ns);
+    }
+
+    {
+        var heap = try heap_mod.Heap.init(testing.allocator, .{
+            .total_size = 8 * 1024 * 1024,
+            .gc_layout = .generational,
+            .generational = .{
+                .nursery_each = 512 * 1024,
+                .los_size = 512 * 1024,
+            },
+        });
+        defer heap.deinit();
+
+        var roots = [_]Value{try heap.allocCons(Value.makeFixnum(2), Value.nil)};
+        _ = try heap.collectGarbage(&roots);
+        try testing.expect(heap.stats.gc_minor_count > 0);
+        try testing.expect(heap.stats.gc_minor_ns > 0);
+        try testing.expectEqual(@as(usize, 0), heap.stats.gc_major_count);
+    }
+}
+
+test "nursery policy shrinks when survival and pause are high" {
+    const testing = std.testing;
+    const current = 1024 * 1024;
+    const out = deriveNurseryPolicy(.{
+        .current_bytes = current,
+        .min_bytes = 256 * 1024,
+        .max_bytes = 4 * 1024 * 1024,
+        .survive_bytes = 900 * 1024,
+        .copied_bytes = 1024 * 1024,
+        .p95_pause_ns = 20_000_000,
+        .target_pause_ns = 10_000_000,
+    });
+    try testing.expect(out.target_bytes < current);
+    try testing.expect(out.survival_ratio > 0.8);
+}
+
+test "nursery policy grows when survival and pause are low" {
+    const testing = std.testing;
+    const current = 1024 * 1024;
+    const out = deriveNurseryPolicy(.{
+        .current_bytes = current,
+        .min_bytes = 256 * 1024,
+        .max_bytes = 4 * 1024 * 1024,
+        .survive_bytes = 64 * 1024,
+        .copied_bytes = 1024 * 1024,
+        .p95_pause_ns = 4_000_000,
+        .target_pause_ns = 10_000_000,
+    });
+    try testing.expect(out.target_bytes > current);
+    try testing.expect(out.pause_error < 0.0);
+}
+
+test "nursery policy keeps current size inside deadband" {
+    const testing = std.testing;
+    const current = 1024 * 1024;
+    const out = deriveNurseryPolicy(.{
+        .current_bytes = current,
+        .min_bytes = 256 * 1024,
+        .max_bytes = 4 * 1024 * 1024,
+        .survive_bytes = 256 * 1024,
+        .copied_bytes = 1024 * 1024,
+        .p95_pause_ns = 10_000_000,
+        .target_pause_ns = 10_000_000,
+    });
+    try testing.expectEqual(current, out.target_bytes);
+}
+
+test "nursery policy clamps to min and max bounds" {
+    const testing = std.testing;
+
+    const low = deriveNurseryPolicy(.{
+        .current_bytes = 512 * 1024,
+        .min_bytes = 384 * 1024,
+        .max_bytes = 2 * 1024 * 1024,
+        .survive_bytes = 512 * 1024,
+        .copied_bytes = 512 * 1024,
+        .p95_pause_ns = 50_000_000,
+        .target_pause_ns = 5_000_000,
+    });
+    try testing.expectEqual(@as(usize, 384 * 1024), low.target_bytes);
+
+    const high = deriveNurseryPolicy(.{
+        .current_bytes = 1400 * 1024,
+        .min_bytes = 256 * 1024,
+        .max_bytes = 1536 * 1024,
+        .survive_bytes = 0,
+        .copied_bytes = 1024 * 1024,
+        .p95_pause_ns = 1_000_000,
+        .target_pause_ns = 50_000_000,
+    });
+    try testing.expectEqual(@as(usize, 1536 * 1024), high.target_bytes);
+}
+
+test "minor gc applies adaptive nursery target at runtime" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .promote_threshold = 64,
+        },
+    });
+    defer heap.deinit();
+
+    const initial_target = heap.nursery_target_bytes;
+    var roots = [_]Value{try heap.allocBaseString("abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789")};
+    _ = try heap.collectGarbage(&roots);
+
+    try testing.expect(heap.nursery_target_bytes > 0);
+    try testing.expectEqual(heap.nursery_target_bytes, heap.gc_threshold);
+    try testing.expectEqual(heap.nursery_target_bytes, heap.stats.gc_nursery_target);
+    try testing.expect(heap.nursery_target_bytes >= heap.bytesUsed());
+    try testing.expect(heap.nursery_target_bytes <= initial_target);
+}
+
+test "setNurseryTarget keeps threshold above live nursery bytes" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .promote_threshold = 4096,
+        },
+    });
+    defer heap.deinit();
+
+    var list = Value.nil;
+    for (0..8192) |_| {
+        list = try heap.allocCons(Value.makeFixnum(1), list);
+    }
+    var roots = [_]Value{list};
+    _ = try heap.collectGarbage(&roots);
+
+    const live = heap.bytesUsed();
+    heap.setNurseryTarget(heap.nursery_min_bytes, 1.0, 1.0, 0.5);
+    try testing.expect(heap.gc_threshold >= live);
+    try testing.expectEqual(heap.gc_threshold, heap.nursery_target_bytes);
+}
+
 test "minor gc promotes large survivors to tenured" {
     const testing = std.testing;
 
@@ -1127,6 +1384,10 @@ test "minor gc promotes large survivors to tenured" {
     const addr = root.toPtrAddr();
     try testing.expect(addr >= @intFromPtr(tenured.start) and addr < @intFromPtr(tenured.end));
     try testing.expect(heap.stats.gc_promoted_bytes > 0);
+    try testing.expect(heap.stats.gc_survive_n > 0);
+    try testing.expect(heap.stats.gc_survive_bytes >= heap.stats.gc_promoted_bytes);
+    try testing.expect(heap.stats.gc_promote_n > 0);
+    try testing.expectEqual(heap.stats.gc_promote_bytes, heap.stats.gc_promoted_bytes);
     try testing.expect(heap.tenuredBytesUsed() > 0);
 }
 

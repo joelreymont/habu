@@ -127,6 +127,10 @@ pub fn main() !void {
 
     const bytes_copied0 = heap.stats.bytes_copied;
     const gc0 = heap.stats.gc_count;
+    const gc_minor0 = heap.stats.gc_minor_count;
+    const gc_major0 = heap.stats.gc_major_count;
+    const minor_ns0 = heap.stats.gc_minor_ns;
+    const major_ns0 = heap.stats.gc_major_ns;
     const build_ns0 = heap.stats.gc_build_ns;
     const root_ns0 = heap.stats.gc_root_ns;
     const copy_ns0 = heap.stats.gc_copy_ns;
@@ -134,6 +138,18 @@ pub fn main() !void {
     const root_vals0 = heap.stats.gc_root_vals;
     const promoted0 = heap.stats.gc_promoted_bytes;
     const wb0 = heap.stats.wb_marks;
+    const sample_n0 = heap.stats.alloc_sample_n;
+    const sample_bytes0 = heap.stats.alloc_sample_bytes;
+    const sample_class0 = heap.stats.alloc_sample_class;
+    const sample_size0 = heap.stats.alloc_sample_size;
+    const survive_n0 = heap.stats.gc_survive_n;
+    const survive_bytes0 = heap.stats.gc_survive_bytes;
+    const survive_class0 = heap.stats.gc_survive_class;
+    const survive_size0 = heap.stats.gc_survive_size;
+    const promote_n0 = heap.stats.gc_promote_n;
+    const promote_bytes0 = heap.stats.gc_promote_bytes;
+    const promote_class0 = heap.stats.gc_promote_class;
+    const promote_size0 = heap.stats.gc_promote_size;
     for (pauses, 0..) |*ns, i| {
         _ = i;
         roots[1] = try heap.allocBaseString(promote_buf[0..]);
@@ -146,6 +162,10 @@ pub fn main() !void {
     }
     const bytes_copied1 = heap.stats.bytes_copied;
     const gc1 = heap.stats.gc_count;
+    const gc_minor1 = heap.stats.gc_minor_count;
+    const gc_major1 = heap.stats.gc_major_count;
+    const minor_ns1 = heap.stats.gc_minor_ns;
+    const major_ns1 = heap.stats.gc_major_ns;
     const build_ns1 = heap.stats.gc_build_ns;
     const root_ns1 = heap.stats.gc_root_ns;
     const copy_ns1 = heap.stats.gc_copy_ns;
@@ -153,17 +173,37 @@ pub fn main() !void {
     const root_vals1 = heap.stats.gc_root_vals;
     const promoted1 = heap.stats.gc_promoted_bytes;
     const wb1 = heap.stats.wb_marks;
+    const sample_n1 = heap.stats.alloc_sample_n;
+    const sample_bytes1 = heap.stats.alloc_sample_bytes;
+    const sample_class1 = heap.stats.alloc_sample_class;
+    const sample_size1 = heap.stats.alloc_sample_size;
+    const survive_n1 = heap.stats.gc_survive_n;
+    const survive_bytes1 = heap.stats.gc_survive_bytes;
+    const survive_class1 = heap.stats.gc_survive_class;
+    const survive_size1 = heap.stats.gc_survive_size;
+    const promote_n1 = heap.stats.gc_promote_n;
+    const promote_bytes1 = heap.stats.gc_promote_bytes;
+    const promote_class1 = heap.stats.gc_promote_class;
+    const promote_size1 = heap.stats.gc_promote_size;
 
     var sum: u128 = 0;
     for (pauses) |ns| sum += ns;
     const avg_ns: u64 = @intCast(sum / pauses.len);
 
     std.sort.heap(u64, pauses, {}, lessU64);
+    const p50_idx = (pauses.len - 1) * 50 / 100;
     const p95_idx = (pauses.len - 1) * 95 / 100;
+    const p99_idx = (pauses.len - 1) * 99 / 100;
+    const p50_ns = pauses[p50_idx];
     const p95_ns = pauses[p95_idx];
+    const p99_ns = pauses[p99_idx];
 
     const copied_delta = bytes_copied1 - bytes_copied0;
     const gc_delta = gc1 - gc0;
+    const gc_minor_delta = gc_minor1 - gc_minor0;
+    const gc_major_delta = gc_major1 - gc_major0;
+    const minor_ns_delta = minor_ns1 - minor_ns0;
+    const major_ns_delta = major_ns1 - major_ns0;
     const build_delta = build_ns1 - build_ns0;
     const root_delta = root_ns1 - root_ns0;
     const copy_delta = copy_ns1 - copy_ns0;
@@ -171,32 +211,133 @@ pub fn main() !void {
     const root_vals_delta = root_vals1 - root_vals0;
     const promoted_delta = promoted1 - promoted0;
     const wb_delta = wb1 - wb0;
+    const sample_n_delta = sample_n1 - sample_n0;
+    const sample_bytes_delta = sample_bytes1 - sample_bytes0;
+    var sample_class_delta: @TypeOf(heap.stats.alloc_sample_class) = undefined;
+    for (&sample_class_delta, 0..) |*dst, i| {
+        dst.* = sample_class1[i] - sample_class0[i];
+    }
+    var sample_size_delta: @TypeOf(heap.stats.alloc_sample_size) = undefined;
+    for (&sample_size_delta, 0..) |*dst, i| {
+        dst.* = sample_size1[i] - sample_size0[i];
+    }
+    const survive_n_delta = survive_n1 - survive_n0;
+    const survive_bytes_delta = survive_bytes1 - survive_bytes0;
+    var survive_class_delta: @TypeOf(heap.stats.gc_survive_class) = undefined;
+    for (&survive_class_delta, 0..) |*dst, i| {
+        dst.* = survive_class1[i] - survive_class0[i];
+    }
+    var survive_size_delta: @TypeOf(heap.stats.gc_survive_size) = undefined;
+    for (&survive_size_delta, 0..) |*dst, i| {
+        dst.* = survive_size1[i] - survive_size0[i];
+    }
+    const promote_n_delta = promote_n1 - promote_n0;
+    const promote_bytes_delta = promote_bytes1 - promote_bytes0;
+    var promote_class_delta: @TypeOf(heap.stats.gc_promote_class) = undefined;
+    for (&promote_class_delta, 0..) |*dst, i| {
+        dst.* = promote_class1[i] - promote_class0[i];
+    }
+    var promote_size_delta: @TypeOf(heap.stats.gc_promote_size) = undefined;
+    for (&promote_size_delta, 0..) |*dst, i| {
+        dst.* = promote_size1[i] - promote_size0[i];
+    }
     const tenured_live = heap.tenured_objs.items.len;
     const los_live = heap.los_objs.items.len;
     const tenured_bytes = heap.tenuredBytesUsed();
     const los_bytes = heap.losBytesUsed();
     const live_bytes = heap.bytesUsed();
     const gc_delta_u64: u64 = @intCast(gc_delta);
+    const gc_minor_delta_u64: u64 = @intCast(gc_minor_delta);
+    const gc_major_delta_u64: u64 = @intCast(gc_major_delta);
+    const avg_minor_ns = if (gc_minor_delta_u64 == 0) 0 else minor_ns_delta / gc_minor_delta_u64;
+    const avg_major_ns = if (gc_major_delta_u64 == 0) 0 else major_ns_delta / gc_major_delta_u64;
     const avg_build_ns = if (gc_delta_u64 == 0) 0 else build_delta / gc_delta_u64;
     const avg_root_ns = if (gc_delta_u64 == 0) 0 else root_delta / gc_delta_u64;
     const avg_copy_ns = if (gc_delta_u64 == 0) 0 else copy_delta / gc_delta_u64;
     const avg_finalize_ns = if (gc_delta_u64 == 0) 0 else finalize_delta / gc_delta_u64;
+    const nursery_target = heap.stats.gc_nursery_target;
+    const nursery_scale = heap.stats.gc_nursery_scale;
+    const nursery_survival = heap.stats.gc_nursery_survival;
+    const nursery_pause_error = heap.stats.gc_nursery_pause_error;
+    const sample_cons = sample_class_delta[@intFromEnum(heap_mod.AllocClass.cons)];
+    const sample_symbol = sample_class_delta[@intFromEnum(heap_mod.AllocClass.symbol)];
+    const sample_keyword = sample_class_delta[@intFromEnum(heap_mod.AllocClass.keyword)];
+    const sample_vector = sample_class_delta[@intFromEnum(heap_mod.AllocClass.vector)];
+    const sample_array = sample_class_delta[@intFromEnum(heap_mod.AllocClass.array)];
+    const sample_string = sample_class_delta[@intFromEnum(heap_mod.AllocClass.string)];
+    const sample_closure = sample_class_delta[@intFromEnum(heap_mod.AllocClass.closure)];
+    const sample_stream = sample_class_delta[@intFromEnum(heap_mod.AllocClass.stream)];
+    const sample_hash = sample_class_delta[@intFromEnum(heap_mod.AllocClass.hash_table)];
+    const sample_chunk = sample_class_delta[@intFromEnum(heap_mod.AllocClass.chunk)];
+    const sample_other = sample_class_delta[@intFromEnum(heap_mod.AllocClass.other)];
 
     var out_buf: [4096]u8 = undefined;
     var out = std.fs.File.stdout().writer(&out_buf);
     const w = &out.interface;
 
     if (opts.json) {
-        try w.print(
-            "{{\"iters\":{d},\"heap_bytes\":{d},\"live_bytes\":{d},\"avg_pause_ns\":{d},\"p95_pause_ns\":{d},\"gc_count\":{d},\"bytes_copied\":{d},\"avg_build_ns\":{d},\"avg_root_ns\":{d},\"avg_copy_ns\":{d},\"avg_finalize_ns\":{d},\"root_vals\":{d},\"promoted_bytes\":{d},\"wb_marks\":{d},\"tenured_live\":{d},\"los_live\":{d},\"tenured_bytes\":{d},\"los_bytes\":{d}}}\n",
-            .{ opts.iters, heap_bytes, live_bytes, avg_ns, p95_ns, gc_delta, copied_delta, avg_build_ns, avg_root_ns, avg_copy_ns, avg_finalize_ns, root_vals_delta, promoted_delta, wb_delta, tenured_live, los_live, tenured_bytes, los_bytes },
-        );
+        const payload = .{
+            .iters = opts.iters,
+            .heap_bytes = heap_bytes,
+            .live_bytes = live_bytes,
+            .avg_pause_ns = avg_ns,
+            .p50_pause_ns = p50_ns,
+            .p95_pause_ns = p95_ns,
+            .p99_pause_ns = p99_ns,
+            .gc_count = gc_delta,
+            .gc_minor_count = gc_minor_delta,
+            .gc_major_count = gc_major_delta,
+            .bytes_copied = copied_delta,
+            .avg_minor_ns = avg_minor_ns,
+            .avg_major_ns = avg_major_ns,
+            .avg_build_ns = avg_build_ns,
+            .avg_root_ns = avg_root_ns,
+            .avg_copy_ns = avg_copy_ns,
+            .avg_finalize_ns = avg_finalize_ns,
+            .root_vals = root_vals_delta,
+            .promoted_bytes = promoted_delta,
+            .wb_marks = wb_delta,
+            .tenured_live = tenured_live,
+            .los_live = los_live,
+            .tenured_bytes = tenured_bytes,
+            .los_bytes = los_bytes,
+            .alloc_sample_n = sample_n_delta,
+            .alloc_sample_bytes = sample_bytes_delta,
+            .alloc_sample_cons = sample_cons,
+            .alloc_sample_symbol = sample_symbol,
+            .alloc_sample_keyword = sample_keyword,
+            .alloc_sample_vector = sample_vector,
+            .alloc_sample_array = sample_array,
+            .alloc_sample_string = sample_string,
+            .alloc_sample_closure = sample_closure,
+            .alloc_sample_stream = sample_stream,
+            .alloc_sample_hash_table = sample_hash,
+            .alloc_sample_chunk = sample_chunk,
+            .alloc_sample_other = sample_other,
+            .alloc_sample_size = sample_size_delta,
+            .gc_survive_n = survive_n_delta,
+            .gc_survive_bytes = survive_bytes_delta,
+            .gc_survive_class = survive_class_delta,
+            .gc_survive_size = survive_size_delta,
+            .gc_promote_n = promote_n_delta,
+            .gc_promote_bytes = promote_bytes_delta,
+            .gc_promote_class = promote_class_delta,
+            .gc_promote_size = promote_size_delta,
+            .gc_nursery_target = nursery_target,
+            .gc_nursery_scale = nursery_scale,
+            .gc_nursery_survival = nursery_survival,
+            .gc_nursery_pause_error = nursery_pause_error,
+        };
+        try std.json.Stringify.value(payload, .{}, w);
+        try w.writeByte('\n');
         try w.flush();
         return;
     }
 
     const avg_ms = @as(f64, @floatFromInt(avg_ns)) / 1e6;
+    const p50_ms = @as(f64, @floatFromInt(p50_ns)) / 1e6;
     const p95_ms = @as(f64, @floatFromInt(p95_ns)) / 1e6;
+    const p99_ms = @as(f64, @floatFromInt(p99_ns)) / 1e6;
     const live_mb = @as(f64, @floatFromInt(live_bytes)) / (1024.0 * 1024.0);
     const copied_mb = @as(f64, @floatFromInt(copied_delta)) / (1024.0 * 1024.0);
     const gc_delta_f: f64 = @floatFromInt(gc_delta);
@@ -205,8 +346,25 @@ pub fn main() !void {
     try w.print("  heap: {d} MiB (semispace {d} MiB)\n", .{ opts.heap_mb, semispace / (1024 * 1024) });
     try w.print("  live: {d:.2} MiB\n", .{live_mb});
     try w.print("  iters: {d}\n", .{opts.iters});
-    try w.print("  pause: avg {d:.3} ms, p95 {d:.3} ms\n", .{ avg_ms, p95_ms });
+    try w.print("  pause: avg {d:.3} ms, p50 {d:.3} ms, p95 {d:.3} ms, p99 {d:.3} ms\n", .{ avg_ms, p50_ms, p95_ms, p99_ms });
     try w.print("  copied: {d:.2} MiB total ({d:.2} MiB/GC)\n", .{ copied_mb, copied_mb / gc_delta_f });
+    try w.print("  mode avg (us): minor {d:.2}, major {d:.2}\n", .{
+        @as(f64, @floatFromInt(avg_minor_ns)) / 1000.0,
+        @as(f64, @floatFromInt(avg_major_ns)) / 1000.0,
+    });
+    try w.print("  alloc samples: {d} ({d} bytes sampled)\n", .{ sample_n_delta, sample_bytes_delta });
+    try w.print(
+        "  alloc hot classes: cons {d}, vec {d}, str {d}, sym {d}, hash {d}, other {d}\n",
+        .{ sample_cons, sample_vector, sample_string, sample_symbol, sample_hash, sample_other },
+    );
+    try w.print(
+        "  survival: n {d}, bytes {d}, promoted n {d}, bytes {d}\n",
+        .{ survive_n_delta, survive_bytes_delta, promote_n_delta, promote_bytes_delta },
+    );
+    try w.print(
+        "  nursery policy: target {d} bytes, scale {d:.4}, survival {d:.4}, pause_err {d:.4}\n",
+        .{ nursery_target, nursery_scale, nursery_survival, nursery_pause_error },
+    );
     try w.print(
         "  phase avg (us): build {d:.2}, root {d:.2}, copy {d:.2}, finalize {d:.2}\n",
         .{

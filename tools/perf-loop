@@ -1,0 +1,484 @@
+#!/usr/bin/env python3
+"""Performance self-improvement loop.
+
+Runs microbench + real workload comparisons, ranks bottlenecks, and prints next actions.
+"""
+
+import argparse
+import json
+import math
+import os
+import subprocess
+import sys
+from dataclasses import dataclass
+
+
+@dataclass
+class Entry:
+    suite: str
+    name: str
+    habu_ns: int
+    sbcl_ns: int
+    ratio: float
+    note: str
+
+
+def parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument("--iters", type=int, default=1, help="comprehensive bench iterations")
+    p.add_argument("--scale", type=int, default=1, help="maxima workload scale")
+    p.add_argument("--heap-mb", type=int, default=1024, help="maxima workload heap")
+    p.add_argument("--gc-iters", type=int, default=30, help="gc-compare iterations")
+    p.add_argument("--gc-live-mb", type=int, default=8, help="gc-compare live set")
+    p.add_argument("--gc-heap-mb", type=int, default=64, help="gc-compare habu heap")
+    p.add_argument(
+        "--gate-level",
+        default="milestone_2x_from_baseline",
+        choices=("milestone_2x_from_baseline", "competitive", "parity"),
+        help="GC gate level to evaluate",
+    )
+    p.add_argument("--fail-on-gates", action="store_true", help="exit non-zero if selected GC gate fails")
+    p.add_argument("--top", type=int, default=12, help="top bottlenecks to print")
+    p.add_argument("--json", action="store_true", help="emit JSON only")
+    return p.parse_args()
+
+
+def run_cmd(argv, timeout=3600):
+    p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    if p.returncode != 0:
+        raise RuntimeError(f"cmd failed: {' '.join(argv)}\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}")
+    return p.stdout
+
+
+def parse_mixed_json(text: str):
+    idx = text.rfind('{')
+    if idx < 0:
+        raise RuntimeError(f"missing JSON payload\n{text}")
+    # Walk candidate starts from end to first; pick first valid object.
+    starts = [i for i, ch in enumerate(text) if ch == '{']
+    for i in reversed(starts):
+        frag = text[i:].strip()
+        try:
+            return json.loads(frag)
+        except json.JSONDecodeError:
+            pass
+    raise RuntimeError(f"unable to parse JSON payload\n{text}")
+
+
+def advice(name: str, suite: str):
+    if suite == "micro":
+        if name.startswith("float_"):
+            return "Finish native float lowering and remove boxed-float callouts"
+        if name in {"mapcar", "reduce"}:
+            return "Lower closure/lambda HOF calls to direct JIT targets"
+        if name.startswith("sort_"):
+            return "Optimize comparator dispatch and recursive sort call paths"
+        if name == "string_concat":
+            return "Specialize concatenate/string builder path"
+        if name == "intern":
+            return "Reduce interner contention and string formatting overhead"
+        if name in {"assoc", "list_append"}:
+            return "Inline hot cons/list traversal primitives in JIT"
+        return "Profile and eliminate remaining VM fallback in hot path"
+
+    if name == "limit":
+        return "RCA limit recursion/dispatch hotspot and reduce simplifier churn"
+    if name == "diff":
+        return "Optimize symbolic diff dispatch and simplifya interactions"
+    if name in {"factor", "ratsimp"}:
+        return "Target rational/factor core loops and reduce allocation pressure"
+    if name in {"solve", "determinant"}:
+        return "Stabilize remaining module-load gaps and fast-path matrix/solver ops"
+    return "Profile CAS opcode mix and remove interpreter/JIT boundary overhead"
+
+
+def collect_micro(iters: int):
+    out = run_cmd(["tools/comprehensive-bench", "--json", f"--iters={iters}"])
+    data = parse_mixed_json(out)
+    sbcl = data.get("sbcl", {})
+    habu = data.get("habu_jit", {})
+    errs = data.get("habu_jit_errors", {})
+
+    entries = []
+    for name, sb_ns in sbcl.items():
+        hb_ns = habu.get(name)
+        if hb_ns is None:
+            continue
+        if name in errs:
+            continue
+        if sb_ns <= 0 or hb_ns <= 0:
+            continue
+        ratio = sb_ns / hb_ns
+        entries.append(
+            Entry(
+                suite="micro",
+                name=name,
+                habu_ns=hb_ns,
+                sbcl_ns=sb_ns,
+                ratio=ratio,
+                note=advice(name, "micro"),
+            )
+        )
+    return entries, errs
+
+
+def collect_maxima(scale: int, heap_mb: int):
+    out = run_cmd(["tools/maxima-bench", "--json", f"--scale={scale}", f"--heap-mb={heap_mb}"])
+    data = parse_mixed_json(out)
+    habu = data["habu"]
+    sbcl = data["sbcl"]
+
+    h_map = {b["name"]: b for b in habu.get("benches", [])}
+    s_map = {b["name"]: b for b in sbcl.get("benches", [])}
+
+    entries = []
+    errs = {}
+    for name in sorted(set(h_map) | set(s_map)):
+        hb = h_map.get(name)
+        sb = s_map.get(name)
+        if hb is None or sb is None:
+            errs[name] = "missing"
+            continue
+        if hb.get("error") or sb.get("error"):
+            errs[name] = f"habu={hb.get('error')} sbcl={sb.get('error')}"
+            continue
+        hb_ns = hb.get("ns", 0)
+        sb_ns = sb.get("ns", 0)
+        if hb_ns <= 0 or sb_ns <= 0:
+            errs[name] = "zero-ns"
+            continue
+        ratio = sb_ns / hb_ns
+        entries.append(
+            Entry(
+                suite="maxima",
+                name=name,
+                habu_ns=hb_ns,
+                sbcl_ns=sb_ns,
+                ratio=ratio,
+                note=advice(name, "maxima"),
+            )
+        )
+    return entries, errs, habu.get("loader", {}), sbcl.get("loader", {})
+
+
+def collect_gc_gates(gc_iters: int, gc_live_mb: int, gc_heap_mb: int, gate_level: str):
+    out = run_cmd(
+        [
+            "tools/gc-compare",
+            "--json",
+            f"--iters={gc_iters}",
+            f"--live-mb={gc_live_mb}",
+            f"--heap-mb={gc_heap_mb}",
+            f"--gate-level={gate_level}",
+        ]
+    )
+    return parse_mixed_json(out)
+
+
+def gc_summary(gc_compare: dict, gate_level: str):
+    metrics = gc_compare.get("metrics", {})
+    gate = gc_compare.get("gates", {}).get("vs_sbcl", {}).get(gate_level, {})
+    return {
+        "gate_level": gate_level,
+        "gate_pass": bool(gc_compare.get("gate_pass", False)),
+        "avg_pause_ratio": float(metrics.get("avg_pause_ratio", 0.0)),
+        "p95_pause_ratio": float(metrics.get("p95_pause_ratio", 0.0)),
+        "p99_pause_ratio": float(metrics.get("p99_pause_ratio", 0.0)),
+        "throughput_ratio": float(metrics.get("throughput_ratio", 0.0)),
+        "rss_ratio": metrics.get("rss_ratio"),
+        "alloc_sample_n": int(metrics.get("alloc_sample_n", 0)),
+        "alloc_hot_class": metrics.get("alloc_hot_class", "none"),
+        "alloc_hot_class_n": int(metrics.get("alloc_hot_class_n", 0)),
+        "gc_survive_n": int(metrics.get("gc_survive_n", 0)),
+        "gc_promote_n": int(metrics.get("gc_promote_n", 0)),
+        "gc_promote_rate": float(metrics.get("gc_promote_rate", 0.0)),
+        "gc_nursery_target": int(metrics.get("gc_nursery_target", 0)),
+        "gc_nursery_scale": float(metrics.get("gc_nursery_scale", 1.0)),
+        "gc_nursery_survival": float(metrics.get("gc_nursery_survival", 0.0)),
+        "gc_nursery_pause_error": float(metrics.get("gc_nursery_pause_error", 0.0)),
+        "gate_details": gate,
+    }
+
+
+def rank_gc_actions(gc_compare: dict, gc_norm: dict):
+    def gap_min(field: str):
+        d = gc_norm.get("gate_details", {}).get(field, {})
+        target = float(d.get("target_min", 0.0))
+        actual = float(d.get("actual", 0.0))
+        if target <= 0.0:
+            return 0.0
+        return max(0.0, (target - actual) / target)
+
+    avg_gap = gap_min("avg_pause_ratio")
+    p95_gap = gap_min("p95_pause_ratio")
+    thr_gap = gap_min("throughput_ratio")
+
+    habu = gc_compare.get("habu", {})
+    avg_pause = float(habu.get("avg_pause_ns", 0.0))
+    avg_copy = float(habu.get("avg_copy_ns", 0.0))
+    copy_share = (avg_copy / avg_pause) if avg_pause > 0.0 else 0.0
+    promote_rate = float(gc_norm.get("gc_promote_rate", 0.0))
+    hot_class = gc_norm.get("alloc_hot_class", "none")
+    rss_ratio = gc_norm.get("rss_ratio")
+
+    raw = []
+    raw.append(
+        {
+            "dot": "habu-nursery-policy-derive-d65d5879",
+            "action": "Derive adaptive nursery control law from live/survival feedback",
+            "score": 0.55 * max(avg_gap, thr_gap) + 0.45 * p95_gap,
+            "reason": "avg/throughput gate gaps dominate with full-live copying pressure",
+        }
+    )
+    raw.append(
+        {
+            "dot": "habu-debt-integrate-trigger-c402efa2",
+            "action": "Integrate debt-trigger pacing for smoother pause/throughput tradeoff",
+            "score": 0.60 * avg_gap + 0.40 * p95_gap,
+            "reason": "static trigger under-shoots gate targets across pause and throughput",
+        }
+    )
+    raw.append(
+        {
+            "dot": "habu-major-gc-incremental-068b1148",
+            "action": "Implement incremental major mark slices to cut tail pauses",
+            "score": p95_gap,
+            "reason": "p95/p99 remain far below target; slicing needed for latency tail",
+        }
+    )
+    raw.append(
+        {
+            "dot": "habu-rset-add-scan-13787e2c",
+            "action": "Add remembered-set scan fast paths and reduce rescan overhead",
+            "score": copy_share * max(thr_gap, avg_gap),
+            "reason": f"copy-share {copy_share:.4f} indicates copy/scavenge dominates pause budget",
+        }
+    )
+    raw.append(
+        {
+            "dot": "habu-tenuring-adaptive-threshold-34c571a8",
+            "action": "Tune adaptive tenuring threshold from promote/survival telemetry",
+            "score": 0.50 * avg_gap + 0.50 * min(1.0, max(0.0, 0.02 - promote_rate) / 0.02),
+            "reason": f"promote-rate {promote_rate:.6f} with hot class {hot_class} suggests tenure policy mismatch",
+        }
+    )
+    if isinstance(rss_ratio, (float, int)):
+        raw.append(
+            {
+                "dot": "habu-los-threshold-auto-6d2a6cc1",
+                "action": "Auto-tune LOS threshold and reuse policy",
+                "score": max(0.0, min(1.0, float(rss_ratio) - 1.0)),
+                "reason": f"rss-ratio {float(rss_ratio):.4f} vs parity max 1.2",
+            }
+        )
+
+    ranked = sorted(raw, key=lambda a: a["score"], reverse=True)
+    for i, a in enumerate(ranked, start=1):
+        a["rank"] = i
+    return ranked
+
+
+def validate_gc_report(gc_norm: dict, actions: list):
+    errs = []
+    req_norm = (
+        "gate_level",
+        "gate_pass",
+        "avg_pause_ratio",
+        "p95_pause_ratio",
+        "p99_pause_ratio",
+        "throughput_ratio",
+        "alloc_sample_n",
+        "alloc_hot_class",
+        "gc_survive_n",
+        "gc_promote_n",
+        "gc_promote_rate",
+        "gc_nursery_target",
+        "gc_nursery_scale",
+        "gc_nursery_survival",
+        "gc_nursery_pause_error",
+        "gate_details",
+    )
+    for k in req_norm:
+        if k not in gc_norm:
+            errs.append(f"missing gc_summary.{k}")
+
+    if not isinstance(actions, list) or not actions:
+        errs.append("gc_actions empty")
+    else:
+        prev_score = None
+        for i, a in enumerate(actions, start=1):
+            for k in ("rank", "dot", "action", "score", "reason"):
+                if k not in a:
+                    errs.append(f"gc_actions[{i-1}] missing {k}")
+            if a.get("rank") != i:
+                errs.append(f"gc_actions[{i-1}] rank {a.get('rank')} != {i}")
+            score = a.get("score")
+            if not isinstance(score, (int, float)):
+                errs.append(f"gc_actions[{i-1}] score non-numeric")
+            else:
+                if score < 0.0:
+                    errs.append(f"gc_actions[{i-1}] score negative")
+                if prev_score is not None and score > prev_score + 1e-12:
+                    errs.append("gc_actions not sorted by descending score")
+                prev_score = float(score)
+
+    gate_pass = bool(gc_norm.get("gate_pass", False))
+    top_score = float(actions[0]["score"]) if actions else 0.0
+    if not gate_pass and top_score <= 0.0:
+        errs.append("gate failed but top gc action score is non-positive")
+
+    return {"ok": len(errs) == 0, "errors": errs}
+
+
+def summarize(entries, top):
+    slow = sorted(entries, key=lambda e: e.ratio)
+    return slow[:top]
+
+
+def emit_table(entries):
+    print(f"{'Suite':<8} {'Bench':<14} {'Habu':>12} {'SBCL':>12} {'Ratio':>10}")
+    print("=" * 64)
+    for e in entries:
+        print(
+            f"{e.suite:<8} {e.name:<14} {e.habu_ns/1e6:>10.3f} ms {e.sbcl_ns/1e6:>10.3f} ms {e.ratio:>8.4f}x"
+        )
+
+
+def emit_actions(entries):
+    print("\nAction loop:")
+    for i, e in enumerate(entries, start=1):
+        print(f"{i}. [{e.suite}:{e.name}] {e.note}")
+
+
+def main():
+    args = parse_args()
+    os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+    micro_entries, micro_errs = collect_micro(args.iters)
+    maxima_entries, maxima_errs, h_loader, s_loader = collect_maxima(args.scale, args.heap_mb)
+    gc_compare = collect_gc_gates(args.gc_iters, args.gc_live_mb, args.gc_heap_mb, args.gate_level)
+    gate_pass = bool(gc_compare.get("gate_pass", False))
+    gc_norm = gc_summary(gc_compare, args.gate_level)
+    gc_actions = rank_gc_actions(gc_compare, gc_norm)
+    gc_validation = validate_gc_report(gc_norm, gc_actions)
+    if not gc_validation["ok"]:
+        raise RuntimeError("invalid gc report: " + "; ".join(gc_validation["errors"]))
+
+    merged = micro_entries + maxima_entries
+    worst = summarize(merged, args.top)
+
+    if args.json:
+        payload = {
+            "micro_errors": micro_errs,
+            "maxima_errors": maxima_errs,
+            "loaders": {"habu": h_loader, "sbcl": s_loader},
+            "gc_compare": gc_compare,
+            "gc_summary": gc_norm,
+            "gc_actions": gc_actions,
+            "gc_validation": gc_validation,
+            "gc_gate_level": args.gate_level,
+            "gc_gate_pass": gate_pass,
+            "worst": [
+                {
+                    "suite": e.suite,
+                    "name": e.name,
+                    "habu_ns": e.habu_ns,
+                    "sbcl_ns": e.sbcl_ns,
+                    "ratio": e.ratio,
+                    "action": e.note,
+                }
+                for e in worst
+            ],
+        }
+        print(json.dumps(payload, indent=2))
+        if args.fail_on_gates and not gate_pass:
+            raise RuntimeError(f"gc gate {args.gate_level} failed")
+        return
+
+    print("Performance self-improvement loop")
+    print(
+        f"  micro iters: {args.iters}, maxima scale: {args.scale}, heap_mb: {args.heap_mb}, "
+        f"gc(iters/live/heap): {args.gc_iters}/{args.gc_live_mb}/{args.gc_heap_mb}, "
+        f"gate: {args.gate_level}"
+    )
+    print(
+        "  loader(habu): ok={ok}/{total} fail={fail} attempted={attempted} {ms:.3f} ms".format(
+            ok=h_loader.get("ok", 0),
+            total=h_loader.get("total", 0),
+            fail=h_loader.get("fail", 0),
+            attempted=h_loader.get("attempted", 0),
+            ms=h_loader.get("ns", 0) / 1e6,
+        )
+    )
+    print(
+        "  loader(sbcl): ok={ok}/{total} fail={fail} attempted={attempted} {ms:.3f} ms".format(
+            ok=s_loader.get("ok", 0),
+            total=s_loader.get("total", 0),
+            fail=s_loader.get("fail", 0),
+            attempted=s_loader.get("attempted", 0),
+            ms=s_loader.get("ns", 0) / 1e6,
+        )
+    )
+    if micro_errs:
+        print(f"  micro errors: {len(micro_errs)}")
+    if maxima_errs:
+        print(f"  maxima errors: {len(maxima_errs)}")
+    gc_metrics = gc_norm
+    gc_gate = gc_norm.get("gate_details", {})
+    if gc_metrics:
+        print(
+            "  gc ratios: avg={avg:.4f} p95={p95:.4f} p99={p99:.4f} thr={thr:.4f} rss={rss}".format(
+                avg=gc_metrics.get("avg_pause_ratio", 0.0),
+                p95=gc_metrics.get("p95_pause_ratio", 0.0),
+                p99=gc_metrics.get("p99_pause_ratio", 0.0),
+                thr=gc_metrics.get("throughput_ratio", 0.0),
+                rss=(
+                    f"{gc_metrics.get('rss_ratio', 0.0):.4f}"
+                    if gc_metrics.get("rss_ratio") is not None
+                    else "n/a"
+                ),
+            )
+        )
+        print(
+            "  gc alloc sample: n={n} hot={hot} ({hot_n})".format(
+                n=gc_metrics.get("alloc_sample_n", 0),
+                hot=gc_metrics.get("alloc_hot_class", "none"),
+                hot_n=gc_metrics.get("alloc_hot_class_n", 0),
+            )
+        )
+        print(
+            "  gc survival: n={n} promoted={pn} rate={pr:.4f}".format(
+                n=gc_metrics.get("gc_survive_n", 0),
+                pn=gc_metrics.get("gc_promote_n", 0),
+                pr=gc_metrics.get("gc_promote_rate", 0.0),
+            )
+        )
+        print(
+            "  gc nursery: target={t} scale={s:.4f} surv={sv:.4f} perror={pe:.4f}".format(
+                t=gc_metrics.get("gc_nursery_target", 0),
+                s=gc_metrics.get("gc_nursery_scale", 1.0),
+                sv=gc_metrics.get("gc_nursery_survival", 0.0),
+                pe=gc_metrics.get("gc_nursery_pause_error", 0.0),
+            )
+        )
+    if gc_gate:
+        print(f"  gc gate {args.gate_level}: {'PASS' if gc_gate.get('pass') else 'FAIL'}")
+    print(f"  gc report validation: {'PASS' if gc_validation['ok'] else 'FAIL'}")
+    if gc_actions:
+        print("  gc action ranking:")
+        for a in gc_actions[:5]:
+            print(f"    {a['rank']}. [{a['dot']}] score={a['score']:.4f} {a['action']}")
+
+    print()
+    emit_table(worst)
+    emit_actions(worst)
+    if args.fail_on_gates and not gate_pass:
+        raise RuntimeError(f"gc gate {args.gate_level} failed")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)

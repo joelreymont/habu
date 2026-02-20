@@ -230,6 +230,31 @@ pub fn build(b: *std.Build) void {
     const comp_bench_step = b.step("bench-comp", "Run comprehensive benchmark");
     comp_bench_step.dependOn(&comp_bench_run_cmd.step);
 
+    // Maxima workload benchmark (real-world CAS paths)
+    const maxima_bench = b.addExecutable(.{
+        .name = "maxima_workload_bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/maxima_workload.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    maxima_bench.root_module.addImport("habu", habu_bench_mod);
+    maxima_bench.root_module.addOptions("build_options", build_opts);
+    maxima_bench.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
+    maxima_bench.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
+    maxima_bench.root_module.linkSystemLibrary("z3", .{});
+    maxima_bench.root_module.linkSystemLibrary("c", .{});
+
+    b.installArtifact(maxima_bench);
+
+    const maxima_bench_run_cmd = b.addRunArtifact(maxima_bench);
+    if (b.args) |args| {
+        maxima_bench_run_cmd.addArgs(args);
+    }
+    const maxima_bench_step = b.step("bench-maxima", "Run Maxima workload benchmark");
+    maxima_bench_step.dependOn(&maxima_bench_run_cmd.step);
+
     // Bench regression checks (runs gc_bench/vm_bench/jit_bench)
     const bench_check = b.addExecutable(.{
         .name = "bench_check",

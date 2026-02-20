@@ -1,0 +1,366 @@
+#!/usr/bin/env python3
+"""GC comparison: Habu vs SBCL.
+
+Compares pause-time metrics on similar allocation pressure workloads.
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+
+ITERS = 100
+LIVE_MB = 8
+HEAP_MB = 64
+JSON_OUT = False
+FAIL_ON_GATES = False
+GATE_LEVEL = "milestone_2x_from_baseline"
+
+PARITY_GATES = {
+    "schema_version": 1,
+    "baseline_date": "2026-02-20",
+    "vs_sbcl": {
+        "baseline_ratio": {
+            "avg_pause_ratio": 0.0670,
+            "p95_pause_ratio": 0.1112,
+            "throughput_ratio": 0.0670,
+        },
+        "milestone_2x_from_baseline": {
+            "avg_pause_ratio_min": 0.1340,
+            "p95_pause_ratio_min": 0.2224,
+            "throughput_ratio_min": 0.1340,
+            "rss_ratio_max": 4.0,
+        },
+        "competitive": {
+            "avg_pause_ratio_min": 0.50,
+            "p95_pause_ratio_min": 0.50,
+            "throughput_ratio_min": 0.50,
+            "rss_ratio_max": 2.0,
+        },
+        "parity": {
+            "avg_pause_ratio_min": 1.00,
+            "p95_pause_ratio_min": 1.00,
+            "throughput_ratio_min": 1.00,
+            "rss_ratio_max": 1.20,
+        },
+    },
+    "vs_ocaml": {
+        "milestone_2x_from_baseline": {
+            "avg_pause_ratio_min": 0.1340,
+            "p95_pause_ratio_min": 0.2224,
+            "throughput_ratio_min": 0.1340,
+            "rss_ratio_max": 4.0,
+        },
+        "competitive": {
+            "avg_pause_ratio_min": 0.50,
+            "p95_pause_ratio_min": 0.50,
+            "throughput_ratio_min": 0.50,
+            "rss_ratio_max": 2.0,
+        },
+        "parity": {
+            "avg_pause_ratio_min": 1.00,
+            "p95_pause_ratio_min": 1.00,
+            "throughput_ratio_min": 1.00,
+            "rss_ratio_max": 1.20,
+        },
+    },
+}
+
+ALLOC_CLASS_KEYS = [
+    ("cons", "alloc_sample_cons"),
+    ("symbol", "alloc_sample_symbol"),
+    ("keyword", "alloc_sample_keyword"),
+    ("vector", "alloc_sample_vector"),
+    ("array", "alloc_sample_array"),
+    ("string", "alloc_sample_string"),
+    ("closure", "alloc_sample_closure"),
+    ("stream", "alloc_sample_stream"),
+    ("hash_table", "alloc_sample_hash_table"),
+    ("chunk", "alloc_sample_chunk"),
+    ("other", "alloc_sample_other"),
+]
+
+for arg in sys.argv[1:]:
+    if arg == "--json":
+        JSON_OUT = True
+    elif arg == "--fail-on-gates":
+        FAIL_ON_GATES = True
+    elif arg.startswith("--gate-level="):
+        GATE_LEVEL = arg.split("=", 1)[1]
+    elif arg.startswith("--iters="):
+        ITERS = int(arg.split("=", 1)[1])
+    elif arg.startswith("--live-mb="):
+        LIVE_MB = int(arg.split("=", 1)[1])
+    elif arg.startswith("--heap-mb="):
+        HEAP_MB = int(arg.split("=", 1)[1])
+    else:
+        print(f"unknown arg: {arg}", file=sys.stderr)
+        sys.exit(2)
+
+os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+
+def parse_mixed_json(text: str, label: str):
+    starts = [i for i, ch in enumerate(text) if ch == '{']
+    for i in reversed(starts):
+        frag = text[i:].strip()
+        try:
+            return json.loads(frag)
+        except json.JSONDecodeError:
+            pass
+    raise RuntimeError(f"{label}: missing JSON payload\n{text}")
+
+
+def parse_rss_bytes(stderr_text: str):
+    for line in stderr_text.splitlines():
+        if "maximum resident set size" in line.lower():
+            m = re.search(r"(\d+)", line)
+            if not m:
+                continue
+            raw = int(m.group(1))
+            if sys.platform == "darwin":
+                # macOS /usr/bin/time -l reports bytes.
+                return raw
+            # GNU time reports kbytes.
+            return raw * 1024
+    return None
+
+
+def run_cmd(argv, timeout=1800):
+    if os.path.exists("/usr/bin/time"):
+        p = subprocess.run(
+            ["/usr/bin/time", "-l", *argv],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if p.returncode == 0:
+            return p, parse_rss_bytes(p.stderr)
+        if "illegal option" not in p.stderr.lower():
+            return p, parse_rss_bytes(p.stderr)
+    p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    return p, None
+
+
+def run_habu():
+    cmd = [
+        "zig",
+        "build",
+        "bench",
+        "--",
+        "--json",
+        f"--iters={ITERS}",
+        f"--live-mb={LIVE_MB}",
+        f"--heap-mb={HEAP_MB}",
+    ]
+    p, rss_bytes = run_cmd(cmd, timeout=1800)
+    if p.returncode != 0:
+        raise RuntimeError(f"habu gc bench failed\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}")
+    return parse_mixed_json(p.stdout, "habu"), rss_bytes
+
+
+def run_sbcl():
+    cmd = [
+        "sbcl",
+        "--script",
+        "bench/sbcl_gc.lisp",
+        "--json",
+        f"--iters={ITERS}",
+        f"--live-mb={LIVE_MB}",
+    ]
+    p, rss_bytes = run_cmd(cmd, timeout=1800)
+    if p.returncode != 0:
+        raise RuntimeError(f"sbcl gc bench failed\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}")
+    return parse_mixed_json(p.stdout, "sbcl"), rss_bytes
+
+
+def mib_per_sec(work_bytes: int, total_pause_ns: int):
+    if work_bytes <= 0 or total_pause_ns <= 0:
+        return 0.0
+    return (work_bytes / (1024.0 * 1024.0)) / (total_pause_ns / 1e9)
+
+
+def hot_alloc_class(habu_payload):
+    best_name = "none"
+    best_n = 0
+    for name, key in ALLOC_CLASS_KEYS:
+        n = int(habu_payload.get(key, 0))
+        if n > best_n:
+            best_name = name
+            best_n = n
+    return best_name, best_n
+
+
+def eval_level(metrics, level):
+    out = {}
+    out["avg_pause_ratio"] = {
+        "actual": metrics["avg_pause_ratio"],
+        "target_min": level["avg_pause_ratio_min"],
+        "pass": metrics["avg_pause_ratio"] >= level["avg_pause_ratio_min"],
+    }
+    out["p95_pause_ratio"] = {
+        "actual": metrics["p95_pause_ratio"],
+        "target_min": level["p95_pause_ratio_min"],
+        "pass": metrics["p95_pause_ratio"] >= level["p95_pause_ratio_min"],
+    }
+    out["throughput_ratio"] = {
+        "actual": metrics["throughput_ratio"],
+        "target_min": level["throughput_ratio_min"],
+        "pass": metrics["throughput_ratio"] >= level["throughput_ratio_min"],
+    }
+    rss_actual = metrics["rss_ratio"]
+    out["rss_ratio"] = {
+        "actual": rss_actual,
+        "target_max": level["rss_ratio_max"],
+        "pass": (rss_actual is not None and rss_actual <= level["rss_ratio_max"]),
+    }
+    out["pass"] = all(m["pass"] for m in out.values() if isinstance(m, dict) and "pass" in m)
+    return out
+
+
+habu, habu_rss = run_habu()
+sbcl, sbcl_rss = run_sbcl()
+
+h_avg = habu.get("avg_pause_ns", 0)
+h_p50 = habu.get("p50_pause_ns", 0)
+h_p95 = habu.get("p95_pause_ns", 0)
+h_p99 = habu.get("p99_pause_ns", 0)
+s_avg = sbcl.get("avg_pause_ns", 0)
+s_p50 = sbcl.get("p50_pause_ns", 0)
+s_p95 = sbcl.get("p95_pause_ns", 0)
+s_p99 = sbcl.get("p99_pause_ns", 0)
+
+avg_ratio = (s_avg / h_avg) if h_avg > 0 else 0.0
+p50_ratio = (s_p50 / h_p50) if h_p50 > 0 else 0.0
+p95_ratio = (s_p95 / h_p95) if h_p95 > 0 else 0.0
+p99_ratio = (s_p99 / h_p99) if h_p99 > 0 else 0.0
+
+h_work = int(habu.get("bytes_copied", 0))
+h_pause_total = int(h_avg) * int(habu.get("gc_count", 0))
+s_work = int(sbcl.get("live_mb", LIVE_MB)) * 1024 * 1024 * int(sbcl.get("iters", ITERS))
+s_pause_total = int(s_avg) * int(sbcl.get("iters", ITERS))
+h_tp = mib_per_sec(h_work, h_pause_total)
+s_tp = mib_per_sec(s_work, s_pause_total)
+throughput_ratio = (h_tp / s_tp) if s_tp > 0 else 0.0
+rss_ratio = (habu_rss / sbcl_rss) if (habu_rss and sbcl_rss and sbcl_rss > 0) else None
+hot_name, hot_n = hot_alloc_class(habu)
+survive_bytes = int(habu.get("gc_survive_bytes", 0))
+promote_bytes = int(habu.get("gc_promote_bytes", 0))
+promote_rate = (promote_bytes / survive_bytes) if survive_bytes > 0 else 0.0
+
+metrics = {
+    "avg_pause_ratio": avg_ratio,
+    "p50_pause_ratio": p50_ratio,
+    "p95_pause_ratio": p95_ratio,
+    "p99_pause_ratio": p99_ratio,
+    "throughput_ratio": throughput_ratio,
+    "habu_mib_per_sec": h_tp,
+    "sbcl_mib_per_sec": s_tp,
+    "rss_ratio": rss_ratio,
+    "alloc_sample_n": int(habu.get("alloc_sample_n", 0)),
+    "alloc_sample_bytes": int(habu.get("alloc_sample_bytes", 0)),
+    "alloc_hot_class": hot_name,
+    "alloc_hot_class_n": hot_n,
+    "gc_survive_n": int(habu.get("gc_survive_n", 0)),
+    "gc_survive_bytes": survive_bytes,
+    "gc_promote_n": int(habu.get("gc_promote_n", 0)),
+    "gc_promote_bytes": promote_bytes,
+    "gc_promote_rate": promote_rate,
+    "gc_nursery_target": int(habu.get("gc_nursery_target", 0)),
+    "gc_nursery_scale": float(habu.get("gc_nursery_scale", 1.0)),
+    "gc_nursery_survival": float(habu.get("gc_nursery_survival", 0.0)),
+    "gc_nursery_pause_error": float(habu.get("gc_nursery_pause_error", 0.0)),
+}
+gate_eval = {
+    "milestone_2x_from_baseline": eval_level(
+        metrics, PARITY_GATES["vs_sbcl"]["milestone_2x_from_baseline"]
+    ),
+    "competitive": eval_level(metrics, PARITY_GATES["vs_sbcl"]["competitive"]),
+    "parity": eval_level(metrics, PARITY_GATES["vs_sbcl"]["parity"]),
+}
+selected_gate = gate_eval.get(GATE_LEVEL)
+if selected_gate is None:
+    print(f"unknown gate level: {GATE_LEVEL}", file=sys.stderr)
+    sys.exit(2)
+
+if JSON_OUT:
+    print(
+        json.dumps(
+            {
+                "habu": habu,
+                "sbcl": sbcl,
+                "rss_bytes": {"habu": habu_rss, "sbcl": sbcl_rss},
+                "metrics": metrics,
+                "gates": {"targets": PARITY_GATES, "vs_sbcl": gate_eval},
+                "gate_level": GATE_LEVEL,
+                "gate_pass": selected_gate["pass"],
+            },
+            indent=2,
+        )
+    )
+    if FAIL_ON_GATES and not selected_gate["pass"]:
+        sys.exit(1)
+    sys.exit(0)
+
+print("GC comparison (Habu vs SBCL)")
+print(f"  iters: {ITERS}, live_mb: {LIVE_MB}, habu_heap_mb: {HEAP_MB}")
+print()
+print("Habu:")
+print(f"  avg_pause: {h_avg/1e6:.3f} ms")
+print(f"  p50_pause: {h_p50/1e6:.3f} ms")
+print(f"  p95_pause: {h_p95/1e6:.3f} ms")
+print(f"  p99_pause: {h_p99/1e6:.3f} ms")
+print(f"  gc_count: {habu.get('gc_count', 0)}")
+print(f"  copied_mb: {habu.get('bytes_copied', 0)/(1024*1024):.2f}")
+print()
+print("SBCL:")
+print(f"  avg_pause: {s_avg/1e6:.3f} ms")
+print(f"  p50_pause: {s_p50/1e6:.3f} ms")
+print(f"  p95_pause: {s_p95/1e6:.3f} ms")
+print(f"  p99_pause: {s_p99/1e6:.3f} ms")
+print()
+print("Ratio (sbcl / habu; >1 means Habu better):")
+print(f"  avg_pause_ratio: {avg_ratio:.4f}x")
+print(f"  p50_pause_ratio: {p50_ratio:.4f}x")
+print(f"  p95_pause_ratio: {p95_ratio:.4f}x")
+print(f"  p99_pause_ratio: {p99_ratio:.4f}x")
+print()
+print("Throughput:")
+print(f"  habu_copy_mib_per_s: {h_tp:.2f}")
+print(f"  sbcl_live_mib_per_s: {s_tp:.2f}")
+print(f"  throughput_ratio (habu/sbcl): {throughput_ratio:.4f}x")
+print()
+print("Allocation sampling:")
+print(f"  alloc_sample_n: {metrics['alloc_sample_n']}")
+print(f"  alloc_sample_bytes: {metrics['alloc_sample_bytes']}")
+print(f"  alloc_hot_class: {metrics['alloc_hot_class']} ({metrics['alloc_hot_class_n']})")
+print()
+print("Survival telemetry:")
+print(f"  gc_survive_n: {metrics['gc_survive_n']}")
+print(f"  gc_survive_bytes: {metrics['gc_survive_bytes']}")
+print(f"  gc_promote_n: {metrics['gc_promote_n']}")
+print(f"  gc_promote_bytes: {metrics['gc_promote_bytes']}")
+print(f"  gc_promote_rate: {metrics['gc_promote_rate']:.4f}")
+print()
+print("Nursery policy:")
+print(f"  gc_nursery_target: {metrics['gc_nursery_target']}")
+print(f"  gc_nursery_scale: {metrics['gc_nursery_scale']:.4f}")
+print(f"  gc_nursery_survival: {metrics['gc_nursery_survival']:.4f}")
+print(f"  gc_nursery_pause_error: {metrics['gc_nursery_pause_error']:.4f}")
+print()
+print("Memory:")
+if habu_rss and sbcl_rss:
+    print(f"  habu_rss_mib: {habu_rss/(1024*1024):.2f}")
+    print(f"  sbcl_rss_mib: {sbcl_rss/(1024*1024):.2f}")
+    print(f"  rss_ratio (habu/sbcl): {rss_ratio:.4f}x")
+else:
+    print("  rss_ratio: unavailable (time(1) RSS metrics not available)")
+print()
+print("Gate status (vs SBCL):")
+for level_name, level in gate_eval.items():
+    state = "PASS" if level["pass"] else "FAIL"
+    print(f"  {level_name}: {state}")
+print(f"  selected gate [{GATE_LEVEL}]: {'PASS' if selected_gate['pass'] else 'FAIL'}")
+if FAIL_ON_GATES and not selected_gate["pass"]:
+    sys.exit(1)

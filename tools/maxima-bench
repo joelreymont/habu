@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Maxima workload benchmark: Habu vs SBCL
+
+Usage:
+  tools/maxima-bench
+  tools/maxima-bench --scale=2
+  tools/maxima-bench --heap-mb=1536
+  tools/maxima-bench --json
+"""
+
+import json
+import math
+import os
+import subprocess
+import sys
+
+SCALE = 1
+HEAP_MB = 1024
+JSON_OUT = False
+
+for arg in sys.argv[1:]:
+    if arg == "--json":
+        JSON_OUT = True
+    elif arg.startswith("--scale="):
+        SCALE = int(arg.split("=", 1)[1])
+    elif arg.startswith("--heap-mb="):
+        HEAP_MB = int(arg.split("=", 1)[1])
+    else:
+        print(f"unknown arg: {arg}", file=sys.stderr)
+        sys.exit(2)
+
+os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+
+def run_habu(scale: int, heap_mb: int):
+    cmd = [
+        "zig",
+        "build",
+        "-Duse-hoist=true",
+        "bench-maxima",
+        "--",
+        "--json",
+        f"--scale={scale}",
+        f"--heap-mb={heap_mb}",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    if proc.returncode != 0:
+        raise RuntimeError(f"habu bench failed\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
+    return parse_mixed_json(proc.stdout, "habu")
+
+
+def run_sbcl(scale: int):
+    cmd = [
+        "sbcl",
+        "--script",
+        "bench/maxima_workload.lisp",
+        "--json",
+        f"--scale={scale}",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    if proc.returncode != 0:
+        raise RuntimeError(f"sbcl bench failed\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
+    return parse_mixed_json(proc.stdout, "sbcl")
+
+
+def parse_mixed_json(text: str, label: str):
+    idx = text.rfind('{"engine"')
+    if idx < 0:
+        raise RuntimeError(f"{label} output missing JSON payload\\nstdout:\\n{text}")
+    payload = text[idx:].strip()
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"{label} JSON parse failed: {exc}\\nstdout:\\n{text}") from exc
+
+
+def index_benches(data):
+    out = {}
+    for b in data.get("benches", []):
+        out[b["name"]] = b
+    return out
+
+
+habu = run_habu(SCALE, HEAP_MB)
+sbcl = run_sbcl(SCALE)
+
+if JSON_OUT:
+    print(json.dumps({"habu": habu, "sbcl": sbcl}, indent=2))
+    sys.exit(0)
+
+habu_idx = index_benches(habu)
+sbcl_idx = index_benches(sbcl)
+
+print("Maxima workload comparison (Habu vs SBCL)")
+print(f"  scale: {SCALE}, heap_mb: {HEAP_MB}")
+
+h_loader = habu.get("loader", {})
+s_loader = sbcl.get("loader", {})
+print("  loader:")
+print(
+    "    habu: ok={ok}/{total} fail={fail} attempted={attempted} missing={missing} {ms:.3f} ms".format(
+        ok=h_loader.get("ok", 0),
+        total=h_loader.get("total", 0),
+        fail=h_loader.get("fail", 0),
+        attempted=h_loader.get("attempted", 0),
+        missing=h_loader.get("missing", 0),
+        ms=h_loader.get("ns", 0) / 1e6,
+    )
+)
+if h_loader.get("error"):
+    print(f"      error: {h_loader['error']}")
+print(
+    "    sbcl: ok={ok}/{total} fail={fail} attempted={attempted} missing={missing} {ms:.3f} ms".format(
+        ok=s_loader.get("ok", 0),
+        total=s_loader.get("total", 0),
+        fail=s_loader.get("fail", 0),
+        attempted=s_loader.get("attempted", 0),
+        missing=s_loader.get("missing", 0),
+        ms=s_loader.get("ns", 0) / 1e6,
+    )
+)
+if s_loader.get("error"):
+    print(f"      error: {s_loader['error']}")
+
+print()
+print(f"{'Bench':<14} {'Habu':>12} {'SBCL':>12} {'Ratio':>10}")
+print("=" * 52)
+
+wins = 0
+losses = 0
+errors = 0
+ratios = []
+
+names = sorted(set(habu_idx.keys()) | set(sbcl_idx.keys()))
+for name in names:
+    hb = habu_idx.get(name)
+    sb = sbcl_idx.get(name)
+
+    hb_err = hb.get("error") if hb else "missing"
+    sb_err = sb.get("error") if sb else "missing"
+
+    hb_ns = hb.get("ns", 0) if hb else 0
+    sb_ns = sb.get("ns", 0) if sb else 0
+
+    if hb_err or sb_err or hb_ns == 0 or sb_ns == 0:
+        errors += 1
+        hb_s = "ERR" if hb_err else f"{hb_ns/1e6:.3f} ms"
+        sb_s = "ERR" if sb_err else f"{sb_ns/1e6:.3f} ms"
+        print(f"{name:<14} {hb_s:>12} {sb_s:>12} {'—':>10}")
+        continue
+
+    ratio = sb_ns / hb_ns
+    ratios.append(ratio)
+    if ratio > 1.0:
+        wins += 1
+    else:
+        losses += 1
+
+    print(f"{name:<14} {hb_ns/1e6:>10.3f} ms {sb_ns/1e6:>10.3f} ms {ratio:>8.2f}x")
+
+print()
+print(f"faster than sbcl: {wins}")
+print(f"slower than sbcl: {losses}")
+print(f"errors/missing: {errors}")
+if ratios:
+    geo = math.exp(sum(math.log(r) for r in ratios) / len(ratios))
+    print(f"geo mean speed ratio (sbcl/habu): {geo:.2f}x")
