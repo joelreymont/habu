@@ -99,10 +99,10 @@
         - [x] `habu-bench-pack-define-4131275b` Bench pack: define shared workloads.
         - [x] `habu-bench-pack-implement-72607a92` Bench pack: implement runtime runners. Depends on `habu-bench-pack-define-4131275b`.
         - [x] `habu-bench-pack-add-cb3ac540` Bench pack: add unified diff report. Depends on `habu-bench-pack-implement-72607a92`.
-      - [ ] `habu-automate-gc-self-807cbd79` Automate GC self-improvement loop from ranked deltas. Depends on `habu-create-cross-runtime-056102b6`.
+      - [x] `habu-automate-gc-self-807cbd79` Automate GC self-improvement loop from ranked deltas. Depends on `habu-create-cross-runtime-056102b6`.
         - [x] `habu-self-loop-rank-9d5c4220` Self-loop: rank bottleneck candidates.
         - [x] `habu-self-loop-persist-f5acd7c3` Self-loop: persist run history. Depends on `habu-self-loop-rank-9d5c4220`.
-        - [ ] `habu-self-loop-emit-73c9938b` Self-loop: emit next-dot recommendations. Depends on `habu-self-loop-persist-f5acd7c3`.
+        - [x] `habu-self-loop-emit-73c9938b` Self-loop: emit next-dot recommendations. Depends on `habu-self-loop-persist-f5acd7c3`.
       - [ ] `habu-enforce-gc-parity-0ddebcf0` Enforce GC parity CI gates and fail regressions. Depends on `habu-automate-gc-self-807cbd79`.
         - [ ] `habu-ci-add-gc-0b97019b` CI: add GC parity job.
         - [ ] `habu-ci-fail-on-b00ee752` CI: fail on parity regressions. Depends on `habu-ci-add-gc-0b97019b`.

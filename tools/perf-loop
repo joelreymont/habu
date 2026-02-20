@@ -655,6 +655,57 @@ def build_trend_lines(history_tail: list):
     }
 
 
+def build_next_dot_recommendations(gc_actions: list, trend_lines, gate_pass: bool, limit: int):
+    regressions = 0
+    gate_pass_rate = None
+    if trend_lines:
+        for key in ("avg_pause_ratio", "p95_pause_ratio", "throughput_ratio"):
+            trend = trend_lines.get(key)
+            if isinstance(trend, dict) and isinstance(trend.get("delta_prev"), (int, float)):
+                if float(trend["delta_prev"]) < 0.0:
+                    regressions += 1
+        gpr = trend_lines.get("gate_pass_rate")
+        if isinstance(gpr, (int, float)):
+            gate_pass_rate = float(gpr)
+
+    trend_factor = 1.0 + (0.1 * regressions)
+    if isinstance(gate_pass_rate, float):
+        trend_factor += max(0.0, 0.25 - gate_pass_rate)
+    if gate_pass:
+        trend_factor = max(0.75, trend_factor - 0.1)
+
+    ranked = []
+    for action in gc_actions:
+        score = float(action.get("score", 0.0))
+        confidence = float(action.get("confidence", 1.0))
+        if score <= 0.0:
+            continue
+        rec_score = score * trend_factor
+        ranked.append(
+            {
+                "dot": action.get("dot"),
+                "action": action.get("action"),
+                "score": rec_score,
+                "base_score": score,
+                "confidence": confidence,
+                "trend_factor": trend_factor,
+                "reason": action.get("reason"),
+                "command": f"dot on {action.get('dot')}",
+                "evidence": {
+                    "gate_pass": gate_pass,
+                    "regressions": regressions,
+                    "gate_pass_rate": gate_pass_rate,
+                },
+            }
+        )
+    ranked.sort(key=lambda row: row["score"], reverse=True)
+    out = []
+    for idx, row in enumerate(ranked[: max(1, limit)], start=1):
+        row["rank"] = idx
+        out.append(row)
+    return out
+
+
 def summarize(entries, top):
     slow = sorted(entries, key=lambda e: e.ratio)
     return slow[:top]
@@ -739,6 +790,7 @@ def main():
         append_history_record(args.history_file, history_record)
         history_tail, history_entries = load_history_tail(args.history_file, args.history_window)
         trend_lines = build_trend_lines(history_tail)
+    next_dots = build_next_dot_recommendations(gc_actions, trend_lines, gate_pass, 5)
     history_meta = {
         "enabled": not args.no_history,
         "file": args.history_file,
@@ -776,6 +828,7 @@ def main():
             "gc_gate_pass": gate_pass,
             "history": history_meta,
             "trend_lines": trend_lines,
+            "next_dots": next_dots,
             "worst": [
                 {
                     "suite": e.suite,
@@ -945,6 +998,18 @@ def main():
         print("  gc action ranking:")
         for a in gc_actions[:5]:
             print(f"    {a['rank']}. [{a['dot']}] score={a['score']:.4f} {a['action']}")
+    if next_dots:
+        print("  next dots:")
+        for rec in next_dots[:3]:
+            print(
+                "    {rank}. [{dot}] score={score:.4f} conf={conf:.3f} cmd=`{cmd}`".format(
+                    rank=rec.get("rank"),
+                    dot=rec.get("dot"),
+                    score=rec.get("score", 0.0),
+                    conf=rec.get("confidence", 1.0),
+                    cmd=rec.get("command"),
+                )
+            )
 
     print()
     emit_table(worst)
