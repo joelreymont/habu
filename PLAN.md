@@ -127,7 +127,7 @@
       - [x] `habu-gc-regression-perf-91ce5f3c` Add GC regression and throughput gates. Depends on `habu-minor-gc-collector-2f89a428`.
   - [x] `habu-lock-hoist-api-0d6259d1` Lock `../hoist` API drift handling in Habu-side contract checks.
     - [x] `habu-hoist-api-contract-6bac1b3e` Add compile/runtime contract probes for hoist interface.
-  - [ ] `habu-perf-ci-and-2b7ac2f9` Add perf regression gates and unified docs. Depends on `habu-cut-vm-gc-511ec7d3`, `habu-lock-hoist-api-0d6259d1`.
+  - [x] `habu-perf-ci-and-2b7ac2f9` Add perf regression gates and unified docs. Depends on `habu-cut-vm-gc-511ec7d3`, `habu-lock-hoist-api-0d6259d1`.
 
 ### 0. Plan Control
 - [ ] `habu-unify-plan-and-1848633e` Unify plan and dot tree.

@@ -83,6 +83,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding a dedicated `gc-parity` build step (`build.zig:279`) plus CI workflow (`.github/workflows/gc-parity.yml`) gives a stable entrypoint for parity artifacts without forcing gate failures yet.
 - Adding regression-baseline mode to `tools/gc-compare` (`--regression-baseline`, `--fail-on-regressions`) let CI hard-fail on measured drift while keeping absolute parity milestones as informational (`tools/gc-compare:253`, `tools/gc-compare:781`).
 - Publishing a single GC parity contract doc (`docs/gc-parity-contract.md`) and linking it from `bench/README.md`/`docs/README.md` removed ambiguity about gate semantics vs regression semantics.
+- Linking Maxima loader docs directly to parity/regression commands (`docs/maxima-loader.md`) made loader RCA and perf gate checks share one operational entrypoint.
 
 ### Did Not Work
 - Assuming a fixed `MAJOR_SWEEP_BUDGET`-sized fixture would keep major cycle active was brittle; root ordering/object size can make the cycle complete in one pass, so barrier tests need larger deterministic workloads.

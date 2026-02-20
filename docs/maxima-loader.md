@@ -70,3 +70,21 @@ Run with internal/system-only controls:
   missing requested bindings, then attempted file count.
 - Keep stream formwise probes (`with-open-file` + `read`) as advisory only
   until stream `read` semantics are fully fixed.
+
+## Perf Gates
+
+- GC parity CI uses `.github/workflows/gc-parity.yml` and runs:
+
+```bash
+tools/gc-compare --json --iters=20 --live-mb=8 --heap-mb=64 \
+  --gate-level=milestone_2x_from_baseline \
+  --regression-baseline=bench/gc-regression-baseline.json \
+  --regression-slack=0.15 \
+  --fail-on-regressions
+```
+
+- Self-improvement loop for Maxima + micro workloads:
+
+```bash
+tools/perf-loop --json --iters=1 --scale=1 --gc-iters=30 --gc-runs=3
+```
