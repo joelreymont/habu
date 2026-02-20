@@ -59,7 +59,7 @@ pub const AllocClass = enum(u8) {
 };
 
 const ALLOC_CLASS_N: usize = std.meta.fields(AllocClass).len;
-const ALLOC_SIZE_N: usize = 8;
+pub const ALLOC_SIZE_N: usize = 8;
 pub const GC_AGE_N: usize = 8;
 
 /// Interned symbol table for eq comparison
@@ -372,6 +372,9 @@ pub const Heap = struct {
     /// LOS bump pointer and metadata.
     los_alloc_ptr: ?[*]align(ALIGNMENT) u8,
     los_threshold: usize,
+    los_threshold_min: usize,
+    los_threshold_max: usize,
+    los_target_pause_ns: u64,
     los_objs: std.ArrayList(TenuredObj),
     los_free: std.ArrayList(FreeSpan),
     major_cycle_active: bool,
@@ -485,6 +488,13 @@ pub const Heap = struct {
         gc_nursery_scale: f64 = 1.0,
         gc_nursery_survival: f64 = 0.0,
         gc_nursery_pause_error: f64 = 0.0,
+        gc_los_threshold: usize = 0,
+        gc_los_threshold_min: usize = 0,
+        gc_los_threshold_max: usize = 0,
+        gc_los_scale: f64 = 1.0,
+        gc_los_large_ratio: f64 = 0.0,
+        gc_los_occupancy: f64 = 0.0,
+        gc_los_pause_error: f64 = 0.0,
         gc_build_ns: u64 = 0,
         gc_root_ns: u64 = 0,
         gc_copy_ns: u64 = 0,
@@ -671,6 +681,16 @@ pub const Heap = struct {
         if (promote_target < promote_min) promote_target = promote_min;
         if (promote_target > promote_max) promote_target = promote_max;
 
+        const base_los_threshold = std.mem.alignForward(usize, @max(config.generational.los_threshold, @as(usize, ALIGNMENT)), ALIGNMENT);
+        const los_min_default = @max(base_los_threshold / 4, @as(usize, 256));
+        var los_threshold_min = std.mem.alignForward(usize, los_min_default, ALIGNMENT);
+        const los_max_default = if (layout.mode == .generational) @max(base_los_threshold, nursery_max / 2) else base_los_threshold;
+        const los_threshold_max = std.mem.alignForward(usize, los_max_default, ALIGNMENT);
+        if (los_threshold_min > los_threshold_max) los_threshold_min = los_threshold_max;
+        var los_threshold_target = base_los_threshold;
+        if (los_threshold_target < los_threshold_min) los_threshold_target = los_threshold_min;
+        if (los_threshold_target > los_threshold_max) los_threshold_target = los_threshold_max;
+
         var heap = Heap{
             .memory = memory,
             .layout = layout,
@@ -701,7 +721,10 @@ pub const Heap = struct {
             .tenured_free = std.ArrayList(FreeSpan){},
             .tenured_free_bins = [_]std.ArrayList(FreeSpan){std.ArrayList(FreeSpan){}} ** TENURED_FREE_BIN_N,
             .los_alloc_ptr = if (layout.los) |r| r.start else null,
-            .los_threshold = config.generational.los_threshold,
+            .los_threshold = los_threshold_target,
+            .los_threshold_min = los_threshold_min,
+            .los_threshold_max = los_threshold_max,
+            .los_target_pause_ns = 10_000_000,
             .los_objs = std.ArrayList(TenuredObj){},
             .los_free = std.ArrayList(FreeSpan){},
             .major_cycle_active = false,
@@ -739,6 +762,9 @@ pub const Heap = struct {
         heap.stats.gc_promote_threshold = promote_target;
         heap.stats.gc_promote_threshold_min = promote_min;
         heap.stats.gc_promote_threshold_max = promote_max;
+        heap.stats.gc_los_threshold = los_threshold_target;
+        heap.stats.gc_los_threshold_min = los_threshold_min;
+        heap.stats.gc_los_threshold_max = los_threshold_max;
 
         try heap.symbols.put("T", Value.t);
         try heap.symbols.put("NIL", Value.nil);
@@ -1690,6 +1716,23 @@ pub const Heap = struct {
         self.stats.gc_promote_success_rate = success_rate;
         self.stats.gc_promote_young_ratio = young_ratio;
         self.stats.gc_promote_mature_ratio = mature_ratio;
+    }
+
+    pub fn setLosThreshold(self: *Heap, target_bytes: usize, scale: f64, large_ratio: f64, occupancy: f64, pause_error: f64) void {
+        if (self.layout.mode != .generational) return;
+        var target = target_bytes;
+        if (target < self.los_threshold_min) target = self.los_threshold_min;
+        if (target > self.los_threshold_max) target = self.los_threshold_max;
+        target = std.mem.alignForward(usize, target, ALIGNMENT);
+
+        self.los_threshold = target;
+        self.stats.gc_los_threshold = target;
+        self.stats.gc_los_threshold_min = self.los_threshold_min;
+        self.stats.gc_los_threshold_max = self.los_threshold_max;
+        self.stats.gc_los_scale = scale;
+        self.stats.gc_los_large_ratio = large_ratio;
+        self.stats.gc_los_occupancy = occupancy;
+        self.stats.gc_los_pause_error = pause_error;
     }
 
     /// Allocate raw bytes (16-byte aligned)

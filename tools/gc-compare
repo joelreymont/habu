@@ -277,6 +277,14 @@ def eval_level(metrics, level):
         "actual": metrics["gc_debt_policy_in_bounds"],
         "pass": bool(metrics["gc_debt_policy_in_bounds"]),
     }
+    out["gc_los_threshold_in_bounds"] = {
+        "actual": metrics["gc_los_threshold_in_bounds"],
+        "pass": bool(metrics["gc_los_threshold_in_bounds"]),
+    }
+    out["gc_los_policy_in_bounds"] = {
+        "actual": metrics["gc_los_policy_in_bounds"],
+        "pass": bool(metrics["gc_los_policy_in_bounds"]),
+    }
     out["gc_major_slice_in_bounds"] = {
         "actual": metrics["gc_major_slice_in_bounds"],
         "pass": bool(metrics["gc_major_slice_in_bounds"]),
@@ -364,6 +372,13 @@ debt_ratio = float(habu.get("gc_debt_ratio", 0.0))
 debt_occupancy = float(habu.get("gc_debt_occupancy", 0.0))
 debt_survival = float(habu.get("gc_debt_survival", 0.0))
 debt_pause_error = float(habu.get("gc_debt_pause_error", 0.0))
+los_threshold = int(habu.get("gc_los_threshold", 0))
+los_threshold_min = int(habu.get("gc_los_threshold_min", 0))
+los_threshold_max = int(habu.get("gc_los_threshold_max", 0))
+los_scale = float(habu.get("gc_los_scale", 1.0))
+los_large_ratio = float(habu.get("gc_los_large_ratio", 0.0))
+los_occupancy = float(habu.get("gc_los_occupancy", 0.0))
+los_pause_error = float(habu.get("gc_los_pause_error", 0.0))
 tenured_free_span_n = int(habu.get("tenured_free_span_n", 0))
 tenured_free_bytes = int(habu.get("tenured_free_bytes", 0))
 tenured_free_largest_span = int(habu.get("tenured_free_largest_span", 0))
@@ -400,6 +415,22 @@ promote_threshold_in_bounds = (
     and promote_threshold_max >= promote_threshold_min
     and promote_threshold >= promote_threshold_min
     and promote_threshold <= promote_threshold_max
+)
+los_threshold_in_bounds = (
+    los_threshold_min > 0
+    and los_threshold_max >= los_threshold_min
+    and los_threshold >= los_threshold_min
+    and los_threshold <= los_threshold_max
+)
+los_policy_in_bounds = (
+    los_scale >= 0.5
+    and los_scale <= 1.5
+    and los_large_ratio >= 0.0
+    and los_large_ratio <= 1.0
+    and los_occupancy >= 0.0
+    and los_occupancy <= 2.0
+    and los_pause_error >= -1.0
+    and los_pause_error <= 2.0
 )
 tenured_fragmentation_in_bounds = (
     tenured_fragmentation >= 0.0
@@ -468,6 +499,15 @@ metrics = {
     "gc_debt_pause_error": debt_pause_error,
     "gc_debt_in_bounds": debt_in_bounds,
     "gc_debt_policy_in_bounds": debt_policy_in_bounds,
+    "gc_los_threshold": los_threshold,
+    "gc_los_threshold_min": los_threshold_min,
+    "gc_los_threshold_max": los_threshold_max,
+    "gc_los_threshold_in_bounds": los_threshold_in_bounds,
+    "gc_los_scale": los_scale,
+    "gc_los_large_ratio": los_large_ratio,
+    "gc_los_occupancy": los_occupancy,
+    "gc_los_pause_error": los_pause_error,
+    "gc_los_policy_in_bounds": los_policy_in_bounds,
     "gc_tenured_free_span_n": tenured_free_span_n,
     "gc_tenured_free_bytes": tenured_free_bytes,
     "gc_tenured_free_largest_span": tenured_free_largest_span,
@@ -704,6 +744,21 @@ print(f"  gc_nursery_target: {metrics['gc_nursery_target']}")
 print(f"  gc_nursery_scale: {metrics['gc_nursery_scale']:.4f}")
 print(f"  gc_nursery_survival: {metrics['gc_nursery_survival']:.4f}")
 print(f"  gc_nursery_pause_error: {metrics['gc_nursery_pause_error']:.4f}")
+print()
+print("LOS policy:")
+print(
+    "  threshold={t} [{mn},{mx}] scale={s:.4f} large_ratio={lr:.4f} occupancy={oc:.4f} pause_err={pe:.4f} in_bounds={ok1}/{ok2}".format(
+        t=metrics["gc_los_threshold"],
+        mn=metrics["gc_los_threshold_min"],
+        mx=metrics["gc_los_threshold_max"],
+        s=metrics["gc_los_scale"],
+        lr=metrics["gc_los_large_ratio"],
+        oc=metrics["gc_los_occupancy"],
+        pe=metrics["gc_los_pause_error"],
+        ok1=str(metrics["gc_los_threshold_in_bounds"]).lower(),
+        ok2=str(metrics["gc_los_policy_in_bounds"]).lower(),
+    )
+)
 print()
 if maxima:
     print("Maxima GC telemetry:")

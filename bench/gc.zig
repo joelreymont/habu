@@ -351,6 +351,13 @@ pub fn main() !void {
     const promote_success_rate = heap.stats.gc_promote_success_rate;
     const promote_young_ratio = heap.stats.gc_promote_young_ratio;
     const promote_mature_ratio = heap.stats.gc_promote_mature_ratio;
+    const los_threshold = heap.stats.gc_los_threshold;
+    const los_threshold_min = heap.stats.gc_los_threshold_min;
+    const los_threshold_max = heap.stats.gc_los_threshold_max;
+    const los_scale = heap.stats.gc_los_scale;
+    const los_large_ratio = heap.stats.gc_los_large_ratio;
+    const los_occupancy = heap.stats.gc_los_occupancy;
+    const los_pause_error = heap.stats.gc_los_pause_error;
     const debt_bytes = debt_bytes1;
     const debt_threshold = heap.stats.gc_debt_threshold;
     const sample_cons = sample_class_delta[@intFromEnum(heap_mod.AllocClass.cons)];
@@ -463,6 +470,13 @@ pub fn main() !void {
             .gc_nursery_scale = nursery_scale,
             .gc_nursery_survival = nursery_survival,
             .gc_nursery_pause_error = nursery_pause_error,
+            .gc_los_threshold = los_threshold,
+            .gc_los_threshold_min = los_threshold_min,
+            .gc_los_threshold_max = los_threshold_max,
+            .gc_los_scale = los_scale,
+            .gc_los_large_ratio = los_large_ratio,
+            .gc_los_occupancy = los_occupancy,
+            .gc_los_pause_error = los_pause_error,
         };
         try std.json.Stringify.value(payload, .{}, w);
         try w.writeByte('\n');
@@ -516,6 +530,18 @@ pub fn main() !void {
     try w.print(
         "  nursery policy: target {d} bytes, scale {d:.4}, survival {d:.4}, pause_err {d:.4}\n",
         .{ nursery_target, nursery_scale, nursery_survival, nursery_pause_error },
+    );
+    try w.print(
+        "  los policy: threshold {d} [{d},{d}], scale {d:.4}, large_ratio {d:.4}, occupancy {d:.4}, pause_err {d:.4}\n",
+        .{
+            los_threshold,
+            los_threshold_min,
+            los_threshold_max,
+            los_scale,
+            los_large_ratio,
+            los_occupancy,
+            los_pause_error,
+        },
     );
     try w.print(
         "  phase avg (us): build {d:.2}, root {d:.2}, copy {d:.2}, finalize {d:.2}\n",

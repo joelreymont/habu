@@ -85,6 +85,13 @@ const GcJson = struct {
     gc_nursery_scale: f64 = 1.0,
     gc_nursery_survival: f64 = 0.0,
     gc_nursery_pause_error: f64 = 0.0,
+    gc_los_threshold: u64 = 0,
+    gc_los_threshold_min: u64 = 0,
+    gc_los_threshold_max: u64 = 0,
+    gc_los_scale: f64 = 1.0,
+    gc_los_large_ratio: f64 = 0.0,
+    gc_los_occupancy: f64 = 0.0,
+    gc_los_pause_error: f64 = 0.0,
     gc_debt_bytes: u64 = 0,
     gc_debt_threshold: u64 = 0,
     gc_debt_alloc_bytes: u64 = 0,
@@ -520,6 +527,30 @@ pub fn main() !void {
         try fail("gc nursery_scale {d:.4} outside [0.50,1.50]", .{gc.gc_nursery_scale});
     }
     if (gc.gc_nursery_survival < 0.0) try fail("gc nursery_survival < 0", .{});
+    if (gc.gc_los_threshold == 0) try fail("gc gc_los_threshold is 0", .{});
+    if (gc.gc_los_threshold_min == 0) try fail("gc gc_los_threshold_min is 0", .{});
+    if (gc.gc_los_threshold_max == 0) try fail("gc gc_los_threshold_max is 0", .{});
+    if (gc.gc_los_threshold_min > gc.gc_los_threshold_max) {
+        try fail("gc los threshold min {d} > max {d}", .{ gc.gc_los_threshold_min, gc.gc_los_threshold_max });
+    }
+    if (gc.gc_los_threshold < gc.gc_los_threshold_min or gc.gc_los_threshold > gc.gc_los_threshold_max) {
+        try fail(
+            "gc los threshold {d} outside [{d},{d}]",
+            .{ gc.gc_los_threshold, gc.gc_los_threshold_min, gc.gc_los_threshold_max },
+        );
+    }
+    if (gc.gc_los_scale < 0.50 or gc.gc_los_scale > 1.50) {
+        try fail("gc los scale {d:.4} outside [0.50,1.50]", .{gc.gc_los_scale});
+    }
+    if (gc.gc_los_large_ratio < 0.0 or gc.gc_los_large_ratio > 1.0) {
+        try fail("gc los large ratio {d:.4} outside [0,1]", .{gc.gc_los_large_ratio});
+    }
+    if (gc.gc_los_occupancy < 0.0 or gc.gc_los_occupancy > 2.0) {
+        try fail("gc los occupancy {d:.4} outside [0,2]", .{gc.gc_los_occupancy});
+    }
+    if (gc.gc_los_pause_error < -1.0 or gc.gc_los_pause_error > 2.0) {
+        try fail("gc los pause error {d:.4} outside [-1,2]", .{gc.gc_los_pause_error});
+    }
     if (gc.promoted_bytes == 0) try fail("gc promoted_bytes is 0", .{});
     if (gc.wb_marks == 0) try fail("gc wb_marks is 0", .{});
     if (gc.los_live == 0) try fail("gc los_live is 0", .{});

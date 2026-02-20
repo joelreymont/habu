@@ -68,6 +68,25 @@ pub const TenuringPolicyOutput = struct {
     mature_survive_ratio: f64,
 };
 
+pub const LosPolicyInput = struct {
+    current_bytes: usize,
+    min_bytes: usize,
+    max_bytes: usize,
+    alloc_size: [heap_mod.ALLOC_SIZE_N]usize,
+    los_live_bytes: usize,
+    los_capacity_bytes: usize,
+    p95_pause_ns: u64,
+    target_pause_ns: u64,
+};
+
+pub const LosPolicyOutput = struct {
+    target_bytes: usize,
+    scale: f64,
+    large_alloc_ratio: f64,
+    occupancy_ratio: f64,
+    pause_error: f64,
+};
+
 pub const DebtTriggerInput = struct {
     debt_bytes: usize,
     debt_threshold: usize,
@@ -214,6 +233,66 @@ pub fn deriveTenuringPolicy(in: TenuringPolicyInput) TenuringPolicyOutput {
     };
 }
 
+/// Derive next LOS threshold from sampled allocation sizes and LOS pressure.
+/// Control law goals:
+/// - lower threshold when large-object share rises and LOS has headroom,
+/// - raise threshold when LOS occupancy or pauses are high,
+/// - bound movement to avoid oscillation.
+pub fn deriveLosPolicy(in: LosPolicyInput) LosPolicyOutput {
+    const sample_total = blk: {
+        var n: usize = 0;
+        for (in.alloc_size) |v| n +%= v;
+        break :blk n;
+    };
+    const sample_total_f = @as(f64, @floatFromInt(@max(sample_total, @as(usize, 1))));
+    const large_samples = in.alloc_size[6] + in.alloc_size[7];
+    const large_ratio = clampf(@as(f64, @floatFromInt(large_samples)) / sample_total_f, 0.0, 1.0);
+
+    const los_cap = @max(in.los_capacity_bytes, @as(usize, 1));
+    const occupancy = clampf(
+        @as(f64, @floatFromInt(in.los_live_bytes)) / @as(f64, @floatFromInt(los_cap)),
+        0.0,
+        2.0,
+    );
+
+    const pause_target = @max(in.target_pause_ns, @as(u64, 1));
+    const pause_error = clampf(
+        (@as(f64, @floatFromInt(in.p95_pause_ns)) - @as(f64, @floatFromInt(pause_target))) /
+            @as(f64, @floatFromInt(pause_target)),
+        -1.0,
+        2.0,
+    );
+
+    var scale: f64 = 1.0;
+    if (occupancy > 0.90 or pause_error > 0.35) {
+        scale = 1.20;
+    } else if (large_ratio > 0.35 and occupancy < 0.70 and pause_error <= 0.15) {
+        scale = 0.75;
+    } else if (large_ratio > 0.20 and occupancy < 0.85 and pause_error <= 0.20) {
+        scale = 0.85;
+    } else if (large_ratio < 0.05 and occupancy > 0.60) {
+        scale = 1.10;
+    }
+    scale = clampf(scale, 0.50, 1.50);
+
+    var target = @as(usize, @intFromFloat(@as(f64, @floatFromInt(in.current_bytes)) * scale));
+    if (in.current_bytes > 0) {
+        const delta = if (target >= in.current_bytes) target - in.current_bytes else in.current_bytes - target;
+        if (delta * 100 <= in.current_bytes * 5) target = in.current_bytes;
+    }
+    if (target < in.min_bytes) target = in.min_bytes;
+    if (target > in.max_bytes) target = in.max_bytes;
+    target = std.mem.alignForward(usize, target, heap_mod.ALIGNMENT);
+
+    return .{
+        .target_bytes = target,
+        .scale = scale,
+        .large_alloc_ratio = large_ratio,
+        .occupancy_ratio = occupancy,
+        .pause_error = pause_error,
+    };
+}
+
 /// Derive whether allocation debt should trigger a pre-collection.
 /// Control law goals:
 /// - trigger early when debt exceeds budget and occupancy is rising,
@@ -272,6 +351,7 @@ pub const GC = struct {
     major_work: std.ArrayList(WorkItem),
     major_peak: usize,
     major: MajorState,
+    prev_alloc_sample_size: [heap_mod.ALLOC_SIZE_N]usize,
     /// Debug: flag set during GC trace/copy phase
     gc_in_progress: if (builtin.mode == .Debug) bool else void,
 
@@ -288,6 +368,7 @@ pub const GC = struct {
             .major_work = std.ArrayList(WorkItem){},
             .major_peak = 0,
             .major = .{},
+            .prev_alloc_sample_size = [_]usize{0} ** heap_mod.ALLOC_SIZE_N,
             .gc_in_progress = if (builtin.mode == .Debug) false else {},
         };
     }
@@ -360,6 +441,11 @@ pub const GC = struct {
                 for (&promote_age_cycle, 0..) |*dst, i| {
                     dst.* = counterDelta(usize, heap.stats.gc_promote_age[i], promote_age_before[i]);
                 }
+                var alloc_size_cycle: [heap_mod.ALLOC_SIZE_N]usize = undefined;
+                for (&alloc_size_cycle, 0..) |*dst, i| {
+                    dst.* = counterDelta(usize, heap.stats.alloc_sample_size[i], self.prev_alloc_sample_size[i]);
+                    self.prev_alloc_sample_size[i] = heap.stats.alloc_sample_size[i];
+                }
                 const policy = deriveNurseryPolicy(.{
                     .current_bytes = heap.nursery_target_bytes,
                     .min_bytes = heap.nursery_min_bytes,
@@ -386,6 +472,23 @@ pub const GC = struct {
                     tenuring.success_rate,
                     tenuring.young_promote_ratio,
                     tenuring.mature_survive_ratio,
+                );
+                const los_policy = deriveLosPolicy(.{
+                    .current_bytes = heap.los_threshold,
+                    .min_bytes = heap.los_threshold_min,
+                    .max_bytes = heap.los_threshold_max,
+                    .alloc_size = alloc_size_cycle,
+                    .los_live_bytes = heap.losBytesUsed(),
+                    .los_capacity_bytes = if (heap.losRegion()) |r| r.len() else 0,
+                    .p95_pause_ns = pause_ns,
+                    .target_pause_ns = heap.los_target_pause_ns,
+                });
+                heap.setLosThreshold(
+                    los_policy.target_bytes,
+                    los_policy.scale,
+                    los_policy.large_alloc_ratio,
+                    los_policy.occupancy_ratio,
+                    los_policy.pause_error,
                 );
             },
         }
@@ -1804,6 +1907,60 @@ test "tenuring policy keeps threshold inside deadband" {
     try testing.expectEqual(@as(f64, 1.0), out.scale);
 }
 
+test "los policy lowers threshold when large-object share is high" {
+    const testing = std.testing;
+
+    const out = deriveLosPolicy(.{
+        .current_bytes = 4096,
+        .min_bytes = 512,
+        .max_bytes = 16384,
+        .alloc_size = .{ 0, 0, 0, 0, 10, 20, 40, 30 },
+        .los_live_bytes = 128 * 1024,
+        .los_capacity_bytes = 1024 * 1024,
+        .p95_pause_ns = 5_000_000,
+        .target_pause_ns = 10_000_000,
+    });
+    try testing.expect(out.target_bytes < 4096);
+    try testing.expect(out.scale < 1.0);
+    try testing.expect(out.large_alloc_ratio > 0.35);
+}
+
+test "los policy raises threshold when occupancy or pauses are high" {
+    const testing = std.testing;
+
+    const out = deriveLosPolicy(.{
+        .current_bytes = 4096,
+        .min_bytes = 512,
+        .max_bytes = 16384,
+        .alloc_size = .{ 20, 20, 20, 20, 10, 5, 3, 2 },
+        .los_live_bytes = 980 * 1024,
+        .los_capacity_bytes = 1024 * 1024,
+        .p95_pause_ns = 16_000_000,
+        .target_pause_ns = 10_000_000,
+    });
+    try testing.expect(out.target_bytes > 4096);
+    try testing.expect(out.scale > 1.0);
+    try testing.expect(out.occupancy_ratio > 0.90);
+    try testing.expect(out.pause_error > 0.35);
+}
+
+test "los policy stays stable in deadband" {
+    const testing = std.testing;
+
+    const out = deriveLosPolicy(.{
+        .current_bytes = 4096,
+        .min_bytes = 512,
+        .max_bytes = 16384,
+        .alloc_size = .{ 10, 10, 10, 10, 10, 10, 5, 5 },
+        .los_live_bytes = 384 * 1024,
+        .los_capacity_bytes = 1024 * 1024,
+        .p95_pause_ns = 10_000_000,
+        .target_pause_ns = 10_000_000,
+    });
+    try testing.expectEqual(@as(usize, 4096), out.target_bytes);
+    try testing.expectEqual(@as(f64, 1.0), out.scale);
+}
+
 test "minor gc applies adaptive promote threshold at runtime" {
     const testing = std.testing;
 
@@ -1850,6 +2007,39 @@ test "minor gc applies adaptive nursery target at runtime" {
     try testing.expectEqual(heap.nursery_target_bytes, heap.stats.gc_nursery_target);
     try testing.expect(heap.nursery_target_bytes >= heap.bytesUsed());
     try testing.expect(heap.nursery_target_bytes <= initial_target);
+}
+
+test "minor gc applies adaptive los threshold at runtime" {
+    const testing = std.testing;
+
+    var heap = try heap_mod.Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+            .los_threshold = 4096,
+            .promote_threshold = 64,
+        },
+    });
+    defer heap.deinit();
+
+    const payload = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789";
+    for (0..128) |_| {
+        _ = try heap.allocBaseString(payload);
+    }
+
+    var roots = [_]Value{};
+    _ = try heap.collectGarbage(&roots);
+
+    try testing.expect(heap.los_threshold >= heap.los_threshold_min);
+    try testing.expect(heap.los_threshold <= heap.los_threshold_max);
+    try testing.expectEqual(heap.los_threshold, heap.stats.gc_los_threshold);
+    try testing.expectEqual(heap.los_threshold_min, heap.stats.gc_los_threshold_min);
+    try testing.expectEqual(heap.los_threshold_max, heap.stats.gc_los_threshold_max);
+    try testing.expect(heap.stats.gc_los_large_ratio > 0.0);
+    try testing.expect(heap.stats.gc_los_occupancy >= 0.0);
+    try testing.expect(heap.stats.gc_los_occupancy <= 2.0);
 }
 
 test "setNurseryTarget keeps threshold above live nursery bytes" {
