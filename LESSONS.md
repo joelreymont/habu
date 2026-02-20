@@ -1057,3 +1057,13 @@ Environment guard:
 
 #### Did Not Work
 - A bins-only allocator path that ignored the in-progress `tenured_free` pending list would delay reuse until full coalesce completion and can transiently starve promotions during sliced major sweep windows.
+
+### Session Notes (2026-02-20, tenured coalesce/split policy)
+
+#### Worked Well
+- Switching bin allocation from first-fit to bounded best-fit (`src/runtime/heap.zig`: `allocTenuredFromBins`) reduced avoidable oversized reuse while capping scan cost with `TENURED_ALLOC_SCAN_BUDGET`.
+- Applying the same bounded best-fit split policy to the pending free list (`src/runtime/heap.zig`: `allocTenuredFromPendingList`) preserved immediate reuse before coalesce while keeping split behavior consistent.
+- Enforcing a minimum split remainder (`TENURED_SPLIT_MIN_REMAINDER`) eliminated tiny tail fragments; the regression (`src/runtime/heap.zig`: `heap tenured split policy avoids tiny tail fragments`) locks this.
+
+#### Did Not Work
+- Pure first-fit with unconditional split creates tiny remainder spans that churn bins and increase fragmentation pressure under mixed-size promotion workloads.

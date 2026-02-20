@@ -33,6 +33,8 @@ const NURSERY_HEADROOM_SHIFT: u6 = 3; // 12.5% live-set headroom.
 const GC_DEBT_MIN_BYTES: usize = 64 * 1024;
 const GC_DEBT_TARGET_SHIFT: u6 = 2; // 25% of nursery target.
 const TENURED_FREE_BIN_N: usize = 20;
+const TENURED_ALLOC_SCAN_BUDGET: usize = 64;
+const TENURED_SPLIT_MIN_REMAINDER: usize = 64;
 
 pub const AllocClass = enum(u8) {
     cons,
@@ -1122,42 +1124,76 @@ pub const Heap = struct {
     }
 
     fn allocTenuredFromBins(self: *Heap, aligned_size: usize) ?[*]align(ALIGNMENT) u8 {
+        var best_bin: usize = 0;
+        var best_idx: usize = 0;
+        var best_waste: usize = 0;
+        var have_best = false;
+        var scanned: usize = 0;
+
         var bin_idx = tenuredFreeBinIndex(aligned_size);
-        while (bin_idx < TENURED_FREE_BIN_N) : (bin_idx += 1) {
+        search: while (bin_idx < TENURED_FREE_BIN_N) : (bin_idx += 1) {
             var i: usize = 0;
             while (i < self.tenured_free_bins[bin_idx].items.len) : (i += 1) {
-                const span = &self.tenured_free_bins[bin_idx].items[i];
-                if (span.size < aligned_size) continue;
+                const span_size = self.tenured_free_bins[bin_idx].items[i].size;
+                if (span_size < aligned_size) continue;
 
-                const out_addr = span.addr;
-                if (span.size == aligned_size) {
-                    _ = self.tenured_free_bins[bin_idx].swapRemove(i);
-                } else {
-                    span.addr += aligned_size;
-                    span.size -= aligned_size;
+                scanned +%= 1;
+                const waste = span_size - aligned_size;
+                if (!have_best or waste < best_waste) {
+                    have_best = true;
+                    best_bin = bin_idx;
+                    best_idx = i;
+                    best_waste = waste;
+                    if (waste == 0) break :search;
                 }
-                return @ptrFromInt(out_addr);
+                if (scanned >= TENURED_ALLOC_SCAN_BUDGET) break :search;
             }
         }
-        return null;
+        if (!have_best) return null;
+
+        const span = &self.tenured_free_bins[best_bin].items[best_idx];
+        const out_addr = span.addr;
+        if (best_waste < TENURED_SPLIT_MIN_REMAINDER) {
+            _ = self.tenured_free_bins[best_bin].swapRemove(best_idx);
+        } else {
+            span.addr += aligned_size;
+            span.size = best_waste;
+        }
+        return @ptrFromInt(out_addr);
     }
 
     fn allocTenuredFromPendingList(self: *Heap, aligned_size: usize) ?[*]align(ALIGNMENT) u8 {
+        var best_idx: usize = 0;
+        var best_waste: usize = 0;
+        var have_best = false;
+        var scanned: usize = 0;
+
         var i: usize = 0;
         while (i < self.tenured_free.items.len) : (i += 1) {
-            const span = &self.tenured_free.items[i];
-            if (span.size < aligned_size) continue;
+            const span_size = self.tenured_free.items[i].size;
+            if (span_size < aligned_size) continue;
 
-            const out_addr = span.addr;
-            if (span.size == aligned_size) {
-                _ = self.tenured_free.swapRemove(i);
-            } else {
-                span.addr += aligned_size;
-                span.size -= aligned_size;
+            scanned +%= 1;
+            const waste = span_size - aligned_size;
+            if (!have_best or waste < best_waste) {
+                have_best = true;
+                best_idx = i;
+                best_waste = waste;
+                if (waste == 0) break;
             }
-            return @ptrFromInt(out_addr);
+            if (scanned >= TENURED_ALLOC_SCAN_BUDGET) break;
         }
-        return null;
+        if (!have_best) return null;
+
+        const span = &self.tenured_free.items[best_idx];
+        const out_addr = span.addr;
+        if (best_waste < TENURED_SPLIT_MIN_REMAINDER) {
+            _ = self.tenured_free.swapRemove(best_idx);
+        } else {
+            span.addr += aligned_size;
+            span.size = best_waste;
+        }
+        return @ptrFromInt(out_addr);
     }
 
     pub fn allocTenuredRaw(self: *Heap, size: usize) error{OutOfMemory}![*]align(ALIGNMENT) u8 {
@@ -3382,6 +3418,38 @@ test "heap tenured free bins coalesce and reuse spans" {
 
     const split_tail = try heap.allocTenuredRaw(span2_size - split_head_size);
     try testing.expectEqual(@intFromPtr(span2) + split_head_size, @intFromPtr(split_tail));
+}
+
+test "heap tenured split policy avoids tiny tail fragments" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{
+        .total_size = 8 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 512 * 1024,
+            .los_size = 512 * 1024,
+        },
+    });
+    defer heap.deinit();
+
+    const span_size = std.mem.alignForward(usize, 96, ALIGNMENT);
+    const req_size = std.mem.alignForward(usize, 80, ALIGNMENT);
+    const span = try heap.allocTenuredRaw(span_size);
+
+    try heap.tenured_free.append(heap.backing_allocator, .{
+        .addr = @intFromPtr(span),
+        .size = span_size,
+    });
+    try heap.coalesceTenuredFree();
+
+    const alloc = try heap.allocTenuredRaw(req_size);
+    try testing.expectEqual(@intFromPtr(span), @intFromPtr(alloc));
+
+    var free_span_n: usize = 0;
+    for (heap.tenured_free_bins) |bin| free_span_n += bin.items.len;
+    try testing.expectEqual(@as(usize, 0), free_span_n);
+    try testing.expectEqual(@as(usize, 0), heap.tenured_free.items.len);
 }
 
 test "heap writeBarrier marks old-to-young cards in generational mode" {
