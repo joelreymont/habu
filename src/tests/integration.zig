@@ -4956,6 +4956,38 @@ test "ansi repro loop for-and parallel iteration" {
     try testing.expect(!result.isNil());
 }
 
+test "ansi repro loop collecting and do separator" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(let ((last nil)) (list (loop for v in '(1 2 3) when (oddp v) collecting v and do (setq last v)) last))",
+    );
+    try testing.expect(result.isCons());
+    const c0 = result.toPtr(Cons);
+    try testing.expect(c0.car.isCons());
+    const xs0 = c0.car.toPtr(Cons);
+    try testing.expect(xs0.car.isFixnum());
+    try testing.expectEqual(@as(i64, 1), xs0.car.toFixnum());
+    try testing.expect(xs0.cdr.isCons());
+    const xs1 = xs0.cdr.toPtr(Cons);
+    try testing.expect(xs1.car.isFixnum());
+    try testing.expectEqual(@as(i64, 3), xs1.car.toFixnum());
+    try testing.expect(xs1.cdr.isNil());
+    try testing.expect(c0.cdr.isCons());
+    const c1 = c0.cdr.toPtr(Cons);
+    try testing.expect(c1.car.isFixnum());
+    try testing.expectEqual(@as(i64, 3), c1.car.toFixnum());
+    try testing.expect(c1.cdr.isNil());
+}
+
 test "generational loop for-and arithmetic stays bounded" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{

@@ -5298,20 +5298,25 @@
 
           ; AND separator for parallel FOR/WITH clauses
           ((:and)
-           (push :and step-forms)  ; marker for parallel grouping
            (let ((next-kw (loop-kw-canon (cadr rest))))
              (cond
-               ((member next-kw '(:for :as :with))
-                ; Explicit keyword after AND: drop separator only.
+               ((and (member next-kw '(:for :as :with))
+                     (member and-context '(:for :with)))
+                ; Explicit chained FOR/WITH after AND.
+                (push :and step-forms)
                 (setq rest (cdr rest)))
                ((eq and-context :for)
                 ; Implicit FOR continuation: (for a in x and b from 0)
+                (push :and step-forms)
                 (setq rest (cons 'for (cdr rest))))
                ((eq and-context :with)
                 ; Implicit WITH continuation: (with a = 1 and b = 2)
+                (push :and step-forms)
                 (setq rest (cons 'with (cdr rest))))
                (t
-                (error "AND must continue FOR/AS/WITH clause")))))
+                ; Generic separator in action clauses:
+                ; (loop ... collecting x and do ...)
+                (setq rest (cdr rest))))))
 
           ; REPEAT n
           ((:repeat)

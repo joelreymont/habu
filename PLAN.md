@@ -176,7 +176,7 @@
 - [x] `habu-support-loop-in-84a5efed` Support `loop for ... in ... by ...` step-function clauses.
 - [x] `habu-loop-else-when-9b45625b` Support `loop ... when ... else when ... else ...` conditional routing.
 - [x] `habu-iterative-cond-lowering-fa7ea387` Lower large COND forms iteratively to reduce compiler recursion overhead.
-- [ ] `habu-support-loop-for-6e9d9623` Support LOOP `for ... and ...` clauses. Depends on `habu-fix-loop-macro-c7a41441`.
+- [x] `habu-support-loop-for-6e9d9623` Support LOOP `for ... and ...` clauses. Depends on `habu-fix-loop-macro-c7a41441`.
 - [ ] `habu-support-setf-bit-b72546e8` Support `(setf (bit/sbit ...))` places.
 - [x] `habu-support-setf-composed-7c79e463` Support composed list places in `setf` (`cadr`/`cddr`/`caddr`/`cdddr`/aliases).
 - [ ] `habu-support-setf-generic-67036246` Support generic names `(setf foo)` in DEFGENERIC/DEFMETHOD.
