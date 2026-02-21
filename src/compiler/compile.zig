@@ -11136,6 +11136,15 @@ pub const Compiler = struct {
     fn lookupClassMetadataByName(self: *Compiler, class_name: []const u8) error{ OutOfMemory, Overflow }!?[]const SlotSpec {
         if (self.class_metadata.get(class_name)) |specs| return specs;
 
+        if (self.heap) |heap| {
+            if (heap.current_package) |pkg| {
+                var current_buf: [256]u8 = undefined;
+                const current_qualified = try self.makePkgQualifiedName(&current_buf, pkg.name, class_name);
+                defer if (current_qualified.owned) self.allocator.free(current_qualified.slice);
+                if (self.class_metadata.get(current_qualified.slice)) |specs| return specs;
+            }
+        }
+
         var qual_buf: [256]u8 = undefined;
         const prefixes = [_][]const u8{ "HABU:", "CL-USER:", "CL:", "" };
         for (prefixes) |prefix| {
@@ -11143,6 +11152,23 @@ pub const Compiler = struct {
             defer if (qualified.owned) self.allocator.free(qualified.slice);
             if (self.class_metadata.get(qualified.slice)) |specs| return specs;
         }
+
+        // Package aliases can point at symbols whose native package qualifier does
+        // not match the package used when class metadata was recorded (for example
+        // BIGFLOAT-IMPL symbol package vs BIGFLOAT class metadata keys). Fall back
+        // to local-name matching when it is unambiguous.
+        var local_match: ?[]const SlotSpec = null;
+        var local_hits: usize = 0;
+        var it = self.class_metadata.iterator();
+        while (it.next()) |entry| {
+            const key = entry.key_ptr.*;
+            const local = if (std.mem.lastIndexOfScalar(u8, key, ':')) |sep| key[sep + 1 ..] else key;
+            if (!std.mem.eql(u8, local, class_name)) continue;
+            local_hits += 1;
+            if (local_hits == 1) local_match = entry.value_ptr.*;
+            if (local_hits > 1) break;
+        }
+        if (local_hits == 1) return local_match;
 
         return null;
     }

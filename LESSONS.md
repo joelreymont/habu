@@ -13,10 +13,12 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding direct primitive resolution for `FLOAT` designators (`src/jit/backend.zig:908`, `src/jit/backend.zig:286`) removed per-iteration VM bridge dispatch in float-heavy loops.
 - Fixing BLR target-register clobber before arg-move rewrites (`src/jit/backend.zig:6177`, `src/jit/backend.zig:4569`) resolved real call-target corruption where `movz x9,#imm` overwrote the call target register and jumped to immediate values (for example `0x23`).
 - Locking the path with a focused integration regression (`src/tests/integration.zig:206`) catches JIT regressions in generic float arithmetic and float comparisons under `(optimize (speed 3) (safety 0))`.
+- Resolving class metadata by current package + unambiguous local class name in `lookupClassMetadataByName` (`src/compiler/compile.zig:11136`) fixed `make-instance` compile failures when symbol package qualifiers differed from metadata qualifiers (for example `BIGFLOAT-IMPL:BIGFLOAT` symbol vs `BIGFLOAT:BIGFLOAT` metadata), unblocking `numeric.lisp` and Maxima e2e load readiness.
 
 ### Did Not Work
 - A branch-heavy fixnum-fast/slow lowering for every generic numeric op triggered upstream hoist CFG instability (`computePreds` out-of-bounds) on real benchmark functions; keeping non-recursive generic ops helper-based and recursive paths conservative avoided this compiler failure in practice.
 - Relying only on `fixCallArgMoves` was insufficient once constant materialization clobbered the BLR target register between `mov target` and `blr`; a dedicated BLR-target-clobber repair pass was required.
+- Assuming native package qualifiers in `lookupClassMetadataBySymbol` were stable was wrong: aliases from Lisp package setup (for example Bigfloat package mapping) can diverge from defclass metadata keys and silently trigger `InvalidSyntax` on otherwise valid `make-instance` forms.
 
 ## Session Notes (2026-02-20)
 
