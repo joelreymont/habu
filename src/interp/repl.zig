@@ -4884,6 +4884,77 @@ test "script handler-case load does not resume failed file" {
     try testing.expectEqual(@as(i64, 42), after.toFixnum());
 }
 
+test "handler-case load aborts file after first signaled condition" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 32 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("load-signal-abort.lsp", .{});
+        defer file.close();
+        try file.writeAll(
+            "(setq *load-signal-probe* 0)\n" ++
+                "(signal 'type-error nil)\n" ++
+                "(setq *load-signal-probe* 1)\n" ++
+                "(signal 'type-error nil)\n" ++
+                "(setq *load-signal-probe* 2)\n",
+        );
+    }
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const err_abs = try std.fs.path.join(allocator, &.{ base, "load-signal-abort.lsp" });
+    defer allocator.free(err_abs);
+
+    const wrapper_src = try std.fmt.allocPrint(
+        allocator,
+        "(setq *load-signal-catches* 0)\n" ++
+            "(handler-case\n" ++
+            "    (load \"{s}\")\n" ++
+            "  (condition (e)\n" ++
+            "    (declare (ignore e))\n" ++
+            "    (setq *load-signal-catches* (+ *load-signal-catches* 1))))\n" ++
+            "(setq *load-signal-after* 7)\n",
+        .{err_abs},
+    );
+    defer allocator.free(wrapper_src);
+
+    {
+        var wrapper = try tmp.dir.createFile("wrapper-signal.lsp", .{});
+        defer wrapper.close();
+        try wrapper.writeAll(wrapper_src);
+    }
+
+    const wrapper_abs = try std.fs.path.join(allocator, &.{ base, "wrapper-signal.lsp" });
+    defer allocator.free(wrapper_abs);
+
+    var buf: [1024]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try repl.loadFile(wrapper_abs, stream.writer());
+
+    const catches = try repl.eval("*load-signal-catches*");
+    try testing.expect(catches.isFixnum());
+    try testing.expectEqual(@as(i64, 1), catches.toFixnum());
+
+    const probe = try repl.eval("*load-signal-probe*");
+    try testing.expect(probe.isFixnum());
+    try testing.expectEqual(@as(i64, 0), probe.toFixnum());
+
+    const after = try repl.eval("*load-signal-after*");
+    try testing.expect(after.isFixnum());
+    try testing.expectEqual(@as(i64, 7), after.toFixnum());
+}
+
 test "load preserves package global across generational GC pressure" {
     const testing = std.testing;
     const allocator = testing.allocator;

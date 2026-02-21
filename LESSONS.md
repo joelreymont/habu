@@ -9,6 +9,8 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-21)
 
 ### Worked Well
+- Propagating `NestedNonLocalExit` out of `execute` instead of consuming/rethrowing it in-place (`src/interp/vm.zig:2248`) restored call-barrier ownership of non-local exit relay, fixing resumed execution after a caught `(load ...)` condition (the `transl.lisp` `DEF%TR` path no longer continues into later forms after the first caught failure).
+- Locking the signal-path variant with a script-level regression (`src/interp/repl.zig:4887`) catches a previously untested case where `handler-case` around `load` could catch twice and keep running the failed file; expected post-fix behavior is one catch and no post-error file progress.
 - Routing generic JIT numeric ops through dedicated helpers while keeping recursive functions on conservative fixnum lowering (`src/jit/backend.zig:1764`, `src/jit/backend.zig:1773`, `src/jit/backend.zig:1812`) fixed float benchmark semantics and removed the `float` call-bridge bottleneck; `bench-comp` JIT float benches moved from ~332/346ms to ~12.8/14.9ms.
 - Adding direct primitive resolution for `FLOAT` designators (`src/jit/backend.zig:908`, `src/jit/backend.zig:286`) removed per-iteration VM bridge dispatch in float-heavy loops.
 - Fixing BLR target-register clobber before arg-move rewrites (`src/jit/backend.zig:6177`, `src/jit/backend.zig:4569`) resolved real call-target corruption where `movz x9,#imm` overwrote the call target register and jumped to immediate values (for example `0x23`).
@@ -18,6 +20,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding a focused loop regression (`src/tests/integration.zig:4961`) for `collecting ... and do ...` catches future parser regressions that break macro-heavy loaders before Maxima e2e status checks.
 
 ### Did Not Work
+- Handling `NestedNonLocalExit` inside the main `execute` error loop (`src/interp/vm.zig` pre-fix `err == error.NestedNonLocalExit` branch) bypassed call-boundary restoration logic and allowed inner file loaders to keep advancing forms after outer `handler-case` already caught the condition.
 - A branch-heavy fixnum-fast/slow lowering for every generic numeric op triggered upstream hoist CFG instability (`computePreds` out-of-bounds) on real benchmark functions; keeping non-recursive generic ops helper-based and recursive paths conservative avoided this compiler failure in practice.
 - Relying only on `fixCallArgMoves` was insufficient once constant materialization clobbered the BLR target register between `mov target` and `blr`; a dedicated BLR-target-clobber repair pass was required.
 - Assuming native package qualifiers in `lookupClassMetadataBySymbol` were stable was wrong: aliases from Lisp package setup (for example Bigfloat package mapping) can diverge from defclass metadata keys and silently trigger `InvalidSyntax` on otherwise valid `make-instance` forms.

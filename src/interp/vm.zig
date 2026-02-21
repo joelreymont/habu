@@ -2246,19 +2246,10 @@ pub const Vm = struct {
                     return try self.pop();
                 }
                 if (err == error.NestedNonLocalExit) {
-                    const relay_tag = self.relay_throw_tag;
-                    const relay_value = self.relay_throw_value;
-                    if (relay_tag.isNil()) return err;
-                    const saved_barrier = self.throw_barrier_depth;
-                    self.throw_barrier_depth = 0;
-                    defer self.throw_barrier_depth = saved_barrier;
-                    self.doThrow(relay_tag, relay_value) catch |throw_err| {
-                        if (throw_err == error.NestedNonLocalExit) return throw_err;
-                        return throw_err;
-                    };
-                    self.relay_throw_tag = Value.nil;
-                    self.relay_throw_value = Value.nil;
-                    continue;
+                    // Nested non-local exits must cross the current call barrier.
+                    // The enclosing callFromStackAt/applyFromStackAt frame restores
+                    // caller VM state and performs the relay throw.
+                    return err;
                 }
                 if (err == error.ControlTransfer) {
                     continue;
