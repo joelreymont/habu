@@ -7332,6 +7332,72 @@ test "maxima e2e operation readiness status" {
     try testing.expectEqual(@as(i64, 1), got[11]);
 }
 
+test "maxima transl subset script load does not resume after first failure" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 384 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("transl-script.lsp", .{});
+        defer file.close();
+        try file.writeAll(
+            "(load \"lib/maxima-loader.lisp\")\n" ++
+                "(let* ((idx (position \"transl\" *maxima-files* :test #'string=))\n" ++
+                "       (expected (+ idx 1)))\n" ++
+                "  (setq *maxima-files* (subseq *maxima-files* 0 expected))\n" ++
+                "  (setq *transl-status*\n" ++
+                "        (multiple-value-bind (ok total fail missing attempted)\n" ++
+                "            (maxima-load-all :verbose nil :habu-stop-on-error t)\n" ++
+                "          (declare (ignore missing))\n" ++
+                "          (list ok total fail attempted expected\n" ++
+                "                (if (and (consp *maxima-failed*)\n" ++
+                "                         (consp (car *maxima-failed*))\n" ++
+                "                         (let ((id (caar *maxima-failed*)))\n" ++
+                "                           (or (and (symbolp id) (string= (symbol-name id) \"TRANSL\"))\n" ++
+                "                               (and (stringp id) (string= id \"transl\")))))\n" ++
+                "                    1\n" ++
+                "                    0)))))\n",
+        );
+    }
+
+    const base = try tmp.parent_dir.realpathAlloc(allocator, &tmp.sub_path);
+    defer allocator.free(base);
+    const script_abs = try std.fs.path.join(allocator, &.{ base, "transl-script.lsp" });
+    defer allocator.free(script_abs);
+
+    var buf: [1024]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    try repl.loadFile(script_abs, stream.writer());
+
+    const status = try repl.eval("*transl-status*");
+    try testing.expect(status.isCons());
+    var cur = status;
+    var got: [6]i64 = undefined;
+    for (0..got.len) |i| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        got[i] = cell.car.toFixnum();
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+
+    try testing.expectEqual(got[4], got[1]);
+    try testing.expectEqual(got[1], got[3]);
+    try testing.expectEqual(@as(i64, 1), got[2]);
+    try testing.expectEqual(got[1] - 1, got[0]);
+    try testing.expectEqual(@as(i64, 1), got[5]);
+}
+
 test "maxima defun-maclisp old narg syntax defines callable function" {
     try ensureMaximaSources();
     const allocator = testing.allocator;

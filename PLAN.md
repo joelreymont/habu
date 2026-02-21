@@ -239,6 +239,7 @@
 - [ ] `habu-maxima-end-to-efe58661` Maxima end-to-end integration test continuation. Depends on `habu-fix-maxima-cas-a491af14`, `habu-maxima-subset-load-e9db9bb5`, `habu-rca-and-fix-4a4ea5d5`, `habu-add-maxima-cas-1807f8ae`, `habu-cut-gc-root-25d3bb03`, `habu-fix-hoist-compile-9a100641`, `habu-load-matrix-deps-d5d1b7ee`, and `habu-fix-builtin-callable-f9b29c06`.
   - [x] `habu-fix-make-instance-1e1e34ef` Fix `make-instance` class-metadata lookup across package qualifier aliases (for example `BIGFLOAT-IMPL:*` symbol package vs `BIGFLOAT:*` class metadata keys) with unambiguous local-name fallback.
   - [x] `habu-fix-transl-loader-a7ab1c8a` Fix `transl.lisp` `DEF%TR` loader `UnhandledThrow` by correcting condition relay/catch behavior and loader failure-list integrity.
+  - [x] `habu-lock-maxima-transl-1f293d51` Add script-level Maxima transl subset gate proving `handler-case` catches once and failed file execution does not resume.
 
 ## Execution Loop
 1. Pick the first unblocked unchecked leaf.
