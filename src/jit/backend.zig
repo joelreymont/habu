@@ -5088,25 +5088,41 @@ fn eliminateRoundTripMovs(code: []u8) void {
 
             // Check for reverse pair: rd_j == rm_i AND rm_j == rd_i
             if (rd_j == rm_i and rm_j == rd_i) {
-                // Check that rd_i is not used or redefined between i and j
-                var used = false;
+                // Safe elimination requires:
+                // 1) rd_i is neither read nor written between i and j
+                // 2) rm_i is not overwritten between i and j
+                // 3) rd_i is dead after j on all paths
+                var safe = true;
                 for (i + 1..j) |k| {
                     const insn_k = readInsn(code, k);
-                    const rd_k: u5 = @truncate(insn_k & 0x1F);
-                    const rn_k: u5 = @truncate((insn_k >> 5) & 0x1F);
-                    const rm_k: u5 = @truncate((insn_k >> 16) & 0x1F);
-                    // rd_i is used as source (rn, rm) or written as dest (rd)
-                    if (rd_k == rd_i or rn_k == rd_i or rm_k == rd_i) {
-                        used = true;
+                    if (insn_k == nop) continue;
+
+                    // Control-flow between the pair can make local reasoning invalid.
+                    if (insn_k & 0xFC000000 == 0x14000000 or // B
+                        insn_k & 0xFF000000 == 0x54000000 or // B.cond
+                        insn_k & 0xFFFFFC1F == 0xD65F0000 or // RET
+                        insn_k & 0xFFFFFC1F == 0xD63F0000 or // BLR
+                        insn_k & 0xFC000000 == 0x94000000) // BL
+                    {
+                        safe = false;
+                        break;
+                    }
+
+                    if (insnReadsReg(insn_k, rd_i) or insnWritesReg(insn_k, rd_i)) {
+                        safe = false;
+                        break;
+                    }
+                    if (insnWritesReg(insn_k, rm_i)) {
+                        safe = false;
                         break;
                     }
                 }
-                if (!used) {
-                    // Safe to eliminate both MOVs
-                    writeInsn(code, i, nop);
-                    writeInsn(code, j, nop);
-                    break; // Move to next i
-                }
+                if (!safe) continue;
+                if (!isRegDeadAfter(code, j, rd_i)) continue;
+
+                writeInsn(code, i, nop);
+                writeInsn(code, j, nop);
+                break; // Move to next i
             }
         }
     }

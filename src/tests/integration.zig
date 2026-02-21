@@ -203,6 +203,45 @@ test "compileChunk JIT intern+format returns distinct symbols" {
     try testing.expect(result.raw == Value.t.raw);
 }
 
+test "compileChunk JIT intern loop preserves lt call arguments" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 32 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(defun jit-bench-intern-loop () (declare (optimize (speed 3) (safety 0))) (let ((count 0) (i 0)) (while (< i 10000) (intern (format nil \"BENCH-SYM-~d\" i)) (setq count (+ count 1)) (setq i (+ i 1))) count))",
+    ));
+
+    const result = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-bench-intern-loop)",
+    ));
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 10000), result.toFixnum());
+}
+
 test "compileChunk JIT generic float arithmetic and compare stay correct" {
     if (!build_options.use_hoist) return;
 
