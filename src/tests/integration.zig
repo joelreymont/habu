@@ -203,6 +203,77 @@ test "compileChunk JIT intern+format returns distinct symbols" {
     try testing.expect(result.raw == Value.t.raw);
 }
 
+test "compileChunk JIT generic float arithmetic and compare stay correct" {
+    if (!build_options.use_hoist) return;
+
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var vm = try Vm.init(allocator, &heap);
+    defer vm.deinit();
+
+    var comp = try Compiler.initWithHeap(allocator, &vm);
+    defer comp.deinit();
+    vm.setGlobalEnv(&comp.globals);
+
+    var chunk_pool = std.ArrayList(Value){};
+    defer chunk_pool.deinit(allocator);
+    vm.setChunkPoolOwned(&chunk_pool);
+
+    const before = vm.jit_fns.count();
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(defun jit-float-accum (n) (declare (optimize (speed 3) (safety 0))) (let ((i 0) (acc 0.0)) (while (< i n) (setq acc (+ acc (* (float i) 0.5))) (setq i (+ i 1))) acc))",
+    ));
+    _ = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(defun jit-float-branch (x) (declare (optimize (speed 3) (safety 0))) (if (< x 2.5) 11 22))",
+    ));
+    try testing.expect(vm.jit_fns.count() >= before + 2);
+
+    const accum = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-float-accum 1000)",
+    ));
+    try testing.expect(accum.isFloat());
+    try testing.expectApproxEqAbs(@as(f64, 249750.0), accum.toFloat(), 0.0001);
+
+    const lt_true = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-float-branch 1.5)",
+    ));
+    try testing.expect(lt_true.isFixnum());
+    try testing.expectEqual(@as(i64, 11), lt_true.toFixnum());
+
+    const lt_false = try vm.run(try compile_chunk.compileChunk(
+        allocator,
+        &heap,
+        &vm,
+        &comp,
+        &chunk_pool,
+        "(jit-float-branch 3.5)",
+    ));
+    try testing.expect(lt_false.isFixnum());
+    try testing.expectEqual(@as(i64, 22), lt_false.toFixnum());
+}
+
 test "deep recursive defun does not overflow block stack at 64" {
     const allocator = testing.allocator;
     var heap = try Heap.init(allocator, .{ .total_size = 16 * 1024 * 1024 });

@@ -6,6 +6,18 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 
 ---
 
+## Session Notes (2026-02-21)
+
+### Worked Well
+- Routing generic JIT numeric ops through dedicated helpers while keeping recursive functions on conservative fixnum lowering (`src/jit/backend.zig:1764`, `src/jit/backend.zig:1773`, `src/jit/backend.zig:1812`) fixed float benchmark semantics and removed the `float` call-bridge bottleneck; `bench-comp` JIT float benches moved from ~332/346ms to ~12.8/14.9ms.
+- Adding direct primitive resolution for `FLOAT` designators (`src/jit/backend.zig:908`, `src/jit/backend.zig:286`) removed per-iteration VM bridge dispatch in float-heavy loops.
+- Fixing BLR target-register clobber before arg-move rewrites (`src/jit/backend.zig:6177`, `src/jit/backend.zig:4569`) resolved real call-target corruption where `movz x9,#imm` overwrote the call target register and jumped to immediate values (for example `0x23`).
+- Locking the path with a focused integration regression (`src/tests/integration.zig:206`) catches JIT regressions in generic float arithmetic and float comparisons under `(optimize (speed 3) (safety 0))`.
+
+### Did Not Work
+- A branch-heavy fixnum-fast/slow lowering for every generic numeric op triggered upstream hoist CFG instability (`computePreds` out-of-bounds) on real benchmark functions; keeping non-recursive generic ops helper-based and recursive paths conservative avoided this compiler failure in practice.
+- Relying only on `fixCallArgMoves` was insufficient once constant materialization clobbered the BLR target register between `mov target` and `blr`; a dedicated BLR-target-clobber repair pass was required.
+
 ## Session Notes (2026-02-20)
 
 ### Worked Well

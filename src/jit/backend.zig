@@ -279,12 +279,183 @@ fn jitToFloat(v: Value) ?f64 {
     return null;
 }
 
+fn jitRequireHeap() *Heap {
+    return g_heap orelse std.debug.panic("jit helper missing heap", .{});
+}
+
+fn jitFloatCast(a_raw: u64) callconv(.c) u64 {
+    const a = Value{ .raw = a_raw };
+    const f = jitToFloat(a) orelse std.debug.panic(
+        "jit float failed: type={s}",
+        .{@tagName(a.typeKind())},
+    );
+    return Value.makeFloat(f).raw;
+}
+
+fn jitAddNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
+    const a = Value{ .raw = a_raw };
+    const b = Value{ .raw = b_raw };
+
+    if (a.isFloat() or b.isFloat()) {
+        const out = runtime.primitives.arith.addFloat(a, b) catch |err| {
+            std.debug.panic("jit add-float failed: {s}", .{@errorName(err)});
+        };
+        return out.raw;
+    }
+    if (a.isFixnum() and b.isFixnum()) {
+        const av = a.toFixnum();
+        const bv = b.toFixnum();
+        const sum = @addWithOverflow(av, bv);
+        const max_fixnum: i64 = (1 << 62) - 1;
+        const min_fixnum: i64 = -(1 << 62);
+        if (sum[1] == 0 and sum[0] <= max_fixnum and sum[0] >= min_fixnum) {
+            return Value.makeFixnum(sum[0]).raw;
+        }
+    }
+
+    const out = runtime.primitives.arith.add(jitRequireHeap(), a, b) catch |err| {
+        std.debug.panic("jit add failed: {s}", .{@errorName(err)});
+    };
+    return out.raw;
+}
+
+fn jitSubNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
+    const a = Value{ .raw = a_raw };
+    const b = Value{ .raw = b_raw };
+
+    if (a.isFloat() or b.isFloat()) {
+        const out = runtime.primitives.arith.subFloat(a, b) catch |err| {
+            std.debug.panic("jit sub-float failed: {s}", .{@errorName(err)});
+        };
+        return out.raw;
+    }
+    if (a.isFixnum() and b.isFixnum()) {
+        const av = a.toFixnum();
+        const bv = b.toFixnum();
+        const diff = @subWithOverflow(av, bv);
+        const max_fixnum: i64 = (1 << 62) - 1;
+        const min_fixnum: i64 = -(1 << 62);
+        if (diff[1] == 0 and diff[0] <= max_fixnum and diff[0] >= min_fixnum) {
+            return Value.makeFixnum(diff[0]).raw;
+        }
+    }
+
+    const out = runtime.primitives.arith.sub(jitRequireHeap(), a, b) catch |err| {
+        if (std.posix.getenv("HABU_TRACE_JIT_NUM") != null) {
+            std.debug.print(
+                "JIT_NUM sub fail err={s} a=0x{x} b=0x{x} a_fix={} b_fix={} a_float={} b_float={} a_ptr={} b_ptr={}\n",
+                .{
+                    @errorName(err),
+                    a.raw,
+                    b.raw,
+                    a.isFixnum(),
+                    b.isFixnum(),
+                    a.isFloat(),
+                    b.isFloat(),
+                    a.isPointer(),
+                    b.isPointer(),
+                },
+            );
+        }
+        std.debug.panic("jit sub failed: {s}", .{@errorName(err)});
+    };
+    return out.raw;
+}
+
+fn jitMulNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
+    const a = Value{ .raw = a_raw };
+    const b = Value{ .raw = b_raw };
+
+    if (a.isFloat() or b.isFloat()) {
+        const out = runtime.primitives.arith.mulFloat(a, b) catch |err| {
+            std.debug.panic("jit mul-float failed: {s}", .{@errorName(err)});
+        };
+        return out.raw;
+    }
+    if (a.isFixnum() and b.isFixnum()) {
+        const av = a.toFixnum();
+        const bv = b.toFixnum();
+        const prod = @mulWithOverflow(av, bv);
+        const max_fixnum: i64 = (1 << 62) - 1;
+        const min_fixnum: i64 = -(1 << 62);
+        if (prod[1] == 0 and prod[0] <= max_fixnum and prod[0] >= min_fixnum) {
+            return Value.makeFixnum(prod[0]).raw;
+        }
+    }
+
+    const out = runtime.primitives.arith.mul(jitRequireHeap(), a, b) catch |err| {
+        std.debug.panic("jit mul failed: {s}", .{@errorName(err)});
+    };
+    return out.raw;
+}
+
+fn jitLtNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
+    const a = Value{ .raw = a_raw };
+    const b = Value{ .raw = b_raw };
+    const ok = runtime.primitives.arith.lt(a, b) catch |err| {
+        std.debug.panic("jit lt failed: {s}", .{@errorName(err)});
+    };
+    return if (ok) Value.t.raw else Value.nil.raw;
+}
+
+fn jitGtNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
+    const a = Value{ .raw = a_raw };
+    const b = Value{ .raw = b_raw };
+    const ok = runtime.primitives.arith.gt(a, b) catch |err| {
+        std.debug.panic("jit gt failed: {s}", .{@errorName(err)});
+    };
+    return if (ok) Value.t.raw else Value.nil.raw;
+}
+
+fn jitLeNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
+    const a = Value{ .raw = a_raw };
+    const b = Value{ .raw = b_raw };
+    if (std.posix.getenv("HABU_TRACE_JIT_NUM") != null) {
+        std.debug.print(
+            "JIT_NUM le a=0x{x} b=0x{x} a_fix={} b_fix={} a_float={} b_float={} a_ptr={} b_ptr={}\n",
+            .{
+                a.raw,
+                b.raw,
+                a.isFixnum(),
+                b.isFixnum(),
+                a.isFloat(),
+                b.isFloat(),
+                a.isPointer(),
+                b.isPointer(),
+            },
+        );
+    }
+    const ok = runtime.primitives.arith.le(a, b) catch |err| {
+        std.debug.panic("jit le failed: {s}", .{@errorName(err)});
+    };
+    return if (ok) Value.t.raw else Value.nil.raw;
+}
+
+fn jitGeNum(a_raw: u64, b_raw: u64) callconv(.c) u64 {
+    const a = Value{ .raw = a_raw };
+    const b = Value{ .raw = b_raw };
+    const ok = runtime.primitives.arith.ge(a, b) catch |err| {
+        std.debug.panic("jit ge failed: {s}", .{@errorName(err)});
+    };
+    return if (ok) Value.t.raw else Value.nil.raw;
+}
+
+fn jitNumEq(a_raw: u64, b_raw: u64) callconv(.c) u64 {
+    const a = Value{ .raw = a_raw };
+    const b = Value{ .raw = b_raw };
+    return if (runtime.primitives.arith.numEq(a, b)) Value.t.raw else Value.nil.raw;
+}
+
 fn jitSqrt(a_raw: u64) callconv(.c) u64 {
     const a = Value{ .raw = a_raw };
-    const f = jitToFloat(a) orelse return Value.nil.raw;
+    const f = jitToFloat(a) orelse std.debug.panic(
+        "jit sqrt failed: type={s}",
+        .{@tagName(a.typeKind())},
+    );
     if (f < 0) {
-        const heap = g_heap orelse return Value.nil.raw;
-        const cplx = heap.allocComplex(0.0, @sqrt(-f)) catch return Value.nil.raw;
+        const cplx = jitRequireHeap().allocComplex(0.0, @sqrt(-f)) catch |err| {
+            std.debug.panic("jit sqrt complex alloc failed: {s}", .{@errorName(err)});
+        };
         return cplx.raw;
     }
     return Value.makeFloat(@sqrt(f)).raw;
@@ -293,7 +464,10 @@ fn jitSqrt(a_raw: u64) callconv(.c) u64 {
 fn jitRound(a_raw: u64) callconv(.c) u64 {
     const a = Value{ .raw = a_raw };
     if (a.isFixnum()) return a.raw;
-    const f = jitToFloat(a) orelse return Value.nil.raw;
+    const f = jitToFloat(a) orelse std.debug.panic(
+        "jit round failed: type={s}",
+        .{@tagName(a.typeKind())},
+    );
 
     // CL round: ties to even.
     const rounded = blk: {
@@ -731,6 +905,7 @@ fn getJitPrimitivePtrWithArity(name: []const u8, arity: ?usize) ?u64 {
         .{ .n = "APPEND", .p = @ptrCast(&jitAppend), .a = 2 },
         .{ .n = "%APPEND2", .p = @ptrCast(&jitAppend), .a = 2 },
         .{ .n = "ASSOC", .p = @ptrCast(&jitAssoc), .a = 2 },
+        .{ .n = "FLOAT", .p = @ptrCast(&jitFloatCast), .a = 1 },
     };
     for (table) |entry| {
         if (std.mem.eql(u8, bare, entry.n)) {
@@ -1481,16 +1656,16 @@ pub const IrTranslator = struct {
             .fixnum_ge => |op| try self.translateFixnumCmp(.sge, op.left, op.right),
             .fixnum_eq => |op| try self.translateFixnumCmp(.eq, op.left, op.right),
             // Generic arithmetic ops (same semantics, just not type-proven)
-            .add => |op| try self.translateFixnumAdd(op.left, op.right),
-            .sub => |op| try self.translateFixnumSub(op.left, op.right),
-            .le => |op| try self.translateFixnumCmp(.sle, op.left, op.right),
-            .lt => |op| try self.translateFixnumCmp(.slt, op.left, op.right),
-            .gt => |op| try self.translateFixnumCmp(.sgt, op.left, op.right),
-            .ge => |op| try self.translateFixnumCmp(.sge, op.left, op.right),
-            .num_eq => |op| try self.translateFixnumCmp(.eq, op.left, op.right),
+            .add => |op| try self.translateAdd(op.left, op.right),
+            .sub => |op| try self.translateSub(op.left, op.right),
+            .le => |op| try self.translateLe(op.left, op.right),
+            .lt => |op| try self.translateLt(op.left, op.right),
+            .gt => |op| try self.translateGt(op.left, op.right),
+            .ge => |op| try self.translateGe(op.left, op.right),
+            .num_eq => |op| try self.translateNumEq(op.left, op.right),
             .eq => |op| try self.translateFixnumCmp(.eq, op.left, op.right),
             .fixnum_mul => |op| try self.translateFixnumMul(op.left, op.right),
-            .mul => |op| try self.translateFixnumMul(op.left, op.right),
+            .mul => |op| try self.translateMul(op.left, op.right),
             .block => |b| try self.translate(b.body),
             .@"if" => |if_node| try self.translateIf(if_node.cond, if_node.then_branch, if_node.else_branch),
             .progn => |exprs| try self.translateProgn(exprs),
@@ -1584,6 +1759,72 @@ pub const IrTranslator = struct {
             .lit => |v| if (v.isFixnum()) @bitCast(v.raw) else null,
             else => null,
         };
+    }
+
+    fn translateAdd(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
+        if (self.untagged or self.is_recursive) return self.translateFixnumAdd(left, right);
+        const l = try self.translate(left);
+        const r = try self.translate(right);
+        const args = [_]HoistValue{ l, r };
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitAddNum)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &args);
+    }
+
+    fn translateSub(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
+        if (self.untagged or self.is_recursive) return self.translateFixnumSub(left, right);
+        const l = try self.translate(left);
+        const r = try self.translate(right);
+        const args = [_]HoistValue{ l, r };
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitSubNum)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &args);
+    }
+
+    fn translateMul(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
+        if (self.untagged or self.is_recursive) return self.translateFixnumMul(left, right);
+        const l = try self.translate(left);
+        const r = try self.translate(right);
+        const args = [_]HoistValue{ l, r };
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitMulNum)));
+        return try self.emitPrimitiveCallValues(prim_ptr, &args);
+    }
+
+    fn translateCmpTagged(self: *IrTranslator, prim_ptr: u64, left: *const Ir, right: *const Ir) anyerror!HoistValue {
+        const l = try self.translate(left);
+        const r = try self.translate(right);
+        const args = [_]HoistValue{ l, r };
+        const tagged = try self.emitPrimitiveCallValues(prim_ptr, &args);
+        const zero = try self.cachedIconst(0);
+        return try self.b.icmp(I8, IntCC.ne, tagged, zero);
+    }
+
+    fn translateLt(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
+        if (self.untagged or self.is_recursive) return self.translateFixnumCmp(.slt, left, right);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitLtNum)));
+        return try self.translateCmpTagged(prim_ptr, left, right);
+    }
+
+    fn translateGt(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
+        if (self.untagged or self.is_recursive) return self.translateFixnumCmp(.sgt, left, right);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitGtNum)));
+        return try self.translateCmpTagged(prim_ptr, left, right);
+    }
+
+    fn translateLe(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
+        if (self.untagged or self.is_recursive) return self.translateFixnumCmp(.sle, left, right);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitLeNum)));
+        return try self.translateCmpTagged(prim_ptr, left, right);
+    }
+
+    fn translateGe(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
+        if (self.untagged or self.is_recursive) return self.translateFixnumCmp(.sge, left, right);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitGeNum)));
+        return try self.translateCmpTagged(prim_ptr, left, right);
+    }
+
+    fn translateNumEq(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
+        if (self.untagged or self.is_recursive) return self.translateFixnumCmp(.eq, left, right);
+        const prim_ptr = @intFromPtr(@as(*const anyopaque, @ptrCast(&jitNumEq)));
+        return try self.translateCmpTagged(prim_ptr, left, right);
     }
 
     fn translateFixnumAdd(self: *IrTranslator, left: *const Ir, right: *const Ir) anyerror!HoistValue {
@@ -3776,6 +4017,14 @@ fn containsHelperCalls(body: *const Ir) bool {
     return irAny(body, struct {
         fn check(_: @This(), ir: *const Ir) bool {
             return switch (ir.*) {
+                .add,
+                .sub,
+                .mul,
+                .lt,
+                .gt,
+                .le,
+                .ge,
+                .num_eq,
                 .sqrt,
                 .round,
                 .make_hash,
@@ -4314,6 +4563,11 @@ pub fn compileIrWithKnownFnsAndLiteralRoots(
     // Note: LSL+ADD fusion (ADD Xd,Xn,Xm,LSL #K) was tested but is SLOWER
     // on Apple M-series (~10% regression). The wide OoO engine dispatches
     // separate LSL+ADD to parallel units faster than a single shifted-ADD.
+
+    // Repair BLR target register clobbers in call setup windows where the
+    // chosen target register (often x9) is overwritten before BLR executes.
+    fixBlrTargetClobber(code.code.items);
+    if (dump_passes) dumpAsmPass("after fixBlrTargetClobber", code.code.items);
 
     // Fix parallel copy conflicts in call argument setup.
     // Hoist's lowering emits sequential mov instructions for call arguments
@@ -5895,6 +6149,91 @@ fn coalesceMovs(code: []u8) void {
             writeInsn(code, mi, 0xD503201F); // NOP
             changed = true;
         }
+    }
+}
+
+fn pickScratchForRange(code: []const u8, start_idx: usize, end_idx: usize, avoid: u5) u5 {
+    var reg: u5 = 9;
+    while (reg < 28) : (reg += 1) {
+        if (reg == avoid) continue;
+        var used = false;
+        var i = start_idx;
+        while (i <= end_idx) : (i += 1) {
+            const insn = readInsn(code, i);
+            if (insn == 0xD503201F) continue;
+            const rd: u5 = @truncate(insn & 0x1F);
+            const rn: u5 = @truncate((insn >> 5) & 0x1F);
+            const rm: u5 = @truncate((insn >> 16) & 0x1F);
+            if (rd == reg or rn == reg or rm == reg) {
+                used = true;
+                break;
+            }
+        }
+        if (!used) return reg;
+    }
+    return avoid;
+}
+
+fn fixBlrTargetClobber(code: []u8) void {
+    if (code.len < 8) return;
+    const n_insns = code.len / 4;
+
+    var i: usize = 0;
+    while (i < n_insns) : (i += 1) {
+        const insn = readInsn(code, i);
+        if (insn & 0xFFFFFC1F != 0xD63F0000) continue; // BLR
+
+        const target: u5 = @truncate((insn >> 5) & 0x1F);
+
+        var load_pos: ?usize = null;
+        var load_src: u5 = 0;
+
+        var j = i;
+        var steps: usize = 0;
+        while (j > 0 and steps < 12) : (steps += 1) {
+            j -= 1;
+            const prev = readInsn(code, j);
+            if (prev == 0xD503201F) continue;
+
+            if (prev & 0xFFE0FFE0 == 0xAA0003E0) { // MOV Xd, Xm
+                const rd: u5 = @truncate(prev & 0x1F);
+                const rm: u5 = @truncate((prev >> 16) & 0x1F);
+                if (rd == target) {
+                    load_pos = j;
+                    load_src = rm;
+                    break;
+                }
+            }
+
+            if (prev & 0xFC000000 == 0x14000000 or // B
+                prev & 0xFF000000 == 0x54000000 or // B.cond
+                prev & 0xFFFFFC1F == 0xD65F0000 or // RET
+                prev & 0xFFFFFC1F == 0xD63F0000 or // BLR
+                prev & 0xFC000000 == 0x94000000) // BL
+                break;
+        }
+
+        const pos = load_pos orelse continue;
+
+        var clobbered = false;
+        var k = pos + 1;
+        while (k < i) : (k += 1) {
+            const mid = readInsn(code, k);
+            if (mid == 0xD503201F) continue;
+            const rd: u5 = @truncate(mid & 0x1F);
+            if (rd == target) {
+                clobbered = true;
+                break;
+            }
+        }
+        if (!clobbered) continue;
+
+        const scratch = pickScratchForRange(code, pos, i, target);
+        if (scratch == target) continue;
+
+        writeInsn(code, pos, makeMovInsn(scratch, load_src));
+        const patched_call = (insn & ~@as(u32, 0x3E0)) | (@as(u32, scratch) << 5);
+        writeInsn(code, i, patched_call);
     }
 }
 
