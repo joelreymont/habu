@@ -857,6 +857,45 @@ test "stdlib sort copy-once path preserves function designator semantics" {
     try testing.expect(key.raw == Value.t.raw);
 }
 
+test "stdlib sort string< fast path preserves designator semantics" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const fn_designator = try repl.eval(
+        \\(equal (sort '("b" "a" "c") #'string<) '("a" "b" "c"))
+    );
+    try testing.expect(fn_designator.raw == Value.t.raw);
+
+    const sym_designator = try repl.eval(
+        \\(equal (sort '("b" "a" "c") 'string<) '("a" "b" "c"))
+    );
+    try testing.expect(sym_designator.raw == Value.t.raw);
+
+    const pure = try repl.eval(
+        \\(let* ((xs '("c" "b" "a"))
+        \\       (ys (sort xs #'string<)))
+        \\  (and (equal xs '("c" "b" "a"))
+        \\       (equal ys '("a" "b" "c"))))
+    );
+    try testing.expect(pure.raw == Value.t.raw);
+
+    const key_fallback = try repl.eval(
+        \\(equal (sort '(#("b" 2) #("a" 1) #("c" 0))
+        \\             #'string<
+        \\             :key #'(lambda (v) (aref v 0)))
+        \\       '(#("a" 1) #("b" 2) #("c" 0)))
+    );
+    try testing.expect(key_fallback.raw == Value.t.raw);
+}
+
 test "stdlib sort designator path works from speed-3 caller" {
     if (!build_options.use_hoist) return;
 

@@ -1180,3 +1180,14 @@ Environment guard:
 
 #### Did Not Work
 - Threading a copy-state flag through recursive `sort-with-key` calls (extra recursion argument path) caused deterministic corruption during stdlib load under generational GC, eventually crashing in later unrelated forms (e.g. `defmacro` handling). Avoid copy-state recursion parameters in this path until the underlying runtime/compiler corruption is root-caused.
+
+### Session Notes (2026-02-21, sort string comparator fast path)
+
+#### Worked Well
+- Adding a zero-new-defun fast path inside existing `merge-lists-with-key` (`lib/stdlib.habu:2342`) for `(null key)` + `string<` designators (`#'string<` or `'string<`) removed high-frequency `funcall` comparator overhead in sort merges.
+- Keeping dispatch inside the existing function (instead of adding new recursive sort helper forms) preserved generational-stdlib-load stability (`src/tests/integration.zig:4935`).
+- The new regression (`src/tests/integration.zig:860`) locked function/symbol designator behavior, non-destructive input semantics, and `:key` fallback correctness.
+- `sort_string` JIT benchmark improved from ~8.11 ms to ~4.86-4.92 ms (`zig build -Duse-hoist=true bench-comp -- --iterations 3 --warmup 1`).
+
+#### Did Not Work
+- Introducing additional recursive stdlib sort helper defuns for string fast paths triggered deterministic generational load crashes in compiler capture analysis (`src/compiler/compile.zig:4989`) and later macro handling (`src/interp/repl.zig:3686`) during `loadStdlib`.

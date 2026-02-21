@@ -158,7 +158,7 @@
     - [x] `habu-mapcar-bench-jit-622b58d5` Add mapcar fast paths for 1/2 list arities and preserve variadic semantics.
     - [x] `habu-reduce-bench-jit-b7c95d90` Optimize stdlib reduce hot path (`#'+`, non-`:from-end`) with loop fast path and preserve fold semantics.
     - [x] `habu-sort-fixnum-bench-f2e5e01d` Optimize `sort` list path with copy-once working-list recursion (preserve designator semantics).
-    - [ ] `habu-sort-str-bench-a3f88f51` Add string sort path (`symbol_function`/comparator dispatch).
+    - [x] `habu-sort-str-bench-a3f88f51` Add direct `string<` comparator fast path in stdlib merge-sort (symbol/function designators).
     - [ ] `habu-jit-float-support-91148537` Resolve float call-target and boxed-float lowering.
     - [x] `habu-str-concat-bench-c576d53b` Add direct string concatenate fast path (1/2-arg hot cases + 3+-arg prealloc path) and keep generic fallback semantics.
     - [x] `habu-intern-bench-jit-1a268ee9` Fix JIT call-arg cycle handling for helper calls and optimize simple `format`+`intern` hot path.
