@@ -32,7 +32,7 @@
     ;; bootstrap
     "lmdcls" "letmac" "clmacs" "commac" "mormac" "globals" "compat"
     "defcal" "maxmac" "mopers" "mforma" "mrgmac" "rzmac" "strmac"
-    "displm" "safe-recursion" "ratmac"
+    "displm" "safe-recursion" "ratmac" "mhayat"
     "opers"
     "utils" "merror" "mutils"
 
@@ -52,7 +52,8 @@
     "ratout" "result"
 
     ;; translator and evaluator support
-    "transl" "transs" "trans1" "trans2" "trans3" "trans4" "trans5"
+    ;; transl.lisp depends on DEF%TR from transm.lisp.
+    "transm" "transl" "transs" "trans1" "trans2" "trans3" "trans4" "trans5"
     "transf" "troper" "trutil" "trmode" "trdata" "trpred" "transq"
     "acall" "fcall" "evalw" "trprop" "mdefun"
 

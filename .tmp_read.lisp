@@ -1,0 +1,6 @@
+(prin1 (read-from-string "(defun-prop (cond free-lisp-vars) (form) (free-lisp-vars-of-argl (cdr form)))"))
+(terpri)
+(prin1 (read-from-string "(defun-prop (and free-lisp-vars) (form) (free-lisp-vars-of-argl (cdr form)))"))
+(terpri)
+(prin1 (read-from-string "(defun-prop (setq free-lisp-vars) (form) x)"))
+(terpri)

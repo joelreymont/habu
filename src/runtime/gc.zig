@@ -18,12 +18,23 @@ const objects = @import("objects.zig");
 const heap_mod = @import("heap.zig");
 const roots_mod = @import("roots.zig");
 
+const OriginKind = enum(u8) {
+    none,
+    range,
+    slot,
+};
+
 /// Work item: object to scan
 const WorkItem = struct {
     addr: usize,
     tag: Tag,
     parent_addr: usize,
     parent_tag: Tag,
+    grand_addr: usize,
+    grand_tag: Tag,
+    origin_kind: OriginKind,
+    origin_a: usize,
+    origin_b: usize,
 };
 
 const builtin = @import("builtin");
@@ -358,6 +369,13 @@ pub const GC = struct {
     debug_scan_tag: Tag,
     debug_parent_addr: usize,
     debug_parent_tag: Tag,
+    debug_grand_addr: usize,
+    debug_grand_tag: Tag,
+    debug_origin_kind: OriginKind,
+    debug_origin_a: usize,
+    debug_origin_b: usize,
+    debug_roots_ranges: []const roots_mod.RootRange,
+    debug_roots_slots: []const *Value,
     /// Debug: flag set during GC trace/copy phase
     gc_in_progress: if (builtin.mode == .Debug) bool else void,
 
@@ -379,6 +397,13 @@ pub const GC = struct {
             .debug_scan_tag = .cons,
             .debug_parent_addr = 0,
             .debug_parent_tag = .cons,
+            .debug_grand_addr = 0,
+            .debug_grand_tag = .cons,
+            .debug_origin_kind = .none,
+            .debug_origin_a = 0,
+            .debug_origin_b = 0,
+            .debug_roots_ranges = &[_]roots_mod.RootRange{},
+            .debug_roots_slots = &[_]*Value{},
             .gc_in_progress = if (builtin.mode == .Debug) false else {},
         };
     }
@@ -530,18 +555,31 @@ pub const GC = struct {
         self.age_peak = 0;
         self.debug_parent_addr = 0;
         self.debug_parent_tag = .cons;
+        self.debug_grand_addr = 0;
+        self.debug_grand_tag = .cons;
+        self.debug_origin_kind = .none;
+        self.debug_origin_a = 0;
+        self.debug_origin_b = 0;
+        self.debug_roots_ranges = roots.ranges;
+        self.debug_roots_slots = roots.slots;
         var alloc_ptr = heap.to_start;
         heap.clearTenuredMarks();
         var root_vals: usize = roots.slots.len;
         for (roots.ranges) |r| root_vals +%= r.len;
 
         // Phase 1: Copy roots
-        for (roots.ranges) |r| {
-            for (r.ptr[0..r.len]) |*root| {
+        for (roots.ranges, 0..) |r, range_idx| {
+            for (r.ptr[0..r.len], 0..) |*root, elem_idx| {
+                self.debug_origin_kind = .range;
+                self.debug_origin_a = range_idx;
+                self.debug_origin_b = elem_idx;
                 root.* = try self.copyValue(heap, root.*, &alloc_ptr);
             }
         }
-        for (roots.slots) |slot| {
+        for (roots.slots, 0..) |slot, slot_idx| {
+            self.debug_origin_kind = .slot;
+            self.debug_origin_a = slot_idx;
+            self.debug_origin_b = 0;
             slot.* = try self.copyValue(heap, slot.*, &alloc_ptr);
         }
         const root_ns = elapsedNsSince(phase_start);
@@ -552,6 +590,11 @@ pub const GC = struct {
             self.work_list.items.len -= 1;
             self.debug_parent_addr = item.parent_addr;
             self.debug_parent_tag = item.parent_tag;
+            self.debug_grand_addr = item.grand_addr;
+            self.debug_grand_tag = item.grand_tag;
+            self.debug_origin_kind = item.origin_kind;
+            self.debug_origin_a = item.origin_a;
+            self.debug_origin_b = item.origin_b;
             try self.scanObject(heap, item.addr, item.tag, &alloc_ptr);
         }
         const copy_end_ns = elapsedNsSince(phase_start);
@@ -613,19 +656,71 @@ pub const GC = struct {
         self.runs_peak = 0;
         self.debug_parent_addr = 0;
         self.debug_parent_tag = .cons;
+        self.debug_grand_addr = 0;
+        self.debug_grand_tag = .cons;
+        self.debug_origin_kind = .none;
+        self.debug_origin_a = 0;
+        self.debug_origin_b = 0;
+        self.debug_roots_ranges = roots.ranges;
+        self.debug_roots_slots = roots.slots;
         var alloc_ptr = heap.to_start;
         var root_vals: usize = roots.slots.len;
         for (roots.ranges) |r| root_vals +%= r.len;
+        const from_start_addr = @intFromPtr(heap.from_start);
+        const from_end_addr = @intFromPtr(heap.from_end);
+        const trace_root_raw: ?u64 = blk: {
+            const raw_c = std.posix.getenv("HABU_TRACE_ROOT_RAW") orelse break :blk null;
+            const raw = std.mem.trim(u8, std.mem.sliceTo(raw_c, 0), " \t\r\n");
+            if (raw.len == 0) break :blk null;
+            const hex = if (raw.len > 2 and (raw[0] == '0') and (raw[1] == 'x' or raw[1] == 'X')) raw[2..] else raw;
+            break :blk std.fmt.parseUnsigned(u64, hex, 16) catch null;
+        };
+        const trace_low_off: ?usize = blk: {
+            const raw_c = std.posix.getenv("HABU_TRACE_ROOT_LOW_OFFSET") orelse break :blk null;
+            const raw = std.mem.trim(u8, std.mem.sliceTo(raw_c, 0), " \t\r\n");
+            if (raw.len == 0) break :blk null;
+            const hex = if (raw.len > 2 and (raw[0] == '0') and (raw[1] == 'x' or raw[1] == 'X')) raw[2..] else raw;
+            break :blk std.fmt.parseUnsigned(usize, hex, 16) catch null;
+        };
 
         var range_idx: usize = 0;
         for (roots.ranges) |r| {
             var elem_idx: usize = 0;
             for (r.ptr[0..r.len]) |*root| {
+                self.debug_origin_kind = .range;
+                self.debug_origin_a = range_idx;
+                self.debug_origin_b = elem_idx;
+                if (trace_root_raw) |target_raw| {
+                    if (root.*.raw == target_raw) {
+                        std.debug.print(
+                            "TRACE root-hit range={d} idx={d} root_ptr=0x{x} val=0x{x} kind={s}\n",
+                            .{ range_idx, elem_idx, @intFromPtr(root), root.*.raw, @tagName(root.*.typeKind()) },
+                        );
+                    }
+                }
+                if (trace_low_off) |limit| {
+                    const root_val = root.*;
+                    if (root_val.isPointer()) {
+                        const addr = root_val.toPtrAddr();
+                        if (addr >= from_start_addr and addr < from_end_addr and (addr - from_start_addr) <= limit) {
+                            std.debug.print(
+                                "TRACE root-low range={d} idx={d} root_ptr=0x{x} val=0x{x} off=0x{x} kind={s}\n",
+                                .{ range_idx, elem_idx, @intFromPtr(root), root_val.raw, addr - from_start_addr, @tagName(root_val.typeKind()) },
+                            );
+                        }
+                    }
+                }
                 if (std.posix.getenv("HABU_TRACE_BAD_ROOT") != null) {
                     const root_val = root.*;
                     if (root_val.isPointer() and root_val.getTag() == .boxed) {
                         const addr = root_val.toPtrAddr();
                         if (heap.containsAddrForDebug(addr)) {
+                            const first_word: *const Value = @ptrFromInt(addr);
+                            if (first_word.isForwarding()) {
+                                // Another root already copied this object in the same cycle.
+                                // The old header no longer contains BoxedKind.
+                                continue;
+                            }
                             const kind_raw = @as(*const u64, @ptrFromInt(addr)).*;
                             const kind_n = @typeInfo(objects.BoxedKind).@"enum".fields.len;
                             if (kind_raw >= kind_n) {
@@ -633,6 +728,42 @@ pub const GC = struct {
                                     "TRACE bad-root range={d} idx={d} root_ptr=0x{x} val=0x{x} boxed-kind-raw=0x{x}\n",
                                     .{ range_idx, elem_idx, @intFromPtr(root), root_val.raw, kind_raw },
                                 );
+                                if (std.posix.getenv("HABU_TRAP_BAD_ROOT") != null) {
+                                    @panic("bad boxed root");
+                                }
+                            }
+                        }
+                    } else if (root_val.isPointer() and root_val.getTag() == .symbol) {
+                        const addr = root_val.toPtrAddr();
+                        if (heap.containsAddrForDebug(addr)) {
+                            const first_word: *const Value = @ptrFromInt(addr);
+                            if (first_word.isForwarding()) continue;
+                            const sym: *const objects.Symbol = @ptrFromInt(addr);
+                            if (sym.name_len > heap.space_size) {
+                                std.debug.print(
+                                    "TRACE bad-root range={d} idx={d} root_ptr=0x{x} val=0x{x} symbol-name-len={d}\n",
+                                    .{ range_idx, elem_idx, @intFromPtr(root), root_val.raw, sym.name_len },
+                                );
+                                if (std.posix.getenv("HABU_TRAP_BAD_ROOT") != null) {
+                                    @panic("bad symbol root");
+                                }
+                            }
+                        }
+                    } else if (root_val.isPointer() and root_val.getTag() == .closure) {
+                        const addr = root_val.toPtrAddr();
+                        if (heap.containsAddrForDebug(addr)) {
+                            const first_word: *const Value = @ptrFromInt(addr);
+                            if (first_word.isForwarding()) continue;
+                            const cls: *const objects.Closure = @ptrFromInt(addr);
+                            const max_caps = heap.space_size / @sizeOf(Value);
+                            if (cls.num_captures > max_caps) {
+                                std.debug.print(
+                                    "TRACE bad-root range={d} idx={d} root_ptr=0x{x} val=0x{x} closure-captures={d} max={d}\n",
+                                    .{ range_idx, elem_idx, @intFromPtr(root), root_val.raw, cls.num_captures, max_caps },
+                                );
+                                if (std.posix.getenv("HABU_TRAP_BAD_ROOT") != null) {
+                                    @panic("bad closure root");
+                                }
                             }
                         }
                     }
@@ -644,11 +775,36 @@ pub const GC = struct {
         }
         var slot_idx: usize = 0;
         for (roots.slots) |slot| {
+            self.debug_origin_kind = .slot;
+            self.debug_origin_a = slot_idx;
+            self.debug_origin_b = 0;
+            if (trace_root_raw) |target_raw| {
+                if (slot.*.raw == target_raw) {
+                    std.debug.print(
+                        "TRACE root-hit slot={d} slot_ptr=0x{x} val=0x{x} kind={s}\n",
+                        .{ slot_idx, @intFromPtr(slot), slot.*.raw, @tagName(slot.*.typeKind()) },
+                    );
+                }
+            }
+            if (trace_low_off) |limit| {
+                const slot_val = slot.*;
+                if (slot_val.isPointer()) {
+                    const addr = slot_val.toPtrAddr();
+                    if (addr >= from_start_addr and addr < from_end_addr and (addr - from_start_addr) <= limit) {
+                        std.debug.print(
+                            "TRACE root-low slot={d} slot_ptr=0x{x} val=0x{x} off=0x{x} kind={s}\n",
+                            .{ slot_idx, @intFromPtr(slot), slot_val.raw, addr - from_start_addr, @tagName(slot_val.typeKind()) },
+                        );
+                    }
+                }
+            }
             if (std.posix.getenv("HABU_TRACE_BAD_ROOT") != null) {
                 const slot_val = slot.*;
                 if (slot_val.isPointer() and slot_val.getTag() == .boxed) {
                     const addr = slot_val.toPtrAddr();
                     if (heap.containsAddrForDebug(addr)) {
+                        const first_word: *const Value = @ptrFromInt(addr);
+                        if (first_word.isForwarding()) continue;
                         const kind_raw = @as(*const u64, @ptrFromInt(addr)).*;
                         const kind_n = @typeInfo(objects.BoxedKind).@"enum".fields.len;
                         if (kind_raw >= kind_n) {
@@ -656,6 +812,42 @@ pub const GC = struct {
                                 "TRACE bad-root slot={d} slot_ptr=0x{x} val=0x{x} boxed-kind-raw=0x{x}\n",
                                 .{ slot_idx, @intFromPtr(slot), slot_val.raw, kind_raw },
                             );
+                            if (std.posix.getenv("HABU_TRAP_BAD_ROOT") != null) {
+                                @panic("bad boxed slot root");
+                            }
+                            }
+                        }
+                } else if (slot_val.isPointer() and slot_val.getTag() == .symbol) {
+                    const addr = slot_val.toPtrAddr();
+                    if (heap.containsAddrForDebug(addr)) {
+                        const first_word: *const Value = @ptrFromInt(addr);
+                        if (first_word.isForwarding()) continue;
+                        const sym: *const objects.Symbol = @ptrFromInt(addr);
+                        if (sym.name_len > heap.space_size) {
+                            std.debug.print(
+                                "TRACE bad-root slot={d} slot_ptr=0x{x} val=0x{x} symbol-name-len={d}\n",
+                                .{ slot_idx, @intFromPtr(slot), slot_val.raw, sym.name_len },
+                            );
+                            if (std.posix.getenv("HABU_TRAP_BAD_ROOT") != null) {
+                                @panic("bad symbol slot root");
+                            }
+                        }
+                    }
+                } else if (slot_val.isPointer() and slot_val.getTag() == .closure) {
+                    const addr = slot_val.toPtrAddr();
+                    if (heap.containsAddrForDebug(addr)) {
+                        const first_word: *const Value = @ptrFromInt(addr);
+                        if (first_word.isForwarding()) continue;
+                        const cls: *const objects.Closure = @ptrFromInt(addr);
+                        const max_caps = heap.space_size / @sizeOf(Value);
+                        if (cls.num_captures > max_caps) {
+                            std.debug.print(
+                                "TRACE bad-root slot={d} slot_ptr=0x{x} val=0x{x} closure-captures={d} max={d}\n",
+                                .{ slot_idx, @intFromPtr(slot), slot_val.raw, cls.num_captures, max_caps },
+                            );
+                            if (std.posix.getenv("HABU_TRAP_BAD_ROOT") != null) {
+                                @panic("bad closure slot root");
+                            }
                         }
                     }
                 }
@@ -717,6 +909,11 @@ pub const GC = struct {
             if (!heap.hasMarkedCardInAddrRangeRuns(obj.addr, obj.addr + obj.size, self.remembered_runs.items)) continue;
             self.debug_parent_addr = 0;
             self.debug_parent_tag = .cons;
+            self.debug_grand_addr = 0;
+            self.debug_grand_tag = .cons;
+            self.debug_origin_kind = .none;
+            self.debug_origin_a = 0;
+            self.debug_origin_b = 0;
             try self.scanObject(heap, obj.addr, obj.tag, alloc_ptr);
             scanned +%= 1;
         }
@@ -790,6 +987,11 @@ pub const GC = struct {
             .tag = tag,
             .parent_addr = self.debug_scan_addr,
             .parent_tag = self.debug_scan_tag,
+            .grand_addr = self.debug_parent_addr,
+            .grand_tag = self.debug_parent_tag,
+            .origin_kind = self.debug_origin_kind,
+            .origin_a = self.debug_origin_a,
+            .origin_b = self.debug_origin_b,
         };
         if (builtin.mode == .Debug and self.gc_in_progress) {
             const old_cap = self.major_work.capacity;
@@ -811,6 +1013,11 @@ pub const GC = struct {
             self.work_list.items.len -= 1;
             self.debug_parent_addr = item.parent_addr;
             self.debug_parent_tag = item.parent_tag;
+            self.debug_grand_addr = item.grand_addr;
+            self.debug_grand_tag = item.grand_tag;
+            self.debug_origin_kind = item.origin_kind;
+            self.debug_origin_a = item.origin_a;
+            self.debug_origin_b = item.origin_b;
             try self.scanObject(heap, item.addr, item.tag, alloc_ptr);
         }
     }
@@ -824,6 +1031,11 @@ pub const GC = struct {
             self.major_work.items.len -= 1;
             self.debug_parent_addr = item.parent_addr;
             self.debug_parent_tag = item.parent_tag;
+            self.debug_grand_addr = item.grand_addr;
+            self.debug_grand_tag = item.grand_tag;
+            self.debug_origin_kind = item.origin_kind;
+            self.debug_origin_a = item.origin_a;
+            self.debug_origin_b = item.origin_b;
             try self.scanObject(heap, item.addr, item.tag, alloc_ptr);
             try self.processMinorWork(heap, alloc_ptr);
         }
@@ -887,6 +1099,11 @@ pub const GC = struct {
             .tag = tag,
             .parent_addr = self.debug_scan_addr,
             .parent_tag = self.debug_scan_tag,
+            .grand_addr = self.debug_parent_addr,
+            .grand_tag = self.debug_parent_tag,
+            .origin_kind = self.debug_origin_kind,
+            .origin_a = self.debug_origin_a,
+            .origin_b = self.debug_origin_b,
         };
         // Debug check: detect allocations during GC trace/copy.
         if (builtin.mode == .Debug and self.gc_in_progress) {
@@ -1013,22 +1230,62 @@ pub const GC = struct {
         const forwarded_size_ok = forwarded_size > 0 and
             forwarded_size <= heap.space_size and
             std.mem.isAligned(forwarded_size, heap_mod.ALIGNMENT);
-        if (!forwarded_size_ok) return null;
 
         const from_start = @intFromPtr(heap.from_start);
         const from_end = @intFromPtr(heap.from_end);
-        const in_from = new_addr >= from_start and new_addr < from_end and forwarded_size <= from_end - new_addr;
+        const in_from_addr = new_addr >= from_start and new_addr < from_end;
 
-        var in_tenured = false;
+        var in_tenured_addr = false;
         if (heap.gcLayoutMode() == .generational) {
             if (heap.tenuredRegion()) |tenured| {
                 const ten_start = @intFromPtr(tenured.start);
                 const ten_used_end = if (heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
-                in_tenured = new_addr >= ten_start and new_addr < ten_used_end and
-                    forwarded_size <= ten_used_end - new_addr;
+                in_tenured_addr = new_addr >= ten_start and new_addr < ten_used_end;
             }
         }
-        if (!(in_from or in_tenured)) return null;
+        if (!forwarded_size_ok) {
+            if (std.posix.getenv("HABU_TRACE_STALE_RESOLVE") != null) {
+                std.debug.print(
+                    "TRACE stale-resolve reject-size val=0x{x} obj=0x{x} fw=0x{x} sz={d} stale=[0x{x},0x{x})\n",
+                    .{ val.raw, obj_addr, first_word.raw, forwarded_size, stale_start, stale_end },
+                );
+            }
+            return null;
+        }
+
+        const in_from = in_from_addr and forwarded_size <= from_end - new_addr;
+        var in_tenured = false;
+        if (in_tenured_addr) {
+            if (heap.tenuredRegion()) |tenured| {
+                const ten_start = @intFromPtr(tenured.start);
+                const ten_used_end = if (heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
+                in_tenured = forwarded_size <= ten_used_end - new_addr;
+            }
+        }
+        if (!(in_from or in_tenured)) {
+            if (std.posix.getenv("HABU_TRACE_STALE_RESOLVE") != null) {
+                std.debug.print(
+                    "TRACE stale-resolve reject-range val=0x{x} obj=0x{x} fw=0x{x} new=0x{x} sz={d} from=[0x{x},0x{x})\n",
+                    .{ val.raw, obj_addr, first_word.raw, new_addr, forwarded_size, from_start, from_end },
+                );
+            }
+            return null;
+        }
+        if (!objects.forwardingTargetLooksValid(val.getTag(), new_addr, forwarded_size)) {
+            if (std.posix.getenv("HABU_TRACE_STALE_RESOLVE") != null) {
+                std.debug.print(
+                    "TRACE stale-resolve reject-layout val=0x{x} obj=0x{x} fw=0x{x} new=0x{x} sz={d} tag={s}\n",
+                    .{ val.raw, obj_addr, first_word.raw, new_addr, forwarded_size, @tagName(val.getTag()) },
+                );
+            }
+            return null;
+        }
+        if (std.posix.getenv("HABU_TRACE_STALE_RESOLVE") != null) {
+            std.debug.print(
+                "TRACE stale-resolve ok val=0x{x} obj=0x{x} fw=0x{x} sz={d} from=[0x{x},0x{x})\n",
+                .{ val.raw, obj_addr, first_word.raw, forwarded_size, from_start, from_end },
+            );
+        }
 
         return .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) };
     }
@@ -1119,13 +1376,41 @@ pub const GC = struct {
                 }
             }
             const forwarded_range_ok = in_from_space or in_to_space or in_tenured;
-            if (forwarded_size_ok and forwarded_range_ok) {
+            if (forwarded_size_ok and forwarded_range_ok and
+                objects.forwardingTargetLooksValid(val.getTag(), new_addr, forwarded_size))
+            {
                 return self.rememberScanStore(heap, .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) });
             }
         }
 
         // Copy object to to-space
         const tag = val.getTag();
+        if (tag == .keyword and std.posix.getenv("HABU_TRACE_GC_BAD_KEYWORD") != null) {
+            const kw: *const objects.Keyword = @ptrFromInt(obj_addr);
+            const name_addr = @intFromPtr(kw.name_ptr);
+            const expected_name_addr = obj_addr + @sizeOf(objects.Keyword);
+            const bad_len = kw.name_len > heap.space_size;
+            const bad_ptr = name_addr != expected_name_addr;
+            if (bad_len or bad_ptr) {
+                std.debug.print(
+                    "TRACE bad-keyword-copy val=0x{x} obj=0x{x} len={d} name_ptr=0x{x} expected=0x{x} parent=0x{x}:{s} scan=0x{x}:{s}\n",
+                    .{
+                        val.raw,
+                        obj_addr,
+                        kw.name_len,
+                        name_addr,
+                        expected_name_addr,
+                        self.debug_parent_addr,
+                        @tagName(self.debug_parent_tag),
+                        self.debug_scan_addr,
+                        @tagName(self.debug_scan_tag),
+                    },
+                );
+                if (std.posix.getenv("HABU_TRAP_BAD_KEYWORD") != null) {
+                    @panic("bad keyword object");
+                }
+            }
+        }
         if (tag == .symbol and std.posix.getenv("HABU_TRACE_GC_BAD_SYMBOL") != null) {
             const sym: *const objects.Symbol = @ptrFromInt(obj_addr);
             if (sym.name_len > heap.space_size) {
@@ -1136,7 +1421,7 @@ pub const GC = struct {
                 const to_s = @intFromPtr(heap.to_start);
                 const to_e = to_s + heap.space_size;
                 std.debug.print(
-                    "TRACE bad-symbol-copy val=0x{x} obj=0x{x} fw=0x{x} is_fwd={} w1=0x{x} from=[0x{x},0x{x}) to=[0x{x},0x{x}) scan=0x{x}:{s} parent=0x{x}:{s}\n",
+                    "TRACE bad-symbol-copy val=0x{x} obj=0x{x} fw=0x{x} is_fwd={} w1=0x{x} from=[0x{x},0x{x}) to=[0x{x},0x{x}) scan=0x{x}:{s} parent=0x{x}:{s} grand=0x{x}:{s} origin={s}:{d}:{d}\n",
                     .{
                         val.raw,
                         obj_addr,
@@ -1151,6 +1436,11 @@ pub const GC = struct {
                         @tagName(self.debug_scan_tag),
                         self.debug_parent_addr,
                         @tagName(self.debug_parent_tag),
+                        self.debug_grand_addr,
+                        @tagName(self.debug_grand_tag),
+                        @tagName(self.debug_origin_kind),
+                        self.debug_origin_a,
+                        self.debug_origin_b,
                     },
                 );
                 if (self.debug_scan_tag == .cons and self.debug_scan_addr != 0) {
@@ -1165,6 +1455,150 @@ pub const GC = struct {
                             @tagName(cdr_ptr.typeKind()),
                         },
                     );
+                }
+                if (self.debug_parent_tag == .cons and self.debug_parent_addr != 0) {
+                    const car_ptr: *const Value = @ptrFromInt(self.debug_parent_addr);
+                    const cdr_ptr: *const Value = @ptrFromInt(self.debug_parent_addr + @sizeOf(Value));
+                    std.debug.print(
+                        "TRACE bad-symbol-parent-cons car=0x{x}({s}) cdr=0x{x}({s})\n",
+                        .{
+                            car_ptr.raw,
+                            @tagName(car_ptr.typeKind()),
+                            cdr_ptr.raw,
+                            @tagName(cdr_ptr.typeKind()),
+                        },
+                    );
+                }
+                if (self.debug_grand_tag == .cons and self.debug_grand_addr != 0) {
+                    const car_ptr: *const Value = @ptrFromInt(self.debug_grand_addr);
+                    const cdr_ptr: *const Value = @ptrFromInt(self.debug_grand_addr + @sizeOf(Value));
+                    std.debug.print(
+                        "TRACE bad-symbol-grand-cons car=0x{x}({s}) cdr=0x{x}({s})\n",
+                        .{
+                            car_ptr.raw,
+                            @tagName(car_ptr.typeKind()),
+                            cdr_ptr.raw,
+                            @tagName(cdr_ptr.typeKind()),
+                        },
+                    );
+                }
+                switch (self.debug_origin_kind) {
+                    .range => {
+                        if (self.debug_origin_a < self.debug_roots_ranges.len) {
+                            const rr = self.debug_roots_ranges[self.debug_origin_a];
+                            if (self.debug_origin_b < rr.len) {
+                                const root_val = rr.ptr[self.debug_origin_b];
+                                std.debug.print(
+                                    "TRACE bad-symbol-origin-root range={d} idx={d} raw=0x{x} kind={s}\n",
+                                    .{
+                                        self.debug_origin_a,
+                                        self.debug_origin_b,
+                                        root_val.raw,
+                                        @tagName(root_val.typeKind()),
+                                    },
+                                );
+                                if (root_val.isChunk()) {
+                                    const ch = root_val.toPtr(objects.Chunk);
+                                    const ch_name = if (ch.name.typeKind() == .symbol)
+                                        ch.name.toPtr(objects.Symbol).getName()
+                                    else if (ch.name.typeKind() == .string)
+                                        ch.name.toPtr(objects.String).bytes()
+                                    else
+                                        "<non-name>";
+                                    std.debug.print(
+                                        "TRACE bad-symbol-origin-chunk name={s} consts={d} code_len={d} allowed=0x{x}({s})\n",
+                                        .{
+                                            ch_name,
+                                            ch.const_count,
+                                            ch.code_len,
+                                            ch.allowed_keywords.raw,
+                                            @tagName(ch.allowed_keywords.typeKind()),
+                                        },
+                                    );
+                                    std.debug.print(
+                                        "TRACE bad-symbol-origin-chunk-lambda raw=0x{x} kind={s}\n",
+                                        .{
+                                            ch.lambda_expr.raw,
+                                            @tagName(ch.lambda_expr.typeKind()),
+                                        },
+                                    );
+                                    if (ch.lambda_expr.isCons()) {
+                                        var lam_list = ch.lambda_expr;
+                                        var li: usize = 0;
+                                        while (lam_list.isCons() and li < 24) : (li += 1) {
+                                            const lc = lam_list.toPtr(objects.Cons);
+                                            std.debug.print(
+                                                "TRACE bad-symbol-origin-chunk-lambda-cons idx={d} car=0x{x}({s}) cdr=0x{x}({s})\n",
+                                                .{
+                                                    li,
+                                                    lc.car.raw,
+                                                    @tagName(lc.car.typeKind()),
+                                                    lc.cdr.raw,
+                                                    @tagName(lc.cdr.typeKind()),
+                                                },
+                                            );
+                                            lam_list = lc.cdr;
+                                        }
+                                    }
+                                    if (ch.allowed_keywords.isCons()) {
+                                        var kw_list = ch.allowed_keywords;
+                                        var kwi: usize = 0;
+                                        while (kw_list.isCons() and kwi < 16) : (kwi += 1) {
+                                            const kwc = kw_list.toPtr(objects.Cons);
+                                            std.debug.print(
+                                                "TRACE bad-symbol-origin-chunk-allowed idx={d} car=0x{x}({s}) cdr=0x{x}({s})\n",
+                                                .{
+                                                    kwi,
+                                                    kwc.car.raw,
+                                                    @tagName(kwc.car.typeKind()),
+                                                    kwc.cdr.raw,
+                                                    @tagName(kwc.cdr.typeKind()),
+                                                },
+                                            );
+                                            kw_list = kwc.cdr;
+                                        }
+                                    }
+                                    const consts = ch.getConstants();
+                                    var ci: usize = 0;
+                                    while (ci < consts.len and ci < 24) : (ci += 1) {
+                                        const cv = consts[ci];
+                                        std.debug.print(
+                                            "TRACE bad-symbol-origin-const idx={d} raw=0x{x} kind={s}\n",
+                                            .{ ci, cv.raw, @tagName(cv.typeKind()) },
+                                        );
+                                        if (cv.isCons()) {
+                                            const cc = cv.toPtr(objects.Cons);
+                                            std.debug.print(
+                                                "TRACE bad-symbol-origin-const-cons idx={d} car=0x{x}({s}) cdr=0x{x}({s})\n",
+                                                .{
+                                                    ci,
+                                                    cc.car.raw,
+                                                    @tagName(cc.car.typeKind()),
+                                                    cc.cdr.raw,
+                                                    @tagName(cc.cdr.typeKind()),
+                                                },
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    .slot => {
+                        if (self.debug_origin_a < self.debug_roots_slots.len) {
+                            const slot_ptr = self.debug_roots_slots[self.debug_origin_a];
+                            std.debug.print(
+                                "TRACE bad-symbol-origin-slot idx={d} slot_ptr=0x{x} raw=0x{x} kind={s}\n",
+                                .{
+                                    self.debug_origin_a,
+                                    @intFromPtr(slot_ptr),
+                                    slot_ptr.*.raw,
+                                    @tagName(slot_ptr.*.typeKind()),
+                                },
+                            );
+                        }
+                    },
+                    .none => {},
                 }
                 if (self.debug_parent_tag == .boxed and self.debug_parent_addr != 0) {
                     const kind_raw = @as(*const u64, @ptrFromInt(self.debug_parent_addr)).*;

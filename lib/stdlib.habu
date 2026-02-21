@@ -3460,11 +3460,16 @@
 (defun expt (base power)
   (cond
     ((= power 0) 1)
-    ((< power 0) (/ 1 (expt base (- power))))
-    ((evenp power)
-     (let ((half (expt base (truncate power 2))))
-       (* half half)))
-    (t (* base (expt base (- power 1))))))
+    ((integerp power)
+     (cond
+       ((< power 0) (/ 1 (expt base (- power))))
+       ((evenp power)
+        (let ((half (expt base (truncate power 2))))
+          (* half half)))
+       (t (* base (expt base (- power 1))))))
+    ((and (numberp base) (numberp power))
+     (exp (* power (log base))))
+    (t (error "EXPT: expected numbers, got ~S and ~S" base power))))
 
 ; isqrt - integer square root
 (defun isqrt (n)
@@ -4616,6 +4621,7 @@
           ((string= name "THE") :the)
           ((string= name "EACH") :each)
           ((string= name "OF") :of)
+          ((string= name "OF-TYPE") :of-type)
           ((string= name "USING") :using)
           ((string= name "HASH-KEYS") :hash-keys)
           ((string= name "HASH-KEY") :hash-key)
@@ -4710,6 +4716,23 @@
                          (list 'not (list to-op var to-val))
                          nil)))
       (list var from-val step-expr end-test rest))))
+
+(defun loop-for-start-keyword-p (kw)
+  (member kw '(:from :downfrom :to :upto :below :downto :above
+               :in :on := :across :being)))
+
+(defun loop-skip-var-type-spec (rest start-kws)
+  (cond
+    ((and (consp rest) (eq (loop-kw-canon (car rest)) :of-type))
+     (when (null (cdr rest))
+       (error "OF-TYPE requires a type specifier"))
+     (cddr rest))
+    ((and (consp rest)
+          (consp (cdr rest))
+          (not (member (loop-kw-canon (car rest)) start-kws))
+          (member (loop-kw-canon (cadr rest)) start-kws))
+     (cdr rest))
+    (t rest)))
 
 ; Helper: detect boundaries when parsing IF/WHEN/UNLESS DO actions
 ; Conditional DO bodies stop when the next LOOP clause keyword starts.
@@ -5035,11 +5058,15 @@
           ((:for :as)
            (setq and-context :for)
            (let* ((var (cadr rest))
-                  (next-kw (loop-kw-canon (caddr rest))))
+                  (for-rest (loop-skip-var-type-spec
+                              (cddr rest)
+                              '(:from :downfrom :to :upto :below :downto :above
+                                :in :on := :across :being)))
+                  (next-kw (loop-kw-canon (car for-rest))))
              (case next-kw
                ; FOR var FROM/DOWNFROM ... TO/BELOW/ABOVE ...
                ((:from :downfrom :to :upto :below :downto :above)
-                (let ((parsed (parse-loop-for-arithmetic var (cddr rest))))
+                (let ((parsed (parse-loop-for-arithmetic var for-rest)))
                   (push (list (car parsed) (cadr parsed)) vars)
                   (push (list 'setq (car parsed) (caddr parsed)) step-forms)
                   (when (cadddr parsed)
@@ -5049,8 +5076,8 @@
                ; FOR var IN list [BY step-fn]
                ((:in)
                 (let ((list-var (gensym "list"))
-                      (list-expr (cadddr rest))
-                      (in-rest (cddddr rest))
+                      (list-expr (cadr for-rest))
+                      (in-rest (cddr for-rest))
                       (step-fn 'cdr))
                   (when (and (consp in-rest) (eq (loop-kw-canon (car in-rest)) :by))
                     (setq step-fn (cadr in-rest))
@@ -5084,8 +5111,8 @@
 
                ; FOR var ON list [BY step-fn]
                ((:on)
-                (let ((list-expr (cadddr rest))
-                      (by-rest (cddddr rest))
+                (let ((list-expr (cadr for-rest))
+                      (by-rest (cddr for-rest))
                       (step-fn 'cdr))
                   (when (and (consp by-rest) (eq (loop-kw-canon (car by-rest)) :by))
                     (setq step-fn (cadr by-rest))
@@ -5113,8 +5140,8 @@
 
                ; FOR var = expr [THEN step-expr]
                ((:=)
-                (let ((init-expr (cadddr rest))
-                      (then-rest (cddddr rest)))
+                (let ((init-expr (cadr for-rest))
+                      (then-rest (cddr for-rest)))
                   (if (consp var)
                       (let* ((tmp-var (gensym "tmp"))
                              (bindings (destructuring-bind-impl var tmp-var))
@@ -5146,7 +5173,7 @@
                 (let ((vec-var (gensym "vec"))
                       (idx-var (gensym "idx"))
                       (len-var (gensym "len")))
-                  (push (list vec-var (cadddr rest)) vars)
+                  (push (list vec-var (cadr for-rest)) vars)
                   (push (list len-var (list 'length vec-var)) vars)
                   (push (list idx-var 0) vars)
                   ; Check if var is a list (destructuring) or a symbol
@@ -5167,11 +5194,11 @@
                       (push (list 'setq var (list 'aref vec-var idx-var)) body-forms)))
                   (push (list 'setq idx-var (list '+ idx-var 1)) step-forms)
                   (push (list '>= idx-var len-var) end-tests)
-                  (setq rest (cddddr rest))))
+                  (setq rest (cddr for-rest))))
 
                ; FOR var BEING THE/EACH HASH-KEYS/HASH-VALUES/SYMBOLS OF hash/package [USING (...)]
                ((:being)
-                (let ((the-rest (cdddr rest)))
+                (let ((the-rest (cdr for-rest)))
                   ; Skip 'the' or 'each' if present
                   (when (member (loop-kw-canon (car the-rest)) '(:the :each))
                     (setq the-rest (cdr the-rest)))
@@ -5287,14 +5314,15 @@
           ; WITH var = expr
           ((:with)
            (setq and-context :with)
-           (let ((var (cadr rest)))
-             (if (and (cdddr rest) (eq (loop-kw-canon (caddr rest)) :=))
+           (let* ((var (cadr rest))
+                  (with-rest (loop-skip-var-type-spec (cddr rest) '(:=))))
+             (if (and (consp with-rest) (eq (loop-kw-canon (car with-rest)) :=))
                  (progn
-                   (push (list var (cadddr rest)) vars)
-                   (setq rest (cddddr rest)))
+                   (push (list var (cadr with-rest)) vars)
+                   (setq rest (cddr with-rest)))
                (progn
                  (push (list var nil) vars)
-                 (setq rest (cddr rest))))))
+                 (setq rest with-rest)))))
 
           ; AND separator for parallel FOR/WITH clauses
           ((:and)
@@ -5937,13 +5965,22 @@
                                 ""
                               (string cv)))
                         (concatenate 'string name-str "-")))
-         (constructor-name (intern (concatenate 'string "MAKE-" name-str)))
+         (default-constructor-name (intern (concatenate 'string "MAKE-" name-str)))
+         (constructor-pair (assoc :constructor options))
+         (constructor-name (if constructor-pair
+                               (if (cdr constructor-pair)
+                                   (cadr constructor-pair)
+                                   default-constructor-name)
+                             default-constructor-name))
          (predicate-name (intern (concatenate 'string name-str "-P")))
          (copier-pair (assoc :copier options))
          (copier-name (if copier-pair
                           (if (cdr copier-pair) (cadr copier-pair) nil)
                         (intern (concatenate 'string "COPY-" name-str))))
          (slot-names (mapcar (lambda (s) (if (consp s) (car s) s)) slot-specs))
+         (constructor-args (if (and constructor-pair (cddr constructor-pair))
+                               (caddr constructor-pair)
+                               (cons '&key slot-names)))
          (slot-count (length slot-names)))
 
     ; Parse slot defaults
@@ -5956,8 +5993,10 @@
       ; Generate forms
       (list 'progn
             ; Constructor: (defun make-NAME (&key slot1 slot2 ...) (vector 'NAME slot1 slot2 ...))
-            (list 'defun constructor-name (cons '&key slot-names)
-                  (cons 'vector (cons (list 'quote name) slot-names)))
+            (if constructor-name
+                (list 'defun constructor-name constructor-args
+                      (cons 'vector (cons (list 'quote name) slot-names)))
+              nil)
 
             ; Predicate: (defun NAME-p (obj) (and (vectorp obj) (> (length obj) 0) (eq (svref obj 0) 'NAME)))
             (list 'defun predicate-name '(obj)

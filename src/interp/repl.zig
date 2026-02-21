@@ -91,6 +91,8 @@ pub const Repl = struct {
     chunk_pool: std.ArrayList(Value),
     /// Macro definitions: symbol -> closure
     macros: std.AutoHashMap(Value, MacroEntry),
+    /// GC roots that must survive across VM runs (macro definitions, etc).
+    persistent_roots: std.ArrayList(Value),
     /// Line editor for interactive input
     line_editor: LineEditor,
     /// Current VM being used (for nested loads)
@@ -99,6 +101,13 @@ pub const Repl = struct {
     active_root_ctx: ?*VmRootCtx,
     /// Heap GC count when macro maps were last key-refreshed/rebuilt.
     macro_gc_synced: usize,
+
+    fn traceFormIndexFromEnv() ?usize {
+        const raw_c = std.posix.getenv("HABU_TRACE_FORM_INDEX") orelse return null;
+        const raw: []const u8 = raw_c;
+        if (raw.len == 0) return null;
+        return std.fmt.parseInt(usize, raw, 10) catch null;
+    }
 
     pub fn init(self: *Repl, allocator: std.mem.Allocator, heap: *Heap, config: Config) !void {
         // NOTE: Repl must be initialized in-place so Compiler subcomponents can
@@ -111,6 +120,7 @@ pub const Repl = struct {
             .compiler = undefined,
             .chunk_pool = std.ArrayList(Value){},
             .macros = std.AutoHashMap(Value, MacroEntry).init(allocator),
+            .persistent_roots = std.ArrayList(Value){},
             .line_editor = LineEditor.init(allocator),
             .current_vm = null,
             .active_root_ctx = null,
@@ -118,11 +128,17 @@ pub const Repl = struct {
         };
         errdefer self.chunk_pool.deinit(allocator);
         errdefer self.macros.deinit();
+        errdefer self.persistent_roots.deinit(allocator);
         errdefer self.line_editor.deinit();
 
         self.vm = try Vm.init(allocator, heap);
         errdefer self.vm.deinit();
         self.vm.setChunkPoolOwned(&self.chunk_pool);
+        // Keep ext_roots backing storage stable while compiler/eval temporarily swap
+        // vm.ext_roots to local arrays. Macro definitions can append roots during
+        // those windows; reserving avoids dangling saved slices on restore.
+        try self.persistent_roots.ensureTotalCapacity(allocator, 65_536);
+        self.vm.setExtRootsOwned(&self.persistent_roots);
         self.macro_gc_synced = self.heap.stats.gc_count;
 
         self.compiler = try Compiler.initWithHeap(allocator, &self.vm);
@@ -172,18 +188,156 @@ pub const Repl = struct {
         }
     }
 
+    fn appendToVmExtRootOwner(self: *Repl, vm: *Vm, vals: []const Value) !void {
+        const owner = vm.ext_roots_owner orelse return;
+        if (owner == &self.persistent_roots) return;
+
+        var ctx_opt = self.active_root_ctx;
+        while (ctx_opt) |ctx| {
+            if (ctx.vm == vm and ctx.roots == owner) {
+                vm.setExtRootsOwned(owner);
+                return;
+            }
+            ctx_opt = ctx.prev;
+        }
+
+        try owner.appendSlice(self.allocator, vals);
+        vm.setExtRootsOwned(owner);
+    }
+
+    fn upsertRootPair(roots: *std.ArrayList(Value), key: Value, val: Value, allocator: std.mem.Allocator) !void {
+        var i = roots.items.len;
+        while (i >= 2) {
+            i -= 2;
+            const existing_key = roots.items[i];
+            const existing_val = roots.items[i + 1];
+            const same_kind = existing_val.isClosure() == val.isClosure();
+            if (same_kind and existing_key.eq(key)) {
+                roots.items[i] = key;
+                roots.items[i + 1] = val;
+                return;
+            }
+        }
+        try roots.append(allocator, key);
+        try roots.append(allocator, val);
+    }
+
+    fn upsertVmExtRootOwnerPair(self: *Repl, vm: *Vm, key: Value, val: Value) !void {
+        const owner = vm.ext_roots_owner orelse return;
+        if (owner == &self.persistent_roots) return;
+
+        var ctx_opt = self.active_root_ctx;
+        while (ctx_opt) |ctx| {
+            if (ctx.vm == vm and ctx.roots == owner) {
+                vm.setExtRootsOwned(owner);
+                return;
+            }
+            ctx_opt = ctx.prev;
+        }
+
+        try upsertRootPair(owner, key, val, self.allocator);
+        vm.setExtRootsOwned(owner);
+    }
+
     fn pinPersistentRoot(self: *Repl, val: Value) !void {
+        const vm = self.activeVm();
+        try self.persistent_roots.append(self.allocator, val);
+        if (self.active_root_ctx == null) {
+            const ext = self.vm.currentExtRoots();
+            if (ext.len == 0 or (ext.len <= self.persistent_roots.items.len and ext.ptr == self.persistent_roots.items.ptr)) {
+                self.vm.setExtRootsOwned(&self.persistent_roots);
+            }
+        }
+
         var ctx_opt = self.active_root_ctx;
         while (ctx_opt) |ctx| {
             try ctx.roots.append(self.allocator, val);
-            ctx.vm.setExtRoots(ctx.roots.items);
+            if (ctx.vm.ext_roots_owner == ctx.roots) {
+                ctx.vm.setExtRootsOwned(ctx.roots);
+            }
             ctx_opt = ctx.prev;
         }
+
+        const val_buf = [_]Value{val};
+        try self.appendToVmExtRootOwner(vm, &val_buf);
     }
 
     fn pinPersistentPair(self: *Repl, key: Value, val: Value) !void {
-        try self.pinPersistentRoot(key);
-        try self.pinPersistentRoot(val);
+        const vm = self.activeVm();
+        const key_live = vm.resolveForwardedValue(key);
+        const val_live = vm.resolveForwardedValue(val);
+        if (val_live.isClosure()) {
+            const cls = val_live.toPtr(runtime.Closure);
+            const max_caps = self.heap.space_size / @sizeOf(Value);
+            if (cls.num_captures > max_caps) {
+                std.debug.print(
+                    "TRACE bad-persistent-closure key=0x{x} val=0x{x} captures={d} max={d}\n",
+                    .{ key_live.raw, val_live.raw, cls.num_captures, max_caps },
+                );
+                @panic("invalid closure persisted");
+            }
+        }
+
+        var i = self.persistent_roots.items.len;
+        while (i >= 2) {
+            i -= 2;
+            const existing_key = self.persistent_roots.items[i];
+            const existing_val = self.persistent_roots.items[i + 1];
+            const same_kind = existing_val.isClosure() == val_live.isClosure();
+            if (same_kind and existing_key.eq(key_live)) {
+                self.persistent_roots.items[i] = key_live;
+                self.persistent_roots.items[i + 1] = val_live;
+                if (self.active_root_ctx == null) {
+                    const ext = self.vm.currentExtRoots();
+                    if (ext.len == 0 or (ext.len <= self.persistent_roots.items.len and ext.ptr == self.persistent_roots.items.ptr)) {
+                        self.vm.setExtRootsOwned(&self.persistent_roots);
+                    }
+                }
+                var update_ctx = self.active_root_ctx;
+                while (update_ctx) |ctx| {
+                    try upsertRootPair(ctx.roots, key_live, val_live, self.allocator);
+                    if (ctx.vm.ext_roots_owner == ctx.roots) {
+                        ctx.vm.setExtRootsOwned(ctx.roots);
+                    }
+                    update_ctx = ctx.prev;
+                }
+                try self.upsertVmExtRootOwnerPair(vm, key_live, val_live);
+                if (std.posix.getenv("HABU_TRACE_PERSISTENT_ROOTS") != null) {
+                    const owner_len = if (vm.ext_roots_owner) |owner| owner.items.len else 0;
+                    std.debug.print(
+                        "TRACE persistent-roots update total={d} owner-len={d} key=0x{x} closure={any}\n",
+                        .{ self.persistent_roots.items.len, owner_len, key_live.raw, val_live.isClosure() },
+                    );
+                }
+                return;
+            }
+        }
+
+        try self.persistent_roots.append(self.allocator, key_live);
+        try self.persistent_roots.append(self.allocator, val_live);
+        if (self.active_root_ctx == null) {
+            const ext = self.vm.currentExtRoots();
+            if (ext.len == 0 or (ext.len <= self.persistent_roots.items.len and ext.ptr == self.persistent_roots.items.ptr)) {
+                self.vm.setExtRootsOwned(&self.persistent_roots);
+            }
+        }
+
+        var ctx_opt = self.active_root_ctx;
+        while (ctx_opt) |ctx| {
+            try upsertRootPair(ctx.roots, key_live, val_live, self.allocator);
+            if (ctx.vm.ext_roots_owner == ctx.roots) {
+                ctx.vm.setExtRootsOwned(ctx.roots);
+            }
+            ctx_opt = ctx.prev;
+        }
+        try self.upsertVmExtRootOwnerPair(vm, key_live, val_live);
+        if (std.posix.getenv("HABU_TRACE_PERSISTENT_ROOTS") != null) {
+            const owner_len = if (vm.ext_roots_owner) |owner| owner.items.len else 0;
+            std.debug.print(
+                "TRACE persistent-roots add total={d} owner-len={d} key=0x{x} closure={any}\n",
+                .{ self.persistent_roots.items.len, owner_len, key_live.raw, val_live.isClosure() },
+            );
+        }
     }
 
     const MacroMapPair = struct {
@@ -586,39 +740,68 @@ pub const Repl = struct {
         }
     }
 
+    fn decodeCompilerMacroEntry(self: *Repl, value_raw: Value) ?MacroEntry {
+        const value = self.vm.resolveForwardedValue(value_raw);
+        if (!value.isCons()) return null;
+        if (!self.isLiveValue(value)) return null;
+        const c0 = value.toPtr(Cons);
+        const closure = self.vm.resolveForwardedValue(c0.car);
+        if (!closure.isClosure()) return null;
+        const cdr0 = self.vm.resolveForwardedValue(c0.cdr);
+        if (!cdr0.isCons() or !self.isLiveValue(cdr0)) return .{
+            .closure = closure,
+            .has_whole = false,
+            .has_env = false,
+        };
+        const c1 = cdr0.toPtr(Cons);
+        const flags_val = self.vm.resolveForwardedValue(c1.car);
+        const flags: i64 = if (flags_val.isFixnum()) flags_val.toFixnum() else 0;
+        if (flags < 0 or flags > 3) return null;
+        return .{
+            .closure = closure,
+            .has_whole = (flags & 1) != 0,
+            .has_env = (flags & 2) != 0,
+        };
+    }
+
+    fn rebuildMacroMapsFromPersistentRoots(self: *Repl) !void {
+        self.compiler.macro_table.clearRetainingCapacity();
+        self.macros.clearRetainingCapacity();
+
+        var i: usize = 0;
+        while (i + 1 < self.persistent_roots.items.len) : (i += 2) {
+            const key_raw = self.persistent_roots.items[i];
+            const val_raw = self.persistent_roots.items[i + 1];
+            const key = self.vm.resolveForwardedValue(key_raw);
+            const val = self.vm.resolveForwardedValue(val_raw);
+
+            self.persistent_roots.items[i] = key;
+            self.persistent_roots.items[i + 1] = val;
+
+            if (!key.isSymbol()) continue;
+
+            if (self.decodeCompilerMacroEntry(val)) |entry| {
+                try self.compiler.macro_table.put(key, val);
+                try self.macros.put(key, entry);
+                continue;
+            }
+
+            if (val.isClosure() and self.macros.get(key) == null) {
+                try self.macros.put(key, .{
+                    .closure = val,
+                    .has_whole = false,
+                    .has_env = false,
+                });
+            }
+        }
+
+        self.vm.setExtRootsOwned(&self.persistent_roots);
+    }
+
     fn syncMacroMapsIfGcChanged(self: *Repl) !void {
         const gc_now = self.heap.stats.gc_count;
         if (gc_now == self.macro_gc_synced) return;
-
-        var compiler_macros = std.ArrayList(MacroMapPair){};
-        defer compiler_macros.deinit(self.allocator);
-        try self.collectCompilerMacroPairs(&compiler_macros);
-
-        var symbol_macros = std.ArrayList(MacroMapPair){};
-        defer symbol_macros.deinit(self.allocator);
-        try self.collectSymbolMacroPairs(&symbol_macros);
-
-        var repl_macros = std.ArrayList(ReplMacroPair){};
-        defer repl_macros.deinit(self.allocator);
-        try self.collectReplMacroPairs(&repl_macros);
-
-        self.compiler.macro_table.clearRetainingCapacity();
-        for (compiler_macros.items) |pair| {
-            try self.compiler.macro_table.put(pair.key, pair.val);
-        }
-        self.compiler.symbol_macros.clearRetainingCapacity();
-        for (symbol_macros.items) |pair| {
-            try self.compiler.symbol_macros.put(pair.key, pair.val);
-        }
-        self.macros.clearRetainingCapacity();
-        for (repl_macros.items) |pair| {
-            try self.macros.put(pair.key, .{
-                .closure = pair.closure,
-                .has_whole = pair.has_whole,
-                .has_env = pair.has_env,
-            });
-        }
-
+        try self.rebuildMacroMapsFromPersistentRoots();
         self.macro_gc_synced = gc_now;
     }
 
@@ -626,12 +809,33 @@ pub const Repl = struct {
         try self.syncMacroMapsIfGcChanged();
         const gc_before = self.heap.stats.gc_count;
 
-        const saved_ext = vm.ext_roots;
+        const saved_ext = vm.currentExtRoots();
+        const SavedExtRestore = union(enum) {
+            slice: []Value,
+            persistent,
+            ctx: *VmRootCtx,
+        };
+        const saved_ext_restore: SavedExtRestore = blk: {
+            if (saved_ext.len == self.persistent_roots.items.len and
+                saved_ext.ptr == self.persistent_roots.items.ptr)
+            {
+                break :blk .persistent;
+            }
+            var ctx_opt = self.active_root_ctx;
+            while (ctx_opt) |ctx| {
+                if (ctx.vm == vm and
+                    saved_ext.len == ctx.roots.items.len and
+                    saved_ext.ptr == ctx.roots.items.ptr)
+                {
+                    break :blk .{ .ctx = ctx };
+                }
+                ctx_opt = ctx.prev;
+            }
+            break :blk .{ .slice = saved_ext };
+        };
         if (saved_ext.len != 0) {
             for (saved_ext) |*val| {
-                if (!self.isLiveValue(val.*)) {
-                    val.* = Value.nil;
-                }
+                val.* = vm.resolveForwardedValue(val.*);
             }
         }
 
@@ -677,8 +881,12 @@ pub const Repl = struct {
             try roots.append(self.allocator, entry.closure);
         }
 
-        vm.setExtRoots(roots.items);
-        defer vm.setExtRoots(saved_ext);
+        vm.setExtRootsOwned(&roots);
+        defer switch (saved_ext_restore) {
+            .persistent => vm.setExtRootsOwned(&self.persistent_roots),
+            .ctx => |ctx| vm.setExtRootsOwned(ctx.roots),
+            .slice => |slice| vm.setExtRoots(slice),
+        };
         var root_ctx = VmRootCtx{
             .vm = vm,
             .roots = &roots,
@@ -717,6 +925,7 @@ pub const Repl = struct {
                         live_symbol_macros.items,
                         live_repl_macros.items,
                     );
+                    try self.rebuildMacroMapsFromPersistentRoots();
                     self.macro_gc_synced = gc_after;
                 }
                 return run_err;
@@ -740,6 +949,7 @@ pub const Repl = struct {
                     live_symbol_macros.items,
                     live_repl_macros.items,
                 );
+                try self.rebuildMacroMapsFromPersistentRoots();
                 self.macro_gc_synced = gc_after;
             }
             return run_err;
@@ -763,6 +973,7 @@ pub const Repl = struct {
                 live_symbol_macros.items,
                 live_repl_macros.items,
             );
+            try self.rebuildMacroMapsFromPersistentRoots();
             self.macro_gc_synced = gc_after;
         }
         return result;
@@ -798,6 +1009,7 @@ pub const Repl = struct {
     /// Helper to set a global and update num_globals
     fn setGlobal(self: *Repl, name: []const u8, value: Value) !void {
         const idx = try self.compiler.globals.define(name);
+        if (idx >= self.vm.globals.len) return error.InvalidConstant;
         self.vm.globals[idx] = value;
         if (idx >= self.vm.num_globals) {
             self.vm.num_globals = idx + 1;
@@ -805,8 +1017,12 @@ pub const Repl = struct {
     }
 
     fn ensureLoadFormRootGlobal(self: *Repl) !u16 {
-        if (self.compiler.globals.lookup(load_form_root_name)) |idx| return idx;
+        if (self.compiler.globals.lookup(load_form_root_name)) |idx| {
+            if (idx >= self.vm.globals.len) return error.InvalidConstant;
+            return idx;
+        }
         const idx = try self.compiler.globals.define(load_form_root_name);
+        if (idx >= self.vm.globals.len) return error.InvalidConstant;
         self.vm.globals[idx] = Value.nil;
         if (idx >= self.vm.num_globals) {
             self.vm.num_globals = idx + 1;
@@ -815,8 +1031,12 @@ pub const Repl = struct {
     }
 
     fn ensureLoadFormRootStackGlobal(self: *Repl) !u16 {
-        if (self.compiler.globals.lookup(load_form_root_stack_name)) |idx| return idx;
+        if (self.compiler.globals.lookup(load_form_root_stack_name)) |idx| {
+            if (idx >= self.vm.globals.len) return error.InvalidConstant;
+            return idx;
+        }
         const idx = try self.compiler.globals.define(load_form_root_stack_name);
+        if (idx >= self.vm.globals.len) return error.InvalidConstant;
         self.vm.globals[idx] = Value.nil;
         if (idx >= self.vm.num_globals) {
             self.vm.num_globals = idx + 1;
@@ -825,8 +1045,12 @@ pub const Repl = struct {
     }
 
     fn ensureLoadFormRootTmpGlobal(self: *Repl) !u16 {
-        if (self.compiler.globals.lookup(load_form_root_tmp_name)) |idx| return idx;
+        if (self.compiler.globals.lookup(load_form_root_tmp_name)) |idx| {
+            if (idx >= self.vm.globals.len) return error.InvalidConstant;
+            return idx;
+        }
         const idx = try self.compiler.globals.define(load_form_root_tmp_name);
+        if (idx >= self.vm.globals.len) return error.InvalidConstant;
         self.vm.globals[idx] = Value.nil;
         if (idx >= self.vm.num_globals) {
             self.vm.num_globals = idx + 1;
@@ -834,92 +1058,167 @@ pub const Repl = struct {
         return idx;
     }
 
-    fn ensureVmGlobalRootSlots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void {
+    fn ensureVmGlobalRootSlots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) !void {
+        if (root_idx >= vm.globals.len) return error.InvalidConstant;
+        if (stack_idx >= vm.globals.len) return error.InvalidConstant;
+        if (tmp_idx >= vm.globals.len) return error.InvalidConstant;
         if (root_idx >= vm.num_globals) vm.num_globals = root_idx + 1;
         if (stack_idx >= vm.num_globals) vm.num_globals = stack_idx + 1;
         if (tmp_idx >= vm.num_globals) vm.num_globals = tmp_idx + 1;
     }
 
-    fn ensureVmGlobalRootStackSlots(vm: *Vm, root_idx: u16, stack_idx: u16) void {
+    fn ensureVmGlobalRootStackSlots(vm: *Vm, root_idx: u16, stack_idx: u16) !void {
+        if (root_idx >= vm.globals.len) return error.InvalidConstant;
+        if (stack_idx >= vm.globals.len) return error.InvalidConstant;
         if (root_idx >= vm.num_globals) vm.num_globals = root_idx + 1;
         if (stack_idx >= vm.num_globals) vm.num_globals = stack_idx + 1;
     }
 
-    fn pushRootValue(vm: *Vm, root_idx: u16, stack_idx: u16, root_val: Value) !void {
-        ensureVmGlobalRootStackSlots(vm, root_idx, stack_idx);
-        const saved_root = vm.globals[root_idx];
-        const saved_stack = vm.globals[stack_idx];
-        vm.globals[root_idx] = root_val;
-        errdefer {
-            vm.globals[root_idx] = saved_root;
-            vm.globals[stack_idx] = saved_stack;
-        }
-        vm.globals[stack_idx] = try vm.allocCons(saved_root, saved_stack);
+    fn allocRootCons(vm: *Vm, car: Value, cdr: Value, extra_roots: []const Value) !Value {
+        return vm.heap.allocCons(car, cdr) catch |err| switch (err) {
+            error.OutOfMemory => {
+                var root_stack: [12]Value = undefined;
+                var root_count: usize = 0;
+                root_stack[root_count] = car;
+                root_count += 1;
+                root_stack[root_count] = cdr;
+                root_count += 1;
+                for (extra_roots) |v| {
+                    if (root_count >= root_stack.len) break;
+                    root_stack[root_count] = v;
+                    root_count += 1;
+                }
+                _ = try vm.collectGarbageWithRoots(root_stack[0..root_count]);
+                return try vm.heap.allocCons(root_stack[0], root_stack[1]);
+            },
+        };
     }
 
-    fn popRootValue(vm: *Vm, root_idx: u16, stack_idx: u16) void {
-        const stack = vm.globals[stack_idx];
-        if (!stack.isCons()) {
-            vm.globals[root_idx] = Value.nil;
-            vm.globals[stack_idx] = Value.nil;
-            return;
-        }
-        const cell = stack.toPtr(Cons);
-        vm.globals[root_idx] = cell.car;
-        vm.globals[stack_idx] = cell.cdr;
+fn pushRootValue(vm: *Vm, root_idx: u16, stack_idx: u16, root_val: Value) !void {
+    try ensureVmGlobalRootStackSlots(vm, root_idx, stack_idx);
+    const saved_root = vm.resolveForwardedValue(vm.globals[root_idx]);
+    const saved_stack = vm.resolveForwardedValue(vm.globals[stack_idx]);
+    const live_root = vm.resolveForwardedValue(root_val);
+    vm.globals[root_idx] = live_root;
+    errdefer {
+        vm.globals[root_idx] = saved_root;
+        vm.globals[stack_idx] = saved_stack;
+    }
+    const extra = [_]Value{live_root};
+    vm.globals[stack_idx] = try allocRootCons(vm, saved_root, saved_stack, extra[0..]);
+}
+
+fn popRootValue(vm: *Vm, root_idx: u16, stack_idx: u16) void {
+    if (root_idx >= vm.globals.len or stack_idx >= vm.globals.len) return;
+    const stack = vm.resolveForwardedValue(vm.globals[stack_idx]);
+    vm.globals[stack_idx] = stack;
+    if (!stack.isCons()) {
+        vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
+        vm.globals[stack_idx] = Value.nil;
+        return;
+    }
+    const stack_addr = stack.toPtrAddr();
+    if (!vm.heap.containsAddrForDebug(stack_addr)) {
+        vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
+        vm.globals[stack_idx] = Value.nil;
+        return;
+    }
+    const cell = stack.toPtr(Cons);
+    vm.globals[root_idx] = vm.resolveForwardedValue(cell.car);
+    vm.globals[stack_idx] = vm.resolveForwardedValue(cell.cdr);
+}
+
+    fn compileExprRooted(self: *Repl, vm: *Vm, expr: Value, env: *const Env) !*Ir {
+        const root_idx = try self.ensureLoadFormRootGlobal();
+        const stack_idx = try self.ensureLoadFormRootStackGlobal();
+        try pushRootValue(vm, root_idx, stack_idx, expr);
+        defer popRootValue(vm, root_idx, stack_idx);
+        const live_expr = vm.globals[root_idx];
+        return self.compiler.compile(live_expr, env);
     }
 
-    fn pushMacroCallRoots(
-        vm: *Vm,
-        root_idx: u16,
-        stack_idx: u16,
+fn pushMacroCallRoots(
+    vm: *Vm,
+    root_idx: u16,
+    stack_idx: u16,
         tmp_idx: u16,
         args: Value,
         whole_form: Value,
-    ) !void {
-        ensureVmGlobalRootSlots(vm, root_idx, stack_idx, tmp_idx);
-        const saved_root = vm.globals[root_idx];
-        const saved_tmp = vm.globals[tmp_idx];
-        vm.globals[root_idx] = args;
-        vm.globals[tmp_idx] = whole_form;
-        errdefer {
-            vm.globals[root_idx] = saved_root;
-            vm.globals[tmp_idx] = saved_tmp;
-        }
-        const saved_pair = try vm.allocCons(saved_root, saved_tmp);
-        const saved_stack = vm.globals[stack_idx];
-        vm.globals[stack_idx] = try vm.allocCons(saved_pair, saved_stack);
+) !void {
+    try ensureVmGlobalRootSlots(vm, root_idx, stack_idx, tmp_idx);
+    const saved_root = vm.resolveForwardedValue(vm.globals[root_idx]);
+    const saved_tmp = vm.resolveForwardedValue(vm.globals[tmp_idx]);
+    const saved_stack = vm.resolveForwardedValue(vm.globals[stack_idx]);
+    const args_live = vm.resolveForwardedValue(args);
+    const whole_live = vm.resolveForwardedValue(whole_form);
+    vm.globals[root_idx] = args_live;
+    vm.globals[tmp_idx] = whole_live;
+    errdefer {
+        vm.globals[root_idx] = saved_root;
+        vm.globals[tmp_idx] = saved_tmp;
     }
+    const saved_pair = try allocRootCons(vm, saved_root, saved_tmp, &[_]Value{ args_live, whole_live });
+    vm.globals[stack_idx] = try allocRootCons(vm, saved_pair, saved_stack, &[_]Value{ args_live, whole_live, saved_pair });
+}
 
-    fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void {
-        const stack = vm.globals[stack_idx];
-        if (!stack.isCons()) {
-            vm.globals[root_idx] = Value.nil;
-            vm.globals[tmp_idx] = Value.nil;
-            vm.globals[stack_idx] = Value.nil;
-            return;
-        }
-        const stack_cell = stack.toPtr(Cons);
-        vm.globals[stack_idx] = stack_cell.cdr;
-        const saved_pair = stack_cell.car;
-        if (!saved_pair.isCons()) {
-            vm.globals[root_idx] = Value.nil;
-            vm.globals[tmp_idx] = Value.nil;
-            return;
-        }
-        const pair = saved_pair.toPtr(Cons);
-        vm.globals[root_idx] = pair.car;
-        vm.globals[tmp_idx] = pair.cdr;
+fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void {
+    if (root_idx >= vm.globals.len or stack_idx >= vm.globals.len or tmp_idx >= vm.globals.len) return;
+    const stack = vm.resolveForwardedValue(vm.globals[stack_idx]);
+    vm.globals[stack_idx] = stack;
+    if (!stack.isCons()) {
+        vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
+        vm.globals[tmp_idx] = vm.resolveForwardedValue(vm.globals[tmp_idx]);
+        vm.globals[stack_idx] = Value.nil;
+        return;
     }
+    if (!vm.heap.containsAddrForDebug(stack.toPtrAddr())) {
+        vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
+        vm.globals[tmp_idx] = vm.resolveForwardedValue(vm.globals[tmp_idx]);
+        vm.globals[stack_idx] = Value.nil;
+        return;
+    }
+    const stack_cell = stack.toPtr(Cons);
+    const next_stack = vm.resolveForwardedValue(stack_cell.cdr);
+    const saved_pair = vm.resolveForwardedValue(stack_cell.car);
+    vm.globals[stack_idx] = next_stack;
+    if (!saved_pair.isCons()) {
+        vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
+        vm.globals[tmp_idx] = vm.resolveForwardedValue(vm.globals[tmp_idx]);
+        return;
+    }
+    if (!vm.heap.containsAddrForDebug(saved_pair.toPtrAddr())) {
+        vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
+        vm.globals[tmp_idx] = vm.resolveForwardedValue(vm.globals[tmp_idx]);
+        return;
+    }
+    const pair = saved_pair.toPtr(Cons);
+    vm.globals[root_idx] = vm.resolveForwardedValue(pair.car);
+    vm.globals[tmp_idx] = vm.resolveForwardedValue(pair.cdr);
+}
 
     /// Helper to set a CL global: intern symbol in CL, define global, set value
     fn setClGlobal(self: *Repl, sym_name: []const u8, value: Value) !void {
+        const saved_ext = self.vm.saveExtRoots();
+        const saved_ext_roots = saved_ext.roots;
+        var roots = std.ArrayList(Value){};
+        defer roots.deinit(self.allocator);
+        try roots.ensureTotalCapacity(self.allocator, saved_ext_roots.len + 1);
+        if (saved_ext_roots.len != 0) {
+            try roots.appendSlice(self.allocator, saved_ext_roots);
+        }
+        const value_idx = roots.items.len;
+        try roots.append(self.allocator, value);
+        self.vm.setExtRootsOwned(&roots);
+        defer self.vm.restoreExtRoots(saved_ext);
+
         // Intern symbol in CL package so it's found when CL-USER code references it
         _ = try self.heap.internInPackage("COMMON-LISP", sym_name);
+        const live_value = self.vm.resolveForwardedValue(roots.items[value_idx]);
+        roots.items[value_idx] = live_value;
         // Define global with qualified name
         var buf: [256]u8 = undefined;
         const qname = try std.fmt.bufPrint(&buf, "COMMON-LISP:{s}", .{sym_name});
-        try self.setGlobal(qname, value);
+        try self.setGlobal(qname, live_value);
     }
 
     fn createFeaturesGlobal(self: *Repl) !void {
@@ -943,19 +1242,41 @@ pub const Repl = struct {
     }
 
     fn createStreamGlobals(self: *Repl) !void {
-        // Create standard stream objects
-        const stdin_stream = try self.heap.allocStdin();
-        const stdout_stream = try self.heap.allocStdout();
-        const stderr_stream = try self.heap.allocStderr();
+        const saved_ext = self.vm.saveExtRoots();
+        const saved_ext_roots = saved_ext.roots;
+        var roots = std.ArrayList(Value){};
+        defer roots.deinit(self.allocator);
+        try roots.ensureTotalCapacity(self.allocator, saved_ext_roots.len + 3);
+        if (saved_ext_roots.len != 0) {
+            try roots.appendSlice(self.allocator, saved_ext_roots);
+        }
+        const stdin_idx = roots.items.len;
+        try roots.append(self.allocator, try self.heap.allocStdin());
+        const stdout_idx = roots.items.len;
+        try roots.append(self.allocator, try self.heap.allocStdout());
+        const stderr_idx = roots.items.len;
+        try roots.append(self.allocator, try self.heap.allocStderr());
 
-        // Pre-intern in CL and set globals
-        try self.setClGlobal("*STANDARD-INPUT*", stdin_stream);
-        try self.setClGlobal("*STANDARD-OUTPUT*", stdout_stream);
-        try self.setClGlobal("*ERROR-OUTPUT*", stderr_stream);
-        try self.setClGlobal("*QUERY-IO*", stdout_stream);
-        try self.setClGlobal("*DEBUG-IO*", stdout_stream);
-        try self.setClGlobal("*TRACE-OUTPUT*", stdout_stream);
-        try self.setClGlobal("*TERMINAL-IO*", stdout_stream);
+        self.vm.setExtRootsOwned(&roots);
+        defer self.vm.restoreExtRoots(saved_ext);
+
+        try self.setClGlobal("*STANDARD-INPUT*", roots.items[stdin_idx]);
+        roots.items[stdin_idx] = self.vm.resolveForwardedValue(roots.items[stdin_idx]);
+
+        try self.setClGlobal("*STANDARD-OUTPUT*", roots.items[stdout_idx]);
+        roots.items[stdout_idx] = self.vm.resolveForwardedValue(roots.items[stdout_idx]);
+
+        try self.setClGlobal("*ERROR-OUTPUT*", roots.items[stderr_idx]);
+        roots.items[stderr_idx] = self.vm.resolveForwardedValue(roots.items[stderr_idx]);
+
+        roots.items[stdout_idx] = self.vm.resolveForwardedValue(roots.items[stdout_idx]);
+        try self.setClGlobal("*QUERY-IO*", roots.items[stdout_idx]);
+        roots.items[stdout_idx] = self.vm.resolveForwardedValue(roots.items[stdout_idx]);
+        try self.setClGlobal("*DEBUG-IO*", roots.items[stdout_idx]);
+        roots.items[stdout_idx] = self.vm.resolveForwardedValue(roots.items[stdout_idx]);
+        try self.setClGlobal("*TRACE-OUTPUT*", roots.items[stdout_idx]);
+        roots.items[stdout_idx] = self.vm.resolveForwardedValue(roots.items[stdout_idx]);
+        try self.setClGlobal("*TERMINAL-IO*", roots.items[stdout_idx]);
     }
 
     /// Callback for (load "filename") from VM
@@ -1172,7 +1493,7 @@ pub const Repl = struct {
     fn lookupFunctionCellValue(self: *Repl, sym: Value) !?Value {
         if (!sym.isSymbol()) return null;
         const key = try self.heap.intern("%FUNCTION-CELL");
-        const cell = try primitives.list.get(sym, key);
+        const cell = try primitives.list.get(self.heap, sym, key);
         if (!isCallableValue(cell)) return null;
         return cell;
     }
@@ -1367,7 +1688,7 @@ pub const Repl = struct {
     }
 
     fn globalKindName(vm: *const Vm, idx: usize) []const u8 {
-        if (idx >= vm.num_globals) return "oob";
+        if (idx >= vm.num_globals or idx >= vm.globals.len) return "oob";
         return @tagName(vm.globals[idx].typeKind());
     }
 
@@ -1403,7 +1724,7 @@ pub const Repl = struct {
     }
 
     fn lookupCallableInVm(vm: *const Vm, idx: usize) ?Value {
-        if (idx >= vm.num_globals) return null;
+        if (idx >= vm.num_globals or idx >= vm.globals.len) return null;
         const val = vm.globals[idx];
         if (!isCallableGlobalValue(vm, val)) return null;
         return val;
@@ -1438,6 +1759,10 @@ pub const Repl = struct {
         const arena_alloc = arena.allocator();
 
         const source_vm = self.activeVm();
+        const form_root_idx = try self.ensureLoadFormRootGlobal();
+        const form_stack_idx = try self.ensureLoadFormRootStackGlobal();
+        try pushRootValue(source_vm, form_root_idx, form_stack_idx, expr);
+        defer popRootValue(source_vm, form_root_idx, form_stack_idx);
 
         // Save and set compiler state
         const saved_builder = self.compiler.builder;
@@ -1462,9 +1787,8 @@ pub const Repl = struct {
 
         // Let compiler-driven macro expansion run for eval forms. Pre-expanding
         // through the REPL macro table can leak stale macro bindings into eval.
-        var normalized = expr;
-        normalized = try self.desugarExpr(normalized);
-        const ir_node = try self.compiler.compile(normalized, &env);
+        const normalized = source_vm.resolveForwardedValue(source_vm.globals[form_root_idx]);
+        const ir_node = try self.compileExprRooted(source_vm, normalized, &env);
         const specialized = try self.specializeIr(ir_node);
 
         // Emit bytecode
@@ -1622,6 +1946,7 @@ pub const Repl = struct {
         };
         for (names) |name| {
             const idx = self.compiler.globals.lookup(name) orelse continue;
+            if (idx >= vm.globals.len) continue;
             const prev = if (idx < vm.num_globals) vm.globals[idx] else Value.nil;
             try pushRootValue(vm, root_idx, stack_idx, prev);
             vm.globals[idx] = path;
@@ -1645,6 +1970,10 @@ pub const Repl = struct {
         while (i > 0) {
             i -= 1;
             const idx = bindings.idxs[i];
+            if (idx >= vm.globals.len) {
+                popRootValue(vm, root_idx, stack_idx);
+                continue;
+            }
             vm.globals[idx] = vm.globals[root_idx];
             popRootValue(vm, root_idx, stack_idx);
         }
@@ -1677,7 +2006,7 @@ pub const Repl = struct {
         return null;
     }
 
-    fn currentPackageGlobal(self: *Repl, vm: *const Vm) ?Value {
+    fn currentPackageGlobal(self: *Repl, vm: *Vm) ?Value {
         const names = [_][]const u8{
             "COMMON-LISP:*PACKAGE*",
             "CL:*PACKAGE*",
@@ -1687,7 +2016,9 @@ pub const Repl = struct {
         for (names) |name| {
             if (self.compiler.globals.lookup(name)) |idx| {
                 if (idx < vm.num_globals) {
-                    const val = vm.globals[idx];
+                    const raw = vm.globals[idx];
+                    const val = vm.resolveForwardedValue(raw);
+                    if (val.raw != raw.raw) vm.globals[idx] = val;
                     if (val.isPackage()) return val;
                 }
             }
@@ -1704,24 +2035,75 @@ pub const Repl = struct {
         };
         for (names) |name| {
             if (self.compiler.globals.lookup(name)) |idx| {
+                if (idx >= vm.globals.len) continue;
                 vm.globals[idx] = pkg_val;
                 if (idx >= vm.num_globals) vm.num_globals = idx + 1;
             }
         }
     }
 
-    fn syncReaderPackageFromVm(self: *Repl, vm: *const Vm) void {
+    fn syncReaderPackageFromVm(self: *Repl, vm: *Vm) void {
         const pkg_val = self.currentPackageGlobal(vm) orelse return;
-        const pkg_obj = pkg_val.toPtr(runtime.objects.Package);
-        const pkg_name = switch (pkg_obj.name.typeKind()) {
-            .symbol => pkg_obj.name.toPtr(runtime.Symbol).getName(),
-            .string => pkg_obj.name.toPtr(runtime.String).bytes(),
-            .keyword => pkg_obj.name.toPtr(runtime.Keyword).getName(),
-            else => return,
-        };
+        const pkg_name = self.packageNameBytesLive(vm, pkg_val) orelse return;
         if (self.heap.findPackage(pkg_name)) |native_pkg| {
             self.heap.setCurrentPackage(native_pkg);
         }
+    }
+
+    fn packageNameBytesLive(self: *Repl, vm: *Vm, pkg_val: Value) ?[]const u8 {
+        const live_pkg = vm.resolveForwardedValue(pkg_val);
+        if (!live_pkg.isPackage()) return null;
+        const pkg_obj = live_pkg.toPtr(runtime.objects.Package);
+        const raw_name = pkg_obj.name;
+        const live_name = vm.resolveForwardedValue(raw_name);
+        if (live_name.raw != raw_name.raw) {
+            pkg_obj.name = live_name;
+            self.heap.writeBarrier(live_pkg, live_name);
+        }
+        const name_bytes = switch (live_name.typeKind()) {
+            .symbol => live_name.toPtr(runtime.Symbol).getName(),
+            .string => live_name.toPtr(runtime.String).bytes(),
+            .keyword => live_name.toPtr(runtime.Keyword).getName(),
+            else => return null,
+        };
+        if (name_bytes.len == 0) return name_bytes;
+        const name_ptr = @intFromPtr(name_bytes.ptr);
+        if (!self.heap.containsAddrForDebug(name_ptr)) {
+            if (std.posix.getenv("HABU_TRACE_BAD_PACKAGE_NAME") != null) {
+                const live_addr = if (live_name.isPointer()) live_name.toPtrAddr() else 0;
+                const stale_start = @intFromPtr(self.heap.to_start);
+                const stale_end = stale_start + self.heap.space_size;
+                const from_start = @intFromPtr(self.heap.from_start);
+                const from_end = @intFromPtr(self.heap.from_end);
+                var fw_raw: u64 = 0;
+                var w1: usize = 0;
+                if (live_addr != 0 and self.heap.containsAddrForDebug(live_addr)) {
+                    const fw: *const Value = @ptrFromInt(live_addr);
+                    fw_raw = fw.raw;
+                    const w1_ptr: *const usize = @ptrFromInt(live_addr + @sizeOf(Value));
+                    w1 = w1_ptr.*;
+                }
+                std.debug.print(
+                    "TRACE bad package-name ptr pkg=0x{x} name=0x{x} kind={s} ptr=0x{x} len={d} live=0x{x} fw=0x{x} w1=0x{x} stale=[0x{x},0x{x}) from=[0x{x},0x{x})\n",
+                    .{
+                        live_pkg.raw,
+                        live_name.raw,
+                        @tagName(live_name.typeKind()),
+                        name_ptr,
+                        name_bytes.len,
+                        live_addr,
+                        fw_raw,
+                        w1,
+                        stale_start,
+                        stale_end,
+                        from_start,
+                        from_end,
+                    },
+                );
+            }
+            @panic("invalid package name pointer");
+        }
+        return name_bytes;
     }
 
     fn resolveLoadPath(self: *Repl, vm: *const Vm, path: []const u8) ![]u8 {
@@ -1854,7 +2236,7 @@ pub const Repl = struct {
         var arena = std.heap.ArenaAllocator.init(hook.repl.allocator);
         defer arena.deinit();
         const eval_alloc = arena.allocator();
-        return hook.repl.evalParsedWithVm(expr, hook.vm, eval_alloc) catch |err| {
+        return hook.repl.evalParsedWithVm(expr, hook.vm, eval_alloc, null) catch |err| {
             if (std.posix.getenv("HABU_TRACE_READ_EVAL") != null) {
                 if (expr.isCons()) {
                     const head = expr.toPtr(Cons).car;
@@ -2055,7 +2437,7 @@ pub const Repl = struct {
             defer popRootValue(source_vm, form_root_idx, form_stack_idx);
 
             const live_form = source_vm.globals[form_root_idx];
-            last_value = self.evalParsedWithVm(live_form, source_vm, eval_alloc) catch |err| {
+            last_value = self.evalParsedWithVm(live_form, source_vm, eval_alloc, form_idx) catch |err| {
                 if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null or trace_forms) {
                     std.debug.print("TRACE load eval error: {s} form={d}\n", .{ @errorName(err), form_idx });
                 }
@@ -2107,11 +2489,16 @@ pub const Repl = struct {
         parser.setDispatchMacroHook(@ptrCast(&dispatch_ctx), parserDispatchMacro);
         const expr = try parser.parse();
 
-        return self.evalParsedWithVm(expr, vm, arena_alloc);
+        return self.evalParsedWithVm(expr, vm, arena_alloc, null);
     }
 
-    fn evalParsedWithVm(self: *Repl, parsed_expr: Value, vm: *Vm, arena_alloc: std.mem.Allocator) !Value {
-        var expr = parsed_expr;
+    fn evalParsedWithVm(self: *Repl, parsed_expr: Value, vm: *Vm, arena_alloc: std.mem.Allocator, form_index: ?usize) !Value {
+        const form_root_idx = try self.ensureLoadFormRootGlobal();
+        const form_stack_idx = try self.ensureLoadFormRootStackGlobal();
+        try pushRootValue(vm, form_root_idx, form_stack_idx, parsed_expr);
+        defer popRootValue(vm, form_root_idx, form_stack_idx);
+
+        var expr = vm.resolveForwardedValue(vm.globals[form_root_idx]);
         const saved_compiler_vm = self.compiler.vm;
         self.compiler.setVm(vm);
         try self.compiler.refreshBuiltins();
@@ -2119,6 +2506,7 @@ pub const Repl = struct {
         // closures; keep VM chunk pool in sync before any compile-time eval.
         self.syncChunkPools(vm);
         try self.syncMacroMapsIfGcChanged();
+        expr = vm.resolveForwardedValue(vm.globals[form_root_idx]);
         defer {
             if (saved_compiler_vm) |saved_vm| {
                 self.compiler.setVm(saved_vm);
@@ -2165,6 +2553,7 @@ pub const Repl = struct {
             // If eval-when returned nil (only :compile-toplevel), we're done
             if (result.isNil()) return Value.nil;
             // Otherwise compile the returned progn for runtime
+            vm.globals[form_root_idx] = result;
             expr = result;
         }
 
@@ -2172,8 +2561,32 @@ pub const Repl = struct {
         // Pre-expanding here is context-free and can incorrectly expand symbols
         // in binding positions (e.g. LET vars) as macro calls.
 
-        // Desugar (let* → let, cond → if, etc.)
-        expr = try self.desugarExpr(expr);
+        const trace_form_idx = traceFormIndexFromEnv();
+        const trace_selected_form = if (trace_form_idx) |want|
+            if (form_index) |idx| idx == want else false
+        else
+            false;
+        if (trace_selected_form) {
+            var load_name: []const u8 = "<unknown>";
+            if (self.currentLoadTruename(vm)) |truename| {
+                const ns = primitives.pathname.namestring(
+                    self.allocator,
+                    self.heap,
+                    &self.vm.builtins,
+                    truename,
+                ) catch Value.nil;
+                if (ns.isString()) load_name = ns.toPtr(runtime.String).bytes();
+            }
+            std.debug.print("TRACE selected form idx={d} pkg={s}\n", .{
+                form_index.?,
+                self.heap.getCurrentPackageName(),
+            });
+            std.debug.print("TRACE selected form file={s}\n", .{load_name});
+            var form_buf = std.ArrayList(u8){};
+            defer form_buf.deinit(self.allocator);
+            self.printValue(expr, form_buf.writer(self.allocator)) catch {};
+            std.debug.print("TRACE selected form expr: {s}\n", .{form_buf.items});
+        }
 
         // Compile
         const saved_builder = self.compiler.builder;
@@ -2188,7 +2601,7 @@ pub const Repl = struct {
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
-        const ir_node = if (self.compiler.compile(expr, &env)) |node| node else |err| {
+        const ir_node = if (self.compileExprRooted(vm, expr, &env)) |node| node else |err| {
             return err;
         };
         const specialized = try self.specializeIr(ir_node);
@@ -2224,7 +2637,8 @@ pub const Repl = struct {
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
         try patchChunkIndices(chunk_ptr, chunk_base);
 
-        if (std.posix.getenv("HABU_TRACE_FORM_DISASM") != null and !vm.isExecuting()) {
+        const trace_form_disasm = std.posix.getenv("HABU_TRACE_FORM_DISASM") != null;
+        if (trace_form_disasm and (trace_form_idx == null or trace_selected_form) and (!vm.isExecuting() or trace_selected_form)) {
             std.debug.print("TRACE form disasm begin\n", .{});
             var buf = std.ArrayList(u8){};
             defer buf.deinit(self.allocator);
@@ -2233,6 +2647,16 @@ pub const Repl = struct {
                 return err;
             };
             std.debug.print("{s}", .{buf.items});
+            if (trace_selected_form and chunk_ptr.const_count > 0) {
+                const consts = chunk_ptr.getConstants();
+                var ci: usize = 0;
+                while (ci < consts.len) : (ci += 1) {
+                    var cbuf = std.ArrayList(u8){};
+                    defer cbuf.deinit(self.allocator);
+                    self.printValue(consts[ci], cbuf.writer(self.allocator)) catch {};
+                    std.debug.print("TRACE form const[{d}]={s}\n", .{ ci, cbuf.items });
+                }
+            }
             std.debug.print("TRACE form disasm end\n", .{});
         }
 
@@ -2248,6 +2672,7 @@ pub const Repl = struct {
         self.compiler.deinit();
         self.chunk_pool.deinit(self.allocator);
         self.macros.deinit();
+        self.persistent_roots.deinit(self.allocator);
     }
 
     /// Run specialization pass on IR, replacing generic ops with
@@ -2957,9 +3382,6 @@ pub const Repl = struct {
         // Pre-expanding here is context-free and can incorrectly expand symbols
         // in binding positions (e.g. LET vars) as macro calls.
 
-        // Desugar (let* → let, cond → if, etc.)
-        expr = try self.desugarExpr(expr);
-
         // Compile - use persistent compiler for globals, but temp builder/allocator
         // Save and restore since they use arena allocator
         const saved_builder = self.compiler.builder;
@@ -2974,7 +3396,7 @@ pub const Repl = struct {
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
-        const ir_node = if (self.compiler.compile(expr, &env)) |node| node else |err| {
+        const ir_node = if (self.compileExprRooted(&self.vm, expr, &env)) |node| node else |err| {
             err_info.* = .{
                 .kind = if (err == error.UnboundVariable) .compile_unbound_variable else .compile_invalid_syntax,
                 .line = 1,
@@ -3560,6 +3982,10 @@ pub const Repl = struct {
 
         const cons2 = rest1.toPtr(Cons);
         if (!cons2.car.isSymbol()) return error.CompileError;
+        // Save the macro name immediately; later compile/eval steps may trigger GC,
+        // and parsed form Values are not patched in-place by those collections.
+        const macro_name_saved = try self.allocator.dupe(u8, cons2.car.toPtr(runtime.Symbol).getName());
+        defer self.allocator.free(macro_name_saved);
         const rest2 = cons2.cdr;
         if (!rest2.isCons()) return error.CompileError;
 
@@ -3589,7 +4015,7 @@ pub const Repl = struct {
             std.debug.print(
                 "TRACE defmacro params name={s} raw-fixed={d} raw-tail={s} norm-fixed={d} norm-tail={s} whole={any} env={any}\n",
                 .{
-                    cons2.car.toPtr(Symbol).getName(),
+                    macro_name_saved,
                     raw_info.fixed,
                     @tagName(raw_info.tail.typeKind()),
                     norm_info.fixed,
@@ -3617,6 +4043,7 @@ pub const Repl = struct {
         const expanded_lambda = lambda_expr;
 
         // Compile and evaluate the lambda to get a closure
+        const source_vm = self.activeVm();
         const saved_builder = self.compiler.builder;
         const saved_allocator = self.compiler.allocator;
         self.compiler.builder = IrBuilder.init(arena_alloc);
@@ -3629,7 +4056,7 @@ pub const Repl = struct {
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
-        const ir_node = if (self.compiler.compile(expanded_lambda, &env)) |node| node else |err| {
+        const ir_node = if (self.compileExprRooted(source_vm, expanded_lambda, &env)) |node| node else |err| {
             std.debug.print("Compile error: {s}\n", .{@errorName(err)});
             return err;
         };
@@ -3661,7 +4088,6 @@ pub const Repl = struct {
             self.chunk_pool.appendAssumeCapacity(c);
         }
 
-        const source_vm = self.activeVm();
         self.syncChunkPools(source_vm);
         const saved_current_vm = self.current_vm;
         self.current_vm = source_vm;
@@ -3680,16 +4106,11 @@ pub const Repl = struct {
         defer popMacroCallRoots(source_vm, form_root_idx, form_stack_idx, form_tmp_idx);
 
         const chunk_ptr = chunk.toPtr(runtime.objects.Chunk);
-        // Save macro name as a Zig string BEFORE VM execution, because
-        // cons2.car (the parsed symbol) lives on the arena allocator and its
-        // Value fields won't be updated if GC runs during runVmPreserveMacroState.
-        const macro_name_saved = try self.allocator.dupe(u8, cons2.car.toPtr(runtime.Symbol).getName());
-        defer self.allocator.free(macro_name_saved);
-
         const closure = try self.runVmPreserveMacroState(source_vm, chunk_ptr);
-        source_vm.globals[form_root_idx] = closure;
-        const closure_live = source_vm.globals[form_root_idx];
-        const transformed_rest2_live = source_vm.globals[form_tmp_idx];
+        const closure_live = source_vm.resolveForwardedValue(closure);
+        source_vm.globals[form_root_idx] = closure_live;
+        const transformed_rest2_live = source_vm.resolveForwardedValue(source_vm.globals[form_tmp_idx]);
+        source_vm.globals[form_tmp_idx] = transformed_rest2_live;
 
         if (!closure_live.isClosure()) return error.CompileError;
 
@@ -3882,6 +4303,12 @@ pub const Repl = struct {
         var expr = expr_val;
         try self.compiler.refreshBuiltins();
         const trace_eval_single = std.posix.getenv("HABU_TRACE_EVAL_SINGLE") != null;
+        const source_vm = self.activeVm();
+        const form_root_idx = try self.ensureLoadFormRootGlobal();
+        const form_stack_idx = try self.ensureLoadFormRootStackGlobal();
+        try pushRootValue(source_vm, form_root_idx, form_stack_idx, expr);
+        defer popRootValue(source_vm, form_root_idx, form_stack_idx);
+        expr = source_vm.resolveForwardedValue(source_vm.globals[form_root_idx]);
 
         // Check for defmacro
         if (self.isDefmacro(expr)) {
@@ -3900,6 +4327,8 @@ pub const Repl = struct {
 
         // Expand macros
         expr = try self.expandMacros(expr);
+        source_vm.globals[form_root_idx] = expr;
+        expr = source_vm.resolveForwardedValue(source_vm.globals[form_root_idx]);
 
         if (trace_eval_single and expr.isCons()) {
             const head = expr.toPtr(Cons).car;
@@ -3909,9 +4338,6 @@ pub const Repl = struct {
                 std.debug.print("TRACE eval-single head-kind={s}\n", .{@tagName(head.typeKind())});
             }
         }
-
-        // Desugar (let* → let, cond → if, etc.)
-        expr = try self.desugarExpr(expr);
 
         // Compile
         const saved_builder = self.compiler.builder;
@@ -3926,7 +4352,7 @@ pub const Repl = struct {
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
-        const ir_node = if (self.compiler.compile(expr, &env)) |node| node else |err| {
+        const ir_node = if (self.compileExprRooted(source_vm, expr, &env)) |node| node else |err| {
             std.debug.print("Compile error: {s}\n", .{@errorName(err)});
             return err;
         };
@@ -3961,7 +4387,6 @@ pub const Repl = struct {
             self.chunk_pool.appendAssumeCapacity(c);
         }
 
-        const source_vm = self.activeVm();
         self.syncChunkPools(source_vm);
 
         const saved_current_vm = self.current_vm;
@@ -4348,15 +4773,10 @@ pub const Repl = struct {
                         else => null,
                     };
                     const dbg_vm = self.current_vm orelse &self.vm;
-                    const vm_pkg_name = if (self.currentPackageGlobal(dbg_vm)) |cur_pkg| curblk: {
-                        const cur_obj = cur_pkg.toPtr(runtime.objects.Package);
-                        break :curblk switch (cur_obj.name.typeKind()) {
-                            .symbol => cur_obj.name.toPtr(runtime.Symbol).getName(),
-                            .string => cur_obj.name.toPtr(runtime.String).bytes(),
-                            .keyword => cur_obj.name.toPtr(runtime.Keyword).getName(),
-                            else => "<invalid>",
-                        };
-                    } else "<none>";
+                    const vm_pkg_name = if (self.currentPackageGlobal(dbg_vm)) |cur_pkg|
+                        (self.packageNameBytesLive(dbg_vm, cur_pkg) orelse "<invalid>")
+                    else
+                        "<none>";
                     if (pkg_name_opt) |pkg_name| {
                         const native_hit = self.heap.findPackage(pkg_name) != null;
                         std.debug.print(
@@ -4383,18 +4803,11 @@ pub const Repl = struct {
             };
             if (!pkg_val.isPackage()) return error.TypeMismatch;
 
-            const pkg_obj = pkg_val.toPtr(runtime.objects.Package);
-            const pkg_name = switch (pkg_obj.name.typeKind()) {
-                .symbol => pkg_obj.name.toPtr(runtime.Symbol).getName(),
-                .string => pkg_obj.name.toPtr(runtime.String).bytes(),
-                .keyword => pkg_obj.name.toPtr(runtime.Keyword).getName(),
-                else => return error.TypeMismatch,
-            };
+            const target_vm = self.current_vm orelse &self.vm;
+            const pkg_name = self.packageNameBytesLive(target_vm, pkg_val) orelse return error.TypeMismatch;
             if (self.heap.findPackage(pkg_name)) |native_pkg| {
                 self.heap.setCurrentPackage(native_pkg);
             }
-
-            const target_vm = self.current_vm orelse &self.vm;
             self.setPackageGlobals(target_vm, pkg_val);
             self.syncReaderPackageFromVm(target_vm);
             return pkg_val;
@@ -4422,7 +4835,7 @@ pub const Repl = struct {
             self.compiler.allocator = saved_allocator;
         }
 
-        const ir_node = try self.compiler.compile(expr, &env);
+        const ir_node = try self.compileExprRooted(target_vm, expr, &env);
         const specialized = try self.specializeIr(ir_node);
 
         // Emit bytecode
@@ -4477,7 +4890,7 @@ pub const Repl = struct {
         defer env.deinit();
 
         // Compile to IR
-        const ir_node = if (self.compiler.compile(expr, &env)) |node| node else |err| {
+        const ir_node = if (self.compileExprRooted(&self.vm, expr, &env)) |node| node else |err| {
             self.compiler.builder = saved_builder;
             self.compiler.allocator = saved_allocator;
             try writer.print("Compile error: {s}\n", .{@errorName(err)});
@@ -4982,12 +5395,7 @@ test "load preserves package global across generational GC pressure" {
 
     const pkg_before = repl.currentPackageGlobal(&repl.vm) orelse return error.TestUnexpectedResult;
     try testing.expect(pkg_before.isPackage());
-    const pkg_before_name = switch (pkg_before.toPtr(runtime.objects.Package).name.typeKind()) {
-        .symbol => pkg_before.toPtr(runtime.objects.Package).name.toPtr(runtime.Symbol).getName(),
-        .string => pkg_before.toPtr(runtime.objects.Package).name.toPtr(runtime.String).bytes(),
-        .keyword => pkg_before.toPtr(runtime.objects.Package).name.toPtr(runtime.Keyword).getName(),
-        else => return error.TestUnexpectedResult,
-    };
+    const pkg_before_name = repl.packageNameBytesLive(&repl.vm, pkg_before) orelse return error.TestUnexpectedResult;
     const pkg_name_before = try allocator.dupe(u8, pkg_before_name);
     defer allocator.free(pkg_name_before);
 
@@ -5018,12 +5426,7 @@ test "load preserves package global across generational GC pressure" {
 
     const pkg_after_load = repl.currentPackageGlobal(&repl.vm) orelse return error.TestUnexpectedResult;
     try testing.expect(pkg_after_load.isPackage());
-    const pkg_after_load_name = switch (pkg_after_load.toPtr(runtime.objects.Package).name.typeKind()) {
-        .symbol => pkg_after_load.toPtr(runtime.objects.Package).name.toPtr(runtime.Symbol).getName(),
-        .string => pkg_after_load.toPtr(runtime.objects.Package).name.toPtr(runtime.String).bytes(),
-        .keyword => pkg_after_load.toPtr(runtime.objects.Package).name.toPtr(runtime.Keyword).getName(),
-        else => return error.TestUnexpectedResult,
-    };
+    const pkg_after_load_name = repl.packageNameBytesLive(&repl.vm, pkg_after_load) orelse return error.TestUnexpectedResult;
     try testing.expect(std.mem.eql(u8, pkg_name_before, pkg_after_load_name));
 
     _ = try repl.vm.collectGarbage();
@@ -5031,12 +5434,7 @@ test "load preserves package global across generational GC pressure" {
 
     const pkg_after_gc = repl.currentPackageGlobal(&repl.vm) orelse return error.TestUnexpectedResult;
     try testing.expect(pkg_after_gc.isPackage());
-    const pkg_after_gc_name = switch (pkg_after_gc.toPtr(runtime.objects.Package).name.typeKind()) {
-        .symbol => pkg_after_gc.toPtr(runtime.objects.Package).name.toPtr(runtime.Symbol).getName(),
-        .string => pkg_after_gc.toPtr(runtime.objects.Package).name.toPtr(runtime.String).bytes(),
-        .keyword => pkg_after_gc.toPtr(runtime.objects.Package).name.toPtr(runtime.Keyword).getName(),
-        else => return error.TestUnexpectedResult,
-    };
+    const pkg_after_gc_name = repl.packageNameBytesLive(&repl.vm, pkg_after_gc) orelse return error.TestUnexpectedResult;
     try testing.expect(std.mem.eql(u8, pkg_name_before, pkg_after_gc_name));
 }
 
@@ -5491,4 +5889,39 @@ test "specialize pass - literal fixnum addition specializes" {
 
     const result = try repl.eval("(+ 3 4)");
     try testing.expectEqual(@as(i64, 7), result.toFixnum());
+}
+
+test "repl stream globals survive repeated gc" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const names = [_][]const u8{
+        "COMMON-LISP:*QUERY-IO*",
+        "COMMON-LISP:*DEBUG-IO*",
+        "COMMON-LISP:*TRACE-OUTPUT*",
+        "COMMON-LISP:*TERMINAL-IO*",
+    };
+    var idxs: [names.len]u16 = undefined;
+    for (names, 0..) |name, i| {
+        idxs[i] = repl.compiler.globals.lookup(name) orelse return error.TestUnexpectedResult;
+    }
+
+    var cycle: usize = 0;
+    while (cycle < 4) : (cycle += 1) {
+        _ = try repl.vm.collectGarbage();
+        for (idxs) |idx| {
+            const val = repl.vm.globals[idx];
+            try testing.expect(val.isStream());
+            const kind_raw = @as(*const u64, @ptrFromInt(val.toPtrAddr())).*;
+            try testing.expectEqual(@as(u64, @intFromEnum(runtime.objects.BoxedKind.stream)), kind_raw);
+        }
+    }
 }

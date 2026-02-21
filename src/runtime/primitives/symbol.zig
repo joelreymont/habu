@@ -201,9 +201,15 @@ fn flatToAList(heap: *Heap, plist: Value) !Value {
 
 /// Get symbol's property list
 pub fn symbolPlist(heap: *Heap, sym: Value) !Value {
-    if (!sym.isSymbol()) return error.TypeError;
-    const s = sym.toPtr(objects.Symbol);
-    const plist = s.plist;
+    if (!sym.isSymbolLike()) return error.TypeError;
+    const plist = if (sym.isNil())
+        heap.nil_symbol_plist
+    else if (sym.isT())
+        heap.t_symbol_plist
+    else if (sym.isKeyword())
+        heap.getKeywordPlist(sym)
+    else
+        sym.toPtr(objects.Symbol).plist;
     if (plist.isNil()) return Value.nil;
     if (plistLooksLikeAList(plist)) return try alistToFlat(heap, plist);
     return plist;
@@ -232,7 +238,7 @@ pub fn setSymbolValue(sym: Value, val: Value) !void {
 
 /// Set symbol's property list
 pub fn setSymbolPlist(heap: *Heap, sym: Value, plist: Value) !void {
-    if (!sym.isSymbol()) {
+    if (!sym.isSymbolLike()) {
         if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null) {
             std.debug.print("TRACE setSymbolPlist type-mismatch kind={s} raw=0x{x} plist_raw=0x{x}\n", .{
                 @tagName(sym.typeKind()),
@@ -242,21 +248,36 @@ pub fn setSymbolPlist(heap: *Heap, sym: Value, plist: Value) !void {
         }
         return error.TypeError;
     }
-    const s = sym.toPtr(objects.Symbol);
+    if (sym.isKeyword()) {
+        if (plist.isNil() or !plist.isCons() or plistLooksLikeAList(plist)) {
+            try heap.setKeywordPlist(sym, plist);
+        } else {
+            try heap.setKeywordPlist(sym, try flatToAList(heap, plist));
+        }
+        return;
+    }
+
+    const plist_ptr = if (sym.isNil())
+        &heap.nil_symbol_plist
+    else if (sym.isT())
+        &heap.t_symbol_plist
+    else
+        &sym.toPtr(objects.Symbol).plist;
+
     if (plist.isNil() or !plist.isCons()) {
-        s.plist = plist;
-        heap.writeBarrier(sym, plist);
+        plist_ptr.* = plist;
+        if (sym.isSymbol()) heap.writeBarrier(sym, plist);
         return;
     }
 
     if (plistLooksLikeAList(plist)) {
-        s.plist = plist;
-        heap.writeBarrier(sym, plist);
+        plist_ptr.* = plist;
+        if (sym.isSymbol()) heap.writeBarrier(sym, plist);
         return;
     }
 
-    s.plist = try flatToAList(heap, plist);
-    heap.writeBarrier(sym, s.plist);
+    plist_ptr.* = try flatToAList(heap, plist);
+    if (sym.isSymbol()) heap.writeBarrier(sym, plist_ptr.*);
 }
 
 /// Test if symbol has value binding
@@ -344,10 +365,38 @@ test "symbol-plist exposes flat plist for CL consumers" {
     try testing.expectEqual(@as(i64, 11), c3.car.toFixnum());
 
     try setSymbolPlist(&heap, sym, plist);
-    const got_k1 = try list_prims.get(sym, k1);
-    const got_k2 = try list_prims.get(sym, k2);
+    const got_k1 = try list_prims.get(&heap, sym, k1);
+    const got_k2 = try list_prims.get(&heap, sym, k2);
     try testing.expectEqual(@as(i64, 11), got_k1.toFixnum());
     try testing.expectEqual(@as(i64, 22), got_k2.toFixnum());
+}
+
+test "plist ops support NIL and T symbols" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const key = try heap.intern("PLIST-KEY");
+    const kw_sym = try heap.internKeyword("extended-number");
+
+    _ = try list_prims.put(&heap, Value.nil, key, Value.makeFixnum(7));
+    _ = try list_prims.put(&heap, Value.t, key, Value.makeFixnum(9));
+    _ = try list_prims.put(&heap, kw_sym, key, Value.makeFixnum(11));
+
+    const nil_val = try list_prims.get(&heap, Value.nil, key);
+    const t_val = try list_prims.get(&heap, Value.t, key);
+    const kw_val = try list_prims.get(&heap, kw_sym, key);
+    try testing.expectEqual(@as(i64, 7), nil_val.toFixnum());
+    try testing.expectEqual(@as(i64, 9), t_val.toFixnum());
+    try testing.expectEqual(@as(i64, 11), kw_val.toFixnum());
+
+    try testing.expect((try list_prims.remprop(&heap, Value.nil, key)).isT());
+    try testing.expect((try list_prims.remprop(&heap, Value.t, key)).isT());
+    try testing.expect((try list_prims.remprop(&heap, kw_sym, key)).isT());
+    try testing.expect((try list_prims.get(&heap, Value.nil, key)).isNil());
+    try testing.expect((try list_prims.get(&heap, Value.t, key)).isNil());
+    try testing.expect((try list_prims.get(&heap, kw_sym, key)).isNil());
 }
 
 /// Test if symbol has function binding

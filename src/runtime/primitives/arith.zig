@@ -9,6 +9,11 @@ const objects = @import("../objects.zig");
 const list_prim = @import("list.zig");
 
 pub const Error = error{ TypeMismatch, DivisionByZero, OutOfMemory, InvalidArgument };
+const max_fixnum_i64: i64 = (1 << 62) - 1;
+const min_fixnum_i64: i64 = -(1 << 62);
+const max_fixnum_u64: u64 = (@as(u64, 1) << 62) - 1;
+const max_neg_fixnum_mag_u64: u64 = (@as(u64, 1) << 62);
+const max_bignum_limbs: usize = 8;
 
 inline fn isFloatKind(v: Value) bool {
     return v.typeKind() == .float;
@@ -33,9 +38,7 @@ pub fn add(heap: *Heap, a: Value, b: Value) Error!Value {
     const result = @addWithOverflow(a.toFixnum(), b.toFixnum());
 
     // Check for i64 overflow OR fixnum range overflow (62-bit signed)
-    const max_fixnum: i64 = (1 << 62) - 1;
-    const min_fixnum: i64 = -(1 << 62);
-    if (result[1] != 0 or result[0] > max_fixnum or result[0] < min_fixnum) {
+    if (result[1] != 0 or result[0] > max_fixnum_i64 or result[0] < min_fixnum_i64) {
         // Overflow - promote to bignum
         return addBignum(heap, a, b);
     }
@@ -68,9 +71,7 @@ pub fn sub(heap: *Heap, a: Value, b: Value) Error!Value {
     const result = @subWithOverflow(a.toFixnum(), b.toFixnum());
 
     // Check for i64 overflow OR fixnum range overflow (62-bit signed)
-    const max_fixnum: i64 = (1 << 62) - 1;
-    const min_fixnum: i64 = -(1 << 62);
-    if (result[1] != 0 or result[0] > max_fixnum or result[0] < min_fixnum) {
+    if (result[1] != 0 or result[0] > max_fixnum_i64 or result[0] < min_fixnum_i64) {
         // Overflow - promote to bignum
         return subBignum(heap, a, b);
     }
@@ -96,9 +97,7 @@ pub fn mul(heap: *Heap, a: Value, b: Value) Error!Value {
     const result = @mulWithOverflow(a.toFixnum(), b.toFixnum());
 
     // Check for i64 overflow OR fixnum range overflow (62-bit signed)
-    const max_fixnum: i64 = (1 << 62) - 1;
-    const min_fixnum: i64 = -(1 << 62);
-    if (result[1] != 0 or result[0] > max_fixnum or result[0] < min_fixnum) {
+    if (result[1] != 0 or result[0] > max_fixnum_i64 or result[0] < min_fixnum_i64) {
         // Overflow - promote to bignum
         return mulBignum(heap, a, b);
     }
@@ -150,91 +149,173 @@ pub fn negate(a: Value) Error!Value {
     return Value.makeFixnum(-n);
 }
 
+fn integerTwosWidth(v: Value) Error!usize {
+    if (v.isFixnum()) return 1;
+    if (!v.isBignum()) return error.TypeMismatch;
+
+    const bn = v.toPtr(objects.Bignum);
+    var width: usize = @intCast(@abs(bn.size));
+    if (width == 0) return 1;
+
+    // Positive sign-magnitude values with top-bit set need one extra sign limb.
+    if (!bn.isNegative() and width < max_bignum_limbs and (bn.limbs[width - 1] & (@as(u64, 1) << 63)) != 0) {
+        width += 1;
+    }
+    return width;
+}
+
+fn integerToTwos(v: Value, width: usize, out: *[max_bignum_limbs]u64) Error!void {
+    if (width == 0 or width > max_bignum_limbs) return error.TypeMismatch;
+
+    for (out, 0..) |*limb, i| {
+        _ = i;
+        limb.* = 0;
+    }
+
+    if (v.isFixnum()) {
+        const n = v.toFixnum();
+        const sign_fill: u64 = if (n < 0) std.math.maxInt(u64) else 0;
+        out[0] = @bitCast(n);
+        var i: usize = 1;
+        while (i < width) : (i += 1) out[i] = sign_fill;
+        return;
+    }
+    if (!v.isBignum()) return error.TypeMismatch;
+
+    const bn = v.toPtr(objects.Bignum);
+    const size: usize = @intCast(@abs(bn.size));
+    if (!bn.isNegative()) {
+        const copy_n = @min(size, width);
+        for (0..copy_n) |i| out[i] = bn.limbs[i];
+        return;
+    }
+
+    var carry: u64 = 1;
+    var i: usize = 0;
+    while (i < width) : (i += 1) {
+        const mag = if (i < size) bn.limbs[i] else 0;
+        const sum = @addWithOverflow(~mag, carry);
+        out[i] = sum[0];
+        carry = sum[1];
+    }
+}
+
+fn twosToInteger(heap: *Heap, twos: *const [max_bignum_limbs]u64, width: usize) Error!Value {
+    if (width == 0 or width > max_bignum_limbs) return error.TypeMismatch;
+
+    const negative = (twos[width - 1] & (@as(u64, 1) << 63)) != 0;
+    if (!negative) {
+        var used = width;
+        while (used > 0 and twos[used - 1] == 0) : (used -= 1) {}
+        if (used == 0) return Value.makeFixnum(0);
+        if (used == 1 and twos[0] <= max_fixnum_u64) return Value.makeFixnum(@intCast(twos[0]));
+        return heap.allocBignumFromLimbs(twos[0..used], false);
+    }
+
+    var mag: [max_bignum_limbs]u64 = [_]u64{0} ** max_bignum_limbs;
+    var carry: u64 = 1;
+    var i: usize = 0;
+    while (i < width) : (i += 1) {
+        const sum = @addWithOverflow(~twos[i], carry);
+        mag[i] = sum[0];
+        carry = sum[1];
+    }
+
+    var used = width;
+    while (used > 0 and mag[used - 1] == 0) : (used -= 1) {}
+    if (used == 0) return Value.makeFixnum(0);
+
+    if (used == 1 and mag[0] <= max_neg_fixnum_mag_u64) {
+        if (mag[0] == max_neg_fixnum_mag_u64) return Value.makeFixnum(min_fixnum_i64);
+        const m: i64 = @intCast(mag[0]);
+        return Value.makeFixnum(-m);
+    }
+
+    return heap.allocBignumFromLimbs(mag[0..used], true);
+}
+
+const BitBinaryOp = enum { and_, or_, xor_ };
+
+fn bitBinary(heap: *Heap, a: Value, b: Value, op: BitBinaryOp) Error!Value {
+    const width = @max(try integerTwosWidth(a), try integerTwosWidth(b));
+
+    var at: [max_bignum_limbs]u64 = [_]u64{0} ** max_bignum_limbs;
+    var bt: [max_bignum_limbs]u64 = [_]u64{0} ** max_bignum_limbs;
+    var rt: [max_bignum_limbs]u64 = [_]u64{0} ** max_bignum_limbs;
+    try integerToTwos(a, width, &at);
+    try integerToTwos(b, width, &bt);
+
+    for (0..width) |i| {
+        rt[i] = switch (op) {
+            .and_ => at[i] & bt[i],
+            .or_ => at[i] | bt[i],
+            .xor_ => at[i] ^ bt[i],
+        };
+    }
+    return twosToInteger(heap, &rt, width);
+}
+
+fn bitNot(heap: *Heap, a: Value) Error!Value {
+    const width = try integerTwosWidth(a);
+    var at: [max_bignum_limbs]u64 = [_]u64{0} ** max_bignum_limbs;
+    try integerToTwos(a, width, &at);
+    for (0..width) |i| at[i] = ~at[i];
+    return twosToInteger(heap, &at, width);
+}
+
 /// Bitwise AND
-pub fn logand(a: Value, b: Value) Error!Value {
-    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-    const ua: u64 = @bitCast(a.toFixnum());
-    const ub: u64 = @bitCast(b.toFixnum());
-    return Value.makeFixnum(@bitCast(ua & ub));
+pub fn logand(heap: *Heap, a: Value, b: Value) Error!Value {
+    return bitBinary(heap, a, b, .and_);
 }
 
 /// Bitwise OR
-pub fn logior(a: Value, b: Value) Error!Value {
-    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-    const ua: u64 = @bitCast(a.toFixnum());
-    const ub: u64 = @bitCast(b.toFixnum());
-    return Value.makeFixnum(@bitCast(ua | ub));
+pub fn logior(heap: *Heap, a: Value, b: Value) Error!Value {
+    return bitBinary(heap, a, b, .or_);
 }
 
 /// Bitwise XOR
-pub fn logxor(a: Value, b: Value) Error!Value {
-    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-    const ua: u64 = @bitCast(a.toFixnum());
-    const ub: u64 = @bitCast(b.toFixnum());
-    return Value.makeFixnum(@bitCast(ua ^ ub));
+pub fn logxor(heap: *Heap, a: Value, b: Value) Error!Value {
+    return bitBinary(heap, a, b, .xor_);
 }
 
 /// Bitwise NOT
-pub fn lognot(a: Value) Error!Value {
-    if (!a.isFixnum()) return error.TypeMismatch;
-    const ua: u64 = @bitCast(a.toFixnum());
-    return Value.makeFixnum(@bitCast(~ua));
+pub fn lognot(heap: *Heap, a: Value) Error!Value {
+    return bitNot(heap, a);
 }
 
 /// Bitwise NAND
-pub fn lognand(a: Value, b: Value) Error!Value {
-    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-    const ua: u64 = @bitCast(a.toFixnum());
-    const ub: u64 = @bitCast(b.toFixnum());
-    return Value.makeFixnum(@bitCast(~(ua & ub)));
+pub fn lognand(heap: *Heap, a: Value, b: Value) Error!Value {
+    return bitNot(heap, try logand(heap, a, b));
 }
 
 /// Bitwise NOR
-pub fn lognor(a: Value, b: Value) Error!Value {
-    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-    const ua: u64 = @bitCast(a.toFixnum());
-    const ub: u64 = @bitCast(b.toFixnum());
-    return Value.makeFixnum(@bitCast(~(ua | ub)));
+pub fn lognor(heap: *Heap, a: Value, b: Value) Error!Value {
+    return bitNot(heap, try logior(heap, a, b));
 }
 
 /// Bitwise AND with NOT of first arg
-pub fn logandc1(a: Value, b: Value) Error!Value {
-    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-    const ua: u64 = @bitCast(a.toFixnum());
-    const ub: u64 = @bitCast(b.toFixnum());
-    return Value.makeFixnum(@bitCast((~ua) & ub));
+pub fn logandc1(heap: *Heap, a: Value, b: Value) Error!Value {
+    return logand(heap, try lognot(heap, a), b);
 }
 
 /// Bitwise AND with NOT of second arg
-pub fn logandc2(a: Value, b: Value) Error!Value {
-    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-    const ua: u64 = @bitCast(a.toFixnum());
-    const ub: u64 = @bitCast(b.toFixnum());
-    return Value.makeFixnum(@bitCast(ua & (~ub)));
+pub fn logandc2(heap: *Heap, a: Value, b: Value) Error!Value {
+    return logand(heap, a, try lognot(heap, b));
 }
 
 /// Bitwise OR with NOT of first arg
-pub fn logorc1(a: Value, b: Value) Error!Value {
-    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-    const ua: u64 = @bitCast(a.toFixnum());
-    const ub: u64 = @bitCast(b.toFixnum());
-    return Value.makeFixnum(@bitCast((~ua) | ub));
+pub fn logorc1(heap: *Heap, a: Value, b: Value) Error!Value {
+    return logior(heap, try lognot(heap, a), b);
 }
 
 /// Bitwise OR with NOT of second arg
-pub fn logorc2(a: Value, b: Value) Error!Value {
-    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-    const ua: u64 = @bitCast(a.toFixnum());
-    const ub: u64 = @bitCast(b.toFixnum());
-    return Value.makeFixnum(@bitCast(ua | (~ub)));
+pub fn logorc2(heap: *Heap, a: Value, b: Value) Error!Value {
+    return logior(heap, a, try lognot(heap, b));
 }
 
 /// Bitwise equivalence (NOT XOR)
-pub fn logeqv(a: Value, b: Value) Error!Value {
-    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-    const ua: u64 = @bitCast(a.toFixnum());
-    const ub: u64 = @bitCast(b.toFixnum());
-    return Value.makeFixnum(@bitCast(~(ua ^ ub)));
+pub fn logeqv(heap: *Heap, a: Value, b: Value) Error!Value {
+    return bitNot(heap, try logxor(heap, a, b));
 }
 
 /// Test if bit at index is set
@@ -497,8 +578,6 @@ pub fn ge(a: Value, b: Value) Error!bool {
 
 pub const RangeError = error{InvalidRange};
 
-const max_fixnum_u64: u64 = (@as(u64, 1) << 62) - 1;
-
 /// Seed the random number generator
 pub fn randomSeed(prng: *std.Random.DefaultPrng, seeded: *bool, seed: Value) Error!Value {
     if (!seed.isFixnum()) return error.TypeMismatch;
@@ -657,13 +736,41 @@ test "negate" {
 
 test "bitwise operations" {
     const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
 
     const a = Value.makeFixnum(0b1100);
     const b = Value.makeFixnum(0b1010);
 
-    try testing.expectEqual(@as(i64, 0b1000), (try logand(a, b)).toFixnum());
-    try testing.expectEqual(@as(i64, 0b1110), (try logior(a, b)).toFixnum());
-    try testing.expectEqual(@as(i64, 0b0110), (try logxor(a, b)).toFixnum());
+    try testing.expectEqual(@as(i64, 0b1000), (try logand(&heap, a, b)).toFixnum());
+    try testing.expectEqual(@as(i64, 0b1110), (try logior(&heap, a, b)).toFixnum());
+    try testing.expectEqual(@as(i64, 0b0110), (try logxor(&heap, a, b)).toFixnum());
+}
+
+test "bitwise operations support bignum intermediates" {
+    const testing = std.testing;
+    var heap = try Heap.init(testing.allocator, .{});
+    defer heap.deinit();
+
+    const big = try mul(&heap, Value.makeFixnum(1812433253), Value.makeFixnum(4294967295));
+    try testing.expect(big.isBignum());
+
+    const masked = try logand(&heap, big, Value.makeFixnum(4294967295));
+    try testing.expect(masked.isFixnum());
+    try testing.expectEqual(@as(i64, 2482534043), masked.toFixnum());
+
+    const not_big = try lognot(&heap, big);
+    try testing.expect(not_big.isBignum() or not_big.isFixnum());
+    const not_masked = try logand(&heap, not_big, Value.makeFixnum(4294967295));
+    try testing.expectEqual(@as(i64, 1812433252), not_masked.toFixnum());
+
+    const neg_big = try sub(&heap, Value.makeFixnum(0), big);
+    const neg_masked = try logand(&heap, neg_big, Value.makeFixnum(4294967295));
+    try testing.expectEqual(@as(i64, 1812433253), neg_masked.toFixnum());
+
+    const eqv_self = try logeqv(&heap, big, big);
+    try testing.expect(eqv_self.isFixnum());
+    try testing.expectEqual(@as(i64, -1), eqv_self.toFixnum());
 }
 
 test "shift" {

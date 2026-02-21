@@ -9,6 +9,9 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 ## Session Notes (2026-02-21)
 
 ### Worked Well
+- Fixing tail-call `&key` frame reuse with overlap-safe argument moves in `doCall` (`src/interp/vm.zig:10164`) plus ordering positional copy before keyword-pair relocation removed real argument-slot corruption where `MEMBER` saw `lst` as a closure and `test` as nil in Maxima `INFINITYP`/`$LIMIT` paths.
+- Registering `defstruct` type names in the runtime class registry during `compileDefstruct` (`src/compiler/compile.zig:10258`) made `typep`/`typecase` on struct names return booleans for non-struct objects instead of `UnknownTypeSpecifier`, unblocking Maxima `marray-type` calls in `limit`.
+- Locking both regressions with focused integration tests (`src/tests/integration.zig:1597`, `src/tests/integration.zig:4567`) now catches tail-call keyword frame corruption and defstruct-type `typep` regressions before Maxima workload runs.
 - Propagating `NestedNonLocalExit` out of `execute` instead of consuming/rethrowing it in-place (`src/interp/vm.zig:2248`) restored call-barrier ownership of non-local exit relay, fixing resumed execution after a caught `(load ...)` condition (the `transl.lisp` `DEF%TR` path no longer continues into later forms after the first caught failure).
 - Locking the signal-path variant with a script-level regression (`src/interp/repl.zig:4887`) catches a previously untested case where `handler-case` around `load` could catch twice and keep running the failed file; expected post-fix behavior is one catch and no post-error file progress.
 - Adding a Maxima transl script gate in integration (`src/tests/integration.zig:7336`) now exercises the real `(load script -> maxima-load-all -> transl failure)` path and validates that loader state is returned exactly once without post-return resume crashes.
@@ -21,6 +24,7 @@ Hard-won patterns and anti-patterns from building Habu. **Update this file at th
 - Adding a focused loop regression (`src/tests/integration.zig:4961`) for `collecting ... and do ...` catches future parser regressions that break macro-heavy loaders before Maxima e2e status checks.
 
 ### Did Not Work
+- Relocating keyword pairs before positional arguments in tail-call `&key` frame reuse (`src/interp/vm.zig` pre-fix `doCall` tail key path) still clobbered positional source slots when ranges overlapped, producing partially fixed but still wrong bindings (`lst` became `:TEST`); positional arguments must be copied first.
 - Handling `NestedNonLocalExit` inside the main `execute` error loop (`src/interp/vm.zig` pre-fix `err == error.NestedNonLocalExit` branch) bypassed call-boundary restoration logic and allowed inner file loaders to keep advancing forms after outer `handler-case` already caught the condition.
 - Using a package-specific `eq` check for the first failed module in transl status validation was brittle (`src/tests/integration.zig` pre-fix); the failure marker must allow symbol/string representation differences and compare by canonical module text.
 - A branch-heavy fixnum-fast/slow lowering for every generic numeric op triggered upstream hoist CFG instability (`computePreds` out-of-bounds) on real benchmark functions; keeping non-recursive generic ops helper-based and recursive paths conservative avoided this compiler failure in practice.

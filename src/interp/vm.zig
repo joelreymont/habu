@@ -540,6 +540,7 @@ pub const Vm = struct {
 
     /// External GC roots (e.g., JIT stack/consts)
     ext_roots: []Value,
+    ext_roots_owner: ?*std.ArrayList(Value),
 
     /// Hoist SSA JIT: maps chunk address to compiled native function.
     jit_fns: std.AutoHashMap(usize, *jit_backend.CompiledFn),
@@ -771,6 +772,87 @@ pub const Vm = struct {
         return vals[0..count];
     }
 
+    const BUILTIN_ROOT_N = @typeInfo(BuiltinSymbols).@"struct".fields.len;
+    const TYPE_ROOT_N = @typeInfo(type_mod.TypeSymbols).@"struct".fields.len;
+
+    fn snapshotRootSlice(dst: []Value, src: []const Value) void {
+        @memcpy(dst, src);
+    }
+
+    fn firstRootDiff(prev: []const Value, cur: []const Value) ?usize {
+        var i: usize = 0;
+        while (i < prev.len and i < cur.len) : (i += 1) {
+            if (prev[i].raw != cur[i].raw) return i;
+        }
+        return null;
+    }
+
+    fn rootPointsIntoStaleSpace(self: *Vm, val: Value) bool {
+        if (!val.isPointer()) return false;
+        if (val.isT()) return false;
+        const addr = val.toPtrAddr();
+        const stale_start = @intFromPtr(self.heap.to_start);
+        const stale_end = stale_start + self.heap.space_size;
+        return addr >= stale_start and addr < stale_end;
+    }
+
+    fn traceInvalidRootLayout(self: *Vm, comptime site: []const u8, comptime root_name: []const u8, idx: usize, val: Value) void {
+        const from_start = @intFromPtr(self.heap.from_start);
+        const from_end = @intFromPtr(self.heap.from_end);
+        const to_start = @intFromPtr(self.heap.to_start);
+        const to_end = to_start + self.heap.space_size;
+        const addr = if (val.isPointer()) val.toPtrAddr() else 0;
+        std.debug.print(
+            "TRACE root-layout-invalid site={s} root={s} idx={d} raw=0x{x} kind={s} addr=0x{x} from=[0x{x},0x{x}) to=[0x{x},0x{x})\n",
+            .{ site, root_name, idx, val.raw, @tagName(val.typeKind()), addr, from_start, from_end, to_start, to_end },
+        );
+    }
+
+    fn valueHasValidRootLayout(self: *Vm, val: Value) bool {
+        if (val.isNil() or val.isT()) return true;
+        return switch (val.typeKind()) {
+            .symbol, .keyword => blk: {
+                if (!val.isPointer()) break :blk false;
+                const addr = val.toPtrAddr();
+                if (!self.heap.containsAddrForDebug(addr)) break :blk false;
+                switch (val.typeKind()) {
+                    .symbol => {
+                        const sym: *const runtime.Symbol = @ptrFromInt(addr);
+                        if (sym.name_len > self.heap.space_size) break :blk false;
+                        if (@intFromPtr(sym.name_ptr) != addr + @sizeOf(runtime.Symbol)) break :blk false;
+                        break :blk true;
+                    },
+                    .keyword => {
+                        const kw: *const runtime.Keyword = @ptrFromInt(addr);
+                        if (kw.name_len > self.heap.space_size) break :blk false;
+                        if (@intFromPtr(kw.name_ptr) != addr + @sizeOf(runtime.Keyword)) break :blk false;
+                        break :blk true;
+                    },
+                    else => break :blk false,
+                }
+            },
+            else => false,
+        };
+    }
+
+    fn validateBuiltinAndTypeRoots(self: *Vm, comptime site: []const u8) bool {
+        const builtin_roots = valueFieldSlice(BuiltinSymbols, &self.builtins);
+        for (builtin_roots, 0..) |val, i| {
+            if (!self.valueHasValidRootLayout(val)) {
+                self.traceInvalidRootLayout(site, "builtins", i, val);
+                return false;
+            }
+        }
+        const type_roots = valueFieldSlice(type_mod.TypeSymbols, &self.type_syms);
+        for (type_roots, 0..) |val, i| {
+            if (!self.valueHasValidRootLayout(val)) {
+                self.traceInvalidRootLayout(site, "type_syms", i, val);
+                return false;
+            }
+        }
+        return true;
+    }
+
     pub fn init(allocator: std.mem.Allocator, heap: *Heap) !Vm {
         var vm = Vm{
             .stack = undefined,
@@ -841,6 +923,7 @@ pub const Vm = struct {
             .current_closure = null,
             .current_argc = 0,
             .ext_roots = &[_]Value{},
+            .ext_roots_owner = null,
             .jit_fns = std.AutoHashMap(usize, *jit_backend.CompiledFn).init(allocator),
             .jit_literal_roots = std.ArrayList(*Value){},
             .builtins = try BuiltinSymbols.init(heap),
@@ -1018,7 +1101,7 @@ pub const Vm = struct {
     fn lookupFunctionCell(self: *Vm, sym_val: Value) Error!?Value {
         if (!sym_val.isSymbol()) return null;
         const key = self.builtins.sym_function_cell;
-        const cell = try primitives.list.get(sym_val, key);
+        const cell = try primitives.list.get(self.heap, sym_val, key);
         if (!isCallableFunctionValue(cell)) return null;
         return cell;
     }
@@ -1083,10 +1166,42 @@ pub const Vm = struct {
     }
 
     pub fn setExtRoots(self: *Vm, roots: []Value) void {
+        self.ext_roots_owner = null;
         self.ext_roots = roots;
     }
 
+    pub fn setExtRootsOwned(self: *Vm, owner: *std.ArrayList(Value)) void {
+        self.ext_roots_owner = owner;
+        self.ext_roots = owner.items;
+    }
+
+    pub const ExtRootsSnapshot = struct {
+        roots: []Value,
+        owner: ?*std.ArrayList(Value),
+    };
+
+    pub fn currentExtRoots(self: *const Vm) []Value {
+        if (self.ext_roots_owner) |owner| return owner.items;
+        return self.ext_roots;
+    }
+
+    pub fn saveExtRoots(self: *const Vm) ExtRootsSnapshot {
+        return .{
+            .roots = self.currentExtRoots(),
+            .owner = self.ext_roots_owner,
+        };
+    }
+
+    pub fn restoreExtRoots(self: *Vm, saved: ExtRootsSnapshot) void {
+        if (saved.owner) |owner| {
+            self.setExtRootsOwned(owner);
+            return;
+        }
+        self.setExtRoots(saved.roots);
+    }
+
     pub fn clearExtRoots(self: *Vm) void {
+        self.ext_roots_owner = null;
         self.ext_roots = &[_]Value{};
     }
 
@@ -1550,6 +1665,10 @@ pub const Vm = struct {
         return try self.collectGarbageExtra(none[0..]);
     }
 
+    pub fn collectGarbageWithRoots(self: *Vm, extra_roots: []Value) !usize {
+        return try self.collectGarbageExtra(extra_roots);
+    }
+
     fn collectIfDebt(self: *Vm, extra_roots: []Value, alloc_hint_bytes: usize) !void {
         self.safepoint_batch_ops +%= 1;
         self.safepoint_batch_bytes +%= alloc_hint_bytes;
@@ -1573,6 +1692,14 @@ pub const Vm = struct {
     }
 
     fn collectGarbageExtra(self: *Vm, extra_roots: []Value) !usize {
+        const trace_validate_roots = std.posix.getenv("HABU_TRACE_VALIDATE_ROOT_LAYOUT") != null;
+        const trap_validate_roots = std.posix.getenv("HABU_TRAP_VALIDATE_ROOT_LAYOUT") != null;
+        if (trace_validate_roots or trap_validate_roots) {
+            if (!self.validateBuiltinAndTypeRoots("pre-gc")) {
+                if (trap_validate_roots) @panic("invalid root layout pre-gc");
+            }
+        }
+
         self.gc_slots.clearRetainingCapacity();
         self.safepoint_batch_ops = 0;
         self.safepoint_batch_bytes = 0;
@@ -1700,13 +1827,55 @@ pub const Vm = struct {
             ranges[range_len] = .{ .ptr = self.chunk_pool.ptr, .len = self.chunk_pool.len };
             range_len += 1;
         }
-        if (self.ext_roots.len != 0) {
-            ranges[range_len] = .{ .ptr = self.ext_roots.ptr, .len = self.ext_roots.len };
+        const ext_roots = self.currentExtRoots();
+        if (ext_roots.len != 0) {
+            ranges[range_len] = .{ .ptr = ext_roots.ptr, .len = ext_roots.len };
             range_len += 1;
         }
         if (extra_roots.len != 0) {
             ranges[range_len] = .{ .ptr = extra_roots.ptr, .len = extra_roots.len };
             range_len += 1;
+        }
+
+        if (std.posix.getenv("HABU_TRACE_BAD_ROOT_LAYOUT") != null) {
+            var dbg_idx: usize = 0;
+            if (self.sp != 0) {
+                std.debug.print("TRACE gc-range idx={d} name=stack len={d}\n", .{ dbg_idx, self.sp });
+                dbg_idx += 1;
+            }
+            if (self.num_globals != 0) {
+                std.debug.print("TRACE gc-range idx={d} name=globals len={d}\n", .{ dbg_idx, self.num_globals });
+                dbg_idx += 1;
+            }
+            if (self.secondary_values_count != 0) {
+                std.debug.print("TRACE gc-range idx={d} name=secondary len={d}\n", .{ dbg_idx, self.secondary_values_count });
+                dbg_idx += 1;
+            }
+            if (self.saved_chunk_sp != 0) {
+                std.debug.print("TRACE gc-range idx={d} name=saved_chunks len={d}\n", .{ dbg_idx, self.saved_chunk_sp });
+                dbg_idx += 1;
+            }
+            if (builtin_roots.len != 0) {
+                std.debug.print("TRACE gc-range idx={d} name=builtins len={d}\n", .{ dbg_idx, builtin_roots.len });
+                dbg_idx += 1;
+            }
+            if (type_roots.len != 0) {
+                std.debug.print("TRACE gc-range idx={d} name=type_syms len={d}\n", .{ dbg_idx, type_roots.len });
+                dbg_idx += 1;
+            }
+            if (self.chunk_pool.len != 0) {
+                std.debug.print("TRACE gc-range idx={d} name=chunk_pool len={d}\n", .{ dbg_idx, self.chunk_pool.len });
+                dbg_idx += 1;
+            }
+            if (ext_roots.len != 0) {
+                std.debug.print("TRACE gc-range idx={d} name=ext_roots len={d}\n", .{ dbg_idx, ext_roots.len });
+                dbg_idx += 1;
+            }
+            if (extra_roots.len != 0) {
+                std.debug.print("TRACE gc-range idx={d} name=extra_roots len={d}\n", .{ dbg_idx, extra_roots.len });
+                dbg_idx += 1;
+            }
+            std.debug.print("TRACE gc-range total={d}\n", .{dbg_idx});
         }
 
         if (std.posix.getenv("HABU_TRACE_BAD_GLOBAL_ROOT") != null) {
@@ -1731,10 +1900,33 @@ pub const Vm = struct {
             }
         }
 
+        if (std.posix.getenv("HABU_TRACE_BAD_GLOBAL_KIND") != null) {
+            const kind_n = @typeInfo(runtime.objects.BoxedKind).@"enum".fields.len;
+            var gi: usize = 0;
+            while (gi < self.num_globals and gi < MAX_GLOBALS) : (gi += 1) {
+                const val = self.globals[gi];
+                if (!val.isPointer() or val.getTag() != .boxed) continue;
+                const addr = val.toPtrAddr();
+                if (!self.heap.containsAddrForDebug(addr)) continue;
+                const kind_raw = @as(*const u64, @ptrFromInt(addr)).*;
+                if (kind_raw < kind_n) continue;
+                const name = self.globalNameForIndex(@intCast(gi)) orelse "<unknown>";
+                std.debug.print(
+                    "TRACE bad-global-kind idx={d} name={s} val=0x{x} kind-raw=0x{x}\n",
+                    .{ gi, name, val.raw, kind_raw },
+                );
+            }
+        }
+
         const reclaimed = try self.heap.collectGarbageRootSet(.{
             .ranges = ranges[0..range_len],
             .slots = self.gc_slots.items,
         });
+        if (trace_validate_roots or trap_validate_roots) {
+            if (!self.validateBuiltinAndTypeRoots("post-gc")) {
+                if (trap_validate_roots) @panic("invalid root layout post-gc");
+            }
+        }
 
         closure_idx = 0;
         for (self.frames[0..self.fp]) |*frame| {
@@ -1792,6 +1984,12 @@ pub const Vm = struct {
                 if (self.chunkFromValue(chunk_val)) |chunk| {
                     frame.chunk = chunk;
                 }
+            }
+        }
+
+        if (trace_validate_roots or trap_validate_roots) {
+            if (!self.validateBuiltinAndTypeRoots("post-restore")) {
+                if (trap_validate_roots) @panic("invalid root layout post-restore");
             }
         }
 
@@ -2200,7 +2398,65 @@ pub const Vm = struct {
     fn execute(self: *Vm) Error!Value {
         self.execute_depth += 1;
         defer self.execute_depth -= 1;
+
+        const trace_builtin_write = std.posix.getenv("HABU_TRACE_BUILTINS_WRITE") != null;
+        const trap_builtin_write = std.posix.getenv("HABU_TRAP_BUILTINS_WRITE") != null;
+        const trace_stale_root_table = std.posix.getenv("HABU_TRACE_STALE_ROOT_TABLE") != null;
+        const trap_stale_root_table = std.posix.getenv("HABU_TRAP_STALE_ROOT_TABLE") != null;
+        var trace_gc_count: usize = self.heap.stats.gc_count;
+        var trace_builtins_prev: [BUILTIN_ROOT_N]Value = undefined;
+        var trace_type_prev: [TYPE_ROOT_N]Value = undefined;
+        if (trace_builtin_write or trap_builtin_write) {
+            snapshotRootSlice(trace_builtins_prev[0..], valueFieldSlice(BuiltinSymbols, &self.builtins));
+            snapshotRootSlice(trace_type_prev[0..], valueFieldSlice(type_mod.TypeSymbols, &self.type_syms));
+        }
+
         while (true) {
+            if (trace_builtin_write or trap_builtin_write) {
+                const builtins_now = valueFieldSlice(BuiltinSymbols, &self.builtins);
+                const type_now = valueFieldSlice(type_mod.TypeSymbols, &self.type_syms);
+                const gc_now = self.heap.stats.gc_count;
+                if (gc_now == trace_gc_count) {
+                    if (firstRootDiff(trace_builtins_prev[0..], builtins_now)) |i| {
+                        std.debug.print(
+                            "TRACE builtins-write-outside-gc chunk={s} ip={d} idx={d} prev=0x{x} cur=0x{x}\n",
+                            .{ chunkTraceName(self.chunk), self.ip, i, trace_builtins_prev[i].raw, builtins_now[i].raw },
+                        );
+                        if (trap_builtin_write) @panic("builtins write outside gc");
+                    }
+                    if (firstRootDiff(trace_type_prev[0..], type_now)) |i| {
+                        std.debug.print(
+                            "TRACE type-syms-write-outside-gc chunk={s} ip={d} idx={d} prev=0x{x} cur=0x{x}\n",
+                            .{ chunkTraceName(self.chunk), self.ip, i, trace_type_prev[i].raw, type_now[i].raw },
+                        );
+                        if (trap_builtin_write) @panic("type syms write outside gc");
+                    }
+                }
+                snapshotRootSlice(trace_builtins_prev[0..], builtins_now);
+                snapshotRootSlice(trace_type_prev[0..], type_now);
+                trace_gc_count = gc_now;
+            }
+            if (trace_stale_root_table or trap_stale_root_table) {
+                const builtins_now = valueFieldSlice(BuiltinSymbols, &self.builtins);
+                for (builtins_now, 0..) |val, i| {
+                    if (!self.rootPointsIntoStaleSpace(val)) continue;
+                    std.debug.print(
+                        "TRACE stale-root-table chunk={s} ip={d} root=builtins idx={d} raw=0x{x}\n",
+                        .{ chunkTraceName(self.chunk), self.ip, i, val.raw },
+                    );
+                    if (trap_stale_root_table) @panic("stale builtins root");
+                }
+                const type_now = valueFieldSlice(type_mod.TypeSymbols, &self.type_syms);
+                for (type_now, 0..) |val, i| {
+                    if (!self.rootPointsIntoStaleSpace(val)) continue;
+                    std.debug.print(
+                        "TRACE stale-root-table chunk={s} ip={d} root=type_syms idx={d} raw=0x{x}\n",
+                        .{ chunkTraceName(self.chunk), self.ip, i, val.raw },
+                    );
+                    if (trap_stale_root_table) @panic("stale type root");
+                }
+            }
+
             const chunk_addr = @intFromPtr(self.chunk);
             const stale_start = @intFromPtr(self.heap.to_start);
             const stale_end = stale_start + self.heap.space_size;
@@ -3777,29 +4033,25 @@ pub const Vm = struct {
             .logand => {
                 const b = try self.pop();
                 const a = try self.pop();
-                if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-                const result = a.toFixnum() & b.toFixnum();
-                try self.push(Value.makeFixnum(result));
+                const result = try arith.logand(self.heap, a, b);
+                try self.push(result);
             },
             .logior => {
                 const b = try self.pop();
                 const a = try self.pop();
-                if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-                const result = a.toFixnum() | b.toFixnum();
-                try self.push(Value.makeFixnum(result));
+                const result = try arith.logior(self.heap, a, b);
+                try self.push(result);
             },
             .logxor => {
                 const b = try self.pop();
                 const a = try self.pop();
-                if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-                const result = a.toFixnum() ^ b.toFixnum();
-                try self.push(Value.makeFixnum(result));
+                const result = try arith.logxor(self.heap, a, b);
+                try self.push(result);
             },
             .lognot => {
                 const a = try self.pop();
-                if (!a.isFixnum()) return error.TypeMismatch;
-                const result = ~a.toFixnum();
-                try self.push(Value.makeFixnum(result));
+                const result = try arith.lognot(self.heap, a);
+                try self.push(result);
             },
             .ash => {
                 const count_val = try self.pop();
@@ -3819,31 +4071,31 @@ pub const Vm = struct {
             .lognand => {
                 const b = try self.pop();
                 const a = try self.pop();
-                const result = try arith.lognand(a, b);
+                const result = try arith.lognand(self.heap, a, b);
                 try self.push(result);
             },
             .lognor => {
                 const b = try self.pop();
                 const a = try self.pop();
-                const result = try arith.lognor(a, b);
+                const result = try arith.lognor(self.heap, a, b);
                 try self.push(result);
             },
             .logandc1 => {
                 const b = try self.pop();
                 const a = try self.pop();
-                const result = try arith.logandc1(a, b);
+                const result = try arith.logandc1(self.heap, a, b);
                 try self.push(result);
             },
             .logandc2 => {
                 const b = try self.pop();
                 const a = try self.pop();
-                const result = try arith.logandc2(a, b);
+                const result = try arith.logandc2(self.heap, a, b);
                 try self.push(result);
             },
             .logeqv => {
                 const b = try self.pop();
                 const a = try self.pop();
-                const result = try arith.logeqv(a, b);
+                const result = try arith.logeqv(self.heap, a, b);
                 try self.push(result);
             },
             .logbitp => {
@@ -5363,7 +5615,7 @@ pub const Vm = struct {
             .get => {
                 const indicator = try self.pop();
                 const sym = try self.pop();
-                const result = try primitives.list.get(sym, indicator);
+                const result = try primitives.list.get(self.heap, sym, indicator);
                 try self.push(result);
             },
             .put => {
@@ -9321,6 +9573,24 @@ pub const Vm = struct {
                 argc,
                 @tagName(fn_val.typeKind()),
             });
+            if (fn_val.isSymbol()) {
+                const live_fn = self.resolveForwardedValue(fn_val);
+                if (live_fn.isSymbol()) {
+                    const plist = live_fn.toPtr(Symbol).plist;
+                    const fn_cell = primitives.list.get(self.heap, live_fn, self.builtins.sym_function_cell) catch Value.nil;
+                    std.debug.print(
+                        " symbol={s} live=0x{x} plist-kind={s} fn-cell-kind={s}",
+                        .{
+                            live_fn.toPtr(Symbol).getName(),
+                            live_fn.raw,
+                            @tagName(plist.typeKind()),
+                            @tagName(fn_cell.typeKind()),
+                        },
+                    );
+                } else {
+                    std.debug.print(" symbol-forwarded kind={s}", .{@tagName(live_fn.typeKind())});
+                }
+            }
             if (fn_val.isClosure()) {
                 const closure = fn_val.toPtr(runtime.Closure);
                 std.debug.print(" closure-arity={d} code-kind={s}", .{
@@ -9406,6 +9676,19 @@ pub const Vm = struct {
                 std.debug.print("CALL_MISMATCH stack-fn-kind={s}\n", .{@tagName(raw_fn.typeKind())});
                 if (raw_fn.isSymbol()) {
                     std.debug.print("CALL_MISMATCH stack-fn-symbol={s}\n", .{raw_fn.toPtr(Symbol).getName()});
+                    const live_stack_fn = self.resolveForwardedValue(raw_fn);
+                    if (live_stack_fn.isSymbol()) {
+                        const plist = live_stack_fn.toPtr(Symbol).plist;
+                        const fn_cell = primitives.list.get(self.heap, live_stack_fn, self.builtins.sym_function_cell) catch Value.nil;
+                        std.debug.print(
+                            "CALL_MISMATCH stack-fn-live=0x{x} plist-kind={s} fn-cell-kind={s}\n",
+                            .{
+                                live_stack_fn.raw,
+                                @tagName(plist.typeKind()),
+                                @tagName(fn_cell.typeKind()),
+                            },
+                        );
+                    }
                 } else if (raw_fn.isClosure()) {
                     const stack_cl = raw_fn.toPtr(runtime.Closure);
                     std.debug.print("CALL_MISMATCH stack-fn-closure arity={d} code-kind={s}", .{
@@ -9878,6 +10161,22 @@ pub const Vm = struct {
         self.progv_sp = frame.progv_depth;
     }
 
+    fn stackMove(self: *Vm, dest: usize, src: usize, count: usize) void {
+        if (count == 0 or dest == src) return;
+        if (dest < src) {
+            var i: usize = 0;
+            while (i < count) : (i += 1) {
+                self.stack[dest + i] = self.stack[src + i];
+            }
+        } else {
+            var i: usize = count;
+            while (i > 0) {
+                i -= 1;
+                self.stack[dest + i] = self.stack[src + i];
+            }
+        }
+    }
+
     fn doCall(self: *Vm, argc: u8, tail: bool) Error!void {
         // Bounds check: need at least argc + 1 items on stack (args + function)
         if (self.sp < @as(usize, argc) + 1) return error.StackUnderflow;
@@ -10077,17 +10376,19 @@ pub const Vm = struct {
                 const key_slot_start = max_positional;
                 const kw_pair_start = max_positional + key_count;
 
-                // First, move keyword pairs to their slots
-                var i: usize = kw_pair_count;
-                while (i > 0) {
-                    i -= 1;
-                    self.stack[current_bp + kw_pair_start + i] = self.stack[arg_start + positional_args + i];
-                }
-
-                // Copy positional args
+                // Copy positional args first so keyword-pair relocation cannot clobber
+                // positional sources when stack ranges overlap in tail-call reuse.
                 for (0..positional_args) |j| {
                     self.stack[current_bp + j] = self.stack[arg_start + j];
                 }
+
+                // Move keyword pairs to their slots.
+                const kw_count_usize: usize = @intCast(kw_pair_count);
+                self.stackMove(
+                    current_bp + @as(usize, kw_pair_start),
+                    arg_start + @as(usize, positional_args),
+                    kw_count_usize,
+                );
 
                 // Initialize key param slots to nil
                 for (0..key_count) |k| {
@@ -10168,13 +10469,14 @@ pub const Vm = struct {
                 const key_slot_start = max_positional;
                 const kw_pair_start = max_positional + key_count;
 
-                // First, move keyword pairs to their slots (from the end to avoid overlap)
-                // Keyword pairs are the last kw_pair_count args
-                var i: usize = kw_pair_count;
-                while (i > 0) {
-                    i -= 1;
-                    self.stack[new_bp + kw_pair_start + i] = self.stack[new_bp + 1 + positional_args + i];
-                }
+                // First, move keyword pairs to their slots (overlap-safe).
+                // Keyword pairs are the last kw_pair_count args.
+                const kw_count_usize: usize = @intCast(kw_pair_count);
+                self.stackMove(
+                    new_bp + @as(usize, kw_pair_start),
+                    new_bp + 1 + @as(usize, positional_args),
+                    kw_count_usize,
+                );
 
                 // Copy positional args to their slots
                 for (0..positional_args) |j| {
@@ -10679,37 +10981,58 @@ pub const Vm = struct {
         return val;
     }
 
-    fn resolveForwardedValue(self: *Vm, val: Value) Value {
+    pub fn resolveForwardedValue(self: *Vm, val: Value) Value {
         if (!val.isPointer()) return val;
+        var cur = val;
+        var resolved_live: ?Value = null;
+        var hops: u8 = 0;
+        while (hops < 8 and cur.isPointer()) : (hops += 1) {
+            const addr = cur.toPtrAddr();
+            if (!self.heap.containsAddrForDebug(addr)) break;
 
-        const stale_start = @intFromPtr(self.heap.to_start);
-        const stale_end = stale_start + self.heap.space_size;
-        const addr = val.toPtrAddr();
-        if (addr < stale_start or addr >= stale_end) return val;
+            const first_word: *const Value = @ptrFromInt(addr);
+            if (!first_word.isForwarding()) break;
 
-        const first_word: *const Value = @ptrFromInt(addr);
-        if (!first_word.isForwarding()) return val;
+            const new_addr = first_word.toPtrAddr();
+            const forwarded_size_ptr: *const usize = @ptrFromInt(addr + @sizeOf(Value));
+            const forwarded_size = forwarded_size_ptr.*;
+            const forwarded_size_ok = forwarded_size > 0 and
+                forwarded_size <= self.heap.space_size and
+                std.mem.isAligned(forwarded_size, @import("../runtime/heap.zig").ALIGNMENT);
 
-        const new_addr = first_word.toPtrAddr();
-        const forwarded_size_ptr: *const usize = @ptrFromInt(addr + @sizeOf(Value));
-        const forwarded_size = forwarded_size_ptr.*;
-        const forwarded_size_ok = forwarded_size > 0 and
-            forwarded_size <= self.heap.space_size and
-            std.mem.isAligned(forwarded_size, @import("../runtime/heap.zig").ALIGNMENT);
-        const from_start = @intFromPtr(self.heap.from_start);
-        const from_end = @intFromPtr(self.heap.from_end);
-        const in_from = new_addr >= from_start and new_addr < from_end and forwarded_size <= from_end - new_addr;
-        var in_tenured = false;
-        if (self.heap.gcLayoutMode() == .generational) {
-            if (self.heap.tenuredRegion()) |tenured| {
-                const ten_start = @intFromPtr(tenured.start);
-                const ten_used_end = if (self.heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
-                in_tenured = new_addr >= ten_start and new_addr < ten_used_end and forwarded_size <= ten_used_end - new_addr;
+            const from_start = @intFromPtr(self.heap.from_start);
+            const from_live_end = @intFromPtr(self.heap.alloc_ptr);
+            const src_in_from = addr >= from_start and addr < from_live_end;
+            const in_from = new_addr >= from_start and new_addr < from_live_end and
+                forwarded_size <= from_live_end - new_addr;
+
+            const stale_start = @intFromPtr(self.heap.to_start);
+            const stale_end = stale_start + self.heap.space_size;
+            const in_stale = new_addr >= stale_start and new_addr < stale_end and
+                forwarded_size <= stale_end - new_addr;
+
+            var in_tenured = false;
+            if (self.heap.gcLayoutMode() == .generational) {
+                if (self.heap.tenuredRegion()) |tenured| {
+                    const ten_start = @intFromPtr(tenured.start);
+                    const ten_used_end = if (self.heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
+                    in_tenured = new_addr >= ten_start and new_addr < ten_used_end and
+                        forwarded_size <= ten_used_end - new_addr;
+                }
+            }
+
+            if (!forwarded_size_ok or !(in_from or in_stale or in_tenured)) break;
+            if (!runtime.objects.forwardingTargetLooksValid(cur.getTag(), new_addr, forwarded_size)) break;
+
+            const next = Value{ .raw = new_addr | @as(u64, @intFromEnum(cur.getTag())) };
+            if (next.raw == cur.raw) break;
+            cur = next;
+            if (in_from or in_tenured or (src_in_from and in_stale)) {
+                resolved_live = cur;
             }
         }
-        if (!forwarded_size_ok or !(in_from or in_tenured)) return val;
 
-        return .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) };
+        return resolved_live orelse val;
     }
 
     fn loadConst(self: *Vm, idx: u16) Error!Value {

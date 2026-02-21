@@ -14,6 +14,7 @@ const Op = opcodes.Op;
 const runtime = @import("../runtime/runtime.zig");
 const Chunk = runtime.Chunk;
 const Cons = runtime.Cons;
+const Symbol = runtime.Symbol;
 const Value = runtime.Value;
 const Heap = runtime.Heap;
 
@@ -662,8 +663,32 @@ pub const Emitter = struct {
             .restart_case => |rc| try self.emitRestartCase(rc),
             .invoke_restart => |inv| try self.emitInvokeRestart(inv),
             .find_restart => |fr| try self.emitUnaryOp(fr.operand, .find_restart),
-            .tagbody => |tb| try self.emitTagbody(tb),
-            .go => |g| try self.emitGo(g),
+            .tagbody => |tb| {
+                if (std.posix.getenv("HABU_TRACE_GO_CONTEXT") != null) {
+                    std.debug.print(
+                        "TRACE emit tagbody tags={d} stack={d}\n",
+                        .{ tb.tags.len, self.control_stack.items.len },
+                    );
+                }
+                try self.emitTagbody(tb);
+            },
+            .go => |g| {
+                if (std.posix.getenv("HABU_TRACE_GO_CONTEXT") != null) {
+                    const target = self.resolveForwardedValue(g.tag);
+                    if (target.isSymbol()) {
+                        std.debug.print(
+                            "TRACE emit go target={s} stack={d}\n",
+                            .{ target.toPtr(Symbol).getName(), self.control_stack.items.len },
+                        );
+                    } else {
+                        std.debug.print(
+                            "TRACE emit go kind={s} stack={d}\n",
+                            .{ @tagName(target.typeKind()), self.control_stack.items.len },
+                        );
+                    }
+                }
+                try self.emitGo(g);
+            },
             .progv => |p| try self.emitProgv(p),
             .values => |v| try self.emitValues(v),
             .values_list => |op| try self.emitUnaryOp(op.operand, .values_list),
@@ -2213,6 +2238,7 @@ pub const Emitter = struct {
     }
 
     fn emitGo(self: *Emitter, g: anytype) Error!void {
+        const target_tag = self.resolveForwardedValue(g.tag);
         // Find enclosing tagbody with matching tag
         var i = self.control_stack.items.len;
         while (i > 0) {
@@ -2221,7 +2247,8 @@ pub const Emitter = struct {
                 .tagbody => |*tbe| {
                     // Search for tag
                     for (tbe.tags, 0..) |tag, tag_idx| {
-                        if (tag.raw == g.tag.raw) {
+                        const live_tag = self.resolveForwardedValue(tag);
+                        if (live_tag.raw == target_tag.raw) {
                             // Found! Check if tag position is known (forward vs backward jump)
                             if (tbe.tag_offsets[tag_idx] != 0) {
                                 // Backward jump - target is known
@@ -2244,6 +2271,52 @@ pub const Emitter = struct {
             }
         }
         // Tag not found
+        if (std.posix.getenv("HABU_TRACE_GO_CONTEXT") != null) {
+            if (target_tag.isSymbol()) {
+                std.debug.print(
+                    "TRACE go-miss target={s} raw=0x{x} stack={d}\n",
+                    .{ target_tag.toPtr(Symbol).getName(), target_tag.raw, self.control_stack.items.len },
+                );
+            } else {
+                std.debug.print(
+                    "TRACE go-miss target-kind={s} raw=0x{x} stack={d}\n",
+                    .{ @tagName(target_tag.typeKind()), target_tag.raw, self.control_stack.items.len },
+                );
+            }
+            for (self.control_stack.items, 0..) |entry, idx| {
+                switch (entry) {
+                    .tagbody => |tbe| {
+                        std.debug.print("  stack[{d}]=tagbody tags={d}\n", .{ idx, tbe.tags.len });
+                        for (tbe.tags, 0..) |tag, ti| {
+                            const live_tag = self.resolveForwardedValue(tag);
+                            if (live_tag.isSymbol()) {
+                                std.debug.print(
+                                    "    tag[{d}]={s} raw=0x{x} off={d}\n",
+                                    .{
+                                        ti,
+                                        live_tag.toPtr(Symbol).getName(),
+                                        live_tag.raw,
+                                        tbe.tag_offsets[ti],
+                                    },
+                                );
+                            } else {
+                                std.debug.print(
+                                    "    tag[{d}] kind={s} raw=0x{x} off={d}\n",
+                                    .{
+                                        ti,
+                                        @tagName(live_tag.typeKind()),
+                                        live_tag.raw,
+                                        tbe.tag_offsets[ti],
+                                    },
+                                );
+                            }
+                        }
+                    },
+                    .block => |blk| std.debug.print("  stack[{d}]=block name=0x{x}\n", .{ idx, blk.name.raw }),
+                    .unwind_protect => std.debug.print("  stack[{d}]=unwind-protect\n", .{idx}),
+                }
+            }
+        }
         return error.InvalidIr;
     }
 

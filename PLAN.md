@@ -232,6 +232,9 @@
     - [x] `habu-separate-value-fn-4d40d330` Keep function and value cells independent in `set_symbol_function` so shared symbols (for example `ratvars`) preserve variable data while remaining callable as functions.
     - [x] `habu-load-matrix-deps-d5d1b7ee` Load matrix dependency chain (`mat`/`linnew`/`matrix`/`sprdet`/`newinv`/`newdet`) into readiness subsets so `LNEWVAR`/`CFACTOR` symbols are available before factor/determinant probes.
     - [x] `habu-fix-builtin-callable-f9b29c06` Unify builtin-callable classification with compiler primitive dispatch so `symbol-function` resolves generic math operators (`ATAN`, etc.) without stale manual builtin lists.
+  - [x] `habu-fix-maxima-limit-e2a25da2` Fix Maxima `limit` workload execution path.
+    - [x] `habu-fix-int-bitops-733d9c09` Extend integer bitwise operations to bignum operands (MT random-state init path).
+    - [x] `habu-fix-limit-unknowntypespecifier-8b3b0eb0` Register `defstruct` type names in runtime class table so `typep`/`typecase` on struct names return booleans instead of `UnknownTypeSpecifier`.
   - [x] `habu-maxima-core-loader-999c7eb3` Add Maxima core subset loader + entrypoint binding integration gate.
   - [x] `habu-rca-load-stackoverflow-e3d4f5d8` RCA and fix load stack overflow path for Maxima large source files.
   - [x] `habu-fix-sin-lisp-b34b817f` Fix `sin.lisp` load root so `SININT` is bound and integrate path can complete. Ensure `schatc` dependency chain is loaded (`m2`/`schatchen-cond` present) before integrate execution.

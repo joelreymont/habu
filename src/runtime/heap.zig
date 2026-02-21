@@ -412,6 +412,8 @@ pub const Heap = struct {
     lisp_packages: Value,
     /// Lisp-level class registry (hash table: name -> Class Value)
     lisp_classes: Value,
+    /// Property list storage for keyword objects (keyword -> plist)
+    keyword_plists: Value,
     /// Metaclass instances (chicken-egg bootstrap)
     standard_class: Value,
     built_in_class: Value,
@@ -434,6 +436,9 @@ pub const Heap = struct {
     sym_simple_warning: Value,
     kw_format_control: Value,
     kw_format_arguments: Value,
+    /// Property lists for special symbol-like constants NIL and T.
+    nil_symbol_plist: Value,
+    t_symbol_plist: Value,
 
     pub const ReadtableEntry = struct {
         function: Value,
@@ -758,6 +763,7 @@ pub const Heap = struct {
             .keyword_package = null,
             .lisp_packages = Value.nil,
             .lisp_classes = Value.nil,
+            .keyword_plists = Value.nil,
             .standard_class = Value.nil,
             .built_in_class = Value.nil,
             .structure_class = Value.nil,
@@ -770,6 +776,8 @@ pub const Heap = struct {
             .sym_simple_warning = Value.nil,
             .kw_format_control = Value.nil,
             .kw_format_arguments = Value.nil,
+            .nil_symbol_plist = Value.nil,
+            .t_symbol_plist = Value.nil,
         };
         heap.stats.gc_nursery_target = nursery_target;
         heap.stats.gc_debt_threshold = debt_threshold;
@@ -787,6 +795,8 @@ pub const Heap = struct {
         heap.lisp_packages = try heap.allocHashTable(16, .eql);
         // Create Lisp class registry
         heap.lisp_classes = try heap.allocHashTable(128, .eql);
+        // Create keyword plist registry (keyword -> plist)
+        heap.keyword_plists = try heap.allocHashTable(64, .eq);
 
         // Create Lisp-visible Package objects for CL and CL-USER
         {
@@ -3051,6 +3061,27 @@ pub const Heap = struct {
         return ht.get(name);
     }
 
+    pub fn getKeywordPlist(self: *Heap, kw: Value) Value {
+        if (!kw.isKeyword() or self.keyword_plists.raw == Value.nil.raw) return Value.nil;
+        const ht = self.keyword_plists.toPtr(objects.HashTable);
+        return ht.get(kw) orelse Value.nil;
+    }
+
+    pub fn setKeywordPlist(self: *Heap, kw: Value, plist: Value) !void {
+        if (!kw.isKeyword()) return error.TypeMismatch;
+        if (self.keyword_plists.raw == Value.nil.raw) {
+            self.keyword_plists = try self.allocHashTable(64, .eq);
+        }
+        const ht = self.keyword_plists.toPtr(objects.HashTable);
+        try self.putHashTableAutoGrow(ht, kw, plist);
+    }
+
+    pub fn remKeywordPlist(self: *Heap, kw: Value) bool {
+        if (!kw.isKeyword() or self.keyword_plists.raw == Value.nil.raw) return false;
+        const ht = self.keyword_plists.toPtr(objects.HashTable);
+        return ht.remove(kw);
+    }
+
     /// Intern a symbol (same name = same Value)
     /// Returns existing symbol if already interned, otherwise creates new one
     /// Uses current package if available, otherwise legacy global table
@@ -3267,7 +3298,8 @@ pub const Heap = struct {
 
     fn refreshGcInternalSlots(self: *Heap) !void {
         const sig = self.calcGcRootSig();
-        if (self.gc_root_sig_valid and GcRootSig.eql(self.gc_root_sig, sig)) return;
+        const disable_cache = std.posix.getenv("HABU_DISABLE_GC_SLOT_CACHE") != null;
+        if (!disable_cache and self.gc_root_sig_valid and GcRootSig.eql(self.gc_root_sig, sig)) return;
 
         self.gc_internal_slots.clearRetainingCapacity();
 
@@ -3314,6 +3346,9 @@ pub const Heap = struct {
         if (self.lisp_classes.raw != Value.nil.raw) {
             try self.gc_internal_slots.append(self.backing_allocator, &self.lisp_classes);
         }
+        if (self.keyword_plists.raw != Value.nil.raw) {
+            try self.gc_internal_slots.append(self.backing_allocator, &self.keyword_plists);
+        }
         if (self.standard_class.raw != Value.nil.raw) {
             try self.gc_internal_slots.append(self.backing_allocator, &self.standard_class);
         }
@@ -3331,6 +3366,12 @@ pub const Heap = struct {
         }
         if (self.kw_format_arguments.raw != Value.nil.raw) {
             try self.gc_internal_slots.append(self.backing_allocator, &self.kw_format_arguments);
+        }
+        if (self.nil_symbol_plist.raw != Value.nil.raw) {
+            try self.gc_internal_slots.append(self.backing_allocator, &self.nil_symbol_plist);
+        }
+        if (self.t_symbol_plist.raw != Value.nil.raw) {
+            try self.gc_internal_slots.append(self.backing_allocator, &self.t_symbol_plist);
         }
 
         self.gc_root_sig = sig;
@@ -3358,6 +3399,22 @@ pub const Heap = struct {
         try self.gc_slots.appendSlice(self.backing_allocator, external_roots.slots);
         try self.refreshGcInternalSlots();
         try self.gc_slots.appendSlice(self.backing_allocator, self.gc_internal_slots.items);
+
+        if (std.posix.getenv("HABU_TRACE_GC_SLOT_OVERLAP") != null) {
+            for (self.gc_slots.items, 0..) |slot, si| {
+                const slot_addr = @intFromPtr(slot);
+                for (external_roots.ranges, 0..) |r, ri| {
+                    const lo = @intFromPtr(r.ptr);
+                    const hi = lo + r.len * @sizeOf(Value);
+                    if (slot_addr >= lo and slot_addr < hi) {
+                        std.debug.print(
+                            "TRACE gc-slot-overlap slot={d} slot_ptr=0x{x} range={d} range_ptr=0x{x} range_len={d}\n",
+                            .{ si, slot_addr, ri, lo, r.len },
+                        );
+                    }
+                }
+            }
+        }
 
         self.stats.gc_build_ns +%= elapsedNsSince(build_start);
 

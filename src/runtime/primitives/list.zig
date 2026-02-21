@@ -317,12 +317,32 @@ test "last" {
 
 /// Get property from symbol's property list
 /// (get symbol indicator) -> value or nil
-pub fn get(sym: Value, indicator: Value) !Value {
-    if (!sym.isSymbolLike()) return error.TypeMismatch;
-    if (sym.isNil() or sym.isT()) return Value.nil; // Magic symbols have no plist
+fn symbolPlistPtr(heap: *Heap, sym: Value) ?*Value {
+    if (sym.isNil()) return &heap.nil_symbol_plist;
+    if (sym.isT()) return &heap.t_symbol_plist;
+    if (sym.isSymbol()) return &sym.toPtr(Symbol).plist;
+    return null;
+}
 
-    const symbol = sym.toPtr(Symbol);
-    var plist = symbol.plist;
+fn loadPlist(heap: *Heap, sym: Value) !Value {
+    if (sym.isKeyword()) return heap.getKeywordPlist(sym);
+    const plist_ptr = symbolPlistPtr(heap, sym) orelse return error.TypeMismatch;
+    return plist_ptr.*;
+}
+
+fn storePlist(heap: *Heap, sym: Value, plist: Value) !void {
+    if (sym.isKeyword()) {
+        try heap.setKeywordPlist(sym, plist);
+        return;
+    }
+    const plist_ptr = symbolPlistPtr(heap, sym) orelse return error.TypeMismatch;
+    plist_ptr.* = plist;
+    if (sym.isSymbol()) heap.writeBarrier(sym, plist);
+}
+
+pub fn get(heap: *Heap, sym: Value, indicator: Value) !Value {
+    if (!sym.isSymbolLike()) return error.TypeMismatch;
+    var plist = try loadPlist(heap, sym);
 
     // Search alist for indicator
     while (plist.isCons()) {
@@ -347,12 +367,10 @@ pub fn get(sym: Value, indicator: Value) !Value {
 /// (put symbol indicator value) -> value
 pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
     if (!sym.isSymbolLike()) return error.TypeMismatch;
-    if (sym.isNil() or sym.isT()) return error.TypeMismatch; // Can't modify magic symbols
-
-    const symbol = sym.toPtr(Symbol);
 
     // Search for existing entry
-    var current = symbol.plist;
+    const plist = try loadPlist(heap, sym);
+    var current = plist;
 
     while (current.isCons()) {
         const entry = current.toPtr(Cons);
@@ -374,9 +392,8 @@ pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
 
     // Not found - add new entry at front
     const new_pair = try heap.allocCons(indicator, value);
-    const new_entry = try heap.allocCons(new_pair, symbol.plist);
-    symbol.plist = new_entry;
-    heap.writeBarrier(sym, new_entry);
+    const new_entry = try heap.allocCons(new_pair, plist);
+    try storePlist(heap, sym, new_entry);
 
     return value;
 }
@@ -385,10 +402,7 @@ pub fn put(heap: *Heap, sym: Value, indicator: Value, value: Value) !Value {
 /// (remprop symbol indicator) -> t if removed, nil otherwise
 pub fn remprop(heap: *Heap, sym: Value, indicator: Value) !Value {
     if (!sym.isSymbolLike()) return error.TypeMismatch;
-    if (sym.isNil() or sym.isT()) return Value.nil; // Can't modify magic symbols
-
-    const symbol = sym.toPtr(Symbol);
-    var plist = symbol.plist;
+    var plist = try loadPlist(heap, sym);
 
     // Handle first entry specially
     if (plist.isCons()) {
@@ -399,8 +413,7 @@ pub fn remprop(heap: *Heap, sym: Value, indicator: Value) !Value {
             const pair_cons = pair.toPtr(Cons);
             if (pair_cons.car.eq(indicator)) {
                 // Remove first entry
-                symbol.plist = first.cdr;
-                heap.writeBarrier(sym, first.cdr);
+                try storePlist(heap, sym, first.cdr);
                 return Value.t;
             }
         }
@@ -431,4 +444,21 @@ pub fn remprop(heap: *Heap, sym: Value, indicator: Value) !Value {
     }
 
     return Value.nil;
+}
+
+test "put preserves existing plist entries" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const sym = try heap.intern("STRING");
+    const fn_key = try heap.intern("%FUNCTION-CELL");
+    const meta_key = try heap.intern("MACRO-FUNCTION");
+
+    _ = try put(&heap, sym, fn_key, Value.makeFixnum(7));
+    _ = try put(&heap, sym, meta_key, Value.makeFixnum(9));
+
+    try testing.expectEqual(@as(i64, 7), (try get(&heap, sym, fn_key)).toFixnum());
+    try testing.expectEqual(@as(i64, 9), (try get(&heap, sym, meta_key)).toFixnum());
 }

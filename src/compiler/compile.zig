@@ -63,6 +63,8 @@ fn restoreVmStatePreserveRelay(vm: *Vm, saved_state: vm_mod.State) void {
         vm.relay_throw_value = relay_value;
     }
 }
+const compile_expr_root_name = "__HABU_INTERNAL_COMPILE_EXPR_ROOT__";
+const compile_expr_stack_name = "__HABU_INTERNAL_COMPILE_EXPR_STACK__";
 
 /// Pre-interned special form symbols for identity comparison
 pub const Builtins = struct {
@@ -2022,9 +2024,15 @@ pub const Compiler = struct {
         around,
     };
 
+    pub const MethodSpecializer = union(enum) {
+        any,
+        class_name: []const u8,
+        eql_obj: Value,
+    };
+
     /// CLOS method definition
     pub const MethodDef = struct {
-        specializers: []const Value, // Interned class name symbols for each parameter
+        specializers: []const MethodSpecializer,
         function_name: []const u8, // Global function name to call
         qualifier: MethodQualifier = .primary,
     };
@@ -2309,7 +2317,12 @@ pub const Compiler = struct {
             self.globals.allocator.free(entry.key_ptr.*);
             // Free each method's data
             for (entry.value_ptr.items) |method| {
-                // Specializers are interned Values (no individual free needed)
+                for (method.specializers) |spec| {
+                    switch (spec) {
+                        .class_name => |name| self.globals.allocator.free(name),
+                        .any, .eql_obj => {},
+                    }
+                }
                 self.globals.allocator.free(method.specializers);
                 // Free function name
                 self.globals.allocator.free(method.function_name);
@@ -2661,13 +2674,92 @@ pub const Compiler = struct {
     }
 
     /// Compile a single expression
+    fn ensureCompileRootGlobal(self: *Compiler, vm: *Vm) !u16 {
+        if (self.globals.lookup(compile_expr_root_name)) |idx| {
+            if (idx >= vm.globals.len) return error.InvalidConstant;
+            if (idx >= vm.num_globals) vm.num_globals = idx + 1;
+            return idx;
+        }
+        const idx = try self.globals.define(compile_expr_root_name);
+        if (idx >= vm.globals.len) return error.InvalidConstant;
+        if (idx >= vm.num_globals) vm.num_globals = idx + 1;
+        vm.globals[idx] = Value.nil;
+        return idx;
+    }
+
+    fn ensureCompileRootStackGlobal(self: *Compiler, vm: *Vm) !u16 {
+        if (self.globals.lookup(compile_expr_stack_name)) |idx| {
+            if (idx >= vm.globals.len) return error.InvalidConstant;
+            if (idx >= vm.num_globals) vm.num_globals = idx + 1;
+            return idx;
+        }
+        const idx = try self.globals.define(compile_expr_stack_name);
+        if (idx >= vm.globals.len) return error.InvalidConstant;
+        if (idx >= vm.num_globals) vm.num_globals = idx + 1;
+        vm.globals[idx] = Value.nil;
+        return idx;
+    }
+
+    fn popCompileRoot(vm: *Vm, root_idx: u16, stack_idx: u16) void {
+        if (root_idx >= vm.globals.len or stack_idx >= vm.globals.len) return;
+        const stack = vm.resolveForwardedValue(vm.globals[stack_idx]);
+        vm.globals[stack_idx] = stack;
+        if (!stack.isCons()) {
+            vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
+            vm.globals[stack_idx] = Value.nil;
+            return;
+        }
+        if (!vm.heap.containsAddrForDebug(stack.toPtrAddr())) {
+            vm.globals[root_idx] = vm.resolveForwardedValue(vm.globals[root_idx]);
+            vm.globals[stack_idx] = Value.nil;
+            return;
+        }
+        const cell = stack.toPtr(Cons);
+        vm.globals[root_idx] = vm.resolveForwardedValue(cell.car);
+        vm.globals[stack_idx] = vm.resolveForwardedValue(cell.cdr);
+    }
+
+    const CompileRootToken = struct {
+        root_idx: u16,
+        stack_idx: u16,
+    };
+
+    fn pushCompileRoot(self: *Compiler, vm: *Vm, value: Value) !CompileRootToken {
+        const root_idx = try self.ensureCompileRootGlobal(vm);
+        const stack_idx = try self.ensureCompileRootStackGlobal(vm);
+        const saved_root = vm.resolveForwardedValue(vm.globals[root_idx]);
+        const saved_stack = vm.resolveForwardedValue(vm.globals[stack_idx]);
+        const live_value = vm.resolveForwardedValue(value);
+
+        vm.globals[root_idx] = live_value;
+        errdefer {
+            vm.globals[root_idx] = saved_root;
+            vm.globals[stack_idx] = saved_stack;
+        }
+        vm.globals[stack_idx] = try vm.allocCons(saved_root, saved_stack);
+        return .{ .root_idx = root_idx, .stack_idx = stack_idx };
+    }
+
     pub fn compile(self: *Compiler, expr: Value, env: *const Env) anyerror!*Ir {
-        const result = self.compileWithTail(expr, env, false);
+        var rooted_expr = expr;
+        var root_tok: ?CompileRootToken = null;
+        var root_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, rooted_expr);
+            root_tok = tok;
+            root_vm = vm;
+            rooted_expr = vm.globals[tok.root_idx];
+        }
+        defer if (root_tok) |tok| {
+            popCompileRoot(root_vm.?, tok.root_idx, tok.stack_idx);
+        };
+
+        const result = self.compileWithTail(rooted_expr, env, false);
         return if (result) |node| node else |err| {
             if (self.diag) {
                 std.debug.print("COMPILE FAILED with {}\n", .{err});
-                if (expr.isCons()) {
-                    const cons = expr.toPtr(Cons);
+                if (rooted_expr.isCons()) {
+                    const cons = rooted_expr.toPtr(Cons);
                     if (cons.car.isSymbol()) {
                         const sym = cons.car.toPtr(Symbol);
                         std.debug.print("  Failed form head: {s}\n", .{sym.getName()});
@@ -2680,7 +2772,24 @@ pub const Compiler = struct {
 
     /// Compile with tail position tracking
     fn compileWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) anyerror!*Ir {
-        const live_expr = self.resolveForwardedValue(expr);
+        var rooted_expr = expr;
+        var root_tok: ?CompileRootToken = null;
+        var root_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, rooted_expr);
+            root_tok = tok;
+            root_vm = vm;
+            rooted_expr = vm.globals[tok.root_idx];
+        }
+        defer if (root_tok) |tok| {
+            popCompileRoot(root_vm.?, tok.root_idx, tok.stack_idx);
+        };
+
+        try self.refreshBuiltins();
+        const live_expr = self.resolveForwardedValue(rooted_expr);
+        if (root_tok) |tok| {
+            root_vm.?.globals[tok.root_idx] = live_expr;
+        }
         // Nil
         if (live_expr.isNil()) {
             return try self.builder.lit(Value.nil);
@@ -2777,7 +2886,20 @@ pub const Compiler = struct {
         if (live_expr.isCons()) {
             return self.compileListWithTail(live_expr, env, in_tail) catch |err| {
                 if (err == error.InvalidSyntax and std.posix.getenv("HABU_TRACE_INVALID_SYNTAX") != null) {
-                    const cons = live_expr.toPtr(Cons);
+                    const trace_expr = blk: {
+                        var cur = live_expr;
+                        if (root_tok) |tok| {
+                            if (root_vm) |vm| {
+                                cur = vm.globals[tok.root_idx];
+                            }
+                        }
+                        break :blk self.resolveForwardedValue(cur);
+                    };
+                    if (!trace_expr.isCons()) {
+                        std.debug.print("TRACE invalid-syntax form kind={s}\n", .{@tagName(trace_expr.typeKind())});
+                        return err;
+                    }
+                    const cons = trace_expr.toPtr(Cons);
                     if (cons.car.isSymbol()) {
                         std.debug.print(
                             "TRACE invalid-syntax form head={s} tail-kind={s}\n",
@@ -2794,6 +2916,12 @@ pub const Compiler = struct {
                                 @tagName(cons.cdr.typeKind()),
                             },
                         );
+                        if (std.posix.getenv("HABU_TRACE_INVALID_SYNTAX_EXPR") != null) {
+                            var buf: [4096]u8 = undefined;
+                            var fbs = std.io.fixedBufferStream(&buf);
+                            io.writeValueToBuffer(trace_expr, fbs.writer().any()) catch {};
+                            std.debug.print("TRACE invalid-syntax form expr={s}\n", .{buf[0..fbs.pos]});
+                        }
                     }
                 }
                 return err;
@@ -3133,9 +3261,59 @@ pub const Compiler = struct {
             }
 
             // Check for macros - expand at compile time if VM is available
-            if (self.lookupMacroDef(head)) |macro_def| {
+            const macro_def_opt = self.lookupMacroDef(head);
+            if (std.posix.getenv("HABU_TRACE_PROG_LOOKUP") != null and std.mem.eql(u8, name, "PROG")) {
+                const home_pkg = symbolHomePackage(head);
+                const home_name = if (home_pkg) |pkg| pkg.name else "<none>";
+                const canonical = self.canonicalBuiltinSymbol(head);
+                std.debug.print(
+                    "TRACE prog-lookup head=0x{x} canon=0x{x} home={s} macro={any}\n",
+                    .{ head.raw, canonical.raw, home_name, macro_def_opt != null },
+                );
+            }
+            if (macro_def_opt) |macro_def| {
                 if (self.vm) |vm| {
                     const expanded = self.expandMacro(macro_def, tail, expr, vm) catch |err| return err;
+                    if (std.posix.getenv("HABU_TRACE_PROG_LOOKUP") != null and std.mem.eql(u8, name, "PROG")) {
+                        if (expanded.isCons()) {
+                            const e0 = expanded.toPtr(Cons);
+                            const h0 = e0.car;
+                            const h0_name = if (h0.isSymbol()) h0.toPtr(Symbol).getName() else "<non-sym>";
+                            var b0_name: []const u8 = "<none>";
+                            var b1_name: []const u8 = "<none>";
+                            if (e0.cdr.isCons()) {
+                                const e1 = e0.cdr.toPtr(Cons);
+                                if (e1.cdr.isCons()) {
+                                    const e2 = e1.cdr.toPtr(Cons);
+                                    const let_form = e2.car;
+                                    if (let_form.isCons()) {
+                                        const l0 = let_form.toPtr(Cons);
+                                        if (l0.car.isSymbol()) b0_name = l0.car.toPtr(Symbol).getName();
+                                        if (l0.cdr.isCons()) {
+                                            const l1 = l0.cdr.toPtr(Cons);
+                                            if (l1.cdr.isCons()) {
+                                                const l2 = l1.cdr.toPtr(Cons);
+                                                const body0 = l2.car;
+                                                if (body0.isCons()) {
+                                                    const b0 = body0.toPtr(Cons).car;
+                                                    if (b0.isSymbol()) b1_name = b0.toPtr(Symbol).getName();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            std.debug.print(
+                                "TRACE prog-expand head={s} let={s} body0={s}\n",
+                                .{ h0_name, b0_name, b1_name },
+                            );
+                        } else {
+                            std.debug.print(
+                                "TRACE prog-expand non-cons kind={s}\n",
+                                .{@tagName(expanded.typeKind())},
+                            );
+                        }
+                    }
                     return self.compileWithTail(expanded, env, in_tail);
                 }
                 // No VM - can't expand macro, treat as function call
@@ -3213,20 +3391,24 @@ pub const Compiler = struct {
         has_env: bool,
     };
 
-    fn decodeCompiledMacroEntry(macro_def: Value) ?CompiledMacroEntry {
+    fn decodeCompiledMacroEntry(self: *Compiler, macro_def: Value) ?CompiledMacroEntry {
         if (std.posix.getenv("HABU_DISABLE_COMPILED_MACRO_ENTRY") != null) return null;
-        if (!macro_def.isCons()) return null;
-        const c1 = macro_def.toPtr(Cons);
-        if (!c1.car.isClosure()) return null;
-        if (!c1.cdr.isCons()) return null;
-        const c2 = c1.cdr.toPtr(Cons);
-        if (!c2.car.isFixnum()) return null;
+        const macro_def_live = self.resolveForwardedValue(macro_def);
+        if (!macro_def_live.isCons()) return null;
+        const c1 = macro_def_live.toPtr(Cons);
+        const closure_val = self.resolveForwardedValue(c1.car);
+        if (!closure_val.isClosure()) return null;
+        const c1_cdr = self.resolveForwardedValue(c1.cdr);
+        if (!c1_cdr.isCons()) return null;
+        const c2 = c1_cdr.toPtr(Cons);
+        const flags_val = self.resolveForwardedValue(c2.car);
+        if (!flags_val.isFixnum()) return null;
 
-        const flags = c2.car.toFixnum();
+        const flags = flags_val.toFixnum();
         if (flags < 0 or flags > 3) return null;
 
         return .{
-            .closure = c1.car,
+            .closure = closure_val,
             .has_whole = (flags & 1) != 0,
             .has_env = (flags & 2) != 0,
         };
@@ -3242,53 +3424,50 @@ pub const Compiler = struct {
         has_env: bool,
     ) !Value {
         const heap = if (self.heap) |val| val else return error.InvalidSyntax;
-        const saved_ext = vm.ext_roots;
+        const saved_ext = vm.saveExtRoots();
+        const saved_ext_roots = saved_ext.roots;
         const macro_count = self.macro_table.count();
         const symbol_macro_count = self.symbol_macros.count();
 
-        const root_closure_idx = saved_ext.len;
-        const root_args_idx = saved_ext.len + 1;
-        const root_whole_idx = saved_ext.len + 2;
-        const root_env_idx = saved_ext.len + 3;
-        const root_macro_start = saved_ext.len + 4;
+        const root_closure_idx = saved_ext_roots.len;
+        const root_args_idx = saved_ext_roots.len + 1;
+        const root_whole_idx = saved_ext_roots.len + 2;
+        const root_env_idx = saved_ext_roots.len + 3;
+        const root_macro_start = saved_ext_roots.len + 4;
         const root_symbol_start = root_macro_start + (macro_count * 2);
-        const roots = try self.allocator.alloc(
-            Value,
-            saved_ext.len + 4 + (macro_count * 2) + (symbol_macro_count * 2),
-        );
-        defer self.allocator.free(roots);
+        const total_roots = saved_ext_roots.len + 4 + (macro_count * 2) + (symbol_macro_count * 2);
+        var roots = std.ArrayList(Value){};
+        defer roots.deinit(self.allocator);
+        try roots.ensureTotalCapacity(self.allocator, total_roots);
 
-        if (saved_ext.len > 0) {
-            @memcpy(roots[0..saved_ext.len], saved_ext);
+        if (saved_ext_roots.len > 0) {
+            try roots.appendSlice(self.allocator, saved_ext_roots);
         }
-        roots[root_closure_idx] = self.resolveForwardedValue(closure);
-        roots[root_args_idx] = self.resolveForwardedValue(args);
-        roots[root_whole_idx] = self.resolveForwardedValue(whole_form);
-        roots[root_env_idx] = Value.nil;
+        try roots.append(self.allocator, self.resolveForwardedValue(closure));
+        try roots.append(self.allocator, self.resolveForwardedValue(args));
+        try roots.append(self.allocator, self.resolveForwardedValue(whole_form));
+        try roots.append(self.allocator, Value.nil);
 
-        var root_idx = root_macro_start;
         var macro_iter = self.macro_table.iterator();
         while (macro_iter.next()) |entry| {
-            roots[root_idx] = entry.key_ptr.*;
-            roots[root_idx + 1] = entry.value_ptr.*;
-            root_idx += 2;
+            try roots.append(self.allocator, entry.key_ptr.*);
+            try roots.append(self.allocator, entry.value_ptr.*);
         }
         var sym_iter = self.symbol_macros.iterator();
         while (sym_iter.next()) |entry| {
-            roots[root_idx] = entry.key_ptr.*;
-            roots[root_idx + 1] = entry.value_ptr.*;
-            root_idx += 2;
+            try roots.append(self.allocator, entry.key_ptr.*);
+            try roots.append(self.allocator, entry.value_ptr.*);
         }
 
-        vm.setExtRoots(roots);
-        defer vm.setExtRoots(saved_ext);
+        vm.setExtRootsOwned(&roots);
+        defer vm.restoreExtRoots(saved_ext);
 
         if (has_env) {
-            roots[root_env_idx] = try heap.allocMacroEnv();
+            roots.items[root_env_idx] = try heap.allocMacroEnv();
         }
 
         var arg_count: usize = @as(usize, @intFromBool(has_whole)) + @as(usize, @intFromBool(has_env));
-        var arg_scan = self.resolveForwardedValue(roots[root_args_idx]);
+        var arg_scan = self.resolveForwardedValue(roots.items[root_args_idx]);
         while (arg_scan.isCons()) {
             arg_scan = self.resolveForwardedValue(arg_scan);
             arg_count += 1;
@@ -3308,15 +3487,15 @@ pub const Compiler = struct {
         var call_arg_idx: usize = 0;
 
         if (has_whole) {
-            call_args_buf[call_arg_idx] = roots[root_whole_idx];
+            call_args_buf[call_arg_idx] = roots.items[root_whole_idx];
             call_arg_idx += 1;
         }
         if (has_env) {
-            call_args_buf[call_arg_idx] = roots[root_env_idx];
+            call_args_buf[call_arg_idx] = roots.items[root_env_idx];
             call_arg_idx += 1;
         }
 
-        var arg_list = self.resolveForwardedValue(roots[root_args_idx]);
+        var arg_list = self.resolveForwardedValue(roots.items[root_args_idx]);
         while (arg_list.isCons()) {
             arg_list = self.resolveForwardedValue(arg_list);
             const arg_cons = arg_list.toPtr(Cons);
@@ -3396,9 +3575,9 @@ pub const Compiler = struct {
             }
         }
 
-        const call_result = vm.callFromStack(roots[root_closure_idx], call_args) catch |err| {
+        const call_result = vm.callFromStack(roots.items[root_closure_idx], call_args) catch |err| {
             try self.restoreMacroTablesFromRoots(
-                roots,
+                roots.items,
                 root_macro_start,
                 macro_count,
                 root_symbol_start,
@@ -3409,7 +3588,7 @@ pub const Compiler = struct {
         };
 
         try self.restoreMacroTablesFromRoots(
-            roots,
+            roots.items,
             root_macro_start,
             macro_count,
             root_symbol_start,
@@ -3426,7 +3605,7 @@ pub const Compiler = struct {
         const b = if (self.builtins) |val| val else return error.InvalidSyntax;
 
         // Precompiled defmacro entry: (closure flags transformed-def)
-        if (decodeCompiledMacroEntry(macro_def)) |entry| {
+        if (self.decodeCompiledMacroEntry(macro_def)) |entry| {
             if (std.posix.getenv("HABU_TRACE_COMPILE_MACRO_SOURCE") != null and whole_form.isCons()) {
                 const head = whole_form.toPtr(Cons).car;
                 if (head.isSymbol()) {
@@ -3616,12 +3795,13 @@ pub const Compiler = struct {
 
         const saved_state = vm_mod.State.save(vm);
         const saved_env = vm.global_env;
-        const saved_ext = vm.ext_roots;
+        const saved_ext = vm.saveExtRoots();
+        const saved_ext_roots = saved_ext.roots;
         const saved_pool = saved_state.chunk_pool;
         const macro_count = self.macro_table.count();
         const symbol_macro_count = self.symbol_macros.count();
 
-        const ext_prefix = saved_ext.len;
+        const ext_prefix = saved_ext_roots.len;
         const root_chunk_idx = ext_prefix + saved_pool.len;
         const root_closure_idx = ext_prefix + saved_pool.len + 1;
         const root_args_idx = ext_prefix + saved_pool.len + 2;
@@ -3629,41 +3809,37 @@ pub const Compiler = struct {
         const root_env_idx = ext_prefix + saved_pool.len + 4;
         const root_macro_start = ext_prefix + saved_pool.len + 5;
         const root_symbol_start = root_macro_start + (macro_count * 2);
-        const macro_roots = try self.allocator.alloc(
-            Value,
-            ext_prefix + saved_pool.len + 5 + (macro_count * 2) + (symbol_macro_count * 2),
-        );
-        defer self.allocator.free(macro_roots);
+        const macro_root_count = ext_prefix + saved_pool.len + 5 + (macro_count * 2) + (symbol_macro_count * 2);
+        var macro_roots = std.ArrayList(Value){};
+        defer macro_roots.deinit(self.allocator);
+        try macro_roots.ensureTotalCapacity(self.allocator, macro_root_count);
         const chunk_roots = try self.allocator.alloc(Value, saved_pool.len + child_chunks.len);
         defer self.allocator.free(chunk_roots);
-        if (saved_ext.len > 0) {
-            @memcpy(macro_roots[0..saved_ext.len], saved_ext);
+        if (saved_ext_roots.len > 0) {
+            try macro_roots.appendSlice(self.allocator, saved_ext_roots);
         }
         for (saved_pool, 0..) |saved_chunk_val, i| {
-            macro_roots[ext_prefix + i] = saved_chunk_val;
+            try macro_roots.append(self.allocator, saved_chunk_val);
             chunk_roots[i] = saved_chunk_val;
         }
-        macro_roots[root_chunk_idx] = self.resolveForwardedValue(chunk_val);
-        macro_roots[root_closure_idx] = Value.nil;
-        macro_roots[root_args_idx] = self.resolveForwardedValue(args);
-        macro_roots[root_whole_idx] = self.resolveForwardedValue(whole_form);
-        macro_roots[root_env_idx] = Value.nil;
-        var root_idx = root_macro_start;
+        try macro_roots.append(self.allocator, self.resolveForwardedValue(chunk_val));
+        try macro_roots.append(self.allocator, Value.nil);
+        try macro_roots.append(self.allocator, self.resolveForwardedValue(args));
+        try macro_roots.append(self.allocator, self.resolveForwardedValue(whole_form));
+        try macro_roots.append(self.allocator, Value.nil);
         var macro_iter = self.macro_table.iterator();
         while (macro_iter.next()) |entry| {
-            macro_roots[root_idx] = entry.key_ptr.*;
-            macro_roots[root_idx + 1] = entry.value_ptr.*;
-            root_idx += 2;
+            try macro_roots.append(self.allocator, entry.key_ptr.*);
+            try macro_roots.append(self.allocator, entry.value_ptr.*);
         }
         var sym_iter = self.symbol_macros.iterator();
         while (sym_iter.next()) |entry| {
-            macro_roots[root_idx] = entry.key_ptr.*;
-            macro_roots[root_idx + 1] = entry.value_ptr.*;
-            root_idx += 2;
+            try macro_roots.append(self.allocator, entry.key_ptr.*);
+            try macro_roots.append(self.allocator, entry.value_ptr.*);
         }
         const macro_chunk_base: u16 = @intCast(saved_pool.len);
         if (macro_chunk_base > 0) {
-            try patchChunkClosureIndices(macro_roots[root_chunk_idx].toPtr(Chunk), macro_chunk_base);
+            try patchChunkClosureIndices(macro_roots.items[root_chunk_idx].toPtr(Chunk), macro_chunk_base);
         }
 
         for (child_chunks, 0..) |cv, i| {
@@ -3674,11 +3850,11 @@ pub const Compiler = struct {
             chunk_roots[saved_pool.len + i] = cv;
         }
 
-        vm.setExtRoots(macro_roots);
+        vm.setExtRootsOwned(&macro_roots);
         vm.setGlobalEnv(&self.globals);
         vm.setChunkPool(chunk_roots);
         defer {
-            vm.setExtRoots(saved_ext);
+            vm.restoreExtRoots(saved_ext);
             vm.global_env = saved_env;
 
             var restore_state = saved_state;
@@ -3689,13 +3865,13 @@ pub const Compiler = struct {
                 if (saved_state.chunk_pool_owner) |owner| {
                     const copy_len = @min(owner.items.len, saved_pool.len);
                     for (owner.items[0..copy_len], 0..) |*slot, i| {
-                        slot.* = macro_roots[ext_prefix + i];
+                        slot.* = macro_roots.items[ext_prefix + i];
                     }
                     restore_state.chunk_pool_owner = owner;
                     restore_state.chunk_pool = owner.items;
                 } else {
                     for (saved_pool, 0..) |*slot, i| {
-                        slot.* = macro_roots[ext_prefix + i];
+                        slot.* = macro_roots.items[ext_prefix + i];
                     }
                     restore_state.chunk_pool_owner = null;
                     restore_state.chunk_pool = saved_pool;
@@ -3708,23 +3884,23 @@ pub const Compiler = struct {
             restoreVmStatePreserveRelay(vm, restore_state);
         }
 
-        const chunk_ptr = macro_roots[root_chunk_idx].toPtr(Chunk);
+        const chunk_ptr = macro_roots.items[root_chunk_idx].toPtr(Chunk);
         const compile_closure = try heap.allocClosure(
-            macro_roots[root_chunk_idx],
+            macro_roots.items[root_chunk_idx],
             chunk_ptr.arity,
             &[_]Value{},
         );
-        macro_roots[root_closure_idx] = try vm.callFromStackAt(vm.sp, compile_closure, &[_]Value{});
+        macro_roots.items[root_closure_idx] = try vm.callFromStackAt(vm.sp, compile_closure, &[_]Value{});
 
-        const closure_val = macro_roots[root_closure_idx];
+        const closure_val = macro_roots.items[root_closure_idx];
         if (!closure_val.isClosure()) return error.InvalidSyntax;
 
         if (env_var != null) {
-            macro_roots[root_env_idx] = try heap.allocMacroEnv();
+            macro_roots.items[root_env_idx] = try heap.allocMacroEnv();
         }
 
         var arg_count: usize = @as(usize, @intFromBool(whole_var != null)) + @as(usize, @intFromBool(env_var != null));
-        var arg_scan = self.resolveForwardedValue(macro_roots[root_args_idx]);
+        var arg_scan = self.resolveForwardedValue(macro_roots.items[root_args_idx]);
         while (arg_scan.isCons()) {
             arg_scan = self.resolveForwardedValue(arg_scan);
             arg_count += 1;
@@ -3744,15 +3920,15 @@ pub const Compiler = struct {
         var call_arg_idx: usize = 0;
 
         if (whole_var != null) {
-            call_args_buf[call_arg_idx] = macro_roots[root_whole_idx];
+            call_args_buf[call_arg_idx] = macro_roots.items[root_whole_idx];
             call_arg_idx += 1;
         }
         if (env_var != null) {
-            call_args_buf[call_arg_idx] = macro_roots[root_env_idx];
+            call_args_buf[call_arg_idx] = macro_roots.items[root_env_idx];
             call_arg_idx += 1;
         }
 
-        var arg_list = self.resolveForwardedValue(macro_roots[root_args_idx]);
+        var arg_list = self.resolveForwardedValue(macro_roots.items[root_args_idx]);
         while (arg_list.isCons()) {
             arg_list = self.resolveForwardedValue(arg_list);
             const arg_cons = arg_list.toPtr(Cons);
@@ -3764,7 +3940,7 @@ pub const Compiler = struct {
 
         const call_result = vm.callFromStack(closure_val, call_args) catch |err| {
             try self.restoreMacroTablesFromRoots(
-                macro_roots,
+                macro_roots.items,
                 root_macro_start,
                 macro_count,
                 root_symbol_start,
@@ -3775,7 +3951,7 @@ pub const Compiler = struct {
         };
 
         try self.restoreMacroTablesFromRoots(
-            macro_roots,
+            macro_roots.items,
             root_macro_start,
             macro_count,
             root_symbol_start,
@@ -3968,7 +4144,20 @@ pub const Compiler = struct {
             return error.InvalidLambda;
         }
 
-        const cons = args.toPtr(Cons);
+        var lambda_args = args;
+        var lambda_args_tok: ?CompileRootToken = null;
+        var lambda_args_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, lambda_args);
+            lambda_args_tok = tok;
+            lambda_args_vm = vm;
+            lambda_args = vm.globals[tok.root_idx];
+        }
+        defer if (lambda_args_tok) |tok| {
+            popCompileRoot(lambda_args_vm.?, tok.root_idx, tok.stack_idx);
+        };
+
+        const cons = lambda_args.toPtr(Cons);
         const params_expr = cons.car;
         const body_exprs = cons.cdr;
 
@@ -4417,7 +4606,13 @@ pub const Compiler = struct {
         // Preserve source lambda expression for FUNCTION-LAMBDA-EXPRESSION.
         const heap = if (self.heap) |val| val else return error.UninitializedBuiltins;
         const b = if (self.builtins) |val| val else return error.UninitializedBuiltins;
-        lam_ir.lambda.lambda_expr = try heap.allocCons(b.lambda, args);
+        const live_lambda_args = if (self.vm) |vm| blk: {
+            if (lambda_args_tok) |tok| {
+                break :blk self.resolveForwardedValue(vm.globals[tok.root_idx]);
+            }
+            break :blk self.resolveForwardedValue(lambda_args);
+        } else self.resolveForwardedValue(lambda_args);
+        lam_ir.lambda.lambda_expr = try heap.allocCons(b.lambda, live_lambda_args);
         return lam_ir;
     }
 
@@ -4781,11 +4976,14 @@ pub const Compiler = struct {
 
     /// Collect free variables in a list of expressions
     fn collectFreeVarsInList(self: *Compiler, list: Value, env: *const Env, captures: *CaptureSet) error{OutOfMemory}!void {
-        var current = list;
+        var current = self.resolveForwardedValue(list);
         while (current.isCons()) {
+            current = self.resolveForwardedValue(current);
             const cons = current.toPtr(Cons);
-            try self.collectFreeVars(cons.car, env, captures);
-            current = cons.cdr;
+            const item = self.resolveForwardedValue(cons.car);
+            const next = self.resolveForwardedValue(cons.cdr);
+            try self.collectFreeVars(item, env, captures);
+            current = next;
         }
     }
 
@@ -5699,8 +5897,8 @@ pub const Compiler = struct {
                     self.resolveForwardedValue(entry.sym_val);
             }
 
-            const slot_name = entry.sym_val.toPtr(Symbol).getName();
-            const slot_ref = try self.builder.variable(slot_name, 0, entry.index);
+            // Use the stable copied name captured before any GC-capable work.
+            const slot_ref = try self.builder.variable(entry.name, 0, entry.index);
             const box_set = try self.allocator.create(Ir);
             box_set.* = .{ .box_set = .{ .left = slot_ref, .right = lambda_ir } };
             init_forms[i] = box_set;
@@ -5858,7 +6056,7 @@ pub const Compiler = struct {
         var i = clauses.len;
         while (i > 0) {
             i -= 1;
-            const clause = clauses[i];
+            const clause = self.resolveForwardedValue(clauses[i]);
             if (!clause.isCons()) return error.InvalidSyntax;
             const clause_cons = clause.toPtr(Cons);
             const test_expr = clause_cons.car;
@@ -6075,10 +6273,14 @@ pub const Compiler = struct {
 
         const spread_args = try self.allocator.alloc(*const Ir, spread_count);
         var idx: usize = 0;
-        while (rest.isCons()) : (rest = rest.toPtr(Cons).cdr) {
+        while (rest.isCons()) {
+            rest = self.resolveForwardedValue(rest);
             const cons = rest.toPtr(Cons);
-            spread_args[idx] = try self.compile(cons.car, env);
+            const arg_expr = self.resolveForwardedValue(cons.car);
+            const next = self.resolveForwardedValue(cons.cdr);
+            spread_args[idx] = try self.compile(arg_expr, env);
             idx += 1;
+            rest = next;
         }
 
         // Multiple args: need to build combined args list
@@ -8210,20 +8412,7 @@ pub const Compiler = struct {
 
     fn compileValues(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (values v1 v2 ...)
-        var val_count: usize = 0;
-        var count_cur = args;
-        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
-            val_count += 1;
-        }
-
-        const vals = try self.allocator.alloc(*const Ir, val_count);
-        var current = args;
-        var idx: usize = 0;
-        while (current.isCons()) : (current = current.toPtr(Cons).cdr) {
-            const cons = current.toPtr(Cons);
-            vals[idx] = try self.compile(cons.car, env);
-            idx += 1;
-        }
+        const vals = try self.compileCallArgsSlice(args, env);
 
         const node = try self.allocator.create(Ir);
         node.* = .{ .values = vals };
@@ -8297,20 +8486,7 @@ pub const Compiler = struct {
         // Compile function expression
         const func_ir = try self.compile(cons1.car, env);
 
-        var form_count: usize = 0;
-        var scan = cons1.cdr;
-        while (scan.isCons()) : (scan = scan.toPtr(Cons).cdr) {
-            form_count += 1;
-        }
-        if (!scan.isNil()) return error.InvalidSyntax;
-
-        const forms = try self.allocator.alloc(*const Ir, form_count);
-        var current = cons1.cdr;
-        var idx: usize = 0;
-        while (current.isCons()) : (current = current.toPtr(Cons).cdr) {
-            forms[idx] = try self.compile(current.toPtr(Cons).car, env);
-            idx += 1;
-        }
+        const forms = try self.compileCallArgsSlice(cons1.cdr, env);
 
         return try self.builder.mvCall(func_ir, forms);
     }
@@ -8555,6 +8731,12 @@ pub const Compiler = struct {
         if (self.generic_functions.fetchRemove(name)) |removed| {
             self.globals.allocator.free(removed.key);
             for (removed.value.items) |method| {
+                for (method.specializers) |spec| {
+                    switch (spec) {
+                        .class_name => |class_name| self.globals.allocator.free(class_name),
+                        .any, .eql_obj => {},
+                    }
+                }
                 self.globals.allocator.free(method.specializers);
                 self.globals.allocator.free(method.function_name);
             }
@@ -9355,17 +9537,19 @@ pub const Compiler = struct {
 
         const saved_state = vm_mod.State.save(vm);
         const saved_env = vm.global_env;
-        const saved_ext = vm.ext_roots;
+        const saved_ext = vm.saveExtRoots();
+        const saved_ext_roots = saved_ext.roots;
         const saved_pool = saved_state.chunk_pool;
-        const ext_prefix = saved_ext.len;
+        const ext_prefix = saved_ext_roots.len;
 
-        const pool_roots = try self.allocator.alloc(Value, ext_prefix + saved_pool.len);
-        defer self.allocator.free(pool_roots);
-        if (saved_ext.len > 0) {
-            @memcpy(pool_roots[0..saved_ext.len], saved_ext);
+        var pool_roots = std.ArrayList(Value){};
+        defer pool_roots.deinit(self.allocator);
+        try pool_roots.ensureTotalCapacity(self.allocator, ext_prefix + saved_pool.len);
+        if (saved_ext_roots.len > 0) {
+            try pool_roots.appendSlice(self.allocator, saved_ext_roots);
         }
         if (saved_pool.len > 0) {
-            @memcpy(pool_roots[ext_prefix .. ext_prefix + saved_pool.len], saved_pool);
+            try pool_roots.appendSlice(self.allocator, saved_pool);
         }
         const chunk_roots = try self.allocator.alloc(Value, child_chunks.len);
         defer self.allocator.free(chunk_roots);
@@ -9373,10 +9557,10 @@ pub const Compiler = struct {
             chunk_roots[i] = cv;
         }
 
-        vm.setExtRoots(pool_roots);
+        vm.setExtRootsOwned(&pool_roots);
         vm.setChunkPool(chunk_roots);
         defer {
-            vm.setExtRoots(saved_ext);
+            vm.restoreExtRoots(saved_ext);
             vm.global_env = saved_env;
 
             var restore_state = saved_state;
@@ -9384,13 +9568,13 @@ pub const Compiler = struct {
                 if (saved_state.chunk_pool_owner) |owner| {
                     const copy_len = @min(owner.items.len, saved_pool.len);
                     for (owner.items[0..copy_len], 0..) |*slot, i| {
-                        slot.* = pool_roots[ext_prefix + i];
+                        slot.* = pool_roots.items[ext_prefix + i];
                     }
                     restore_state.chunk_pool_owner = owner;
                     restore_state.chunk_pool = owner.items;
                 } else {
                     for (saved_pool, 0..) |*slot, i| {
-                        slot.* = pool_roots[ext_prefix + i];
+                        slot.* = pool_roots.items[ext_prefix + i];
                     }
                     restore_state.chunk_pool_owner = null;
                     restore_state.chunk_pool = saved_pool;
@@ -9790,6 +9974,8 @@ pub const Compiler = struct {
         var struct_name_raw: []const u8 = undefined;
         var accessor_prefix: []const u8 = undefined;
         var accessor_prefix_owned = true;
+        var emit_constructor = true;
+        var constructor_name_override: ?[]const u8 = null;
         var emit_copier = true;
         var copier_name_override: ?[]const u8 = null;
         var emit_predicate = true;
@@ -9901,7 +10087,25 @@ pub const Compiler = struct {
                                 if (value.isNil()) {
                                     emit_copier = false;
                                 } else if (self.getStringOrSymbolName(value)) |name| {
+                                    if (copier_name_override) |n| self.allocator.free(n);
                                     copier_name_override = try self.allocator.dupe(u8, name);
+                                } else {
+                                    return error.InvalidSyntax;
+                                }
+                            }
+                        } else if (std.ascii.eqlIgnoreCase(key_name, "constructor")) {
+                            // (:constructor) = default, (:constructor nil) = suppress,
+                            // (:constructor name [lambda-list]) = custom name.
+                            if (!opt_cons.cdr.isCons()) {
+                                emit_constructor = true;
+                            } else {
+                                const value = opt_cons.cdr.toPtr(Cons).car;
+                                if (value.isNil()) {
+                                    emit_constructor = false;
+                                } else if (self.getStringOrSymbolName(value)) |name| {
+                                    emit_constructor = true;
+                                    if (constructor_name_override) |n| self.allocator.free(n);
+                                    constructor_name_override = try self.allocator.dupe(u8, name);
                                 } else {
                                     return error.InvalidSyntax;
                                 }
@@ -9915,13 +10119,14 @@ pub const Compiler = struct {
                                 if (value.isNil()) {
                                     emit_predicate = false;
                                 } else if (self.getStringOrSymbolName(value)) |name| {
+                                    if (predicate_name_override) |n| self.allocator.free(n);
                                     predicate_name_override = try self.allocator.dupe(u8, name);
                                 } else {
                                     return error.InvalidSyntax;
                                 }
                             }
                         }
-                        // Other options (:constructor, :include, :type, etc.) silently skipped for now
+                        // Other options (:include, :type, etc.) silently skipped for now
                     }
                 }
                 options = opt_cell.cdr;
@@ -9933,6 +10138,7 @@ pub const Compiler = struct {
             return error.InvalidSyntax;
         }
         defer if (accessor_prefix_owned) self.allocator.free(accessor_prefix);
+        defer if (constructor_name_override) |n| self.allocator.free(n);
         defer if (copier_name_override) |n| self.allocator.free(n);
         defer if (predicate_name_override) |n| self.allocator.free(n);
 
@@ -10051,31 +10257,42 @@ pub const Compiler = struct {
         const struct_type = try self.type_checker.builder.makeStruct(struct_name, struct_fields);
         try self.registerStructType(struct_name, struct_type);
 
+        // Register a runtime class entry so TYPEP/TYPECASE recognize DEFSTRUCT
+        // type names even when the tested object is not a struct instance.
+        const struct_class = try self.allocateClass(heap, name_sym_val, Value.nil, slot_specs.items);
+        try heap.putLispClass(name_sym_val, struct_class);
+
         // Extract slot names for constructor params
         var slot_names = try self.allocator.alloc([]const u8, slot_specs.items.len);
         for (slot_specs.items, 0..) |spec, i| {
             slot_names[i] = spec.name;
         }
 
-        // Compute number of definitions: constructor + accessors + writers + name_lit
-        // + optional predicate + optional copier
+        // Compute number of definitions: accessors + writers + name_lit
+        // + optional constructor + optional predicate + optional copier
+        const ctor_count: usize = if (emit_constructor) 1 else 0;
         const pred_count: usize = if (emit_predicate) 1 else 0;
         const copier_count: usize = if (emit_copier) 1 else 0;
-        const num_defs = 2 + pred_count + copier_count + (slot_specs.items.len * 2);
+        const num_defs = 1 + ctor_count + pred_count + copier_count + (slot_specs.items.len * 2);
         const defs = try self.allocator.alloc(*Ir, num_defs);
         var def_idx: usize = 0;
 
-        // 1. Constructor: (defun make-name (slot1 slot2 ...) (vector 'name slot1 slot2 ...))
-        const make_name = try self.concatStrings("MAKE-", struct_name);
-        defs[def_idx] = try self.generateStructConstructor(
-            heap,
-            make_name,
-            struct_name,
-            slot_specs.items,
-            env,
-            try self.builder.lit(Value.nil),
-        );
-        def_idx += 1;
+        // 1. Constructor (unless suppressed): (defun make-name (...) ...)
+        if (emit_constructor) {
+            const ctor_name = if (constructor_name_override) |n|
+                try self.allocator.dupe(u8, n)
+            else
+                try self.concatStrings("MAKE-", struct_name);
+            defs[def_idx] = try self.generateStructConstructor(
+                heap,
+                ctor_name,
+                struct_name,
+                slot_specs.items,
+                env,
+                try self.builder.lit(Value.nil),
+            );
+            def_idx += 1;
+        }
 
         // 2. Accessors: (defun name-slotN (obj) (if (name-p obj) (aref obj N+1) (error)))
         for (slot_specs.items, 0..) |spec, i| {
@@ -11949,22 +12166,10 @@ pub const Compiler = struct {
 
         if (first.cdr.isNil()) return lookup_ir;
 
-        var form_count: usize = 0;
-        var scan = first.cdr;
-        while (scan.isCons()) : (scan = scan.toPtr(Cons).cdr) {
-            form_count += 1;
-        }
-        if (!scan.isNil()) return error.InvalidSyntax;
-
-        const exprs = try self.allocator.alloc(*const Ir, form_count + 1);
-        var rest = first.cdr;
-        var idx: usize = 0;
-        while (rest.isCons()) : (rest = rest.toPtr(Cons).cdr) {
-            const cell = rest.toPtr(Cons);
-            exprs[idx] = try self.compile(cell.car, env);
-            idx += 1;
-        }
-        exprs[idx] = lookup_ir;
+        const side_effect_exprs = try self.compileCallArgsSlice(first.cdr, env);
+        const exprs = try self.allocator.alloc(*const Ir, side_effect_exprs.len + 1);
+        @memcpy(exprs[0..side_effect_exprs.len], side_effect_exprs);
+        exprs[side_effect_exprs.len] = lookup_ir;
 
         const node = try self.allocator.create(Ir);
         node.* = .{ .progn = exprs };
@@ -12133,7 +12338,7 @@ pub const Compiler = struct {
         // Extract parameter names and specializers (interned symbols)
         var dispatch_params = std.ArrayList([]const u8){};
         defer dispatch_params.deinit(self.allocator);
-        var specializers = std.ArrayList(Value){};
+        var specializers = std.ArrayList(MethodSpecializer){};
         defer specializers.deinit(self.allocator);
 
         const heap = if (self.heap) |val| val else return error.CompilerNotInitialized;
@@ -12153,7 +12358,7 @@ pub const Compiler = struct {
                     const param_name = param.toPtr(Symbol).getName();
                     try dispatch_params.append(self.allocator, try self.allocator.dupe(u8, param_name));
                     _ = try lambda_env.bindSym(param);
-                    try specializers.append(self.allocator, Value.t); // t = any type
+                    try specializers.append(self.allocator, .any);
                 },
                 .cons => {
                     // Specialized parameter: (param-name class-name)
@@ -12166,21 +12371,23 @@ pub const Compiler = struct {
                     if (spec_cons.cdr.isCons()) {
                         const class_cons = spec_cons.cdr.toPtr(Cons);
                         if (class_cons.car.isSymbol()) {
-                            // Intern the class name symbol
                             const class_name = class_cons.car.toPtr(Symbol).getName();
-                            try specializers.append(self.allocator, try heap.intern(class_name));
+                            try specializers.append(self.allocator, .{
+                                .class_name = class_name,
+                            });
                         } else if (class_cons.car.isCons()) {
                             // (eql obj) specializer
                             if (self.eqlSpecializerObject(class_cons.car) != null) {
-                                try specializers.append(self.allocator, class_cons.car);
+                                const eql_obj = self.eqlSpecializerObject(class_cons.car).?;
+                                try specializers.append(self.allocator, .{ .eql_obj = eql_obj });
                             } else {
-                                try specializers.append(self.allocator, Value.t);
+                                try specializers.append(self.allocator, .any);
                             }
                         } else {
-                            try specializers.append(self.allocator, Value.t);
+                            try specializers.append(self.allocator, .any);
                         }
                     } else {
-                        try specializers.append(self.allocator, Value.t);
+                        try specializers.append(self.allocator, .any);
                     }
                 },
                 else => return error.InvalidSyntax,
@@ -12195,11 +12402,9 @@ pub const Compiler = struct {
         self.method_params = dispatch_params_for_cnm;
         defer self.method_params = saved_method_params;
 
-        // Compile method body in lambda environment
+        // Collect captures before compiling body. Compiling can trigger GC via
+        // macro expansion; avoid traversing stale source-list snapshots after.
         const body = body_cons.cdr;
-        const body_ir = try self.compileBodyWithTail(body, &lambda_env, true);
-
-        // Collect free variables for captures
         var capture_set = CaptureSet.init(self.allocator);
         defer capture_set.deinit();
         try self.collectFreeVars(body, &lambda_env, &capture_set);
@@ -12207,18 +12412,6 @@ pub const Compiler = struct {
 
         // Save param names for dispatcher before toOwnedSlice consumes them
         const dispatch_params_copy = try self.allocator.dupe([]const u8, dispatch_params.items);
-
-        // Create lambda
-        const lambda_params = try self.allocator.dupe([]const u8, dispatch_params.items);
-        const lambda_ir = try self.builder.lambda(
-            lambda_params,
-            &[_]Ir.OptionalParam{},
-            &[_]Ir.KeyParam{},
-            false,
-            null,
-            captures,
-            body_ir,
-        );
 
         // Store method - auto-create generic function if it doesn't exist
         // First check if entry exists to avoid allocating key unnecessarily
@@ -12244,30 +12437,51 @@ pub const Compiler = struct {
         defer if (spec_owned) |s| self.allocator.free(s);
         const spec_str = if (specializers.items.len > 0) blk: {
             const spec_val = specializers.items[0];
-            switch (spec_val.typeKind()) {
-                .t => break :blk "t",
-                .symbol => break :blk spec_val.toPtr(Symbol).getName(),
-                .cons => {
-                    if (self.eqlSpecializerObject(spec_val)) |eql_obj| {
-                        const txt = try std.fmt.allocPrint(self.allocator, "eql_{x}", .{eql_obj.raw});
-                        spec_owned = txt;
-                        break :blk txt;
-                    }
-                    break :blk "cons";
+            switch (spec_val) {
+                .any => break :blk "t",
+                .class_name => |class_name| break :blk class_name,
+                .eql_obj => |eql_obj| {
+                    const txt = try std.fmt.allocPrint(self.allocator, "eql_{x}", .{eql_obj.raw});
+                    spec_owned = txt;
+                    break :blk txt;
                 },
-                else => break :blk "obj",
             }
         } else "t";
         const method_name = try std.fmt.allocPrint(self.allocator, "{s}${s}${s}", .{ simple_name, qual_str, spec_str });
 
-        // Define method as global function
+        // Define method global slot
         const method_global_idx = try self.globals.define(method_name);
-        const method_define_ir = try self.builder.define(method_name, method_global_idx, lambda_ir);
+
+        const builtins = if (self.builtins) |val| val else return error.CompilerNotInitialized;
+
+        // Build specializers list once for Method object construction.
+        var specializers_list = Value.nil;
+        var spec_i = specializers.items.len;
+        while (spec_i > 0) {
+            spec_i -= 1;
+            const spec_val: Value = switch (specializers.items[spec_i]) {
+                .any => Value.t,
+                .class_name => |class_name| try heap.intern(class_name),
+                .eql_obj => |eql_obj| blk: {
+                    const eql_tail = try heap.allocCons(eql_obj, Value.nil);
+                    break :blk try heap.allocCons(builtins.ty_eql, eql_tail);
+                },
+            };
+            specializers_list = try heap.allocCons(spec_val, specializers_list);
+        }
 
         // Store method function name (persistent, needs globals.allocator)
         const persistent_method_name = try self.globals.allocator.dupe(u8, method_name);
-        // Copy specializer Values (they're interned, so no string duplication needed)
-        const persistent_specializers = try self.globals.allocator.dupe(Value, specializers.items);
+        const persistent_specializers = try self.globals.allocator.alloc(MethodSpecializer, specializers.items.len);
+        for (specializers.items, 0..) |spec, idx| {
+            persistent_specializers[idx] = switch (spec) {
+                .any => .any,
+                .class_name => |class_name| .{
+                    .class_name = try self.globals.allocator.dupe(u8, class_name),
+                },
+                .eql_obj => |eql_obj| .{ .eql_obj = eql_obj },
+            };
+        }
 
         // Create method def
         const method_def = MethodDef{
@@ -12309,21 +12523,12 @@ pub const Compiler = struct {
         const dispatcher = try self.generateMethodDispatcher(gen_name, gop.value_ptr.*, dispatch_params_copy);
 
         // Build qualifiers list for Method object (e.g., (:before) or nil for primary)
-        const builtins = if (self.builtins) |val| val else return error.CompilerNotInitialized;
         const qualifiers_list: Value = switch (qualifier) {
             .primary => Value.nil,
             .before => try heap.allocCons(builtins.kw_before, Value.nil),
             .after => try heap.allocCons(builtins.kw_after, Value.nil),
             .around => try heap.allocCons(builtins.kw_around, Value.nil),
         };
-
-        // Build specializers list for Method object
-        var specializers_list = Value.nil;
-        var spec_i = specializers.items.len;
-        while (spec_i > 0) {
-            spec_i -= 1;
-            specializers_list = try heap.allocCons(specializers.items[spec_i], specializers_list);
-        }
 
         // IR for qualifiers, specializers, lambda_list, and method function reference
         const qualifiers_ir = try self.builder.lit(qualifiers_list);
@@ -12362,6 +12567,21 @@ pub const Compiler = struct {
         const add_method_ir = try self.builder.addMethod(gf_ready_ir, make_method_ir);
         const gf_for_dispatch = try self.builder.globalRef(gen_name, global_idx);
         const set_dispatcher_ir = try self.builder.setGfDispatcher(gf_for_dispatch, dispatcher);
+
+        // Compile method body after all specialization bookkeeping to avoid
+        // carrying unrooted specializer Values across GC-heavy compilation.
+        const body_ir = try self.compileBodyWithTail(body, &lambda_env, true);
+        const lambda_params = try self.allocator.dupe([]const u8, dispatch_params.items);
+        const lambda_ir = try self.builder.lambda(
+            lambda_params,
+            &[_]Ir.OptionalParam{},
+            &[_]Ir.KeyParam{},
+            false,
+            null,
+            captures,
+            body_ir,
+        );
+        const method_define_ir = try self.builder.define(method_name, method_global_idx, lambda_ir);
 
         const defs = try self.allocator.alloc(*Ir, 3);
         defs[0] = method_define_ir;
@@ -12410,21 +12630,7 @@ pub const Compiler = struct {
             break :blk try self.allocator.alloc(*const Ir, 0);
         } else blk: {
             // Explicit args provided
-            var arg_count: usize = 0;
-            var scan = args;
-            while (scan.isCons()) : (scan = scan.toPtr(Cons).cdr) {
-                arg_count += 1;
-            }
-            if (!scan.isNil()) return error.InvalidSyntax;
-
-            const refs = try self.allocator.alloc(*const Ir, arg_count);
-            var curr = args;
-            var idx: usize = 0;
-            while (curr.isCons()) : (curr = curr.toPtr(Cons).cdr) {
-                refs[idx] = try self.compile(curr.toPtr(Cons).car, env);
-                idx += 1;
-            }
-            break :blk refs;
+            break :blk try self.compileCallArgsSlice(args, env);
         };
 
         const call_ir = try self.buildCallIr(next_method_ir, call_args, false);
@@ -12484,8 +12690,9 @@ pub const Compiler = struct {
         // Compute max arity across all methods - dispatcher needs to accept all params
         var max_arity: usize = 0;
         for (methods.items) |method| {
-            if (method.specializers.len > max_arity) {
-                max_arity = method.specializers.len;
+            const arity = self.methodSpecializerCount(method);
+            if (arity > max_arity) {
+                max_arity = arity;
             }
         }
 
@@ -12552,8 +12759,10 @@ pub const Compiler = struct {
             // Build condition by AND-ing all parameter type checks
             var cond_ir: ?*Ir = null;
 
-            for (primary.specializers, 0..) |spec_val, param_idx| {
+            const primary_arity = self.methodSpecializerCount(primary);
+            for (0..primary_arity) |param_idx| {
                 if (param_idx >= dispatch_params.len) return error.InvalidSyntax;
+                const spec_val = self.methodSpecializerAt(primary, param_idx);
 
                 // Reference to parameter
                 const arg_ir = try self.builder.variable(dispatch_params[param_idx], 0, @intCast(param_idx));
@@ -12727,8 +12936,10 @@ pub const Compiler = struct {
         for (before_methods) |before| {
             // Build condition: (typep arg class) for each specialized parameter
             var cond: ?*Ir = null;
-            for (before.specializers, 0..) |spec, param_idx| {
+            const before_arity = self.methodSpecializerCount(before);
+            for (0..before_arity) |param_idx| {
                 if (param_idx >= dispatch_params.len) continue;
+                const spec = self.methodSpecializerAt(before, param_idx);
 
                 const arg_ir = try self.builder.variable(dispatch_params[param_idx], 0, @intCast(param_idx));
                 const check = if (try self.buildMethodSpecializerCheck(spec, arg_ir)) |val|
@@ -12773,8 +12984,10 @@ pub const Compiler = struct {
 
                 // Build runtime type check condition
                 var cond: ?*Ir = null;
-                for (after.specializers, 0..) |spec, param_idx| {
+                const after_arity = self.methodSpecializerCount(after);
+                for (0..after_arity) |param_idx| {
                     if (param_idx >= dispatch_params.len) continue;
+                    const spec = self.methodSpecializerAt(after, param_idx);
 
                     const arg_ir = try self.builder.variable(dispatch_params[param_idx], 0, @intCast(param_idx));
                     const check = if (try self.buildMethodSpecializerCheck(spec, arg_ir)) |val|
@@ -12850,49 +13063,59 @@ pub const Compiler = struct {
         }
     }
 
+    fn methodSpecializerCount(self: *Compiler, method: MethodDef) usize {
+        _ = self;
+        return method.specializers.len;
+    }
+
+    fn methodSpecializerAt(self: *Compiler, method: MethodDef, idx: usize) MethodSpecializer {
+        _ = self;
+        if (idx >= method.specializers.len) return .any;
+        return method.specializers[idx];
+    }
+
     const SpecificityOrder = enum { more_specific, less_specific, equal };
 
     /// Compare two methods for specificity
     /// Returns .more_specific if a is more specific than b
     fn compareMethodSpecificity(self: *Compiler, a: MethodDef, b: MethodDef) !SpecificityOrder {
-        const min_len = @min(a.specializers.len, b.specializers.len);
+        const a_len = self.methodSpecializerCount(a);
+        const b_len = self.methodSpecializerCount(b);
+        const min_len = @min(a_len, b_len);
 
         for (0..min_len) |i| {
-            const a_spec = a.specializers[i];
-            const b_spec = b.specializers[i];
+            const a_spec = self.methodSpecializerAt(a, i);
+            const b_spec = self.methodSpecializerAt(b, i);
 
-            const a_is_t = a_spec.eq(Value.t);
-            const b_is_t = b_spec.eq(Value.t);
+            const a_is_any = a_spec == .any;
+            const b_is_any = b_spec == .any;
 
-            // Non-t is more specific than t
-            if (!a_is_t and b_is_t) return .more_specific;
-            if (a_is_t and !b_is_t) return .less_specific;
+            // Non-any is more specific than any.
+            if (!a_is_any and b_is_any) return .more_specific;
+            if (a_is_any and !b_is_any) return .less_specific;
 
-            // Both t - equal at this position
-            if (a_is_t and b_is_t) continue;
+            // Both any - equal at this position.
+            if (a_is_any and b_is_any) continue;
 
-            const a_is_eql = self.eqlSpecializerObject(a_spec) != null;
-            const b_is_eql = self.eqlSpecializerObject(b_spec) != null;
-
-            if (a_is_eql and b_is_eql) {
-                if (a_spec.eq(b_spec)) continue;
+            if (a_spec == .eql_obj and b_spec == .eql_obj) {
+                if (a_spec.eql_obj.eq(b_spec.eql_obj)) continue;
                 return .equal;
             }
 
-            if (a_is_eql and !b_is_eql) return .more_specific;
-            if (!a_is_eql and b_is_eql) return .less_specific;
+            if (a_spec == .eql_obj and b_spec != .eql_obj) return .more_specific;
+            if (a_spec != .eql_obj and b_spec == .eql_obj) return .less_specific;
 
             // Both non-t - check class hierarchy
-            if (a_spec.eq(b_spec)) continue; // Same class
+            if (a_spec == .class_name and b_spec == .class_name and std.mem.eql(u8, a_spec.class_name, b_spec.class_name)) continue;
 
-            // Check if a_spec is more specific (subclass of b_spec)
-            const cmp = try self.compareClassSpecificity(a_spec, b_spec);
+            if (a_spec != .class_name or b_spec != .class_name) return .equal;
+            const cmp = try self.compareClassSpecificityByName(a_spec.class_name, b_spec.class_name);
             if (cmp != .equal) return cmp;
         }
 
         // All compared positions equal - longer specializer list is more specific
-        if (a.specializers.len > b.specializers.len) return .more_specific;
-        if (a.specializers.len < b.specializers.len) return .less_specific;
+        if (a_len > b_len) return .more_specific;
+        if (a_len < b_len) return .less_specific;
         return .equal;
     }
 
@@ -12907,14 +13130,27 @@ pub const Compiler = struct {
         return arg_cons.car;
     }
 
-    fn buildMethodSpecializerCheck(self: *Compiler, spec: Value, arg_ir: *const Ir) anyerror!?*Ir {
-        if (spec.eq(Value.t)) return null;
-        if (self.eqlSpecializerObject(spec)) |eql_obj| {
-            const eql_obj_ir = try self.builder.lit(eql_obj);
-            return try self.builder.eql(arg_ir, eql_obj_ir);
-        }
-        const class_ir = try self.builder.lit(spec);
-        return try self.builder.typep(arg_ir, class_ir);
+    fn buildMethodSpecializerCheck(self: *Compiler, spec: MethodSpecializer, arg_ir: *const Ir) anyerror!?*Ir {
+        return switch (spec) {
+            .any => null,
+            .eql_obj => |eql_obj| blk: {
+                const eql_obj_ir = try self.builder.lit(eql_obj);
+                break :blk try self.builder.eql(arg_ir, eql_obj_ir);
+            },
+            .class_name => |class_name| blk: {
+                const heap = if (self.heap) |val| val else return error.CompilerNotInitialized;
+                const class_sym = try heap.intern(class_name);
+                const class_ir = try self.builder.lit(class_sym);
+                break :blk try self.builder.typep(arg_ir, class_ir);
+            },
+        };
+    }
+
+    fn compareClassSpecificityByName(self: *Compiler, class_a_name: []const u8, class_b_name: []const u8) !SpecificityOrder {
+        const heap = if (self.heap) |val| val else return .equal;
+        const class_a = try heap.intern(class_a_name);
+        const class_b = try heap.intern(class_b_name);
+        return self.compareClassSpecificity(class_a, class_b);
     }
 
     /// Compare two class specializers using CPL
@@ -12987,7 +13223,7 @@ pub const Compiler = struct {
         method: MethodDef,
         dispatch_params: []const []const u8,
     ) anyerror!*Ir {
-        const arity = method.specializers.len;
+        const arity = self.methodSpecializerCount(method);
         const params = dispatch_params[0..arity];
         return try self.generateMethodCallByName(method.function_name, params);
     }
@@ -14185,47 +14421,57 @@ pub const Compiler = struct {
             return try self.builder.lit(Value.nil);
         }
 
-        // Count expressions first to know which is last
-        var count: usize = 0;
-        var tmp = live_exprs;
-        while (tmp.isCons()) {
-            count += 1;
-            tmp = self.resolveForwardedValue(tmp.toPtr(Cons).cdr);
-        }
-
-        // DEBUG: assert count > 0
-        std.debug.assert(count > 0);
-
-        if (count == 1) {
-            const only = live_exprs.toPtr(Cons);
-            return try self.compileWithTail(only.car, env, in_tail);
-        }
-
-        const items = try self.allocator.alloc(*const Ir, count);
-        errdefer self.allocator.free(items);
-
         var list = live_exprs;
-        var idx: usize = 0;
-        while (list.isCons()) {
+        var list_tok: ?CompileRootToken = null;
+        var list_vm: ?*Vm = null;
+        if (self.vm) |vm| {
+            const tok = try self.pushCompileRoot(vm, list);
+            list_tok = tok;
+            list_vm = vm;
+            list = vm.globals[tok.root_idx];
+        }
+        defer if (list_tok) |tok| {
+            popCompileRoot(list_vm.?, tok.root_idx, tok.stack_idx);
+        };
+
+        var items = std.ArrayList(*const Ir){};
+        defer items.deinit(self.allocator);
+
+        var prev_expr: ?Value = null;
+        while (true) {
+            if (list_tok) |tok| {
+                if (list_vm) |vm| {
+                    list = vm.globals[tok.root_idx];
+                }
+            }
             list = self.resolveForwardedValue(list);
+            if (!list.isCons()) break;
             const cons = list.toPtr(Cons);
             const expr_val = self.resolveForwardedValue(cons.car);
             const next_list = self.resolveForwardedValue(cons.cdr);
-            const is_last = idx == count - 1;
-            // Only last expression is in tail position
-            const expr_ir = try self.compileWithTail(expr_val, env, in_tail and is_last);
-            items[idx] = expr_ir;
-            list = next_list;
-            idx += 1;
+            if (list_tok) |tok| {
+                if (list_vm) |vm| {
+                    vm.globals[tok.root_idx] = next_list;
+                }
+            } else {
+                list = next_list;
+            }
+            if (prev_expr) |expr_to_compile| {
+                const expr_ir = try self.compileWithTail(expr_to_compile, env, false);
+                try items.append(self.allocator, expr_ir);
+            }
+            prev_expr = expr_val;
         }
 
-        // DEBUG: assert we compiled all expressions
-        std.debug.assert(idx == count);
-        const result = try self.builder.progn(items);
-        // DEBUG: verify progn was created with all items
-        std.debug.assert(std.meta.activeTag(result.*) == .progn);
-        std.debug.assert(result.progn.len == count);
-        return result;
+        if (prev_expr) |last_expr| {
+            const last_ir = try self.compileWithTail(last_expr, env, in_tail);
+            try items.append(self.allocator, last_ir);
+            if (items.items.len == 1) return @constCast(items.items[0]);
+            return try self.builder.progn(items.items);
+        }
+
+        if (live_exprs.isCons()) return error.InvalidSyntax;
+        return try self.compileWithTail(live_exprs, env, in_tail);
     }
 
     fn filterDeclares(self: *Compiler, exprs: Value, env: *Env) !Value {
@@ -15076,31 +15322,55 @@ pub const Compiler = struct {
     fn resolveForwardedValue(self: *const Compiler, val: Value) Value {
         if (!val.isPointer()) return val;
         const heap = if (self.heap) |h| h else return val;
-        const stale_start = @intFromPtr(heap.to_start);
-        const stale_end = stale_start + heap.space_size;
-        const addr = val.toPtrAddr();
-        if (addr < stale_start or addr >= stale_end) return val;
-        const first_word: *const Value = @ptrFromInt(addr);
-        if (!first_word.isForwarding()) return val;
-        const new_addr = first_word.toPtrAddr();
-        const forwarded_size_ptr: *const usize = @ptrFromInt(addr + @sizeOf(Value));
-        const forwarded_size = forwarded_size_ptr.*;
-        const forwarded_size_ok = forwarded_size > 0 and
-            forwarded_size <= heap.space_size and
-            std.mem.isAligned(forwarded_size, @import("../runtime/heap.zig").ALIGNMENT);
-        const from_start = @intFromPtr(heap.from_start);
-        const from_end = @intFromPtr(heap.from_end);
-        const in_from = new_addr >= from_start and new_addr < from_end and forwarded_size <= from_end - new_addr;
-        var in_tenured = false;
-        if (heap.gcLayoutMode() == .generational) {
-            if (heap.tenuredRegion()) |tenured| {
-                const ten_start = @intFromPtr(tenured.start);
-                const ten_used_end = if (heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
-                in_tenured = new_addr >= ten_start and new_addr < ten_used_end and forwarded_size <= ten_used_end - new_addr;
+        var cur = val;
+        var resolved_live: ?Value = null;
+        var hops: u8 = 0;
+        while (hops < 8 and cur.isPointer()) : (hops += 1) {
+            const addr = cur.toPtrAddr();
+            if (!heap.containsAddrForDebug(addr)) break;
+
+            const first_word: *const Value = @ptrFromInt(addr);
+            if (!first_word.isForwarding()) break;
+
+            const new_addr = first_word.toPtrAddr();
+            const forwarded_size_ptr: *const usize = @ptrFromInt(addr + @sizeOf(Value));
+            const forwarded_size = forwarded_size_ptr.*;
+            const forwarded_size_ok = forwarded_size > 0 and
+                forwarded_size <= heap.space_size and
+                std.mem.isAligned(forwarded_size, @import("../runtime/heap.zig").ALIGNMENT);
+
+            const from_start = @intFromPtr(heap.from_start);
+            const from_live_end = @intFromPtr(heap.alloc_ptr);
+            const src_in_from = addr >= from_start and addr < from_live_end;
+            const in_from = new_addr >= from_start and new_addr < from_live_end and
+                forwarded_size <= from_live_end - new_addr;
+
+            const stale_start = @intFromPtr(heap.to_start);
+            const stale_end = stale_start + heap.space_size;
+            const in_stale = new_addr >= stale_start and new_addr < stale_end and
+                forwarded_size <= stale_end - new_addr;
+
+            var in_tenured = false;
+            if (heap.gcLayoutMode() == .generational) {
+                if (heap.tenuredRegion()) |tenured| {
+                    const ten_start = @intFromPtr(tenured.start);
+                    const ten_used_end = if (heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
+                    in_tenured = new_addr >= ten_start and new_addr < ten_used_end and
+                        forwarded_size <= ten_used_end - new_addr;
+                }
+            }
+
+            if (!forwarded_size_ok or !(in_from or in_stale or in_tenured)) break;
+            if (!runtime.objects.forwardingTargetLooksValid(cur.getTag(), new_addr, forwarded_size)) break;
+
+            const next = Value{ .raw = new_addr | @as(u64, @intFromEnum(cur.getTag())) };
+            if (next.raw == cur.raw) break;
+            cur = next;
+            if (in_from or in_tenured or (src_in_from and in_stale)) {
+                resolved_live = cur;
             }
         }
-        if (!forwarded_size_ok or !(in_from or in_tenured)) return val;
-        return .{ .raw = new_addr | @as(u64, @intFromEnum(val.getTag())) };
+        return resolved_live orelse val;
     }
 
     fn canonicalBuiltinSymbol(self: *Compiler, sym: Value) Value {
@@ -15202,7 +15472,7 @@ pub const Compiler = struct {
                             const key_name = entry_cons.car.toPtr(Symbol).getName();
                             if (std.mem.eql(u8, key_name, "%HABU-MACRO-ENTRY")) {
                                 const val = entry_cons.cdr;
-                                if (decodeCompiledMacroEntry(val) != null) {
+                                if (self.decodeCompiledMacroEntry(val) != null) {
                                     macro_entry_val = val;
                                 }
                             }
@@ -15252,21 +15522,13 @@ pub const Compiler = struct {
         if (s == b.@"*".raw) return self.compileVariadicArith(args, env, .mul, 1);
         if (s == b.@"/".raw) return self.compileVariadicArith(args, env, .div, null);
         if (s == b.append.raw) {
-            if (args.isNil()) return try self.builder.lit(Value.nil);
-            if (!args.isCons()) return try self.builder.lit(Value.nil);
-
-            var rest = args;
-            const first = rest.toPtr(Cons);
-            var acc = try self.compile(first.car, env);
-            rest = first.cdr;
-
-            while (rest.isCons()) : (rest = rest.toPtr(Cons).cdr) {
-                const cell = rest.toPtr(Cons);
-                const next = try self.compile(cell.car, env);
+            const parts = try self.compileCallArgsSlice(args, env);
+            if (parts.len == 0) return try self.builder.lit(Value.nil);
+            var acc = parts[0];
+            for (parts[1..]) |next| {
                 acc = try self.builder.append(acc, next);
             }
-
-            return acc;
+            return @constCast(acc);
         }
         if (s == b.log.raw) {
             // LOG supports (log x) and (log x base); lower base form to (/ (log x) (log base)).
@@ -15524,7 +15786,8 @@ pub const Compiler = struct {
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
     fn compileVariadicArith(self: *Compiler, args: Value, env: *const Env, op: PrimTag, identity: ?i64) anyerror!*Ir {
-        if (!args.isCons()) {
+        const live_args = self.resolveForwardedValue(args);
+        if (!live_args.isCons()) {
             // (+) -> 0, (*) -> 1, (-) and (/) are errors
             if (identity) |id| {
                 return try self.builder.lit(Value.makeFixnum(id));
@@ -15532,9 +15795,10 @@ pub const Compiler = struct {
             return error.InvalidSyntax;
         }
 
-        const cons1 = args.toPtr(Cons);
-        var result = try self.compile(cons1.car, env);
-        var rest = cons1.cdr;
+        const cons1 = live_args.toPtr(Cons);
+        const first_expr = self.resolveForwardedValue(cons1.car);
+        var result = try self.compile(first_expr, env);
+        var rest = self.resolveForwardedValue(cons1.cdr);
 
         if (rest.isNil()) {
             // (+ x) -> x, (* x) -> x
@@ -15551,8 +15815,12 @@ pub const Compiler = struct {
         }
 
         while (rest.isCons()) {
-            const c = rest.toPtr(Cons);
-            const arg = try self.compile(c.car, env);
+            const live_rest = self.resolveForwardedValue(rest);
+            if (!live_rest.isCons()) break;
+            const c = live_rest.toPtr(Cons);
+            const arg_expr = self.resolveForwardedValue(c.car);
+            const next_rest = self.resolveForwardedValue(c.cdr);
+            const arg = try self.compile(arg_expr, env);
             result = switch (op) {
                 .add => try self.builder.add(result, arg),
                 .sub => try self.builder.sub(result, arg),
@@ -15560,7 +15828,7 @@ pub const Compiler = struct {
                 .div => try self.builder.div(result, arg),
                 else => unreachable,
             };
-            rest = c.cdr;
+            rest = next_rest;
         }
 
         if (!rest.isNil()) return error.InvalidSyntax;
@@ -15568,13 +15836,17 @@ pub const Compiler = struct {
     }
 
     fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) anyerror!*Ir {
-        if (!args.isCons()) return error.InvalidSyntax;
-        const cons1 = args.toPtr(Cons);
-        const left = try self.compile(cons1.car, env);
+        const live_args = self.resolveForwardedValue(args);
+        if (!live_args.isCons()) return error.InvalidSyntax;
+        const cons1 = live_args.toPtr(Cons);
+        const left_expr = self.resolveForwardedValue(cons1.car);
+        const rest = self.resolveForwardedValue(cons1.cdr);
+        const left = try self.compile(left_expr, env);
 
-        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
-        const cons2 = cons1.cdr.toPtr(Cons);
-        const right = try self.compile(cons2.car, env);
+        if (!rest.isCons()) return error.InvalidSyntax;
+        const cons2 = rest.toPtr(Cons);
+        const right_expr = self.resolveForwardedValue(cons2.car);
+        const right = try self.compile(right_expr, env);
 
         return switch (prim) {
             .add => try self.builder.add(left, right),
@@ -16476,20 +16748,7 @@ pub const Compiler = struct {
 
     fn compileListPrim(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (list a b c ...) -> variadic
-        var count: usize = 0;
-        var count_cur = args;
-        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
-            count += 1;
-        }
-        const elements = try self.allocator.alloc(*const Ir, count);
-        var current = args;
-        var idx: usize = 0;
-        while (current.isCons()) {
-            const cons = current.toPtr(Cons);
-            elements[idx] = try self.compile(cons.car, env);
-            idx += 1;
-            current = cons.cdr;
-        }
+        const elements = try self.compileCallArgsSlice(args, env);
 
         const node = try self.allocator.create(Ir);
         node.* = .{ .list = elements };
@@ -16497,21 +16756,7 @@ pub const Compiler = struct {
     }
 
     fn compileBroadcastStream(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        var count: usize = 0;
-        var count_cur = args;
-        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
-            count += 1;
-        }
-        const streams = try self.allocator.alloc(*const Ir, count);
-
-        var current = args;
-        var idx: usize = 0;
-        while (current.isCons()) {
-            const cons = current.toPtr(Cons);
-            streams[idx] = try self.compile(cons.car, env);
-            idx += 1;
-            current = cons.cdr;
-        }
+        const streams = try self.compileCallArgsSlice(args, env);
 
         const node = try self.allocator.create(Ir);
         node.* = .{ .make_broadcast_stream = streams };
@@ -16519,21 +16764,7 @@ pub const Compiler = struct {
     }
 
     fn compileConcatenatedStream(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        var count: usize = 0;
-        var count_cur = args;
-        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
-            count += 1;
-        }
-        const streams = try self.allocator.alloc(*const Ir, count);
-
-        var current = args;
-        var idx: usize = 0;
-        while (current.isCons()) {
-            const cons = current.toPtr(Cons);
-            streams[idx] = try self.compile(cons.car, env);
-            idx += 1;
-            current = cons.cdr;
-        }
+        const streams = try self.compileCallArgsSlice(args, env);
 
         const node = try self.allocator.create(Ir);
         node.* = .{ .make_concatenated_stream = streams };
@@ -16603,20 +16834,7 @@ pub const Compiler = struct {
         const cons2 = cons1.cdr.toPtr(Cons);
         const control_ir = try self.compile(cons2.car, env);
 
-        var arg_count: usize = 0;
-        var count_cur = cons2.cdr;
-        while (count_cur.isCons()) : (count_cur = count_cur.toPtr(Cons).cdr) {
-            arg_count += 1;
-        }
-
-        const format_args = try self.allocator.alloc(*const Ir, arg_count);
-        var rest = cons2.cdr;
-        var arg_idx: usize = 0;
-        while (rest.isCons()) : (rest = rest.toPtr(Cons).cdr) {
-            const cons = rest.toPtr(Cons);
-            format_args[arg_idx] = try self.compile(cons.car, env);
-            arg_idx += 1;
-        }
+        const format_args = try self.compileCallArgsSlice(cons2.cdr, env);
 
         const node = try self.allocator.create(Ir);
         node.* = .{ .format = .{ .dest = dest_ir, .control = control_ir, .args = format_args } };
@@ -16763,10 +16981,74 @@ pub const Compiler = struct {
         return node;
     }
 
+    const EqEqlEqualTest = enum {
+        eq,
+        eql,
+        equal,
+    };
+
+    fn parseTestDesignatorSymbol(self: *Compiler, test_expr: Value) ?Value {
+        const b = self.builtins orelse return null;
+        const live_test = self.resolveForwardedValue(test_expr);
+        if (live_test.isSymbol()) return live_test;
+        if (!live_test.isCons()) return null;
+
+        const q0 = live_test.toPtr(Cons);
+        const q_head = self.resolveForwardedValue(q0.car);
+        if (!q_head.isSymbol()) return null;
+        const q_head_canon = self.canonicalBuiltinSymbol(q_head);
+        if (q_head_canon.raw != b.quote.raw) return null;
+
+        const q_rest = self.resolveForwardedValue(q0.cdr);
+        if (!q_rest.isCons()) return null;
+        const q1 = q_rest.toPtr(Cons);
+        const q_sym = self.resolveForwardedValue(q1.car);
+        if (!q1.cdr.isNil() or !q_sym.isSymbol()) return null;
+        return q_sym;
+    }
+
+    fn parseEqEqlEqualTestOption(
+        self: *Compiler,
+        options_expr: Value,
+        default_test: EqEqlEqualTest,
+    ) anyerror!EqEqlEqualTest {
+        const b = self.builtins.?;
+        var test_type = default_test;
+        var current = self.resolveForwardedValue(options_expr);
+        while (current.isCons()) {
+            current = self.resolveForwardedValue(current);
+            const cons = current.toPtr(Cons);
+            const key = self.resolveForwardedValue(cons.car);
+            if (!key.isKeyword()) break;
+
+            const rest = self.resolveForwardedValue(cons.cdr);
+            if (!rest.isCons()) return error.InvalidSyntax;
+            const val_cons = rest.toPtr(Cons);
+            const val = self.resolveForwardedValue(val_cons.car);
+            const next = self.resolveForwardedValue(val_cons.cdr);
+
+            if (key.raw == b.kw_test.raw) {
+                const test_sym = self.parseTestDesignatorSymbol(val) orelse return error.InvalidSyntax;
+                const canon = self.canonicalBuiltinSymbol(test_sym);
+                if (canon.raw == b.eq.raw) {
+                    test_type = .eq;
+                } else if (canon.raw == b.eql.raw) {
+                    test_type = .eql;
+                } else if (canon.raw == b.equal.raw) {
+                    test_type = .equal;
+                } else {
+                    return error.InvalidSyntax;
+                }
+            }
+
+            current = next;
+        }
+
+        return test_type;
+    }
+
     /// Compile (member item list &key test) with optional :test keyword
     fn compileMemberWithTest(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        const b = self.builtins.?;
-
         // Parse positional arguments: (member item list ...)
         if (!args.isCons()) return error.InvalidSyntax;
         const arg1_cons = args.toPtr(Cons);
@@ -16775,53 +17057,14 @@ pub const Compiler = struct {
         if (!arg1_cons.cdr.isCons()) return error.InvalidSyntax;
         const arg2_cons = arg1_cons.cdr.toPtr(Cons);
         const list_expr = arg2_cons.car;
+        const options_expr = self.resolveForwardedValue(arg2_cons.cdr);
 
         // Compile positional arguments
         const item = try self.compile(item_expr, env);
         const list = try self.compile(list_expr, env);
 
         // Default test is eq
-        var test_type: enum { eq, eql, equal } = .eq;
-
-        // Parse optional :test keyword
-        var current = arg2_cons.cdr;
-        while (current.isCons()) {
-            const cons = current.toPtr(Cons);
-            const key = cons.car;
-
-            if (!key.isKeyword()) break;
-
-            if (!cons.cdr.isCons()) return error.InvalidSyntax;
-            const val_cons = cons.cdr.toPtr(Cons);
-            const val = val_cons.car;
-
-            if (key.raw == b.kw_test.raw) {
-                // :test 'eq or :test 'eql or :test 'equal
-                var test_sym = val;
-                if (val.isCons()) {
-                    // Could be (quote eq)
-                    const quote_cons = val.toPtr(Cons);
-                    if (quote_cons.cdr.isCons()) {
-                        test_sym = quote_cons.cdr.toPtr(Cons).car;
-                    }
-                }
-                if (test_sym.isSymbol()) {
-                    const canon = self.canonicalBuiltinSymbol(test_sym);
-                    if (canon.raw == b.eq.raw) {
-                        test_type = .eq;
-                    } else if (canon.raw == b.eql.raw) {
-                        test_type = .eql;
-                    } else if (canon.raw == b.equal.raw) {
-                        test_type = .equal;
-                    } else {
-                        return error.InvalidSyntax;
-                    }
-                } else {
-                    return error.InvalidSyntax;
-                }
-            }
-            current = val_cons.cdr;
-        }
+        const test_type = try self.parseEqEqlEqualTestOption(options_expr, .eq);
 
         // Create appropriate IR node based on test type
         const node = try self.allocator.create(Ir);
@@ -16835,8 +17078,6 @@ pub const Compiler = struct {
 
     /// Compile (assoc key alist &key test) with optional :test keyword
     fn compileAssocWithTest(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        const b = self.builtins.?;
-
         // Parse positional arguments: (assoc key alist ...)
         if (!args.isCons()) return error.InvalidSyntax;
         const arg1_cons = args.toPtr(Cons);
@@ -16845,52 +17086,14 @@ pub const Compiler = struct {
         if (!arg1_cons.cdr.isCons()) return error.InvalidSyntax;
         const arg2_cons = arg1_cons.cdr.toPtr(Cons);
         const alist_expr = arg2_cons.car;
+        const options_expr = self.resolveForwardedValue(arg2_cons.cdr);
 
         // Compile positional arguments
         const key = try self.compile(key_expr, env);
         const alist = try self.compile(alist_expr, env);
 
         // Default test is eq
-        var test_type: enum { eq, eql, equal } = .eq;
-
-        // Parse optional :test keyword
-        var current = arg2_cons.cdr;
-        while (current.isCons()) {
-            const cons = current.toPtr(Cons);
-            const kw = cons.car;
-
-            if (!kw.isKeyword()) break;
-
-            if (!cons.cdr.isCons()) return error.InvalidSyntax;
-            const val_cons = cons.cdr.toPtr(Cons);
-            const val = val_cons.car;
-
-            if (kw.raw == b.kw_test.raw) {
-                // :test 'eq or :test 'eql or :test 'equal
-                var test_sym = val;
-                if (val.isCons()) {
-                    // Could be (quote eq)
-                    const quote_cons = val.toPtr(Cons);
-                    if (quote_cons.cdr.isCons()) {
-                        test_sym = quote_cons.cdr.toPtr(Cons).car;
-                    }
-                }
-                if (test_sym.isSymbol()) {
-                    if (test_sym.raw == b.eq.raw) {
-                        test_type = .eq;
-                    } else if (test_sym.raw == b.eql.raw) {
-                        test_type = .eql;
-                    } else if (test_sym.raw == b.equal.raw) {
-                        test_type = .equal;
-                    } else {
-                        return error.InvalidSyntax;
-                    }
-                } else {
-                    return error.InvalidSyntax;
-                }
-            }
-            current = val_cons.cdr;
-        }
+        const test_type = try self.parseEqEqlEqualTestOption(options_expr, .eq);
 
         // Create appropriate IR node based on test type
         const node = try self.allocator.create(Ir);
@@ -16930,8 +17133,6 @@ pub const Compiler = struct {
     }
 
     fn compileFindWithTest(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        const b = self.builtins.?;
-
         // Parse positional arguments: (find item sequence ...)
         if (!args.isCons()) return error.InvalidSyntax;
         const arg1_cons = args.toPtr(Cons);
@@ -16940,50 +17141,14 @@ pub const Compiler = struct {
         if (!arg1_cons.cdr.isCons()) return error.InvalidSyntax;
         const arg2_cons = arg1_cons.cdr.toPtr(Cons);
         const seq_expr = arg2_cons.car;
+        const options_expr = self.resolveForwardedValue(arg2_cons.cdr);
 
         // Compile positional arguments
         const item = try self.compile(item_expr, env);
         const seq = try self.compile(seq_expr, env);
 
         // Default test is eql (CL spec for find)
-        var test_type: enum { eq, eql, equal } = .eql;
-
-        // Parse optional :test keyword
-        var current = arg2_cons.cdr;
-        while (current.isCons()) {
-            const cons = current.toPtr(Cons);
-            const key = cons.car;
-
-            if (!key.isKeyword()) break;
-
-            if (!cons.cdr.isCons()) return error.InvalidSyntax;
-            const val_cons = cons.cdr.toPtr(Cons);
-            const val = val_cons.car;
-
-            if (key.raw == b.kw_test.raw) {
-                var test_sym = val;
-                if (val.isCons()) {
-                    const quote_cons = val.toPtr(Cons);
-                    if (quote_cons.cdr.isCons()) {
-                        test_sym = quote_cons.cdr.toPtr(Cons).car;
-                    }
-                }
-                if (test_sym.isSymbol()) {
-                    if (test_sym.raw == b.eq.raw) {
-                        test_type = .eq;
-                    } else if (test_sym.raw == b.eql.raw) {
-                        test_type = .eql;
-                    } else if (test_sym.raw == b.equal.raw) {
-                        test_type = .equal;
-                    } else {
-                        return error.InvalidSyntax;
-                    }
-                } else {
-                    return error.InvalidSyntax;
-                }
-            }
-            current = val_cons.cdr;
-        }
+        const test_type = try self.parseEqEqlEqualTestOption(options_expr, .eql);
 
         const node = try self.allocator.create(Ir);
         node.* = switch (test_type) {
@@ -16997,8 +17162,6 @@ pub const Compiler = struct {
     /// Compile (position item sequence &key test) with optional :test keyword
     /// Default test is eql (CL spec)
     fn compilePositionWithTest(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        const b = self.builtins.?;
-
         // Parse positional arguments: (position item sequence ...)
         if (!args.isCons()) return error.InvalidSyntax;
         const arg1_cons = args.toPtr(Cons);
@@ -17007,50 +17170,14 @@ pub const Compiler = struct {
         if (!arg1_cons.cdr.isCons()) return error.InvalidSyntax;
         const arg2_cons = arg1_cons.cdr.toPtr(Cons);
         const seq_expr = arg2_cons.car;
+        const options_expr = self.resolveForwardedValue(arg2_cons.cdr);
 
         // Compile positional arguments
         const item = try self.compile(item_expr, env);
         const seq = try self.compile(seq_expr, env);
 
         // Default test is eql (CL spec for position)
-        var test_type: enum { eq, eql, equal } = .eql;
-
-        // Parse optional :test keyword
-        var current = arg2_cons.cdr;
-        while (current.isCons()) {
-            const cons = current.toPtr(Cons);
-            const key = cons.car;
-
-            if (!key.isKeyword()) break;
-
-            if (!cons.cdr.isCons()) return error.InvalidSyntax;
-            const val_cons = cons.cdr.toPtr(Cons);
-            const val = val_cons.car;
-
-            if (key.raw == b.kw_test.raw) {
-                var test_sym = val;
-                if (val.isCons()) {
-                    const quote_cons = val.toPtr(Cons);
-                    if (quote_cons.cdr.isCons()) {
-                        test_sym = quote_cons.cdr.toPtr(Cons).car;
-                    }
-                }
-                if (test_sym.isSymbol()) {
-                    if (test_sym.raw == b.eq.raw) {
-                        test_type = .eq;
-                    } else if (test_sym.raw == b.eql.raw) {
-                        test_type = .eql;
-                    } else if (test_sym.raw == b.equal.raw) {
-                        test_type = .equal;
-                    } else {
-                        return error.InvalidSyntax;
-                    }
-                } else {
-                    return error.InvalidSyntax;
-                }
-            }
-            current = val_cons.cdr;
-        }
+        const test_type = try self.parseEqEqlEqualTestOption(options_expr, .eql);
 
         const node = try self.allocator.create(Ir);
         node.* = switch (test_type) {
@@ -17064,8 +17191,6 @@ pub const Compiler = struct {
     /// Compile (count item sequence &key test) with optional :test keyword
     /// Default test is eql (CL spec)
     fn compileCountWithTest(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        const b = self.builtins.?;
-
         if (!args.isCons()) return error.InvalidSyntax;
         const arg1_cons = args.toPtr(Cons);
         const item_expr = arg1_cons.car;
@@ -17073,47 +17198,12 @@ pub const Compiler = struct {
         if (!arg1_cons.cdr.isCons()) return error.InvalidSyntax;
         const arg2_cons = arg1_cons.cdr.toPtr(Cons);
         const seq_expr = arg2_cons.car;
+        const options_expr = self.resolveForwardedValue(arg2_cons.cdr);
 
         const item = try self.compile(item_expr, env);
         const seq = try self.compile(seq_expr, env);
 
-        var test_type: enum { eq, eql, equal } = .eql;
-
-        var current = arg2_cons.cdr;
-        while (current.isCons()) {
-            const cons = current.toPtr(Cons);
-            const key = cons.car;
-
-            if (!key.isKeyword()) break;
-
-            if (!cons.cdr.isCons()) return error.InvalidSyntax;
-            const val_cons = cons.cdr.toPtr(Cons);
-            const val = val_cons.car;
-
-            if (key.raw == b.kw_test.raw) {
-                var test_sym = val;
-                if (val.isCons()) {
-                    const quote_cons = val.toPtr(Cons);
-                    if (quote_cons.cdr.isCons()) {
-                        test_sym = quote_cons.cdr.toPtr(Cons).car;
-                    }
-                }
-                if (test_sym.isSymbol()) {
-                    if (test_sym.raw == b.eq.raw) {
-                        test_type = .eq;
-                    } else if (test_sym.raw == b.eql.raw) {
-                        test_type = .eql;
-                    } else if (test_sym.raw == b.equal.raw) {
-                        test_type = .equal;
-                    } else {
-                        return error.InvalidSyntax;
-                    }
-                } else {
-                    return error.InvalidSyntax;
-                }
-            }
-            current = val_cons.cdr;
-        }
+        const test_type = try self.parseEqEqlEqualTestOption(options_expr, .eql);
 
         const node = try self.allocator.create(Ir);
         node.* = switch (test_type) {
@@ -17127,8 +17217,6 @@ pub const Compiler = struct {
     /// Compile (remove item sequence &key test) with optional :test keyword
     /// Default test is eql (CL spec)
     fn compileRemoveWithTest(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
-        const b = self.builtins.?;
-
         if (!args.isCons()) return error.InvalidSyntax;
         const arg1_cons = args.toPtr(Cons);
         const item_expr = arg1_cons.car;
@@ -17136,47 +17224,12 @@ pub const Compiler = struct {
         if (!arg1_cons.cdr.isCons()) return error.InvalidSyntax;
         const arg2_cons = arg1_cons.cdr.toPtr(Cons);
         const seq_expr = arg2_cons.car;
+        const options_expr = self.resolveForwardedValue(arg2_cons.cdr);
 
         const item = try self.compile(item_expr, env);
         const seq = try self.compile(seq_expr, env);
 
-        var test_type: enum { eq, eql, equal } = .eql;
-
-        var current = arg2_cons.cdr;
-        while (current.isCons()) {
-            const cons = current.toPtr(Cons);
-            const key = cons.car;
-
-            if (!key.isKeyword()) break;
-
-            if (!cons.cdr.isCons()) return error.InvalidSyntax;
-            const val_cons = cons.cdr.toPtr(Cons);
-            const val = val_cons.car;
-
-            if (key.raw == b.kw_test.raw) {
-                var test_sym = val;
-                if (val.isCons()) {
-                    const quote_cons = val.toPtr(Cons);
-                    if (quote_cons.cdr.isCons()) {
-                        test_sym = quote_cons.cdr.toPtr(Cons).car;
-                    }
-                }
-                if (test_sym.isSymbol()) {
-                    if (test_sym.raw == b.eq.raw) {
-                        test_type = .eq;
-                    } else if (test_sym.raw == b.eql.raw) {
-                        test_type = .eql;
-                    } else if (test_sym.raw == b.equal.raw) {
-                        test_type = .equal;
-                    } else {
-                        return error.InvalidSyntax;
-                    }
-                } else {
-                    return error.InvalidSyntax;
-                }
-            }
-            current = val_cons.cdr;
-        }
+        const test_type = try self.parseEqEqlEqualTestOption(options_expr, .eql);
 
         const node = try self.allocator.create(Ir);
         node.* = switch (test_type) {
@@ -17225,20 +17278,7 @@ pub const Compiler = struct {
 
     fn compileVectorPrim(self: *Compiler, args: Value, env: *const Env) anyerror!*Ir {
         // (vector a b c ...) -> create vector from elements
-        var elem_count: usize = 0;
-        var scan = args;
-        while (scan.isCons()) : (scan = scan.toPtr(Cons).cdr) {
-            elem_count += 1;
-        }
-        if (!scan.isNil()) return error.InvalidSyntax;
-
-        const elements = try self.allocator.alloc(*const Ir, elem_count);
-        var current = args;
-        var idx: usize = 0;
-        while (current.isCons()) : (current = current.toPtr(Cons).cdr) {
-            elements[idx] = try self.compile(current.toPtr(Cons).car, env);
-            idx += 1;
-        }
+        const elements = try self.compileCallArgsSlice(args, env);
 
         return try self.builder.vec(elements);
     }
@@ -17258,28 +17298,32 @@ pub const Compiler = struct {
         if (rest.isCons()) {
             const maybe_pos = rest.toPtr(Cons);
             if (!maybe_pos.car.isKeyword()) {
+                const next_rest = self.resolveForwardedValue(maybe_pos.cdr);
                 fill_ir = try self.compile(maybe_pos.car, env);
-                rest = maybe_pos.cdr;
+                rest = next_rest;
             }
         }
 
         // Parse keyword arguments.
         while (rest.isCons()) {
+            rest = self.resolveForwardedValue(rest);
             const key_cons = rest.toPtr(Cons);
-            const key = key_cons.car;
+            const key = self.resolveForwardedValue(key_cons.car);
             if (!key.isKeyword()) return error.InvalidSyntax;
             if (!key_cons.cdr.isCons()) return error.InvalidSyntax;
             const val_cons = key_cons.cdr.toPtr(Cons);
+            const val = self.resolveForwardedValue(val_cons.car);
+            const next_rest = self.resolveForwardedValue(val_cons.cdr);
 
             if (key.raw == b.@"kw_initial-element".raw) {
-                fill_ir = try self.compile(val_cons.car, env);
+                fill_ir = try self.compile(val, env);
             } else if (key.raw == b.@"kw_allow-other-keys".raw) {
-                if (val_cons.car.isNil()) {
+                if (val.isNil()) {
                     allow_other_keys = false;
-                } else if (val_cons.car.isKeyword()) {
+                } else if (val.isKeyword()) {
                     allow_other_keys = true;
-                } else if (val_cons.car.isFixnum()) {
-                    allow_other_keys = val_cons.car.toFixnum() != 0;
+                } else if (val.isFixnum()) {
+                    allow_other_keys = val.toFixnum() != 0;
                 } else {
                     allow_other_keys = true;
                 }
@@ -17289,7 +17333,7 @@ pub const Compiler = struct {
                 return error.InvalidSyntax;
             }
 
-            rest = val_cons.cdr;
+            rest = next_rest;
         }
 
         return try self.builder.makeString(len_ir, fill_ir);
@@ -17340,9 +17384,10 @@ pub const Compiler = struct {
                 var idx: usize = 0;
                 while (current.isCons()) {
                     const dim_cons = current.toPtr(Cons);
+                    const next = self.resolveForwardedValue(dim_cons.cdr);
                     dims[idx] = try self.compile(dim_cons.car, env);
                     idx += 1;
-                    current = dim_cons.cdr;
+                    current = next;
                 }
                 static_dimensions = dims;
             } else {
@@ -17357,12 +17402,16 @@ pub const Compiler = struct {
         var initial_contents: ?Value = null;
         var rest = cons1.cdr;
         while (rest.isCons()) {
+            rest = self.resolveForwardedValue(rest);
             const kv_cons = rest.toPtr(Cons);
+            const next_rest_non_kw = self.resolveForwardedValue(kv_cons.cdr);
             // Check if it's a keyword
             if (kv_cons.car.isKeyword()) {
                 // Skip the keyword, get the value
                 if (!kv_cons.cdr.isCons()) break;
                 const val_cons = kv_cons.cdr.toPtr(Cons);
+                const val = self.resolveForwardedValue(val_cons.car);
+                const next_rest_kw = self.resolveForwardedValue(val_cons.cdr);
                 // Check which keyword
                 const kw_sym = kv_cons.car.toPtr(runtime.Keyword);
                 const kw_name = kw_sym.getName();
@@ -17370,7 +17419,7 @@ pub const Compiler = struct {
                     std.mem.eql(u8, kw_name, "INITIAL-CONTENTS"))
                 {
                     // Store raw value for post-construction fill
-                    initial_contents = val_cons.car;
+                    initial_contents = val;
                 } else if (std.mem.eql(u8, kw_name, "element-type") or
                     std.mem.eql(u8, kw_name, "ELEMENT-TYPE") or
                     std.mem.eql(u8, kw_name, "adjustable") or
@@ -17380,13 +17429,13 @@ pub const Compiler = struct {
                 {
                     // ignore for now
                 } else {
-                    init_ir = try self.compile(val_cons.car, env);
+                    init_ir = try self.compile(val, env);
                 }
-                rest = val_cons.cdr;
+                rest = next_rest_kw;
             } else {
                 // Non-keyword arg is the initial element (legacy support)
                 init_ir = try self.compile(kv_cons.car, env);
-                rest = kv_cons.cdr;
+                rest = next_rest_non_kw;
             }
         }
 
@@ -17416,21 +17465,7 @@ pub const Compiler = struct {
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
         const array_ir = try self.compile(cons1.car, env);
-
-        var sub_count: usize = 0;
-        var scan = cons1.cdr;
-        while (scan.isCons()) : (scan = scan.toPtr(Cons).cdr) {
-            sub_count += 1;
-        }
-        if (!scan.isNil()) return error.InvalidSyntax;
-
-        const subscripts = try self.allocator.alloc(*const Ir, sub_count);
-        var current = cons1.cdr;
-        var idx: usize = 0;
-        while (current.isCons()) : (current = current.toPtr(Cons).cdr) {
-            subscripts[idx] = try self.compile(current.toPtr(Cons).car, env);
-            idx += 1;
-        }
+        const subscripts = try self.compileCallArgsSlice(cons1.cdr, env);
 
         return try self.builder.arrRef(array_ir, subscripts);
     }
@@ -17474,31 +17509,11 @@ pub const Compiler = struct {
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
         const array_ir = try self.compile(cons1.car, env);
-
-        var arg_count: usize = 0;
-        var scan = cons1.cdr;
-        while (scan.isCons()) : (scan = scan.toPtr(Cons).cdr) {
-            arg_count += 1;
-        }
-        if (!scan.isNil()) return error.InvalidSyntax;
-        if (arg_count == 0) return error.InvalidSyntax;
-
-        const sub_count = arg_count - 1;
-        const subscripts = try self.allocator.alloc(*const Ir, sub_count);
-
-        var current = cons1.cdr;
-        var idx: usize = 0;
-        var value_ir: *const Ir = undefined;
-        while (current.isCons()) : (current = current.toPtr(Cons).cdr) {
-            const arg_ir = try self.compile(current.toPtr(Cons).car, env);
-            if (idx < sub_count) {
-                subscripts[idx] = arg_ir;
-            } else {
-                value_ir = arg_ir;
-            }
-            idx += 1;
-        }
-
+        const all_args = try self.compileCallArgsSlice(cons1.cdr, env);
+        if (all_args.len == 0) return error.InvalidSyntax;
+        const sub_count = all_args.len - 1;
+        const subscripts = all_args[0..sub_count];
+        const value_ir = all_args[sub_count];
         return try self.builder.arrSet(array_ir, subscripts, value_ir);
     }
 
@@ -17602,6 +17617,7 @@ pub const Compiler = struct {
             arg_count += 1;
             count_cur = self.resolveForwardedValue(count_cur.toPtr(Cons).cdr);
         }
+        if (!count_cur.isNil()) return error.InvalidSyntax;
 
         const call_args = try self.allocator.alloc(*const Ir, arg_count);
         var cur = self.resolveForwardedValue(args_expr);
@@ -17615,6 +17631,7 @@ pub const Compiler = struct {
             idx += 1;
             cur = next;
         }
+        if (!cur.isNil()) return error.InvalidSyntax;
         return call_args;
     }
 

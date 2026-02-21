@@ -747,6 +747,23 @@ test "stdlib fdefinition basic" {
     try testing.expect(result.eq(Value.t));
 }
 
+test "stdlib expt supports fractional exponents" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval("(expt 64 1/6)");
+    try testing.expect(result.isFloat());
+    try testing.expectApproxEqAbs(@as(f64, 2.0), result.toFloat(), 0.000001);
+}
+
 test "stdlib symbol-function primitive wrapper ash" {
     const allocator = testing.allocator;
 
@@ -1575,6 +1592,32 @@ test "keyword arg validation" {
 
     const ok2 = try repl.eval("(f :b 2 :allow-other-keys t)");
     try testing.expect(ok2.isNil());
+}
+
+test "tail call preserves keyword argument layout" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    _ = try repl.eval(
+        \\(defun kw-tail-target (lst &key test)
+        \\  (if (and test (consp lst))
+        \\      (cdr lst)
+        \\      :bad))
+    );
+    _ = try repl.eval(
+        \\(defun kw-tail-caller (lst)
+        \\  (kw-tail-target lst :test #'eq))
+    );
+
+    const ok = try repl.eval("(equal '(b) (kw-tail-caller '(a b)))");
+    try testing.expect(ok.isT());
 }
 
 test "eval defun recursive" {
@@ -4355,6 +4398,23 @@ test "defstruct constructor accepts keyword initargs" {
     try testing.expect(result.eq(Value.t));
 }
 
+test "defstruct :constructor option defines custom constructor name" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct (ds-custom-ctor (:constructor build-ds-custom-ctor)) a)\n" ++
+        "  (let ((x (build-ds-custom-ctor :a 7)))\n" ++
+        "    (and (fboundp 'build-ds-custom-ctor)\n" ++
+        "         (not (fboundp 'make-ds-custom-ctor))\n" ++
+        "         (ds-custom-ctor-p x)\n" ++
+        "         (= (ds-custom-ctor-a x) 7))))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
 test "defstruct with conc-name nil defines copier" {
     const allocator = testing.allocator;
 
@@ -4500,6 +4560,21 @@ test "defstruct slot with :read-only option" {
         "  (and (fboundp 'make-ds-readonly)\n" ++
         "       (fboundp 'ds-readonly-a)\n" ++
         "       (fboundp 'ds-readonly-b)))");
+
+    try testing.expect(result.eq(Value.t));
+}
+
+test "defstruct typecase handles non-struct values" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn\n" ++
+        "  (defstruct ds-typecase a)\n" ++
+        "  (let ((x (make-ds-typecase :a 1)))\n" ++
+        "    (and (typep x 'ds-typecase)\n" ++
+        "         (not (typep 'plain-symbol 'ds-typecase)))))");
 
     try testing.expect(result.eq(Value.t));
 }
@@ -4986,6 +5061,67 @@ test "ansi repro loop collecting and do separator" {
     try testing.expect(c1.car.isFixnum());
     try testing.expectEqual(@as(i64, 3), c1.car.toFixnum());
     try testing.expect(c1.cdr.isNil());
+}
+
+test "ansi repro loop for with fixnum type in equals clauses" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(= (loop for v fixnum = 0 then (1+ v) repeat 5 sum v) 10)",
+    );
+    try testing.expect(!result.isNil());
+}
+
+test "ansi repro loop with of-type initializer" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(= (loop for i below 4 with a of-type fixnum = 1 do (setq a (* a 2)) finally (return a)) 16)",
+    );
+    try testing.expect(!result.isNil());
+}
+
+test "ansi repro logand accepts bignum intermediate integer" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const result = try repl.eval(
+        "(let* ((prev #xffffffff)\n" ++
+            "       (x (+ (* 1812433253 (logxor prev (ash prev -30))) 1)))\n" ++
+            "  (list (type-of x) (logand x #xffffffff)))",
+    );
+    try testing.expect(result.isCons());
+    const head = result.toPtr(Cons);
+    try testing.expect(head.car.isSymbol());
+    try testing.expectEqualStrings("BIGNUM", head.car.toPtr(Symbol).getName());
+    try testing.expect(head.cdr.isCons());
+    const tail = head.cdr.toPtr(Cons);
+    try testing.expect(tail.car.isFixnum());
+    try testing.expectEqual(@as(i64, 1340201581), tail.car.toFixnum());
+    try testing.expect(tail.cdr.isNil());
 }
 
 test "generational loop for-and arithmetic stays bounded" {
@@ -7005,6 +7141,251 @@ test "maxima generational loader reaches nparse without OOM" {
     try testing.expectEqual(@as(i64, 0), fail);
     try testing.expectEqual(total, ok);
     try testing.expectEqual(total, attempted);
+}
+
+test "maxima generational full load survives defmacro-heavy files" {
+    try ensureMaximaSources();
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{
+        .total_size = 1024 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 24 * 1024 * 1024,
+            .los_size = 24 * 1024 * 1024,
+            .los_threshold = 32 * 1024,
+            .promote_threshold = 1024,
+        },
+    });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const status = try repl.eval(
+        \\(progn
+        \\  (load "lib/maxima-loader.lisp")
+        \\  (multiple-value-bind (ok total fail missing attempted)
+        \\      (maxima-load-all :verbose nil :habu-stop-on-error t)
+        \\    (declare (ignore missing))
+        \\    (list ok total fail attempted)))
+    );
+
+    try testing.expect(status.isCons());
+    var cur = status;
+    var got: [4]i64 = undefined;
+    for (0..got.len) |i| {
+        try testing.expect(cur.isCons());
+        const cell = cur.toPtr(Cons);
+        try testing.expect(cell.car.isFixnum());
+        got[i] = cell.car.toFixnum();
+        cur = cell.cdr;
+    }
+    try testing.expect(cur.isNil());
+    try testing.expectEqual(@as(i64, 0), got[2]);
+    try testing.expectEqual(got[1], got[0]);
+    try testing.expectEqual(got[1], got[3]);
+}
+
+test "quasiquote preserves list-valued unquote in macro templates" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const value = try repl.eval(
+        \\(let ((name 'foo) (lambda-list '(form)) (body '(ok)))
+        \\  `(defun-prop (,name translate) ,lambda-list (block ,name ,@body)))
+    );
+
+    try testing.expect(value.isCons());
+    const c1 = value.toPtr(Cons);
+    try testing.expect(c1.car.isSymbol());
+    try testing.expectEqualStrings("DEFUN-PROP", c1.car.toPtr(Symbol).getName());
+
+    try testing.expect(c1.cdr.isCons());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(c2.car.isCons());
+    const fcell = c2.car.toPtr(Cons);
+    try testing.expect(fcell.car.isSymbol());
+    try testing.expectEqualStrings("FOO", fcell.car.toPtr(Symbol).getName());
+
+    try testing.expect(c2.cdr.isCons());
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expect(c3.car.isCons());
+    const lam = c3.car.toPtr(Cons);
+    try testing.expect(lam.car.isSymbol());
+    try testing.expectEqualStrings("FORM", lam.car.toPtr(Symbol).getName());
+}
+
+test "def%tr-style macroexpand does not evaluate lambda-list forms" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval(
+        \\(defmacro defun-prop (f arg &body body)
+        \\  `(setf (get ',(first f) ',(second f)) #'(lambda ,arg ,@body)))
+    );
+    _ = try repl.eval(
+        \\(defmacro def%tr (name lambda-list &body body &aux definition)
+        \\  (setq definition
+        \\        (if (and (null body) (symbolp lambda-list))
+        \\            `(def-same%tr ,name ,lambda-list)
+        \\            `(defun-prop (,name translate) ,lambda-list
+        \\               (block ,name ,@body))))
+        \\  `(eval-when (:compile-toplevel :execute :load-toplevel)
+        \\     ,definition))
+    );
+
+    const expanded = try repl.eval(
+        \\(macroexpand-1 '(def%tr $eval_when (form) 'ok))
+    );
+
+    try testing.expect(expanded.isCons());
+    const c1 = expanded.toPtr(Cons);
+    try testing.expect(c1.car.isSymbol());
+    try testing.expectEqualStrings("EVAL-WHEN", c1.car.toPtr(Symbol).getName());
+
+    try testing.expect(c1.cdr.isCons());
+    const c2 = c1.cdr.toPtr(Cons);
+    try testing.expect(c2.cdr.isCons());
+    const c3 = c2.cdr.toPtr(Cons);
+    try testing.expect(c3.car.isCons());
+    const def_form = c3.car.toPtr(Cons);
+    try testing.expect(def_form.car.isSymbol());
+    try testing.expectEqualStrings("DEFUN-PROP", def_form.car.toPtr(Symbol).getName());
+}
+
+test "def%tr-style top-level form executes without calling lambda-list head" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval(
+        \\(defmacro defun-prop (f arg &body body)
+        \\  `(setf (get ',(first f) ',(second f)) #'(lambda ,arg ,@body)))
+    );
+    _ = try repl.eval(
+        \\(defmacro def%tr (name lambda-list &body body &aux definition)
+        \\  (setq definition
+        \\        (if (and (null body) (symbolp lambda-list))
+        \\            `(def-same%tr ,name ,lambda-list)
+        \\            `(defun-prop (,name translate) ,lambda-list
+        \\               (block ,name ,@body))))
+        \\  `(eval-when (:compile-toplevel :execute :load-toplevel)
+        \\     ,definition))
+    );
+
+    _ = try repl.eval("(def%tr $eval_when (form) 'ok)");
+
+    const prop_val = try repl.eval("(get '$eval_when 'translate)");
+    try testing.expect(!prop_val.isNil());
+}
+
+test "def%tr-style top-level form survives generational GC pressure" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{
+        .total_size = 256 * 1024 * 1024,
+        .gc_layout = .generational,
+        .generational = .{
+            .nursery_each = 2 * 1024 * 1024,
+            .los_size = 8 * 1024 * 1024,
+            .los_threshold = 32 * 1024,
+            .promote_threshold = 2,
+        },
+    });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    _ = try repl.eval(
+        \\(defmacro defun-prop (f arg &body body)
+        \\  `(setf (get ',(first f) ',(second f)) #'(lambda ,arg ,@body)))
+    );
+    _ = try repl.eval(
+        \\(defmacro def%tr (name lambda-list &body body &aux definition)
+        \\  (setq definition
+        \\        (if (and (null body) (symbolp lambda-list))
+        \\            `(def-same%tr ,name ,lambda-list)
+        \\            `(defun-prop (,name translate) ,lambda-list
+        \\               (block ,name ,@body))))
+        \\  `(eval-when (:compile-toplevel :execute :load-toplevel)
+        \\     ,definition))
+    );
+
+    _ = try repl.eval(
+        \\(let ((acc nil))
+        \\  (dotimes (i 4000)
+        \\    (setq acc (cons (list i i i i i i i i) acc)))
+        \\  (length acc))
+    );
+
+    _ = try repl.eval("(def%tr $eval_when (form) 'ok)");
+    const prop_val = try repl.eval("(get '$eval_when 'translate)");
+    try testing.expect(!prop_val.isNil());
+}
+
+test "defun-prop keeps and/or pair metadata intact" {
+    const allocator = testing.allocator;
+    var heap = try Heap.init(allocator, .{ .total_size = 64 * 1024 * 1024 });
+    defer heap.deinit();
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+    try loadStdlib(&repl);
+
+    const value = try repl.eval(
+        \\(progn
+        \\  (defmacro defun-prop (f arg &body body)
+        \\    (assert (listp f))
+        \\    `(setf (get ',(first f) ',(second f)) #'(lambda ,arg ,@body)))
+        \\  (defun-prop (and free-lisp-vars) (form)
+        \\    (cdr form))
+        \\  (defun-prop (or free-lisp-vars) (form)
+        \\    (cdr form))
+        \\  (list
+        \\    (funcall (get 'and 'free-lisp-vars) '(and a b c))
+        \\    (funcall (get 'or 'free-lisp-vars) '(or x y))))
+    );
+
+    try testing.expect(value.isCons());
+    const outer = value.toPtr(Cons);
+    try testing.expect(outer.car.isCons());
+    try testing.expect(outer.cdr.isCons());
+    const outer2 = outer.cdr.toPtr(Cons);
+    try testing.expect(outer2.car.isCons());
+
+    const and_tail = outer.car;
+    try testing.expectEqualStrings("A", and_tail.toPtr(Cons).car.toPtr(Symbol).getName());
+    try testing.expect(and_tail.toPtr(Cons).cdr.isCons());
+    try testing.expectEqualStrings("B", and_tail.toPtr(Cons).cdr.toPtr(Cons).car.toPtr(Symbol).getName());
+    try testing.expect(and_tail.toPtr(Cons).cdr.toPtr(Cons).cdr.isCons());
+    try testing.expectEqualStrings("C", and_tail.toPtr(Cons).cdr.toPtr(Cons).cdr.toPtr(Cons).car.toPtr(Symbol).getName());
+
+    const or_tail = outer2.car;
+    try testing.expectEqualStrings("X", or_tail.toPtr(Cons).car.toPtr(Symbol).getName());
+    try testing.expect(or_tail.toPtr(Cons).cdr.isCons());
+    try testing.expectEqualStrings("Y", or_tail.toPtr(Cons).cdr.toPtr(Cons).car.toPtr(Symbol).getName());
 }
 
 test "maxima loader accepts internal keyword controls" {

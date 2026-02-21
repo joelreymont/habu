@@ -138,16 +138,72 @@ fn jitWriteBarrier(owner_raw: u64, stored_raw: u64) void {
     }
 }
 
+fn jitResolveForwarded(val: Value) Value {
+    if (!val.isPointer()) return val;
+    const heap = g_heap orelse return val;
+
+    var cur = val;
+    var resolved_live: ?Value = null;
+    var hops: u8 = 0;
+    while (hops < 8 and cur.isPointer()) : (hops += 1) {
+        const addr = cur.toPtrAddr();
+        if (!heap.containsAddrForDebug(addr)) break;
+
+        const first_word: *const Value = @ptrFromInt(addr);
+        if (!first_word.isForwarding()) break;
+
+        const new_addr = first_word.toPtrAddr();
+        const forwarded_size_ptr: *const usize = @ptrFromInt(addr + @sizeOf(Value));
+        const forwarded_size = forwarded_size_ptr.*;
+        const forwarded_size_ok = forwarded_size > 0 and
+            forwarded_size <= heap.space_size and
+            std.mem.isAligned(forwarded_size, runtime.heap.ALIGNMENT);
+
+        const from_start = @intFromPtr(heap.from_start);
+        const from_live_end = @intFromPtr(heap.alloc_ptr);
+        const in_from = new_addr >= from_start and new_addr < from_live_end and
+            forwarded_size <= from_live_end - new_addr;
+
+        const stale_start = @intFromPtr(heap.to_start);
+        const stale_end = stale_start + heap.space_size;
+        const in_stale = new_addr >= stale_start and new_addr < stale_end and
+            forwarded_size <= stale_end - new_addr;
+
+        var in_tenured = false;
+        if (heap.gcLayoutMode() == .generational) {
+            if (heap.tenuredRegion()) |tenured| {
+                const ten_start = @intFromPtr(tenured.start);
+                const ten_used_end = if (heap.tenured_alloc_ptr) |p| @intFromPtr(p) else ten_start;
+                in_tenured = new_addr >= ten_start and new_addr < ten_used_end and
+                    forwarded_size <= ten_used_end - new_addr;
+            }
+        }
+
+        if (!forwarded_size_ok or !(in_from or in_stale or in_tenured)) break;
+
+        const next = Value{ .raw = new_addr | @as(u64, @intFromEnum(cur.getTag())) };
+        if (next.raw == cur.raw) break;
+        cur = next;
+        if (in_from or in_tenured) {
+            resolved_live = cur;
+        }
+    }
+
+    return resolved_live orelse val;
+}
+
 /// Takes (cdr, car) order to avoid register swap when nesting cons calls.
 /// Inner cons result stays in x0 (arg0=cdr position) naturally.
 fn jitCons(cdr_raw: u64, car_raw: u64) callconv(.c) u64 {
+    const car = jitResolveForwarded(Value{ .raw = car_raw });
+    const cdr = jitResolveForwarded(Value{ .raw = cdr_raw });
     const ptr = g_alloc_ptr;
     const next = ptr + 16;
     if (next <= g_alloc_end) {
         // Fast path: inline bump allocation
         const p: [*]u64 = @ptrFromInt(ptr);
-        p[0] = car_raw; // car at offset 0
-        p[1] = cdr_raw; // cdr at offset 8
+        p[0] = car.raw; // car at offset 0
+        p[1] = cdr.raw; // cdr at offset 8
         g_alloc_ptr = next;
         // Update heap's alloc_ptr to stay in sync
         if (g_heap) |heap| {
@@ -158,8 +214,6 @@ fn jitCons(cdr_raw: u64, car_raw: u64) callconv(.c) u64 {
     // Slow path: full allocation with potential GC
     const heap = g_heap orelse return 0;
     jitSafepointBeforeAlloc();
-    const car = Value{ .raw = car_raw };
-    const cdr = Value{ .raw = cdr_raw };
     const result = heap.allocCons(car, cdr) catch return 0;
     // Refresh cache after potential GC
     jitConsRefreshCache();
@@ -187,10 +241,10 @@ fn jitGcd(a_raw: u64, b_raw: u64) callconv(.c) u64 {
 /// nreverse: destructively reverse a list. Returns tagged value.
 fn jitNreverse(list_raw: u64) callconv(.c) u64 {
     var prev = Value.nil;
-    var curr = Value{ .raw = list_raw };
+    var curr = jitResolveForwarded(Value{ .raw = list_raw });
     while (curr.isCons()) {
         const cell = curr.toPtr(runtime.Cons);
-        const next = cell.cdr;
+        const next = jitResolveForwarded(cell.cdr);
         cell.cdr = prev;
         jitWriteBarrier(curr.raw, prev.raw);
         prev = curr;
@@ -201,8 +255,8 @@ fn jitNreverse(list_raw: u64) callconv(.c) u64 {
 
 /// append two lists. Returns tagged value. Allocates new cons cells.
 fn jitAppend(list1_raw: u64, list2_raw: u64) callconv(.c) u64 {
-    const list1 = Value{ .raw = list1_raw };
-    const list2 = Value{ .raw = list2_raw };
+    const list1 = jitResolveForwarded(Value{ .raw = list1_raw });
+    const list2 = jitResolveForwarded(Value{ .raw = list2_raw });
     if (!list1.isCons()) return list2.raw;
     // Build reversed copy of list1, then reverse-cons onto list2
     // jitCons takes (cdr_raw, car_raw) — reversed parameter order!
@@ -210,20 +264,22 @@ fn jitAppend(list1_raw: u64, list2_raw: u64) callconv(.c) u64 {
     var curr = list1;
     while (curr.isCons()) {
         const cell = curr.toPtr(runtime.Cons);
-        const new_cell = jitCons(rev.raw, cell.car.raw);
+        const car = jitResolveForwarded(cell.car);
+        const new_cell = jitCons(rev.raw, car.raw);
         if (new_cell == 0) return 0; // OOM
         rev = Value{ .raw = new_cell };
-        curr = cell.cdr;
+        curr = jitResolveForwarded(cell.cdr);
     }
     // Now rev is reversed list1. Reverse-cons onto list2.
     var result = list2;
     curr = rev;
     while (curr.isCons()) {
         const cell = curr.toPtr(runtime.Cons);
-        const new_cell = jitCons(result.raw, cell.car.raw);
+        const car = jitResolveForwarded(cell.car);
+        const new_cell = jitCons(result.raw, car.raw);
         if (new_cell == 0) return 0; // OOM
         result = Value{ .raw = new_cell };
-        curr = cell.cdr;
+        curr = jitResolveForwarded(cell.cdr);
     }
     return result.raw;
 }

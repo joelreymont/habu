@@ -10,6 +10,7 @@
 
 const std = @import("std");
 const Value = @import("value.zig").Value;
+const Tag = @import("value.zig").Tag;
 
 /// Check if arg_class is a subtype of specializer_class
 /// This is true if specializer_class appears in arg_class's CPL
@@ -940,6 +941,74 @@ pub fn objectSize(val: Value) usize {
             };
         },
         .forwarding => @sizeOf(usize), // Just a pointer
+    };
+}
+
+fn asUsize(v: u64) ?usize {
+    return std.math.cast(usize, v);
+}
+
+/// Validate that a forwarding target matches the expected layout for a tag.
+/// This prevents false forwarding hits when object header words happen to
+/// resemble forwarding metadata.
+pub fn forwardingTargetLooksValid(tag: Tag, addr: usize, forwarded_size: usize) bool {
+    if (forwarded_size == 0) return false;
+    if (!std.mem.isAligned(forwarded_size, 16)) return false;
+
+    return switch (tag) {
+        .cons => forwarded_size == @sizeOf(Cons),
+        .symbol => blk: {
+            const sym: *const Symbol = @ptrFromInt(addr);
+            if (@intFromPtr(sym.name_ptr) != addr + @sizeOf(Symbol)) break :blk false;
+            const name_len = asUsize(sym.name_len) orelse break :blk false;
+            const payload = std.mem.alignForward(usize, name_len, 8);
+            const total = std.math.add(usize, @sizeOf(Symbol), payload) catch break :blk false;
+            const expected = std.mem.alignForward(usize, total, 16);
+            break :blk expected == forwarded_size;
+        },
+        .vector => blk: {
+            const vec: *const Vector = @ptrFromInt(addr);
+            if (@intFromPtr(vec.data) != addr + @sizeOf(Vector)) break :blk false;
+            if (vec.length > vec.capacity) break :blk false;
+            const cap = asUsize(vec.capacity) orelse break :blk false;
+            const payload = std.math.mul(usize, cap, @sizeOf(Value)) catch break :blk false;
+            const total = std.math.add(usize, @sizeOf(Vector), payload) catch break :blk false;
+            const expected = std.mem.alignForward(usize, total, 16);
+            break :blk expected == forwarded_size;
+        },
+        .string => blk: {
+            const str: *const String = @ptrFromInt(addr);
+            if (@intFromPtr(str.data) != addr + @sizeOf(String)) break :blk false;
+            const len = asUsize(str.length) orelse break :blk false;
+            const payload = std.mem.alignForward(usize, len, 8);
+            const total = std.math.add(usize, @sizeOf(String), payload) catch break :blk false;
+            const expected = std.mem.alignForward(usize, total, 16);
+            break :blk expected == forwarded_size;
+        },
+        .closure => blk: {
+            const cls: *const Closure = @ptrFromInt(addr);
+            if (@intFromPtr(cls.captures) != addr + @sizeOf(Closure)) break :blk false;
+            const caps = @as(usize, cls.num_captures);
+            const payload = std.math.mul(usize, caps, @sizeOf(Value)) catch break :blk false;
+            const total = std.math.add(usize, @sizeOf(Closure), payload) catch break :blk false;
+            const expected = std.mem.alignForward(usize, total, 16);
+            break :blk expected == forwarded_size;
+        },
+        .keyword => blk: {
+            const kw: *const Keyword = @ptrFromInt(addr);
+            if (@intFromPtr(kw.name_ptr) != addr + @sizeOf(Keyword)) break :blk false;
+            const name_len = asUsize(kw.name_len) orelse break :blk false;
+            const payload = std.mem.alignForward(usize, name_len, 8);
+            const total = std.math.add(usize, @sizeOf(Keyword), payload) catch break :blk false;
+            const expected = std.mem.alignForward(usize, total, 16);
+            break :blk expected == forwarded_size;
+        },
+        .boxed => blk: {
+            const kind_raw = @as(*const u64, @ptrFromInt(addr)).*;
+            const kind_n = @typeInfo(BoxedKind).@"enum".fields.len;
+            break :blk kind_raw < kind_n;
+        },
+        .forwarding => false,
     };
 }
 
