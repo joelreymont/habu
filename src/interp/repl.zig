@@ -2718,6 +2718,30 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         return v.isPointer() and !v.isMagicSymbol();
     }
 
+    fn internGlobalRefSymbol(self: *Repl, qname: []const u8) !?Value {
+        if (std.mem.indexOf(u8, qname, "::")) |sep| {
+            return try self.internPackageSymbol(qname[0..sep], qname[sep + 2 ..]);
+        }
+        if (std.mem.indexOfScalar(u8, qname, ':')) |sep| {
+            return try self.internPackageSymbol(qname[0..sep], qname[sep + 1 ..]);
+        }
+        return try self.heap.intern(qname);
+    }
+
+    fn internPackageSymbol(self: *Repl, pkg_name: []const u8, sym_name: []const u8) !?Value {
+        if (sym_name.len == 0) return null;
+        if (try self.heap.internInPackage(pkg_name, sym_name)) |sym| return sym;
+
+        if (pkg_name.len <= 128 and sym_name.len <= 256) {
+            var pkg_buf: [128]u8 = undefined;
+            var sym_buf: [256]u8 = undefined;
+            for (pkg_name, 0..) |ch, i| pkg_buf[i] = std.ascii.toUpper(ch);
+            for (sym_name, 0..) |ch, i| sym_buf[i] = std.ascii.toUpper(ch);
+            return try self.heap.internInPackage(pkg_buf[0..pkg_name.len], sym_buf[0..sym_name.len]);
+        }
+        return null;
+    }
+
     fn collectJitLiteralRoots(
         self: *Repl,
         ir_node: *const Ir,
@@ -2731,6 +2755,14 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
                         const slot = try self.vm.registerJitLiteral(v);
                         try roots.put(key, slot);
                     }
+                }
+            },
+            .global_ref => |gr| {
+                const key = @intFromPtr(ir_node);
+                if (!roots.contains(key)) {
+                    const sym = (try self.internGlobalRefSymbol(gr.name)) orelse return error.UnsupportedIrNode;
+                    const slot = try self.vm.registerJitLiteral(sym);
+                    try roots.put(key, slot);
                 }
             },
             .lambda => |lam| {

@@ -2486,7 +2486,7 @@ pub const IrTranslator = struct {
         if (args.len > 4) return error.UnsupportedCallTarget;
 
         var call_args: [5]HoistValue = undefined;
-        call_args[0] = try self.translate(func_ir);
+        call_args[0] = try self.translateCallDesignator(func_ir);
         for (args, 0..) |arg, i| {
             call_args[i + 1] = try self.translate(arg);
         }
@@ -2501,6 +2501,18 @@ pub const IrTranslator = struct {
         };
         const fn_ptr = try self.b.iconst(I64, @as(i64, @bitCast(helper_ptr)));
         return try self.emitIndirectCallValues(fn_ptr, call_args[0 .. args.len + 1]);
+    }
+
+    fn translateCallDesignator(self: *IrTranslator, func_ir: *const Ir) anyerror!HoistValue {
+        return switch (func_ir.*) {
+            .global_ref => blk: {
+                const roots = self.literal_roots orelse return error.UnsupportedCallTarget;
+                const slot = roots.get(@intFromPtr(func_ir)) orelse return error.UnsupportedCallTarget;
+                const slot_addr = try self.cachedIconst(@as(i64, @bitCast(@intFromPtr(slot))));
+                break :blk try self.b.load(I64, slot_addr, MemFlags.default());
+            },
+            else => try self.translate(func_ir),
+        };
     }
 
     fn translateCrossCall(self: *IrTranslator, known: KnownFn, args: []const *const Ir) anyerror!HoistValue {
@@ -6507,6 +6519,107 @@ test "containsHelperCalls preserves true helper ops under fixnum inline lowering
 
     try testing.expect(containsHelperCalls(sqrt, false));
     try testing.expect(containsHelperCalls(sqrt, true));
+}
+
+test "hoist IR translator: global_ref generic call requires literal root" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const fn_ref = try alloc.create(Ir);
+    fn_ref.* = .{ .global_ref = .{ .name = "UNRESOLVED-CALLEE", .index = 0 } };
+    const call_args = try alloc.alloc(*const Ir, 0);
+    const call_node = try alloc.create(Ir);
+    call_node.* = .{ .call = .{ .func = fn_ref, .args = call_args } };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = &.{},
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = call_node,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    try testing.expectError(
+        error.UnsupportedCallTarget,
+        compileIr(testing.allocator, lambda, "global-ref-generic-call-no-root"),
+    );
+}
+
+test "hoist IR translator: global_ref generic call loads rooted designator" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const fn_ref = try alloc.create(Ir);
+    fn_ref.* = .{ .global_ref = .{ .name = "ROOTED-CALLEE", .index = 0 } };
+    const call_args = try alloc.alloc(*const Ir, 0);
+    const call_node = try alloc.create(Ir);
+    call_node.* = .{ .call = .{ .func = fn_ref, .args = call_args } };
+
+    const lambda = try alloc.create(Ir);
+    lambda.* = .{ .lambda = .{
+        .params = &.{},
+        .optional_params = &.{},
+        .key_params = &.{},
+        .rest_param = null,
+        .captures = &.{},
+        .body = call_node,
+        .speed = 3,
+        .safety = 0,
+    } };
+
+    const slot = try testing.allocator.create(Value);
+    defer testing.allocator.destroy(slot);
+    slot.* = Value.t;
+
+    var roots = LiteralRoots.init(testing.allocator);
+    defer roots.deinit();
+    try roots.put(@intFromPtr(fn_ref), slot);
+
+    const EchoBridge = struct {
+        fn call0(_: *anyopaque, fn_raw: u64) callconv(.c) u64 {
+            return fn_raw;
+        }
+        fn call1(_: *anyopaque, fn_raw: u64, _: u64) callconv(.c) u64 {
+            return fn_raw;
+        }
+        fn call2(_: *anyopaque, fn_raw: u64, _: u64, _: u64) callconv(.c) u64 {
+            return fn_raw;
+        }
+        fn call3(_: *anyopaque, fn_raw: u64, _: u64, _: u64, _: u64) callconv(.c) u64 {
+            return fn_raw;
+        }
+        fn call4(_: *anyopaque, fn_raw: u64, _: u64, _: u64, _: u64, _: u64) callconv(.c) u64 {
+            return fn_raw;
+        }
+    };
+
+    var ctx_byte: u8 = 0;
+    setCallBridge(.{
+        .context = @ptrCast(&ctx_byte),
+        .call0 = EchoBridge.call0,
+        .call1 = EchoBridge.call1,
+        .call2 = EchoBridge.call2,
+        .call3 = EchoBridge.call3,
+        .call4 = EchoBridge.call4,
+    });
+
+    var compiled = try compileIrWithKnownFnsAndLiteralRoots(
+        testing.allocator,
+        lambda,
+        "global-ref-generic-call-rooted",
+        null,
+        &roots,
+    );
+    defer compiled.deinit();
+
+    const result = compiled.call0();
+    try testing.expectEqual(@as(i64, @bitCast(Value.t.raw)), result);
 }
 
 /// Helper: build Hoist function, compile, load into JIT memory
