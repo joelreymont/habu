@@ -2054,6 +2054,10 @@ pub const Compiler = struct {
     globals: GlobalEnv,
     /// Pre-interned builtin symbols for identity comparison
     builtins: ?Builtins,
+    /// Callable builtin symbol identities (raw value set).
+    builtin_fn_syms: std.AutoHashMap(u64, void),
+    /// Fixed-arity wrappers for primitive function references.
+    builtin_ref_arities: std.AutoHashMap(u64, PrimitiveRefArity),
     /// Cache keys for builtin handle freshness.
     bi_heap: ?*Heap,
     bi_gc: usize,
@@ -2156,6 +2160,8 @@ pub const Compiler = struct {
             .type_checking_enabled = false, // Off by default for gradual typing
             .globals = GlobalEnv.init(allocator),
             .builtins = null, // Lazily initialized when heap is available
+            .builtin_fn_syms = std.AutoHashMap(u64, void).init(allocator),
+            .builtin_ref_arities = std.AutoHashMap(u64, PrimitiveRefArity).init(allocator),
             .bi_heap = null,
             .bi_gc = 0,
             .bi_cl_pkg = 0,
@@ -2190,7 +2196,7 @@ pub const Compiler = struct {
         if (vm.heap.cl_user_package) |cl_user| {
             vm.heap.setCurrentPackage(cl_user);
         }
-        return .{
+        var out = Compiler{
             .builder = IrBuilder.init(allocator),
             .allocator = allocator,
             .type_checker = TypeChecker.init(allocator),
@@ -2198,6 +2204,8 @@ pub const Compiler = struct {
             .type_checking_enabled = false,
             .globals = GlobalEnv.init(allocator),
             .builtins = builtins,
+            .builtin_fn_syms = std.AutoHashMap(u64, void).init(allocator),
+            .builtin_ref_arities = std.AutoHashMap(u64, PrimitiveRefArity).init(allocator),
             .bi_heap = vm.heap,
             .bi_gc = vm.heap.stats.gc_count,
             .bi_cl_pkg = bi_epoch.cl_pkg,
@@ -2223,13 +2231,15 @@ pub const Compiler = struct {
             .diag = false,
             .compile_depth = 0,
         };
+        try out.rebuildBuiltinCallableCaches();
+        return out;
     }
 
     /// Initialize with heap while preserving current package selection.
     pub fn initWithHeapPreservePackage(allocator: std.mem.Allocator, vm: *Vm) !Compiler {
         const builtins = try initBuiltinsCanonical(vm.heap);
         const bi_epoch = builtinsEpoch(vm.heap);
-        return .{
+        var out = Compiler{
             .builder = IrBuilder.init(allocator),
             .allocator = allocator,
             .type_checker = TypeChecker.init(allocator),
@@ -2237,6 +2247,8 @@ pub const Compiler = struct {
             .type_checking_enabled = false,
             .globals = GlobalEnv.init(allocator),
             .builtins = builtins,
+            .builtin_fn_syms = std.AutoHashMap(u64, void).init(allocator),
+            .builtin_ref_arities = std.AutoHashMap(u64, PrimitiveRefArity).init(allocator),
             .bi_heap = vm.heap,
             .bi_gc = vm.heap.stats.gc_count,
             .bi_cl_pkg = bi_epoch.cl_pkg,
@@ -2262,6 +2274,8 @@ pub const Compiler = struct {
             .diag = false,
             .compile_depth = 0,
         };
+        try out.rebuildBuiltinCallableCaches();
+        return out;
     }
 
     /// Set VM for compile-time macro expansion
@@ -2320,6 +2334,7 @@ pub const Compiler = struct {
         self.bi_gc = heap.stats.gc_count;
         self.bi_cl_pkg = bi_epoch.cl_pkg;
         self.bi_cl_ver = bi_epoch.cl_ver;
+        try self.rebuildBuiltinCallableCaches();
     }
 
     fn specialKeyFromSym(self: *const Compiler, sym_val: Value) ?VarKey {
@@ -2380,6 +2395,8 @@ pub const Compiler = struct {
     pub fn deinit(self: *Compiler) void {
         self.type_checker.deinit();
         self.bi_checker.deinit();
+        self.builtin_fn_syms.deinit();
+        self.builtin_ref_arities.deinit();
         // Free struct_predicates keys (allocated with globals.allocator)
         var pred_iter = self.struct_predicates.keyIterator();
         while (pred_iter.next()) |key| {
@@ -15216,6 +15233,138 @@ pub const Compiler = struct {
         ternary,
     };
 
+    const primitive_ref_binary_extras = [_][]const u8{
+        "member",
+        "assoc",
+        "find",
+        "position",
+        "count",
+        "remove",
+    };
+
+    const builtin_callable_extras = [_][]const u8{
+        "+",
+        "-",
+        "*",
+        "/",
+        "append",
+        "log",
+        "gensym",
+        "atan",
+        "member",
+        "assoc",
+        "find",
+        "position",
+        "count",
+        "remove",
+        "list",
+        "%make-broadcast-stream",
+        "%make-concatenated-stream",
+        "class-of",
+        "floor",
+        "ceiling",
+        "round",
+        "truncate",
+        "aref",
+        "make-string",
+        "make-vector",
+        "%svset",
+        "%aset",
+        "%set-slot-value",
+        "%sset",
+        "%make-unbound",
+        "%class-of",
+        "vector",
+        "make-array",
+        "char",
+        "schar",
+        "substring",
+        "concatenate",
+        "format",
+        "print",
+        "princ",
+        "encode-universal-time",
+        "%make-pathname",
+        "set-macro-character",
+        "make-hash-table",
+        "gethash",
+        "puthash",
+        "remhash",
+        "hash-table-count",
+        "hash-table-capacity",
+        "%open",
+        "%close",
+        "close",
+        "%read-line",
+        "%write-line",
+        "%write-string",
+        "%read-byte",
+        "%write-byte",
+        "%file-position",
+        "%file-length",
+        "%finish-output",
+        "%force-output",
+        "%clear-input",
+        "%clear-output",
+        "class-direct-superclasses",
+        "class-precedence-list",
+        "class-direct-slots",
+        "class-slots",
+        "slot-definition-name",
+        "slot-definition-initform",
+        "slot-definition-initargs",
+        "slot-definition-readers",
+        "slot-definition-writers",
+        "slot-definition-allocation",
+        "slot-definition-type",
+    };
+
+    fn rebuildBuiltinCallableCaches(self: *Compiler) !void {
+        self.builtin_fn_syms.clearRetainingCapacity();
+        self.builtin_ref_arities.clearRetainingCapacity();
+
+        const b = self.builtins orelse return;
+
+        inline for (nullary_dispatch) |entry| {
+            const raw = @field(b, entry.field).raw;
+            try self.builtin_fn_syms.put(raw, {});
+            try self.builtin_ref_arities.put(raw, .nullary);
+        }
+        inline for (unary_dispatch) |entry| {
+            const raw = @field(b, entry.field).raw;
+            try self.builtin_fn_syms.put(raw, {});
+            try self.builtin_ref_arities.put(raw, .unary);
+        }
+        inline for (binary_dispatch) |entry| {
+            const raw = @field(b, entry.field).raw;
+            try self.builtin_fn_syms.put(raw, {});
+            try self.builtin_ref_arities.put(raw, .binary);
+        }
+        inline for (ternary_dispatch) |entry| {
+            const raw = @field(b, entry.field).raw;
+            try self.builtin_fn_syms.put(raw, {});
+            try self.builtin_ref_arities.put(raw, .ternary);
+        }
+        inline for (composed_dispatch) |entry| {
+            const raw = @field(b, entry.field).raw;
+            try self.builtin_fn_syms.put(raw, {});
+            try self.builtin_ref_arities.put(raw, .unary);
+        }
+
+        inline for (primitive_ref_binary_extras) |field| {
+            const raw = @field(b, field).raw;
+            try self.builtin_fn_syms.put(raw, {});
+            try self.builtin_ref_arities.put(raw, .binary);
+        }
+
+        inline for (builtin_callable_extras) |field| {
+            try self.builtin_fn_syms.put(@field(b, field).raw, {});
+        }
+
+        // INTERN has optional package argument.
+        _ = self.builtin_ref_arities.remove(b.intern.raw);
+    }
+
     /// Dispatch entry for simple unary primitives
     const UnaryEntry = struct { field: []const u8, tag: PrimTag };
     const unary_dispatch = [_]UnaryEntry{
@@ -15552,83 +15701,24 @@ pub const Compiler = struct {
     /// Return fixed arity for primitive function references that can be wrapped
     /// as (lambda (...) (prim ...)). Variadic primitives return null.
     pub fn primitiveRefArity(self: *Compiler, sym: Value) ?PrimitiveRefArity {
-        const b = if (self.builtins) |val| val else return null;
+        if (self.builtins == null) return null;
         const dispatch_sym = self.canonicalBuiltinSymbol(sym);
-        const s = dispatch_sym.raw;
-
-        // INTERN has optional package argument; do not force fixed-arity wrappers.
-        if (s == b.intern.raw) return null;
-
-        inline for (nullary_dispatch) |entry| {
-            if (s == @field(b, entry.field).raw) return .nullary;
-        }
-        inline for (unary_dispatch) |entry| {
-            if (s == @field(b, entry.field).raw) return .unary;
-        }
-        inline for (binary_dispatch) |entry| {
-            if (s == @field(b, entry.field).raw) return .binary;
-        }
-        inline for (ternary_dispatch) |entry| {
-            if (s == @field(b, entry.field).raw) return .ternary;
-        }
-
-        // Composed accessors in this table are all unary.
-        inline for (composed_dispatch) |entry| {
-            if (s == @field(b, entry.field).raw) return .unary;
-        }
-
-        // Sequence operators compiled via custom handlers still have
-        // a stable 2-arg core shape for (function <sym>) wrappers.
-        if (s == b.member.raw) return .binary;
-        if (s == b.assoc.raw) return .binary;
-        if (s == b.find.raw) return .binary;
-        if (s == b.position.raw) return .binary;
-        if (s == b.count.raw) return .binary;
-        if (s == b.remove.raw) return .binary;
-
-        return null;
+        return self.builtin_ref_arities.get(dispatch_sym.raw);
     }
 
     /// Return true when SYMBOL-FUNCTION/function designator resolution should
     /// treat `sym` as a compiler-recognized primitive callable.
     pub fn isBuiltinFunctionSymbol(self: *Compiler, sym: Value) bool {
-        const b = if (self.builtins) |val| val else return false;
-        const dispatch_sym = self.canonicalBuiltinSymbol(sym);
-        const s = dispatch_sym.raw;
+        if (self.builtins == null) return false;
+        const live_sym = self.resolveForwardedValue(sym);
+        if (self.builtin_fn_syms.contains(live_sym.raw)) return true;
+        const dispatch_sym = self.canonicalBuiltinSymbol(live_sym);
+        return self.builtin_fn_syms.contains(dispatch_sym.raw);
+    }
 
-        // Variadic arithmetic/custom fast paths in compilePrimitive.
-        if (s == b.@"+".raw or s == b.@"-".raw or s == b.@"*".raw or s == b.@"/".raw or s == b.append.raw) return true;
-
-        // Table-driven primitive dispatch.
-        inline for (nullary_dispatch) |entry| {
-            if (s == @field(b, entry.field).raw) return true;
-        }
-        inline for (unary_dispatch) |entry| {
-            if (s == @field(b, entry.field).raw) return true;
-        }
-        inline for (binary_dispatch) |entry| {
-            if (s == @field(b, entry.field).raw) return true;
-        }
-        inline for (ternary_dispatch) |entry| {
-            if (s == @field(b, entry.field).raw) return true;
-        }
-        inline for (composed_dispatch) |entry| {
-            if (s == @field(b, entry.field).raw) return true;
-        }
-
-        // Custom primitive handlers in compilePrimitive.
-        if (s == b.log.raw or s == b.gensym.raw or s == b.atan.raw) return true;
-        if (s == b.member.raw or s == b.assoc.raw or s == b.find.raw or s == b.position.raw or s == b.count.raw or s == b.remove.raw or s == b.list.raw) return true;
-        if (s == b.@"%make-broadcast-stream".raw or s == b.@"%make-concatenated-stream".raw) return true;
-        if (s == b.@"class-of".raw or s == b.floor.raw or s == b.ceiling.raw or s == b.round.raw or s == b.truncate.raw) return true;
-        if (s == b.aref.raw or s == b.@"make-string".raw or s == b.@"make-vector".raw or s == b.@"%svset".raw or s == b.@"%aset".raw or s == b.@"%set-slot-value".raw or s == b.@"%sset".raw or s == b.@"%make-unbound".raw or s == b.@"%class-of".raw or s == b.vector.raw or s == b.@"make-array".raw or s == b.char.raw or s == b.schar.raw or s == b.substring.raw) return true;
-        if (s == b.concatenate.raw or s == b.format.raw or s == b.print.raw or s == b.princ.raw or s == b.@"encode-universal-time".raw or s == b.@"%make-pathname".raw or s == b.@"set-macro-character".raw) return true;
-        if (s == b.@"make-hash-table".raw or s == b.gethash.raw or s == b.puthash.raw or s == b.remhash.raw or s == b.@"hash-table-count".raw or s == b.@"hash-table-capacity".raw) return true;
-        if (s == b.@"%open".raw or s == b.@"%close".raw or s == b.close.raw or s == b.@"%read-line".raw or s == b.@"%write-line".raw or s == b.@"%write-string".raw or s == b.@"%read-byte".raw or s == b.@"%write-byte".raw or s == b.@"%file-position".raw or s == b.@"%file-length".raw or s == b.@"%finish-output".raw or s == b.@"%force-output".raw or s == b.@"%clear-input".raw or s == b.@"%clear-output".raw) return true;
-        if (s == b.@"class-direct-superclasses".raw or s == b.@"class-precedence-list".raw or s == b.@"class-direct-slots".raw or s == b.@"class-slots".raw) return true;
-        if (s == b.@"slot-definition-name".raw or s == b.@"slot-definition-initform".raw or s == b.@"slot-definition-initargs".raw or s == b.@"slot-definition-readers".raw or s == b.@"slot-definition-writers".raw or s == b.@"slot-definition-allocation".raw or s == b.@"slot-definition-type".raw) return true;
-
-        return false;
+    pub fn isBuiltinFunctionRaw(self: *const Compiler, sym: Value) bool {
+        const live_sym = self.resolveForwardedValue(sym);
+        return self.builtin_fn_syms.contains(live_sym.raw);
     }
 
     /// Return the subtypes of a condition type for handler-case dispatch.

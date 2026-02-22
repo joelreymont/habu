@@ -379,6 +379,10 @@ pub const Heap = struct {
     los_free: std.ArrayList(FreeSpan),
     los_free_bins: [TENURED_FREE_BIN_N]std.ArrayList(FreeSpan),
     profile_mutator: bool,
+    trace_tenured_oom: bool,
+    trace_bad_store: bool,
+    disable_gc_slot_cache: bool,
+    trace_gc_slot_overlap: bool,
     major_cycle_active: bool,
     /// Persistent collector state reused across GC cycles.
     gc: GC,
@@ -707,6 +711,10 @@ pub const Heap = struct {
         if (los_threshold_target > los_threshold_max) los_threshold_target = los_threshold_max;
 
         const profile_mutator = std.posix.getenv("HABU_PROFILE_MUTATOR") != null;
+        const trace_tenured_oom = std.posix.getenv("HABU_TRACE_TENURED_OOM") != null;
+        const trace_bad_store = std.posix.getenv("HABU_TRACE_BAD_STORE") != null;
+        const disable_gc_slot_cache = std.posix.getenv("HABU_DISABLE_GC_SLOT_CACHE") != null;
+        const trace_gc_slot_overlap = std.posix.getenv("HABU_TRACE_GC_SLOT_OVERLAP") != null;
 
         var heap = Heap{
             .memory = memory,
@@ -746,6 +754,10 @@ pub const Heap = struct {
             .los_free = std.ArrayList(FreeSpan){},
             .los_free_bins = [_]std.ArrayList(FreeSpan){std.ArrayList(FreeSpan){}} ** TENURED_FREE_BIN_N,
             .profile_mutator = profile_mutator,
+            .trace_tenured_oom = trace_tenured_oom,
+            .trace_bad_store = trace_bad_store,
+            .disable_gc_slot_cache = disable_gc_slot_cache,
+            .trace_gc_slot_overlap = trace_gc_slot_overlap,
             .major_cycle_active = false,
             .gc = GC.init(allocator),
             .backing_allocator = allocator,
@@ -1352,7 +1364,7 @@ pub const Heap = struct {
         const end = @intFromPtr(tenured.end);
         if (cur > end) return error.OutOfMemory;
         if (aligned_size > end - cur) {
-            if (std.posix.getenv("HABU_TRACE_TENURED_OOM") != null) {
+            if (self.trace_tenured_oom) {
                 const tenured_start = @intFromPtr(tenured.start);
                 const used = cur - tenured_start;
                 const cap = end - tenured_start;
@@ -2034,7 +2046,7 @@ pub const Heap = struct {
     }
 
     fn traceBadStoreValue(self: *const Heap, field: []const u8, val: Value) void {
-        if (std.posix.getenv("HABU_TRACE_BAD_STORE") == null) return;
+        if (!self.trace_bad_store) return;
         if (!val.isPointer() or val.isNil()) return;
 
         const addr = val.toPtrAddr();
@@ -3298,7 +3310,7 @@ pub const Heap = struct {
 
     fn refreshGcInternalSlots(self: *Heap) !void {
         const sig = self.calcGcRootSig();
-        const disable_cache = std.posix.getenv("HABU_DISABLE_GC_SLOT_CACHE") != null;
+        const disable_cache = self.disable_gc_slot_cache;
         if (!disable_cache and self.gc_root_sig_valid and GcRootSig.eql(self.gc_root_sig, sig)) return;
 
         self.gc_internal_slots.clearRetainingCapacity();
@@ -3400,7 +3412,7 @@ pub const Heap = struct {
         try self.refreshGcInternalSlots();
         try self.gc_slots.appendSlice(self.backing_allocator, self.gc_internal_slots.items);
 
-        if (std.posix.getenv("HABU_TRACE_GC_SLOT_OVERLAP") != null) {
+        if (self.trace_gc_slot_overlap) {
             for (self.gc_slots.items, 0..) |slot, si| {
                 const slot_addr = @intFromPtr(slot);
                 for (external_roots.ranges, 0..) |r, ri| {

@@ -561,6 +561,19 @@ pub const Vm = struct {
     /// Stable host-root slots for JIT literal Values.
     jit_literal_roots: std.ArrayList(*Value),
 
+    trace_jit_call: bool,
+    trace_fn_resolve: bool,
+    trace_call_mismatch: bool,
+    trace_call_mismatch_apply: bool,
+    trace_invalid_opcode: bool,
+    trace_error_context: bool,
+    trace_error_include_halt: bool,
+    trace_error_only_filter: ?[]const u8,
+    trace_chunk_only_filter: ?[]const u8,
+    trace_op_only_filter: ?[]const u8,
+    trace_call_ret: bool,
+    trace_call_ret_filter: ?[]const u8,
+
     /// Pre-interned builtin symbols for fast dispatch
     builtins: BuiltinSymbols,
 
@@ -634,7 +647,7 @@ pub const Vm = struct {
     }
 
     fn invalidOpcode(self: *const Vm, comptime site: []const u8) Error {
-        if (std.posix.getenv("HABU_TRACE_INVALID_OPCODE") != null) {
+        if (self.trace_invalid_opcode) {
             const chunk_addr = @intFromPtr(self.chunk);
             const from_start = @intFromPtr(self.heap.from_start);
             const from_end = @intFromPtr(self.heap.from_end);
@@ -676,22 +689,22 @@ pub const Vm = struct {
     }
 
     fn shouldTraceError(self: *Vm, err: anyerror) bool {
-        if (std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") == null) return false;
-        if (err == error.Halt and std.posix.getenv("HABU_TRACE_ERROR_INCLUDE_HALT") == null) return false;
+        if (!self.trace_error_context) return false;
+        if (err == error.Halt and !self.trace_error_include_halt) return false;
 
-        if (std.posix.getenv("HABU_TRACE_ERROR_ONLY")) |raw_c| {
-            if (!csvHasExactToken(std.mem.sliceTo(raw_c, 0), @errorName(err))) return false;
+        if (self.trace_error_only_filter) |filter| {
+            if (!csvHasExactToken(filter, @errorName(err))) return false;
         }
-        if (std.posix.getenv("HABU_TRACE_CHUNK_ONLY")) |raw_c| {
-            if (!csvHasSubstringToken(std.mem.sliceTo(raw_c, 0), chunkTraceName(self.chunk))) return false;
+        if (self.trace_chunk_only_filter) |filter| {
+            if (!csvHasSubstringToken(filter, chunkTraceName(self.chunk))) return false;
         }
         return true;
     }
 
     fn shouldTraceOpError(self: *Vm, op: Op, err: anyerror) bool {
         if (!shouldTraceError(self, err)) return false;
-        if (std.posix.getenv("HABU_TRACE_OP_ONLY")) |raw_c| {
-            if (!csvHasExactToken(std.mem.sliceTo(raw_c, 0), @tagName(op))) return false;
+        if (self.trace_op_only_filter) |filter| {
+            if (!csvHasExactToken(filter, @tagName(op))) return false;
         }
         return true;
     }
@@ -755,10 +768,8 @@ pub const Vm = struct {
     }
 
     fn shouldTraceCallRet(self: *Vm, fn_designator: ?Value, caller_chunk: *const Chunk, callee_chunk: ?*const Chunk) bool {
-        _ = self;
-        if (std.posix.getenv("HABU_TRACE_CALL_RET") == null) return false;
-        const filter_c = std.posix.getenv("HABU_TRACE_CALL_RET_ONLY") orelse return true;
-        const filter = std.mem.sliceTo(filter_c, 0);
+        if (!self.trace_call_ret) return false;
+        const filter = self.trace_call_ret_filter orelse return true;
         if (csvHasSubstringToken(filter, chunkTraceName(caller_chunk))) return true;
         if (callee_chunk) |c| {
             if (csvHasSubstringToken(filter, chunkTraceName(c))) return true;
@@ -944,6 +955,18 @@ pub const Vm = struct {
             .ext_roots_owner = null,
             .jit_fns = std.AutoHashMap(usize, *jit_backend.CompiledFn).init(allocator),
             .jit_literal_roots = std.ArrayList(*Value){},
+            .trace_jit_call = std.posix.getenv("HABU_TRACE_JIT_CALL") != null,
+            .trace_fn_resolve = std.posix.getenv("HABU_TRACE_FN_RESOLVE") != null,
+            .trace_call_mismatch = std.posix.getenv("HABU_TRACE_CALL_MISMATCH") != null,
+            .trace_call_mismatch_apply = std.posix.getenv("HABU_TRACE_CALL_MISMATCH_APPLY") != null,
+            .trace_invalid_opcode = std.posix.getenv("HABU_TRACE_INVALID_OPCODE") != null,
+            .trace_error_context = std.posix.getenv("HABU_TRACE_ERROR_CONTEXT") != null,
+            .trace_error_include_halt = std.posix.getenv("HABU_TRACE_ERROR_INCLUDE_HALT") != null,
+            .trace_error_only_filter = if (std.posix.getenv("HABU_TRACE_ERROR_ONLY")) |raw| std.mem.sliceTo(raw, 0) else null,
+            .trace_chunk_only_filter = if (std.posix.getenv("HABU_TRACE_CHUNK_ONLY")) |raw| std.mem.sliceTo(raw, 0) else null,
+            .trace_op_only_filter = if (std.posix.getenv("HABU_TRACE_OP_ONLY")) |raw| std.mem.sliceTo(raw, 0) else null,
+            .trace_call_ret = std.posix.getenv("HABU_TRACE_CALL_RET") != null,
+            .trace_call_ret_filter = if (std.posix.getenv("HABU_TRACE_CALL_RET_ONLY")) |raw| std.mem.sliceTo(raw, 0) else null,
             .builtins = try BuiltinSymbols.init(heap),
             .type_syms = try type_mod.TypeSymbols.init(heap),
         };
@@ -1282,7 +1305,7 @@ pub const Vm = struct {
         const chunk = self.chunk;
         const compiled = self.jit_fns.get(@intFromPtr(chunk)) orelse return null;
         if (compiled.arity != argc) return null;
-        const trace_jit_call = std.posix.getenv("HABU_TRACE_JIT_CALL") != null;
+        const trace_jit_call = self.trace_jit_call;
         if (trace_jit_call) {
             std.debug.print("JIT_CALL enter {s} argc={d}\n", .{ compiled.name, argc });
         }
@@ -10223,7 +10246,7 @@ pub const Vm = struct {
 
         // Function designator: symbol -> function cell/global binding.
         if (fn_val.isSymbol()) {
-            if (std.posix.getenv("HABU_TRACE_FN_RESOLVE") != null) {
+            if (self.trace_fn_resolve) {
                 const sym_name = fn_val.toPtr(Symbol).getName();
                 const frame_name = switch (self.chunk.name.typeKind()) {
                     .symbol => self.chunk.name.toPtr(Symbol).getName(),
@@ -10276,7 +10299,7 @@ pub const Vm = struct {
         }
 
         if (!fn_val.isClosure()) {
-            if (std.posix.getenv("HABU_TRACE_CALL_MISMATCH") != null and fn_designator.isSymbol()) {
+            if (self.trace_call_mismatch and fn_designator.isSymbol()) {
                 const sym = fn_designator.toPtr(Symbol);
                 std.debug.print("CALL_MISMATCH symbol={s}\n", .{sym.getName()});
             }
@@ -10564,12 +10587,12 @@ pub const Vm = struct {
         const args_list = try self.pop();
         const fn_val = try self.pop();
         var callable = fn_val;
-        const trace_call_mismatch = std.posix.getenv("HABU_TRACE_CALL_MISMATCH") != null;
-        const trace_do_apply = std.posix.getenv("HABU_TRACE_CALL_MISMATCH_APPLY") != null;
+        const trace_call_mismatch = self.trace_call_mismatch;
+        const trace_do_apply = self.trace_call_mismatch_apply;
 
         // Function designator: symbol -> function cell/global binding.
         if (callable.isSymbol()) {
-            if (std.posix.getenv("HABU_TRACE_FN_RESOLVE") != null) {
+            if (self.trace_fn_resolve) {
                 const sym_name = callable.toPtr(Symbol).getName();
                 const frame_name = switch (self.chunk.name.typeKind()) {
                     .symbol => self.chunk.name.toPtr(Symbol).getName(),

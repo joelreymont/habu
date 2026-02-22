@@ -1323,7 +1323,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         // Check if it's a builtin primitive
         if (self.compiler.builtins) |_| {
             const dispatch_sym = try self.canonicalBuiltinFunctionSymbol(sym);
-            if (self.compiler.isBuiltinFunctionSymbol(dispatch_sym)) {
+            if (self.compiler.isBuiltinFunctionRaw(dispatch_sym)) {
                 return true;
             }
         }
@@ -1350,7 +1350,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         // Lazily materialize builtin primitive wrappers.
         if (self.compiler.builtins) |_| {
             const dispatch_sym = try self.canonicalBuiltinFunctionSymbol(sym);
-            const is_builtin = self.compiler.isBuiltinFunctionSymbol(dispatch_sym);
+            const is_builtin = self.compiler.isBuiltinFunctionRaw(dispatch_sym);
             if (trace_fn_resolve) {
                 std.debug.print(
                     "TRACE fn-resolve dispatch={s} builtin={}\n",
@@ -1403,7 +1403,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         _ = self.compiler.builtins orelse return sym;
 
         const direct = self.canonicalMacroSymbol(sym);
-        if (self.compiler.isBuiltinFunctionSymbol(direct)) return direct;
+        if (self.compiler.isBuiltinFunctionRaw(direct)) return direct;
 
         const name = sym.toPtr(Symbol).getName();
         if (try self.findBuiltinByName(name)) |resolved| return resolved;
@@ -1423,7 +1423,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
         const packages = [_][]const u8{ "CL", "COMMON-LISP", "CL-USER" };
         for (packages) |pkg| {
             if (try self.heap.internInPackage(pkg, name)) |sym| {
-                if (self.compiler.isBuiltinFunctionSymbol(sym)) return sym;
+                if (self.compiler.isBuiltinFunctionRaw(sym)) return sym;
             }
         }
 
@@ -1442,7 +1442,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
             const lowered = case_buf[0..name.len];
             for (packages) |pkg| {
                 if (try self.heap.internInPackage(pkg, lowered)) |sym| {
-                    if (self.compiler.isBuiltinFunctionSymbol(sym)) return sym;
+                    if (self.compiler.isBuiltinFunctionRaw(sym)) return sym;
                 }
             }
         }
@@ -1452,7 +1452,7 @@ fn popMacroCallRoots(vm: *Vm, root_idx: u16, stack_idx: u16, tmp_idx: u16) void 
             const uppered = case_buf[0..name.len];
             for (packages) |pkg| {
                 if (try self.heap.internInPackage(pkg, uppered)) |sym| {
-                    if (self.compiler.isBuiltinFunctionSymbol(sym)) return sym;
+                    if (self.compiler.isBuiltinFunctionRaw(sym)) return sym;
                 }
             }
         }

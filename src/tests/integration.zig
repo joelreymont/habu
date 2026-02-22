@@ -1186,6 +1186,40 @@ test "compiler primitiveRefArity count is binary" {
     try testing.expectEqual(compiler.Compiler.PrimitiveRefArity.binary, arity.?);
 }
 
+test "compiler primitiveRefArity intern remains variadic" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const b = repl.compiler.builtins.?;
+    try testing.expect(repl.compiler.primitiveRefArity(b.intern) == null);
+}
+
+test "compiler builtin callable cache keeps custom primitive symbols callable" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 8 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl: Repl = undefined;
+    try repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+    try repl.wireGlobalEnv();
+
+    const b = repl.compiler.builtins.?;
+    try testing.expect(repl.compiler.isBuiltinFunctionSymbol(b.atan));
+    try testing.expect(repl.compiler.isBuiltinFunctionSymbol(b.member));
+    try testing.expect(repl.compiler.isBuiltinFunctionSymbol(b.concatenate));
+    try testing.expect(repl.compiler.isBuiltinFunctionSymbol(b.@"%open"));
+    try testing.expect(repl.compiler.isBuiltinFunctionSymbol(b.@"class-slots"));
+}
+
 test "stdlib boundp treats nil and t as symbols" {
     const allocator = testing.allocator;
 

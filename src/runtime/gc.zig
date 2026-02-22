@@ -376,6 +376,13 @@ pub const GC = struct {
     debug_origin_b: usize,
     debug_roots_ranges: []const roots_mod.RootRange,
     debug_roots_slots: []const *Value,
+    trace_bad_root: bool,
+    trap_bad_root: bool,
+    trace_stale_resolve: bool,
+    trace_bad_keyword: bool,
+    trap_bad_keyword: bool,
+    trace_bad_symbol: bool,
+    trace_gc_oom: bool,
     /// Debug: flag set during GC trace/copy phase
     gc_in_progress: if (builtin.mode == .Debug) bool else void,
 
@@ -404,6 +411,13 @@ pub const GC = struct {
             .debug_origin_b = 0,
             .debug_roots_ranges = &[_]roots_mod.RootRange{},
             .debug_roots_slots = &[_]*Value{},
+            .trace_bad_root = std.posix.getenv("HABU_TRACE_BAD_ROOT") != null,
+            .trap_bad_root = std.posix.getenv("HABU_TRAP_BAD_ROOT") != null,
+            .trace_stale_resolve = std.posix.getenv("HABU_TRACE_STALE_RESOLVE") != null,
+            .trace_bad_keyword = std.posix.getenv("HABU_TRACE_GC_BAD_KEYWORD") != null,
+            .trap_bad_keyword = std.posix.getenv("HABU_TRAP_BAD_KEYWORD") != null,
+            .trace_bad_symbol = std.posix.getenv("HABU_TRACE_GC_BAD_SYMBOL") != null,
+            .trace_gc_oom = std.posix.getenv("HABU_TRACE_GC_OOM") != null,
             .gc_in_progress = if (builtin.mode == .Debug) false else {},
         };
     }
@@ -682,6 +696,8 @@ pub const GC = struct {
             const hex = if (raw.len > 2 and (raw[0] == '0') and (raw[1] == 'x' or raw[1] == 'X')) raw[2..] else raw;
             break :blk std.fmt.parseUnsigned(usize, hex, 16) catch null;
         };
+        const trace_bad_root = self.trace_bad_root;
+        const trap_bad_root = self.trap_bad_root;
 
         var range_idx: usize = 0;
         for (roots.ranges) |r| {
@@ -710,7 +726,7 @@ pub const GC = struct {
                         }
                     }
                 }
-                if (std.posix.getenv("HABU_TRACE_BAD_ROOT") != null) {
+                if (trace_bad_root) {
                     const root_val = root.*;
                     if (root_val.isPointer() and root_val.getTag() == .boxed) {
                         const addr = root_val.toPtrAddr();
@@ -728,7 +744,7 @@ pub const GC = struct {
                                     "TRACE bad-root range={d} idx={d} root_ptr=0x{x} val=0x{x} boxed-kind-raw=0x{x}\n",
                                     .{ range_idx, elem_idx, @intFromPtr(root), root_val.raw, kind_raw },
                                 );
-                                if (std.posix.getenv("HABU_TRAP_BAD_ROOT") != null) {
+                                if (trap_bad_root) {
                                     @panic("bad boxed root");
                                 }
                             }
@@ -744,7 +760,7 @@ pub const GC = struct {
                                     "TRACE bad-root range={d} idx={d} root_ptr=0x{x} val=0x{x} symbol-name-len={d}\n",
                                     .{ range_idx, elem_idx, @intFromPtr(root), root_val.raw, sym.name_len },
                                 );
-                                if (std.posix.getenv("HABU_TRAP_BAD_ROOT") != null) {
+                                if (trap_bad_root) {
                                     @panic("bad symbol root");
                                 }
                             }
@@ -761,7 +777,7 @@ pub const GC = struct {
                                     "TRACE bad-root range={d} idx={d} root_ptr=0x{x} val=0x{x} closure-captures={d} max={d}\n",
                                     .{ range_idx, elem_idx, @intFromPtr(root), root_val.raw, cls.num_captures, max_caps },
                                 );
-                                if (std.posix.getenv("HABU_TRAP_BAD_ROOT") != null) {
+                                if (trap_bad_root) {
                                     @panic("bad closure root");
                                 }
                             }
@@ -798,7 +814,7 @@ pub const GC = struct {
                     }
                 }
             }
-            if (std.posix.getenv("HABU_TRACE_BAD_ROOT") != null) {
+            if (trace_bad_root) {
                 const slot_val = slot.*;
                 if (slot_val.isPointer() and slot_val.getTag() == .boxed) {
                     const addr = slot_val.toPtrAddr();
@@ -812,7 +828,7 @@ pub const GC = struct {
                                 "TRACE bad-root slot={d} slot_ptr=0x{x} val=0x{x} boxed-kind-raw=0x{x}\n",
                                 .{ slot_idx, @intFromPtr(slot), slot_val.raw, kind_raw },
                             );
-                            if (std.posix.getenv("HABU_TRAP_BAD_ROOT") != null) {
+                            if (trap_bad_root) {
                                 @panic("bad boxed slot root");
                             }
                             }
@@ -828,7 +844,7 @@ pub const GC = struct {
                                 "TRACE bad-root slot={d} slot_ptr=0x{x} val=0x{x} symbol-name-len={d}\n",
                                 .{ slot_idx, @intFromPtr(slot), slot_val.raw, sym.name_len },
                             );
-                            if (std.posix.getenv("HABU_TRAP_BAD_ROOT") != null) {
+                            if (trap_bad_root) {
                                 @panic("bad symbol slot root");
                             }
                         }
@@ -845,7 +861,7 @@ pub const GC = struct {
                                 "TRACE bad-root slot={d} slot_ptr=0x{x} val=0x{x} closure-captures={d} max={d}\n",
                                 .{ slot_idx, @intFromPtr(slot), slot_val.raw, cls.num_captures, max_caps },
                             );
-                            if (std.posix.getenv("HABU_TRAP_BAD_ROOT") != null) {
+                            if (trap_bad_root) {
                                 @panic("bad closure slot root");
                             }
                         }
@@ -1220,7 +1236,7 @@ pub const GC = struct {
         return size >= heap.promote_threshold;
     }
 
-    fn resolveStaleForwardedValue(heap: *const heap_mod.Heap, val: Value, obj_addr: usize) ?Value {
+    fn resolveStaleForwardedValue(trace_stale_resolve: bool, heap: *const heap_mod.Heap, val: Value, obj_addr: usize) ?Value {
         const stale_start = @intFromPtr(heap.to_start);
         const stale_end = stale_start + heap.space_size;
         if (obj_addr < stale_start or obj_addr >= stale_end) return null;
@@ -1248,7 +1264,7 @@ pub const GC = struct {
             }
         }
         if (!forwarded_size_ok) {
-            if (std.posix.getenv("HABU_TRACE_STALE_RESOLVE") != null) {
+            if (trace_stale_resolve) {
                 std.debug.print(
                     "TRACE stale-resolve reject-size val=0x{x} obj=0x{x} fw=0x{x} sz={d} stale=[0x{x},0x{x})\n",
                     .{ val.raw, obj_addr, first_word.raw, forwarded_size, stale_start, stale_end },
@@ -1267,7 +1283,7 @@ pub const GC = struct {
             }
         }
         if (!(in_from or in_tenured)) {
-            if (std.posix.getenv("HABU_TRACE_STALE_RESOLVE") != null) {
+            if (trace_stale_resolve) {
                 std.debug.print(
                     "TRACE stale-resolve reject-range val=0x{x} obj=0x{x} fw=0x{x} new=0x{x} sz={d} from=[0x{x},0x{x})\n",
                     .{ val.raw, obj_addr, first_word.raw, new_addr, forwarded_size, from_start, from_end },
@@ -1276,7 +1292,7 @@ pub const GC = struct {
             return null;
         }
         if (!objects.forwardingTargetLooksValid(val.getTag(), new_addr, forwarded_size)) {
-            if (std.posix.getenv("HABU_TRACE_STALE_RESOLVE") != null) {
+            if (trace_stale_resolve) {
                 std.debug.print(
                     "TRACE stale-resolve reject-layout val=0x{x} obj=0x{x} fw=0x{x} new=0x{x} sz={d} tag={s}\n",
                     .{ val.raw, obj_addr, first_word.raw, new_addr, forwarded_size, @tagName(val.getTag()) },
@@ -1284,7 +1300,7 @@ pub const GC = struct {
             }
             return null;
         }
-        if (std.posix.getenv("HABU_TRACE_STALE_RESOLVE") != null) {
+        if (trace_stale_resolve) {
             std.debug.print(
                 "TRACE stale-resolve ok val=0x{x} obj=0x{x} fw=0x{x} sz={d} from=[0x{x},0x{x})\n",
                 .{ val.raw, obj_addr, first_word.raw, forwarded_size, from_start, from_end },
@@ -1318,7 +1334,7 @@ pub const GC = struct {
 
         // Check if object is in from-space
         const obj_addr = val.toPtrAddr();
-        if (resolveStaleForwardedValue(heap, val, obj_addr)) |resolved| {
+        if (resolveStaleForwardedValue(self.trace_stale_resolve, heap, val, obj_addr)) |resolved| {
             return self.rememberScanStore(heap, resolved);
         }
         const from_start = @intFromPtr(heap.from_start);
@@ -1389,7 +1405,7 @@ pub const GC = struct {
 
         // Copy object to to-space
         const tag = val.getTag();
-        if (tag == .keyword and std.posix.getenv("HABU_TRACE_GC_BAD_KEYWORD") != null) {
+        if (tag == .keyword and self.trace_bad_keyword) {
             const kw: *const objects.Keyword = @ptrFromInt(obj_addr);
             const name_addr = @intFromPtr(kw.name_ptr);
             const expected_name_addr = obj_addr + @sizeOf(objects.Keyword);
@@ -1410,12 +1426,12 @@ pub const GC = struct {
                         @tagName(self.debug_scan_tag),
                     },
                 );
-                if (std.posix.getenv("HABU_TRAP_BAD_KEYWORD") != null) {
+                if (self.trap_bad_keyword) {
                     @panic("bad keyword object");
                 }
             }
         }
-        if (tag == .symbol and std.posix.getenv("HABU_TRACE_GC_BAD_SYMBOL") != null) {
+        if (tag == .symbol and self.trace_bad_symbol) {
             const sym: *const objects.Symbol = @ptrFromInt(obj_addr);
             if (sym.name_len > heap.space_size) {
                 const fw: *const Value = @ptrFromInt(obj_addr);
@@ -1638,7 +1654,7 @@ pub const GC = struct {
         var promote = shouldPromote(heap, tag, aligned_size);
         const dest: [*]u8 = if (promote)
             @ptrCast(heap.allocTenuredRaw(aligned_size) catch |err| {
-                if (err == error.OutOfMemory and std.posix.getenv("HABU_TRACE_GC_OOM") != null) {
+                if (err == error.OutOfMemory and self.trace_gc_oom) {
                     std.debug.print(
                         "TRACE gc-copy-oom promote={any} tag={s} size={d} aligned={d} val=0x{x} obj=0x{x} phase={s}\n",
                         .{ true, @tagName(tag), size, aligned_size, val.raw, obj_addr, @tagName(self.major.phase) },
@@ -1660,7 +1676,7 @@ pub const GC = struct {
                 // bytes temporarily exceed to-space capacity.
                 promote = true;
                 break :blk @ptrCast(heap.allocTenuredRaw(aligned_size) catch |err| {
-                    if (err == error.OutOfMemory and std.posix.getenv("HABU_TRACE_GC_OOM") != null) {
+                    if (err == error.OutOfMemory and self.trace_gc_oom) {
                         std.debug.print(
                             "TRACE gc-copy-oom promote={any} tag={s} size={d} aligned={d} val=0x{x} obj=0x{x} phase={s}\n",
                             .{ true, @tagName(tag), size, aligned_size, val.raw, obj_addr, @tagName(self.major.phase) },
